@@ -9,13 +9,9 @@ import (
 	"log/slog"
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
-	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
-	"github.com/Hikyo-Org/hikyo/internal/store"
-	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 )
 
 // `hikyo admin create` — the first-administrator bootstrap.
@@ -168,35 +164,23 @@ func runAdminCreate(ctx context.Context, cfg *config.Config, log *slog.Logger, a
 // root key is read from the same sources the server uses; `admin` has no
 // --root-key-file of its own.
 func adminAuth(ctx context.Context, cfg *config.Config, log *slog.Logger) (*service.Auth, func(), error) {
+	return adminAuthWithResources(ctx, cfg, log, defaultBootResources())
+}
+
+func adminAuthWithResources(ctx context.Context, cfg *config.Config, log *slog.Logger, resources bootResources) (*service.Auth, func(), error) {
 	sc := storeConfig(cfg)
-	if cfg.AutoMigrate {
-		if err := migrate.Run(ctx, sc); err != nil {
-			return nil, nil, err
-		}
-	}
-	if err := migrate.Check(ctx, sc); err != nil {
-		return nil, nil, err
-	}
-	root, err := resolveRootKey(cfg, log)
+	guard := &bootGuard{log: log}
+	defer guard.cleanup()
+	db, kr, err := openKeyed(ctx, cfg, log, sc, resources, guard)
 	if err != nil {
-		return nil, nil, err
-	}
-	db, err := store.Open(ctx, sc)
-	if err != nil {
-		crypto.Zero(root)
-		return nil, nil, err
-	}
-	kr, err := crypto.LoadKeyring(ctx, &keyring.Store{DB: db}, root)
-	if err != nil {
-		db.Close()
 		return nil, nil, err
 	}
 	kdf, limiter, err := AuthComponents(cfg)
 	if err != nil {
-		db.Close()
 		return nil, nil, err
 	}
-	return &service.Auth{DB: db, Keyring: kr, KDF: kdf, Admission: limiter, Log: log}, func() { db.Close() }, nil
+	guard.disarm()
+	return &service.Auth{DB: db, Keyring: kr, KDF: kdf, Admission: limiter, Log: log}, func() { _ = resources.closeDatabase(db) }, nil
 }
 
 // runAdminReset is the break-glass recovery verb: `hikyo admin reset-credential
