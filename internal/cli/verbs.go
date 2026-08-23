@@ -753,19 +753,19 @@ func runAccount(ctx context.Context, ios IO, args []string) error {
 // and is refused uniformly (like a nonexistent target, B2) - break-glass only,
 // via `hikyo admin reset-credential` on the host.
 func runResetCredential(ctx context.Context, ios IO, args []string) (returnErr error) {
-	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
-		return failf(ExitUsage, "usage: hikyo account reset-credential <principal> [--output-file PATH | --dangerously-print]")
-	}
-	principal := args[0]
 	var outputFile string
 	var dangerous bool
-	st, flags, err := parseCommon("account reset-credential", ios, args[1:], func(fs *flag.FlagSet) {
+	st, flags, err := parseCommon("account reset-credential", ios, args, func(fs *flag.FlagSet) {
 		fs.StringVar(&outputFile, "output-file", "", "write the authority to a file this command creates (0600)")
 		fs.BoolVar(&dangerous, "dangerously-print", false, "print the authority to stdout")
 	})
 	if err != nil {
 		return err
 	}
+	if len(flags.positionals) != 1 {
+		return failf(ExitUsage, "usage: hikyo account reset-credential <principal> [--output-file PATH | --dangerously-print]")
+	}
+	principal := flags.positionals[0]
 	deliver := disclose.Options{OutputFile: outputFile, DangerouslyPrint: dangerous, Stdout: ios.Stdout}
 	sink, err := ios.prepareDisclosure(deliver)
 	if err != nil {
