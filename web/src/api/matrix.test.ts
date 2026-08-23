@@ -4,6 +4,7 @@ import { ApiError } from './client.ts';
 import {
   assembleMatrixEnvironmentRows,
   bindMatrixEnvironmentQueries,
+  type MatrixEnvironmentQuery,
   matrixPublishValidation,
   matrixMutationError,
   forgetRestorePreviews,
@@ -38,12 +39,27 @@ const environmentProd = {
   display_order: 1,
 };
 
-function query<T>(data: T | undefined, isPending = false) {
-  return { data, isPending, isError: false };
+function query<T>(data: T | undefined, isPending = false, isError = false) {
+  return { data, isPending, isError };
 }
 
-function environmentQuery<T>(environmentId: string, data: T | undefined, isPending = false) {
-  return { environmentId, query: query(data, isPending) };
+function environmentQuery<T>(
+  environmentId: string,
+  data: T | undefined,
+  isPending = false,
+  isError = false,
+): MatrixEnvironmentQuery<T> {
+  if (isPending) {
+    return { environmentId, query: { status: 'pending' } };
+  }
+  if (isError) {
+    return data === undefined
+      ? { environmentId, query: { status: 'error' } }
+      : { environmentId, query: { status: 'stale', data } };
+  }
+  return data === undefined
+    ? { environmentId, query: { status: 'error' } }
+    : { environmentId, query: { status: 'ready', data } };
 }
 
 beforeEach(() => {
@@ -128,7 +144,21 @@ describe('matrix signal boundary', () => {
           },
         ],
       }).cells,
-    ).toHaveLength(2);
+    ).toEqual([
+      {
+        key_id: keyLog,
+        name: 'LOG_LEVEL',
+        classification: 'config',
+        pending: { versionId: version, operation: 'set' },
+        pending_by_others: false,
+      },
+      {
+        key_id: keyOther,
+        name: 'OTHER',
+        classification: 'config',
+        pending_by_others: false,
+      },
+    ]);
   });
 });
 
@@ -196,14 +226,69 @@ describe('environment-keyed matrix rows', () => {
   it('keeps one pending query on its own row while other rows render ready data', () => {
     const rows = assembleMatrixEnvironmentRows([environmentDev, environmentProd], {
       ...inputs,
-      signals: [environmentQuery(envProd, undefined, true), environmentQuery(envDev, devSignals)],
+      signals: [
+        environmentQuery<typeof prodSignals>(envProd, undefined, true),
+        environmentQuery(envDev, devSignals),
+      ],
     });
 
     expect(rows[0]?.signals.data?.revision).toBe(2n);
-    expect(rows[0]?.signals.isPending).toBe(false);
+    expect(rows[0]?.signals.status).toBe('ready');
+    expect(rows[0]?.readiness).toBe('ready');
     expect(rows[1]?.environmentId).toBe(envProd);
     expect(rows[1]?.signals.data).toBeUndefined();
-    expect(rows[1]?.signals.isPending).toBe(true);
+    expect(rows[1]?.signals.status).toBe('pending');
+    expect(rows[1]?.readiness).toBe('pending');
+  });
+
+  it('maps query flags once into pending, error, stale, and ready states', () => {
+    const [pending, error, stale, ready] = bindMatrixEnvironmentQueries(
+      'values',
+      [
+        environmentDev,
+        environmentProd,
+        { ...environmentDev, id: 'env_stale' },
+        { ...environmentDev, id: 'env_ready' },
+      ],
+      [
+        query(undefined, true),
+        query(undefined, false, true),
+        query({ environmentId: 'env_stale', value: devValues }, false, true),
+        query({ environmentId: 'env_ready', value: prodValues }),
+      ],
+    ).map((entry) => entry.query);
+
+    expect(pending).toEqual({ status: 'pending' });
+    expect(error).toEqual({ status: 'error' });
+    expect(stale).toEqual({ status: 'stale', data: devValues });
+    expect(ready).toEqual({ status: 'ready', data: prodValues });
+  });
+
+  it('derives one row readiness with loading precedence and includes stale pending drafts', () => {
+    const [row] = assembleMatrixEnvironmentRows([environmentDev], {
+      values: [environmentQuery<typeof devValues>(envDev, undefined, true)],
+      signals: [{ environmentId: envDev, query: { status: 'error' } }],
+      settings: [{ environmentId: envDev, query: { status: 'stale', data: devSettings } }],
+      pendingDrafts: [{ environmentId: envDev, query: { status: 'stale', data: drafts } }],
+    });
+
+    expect(row?.readiness).toBe('pending');
+
+    const [errorRow] = assembleMatrixEnvironmentRows([environmentDev], {
+      values: [environmentQuery(envDev, devValues)],
+      signals: [{ environmentId: envDev, query: { status: 'error' } }],
+      settings: [environmentQuery(envDev, devSettings)],
+      pendingDrafts: [environmentQuery(envDev, drafts)],
+    });
+    expect(errorRow?.readiness).toBe('error');
+
+    const [staleRow] = assembleMatrixEnvironmentRows([environmentDev], {
+      values: [environmentQuery(envDev, devValues)],
+      signals: [environmentQuery(envDev, devSignals)],
+      settings: [environmentQuery(envDev, devSettings)],
+      pendingDrafts: [{ environmentId: envDev, query: { status: 'stale', data: drafts } }],
+    });
+    expect(staleRow?.readiness).toBe('stale');
   });
 
   it('rejects duplicate or missing query identities instead of guessing by position', () => {
@@ -280,11 +365,15 @@ describe('pending draft preview boundary', () => {
       name: 'LOG_LEVEL',
       classification: 'config',
       pending_by_others: false,
-      pending_version_id: version,
-      pending_operation: 'set',
+      pending: { versionId: version, operation: 'set' },
     };
     expect(pendingConfigPreview(signal, byVersion)).toBe('debug');
-    expect(pendingConfigPreview({ ...signal, pending_version_id: 'ver_other' }, byVersion)).toBeUndefined();
+    expect(
+      pendingConfigPreview(
+        { ...signal, pending: { versionId: 'ver_other', operation: 'set' } },
+        byVersion,
+      ),
+    ).toBeUndefined();
     expect(() => pendingConfigPreview({ ...signal, key_id: keyOther }, byVersion)).toThrow(
       'bound to the wrong key',
     );
