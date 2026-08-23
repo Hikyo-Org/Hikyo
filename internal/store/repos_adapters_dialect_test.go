@@ -5,7 +5,7 @@ import "testing"
 func TestAdoptDBOwnsDialectPlaceholders(t *testing.T) {
 	tests := []struct {
 		name string
-		db   adoptDB
+		db   adapterDB
 		want string
 	}{
 		{name: "sqlite", db: sqliteAdoptDB{}, want: "?,?,?"},

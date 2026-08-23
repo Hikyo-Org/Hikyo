@@ -122,7 +122,7 @@ func (r pgAdapters) ReplaceMoveOrigin(ctx context.Context, p authz.Proof, moveID
 	return replaceAdapterMoveOrigin(ctx, pgAdoptDB{db: r.db}, chain, moveID, origin, pendingCredential, authorityPrincipalID, at)
 }
 
-func readAdapterMove(ctx context.Context, db adoptDB, chain domain.Scope, moveID string, lock bool) (AdapterMove, error) {
+func readAdapterMove(ctx context.Context, db adapterDB, chain domain.Scope, moveID string, lock bool) (AdapterMove, error) {
 	var out AdapterMove
 	var keep bool
 	var created adapterStoredTime
@@ -198,7 +198,7 @@ func readAdapterMove(ctx context.Context, db adoptDB, chain domain.Scope, moveID
 	return out, nil
 }
 
-func cancelAdapterMove(ctx context.Context, db adoptDB, chain domain.Scope, moveID, authorityPrincipalID string, at time.Time) (AdapterMove, error) {
+func cancelAdapterMove(ctx context.Context, db adapterDB, chain domain.Scope, moveID, authorityPrincipalID string, at time.Time) (AdapterMove, error) {
 	if moveID == "" || authorityPrincipalID == "" || at.IsZero() {
 		return AdapterMove{}, fmt.Errorf("%w: move cancellation requires move, authority, and timestamp", domain.ErrInvalid)
 	}
@@ -262,7 +262,7 @@ func cancelAdapterMove(ctx context.Context, db adoptDB, chain domain.Scope, move
 	return out, nil
 }
 
-func replaceAdapterMoveTarget(ctx context.Context, db adoptDB, chain domain.Scope, moveID string, target AdapterTargetMutation, authorityPrincipalID string, at time.Time) (AdapterMove, error) {
+func replaceAdapterMoveTarget(ctx context.Context, db adapterDB, chain domain.Scope, moveID string, target AdapterTargetMutation, authorityPrincipalID string, at time.Time) (AdapterMove, error) {
 	if err := validatePendingTarget(target); err != nil {
 		return AdapterMove{}, err
 	}
@@ -317,7 +317,7 @@ func replaceAdapterMoveTarget(ctx context.Context, db adoptDB, chain domain.Scop
 	return out, nil
 }
 
-func replaceAdapterMoveOrigin(ctx context.Context, db adoptDB, chain domain.Scope, moveID, origin string, pendingCredential []byte, authorityPrincipalID string, at time.Time) (AdapterMove, error) {
+func replaceAdapterMoveOrigin(ctx context.Context, db adapterDB, chain domain.Scope, moveID, origin string, pendingCredential []byte, authorityPrincipalID string, at time.Time) (AdapterMove, error) {
 	if moveID == "" || origin == "" || len(pendingCredential) == 0 || authorityPrincipalID == "" || at.IsZero() {
 		return AdapterMove{}, fmt.Errorf("%w: pending origin replacement requires move, origin, credential, authority, and timestamp", domain.ErrInvalid)
 	}
@@ -395,7 +395,7 @@ func replaceAdapterMoveOrigin(ctx context.Context, db adoptDB, chain domain.Scop
 	return out, nil
 }
 
-func resumeAdapterMove(ctx context.Context, db adoptDB, chain domain.Scope, move AdapterMove, authorityPrincipalID string, at time.Time) error {
+func resumeAdapterMove(ctx context.Context, db adapterDB, chain domain.Scope, move AdapterMove, authorityPrincipalID string, at time.Time) error {
 	stamp := db.Stamp(at)
 	activate := db.SQL(
 		`UPDATE adapter_route_moves SET state='activating',authority_principal_id=? WHERE id=? AND org_id=? AND project_id=? AND state='attention_required'`,
@@ -433,7 +433,7 @@ func resumeAdapterMove(ctx context.Context, db adoptDB, chain domain.Scope, move
 	return nil
 }
 
-func beginAdapterOriginMove(ctx context.Context, db adoptDB, chain domain.Scope, mutation AdapterOriginMoveMutation) (AdapterRouteMoveBatch, error) {
+func beginAdapterOriginMove(ctx context.Context, db adapterDB, chain domain.Scope, mutation AdapterOriginMoveMutation) (AdapterRouteMoveBatch, error) {
 	if mutation.AdapterID == "" || mutation.Origin == "" || len(mutation.PendingCredentialCiphertext) == 0 || mutation.AuthorityPrincipalID == "" || mutation.At.IsZero() {
 		return AdapterRouteMoveBatch{}, fmt.Errorf("%w: origin move requires adapter, origin, sealed credential, authority, and timestamp", domain.ErrInvalid)
 	}
@@ -665,7 +665,7 @@ func validatePendingTarget(m AdapterTargetMutation) error {
 	return nil
 }
 
-func beginAdapterTargetMove(ctx context.Context, db adoptDB, chain domain.Scope, mutation AdapterRouteMoveMutation) (AdapterRouteMoveResult, error) {
+func beginAdapterTargetMove(ctx context.Context, db adapterDB, chain domain.Scope, mutation AdapterRouteMoveMutation) (AdapterRouteMoveResult, error) {
 	if err := validatePendingTarget(mutation.Target); err != nil {
 		return AdapterRouteMoveResult{}, err
 	}
@@ -814,7 +814,7 @@ func beginAdapterTargetMove(ctx context.Context, db adoptDB, chain domain.Scope,
 	return result, nil
 }
 
-func reserveAdapterMoveClaims(ctx context.Context, db adoptDB, chain domain.Scope, moveID, origin string, target AdapterTargetMutation) error {
+func reserveAdapterMoveClaims(ctx context.Context, db adapterDB, chain domain.Scope, moveID, origin string, target AdapterTargetMutation) error {
 	keyQuery := db.SQL(
 		`SELECT id,name,classification FROM keys WHERE org_id=? AND project_id=? AND id IN (`+db.Placeholders(len(target.KeyIDs), 3)+`) ORDER BY id`,
 		`SELECT id,name,classification FROM keys WHERE org_id=$1 AND project_id=$2 AND id IN (`+db.Placeholders(len(target.KeyIDs), 3)+`) ORDER BY id`)

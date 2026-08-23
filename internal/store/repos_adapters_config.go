@@ -307,7 +307,7 @@ func validateTargetMutation(m AdapterTargetMutation) error {
 	return nil
 }
 
-func targetManifest(ctx context.Context, db adoptDB, chain domain.Scope, m AdapterTargetMutation) ([]adapter.ManifestEntry, error) {
+func targetManifest(ctx context.Context, db adapterDB, chain domain.Scope, m AdapterTargetMutation) ([]adapter.ManifestEntry, error) {
 	providerQuery := db.SQL(
 		`SELECT provider FROM adapters WHERE id=? AND org_id=? AND project_id=?`,
 		`SELECT provider FROM adapters WHERE id=$1 AND org_id=$2 AND project_id=$3`)
@@ -364,7 +364,7 @@ func targetManifest(ctx context.Context, db adoptDB, chain domain.Scope, m Adapt
 	return manifest, nil
 }
 
-func refuseDestinationNameCollision(ctx context.Context, db adoptDB, chain domain.Scope, m AdapterTargetMutation, manifest []adapter.ManifestEntry, excludeTargetID string) error {
+func refuseDestinationNameCollision(ctx context.Context, db adapterDB, chain domain.Scope, m AdapterTargetMutation, manifest []adapter.ManifestEntry, excludeTargetID string) error {
 	desired := map[string]struct{}{m.NamePrefix + adapter.SentinelName: {}}
 	for _, entry := range manifest {
 		desired[m.NamePrefix+entry.CanonicalName] = struct{}{}
@@ -427,7 +427,7 @@ func refuseDestinationNameCollision(ctx context.Context, db adoptDB, chain domai
 	return pendingRows.Err()
 }
 
-func insertTargetConfig(ctx context.Context, db adoptDB, chain domain.Scope, m AdapterTargetMutation, at time.Time) error {
+func insertTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m AdapterTargetMutation, at time.Time) error {
 	manifest, err := targetManifest(ctx, db, chain, m)
 	if err != nil {
 		return err
@@ -715,7 +715,7 @@ func (r pgAdapters) UpdateTarget(ctx context.Context, p authz.Proof, m AdapterTa
 	return updateTargetConfig(ctx, pgAdoptDB{db: r.db}, chain, m)
 }
 
-func updateTargetConfig(ctx context.Context, db adoptDB, chain domain.Scope, m AdapterTargetUpdate) (AdapterTargetUpdateResult, error) {
+func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m AdapterTargetUpdate) (AdapterTargetUpdateResult, error) {
 	if err := validateTargetMutation(m.Target); err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
