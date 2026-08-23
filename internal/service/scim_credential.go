@@ -160,59 +160,39 @@ func (s *SCIM) verifyMintReauth(ctx context.Context, actor Actor, proof string) 
 // ListCredentials returns the binding's credentials — ids and metadata only.
 func (s *SCIM) ListCredentials(ctx context.Context, actor Actor, org domain.OrgID, bindingID string) ([]SCIMCredentialView, error) {
 	var out []SCIMCredentialView
-	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		scope := domain.Scope{Org: org}
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpSCIMCredentialList, scope)
-		if err != nil {
-			return err
-		}
-		if _, err := s.loadBinding(ctx, r, az, p, bindingID, false); err != nil {
-			return err
-		}
-		rows, err := r.SCIM().Credentials(ctx, p, bindingID)
-		if err != nil {
-			return err
-		}
-		now := s.now()
-		for _, row := range rows {
-			out = append(out, credentialView(row, now))
-		}
-		return insertGrantEvent(ctx, r, p, caller.Principal, domain.LevelOrg, adminReadEvent(string(org), bindingID, "credential", len(out)))
-	})
+	err := s.adminTx(ctx, actor, org, bindingID, authz.OpSCIMCredentialList, false,
+		func(ctx context.Context, a *scimAdminContext) error {
+			rows, err := a.repos.SCIM().Credentials(ctx, a.proof, bindingID)
+			if err != nil {
+				return err
+			}
+			now := s.now()
+			for _, row := range rows {
+				out = append(out, credentialView(row, now))
+			}
+			a.addEvents(adminReadEvent(string(org), bindingID, "credential", len(out)))
+			return nil
+		})
 	return out, err
 }
 
 // GetCredential returns one credential by id.
 func (s *SCIM) GetCredential(ctx context.Context, actor Actor, org domain.OrgID, bindingID, id string) (SCIMCredentialView, error) {
 	var out SCIMCredentialView
-	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		scope := domain.Scope{Org: org}
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpSCIMCredentialGet, scope)
-		if err != nil {
-			return err
-		}
-		if _, err := s.loadBinding(ctx, r, az, p, bindingID, false); err != nil {
-			return err
-		}
-		// The store predicates on (org from the proof, binding from the path),
-		// so a credential belonging to another org or another binding matches
-		// no row — the uniform nonexistent outcome, decided in SQL rather than
-		// by a Go check beside a caller-controlled id.
-		row, err := r.SCIM().Credential(ctx, p, bindingID, id)
-		if err != nil {
-			return err
-		}
-		out = credentialView(row, s.now())
-		return insertGrantEvent(ctx, r, p, caller.Principal, domain.LevelOrg, adminReadEvent(string(org), bindingID, "credential", 1))
-	})
+	err := s.adminTx(ctx, actor, org, bindingID, authz.OpSCIMCredentialGet, false,
+		func(ctx context.Context, a *scimAdminContext) error {
+			// The store predicates on (org from the proof, binding from the path),
+			// so a credential belonging to another org or another binding matches
+			// no row — the uniform nonexistent outcome, decided in SQL rather than
+			// by a Go check beside a caller-controlled id.
+			row, err := a.repos.SCIM().Credential(ctx, a.proof, bindingID, id)
+			if err != nil {
+				return err
+			}
+			out = credentialView(row, s.now())
+			a.addEvents(adminReadEvent(string(org), bindingID, "credential", 1))
+			return nil
+		})
 	return out, err
 }
 
@@ -220,56 +200,34 @@ func (s *SCIM) GetCredential(ctx context.Context, actor Actor, org domain.OrgID,
 // the row is marked rather than deleted, so the verifier stays occupied and the
 // id keeps naming a real thing on this surface.
 func (s *SCIM) RevokeCredential(ctx context.Context, actor Actor, org domain.OrgID, bindingID, id string) error {
-	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		scope := domain.Scope{Org: org}
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpSCIMCredentialRevoke, scope)
-		if err != nil {
-			return err
-		}
-		// §9: per-binding writes SERIALIZE. The wire takes this lock through
-		// its contact UPDATE; an ADMINISTRATION mutation has no such update,
-		// so it takes the row lock explicitly and holds it to commit. Mapping
-		// authoring reconciles origins in its own transaction, which is the
-		// same origin arithmetic a push performs and needs the same
-		// serialization — so both legs mark the SAME phase pair, and a fixture
-		// asserting strict alternation covers admin-versus-wire races too.
-		unlock, err := lockBindingRow(ctx, r, p, bindingID)
-		if err != nil {
-			return err
-		}
-		defer unlock()
-		if _, err := s.loadBinding(ctx, r, az, p, bindingID, false); err != nil {
-			return err
-		}
-		// The read proves the credential is this org's and this binding's before
-		// the revoke, which is a predicate the UPDATE repeats anyway; keeping it
-		// makes a credential from another binding the uniform not-found rather
-		// than a silent zero-row revoke.
-		if _, err := r.SCIM().Credential(ctx, p, bindingID, id); err != nil {
-			return err
-		}
-		revoked, err := r.SCIM().RevokeCredential(ctx, p, bindingID, id, s.now())
-		if err != nil {
-			return err
-		}
-		if !revoked {
-			// Already dead. The trail must not record a transition that did not
-			// happen — an investigator counting revocations would count polls.
+	return s.adminTx(ctx, actor, org, bindingID, authz.OpSCIMCredentialRevoke, true,
+		func(ctx context.Context, a *scimAdminContext) error {
+			// The read proves the credential is this org's and this binding's before
+			// the revoke, which is a predicate the UPDATE repeats anyway; keeping it
+			// makes a credential from another binding the uniform not-found rather
+			// than a silent zero-row revoke.
+			if _, err := a.repos.SCIM().Credential(ctx, a.proof, bindingID, id); err != nil {
+				return err
+			}
+			revoked, err := a.repos.SCIM().RevokeCredential(ctx, a.proof, bindingID, id, s.now())
+			if err != nil {
+				return err
+			}
+			if !revoked {
+				// Already dead. The trail must not record a transition that did not
+				// happen — an investigator counting revocations would count polls.
+				return nil
+			}
+			a.addEvents(grantEventInput{
+				typ:    audit.EventSCIMCredentialRevoked,
+				object: audit.Object{Type: "scim-credential", ID: id},
+				payload: audit.Payload{
+					"binding": bindingID, "credential_id": id,
+					"actor": string(a.caller.Principal),
+				},
+			})
 			return nil
-		}
-		return insertGrantEvent(ctx, r, p, caller.Principal, domain.LevelOrg, grantEventInput{
-			typ:    audit.EventSCIMCredentialRevoked,
-			object: audit.Object{Type: "scim-credential", ID: id},
-			payload: audit.Payload{
-				"binding": bindingID, "credential_id": id,
-				"actor": string(caller.Principal),
-			},
 		})
-	})
 }
 
 // ---------------------------------------------------------------------------
@@ -304,89 +262,69 @@ type SCIMDirectoryGroup struct {
 // DirectoryUsers is `hikyo scim user list <binding>`.
 func (s *SCIM) DirectoryUsers(ctx context.Context, actor Actor, org domain.OrgID, bindingID string) ([]SCIMDirectoryUser, error) {
 	var out []SCIMDirectoryUser
-	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		scope := domain.Scope{Org: org}
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpSCIMDirectoryUsers, scope)
-		if err != nil {
-			return err
-		}
-		if _, err := s.loadBinding(ctx, r, az, p, bindingID, false); err != nil {
-			return err
-		}
-		users, err := r.SCIM().Users(ctx, p, bindingID)
-		if err != nil {
-			return err
-		}
-		attention, err := r.SCIM().Attention(ctx, p, bindingID)
-		if err != nil {
-			return err
-		}
-		for _, u := range users {
-			memberships, err := r.SCIM().MembershipsForUser(ctx, p, bindingID, u.ID)
+	err := s.adminTx(ctx, actor, org, bindingID, authz.OpSCIMDirectoryUsers, false,
+		func(ctx context.Context, a *scimAdminContext) error {
+			users, err := a.repos.SCIM().Users(ctx, a.proof, bindingID)
 			if err != nil {
 				return err
 			}
-			view := SCIMDirectoryUser{
-				ID: u.ID, UserName: u.UserName, ExternalID: u.ExternalID,
-				AccountID: u.AccountID, Active: u.Active,
-				CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt,
+			attention, err := a.repos.SCIM().Attention(ctx, a.proof, bindingID)
+			if err != nil {
+				return err
 			}
-			for _, m := range memberships {
-				view.Groups = append(view.Groups, m.GroupID)
-			}
-			for _, a := range attention {
-				if a.SubjectRef != u.ID {
-					continue
+			for _, u := range users {
+				memberships, err := a.repos.SCIM().MembershipsForUser(ctx, a.proof, bindingID, u.ID)
+				if err != nil {
+					return err
 				}
-				view.Attention = append(view.Attention, SCIMAttentionView{
-					State: a.State, SubjectRef: a.SubjectRef, Cause: a.Cause,
-					EnteredAt:   a.EnteredAt,
-					Remediation: attentionRemediation(domain.SCIMAttention(a.State)),
-				})
+				view := SCIMDirectoryUser{
+					ID: u.ID, UserName: u.UserName, ExternalID: u.ExternalID,
+					AccountID: u.AccountID, Active: u.Active,
+					CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt,
+				}
+				for _, m := range memberships {
+					view.Groups = append(view.Groups, m.GroupID)
+				}
+				for _, a := range attention {
+					if a.SubjectRef != u.ID {
+						continue
+					}
+					view.Attention = append(view.Attention, SCIMAttentionView{
+						State: a.State, SubjectRef: a.SubjectRef, Cause: a.Cause,
+						EnteredAt:   a.EnteredAt,
+						Remediation: attentionRemediation(domain.SCIMAttention(a.State)),
+					})
+				}
+				out = append(out, view)
 			}
-			out = append(out, view)
-		}
-		return insertGrantEvent(ctx, r, p, caller.Principal, domain.LevelOrg, adminReadEvent(string(org), bindingID, "directory", len(out)))
-	})
+			a.addEvents(adminReadEvent(string(org), bindingID, "directory", len(out)))
+			return nil
+		})
 	return out, err
 }
 
 // DirectoryGroups is `hikyo scim group list <binding>`.
 func (s *SCIM) DirectoryGroups(ctx context.Context, actor Actor, org domain.OrgID, bindingID string) ([]SCIMDirectoryGroup, error) {
 	var out []SCIMDirectoryGroup
-	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		scope := domain.Scope{Org: org}
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpSCIMDirectoryGroups, scope)
-		if err != nil {
-			return err
-		}
-		if _, err := s.loadBinding(ctx, r, az, p, bindingID, false); err != nil {
-			return err
-		}
-		groups, err := r.SCIM().Groups(ctx, p, bindingID)
-		if err != nil {
-			return err
-		}
-		for _, g := range groups {
-			members, err := r.SCIM().GroupMembers(ctx, p, bindingID, g.ID)
+	err := s.adminTx(ctx, actor, org, bindingID, authz.OpSCIMDirectoryGroups, false,
+		func(ctx context.Context, a *scimAdminContext) error {
+			groups, err := a.repos.SCIM().Groups(ctx, a.proof, bindingID)
 			if err != nil {
 				return err
 			}
-			out = append(out, SCIMDirectoryGroup{
-				ID: g.ID, DisplayName: g.DisplayName, ExternalID: g.ExternalID,
-				MemberCount: len(members), CreatedAt: g.CreatedAt, UpdatedAt: g.UpdatedAt,
-			})
-		}
-		return insertGrantEvent(ctx, r, p, caller.Principal, domain.LevelOrg, adminReadEvent(string(org), bindingID, "directory", len(out)))
-	})
+			for _, g := range groups {
+				members, err := a.repos.SCIM().GroupMembers(ctx, a.proof, bindingID, g.ID)
+				if err != nil {
+					return err
+				}
+				out = append(out, SCIMDirectoryGroup{
+					ID: g.ID, DisplayName: g.DisplayName, ExternalID: g.ExternalID,
+					MemberCount: len(members), CreatedAt: g.CreatedAt, UpdatedAt: g.UpdatedAt,
+				})
+			}
+			a.addEvents(adminReadEvent(string(org), bindingID, "directory", len(out)))
+			return nil
+		})
 	return out, err
 }
 

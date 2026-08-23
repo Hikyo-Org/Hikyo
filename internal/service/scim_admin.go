@@ -518,146 +518,124 @@ func (s *SCIM) reconcileLockoutAttention(
 //     be had the user been invited; unlinking remains the account-security
 //     mutation it always was, and nothing here touches it.
 func (s *SCIM) DeleteBinding(ctx context.Context, actor Actor, org domain.OrgID, id string) error {
-	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		scope := domain.Scope{Org: org}
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpSCIMBindingDelete, scope)
-		if err != nil {
-			return err
-		}
-		// §9: per-binding writes SERIALIZE. The wire takes this lock through
-		// its contact UPDATE; an ADMINISTRATION mutation has no such update,
-		// so it takes the row lock explicitly and holds it to commit. Mapping
-		// authoring reconciles origins in its own transaction, which is the
-		// same origin arithmetic a push performs and needs the same
-		// serialization — so both legs mark the SAME phase pair, and a fixture
-		// asserting strict alternation covers admin-versus-wire races too.
-		unlock, err := lockBindingRow(ctx, r, p, id)
-		if err != nil {
-			return err
-		}
-		defer unlock()
-		c, err := s.loadBinding(ctx, r, az, p, id, false)
-		if err != nil {
-			return err
-		}
-		now := s.now()
+	return s.adminTx(ctx, actor, org, id, authz.OpSCIMBindingDelete, true,
+		func(ctx context.Context, a *scimAdminContext) error {
+			r, az, p, caller, c := a.repos, a.authorizer, a.proof, a.caller, a.scimContext
+			var events []grantEventInput
+			now := s.now()
 
-		connection := domain.PrincipalID(c.binding.ConnectionPrincipalID)
+			connection := domain.PrincipalID(c.binding.ConnectionPrincipalID)
 
-		// (1) credentials first. The count is not in the payload: §10's field
-		// list for this event is "org, provider ref, actor", and how many
-		// credentials died is already one `scim.credential_revoked` per
-		// credential — recorded once, where the ADR puts it.
-		//
-		// Each phase is marked AFTER its work, carrying WHAT IT DID. A label
-		// emitted before the mutation proves only that the code reached a line,
-		// which a wrong implementation satisfies just as well as a right one;
-		// a label emitted after, carrying the count, is a statement about state.
-		revoked, err := r.SCIM().RevokeCredentialsForBinding(ctx, p, id, now)
-		if err != nil {
-			return err
-		}
-		s.markTeardown(ctx, r, az, p, c, connection, "credentials-revoked", int(revoked))
-
-		// (2) every origin the binding holds, for every user it provisioned.
-		users, err := r.SCIM().Users(ctx, p, id)
-		if err != nil {
-			return err
-		}
-		var events []grantEventInput
-		releasedOrigins := 0
-		for _, u := range users {
-			principal, err := principalForAccount(ctx, az, u.AccountID)
+			// (1) credentials first. The count is not in the payload: §10's field
+			// list for this event is "org, provider ref, actor", and how many
+			// credentials died is already one `scim.credential_revoked` per
+			// credential — recorded once, where the ADR puts it.
+			//
+			// Each phase is marked AFTER its work, carrying WHAT IT DID. A label
+			// emitted before the mutation proves only that the code reached a line,
+			// which a wrong implementation satisfies just as well as a right one;
+			// a label emitted after, carrying the count, is a statement about state.
+			revoked, err := r.SCIM().RevokeCredentialsForBinding(ctx, p, id, now)
 			if err != nil {
 				return err
 			}
-			outcome, evs, err := s.releaseAndSettle(ctx, r, az, c, principal, releaseArgs{
-				binding: id, org: org,
-				match: matchBinding(id), cause: domain.CauseBindingDelete,
-			}, advanceIfAuthorityChanged, now)
+			s.markTeardown(ctx, r, az, p, c, connection, "credentials-revoked", int(revoked))
+
+			// (2) every origin the binding holds, for every user it provisioned.
+			users, err := r.SCIM().Users(ctx, p, id)
 			if err != nil {
 				return err
 			}
-			events = append(events, evs...)
-			releasedOrigins += outcome.Released
-		}
+			releasedOrigins := 0
+			for _, u := range users {
+				principal, err := principalForAccount(ctx, az, u.AccountID)
+				if err != nil {
+					return err
+				}
+				outcome, evs, err := s.releaseAndSettle(ctx, r, az, c, principal, releaseArgs{
+					binding: id, org: org,
+					match: matchBinding(id), cause: domain.CauseBindingDelete,
+				}, advanceIfAuthorityChanged, now)
+				if err != nil {
+					return err
+				}
+				events = append(events, evs...)
+				releasedOrigins += outcome.Released
+			}
 
-		s.markTeardown(ctx, r, az, p, c, connection, "origins-released", releasedOrigins)
+			s.markTeardown(ctx, r, az, p, c, connection, "origins-released", releasedOrigins)
 
-		// (3) the connection's structural origin, then the principal, then the
-		// binding's own rows. The RESTRICT foreign key on grant_origins is what
-		// makes the ordering a database fact rather than a comment.
-		structural, err := releaseStructural(ctx, az, connection, id)
-		if err != nil {
-			return err
-		}
-		events = append(events, structural...)
-		s.markTeardown(ctx, r, az, p, c, connection, "connection-retired", len(structural))
-
-		directory := len(users)
-		if err := r.SCIM().DeleteGroupMembersForBinding(ctx, p, id); err != nil {
-			return err
-		}
-		if err := r.SCIM().DeleteGroupsForBinding(ctx, p, id); err != nil {
-			return err
-		}
-		if err := r.SCIM().DeleteUsersForBinding(ctx, p, id); err != nil {
-			return err
-		}
-		if err := r.SCIM().DeleteMappingsForBinding(ctx, p, id); err != nil {
-			return err
-		}
-		// Every raised state is cleared through the audited exit path BEFORE the
-		// rows go. A bulk delete erases states that were entered in this very
-		// transaction (a lockout conversion, say) leaving an entry event with
-		// no exit — and §9 requires the pair.
-		raised, err := r.SCIM().Attention(ctx, p, id)
-		if err != nil {
-			return err
-		}
-		for _, a := range raised {
-			ev, err := s.clearAttention(ctx, r, c,
-				domain.SCIMAttention(a.State), a.SubjectRef, domain.CauseBindingDelete)
+			// (3) the connection's structural origin, then the principal, then the
+			// binding's own rows. The RESTRICT foreign key on grant_origins is what
+			// makes the ordering a database fact rather than a comment.
+			structural, err := releaseStructural(ctx, az, connection, id)
 			if err != nil {
 				return err
 			}
-			events = append(events, ev...)
-		}
-		if err := r.SCIM().DeleteAttentionForBinding(ctx, p, id); err != nil {
-			return err
-		}
-		if err := r.SCIM().DeleteCredentialsForBinding(ctx, p, id); err != nil {
-			return err
-		}
-		s.markTeardown(ctx, r, az, p, c, connection, "directory-deleted", directory)
-		if err := r.SCIM().DeleteBinding(ctx, p, id); err != nil {
-			return err
-		}
-		s.markTeardown(ctx, r, az, p, c, connection, "binding-deleted", 1)
-		// The connection is retired under the same PROOF, after its binding row
-		// is gone (that row references it). `connection` was read from the
-		// binding under this proof, and the statement can only remove a
-		// provisioning connection no binding still owns — so neither half is a
-		// caller-controlled delete-any-principal-by-id.
-		if _, err := r.SCIM().RetireConnectionPrincipal(ctx, p, connection); err != nil {
-			return err
-		}
+			events = append(events, structural...)
+			s.markTeardown(ctx, r, az, p, c, connection, "connection-retired", len(structural))
 
-		events = append(events, grantEventInput{
-			typ:    audit.EventSCIMBindingDeleted,
-			object: audit.Object{Type: "scim-binding", ID: id},
-			payload: audit.Payload{
-				"org":          string(org),
-				"provider_ref": c.providerID,
-				"actor":        string(caller.Principal),
-			},
+			directory := len(users)
+			if err := r.SCIM().DeleteGroupMembersForBinding(ctx, p, id); err != nil {
+				return err
+			}
+			if err := r.SCIM().DeleteGroupsForBinding(ctx, p, id); err != nil {
+				return err
+			}
+			if err := r.SCIM().DeleteUsersForBinding(ctx, p, id); err != nil {
+				return err
+			}
+			if err := r.SCIM().DeleteMappingsForBinding(ctx, p, id); err != nil {
+				return err
+			}
+			// Every raised state is cleared through the audited exit path BEFORE the
+			// rows go. A bulk delete erases states that were entered in this very
+			// transaction (a lockout conversion, say) leaving an entry event with
+			// no exit — and §9 requires the pair.
+			raised, err := r.SCIM().Attention(ctx, p, id)
+			if err != nil {
+				return err
+			}
+			for _, a := range raised {
+				ev, err := s.clearAttention(ctx, r, c,
+					domain.SCIMAttention(a.State), a.SubjectRef, domain.CauseBindingDelete)
+				if err != nil {
+					return err
+				}
+				events = append(events, ev...)
+			}
+			if err := r.SCIM().DeleteAttentionForBinding(ctx, p, id); err != nil {
+				return err
+			}
+			if err := r.SCIM().DeleteCredentialsForBinding(ctx, p, id); err != nil {
+				return err
+			}
+			s.markTeardown(ctx, r, az, p, c, connection, "directory-deleted", directory)
+			if err := r.SCIM().DeleteBinding(ctx, p, id); err != nil {
+				return err
+			}
+			s.markTeardown(ctx, r, az, p, c, connection, "binding-deleted", 1)
+			// The connection is retired under the same PROOF, after its binding row
+			// is gone (that row references it). `connection` was read from the
+			// binding under this proof, and the statement can only remove a
+			// provisioning connection no binding still owns — so neither half is a
+			// caller-controlled delete-any-principal-by-id.
+			if _, err := r.SCIM().RetireConnectionPrincipal(ctx, p, connection); err != nil {
+				return err
+			}
+
+			events = append(events, grantEventInput{
+				typ:    audit.EventSCIMBindingDeleted,
+				object: audit.Object{Type: "scim-binding", ID: id},
+				payload: audit.Payload{
+					"org":          string(org),
+					"provider_ref": c.providerID,
+					"actor":        string(caller.Principal),
+				},
+			})
+			a.addEvents(events...)
+			return nil
 		})
-		return insertGrantEvent(ctx, r, p, caller.Principal, domain.LevelOrg, events...)
-	})
 }
 
 // releaseStructural releases the `structural(binding)` origin and revokes the

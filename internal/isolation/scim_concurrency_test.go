@@ -3,6 +3,7 @@ package isolation
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -609,6 +610,80 @@ func runSCIMPerBindingSerializationOrder(t *testing.T, db *store.DB) {
 	if entries < 2 {
 		t.Fatalf("only %d serialized sections observed in the admin-versus-wire leg: %v", entries, mixed)
 	}
+}
+
+// TestSCIMAdminMutationsMarkSerializedPhase pins the common administration
+// transaction contract: every binding-scoped mutation enters and exits the
+// same serialized phase as the wire surface. The operations are exercised one
+// at a time so a missing pair names the exact caller that escaped the common
+// preamble.
+func TestSCIMAdminMutationsMarkSerializedPhaseSQLite(t *testing.T) {
+	runSCIMAdminMutationsMarkSerializedPhase(t, seededDB(t, openSQLite))
+}
+func TestSCIMAdminMutationsMarkSerializedPhasePostgres(t *testing.T) {
+	runSCIMAdminMutationsMarkSerializedPhase(t, seededDB(t, openPostgres))
+}
+
+func runSCIMAdminMutationsMarkSerializedPhase(t *testing.T, db *store.DB) {
+	t.Helper()
+	s := scimSvc(db)
+	ctx := t.Context()
+	bindingID, token := newSCIMBinding(t, db, "okta-admin-phase")
+	wire := service.SCIMCredentialActor(token, bindingID)
+	group, err := s.CreateGroup(ctx, wire, orgA, bindingID, service.DesiredGroup{
+		DisplayName: "Admin phase",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assertPhase := func(name string, act func() error) {
+		t.Helper()
+		var phases []string
+		restore := service.SetSCIMPhaseObserver(func(phase string, _ map[string]int) {
+			if phase == "wire-enter:"+bindingID || phase == "wire-exit:"+bindingID {
+				phases = append(phases, phase)
+			}
+		})
+		err := act()
+		restore()
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		want := []string{"wire-enter:" + bindingID, "wire-exit:" + bindingID}
+		if !slices.Equal(phases, want) {
+			t.Fatalf("%s phases = %v, want %v", name, phases, want)
+		}
+	}
+
+	var credentialID string
+	assertPhase("mint credential", func() error {
+		minted, err := s.MintCredential(ctx, service.LocalPrincipal(orgAdmin), orgA, bindingID, false, "")
+		credentialID = minted.Credential.ID
+		return err
+	})
+	mapping := service.SCIMMappingSpec{
+		GroupID: group.ID, Template: domain.TemplateViewer, ProjectID: string(prjA1),
+	}
+	assertPhase("create mapping", func() error {
+		_, err := s.CreateMapping(ctx, service.LocalPrincipal(orgAdmin), orgA, bindingID, mapping)
+		return err
+	})
+	assertPhase("update mapping", func() error {
+		mapping.Template = domain.TemplatePublisher
+		_, err := s.UpdateMapping(ctx, service.LocalPrincipal(orgAdmin), orgA, bindingID, mapping)
+		return err
+	})
+	assertPhase("revoke credential", func() error {
+		return s.RevokeCredential(ctx, service.LocalPrincipal(orgAdmin), orgA, bindingID, credentialID)
+	})
+	assertPhase("delete mapping", func() error {
+		_, err := s.DeleteMapping(ctx, service.LocalPrincipal(orgAdmin), orgA, bindingID, mapping)
+		return err
+	})
+	assertPhase("delete binding", func() error {
+		return s.DeleteBinding(ctx, service.LocalPrincipal(orgAdmin), orgA, bindingID)
+	})
 }
 
 // TestSCIMSyncInvalidatesSessions is SC4.d: "being granted anything logs you
