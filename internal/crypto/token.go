@@ -79,19 +79,17 @@ func (k *Keyring) PublishPreviewToken(orgID, projectID, envID string, encoding [
 	return tag(key, encoding), nil
 }
 
-// rootTokenKey reads the live root token key under the rotation mutex, so a
-// derivation racing `rotate-token-key` sees exactly one version rather than a
-// torn handle. Callers derive per use and never retain the result.
+// rootTokenKey atomically snapshots the live root token key, so a derivation
+// racing `rotate-token-key` sees exactly one immutable handle. Callers derive
+// per use and never retain the result.
 func (k *Keyring) rootTokenKey() []byte {
-	k.tokenMu.Lock()
-	defer k.tokenMu.Unlock()
-	return k.token.key
+	return k.token.get().key
 }
 
-// PrepareTokenKeyRotation mints the next root token key and returns its
-// wrapped row plus the function that adopts it. The material never leaves this
-// package: the caller persists the row inside its own authorized transaction
-// and calls adopt only AFTER that transaction commits.
+// PrepareTokenKeyRotation mints the next root token key and returns its wrapped
+// row plus mutually exclusive adopt and abort functions. The material never
+// leaves this package: the caller defers abort, persists the row inside its own
+// authorized transaction, and calls adopt only AFTER that transaction commits.
 //
 // The split exists because the persistence closure runs inside a retryable
 // transaction: an attempt that is rolled back and retried mints fresh material
@@ -112,25 +110,6 @@ func (k *Keyring) rootTokenKey() []byte {
 // holding the buffer, and deriving under a zeroed key would be a silent
 // confidentiality break rather than a loud failure — the same reason the DEK
 // cache does not zero evicted entries.
-func (k *Keyring) PrepareTokenKeyRotation() (WrappedKey, func(), error) {
-	k.tokenMu.Lock()
-	current := k.token
-	k.tokenMu.Unlock()
-
-	handle, row, err := k.mintTier3At(PurposeToken, "", "", current.version+1)
-	if err != nil {
-		return WrappedKey{}, nil, err
-	}
-	return row, func() {
-		k.tokenMu.Lock()
-		defer k.tokenMu.Unlock()
-		// Monotonic: two concurrent rotations commit in some serial order, but
-		// their adopts may run in the other order. The store's retire is a
-		// compare-and-swap on the predecessor version, so at most one of them
-		// committed -- this guard makes the losing (or late) adopt a no-op
-		// instead of regressing the live handle to a retired key.
-		if handle.version > k.token.version {
-			k.token = handle
-		}
-	}, nil
+func (k *Keyring) PrepareTokenKeyRotation() (WrappedKey, func(), func(), error) {
+	return k.prepareDerivationKeyRotation(PurposeToken, &k.token)
 }

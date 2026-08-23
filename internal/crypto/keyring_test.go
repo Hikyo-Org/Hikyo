@@ -516,6 +516,33 @@ func TestRootKeyRotationCrashSafe(t *testing.T) {
 	}
 }
 
+func TestRootRotationPendingConcurrentAccess(t *testing.T) {
+	kr := &Keyring{}
+	kr.rootRotationPending.Store(true)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		for range 1_000 {
+			_ = kr.RootRotationPending()
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		for range 1_000 {
+			kr.ClearRootRotationPending()
+		}
+	}()
+	close(start)
+	wg.Wait()
+	if kr.RootRotationPending() {
+		t.Fatal("cleared root rotation still reports pending")
+	}
+}
+
 // Prepare is refused while a root rotation is already pending (dual-wrapped):
 // two pending rotations are the four-way matrix the ADR refuses.
 func TestRootKeyRotationPrepareBlockedWhenPending(t *testing.T) {

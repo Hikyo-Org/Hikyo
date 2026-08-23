@@ -9,7 +9,8 @@ import { CLIReauth } from './CLIReauth.tsx';
 
 const mocks = vi.hoisted(() => ({
   load: vi.fn(),
-  provider: { kind: 'oidc' as const, slug: 'strict', display_name: 'Corporate IdP' },
+  providerAvailable: true,
+  provider: { kind: 'oidc', slug: 'strict', display_name: 'Corporate IdP' },
 }));
 
 vi.mock('../api/cliReauth.ts', () => ({
@@ -20,7 +21,7 @@ vi.mock('../api/cliReauth.ts', () => ({
 
 vi.mock('../api/account.ts', () => ({
   useTotpStatus: () => ({ isSuccess: false }),
-  useAuthMethods: () => ({ data: { local_login_enabled: true, providers: [mocks.provider] } }),
+  useSessionOIDCProvider: () => (mocks.providerAvailable ? mocks.provider : null),
 }));
 
 vi.mock('../app/AuthProvider.tsx', () => ({
@@ -75,7 +76,10 @@ async function renderTransaction(environments: Array<{
   };
 }
 
-beforeEach(() => mocks.load.mockReset());
+beforeEach(() => {
+  mocks.load.mockReset();
+  mocks.providerAvailable = true;
+});
 
 describe('CLI OIDC disclosure handoff', () => {
   it('offers the current provider when any environment has a reusable window', async () => {
@@ -99,6 +103,17 @@ describe('CLI OIDC disclosure handoff', () => {
 
     expect(view.container.textContent).not.toContain('Re-authenticate with Corporate IdP');
     expect(view.container.textContent).toContain('locked — passkey required');
+    await view.unmount();
+  });
+
+  it('keeps a removed OIDC provider passkey-only', async () => {
+    mocks.providerAvailable = false;
+    const view = await renderTransaction([
+      { environment_id: 'production', effective_window_seconds: 300, requires_webauthn: false },
+    ]);
+
+    expect(view.container.textContent).not.toContain('Re-authenticate with');
+    expect(view.container.textContent).toContain('Authorize CLI');
     await view.unmount();
   });
 });

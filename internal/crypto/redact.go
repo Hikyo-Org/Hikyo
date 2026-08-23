@@ -48,5 +48,6 @@ var (
 	_ redactionSurface = (*ProjectSealer)(nil)
 	_ redactionSurface = (*InstanceSealer)(nil)
 	_ redactionSurface = keyHandle{}
+	_ redactionSurface = swapHandle{}
 	_ redactionSurface = dekEntry{}
 )

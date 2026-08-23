@@ -670,7 +670,8 @@ func TestStepUpRevealIsSpentByValuePathPostgres(t *testing.T) {
 func TestStepUpDemandsARealFactorVerification(t *testing.T) {
 	db := seededDB(t, openSQLite)
 	ctx := t.Context()
-	auth, _, password := bootstrapFactorAdmin(t, db)
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, password := factorAdmin.auth, factorAdmin.password
 	base := time.Now().UTC()
 	clk := base
 	auth.Now = func() time.Time { return clk }

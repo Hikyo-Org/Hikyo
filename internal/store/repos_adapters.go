@@ -484,6 +484,7 @@ func (r pgAdapters) Adopt(ctx context.Context, p authz.Proof, adoption AdapterAd
 
 type adapterDialect interface {
 	SQL(string, string) string
+	Placeholders(int, int) string
 	Stamp(time.Time) any
 }
 
@@ -510,7 +511,10 @@ func (d sqliteAdoptDB) Exec(ctx context.Context, query string, args ...any) (int
 	return result.RowsAffected()
 }
 func (sqliteAdoptDB) SQL(sqliteQuery, _ string) string { return sqliteQuery }
-func (sqliteAdoptDB) Stamp(value time.Time) any        { return adapterTimestamp(EngineSQLite, value) }
+func (sqliteAdoptDB) Placeholders(n, _ int) string {
+	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
+}
+func (sqliteAdoptDB) Stamp(value time.Time) any { return adapterTimestamp(EngineSQLite, value) }
 
 type pgAdoptDB struct{ db pggen.DBTX }
 
@@ -528,7 +532,14 @@ func (d pgAdoptDB) Exec(ctx context.Context, query string, args ...any) (int64, 
 	return tag.RowsAffected(), nil
 }
 func (pgAdoptDB) SQL(_, postgresQuery string) string { return postgresQuery }
-func (pgAdoptDB) Stamp(value time.Time) any          { return CanonTime(value) }
+func (pgAdoptDB) Placeholders(n, start int) string {
+	out := make([]string, n)
+	for i := range out {
+		out[i] = fmt.Sprintf("$%d", start+i)
+	}
+	return strings.Join(out, ",")
+}
+func (pgAdoptDB) Stamp(value time.Time) any { return CanonTime(value) }
 
 func adoptAdapter(ctx context.Context, db adapterDB, chain domain.Scope, adoption AdapterAdoption) (AdapterAdoptionResult, error) {
 	var adapterID, environmentID, origin, destinationKind, priorJob string

@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -301,16 +300,10 @@ func scimPatchUserCommands(body map[string]any) ([]service.UserPatchCommand, *sc
 	}
 	commands := make([]service.UserPatchCommand, 0, len(ops))
 	for _, op := range ops {
-		switch op.Kind {
-		case scimproto.PathNone:
-			values, e := decodeObjectValue(op.Value)
-			if e != nil {
-				return nil, e
-			}
-			desired, e := scimDesiredUser(values)
-			if e != nil {
-				return nil, e
-			}
+		switch payload := op.Payload.(type) {
+		case scimproto.PatchUserObjectPayload:
+			values := payload.User.Extra
+			desired := scimDesiredDecodedUser(payload.User)
 			if _, present := scimAttribute(values, "userName"); present {
 				commands = append(commands, service.UserPatchSetUserName{UserName: desired.UserName})
 			}
@@ -327,22 +320,14 @@ func scimPatchUserCommands(body map[string]any) ([]service.UserPatchCommand, *sc
 			if len(desired.Attributes) > 0 {
 				commands = append(commands, service.UserPatchMergeAttributes{Attributes: desired.Attributes})
 			}
-		case scimproto.PathActive:
-			var v any
-			if e := decodeInto(op.Value, &v); e != nil {
-				return nil, e
-			}
-			on, e := scimproto.NormalizeActive(v)
-			if e != nil {
-				return nil, e
-			}
-			commands = append(commands, service.UserPatchSetActive{Active: on})
-		case scimproto.PathPlain:
+		case scimproto.PatchActivePayload:
+			commands = append(commands, service.UserPatchSetActive{Active: payload.Active})
+		case scimproto.PatchPlainPayload:
 			if op.Op == "remove" {
-				if strings.EqualFold(op.Attr, "externalId") {
+				if strings.EqualFold(payload.Attribute, "externalId") {
 					commands = append(commands, service.UserPatchClearExternalID{})
 				} else {
-					desired, e := scimDesiredUser(map[string]any{op.Attr: nil})
+					desired, e := scimDesiredUser(map[string]any{payload.Attribute: nil})
 					if e != nil {
 						return nil, e
 					}
@@ -352,25 +337,21 @@ func scimPatchUserCommands(body map[string]any) ([]service.UserPatchCommand, *sc
 				}
 				continue
 			}
-			var v any
-			if e := decodeInto(op.Value, &v); e != nil {
-				return nil, e
-			}
 			switch {
-			case strings.EqualFold(op.Attr, "userName"):
-				desired, e := scimDesiredUser(map[string]any{op.Attr: v})
+			case strings.EqualFold(payload.Attribute, "userName"):
+				desired, e := scimDesiredUser(map[string]any{payload.Attribute: payload.Value})
 				if e != nil {
 					return nil, e
 				}
 				commands = append(commands, service.UserPatchSetUserName{UserName: desired.UserName})
-			case strings.EqualFold(op.Attr, "externalId"):
-				desired, e := scimDesiredUser(map[string]any{op.Attr: v})
+			case strings.EqualFold(payload.Attribute, "externalId"):
+				desired, e := scimDesiredUser(map[string]any{payload.Attribute: payload.Value})
 				if e != nil {
 					return nil, e
 				}
 				commands = append(commands, service.UserPatchSetExternalID{ExternalID: desired.ExternalID})
 			default:
-				desired, e := scimDesiredUser(map[string]any{op.Attr: v})
+				desired, e := scimDesiredUser(map[string]any{payload.Attribute: payload.Value})
 				if e != nil {
 					return nil, e
 				}
@@ -378,6 +359,8 @@ func scimPatchUserCommands(body map[string]any) ([]service.UserPatchCommand, *sc
 					commands = append(commands, service.UserPatchMergeAttributes{Attributes: desired.Attributes})
 				}
 			}
+		default:
+			return nil, scimproto.ErrInvalidValue("The PATCH parser returned an unsupported User payload.")
 		}
 	}
 	return commands, nil
@@ -403,16 +386,10 @@ func scimPatchGroupCommands(body map[string]any) ([]service.GroupPatchCommand, *
 	}
 	commands := make([]service.GroupPatchCommand, 0, len(ops))
 	for _, op := range ops {
-		switch op.Kind {
-		case scimproto.PathNone:
-			values, e := decodeObjectValue(op.Value)
-			if e != nil {
-				return nil, e
-			}
-			desired, e := scimDesiredGroup(values)
-			if e != nil {
-				return nil, e
-			}
+		switch payload := op.Payload.(type) {
+		case scimproto.PatchGroupObjectPayload:
+			values := payload.Group.Extra
+			desired := scimDesiredDecodedGroup(payload.Group)
 			if _, present := scimAttribute(values, "displayName"); present {
 				commands = append(commands, service.GroupPatchSetDisplayName{DisplayName: desired.DisplayName})
 			}
@@ -422,82 +399,44 @@ func scimPatchGroupCommands(body map[string]any) ([]service.GroupPatchCommand, *
 			if _, present := scimAttribute(values, "members"); present {
 				commands = append(commands, service.GroupPatchReplaceMembers{Members: desired.Members})
 			}
-		case scimproto.PathPlain:
+		case scimproto.PatchPlainPayload:
 			if op.Op == "remove" {
-				if strings.EqualFold(op.Attr, "externalId") {
+				if strings.EqualFold(payload.Attribute, "externalId") {
 					commands = append(commands, service.GroupPatchClearExternalID{})
 				}
 				continue
 			}
-			var v any
-			if e := decodeInto(op.Value, &v); e != nil {
-				return nil, e
-			}
-			desired, e := scimDesiredGroup(map[string]any{op.Attr: v})
+			desired, e := scimDesiredGroup(map[string]any{payload.Attribute: payload.Value})
 			if e != nil {
 				return nil, e
 			}
 			switch {
-			case strings.EqualFold(op.Attr, "displayName"):
+			case strings.EqualFold(payload.Attribute, "displayName"):
 				commands = append(commands, service.GroupPatchSetDisplayName{DisplayName: desired.DisplayName})
-			case strings.EqualFold(op.Attr, "externalId"):
+			case strings.EqualFold(payload.Attribute, "externalId"):
 				commands = append(commands, service.GroupPatchSetExternalID{ExternalID: desired.ExternalID})
 			}
-		case scimproto.PathMembers:
+		case scimproto.PatchMemberSetPayload:
 			if op.Op == "remove" {
 				commands = append(commands, service.GroupPatchClearMembers{})
 				continue
 			}
-			refs, e := decodeMemberRefs(op.Value)
-			if e != nil {
-				return nil, e
+			refs := make([]string, 0, len(payload.Members))
+			for _, member := range payload.Members {
+				refs = append(refs, member.Value)
 			}
 			if op.Op == "replace" {
 				commands = append(commands, service.GroupPatchReplaceMembers{Members: refs})
 			} else {
 				commands = append(commands, service.GroupPatchAddMembers{Members: refs})
 			}
-		case scimproto.PathMemberValue:
-			commands = append(commands, service.GroupPatchRemoveMember{Member: op.MemberValue})
+		case scimproto.PatchMemberRemovalPayload:
+			commands = append(commands, service.GroupPatchRemoveMember{Member: payload.MemberID})
+		default:
+			return nil, scimproto.ErrInvalidValue("The PATCH parser returned an unsupported Group payload.")
 		}
 	}
 	return commands, nil
-}
-
-func decodeObjectValue(raw []byte) (map[string]any, *scimproto.Error) {
-	var out map[string]any
-	if e := decodeInto(raw, &out); e != nil {
-		return nil, e
-	}
-	return out, nil
-}
-
-func decodeMemberRefs(raw []byte) ([]string, *scimproto.Error) {
-	var refs []scimproto.Member
-	if e := decodeInto(raw, &refs); e != nil {
-		return nil, e
-	}
-	if e := scimproto.CheckMembers(refs); e != nil {
-		return nil, e
-	}
-	out := make([]string, 0, len(refs))
-	for _, m := range refs {
-		out = append(out, m.Value)
-	}
-	return out, nil
-}
-
-// decodeInto parses a PATCH operation's `value` under the same discipline the
-// rest of the boundary uses: a decode failure is `invalidValue`, never a
-// silently-zero field.
-func decodeInto(raw []byte, into any) *scimproto.Error {
-	if len(raw) == 0 {
-		return scimproto.ErrInvalidValue("The operation carries no value.")
-	}
-	if err := json.Unmarshal(raw, into); err != nil {
-		return scimproto.ErrInvalidValue("The operation value has the wrong shape.")
-	}
-	return nil
 }
 
 func strPtr[T ~string](p *T) *string {

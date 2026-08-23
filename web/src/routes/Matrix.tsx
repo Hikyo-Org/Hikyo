@@ -185,7 +185,7 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
             keyId: key.id,
             environmentId: environment.id,
             set: valuesByCell.get(cellID(key.id, environment.id))?.set === true,
-            pendingOperation: signalsByCell.get(cellID(key.id, environment.id))?.pending_operation,
+            pendingOperation: signalsByCell.get(cellID(key.id, environment.id))?.pending?.operation,
           })),
         ),
         validationErrors,
@@ -244,18 +244,13 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
     for (const row of environmentRows) {
       const rows: MatrixPendingEntry[] = [];
       for (const signal of row.signals.data?.cells ?? []) {
-        if (signal.pending_version_id !== undefined) {
-          if (signal.pending_operation === undefined) {
-            throw new Error(
-              `matrix signal ${signal.pending_version_id} has no pending_operation`,
-            );
-          }
+        if (signal.pending !== undefined) {
           rows.push({
-            versionId: signal.pending_version_id,
+            versionId: signal.pending.versionId,
             keyId: signal.key_id,
             name: signal.name,
             classification: signal.classification,
-            operation: signal.pending_operation,
+            operation: signal.pending.operation,
             configPreview: pendingConfigPreview(signal, draftsByVersion),
           });
         }
@@ -331,34 +326,17 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
     matrix.environments.isPending ||
     matrix.keys.isPending ||
     matrix.groups.isPending ||
-    environmentRows.some(
-      (row) =>
-        row.values.isPending ||
-        row.signals.isPending ||
-        row.settings.isPending ||
-        row.pendingDrafts.isPending,
-    );
+    environmentRows.some((row) => row.readiness === 'pending');
   const loadError =
     (matrix.environments.isError && matrix.environments.data === undefined) ||
     (matrix.keys.isError && matrix.keys.data === undefined) ||
     (matrix.groups.isError && matrix.groups.data === undefined) ||
-    environmentRows.some(
-      (row) =>
-        (row.values.isError && row.values.data === undefined) ||
-        (row.signals.isError && row.signals.data === undefined) ||
-        (row.settings.isError && row.settings.data === undefined) ||
-        (row.pendingDrafts.isError && row.pendingDrafts.data === undefined),
-    );
+    environmentRows.some((row) => row.readiness === 'error');
   const backgroundRefreshError =
     (matrix.environments.isError && matrix.environments.data !== undefined) ||
     (matrix.keys.isError && matrix.keys.data !== undefined) ||
     (matrix.groups.isError && matrix.groups.data !== undefined) ||
-    environmentRows.some(
-      (row) =>
-        (row.values.isError && row.values.data !== undefined) ||
-        (row.signals.isError && row.signals.data !== undefined) ||
-        (row.settings.isError && row.settings.data !== undefined),
-    );
+    environmentRows.some((row) => row.readiness === 'stale');
   const virtualRows = rowVirtualizer.getVirtualItems();
   const virtualPaddingTop = virtualRows[0]?.start ?? 0;
   const virtualPaddingBottom =
@@ -954,9 +932,9 @@ function MatrixCell({
     state = cell.value ?? 'set';
     stateClass = 'matrix-cell--set';
   }
-  const pending = signal?.pending_operation === undefined
+  const pending = signal?.pending === undefined
     ? null
-    : `Δ draft ${signal.pending_operation === 'unset' ? 'clear' : 'set'}`;
+    : `Δ draft ${signal.pending.operation === 'unset' ? 'clear' : 'set'}`;
   const changed = signal?.changed_in_revision === undefined
     ? null
     : `Δ changed in r${String(signal.changed_in_revision)}`;

@@ -62,15 +62,35 @@ export type MatrixKeyList = z.infer<typeof zKeyList>;
  * never carries the matched text, so the UI renders only what it holds.
  */
 export type ScanFinding = z.infer<typeof zScanFinding>;
-export type MatrixEnvironmentSignals = z.infer<typeof zEnvironmentSignals>;
-export type MatrixSignalCell = MatrixEnvironmentSignals['cells'][number];
+type MatrixEnvironmentSignalsWire = z.infer<typeof zEnvironmentSignals>;
+type MatrixSignalCellWire = MatrixEnvironmentSignalsWire['cells'][number];
+export type MatrixSignalCell = Omit<
+  MatrixSignalCellWire,
+  'pending_version_id' | 'pending_operation'
+> & {
+  readonly pending?: {
+    readonly versionId: string;
+    readonly operation: NonNullable<MatrixSignalCellWire['pending_operation']>;
+  };
+};
+export type MatrixEnvironmentSignals = Omit<MatrixEnvironmentSignalsWire, 'cells'> & {
+  readonly cells: readonly MatrixSignalCell[];
+};
 
 type MatrixEnvironment = z.infer<typeof zEnvironmentList>['items'][number];
 type MatrixEnvironmentSettings = z.infer<typeof zEnvironmentSettings>;
 type MatrixValueList = z.infer<typeof zValueList>;
 type MatrixPendingDraftList = z.infer<typeof zPendingDraftList>;
 
-export type MatrixQueryState<T> = {
+export type MatrixQueryStatus = 'pending' | 'error' | 'stale' | 'ready';
+
+export type MatrixQueryState<T> =
+  | { readonly status: 'pending'; readonly data?: undefined }
+  | { readonly status: 'error'; readonly data?: undefined }
+  | { readonly status: 'stale'; readonly data: T }
+  | { readonly status: 'ready'; readonly data: T };
+
+type MatrixQueryResult<T> = {
   readonly data: T | undefined;
   readonly isPending: boolean;
   readonly isError: boolean;
@@ -90,6 +110,7 @@ type EnvironmentQueryData<T> = {
 export type MatrixEnvironmentRow = {
   readonly environmentId: string;
   readonly environment: MatrixEnvironment;
+  readonly readiness: MatrixQueryStatus;
   readonly values: MatrixQueryState<MatrixValueList>;
   readonly signals: MatrixQueryState<MatrixEnvironmentSignals>;
   readonly settings: MatrixQueryState<MatrixEnvironmentSettings>;
@@ -143,20 +164,65 @@ export function assembleMatrixEnvironmentRows(
   const signals = matrixQueryIndex('signals', input.signals);
   const settings = matrixQueryIndex('settings', input.settings);
   const pendingDrafts = matrixQueryIndex('pending drafts', input.pendingDrafts);
-  return environments.map((environment) => ({
-    environmentId: environment.id,
-    environment,
-    values: requiredMatrixQuery('values', environment.id, values),
-    signals: requiredMatrixQuery('signals', environment.id, signals),
-    settings: requiredMatrixQuery('settings', environment.id, settings),
-    pendingDrafts: requiredMatrixQuery('pending drafts', environment.id, pendingDrafts),
-  }));
+  return environments.map((environment) => {
+    const rowValues = requiredMatrixQuery('values', environment.id, values);
+    const rowSignals = requiredMatrixQuery('signals', environment.id, signals);
+    const rowSettings = requiredMatrixQuery('settings', environment.id, settings);
+    const rowPendingDrafts = requiredMatrixQuery(
+      'pending drafts',
+      environment.id,
+      pendingDrafts,
+    );
+    return {
+      environmentId: environment.id,
+      environment,
+      readiness: matrixRowReadiness([
+        rowValues,
+        rowSignals,
+        rowSettings,
+        rowPendingDrafts,
+      ]),
+      values: rowValues,
+      signals: rowSignals,
+      settings: rowSettings,
+      pendingDrafts: rowPendingDrafts,
+    };
+  });
+}
+
+function matrixRowReadiness(
+  states: readonly { readonly status: MatrixQueryStatus }[],
+): MatrixQueryStatus {
+  if (states.some((state) => state.status === 'pending')) {
+    return 'pending';
+  }
+  if (states.some((state) => state.status === 'error')) {
+    return 'error';
+  }
+  if (states.some((state) => state.status === 'stale')) {
+    return 'stale';
+  }
+  return 'ready';
+}
+
+function matrixQueryState<T>(query: MatrixQueryResult<T>): MatrixQueryState<T> {
+  if (query.isPending) {
+    return { status: 'pending' };
+  }
+  if (query.isError) {
+    return query.data === undefined
+      ? { status: 'error' }
+      : { status: 'stale', data: query.data };
+  }
+  return query.data === undefined
+    ? { status: 'error' }
+    : { status: 'ready', data: query.data };
 }
 
 export function bindMatrixEnvironmentQueries<T>(
   label: string,
   environments: readonly MatrixEnvironment[],
-  queries: readonly MatrixQueryState<EnvironmentQueryData<T>>[],
+  queries: readonly MatrixQueryResult<EnvironmentQueryData<T>>[],
 ): readonly MatrixEnvironmentQuery<T>[] {
   if (environments.length !== queries.length) {
     throw new Error(
@@ -175,11 +241,11 @@ export function bindMatrixEnvironmentQueries<T>(
     }
     return {
       environmentId: environment.id,
-      query: {
+      query: matrixQueryState({
         data: query.data?.value,
         isPending: query.isPending,
         isError: query.isError,
-      },
+      }),
     };
   });
 }
@@ -255,17 +321,27 @@ export function restorePreviewWasAttached(error: Error): boolean {
   return previewAttachedErrors.has(error);
 }
 
-const zMatrixEnvironmentSignals = zEnvironmentSignals.superRefine((signals, context) => {
-  signals.cells.forEach((cell, index) => {
-    if ((cell.pending_version_id === undefined) !== (cell.pending_operation === undefined)) {
-      context.addIssue({
-        code: 'custom',
-        message: 'pending_version_id and pending_operation must be present together',
-        path: ['cells', index],
-      });
-    }
-  });
-});
+const zMatrixEnvironmentSignals = zEnvironmentSignals
+  .superRefine((signals, context) => {
+    signals.cells.forEach((cell, index) => {
+      if ((cell.pending_version_id === undefined) !== (cell.pending_operation === undefined)) {
+        context.addIssue({
+          code: 'custom',
+          message: 'pending_version_id and pending_operation must be present together',
+          path: ['cells', index],
+        });
+      }
+    });
+  })
+  .transform((signals) => ({
+    ...signals,
+    cells: signals.cells.map(({ pending_version_id, pending_operation, ...cell }) => ({
+      ...cell,
+      ...(pending_version_id === undefined || pending_operation === undefined
+        ? {}
+        : { pending: { versionId: pending_version_id, operation: pending_operation } }),
+    })),
+  }));
 
 export function parseMatrixEnvironmentSignals(input: unknown): MatrixEnvironmentSignals {
   return zMatrixEnvironmentSignals.parse(input);
@@ -331,10 +407,10 @@ export function pendingConfigPreview(
   signal: MatrixSignalCell | undefined,
   draftsByVersion: ReadonlyMap<string, MatrixPendingDraft>,
 ): string | undefined {
-  if (signal?.pending_version_id === undefined) {
+  if (signal?.pending === undefined) {
     return undefined;
   }
-  const draft = draftsByVersion.get(signal.pending_version_id);
+  const draft = draftsByVersion.get(signal.pending.versionId);
   if (draft === undefined) {
     return undefined;
   }

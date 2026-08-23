@@ -321,7 +321,7 @@ func (s *Adapters) Create(ctx context.Context, actor Actor, scope domain.Scope, 
 	}
 	plain := append([]byte(nil), request.Credential...)
 	defer crypto.Zero(plain)
-	sealed, err := sealer.SealField(crypto.ProjectFieldAAD{OrgID: string(scope.Org), ProjectID: string(scope.Project), OwnerTable: "adapters", OwnerRowID: adapterID, FieldTag: "credential"}, plain)
+	sealed, err := sealer.SealField(adapter.CredentialAAD(string(scope.Org), string(scope.Project), adapterID), plain)
 	if err != nil {
 		return AdapterView{}, err
 	}
@@ -508,7 +508,7 @@ func (s *Adapters) AddTarget(ctx context.Context, actor Actor, scope domain.Scop
 	if len(ciphertext) == 0 {
 		return store.AdapterTarget{}, adapter.ErrProviderAuth
 	}
-	plain, err := sealer.OpenField(crypto.ProjectFieldAAD{OrgID: string(scope.Org), ProjectID: string(scope.Project), OwnerTable: "adapters", OwnerRowID: adapterID, FieldTag: "credential"}, ciphertext)
+	plain, err := sealer.OpenField(adapter.CredentialAAD(string(scope.Org), string(scope.Project), adapterID), ciphertext)
 	if err != nil {
 		return store.AdapterTarget{}, err
 	}
@@ -794,7 +794,7 @@ func (s *Adapters) preflightTargetRouting(ctx context.Context, actor Actor, scop
 	if err != nil {
 		return err
 	}
-	plain, err := sealer.OpenField(crypto.ProjectFieldAAD{OrgID: string(scope.Org), ProjectID: string(scope.Project), OwnerTable: "adapters", OwnerRowID: current.AdapterID, FieldTag: "credential"}, ciphertext)
+	plain, err := sealer.OpenField(adapter.CredentialAAD(string(scope.Org), string(scope.Project), current.AdapterID), ciphertext)
 	if err != nil {
 		return err
 	}
@@ -905,9 +905,7 @@ func (s *Adapters) MoveOrigin(ctx context.Context, actor Actor, scope domain.Sco
 	if err != nil {
 		return store.AdapterRouteMoveBatch{}, err
 	}
-	sealed, err := sealer.SealField(crypto.ProjectFieldAAD{
-		OrgID: string(scope.Org), ProjectID: string(scope.Project), OwnerTable: "adapters", OwnerRowID: adapterID, FieldTag: "credential",
-	}, plain)
+	sealed, err := sealer.SealField(adapter.CredentialAAD(string(scope.Org), string(scope.Project), adapterID), plain)
 	if err != nil {
 		return store.AdapterRouteMoveBatch{}, err
 	}
@@ -1157,7 +1155,7 @@ func (s *Adapters) ResumeOriginMove(ctx context.Context, actor Actor, scope doma
 		if err != nil {
 			return err
 		}
-		sealed, err := sealer.SealField(crypto.ProjectFieldAAD{OrgID: string(scope.Org), ProjectID: string(scope.Project), OwnerTable: "adapters", OwnerRowID: move.AdapterID, FieldTag: "credential"}, plain)
+		sealed, err := sealer.SealField(adapter.CredentialAAD(string(scope.Org), string(scope.Project), move.AdapterID), plain)
 		if err != nil {
 			return err
 		}
@@ -1282,9 +1280,7 @@ func (s *Adapters) TestTarget(ctx context.Context, actor Actor, scope domain.Sco
 	if len(material.CredentialCiphertext) == 0 {
 		return adapter.Connection{}, adapter.ErrProviderAuth
 	}
-	credential, err := sealer.OpenField(crypto.ProjectFieldAAD{
-		OrgID: string(scope.Org), ProjectID: string(scope.Project), OwnerTable: "adapters", OwnerRowID: material.Target.AdapterID, FieldTag: "credential",
-	}, material.CredentialCiphertext)
+	credential, err := sealer.OpenField(adapter.CredentialAAD(string(scope.Org), string(scope.Project), material.Target.AdapterID), material.CredentialCiphertext)
 	if err != nil {
 		return adapter.Connection{}, err
 	}
@@ -1360,9 +1356,7 @@ func (s *Adapters) ReplaceCredential(ctx context.Context, actor Actor, scope dom
 	}
 	plain := append([]byte(nil), credential...)
 	defer crypto.Zero(plain)
-	sealed, err := sealer.SealField(crypto.ProjectFieldAAD{
-		OrgID: string(scope.Org), ProjectID: string(scope.Project), OwnerTable: "adapters", OwnerRowID: adapterID, FieldTag: "credential",
-	}, plain)
+	sealed, err := sealer.SealField(adapter.CredentialAAD(string(scope.Org), string(scope.Project), adapterID), plain)
 	if err != nil {
 		return store.AdapterCredentialResult{}, err
 	}
@@ -1542,7 +1536,7 @@ func (s *Adapters) Plan(ctx context.Context, actor Actor, scope domain.Scope, ta
 	if len(material.CredentialCiphertext) == 0 {
 		return AdapterPlanResult{}, adapter.ErrProviderAuth
 	}
-	credential, err := sealer.OpenField(crypto.ProjectFieldAAD{OrgID: string(scope.Org), ProjectID: string(scope.Project), OwnerTable: "adapters", OwnerRowID: material.Target.AdapterID, FieldTag: "credential"}, material.CredentialCiphertext)
+	credential, err := sealer.OpenField(adapter.CredentialAAD(string(scope.Org), string(scope.Project), material.Target.AdapterID), material.CredentialCiphertext)
 	if err != nil {
 		return AdapterPlanResult{}, err
 	}

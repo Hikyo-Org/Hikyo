@@ -7,11 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
@@ -309,61 +307,10 @@ func validateTargetMutation(m AdapterTargetMutation) error {
 	return nil
 }
 
-type targetConfigDB interface {
-	Query(context.Context, string, ...any) (adapterTargetRows, error)
-	Exec(context.Context, string, ...any) (int64, error)
-}
-
-type sqliteTargetConfigDB struct {
-	db interface {
-		QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-		ExecContext(context.Context, string, ...any) (sql.Result, error)
-	}
-}
-
-func (d sqliteTargetConfigDB) Query(ctx context.Context, q string, args ...any) (adapterTargetRows, error) {
-	return d.db.QueryContext(ctx, q, args...)
-}
-func (d sqliteTargetConfigDB) Exec(ctx context.Context, q string, args ...any) (int64, error) {
-	res, err := d.db.ExecContext(ctx, q, args...)
-	if err != nil {
-		return 0, err
-	}
-	return res.RowsAffected()
-}
-
-type pgTargetConfigDB struct {
-	db interface {
-		Query(context.Context, string, ...any) (pgx.Rows, error)
-		Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
-	}
-}
-
-func (d pgTargetConfigDB) Query(ctx context.Context, q string, args ...any) (adapterTargetRows, error) {
-	return d.db.Query(ctx, q, args...)
-}
-func (d pgTargetConfigDB) Exec(ctx context.Context, q string, args ...any) (int64, error) {
-	tag, err := d.db.Exec(ctx, q, args...)
-	return tag.RowsAffected(), err
-}
-
-func placeholders(n int, postgres bool, start int) string {
-	out := make([]string, n)
-	for i := range out {
-		if postgres {
-			out[i] = fmt.Sprintf("$%d", start+i)
-		} else {
-			out[i] = "?"
-		}
-	}
-	return strings.Join(out, ",")
-}
-
-func targetManifest(ctx context.Context, db targetConfigDB, chain domain.Scope, m AdapterTargetMutation, postgres bool) ([]adapter.ManifestEntry, error) {
-	providerQuery := `SELECT provider FROM adapters WHERE id=? AND org_id=? AND project_id=?`
-	if postgres {
-		providerQuery = `SELECT provider FROM adapters WHERE id=$1 AND org_id=$2 AND project_id=$3`
-	}
+func targetManifest(ctx context.Context, db adapterDB, chain domain.Scope, m AdapterTargetMutation) ([]adapter.ManifestEntry, error) {
+	providerQuery := db.SQL(
+		`SELECT provider FROM adapters WHERE id=? AND org_id=? AND project_id=?`,
+		`SELECT provider FROM adapters WHERE id=$1 AND org_id=$2 AND project_id=$3`)
 	providerRows, err := db.Query(ctx, providerQuery, m.AdapterID, chain.Org, chain.Project)
 	if err != nil {
 		return nil, err
@@ -388,10 +335,9 @@ func targetManifest(ctx context.Context, db targetConfigDB, chain domain.Scope, 
 	for _, id := range m.KeyIDs {
 		args = append(args, id)
 	}
-	q := `SELECT id,name,classification FROM keys WHERE org_id=? AND project_id=? AND id IN (` + placeholders(len(m.KeyIDs), false, 3) + `) ORDER BY id`
-	if postgres {
-		q = `SELECT id,name,classification FROM keys WHERE org_id=$1 AND project_id=$2 AND id IN (` + placeholders(len(m.KeyIDs), true, 3) + `) ORDER BY id`
-	}
+	q := db.SQL(
+		`SELECT id,name,classification FROM keys WHERE org_id=? AND project_id=? AND id IN (`+db.Placeholders(len(m.KeyIDs), 3)+`) ORDER BY id`,
+		`SELECT id,name,classification FROM keys WHERE org_id=$1 AND project_id=$2 AND id IN (`+db.Placeholders(len(m.KeyIDs), 3)+`) ORDER BY id`)
 	rows, err := db.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
@@ -418,12 +364,12 @@ func targetManifest(ctx context.Context, db targetConfigDB, chain domain.Scope, 
 	return manifest, nil
 }
 
-func refuseDestinationNameCollision(ctx context.Context, db targetConfigDB, chain domain.Scope, m AdapterTargetMutation, manifest []adapter.ManifestEntry, postgres bool, excludeTargetID string) error {
+func refuseDestinationNameCollision(ctx context.Context, db adapterDB, chain domain.Scope, m AdapterTargetMutation, manifest []adapter.ManifestEntry, excludeTargetID string) error {
 	desired := map[string]struct{}{m.NamePrefix + adapter.SentinelName: {}}
 	for _, entry := range manifest {
 		desired[m.NamePrefix+entry.CanonicalName] = struct{}{}
 	}
-	q := `SELECT t.id,t.name_prefix,COALESCE(k.name,'')
+	q := db.SQL(`SELECT t.id,t.name_prefix,COALESCE(k.name,'')
 		FROM adapter_targets t
 		JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id
 		JOIN adapters candidate ON candidate.id=? AND candidate.org_id=t.org_id AND candidate.project_id=t.project_id
@@ -431,9 +377,8 @@ func refuseDestinationNameCollision(ctx context.Context, db targetConfigDB, chai
 		LEFT JOIN keys k ON k.id=tk.key_id AND k.org_id=tk.org_id AND k.project_id=tk.project_id
 		WHERE t.org_id=? AND t.project_id=? AND t.state='active' AND a.state='active'
 		AND a.origin=candidate.origin AND t.destination_kind=? AND t.destination_id=? AND t.id<>?
-		ORDER BY t.id,k.name`
-	if postgres {
-		q = `SELECT t.id,t.name_prefix,COALESCE(k.name,'')
+		ORDER BY t.id,k.name`,
+		`SELECT t.id,t.name_prefix,COALESCE(k.name,'')
 			FROM adapter_targets t
 			JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id
 			JOIN adapters candidate ON candidate.id=$1 AND candidate.org_id=t.org_id AND candidate.project_id=t.project_id
@@ -441,8 +386,7 @@ func refuseDestinationNameCollision(ctx context.Context, db targetConfigDB, chai
 			LEFT JOIN keys k ON k.id=tk.key_id AND k.org_id=tk.org_id AND k.project_id=tk.project_id
 			WHERE t.org_id=$2 AND t.project_id=$3 AND t.state='active' AND a.state='active'
 			AND a.origin=candidate.origin AND t.destination_kind=$4 AND t.destination_id=$5 AND t.id<>$6
-			ORDER BY t.id,k.name`
-	}
+			ORDER BY t.id,k.name`)
 	rows, err := db.Query(ctx, q, m.AdapterID, chain.Org, chain.Project, m.DestinationKind, m.DestinationID, excludeTargetID)
 	if err != nil {
 		return err
@@ -464,10 +408,9 @@ func refuseDestinationNameCollision(ctx context.Context, db targetConfigDB, chai
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	pendingQuery := `SELECT c.target_id,c.effective_name FROM adapter_route_move_claims c JOIN adapters candidate ON candidate.id=? AND candidate.org_id=c.org_id AND candidate.project_id=c.project_id WHERE c.org_id=? AND c.project_id=? AND c.provider_origin=candidate.origin AND c.destination_kind=? AND c.destination_owner=? AND c.destination_name=? AND c.destination_environment=? AND c.target_id<>? ORDER BY c.target_id,c.effective_name`
-	if postgres {
-		pendingQuery = `SELECT c.target_id,c.effective_name FROM adapter_route_move_claims c JOIN adapters candidate ON candidate.id=$1 AND candidate.org_id=c.org_id AND candidate.project_id=c.project_id WHERE c.org_id=$2 AND c.project_id=$3 AND c.provider_origin=candidate.origin AND c.destination_kind=$4 AND c.destination_owner=$5 AND c.destination_name=$6 AND c.destination_environment=$7 AND c.target_id<>$8 ORDER BY c.target_id,c.effective_name`
-	}
+	pendingQuery := db.SQL(
+		`SELECT c.target_id,c.effective_name FROM adapter_route_move_claims c JOIN adapters candidate ON candidate.id=? AND candidate.org_id=c.org_id AND candidate.project_id=c.project_id WHERE c.org_id=? AND c.project_id=? AND c.provider_origin=candidate.origin AND c.destination_kind=? AND c.destination_owner=? AND c.destination_name=? AND c.destination_environment=? AND c.target_id<>? ORDER BY c.target_id,c.effective_name`,
+		`SELECT c.target_id,c.effective_name FROM adapter_route_move_claims c JOIN adapters candidate ON candidate.id=$1 AND candidate.org_id=c.org_id AND candidate.project_id=c.project_id WHERE c.org_id=$2 AND c.project_id=$3 AND c.provider_origin=candidate.origin AND c.destination_kind=$4 AND c.destination_owner=$5 AND c.destination_name=$6 AND c.destination_environment=$7 AND c.target_id<>$8 ORDER BY c.target_id,c.effective_name`)
 	pendingRows, err := db.Query(ctx, pendingQuery, m.AdapterID, chain.Org, chain.Project, m.DestinationKind, m.DestinationOwner, m.DestinationName, m.DestinationEnvironment, excludeTargetID)
 	if err != nil {
 		return err
@@ -484,30 +427,28 @@ func refuseDestinationNameCollision(ctx context.Context, db targetConfigDB, chai
 	return pendingRows.Err()
 }
 
-func insertTargetConfig(ctx context.Context, db targetConfigDB, chain domain.Scope, m AdapterTargetMutation, at string, postgres bool) error {
-	manifest, err := targetManifest(ctx, db, chain, m, postgres)
+func insertTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m AdapterTargetMutation, at time.Time) error {
+	manifest, err := targetManifest(ctx, db, chain, m)
 	if err != nil {
 		return err
 	}
-	if err := refuseDestinationNameCollision(ctx, db, chain, m, manifest, postgres, ""); err != nil {
+	if err := refuseDestinationNameCollision(ctx, db, chain, m, manifest, ""); err != nil {
 		return err
 	}
 	selected, err := json.Marshal(m.SelectedRepositoryIDs)
 	if err != nil {
 		return err
 	}
-	q := `INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_environment,destination_id,repository_id,visibility,selected_repository_ids,name_prefix,generation,state,sync_status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,'active','never',?)`
-	if postgres {
-		q = `INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_environment,destination_id,repository_id,visibility,selected_repository_ids,name_prefix,generation,state,sync_status,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,1,'active','never',$15)`
-	}
-	if _, err := db.Exec(ctx, q, m.ID, chain.Org, chain.Project, m.EnvironmentID, m.AdapterID, m.DestinationKind, m.DestinationOwner, m.DestinationName, m.DestinationEnvironment, m.DestinationID, m.RepositoryID, m.Visibility, selected, m.NamePrefix, at); err != nil {
+	q := db.SQL(
+		`INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_environment,destination_id,repository_id,visibility,selected_repository_ids,name_prefix,generation,state,sync_status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,'active','never',?)`,
+		`INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_environment,destination_id,repository_id,visibility,selected_repository_ids,name_prefix,generation,state,sync_status,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,1,'active','never',$15)`)
+	if _, err := db.Exec(ctx, q, m.ID, chain.Org, chain.Project, m.EnvironmentID, m.AdapterID, m.DestinationKind, m.DestinationOwner, m.DestinationName, m.DestinationEnvironment, m.DestinationID, m.RepositoryID, m.Visibility, selected, m.NamePrefix, db.Stamp(at)); err != nil {
 		return constraint(err)
 	}
 	for _, keyID := range m.KeyIDs {
-		q = `INSERT INTO adapter_target_keys (org_id,project_id,environment_id,target_id,adapter_id,key_id) VALUES (?,?,?,?,?,?)`
-		if postgres {
-			q = `INSERT INTO adapter_target_keys (org_id,project_id,environment_id,target_id,adapter_id,key_id) VALUES ($1,$2,$3,$4,$5,$6)`
-		}
+		q = db.SQL(
+			`INSERT INTO adapter_target_keys (org_id,project_id,environment_id,target_id,adapter_id,key_id) VALUES (?,?,?,?,?,?)`,
+			`INSERT INTO adapter_target_keys (org_id,project_id,environment_id,target_id,adapter_id,key_id) VALUES ($1,$2,$3,$4,$5,$6)`)
 		if _, err := db.Exec(ctx, q, chain.Org, chain.Project, m.EnvironmentID, m.ID, m.AdapterID, keyID); err != nil {
 			return constraint(err)
 		}
@@ -526,18 +467,19 @@ func (r sqliteAdapters) Create(ctx context.Context, p authz.Proof, m AdapterCrea
 	if err := validateTargetMutation(m.Target); err != nil {
 		return AdapterRecord{}, AdapterTarget{}, err
 	}
-	at := CanonTime(m.At).Format(timeFormat)
+	at := CanonTime(m.At)
+	atString := at.Format(timeFormat)
 	var expires any
 	if !m.CredentialExpiresAt.IsZero() {
 		expires = CanonTime(m.CredentialExpiresAt).Format(timeFormat)
 	}
-	if _, err := r.db.ExecContext(ctx, `INSERT INTO adapters (id,org_id,project_id,provider,origin,credential_ciphertext,credential_set_at,credential_expires_at,authority_principal_id,state,created_at) VALUES (?,?,?,?,?,?,?,?,?,'active',?)`, m.ID, chain.Org, chain.Project, m.Provider, m.Origin, m.CredentialCiphertext, at, expires, m.AuthorityPrincipalID, at); err != nil {
+	if _, err := r.db.ExecContext(ctx, `INSERT INTO adapters (id,org_id,project_id,provider,origin,credential_ciphertext,credential_set_at,credential_expires_at,authority_principal_id,state,created_at) VALUES (?,?,?,?,?,?,?,?,?,'active',?)`, m.ID, chain.Org, chain.Project, m.Provider, m.Origin, m.CredentialCiphertext, atString, expires, m.AuthorityPrincipalID, atString); err != nil {
 		return AdapterRecord{}, AdapterTarget{}, constraint(err)
 	}
-	if err := insertTargetConfig(ctx, sqliteTargetConfigDB{db: r.db}, chain, m.Target, at, false); err != nil {
+	if err := insertTargetConfig(ctx, sqliteAdoptDB{db: r.db}, chain, m.Target, at); err != nil {
 		return AdapterRecord{}, AdapterTarget{}, err
 	}
-	record := AdapterRecord{ID: m.ID, Provider: m.Provider, Origin: m.Origin, CredentialPresent: true, CredentialSetAt: at, AuthorityPrincipalID: m.AuthorityPrincipalID, State: "active", CreatedAt: at}
+	record := AdapterRecord{ID: m.ID, Provider: m.Provider, Origin: m.Origin, CredentialPresent: true, CredentialSetAt: atString, AuthorityPrincipalID: m.AuthorityPrincipalID, State: "active", CreatedAt: atString}
 	if expires != nil {
 		record.CredentialExpiresAt = expires.(string)
 	}
@@ -564,7 +506,7 @@ func (r pgAdapters) Create(ctx context.Context, p authz.Proof, m AdapterCreate) 
 	if _, err := r.db.Exec(ctx, `INSERT INTO adapters (id,org_id,project_id,provider,origin,credential_ciphertext,credential_set_at,credential_expires_at,authority_principal_id,state,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'active',$10)`, m.ID, chain.Org, chain.Project, m.Provider, m.Origin, m.CredentialCiphertext, at, expires, m.AuthorityPrincipalID, at); err != nil {
 		return AdapterRecord{}, AdapterTarget{}, constraint(err)
 	}
-	if err := insertTargetConfig(ctx, pgTargetConfigDB{db: r.db}, chain, m.Target, at.Format(timeFormat), true); err != nil {
+	if err := insertTargetConfig(ctx, pgAdoptDB{db: r.db}, chain, m.Target, at); err != nil {
 		return AdapterRecord{}, AdapterTarget{}, err
 	}
 	atString := at.Format(timeFormat)
@@ -595,8 +537,8 @@ func (r sqliteAdapters) AddTarget(ctx context.Context, p authz.Proof, m AdapterT
 		return AdapterTargetAddResult{}, adapter.ErrProviderAuth
 	}
 	previousAuthority := record.AuthorityPrincipalID
-	at := CanonTime(m.At).Format(timeFormat)
-	if err := insertTargetConfig(ctx, sqliteTargetConfigDB{db: r.db}, chain, m.Target, at, false); err != nil {
+	at := CanonTime(m.At)
+	if err := insertTargetConfig(ctx, sqliteAdoptDB{db: r.db}, chain, m.Target, at); err != nil {
 		return AdapterTargetAddResult{}, err
 	}
 	expires := any(nil)
@@ -634,7 +576,7 @@ func (r pgAdapters) AddTarget(ctx context.Context, p authz.Proof, m AdapterTarge
 	}
 	previousAuthority := record.AuthorityPrincipalID
 	at := CanonTime(m.At)
-	if err := insertTargetConfig(ctx, pgTargetConfigDB{db: r.db}, chain, m.Target, at.Format(timeFormat), true); err != nil {
+	if err := insertTargetConfig(ctx, pgAdoptDB{db: r.db}, chain, m.Target, at); err != nil {
 		return AdapterTargetAddResult{}, err
 	}
 	var expires any
@@ -763,34 +705,33 @@ func (r sqliteAdapters) UpdateTarget(ctx context.Context, p authz.Proof, m Adapt
 	if err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
-	return updateTargetConfig(ctx, sqliteAdoptDB{db: r.db}, chain, m, false)
+	return updateTargetConfig(ctx, sqliteAdoptDB{db: r.db}, chain, m)
 }
 func (r pgAdapters) UpdateTarget(ctx context.Context, p authz.Proof, m AdapterTargetUpdate) (AdapterTargetUpdateResult, error) {
 	chain, err := authz.Verify(p, authz.StoreAdaptersUpdateTarget, r.tok)
 	if err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
-	return updateTargetConfig(ctx, pgAdoptDB{db: r.db}, chain, m, true)
+	return updateTargetConfig(ctx, pgAdoptDB{db: r.db}, chain, m)
 }
 
-func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m AdapterTargetUpdate, postgres bool) (AdapterTargetUpdateResult, error) {
+func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m AdapterTargetUpdate) (AdapterTargetUpdateResult, error) {
 	if err := validateTargetMutation(m.Target); err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
 	if m.ExpectedGeneration <= 0 || m.AuthorityPrincipalID == "" {
 		return AdapterTargetUpdateResult{}, fmt.Errorf("%w: target update requires generation and authority", domain.ErrInvalid)
 	}
-	manifest, err := targetManifest(ctx, db, chain, m.Target, postgres)
+	manifest, err := targetManifest(ctx, db, chain, m.Target)
 	if err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
-	if err := refuseDestinationNameCollision(ctx, db, chain, m.Target, manifest, postgres, m.Target.ID); err != nil {
+	if err := refuseDestinationNameCollision(ctx, db, chain, m.Target, manifest, m.Target.ID); err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
-	lookup := `SELECT ` + adapterTargetColumns + ` FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=? AND t.org_id=? AND t.project_id=? AND t.state='active'`
-	if postgres {
-		lookup = `SELECT ` + adapterTargetColumns + ` FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=$1 AND t.org_id=$2 AND t.project_id=$3 AND t.state='active' FOR UPDATE`
-	}
+	lookup := db.SQL(
+		`SELECT `+adapterTargetColumns+` FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=? AND t.org_id=? AND t.project_id=? AND t.state='active'`,
+		`SELECT `+adapterTargetColumns+` FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=$1 AND t.org_id=$2 AND t.project_id=$3 AND t.state='active' FOR UPDATE`)
 	rows, err := db.Query(ctx, lookup, m.Target.ID, chain.Org, chain.Project)
 	if err != nil {
 		return AdapterTargetUpdateResult{}, err
@@ -818,18 +759,16 @@ func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 	if err := db.QueryRow(ctx, activeQuery, m.Target.ID, chain.Org, chain.Project, m.Target.EnvironmentID).Scan(&activeJob); err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
-	q := `DELETE FROM adapter_target_keys WHERE target_id=? AND org_id=? AND project_id=? AND environment_id=?`
-	if postgres {
-		q = `DELETE FROM adapter_target_keys WHERE target_id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4`
-	}
+	q := db.SQL(
+		`DELETE FROM adapter_target_keys WHERE target_id=? AND org_id=? AND project_id=? AND environment_id=?`,
+		`DELETE FROM adapter_target_keys WHERE target_id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4`)
 	if _, err := db.Exec(ctx, q, m.Target.ID, chain.Org, chain.Project, m.Target.EnvironmentID); err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
 	for _, keyID := range m.Target.KeyIDs {
-		q = `INSERT INTO adapter_target_keys (org_id,project_id,environment_id,target_id,adapter_id,key_id) VALUES (?,?,?,?,?,?)`
-		if postgres {
-			q = `INSERT INTO adapter_target_keys (org_id,project_id,environment_id,target_id,adapter_id,key_id) VALUES ($1,$2,$3,$4,$5,$6)`
-		}
+		q = db.SQL(
+			`INSERT INTO adapter_target_keys (org_id,project_id,environment_id,target_id,adapter_id,key_id) VALUES (?,?,?,?,?,?)`,
+			`INSERT INTO adapter_target_keys (org_id,project_id,environment_id,target_id,adapter_id,key_id) VALUES ($1,$2,$3,$4,$5,$6)`)
 		if _, err := db.Exec(ctx, q, chain.Org, chain.Project, m.Target.EnvironmentID, m.Target.ID, m.Target.AdapterID, keyID); err != nil {
 			return AdapterTargetUpdateResult{}, constraint(err)
 		}
@@ -838,10 +777,9 @@ func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 	if err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
-	q = `UPDATE adapter_targets SET visibility=?,selected_repository_ids=?,name_prefix=? WHERE id=? AND org_id=? AND project_id=? AND generation=? AND state='active' AND provider_lease_job_id IS NULL`
-	if postgres {
-		q = `UPDATE adapter_targets SET visibility=$1,selected_repository_ids=$2,name_prefix=$3 WHERE id=$4 AND org_id=$5 AND project_id=$6 AND generation=$7 AND state='active' AND provider_lease_job_id IS NULL`
-	}
+	q = db.SQL(
+		`UPDATE adapter_targets SET visibility=?,selected_repository_ids=?,name_prefix=? WHERE id=? AND org_id=? AND project_id=? AND generation=? AND state='active' AND provider_lease_job_id IS NULL`,
+		`UPDATE adapter_targets SET visibility=$1,selected_repository_ids=$2,name_prefix=$3 WHERE id=$4 AND org_id=$5 AND project_id=$6 AND generation=$7 AND state='active' AND provider_lease_job_id IS NULL`)
 	n, err := db.Exec(ctx, q, m.Target.Visibility, selectedJSON, m.Target.NamePrefix, m.Target.ID, chain.Org, chain.Project, m.ExpectedGeneration)
 	if err != nil {
 		return AdapterTargetUpdateResult{}, err
@@ -856,10 +794,9 @@ func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 	if err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
-	q = `UPDATE adapters SET authority_principal_id=? WHERE id=? AND org_id=? AND project_id=? AND state='active'`
-	if postgres {
-		q = `UPDATE adapters SET authority_principal_id=$1 WHERE id=$2 AND org_id=$3 AND project_id=$4 AND state='active'`
-	}
+	q = db.SQL(
+		`UPDATE adapters SET authority_principal_id=? WHERE id=? AND org_id=? AND project_id=? AND state='active'`,
+		`UPDATE adapters SET authority_principal_id=$1 WHERE id=$2 AND org_id=$3 AND project_id=$4 AND state='active'`)
 	if n, err = db.Exec(ctx, q, m.AuthorityPrincipalID, m.Target.AdapterID, chain.Org, chain.Project); err != nil || n != 1 {
 		return AdapterTargetUpdateResult{}, errors.Join(err, ErrNotFound)
 	}

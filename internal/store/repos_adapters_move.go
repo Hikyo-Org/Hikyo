@@ -816,8 +816,8 @@ func beginAdapterTargetMove(ctx context.Context, db adapterDB, chain domain.Scop
 
 func reserveAdapterMoveClaims(ctx context.Context, db adapterDB, chain domain.Scope, moveID, origin string, target AdapterTargetMutation) error {
 	keyQuery := db.SQL(
-		`SELECT id,name,classification FROM keys WHERE org_id=? AND project_id=? AND id IN (`+placeholders(len(target.KeyIDs), false, 3)+`) ORDER BY id`,
-		`SELECT id,name,classification FROM keys WHERE org_id=$1 AND project_id=$2 AND id IN (`+placeholders(len(target.KeyIDs), true, 3)+`) ORDER BY id`)
+		`SELECT id,name,classification FROM keys WHERE org_id=? AND project_id=? AND id IN (`+db.Placeholders(len(target.KeyIDs), 3)+`) ORDER BY id`,
+		`SELECT id,name,classification FROM keys WHERE org_id=$1 AND project_id=$2 AND id IN (`+db.Placeholders(len(target.KeyIDs), 3)+`) ORDER BY id`)
 	args := []any{chain.Org, chain.Project}
 	for _, keyID := range target.KeyIDs {
 		args = append(args, keyID)

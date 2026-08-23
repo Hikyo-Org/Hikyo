@@ -183,16 +183,17 @@ func scimDesiredUser(body map[string]any) (service.DesiredUser, *scimproto.Error
 	if e != nil {
 		return service.DesiredUser{}, e
 	}
+	return scimDesiredDecodedUser(u), nil
+}
+
+// scimDesiredDecodedUser converts a value already validated by scimproto.
+func scimDesiredDecodedUser(u scimproto.User) service.DesiredUser {
 	desired := service.DesiredUser{UserName: u.UserName, ExternalID: u.ExternalID, Active: true}
-	if v, ok := scimAttribute(body, "active"); ok {
-		active, e := scimproto.NormalizeActive(v)
-		if e != nil {
-			return service.DesiredUser{}, e
-		}
-		desired.Active = active
+	if u.Active != nil {
+		desired.Active = *u.Active
 	}
-	desired.Attributes = scimDisplayAttributes(body)
-	return desired, nil
+	desired.Attributes = scimDisplayAttributes(u.Extra)
+	return desired
 }
 
 // scimDisplayAttributes keeps everything this server does not interpret, as
@@ -244,11 +245,17 @@ func scimDesiredGroup(body map[string]any) (service.DesiredGroup, *scimproto.Err
 	if e := scimproto.CheckMembers(g.Members); e != nil {
 		return service.DesiredGroup{}, e
 	}
+	return scimDesiredDecodedGroup(g), nil
+}
+
+// scimDesiredDecodedGroup converts a value already validated by scimproto,
+// including its member invariants.
+func scimDesiredDecodedGroup(g scimproto.Group) service.DesiredGroup {
 	desired := service.DesiredGroup{DisplayName: g.DisplayName, ExternalID: g.ExternalID}
 	for _, m := range g.Members {
 		desired.Members = append(desired.Members, m.Value)
 	}
-	return desired, nil
+	return desired
 }
 
 // ---------------------------------------------------------------------------

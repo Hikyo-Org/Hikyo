@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 
 import { useWorkspaceContext } from '../api/transport.tsx';
-import { useAuthMethods } from '../api/account.ts';
+import { useSessionOIDCProvider } from '../api/account.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import {
   ceremonyRefusalText,
@@ -133,13 +133,10 @@ export function Ceremony({
   // workspace session — the same modal, a different executor.
   const workspace = useWorkspaceContext();
   const auth = useAuth();
-  const methods = useAuthMethods();
   const assurance = auth.identity?.session.assurance;
   const oidcSession = assurance?.method.startsWith('oidc:') === true;
-  const oidcProvider = methods.data?.providers.find(
-    (provider) => provider.kind === 'oidc' && provider.slug === assurance?.provider,
-  );
-  const offersOIDC = oidcSession && request.window.totp_offered && oidcProvider !== undefined;
+  const oidcProvider = useSessionOIDCProvider();
+  const offersOIDC = request.window.totp_offered && oidcProvider !== null;
 
   const attempt = async (run: () => Promise<void>) => {
     setBusy(true);
@@ -169,7 +166,7 @@ export function Ceremony({
   };
 
   const onOIDC = () => {
-    if (oidcProvider === undefined) return;
+    if (oidcProvider === null) return;
     void attempt(async () => {
       await runOIDCCeremony(oidcProvider.slug, request.environmentId);
       await auth.refreshSession();

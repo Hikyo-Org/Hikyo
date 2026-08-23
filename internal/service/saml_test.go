@@ -10,6 +10,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"errors"
+	"maps"
 	"math/big"
 	"net"
 	"net/http"
@@ -225,12 +226,164 @@ func TestSAMLAllPurposesCarryCrossSiteInitiatorBinding(t *testing.T) {
 }
 
 func TestSAMLAuditPayloadSurfacesExpiredPinnedCertificate(t *testing.T) {
-	payload := samlCeremonyPayload(audit.OutcomeSuccess, "", "samlp_1", "https://idp.example", purposeLogin, "samltx_1", &samlsp.Claims{
-		ExpiredPinnedCertificate: true,
-	})
+	_, _, payload := (samlCeremony{
+		provider: authz.SAMLProvider{ID: "samlp_1"},
+		transaction: authz.SAMLTransaction{
+			ID: "samltx_1", EntityID: "https://idp.example", Purpose: purposeLogin,
+		},
+		claims: &samlsp.Claims{ExpiredPinnedCertificate: true},
+	}).auditDetails(audit.OutcomeSuccess, "")
 	warned, ok := payload["pinned_certificate_expired"].(bool)
 	if !ok || !warned {
 		t.Fatalf("expired pinned certificate warning = %#v, want true", payload["pinned_certificate_expired"])
+	}
+}
+
+func TestSAMLCeremonyAuditDetailsPreserveRefusalContext(t *testing.T) {
+	claims := samlsp.Claims{ExpiredPinnedCertificate: true}
+	type causeCase struct {
+		cause samlAuditCause
+		want  string
+	}
+	tests := []struct {
+		name       string
+		ceremony   samlCeremony
+		causes     []causeCase
+		wantType   audit.EventType
+		wantObject audit.Object
+		wantBase   audit.Payload
+	}{
+		{
+			name:       "before transaction lookup",
+			causes:     []causeCase{{samlCauseRelayState, "relay-state"}},
+			wantType:   audit.EventSAMLLogin,
+			wantObject: audit.Object{Type: "saml_transaction", ID: ""},
+			wantBase: audit.Payload{
+				"provider_id": "", "entity_id": "", "purpose": "",
+				"transaction_id": "",
+			},
+		},
+		{
+			name: "after transaction lookup before claims validation",
+			ceremony: samlCeremony{
+				provider: authz.SAMLProvider{ID: "samlp_1"},
+				transaction: authz.SAMLTransaction{
+					ID: "samltx_1", EntityID: "https://idp.example", Purpose: purposeReauth,
+				},
+			},
+			causes: []causeCase{
+				{samlCauseConsumedTransaction, "consumed-transaction"},
+				{samlCauseExpiredTransaction, "expired-transaction"},
+				{samlCauseProviderMixup, "provider-mixup"},
+				{samlCauseProviderReconciliation, "provider-reconciliation"},
+				{samlCauseMetadataExpired, "metadata-expired"},
+				{samlCauseEpoch, "epoch"},
+				{samlCauseInitiatorMismatch, "initiator-mismatch"},
+				{samlCausePurposeMismatch, "purpose-mismatch"},
+				{samlCauseMalformed, "malformed"},
+				{samlCauseDuplicateID, "duplicate-id"},
+				{samlCauseEmptyID, "empty-id"},
+				{samlCauseAssertionCardinality, "assertion-cardinality"},
+				{samlCauseAssertionPosition, "assertion-position"},
+				{samlCauseEncryptedAssertion, "encrypted-assertion"},
+				{samlCauseSignatureAlgorithm, "signature-algorithm"},
+				{samlCauseDigestAlgorithm, "digest-algorithm"},
+				{samlCauseCanonicalizationAlgorithm, "canonicalization-algorithm"},
+				{samlCauseTransformAlgorithm, "transform-algorithm"},
+				{samlCauseUnknownCertificate, "unknown-certificate"},
+				{samlCauseAssertionSignature, "assertion-signature"},
+				{samlCauseResponseSignature, "response-signature"},
+				{samlCauseSignatureReference, "signature-reference"},
+				{samlCauseSignatureStructure, "signature-structure"},
+				{samlCauseResponseStatus, "response-status"},
+				{samlCauseResponseIssuerMismatch, "response-issuer-mismatch"},
+				{samlCauseAssertionIssuerMismatch, "assertion-issuer-mismatch"},
+				{samlCauseRequestMismatch, "request-mismatch"},
+				{samlCauseDestinationMismatch, "destination-mismatch"},
+				{samlCauseAudienceMissing, "audience-missing"},
+				{samlCauseAudienceMismatch, "audience-mismatch"},
+				{samlCauseAudienceStructure, "audience-structure"},
+				{samlCauseSubjectConfirmationMissing, "subject-confirmation-missing"},
+				{samlCauseConfirmationMethod, "confirmation-method"},
+				{samlCauseConfirmationRecipient, "confirmation-recipient"},
+				{samlCauseConfirmationRequestMismatch, "confirmation-request-mismatch"},
+				{samlCauseConfirmationExpiryMissing, "confirmation-expiry-missing"},
+				{samlCauseConfirmationExpired, "confirmation-expired"},
+				{samlCauseSubjectConfirmationStructure, "subject-confirmation-structure"},
+				{samlCauseConditionsMissing, "conditions-missing"},
+				{samlCauseConditionsTooEarly, "conditions-too-early"},
+				{samlCauseConditionsExpiryMissing, "conditions-expiry-missing"},
+				{samlCauseConditionsExpired, "conditions-expired"},
+				{samlCauseConditionsStructure, "conditions-structure"},
+				{samlCauseResponseIssueInstant, "response-issue-instant"},
+				{samlCauseAssertionIssueInstant, "assertion-issue-instant"},
+				{samlCauseIssueInstant, "issue-instant"},
+				{samlCauseAuthnContextCardinality, "authn-context-cardinality"},
+				{samlCauseAuthnStatementCardinality, "authn-statement-cardinality"},
+				{samlCauseAuthnInstant, "authn-instant"},
+				{samlCauseDTD, "dtd"},
+				{samlCauseDocumentSize, "document-size"},
+				{samlCauseDocumentDepth, "document-depth"},
+				{samlCauseDocumentTokenCount, "document-token-count"},
+				{samlCauseXMLRoundTrip, "xml-roundtrip"},
+				{samlCauseResponseRoot, "response-root"},
+			},
+			wantType:   audit.EventSAMLReauth,
+			wantObject: audit.Object{Type: "saml_transaction", ID: "samltx_1"},
+			wantBase: audit.Payload{
+				"provider_id": "samlp_1", "entity_id": "https://idp.example", "purpose": purposeReauth,
+				"transaction_id": "samltx_1",
+			},
+		},
+		{
+			name: "after claims validation",
+			ceremony: samlCeremony{
+				provider: authz.SAMLProvider{ID: "samlp_1"},
+				transaction: authz.SAMLTransaction{
+					ID: "samltx_1", EntityID: "https://idp.example", Purpose: purposeReauth,
+				},
+				claims: &claims,
+			},
+			causes: []causeCase{
+				{samlCauseTransientNameID, "transient-nameid"},
+				{samlCauseEmailNameIDDisabled, "email-nameid-disabled"},
+				{samlCauseNameID, "nameid"},
+				{samlCauseReplayedAssertion, "replayed-assertion"},
+				{samlCauseProviderReconciliation, "provider-reconciliation"},
+				{samlCauseUnknownIdentity, "unknown-identity"},
+				{samlCauseAlreadyLinked, "already-linked"},
+				{samlCauseInitiatorMismatch, "initiator-mismatch"},
+				{samlCauseNoAssurancePolicy, "no-assurance-policy"},
+				{samlCauseStaleAuthnInstant, "stale-authn-instant"},
+				{samlCauseDowngrade, "downgrade"},
+				{samlCauseWindowZero, "window-zero"},
+			},
+			wantType:   audit.EventSAMLReauth,
+			wantObject: audit.Object{Type: "saml_transaction", ID: "samltx_1"},
+			wantBase: audit.Payload{
+				"provider_id": "samlp_1", "entity_id": "https://idp.example", "purpose": purposeReauth,
+				"transaction_id": "samltx_1", "pinned_certificate_expired": true,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		for _, cause := range test.causes {
+			t.Run(test.name+"/"+cause.want, func(t *testing.T) {
+				gotType, gotObject, gotPayload := test.ceremony.auditDetails(audit.OutcomeFailure, cause.cause)
+				wantPayload := maps.Clone(test.wantBase)
+				wantPayload["cause"] = cause.want
+				if gotType != test.wantType {
+					t.Errorf("event type = %q, want %q", gotType, test.wantType)
+				}
+				if !reflect.DeepEqual(gotObject, test.wantObject) {
+					t.Errorf("object = %#v, want %#v", gotObject, test.wantObject)
+				}
+				if !reflect.DeepEqual(gotPayload, wantPayload) {
+					t.Errorf("payload = %#v, want %#v", gotPayload, wantPayload)
+				}
+			})
+		}
 	}
 }
 

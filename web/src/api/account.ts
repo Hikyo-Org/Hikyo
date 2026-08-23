@@ -55,6 +55,7 @@ import { fromBase64URL, toBase64URL } from './values.ts';
 type PasskeyList = z.infer<typeof zPasskeyList>;
 type IdentityList = z.infer<typeof zIdentityList>;
 type AuthMethods = z.infer<typeof zAuthMethods>;
+export type OIDCProvider = AuthMethods['providers'][number] & { readonly kind: 'oidc' };
 type TotpStatus = z.infer<typeof zTotpStatus>;
 
 const passkeysKey = ['passkeys'] as const;
@@ -104,6 +105,22 @@ export function useAuthMethods(): UseQueryResult<AuthMethods> {
     queryFn: () => parsed(authMethodsOp, {}),
     retry: false,
   });
+}
+
+/** Resolve an OIDC-backed session only while its configured provider still exists. */
+export function useSessionOIDCProvider(): OIDCProvider | null {
+  const auth = useAuth();
+  const methods = useAuthMethods();
+  const assurance = auth.identity?.session.assurance;
+  if (assurance?.method.startsWith('oidc:') !== true) {
+    return null;
+  }
+  return (
+    methods.data?.providers.find(
+      (provider): provider is OIDCProvider =>
+        provider.kind === 'oidc' && provider.slug === assurance.provider,
+    ) ?? null
+  );
 }
 
 /** invalidate everything: a reissued session invalidates every cached answer. */

@@ -25,7 +25,15 @@ func FuzzParsePatch(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, raw []byte) {
 		for _, resource := range fuzzResources {
-			_, _ = ParsePatch(raw, resource)
+			ops, e := ParsePatch(raw, resource)
+			if e != nil {
+				continue
+			}
+			for i, op := range ops {
+				if op.Payload == nil {
+					t.Fatalf("operation %d has nil typed payload", i)
+				}
+			}
 		}
 	})
 }

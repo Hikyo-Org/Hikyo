@@ -50,20 +50,18 @@ func (k *Keyring) ScanningFingerprint(orgID, projectID, envID, keyID string, val
 	return mac.Sum(nil)
 }
 
-// scanningKey reads the live scanning-fingerprint key under the rotation mutex,
-// so a fingerprint racing `rotate-scanning-key` sees exactly one version rather
-// than a torn handle. Callers fingerprint per use and never retain the key.
+// scanningKey atomically snapshots the live scanning-fingerprint key, so a
+// fingerprint racing `rotate-scanning-key` sees exactly one immutable handle.
+// Callers fingerprint per use and never retain the key.
 func (k *Keyring) scanningKey() []byte {
-	k.scanningMu.Lock()
-	defer k.scanningMu.Unlock()
-	return k.scanning.key
+	return k.scanning.get().key
 }
 
-// PrepareScanningKeyRotation mints the next scanning-fingerprint key and returns
-// its wrapped row plus the function that adopts it, mirroring
-// PrepareTokenKeyRotation: the material never leaves this package, the caller
-// persists the row inside its own authorized transaction, and adopt runs only
-// AFTER that transaction commits.
+// PrepareScanningKeyRotation mints the next scanning-fingerprint key and
+// returns its wrapped row plus mutually exclusive adopt and abort functions,
+// mirroring PrepareTokenKeyRotation: the material never leaves this package,
+// the caller defers abort, persists the row inside its own authorized
+// transaction, and adopt runs only AFTER that transaction commits.
 //
 // `rotate-scanning-key` is OUTRIGHT REPLACEMENT (secret-scanning ADR §4): there
 // is no version keyring and no reencrypt walk, because a fingerprint is a keyed
@@ -79,22 +77,6 @@ func (k *Keyring) scanningKey() []byte {
 // holding the buffer, and computing under a zeroed key would be a silent
 // break rather than a loud failure — the same reason the token key and the DEK
 // cache do not zero superseded material.
-func (k *Keyring) PrepareScanningKeyRotation() (WrappedKey, func(), error) {
-	k.scanningMu.Lock()
-	current := k.scanning
-	k.scanningMu.Unlock()
-
-	handle, row, err := k.mintTier3At(PurposeScanning, "", "", current.version+1)
-	if err != nil {
-		return WrappedKey{}, nil, err
-	}
-	return row, func() {
-		k.scanningMu.Lock()
-		defer k.scanningMu.Unlock()
-		// Monotonic: a late adopt from a slower winner cannot regress the live
-		// handle to a retired key (see PrepareTokenKeyRotation).
-		if handle.version > k.scanning.version {
-			k.scanning = handle
-		}
-	}, nil
+func (k *Keyring) PrepareScanningKeyRotation() (WrappedKey, func(), func(), error) {
+	return k.prepareDerivationKeyRotation(PurposeScanning, &k.scanning)
 }

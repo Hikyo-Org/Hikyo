@@ -68,6 +68,77 @@ func machineState(t *testing.T, origin string) (*State, string) {
 	return st, stateDir
 }
 
+func TestOpenComposeStackNoConfig(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests++
+	}))
+	defer server.Close()
+
+	st, stateDir := machineState(t, server.URL)
+	ios, _, _ := composeIO(stateDir, t.TempDir(), "wl_token", nil)
+	stack, err := openComposeStack(st, ios, commonFlags{
+		Flags: Flags{Instance: "local", Org: "org_1", Project: "prj_1", Env: "env_1"}, operation: "run",
+	}, composeStackOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stack.cfg != nil || stack.stateDir != "" || stack.runtimeDir != "" {
+		t.Fatalf("configless stack has cfg=%v stateDir=%q runtimeDir=%q", stack.cfg, stack.stateDir, stack.runtimeDir)
+	}
+	binding, err := stack.newSnapshotBinding([]string{runGenerationKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(binding, crypto.SnapshotBinding{}) {
+		t.Fatalf("configless stack created snapshot binding: %+v", binding)
+	}
+	if err := stack.flushOffline(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 0 {
+		t.Fatalf("configless stack made %d requests, want none", requests)
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, "compose")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("configless stack created compose state: %v", err)
+	}
+}
+
+func TestOpenComposeStackRuntimeDirUnresolved(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("runtime-dir refusal requires a non-root process")
+	}
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+
+	projectDir := t.TempDir()
+	content := "version: 1\ninstance: " + server.URL + "\norg: org_1\nproject: prj_1\nenvironment: env_1\nslug: acme\ntargets:\n  api:\n    keys: [key_1]\n    services: [api]\n"
+	if err := os.WriteFile(filepath.Join(projectDir, composeConfigName), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st, stateDir := machineState(t, server.URL)
+	ios, _, _ := composeIO(stateDir, projectDir, "wl_token", map[string]string{"HIKYO_COMPOSE_DOCKER": "/usr/bin/false"})
+	doctorFlags := commonFlags{operation: "compose doctor"}
+	stack, err := openComposeStack(st, ios, doctorFlags, composeStackOptions{requireConfig: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stack.runtimeErr == nil || stack.runtimeDir != "" {
+		t.Fatalf("runtimeDir=%q runtimeErr=%v, want unresolved runtime carried", stack.runtimeDir, stack.runtimeErr)
+	}
+	findings, err := composeDoctorGather(t.Context(), ios, st, doctorFlags, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(findings, "runtime_dir_unresolved") {
+		t.Fatalf("doctor findings = %+v, want runtime_dir_unresolved", findings)
+	}
+	_, _, err = composeRenderCore(t.Context(), ios, st, commonFlags{operation: "compose render"}, "", false)
+	if err == nil || !strings.Contains(err.Error(), "no runtime directory") {
+		t.Fatalf("render err=%v, want unresolved runtime refusal", err)
+	}
+}
+
 func TestRunRefusesWithoutMachineCredential(t *testing.T) {
 	// A stored human session exists; run must not use it.
 	stateDir := t.TempDir()
@@ -852,15 +923,14 @@ func TestComposeRenderSnapshotFailureLeavesPublishedGenerationUsable(t *testing.
 	}
 	defer lock.Close()
 
-	blockedParent := t.TempDir()
-	if err := os.Chmod(blockedParent, 0o700); err != nil {
+	if err := os.Mkdir(filepath.Join(stateDir, "snapshot.bin"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	blockedStorage := filepath.Join(blockedParent, "not-a-directory")
-	if err := os.WriteFile(blockedStorage, []byte("block snapshot persistence"), 0o600); err != nil {
-		t.Fatal(err)
+	stack := &composeStack{
+		entry: TrustEntry{Origin: "https://hikyo.example"}, org: "org_1", project: "prj_1", env: "env_1",
+		token: "wl_token", stateDir: stateDir, runtimeDir: runtimeDir, cfgDir: projectDir,
 	}
-	binding, err := newSnapshotBinding(blockedStorage, TrustEntry{Origin: "https://hikyo.example"}, "org_1", "prj_1", "env_1", "wl_token", false, []string{"api"})
+	binding, err := stack.newSnapshotBinding([]string{"api"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -873,9 +943,10 @@ func TestComposeRenderSnapshotFailureLeavesPublishedGenerationUsable(t *testing.
 		t.Fatal(err)
 	}
 	cfg := &compose.Config{Targets: map[string]compose.Target{"api": {Keys: []string{"key_1"}}}}
+	stack.cfg = cfg
 	ios, _, _ := composeIO(stateDir, projectDir, "wl_token", nil)
 
-	moved, err := composeRenderApply(ios, lock, cfg, stateDir, runtimeDir, keys, binding, "wl_token", "env_1", false, resp, map[string]string{})
+	moved, err := stack.renderApply(ios, lock, keys, binding, resp, map[string]string{})
 	if err == nil || moved {
 		t.Fatalf("composeRenderApply moved=%v err=%v, want post-publish snapshot failure", moved, err)
 	}
@@ -914,7 +985,11 @@ func TestComposeRenderCursorFailureLeavesPublishedGenerationPendingApply(t *test
 	if err := os.Mkdir(filepath.Join(stateDir, "cursor.json"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	binding, err := newSnapshotBinding(stateDir, TrustEntry{Origin: "https://hikyo.example"}, "org_1", "prj_1", "env_1", "wl_token", false, []string{"api"})
+	stack := &composeStack{
+		entry: TrustEntry{Origin: "https://hikyo.example"}, org: "org_1", project: "prj_1", env: "env_1",
+		token: "wl_token", stateDir: stateDir, runtimeDir: runtimeDir, cfgDir: projectDir,
+	}
+	binding, err := stack.newSnapshotBinding([]string{"api"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -927,9 +1002,10 @@ func TestComposeRenderCursorFailureLeavesPublishedGenerationPendingApply(t *test
 		t.Fatal(err)
 	}
 	cfg := &compose.Config{Targets: map[string]compose.Target{"api": {Keys: []string{"key_1"}}}}
+	stack.cfg = cfg
 	ios, _, _ := composeIO(stateDir, projectDir, "wl_token", nil)
 
-	_, err = composeRenderApply(ios, lock, cfg, stateDir, runtimeDir, keys, binding, "wl_token", "env_1", false, resp, map[string]string{})
+	_, err = stack.renderApply(ios, lock, keys, binding, resp, map[string]string{})
 	if err == nil || !strings.Contains(err.Error(), "save cursor") {
 		t.Fatalf("composeRenderApply err=%v, want cursor persistence failure", err)
 	}
@@ -963,7 +1039,11 @@ func TestComposeRenderOfflineRecordsDisclosureBeforePublishFailure(t *testing.T)
 		t.Fatal(err)
 	}
 	defer lock.Close()
-	binding, err := newSnapshotBinding(stateDir, TrustEntry{Origin: origin}, "org_1", "prj_1", "env_1", "wl_token", false, []string{"api"})
+	stack := &composeStack{
+		entry: TrustEntry{Origin: origin}, org: "org_1", project: "prj_1", env: "env_1",
+		token: "wl_token", stateDir: stateDir, cfgDir: projectDir,
+	}
+	binding, err := stack.newSnapshotBinding([]string{"api"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -971,13 +1051,15 @@ func TestComposeRenderOfflineRecordsDisclosureBeforePublishFailure(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
+	stack.cfg = cfg
 	blockedRuntime := filepath.Join(t.TempDir(), "not-a-directory")
 	if err := os.WriteFile(blockedRuntime, []byte("block generation materialization"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	ios, _, _ := composeIO(stateDir, projectDir, "wl_token", nil)
 
-	moved, err := composeRenderOffline(t.Context(), ios, lock, cfg, projectDir, stateDir, filepath.Join(blockedRuntime, "runtime"), keys, binding, false, failf(ExitUnavailable, "offline"))
+	stack.runtimeDir = filepath.Join(blockedRuntime, "runtime")
+	moved, err := stack.renderOffline(t.Context(), ios, lock, keys, binding, failf(ExitUnavailable, "offline"))
 	if err == nil || moved {
 		t.Fatalf("composeRenderOffline moved=%v err=%v, want publish failure", moved, err)
 	}
@@ -1142,7 +1224,11 @@ func TestSnapshotBindingLiveAndOfflineRenderPathsAreEquivalent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base, err := newSnapshotBinding(stateDir, TrustEntry{Origin: server.URL}, "org_1", "prj_1", "env_1", "wl_token", false, []string{"api"})
+	stack := &composeStack{
+		cfg: cfg, entry: TrustEntry{Origin: server.URL}, org: "org_1", project: "prj_1", env: "env_1",
+		token: "wl_token", stateDir: stateDir, runtimeDir: runtimeDir,
+	}
+	base, err := stack.newSnapshotBinding([]string{"api"})
 	if err != nil {
 		t.Fatal(err)
 	}

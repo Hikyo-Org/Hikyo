@@ -70,71 +70,7 @@ func (r *HikyoSecretReconciler) patchWorkloads(ctx context.Context, cr *hikyov1.
 	if !r.Config.TriggerRollouts {
 		return nil, nil
 	}
-	annKey := hikyov1.StampAnnotationPrefix + cr.Spec.Target.Name
-
-	var stalled []string
-
-	deploys := &appsv1.DeploymentList{}
-	if err := r.List(ctx, deploys, client.InNamespace(cr.Namespace)); err != nil {
-		return nil, err
-	}
-	for i := range deploys.Items {
-		d := &deploys.Items[i]
-		if !consumesTarget(d.Annotations, cr.Spec.Target.Name) {
-			continue
-		}
-		if podAnnotation(d.Spec.Template.Annotations, annKey) == stamp {
-			if !deploymentProgressed(d) {
-				stalled = append(stalled, "Deployment/"+d.Name)
-			}
-			continue
-		}
-		if err := r.patchPodTemplateAnnotation(ctx, d, annKey, stamp); err != nil {
-			return nil, fmt.Errorf("patch Deployment %q: %w", d.Name, err)
-		}
-	}
-
-	sts := &appsv1.StatefulSetList{}
-	if err := r.List(ctx, sts, client.InNamespace(cr.Namespace)); err != nil {
-		return nil, err
-	}
-	for i := range sts.Items {
-		s := &sts.Items[i]
-		if !consumesTarget(s.Annotations, cr.Spec.Target.Name) {
-			continue
-		}
-		if podAnnotation(s.Spec.Template.Annotations, annKey) == stamp {
-			if !statefulSetProgressed(s) {
-				stalled = append(stalled, "StatefulSet/"+s.Name)
-			}
-			continue
-		}
-		if err := r.patchPodTemplateAnnotation(ctx, s, annKey, stamp); err != nil {
-			return nil, fmt.Errorf("patch StatefulSet %q: %w", s.Name, err)
-		}
-	}
-
-	ds := &appsv1.DaemonSetList{}
-	if err := r.List(ctx, ds, client.InNamespace(cr.Namespace)); err != nil {
-		return nil, err
-	}
-	for i := range ds.Items {
-		d := &ds.Items[i]
-		if !consumesTarget(d.Annotations, cr.Spec.Target.Name) {
-			continue
-		}
-		if podAnnotation(d.Spec.Template.Annotations, annKey) == stamp {
-			if !daemonSetProgressed(d) {
-				stalled = append(stalled, "DaemonSet/"+d.Name)
-			}
-			continue
-		}
-		if err := r.patchPodTemplateAnnotation(ctx, d, annKey, stamp); err != nil {
-			return nil, fmt.Errorf("patch DaemonSet %q: %w", d.Name, err)
-		}
-	}
-
-	return stalled, nil
+	return r.walkWorkloads(ctx, cr, stamp, true)
 }
 
 // observeRollout is the READ-ONLY rollout evaluation used on the `current` path
@@ -146,44 +82,102 @@ func (r *HikyoSecretReconciler) observeRollout(ctx context.Context, cr *hikyov1.
 	if !r.Config.TriggerRollouts || stamp == "" {
 		return nil, nil
 	}
+	return r.walkWorkloads(ctx, cr, stamp, false)
+}
+
+type rolloutWorkloadKind struct {
+	name       string
+	list       client.ObjectList
+	count      func() int
+	workloadAt func(int) rolloutWorkload
+}
+
+type rolloutWorkload struct {
+	object              client.Object
+	templateAnnotations map[string]string
+	progressed          bool
+}
+
+// rolloutWorkloadKinds adapts each Kubernetes workload list to the one walk
+// that owns opt-in, stamp, progress, ordering, and patch-error behavior.
+func rolloutWorkloadKinds() []rolloutWorkloadKind {
+	deployments := &appsv1.DeploymentList{}
+	statefulSets := &appsv1.StatefulSetList{}
+	daemonSets := &appsv1.DaemonSetList{}
+
+	return []rolloutWorkloadKind{
+		{
+			name:  "Deployment",
+			list:  deployments,
+			count: func() int { return len(deployments.Items) },
+			workloadAt: func(i int) rolloutWorkload {
+				workload := &deployments.Items[i]
+				return rolloutWorkload{
+					object:              workload,
+					templateAnnotations: workload.Spec.Template.Annotations,
+					progressed:          deploymentProgressed(workload),
+				}
+			},
+		},
+		{
+			name:  "StatefulSet",
+			list:  statefulSets,
+			count: func() int { return len(statefulSets.Items) },
+			workloadAt: func(i int) rolloutWorkload {
+				workload := &statefulSets.Items[i]
+				return rolloutWorkload{
+					object:              workload,
+					templateAnnotations: workload.Spec.Template.Annotations,
+					progressed:          statefulSetProgressed(workload),
+				}
+			},
+		},
+		{
+			name:  "DaemonSet",
+			list:  daemonSets,
+			count: func() int { return len(daemonSets.Items) },
+			workloadAt: func(i int) rolloutWorkload {
+				workload := &daemonSets.Items[i]
+				return rolloutWorkload{
+					object:              workload,
+					templateAnnotations: workload.Spec.Template.Annotations,
+					progressed:          daemonSetProgressed(workload),
+				}
+			},
+		},
+	}
+}
+
+// walkWorkloads owns the common workload invariant. patch requests rollouts for
+// stale stamps; observe-only walks report stalls without writing.
+func (r *HikyoSecretReconciler) walkWorkloads(ctx context.Context, cr *hikyov1.HikyoSecret, stamp string, patch bool) ([]string, error) {
 	annKey := hikyov1.StampAnnotationPrefix + cr.Spec.Target.Name
 	var stalled []string
 
-	deploys := &appsv1.DeploymentList{}
-	if err := r.List(ctx, deploys, client.InNamespace(cr.Namespace)); err != nil {
-		return nil, err
-	}
-	for i := range deploys.Items {
-		d := &deploys.Items[i]
-		if consumesTarget(d.Annotations, cr.Spec.Target.Name) &&
-			podAnnotation(d.Spec.Template.Annotations, annKey) == stamp && !deploymentProgressed(d) {
-			stalled = append(stalled, "Deployment/"+d.Name)
+	for _, kind := range rolloutWorkloadKinds() {
+		if err := r.List(ctx, kind.list, client.InNamespace(cr.Namespace)); err != nil {
+			return nil, err
+		}
+		for i := 0; i < kind.count(); i++ {
+			workload := kind.workloadAt(i)
+			if !consumesTarget(workload.object.GetAnnotations(), cr.Spec.Target.Name) {
+				continue
+			}
+			if podAnnotation(workload.templateAnnotations, annKey) == stamp {
+				if !workload.progressed {
+					stalled = append(stalled, kind.name+"/"+workload.object.GetName())
+				}
+				continue
+			}
+			if !patch {
+				continue
+			}
+			if err := r.patchPodTemplateAnnotation(ctx, workload.object, annKey, stamp); err != nil {
+				return nil, fmt.Errorf("patch %s %q: %w", kind.name, workload.object.GetName(), err)
+			}
 		}
 	}
 
-	sts := &appsv1.StatefulSetList{}
-	if err := r.List(ctx, sts, client.InNamespace(cr.Namespace)); err != nil {
-		return nil, err
-	}
-	for i := range sts.Items {
-		s := &sts.Items[i]
-		if consumesTarget(s.Annotations, cr.Spec.Target.Name) &&
-			podAnnotation(s.Spec.Template.Annotations, annKey) == stamp && !statefulSetProgressed(s) {
-			stalled = append(stalled, "StatefulSet/"+s.Name)
-		}
-	}
-
-	ds := &appsv1.DaemonSetList{}
-	if err := r.List(ctx, ds, client.InNamespace(cr.Namespace)); err != nil {
-		return nil, err
-	}
-	for i := range ds.Items {
-		d := &ds.Items[i]
-		if consumesTarget(d.Annotations, cr.Spec.Target.Name) &&
-			podAnnotation(d.Spec.Template.Annotations, annKey) == stamp && !daemonSetProgressed(d) {
-			stalled = append(stalled, "DaemonSet/"+d.Name)
-		}
-	}
 	return stalled, nil
 }
 

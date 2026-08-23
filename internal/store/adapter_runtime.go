@@ -223,6 +223,9 @@ func (s sqliteAdapterTx) Query(ctx context.Context, query string, args ...any) (
 	return sqliteAdapterRows{rows: rows}, nil
 }
 func (sqliteAdapterTx) SQL(sqliteQuery, _ string) string { return sqliteQuery }
+func (sqliteAdapterTx) Placeholders(n, _ int) string {
+	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
+}
 func (sqliteAdapterTx) Stamp(value time.Time) any        { return adapterTimestamp(EngineSQLite, value) }
 func (s sqliteAdapterTx) Commit(context.Context) error   { return s.tx.Commit() }
 func (s sqliteAdapterTx) Rollback(context.Context) error { return s.tx.Rollback() }
@@ -239,7 +242,14 @@ func (p pgAdapterTx) QueryRow(ctx context.Context, query string, args ...any) ad
 func (p pgAdapterTx) Query(ctx context.Context, query string, args ...any) (adapterRows, error) {
 	return p.tx.Query(ctx, query, args...)
 }
-func (pgAdapterTx) SQL(_, postgresQuery string) string   { return postgresQuery }
+func (pgAdapterTx) SQL(_, postgresQuery string) string { return postgresQuery }
+func (pgAdapterTx) Placeholders(n, start int) string {
+	out := make([]string, n)
+	for i := range out {
+		out[i] = fmt.Sprintf("$%d", start+i)
+	}
+	return strings.Join(out, ",")
+}
 func (pgAdapterTx) Stamp(value time.Time) any            { return CanonTime(value) }
 func (p pgAdapterTx) Commit(ctx context.Context) error   { return p.tx.Commit(ctx) }
 func (p pgAdapterTx) Rollback(ctx context.Context) error { return p.tx.Rollback(ctx) }
@@ -636,13 +646,13 @@ func (j *adapterJournal) Finish(ctx context.Context, effect adapter.Effect, comp
 			payload["owned_missing"] = true
 		}
 		payloadJSON, _ := json.Marshal(payload)
-		if err := j.insertAudit(ctx, tx, outcomeID, "adapter.push_outcome", completion.Outcome, now, payloadJSON); err != nil {
+		if err := j.insertAudit(ctx, tx, outcomeID, "adapter.push_outcome", string(completion.Outcome), now, payloadJSON); err != nil {
 			return err
 		}
 		updateEffect := tx.SQL(
 			`UPDATE adapter_effects SET outcome_audit_id=?,outcome=?,finished_at=? WHERE id=? AND outcome IS NULL`,
 			`UPDATE adapter_effects SET outcome_audit_id=$1,outcome=$2,finished_at=$3 WHERE id=$4 AND outcome IS NULL`)
-		rows, err := tx.Exec(ctx, updateEffect, outcomeID, completion.Outcome, tx.Stamp(now), effectID)
+		rows, err := tx.Exec(ctx, updateEffect, outcomeID, string(completion.Outcome), tx.Stamp(now), effectID)
 		if err != nil || rows != 1 {
 			return errors.New("store: adapter effect OUTCOME was not recorded exactly once")
 		}
@@ -651,7 +661,7 @@ func (j *adapterJournal) Finish(ctx context.Context, effect adapter.Effect, comp
 				return err
 			}
 		}
-		if completion.State == "" {
+		if completion.ReleaseLedger {
 			remove := tx.SQL(
 				`DELETE FROM adapter_ledger WHERE org_id=? AND project_id=? AND environment_id=? AND target_id=? AND surface=? AND normalized_name=?`,
 				`DELETE FROM adapter_ledger WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND target_id=$4 AND surface=$5 AND normalized_name=$6`)
@@ -668,7 +678,7 @@ func (j *adapterJournal) Finish(ctx context.Context, effect adapter.Effect, comp
 		if rows != 1 {
 			return adapter.ErrSuperseded
 		}
-		if completion.Outcome == "success" && effect.KeyID != "" && effect.Disposition != adapter.Delete {
+		if completion.Outcome == adapter.OutcomeSuccess && effect.KeyID != "" && effect.Disposition != adapter.Delete {
 			payload, _ := json.Marshal(map[string]string{"key_id": effect.KeyID, "surface": string(effect.Surface), "effective_name": effect.EffectiveName})
 			if err := j.insertAudit(ctx, tx, newAdapterID("aud"), "adapter.key_delivered", "success", now, payload); err != nil {
 				return err
