@@ -10,6 +10,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
 // The §2.4 universal release algorithm (#73, scim-provisioning ADR).
@@ -112,10 +113,9 @@ func (o releaseOutcome) AuthorityChanged() bool { return o.RowsRevoked > 0 }
 // because every caller sets all of them and a positional mistake between two
 // string ids is invisible at the call site.
 type releaseArgs struct {
-	binding   string
-	org       domain.OrgID
-	principal domain.PrincipalID
-	match     releaseMatch
+	binding string
+	org     domain.OrgID
+	match   releaseMatch
 	// grant, when set, narrows the release to grant rows it accepts. It exists
 	// for the ONE trigger that is not "release everything this key holds":
 	// narrowing a mapping row releases the no-longer-covered part (§5.4) while
@@ -125,6 +125,17 @@ type releaseArgs struct {
 	grant func(domain.Grant) bool
 	cause domain.SCIMCause
 }
+
+// advancePolicy names the two session-generation rules a SCIM release can
+// carry. Deprovision and user deletion always advance because the IdP declared
+// the human gone; every other release advances only when effective authority
+// changed.
+type advancePolicy uint8
+
+const (
+	advanceIfAuthorityChanged advancePolicy = iota
+	advanceAlways
+)
 
 // accepts reports whether a grant row is in scope for this release.
 func (a releaseArgs) accepts(g domain.Grant) bool {
@@ -137,7 +148,8 @@ func (a releaseArgs) accepts(g domain.Grant) bool {
 // human gone") and some only when authority moved. Folding the advance in here
 // would force one of the two to be wrong.
 func releaseSCIMOrigins(
-	ctx context.Context, az *authz.TxAuthorizer, now time.Time, args releaseArgs,
+	ctx context.Context, az *authz.TxAuthorizer, principal domain.PrincipalID,
+	now time.Time, args releaseArgs,
 ) (releaseOutcome, []grantEventInput, error) {
 	var out releaseOutcome
 	var events []grantEventInput
@@ -145,13 +157,13 @@ func releaseSCIMOrigins(
 	// Lock first, read second: the release is a read-then-write over the
 	// target's grant rows, and every grant writer in the system takes this lock
 	// as its first statement.
-	if err := az.LockTargetPrincipal(ctx, args.principal); err != nil {
+	if err := az.LockTargetPrincipal(ctx, principal); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return out, nil, nil // the principal went away; nothing holds anything
 		}
 		return out, nil, err
 	}
-	rows, err := az.GrantOriginsForPrincipal(ctx, args.principal)
+	rows, err := az.GrantOriginsForPrincipal(ctx, principal)
 	if err != nil {
 		return out, nil, err
 	}
@@ -212,7 +224,7 @@ func releaseSCIMOrigins(
 		// and the release commit together.
 		convert := false
 		if survivors == 0 {
-			cause, err := wouldLockOut(ctx, az, args.principal, st.grant.Grant)
+			cause, err := wouldLockOut(ctx, az, principal, st.grant.Grant)
 			if err != nil {
 				return out, nil, err
 			}
@@ -220,7 +232,7 @@ func releaseSCIMOrigins(
 		}
 
 		for _, o := range doomed {
-			ok, err := az.ReleaseGrantOrigin(ctx, id, args.principal, o)
+			ok, err := az.ReleaseGrantOrigin(ctx, id, principal, o)
 			if err != nil {
 				return out, nil, err
 			}
@@ -244,7 +256,7 @@ func releaseSCIMOrigins(
 					Binding: args.binding, Cause: args.cause,
 				}.Subject(),
 			}
-			if err := az.AddGrantOrigin(ctx, originID, id, args.principal, retention, now); err != nil {
+			if err := az.AddGrantOrigin(ctx, originID, id, principal, retention, now); err != nil {
 				return out, nil, err
 			}
 			out.Retained = append(out.Retained, id)
@@ -254,12 +266,12 @@ func releaseSCIMOrigins(
 					object: audit.Object{Type: "grant", ID: id},
 					payload: audit.Payload{
 						"binding":   args.binding,
-						"principal": string(args.principal),
+						"principal": string(principal),
 						"grant_id":  id,
 						"cause":     string(args.cause),
 					},
 				},
-				grantModifiedEvent(args, st.grant, doomed),
+				grantModifiedEvent(args, principal, st.grant, doomed),
 			)
 			continue
 		}
@@ -271,16 +283,58 @@ func releaseSCIMOrigins(
 		if remaining > 0 {
 			out.ManualRemains = out.ManualRemains ||
 				(st.grant.Grant.Scope.Org == args.org && hasManualOrigin(st.origins))
-			events = append(events, grantModifiedEvent(args, st.grant, doomed))
+			events = append(events, grantModifiedEvent(args, principal, st.grant, doomed))
 			continue
 		}
-		if _, err := az.DeleteGrantRow(ctx, id, args.principal); err != nil {
+		if _, err := az.DeleteGrantRow(ctx, id, principal); err != nil {
 			return out, nil, err
 		}
 		out.RowsRevoked++
-		events = append(events, grantRevokedEvent(args, st.grant, doomed))
+		events = append(events, grantRevokedEvent(args, principal, st.grant, doomed))
 	}
 	return out, events, nil
+}
+
+// releaseAndSettle owns the complete release lifecycle: release origins,
+// advance sessions under the caller's policy, then raise attention for every
+// retention conversion. Keeping those writes together makes a retention origin
+// without its warning unrepresentable through a SCIM release path.
+//
+// Release events stay before attention events. That order is part of the audit
+// contract and is deliberately preserved while the duplicated caller ceremony
+// moves here.
+func (s *SCIM) releaseAndSettle(
+	ctx context.Context, r store.Repos, az *authz.TxAuthorizer, c scimContext,
+	principal domain.PrincipalID, args releaseArgs, policy advancePolicy, now time.Time,
+) (releaseOutcome, []grantEventInput, error) {
+	outcome, events, err := releaseSCIMOrigins(ctx, az, principal, now, args)
+	if err != nil {
+		return releaseOutcome{}, nil, err
+	}
+
+	advance := outcome.AuthorityChanged()
+	switch policy {
+	case advanceIfAuthorityChanged:
+	case advanceAlways:
+		advance = true
+	default:
+		return releaseOutcome{}, nil, fmt.Errorf("service: invalid SCIM release advance policy %d", policy)
+	}
+	if advance {
+		if err := advanceAndSweep(ctx, az, principal); err != nil {
+			return releaseOutcome{}, nil, err
+		}
+	}
+
+	for _, grantID := range outcome.Retained {
+		ev, err := s.enterAttention(ctx, r, c,
+			domain.AttentionLockoutRetention, grantID, args.cause, now)
+		if err != nil {
+			return releaseOutcome{}, nil, err
+		}
+		events = append(events, ev...)
+	}
+	return outcome, events, nil
 }
 
 // wouldLockOut reports whether revoking this exact row would leave the org with
@@ -308,16 +362,20 @@ func wouldLockOut(ctx context.Context, az *authz.TxAuthorizer, target domain.Pri
 	return remaining == 0, nil
 }
 
-func grantModifiedEvent(args releaseArgs, row authz.GrantRow, released []authz.Origin) grantEventInput {
+func grantModifiedEvent(
+	args releaseArgs, principal domain.PrincipalID, row authz.GrantRow, released []authz.Origin,
+) grantEventInput {
 	return grantEventInput{
 		typ:     audit.EventGrantModified,
 		object:  audit.Object{Type: "grant", ID: row.ID},
-		payload: scimGrantPayload(args, row, released, false),
+		payload: scimGrantPayload(args, principal, row, released, false),
 	}
 }
 
-func grantRevokedEvent(args releaseArgs, row authz.GrantRow, released []authz.Origin) grantEventInput {
-	p := scimGrantPayload(args, row, released, true)
+func grantRevokedEvent(
+	args releaseArgs, principal domain.PrincipalID, row authz.GrantRow, released []authz.Origin,
+) grantEventInput {
+	p := scimGrantPayload(args, principal, row, released, true)
 	p["origins_remaining"] = 0
 	// The row died, so the generation advance and the session sweep happen —
 	// either here, when authority moved, or unconditionally at the caller.
@@ -333,9 +391,12 @@ func grantRevokedEvent(args releaseArgs, row authz.GrantRow, released []authz.Or
 // release, including the origin fields §10 adds to the `grant.*` category:
 // which binding, which mapping row and which IdP group moved. That is what
 // makes "why can they?" answerable from the trail and not only from the row.
-func scimGrantPayload(args releaseArgs, row authz.GrantRow, released []authz.Origin, revoked bool) audit.Payload {
+func scimGrantPayload(
+	args releaseArgs, principal domain.PrincipalID, row authz.GrantRow,
+	released []authz.Origin, revoked bool,
+) audit.Payload {
 	p := audit.Payload{
-		"target_principal": string(args.principal),
+		"target_principal": string(principal),
 		"capability":       string(row.Grant.Capability),
 		"scope":            renderScope(row.Grant.Scope),
 		"origin_kind":      string(domain.OriginSCIM),

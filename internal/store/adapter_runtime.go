@@ -677,6 +677,9 @@ func (j *adapterJournal) Finish(ctx context.Context, effect adapter.Effect, comp
 	if effectID == "" {
 		return errors.New("store: adapter effect has no durable INTENT")
 	}
+	if err := adapter.ValidateCompletion(completion); err != nil {
+		return err
+	}
 	outcomeID := newAdapterID("aud")
 	now := time.Now().UTC()
 	err := j.runtime.transaction(ctx, func(tx adapterDBTX) error {
@@ -713,9 +716,9 @@ func (j *adapterJournal) Finish(ctx context.Context, effect adapter.Effect, comp
 			rows, err = tx.Exec(ctx, remove, j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID, j.job.TargetID, string(effect.Surface), strings.ToUpper(effect.EffectiveName))
 		} else {
 			update := j.runtime.query(
-				`UPDATE adapter_ledger SET state=CASE WHEN state='released' THEN 'released' ELSE ? END,missing=?,updated_at=? WHERE org_id=? AND project_id=? AND environment_id=? AND target_id=? AND surface=? AND normalized_name=?`,
-				`UPDATE adapter_ledger SET state=CASE WHEN state='released' THEN 'released' ELSE $1 END,missing=$2,updated_at=$3 WHERE org_id=$4 AND project_id=$5 AND environment_id=$6 AND target_id=$7 AND surface=$8 AND normalized_name=$9`)
-			rows, err = tx.Exec(ctx, update, string(completion.State), completion.Missing, adapterTimestamp(j.runtime.db.Engine(), now), j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID, j.job.TargetID, string(effect.Surface), strings.ToUpper(effect.EffectiveName))
+				`UPDATE adapter_ledger SET state=CASE WHEN state='released' THEN 'released' ELSE ? END,missing=?,updated_at=? WHERE org_id=? AND project_id=? AND environment_id=? AND target_id=? AND surface=? AND normalized_name=? AND NOT (state='released' AND ?)`,
+				`UPDATE adapter_ledger SET state=CASE WHEN state='released' THEN 'released' ELSE $1 END,missing=$2,updated_at=$3 WHERE org_id=$4 AND project_id=$5 AND environment_id=$6 AND target_id=$7 AND surface=$8 AND normalized_name=$9 AND NOT (state='released' AND $10)`)
+			rows, err = tx.Exec(ctx, update, string(completion.State), completion.Missing, adapterTimestamp(j.runtime.db.Engine(), now), j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID, j.job.TargetID, string(effect.Surface), strings.ToUpper(effect.EffectiveName), completion.Missing)
 		}
 		if err != nil {
 			return err
@@ -1426,8 +1429,8 @@ func (r *AdapterRuntime) finishDeadCredentialScrub(ctx context.Context, tx adapt
 		return err
 	}
 	releaseLedger := r.query(
-		`UPDATE adapter_ledger SET state='released',updated_at=? WHERE target_id=? AND org_id=? AND project_id=? AND environment_id=? AND state<>'released'`,
-		`UPDATE adapter_ledger SET state='released',updated_at=$1 WHERE target_id=$2 AND org_id=$3 AND project_id=$4 AND environment_id=$5 AND state<>'released'`)
+		`UPDATE adapter_ledger SET state='released',missing=0,updated_at=? WHERE target_id=? AND org_id=? AND project_id=? AND environment_id=? AND state<>'released'`,
+		`UPDATE adapter_ledger SET state='released',missing=false,updated_at=$1 WHERE target_id=$2 AND org_id=$3 AND project_id=$4 AND environment_id=$5 AND state<>'released'`)
 	if _, err := tx.Exec(ctx, releaseLedger, adapterTimestamp(r.db.Engine(), finished), job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID); err != nil {
 		return err
 	}

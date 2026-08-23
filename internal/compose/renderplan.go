@@ -2,15 +2,6 @@ package compose
 
 import "fmt"
 
-// RenderProjection is the delivery projection being planned. It is explicit so
-// config-only absence semantics cannot be inferred from row contents.
-type RenderProjection string
-
-const (
-	RenderProjectionFull       RenderProjection = "full"
-	RenderProjectionConfigOnly RenderProjection = "config-only"
-)
-
 // AbsentKeyPolicy tells the pure planner what a configured key missing from the
 // source means. Live and snapshot adapters name their refusal independently;
 // config-only adapters skip because projected-out secrets are absent entirely.
@@ -29,21 +20,29 @@ type RenderTarget struct {
 	AcknowledgeLoaderControl []string
 }
 
-// RenderSourceRow is one adapter-normalized delivery row. Value nil means the
-// key was delivered without plaintext; UnrevealedSecret distinguishes the
-// all-or-nothing secret refusal from a genuinely unset value.
+// RenderRowState is what an adapter-normalized delivery row carries. The three
+// states are mutually exclusive, so a row cannot be both unrevealed and valued.
+type RenderRowState string
+
+const (
+	RenderRowValued           RenderRowState = "valued"
+	RenderRowNoValue          RenderRowState = "no-value"
+	RenderRowUnrevealedSecret RenderRowState = "unrevealed-secret"
+)
+
+// RenderSourceRow is one adapter-normalized delivery row. Value holds the
+// plaintext only when State is RenderRowValued.
 type RenderSourceRow struct {
-	KeyID            string
-	Name             string
-	Classification   string
-	Value            *string
-	UnrevealedSecret bool
+	KeyID          string
+	Name           string
+	Classification string
+	State          RenderRowState
+	Value          string
 }
 
 // RenderInput contains every policy and datum needed to build a render plan.
 // BuildRenderPlan performs no I/O and retains no reference to these slices.
 type RenderInput struct {
-	Projection RenderProjection
 	AbsentKeys AbsentKeyPolicy
 	Targets    []RenderTarget
 	Rows       []RenderSourceRow
@@ -97,8 +96,8 @@ type RenderPlan struct {
 	Refusals  []RenderRefusal    `json:"refusals"`
 }
 
-// BuildRenderPlan applies target selection, projection/absence policy,
-// loader-control checks, raw-dotenv encoding, and snapshot-row collection.
+// BuildRenderPlan applies target selection, absent-key policy, loader-control
+// checks, raw-dotenv encoding, and snapshot-row collection.
 func BuildRenderPlan(in RenderInput) (RenderPlan, error) {
 	var plan RenderPlan
 	if err := validateRenderInput(in); err != nil {
@@ -107,9 +106,6 @@ func BuildRenderPlan(in RenderInput) (RenderPlan, error) {
 
 	byID := make(map[string]RenderSourceRow, len(in.Rows))
 	for _, row := range in.Rows {
-		if row.UnrevealedSecret && row.Value != nil {
-			return RenderPlan{}, fmt.Errorf("compose: render row %q is both unrevealed and valued", row.KeyID)
-		}
 		byID[row.KeyID] = row
 	}
 
@@ -131,17 +127,17 @@ func BuildRenderPlan(in RenderInput) (RenderPlan, error) {
 				}
 				continue
 			}
-			if row.UnrevealedSecret {
+			switch row.State {
+			case RenderRowUnrevealedSecret:
 				plan.Refusals = append(plan.Refusals, RenderRefusal{Target: target.Name, Key: row.Name, Kind: RenderRefusalSecretUnrevealed})
 				continue
-			}
-			if row.Value == nil {
+			case RenderRowNoValue:
 				plan.Omissions = append(plan.Omissions, RenderOmission{Target: target.Name, KeyID: keyID, Name: row.Name, Kind: RenderOmissionNoValue})
 				continue
 			}
-			rows = append(rows, Row{Name: row.Name, Value: *row.Value})
+			rows = append(rows, Row{Name: row.Name, Value: row.Value})
 			snapshotRows = append(snapshotRows, SnapshotRow{
-				Name: row.Name, KeyID: row.KeyID, Classification: row.Classification, Value: *row.Value,
+				Name: row.Name, KeyID: row.KeyID, Classification: row.Classification, Value: row.Value,
 			})
 			names = append(names, row.Name)
 		}
@@ -164,22 +160,21 @@ func BuildRenderPlan(in RenderInput) (RenderPlan, error) {
 }
 
 func validateRenderInput(in RenderInput) error {
-	switch in.Projection {
-	case RenderProjectionFull:
-		if in.AbsentKeys == AbsentKeySkip {
-			return fmt.Errorf("compose: full render projection cannot skip absent keys")
-		}
-	case RenderProjectionConfigOnly:
-		if in.AbsentKeys != AbsentKeySkip {
-			return fmt.Errorf("compose: config-only render projection must skip absent keys")
-		}
-	default:
-		return fmt.Errorf("compose: unknown render projection %q", in.Projection)
-	}
 	switch in.AbsentKeys {
 	case AbsentKeySkip, AbsentKeyRefuseNotDelivered, AbsentKeyRefuseNotInSnapshot:
-		return nil
 	default:
 		return fmt.Errorf("compose: unknown absent-key policy %q", in.AbsentKeys)
 	}
+	for _, row := range in.Rows {
+		switch row.State {
+		case RenderRowValued:
+		case RenderRowNoValue, RenderRowUnrevealedSecret:
+			if row.Value != "" {
+				return fmt.Errorf("compose: render row %q cannot carry a value in state %q", row.KeyID, row.State)
+			}
+		default:
+			return fmt.Errorf("compose: render row %q has unknown state %q", row.KeyID, row.State)
+		}
+	}
+	return nil
 }
