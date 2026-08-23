@@ -321,7 +321,9 @@ func TestStalledObservedOnCurrentPath(t *testing.T) {
 	cr := makeCR("app")
 	h := newHarness(t, interceptor.Funcs{},
 		makeInstance(""), makeBootstrapSecret("boot", testInstance, "tok", true),
-		makeOptedInDeployment("web", testTarget), cr)
+		makeOptedInDeployment("web", testTarget),
+		makeOptedInStatefulSet("database", testTarget),
+		makeOptedInDaemonSet("agent", testTarget), cr)
 	h.stub.set(200, deliveryJSON(false, "v1:cur1", "v1:t", []deliveredKey{secretVal("API_KEY", "v")}, nil))
 	if _, err := h.reconcile("app"); err != nil {
 		t.Fatalf("reconcile1: %v", err)
@@ -334,6 +336,21 @@ func TestStalledObservedOnCurrentPath(t *testing.T) {
 	if err := h.cl.Update(context.Background(), web); err != nil {
 		t.Fatalf("update web status: %v", err)
 	}
+	database := h.getStatefulSet("database")
+	database.Generation = 2
+	database.Status.ObservedGeneration = 1
+	database.Status.Replicas = 1
+	database.Status.UpdatedReplicas = 0
+	if err := h.cl.Update(context.Background(), database); err != nil {
+		t.Fatalf("update database status: %v", err)
+	}
+	agent := h.getDaemonSet("agent")
+	agent.Generation = 2
+	agent.Status.ObservedGeneration = 1
+	agent.Status.NumberUnavailable = 1
+	if err := h.cl.Update(context.Background(), agent); err != nil {
+		t.Fatalf("update agent status: %v", err)
+	}
 	// Reconcile 2: eligible cursor, server answers current; rollout is evaluated
 	// read-only and the stall surfaces.
 	h.stub.set(200, deliveryJSON(true, "v1:cur1", "v1:t", nil, nil))
@@ -343,4 +360,14 @@ func TestStalledObservedOnCurrentPath(t *testing.T) {
 	got := h.getCR("app")
 	requireCond(t, got, hikyov1.ConditionSynced, metav1.ConditionTrue, hikyov1.ReasonCurrent)
 	requireCond(t, got, hikyov1.ConditionRollout, metav1.ConditionFalse, hikyov1.ReasonStalled)
+	for _, cond := range got.Status.Conditions {
+		if cond.Type == hikyov1.ConditionRollout {
+			want := "opted-in workloads not progressed after the stamp patch: Deployment/web, StatefulSet/database, DaemonSet/agent"
+			if cond.Message != want {
+				t.Fatalf("rollout condition message = %q, want %q", cond.Message, want)
+			}
+			return
+		}
+	}
+	t.Fatal("rollout condition absent")
 }

@@ -194,12 +194,23 @@ func (h *harness) getSecret(ns, name string) (*corev1.Secret, bool) {
 }
 
 func (h *harness) getDeployment(name string) *appsv1.Deployment {
+	return getWorkload(h, name, "deployment", &appsv1.Deployment{})
+}
+
+func (h *harness) getStatefulSet(name string) *appsv1.StatefulSet {
+	return getWorkload(h, name, "statefulset", &appsv1.StatefulSet{})
+}
+
+func (h *harness) getDaemonSet(name string) *appsv1.DaemonSet {
+	return getWorkload(h, name, "daemonset", &appsv1.DaemonSet{})
+}
+
+func getWorkload[T client.Object](h *harness, name, kind string, workload T) T {
 	h.t.Helper()
-	var d appsv1.Deployment
-	if err := h.cl.Get(context.Background(), types.NamespacedName{Namespace: testNS, Name: name}, &d); err != nil {
-		h.t.Fatalf("get deployment %q: %v", name, err)
+	if err := h.cl.Get(context.Background(), types.NamespacedName{Namespace: testNS, Name: name}, workload); err != nil {
+		h.t.Fatalf("get %s %q: %v", kind, name, err)
 	}
-	return &d
+	return workload
 }
 
 // drainEvents collects the reasons emitted so far without blocking.
@@ -338,16 +349,42 @@ func makeOwnedSecret(t *testing.T, sch *runtime.Scheme, cr *hikyov1.HikyoSecret,
 
 // makeOptedInDeployment builds a Deployment consuming the target (opt-in).
 func makeOptedInDeployment(name string, consumesTargets ...string) *appsv1.Deployment {
-	ann := map[string]string{}
-	if len(consumesTargets) > 0 {
-		ann[hikyov1.AnnotationWorkloadSecrets] = strings.Join(consumesTargets, ",")
-	}
 	return &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: name, Annotations: ann},
+		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: name, Annotations: workloadAnnotations(consumesTargets)},
 		Spec: appsv1.DeploymentSpec{
-			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}},
+			Template: emptyPodTemplate(),
 		},
 	}
+}
+
+func makeOptedInStatefulSet(name string, consumesTargets ...string) *appsv1.StatefulSet {
+	return &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: name, Annotations: workloadAnnotations(consumesTargets)},
+		Spec: appsv1.StatefulSetSpec{
+			Template: emptyPodTemplate(),
+		},
+	}
+}
+
+func makeOptedInDaemonSet(name string, consumesTargets ...string) *appsv1.DaemonSet {
+	return &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: name, Annotations: workloadAnnotations(consumesTargets)},
+		Spec: appsv1.DaemonSetSpec{
+			Template: emptyPodTemplate(),
+		},
+	}
+}
+
+func workloadAnnotations(consumesTargets []string) map[string]string {
+	annotations := map[string]string{}
+	if len(consumesTargets) > 0 {
+		annotations[hikyov1.AnnotationWorkloadSecrets] = strings.Join(consumesTargets, ",")
+	}
+	return annotations
+}
+
+func emptyPodTemplate() corev1.PodTemplateSpec {
+	return corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}}
 }
 
 // deliveryJSON builds a 200 response body.
