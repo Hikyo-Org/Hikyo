@@ -359,12 +359,11 @@ func (s stubRetentionHealth) OperationalHealth(context.Context) (service.PruneHe
 
 func TestMetricsExposeRetentionPrunerHealthWithoutLabels(t *testing.T) {
 	last := time.Unix(1_800_000_000, 0).UTC()
-	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
-		RetentionHealth: stubRetentionHealth{health: service.PruneHealth{
-			LastSuccess: last, Recorded: true, Stale: true,
-			PeakProjectBytes: 1_500_000_000, StorageWarn: true,
-		}},
-	}, nil))
+	healthService := stubRetentionHealth{health: service.PruneHealth{
+		LastSuccess: last, Recorded: true, Stale: true,
+		PeakProjectBytes: 1_500_000_000, StorageWarn: true,
+	}}
+	srv := httptest.NewServer(server.NewOperational(stubReady{}, healthService))
 	t.Cleanup(srv.Close)
 	resp, err := http.Get(srv.URL + "/metrics")
 	if err != nil {
@@ -388,7 +387,11 @@ func TestMetricsExposeRetentionPrunerHealthWithoutLabels(t *testing.T) {
 		"# TYPE hikyo_project_storage_peak_bytes gauge\n" +
 		"hikyo_project_storage_peak_bytes 1500000000\n" +
 		"# TYPE hikyo_project_storage_warn gauge\n" +
-		"hikyo_project_storage_warn 1\n"
+		"hikyo_project_storage_warn 1\n" +
+		"# TYPE hikyo_tls_cert_not_after_timestamp_seconds gauge\n" +
+		"hikyo_tls_cert_not_after_timestamp_seconds 0\n" +
+		"# TYPE hikyo_tls_reload_failures_total counter\n" +
+		"hikyo_tls_reload_failures_total 0\n"
 	if string(body) != want {
 		t.Fatalf("metrics = %q, want %q", body, want)
 	}
@@ -398,9 +401,7 @@ func TestMetricsExposeRetentionPrunerHealthWithoutLabels(t *testing.T) {
 }
 
 func TestMetricsUseZeroWhenPruneNeverSucceeded(t *testing.T) {
-	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
-		RetentionHealth: stubRetentionHealth{health: service.PruneHealth{Stale: true}},
-	}, nil))
+	srv := httptest.NewServer(server.NewOperational(stubReady{}, stubRetentionHealth{health: service.PruneHealth{Stale: true}}))
 	t.Cleanup(srv.Close)
 	resp, err := http.Get(srv.URL + "/metrics")
 	if err != nil {
@@ -970,7 +971,8 @@ func TestHealthProbesSitOutsideTheAPIStack(t *testing.T) {
 	// A liveness probe refused by the admission budget would turn a login
 	// flood into a restart loop, so the probes must not carry the API
 	// middleware at all.
-	srv := newTestServer(t, stubAuth{}, stubOrgs{})
+	srv := httptest.NewServer(server.NewOperational(stubReady{}, stubRetentionHealth{}))
+	t.Cleanup(srv.Close)
 	for path, want := range map[string]int{"/healthz": http.StatusOK, "/readyz": http.StatusOK} {
 		resp, err := srv.Client().Get(srv.URL + path)
 		if err != nil {

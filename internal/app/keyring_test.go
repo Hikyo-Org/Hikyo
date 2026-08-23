@@ -14,7 +14,8 @@ import (
 func prodConfig(t *testing.T, extraEnv map[string]string) *config.Config {
 	t.Helper()
 	env := map[string]string{
-		"HIKYO_DB": "sqlite:" + filepath.Join(t.TempDir(), "hikyo.db"),
+		"HIKYO_DB":                 "sqlite:" + filepath.Join(t.TempDir(), "hikyo.db"),
+		"HIKYO_OPERATIONAL_LISTEN": "localhost:0",
 	}
 	for k, v := range extraEnv {
 		env[k] = v

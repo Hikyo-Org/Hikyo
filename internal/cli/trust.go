@@ -1,10 +1,8 @@
 package cli
 
 import (
-	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Hikyo-Org/hikyo/internal/tlspolicy"
 )
 
 // The local trust store (api-cli-surface ADR § Context model).
@@ -195,8 +195,7 @@ func CanonicalOrigin(raw string) (string, error) {
 // every renewal, and an operator whose pin breaks quarterly learns to skip
 // checking it.
 func SPKIFingerprint(cert *x509.Certificate) string {
-	sum := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
-	return base64.StdEncoding.EncodeToString(sum[:])
+	return tlspolicy.SPKIFingerprint(cert)
 }
 
 // FetchIdentity opens a TLS connection purely to read the peer's public-key

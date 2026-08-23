@@ -34,6 +34,9 @@ func main() {
 }
 
 func run() int {
+	if handled, code := runTLSStageMode(os.Args[1:]); handled {
+		return code
+	}
 	if handled, code := importer.RunInternalSubprocess(os.Args[1:], os.Stdout); handled {
 		return code
 	}
@@ -111,6 +114,8 @@ func runServer(ctx context.Context, args []string) int {
 		log.Error("startup failed", "err", err)
 		return 1
 	}
+	stopTLSReload := watchTLSReloadSignal(ctx, srv.ReloadTLS)
+	defer stopTLSReload()
 	if err := srv.Serve(ctx); err != nil {
 		log.Error("server failed", "err", err)
 		return 1

@@ -155,18 +155,19 @@ export HOME="$home_dir"
 export HIKYO_STATE_DIR="$state_dir"
 export DOCKER_CONFIG="$docker_config_dir"
 
-port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')
+read -r port ops_port < <(python3 -c 'import socket; a=socket.socket(); b=socket.socket(); a.bind(("127.0.0.1", 0)); b.bind(("127.0.0.1", 0)); print(a.getsockname()[1], b.getsockname()[1]); a.close(); b.close()')
 origin="http://127.0.0.1:$port"
+ops_origin="http://127.0.0.1:$ops_port"
 (
 	cd "$work_dir"
-	"$binary" server --dev --listen "127.0.0.1:$port" >server.log 2>&1 &
+	"$binary" server --dev --listen "127.0.0.1:$port" --operational-listen "127.0.0.1:$ops_port" >server.log 2>&1 &
 	printf '%s\n' "$!" >server.pid
 )
 server_pid=$(<"$work_dir/server.pid")
 
 healthy=false
 for _ in {1..200}; do
-	if curl -fsS "$origin/healthz" >/dev/null 2>&1; then
+	if curl -fsS "$ops_origin/healthz" >/dev/null 2>&1; then
 		healthy=true
 		break
 	fi
@@ -177,7 +178,7 @@ for _ in {1..200}; do
 done
 if [[ "$healthy" != true ]]; then
 	sed -n '1,200p' "$work_dir/server.log" >&2
-	fail "server did not become healthy at $origin"
+	fail "server did not become healthy at $ops_origin"
 fi
 
 root_key=$(tr -d '\n' <"$work_dir/hikyo-dev.rootkey")

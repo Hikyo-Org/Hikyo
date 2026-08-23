@@ -5,6 +5,7 @@
 package config
 
 import (
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -17,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/tlspolicy"
 )
 
 type Engine string
@@ -36,6 +39,9 @@ type Datastore struct {
 type Config struct {
 	Dev               bool
 	Listen            string
+	OperationalListen string
+	TLSCertFile       string
+	TLSKeyFile        string
 	TrustedProxyCIDRs []string
 	AutoMigrate       bool
 	Store             Datastore
@@ -124,6 +130,9 @@ type Config struct {
 var knownEnv = map[string]bool{
 	"HIKYO_DB":                         true,
 	"HIKYO_LISTEN":                     true,
+	"HIKYO_OPERATIONAL_LISTEN":         true,
+	"HIKYO_TLS_CERT_FILE":              true,
+	"HIKYO_TLS_KEY_FILE":               true,
 	"HIKYO_EXTERNAL_ORIGIN":            true,
 	"HIKYO_TRUSTED_PROXY_CIDRS":        true,
 	"HIKYO_ROOT_KEY":                   true,
@@ -168,10 +177,13 @@ const devSQLitePath = "hikyo-dev.db"
 func Load(subcommand string, args []string, getenv func(string) string, environ []string) (*Config, []string, error) {
 	fs := flag.NewFlagSet(subcommand, flag.ContinueOnError)
 	dev := fs.Bool("dev", false, "development mode: zero-config sqlite, text logs")
-	listen, autoMigrate, rootKeyFile := new(string), new(bool), new(string)
+	listen, operationalListen, tlsCertFile, tlsKeyFile, autoMigrate, rootKeyFile := new(string), new(string), new(string), new(string), new(bool), new(string)
 	*autoMigrate = true
 	if subcommand == "server" {
 		listen = fs.String("listen", "", "listen address (default 127.0.0.1:8080, env HIKYO_LISTEN)")
+		operationalListen = fs.String("operational-listen", "", "operational listen address (default 127.0.0.1:8081, env HIKYO_OPERATIONAL_LISTEN)")
+		tlsCertFile = fs.String("tls-cert-file", "", "TLS certificate chain file (env HIKYO_TLS_CERT_FILE)")
+		tlsKeyFile = fs.String("tls-key-file", "", "TLS private key file (env HIKYO_TLS_KEY_FILE)")
 		autoMigrate = fs.Bool("auto-migrate", true, "apply pending migrations at boot")
 		rootKeyFile = fs.String("root-key-file", "", "path to the 64-hex-char root key file (mode 0600)")
 	}
@@ -191,12 +203,15 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 	}
 
 	cfg := &Config{
-		Dev:            *dev,
-		AutoMigrate:    *autoMigrate,
-		Listen:         *listen,
-		RootKeyFile:    *rootKeyFile,
-		RootKeyFromEnv: getenv("HIKYO_ROOT_KEY") != "",
-		NewRootKeyFile: getenv("HIKYO_NEW_ROOT_KEY_FILE"),
+		Dev:               *dev,
+		AutoMigrate:       *autoMigrate,
+		Listen:            *listen,
+		OperationalListen: *operationalListen,
+		TLSCertFile:       *tlsCertFile,
+		TLSKeyFile:        *tlsKeyFile,
+		RootKeyFile:       *rootKeyFile,
+		RootKeyFromEnv:    getenv("HIKYO_ROOT_KEY") != "",
+		NewRootKeyFile:    getenv("HIKYO_NEW_ROOT_KEY_FILE"),
 	}
 	if cfg.RootKeyFile != "" && cfg.RootKeyFromEnv {
 		return nil, nil, fmt.Errorf("both --root-key-file and HIKYO_ROOT_KEY are set: configure exactly one root-key source")
@@ -206,12 +221,6 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 	}
 	if cfg.Listen == "" {
 		cfg.Listen = "127.0.0.1:8080"
-	}
-	if cfg.ExternalOrigin == "" {
-		cfg.ExternalOrigin = getenv("HIKYO_EXTERNAL_ORIGIN")
-	}
-	if cfg.ExternalOrigin == "" {
-		cfg.ExternalOrigin = "http://" + cfg.Listen
 	}
 	if subcommand == "server" || subcommand == "admin" {
 		var err error
@@ -285,13 +294,42 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 		}
 	}
 	if subcommand == "server" {
+		if cfg.OperationalListen == "" {
+			cfg.OperationalListen = getenv("HIKYO_OPERATIONAL_LISTEN")
+		}
+		if cfg.OperationalListen == "" {
+			cfg.OperationalListen = "127.0.0.1:8081"
+		}
+		if cfg.TLSCertFile == "" {
+			cfg.TLSCertFile = getenv("HIKYO_TLS_CERT_FILE")
+		}
+		if cfg.TLSKeyFile == "" {
+			cfg.TLSKeyFile = getenv("HIKYO_TLS_KEY_FILE")
+		}
+		if (cfg.TLSCertFile == "") != (cfg.TLSKeyFile == "") {
+			return nil, nil, fmt.Errorf("HIKYO_TLS_CERT_FILE and HIKYO_TLS_KEY_FILE must be configured together")
+		}
+		var tlsLeaf *x509.Certificate
+		if cfg.TLSCertFile != "" {
+			_, leaf, err := tlspolicy.LoadCertificate(cfg.TLSCertFile, cfg.TLSKeyFile, time.Now())
+			if err != nil {
+				return nil, nil, err
+			}
+			tlsLeaf = leaf
+		}
+		if cfg.OperationalListen == cfg.Listen {
+			return nil, nil, fmt.Errorf("operational listen %q must differ from public listen", cfg.OperationalListen)
+		}
 		trustedProxyCIDRs, err := parseTrustedProxyCIDRs(getenv("HIKYO_TRUSTED_PROXY_CIDRS"))
 		if err != nil {
 			return nil, nil, err
 		}
 		cfg.TrustedProxyCIDRs = trustedProxyCIDRs
-		if !isLoopbackListen(cfg.Listen) && len(cfg.TrustedProxyCIDRs) == 0 {
-			return nil, nil, fmt.Errorf("non-loopback plaintext listen %q requires HIKYO_TRUSTED_PROXY_CIDRS", cfg.Listen)
+		if !IsLoopbackListen(cfg.Listen) && cfg.TLSCertFile == "" && len(cfg.TrustedProxyCIDRs) == 0 {
+			return nil, nil, fmt.Errorf("non-loopback plaintext listen %q requires HIKYO_TRUSTED_PROXY_CIDRS or a TLS certificate pair", cfg.Listen)
+		}
+		if tlsLeaf != nil && time.Until(tlsLeaf.NotAfter) <= 14*24*time.Hour {
+			warnings = append(warnings, fmt.Sprintf("TLS certificate expires within 14 days at %s", tlsLeaf.NotAfter.UTC().Format(time.RFC3339)))
 		}
 		if raw := getenv("HIKYO_DIRECTORY_PROXY"); raw != "" {
 			u, err := url.Parse(raw)
@@ -309,6 +347,16 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 			return nil, nil, err
 		}
 		cfg.AdapterEgressPolicy = policy
+	}
+	if cfg.ExternalOrigin == "" {
+		cfg.ExternalOrigin = getenv("HIKYO_EXTERNAL_ORIGIN")
+	}
+	if cfg.ExternalOrigin == "" {
+		scheme := "http://"
+		if cfg.TLSCertFile != "" {
+			scheme = "https://"
+		}
+		cfg.ExternalOrigin = scheme + cfg.Listen
 	}
 
 	if err := loadBackupPolicy(cfg, getenv); err != nil {
@@ -408,7 +456,8 @@ func parseTrustedProxyCIDRs(raw string) ([]string, error) {
 	return cidrs, nil
 }
 
-func isLoopbackListen(listen string) bool {
+// IsLoopbackListen reports whether a configured TCP listen address is local-only.
+func IsLoopbackListen(listen string) bool {
 	host, _, err := net.SplitHostPort(listen)
 	if err != nil {
 		return false

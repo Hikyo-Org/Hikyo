@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/tlstest"
 )
 
 func env(pairs ...string) func(string) string {
@@ -231,6 +233,119 @@ func TestNonLoopbackListenRequiresTrustedProxyCIDRs(t *testing.T) {
 		env("HIKYO_TRUSTED_PROXY_CIDRS", "not-a-cidr"), nil)
 	if err == nil || !strings.Contains(err.Error(), "invalid CIDR") {
 		t.Fatalf("invalid trusted proxy CIDR must refuse, got %v", err)
+	}
+}
+
+func TestNativeTLSConfigIsFailClosedAndSetsHTTPSOrigin(t *testing.T) {
+	certPEM, keyPEM, _ := tlstest.MintServerCert(t, "localhost")
+	certPath, keyPath := tlstest.WritePair(t, t.TempDir(), certPEM, keyPEM)
+	base := []string{
+		"HIKYO_TLS_CERT_FILE", certPath,
+		"HIKYO_TLS_KEY_FILE", keyPath,
+	}
+	cfg, warnings, err := Load("server", []string{"--dev", "--listen", "0.0.0.0:8443"}, env(base...), environFrom(base...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("warnings = %v", warnings)
+	}
+	if cfg.ExternalOrigin != "https://0.0.0.0:8443" {
+		t.Fatalf("ExternalOrigin = %q, want https scheme", cfg.ExternalOrigin)
+	}
+	if cfg.OperationalListen != "127.0.0.1:8081" {
+		t.Fatalf("OperationalListen = %q", cfg.OperationalListen)
+	}
+
+	for _, missing := range []string{"cert", "key"} {
+		pairs := base
+		if missing == "cert" {
+			pairs = []string{"HIKYO_TLS_KEY_FILE", keyPath}
+		} else {
+			pairs = []string{"HIKYO_TLS_CERT_FILE", certPath}
+		}
+		if _, _, err := Load("server", []string{"--dev"}, env(pairs...), nil); err == nil || !strings.Contains(err.Error(), "configured together") {
+			t.Errorf("missing %s: err = %v", missing, err)
+		}
+	}
+}
+
+func TestNativeTLSRejectsInvalidPairsAndUnsafeKeyMode(t *testing.T) {
+	certPEM, keyPEM, _ := tlstest.MintServerCert(t, "localhost")
+	_, otherKey, _ := tlstest.MintServerCert(t, "localhost")
+	certPath, keyPath := tlstest.WritePair(t, t.TempDir(), certPEM, otherKey)
+	if _, _, err := Load("server", []string{"--dev"}, env("HIKYO_TLS_CERT_FILE", certPath, "HIKYO_TLS_KEY_FILE", keyPath), nil); err == nil {
+		t.Fatal("mismatched certificate and key must refuse")
+	}
+	certPath, keyPath = tlstest.WritePair(t, t.TempDir(), certPEM, keyPEM)
+	if err := os.Chmod(keyPath, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := Load("server", []string{"--dev"}, env("HIKYO_TLS_CERT_FILE", certPath, "HIKYO_TLS_KEY_FILE", keyPath), nil); err == nil || !strings.Contains(err.Error(), "0400 or 0600") {
+		t.Fatalf("unsafe key mode: err = %v", err)
+	}
+}
+
+func TestNativeTLSRejectsExpiredCertificateAndWarnsNearExpiry(t *testing.T) {
+	now := time.Now()
+	expiredCert, expiredKey, _ := tlstest.MintServerCertWithValidity(t, now.Add(-48*time.Hour), now.Add(-time.Hour), "localhost")
+	certPath, keyPath := tlstest.WritePair(t, t.TempDir(), expiredCert, expiredKey)
+	if _, _, err := Load("server", []string{"--dev"}, env("HIKYO_TLS_CERT_FILE", certPath, "HIKYO_TLS_KEY_FILE", keyPath), nil); err == nil || !strings.Contains(err.Error(), "expired") {
+		t.Fatalf("expired certificate: err = %v", err)
+	}
+
+	soonCert, soonKey, _ := tlstest.MintServerCertWithValidity(t, now.Add(-time.Hour), now.Add(7*24*time.Hour), "localhost")
+	certPath, keyPath = tlstest.WritePair(t, t.TempDir(), soonCert, soonKey)
+	_, warnings, err := Load("server", []string{"--dev"}, env("HIKYO_TLS_CERT_FILE", certPath, "HIKYO_TLS_KEY_FILE", keyPath), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "expires within 14 days") {
+		t.Fatalf("warnings = %v", warnings)
+	}
+
+	futureCert, futureKey, _ := tlstest.MintServerCertWithValidity(t, now.Add(time.Hour), now.Add(90*24*time.Hour), "localhost")
+	certPath, keyPath = tlstest.WritePair(t, t.TempDir(), futureCert, futureKey)
+	if _, _, err := Load("server", []string{"--dev"}, env("HIKYO_TLS_CERT_FILE", certPath, "HIKYO_TLS_KEY_FILE", keyPath), nil); err == nil || !strings.Contains(err.Error(), "not valid before") {
+		t.Fatalf("future-dated certificate: err = %v", err)
+	}
+}
+
+func TestListenTransportMatrix(t *testing.T) {
+	certPEM, keyPEM, _ := tlstest.MintServerCert(t, "localhost")
+	certPath, keyPath := tlstest.WritePair(t, t.TempDir(), certPEM, keyPEM)
+	for _, listen := range []struct {
+		name        string
+		address     string
+		nonLoopback bool
+	}{
+		{"loopback", "127.0.0.1:9443", false},
+		{"non-loopback", "0.0.0.0:9443", true},
+	} {
+		for _, transport := range []struct {
+			name  string
+			pairs []string
+		}{
+			{"neither", nil},
+			{"proxy", []string{"HIKYO_TRUSTED_PROXY_CIDRS", "10.42.0.0/16"}},
+			{"tls", []string{"HIKYO_TLS_CERT_FILE", certPath, "HIKYO_TLS_KEY_FILE", keyPath}},
+			{"both", []string{"HIKYO_TRUSTED_PROXY_CIDRS", "10.42.0.0/16", "HIKYO_TLS_CERT_FILE", certPath, "HIKYO_TLS_KEY_FILE", keyPath}},
+		} {
+			t.Run(listen.name+"/"+transport.name, func(t *testing.T) {
+				_, _, err := Load("server", []string{"--dev", "--listen", listen.address}, env(transport.pairs...), nil)
+				wantError := listen.nonLoopback && transport.name == "neither"
+				if (err != nil) != wantError {
+					t.Fatalf("Load error = %v, wantError %t", err, wantError)
+				}
+			})
+		}
+	}
+}
+
+func TestOperationalListenMustDifferFromPublic(t *testing.T) {
+	_, _, err := Load("server", []string{"--dev", "--listen", "127.0.0.1:9000", "--operational-listen", "127.0.0.1:9000"}, env(), nil)
+	if err == nil || !strings.Contains(err.Error(), "must differ") {
+		t.Fatalf("equal public and operational listeners: err = %v", err)
 	}
 }
 

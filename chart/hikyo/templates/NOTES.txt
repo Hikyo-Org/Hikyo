@@ -6,11 +6,12 @@ root:
   cosign verify --insecure-ignore-tlog --key release/trust/primary.pub \
     ghcr.io/hikyo-org/charts/hikyo@sha256:CHART_DIGEST
 
-Then name the database Secret and the reverse proxy's exact trusted CIDRs:
+Then name the database Secret and either a TLS Secret or the reverse proxy's
+exact trusted CIDRs:
 
   helm install {{ .Release.Name }} . \
     --set database.existingSecret=YOUR_SECRET \
-    --set 'network.trustedProxyCIDRs={10.42.0.0/16}'
+    --set tls.existingSecret=YOUR_TLS_SECRET
 
 {{- if .Values.operator.enabled }}
 Operator: enabled

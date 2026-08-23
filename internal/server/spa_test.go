@@ -197,25 +197,18 @@ func TestReservedPrefixesNeverFallBackToTheSPA(t *testing.T) {
 	}
 }
 
-// The probes themselves keep working: reserving the prefix must not shadow
-// the real handlers.
-func TestProbesStillAnswer(t *testing.T) {
+// Operational roots stay reserved on the public router, but their handlers
+// exist only on the separately bound operational router.
+func TestOperationalRoutesAreAbsentFromPublicRouter(t *testing.T) {
 	srv := uiServer(t)
-	for _, path := range []string{"/healthz", "/readyz"} {
+	for _, path := range []string{"/healthz", "/readyz", "/metrics"} {
 		resp, body := get(t, srv, http.MethodGet, path, htmlAccept)
-		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("%s: status = %d, want 200", path, resp.StatusCode)
+		if resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("%s: status = %d, want 404", path, resp.StatusCode)
 		}
 		if strings.Contains(body, "<html") {
 			t.Fatalf("%s: served the SPA", path)
 		}
-	}
-	resp, body := get(t, srv, http.MethodGet, "/metrics", htmlAccept)
-	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("/metrics: status = %d, want 503 without a health source", resp.StatusCode)
-	}
-	if strings.Contains(body, "<html") {
-		t.Fatal("/metrics served the SPA")
 	}
 }
 
@@ -302,6 +295,30 @@ func TestSecurityBaselineOnEveryResponse(t *testing.T) {
 	}
 }
 
+func TestHSTSIsExplicitlyEnabledOnlyForNativeNonLoopbackTLS(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		hsts bool
+		want string
+	}{
+		{"native non-loopback TLS", true, "max-age=31536000"},
+		{"plaintext proxy or loopback", false, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(server.NewPublic(nil, nil, testUI(), server.PublicOptions{HSTS: tc.hsts}))
+			t.Cleanup(srv.Close)
+			resp, err := http.Get(srv.URL + "/missing")
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			if got := resp.Header.Get("Strict-Transport-Security"); got != tc.want {
+				t.Fatalf("Strict-Transport-Security = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // Without the `ui` build tag the binary carries no assets. It must still be a
 // working API server — the frontend is an addition, never a prerequisite —
 // and every path answers in the contract's vocabulary.
@@ -316,8 +333,8 @@ func TestNoEmbeddedUIStillServesTheAPI(t *testing.T) {
 	if strings.Contains(body, "<html") {
 		t.Fatalf("a UI-less build served HTML:\n%s", body)
 	}
-	if resp, _ := get(t, srv, http.MethodGet, "/healthz", ""); resp.StatusCode != http.StatusOK {
-		t.Fatalf("healthz status = %d, want 200", resp.StatusCode)
+	if resp, _ := get(t, srv, http.MethodGet, "/healthz", ""); resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("public healthz status = %d, want 404", resp.StatusCode)
 	}
 }
 

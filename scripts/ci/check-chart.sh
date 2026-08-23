@@ -46,11 +46,14 @@ render_mode namespaced \
 	--set 'operator.designatedServiceAccounts.ns-a={sa-a,sa-shared}' \
 	--set 'operator.designatedServiceAccounts.ns-b={sa-b}'
 render_mode no-rollouts --set operator.triggerRollouts=false
+render_mode native-tls \
+	--set 'network.trustedProxyCIDRs={}' \
+	--set tls.existingSecret=fixture-tls
 
-python3 - "$tmp/cluster-wide.yaml" "$tmp/namespaced.yaml" "$tmp/no-rollouts.yaml" <<'PY' || exit 1
+python3 - "$tmp/cluster-wide.yaml" "$tmp/namespaced.yaml" "$tmp/no-rollouts.yaml" "$tmp/native-tls.yaml" <<'PY' || exit 1
 import sys, yaml
 
-cluster_wide, namespaced, no_rollouts = sys.argv[1], sys.argv[2], sys.argv[3]
+cluster_wide, namespaced, no_rollouts, native_tls = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 
 def load(path):
     with open(path) as f:
@@ -187,6 +190,53 @@ def assert_hardened(docs, mode):
     assert_env_allowlist(op, mode)
     return op
 
+def assert_server_network(docs, mode, tls):
+    server = None
+    deployment = None
+    for d in by(docs, "Deployment"):
+        for c in d["spec"]["template"]["spec"]["containers"]:
+            if c["name"] == "server":
+                deployment, server = d, c
+    if server is None:
+        fail(f"{mode}: no server container")
+    want_args = ["server", "--listen=0.0.0.0:8080", "--operational-listen=0.0.0.0:8081"]
+    if tls:
+        want_args += ["--tls-cert-file=/run/hikyo-tls/tls.crt", "--tls-key-file=/run/hikyo-tls/tls.key"]
+    if server.get("args") != want_args:
+        fail(f"{mode}: server args = {server.get('args')}, want {want_args}")
+    ports = {p["name"]: p["containerPort"] for p in server.get("ports", [])}
+    if ports != {"http": 8080, "ops": 8081}:
+        fail(f"{mode}: server ports = {ports}")
+    if server.get("livenessProbe", {}).get("httpGet") != {"path": "/healthz", "port": "ops"}:
+        fail(f"{mode}: liveness probe does not use operational /healthz")
+    if server.get("readinessProbe", {}).get("httpGet") != {"path": "/readyz", "port": "ops"}:
+        fail(f"{mode}: readiness probe does not use operational /readyz")
+    env_names = {e["name"] for e in server.get("env", [])}
+    if ("HIKYO_TRUSTED_PROXY_CIDRS" in env_names) == tls:
+        fail(f"{mode}: trusted-proxy env presence does not match transport mode: {env_names}")
+    if tls:
+        mounts = {m["name"]: m for m in server.get("volumeMounts", [])}
+        if mounts.get("tls", {}).get("mountPath") != "/run/hikyo-tls" or not mounts["tls"].get("readOnly"):
+            fail(f"{mode}: TLS mount = {mounts.get('tls')}")
+        volumes = {v["name"]: v for v in deployment["spec"]["template"]["spec"].get("volumes", [])}
+        secret = volumes.get("tls-source", {}).get("secret", {})
+        if secret.get("secretName") != "fixture-tls" or secret.get("defaultMode") != 0o400:
+            fail(f"{mode}: TLS volume = {secret}")
+        if volumes.get("tls", {}).get("emptyDir") != {}:
+            fail(f"{mode}: staged TLS emptyDir = {volumes.get('tls')}")
+        pod = deployment["spec"]["template"]["spec"]
+        if pod.get("securityContext", {}).get("fsGroup") != 65532:
+            fail(f"{mode}: TLS source is not readable through fsGroup")
+        init = {c["name"]: c for c in pod.get("initContainers", [])}.get("tls-stage", {})
+        if init.get("args") != ["__hikyo-stage-tls", "--once"]:
+            fail(f"{mode}: TLS staging init args = {init.get('args')}")
+        watcher = None
+        for c in pod.get("containers", []):
+            if c.get("name") == "tls-stage-watch":
+                watcher = c
+        if watcher is None or watcher.get("args") != ["__hikyo-stage-tls"]:
+            fail(f"{mode}: TLS staging watcher missing or misconfigured")
+
 # The operator container's env is an EXACT allowlist: only the operator's own
 # scoping/config vars, never database or listener config. Set equality catches
 # both an extra variable (leak) and a missing one (drift).
@@ -223,6 +273,7 @@ if by(cw, "Role", f"{OP}-stamp-root"):
     fail("cluster-wide: unexpected stamp-root Role (ClusterRole already covers Secrets)")
 assert_leader_election(cw, "cluster-wide")
 assert_hardened(cw, "cluster-wide")
+assert_server_network(cw, "cluster-wide", False)
 
 # ---- namespaced ----
 # The ClusterRole is cluster-scoped reads ONLY; each per-namespace Role carries the
@@ -268,17 +319,25 @@ cr = one(nr, "ClusterRole", OP)
 expect_rules(cr["rules"], CLUSTER_READS + CONVERGE, "no-rollouts ClusterRole")
 assert_leader_election(nr, "no-rollouts")
 assert_hardened(nr, "no-rollouts")
+assert_server_network(nr, "no-rollouts", False)
+
+tls_docs = load(native_tls)
+assert_hardened(tls_docs, "native-tls")
+assert_server_network(tls_docs, "native-tls", True)
 
 print("Chart check: every RBAC rule set, TokenRequest scope, stamp-root grant, hardening, args and the exact env allowlist asserted")
 PY
 
-# Refusal fixtures: the server listener is invalid without both a database Secret
-# and explicit trusted proxy CIDRs.
+# Refusal fixtures: the server listener is invalid without a database Secret and
+# without either a native TLS Secret or explicit trusted proxy CIDRs.
 if helm template fixture "$chart" --set database.existingSecret=fixture >/dev/null 2>&1; then
 	fail 'chart accepted a server listener without trusted proxy CIDRs'
 fi
 if helm template fixture "$chart" --set 'network.trustedProxyCIDRs={10.42.0.0/16}' >/dev/null 2>&1; then
 	fail 'chart accepted a server without database.existingSecret'
+fi
+if helm template fixture "$chart" --set tls.existingSecret=fixture-tls >/dev/null 2>&1; then
+	fail 'chart accepted native TLS without database.existingSecret'
 fi
 # A designated ServiceAccount for a namespace outside the watch set is refused.
 if helm template fixture "$chart" \

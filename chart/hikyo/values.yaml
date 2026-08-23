@@ -9,12 +9,24 @@ database:
   # Name of an existing Secret whose HIKYO_DB key contains the production DSN.
   existingSecret: ""
 
+tls:
+  # Optional Secret containing tls.crt and tls.key. Configure this or trusted
+  # proxy CIDRs. A rootless same-image helper stages and watches an owner-mode
+  # 0400 key because Kubernetes Secret volumes are root-owned.
+  existingSecret: ""
+  reloaderResources:
+    requests:
+      cpu: 5m
+      memory: 16Mi
+    limits:
+      cpu: 50m
+      memory: 32Mi
+
 service:
   port: 8080
 
 network:
-  # A non-loopback plaintext listener is only valid behind an explicitly named
-  # reverse-proxy boundary. Rendering fails while this list is empty.
+  # Required only for proxy mode. Native TLS may leave this empty.
   trustedProxyCIDRs: []
 
 releaseTrust:

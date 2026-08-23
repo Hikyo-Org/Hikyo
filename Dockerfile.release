@@ -4,5 +4,6 @@ ARG TARGETARCH
 COPY --chown=65532:65532 image-root/${TARGETARCH}/hikyo /usr/local/bin/hikyo
 
 USER 65532:65532
+EXPOSE 8080 8081
 ENTRYPOINT ["/usr/local/bin/hikyo"]
 CMD ["server"]

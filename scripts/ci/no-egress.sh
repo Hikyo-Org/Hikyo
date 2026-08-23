@@ -34,7 +34,9 @@ else
 fi
 
 port=47811
+ops_port=47812
 origin="http://127.0.0.1:${port}"
+ops_origin="http://127.0.0.1:${ops_port}"
 trace="$work/net.log"
 # The per-syscall trace goes to strace's own -o file; strace's diagnostics AND
 # the server's slog (which writes "boot complete" to stderr) share serverlog.
@@ -46,8 +48,8 @@ mkdir -p "$HIKYO_STATE_DIR"
 
 # Fail early if the port is already answering — otherwise a stray listener could
 # satisfy the health checks below while hikyo silently fails to bind.
-if curl -sf "${origin}/healthz" >/dev/null 2>&1; then
-	echo "no-egress: ${origin} already answering before boot — port in use"
+if curl -sf "${origin}/api/v1/meta" >/dev/null 2>&1 || curl -sf "${ops_origin}/healthz" >/dev/null 2>&1; then
+	echo "no-egress: public or operational port already answering before boot"
 	exit 1
 fi
 
@@ -59,7 +61,7 @@ fi
 # intentional: strace defers SIGTERM while tracing, whereas PTRACE_O_EXITKILL
 # guarantees that a killed tracer cannot leave the server behind.
 strace --kill-on-exit -f -e trace=connect,sendto,sendmsg -o "$trace" \
-	"$bin" server --dev --listen "127.0.0.1:${port}" >"$serverlog" 2>&1 &
+	"$bin" server --dev --listen "127.0.0.1:${port}" --operational-listen "127.0.0.1:${ops_port}" >"$serverlog" 2>&1 &
 child=$!
 
 # Boots AND serves with outbound unavailable (CI invariant 4): both liveness
@@ -67,14 +69,14 @@ child=$!
 # current). A 200/503 split would mean the process is up but cannot serve.
 ready=0
 for _ in $(seq 1 60); do
-	if curl -sf "${origin}/healthz" >/dev/null 2>&1 && curl -sf "${origin}/readyz" >/dev/null 2>&1; then
+	if curl -sf "${ops_origin}/healthz" >/dev/null 2>&1 && curl -sf "${ops_origin}/readyz" >/dev/null 2>&1; then
 		ready=1
 		break
 	fi
 	sleep 0.5
 done
 if [ "$ready" -ne 1 ]; then
-	echo "no-egress: server never became healthy AND ready at ${origin}"
+	echo "no-egress: server never became healthy AND ready at ${ops_origin}"
 	sed -n '1,120p' "$serverlog" >&2
 	exit 1
 fi
@@ -87,7 +89,7 @@ fi
 
 # Idle, so a background poller or lazy dialer would have to reach out here.
 sleep 3
-curl -sf "${origin}/readyz" >/dev/null 2>&1 || true
+curl -sf "${ops_origin}/readyz" >/dev/null 2>&1 || true
 
 kill -KILL "$child" 2>/dev/null || true
 wait "$child" 2>/dev/null || true
