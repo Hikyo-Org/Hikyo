@@ -68,6 +68,18 @@ func scimBindingsPath(resolved Resolved) (string, error) {
 	return api.PathPrefix + "/orgs/" + url.PathEscape(org) + "/scim-bindings", nil
 }
 
+func scimPositionals(flags commonFlags, want int, usage, verb string) ([]string, error) {
+	if len(flags.positionals) < want {
+		return nil, failf(ExitUsage, "usage: hikyo %s", usage)
+	}
+	if len(flags.positionals) > want {
+		extras := flags
+		extras.positionals = flags.positionals[want:]
+		return nil, extras.checkNoPositionals(verb)
+	}
+	return flags.positionals, nil
+}
+
 // ---------------------------------------------------------------------------
 // binding
 // ---------------------------------------------------------------------------
@@ -113,12 +125,15 @@ func runSCIMBinding(ctx context.Context, ios IO, args []string) error {
 	// `show` and `delete` take the binding id positionally, per the spellings.
 	binding := ""
 	if sub == "show" || sub == "delete" {
-		if len(flags.positionals) != 1 {
-			return failf(ExitUsage, "usage: hikyo scim binding %s <binding>", sub)
+		positionals, err := scimPositionals(flags, 1, "scim binding "+sub+" <binding>", "scim binding "+sub)
+		if err != nil {
+			return err
 		}
-		binding = flags.positionals[0]
-	} else if err := flags.checkNoPositionals("scim binding " + sub); err != nil {
-		return err
+		binding = positionals[0]
+	} else {
+		if _, err := scimPositionals(flags, 0, "", "scim binding "+sub); err != nil {
+			return err
+		}
 	}
 	if sub == "create" {
 		if provider == "" {
@@ -225,10 +240,11 @@ func runSCIMMapping(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(flags.positionals) != 1 {
-		return failf(ExitUsage, "usage: hikyo scim mapping %s <binding> ...", sub)
+	positionals, err := scimPositionals(flags, 1, "scim mapping "+sub+" <binding> ...", "scim mapping "+sub)
+	if err != nil {
+		return err
 	}
-	binding := flags.positionals[0]
+	binding := positionals[0]
 	switch {
 	case sub != "list" && group == "":
 		return failf(ExitUsage, "usage: hikyo scim mapping %s <binding> --group <idp-group-id> ...", sub)
@@ -344,16 +360,21 @@ func runSCIMCredential(ctx context.Context, ios IO, args []string) (returnErr er
 	if sub == "show" || sub == "revoke" {
 		wantPositionals = 2
 	}
-	if len(flags.positionals) != wantPositionals {
-		if wantPositionals == 2 {
-			return failf(ExitUsage, "usage: hikyo scim credential %s <binding> <credential-id>", sub)
-		}
+	if len(flags.positionals) == 0 {
 		return failf(ExitUsage, "usage: hikyo scim credential %s <binding> ...", sub)
 	}
-	binding := flags.positionals[0]
+	usage := "scim credential " + sub + " <binding> ..."
+	if wantPositionals == 2 {
+		usage = "scim credential " + sub + " <binding> <credential-id>"
+	}
+	positionals, err := scimPositionals(flags, wantPositionals, usage, "scim credential "+sub)
+	if err != nil {
+		return err
+	}
+	binding := positionals[0]
 	credential := ""
 	if wantPositionals == 2 {
-		credential = flags.positionals[1]
+		credential = positionals[1]
 	}
 
 	// Reserve the print-triad destination BEFORE the mint, so a credential is
@@ -460,10 +481,11 @@ func runSCIMDirectory(ctx context.Context, ios IO, args []string, kind string) e
 	if err != nil {
 		return err
 	}
-	if len(flags.positionals) != 1 {
-		return failf(ExitUsage, "usage: hikyo scim %s list <binding>", kind)
+	positionals, err := scimPositionals(flags, 1, "scim "+kind+" list <binding>", "scim "+kind+" list")
+	if err != nil {
+		return err
 	}
-	binding := flags.positionals[0]
+	binding := positionals[0]
 	client, _, resolved, err := authenticatedTarget(st, ios, flags)
 	if err != nil {
 		return err
