@@ -32,6 +32,7 @@ type (
 	Binding             = authn.Binding
 	FederationIssuer    = authn.FederationIssuer
 	NewFederationIssuer = authn.NewFederationIssuer
+	WorkloadPinState    = authn.WorkloadPinState
 )
 
 // BindingPredicate is the binding-specific half of federated validation:
@@ -203,6 +204,11 @@ func (a *TxAuthorizer) ReactivateBinding(ctx context.Context, id string, at time
 // PinGeneration reads the conditional cursor's pin component.
 func (a *TxAuthorizer) PinGeneration(ctx context.Context, p domain.PrincipalID, env domain.EnvID) (int64, error) {
 	return a.r.PinGeneration(ctx, p, env)
+}
+
+// WorkloadPinState reads the conditional reveal-history admission fact.
+func (a *TxAuthorizer) WorkloadPinState(ctx context.Context, p domain.PrincipalID, env domain.EnvID) (WorkloadPinState, error) {
+	return a.r.WorkloadPinState(ctx, p, env)
 }
 
 // SetPinGeneration advances it. #52 owns pin creation, reassignment and release.

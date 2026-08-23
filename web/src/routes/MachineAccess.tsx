@@ -565,10 +565,10 @@ export function MachineAccess() {
  *
  * It is a toggle with a ceremony both ways. Enabling states, at opt-in time,
  * what the machine-identities ADR requires it to state: a machine principal
- * holding reveal is a standing decryption capability, and a CI runner holding
- * it is that capability in the most-attacked box in the system. Withdrawing
- * states the other half: every machine reveal grant in the project goes inert
- * on the next fetch, and every machine cursor moves. The write is
+ * holding reveal is a standing decryption capability, while workload
+ * reveal-history is admitted only for an active non-current pin. Withdrawing
+ * states the other half: both disclosure atoms go inert on the next fetch,
+ * and every machine cursor moves. The write is
  * project-settings ∧ reveal at project depth, so it is MFA-mandatory; a
  * session short of that is told so by the server and the strip repeats it.
  */
@@ -619,8 +619,8 @@ function PolicyStrip({ project }: { project: ProjectRef }) {
             Machine secret delivery (per-project opt-in): {enabled ? 'on' : 'off'}.
           </strong>{' '}
           {enabled
-            ? 'Workload and automation principals in this project may hold reveal, and a credential holding it receives secret plaintext on fetch — a standing decryption capability.'
-            : 'Every workload delivery on this project is configuration and secret presence only, and the grant API refuses reveal on a machine principal until this is on.'}
+            ? 'Workload and automation principals may hold reveal; a workload may also hold reveal-history while pinned to a non-current revision. Either can deliver secret plaintext.'
+            : 'Every workload delivery is configuration and secret presence only; the grant API refuses both machine disclosure capabilities until this is on.'}
         </span>
         <button
           type="button"
@@ -681,13 +681,14 @@ function MachineRevealDialog({
         <>
           <p>
             A machine principal holding <strong>reveal</strong> is a standing decryption capability:
-            no second factor, no ceremony, every fetch delivers plaintext while the grant stands. A
-            CI runner holding it is that capability in the most-attacked box in the system.
+            no second factor, no ceremony, every current fetch delivers plaintext while the grant
+            stands. A CI runner holding it is that capability in the most-attacked box in the system.
           </p>
           <p>
-            Enabling admits <strong>reveal</strong> grants onto this project&apos;s workload and
-            automation principals; each grant still runs its own widening ceremony naming the
-            environments it reaches. Nothing is granted by this act alone.
+            Enabling admits <strong>reveal</strong> grants onto workload and automation principals.
+            It also admits <strong>reveal-history</strong> onto a workload only while that workload
+            has an active non-current pin. Each grant still runs its own widening ceremony. Nothing
+            is granted by this act alone.
           </p>
           <label className="ceremony__ack">
             <input
@@ -702,10 +703,10 @@ function MachineRevealDialog({
         </>
       ) : (
         <p>
-          Withdrawing makes every machine <strong>reveal</strong> grant in this project inert on the
-          next fetch and moves every machine cursor: workloads keep receiving configuration and
-          secret presence, and nothing else, until the opt-in is enabled again. The grant rows stay
-          where they are so the withdrawal is reversible by the same act.
+          Withdrawing makes every machine <strong>reveal</strong> and{' '}
+          <strong>reveal-history</strong> grant in this project inert on the next fetch and moves
+          every machine cursor. Workloads keep receiving configuration and secret presence only.
+          Grant rows stay where they are so the withdrawal is reversible by the same act.
         </p>
       )}
       {failure !== null ? (
@@ -1668,9 +1669,9 @@ function BindingDialog({
  * warning therefore names two numbers the operator cannot see anywhere else:
  * how many live credentials that is, and exactly which keys become reachable.
  *
- * Only `read` is offered, and that is the permission model rather than a
- * simplification: a workload principal's allowlist admits `read` and nothing
- * else, so a `reveal` control here would be refused every time it was pressed.
+ * Only `read` is offered in this setup journey. Conditional disclosure grants
+ * are separate operator acts: `reveal` needs the live project opt-in, while
+ * `reveal-history` additionally needs an active non-current workload pin.
  */
 function GrantDialog({
   project,

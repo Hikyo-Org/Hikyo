@@ -243,13 +243,11 @@ func IsCredentialLifetime(l CredentialLifetime) bool {
 // principals): the grant API refuses a capability outside its class's list.
 //
 // `reveal` and `reveal-history` are absent from the workload and automation
-// lists on purpose. The ADR admits them ONLY under the source-of-truth ADR's
-// explicit per-project operator opt-in (reveal) and only where a pin requires
-// it (reveal-history). Neither mechanism exists yet, so the list is the
-// fail-closed subset: a machine reveal grant is refused by name until #17/#58
-// ship the opt-in. Widening the list without the opt-in would hand every
-// automation credential a standing decryption capability, which is exactly
-// what the ADR says must be a deliberate per-project act.
+// lists on purpose. Both are conditionally admitted outside this unconditional
+// allowlist: `reveal` under the source-of-truth ADR's per-project operator
+// opt-in, and workload `reveal-history` only under that opt-in while an active
+// pin requires historical delivery. Keeping both conditions live avoids
+// turning either disclosure atom into a standing class capability.
 var machineAllowlists = map[PrincipalClass]map[Capability]bool{
 	ClassWorkload: {CapRead: true},
 	ClassAutomation: {
@@ -282,6 +280,13 @@ var machineRevealByOptIn = map[PrincipalClass]bool{
 // machine-reveal opt-in can admit `reveal` onto.
 func MachineMayHoldRevealByOptIn(c PrincipalClass) bool {
 	return machineRevealByOptIn[c]
+}
+
+// MachineMayHoldRevealHistoryByPin reports whether class c may hold
+// `reveal-history` while an active non-current pin requires it. Pins name a
+// workload principal, so the automation condition is currently unsatisfiable.
+func MachineMayHoldRevealHistoryByPin(c PrincipalClass) bool {
+	return c == ClassWorkload
 }
 
 // MachineClasses returns the closed machine class set, sorted.

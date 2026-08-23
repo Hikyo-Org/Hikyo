@@ -24,8 +24,10 @@ Record the returned stable ID. List its grants before minting a credential.
 ## Secret delivery: the machine-reveal opt-in
 
 A workload or automation principal may hold `reveal` only under the project's
-explicit machine-reveal opt-in. It is off by default, and while it is off every
-machine fetch in the project delivers configuration and secret presence only.
+explicit machine-reveal opt-in. A workload may also hold `reveal-history`, but
+only while an active pin routes that workload to a non-current revision. The
+opt-in is off by default; while it is off every machine fetch delivers
+configuration and secret presence only.
 
 ```bash
 hikyo project-settings machine-reveal get
@@ -33,11 +35,24 @@ hikyo project-settings machine-reveal set --enabled true
 hikyo access grant add --principal <mch_...> --capability reveal --env <env-id>
 ```
 
+After pinning a workload to a non-current revision, grant its historical
+delivery atom separately:
+
+```bash
+hikyo access grant add --principal <mch_...> --capability reveal-history --env <env-id>
+```
+
+The grant is refused without a live non-current pin. Releasing the pin leaves
+the row visible for audit and reversal, but makes it inert and moves the
+workload cursor. Automation principals cannot hold this atom because pins name
+workloads.
+
 Enabling needs `project-settings` and `reveal` at project scope and a
 second factor; it admits a standing decryption capability onto machine
 principals, which the command says before it writes. Withdrawing it
-(`--enabled false`) makes every machine `reveal` grant in the project inert on
-the next fetch and moves every machine cursor; grant rows are untouched.
+(`--enabled false`) makes every machine `reveal` and workload `reveal-history`
+grant in the project inert on the next fetch and moves every machine cursor;
+grant rows are untouched.
 
 ## Bearer credential
 

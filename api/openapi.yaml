@@ -8234,14 +8234,10 @@ paths:
       x-hikyo-class: tenant
       x-hikyo-operation: value.export-reveal
       x-hikyo-formula: [read@environment, reveal@environment]
-      # Human-session only, and the omission is a decision. A machine principal
-      # CAN export - `read` alone returns `config` plaintext and `secret`
-      # write-presence - but the route's declared formula is the revealing one,
-      # and no machine class in the permission ADR's allowlists may hold
-      # `reveal` today: machine `reveal` arrives through the source-of-truth
-      # ADR's explicit per-project operator opt-in, which is not modelled yet.
-      # Declaring an eligibility the registry cannot honour would be a lie on
-      # the wire; this joins when the opt-in lands.
+      # Human-session only on the current wire contract. Machine credentials
+      # receive secret material through delivery.fetch; workload
+      # reveal-history is therefore bound to its active non-current pin rather
+      # than exposed as an unpinned bulk-export route.
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       requestBody:

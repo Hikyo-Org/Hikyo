@@ -74,6 +74,24 @@ SELECT generation FROM pin_generations
 WHERE principal_id = sqlc.arg(principal_id) AND environment_id = sqlc.arg(environment_id);
 
 -- hikyo:authn-resolution
+-- name: WorkloadPinState :one
+SELECT pin.revision, pin.expires_at, latest.revision AS latest_revision
+FROM revision_pins AS pin
+JOIN snapshots AS latest
+  ON latest.org_id = pin.org_id
+ AND latest.project_id = pin.project_id
+ AND latest.environment_id = pin.environment_id
+ AND latest.revision = (
+      SELECT MAX(candidate.revision)
+      FROM snapshots AS candidate
+      WHERE candidate.org_id = pin.org_id
+        AND candidate.project_id = pin.project_id
+        AND candidate.environment_id = pin.environment_id
+ )
+WHERE pin.workload_principal_id = sqlc.arg(workload_principal_id)
+  AND pin.environment_id = sqlc.arg(environment_id);
+
+-- hikyo:authn-resolution
 -- name: SetPinGeneration :exec
 INSERT INTO pin_generations (principal_id, environment_id, generation)
 VALUES (sqlc.arg(principal_id), sqlc.arg(environment_id), sqlc.arg(generation))

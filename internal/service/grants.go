@@ -66,6 +66,9 @@ var (
 	// opt-in, never a default"). The grant API names the opt-in so the
 	// operator learns which act admits it, rather than a bare allowlist refusal.
 	ErrMachineRevealOptIn = fmt.Errorf("%w: service: reveal on a machine principal requires the project's machine-reveal opt-in", domain.ErrConflict)
+	// ErrMachineRevealHistoryPin refuses `reveal-history` on a workload unless
+	// an active pin routes a non-current revision to that workload.
+	ErrMachineRevealHistoryPin = fmt.Errorf("%w: service: reveal-history on a workload requires an active non-current revision pin", domain.ErrConflict)
 	// ErrMachineScope refuses a machine grant that is SHALLOWER than its
 	// class admits — a workload outside an explicit (project, environment),
 	// or automation above project depth. The allowlist bounds which
@@ -287,7 +290,7 @@ func (s *Grants) grantOneWithInvalidation(
 		return zero, nil, err
 	}
 
-	class, err := lockAndClassify(ctx, az, spec.Target, spec.Capability, spec.Scope)
+	class, err := lockAndClassify(ctx, az, spec.Target, spec.Capability, spec.Scope, s.now)
 	if err != nil {
 		return zero, nil, err
 	}
@@ -605,7 +608,7 @@ func hasOrigin(ctx context.Context, az *authz.TxAuthorizer, grantID string, o au
 // read no row and both insert. Resolving the class also proves the principal
 // exists: granting to a principal that is not there writes a row nothing can
 // ever evaluate.
-func lockAndClassify(ctx context.Context, az *authz.TxAuthorizer, target domain.PrincipalID, capability domain.Capability, scope domain.Scope) (domain.PrincipalClass, error) {
+func lockAndClassify(ctx context.Context, az *authz.TxAuthorizer, target domain.PrincipalID, capability domain.Capability, scope domain.Scope, now func() time.Time) (domain.PrincipalClass, error) {
 	if err := az.LockTargetPrincipal(ctx, target); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return "", ErrUnknownPrincipal
@@ -620,7 +623,7 @@ func lockAndClassify(ctx context.Context, az *authz.TxAuthorizer, target domain.
 		return "", err
 	}
 	if class == domain.ClassHuman {
-		if err := checkPrincipalClass(class, capability, false); err != nil {
+		if err := checkPrincipalClass(class, capability, false, false, scope.Env); err != nil {
 			return "", err
 		}
 		return class, nil
@@ -638,7 +641,22 @@ func lockAndClassify(ctx context.Context, az *authz.TxAuthorizer, target domain.
 		}
 		optIn = err == nil && st.Enabled
 	}
-	if err := checkPrincipalClass(class, capability, optIn); err != nil {
+	activeHistoricalPin := false
+	if capability == domain.CapRevealHistory && domain.MachineMayHoldRevealHistoryByPin(class) && optIn && scope.Env != "" {
+		state, err := az.WorkloadPinState(ctx, target, scope.Env)
+		switch {
+		case err == nil:
+			// Read the clock only after the target lock and pin query. A grant
+			// waiting on that lock must not retain a pre-expiry timestamp and
+			// admit a pin that expired while it waited.
+			activeHistoricalPin = now().Before(state.ExpiresAt) && state.Revision != state.LatestRevision
+		case errors.Is(err, domain.ErrNotFound):
+			// Absence is the expected closed state, not a storage failure.
+		default:
+			return "", err
+		}
+	}
+	if err := checkPrincipalClass(class, capability, optIn, activeHistoricalPin, scope.Env); err != nil {
 		return "", err
 	}
 	if err := checkMachineScope(class, scope); err != nil {
@@ -1261,7 +1279,7 @@ func checkGrantable(capability domain.Capability, at domain.Level) error {
 // only what its class's list admits, which is what makes "no machine principal
 // may hold manage-members, manage-projects, project-settings or any instance
 // capability" a refusal rather than a convention.
-func checkPrincipalClass(class domain.PrincipalClass, capability domain.Capability, machineRevealOptIn bool) error {
+func checkPrincipalClass(class domain.PrincipalClass, capability domain.Capability, machineRevealOptIn, activeHistoricalPin bool, env domain.EnvID) error {
 	if capability == domain.CapSCIMProvision {
 		// Machine-only AND system-created: the provisioning connection's own
 		// grant is written with its SCIM binding (#73) and retired with it.
@@ -1293,6 +1311,15 @@ func checkPrincipalClass(class domain.PrincipalClass, capability domain.Capabili
 	if capability == domain.CapReveal && domain.MachineMayHoldRevealByOptIn(class) {
 		if !machineRevealOptIn {
 			return fmt.Errorf("%w: class %q may hold %q only under the project's machine-reveal opt-in, which is off", ErrMachineRevealOptIn, class, capability)
+		}
+		return nil
+	}
+	if capability == domain.CapRevealHistory && domain.MachineMayHoldRevealHistoryByPin(class) {
+		if !machineRevealOptIn {
+			return fmt.Errorf("%w: class %q may hold %q only under the project's machine-reveal opt-in, which is off", ErrMachineRevealOptIn, class, capability)
+		}
+		if !activeHistoricalPin {
+			return fmt.Errorf("%w: class %q may hold %q at %s only while it is pinned to a non-current revision there", ErrMachineRevealHistoryPin, class, capability, env)
 		}
 		return nil
 	}
@@ -1414,6 +1441,7 @@ func renderScope(s domain.Scope) string {
 func (s *Grants) BreakGlassGrant(ctx context.Context, spec GrantSpec) (GrantResult, error) {
 	var out GrantResult
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		now := s.now()
 		level, err := spec.Scope.Level()
 		if err != nil {
 			return fmt.Errorf("%w: %s", domain.ErrInvalid, err)
@@ -1426,11 +1454,11 @@ func (s *Grants) BreakGlassGrant(ctx context.Context, spec GrantSpec) (GrantResu
 		// The machine allowlists are normative for every writer, including
 		// this one: break-glass exists to restore human administration, not to
 		// hand a CI runner an instance capability by the back door.
-		if _, err := lockAndClassify(ctx, az, spec.Target, spec.Capability, spec.Scope); err != nil {
+		if _, err := lockAndClassify(ctx, az, spec.Target, spec.Capability, spec.Scope, s.now); err != nil {
 			return err
 		}
 		out, err = writeGrantRow(ctx, az, spec,
-			authz.Origin{Kind: domain.OriginBreakGlass, Subject: breakGlassSubject}, s.now())
+			authz.Origin{Kind: domain.OriginBreakGlass, Subject: breakGlassSubject}, now)
 		if err != nil {
 			return err
 		}

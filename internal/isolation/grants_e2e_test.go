@@ -296,9 +296,10 @@ func runMachineAllowlist(t *testing.T, db *store.DB) {
 		// `reveal` is admitted onto a workload only under the source-of-truth
 		// ADR's per-project operator opt-in; the seeded project has it off, so
 		// the refusal names the opt-in (machine_reveal_e2e_test covers the on
-		// side). `reveal-history` stays off the workload allowlist outright.
+		// side). `reveal-history` uses the same opt-in before its pin-specific
+		// admission rule, so the off-state refusal has the same precedence.
 		{"workload_reveal", mchWork, domain.CapReveal, envScope(envA1), service.ErrMachineRevealOptIn},
-		{"workload_reveal_history", mchWork, domain.CapRevealHistory, envScope(envA1), service.ErrMachineCapability},
+		{"workload_reveal_history", mchWork, domain.CapRevealHistory, envScope(envA1), service.ErrMachineRevealOptIn},
 		{"workload_edit", mchWork, domain.CapEdit, prjScope(), service.ErrMachineCapability},
 		// The automation class holds edit/publish/definitions-edit; mch_a1 is
 		// backfilled to that class by migration 00010.

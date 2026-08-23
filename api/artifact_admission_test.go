@@ -54,6 +54,57 @@ func TestAuthorizationOperationArtifactEligibilityDerivesFromEmbeddedContract(t 
 	}
 }
 
+func TestWorkloadRevealHistoryWireSurfaceStaysPinBound(t *testing.T) {
+	loadOnce.Do(load)
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	// This is intentionally set equality over every machine-credential route.
+	// All routes except delivery are non-value-bearing for a read-only workload;
+	// delivery's post-release presence-only behavior is proved end-to-end in
+	// TestWorkloadRevealHistoryPinSQLite/Postgres.
+	wantMachine := map[string]string{
+		"exportDefinitions":       "non-value-bearing definitions",
+		"checkDefinitions":        "non-value-bearing definitions",
+		"createDefinitionsPlan":   "not reachable with workload read",
+		"getDefinitionsPlan":      "not reachable with workload read",
+		"applyDefinitionsPlan":    "not reachable with workload read",
+		"getDefinitionsSettings":  "non-value-bearing settings",
+		"getMachineReveal":        "non-value-bearing settings",
+		"fetchDelivery":           "pin-bound value delivery",
+		"reconcileOfflineRecords": "write-only disclosure records",
+		"publishPendingChanges":   "not reachable with workload read",
+		"getRevision":             "non-value-bearing revision metadata",
+	}
+	seen := make(map[string]bool, len(wantMachine))
+	for _, operation := range operations {
+		if !operation.AdmitsArtifact(ArtifactMachineCredential) {
+			continue
+		}
+		classification, expected := wantMachine[operation.ID]
+		if !expected {
+			t.Fatalf("unclassified machine-credential operation %s (%s %s)", operation.ID, operation.Method, operation.Path)
+		}
+		if classification == "" {
+			t.Fatalf("machine-credential operation %s has an empty workload disclosure classification", operation.ID)
+		}
+		seen[operation.ID] = true
+	}
+	for operation := range wantMachine {
+		if !seen[operation] {
+			t.Fatalf("classified workload operation %s no longer admits machine credentials", operation)
+		}
+	}
+
+	for _, operation := range operations {
+		if operation.ID == "rollbackRevision" || operation.ID == "createRevisionPin" || operation.ID == "exportValues" {
+			if operation.AdmitsArtifact(ArtifactMachineCredential) {
+				t.Fatalf("historical value-control operation %s admits machine credentials", operation.ID)
+			}
+		}
+	}
+}
+
 func TestCollectOperationsRejectsMissingOrEmptyArtifactEligibility(t *testing.T) {
 	const base = `
 openapi: 3.1.0

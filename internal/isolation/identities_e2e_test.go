@@ -95,26 +95,11 @@ const (
 	revealOnly  = domain.PrincipalID("usr_rvonly")
 )
 
-// seedMachineReveal writes a disclosure grant straight to the table.
-//
-// It has to bypass the grant API, and the reason is a real collision worth
-// stating rather than hiding: the permission model's machine allowlists
-// (#55, domain/permission.go) refuse `reveal` and `reveal-history` to a
-// machine principal BY NAME until the source-of-truth ADR's per-project
-// machine-reveal opt-in ships (#17/#58). So no API path can currently produce
-// a reveal-reaching service account — and the ADR's mint and widen formulas
-// are written against exactly that state.
-//
-// Rather than widen the allowlist (which would hand every automation
-// credential a standing decryption capability, the thing the ADR insists must
-// be a deliberate per-project act), the fixture seeds the row directly. The
-// gates under test read the grant table, so they see the same state the
-// opt-in will eventually produce through the API.
 // seedMachineReveal writes a disclosure grant onto a machine principal by raw
-// SQL AND turns the project's machine-reveal opt-in on: a machine `reveal`
-// exists only under that opt-in (source-of-truth ADR), and the delivery path
-// reads it live, so a fixture that seeded the grant alone would be seeding a
-// state the product cannot reach.
+// SQL and turns the project's machine-reveal opt-in on. Tests that exercise
+// the grant surface use Grants.Create; this helper is for mint/delivery tests
+// that need an already-established disclosure state without consuming the
+// widening ceremony they are independently testing.
 func seedMachineReveal(t *testing.T, db *store.DB, id string, p domain.PrincipalID, cap domain.Capability, env domain.EnvID) {
 	t.Helper()
 	execRaw(t, db, `UPDATE projects SET machine_reveal = TRUE WHERE id = 'prj_a1'`)
@@ -936,12 +921,9 @@ func runMachineGrantWidening(t *testing.T, db *store.DB) {
 		t.Fatalf("the refusal must name manage-identities: %v", err)
 	}
 
-	// The per-class split is exercised through the MINT gate rather than
-	// here, and the reason is worth recording: #55's machine allowlist
-	// refuses `reveal-history` to a workload principal BY NAME before this
-	// gate runs, so the grant API cannot currently reach the historical case
-	// at all. Both gates call the same Auth.RequireDisclosureAuthority, so
-	// the split is proven once — see runMintDisclosureGate.
+	// The historical half of this grant-widening rule is exercised through the
+	// real grant API in machine_reveal_history_e2e_test.go. The mint half stays
+	// pinned above because both call the same RequireDisclosureAuthority seam.
 
 	// NARROWING is never a widening: the revoke needs no disclosure right.
 	if err := g.Revoke(ctx, service.LocalPrincipal(identAdmin), service.GrantSpec{
