@@ -369,13 +369,19 @@ func (s *Auth) ApproveCLIReauth(ctx context.Context, actor Actor, state string) 
 			if effective <= 0 && (w.FactorClass != "webauthn" || !w.SingleDecision) {
 				return captureCLIReauthFailure(ctx, az, "approve", detail, "reauth_required", ErrReauthRequired)
 			}
+			kind, err := windowBindingKind(w)
+			if err != nil {
+				return captureCLIReauthFailure(ctx, az, "approve", detail, "reauth_required", ErrReauthUnitMismatch)
+			}
 			if !adapter {
 				// The browser ran the disclosure ceremony: a single-decision
 				// passkey window carries its ceremony's pinned (purpose,
 				// environment, key set) binding, which must equal the handoff's
 				// unit byte-exact; a sliding window is unbound by construction and
-				// is accepted as the environment-wide consent it is.
-				if w.BoundPurpose != "" || w.BoundEnvironmentSet != "" {
+				// is accepted as the environment-wide consent it is. An
+				// operation- or adapter-bound window is a different ceremony's grant
+				// and is refused here rather than relayed as unbound.
+				if kind != windowUnbound {
 					return captureCLIReauthFailure(ctx, az, "approve", detail, "reauth_required", ErrReauthUnitMismatch)
 				}
 				if w.SingleDecision {
@@ -387,7 +393,7 @@ func (s *Auth) ApproveCLIReauth(ctx context.Context, actor Actor, state string) 
 						return captureCLIReauthFailure(ctx, az, "approve", detail, "reauth_required", ErrReauthUnitMismatch)
 					}
 				}
-			} else if w.BoundPurpose != string(binding.purpose) || w.BoundOperation != string(binding.operation) || w.BoundEnvironmentSet != binding.environmentSet {
+			} else if kind != windowAdapterBound || w.BoundPurpose != string(binding.purpose) || w.BoundOperation != string(binding.operation) || w.BoundEnvironmentSet != binding.environmentSet {
 				return captureCLIReauthFailure(ctx, az, "approve", detail, "reauth_required", ErrReauthRequired)
 			}
 			if w.SingleDecision {

@@ -97,6 +97,43 @@ func (s *Auth) ConsumeAdapterReauthWindow(ctx context.Context, az *authz.TxAutho
 	return s.consumeReauthWindow(ctx, az, sessionID, binding, now)
 }
 
+// windowBinding is the consent shape a reauthentication window carries, derived
+// fail-closed from its four bound fields.
+type windowBinding uint8
+
+const (
+	// windowUnbound is the environment-wide window every #54 opener writes (TOTP,
+	// OIDC, sliding WebAuthn): no fields set, accepts any intent.
+	windowUnbound windowBinding = iota + 1
+	// windowOperationBound is the workspace step-up window: one operation over one
+	// key set, no purpose and no environment set.
+	windowOperationBound
+	// windowAdapterBound is the adapter ceremony window: a purpose, an operation
+	// and an environment set, no key set.
+	windowAdapterBound
+)
+
+// windowBindingKind classifies a window's consent shape from its four bound
+// fields and refuses any combination no opener writes. A window is UNBOUND (no
+// fields), OPERATION-BOUND (an operation, optionally over a key set) or
+// ADAPTER-BOUND (a purpose, an operation and an environment set). Every other
+// combination — a key set with no operation, a purpose with no environment set,
+// an adapter shape carrying a key set — is an impossible state and fails closed,
+// so a window that names only part of a consent is never read as the most
+// permissive UNBOUND grant.
+func windowBindingKind(w authz.ReauthWindow) (windowBinding, error) {
+	switch {
+	case w.BoundPurpose == "" && w.BoundOperation == "" && w.BoundEnvironmentSet == "" && w.BoundKeySet == "":
+		return windowUnbound, nil
+	case w.BoundOperation != "" && w.BoundPurpose == "" && w.BoundEnvironmentSet == "":
+		return windowOperationBound, nil
+	case w.BoundPurpose != "" && w.BoundOperation != "" && w.BoundEnvironmentSet != "" && w.BoundKeySet == "":
+		return windowAdapterBound, nil
+	default:
+		return 0, ErrReauthUnitMismatch
+	}
+}
+
 func (s *Auth) consumeReauthWindow(ctx context.Context, az *authz.TxAuthorizer, sessionID string,
 	binding reauthIntentBinding, now time.Time) error {
 	w, err := az.ReauthWindowFor(ctx, sessionID, binding.environmentID)
@@ -115,17 +152,24 @@ func (s *Auth) consumeReauthWindow(ctx context.Context, az *authz.TxAuthorizer, 
 	if w.CredentialEpoch != epoch || !now.Before(w.HardExpiresAt) || !now.Before(w.WindowExpiresAt) {
 		return ErrReauthWindowExpired
 	}
-	// The exact binding, consumed rather than merely stored. An unnamed
-	// operation ("" — every caller that has no operation-scoped consent to
-	// present) can never equal a bound one, so a bound window fails closed for
-	// it rather than being treated as unbound.
-	if w.BoundPurpose != "" || w.BoundEnvironmentSet != "" {
-		if w.BoundPurpose != string(binding.purpose) || string(binding.operation) != w.BoundOperation ||
-			w.BoundKeySet != binding.keySet || w.BoundEnvironmentSet != binding.environmentSet {
+	// The exact binding, consumed rather than merely stored, classified fail-closed
+	// so a window that names only part of a consent is refused rather than read as
+	// unbound. An UNBOUND window keeps the environment-wide semantics #54 designed
+	// and accepts any intent. An unnamed operation ("" — every caller with no
+	// operation-scoped consent to present) can never equal a bound one, so a bound
+	// window fails closed for it.
+	kind, err := windowBindingKind(w)
+	if err != nil {
+		return err
+	}
+	switch kind {
+	case windowOperationBound:
+		if string(binding.operation) != w.BoundOperation || w.BoundKeySet != binding.keySet {
 			return ErrReauthUnitMismatch
 		}
-	} else if w.BoundOperation != "" {
-		if string(binding.operation) != w.BoundOperation || w.BoundKeySet != binding.keySet {
+	case windowAdapterBound:
+		if w.BoundPurpose != string(binding.purpose) || string(binding.operation) != w.BoundOperation ||
+			w.BoundKeySet != binding.keySet || w.BoundEnvironmentSet != binding.environmentSet {
 			return ErrReauthUnitMismatch
 		}
 	}
