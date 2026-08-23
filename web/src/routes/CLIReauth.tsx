@@ -6,7 +6,7 @@ import {
   cliReauthCallbackURL,
   loadCLIReauthTransaction,
 } from '../api/cliReauth.ts';
-import { useAuthMethods, useTotpStatus } from '../api/account.ts';
+import { useSessionOIDCProvider, useTotpStatus } from '../api/account.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import {
   runAdapterPasskeyCeremony,
@@ -25,12 +25,7 @@ export function CLIReauth() {
   );
   const [totp, setTOTP] = useState('');
   const totpStatus = useTotpStatus();
-  const methods = useAuthMethods();
-  const assurance = auth.identity?.session.assurance;
-  const oidcSession = assurance?.method.startsWith('oidc:') === true;
-  const oidcProvider = methods.data?.providers.find(
-    (provider) => provider.kind === 'oidc' && provider.slug === assurance?.provider,
-  );
+  const oidcProvider = useSessionOIDCProvider();
   const transaction = useQuery({
     queryKey: ['cli-reauth', state] as const,
     queryFn: () => loadCLIReauthTransaction(state),
@@ -67,7 +62,7 @@ export function CLIReauth() {
         // window TOTP always opens (human-auth ADR: TOTP is a per-step gate,
         // not a per-operation one), never a per-key decision.
         for (const environment of handoff.environments) {
-          if (strategy === 'oidc' && !environment.requires_webauthn && oidcProvider !== undefined) {
+          if (strategy === 'oidc' && !environment.requires_webauthn && oidcProvider !== null) {
             await runOIDCCeremony(oidcProvider.slug, environment.environment_id);
           } else if (!environment.requires_webauthn && totp.trim() !== '') {
             await runTOTPCeremony(environment.environment_id, totp.trim());
@@ -107,7 +102,7 @@ export function CLIReauth() {
   const requiresTOTP = !disclosure && slidingEnvironments.length > 0;
   const offersTOTP = disclosure && slidingEnvironments.length > 0 && hasTotp;
   const offersOIDC =
-    disclosure && oidcSession && slidingEnvironments.length > 0 && oidcProvider !== undefined;
+    disclosure && slidingEnvironments.length > 0 && oidcProvider !== null;
 
   return (
     <main className="login">

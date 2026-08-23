@@ -15,7 +15,8 @@ const mocks = vi.hoisted(() => ({
   identity: null as null | {
     session: { assurance: { method: string; provider?: string } };
   },
-  providers: [] as Array<{ kind: 'oidc'; slug: string; display_name: string }>,
+  providerAvailable: false,
+  provider: { kind: 'oidc', slug: 'strict', display_name: 'Corporate IdP' },
 }));
 
 vi.mock('../api/values.ts', async (importActual) => {
@@ -32,7 +33,7 @@ vi.mock('../app/AuthProvider.tsx', () => ({
 }));
 
 vi.mock('../api/account.ts', () => ({
-  useAuthMethods: () => ({ data: { local_login_enabled: true, providers: mocks.providers } }),
+  useSessionOIDCProvider: () => (mocks.providerAvailable ? mocks.provider : null),
 }));
 
 vi.mock('../api/transport.tsx', () => ({
@@ -87,7 +88,7 @@ beforeEach(() => {
   mocks.runOIDCCeremony.mockReset();
   mocks.refreshSession.mockReset();
   mocks.identity = null;
-  mocks.providers = [];
+  mocks.providerAvailable = false;
 });
 
 describe('Ceremony task identity', () => {
@@ -124,7 +125,7 @@ describe('Ceremony task identity', () => {
 
   it('offers the current OIDC provider only when a reusable window is allowed', async () => {
     mocks.identity = { session: { assurance: { method: 'oidc:strict', provider: 'strict' } } };
-    mocks.providers = [{ kind: 'oidc', slug: 'strict', display_name: 'Corporate IdP' }];
+    mocks.providerAvailable = true;
     mocks.runOIDCCeremony.mockResolvedValue(undefined);
     mocks.refreshSession.mockResolvedValue(undefined);
     const container = document.createElement('div');
@@ -157,9 +158,39 @@ describe('Ceremony task identity', () => {
     await act(async () => root.unmount());
   });
 
+  it('keeps a removed OIDC provider passkey-only', async () => {
+    mocks.identity = { session: { assurance: { method: 'oidc:removed', provider: 'removed' } } };
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () =>
+      root.render(
+        <Ceremony
+          request={{
+            ...ceremonyRequest('production'),
+            window: {
+              protected: false,
+              effective_window_seconds: 300,
+              live: false,
+              single_decision: false,
+              can_reveal: false,
+              totp_offered: true,
+            },
+          }}
+          onAuthorised={vi.fn()}
+          onCancel={vi.fn()}
+        />,
+      ),
+    );
+
+    expect(container.textContent).not.toContain('Re-authenticate with');
+    expect(container.textContent).toContain('Use a passkey');
+    await act(async () => root.unmount());
+  });
+
   it('keeps a zero-window OIDC session passkey-only and explains why', async () => {
     mocks.identity = { session: { assurance: { method: 'oidc:strict', provider: 'strict' } } };
-    mocks.providers = [{ kind: 'oidc', slug: 'strict', display_name: 'Corporate IdP' }];
+    mocks.providerAvailable = true;
     const container = document.createElement('div');
     document.body.appendChild(container);
     const root = createRoot(container);
