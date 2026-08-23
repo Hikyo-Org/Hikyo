@@ -628,41 +628,70 @@ func (s *Auth) reauthTOTP(ctx context.Context, presented string, intent ReauthIn
 // principal the transaction actually authenticated — happens INSIDE the
 // operation's own transaction, so evidence and act commit together and a code
 // cannot be replayed against a second mint.
+type reauthEvidenceKind uint8
+
+const (
+	reauthEvidenceInvalid reauthEvidenceKind = iota
+	reauthEvidenceExempt
+	reauthEvidenceTOTP
+	reauthEvidencePassword
+)
+
 type ReauthEvidence struct {
 	// Principal is who the proof was verified FOR. The consuming transaction
 	// compares it against the principal IT authenticated, so a proof obtained
 	// on one session cannot be spent by another.
-	Principal domain.PrincipalID
-	// exempt marks local host authority: nothing to reauthenticate, nothing to
-	// consume.
-	exempt bool
-	// The TOTP row and step to CAS. A password proof has no step: a password is
-	// a long-lived secret and "single use" is not a property it can have — the
-	// factor is what carries replay resistance, and an account holding one must
-	// use it (VerifyReauthProof prefers TOTP whenever it is confirmed).
-	totpID     string
+	Principal  domain.PrincipalID
+	kind       reauthEvidenceKind
+	factorID   string
 	rowVersion int64
 	step       int64
-	hasTOTP    bool
+	epoch      int64
 }
 
 // ConsumeReauthEvidence spends the proof inside the caller's transaction. It
 // fails closed on a replayed TOTP step and on evidence belonging to a different
 // principal than the one this transaction authenticated.
 func (s *Auth) ConsumeReauthEvidence(ctx context.Context, az *authz.TxAuthorizer, ev ReauthEvidence, caller domain.PrincipalID) error {
-	if ev.exempt {
+	if ev.kind == reauthEvidenceExempt {
 		return nil
 	}
 	if ev.Principal != caller {
 		return domain.ErrUnauthenticated
 	}
-	if !ev.hasTOTP {
+	switch ev.kind {
+	case reauthEvidencePassword:
+		account, err := az.AccountByPrincipal(ctx, caller)
+		if err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				return domain.ErrUnauthenticated
+			}
+			return err
+		}
+		current, err := az.PasswordCredentialFor(ctx, account.ID)
+		if err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				return domain.ErrUnauthenticated
+			}
+			return err
+		}
+		epoch, err := az.CredentialEpoch(ctx)
+		if err != nil {
+			return err
+		}
+		if current.RowVersion != ev.rowVersion || current.CredentialEpoch != ev.epoch || ev.epoch != epoch {
+			return domain.ErrUnauthenticated
+		}
 		return nil
+	case reauthEvidenceTOTP:
+		// Continue below and atomically spend the verified step.
+	default:
+		return domain.ErrUnauthenticated
 	}
 	// CAS on the row whose seed was verified, so a code proved against a
 	// since-replaced factor cannot apply to its successor — and a code already
 	// spent cannot be spent again.
-	consumed, err := az.AdvanceTOTPStep(ctx, ev.totpID, ev.rowVersion, ev.step)
+	consumed, err := az.AdvanceTOTPStep(ctx, ev.factorID, ev.rowVersion, ev.step)
 	if err != nil {
 		return err
 	}
@@ -671,7 +700,7 @@ func (s *Auth) ConsumeReauthEvidence(ctx context.Context, az *authz.TxAuthorizer
 		// (the evidence carries no account id, so resolve it from the caller this
 		// transaction authenticated); a moved row stays the uniform refusal.
 		if account, aerr := az.AccountByPrincipal(ctx, caller); aerr == nil &&
-			s.totpStepConsumed(ctx, az, account.ID, ev.totpID, ev.step) {
+			s.totpStepConsumed(ctx, az, account.ID, ev.factorID, ev.step) {
 			return totpStepAlreadyUsed()
 		}
 		return domain.ErrUnauthenticated
@@ -694,7 +723,7 @@ func (s *Auth) ConsumeReauthEvidence(ctx context.Context, az *authz.TxAuthorizer
 // same exemption authorize() already makes for the MFA-mandatory rule.
 func (s *Auth) VerifyReauthProof(ctx context.Context, presented, proof string) (ReauthEvidence, error) {
 	if presented == "" {
-		return ReauthEvidence{exempt: true}, nil
+		return ReauthEvidence{kind: reauthEvidenceExempt}, nil
 	}
 	if proof == "" {
 		return ReauthEvidence{}, ErrReauthProofRequired
@@ -753,10 +782,12 @@ func (s *Auth) VerifyReauthProof(ctx context.Context, presented, proof string) (
 			s.recordFactorFailure(ctx, account.PrincipalID, account.ID)
 			return ReauthEvidence{}, domain.ErrUnauthenticated
 		}
-		out.hasTOTP, out.totpID, out.rowVersion, out.step = true, confirmed.ID, confirmed.RowVersion, step
+		out.kind, out.factorID, out.rowVersion, out.step = reauthEvidenceTOTP, confirmed.ID, confirmed.RowVersion, step
 	} else if !s.verifyPassword(ctx, account.ID, cred, proof) {
 		s.recordFactorFailure(ctx, account.PrincipalID, account.ID)
 		return ReauthEvidence{}, domain.ErrUnauthenticated
+	} else {
+		out.kind, out.rowVersion, out.epoch = reauthEvidencePassword, cred.RowVersion, cred.CredentialEpoch
 	}
 	s.Admission.RecordSuccess(account.ID)
 	return out, nil

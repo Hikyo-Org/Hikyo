@@ -240,6 +240,75 @@ func runSCIMMappingWidenAndNarrow(t *testing.T, db *store.DB) {
 	}
 }
 
+// TestSCIMMappingNarrowingWithoutAuthorityDeltaDoesNotAdvance proves the
+// conditional half of the release settlement policy. Narrowing can release an
+// origin without changing effective authority when another mapping still holds
+// every affected grant row; that must not kill the user's sessions.
+func TestSCIMMappingNarrowingWithoutAuthorityDeltaDoesNotAdvanceSQLite(t *testing.T) {
+	runSCIMMappingNarrowingWithoutAuthorityDeltaDoesNotAdvance(t, seededDB(t, openSQLite))
+}
+
+func TestSCIMMappingNarrowingWithoutAuthorityDeltaDoesNotAdvancePostgres(t *testing.T) {
+	runSCIMMappingNarrowingWithoutAuthorityDeltaDoesNotAdvance(t, seededDB(t, openPostgres))
+}
+
+func runSCIMMappingNarrowingWithoutAuthorityDeltaDoesNotAdvance(t *testing.T, db *store.DB) {
+	s := scimSvc(db)
+	ctx := t.Context()
+	bindingID, token := newSCIMBinding(t, db, "narrow-no-delta")
+	wire := service.SCIMCredentialActor(token, bindingID)
+
+	user, err := s.CreateUser(ctx, wire, orgA, bindingID, service.DesiredUser{
+		Active: true, UserName: "narrow-no-delta@example.test",
+		ExternalID: "ext-narrow-no-delta", SubjectRaw: "ext-narrow-no-delta",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	principal := principalOf(t, db, accountOf(t, db, user.ID))
+
+	var narrowed service.SCIMMappingSpec
+	for i, name := range []string{"Primary", "Overlap"} {
+		group, err := s.CreateGroup(ctx, wire, orgA, bindingID, service.DesiredGroup{
+			DisplayName: name, Members: []string{user.ID},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		spec := service.SCIMMappingSpec{
+			GroupID: group.ID, Template: domain.TemplatePublisher, ProjectID: string(prjA1),
+		}
+		if _, err := s.CreateMapping(ctx, service.LocalPrincipal(orgAdmin), orgA, bindingID, spec); err != nil {
+			t.Fatal(err)
+		}
+		if i == 0 {
+			narrowed = spec
+		}
+	}
+
+	generationBefore := queryInt(t, db,
+		`SELECT session_generation FROM principals WHERE id = '`+string(principal)+`'`)
+	narrowed.Template = domain.TemplateViewer
+	result, err := s.UpdateMapping(ctx, service.LocalPrincipal(orgAdmin), orgA, bindingID, narrowed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.OriginsReleased == 0 {
+		t.Fatal("narrowing must release the first mapping's no-longer-covered origins")
+	}
+	for _, capability := range []domain.Capability{domain.CapEdit, domain.CapPublish, domain.CapPin} {
+		if !held(t, db, principal, capability, domain.Scope{Org: orgA, Project: prjA1}) {
+			t.Fatalf("overlapping mapping must keep %s effective after narrowing", capability)
+		}
+	}
+	generationAfter := queryInt(t, db,
+		`SELECT session_generation FROM principals WHERE id = '`+string(principal)+`'`)
+	if generationAfter != generationBefore {
+		t.Fatalf("origin-only narrowing must not advance the session generation: %d -> %d",
+			generationBefore, generationAfter)
+	}
+}
+
 // TestSCIMLockoutAcrossEveryReleasePath is SC3.i: the lockout family across
 // EVERY trigger — deprovision, member removal, group delete, mapping delete and
 // binding delete — each converting, raising its attention state, emitting the
@@ -388,6 +457,38 @@ func runOneLockoutPath(
 	}
 	if got := auditCount(t, db, "scim.lockout_retention"); got <= entriesBefore {
 		t.Fatalf("%s: the retention must be audited on entry", name)
+	}
+	// The release event precedes attention entry. Binding deletion then clears
+	// that transient state through the audited exit path before removing the
+	// binding, so its sequence has the additional clear event.
+	rawSequence := queryStrings(t, db,
+		`SELECT type || ',' FROM audit_tenant_events WHERE type = 'scim.lockout_retention' OR `+
+			`(type IN ('grant.modified', 'grant.revoked') AND `+
+			`payload LIKE '%"target_principal":"`+string(principal)+`"%') OR `+
+			`(type IN ('scim.attention_entered', 'scim.attention_cleared') AND `+
+			`payload LIKE '%"state":"lockout_retention"%') ORDER BY seq`)
+	sequence := strings.Split(strings.TrimSuffix(rawSequence, ","), ",")
+	lastRelease, entered, cleared := -1, -1, -1
+	modified := false
+	for i, typ := range sequence {
+		switch typ {
+		case "scim.lockout_retention", "grant.modified", "grant.revoked":
+			lastRelease = i
+			modified = modified || typ == "grant.modified"
+		case "scim.attention_entered":
+			entered = i
+		case "scim.attention_cleared":
+			cleared = i
+		}
+	}
+	if !modified || entered <= lastRelease {
+		t.Fatalf("%s: release events must include grant.modified and precede attention entry: %v", name, sequence)
+	}
+	if name == "binding_deleted" && cleared <= entered {
+		t.Fatalf("%s: binding teardown must clear attention after entry: %v", name, sequence)
+	}
+	if name != "binding_deleted" && cleared >= 0 {
+		t.Fatalf("%s: live binding cleared lockout attention during release: %v", name, sequence)
 	}
 
 	// The CURE: the moment the org gains another holder, that same transaction

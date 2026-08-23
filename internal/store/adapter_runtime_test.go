@@ -155,6 +155,38 @@ func TestAdapterJournalPersistsOwnedMissingAndAuditFinding(t *testing.T) {
 	}
 }
 
+func TestAdapterJournalRefusesOwnedMissingCompletionAfterRelease(t *testing.T) {
+	db := adapterRuntimeDB(t)
+	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_kind,repository_id,destination_id,surface,effective_name,normalized_name,state,updated_at) VALUES ('led_released','org_adapter','prj_adapter','env_adapter','tgt_1','https://git.example','repository',0,42,'variable','MODE','MODE','released','2026-08-17T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	runtime := store.NewAdapterRuntime(db, func(context.Context, adapter.Job, adapter.Effect) error { return nil })
+	job, ok, err := runtime.ClaimDue(t.Context(), "worker_1", time.Now().UTC(), time.Now().UTC().Add(adapter.LeaseTime))
+	if err != nil || !ok {
+		t.Fatalf("ClaimDue() = %+v, %v, %v", job, ok, err)
+	}
+	effect := adapter.Effect{Surface: adapter.Variable, EffectiveName: "MODE", Disposition: adapter.Update, KeyID: "key_1"}
+	journal := runtime.Journal(job)
+	if err := journal.Prepare(t.Context(), effect, adapter.Released); err != nil {
+		t.Fatal(err)
+	}
+	err = journal.Finish(t.Context(), effect, adapter.Completion{Outcome: "failure", State: adapter.Owned, Missing: true, ProviderStatus: 404, Finding: "owned_missing"})
+	if !errors.Is(err, adapter.ErrSuperseded) {
+		t.Fatalf("Finish() error = %v, want ErrSuperseded", err)
+	}
+	var state string
+	var missing, outcomes int
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT state,missing FROM adapter_ledger WHERE id='led_released'`).Scan(&state, &missing); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM audit_tenant_events WHERE correlation_id='job_1' AND type='adapter.push_outcome'`).Scan(&outcomes); err != nil {
+		t.Fatal(err)
+	}
+	if state != "released" || missing != 0 || outcomes != 0 {
+		t.Fatalf("released row changed: state=%q missing=%d outcomes=%d", state, missing, outcomes)
+	}
+}
+
 func TestAdapterJournalPUTNotFoundEndsEffectBeforeFreshCreateRetry(t *testing.T) {
 	db := adapterRuntimeDB(t)
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_id,surface,effective_name,normalized_name,state,updated_at) VALUES ('led_variable','org_adapter','prj_adapter','env_adapter','tgt_1','https://git.example',42,'variable','LOG_LEVEL','LOG_LEVEL','owned','2026-08-17T00:00:00Z')`); err != nil {
@@ -675,7 +707,7 @@ func TestAdapterDeadCredentialScrubTerminatesAndEnumeratesOrphans(t *testing.T) 
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapter_outbox SET kind='scrub' WHERE id='job_1'`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_id,surface,effective_name,normalized_name,state,updated_at) VALUES ('led_1','org_adapter','prj_adapter','env_adapter','tgt_1','https://git.example',42,'secret','TOKEN','TOKEN','owned','2026-08-17T00:00:00Z')`); err != nil {
+	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_id,surface,effective_name,normalized_name,state,missing,updated_at) VALUES ('led_1','org_adapter','prj_adapter','env_adapter','tgt_1','https://git.example',42,'secret','TOKEN','TOKEN','owned',1,'2026-08-17T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
 	runtime := store.NewAdapterRuntime(db, nil)
@@ -698,11 +730,12 @@ func TestAdapterDeadCredentialScrubTerminatesAndEnumeratesOrphans(t *testing.T) 
 		t.Fatal(err)
 	}
 	var ledgerState string
-	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT state FROM adapter_ledger WHERE target_id='tgt_1'`).Scan(&ledgerState); err != nil {
+	var ledgerMissing int
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT state,missing FROM adapter_ledger WHERE target_id='tgt_1'`).Scan(&ledgerState, &ledgerMissing); err != nil {
 		t.Fatal(err)
 	}
-	if targetState != "tombstoned" || syncStatus != "failed" || failureNames != `["secret:TOKEN"]` || outcome != "failure" || payload != `{"orphaned":["secret:TOKEN"]}` || ledgerState != "released" {
-		t.Fatalf("target=%q status=%q failures=%s audit=%q %s ledger=%q", targetState, syncStatus, failureNames, outcome, payload, ledgerState)
+	if targetState != "tombstoned" || syncStatus != "failed" || failureNames != `["secret:TOKEN"]` || outcome != "failure" || payload != `{"orphaned":["secret:TOKEN"]}` || ledgerState != "released" || ledgerMissing != 0 {
+		t.Fatalf("target=%q status=%q failures=%s audit=%q %s ledger=%q missing=%d", targetState, syncStatus, failureNames, outcome, payload, ledgerState, ledgerMissing)
 	}
 }
 
