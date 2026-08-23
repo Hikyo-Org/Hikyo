@@ -216,6 +216,34 @@ type keyHandle struct {
 	key     []byte
 }
 
+// swapHandle owns one immutable derivation-key handle. Readers take one
+// atomic snapshot; adopt advances the live handle monotonically, so a late
+// callback from an older committed rotation cannot regress the process.
+type swapHandle struct {
+	redactor
+	current atomic.Pointer[keyHandle]
+}
+
+func (h *swapHandle) get() keyHandle {
+	current := h.current.Load()
+	if current == nil {
+		panic("crypto: uninitialized derivation key handle")
+	}
+	return *current
+}
+
+func (h *swapHandle) adopt(next keyHandle) bool {
+	for {
+		current := h.current.Load()
+		if current != nil && next.version <= current.version {
+			return false
+		}
+		if h.current.CompareAndSwap(current, &next) {
+			return true
+		}
+	}
+}
+
 // versionSet is the unwrapped key material for one tier-3 scope across every
 // still-openable version: the active version new writes seal under, plus every
 // retiring version whose ciphertext a reencrypt has not yet moved. It is built
@@ -259,18 +287,10 @@ type Keyring struct {
 	// immutable set.
 	instance atomic.Pointer[versionSet]
 
-	// tokenMu guards the root token key handle against `rotate-token-key`
-	// swapping it under a concurrent derivation. It is separate from mu (the
-	// DEK cache's lock) so a rotation's datastore write never holds the lock
-	// every value read needs.
-	tokenMu sync.Mutex
-	token   keyHandle
-
-	// scanningMu guards the scanning-fingerprint key handle against
-	// `rotate-scanning-key` swapping it under a concurrent fingerprint
-	// computation, exactly as tokenMu guards the token key.
-	scanningMu sync.Mutex
-	scanning   keyHandle
+	// token and scanning own the two replace-in-place derivation keys. Each
+	// reader sees one immutable handle; rotation adoption is monotonic.
+	token    swapHandle
+	scanning swapHandle
 
 	mu   sync.Mutex
 	deks map[string]*list.Element // scope → *list.Element holding *dekEntry
@@ -289,15 +309,15 @@ type Keyring struct {
 	// rootRotationPending records whether load saw more than one active master
 	// wrapper — the dual-wrapped transition state of an unfinished root
 	// rotation. Boot warns on it every start until finalize (encryption-model
-	// ADR § Rotation). Set once at load.
-	rootRotationPending bool
+	// ADR § Rotation). Initialized at load and cleared after finalize.
+	rootRotationPending atomic.Bool
 }
 
 // RootRotationPending reports whether this instance booted with a root rotation
 // half-done (the master dual-wrapped under two roots). Boot warns on it every
 // start until `rotate-root-key --finalize` — a rotation half-done must be
 // visible, not silent.
-func (k *Keyring) RootRotationPending() bool { return k.rootRotationPending }
+func (k *Keyring) RootRotationPending() bool { return k.rootRotationPending.Load() }
 
 // LockHierarchyRotation / UnlockHierarchyRotation serialize master and root
 // rotations process-wide (see hierarchyRotationMu). The caller holds the lock
@@ -355,7 +375,7 @@ func LoadKeyring(ctx context.Context, ks KeyStore, root []byte) (*Keyring, error
 	// More than one active wrapper is the dual-wrapped transition of an
 	// unfinished root rotation: bootable under either root, warned on every
 	// start until finalized.
-	k.rootRotationPending = len(wrappers) > 1
+	k.rootRotationPending.Store(len(wrappers) > 1)
 
 	master, err := k.unwrapMaster(root, wrappers)
 	if err != nil {
@@ -368,12 +388,16 @@ func LoadKeyring(ctx context.Context, ks KeyStore, root []byte) (*Keyring, error
 		return nil, err
 	}
 	k.instance.Store(instance)
-	if k.token, err = k.loadTier3(ctx, PurposeToken, "", ""); err != nil {
+	token, err := k.loadTier3(ctx, PurposeToken, "", "")
+	if err != nil {
 		return nil, err
 	}
-	if k.scanning, err = k.loadOrMintScanning(ctx); err != nil {
+	k.token.adopt(token)
+	scanning, err := k.loadOrMintScanning(ctx)
+	if err != nil {
 		return nil, err
 	}
+	k.scanning.adopt(scanning)
 	return k, nil
 }
 
@@ -474,8 +498,8 @@ func (k *Keyring) mintHierarchy(ctx context.Context, root []byte) error {
 		active: instance.version,
 		byVer:  map[uint32]keyHandle{instance.version: instance},
 	})
-	k.token = token
-	k.scanning = scanning
+	k.token.adopt(token)
+	k.scanning.adopt(scanning)
 	return nil
 }
 
@@ -511,6 +535,23 @@ func (k *Keyring) mintTier3At(p Purpose, orgID, projectID string, version uint32
 		return keyHandle{}, WrappedKey{}, err
 	}
 	return keyHandle{id: row.ID, version: row.Version, key: key}, row, nil
+}
+
+func (k *Keyring) prepareDerivationKeyRotation(p Purpose, live *swapHandle) (WrappedKey, func(), func(), error) {
+	next, row, err := k.mintTier3At(p, "", "", live.get().version+1)
+	if err != nil {
+		return WrappedKey{}, nil, nil, err
+	}
+	var finish sync.Once
+	adopt := func() {
+		finish.Do(func() {
+			if !live.adopt(next) {
+				Zero(next.key)
+			}
+		})
+	}
+	abort := func() { finish.Do(func() { Zero(next.key) }) }
+	return row, adopt, abort, nil
 }
 
 // tier3AAD is the one place the tier-3 row → AAD mapping lives: the token
@@ -773,7 +814,7 @@ func (k *Keyring) VerifyRootKeyRotation(ctx context.Context, primaryRoot []byte)
 // ClearRootRotationPending records that the pending root rotation has been
 // finalized in this process, so RootRotationPending stops reporting the
 // dual-wrapped state without waiting for a reboot.
-func (k *Keyring) ClearRootRotationPending() { k.rootRotationPending = false }
+func (k *Keyring) ClearRootRotationPending() { k.rootRotationPending.Store(false) }
 
 // PrepareMasterKeyRotation generates a new master key, re-wraps every openable
 // tier-3 key under it, and returns the new master row, the re-wrapped tier-3

@@ -16,9 +16,8 @@ import (
 // exactly what these surfaces exist to intercept.
 func TestRedactionSurfacesAgainstPlantedSecret(t *testing.T) {
 	planted := []byte("PLANTED-SECRET-0123456789abcdef01")
-	kr := &Keyring{
-		token: keyHandle{id: "token-root", version: 1, key: planted},
-	}
+	kr := &Keyring{}
+	kr.token.adopt(keyHandle{id: "token-root", version: 1, key: planted})
 	kr.master.Store(singleMaster(1, planted))
 	kr.instance.Store(&versionSet{active: 1, byVer: map[uint32]keyHandle{1: {id: "dek-instance", version: 1, key: planted}}})
 	dekSet := &versionSet{active: 1, byVer: map[uint32]keyHandle{1: {id: "dek", key: planted}}}
@@ -27,6 +26,7 @@ func TestRedactionSurfacesAgainstPlantedSecret(t *testing.T) {
 		"project sealer":  &ProjectSealer{kr: kr, orgID: "o", projectID: "p", deks: dekSet},
 		"instance sealer": &InstanceSealer{kr: kr},
 		"key handle":      keyHandle{id: "h", key: planted},
+		"swap handle":     &kr.token,
 		"version set":     dekSet,
 		"master set":      kr.master.Load(),
 		"dek entry":       dekEntry{scope: "s", set: dekSet},
