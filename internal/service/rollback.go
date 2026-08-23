@@ -41,13 +41,11 @@ func (s *Revisions) Restore(ctx context.Context, actor Actor, scope domain.Scope
 		owner domain.PrincipalID
 	}
 	var announced []announcement
-	stickySecret := map[string]bool{}
 	out := RestoreResult{Revision: revision}
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		out.Changes = nil
 		out.Preview = ImpactPreview{}
 		announced = nil
-		clear(stickySecret)
 		now := s.now()
 		caller, err := actor.resolve(ctx, az, now)
 		if err != nil {
@@ -237,14 +235,15 @@ func (s *Revisions) Restore(ctx context.Context, actor Actor, scope domain.Scope
 			if currentSet {
 				baseline = currentEntry.ID
 			}
+			secret := targetEntry.Classification == string(schema.Secret) ||
+				stickyValueSecrets[targetEntry.ValueEntryID] || stickyValueSecrets[currentEntry.ID] ||
+				key.Classification == string(schema.Secret)
 			if err := r.Pending().Stage(ctx, p, store.NewPendingChange{
 				ID: versionID, KeyID: key.ID, OwnerID: string(caller.Principal),
 				Operation: operation, Ciphertext: sealed,
 				StagedFromRevision: latest.Revision, StagedFromEntry: baseline,
 				CreatedAt: now, Source: store.PendingSourceRestore,
-				Secret: targetEntry.Classification == string(schema.Secret) ||
-					stickyValueSecrets[targetEntry.ValueEntryID] || stickyValueSecrets[currentEntry.ID] ||
-					key.Classification == string(schema.Secret),
+				Secret: secret,
 				MaterialSecret: operation == store.PendingSet &&
 					(targetEntry.Classification == string(schema.Secret) || stickyValueSecrets[targetEntry.ValueEntryID]),
 			}); err != nil {
@@ -267,9 +266,6 @@ func (s *Revisions) Restore(ctx context.Context, actor Actor, scope domain.Scope
 				Classification: key.Classification, Operation: string(operation),
 				StagedFromRevision: latest.Revision, CreatedAt: now,
 			})
-			stickySecret[versionID] = targetEntry.Classification == string(schema.Secret) ||
-				stickyValueSecrets[targetEntry.ValueEntryID] || stickyValueSecrets[currentEntry.ID] ||
-				key.Classification == string(schema.Secret)
 			announced = append(announced, announcement{keyID: key.ID, name: key.Name, owner: caller.Principal})
 		}
 		if len(out.Changes) > 0 {
@@ -277,7 +273,7 @@ func (s *Revisions) Restore(ctx context.Context, actor Actor, scope domain.Scope
 			for _, change := range out.Changes {
 				versionIDs = append(versionIDs, change.VersionID)
 			}
-			out.Preview, err = buildImpactPreview(ctx, r, p, sealer, s.Keyring, az, caller, scope, versionIDs, stickySecret)
+			out.Preview, err = buildImpactPreview(ctx, r, p, sealer, s.Keyring, az, caller, scope, versionIDs)
 			if err != nil {
 				return err
 			}

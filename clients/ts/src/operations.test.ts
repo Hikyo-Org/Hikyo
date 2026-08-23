@@ -70,6 +70,23 @@ test('an sdk function with no generated response, outside the known SCIM skips, 
   );
 });
 
+test('a KNOWN_RESPONSELESS entry that no longer matches an sdk operation fails loud', () => {
+  const input = sources();
+  assert.throws(
+    () =>
+      buildOperationsModule({
+        ...input,
+        // Drop one SCIM skip from the sdk exports so its KNOWN_RESPONSELESS entry
+        // matches nothing - the drift the reverse check must catch.
+        sdkSource: input.sdkSource.replace(
+          'export const scimBulk = <ThrowOnError',
+          'const scimBulk = <ThrowOnError',
+        ),
+      }),
+    /KNOWN_RESPONSELESS lists scimBulk/,
+  );
+});
+
 test('the committed operations.gen.ts is exactly what the generator emits now', () => {
   const committed = here('operations.gen.ts');
   assert.equal(committed, buildOperationsModule(sources()));

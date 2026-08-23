@@ -131,6 +131,127 @@ func TestDisclosurePreparationFailureMakesNoRequest(t *testing.T) {
 	}
 }
 
+func TestSCIMPositionalGrammar(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests.Add(1)
+	}))
+	defer server.Close()
+
+	for _, tc := range []struct {
+		name        string
+		args        []string
+		want        int
+		wantMessage string
+	}{
+		{
+			name: "binding accepts an interspersed output flag",
+			args: []string{"scim", "binding", "show", "-o", "json", "scb_1", "--instance", server.URL},
+			want: cli.ExitRefused,
+		},
+		{
+			name: "mapping accepts an interspersed output flag",
+			args: []string{"scim", "mapping", "list", "-o", "json", "scb_1", "--instance", server.URL},
+			want: cli.ExitRefused,
+		},
+		{
+			name: "credential accepts an interspersed output flag",
+			args: []string{"scim", "credential", "list", "-o", "json", "scb_1", "--instance", server.URL},
+			want: cli.ExitRefused,
+		},
+		{
+			name: "two-id credential accepts an interspersed output flag",
+			args: []string{"scim", "credential", "show", "scb_1", "-o", "json", "scc_1", "--instance", server.URL},
+			want: cli.ExitRefused,
+		},
+		{
+			name: "directory accepts an interspersed output flag",
+			args: []string{"scim", "user", "list", "-o", "json", "scb_1", "--instance", server.URL},
+			want: cli.ExitRefused,
+		},
+		{
+			name: "literal dash is a binding id",
+			args: []string{"scim", "binding", "show", "-", "--instance", server.URL},
+			want: cli.ExitRefused,
+		},
+		{
+			name:        "trailing positional is refused",
+			args:        []string{"scim", "binding", "show", "scb_1", "stray", "--instance", server.URL},
+			want:        cli.ExitUsage,
+			wantMessage: "usage: hikyo scim binding show takes no positional arguments, got: stray",
+		},
+		{
+			name:        "missing credential id is refused",
+			args:        []string{"scim", "credential", "show", "scb_1", "-o", "json", "--instance", server.URL},
+			want:        cli.ExitUsage,
+			wantMessage: "usage: hikyo scim credential show <binding> <credential-id>",
+		},
+		{
+			name:        "missing binding keeps its usage",
+			args:        []string{"scim", "credential", "show", "-o", "json", "--instance", server.URL},
+			want:        cli.ExitUsage,
+			wantMessage: "usage: hikyo scim credential show <binding> ...",
+		},
+		{
+			name:        "zero-arity binding rejects a positional",
+			args:        []string{"scim", "binding", "list", "stray", "--instance", server.URL},
+			want:        cli.ExitUsage,
+			wantMessage: "usage: hikyo scim binding list takes no positional arguments, got: stray",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requests.Store(0)
+			ios, _, stderr := testIO(t, nil)
+			if got := cli.Run(t.Context(), ios, tc.args); got != tc.want {
+				t.Fatalf("exit %d, want %d; stderr: %s", got, tc.want, stderr)
+			}
+			if tc.wantMessage != "" && !strings.Contains(stderr.String(), tc.wantMessage) {
+				t.Fatalf("stderr %q does not contain %q", stderr, tc.wantMessage)
+			}
+			if requests.Load() != 0 {
+				t.Fatalf("positional parsing made %d HTTP request(s), want none", requests.Load())
+			}
+		})
+	}
+}
+
+func TestResetCredentialPositionalGrammar(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests.Add(1)
+	}))
+	defer server.Close()
+
+	output := filepath.Join(t.TempDir(), "reset-authority")
+	for _, tc := range []struct {
+		name string
+		args []string
+		want int
+	}{
+		{
+			name: "principal may follow flags",
+			args: []string{"account", "reset-credential", "--output-file", output, "usr_1", "--instance", server.URL},
+			want: cli.ExitRefused,
+		},
+		{
+			name: "trailing positional is refused",
+			args: []string{"account", "reset-credential", "--output-file", output, "usr_1", "stray", "--instance", server.URL},
+			want: cli.ExitUsage,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requests.Store(0)
+			ios, _, stderr := testIO(t, nil)
+			if got := cli.Run(t.Context(), ios, tc.args); got != tc.want {
+				t.Fatalf("exit %d, want %d; stderr: %s", got, tc.want, stderr)
+			}
+			if requests.Load() != 0 {
+				t.Fatalf("positional parsing made %d HTTP request(s), want none", requests.Load())
+			}
+		})
+	}
+}
+
 // TestMintDeliveryAcceptedChannels is the positive side: each permitted
 // destination gets past preparation and fails later, on the network, which
 // is how we know the channel itself was accepted. `--dangerously-print` and
