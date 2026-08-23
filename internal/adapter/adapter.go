@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
 )
 
 const SentinelName = "MANAGED_BY_HIKYO"
@@ -72,6 +74,17 @@ type Target struct {
 
 type Access struct {
 	Credential string
+}
+
+// CredentialAAD binds an adapter credential ciphertext to one adapter row in
+// one project. Every seal and open site must build the AAD through this helper,
+// because AAD is bound at seal time: a drifted literal writes fine and only
+// fails on read.
+func CredentialAAD(orgID, projectID, adapterID string) crypto.ProjectFieldAAD {
+	return crypto.ProjectFieldAAD{
+		OrgID: orgID, ProjectID: projectID,
+		OwnerTable: "adapters", OwnerRowID: adapterID, FieldTag: "credential",
+	}
 }
 
 type ConnectionRequest struct {

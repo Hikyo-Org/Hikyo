@@ -7,6 +7,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
@@ -168,7 +169,7 @@ func (s *Reencrypt) ReencryptProject(ctx context.Context, actor Actor, orgID, pr
 	// Adapter credential ciphertext (live row + any pending route-move credential)
 	// binds the ADAPTER's id (row.owner) in its AAD, not the row id.
 	adapterAAD := func(row projectFieldRow) crypto.AAD {
-		return crypto.ProjectFieldAAD{OrgID: orgID, ProjectID: projectID, OwnerTable: "adapters", OwnerRowID: row.owner, FieldTag: "credential"}
+		return adapter.CredentialAAD(orgID, projectID, row.owner)
 	}
 	// The five project ciphertext tables, defined once and shared by the walk and
 	// the retire's dryness gate — a DEK version is retired only when zero
