@@ -193,7 +193,6 @@ func (r *HikyoSecretReconciler) scrub(ctx context.Context, cr *hikyov1.HikyoSecr
 	if existed && !metav1.IsControlledBy(existing, cr) {
 		r.setCond(cr, hikyov1.ConditionConflict, metav1.ConditionTrue, hikyov1.ReasonManagedSecretNotOwned,
 			fmt.Sprintf("Secret %q is not controlled by this CR; not scrubbing", cr.Spec.Target.Name))
-		cr.Status.Lifecycle = hikyov1.LifecycleRefused
 		return r.done(ctx, cr, r.resyncResult(cr), nil)
 	}
 
@@ -213,7 +212,6 @@ func (r *HikyoSecretReconciler) scrub(ctx context.Context, cr *hikyov1.HikyoSecr
 			return res, derr
 		}
 		r.setCond(cr, hikyov1.ConditionSynced, metav1.ConditionFalse, hikyov1.ReasonFetchFailed, err.Error())
-		cr.Status.Lifecycle = hikyov1.LifecycleRetained
 		return r.done(ctx, cr, ctrl.Result{}, err)
 	}
 
@@ -231,7 +229,6 @@ func (r *HikyoSecretReconciler) scrub(ctx context.Context, cr *hikyov1.HikyoSecr
 	cr.Status.Stamp = stamp
 	cr.Status.ManagedSecretUID = string(written.UID)
 	cr.Status.ManagedSecretResourceVersion = written.ResourceVersion
-	cr.Status.Lifecycle = hikyov1.LifecycleScrubbed
 
 	// Roll opted-in workloads into the scrubbed state. A patch FAILURE is handled
 	// exactly as on the delivery path (§ 0.5): surface Rollout=False and return

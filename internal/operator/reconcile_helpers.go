@@ -46,7 +46,6 @@ func (r *HikyoSecretReconciler) acquireCredential(
 		// fail loud rather than fetch without a credential.
 		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonSecretNotDesignated, "auth sets neither secretRef nor serviceAccountRef")
 		r.setCond(cr, hikyov1.ConditionDesignation, metav1.ConditionFalse, hikyov1.ReasonSecretNotDesignated, "auth sets neither credential ref")
-		cr.Status.Lifecycle = hikyov1.LifecycleRefused
 		res, err = r.done(ctx, cr, r.resyncResult(cr), nil)
 		return credential{}, res, true, err
 	}
@@ -118,6 +117,9 @@ func (r *HikyoSecretReconciler) acquireFederation(
 		return r.designationRefusal(ctx, cr, hikyov1.ReasonAudienceMissing,
 			fmt.Sprintf("HikyoInstance %q declares no audience; the ServiceAccount federation path requires one", inst.Name))
 	}
+	// Designation is valid before minting. Clear a refusal from an earlier
+	// reconcile so a transient TokenRequest failure summarizes as Retained.
+	r.clearDesignation(cr)
 	if r.TokenMinter == nil {
 		return credential{}, ctrl.Result{}, true, fmt.Errorf("operator: no token minter configured for the federation path")
 	}
@@ -126,11 +128,9 @@ func (r *HikyoSecretReconciler) acquireFederation(
 		// A failed TokenRequest is ADR case 2 — retain, backoff.
 		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonFetchFailed, "TokenRequest failed: %v", err)
 		r.setCond(cr, hikyov1.ConditionSynced, metav1.ConditionFalse, hikyov1.ReasonFetchFailed, err.Error())
-		cr.Status.Lifecycle = hikyov1.LifecycleRetained
 		res, derr := r.done(ctx, cr, ctrl.Result{}, err)
 		return credential{}, res, true, derr
 	}
-	r.clearDesignation(cr)
 	return credential{token: token, uid: string(sa.UID), resourceVersion: sa.ResourceVersion}, ctrl.Result{}, false, nil
 }
 
@@ -139,7 +139,6 @@ func (r *HikyoSecretReconciler) designationRefusal(
 ) (credential, ctrl.Result, bool, error) {
 	r.event(cr, corev1.EventTypeWarning, reason, "%s", msg)
 	r.setCond(cr, hikyov1.ConditionDesignation, metav1.ConditionFalse, reason, msg)
-	cr.Status.Lifecycle = hikyov1.LifecycleRefused
 	res, err := r.done(ctx, cr, r.resyncResult(cr), nil)
 	return credential{}, res, true, err
 }
@@ -293,22 +292,12 @@ func (r *HikyoSecretReconciler) event(cr *hikyov1.HikyoSecret, etype, reason, fo
 	}
 }
 
-// done finalizes the Ready summary, sets observedGeneration, and writes the
+// done finalizes the Ready and Lifecycle summaries, sets observedGeneration, and writes the
 // status subresource LAST. A status-write failure is JOINED with the reconcile
 // error rather than discarded — losing the condition/cursor write is itself a
 // fault that must surface (finding: fail-loud handling).
 func (r *HikyoSecretReconciler) done(ctx context.Context, cr *hikyov1.HikyoSecret, res ctrl.Result, err error) (ctrl.Result, error) {
-	// Clear a stale Unreconciled/NamespaceNotBound on every outcome except the
-	// RBAC-forbidden one (the only path that sets LifecycleUnreconciled) — otherwise
-	// a recovered CR keeps reporting an authority loss that no longer holds (§ 0.3).
-	// The two pre-credential exits that never touched a namespaced object (invalid
-	// resyncInterval, HikyoInstance NotFound) also clear here; that is accepted —
-	// they set Ready=False via FetchFailed regardless, and the next reconcile that
-	// reaches the forbidden read re-detects and re-asserts Unreconciled.
-	if cr.Status.Lifecycle != hikyov1.LifecycleUnreconciled {
-		meta.RemoveStatusCondition(&cr.Status.Conditions, hikyov1.ConditionUnreconciled)
-	}
-	r.setReady(cr)
+	r.setStatusSummaries(cr)
 	cr.Status.ObservedGeneration = cr.Generation
 	if uerr := r.Status().Update(ctx, cr); uerr != nil {
 		err = errors.Join(err, uerr)
@@ -316,46 +305,49 @@ func (r *HikyoSecretReconciler) done(ctx context.Context, cr *hikyov1.HikyoSecre
 	return res, err
 }
 
-// setReady computes the Ready summary: True only when Synced is True and no
-// blocking refusal (Designation=False, Conflict=True, Scrubbed=True,
-// Unreconciled=True, or a blocking Delivery refusal) is active. KeysMissing and
-// EnvFromSkip are informational and do not block Ready (delivery happened).
-func (r *HikyoSecretReconciler) setReady(cr *hikyov1.HikyoSecret) {
-	ready := meta.IsStatusConditionTrue(cr.Status.Conditions, hikyov1.ConditionSynced)
-	blockingReason := ""
-	for _, c := range cr.Status.Conditions {
-		switch c.Type {
-		case hikyov1.ConditionDesignation:
-			if c.Status == metav1.ConditionFalse {
-				ready, blockingReason = false, c.Reason
-			}
-		case hikyov1.ConditionConflict, hikyov1.ConditionScrubbed, hikyov1.ConditionUnreconciled:
-			// Unreconciled=True is an active RBAC authority loss (§ 0.3
-			// NamespaceNotBound): a previously synced CR must not report Ready while
-			// its namespace is unbound.
-			if c.Status == metav1.ConditionTrue {
-				ready, blockingReason = false, c.Reason
-			}
-		case hikyov1.ConditionDelivery:
-			if c.Status == metav1.ConditionFalse &&
-				(c.Reason == hikyov1.ReasonUndeliveredSecrets || c.Reason == hikyov1.ReasonLoaderControlUnacknowledged) {
-				ready, blockingReason = false, c.Reason
-			}
-		case hikyov1.ConditionSynced:
-			if c.Status == metav1.ConditionFalse {
-				ready, blockingReason = false, c.Reason
-			}
+// summarize derives both status summaries from their single source of truth:
+// conditions. Precedence is total so contradictory stale conditions still
+// resolve fail-closed and deterministically. KeysMissing and EnvFromSkip are
+// informational and do not block a successful sync.
+func summarize(conditions []metav1.Condition) (ready bool, reason string, lifecycle hikyov1.Lifecycle) {
+	if c := meta.FindStatusCondition(conditions, hikyov1.ConditionUnreconciled); c != nil && c.Status == metav1.ConditionTrue {
+		return false, c.Reason, hikyov1.LifecycleUnreconciled
+	}
+	if c := meta.FindStatusCondition(conditions, hikyov1.ConditionScrubbed); c != nil && c.Status == metav1.ConditionTrue {
+		return false, c.Reason, hikyov1.LifecycleScrubbed
+	}
+	if c := meta.FindStatusCondition(conditions, hikyov1.ConditionDesignation); c != nil && c.Status == metav1.ConditionFalse {
+		return false, c.Reason, hikyov1.LifecycleRefused
+	}
+	if c := meta.FindStatusCondition(conditions, hikyov1.ConditionConflict); c != nil && c.Status == metav1.ConditionTrue {
+		return false, c.Reason, hikyov1.LifecycleRefused
+	}
+	if c := meta.FindStatusCondition(conditions, hikyov1.ConditionDelivery); c != nil &&
+		c.Status == metav1.ConditionFalse &&
+		(c.Reason == hikyov1.ReasonUndeliveredSecrets || c.Reason == hikyov1.ReasonLoaderControlUnacknowledged) {
+		return false, c.Reason, hikyov1.LifecycleRefused
+	}
+	if c := meta.FindStatusCondition(conditions, hikyov1.ConditionSynced); c != nil {
+		switch c.Status {
+		case metav1.ConditionFalse:
+			return false, c.Reason, hikyov1.LifecycleRetained
+		case metav1.ConditionTrue:
+			return true, hikyov1.ReasonReconciled, hikyov1.LifecycleSynced
 		}
 	}
+	return false, hikyov1.ReasonBlocked, hikyov1.LifecycleRetained
+}
+
+// setStatusSummaries persists the Ready and Lifecycle values returned by summarize.
+func (r *HikyoSecretReconciler) setStatusSummaries(cr *hikyov1.HikyoSecret) {
+	ready, reason, lifecycle := summarize(cr.Status.Conditions)
+	cr.Status.Lifecycle = lifecycle
 	if ready {
 		r.setCond(cr, hikyov1.ConditionReady, metav1.ConditionTrue, hikyov1.ReasonReconciled, "managed Secret is synced")
 		return
 	}
-	if blockingReason == "" {
-		blockingReason = hikyov1.ReasonBlocked
-	}
 	r.setCond(cr, hikyov1.ConditionReady, metav1.ConditionFalse, hikyov1.ReasonBlocked,
-		fmt.Sprintf("not ready: %s", blockingReason))
+		fmt.Sprintf("not ready: %s", reason))
 }
 
 // validateResyncInterval parses spec.resyncInterval and refuses a non-positive
@@ -403,7 +395,6 @@ func (r *HikyoSecretReconciler) accessError(ctx context.Context, cr *hikyov1.Hik
 	msg := fmt.Sprintf("forbidden accessing %s (namespace not bound to operator authority): %v", what, err)
 	r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonNamespaceNotBound, "%s", msg)
 	r.setCond(cr, hikyov1.ConditionUnreconciled, metav1.ConditionTrue, hikyov1.ReasonNamespaceNotBound, msg)
-	cr.Status.Lifecycle = hikyov1.LifecycleUnreconciled
 	res, derr := r.done(ctx, cr, ctrl.Result{}, err)
 	return res, derr, true
 }
