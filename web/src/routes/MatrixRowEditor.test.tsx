@@ -1,0 +1,140 @@
+// @vitest-environment happy-dom
+import { act } from 'react';
+import { createRoot } from 'react-dom/client';
+import { MemoryRouter } from 'react-router';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { MatrixRowEditor, type MatrixEditorChange } from './MatrixRowEditor.tsx';
+
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+
+type MatrixRowEditorProps = Parameters<typeof MatrixRowEditor>[0];
+
+const environmentId = 'env_01989abc-def0-7123-8123-123456789abc';
+const environment: MatrixRowEditorProps['rows'][number]['environment'] = {
+  id: environmentId,
+  org_id: 'org_01989abc-def0-7123-8123-123456789abc',
+  project_id: 'prj_01989abc-def0-7123-8123-123456789abc',
+  name: 'development',
+  display_order: 0,
+  created_at: '2026-08-23T08:00:00Z',
+};
+const keyRecord: MatrixRowEditorProps['keyRecord'] = {
+  id: 'key_01989abc-def0-7123-8123-123456789abc',
+  org_id: environment.org_id,
+  project_id: environment.project_id,
+  name: 'LOG_LEVEL',
+  folder_path: '',
+  classification: 'config',
+  description: '',
+  deprecated: false,
+  deprecation_note: '',
+  declaration: { rule: { type: 'string', allow_empty: true } },
+  presence: {
+    required_in: { mode: 'none' },
+    forbidden_in: { mode: 'none' },
+  },
+  group_id: '',
+  created_at: '2026-08-23T08:00:00Z',
+};
+const rows: MatrixRowEditorProps['rows'] = [{
+  environmentId,
+  environment,
+  protected: false,
+  cell: {
+    key_id: keyRecord.id,
+    name: keyRecord.name,
+    classification: 'config',
+    set: true,
+    revealed: true,
+    value: 'published',
+  },
+  signal: undefined,
+  draftPreview: undefined,
+  problems: [],
+}];
+
+afterEach(() => document.body.replaceChildren());
+
+describe('MatrixRowEditor draft ownership', () => {
+  it('restores the initial value after type, clear, then keep', async () => {
+    const view = await renderEditor();
+
+    const textarea = view.container.querySelector<HTMLTextAreaElement>('textarea');
+    const clearButton = [...view.container.querySelectorAll('button')].find((candidate) =>
+      candidate.textContent?.startsWith('Clear '),
+    );
+    if (textarea === null || clearButton === undefined) {
+      throw new Error('row controls are missing');
+    }
+
+    await act(async () => typeInto(textarea, 'edited'));
+    await act(async () => clearButton.click());
+    await act(async () => clearButton.click());
+
+    const saveButton = view.container.querySelector<HTMLButtonElement>('button[type="submit"]');
+    expect(textarea.value).toBe('published');
+    expect(saveButton?.disabled).toBe(true);
+
+    await view.unmount();
+  });
+
+  it('submits a touched empty field as an explicit set', async () => {
+    const view = await renderEditor();
+
+    const textarea = view.container.querySelector<HTMLTextAreaElement>('textarea');
+    const saveButton = view.container.querySelector<HTMLButtonElement>('button[type="submit"]');
+    if (textarea === null || saveButton === null) {
+      throw new Error('row form controls are missing');
+    }
+
+    await act(async () => typeInto(textarea, ''));
+    await act(async () => saveButton.click());
+
+    expect(view.onApply).toHaveBeenCalledWith([
+      { environmentId, operation: 'set', value: '' },
+    ]);
+
+    await view.unmount();
+  });
+});
+
+async function renderEditor() {
+  const onApply = vi
+    .fn<(changes: readonly MatrixEditorChange[]) => Promise<void>>()
+    .mockResolvedValue(undefined);
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+
+  await act(async () => {
+    root.render(
+      <MemoryRouter>
+        <MatrixRowEditor
+          refData={{ org: 'org-a', project: 'project-a' }}
+          keyRecord={keyRecord}
+          environmentId={environmentId}
+          rows={rows}
+          busy={false}
+          mutationError={null}
+          onClose={vi.fn()}
+          onApply={onApply}
+          onCopy={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+  });
+
+  return {
+    container,
+    onApply,
+    unmount: async () => act(async () => root.unmount()),
+  };
+}
+
+function typeInto(textarea: HTMLTextAreaElement, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+  if (setter === undefined) throw new Error('HTMLTextAreaElement exposes no value setter');
+  setter.call(textarea, value);
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+}
