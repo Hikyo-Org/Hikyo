@@ -53,7 +53,7 @@ func TestAdapterUpdateTargetRoundTrip(t *testing.T) {
 			var stored store.AdapterTarget
 			var keyIDs []string
 			err = storetx.Read(t.Context(), db, func(ctx context.Context, repos store.ReadRepos, az *authz.TxAuthorizer) error {
-				proof, err := az.Authorize(ctx, authz.Identity{Principal: alice}, authz.OpAdapterInspect, scope)
+				proof, err := az.Authorize(ctx, authz.Identity{Principal: alice}, authz.OpAdapterConfigure, scope)
 				if err != nil {
 					return err
 				}
