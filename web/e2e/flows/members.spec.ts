@@ -3,8 +3,8 @@ import { zServiceAccountList } from '@hikyo/zod';
 import { z } from 'zod';
 
 import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
+import { browserApi } from '../fixtures/api.ts';
 import {
-  browserApi,
   readSeed,
   STORAGE_STATE,
 } from '../fixtures/instance.ts';

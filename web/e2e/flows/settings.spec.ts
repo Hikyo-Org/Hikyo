@@ -12,8 +12,8 @@ import { generatePath } from 'react-router';
 import { z } from 'zod';
 
 import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
+import { BrowserApiError, browserApi } from '../fixtures/api.ts';
 import {
-  browserApi,
   establishSession,
   installPasskeyAuthenticator,
   readSeed,
@@ -44,7 +44,7 @@ const seed = readSeed();
 const SETTINGS_SURFACES = surfacesForFlow('chrome-settings');
 
 function isBrowserApiStatus(error: unknown, status: number): boolean {
-  return error instanceof Error && error.message.includes(` answered ${status}:`);
+  return error instanceof BrowserApiError && error.status === status;
 }
 
 test.describe('organisation settings', () => {

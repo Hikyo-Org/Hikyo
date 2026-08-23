@@ -2,8 +2,11 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   zExportValuesRequest,
   zPendingDraftList,
+  zPublishResult,
   zPublishRequest,
   zRevisionPinList,
+  zRevisionPinReleaseResult,
+  zRevisionPinResult,
   zValueCell,
 } from '@hikyo/zod';
 
@@ -14,8 +17,7 @@ import {
   expectTouchTargets,
 } from '../fixtures/assertions.ts';
 import {
-  fixtureBrowserCall as api,
-  zFixtureIgnored as zAny,
+  browserApi as api,
   zFixtureRevisionList as zRevisions,
   zFixtureStaged as zStaged,
 } from '../fixtures/api.ts';
@@ -118,7 +120,9 @@ test.beforeAll(async ({ browser }) => {
     const repaired = await api(apiPage, 'PUT', `${DEV}/values/${seed.history.tightenedKey}`, zStaged, {
       value: '12',
     });
-    await api(apiPage, 'POST', `${DEV}/publish`, zAny, { version_ids: [repaired.version_id] });
+    await api(apiPage, 'POST', `${DEV}/publish`, zPublishResult, {
+      version_ids: [repaired.version_id],
+    });
   }
 
   const dev = await api(apiPage, 'GET', `${DEV}/revisions`, zRevisions);
@@ -168,10 +172,15 @@ test.beforeAll(async ({ browser }) => {
     new Date(pins.items[0].expires_at).getTime() - Date.now() < 31 * 24 * 60 * 60 * 1000;
   if (!canonical) {
     for (const pin of pins.items) {
-      await api(apiPage, 'DELETE', `${DEV}/pins/${pin.workload_principal_id}`, zAny);
+      await api(
+        apiPage,
+        'DELETE',
+        `${DEV}/pins/${pin.workload_principal_id}`,
+        zRevisionPinReleaseResult,
+      );
     }
     const expiry = new Date(Date.now() + (seed.history.pinExpiryDays * 24 + 12) * 60 * 60 * 1000);
-    await api(apiPage, 'POST', `${DEV}/pins`, zAny, {
+    await api(apiPage, 'POST', `${DEV}/pins`, zRevisionPinResult, {
       workload_principal_id: seed.history.pinnedWorkloadPrincipal,
       revision: current,
       expires_at: expiry.toISOString(),
@@ -523,7 +532,9 @@ test.describe('revision history', () => {
     const advanced = await api(page, 'PUT', `${DEV}/values/${seed.history.configKey}`, zStaged, {
       value: 'trace',
     });
-    await api(page, 'POST', `${DEV}/publish`, zAny, { version_ids: [advanced.version_id] });
+    await api(page, 'POST', `${DEV}/publish`, zPublishResult, {
+      version_ids: [advanced.version_id],
+    });
     await page.reload();
     const drawer = page.getByRole('complementary', { name: 'Revision history' });
     await expectNoFixtureSecret(drawer);
@@ -639,7 +650,9 @@ test.describe('revision history', () => {
       const reset = await api(page, 'PUT', `${DEV}/values/${seed.history.secretKey}`, zStaged, {
         value: liveSecret,
       });
-      await api(page, 'POST', `${DEV}/publish`, zAny, { version_ids: [reset.version_id] });
+      await api(page, 'POST', `${DEV}/publish`, zPublishResult, {
+        version_ids: [reset.version_id],
+      });
     } finally {
       await persistPasskey();
       await refreshSharedSession();
@@ -764,7 +777,9 @@ test.describe('revision history', () => {
       const advanced = await api(page, 'PUT', `${DEV}/values/${seed.history.configKey}`, zStaged, {
         value: 'current-after-pin-target',
       });
-      await api(page, 'POST', `${DEV}/publish`, zAny, { version_ids: [advanced.version_id] });
+      await api(page, 'POST', `${DEV}/publish`, zPublishResult, {
+        version_ids: [advanced.version_id],
+      });
       await page.reload();
       const revisions = await api(page, 'GET', `${DEV}/revisions`, zRevisions);
       const latest = revisions.items[0]?.revision;
@@ -844,7 +859,7 @@ test.describe('revision history', () => {
 
       // Restore canonical state for the remaining lifecycle test without
       // opening historical material.
-      await api(page, 'POST', `${DEV}/pins`, zAny, {
+      await api(page, 'POST', `${DEV}/pins`, zRevisionPinResult, {
         workload_principal_id: seed.history.pinnedWorkloadPrincipal,
         revision: latest,
         expires_at: new Date(Date.now() + (seed.history.pinExpiryDays * 24 + 12) * 60 * 60 * 1000).toISOString(),
