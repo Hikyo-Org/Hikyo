@@ -68,6 +68,15 @@ func machineState(t *testing.T, origin string) (*State, string) {
 	return st, stateDir
 }
 
+func composeCommonFlags(t *testing.T, operation AuthOperation) commonFlags {
+	t.Helper()
+	flags, err := commonFlagsForOperation(string(operation))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return flags
+}
+
 func TestOpenComposeStackNoConfig(t *testing.T) {
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
@@ -77,9 +86,9 @@ func TestOpenComposeStackNoConfig(t *testing.T) {
 
 	st, stateDir := machineState(t, server.URL)
 	ios, _, _ := composeIO(stateDir, t.TempDir(), "wl_token", nil)
-	stack, err := openComposeStack(st, ios, commonFlags{
-		Flags: Flags{Instance: "local", Org: "org_1", Project: "prj_1", Env: "env_1"}, operation: "run",
-	}, composeStackOptions{})
+	runFlags := composeCommonFlags(t, "run")
+	runFlags.Flags = Flags{Instance: "local", Org: "org_1", Project: "prj_1", Env: "env_1"}
+	stack, err := openComposeStack(st, ios, runFlags, composeStackOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +127,7 @@ func TestOpenComposeStackRuntimeDirUnresolved(t *testing.T) {
 	}
 	st, stateDir := machineState(t, server.URL)
 	ios, _, _ := composeIO(stateDir, projectDir, "wl_token", map[string]string{"HIKYO_COMPOSE_DOCKER": "/usr/bin/false"})
-	doctorFlags := commonFlags{operation: "compose doctor"}
+	doctorFlags := composeCommonFlags(t, "compose doctor")
 	stack, err := openComposeStack(st, ios, doctorFlags, composeStackOptions{requireConfig: true})
 	if err != nil {
 		t.Fatal(err)
@@ -133,7 +142,7 @@ func TestOpenComposeStackRuntimeDirUnresolved(t *testing.T) {
 	if !hasCode(findings, "runtime_dir_unresolved") {
 		t.Fatalf("doctor findings = %+v, want runtime_dir_unresolved", findings)
 	}
-	_, _, err = composeRenderCore(t.Context(), ios, st, commonFlags{operation: "compose render"}, "", false)
+	_, _, err = composeRenderCore(t.Context(), ios, st, composeCommonFlags(t, "compose render"), "", false)
 	if err == nil || !strings.Contains(err.Error(), "no runtime directory") {
 		t.Fatalf("render err=%v, want unresolved runtime refusal", err)
 	}
