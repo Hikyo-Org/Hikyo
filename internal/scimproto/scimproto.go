@@ -14,6 +14,7 @@
 package scimproto
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -749,15 +750,65 @@ const (
 	PathMemberValue
 )
 
-// ParsedPatch is one validated operation: the matrix cell it landed in, plus
-// whatever the cell needs.
+// PatchPayload is the closed set of decoded values carried by accepted PATCH
+// matrix cells. Keeping raw JSON out of ParsedPatch makes the parser the one
+// owner of operation-value decoding.
+type PatchPayload interface {
+	Kind() PathKind
+	patchPayload()
+}
+
+// PatchUserObjectPayload is a validated pathless Users merge.
+type PatchUserObjectPayload struct {
+	User User
+}
+
+// PatchGroupObjectPayload is a validated pathless Groups merge.
+type PatchGroupObjectPayload struct {
+	Group Group
+}
+
+// PatchPlainPayload is an ordinary attribute assignment or removal. Value is
+// nil only for a remove operation.
+type PatchPlainPayload struct {
+	Attribute string
+	Value     any
+}
+
+// PatchActivePayload is a normalized Users active assignment.
+type PatchActivePayload struct {
+	Active bool
+}
+
+// PatchMemberSetPayload is a validated Groups members assignment or clear.
+// Members is nil only for a remove operation.
+type PatchMemberSetPayload struct {
+	Members []Member
+}
+
+// PatchMemberRemovalPayload is the member ID named by a filtered remove.
+type PatchMemberRemovalPayload struct {
+	MemberID string
+}
+
+func (PatchUserObjectPayload) Kind() PathKind    { return PathNone }
+func (PatchGroupObjectPayload) Kind() PathKind   { return PathNone }
+func (PatchPlainPayload) Kind() PathKind         { return PathPlain }
+func (PatchActivePayload) Kind() PathKind        { return PathActive }
+func (PatchMemberSetPayload) Kind() PathKind     { return PathMembers }
+func (PatchMemberRemovalPayload) Kind() PathKind { return PathMemberValue }
+func (PatchUserObjectPayload) patchPayload()     {}
+func (PatchGroupObjectPayload) patchPayload()    {}
+func (PatchPlainPayload) patchPayload()          {}
+func (PatchActivePayload) patchPayload()         {}
+func (PatchMemberSetPayload) patchPayload()      {}
+func (PatchMemberRemovalPayload) patchPayload()  {}
+
+// ParsedPatch is one validated operation with the typed payload for its
+// accepted matrix cell.
 type ParsedPatch struct {
-	Op    string
-	Kind  PathKind
-	Attr  string
-	Value json.RawMessage
-	// MemberValue is the id named by `members[value eq "..."]`.
-	MemberValue string
+	Op      string
+	Payload PatchPayload
 }
 
 // matrixCell is one accepted cell of §8's operation x path table.
@@ -798,10 +849,10 @@ func isRequiredAttribute(attr string) bool {
 
 // ParsePatch decodes and validates a whole PATCH request against the matrix.
 //
-// It validates EVERYTHING before returning, because a PATCH is atomic: any
-// invalid operation fails the whole request with nothing committed. Validating
-// as you apply would leave the first half of a request applied when the second
-// half is refused.
+// It validates every operation's matrix cell and value payload before
+// returning, because a PATCH is atomic: any invalid operation fails the whole
+// request with nothing committed. Resource-to-command conversion may impose
+// additional resource rules, and also completes before any command is applied.
 func ParsePatch(raw []byte, res Resource) ([]ParsedPatch, *Error) {
 	if len(raw) > bodyBound {
 		return nil, ErrBodyTooLarge
@@ -849,52 +900,84 @@ func parseOne(op PatchOp, res Resource) (ParsedPatch, *Error) {
 	if verb != "remove" && len(op.Value) == 0 {
 		return ParsedPatch{}, bad(TypeInvalidValue, "The operation %q requires a value.", verb)
 	}
-	// The value's SHAPE is part of the cell, not a later concern. Checking only
-	// presence lets `active: null`, a scalar where an object belongs and a
-	// non-array `members` through the matrix and into the fold, where they
-	// become a silent no-op instead of the mandated `invalidValue`.
-	if verb != "remove" {
-		if e := checkValueShape(res, kind, op.Value); e != nil {
-			return ParsedPatch{}, e
-		}
+	payload, e := decodePatchPayload(verb, res, kind, attr, memberValue, op.Value)
+	if e != nil {
+		return ParsedPatch{}, e
 	}
-	return ParsedPatch{Op: verb, Kind: kind, Attr: attr, Value: op.Value, MemberValue: memberValue}, nil
+	return ParsedPatch{Op: verb, Payload: payload}, nil
 }
 
-// checkValueShape validates the value against the column it landed in.
-func checkValueShape(res Resource, kind PathKind, raw json.RawMessage) *Error {
-	var decoded any
-	if err := json.Unmarshal(raw, &decoded); err != nil {
-		return bad(TypeInvalidValue, "The operation value is not valid JSON.")
+// decodePatchPayload decodes each operation value exactly once, into the
+// semantic payload owned by its matrix column.
+func decodePatchPayload(verb string, res Resource, kind PathKind, attr, memberValue string, raw json.RawMessage) (PatchPayload, *Error) {
+	if verb == "remove" {
+		switch kind {
+		case PathPlain:
+			return PatchPlainPayload{Attribute: attr}, nil
+		case PathMembers:
+			return PatchMemberSetPayload{}, nil
+		case PathMemberValue:
+			return PatchMemberRemovalPayload{MemberID: memberValue}, nil
+		}
 	}
+
 	switch kind {
 	case PathNone:
-		values, ok := decoded.(map[string]any)
-		if !ok {
-			return bad(TypeInvalidValue, "A pathless operation's value must be an object.")
+		trimmed := bytes.TrimSpace(raw)
+		if len(trimmed) == 0 || trimmed[0] != '{' {
+			return nil, bad(TypeInvalidValue, "A pathless operation's value must be an object.")
 		}
 		if res == ResourceGroup {
-			for attribute := range values {
+			group, e := DecodeGroup(raw)
+			if e != nil {
+				return nil, e
+			}
+			for attribute := range group.Extra {
 				if !isGroupPatchAttribute(attribute) {
-					return bad(TypeInvalidPath,
+					return nil, bad(TypeInvalidPath,
 						"The pathless Group operation contains unsupported attribute %q.", attribute)
 				}
 			}
+			if e := CheckMembers(group.Members); e != nil {
+				return nil, e
+			}
+			return PatchGroupObjectPayload{Group: group}, nil
 		}
+		user, e := DecodeUser(raw)
+		if e != nil {
+			return nil, e
+		}
+		return PatchUserObjectPayload{User: user}, nil
 	case PathActive:
-		if _, e := NormalizeActive(decoded); e != nil {
-			return e
+		var value any
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return nil, bad(TypeInvalidValue, "The operation value is not valid JSON.")
 		}
+		active, e := NormalizeActive(value)
+		if e != nil {
+			return nil, e
+		}
+		return PatchActivePayload{Active: active}, nil
 	case PathMembers:
-		if _, ok := decoded.([]any); !ok {
-			return bad(TypeInvalidValue, "The members value must be an array of references.")
+		var members []Member
+		if err := json.Unmarshal(raw, &members); err != nil || members == nil {
+			return nil, bad(TypeInvalidValue, "The members value must be an array of references.")
 		}
+		if e := CheckMembers(members); e != nil {
+			return nil, e
+		}
+		return PatchMemberSetPayload{Members: members}, nil
 	case PathPlain:
-		if decoded == nil {
-			return bad(TypeInvalidValue, "A null value is not an assignment; use remove.")
+		var value any
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return nil, bad(TypeInvalidValue, "The operation value is not valid JSON.")
 		}
+		if value == nil {
+			return nil, bad(TypeInvalidValue, "A null value is not an assignment; use remove.")
+		}
+		return PatchPlainPayload{Attribute: attr, Value: value}, nil
 	}
-	return nil
+	return nil, bad(TypeInvalidPath, "The PATCH operation did not land in a supported path kind.")
 }
 
 // classifyPath maps a raw path onto a matrix column. The matrix is PER
