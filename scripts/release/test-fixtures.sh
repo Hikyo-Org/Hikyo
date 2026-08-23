@@ -185,8 +185,6 @@ jq -n --arg commit "$candidate_commit" '{
 	})
 }' >"$bundle_dir/binary-provenance.json"
 printf '{"spdxVersion":"SPDX-2.3"}\n' >"$bundle_dir/hikyo-source.spdx.json"
-printf 'sha256:%064d\n' 1 >"$bundle_dir/image-index.digest"
-printf 'sha256:%064d\n' 2 >"$bundle_dir/chart-index.digest"
 printf '#!/bin/sh\nprintf "fixture installer\\n"\n' >"$bundle_dir/install.sh"
 printf '{"commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","key_id":"primary-1","public_key":"primary-1.pub","sequence":1,"version":"0.1.0"}\n' \
 	>"$bundle_dir/release-candidate.json"
@@ -196,56 +194,15 @@ printf 'image:\n  repository: ghcr.io/hikyo-org/hikyo\n  digest: sha256:%064d\n'
 	>"$fixture_dir/chart/hikyo/values.yaml"
 tar -czf "$bundle_dir/hikyo-0.1.0.tgz" -C "$fixture_dir/chart" hikyo
 
-binary_sha=$(sha256_file "$bundle_dir/hikyo_Linux_arm64.tar.gz")
-binary_provenance_sha=$(sha256_file "$bundle_dir/binary-provenance.json")
-sbom_sha=$(sha256_file "$bundle_dir/hikyo-source.spdx.json")
-image_file_sha=$(sha256_file "$bundle_dir/image-index.digest")
-image_digest=$(tr -d '\n' <"$bundle_dir/image-index.digest")
-chart_file_sha=$(sha256_file "$bundle_dir/hikyo-0.1.0.tgz")
-chart_digest_file_sha=$(sha256_file "$bundle_dir/chart-index.digest")
-chart_digest=$(tr -d '\n' <"$bundle_dir/chart-index.digest")
-installer_sha=$(sha256_file "$bundle_dir/install.sh")
-candidate_sha=$(sha256_file "$bundle_dir/release-candidate.json")
+image_digest=sha256:1111111111111111111111111111111111111111111111111111111111111111
+chart_digest=sha256:2222222222222222222222222222222222222222222222222222222222222222
 jq -n --arg digest "$image_digest" '{critical:{identity:{"docker-reference":"ghcr.io/hikyo-org/hikyo"},image:{"docker-manifest-digest":$digest},type:"cosign container image signature"},optional:null}' \
 	>"$bundle_dir/image-index.oci-payload.json"
 jq -n --arg digest "$chart_digest" '{critical:{identity:{"docker-reference":"ghcr.io/hikyo-org/charts/hikyo"},image:{"docker-manifest-digest":$digest},type:"cosign container image signature"},optional:null}' \
 	>"$bundle_dir/chart-index.oci-payload.json"
-image_payload_sha=$(sha256_file "$bundle_dir/image-index.oci-payload.json")
-chart_payload_sha=$(sha256_file "$bundle_dir/chart-index.oci-payload.json")
-
-jq -n \
-	--arg binary_sha "$binary_sha" \
-	--arg binary_provenance_sha "$binary_provenance_sha" \
-	--arg sbom_sha "$sbom_sha" \
-	--arg image_file_sha "$image_file_sha" \
-	--arg image_digest "$image_digest" \
-	--arg chart_file_sha "$chart_file_sha" \
-	--arg chart_digest_file_sha "$chart_digest_file_sha" \
-	--arg chart_digest "$chart_digest" \
-	--arg installer_sha "$installer_sha" \
-	--arg candidate_sha "$candidate_sha" \
-	--arg image_payload_sha "$image_payload_sha" \
-	--arg chart_payload_sha "$chart_payload_sha" \
-	'{
-		schema: "hikyo.dev/release-manifest/v1",
-		version: "0.1.0",
-		tag: "v0.1.0",
-		source_commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		release_sequence: 1,
-		signing_key_id: "primary-1",
-		artifacts: [
-			{name: "release-candidate.json", kind: "release-candidate", sha256: $candidate_sha},
-			{name: "hikyo_Linux_arm64.tar.gz", kind: "binary", sha256: $binary_sha},
-			{name: "binary-provenance.json", kind: "binary-provenance", sha256: $binary_provenance_sha},
-			{name: "hikyo-source.spdx.json", kind: "sbom", sha256: $sbom_sha},
-			{name: "image-index.digest", kind: "image", sha256: $image_file_sha, digest: $image_digest, image: "ghcr.io/hikyo-org/hikyo", tag: "0.1.0"},
-			{name: "hikyo-0.1.0.tgz", kind: "chart", sha256: $chart_file_sha, chart_version: "0.1.0", app_version: "0.1.0", image_repository: "ghcr.io/hikyo-org/hikyo", image_digest: $image_digest},
-			{name: "chart-index.digest", kind: "chart-digest", sha256: $chart_digest_file_sha, digest: $chart_digest, chart: "ghcr.io/hikyo-org/charts/hikyo"},
-			{name: "install.sh", kind: "installer", sha256: $installer_sha},
-			{name: "image-index.oci-payload.json", kind: "oci-payload", sha256: $image_payload_sha, subject_kind: "image", subject: ("ghcr.io/hikyo-org/hikyo@" + $image_digest), digest: $image_digest},
-			{name: "chart-index.oci-payload.json", kind: "oci-payload", sha256: $chart_payload_sha, subject_kind: "chart", subject: ("ghcr.io/hikyo-org/charts/hikyo@" + $chart_digest), digest: $chart_digest}
-		]
-	}' >"$bundle_dir/release-manifest.json"
+"$(dirname "$0")/create-manifest.sh" \
+	"$bundle_dir/release-candidate.json" ghcr.io/hikyo-org/hikyo "$image_digest" \
+	ghcr.io/hikyo-org/charts/hikyo "$chart_digest" "$bundle_dir" >/dev/null
 
 manifest_sha=$(sha256_file "$bundle_dir/release-manifest.json")
 jq --arg manifest_sha "$manifest_sha" \
