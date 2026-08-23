@@ -53,6 +53,155 @@ func TestVerbAuthKindsCoverEveryVerb(t *testing.T) {
 	}
 }
 
+func TestEveryAuthOperationReachesItsRule(t *testing.T) {
+	original := operationAuthKinds
+	t.Cleanup(func() { operationAuthKinds = original })
+
+	operations := documentedLeafOperations(t)
+	operationSet := make(map[AuthOperation]bool, len(operations))
+	for _, operation := range operations {
+		operationSet[operation] = true
+		if _, ok := original[operation]; !ok {
+			t.Errorf("documented CLI leaf %q has no authentication-kind rule", operation)
+		}
+	}
+	for operation := range original {
+		if !operationSet[operation] {
+			t.Errorf("authentication-kind rule %q has no documented CLI leaf", operation)
+		}
+	}
+	if t.Failed() {
+		t.FailNow()
+	}
+
+	for _, operation := range operations {
+		t.Run(string(operation), func(t *testing.T) {
+			// These leaves are local or terminal refusals. They deliberately do not
+			// parse common authenticated flags, but still need a drive-through check
+			// that the auth table's spelling reaches the declared leaf.
+			if operationDoesNotParseCommon(operation) {
+				var stderr bytes.Buffer
+				code := Run(t.Context(), authOperationTestIO(t, &stderr), strings.Fields(string(operation)))
+				if strings.Contains(stderr.String(), "unknown ") {
+					t.Fatalf("%s did not reach its declared leaf: exit=%d stderr=%q", operation, code, stderr.String())
+				}
+				return
+			}
+
+			// Emptying the registry turns its lookup into a sentinel. The invocation
+			// must reach parseCommon with this exact leaf spelling before state or
+			// command-specific validation can change the answer.
+			operationAuthKinds = map[AuthOperation]AuthKinds{}
+			defer func() { operationAuthKinds = original }()
+
+			args := strings.Fields(string(operation))
+			switch operation {
+			case "account reset-credential":
+				args = append(args, "principal_1")
+			case "run":
+				args = append(args, "--", "true")
+			case "scim binding show", "scim binding delete",
+				"scim mapping add", "scim mapping update", "scim mapping remove", "scim mapping list",
+				"scim credential mint", "scim credential list",
+				"scim user list", "scim group list":
+				args = append(args, "binding_1")
+			case "scim credential show", "scim credential revoke":
+				args = append(args, "binding_1", "credential_1")
+			}
+			var stderr bytes.Buffer
+			code := Run(t.Context(), authOperationTestIO(t, &stderr), args)
+			want := "hikyo " + string(operation) + " has no authentication-kind rule"
+			wantCode := ExitInternal
+			if operation == "definitions check" {
+				// `definitions check` deliberately maps every command error to its
+				// separate 0/1/2 contract after the leaf has resolved its rule.
+				wantCode = ExitUsage
+			}
+			if code != wantCode || !strings.Contains(stderr.String(), want) {
+				t.Fatalf("%s reached exit=%d stderr=%q, want exit=%d containing %q", operation, code, stderr.String(), wantCode, want)
+			}
+		})
+	}
+}
+
+func documentedLeafOperations(t *testing.T) []AuthOperation {
+	t.Helper()
+	var usage bytes.Buffer
+	Usage(&usage)
+	operations := map[AuthOperation]bool{
+		// The scanning-key rotation is intentionally documented by its locked
+		// ADR rather than the already-frozen help snapshot.
+		"rotate-scanning-key": true,
+	}
+	for _, line := range strings.Split(usage.String(), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "hikyo ") {
+			continue
+		}
+		command := strings.TrimPrefix(line, "hikyo ")
+		if description := strings.Index(command, "  "); description >= 0 {
+			command = command[:description]
+		}
+		fields := strings.Fields(command)
+		path := make([]string, 0, len(fields))
+		for _, field := range fields {
+			if strings.ContainsAny(field[:1], "-[(<") {
+				break
+			}
+			path = append(path, field)
+		}
+		if len(path) == 0 {
+			continue
+		}
+		choices := strings.Split(path[len(path)-1], "|")
+		for _, choice := range choices {
+			leaf := append(slices.Clone(path[:len(path)-1]), choice)
+			operations[AuthOperation(strings.Join(leaf, " "))] = true
+		}
+	}
+	return slices.Sorted(maps.Keys(operations))
+}
+
+func authOperationTestIO(t *testing.T, stderr *bytes.Buffer) IO {
+	t.Helper()
+	stateDir := t.TempDir()
+	return IO{
+		Stdout: &bytes.Buffer{}, Stderr: stderr,
+		Env: Env{Getenv: func(key string) string {
+			if key == "HIKYO_STATE_DIR" {
+				return stateDir
+			}
+			return ""
+		}}, Workdir: t.TempDir(),
+	}
+}
+
+func operationDoesNotParseCommon(operation AuthOperation) bool {
+	switch operation {
+	case "login",
+		"context create", "context list", "context show", "context delete",
+		"account passkey enrol", "account passkey list", "account passkey remove",
+		"definitions scaffold":
+		return true
+	default:
+		return false
+	}
+}
+
+func TestParseCommonRefusesUnknownOperationBeforeStateRead(t *testing.T) {
+	stateReads := 0
+	_, _, err := parseCommon("unknown operation", IO{Env: Env{Getenv: func(string) string {
+		stateReads++
+		return t.TempDir()
+	}}}, nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "hikyo unknown operation has no authentication-kind rule") {
+		t.Fatalf("error = %v, want missing authentication-kind rule", err)
+	}
+	if stateReads != 0 {
+		t.Fatalf("state environment reads = %d, want 0", stateReads)
+	}
+}
+
 func TestAuthenticatedTargetReturnsExplicitMachineCredential(t *testing.T) {
 	stateDir := t.TempDir()
 	st := &State{dir: stateDir}
@@ -70,7 +219,7 @@ func TestAuthenticatedTargetReturnsExplicitMachineCredential(t *testing.T) {
 	}, Stderr: &bytes.Buffer{}}
 
 	_, artifact, _, err := authenticatedTarget(st, ios, commonFlags{
-		Flags: Flags{Instance: "local"}, operation: "definitions apply",
+		Flags: Flags{Instance: "local"}, operation: "definitions apply", kinds: humanOrMachine,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -90,7 +239,7 @@ func TestAuthenticatedTargetReturnsExplicitMachineCredential(t *testing.T) {
 func TestDualEligibleOperationRequiresExplicitAuthChoice(t *testing.T) {
 	st, ios := authTargetFixture(t)
 	_, _, _, err := authenticatedTarget(st, ios, commonFlags{
-		Flags: Flags{Instance: "local"}, operation: "values export",
+		Flags: Flags{Instance: "local"}, operation: "values export", kinds: humanOrMachine,
 	})
 	if err == nil || !strings.Contains(err.Error(), "both a stored human session and a machine credential") || !strings.Contains(err.Error(), "--auth=human") {
 		t.Fatalf("error = %v, want explicit artifact-choice refusal", err)
@@ -100,7 +249,7 @@ func TestDualEligibleOperationRequiresExplicitAuthChoice(t *testing.T) {
 func TestExplicitHumanChoiceDoesNotReadMachineCredential(t *testing.T) {
 	st, ios := authTargetFixture(t)
 	_, artifact, _, err := authenticatedTarget(st, ios, commonFlags{
-		Flags: Flags{Instance: "local"}, operation: "values export", Auth: "human",
+		Flags: Flags{Instance: "local"}, operation: "values export", kinds: humanOrMachine, Auth: "human",
 		TokenFile: filepath.Join(t.TempDir(), "missing-token"),
 	})
 	if err != nil {
@@ -114,7 +263,7 @@ func TestExplicitHumanChoiceDoesNotReadMachineCredential(t *testing.T) {
 func TestHumanOnlyOperationIgnoresIneligibleAmbientMachineCredential(t *testing.T) {
 	st, ios := authTargetFixture(t)
 	_, artifact, _, err := authenticatedTarget(st, ios, commonFlags{
-		Flags: Flags{Instance: "local"}, operation: "whoami",
+		Flags: Flags{Instance: "local"}, operation: "whoami", kinds: humanOnly,
 	})
 	if err != nil {
 		t.Fatal(err)
