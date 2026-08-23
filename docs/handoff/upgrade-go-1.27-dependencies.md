@@ -4,9 +4,10 @@ Completed 2026-08-23 on `t3code/upgrade-node-26`.
 
 ## Delivered
 
-- `go.mod` now selects Go 1.27.0; CI continues to read the exact version from
-  that file. Source-build, release-signing, architecture, and CI-fixture text
-  now agree with the pin.
+- `go.mod` now pins the Go 1.27.0 toolchain while retaining a Go 1.26.6
+  language floor. CI reads the exact toolchain directive from that file; the
+  lower language directive also lets GitHub default CodeQL analyze the
+  repository while its managed extractor remains on Go 1.26.6.
 - All direct Go modules are current. Fourteen modules moved, including
   `modernc.org/sqlite` 1.56.0 to 1.57.0; generated Go output remains fresh.
 - Database stack audited: `pgx` 5.10.0, `goose` 3.27.3, and `sqlc` 1.31.1 were
