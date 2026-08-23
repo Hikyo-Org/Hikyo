@@ -117,10 +117,10 @@ func TestPublishMaterializesCommitsAndCollects(t *testing.T) {
 	if !reflect.DeepEqual(result.Materialized, map[string]bool{"api": true, "worker": true}) {
 		t.Fatalf("Publish materialized = %v, want both targets", result.Materialized)
 	}
-	if !result.CandidateActive() || result.Phase != PublishPhaseComplete {
+	if result.Phase != PublishPhaseComplete {
 		t.Fatalf("Publish phase=%s, want complete", result.Phase)
 	}
-	if result.NeedsCleanup() || !reflect.DeepEqual(result.ActiveStamps, wantStamps) {
+	if !result.CandidateActive() || result.NeedsCleanup() || !reflect.DeepEqual(result.ActiveStamps, wantStamps) {
 		t.Fatalf("Publish result = %+v, want active candidates and no cleanup", result)
 	}
 	gotStamps, err := CurrentStamps(projectDir)
@@ -260,10 +260,10 @@ func TestPublishMaterializeFailureKeepsPreviousActive(t *testing.T) {
 	if err == nil {
 		t.Fatal("Publish should surface the injected materialization failure")
 	}
-	if result.CandidateActive() || result.Phase == PublishPhaseComplete {
-		t.Fatalf("Publish phase=%s after materialization failure", result.Phase)
+	if result.Phase != PublishPhaseMaterializing {
+		t.Fatalf("Publish phase=%s after materialization failure, want %s", result.Phase, PublishPhaseMaterializing)
 	}
-	if !result.Materialized["api"] || !result.NeedsCleanup() {
+	if result.CandidateActive() || !result.Materialized["api"] || !result.NeedsCleanup() {
 		t.Fatalf("Publish result = %+v, want materialized candidate needing cleanup", result)
 	}
 	if result.ActiveStamps["api"] != oldStamp || result.Stamps["api"] != newStamp {
@@ -286,10 +286,10 @@ func TestPublishPostCommitFailureReportsCandidateActive(t *testing.T) {
 	if err == nil {
 		t.Fatal("Publish should surface the injected post-commit failure")
 	}
-	if !result.CandidateActive() || result.Phase == PublishPhaseComplete {
-		t.Fatalf("Publish phase=%s after post-commit failure", result.Phase)
+	if result.Phase != PublishPhaseCollecting {
+		t.Fatalf("Publish phase=%s after post-commit failure, want %s", result.Phase, PublishPhaseCollecting)
 	}
-	if !result.NeedsCleanup() || result.ActiveStamps["api"] != stamp {
+	if !result.CandidateActive() || !result.NeedsCleanup() || result.ActiveStamps["api"] != stamp {
 		t.Fatalf("Publish result = %+v, want committed candidate active and cleanup pending", result)
 	}
 	got, err := CurrentStamps(projectDir)
@@ -319,10 +319,10 @@ func TestPublishStampSwitchFailureKeepsPreviousActive(t *testing.T) {
 	if err == nil {
 		t.Fatal("Publish should surface the injected stamp-switch failure")
 	}
-	if result.CandidateActive() || result.Phase == PublishPhaseComplete {
-		t.Fatalf("Publish phase=%s after stamp-switch failure", result.Phase)
+	if result.Phase != PublishPhaseSwitching {
+		t.Fatalf("Publish phase=%s after stamp-switch failure, want %s", result.Phase, PublishPhaseSwitching)
 	}
-	if !result.NeedsCleanup() || result.ActiveStamps["api"] != oldStamp || result.Stamps["api"] != newStamp {
+	if result.CandidateActive() || !result.NeedsCleanup() || result.ActiveStamps["api"] != oldStamp || result.Stamps["api"] != newStamp {
 		t.Fatalf("Publish result = %+v, want old active and new recoverable candidate", result)
 	}
 	got, err := CurrentStamps(projectDir)
@@ -343,10 +343,10 @@ func TestPublishGCFailureNeverRemovesActiveGeneration(t *testing.T) {
 	if err == nil {
 		t.Fatal("Publish should surface the injected GC failure")
 	}
-	if !result.CandidateActive() || result.Phase == PublishPhaseComplete {
-		t.Fatalf("Publish phase=%s after GC failure", result.Phase)
+	if result.Phase != PublishPhaseCollecting {
+		t.Fatalf("Publish phase=%s after GC failure, want %s", result.Phase, PublishPhaseCollecting)
 	}
-	if !result.NeedsCleanup() || result.ActiveStamps["api"] != stamp {
+	if !result.CandidateActive() || !result.NeedsCleanup() || result.ActiveStamps["api"] != stamp {
 		t.Fatalf("Publish result = %+v, want active generation retained", result)
 	}
 	if present, complete := GenerationState(rt, stamp); !present || !complete {
@@ -756,7 +756,10 @@ func TestPublishGCPartialFailureKeepsActiveAndReportsCleanup(t *testing.T) {
 	if err == nil {
 		t.Fatal("Publish should surface the injected partial GC failure")
 	}
-	if !result.CandidateActive() || result.Phase == PublishPhaseComplete || !result.NeedsCleanup() {
+	if result.Phase != PublishPhaseCollecting {
+		t.Fatalf("Publish phase=%s after partial GC failure, want %s", result.Phase, PublishPhaseCollecting)
+	}
+	if !result.CandidateActive() || !result.NeedsCleanup() {
 		t.Fatalf("Publish result = %+v, want committed active state with cleanup pending", result)
 	}
 	if present, complete := GenerationState(rt, stamps[5]); !present || !complete {
