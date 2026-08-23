@@ -1,13 +1,11 @@
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
 import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
 import {
   establishSession,
-  parseCredential,
-  readPasskey,
   readSeed,
-  writePasskey,
 } from '../fixtures/instance.ts';
+import { test } from '../fixtures/passkey.ts';
 
 /**
  * Flow: machine access (registry surface `machine-access`) — mvp-boundary S3's
@@ -37,37 +35,6 @@ import {
 const seed = readSeed();
 const PATH = `/orgs/${seed.org}/projects/${seed.project}/machine-access`;
 
-/**
- * installAuthenticator attaches Chromium's virtual authenticator preloaded with
- * the passkey global setup enrolled — never a fresh one. Enrolment is an
- * account-security mutation that deletes every other session the principal
- * holds, so a flow that enrolled would invalidate the suite's shared session.
- */
-async function installAuthenticator(page: Page): Promise<() => Promise<void>> {
-  const session = await page.context().newCDPSession(page);
-  await session.send('WebAuthn.enable');
-  const { authenticatorId } = await session.send('WebAuthn.addVirtualAuthenticator', {
-    options: {
-      protocol: 'ctap2',
-      transport: 'internal',
-      hasResidentKey: true,
-      hasUserVerification: true,
-      isUserVerified: true,
-      automaticPresenceSimulation: true,
-    },
-  });
-  await session.send('WebAuthn.addCredential', { authenticatorId, credential: readPasskey() });
-  // Hand the ADVANCED signature counter back: the next Playwright project's
-  // authenticator must carry on from here or the server sees a clone.
-  return async () => {
-    const { credentials } = await session.send('WebAuthn.getCredentials', { authenticatorId });
-    const advanced: unknown = credentials[0];
-    if (advanced !== undefined) {
-      writePasskey(parseCredential(advanced));
-    }
-  };
-}
-
 /** accountRow is the disclosure button that expands one service account. */
 function accountRow(page: Page, name: string) {
   return page.getByRole('button', { name, exact: false }).first();
@@ -95,24 +62,13 @@ async function revokeMinted(page: Page) {
 
 test.describe('machine access', () => {
   test.describe.configure({ mode: 'serial' });
+  test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
 
-  let context: BrowserContext;
   let page: Page;
-  let persistPasskey: () => Promise<void>;
 
-  test.beforeAll(async ({ browser }) => {
-    context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
-    page = await context.newPage();
-    persistPasskey = await installAuthenticator(page);
-  });
-
-  test.afterAll(async () => {
-    await persistPasskey();
-    await context.close();
-  });
-
-  test.beforeEach(async () => {
-    await context.clearCookies();
+  test.beforeEach(async ({ passkeyPage }) => {
+    page = passkeyPage;
+    await page.context().clearCookies();
     await page.goto(PATH);
     await establishSession(page);
     await page.goto(PATH);

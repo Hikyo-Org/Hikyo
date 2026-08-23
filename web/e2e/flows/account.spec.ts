@@ -1,16 +1,15 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { zLoginResult, zWhoAmI } from '@hikyo/zod';
 
 import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
 import {
   ADMIN,
   BASE_URL,
-  installPasskeyAuthenticator,
   nextTotpCode,
   OIDC_PROVIDER,
-  refreshSharedSession,
   STORAGE_STATE,
 } from '../fixtures/instance.ts';
+import { test } from '../fixtures/passkey.ts';
 
 /**
  * Flow: account & security (registry surface `settings`) — mvp-boundary S3's
@@ -218,9 +217,10 @@ test.describe('account and security', () => {
    * generation. The refresh restores the shared suite state before the final
    * display-once drill.
    */
-  test('reports the existing TOTP factor and enrols then removes an additional passkey', async ({ page }) => {
-    const persistPasskey = await installPasskeyAuthenticator(page, 'empty');
-    try {
+  test.describe('passkey mutation', () => {
+    test.use({ passkeyCredential: 'empty' });
+
+    test('reports the existing TOTP factor and enrols then removes an additional passkey', async ({ passkeyPage: page }) => {
       // The factor state is now readable: the suite's administrator has a
       // confirmed authenticator, and the panel reports it rather than
       // disclaiming knowledge.
@@ -247,10 +247,7 @@ test.describe('account and security', () => {
       await removeProof.getByRole('button', { name: 'Confirm' }).click();
       await expect(rows).toHaveCount(before);
       await expect(page.getByRole('status').filter({ hasText: 'Passkey removed' })).toBeVisible();
-    } finally {
-      await persistPasskey();
-      await refreshSharedSession();
-    }
+    });
   });
 
   /**
@@ -262,8 +259,7 @@ test.describe('account and security', () => {
    * leaves the run as it was found; every later test builds its context from
    * that file.
    */
-  test('replaces the recovery codes and shows them exactly once', async ({ page }) => {
-    try {
+  test('replaces the recovery codes and shows them exactly once', async ({ passkeyPage: page }) => {
       await page.getByRole('button', { name: 'Replace recovery codes' }).click();
       const proof = page.getByRole('dialog');
       await expect(proof).toContainText('never authorise their own regeneration');
@@ -298,8 +294,5 @@ test.describe('account and security', () => {
       for (const code of captured) {
         await expect(page.locator('body')).not.toContainText(code.trim());
       }
-    } finally {
-      await refreshSharedSession();
-    }
   });
 });

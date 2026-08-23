@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
 import {
   zGrantList,
   zOrg,
@@ -21,12 +21,11 @@ import {
   BASE_URL,
   establishSession,
   INSTANCE_GRANT_TARGET,
-  installPasskeyAuthenticator,
   nextTotpCode,
   readSeed,
-  refreshSharedSession,
   STORAGE_STATE,
 } from '../fixtures/instance.ts';
+import { test } from '../fixtures/passkey.ts';
 
 /**
  * Flow: instance administration (registry surface `instance-admin`) —
@@ -382,10 +381,8 @@ test.describe('instance administration', () => {
     }
   });
 
-  test('creates an organisation, grants its creator admin access, and requires a fresh login', async ({ page }, testInfo) => {
+  test('creates an organisation, grants its creator admin access, and requires a fresh login', async ({ passkeyPage: page }, testInfo) => {
     const name = `Instance drill ${testInfo.project.name}`;
-    const persistPasskey = await installPasskeyAuthenticator(page);
-    try {
       await page.getByLabel('New organisation name').fill(name);
       const responsePromise = page.waitForResponse(
         (response) =>
@@ -406,10 +403,6 @@ test.describe('instance administration', () => {
       await page.goto(`/orgs/${created.id}/settings`);
       await expect(page.getByRole('heading', { name: 'Organisation settings', level: 1 })).toBeVisible();
       await expect(page.getByLabel('Name')).toHaveValue(name);
-    } finally {
-      await persistPasskey();
-      await refreshSharedSession();
-    }
   });
 
   test('answers a password-only session with the second-factor state, not an empty list', async ({

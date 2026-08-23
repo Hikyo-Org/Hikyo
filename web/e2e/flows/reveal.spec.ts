@@ -1,16 +1,15 @@
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
 import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
 import {
   ADMIN,
   countDisclosureEvents,
   establishSession,
-  installPasskeyAuthenticator,
   nextTotpCode,
   OIDC_PROVIDER,
   readSeed,
-  refreshSharedSession,
 } from '../fixtures/instance.ts';
+import { test } from '../fixtures/passkey.ts';
 
 /**
  * Flow: the reveal, copy and publish-into-protected ceremonies (registry
@@ -185,16 +184,11 @@ function auditLines(page: Page) {
 }
 
 /**
- * ONE context and ONE authenticator for the whole file, with a FRESH SESSION
- * per test. Both halves are forced by the product, not by convenience:
+ * A fresh page, authenticator, and session per test. The passkey fixture writes
+ * the advanced counter before Playwright closes each page, so the next test
+ * starts where the previous authenticator stopped instead of looking cloned.
  *
- *  - one authenticator, because a passkey's signature counter is how a cloned
- *    authenticator is detected. A context per test would hand the server the
- *    same credential with a counter that went backwards, the credential would
- *    be disabled as cloned, and every later test would fail for a reason that
- *    has nothing to do with the ceremony. A real security key's counter only
- *    ever goes up, and so does this one.
- *  - a fresh session per test, because a reauthentication window is a property
+ * A fresh session matters because a reauthentication window is a property
  *    of the SESSION. Carrying one over would mean the second test's first
  *    disclosure quietly skipped the ceremony it exists to assert.
  *
@@ -203,31 +197,14 @@ function auditLines(page: Page) {
  */
 test.describe('reveal ceremonies', () => {
   test.describe.configure({ mode: 'serial' });
+  test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
 
-  let context: BrowserContext;
   let page: Page;
-  let persistPasskey: () => Promise<void>;
 
-  test.beforeAll(async ({ browser }) => {
-    context = await browser.newContext({
-      permissions: ['clipboard-read', 'clipboard-write'],
-    });
-    page = await context.newPage();
-    persistPasskey = await installPasskeyAuthenticator(page);
-  });
-
-  test.afterAll(async () => {
-    await persistPasskey();
-    await context.close();
-  });
-
-  test.beforeEach(async () => {
-    // Cookies first. The context is shared, so the previous test's session is
-    // still on it — and a LIVE cookie makes the login itself a
-    // cookie-authenticated POST, which the server refuses without the
-    // synchronizer token. Clearing is also what guarantees the next test
-    // starts with no reauthentication window.
-    await context.clearCookies();
+  test.beforeEach(async ({ passkeyPage }) => {
+    page = passkeyPage;
+    // An empty jar guarantees this test starts with no reauthentication window.
+    await page.context().clearCookies();
     await page.goto(VALUES_PATH);
     await establishSession(page);
     await page.goto(VALUES_PATH);
@@ -519,7 +496,7 @@ test.describe('reveal ceremonies', () => {
    * the criterion is about what the server will accept.
    */
   test('the ceremony offers no code option, and the server refuses one', async () => {
-    await context.clearCookies();
+    await page.context().clearCookies();
     await page.goto(PROD_PATH);
     await establishSession(page);
     await page.goto(PROD_PATH);
@@ -668,24 +645,8 @@ test.describe('OIDC disclosure reauthentication', () => {
 test.describe('write-only editing', () => {
   test.describe.configure({ mode: 'serial' });
 
-  let context: BrowserContext;
-  let page: Page;
-  let persistPasskey: () => Promise<void>;
-
-  test.beforeAll(async ({ browser }) => {
-    context = await browser.newContext();
-    page = await context.newPage();
-    persistPasskey = await installPasskeyAuthenticator(page);
-  });
-
-  test.afterAll(async () => {
-    await persistPasskey();
-    await context.close();
-    await refreshSharedSession();
-  });
-
-  test('replaces a value the principal may not read', async () => {
-    await context.clearCookies();
+  test('replaces a value the principal may not read', async ({ passkeyPage: page }) => {
+    await page.context().clearCookies();
     await page.goto(VALUES_PATH);
     await establishSession(page);
 
@@ -693,7 +654,7 @@ test.describe('write-only editing', () => {
     // the creator-admin grant now installed at org scope.
     let revoked = await apiCall(page, 'DELETE', instanceGrantPath(seed.principal, 'reveal'));
     expect(revoked, 'revoking instance reveal').toBe(204);
-    await context.clearCookies();
+    await page.context().clearCookies();
     await page.goto(VALUES_PATH);
     await establishSession(page);
     revoked = await apiCall(page, 'DELETE', orgGrantPath(seed.principal, 'reveal'));
@@ -702,7 +663,7 @@ test.describe('write-only editing', () => {
     try {
       // The revoke killed that session with it, which is the deprovisioning
       // rule working; sign in again.
-      await context.clearCookies();
+      await page.context().clearCookies();
       await page.goto(VALUES_PATH);
       await establishSession(page);
       await page.goto(VALUES_PATH);
@@ -743,7 +704,7 @@ test.describe('write-only editing', () => {
         .poll(async () => valueUpdatedAt(page, seed.dev, secret), { timeout: 5_000 })
         .not.toBe(before);
     } finally {
-      await context.clearCookies();
+      await page.context().clearCookies();
       await page.goto(VALUES_PATH);
       await establishSession(page);
       let restored = await apiCall(page, 'POST', '/api/v1/instance/grants', {
@@ -751,7 +712,7 @@ test.describe('write-only editing', () => {
         capability: 'reveal',
       });
       expect(restored, 'restoring instance reveal').toBe(200);
-      await context.clearCookies();
+      await page.context().clearCookies();
       await page.goto(VALUES_PATH);
       await establishSession(page);
       restored = await apiCall(page, 'POST', `/api/v1/orgs/${seed.org}/grants`, {
@@ -764,7 +725,7 @@ test.describe('write-only editing', () => {
     // Restored, so read it back: the blind rotation stored exactly what was
     // typed, which is the only thing that proves a write-only edit is a real
     // edit rather than a form that looked like one.
-    await context.clearCookies();
+    await page.context().clearCookies();
     await page.goto(VALUES_PATH);
     await establishSession(page);
     await page.goto(VALUES_PATH);
