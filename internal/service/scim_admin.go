@@ -575,28 +575,15 @@ func (s *SCIM) DeleteBinding(ctx context.Context, actor Actor, org domain.OrgID,
 			if err != nil {
 				return err
 			}
-			outcome, evs, err := releaseSCIMOrigins(ctx, az, now, releaseArgs{
-				binding: id, org: org, principal: principal,
+			outcome, evs, err := s.releaseAndSettle(ctx, r, az, c, principal, releaseArgs{
+				binding: id, org: org,
 				match: matchBinding(id), cause: domain.CauseBindingDelete,
-			})
+			}, advanceIfAuthorityChanged, now)
 			if err != nil {
 				return err
 			}
 			events = append(events, evs...)
 			releasedOrigins += outcome.Released
-			if outcome.AuthorityChanged() {
-				if err := advanceAndSweep(ctx, az, principal); err != nil {
-					return err
-				}
-			}
-			for _, grantID := range outcome.Retained {
-				ev, err := s.enterAttention(ctx, r, c,
-					domain.AttentionLockoutRetention, grantID, domain.CauseBindingDelete, now)
-				if err != nil {
-					return err
-				}
-				events = append(events, ev...)
-			}
 		}
 
 		s.markTeardown(ctx, r, az, p, c, connection, "origins-released", releasedOrigins)

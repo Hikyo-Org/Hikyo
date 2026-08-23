@@ -2,6 +2,8 @@
 
 # Shared release input validation. Callers remain fail-closed and decide how to
 # report invalid values; these helpers only return success or failure.
+release_semver_pattern='^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$'
+
 sha256_file() {
 	if command -v sha256sum >/dev/null 2>&1; then
 		sha256sum "$1" | awk '{print $1}'
@@ -34,7 +36,7 @@ validate_binary_provenance() {
 }
 
 is_semver() {
-	printf '%s\n' "$1" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$'
+	printf '%s\n' "$1" | grep -Eq "$release_semver_pattern"
 }
 
 is_full_sha() {
@@ -58,10 +60,10 @@ validate_release_candidate_record() (
 		printf 'candidate: record is absent\n' >&2
 		return 1
 	}
-	jq -e '
+	jq -e --arg semver_pattern "$release_semver_pattern" '
 		type == "object" and
 		(keys == ["commit", "key_id", "public_key", "sequence", "version"]) and
-		(.version | type == "string" and test("^[0-9]+\\.[0-9]+\\.[0-9]+([+-][0-9A-Za-z.-]+)?$")) and
+		(.version | type == "string" and test($semver_pattern)) and
 		(.sequence | type == "number" and . >= 1 and floor == .) and
 		(.commit | type == "string" and test("^[0-9a-f]{40}$")) and
 		(.key_id | type == "string" and length > 0) and
@@ -113,19 +115,26 @@ check_release_candidate_hash() (
 	validate_release_candidate_record "$record"
 )
 
-validate_release_candidate_metadata() (
+validate_trust_metadata() (
 	metadata=$1
 	[ -f "$metadata" ] || {
 		printf 'candidate: trust metadata is absent\n' >&2
 		return 1
 	}
 	jq -e '
+		.event.type as $event_type |
 		type == "object" and
+		.schema == "hikyo.dev/trust-metadata/v1" and
+		(.sequence | type == "number" and . >= 1 and floor == .) and
+		(.recovery.id | type == "string" and length > 0) and
+		(.recovery.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+		(.event.signed_by | type == "string" and length > 0) and
+		(["bootstrap", "release-candidate", "release", "rotation", "revocation"] |
+			index($event_type)) != null and
 		(.releases | type == "array") and
 		(.primary_keys | type == "array" and length > 0) and
 		(.pending_release == null or
-			((.pending_release | type == "object") and
-			 (.pending_release.manifest_sha256 == ("0" * 64)))) and
+			(.pending_release | type == "object")) and
 		all([.releases[]?, (.pending_release? // empty)][];
 			(.version | type == "string") and
 			(.sequence | type == "number" and . >= 1 and floor == .) and
@@ -146,28 +155,68 @@ validate_release_candidate_metadata() (
 		printf 'candidate: invalid trust metadata\n' >&2
 		return 1
 	}
+	duplicate=$(jq -r '
+		[.releases[]?, (.pending_release? // empty)] as $releases |
+		if ([ $releases[].version ] | unique | length) != ($releases | length) then
+			"version"
+		elif ([ $releases[].sequence ] | unique | length) != ($releases | length) then
+			"sequence"
+		else
+			""
+		end
+	' "$metadata")
+	case "$duplicate" in
+		version)
+			printf 'candidate: release version is duplicated\n' >&2
+			return 1
+			;;
+		sequence)
+			printf 'candidate: release sequence is duplicated\n' >&2
+			return 1
+			;;
+	esac
+	jq -e --arg semver_pattern "$release_semver_pattern" '
+		. as $metadata |
+		.event.type as $event_type |
+		if $event_type == "bootstrap" and (.releases | length) == 0 then
+			.sequence == 1 and
+			.highest_release == null and
+			.highest_release_sequence == null and
+			(.pending_release.version | type == "string" and
+				test($semver_pattern)) and
+			.pending_release.sequence == 1 and
+			.pending_release.manifest_sha256 == ("0" * 64)
+		else
+			(.highest_release | type == "string" and
+				test($semver_pattern)) and
+			(.highest_release_sequence | type == "number" and
+				. >= 1 and floor == .) and
+			(.releases | length) > 0 and
+			(.pending_release == null or (
+				(.pending_release.version | type == "string" and
+					test($semver_pattern)) and
+				.pending_release.sequence > .highest_release_sequence and
+				.pending_release.manifest_sha256 == ("0" * 64)
+			)) and
+			([.releases[] | select(
+				.version == $metadata.highest_release and
+				.sequence == $metadata.highest_release_sequence)] | length) == 1
+		end
+	' "$metadata" >/dev/null || {
+		printf 'candidate: invalid trust metadata\n' >&2
+		return 1
+	}
 )
 
 select_release_candidate() (
 	metadata=$1
 	version=$2
-	validate_release_candidate_metadata "$metadata" || return 1
+	validate_trust_metadata "$metadata" || return 1
 	is_semver "$version" || {
 		printf 'candidate: invalid release version\n' >&2
 		return 1
 	}
 	releases=$(jq -c '[.releases[]?, .pending_release?] | map(select(. != null))' "$metadata")
-	release_count=$(printf '%s\n' "$releases" | jq -r 'length')
-	unique_version_count=$(printf '%s\n' "$releases" | jq -r '[.[].version] | unique | length')
-	[ "$release_count" -eq "$unique_version_count" ] || {
-		printf 'candidate: release version is duplicated\n' >&2
-		return 1
-	}
-	unique_sequence_count=$(printf '%s\n' "$releases" | jq -r '[.[].sequence] | unique | length')
-	[ "$release_count" -eq "$unique_sequence_count" ] || {
-		printf 'candidate: release sequence is duplicated\n' >&2
-		return 1
-	}
 	version_matches=$(printf '%s\n' "$releases" | jq -r --arg version "$version" \
 		'[.[] | select(.version == $version)] | length')
 	[ "$version_matches" -gt 0 ] || {
