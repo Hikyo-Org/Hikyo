@@ -50,6 +50,7 @@ func init() {
 		scenario{"restore_gate_uses_written_time_classification", scenarioRestoreWrittenTimeClassification},
 		scenario{"restore_secret_formulas_are_side_specific", scenarioRestoreSideSpecificSecretFormula},
 		scenario{"secret_classification_survives_payload_collection", scenarioSecretClassificationSurvivesCollection},
+		scenario{"live_sticky_secret_restore_previews_as_secret", scenarioLiveStickySecretRestorePreview},
 		scenario{"per_key_restore_refuses_reused_key_identity", scenarioRestoreReusedKeyIdentity},
 		scenario{"schema_failing_restore_blocks_loud", scenarioSchemaFailingRestore},
 		scenario{"adapter_crash_reservation_release_is_generation_fenced", scenarioAdapterCrashReservationRelease},
@@ -404,6 +405,43 @@ func scenarioSecretClassificationSurvivesCollection(t *testing.T, db *store.DB) 
 	})
 	if _, err := revisions.Restore(t.Context(), service.LocalPrincipal(withoutHistory), dev, restoredRevision, "STICKY_SECRET"); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("republished historical-secret material lost sticky classification: %v", err)
+	}
+}
+
+// scenarioLiveStickySecretRestorePreview restores a live occurrence that was
+// published as a secret and then reclassified to config. The key now reads as
+// config, so the preview can only mask the value if the sticky-secret flag
+// travels through the staged change and back out. It guards against a restore
+// that stops carrying that flag on the pending change.
+func scenarioLiveStickySecretRestorePreview(t *testing.T, db *store.DB) {
+	who, scope, values, envs, keys := valueFixture(t, db, "restorelivesticky")
+	actor := service.LocalPrincipal(who)
+	dev := mustEnv(t, envs, actor, scope, "dev")
+	key := mustKey(t, keys, actor, scope, "LIVE_STICKY", string(schema.Secret), schema.DefaultPresenceRules())
+	publishValue(t, db, values, actor, dev, "LIVE_STICKY", "secret-v1")
+	target := latestRevisionOf(t, db, string(dev.Env))
+	if _, _, err := keys.Reclassify(t.Context(), actor, scope, key.ID, string(schema.Config)); err != nil {
+		t.Fatal(err)
+	}
+	publishValue(t, db, values, actor, dev, "LIVE_STICKY", "config-v2")
+
+	restorer := newPrincipal(t, db, "usr_restore_live_sticky_"+string(scope.Project), []grantSpec{
+		{capability: "read", scope: scope}, {capability: "edit", scope: scope},
+		{capability: "publish", scope: scope}, {capability: "reveal-history", scope: scope},
+	})
+	restored, err := revisionSvc(t, db).Restore(t.Context(), service.LocalPrincipal(restorer), dev, target, "LIVE_STICKY")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(restored.Changes) != 1 {
+		t.Fatalf("live sticky-secret restore staged %d changes, want one set: %+v", len(restored.Changes), restored)
+	}
+	if len(restored.Preview.Environments) != 1 || len(restored.Preview.Environments[0].Changes) != 1 {
+		t.Fatalf("live sticky-secret restore preview = %+v, want one environment with one change", restored.Preview)
+	}
+	change := restored.Preview.Environments[0].Changes[0]
+	if change.Classification != string(schema.Secret) || change.Before != nil || change.After != nil {
+		t.Fatalf("live sticky-secret preview disclosed or downgraded material: %+v", change)
 	}
 }
 
