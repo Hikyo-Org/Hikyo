@@ -324,10 +324,7 @@ func writeProjectArtifacts(ios IO, outDir string, plan *importer.ProjectPlan) (v
 		if !env.HasValues {
 			continue
 		}
-		ref := env.EnvID
-		if env.Create {
-			ref = env.EnvName
-		}
+		ref := env.Ref()
 		valuesTargets = append(valuesTargets, valuesTarget{
 			path: filepath.Join(outDir, "values-"+ref+".json"), file: env.Values, envRef: ref,
 		})
@@ -444,10 +441,7 @@ func reportProject(ios IO, plan *importer.ProjectPlan, outDir string, sourceFile
 		fmt.Fprintf(w, "already declared (not re-declared): %s\n", quoteImportNames(plan.AlreadyDeclared))
 	}
 	for _, env := range plan.Envs {
-		ref := env.EnvName
-		if ref == "" {
-			ref = env.EnvID
-		}
+		ref := env.Ref()
 		verb := "existing"
 		if env.Create {
 			verb = "to create"
