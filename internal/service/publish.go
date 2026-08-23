@@ -530,7 +530,7 @@ func publishPreviewToken(ctx context.Context, r store.Repos, proofs map[string]a
 
 func buildImpactPreview(ctx context.Context, r store.Repos, p authz.Proof, sealer *crypto.ProjectSealer,
 	keyring *crypto.Keyring, az *authz.TxAuthorizer, caller authz.Identity, scope domain.Scope,
-	versionIDs []string, stickySecret map[string]bool) (ImpactPreview, error) {
+	versionIDs []string) (ImpactPreview, error) {
 	selected, byID, err := resolveVersions(ctx, r, p, caller.Principal, versionIDs)
 	if err != nil {
 		return ImpactPreview{}, err
@@ -595,7 +595,7 @@ func buildImpactPreview(ctx context.Context, r store.Repos, p authz.Proof, seale
 			case !apply.set:
 				status = "not-edited"
 			}
-			secret := apply.secret || stickySecret[apply.versionID] || key.Classification == string(schema.Secret)
+			secret := apply.secret || key.Classification == string(schema.Secret)
 			change := ImpactChange{VersionID: apply.versionID, KeyID: key.ID, Name: key.Name,
 				Classification: key.Classification, Operation: map[bool]string{true: string(store.PendingSet), false: string(store.PendingUnset)}[apply.set], Status: status}
 			if secret {

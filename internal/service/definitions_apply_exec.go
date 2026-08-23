@@ -235,15 +235,8 @@ func (s *Definitions) scanApplySkew(ctx context.Context, actor Actor, scope doma
 		if err != nil {
 			return err
 		}
-		if res.refuses() {
-			for _, f := range res.blocked {
-				ev, evErr := blockedEvent(ctx, caller.Principal, f)
-				if evErr != nil {
-					return evErr
-				}
-				az.CaptureAudit(audit.TrailTenant, domain.Scope{Org: scope.Org, Project: scope.Project}, ev)
-			}
-			return &scanRefusalErr{blocked: res.blocked, rejections: res.rejections}
+		if err := captureScanRefusal(ctx, az, caller.Principal, scope, res); err != nil {
+			return err
 		}
 		overrides = res.overridden
 		return nil

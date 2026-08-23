@@ -1070,8 +1070,8 @@ func teardownAdapterTarget(ctx context.Context, db adoptDB, chain domain.Scope, 
 	}
 	if keepRemote {
 		release := db.SQL(
-			`UPDATE adapter_ledger SET state='released',updated_at=? WHERE target_id=? AND org_id=? AND project_id=? AND environment_id=? AND state<>'released'`,
-			`UPDATE adapter_ledger SET state='released',updated_at=$1 WHERE target_id=$2 AND org_id=$3 AND project_id=$4 AND environment_id=$5 AND state<>'released'`)
+			`UPDATE adapter_ledger SET state='released',missing=0,updated_at=? WHERE target_id=? AND org_id=? AND project_id=? AND environment_id=? AND state<>'released'`,
+			`UPDATE adapter_ledger SET state='released',missing=false,updated_at=$1 WHERE target_id=$2 AND org_id=$3 AND project_id=$4 AND environment_id=$5 AND state<>'released'`)
 		if _, err := db.Exec(ctx, release, stamp, target.targetID, chain.Org, chain.Project, target.environmentID); err != nil {
 			return AdapterTeardownResult{}, err
 		}

@@ -140,18 +140,6 @@ type PublishPlan struct {
 	Targets    map[string][]byte
 }
 
-// PublishRecovery names the durable facts a caller can use after Publish
-// returns, including on error. ActiveStamps are the generations selected by the
-// stamp file. CandidateStamps are the deterministic generations the plan was
-// attempting to publish. NeedsCleanup means the next lock holder must run the
-// normal Recover/GC path before relying on unreferenced candidates being gone.
-type PublishRecovery struct {
-	ActiveStamps    map[string]string
-	CandidateStamps map[string]string
-	ActiveKnown     bool
-	NeedsCleanup    bool
-}
-
 // PublishPhase is the latest durable stage reached by a publication.
 type PublishPhase string
 
@@ -163,13 +151,15 @@ const (
 )
 
 // PublishResult records how far one recoverable filesystem publication got.
-// Stamps are the plan's candidate stamps and Materialized reports whether each
-// immutable generation was newly written.
+// Stamps are the plan's candidate stamps, Materialized reports whether each
+// immutable generation was newly written, and ActiveStamps are the generations
+// selected by the stamp file. A nil ActiveStamps means the active selection
+// could not be inspected after an uncertain stamp-switch failure.
 type PublishResult struct {
 	Stamps       map[string]string
 	Materialized map[string]bool
 	Phase        PublishPhase
-	Recover      PublishRecovery
+	ActiveStamps map[string]string
 }
 
 // CandidateActive reports whether the candidate stamp selection is active.
@@ -177,9 +167,10 @@ func (r PublishResult) CandidateActive() bool {
 	return r.Phase == PublishPhaseCollecting || r.Phase == PublishPhaseComplete
 }
 
-// GCComplete reports whether bounded retention completed.
-func (r PublishResult) GCComplete() bool {
-	return r.Phase == PublishPhaseComplete
+// NeedsCleanup reports whether the next lock holder must run the normal
+// Recover/GC path before relying on unreferenced candidates being gone.
+func (r PublishResult) NeedsCleanup() bool {
+	return r.Phase != PublishPhaseComplete
 }
 
 // errLockReleased is returned by every RenderLock verb — including a second
@@ -225,10 +216,10 @@ func (rl *RenderLock) Close() error {
 // file once, then collect superseded generations. It does not claim atomicity
 // with snapshot, cursor, or offline-record persistence performed by callers.
 //
-// On error, result.Recover states which stamps remain active and which
-// deterministic candidates a retry will reuse. Before Committed, the previous
-// stamp selection remains active. After Committed, the candidate selection is
-// active even if GC fails.
+// On error, result states which stamps remain active and which deterministic
+// candidates a retry will reuse. Before Committed, the previous stamp selection
+// remains active. After Committed, the candidate selection is active even if GC
+// fails.
 func (rl *RenderLock) Publish(plan PublishPlan) (PublishResult, error) {
 	var result PublishResult
 	if rl.closed {
@@ -263,48 +254,39 @@ func (rl *RenderLock) Publish(plan PublishPlan) (PublishResult, error) {
 		Stamps:       maps.Clone(stamps),
 		Materialized: make(map[string]bool, len(stamps)),
 		Phase:        PublishPhaseMaterializing,
-		Recover: PublishRecovery{
-			ActiveStamps:    maps.Clone(active),
-			CandidateStamps: maps.Clone(stamps),
-			ActiveKnown:     true,
-		},
+		ActiveStamps: maps.Clone(active),
 	}
 
 	for _, target := range targets {
 		stamp, materialized, err := rl.WriteGeneration(plan.RuntimeDir, plan.Keys, target, plan.Targets[target])
 		if err != nil {
-			result.Recover.NeedsCleanup = true
 			return result, fmt.Errorf("compose: publish materialize %s: %w", target, err)
 		}
 		if stamp != stamps[target] {
-			result.Recover.NeedsCleanup = true
 			return result, fmt.Errorf("compose: publish target %s stamp changed between plan and materialization", target)
 		}
 		result.Materialized[target] = materialized
 		if rl.w.probe != nil {
 			if err := rl.w.probe.AfterGenerationMaterialized(target, stamp); err != nil {
-				result.Recover.NeedsCleanup = true
 				return result, fmt.Errorf("compose: publish after materialize %s: %w", target, err)
 			}
 		}
 	}
 	result.Phase = PublishPhaseSwitching
-	result.Recover.NeedsCleanup = true
 	if err := rl.CommitStamps(stamps); err != nil {
 		active, inspectErr := CurrentStamps(rl.projectDir)
 		if inspectErr != nil {
-			result.Recover.ActiveStamps = nil
-			result.Recover.ActiveKnown = false
+			result.ActiveStamps = nil
 			return result, errors.Join(fmt.Errorf("compose: publish commit stamps: %w", err), fmt.Errorf("compose: inspect active stamps after commit failure: %w", inspectErr))
 		}
-		result.Recover.ActiveStamps = maps.Clone(active)
+		result.ActiveStamps = maps.Clone(active)
 		if maps.Equal(active, stamps) {
 			result.Phase = PublishPhaseCollecting
 		}
 		return result, fmt.Errorf("compose: publish commit stamps: %w", err)
 	}
 	result.Phase = PublishPhaseCollecting
-	result.Recover.ActiveStamps = maps.Clone(stamps)
+	result.ActiveStamps = maps.Clone(stamps)
 	if rl.w.probe != nil {
 		if err := rl.w.probe.AfterStampCommit(); err != nil {
 			return result, fmt.Errorf("compose: publish after stamp commit: %w", err)
@@ -319,7 +301,6 @@ func (rl *RenderLock) Publish(plan PublishPlan) (PublishResult, error) {
 		return result, fmt.Errorf("compose: publish gc: %w", err)
 	}
 	result.Phase = PublishPhaseComplete
-	result.Recover.NeedsCleanup = false
 	return result, nil
 }
 
