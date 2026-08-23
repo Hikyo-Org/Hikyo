@@ -202,6 +202,24 @@ func (h *harness) getDeployment(name string) *appsv1.Deployment {
 	return &d
 }
 
+func (h *harness) getStatefulSet(name string) *appsv1.StatefulSet {
+	h.t.Helper()
+	var s appsv1.StatefulSet
+	if err := h.cl.Get(context.Background(), types.NamespacedName{Namespace: testNS, Name: name}, &s); err != nil {
+		h.t.Fatalf("get statefulset %q: %v", name, err)
+	}
+	return &s
+}
+
+func (h *harness) getDaemonSet(name string) *appsv1.DaemonSet {
+	h.t.Helper()
+	var d appsv1.DaemonSet
+	if err := h.cl.Get(context.Background(), types.NamespacedName{Namespace: testNS, Name: name}, &d); err != nil {
+		h.t.Fatalf("get daemonset %q: %v", name, err)
+	}
+	return &d
+}
+
 // drainEvents collects the reasons emitted so far without blocking.
 func (h *harness) drainEvents() []string {
 	var out []string
@@ -345,6 +363,34 @@ func makeOptedInDeployment(name string, consumesTargets ...string) *appsv1.Deplo
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: name, Annotations: ann},
 		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}},
+		},
+	}
+}
+
+// makeOptedInStatefulSet builds a StatefulSet consuming the target (opt-in).
+func makeOptedInStatefulSet(name string, consumesTargets ...string) *appsv1.StatefulSet {
+	ann := map[string]string{}
+	if len(consumesTargets) > 0 {
+		ann[hikyov1.AnnotationWorkloadSecrets] = strings.Join(consumesTargets, ",")
+	}
+	return &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: name, Annotations: ann},
+		Spec: appsv1.StatefulSetSpec{
+			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}},
+		},
+	}
+}
+
+// makeOptedInDaemonSet builds a DaemonSet consuming the target (opt-in).
+func makeOptedInDaemonSet(name string, consumesTargets ...string) *appsv1.DaemonSet {
+	ann := map[string]string{}
+	if len(consumesTargets) > 0 {
+		ann[hikyov1.AnnotationWorkloadSecrets] = strings.Join(consumesTargets, ",")
+	}
+	return &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: name, Annotations: ann},
+		Spec: appsv1.DaemonSetSpec{
 			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}},
 		},
 	}

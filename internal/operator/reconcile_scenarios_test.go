@@ -344,3 +344,60 @@ func TestStalledObservedOnCurrentPath(t *testing.T) {
 	requireCond(t, got, hikyov1.ConditionSynced, metav1.ConditionTrue, hikyov1.ReasonCurrent)
 	requireCond(t, got, hikyov1.ConditionRollout, metav1.ConditionFalse, hikyov1.ReasonStalled)
 }
+
+func TestStalledStatefulSetObservedOnCurrentPath(t *testing.T) {
+	cr := makeCR("app")
+	h := newHarness(t, interceptor.Funcs{},
+		makeInstance(""), makeBootstrapSecret("boot", testInstance, "tok", true),
+		makeOptedInStatefulSet("web", testTarget), cr)
+	h.stub.set(200, deliveryJSON(false, "v1:cur1", "v1:t", []deliveredKey{secretVal("API_KEY", "v")}, nil))
+	if _, err := h.reconcile("app"); err != nil {
+		t.Fatalf("reconcile1: %v", err)
+	}
+	// Mark the opted-in workload as not progressed (controller-reported).
+	web := h.getStatefulSet("web")
+	web.Generation = 2
+	web.Status.ObservedGeneration = 1
+	web.Status.Replicas = 1
+	web.Status.UpdatedReplicas = 0
+	if err := h.cl.Update(context.Background(), web); err != nil {
+		t.Fatalf("update web status: %v", err)
+	}
+	// Reconcile 2: eligible cursor, server answers current; rollout is evaluated
+	// read-only and the stall surfaces.
+	h.stub.set(200, deliveryJSON(true, "v1:cur1", "v1:t", nil, nil))
+	if _, err := h.reconcile("app"); err != nil {
+		t.Fatalf("reconcile2: %v", err)
+	}
+	got := h.getCR("app")
+	requireCond(t, got, hikyov1.ConditionSynced, metav1.ConditionTrue, hikyov1.ReasonCurrent)
+	requireCond(t, got, hikyov1.ConditionRollout, metav1.ConditionFalse, hikyov1.ReasonStalled)
+}
+
+func TestStalledDaemonSetObservedOnCurrentPath(t *testing.T) {
+	cr := makeCR("app")
+	h := newHarness(t, interceptor.Funcs{},
+		makeInstance(""), makeBootstrapSecret("boot", testInstance, "tok", true),
+		makeOptedInDaemonSet("web", testTarget), cr)
+	h.stub.set(200, deliveryJSON(false, "v1:cur1", "v1:t", []deliveredKey{secretVal("API_KEY", "v")}, nil))
+	if _, err := h.reconcile("app"); err != nil {
+		t.Fatalf("reconcile1: %v", err)
+	}
+	// Mark the opted-in workload as not progressed (controller-reported).
+	web := h.getDaemonSet("web")
+	web.Generation = 2
+	web.Status.ObservedGeneration = 1
+	web.Status.NumberUnavailable = 1
+	if err := h.cl.Update(context.Background(), web); err != nil {
+		t.Fatalf("update web status: %v", err)
+	}
+	// Reconcile 2: eligible cursor, server answers current; rollout is evaluated
+	// read-only and the stall surfaces.
+	h.stub.set(200, deliveryJSON(true, "v1:cur1", "v1:t", nil, nil))
+	if _, err := h.reconcile("app"); err != nil {
+		t.Fatalf("reconcile2: %v", err)
+	}
+	got := h.getCR("app")
+	requireCond(t, got, hikyov1.ConditionSynced, metav1.ConditionTrue, hikyov1.ReasonCurrent)
+	requireCond(t, got, hikyov1.ConditionRollout, metav1.ConditionFalse, hikyov1.ReasonStalled)
+}
