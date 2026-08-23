@@ -40,25 +40,20 @@ func totpCode(t *testing.T, otpauthURI string, at time.Time) string {
 	return code
 }
 
-// bootstrapFactorAdmin mints a first administrator and establishes its
-// password, returning the acting service and the credential. One service (one
-// root key) drives the whole flow so sealed material stays readable.
-func bootstrapFactorAdmin(t *testing.T, db *store.DB) (*service.Auth, service.BootstrapResult, string) {
+// bootstrapFactorAdmin adds the environment read needed by factor
+// reauthentication flows to the shared first-administrator fixture. One Auth
+// (one root key) drives the whole flow so sealed material stays readable.
+func bootstrapFactorAdmin(t *testing.T, db *store.DB) admin {
 	t.Helper()
-	auth := authService(t, db)
-	boot, err := auth.BootstrapAdmin(t.Context(), "factor-admin", "Factor Admin", "terminal")
-	if err != nil {
-		t.Fatal(err)
-	}
-	const password = "correct horse battery staple factor"
-	if err := auth.EstablishCredential(t.Context(), boot.Authority, password); err != nil {
-		t.Fatal(err)
-	}
+	administrator := bootstrapAdmin(t, db, adminOpts{
+		username: "factor-admin", displayName: "Factor Admin",
+		password: "correct horse battery staple factor",
+	})
 	// See bootstrapWebAuthnAdmin: the reauth routes authorize the environment
 	// under `read` before inspecting its policy, and bootstrap seeds no tenant
 	// capability.
-	grantRead(t, db, boot.PrincipalID)
-	return auth, boot, password
+	grantRead(t, db, administrator.boot.PrincipalID)
+	return administrator
 }
 
 // runFactorLifecycle drives every factor audit event once, so a suite sharing a
@@ -135,7 +130,8 @@ func TestRecoveryCodeRegenerationTOTPReplayPostgres(t *testing.T) {
 }
 
 func runPasswordReauthEvidenceRejectsReplacedCredential(t *testing.T, db *store.DB) {
-	auth, boot, password := bootstrapFactorAdmin(t, db)
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, boot, password := factorAdmin.auth, factorAdmin.boot, factorAdmin.password
 	ctx := t.Context()
 	login, err := auth.LocalLogin(ctx, "factor-admin", password, service.ArtifactCLI)
 	if err != nil {
@@ -180,7 +176,8 @@ func runPasswordReauthEvidenceRejectsReplacedCredential(t *testing.T, db *store.
 }
 
 func runRecoveryCodeRegenerationTOTPReplay(t *testing.T, db *store.DB) {
-	auth, _, password := bootstrapFactorAdmin(t, db)
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, password := factorAdmin.auth, factorAdmin.password
 	ctx := t.Context()
 	now := time.Now().UTC()
 	auth.Now = func() time.Time { return now }
@@ -212,7 +209,8 @@ func runRecoveryCodeRegenerationTOTPReplay(t *testing.T, db *store.DB) {
 // session-less flow (code -> authority -> establish -> login), and the mid-reset
 // invariant that the authority is not a session.
 func runRecoveryFlow(t *testing.T, db *store.DB) {
-	auth, _, password := bootstrapFactorAdmin(t, db)
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, password := factorAdmin.auth, factorAdmin.password
 	ctx := t.Context()
 	orgs := &service.Orgs{DB: db}
 
@@ -278,7 +276,8 @@ func TestAccountSecurityCannotSelfAuthorizePostgres(t *testing.T) {
 // enrolling TOTP requires the PRE-EXISTING password, and the code of the factor
 // being enrolled is not that proof.
 func runSelfAuthorize(t *testing.T, db *store.DB) {
-	auth, _, password := bootstrapFactorAdmin(t, db)
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, password := factorAdmin.auth, factorAdmin.password
 	base := time.Now().UTC()
 	clk := base
 	auth.Now = func() time.Time { return clk }
@@ -324,7 +323,8 @@ func TestStepUpElevatesPostgres(t *testing.T) { runStepUpElevates(t, seededDB(t,
 // runStepUpElevates asserts a password-only session is refused an MFA-mandatory
 // operation and that a TOTP step-up unlocks it.
 func runStepUpElevates(t *testing.T, db *store.DB) {
-	auth, _, password := bootstrapFactorAdmin(t, db)
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, password := factorAdmin.auth, factorAdmin.password
 	base := time.Now().UTC()
 	clk := base
 	auth.Now = func() time.Time { return clk }
@@ -377,7 +377,8 @@ func TestTOTPConfirmSameStepPostgres(t *testing.T) {
 // the creation step has consumed nothing yet, so it must not be pre-consumed),
 // and that a code from an earlier step is refused.
 func runConfirmSameStep(t *testing.T, db *store.DB) {
-	auth, _, password := bootstrapFactorAdmin(t, db)
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, password := factorAdmin.auth, factorAdmin.password
 	base := time.Now().UTC()
 	clk := base
 	auth.Now = func() time.Time { return clk }
@@ -420,7 +421,8 @@ func TestTOTPStepUpReplayPostgres(t *testing.T) {
 // refused by name with the already-used sentinel (human-auth ADR §141, §207 —
 // the user waits for the next code), not the uniform bad-code refusal.
 func runStepUpReplay(t *testing.T, db *store.DB) {
-	auth, _, password := bootstrapFactorAdmin(t, db)
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, password := factorAdmin.auth, factorAdmin.password
 	base := time.Now().UTC()
 	clk := base
 	auth.Now = func() time.Time { return clk }

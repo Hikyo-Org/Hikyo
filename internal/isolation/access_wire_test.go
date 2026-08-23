@@ -64,10 +64,14 @@ type accessWireEnv struct {
 // org, and hands back a live server.
 func newAccessWireEnv(t *testing.T, db *store.DB) accessWireEnv {
 	t.Helper()
-	auth, boot, password := bootstrapWebAuthnAdminBoot(t, db)
+	auth := webauthnAuthService(t, db)
+	administrator := bootstrapAdmin(t, db, adminOpts{
+		username: waAdmin, displayName: "WA Admin",
+		password: "a perfectly ordinary wire passphrase", auth: auth, login: true,
+	})
 	ctx := t.Context()
 	dev := webauthntest.New(waRPID, waOrigin)
-	token := enrolPasskey(t, auth, ctx, boot.token, password, dev)
+	token := enrolPasskey(t, auth, ctx, administrator.token, administrator.password, dev)
 	token = stepUpPasskey(t, auth, ctx, token, dev)
 
 	orgs := &service.Orgs{DB: db}
@@ -78,7 +82,7 @@ func newAccessWireEnv(t *testing.T, db *store.DB) accessWireEnv {
 	// Creation granted this principal org-admin access and therefore killed the
 	// creating session. Re-login and present the already-enrolled passkey before
 	// the wire assertions begin.
-	login, err := auth.LocalLogin(ctx, waAdmin, password, service.ArtifactCLI)
+	login, err := auth.LocalLogin(ctx, waAdmin, administrator.password, service.ArtifactCLI)
 	if err != nil {
 		t.Fatalf("login after org create: %v", err)
 	}
@@ -115,35 +119,9 @@ func newAccessWireEnv(t *testing.T, db *store.DB) accessWireEnv {
 	}, nil))
 	t.Cleanup(srv.Close)
 	return accessWireEnv{
-		srv: srv, token: token, db: db, auth: auth, admin: boot.principal,
+		srv: srv, token: token, db: db, auth: auth, admin: administrator.boot.PrincipalID,
 		org: org.ID, project: wireProject, env: wireEnv,
 	}
-}
-
-// bootstrapWebAuthnAdminBoot is bootstrapWebAuthnAdmin plus the principal id,
-// which these tests need to revoke the administrator's own authority.
-type bootInfo struct {
-	token     string
-	principal domain.PrincipalID
-}
-
-func bootstrapWebAuthnAdminBoot(t *testing.T, db *store.DB) (*service.Auth, bootInfo, string) {
-	t.Helper()
-	auth := webauthnAuthService(t, db)
-	ctx := t.Context()
-	boot, err := auth.BootstrapAdmin(ctx, waAdmin, "WA Admin", "terminal")
-	if err != nil {
-		t.Fatal(err)
-	}
-	const password = "a perfectly ordinary wire passphrase"
-	if err := auth.EstablishCredential(ctx, boot.Authority, password); err != nil {
-		t.Fatal(err)
-	}
-	login, err := auth.LocalLogin(ctx, waAdmin, password, service.ArtifactCLI)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return auth, bootInfo{token: login.SessionToken, principal: boot.PrincipalID}, password
 }
 
 // call issues one request against the live server and returns status + body.

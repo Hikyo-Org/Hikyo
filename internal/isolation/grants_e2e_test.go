@@ -603,7 +603,8 @@ func TestRevokeKillsSessionPostgres(t *testing.T) {
 // principal — the administrator's own — so the demo reads as one story rather
 // than two halves about two people.
 func runRevokeKillsSession(t *testing.T, db *store.DB) {
-	auth, boot, password := bootstrapFactorAdmin(t, db)
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, boot, password := factorAdmin.auth, factorAdmin.boot, factorAdmin.password
 	ctx := t.Context()
 	g := &service.Grants{DB: db}
 
@@ -1041,7 +1042,8 @@ func TestOriginAddKeepsSessionAlivePostgres(t *testing.T) {
 // the same holder's session DOES die when the same grant is revoked, so the
 // session-kill machinery is demonstrably wired to this principal.
 func runOriginAddKeepsSessionAlive(t *testing.T, db *store.DB) {
-	auth, boot, password := bootstrapFactorAdmin(t, db)
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, boot, password := factorAdmin.auth, factorAdmin.boot, factorAdmin.password
 	ctx := t.Context()
 	g := grantSvc(db)
 

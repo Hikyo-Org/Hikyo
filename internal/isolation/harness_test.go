@@ -25,6 +25,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -32,6 +33,93 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
 	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 )
+
+// adminOpts describes the per-suite identity and authentication configuration
+// while bootstrapAdmin owns the shared first-administrator ceremony.
+type adminOpts struct {
+	username    string
+	displayName string
+	password    string
+	auth        *service.Auth
+	login       bool
+}
+
+type admin struct {
+	auth      *service.Auth
+	boot      service.BootstrapResult
+	accountID string
+	token     string
+	password  string
+}
+
+// bootstrapAdmin creates the first administrator, establishes its password,
+// and optionally logs in. BootstrapResult is the source of truth for account
+// and principal identity; callers must not re-derive either through SQL.
+func bootstrapAdmin(t *testing.T, db *store.DB, opts adminOpts) admin {
+	t.Helper()
+	auth := opts.auth
+	if auth == nil {
+		auth = authService(t, db)
+	}
+	boot, err := auth.BootstrapAdmin(t.Context(), opts.username, opts.displayName, "terminal")
+	if err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	if err := auth.EstablishCredential(t.Context(), boot.Authority, opts.password); err != nil {
+		t.Fatalf("establish credential: %v", err)
+	}
+
+	result := admin{
+		auth:      auth,
+		boot:      boot,
+		accountID: boot.AccountID,
+		password:  opts.password,
+	}
+	if !opts.login {
+		return result
+	}
+	login, err := auth.LocalLogin(t.Context(), opts.username, opts.password, service.ArtifactCLI)
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	result.token = login.SessionToken
+	return result
+}
+
+// authService builds a real Auth against the harness database: a live
+// keyring (verifiers are envelope-encrypted, so there is nothing to fake) and
+// a real admission limiter. The Argon2id cost is dialled to the production
+// floor because the flow exercises it only a handful of times.
+func authService(t *testing.T, db *store.DB) *service.Auth {
+	return authServiceWithKeyring(t, db)
+}
+
+// authServiceWithKeyring is authService plus access to the keyring it loaded.
+// The keyring hierarchy is minted once per datastore under one root.
+func authServiceWithKeyring(t *testing.T, db *store.DB) *service.Auth {
+	t.Helper()
+	kr := probeKeyring(t, db)
+	limiter, err := admission.New(admission.Config{ArgonMemoryKiB: crypto.PasswordFloor.MemoryKiB})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &service.Auth{DB: db, Keyring: kr, KDF: crypto.PasswordFloor, Admission: limiter}
+}
+
+func queryString(t *testing.T, db *store.DB, q string) string {
+	t.Helper()
+	var s string
+	var err error
+	if db.Engine() == store.EnginePostgres {
+		err = db.PG().QueryRow(t.Context(), q).Scan(&s)
+	} else {
+		err = db.SQLiteRead().QueryRowContext(t.Context(), q).Scan(&s)
+	}
+	if err != nil {
+		t.Fatalf("query %q: %v", q, err)
+	}
+	return s
+}
 
 // Fixture principals.
 const (

@@ -31,7 +31,8 @@ func TestBrowserLoginMintsACSRFBoundSessionPostgres(t *testing.T) {
 }
 
 func runBrowserSessionFlow(t *testing.T, db *store.DB) {
-	auth, _, password := bootstrapFactorAdmin(t, db)
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, password := factorAdmin.auth, factorAdmin.password
 	ctx := t.Context()
 
 	login, err := auth.LocalLogin(ctx, "factor-admin", password, service.ArtifactBrowser)
@@ -115,7 +116,8 @@ func runBrowserSessionFlow(t *testing.T, db *store.DB) {
 // work happens — never silently downgraded to CLI, which would hand a browser
 // its session token in a script-readable body.
 func TestUnknownLoginArtifactIsRefusedBeforeVerification(t *testing.T) {
-	auth, _, password := bootstrapFactorAdmin(t, seededDB(t, openSQLite))
+	factorAdmin := bootstrapFactorAdmin(t, seededDB(t, openSQLite))
+	auth, password := factorAdmin.auth, factorAdmin.password
 	_, err := auth.LocalLogin(t.Context(), "factor-admin", password, "kiosk")
 	if !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("err = %v, want invalid", err)
@@ -166,7 +168,8 @@ func browserSessionCheck(
 }
 
 func runBrowserMutationFlow(t *testing.T, db *store.DB) {
-	auth, _, password := bootstrapFactorAdmin(t, db)
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, password := factorAdmin.auth, factorAdmin.password
 	ctx := t.Context()
 
 	// A clock the test advances, so each TOTP step is a fresh unspent one.
@@ -241,7 +244,8 @@ func TestBrowserFederationPreservesTheArtifactPostgres(t *testing.T) {
 }
 
 func runBrowserFederationFlow(t *testing.T, db *store.DB) {
-	auth, boot, password := bootstrapFactorAdmin(t, db)
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, boot, password := factorAdmin.auth, factorAdmin.boot, factorAdmin.password
 	ctx := t.Context()
 	configureProvider(t, auth, ctx, boot.PrincipalID, "browser-idp", service.ProviderInput{
 		DisplayName: "Browser IdP", ClientID: "client", ClientSecret: "secret",
@@ -353,7 +357,8 @@ func TestListMineNeedsNoSecondFactorPostgres(t *testing.T) {
 }
 
 func runListMineFromABrowserSession(t *testing.T, db *store.DB) {
-	auth, boot, password := bootstrapFactorAdmin(t, db)
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, boot, password := factorAdmin.auth, factorAdmin.boot, factorAdmin.password
 	ctx := t.Context()
 	orgs := &service.Orgs{DB: db}
 

@@ -147,7 +147,8 @@ func runSCIMCredentialRejected(t *testing.T, db *store.DB) {
 	// artifact here would prove only that nonsense is refused, which is a
 	// different claim.
 	s := scimSvc(db)
-	_, _, human := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	human := oidcAdministrator.password
 	if _, err := s.GetUser(ctx, service.Bearer(human), orgA, bindingID, "scu_none"); !isUnauth(err) {
 		t.Fatalf("a live human session must not authenticate the provisioning wire, got %v", err)
 	}

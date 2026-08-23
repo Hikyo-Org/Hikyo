@@ -269,19 +269,16 @@ func buildInstance(t *testing.T, target drillTarget, c custody) (*store.DB, arti
 	ctx := t.Context()
 	a := artifacts{password: "correct horse battery staple drill", adminUser: "drill-admin"}
 
-	boot, err := auth.BootstrapAdmin(ctx, a.adminUser, "Drill Admin", "terminal")
-	if err != nil {
-		t.Fatalf("bootstrap admin: %v", err)
-	}
-	a.adminPrin = boot.PrincipalID
-	if err := auth.EstablishCredential(ctx, boot.Authority, a.password); err != nil {
-		t.Fatalf("establish credential: %v", err)
-	}
+	administrator := bootstrapAdmin(t, db, adminOpts{
+		username: a.adminUser, displayName: "Drill Admin",
+		password: a.password, auth: auth,
+	})
+	a.adminPrin = administrator.boot.PrincipalID
 	// An UNCONSUMED single-use artifact, minted BEFORE any session exists so
 	// that the reset's own session sweep is not what kills the session the
 	// drill later replays. "Single-use artifacts dead" needs a live subject,
 	// not a spent one.
-	reset, err := auth.BreakGlassResetCredential(ctx, string(boot.PrincipalID), "terminal")
+	reset, err := auth.BreakGlassResetCredential(ctx, string(administrator.boot.PrincipalID), "terminal")
 	if err != nil {
 		t.Fatalf("break-glass reset: %v", err)
 	}
