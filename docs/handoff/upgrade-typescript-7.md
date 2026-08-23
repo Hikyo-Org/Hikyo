@@ -22,7 +22,7 @@ uses TS7's native `tsc`.
 
 ## Verification
 
-- `clients/ts`: `tsc` reports 7.0.2, the imported compiler API reports 6.0.3,
+- `clients/ts`: `tsc` reports 7.0.2, the imported compiler API reports 6.0.2,
   generation is deterministic, typecheck passes, and 14 tests pass.
 - `web`: `tsc` reports 7.0.2, typecheck passes, 323 tests pass, and Vite builds.
 - Local warm typecheck time fell from 4.17s to 0.94s for `web` and from 1.54s
