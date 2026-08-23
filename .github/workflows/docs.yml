@@ -9,6 +9,7 @@ on:
       - "scripts/ci/check-docs-live*"
       - "scripts/ci/check-fallback-channel*"
       - "scripts/ci/check-oss-policy*"
+      - "scripts/ci/install-corepack.sh"
       - "scripts/ci/verify-docs.sh"
       - "release/repository/fallback-channel-test.json"
       - "CONTRIBUTING.md"

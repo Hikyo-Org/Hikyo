@@ -15,7 +15,7 @@ case "$package_manager" in
 		;;
 esac
 
-corepack enable
+"$repo_root/scripts/ci/install-corepack.sh"
 corepack install --global "$package_manager"
 pnpm --dir "$repo_root/docs/site" install --frozen-lockfile
 node "$repo_root/scripts/ci/check-doc-status.mjs" --check --root "$repo_root"

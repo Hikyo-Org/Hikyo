@@ -13,9 +13,9 @@ Install these exact toolchain lines:
 
 | Tool | Required version | Used for |
 | --- | --- | --- |
-| Go | 1.26.2 or newer in the 1.26 line | Server and CLI |
+| Go | 1.27.0 or newer in the 1.27 line | Server and CLI |
 | Node.js | Version in `.nvmrc` | Embedded browser UI |
-| Corepack | Bundled with Node.js | Pinned pnpm launcher |
+| Corepack | 0.35.0, installed separately | Pinned pnpm launcher |
 | pnpm | 11.10.0 through Corepack | UI dependencies and build |
 
 Git is required for a source checkout. SQLite support is compiled into the
@@ -36,7 +36,9 @@ change interfaces and schema behavior without a compatibility promise.
 ## 2. Build the embedded UI
 
 ```bash
+npm install --global --ignore-scripts corepack@0.35.0
 corepack enable
+corepack install --global pnpm@11.10.0
 pnpm --dir clients/ts install --frozen-lockfile
 pnpm --dir web install --frozen-lockfile
 pnpm --dir web build

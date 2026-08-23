@@ -26,7 +26,9 @@ configuration and recovery procedures.
 Until Hikyo publishes a stable release, build from a reviewed commit:
 
 ```bash
+npm install --global --ignore-scripts corepack@0.35.0
 corepack enable
+corepack install --global pnpm@11.10.0
 pnpm --dir clients/ts install --frozen-lockfile
 pnpm --dir web install --frozen-lockfile
 pnpm --dir web build

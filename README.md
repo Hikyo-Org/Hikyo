@@ -102,13 +102,16 @@ ships as one Go binary and supports both SQLite and PostgreSQL.
 
 ## Quick start
 
-Requires Go 1.26+, Node.js 24 (see [`.nvmrc`](./.nvmrc)), and Corepack/pnpm.
+Requires Go 1.27+, Node.js 26.7.0 (see [`.nvmrc`](./.nvmrc)), Corepack 0.35.0,
+and pnpm 11.10.0.
 
 ```bash
 git clone https://github.com/Hikyo-Org/Hikyo.git
 cd Hikyo
 
+npm install --global --ignore-scripts corepack@0.35.0
 corepack enable
+corepack install --global pnpm@11.10.0
 pnpm --dir clients/ts install --frozen-lockfile
 pnpm --dir web install --frozen-lockfile
 pnpm --dir web build
