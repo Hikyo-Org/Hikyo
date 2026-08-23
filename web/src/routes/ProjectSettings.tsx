@@ -32,6 +32,7 @@ import {
   type SettingsOperation,
 } from '../api/settings.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { RetentionBoundsFields } from './RetentionBoundsFields.tsx';
 import { Alert, Done, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback } from './useModalDialog.ts';
 
@@ -216,8 +217,7 @@ export function ProjectSettings() {
           <Alert>This project&apos;s retention policy could not be read.</Alert>
         ) : null}
         {projectRetention.data === undefined || orgRetention.data === undefined ? null : (
-          <ProjectRetentionEditor
-            key={`${org}/${project}`}
+          <ProjectRetentionEditorController
             org={org}
             project={project}
             policy={projectRetention.data}
@@ -600,7 +600,7 @@ function EnvironmentRow({
 }
 
 /** ProjectRetentionEditor sends the policy to the authoritative cap validator. */
-function ProjectRetentionEditor({
+function ProjectRetentionEditorController({
   org,
   project,
   policy,
@@ -614,9 +614,32 @@ function ProjectRetentionEditor({
   onError: (error: unknown) => void;
 }) {
   const save = useSetProjectRetention(org, project);
+  return (
+    <ProjectRetentionEditor
+      scope={`${org}/${project}`}
+      policy={policy}
+      busy={save.isPending}
+      onSave={(input) => saveProjectRetention(save, input, onDone, onError)}
+    />
+  );
+}
+
+export function ProjectRetentionEditor({
+  scope,
+  policy,
+  busy,
+  onSave,
+}: {
+  scope: string;
+  policy: ProjectRetentionPolicy;
+  busy: boolean;
+  onSave: (input: {
+    inherited: boolean;
+    maxAgeSeconds: number | null;
+    lastRevisions: number | null;
+  }) => void;
+}) {
   const modeId = useId();
-  const ageId = useId();
-  const countId = useId();
   const [inherited, setInherited] = useState(policy.inherited);
   const [age, setAge] = useState<RetentionDayState>(() =>
     retentionDayState(policy.max_age_seconds),
@@ -637,7 +660,7 @@ function ProjectRetentionEditor({
         : String(policy.last_revisions),
     );
     setRefusal(null);
-  }, [policy.inherited, policy.last_revisions, policy.max_age_seconds]);
+  }, [scope, policy.inherited, policy.last_revisions, policy.max_age_seconds]);
 
   return (
     <>
@@ -646,22 +669,6 @@ function ProjectRetentionEditor({
           ? `This project inherits the organisation cap and follows it when it changes. Effective: ${retentionSentence(policy)}`
           : `This project holds its own override, detached from later organisation changes. Effective: ${retentionSentence(policy)}`}
       </p>
-      {!inherited && age.kind === 'exact' ? (
-        <Alert>
-          Current maximum age is exact ({age.seconds} seconds), not whole days. The day editor is
-          disabled so that exact value cannot look absent.
-          <button
-            type="button"
-            className="btn"
-            onClick={() => setAge({ kind: 'days', days: '' })}
-          >
-            Replace with whole days
-          </button>
-        </Alert>
-      ) : null}
-      {!inherited && age.kind === 'absent' ? (
-        <p role="status">No maximum age is present. Enter a whole-day replacement deliberately.</p>
-      ) : null}
       {refusal !== null ? <Alert>{refusal}</Alert> : null}
       <div className="field">
         <label htmlFor={modeId}>Policy</label>
@@ -678,52 +685,28 @@ function ProjectRetentionEditor({
         </select>
       </div>
       {inherited ? null : (
-        <div className="retention__bounds">
-          <div className="field">
-            <label htmlFor={ageId}>Maximum age, in days</label>
-            <input
-              id={ageId}
-              type="number"
-              min={1}
-              inputMode="numeric"
-              value={age.kind === 'days' ? age.days : ''}
-              disabled={age.kind === 'exact'}
-              onChange={(event) => {
-                setRefusal(null);
-                setAge({ kind: 'days', days: event.target.value });
-              }}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor={countId}>Revisions kept per environment</label>
-            <input
-              id={countId}
-              type="number"
-              min={1}
-              inputMode="numeric"
-              value={count}
-              onChange={(event) => {
-                setRefusal(null);
-                setCount(event.target.value);
-              }}
-            />
-          </div>
-        </div>
+        <RetentionBoundsFields
+          age={age}
+          count={count}
+          onAgeChange={(next) => {
+            setRefusal(null);
+            setAge(next);
+          }}
+          onCountChange={(next) => {
+            setRefusal(null);
+            setCount(next);
+          }}
+        />
       )}
       <div className="panel__actions">
         <button
           type="button"
           className="btn"
-          disabled={save.isPending}
+          disabled={busy}
           onClick={() => {
             if (inherited) {
               setRefusal(null);
-              saveProjectRetention(
-                save,
-                { inherited: true, maxAgeSeconds: null, lastRevisions: null },
-                onDone,
-                onError,
-              );
+              onSave({ inherited: true, maxAgeSeconds: null, lastRevisions: null });
               return;
             }
             const payload = retentionBoundsPayload(
@@ -735,16 +718,11 @@ function ProjectRetentionEditor({
               return;
             }
             setRefusal(null);
-            saveProjectRetention(
-              save,
-              {
-                inherited: false,
-                maxAgeSeconds: payload.maxAgeSeconds,
-                lastRevisions: payload.lastRevisions,
-              },
-              onDone,
-              onError,
-            );
+            onSave({
+              inherited: false,
+              maxAgeSeconds: payload.maxAgeSeconds,
+              lastRevisions: payload.lastRevisions,
+            });
           }}
         >
           Save retention
