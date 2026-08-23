@@ -36,7 +36,9 @@ change selected by `resolveVersions`.
 - Corrected sticky-occurrence SQLite scenario: 2 passed.
 - Named restore regression set: 6 passed in `internal/conformance`.
 - `TestImpactPreviewWirePreservesProtectedState`: passed in `internal/server`.
-- `go test -count=1 ./...`: 3,543 passed in 61 packages.
+- Pre-merge `go test -count=1 ./...`: 3,543 passed in 61 packages.
+- After merging current `origin/main`, the named set still passed 6 + 1 checks
+  and `go test -count=1 ./...` passed 3,544 tests in 61 packages.
 - Local PostgreSQL leg: not run because `HIKYO_TEST_POSTGRES_DSN` was unset;
   trusted CI owns the mandatory SQLite + PostgreSQL conformance run.
 - Standards and spec review: CLEAN in round 2/3 after target timing was fixed.
