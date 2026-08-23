@@ -21,6 +21,7 @@ import {
 } from '../api/settings.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { notifySuccess } from '../app/notifications.tsx';
+import { RetentionBoundsFields } from './RetentionBoundsFields.tsx';
 import { Alert, Done, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback } from './useModalDialog.ts';
 
@@ -168,7 +169,7 @@ export function OrgSettings() {
         ) : null}
         {retention.data === undefined ? null : (
           <RetentionEditor
-            key={org}
+            scope={org}
             policy={retention.data}
             busy={setRetention.isPending}
             onSave={(next) =>
@@ -299,18 +300,18 @@ function ProjectRetentionList({
  * would have to hide a bound the operator is accountable for. `unlimited` is
  * explicit organisation state, never a missing value.
  */
-function RetentionEditor({
+export function RetentionEditor({
+  scope,
   policy,
   busy,
   onSave,
 }: {
+  scope: string;
   policy: RetentionPolicy;
   busy: boolean;
   onSave: (next: RetentionPolicy) => void;
 }) {
   const modeId = useId();
-  const ageId = useId();
-  const countId = useId();
   const [mode, setMode] = useState(policy.mode);
   const [age, setAge] = useState<RetentionDayState>(() =>
     retentionDayState(policy.max_age_seconds),
@@ -331,29 +332,13 @@ function RetentionEditor({
         : String(policy.last_revisions),
     );
     setRefusal(null);
-  }, [policy.last_revisions, policy.max_age_seconds, policy.mode]);
+  }, [scope, policy.last_revisions, policy.max_age_seconds, policy.mode]);
 
   return (
     <>
       <p className="retention__current" role="status">
         {retentionSentence(policy)}
       </p>
-      {mode === 'keep-if-either' && age.kind === 'exact' ? (
-        <Alert>
-          Current maximum age is exact ({age.seconds} seconds), not whole days. The day editor is
-          disabled so that exact value cannot look absent.
-          <button
-            type="button"
-            className="btn"
-            onClick={() => setAge({ kind: 'days', days: '' })}
-          >
-            Replace with whole days
-          </button>
-        </Alert>
-      ) : null}
-      {mode === 'keep-if-either' && age.kind === 'absent' ? (
-        <p role="status">No maximum age is present. Enter a whole-day replacement deliberately.</p>
-      ) : null}
       {refusal === null ? null : <Alert>{refusal}</Alert>}
       <div className="field">
         <label htmlFor={modeId}>Mode</label>
@@ -370,37 +355,18 @@ function RetentionEditor({
         </select>
       </div>
       {mode === 'keep-if-either' ? (
-        <div className="retention__bounds">
-          <div className="field">
-            <label htmlFor={ageId}>Maximum age, in days</label>
-            <input
-              id={ageId}
-              type="number"
-              min={1}
-              inputMode="numeric"
-              value={age.kind === 'days' ? age.days : ''}
-              disabled={age.kind === 'exact'}
-              onChange={(event) => {
-                setRefusal(null);
-                setAge({ kind: 'days', days: event.target.value });
-              }}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor={countId}>Revisions kept per environment</label>
-            <input
-              id={countId}
-              type="number"
-              min={1}
-              inputMode="numeric"
-              value={count}
-              onChange={(event) => {
-                setRefusal(null);
-                setCount(event.target.value);
-              }}
-            />
-          </div>
-        </div>
+        <RetentionBoundsFields
+          age={age}
+          count={count}
+          onAgeChange={(next) => {
+            setRefusal(null);
+            setAge(next);
+          }}
+          onCountChange={(next) => {
+            setRefusal(null);
+            setCount(next);
+          }}
+        />
       ) : (
         <p className="field__hint">
           Unlimited is the only policy a project cannot copy: a project override is always bounded.

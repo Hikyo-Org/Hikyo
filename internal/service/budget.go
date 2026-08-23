@@ -427,6 +427,24 @@ func (b *Budget) chargeOnce(charged *bool, cat budgetCategory, keys budgetKeys) 
 	return nil
 }
 
+// bumpSchemaRevision charges the § 151 schema-revision rate and then advances the
+// project's revision, as one inseparable step. Every schema-mutating service
+// method calls it from INSIDE its tx.Write closure, past its own no-op early
+// return, so an unchanged request still consumes no budget. The charge runs
+// first: a rate refusal wraps admission.ErrOverloaded, rolls the transaction
+// back, and never reaches the bump — so a bump can never bypass the 60/h
+// per-project bound. charged, owned by the caller outside the closure, keeps the
+// charge idempotent across the retry loop (see chargeOnce). Direct
+// r.Catalogue().BumpSchemaRevision calls are banned outside this helper by
+// TestBumpSchemaRevisionOnlyThroughBudget, so a future call site cannot forget
+// the paired charge.
+func bumpSchemaRevision(ctx context.Context, r store.Repos, p authz.Proof, b *Budget, charged *bool, project domain.ProjectID) error {
+	if err := b.chargeOnce(charged, budgetSchemaRevision, budgetKeys{Project: project}); err != nil {
+		return err
+	}
+	return r.Catalogue().BumpSchemaRevision(ctx, p)
+}
+
 // evictStaleRate drops rate buckets whose windows have entirely elapsed, using
 // each bucket's OWN window rather than the widest one in play. A 1-minute
 // machine-fetch bucket is reclaimed a minute after its last hit, so a burst of

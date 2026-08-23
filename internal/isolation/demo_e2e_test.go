@@ -398,14 +398,11 @@ func TestLoginDoesNotHoldTheWriteLockWhileDeriving(t *testing.T) {
 	auth := authService(t, db)
 	orgs := &service.Orgs{DB: db}
 
-	boot, err := auth.BootstrapAdmin(t.Context(), "lockcheck", "Lock Check", "terminal")
-	if err != nil {
-		t.Fatal(err)
-	}
 	const password = "another perfectly ordinary passphrase"
-	if err := auth.EstablishCredential(t.Context(), boot.Authority, password); err != nil {
-		t.Fatal(err)
-	}
+	administrator := bootstrapAdmin(t, db, adminOpts{
+		username: "lockcheck", displayName: "Lock Check",
+		password: password, auth: auth,
+	})
 
 	var wg sync.WaitGroup
 	stop := make(chan struct{})
@@ -434,7 +431,7 @@ func TestLoginDoesNotHoldTheWriteLockWhileDeriving(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatal("unrelated writes could not make progress while logins were deriving")
 		}
-		if _, err := orgs.Create(t.Context(), service.LocalPrincipal(boot.PrincipalID), fmt.Sprintf("lockcheck-%d", i), true, []byte(`{}`)); err != nil {
+		if _, err := orgs.Create(t.Context(), service.LocalPrincipal(administrator.boot.PrincipalID), fmt.Sprintf("lockcheck-%d", i), true, []byte(`{}`)); err != nil {
 			t.Fatalf("write %d blocked behind a login derivation: %v", i, err)
 		}
 	}

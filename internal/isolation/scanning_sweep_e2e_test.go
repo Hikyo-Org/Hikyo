@@ -333,12 +333,16 @@ func newSweepEnv(t *testing.T, db *store.DB) sweepEnv {
 		t.Fatalf("load ruleset: %v", err)
 	}
 	kr := probeKeyring(t, db)
-	auth, boot, password := bootstrapWebAuthnAdminBoot(t, db)
+	auth := webauthnAuthService(t, db)
+	administrator := bootstrapAdmin(t, db, adminOpts{
+		username: waAdmin, displayName: "WA Admin",
+		password: "a perfectly ordinary wire passphrase", auth: auth, login: true,
+	})
 	ctx := tctx(t)
 	// A stepped-up passkey session — org creation and the tenant writes below are
 	// MFA-mandatory, so a password-only session answers unauthorized.
 	dev := webauthntest.New(waRPID, waOrigin)
-	token := enrolPasskey(t, auth, ctx, boot.token, password, dev)
+	token := enrolPasskey(t, auth, ctx, administrator.token, administrator.password, dev)
 	token = stepUpPasskey(t, auth, ctx, token, dev)
 
 	orgs := &service.Orgs{DB: db}
@@ -346,7 +350,7 @@ func newSweepEnv(t *testing.T, db *store.DB) sweepEnv {
 	if err != nil {
 		t.Fatalf("create org: %v", err)
 	}
-	login, err := auth.LocalLogin(ctx, waAdmin, password, service.ArtifactCLI)
+	login, err := auth.LocalLogin(ctx, waAdmin, administrator.password, service.ArtifactCLI)
 	if err != nil {
 		t.Fatalf("login after org create: %v", err)
 	}
@@ -357,12 +361,12 @@ func newSweepEnv(t *testing.T, db *store.DB) sweepEnv {
 	for i, capability := range []string{"read", "edit", "publish", "definitions-edit", "manage-projects", "reveal", "audit-read"} {
 		execRaw(t, db, fmt.Sprintf(
 			"INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('grt_sweep_%d', '%s', '%s', '%s', NULL, NULL, %s)",
-			i, boot.principal, capability, org.ID, ts))
+			i, administrator.boot.PrincipalID, capability, org.ID, ts))
 	}
 	// Instance-scope audit-read so the instance-trail export leg authorizes.
 	execRaw(t, db, fmt.Sprintf(
 		"INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('grt_sweep_iar', '%s', 'audit-read', NULL, NULL, NULL, %s)",
-		boot.principal, ts))
+		administrator.boot.PrincipalID, ts))
 	// Project and environment seeded directly with contract-valid ids.
 	execRaw(t, db, fmt.Sprintf(
 		"INSERT INTO projects (id, org_id, name, created_at) VALUES ('%s', '%s', 'sweep-project', %s)", sweepProject, org.ID, ts))
@@ -375,7 +379,7 @@ func newSweepEnv(t *testing.T, db *store.DB) sweepEnv {
 	// A config key the value-warn surface writes to.
 	keys := &service.Keys{DB: db, Keyring: kr, Scan: rs}
 	scope := domain.Scope{Org: domain.OrgID(org.ID), Project: domain.ProjectID(sweepProject)}
-	if _, err := keys.Create(ctx, service.LocalPrincipal(boot.principal), scope, service.KeySpec{
+	if _, err := keys.Create(ctx, service.LocalPrincipal(administrator.boot.PrincipalID), scope, service.KeySpec{
 		Name: "CONFIG_KEY", Classification: "config", Declaration: stringDeclaration(), Presence: nonePresence()}, nil); err != nil {
 		t.Fatalf("create config key: %v", err)
 	}
@@ -398,7 +402,7 @@ func newSweepEnv(t *testing.T, db *store.DB) sweepEnv {
 	writeTrustStore(t, stateDir, srv.URL)
 
 	return sweepEnv{
-		srv: srv, token: token, admin: boot.principal,
+		srv: srv, token: token, admin: administrator.boot.PrincipalID,
 		audits: &service.Audits{DB: db},
 		org:    org.ID, project: sweepProject, env: sweepEnvID,
 		stateDir: stateDir,

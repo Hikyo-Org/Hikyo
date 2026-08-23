@@ -71,7 +71,7 @@ export function MatrixRowEditor({
           draftValueForMatrixCell(
             keyRecord.classification,
             row.cell?.set === true ? row.cell.value : undefined,
-            row.signal?.pending_operation,
+            row.signal?.pending?.operation,
             row.draftPreview,
           ),
         ]),
@@ -229,8 +229,8 @@ export function MatrixRowEditor({
                     <h3 id={`matrix-row-${rowEnvironmentId}`}>{row.environment.name}</h3>
                     {row.protected ? <span>PROTECTED</span> : null}
                     <span>{publishedSet ? 'explicit set' : 'explicit absent'}</span>
-                    {row.signal?.pending_operation === undefined ? null : (
-                      <span>{`Δ ${row.signal.pending_operation} pending`}</span>
+                    {row.signal?.pending === undefined ? null : (
+                      <span>{`Δ ${row.signal.pending.operation} pending`}</span>
                     )}
                   </div>
                   {row.problems.map((problem) => (
@@ -295,7 +295,7 @@ export function MatrixRowEditor({
                   <button
                     type="button"
                     className="btn"
-                    disabled={busy || applying || (!clearing && !canClearMatrixCell(publishedSet, row.signal?.pending_operation))}
+                    disabled={busy || applying || (!clearing && !canClearMatrixCell(publishedSet, row.signal?.pending?.operation))}
                     onClick={() => {
                       setEdits((current) => {
                         if (clearing) {

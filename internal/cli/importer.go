@@ -62,10 +62,12 @@ const (
 )
 
 func runImport(ctx context.Context, ios IO, args []string) error {
+	c, err := commonFlagsForOperation("import")
+	if err != nil {
+		return err
+	}
 	fs := flag.NewFlagSet("import", flag.ContinueOnError)
 	fs.SetOutput(ios.Stderr)
-	var c commonFlags
-	c.operation = "import"
 	fs.StringVar(&c.Context, "context", "", "named context to select for this invocation")
 	fs.StringVar(&c.Instance, "instance", "", "instance reference")
 	fs.StringVar(&c.Org, "org", "", "organisation")

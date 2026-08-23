@@ -126,6 +126,85 @@ type SAMLStartResult struct {
 	Purpose         string
 }
 
+// samlCeremony owns the provider, transaction and validated claims that form
+// one SAML audit identity. A zero value represents a refusal before lookup.
+type samlCeremony struct {
+	provider    authz.SAMLProvider
+	transaction authz.SAMLTransaction
+	claims      *samlsp.Claims
+}
+
+type samlAuditCause string
+
+const (
+	samlCauseRelayState                   samlAuditCause = "relay-state"
+	samlCauseConsumedTransaction          samlAuditCause = "consumed-transaction"
+	samlCauseExpiredTransaction           samlAuditCause = "expired-transaction"
+	samlCauseProviderMixup                samlAuditCause = "provider-mixup"
+	samlCauseProviderReconciliation       samlAuditCause = "provider-reconciliation"
+	samlCauseMetadataExpired              samlAuditCause = "metadata-expired"
+	samlCauseEpoch                        samlAuditCause = "epoch"
+	samlCauseInitiatorMismatch            samlAuditCause = "initiator-mismatch"
+	samlCausePurposeMismatch              samlAuditCause = "purpose-mismatch"
+	samlCauseMalformed                    samlAuditCause = "malformed"
+	samlCauseReplayedAssertion            samlAuditCause = "replayed-assertion"
+	samlCauseUnknownIdentity              samlAuditCause = "unknown-identity"
+	samlCauseAlreadyLinked                samlAuditCause = "already-linked"
+	samlCauseNoAssurancePolicy            samlAuditCause = "no-assurance-policy"
+	samlCauseStaleAuthnInstant            samlAuditCause = "stale-authn-instant"
+	samlCauseDowngrade                    samlAuditCause = "downgrade"
+	samlCauseWindowZero                   samlAuditCause = "window-zero"
+	samlCauseDuplicateID                  samlAuditCause = "duplicate-id"
+	samlCauseEmptyID                      samlAuditCause = "empty-id"
+	samlCauseAssertionCardinality         samlAuditCause = "assertion-cardinality"
+	samlCauseAssertionPosition            samlAuditCause = "assertion-position"
+	samlCauseEncryptedAssertion           samlAuditCause = "encrypted-assertion"
+	samlCauseSignatureAlgorithm           samlAuditCause = "signature-algorithm"
+	samlCauseDigestAlgorithm              samlAuditCause = "digest-algorithm"
+	samlCauseCanonicalizationAlgorithm    samlAuditCause = "canonicalization-algorithm"
+	samlCauseTransformAlgorithm           samlAuditCause = "transform-algorithm"
+	samlCauseUnknownCertificate           samlAuditCause = "unknown-certificate"
+	samlCauseAssertionSignature           samlAuditCause = "assertion-signature"
+	samlCauseResponseSignature            samlAuditCause = "response-signature"
+	samlCauseSignatureReference           samlAuditCause = "signature-reference"
+	samlCauseSignatureStructure           samlAuditCause = "signature-structure"
+	samlCauseResponseStatus               samlAuditCause = "response-status"
+	samlCauseResponseIssuerMismatch       samlAuditCause = "response-issuer-mismatch"
+	samlCauseAssertionIssuerMismatch      samlAuditCause = "assertion-issuer-mismatch"
+	samlCauseRequestMismatch              samlAuditCause = "request-mismatch"
+	samlCauseDestinationMismatch          samlAuditCause = "destination-mismatch"
+	samlCauseAudienceMissing              samlAuditCause = "audience-missing"
+	samlCauseAudienceMismatch             samlAuditCause = "audience-mismatch"
+	samlCauseAudienceStructure            samlAuditCause = "audience-structure"
+	samlCauseSubjectConfirmationMissing   samlAuditCause = "subject-confirmation-missing"
+	samlCauseConfirmationMethod           samlAuditCause = "confirmation-method"
+	samlCauseConfirmationRecipient        samlAuditCause = "confirmation-recipient"
+	samlCauseConfirmationRequestMismatch  samlAuditCause = "confirmation-request-mismatch"
+	samlCauseConfirmationExpiryMissing    samlAuditCause = "confirmation-expiry-missing"
+	samlCauseConfirmationExpired          samlAuditCause = "confirmation-expired"
+	samlCauseSubjectConfirmationStructure samlAuditCause = "subject-confirmation-structure"
+	samlCauseConditionsMissing            samlAuditCause = "conditions-missing"
+	samlCauseConditionsTooEarly           samlAuditCause = "conditions-too-early"
+	samlCauseConditionsExpiryMissing      samlAuditCause = "conditions-expiry-missing"
+	samlCauseConditionsExpired            samlAuditCause = "conditions-expired"
+	samlCauseConditionsStructure          samlAuditCause = "conditions-structure"
+	samlCauseResponseIssueInstant         samlAuditCause = "response-issue-instant"
+	samlCauseAssertionIssueInstant        samlAuditCause = "assertion-issue-instant"
+	samlCauseIssueInstant                 samlAuditCause = "issue-instant"
+	samlCauseAuthnContextCardinality      samlAuditCause = "authn-context-cardinality"
+	samlCauseAuthnStatementCardinality    samlAuditCause = "authn-statement-cardinality"
+	samlCauseAuthnInstant                 samlAuditCause = "authn-instant"
+	samlCauseDTD                          samlAuditCause = "dtd"
+	samlCauseDocumentSize                 samlAuditCause = "document-size"
+	samlCauseDocumentDepth                samlAuditCause = "document-depth"
+	samlCauseDocumentTokenCount           samlAuditCause = "document-token-count"
+	samlCauseXMLRoundTrip                 samlAuditCause = "xml-roundtrip"
+	samlCauseResponseRoot                 samlAuditCause = "response-root"
+	samlCauseTransientNameID              samlAuditCause = "transient-nameid"
+	samlCauseEmailNameIDDisabled          samlAuditCause = "email-nameid-disabled"
+	samlCauseNameID                       samlAuditCause = "nameid"
+)
+
 // SAMLStart creates the SP-initiated request and its durable purpose binding.
 func (s *Auth) SAMLStart(ctx context.Context, slug, purpose, environmentID, presented, proof string) (SAMLStartResult, error) {
 	release, err := s.Admission.Enter(ctx, audit.FromContext(ctx).SourceIP)
@@ -300,7 +379,7 @@ func (s *Auth) SAMLACS(ctx context.Context, slug, encodedResponse, relayState, i
 	}
 	defer release()
 	if !validSAMLHandle(relayState) {
-		return LoginResult{}, s.refuseSAML(ctx, "relay-state", "", "", "", "")
+		return LoginResult{}, (samlCeremony{}).refuseCommitted(ctx, s, samlCauseRelayState)
 	}
 	raw, responseDecodeErr := base64.StdEncoding.DecodeString(encodedResponse)
 
@@ -308,44 +387,41 @@ func (s *Auth) SAMLACS(ctx context.Context, slug, encodedResponse, relayState, i
 		now := s.now()
 		transaction, lookupErr := az.SAMLTransactionByRelayState(ctx, wencrypto.ArtifactVerifier(relayState))
 		if errors.Is(lookupErr, domain.ErrNotFound) {
-			if auditErr := s.stageSAML(ctx, az, audit.OutcomeFailure, "relay-state", "", "", "", "", nil); auditErr != nil {
-				return auditErr
-			}
-			attempt.refused = sessionRefusedUnauthenticated
-			return nil
+			return commitSAMLRefusal(attempt, (samlCeremony{}).refuse(ctx, az, samlCauseRelayState))
 		}
 		if lookupErr != nil {
 			return lookupErr
 		}
 		provider, providerErr := az.SAMLProviderForCallback(ctx, transaction.ProviderID)
-		cause := ""
+		ceremony := samlCeremony{provider: provider, transaction: transaction}
+		var cause samlAuditCause
 		switch {
 		case transaction.Consumed:
-			cause = "consumed-transaction"
+			cause = samlCauseConsumedTransaction
 		case !now.Before(transaction.ExpiresAt):
-			cause = "expired-transaction"
+			cause = samlCauseExpiredTransaction
 		case errors.Is(providerErr, domain.ErrNotFound):
-			cause = "provider-mixup"
+			cause = samlCauseProviderMixup
 		case providerErr != nil:
 			return providerErr
 		case provider.Slug != slug || provider.ID != transaction.ProviderID:
-			cause = "provider-mixup"
+			cause = samlCauseProviderMixup
 		case !provider.Enabled || provider.EntityID != transaction.EntityID || provider.ACSURL != transaction.ACSURL:
-			cause = "provider-reconciliation"
+			cause = samlCauseProviderReconciliation
 		case provider.MetadataValidUntil != nil && !now.Before(*provider.MetadataValidUntil):
-			cause = "metadata-expired"
+			cause = samlCauseMetadataExpired
 		}
 		epoch, epochErr := az.CredentialEpoch(ctx)
 		if epochErr != nil {
 			return epochErr
 		}
 		if cause == "" && transaction.CredentialEpoch != epoch {
-			cause = "epoch"
+			cause = samlCauseEpoch
 		}
 
 		var initiating authz.Identity
 		if cause == "" && (initiatorCookie == "" || !equalVerifier(transaction.InitiatorVerifier, initiatorCookie)) {
-			cause = "initiator-mismatch"
+			cause = samlCauseInitiatorMismatch
 		}
 		if cause == "" {
 			switch transaction.Purpose {
@@ -353,10 +429,10 @@ func (s *Auth) SAMLACS(ctx context.Context, slug, encodedResponse, relayState, i
 			case purposeLink, purposeReauth:
 				initiating, lookupErr = az.AuthenticateSessionByID(ctx, transaction.InitiatingSessionID, now)
 				if lookupErr != nil {
-					cause = "initiator-mismatch"
+					cause = samlCauseInitiatorMismatch
 				}
 			default:
-				cause = "purpose-mismatch"
+				cause = samlCausePurposeMismatch
 			}
 		}
 
@@ -365,17 +441,13 @@ func (s *Auth) SAMLACS(ctx context.Context, slug, encodedResponse, relayState, i
 			return consumeErr
 		}
 		if !claimed && cause == "" {
-			cause = "consumed-transaction"
+			cause = samlCauseConsumedTransaction
 		}
 		if cause == "" && responseDecodeErr != nil {
-			cause = "malformed"
+			cause = samlCauseMalformed
 		}
 		if cause != "" {
-			if auditErr := s.stageSAML(ctx, az, audit.OutcomeFailure, cause, provider.ID, transaction.EntityID, transaction.Purpose, transaction.ID, nil); auditErr != nil {
-				return auditErr
-			}
-			attempt.refused = sessionRefusedUnauthenticated
-			return nil
+			return commitSAMLRefusal(attempt, ceremony.refuse(ctx, az, cause))
 		}
 
 		certificates, certErr := parseSAMLCertificates(provider.SigningCertificates)
@@ -388,19 +460,12 @@ func (s *Auth) SAMLACS(ctx context.Context, slug, encodedResponse, relayState, i
 			ClockSkew: samlClockSkew, MaxIssueAge: samlReauthFreshness,
 		})
 		if validationErr != nil {
-			if auditErr := s.stageSAML(ctx, az, audit.OutcomeFailure, samlValidationCause(validationErr), provider.ID, transaction.EntityID, transaction.Purpose, transaction.ID, nil); auditErr != nil {
-				return auditErr
-			}
-			attempt.refused = sessionRefusedUnauthenticated
-			return nil
+			return commitSAMLRefusal(attempt, ceremony.refuse(ctx, az, samlValidationCause(validationErr)))
 		}
+		ceremony.claims = &claims
 		subject, subjectErr := samlSubject(claims.NameID, provider.AllowEmailNameID)
 		if subjectErr != nil {
-			if auditErr := s.stageSAML(ctx, az, audit.OutcomeFailure, samlValidationCause(subjectErr), provider.ID, transaction.EntityID, transaction.Purpose, transaction.ID, &claims); auditErr != nil {
-				return auditErr
-			}
-			attempt.refused = sessionRefusedUnauthenticated
-			return nil
+			return commitSAMLRefusal(attempt, ceremony.refuse(ctx, az, samlValidationCause(subjectErr)))
 		}
 		if _, gcErr := az.DeleteExpiredSAMLReplay(ctx, now); gcErr != nil {
 			return gcErr
@@ -413,32 +478,24 @@ func (s *Auth) SAMLACS(ctx context.Context, slug, encodedResponse, relayState, i
 			return replayErr
 		}
 		if !replayClaimed {
-			if auditErr := s.stageSAML(ctx, az, audit.OutcomeFailure, "replayed-assertion", provider.ID, transaction.EntityID, transaction.Purpose, transaction.ID, &claims); auditErr != nil {
-				return auditErr
-			}
-			attempt.refused = sessionRefusedUnauthenticated
-			return nil
+			return commitSAMLRefusal(attempt, ceremony.refuse(ctx, az, samlCauseReplayedAssertion))
 		}
 		guarded, guardErr := az.GuardSAMLProviderForMint(ctx, provider.ID, provider.RowVersion, provider.EntityID)
 		if guardErr != nil {
 			return guardErr
 		}
 		if !guarded {
-			if auditErr := s.stageSAML(ctx, az, audit.OutcomeFailure, "provider-reconciliation", provider.ID, transaction.EntityID, transaction.Purpose, transaction.ID, &claims); auditErr != nil {
-				return auditErr
-			}
-			attempt.refused = sessionRefusedUnauthenticated
-			return nil
+			return commitSAMLRefusal(attempt, ceremony.refuse(ctx, az, samlCauseProviderReconciliation))
 		}
 
 		var completeErr error
 		switch transaction.Purpose {
 		case purposeLogin:
-			attempt.result, completeErr = s.completeSAMLLogin(ctx, az, provider, transaction, claims, subject, epoch, now)
+			attempt.result, completeErr = s.completeSAMLLogin(ctx, az, ceremony, subject, epoch, now)
 		case purposeLink:
-			attempt.result, completeErr = s.completeSAMLLink(ctx, az, provider, transaction, claims, subject, initiating, epoch, now)
+			attempt.result, completeErr = s.completeSAMLLink(ctx, az, ceremony, subject, initiating, epoch, now)
 		case purposeReauth:
-			attempt.result, completeErr = s.completeSAMLReauth(ctx, az, provider, transaction, claims, subject, initiating, epoch, now)
+			attempt.result, completeErr = s.completeSAMLReauth(ctx, az, ceremony, subject, initiating, epoch, now)
 		}
 		if errors.Is(completeErr, domain.ErrUnauthenticated) {
 			attempt.refused = sessionRefusedUnauthenticated
@@ -491,22 +548,17 @@ func parseSAMLCertificates(encoded []byte) ([]*x509.Certificate, error) {
 	return certificates, nil
 }
 
-func (s *Auth) completeSAMLLogin(ctx context.Context, az *authz.TxAuthorizer, provider authz.SAMLProvider, transaction authz.SAMLTransaction, claims samlsp.Claims, subject string, epoch int64, now time.Time) (LoginResult, error) {
+func (s *Auth) completeSAMLLogin(ctx context.Context, az *authz.TxAuthorizer, ceremony samlCeremony, subject string, epoch int64, now time.Time) (LoginResult, error) {
+	provider, transaction, claims := ceremony.provider, ceremony.transaction, *ceremony.claims
 	identity, err := az.ExternalIdentityByKey(ctx, SAMLKind, transaction.EntityID, subject)
 	if errors.Is(err, domain.ErrNotFound) {
-		if auditErr := s.stageSAML(ctx, az, audit.OutcomeFailure, "unknown-identity", provider.ID, transaction.EntityID, transaction.Purpose, transaction.ID, &claims); auditErr != nil {
-			return LoginResult{}, auditErr
-		}
-		return LoginResult{}, domain.ErrUnauthenticated
+		return LoginResult{}, ceremony.refuse(ctx, az, samlCauseUnknownIdentity)
 	}
 	if err != nil {
 		return LoginResult{}, err
 	}
 	if identity.CredentialEpoch != epoch {
-		if auditErr := s.stageSAML(ctx, az, audit.OutcomeFailure, "provider-reconciliation", provider.ID, transaction.EntityID, transaction.Purpose, transaction.ID, &claims); auditErr != nil {
-			return LoginResult{}, auditErr
-		}
-		return LoginResult{}, domain.ErrUnauthenticated
+		return LoginResult{}, ceremony.refuse(ctx, az, samlCauseProviderReconciliation)
 	}
 	if identity.ProviderID != provider.ID {
 		rebound, rebindErr := az.RebindSAMLExternalIdentityProvider(ctx, identity.ID, identity.ProviderID, provider.ID)
@@ -514,10 +566,7 @@ func (s *Auth) completeSAMLLogin(ctx context.Context, az *authz.TxAuthorizer, pr
 			return LoginResult{}, rebindErr
 		}
 		if !rebound {
-			if auditErr := s.stageSAML(ctx, az, audit.OutcomeFailure, "provider-reconciliation", provider.ID, transaction.EntityID, transaction.Purpose, transaction.ID, &claims); auditErr != nil {
-				return LoginResult{}, auditErr
-			}
-			return LoginResult{}, domain.ErrUnauthenticated
+			return LoginResult{}, ceremony.refuse(ctx, az, samlCauseProviderReconciliation)
 		}
 	}
 	account, err := az.AccountByID(ctx, identity.AccountID)
@@ -528,12 +577,13 @@ func (s *Auth) completeSAMLLogin(ctx context.Context, az *authz.TxAuthorizer, pr
 	if err != nil {
 		return LoginResult{}, err
 	}
-	return s.mintSAMLSession(ctx, az, account, provider, transaction, claims, mfa, now)
+	return s.mintSAMLSession(ctx, az, account, ceremony, mfa, now)
 }
 
-func (s *Auth) completeSAMLLink(ctx context.Context, az *authz.TxAuthorizer, provider authz.SAMLProvider, transaction authz.SAMLTransaction, claims samlsp.Claims, subject string, initiating authz.Identity, epoch int64, now time.Time) (LoginResult, error) {
+func (s *Auth) completeSAMLLink(ctx context.Context, az *authz.TxAuthorizer, ceremony samlCeremony, subject string, initiating authz.Identity, epoch int64, now time.Time) (LoginResult, error) {
+	provider, transaction := ceremony.provider, ceremony.transaction
 	if _, err := az.ExternalIdentityByKey(ctx, SAMLKind, transaction.EntityID, subject); err == nil {
-		if auditErr := s.stageSAML(ctx, az, audit.OutcomeFailure, "already-linked", provider.ID, transaction.EntityID, transaction.Purpose, transaction.ID, &claims); auditErr != nil {
+		if auditErr := ceremony.stage(ctx, az, "", audit.OutcomeFailure, samlCauseAlreadyLinked); auditErr != nil {
 			return LoginResult{}, auditErr
 		}
 		return LoginResult{}, ErrAlreadyLinked
@@ -545,10 +595,7 @@ func (s *Auth) completeSAMLLink(ctx context.Context, az *authz.TxAuthorizer, pro
 		if err != nil {
 			return LoginResult{}, err
 		}
-		if auditErr := s.stageSAML(ctx, az, audit.OutcomeFailure, "initiator-mismatch", provider.ID, transaction.EntityID, transaction.Purpose, transaction.ID, &claims); auditErr != nil {
-			return LoginResult{}, auditErr
-		}
-		return LoginResult{}, domain.ErrUnauthenticated
+		return LoginResult{}, ceremony.refuse(ctx, az, samlCauseInitiatorMismatch)
 	}
 	identityID, err := newID("eid")
 	if err != nil {
@@ -573,41 +620,36 @@ func (s *Auth) completeSAMLLink(ctx context.Context, az *authz.TxAuthorizer, pro
 	if err := az.RecordAuthEvent(ctx, event); err != nil {
 		return LoginResult{}, err
 	}
-	if err := s.stageSAMLActor(ctx, az, account.PrincipalID, audit.OutcomeSuccess, "", provider.ID, transaction.EntityID, transaction.Purpose, transaction.ID, &claims); err != nil {
+	if err := ceremony.stage(ctx, az, account.PrincipalID, audit.OutcomeSuccess, ""); err != nil {
 		return LoginResult{}, err
 	}
 	return result, nil
 }
 
-func (s *Auth) completeSAMLReauth(ctx context.Context, az *authz.TxAuthorizer, provider authz.SAMLProvider, transaction authz.SAMLTransaction, claims samlsp.Claims, subject string, initiating authz.Identity, epoch int64, now time.Time) (LoginResult, error) {
-	reject := func(cause string) (LoginResult, error) {
-		if err := s.stageSAML(ctx, az, audit.OutcomeFailure, cause, provider.ID, transaction.EntityID, transaction.Purpose, transaction.ID, &claims); err != nil {
-			return LoginResult{}, err
-		}
-		return LoginResult{}, domain.ErrUnauthenticated
-	}
+func (s *Auth) completeSAMLReauth(ctx context.Context, az *authz.TxAuthorizer, ceremony samlCeremony, subject string, initiating authz.Identity, epoch int64, now time.Time) (LoginResult, error) {
+	provider, transaction, claims := ceremony.provider, ceremony.transaction, *ceremony.claims
 	if provider.AssurancePolicy == nil || claims.Authn.ContextClassRef == nil {
-		return reject("no-assurance-policy")
+		return LoginResult{}, ceremony.refuse(ctx, az, samlCauseNoAssurancePolicy)
 	}
 	if claims.Authn.Instant.After(now.Add(samlClockSkew)) || now.Sub(claims.Authn.Instant) > samlReauthFreshness+samlClockSkew {
-		return reject("stale-authn-instant")
+		return LoginResult{}, ceremony.refuse(ctx, az, samlCauseStaleAuthnInstant)
 	}
 	mfa, err := evaluateSAMLAssurance(provider.AssurancePolicy, claims.Authn.ContextClassRef)
 	if err != nil {
 		return LoginResult{}, err
 	}
 	if !mfa {
-		return reject("no-assurance-policy")
+		return LoginResult{}, ceremony.refuse(ctx, az, samlCauseNoAssurancePolicy)
 	}
 	identity, err := az.ExternalIdentityByKey(ctx, SAMLKind, transaction.EntityID, subject)
 	if errors.Is(err, domain.ErrNotFound) || (err == nil && identity.AccountID != transaction.AccountID) {
-		return reject("unknown-identity")
+		return LoginResult{}, ceremony.refuse(ctx, az, samlCauseUnknownIdentity)
 	}
 	if err != nil {
 		return LoginResult{}, err
 	}
 	if identity.CredentialEpoch != epoch {
-		return reject("provider-reconciliation")
+		return LoginResult{}, ceremony.refuse(ctx, az, samlCauseProviderReconciliation)
 	}
 	if identity.ProviderID != provider.ID {
 		rebound, rebindErr := az.RebindSAMLExternalIdentityProvider(ctx, identity.ID, identity.ProviderID, provider.ID)
@@ -615,22 +657,22 @@ func (s *Auth) completeSAMLReauth(ctx context.Context, az *authz.TxAuthorizer, p
 			return LoginResult{}, rebindErr
 		}
 		if !rebound {
-			return reject("provider-reconciliation")
+			return LoginResult{}, ceremony.refuse(ctx, az, samlCauseProviderReconciliation)
 		}
 	}
 	if initiating.SessionID != transaction.InitiatingSessionID {
-		return reject("initiator-mismatch")
+		return LoginResult{}, ceremony.refuse(ctx, az, samlCauseInitiatorMismatch)
 	}
 	evidence := authz.Assurance{Factors: samlFactors(true)}
 	if authz.AssuranceRank(initiating.Assurance) > authz.AssuranceRank(evidence) {
-		return reject("downgrade")
+		return LoginResult{}, ceremony.refuse(ctx, az, samlCauseDowngrade)
 	}
 	effectiveWindow, err := s.effectiveReauthWindow(ctx, az, transaction.EnvironmentID)
 	if err != nil {
 		return LoginResult{}, err
 	}
 	if effectiveWindow <= 0 {
-		if err := s.stageSAML(ctx, az, audit.OutcomeFailure, "window-zero", provider.ID, transaction.EntityID, transaction.Purpose, transaction.ID, &claims); err != nil {
+		if err := ceremony.stage(ctx, az, "", audit.OutcomeFailure, samlCauseWindowZero); err != nil {
 			return LoginResult{}, err
 		}
 		return LoginResult{}, ErrReauthWindowClosed
@@ -674,13 +716,14 @@ func (s *Auth) completeSAMLReauth(ctx context.Context, az *authz.TxAuthorizer, p
 	if err := az.RecordAuthEvent(ctx, event); err != nil {
 		return LoginResult{}, err
 	}
-	if err := s.stageSAMLActor(ctx, az, initiating.Principal, audit.OutcomeSuccess, "", provider.ID, transaction.EntityID, transaction.Purpose, transaction.ID, &claims); err != nil {
+	if err := ceremony.stage(ctx, az, initiating.Principal, audit.OutcomeSuccess, ""); err != nil {
 		return LoginResult{}, err
 	}
 	return completion, nil
 }
 
-func (s *Auth) mintSAMLSession(ctx context.Context, az *authz.TxAuthorizer, account authz.Account, provider authz.SAMLProvider, transaction authz.SAMLTransaction, claims samlsp.Claims, mfa bool, now time.Time) (LoginResult, error) {
+func (s *Auth) mintSAMLSession(ctx context.Context, az *authz.TxAuthorizer, account authz.Account, ceremony samlCeremony, mfa bool, now time.Time) (LoginResult, error) {
+	provider, transaction, claims := ceremony.provider, ceremony.transaction, *ceremony.claims
 	factorClasses := samlFactors(mfa)
 	result, err := s.completeSession(ctx, az, CreateSession{
 		account: account, artifact: ArtifactBrowser,
@@ -704,7 +747,7 @@ func (s *Auth) mintSAMLSession(ctx context.Context, az *authz.TxAuthorizer, acco
 	if mfa {
 		assuranceLabel = "multi-factor"
 	}
-	if err := s.stageSAMLActor(ctx, az, account.PrincipalID, audit.OutcomeSuccess, "", provider.ID, transaction.EntityID, transaction.Purpose, transaction.ID, &claims); err != nil {
+	if err := ceremony.stage(ctx, az, account.PrincipalID, audit.OutcomeSuccess, ""); err != nil {
 		return LoginResult{}, err
 	}
 	event, err := newAuditEvent(ctx, audit.EventAuthSessionCreated, account.PrincipalID,
@@ -719,156 +762,167 @@ func (s *Auth) mintSAMLSession(ctx context.Context, az *authz.TxAuthorizer, acco
 	return result, nil
 }
 
-func (s *Auth) stageSAML(ctx context.Context, az *authz.TxAuthorizer, outcome audit.Outcome, cause, providerID, entityID, purpose, transactionID string, claims *samlsp.Claims) error {
-	return s.stageSAMLActor(ctx, az, "", outcome, cause, providerID, entityID, purpose, transactionID, claims)
-}
-
-func (s *Auth) stageSAMLActor(ctx context.Context, az *authz.TxAuthorizer, principal domain.PrincipalID, outcome audit.Outcome, cause, providerID, entityID, purpose, transactionID string, claims *samlsp.Claims) error {
-	eventType := audit.EventSAMLLogin
-	if purpose == purposeReauth {
-		eventType = audit.EventSAMLReauth
-	}
-	payload := samlCeremonyPayload(outcome, cause, providerID, entityID, purpose, transactionID, claims)
-	event, err := newAuditEvent(ctx, eventType, principal, audit.Object{Type: "saml_transaction", ID: transactionID}, outcome, "", payload)
+func (ceremony samlCeremony) stage(ctx context.Context, az *authz.TxAuthorizer, principal domain.PrincipalID, outcome audit.Outcome, cause samlAuditCause) error {
+	eventType, object, payload := ceremony.auditDetails(outcome, cause)
+	event, err := newAuditEvent(ctx, eventType, principal, object, outcome, "", payload)
 	if err != nil {
 		return err
 	}
 	return az.RecordAuthEvent(ctx, event)
 }
 
-func samlCeremonyPayload(outcome audit.Outcome, cause, providerID, entityID, purpose, transactionID string, claims *samlsp.Claims) audit.Payload {
+func (ceremony samlCeremony) auditDetails(outcome audit.Outcome, cause samlAuditCause) (audit.EventType, audit.Object, audit.Payload) {
+	eventType := audit.EventSAMLLogin
+	if ceremony.transaction.Purpose == purposeReauth {
+		eventType = audit.EventSAMLReauth
+	}
 	payload := audit.Payload{
-		"provider_id": providerID, "entity_id": entityID, "purpose": purpose,
-		"transaction_id": transactionID,
+		"provider_id": ceremony.provider.ID, "entity_id": ceremony.transaction.EntityID,
+		"purpose": ceremony.transaction.Purpose, "transaction_id": ceremony.transaction.ID,
 	}
 	if outcome == audit.OutcomeFailure {
-		payload["cause"] = cause
+		payload["cause"] = string(cause)
 	}
-	if claims != nil {
-		if claims.ExpiredPinnedCertificate {
+	if ceremony.claims != nil {
+		if ceremony.claims.ExpiredPinnedCertificate {
 			payload["pinned_certificate_expired"] = true
 		}
-		if claims.NameID.Format != nil {
-			payload["name_id_format"] = *claims.NameID.Format
+		if ceremony.claims.NameID.Format != nil {
+			payload["name_id_format"] = *ceremony.claims.NameID.Format
 		}
-		if claims.Authn.ContextClassRef != nil {
-			payload["authn_context_class_ref"] = *claims.Authn.ContextClassRef
+		if ceremony.claims.Authn.ContextClassRef != nil {
+			payload["authn_context_class_ref"] = *ceremony.claims.Authn.ContextClassRef
 		}
 	}
-	return payload
+	return eventType, audit.Object{Type: "saml_transaction", ID: ceremony.transaction.ID}, payload
 }
 
-func (s *Auth) refuseSAML(ctx context.Context, cause, providerID, entityID, purpose, transactionID string) error {
+func (ceremony samlCeremony) refuse(ctx context.Context, az *authz.TxAuthorizer, cause samlAuditCause) error {
+	if err := ceremony.stage(ctx, az, "", audit.OutcomeFailure, cause); err != nil {
+		return err
+	}
+	return domain.ErrUnauthenticated
+}
+
+func (ceremony samlCeremony) refuseCommitted(ctx context.Context, s *Auth, cause samlAuditCause) error {
 	if err := tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
-		return s.stageSAML(ctx, az, audit.OutcomeFailure, cause, providerID, entityID, purpose, transactionID, nil)
+		return ceremony.stage(ctx, az, "", audit.OutcomeFailure, cause)
 	}); err != nil {
 		return err
 	}
 	return domain.ErrUnauthenticated
 }
 
-func samlValidationCause(err error) string {
+func commitSAMLRefusal(attempt *sessionCompletionAttempt, err error) error {
+	if !errors.Is(err, domain.ErrUnauthenticated) {
+		return err
+	}
+	attempt.refused = sessionRefusedUnauthenticated
+	return nil
+}
+
+func samlValidationCause(err error) samlAuditCause {
 	switch {
 	case errors.Is(err, samlsp.ErrDuplicateID):
-		return "duplicate-id"
+		return samlCauseDuplicateID
 	case errors.Is(err, samlsp.ErrEmptyID):
-		return "empty-id"
+		return samlCauseEmptyID
 	case errors.Is(err, samlsp.ErrAssertionCardinality):
-		return "assertion-cardinality"
+		return samlCauseAssertionCardinality
 	case errors.Is(err, samlsp.ErrAssertionPosition):
-		return "assertion-position"
+		return samlCauseAssertionPosition
 	case errors.Is(err, samlsp.ErrEncryptedAssertion):
-		return "encrypted-assertion"
+		return samlCauseEncryptedAssertion
 	case errors.Is(err, samlsp.ErrSignatureAlgorithm):
-		return "signature-algorithm"
+		return samlCauseSignatureAlgorithm
 	case errors.Is(err, samlsp.ErrDigestAlgorithm):
-		return "digest-algorithm"
+		return samlCauseDigestAlgorithm
 	case errors.Is(err, samlsp.ErrCanonicalizationAlgorithm):
-		return "canonicalization-algorithm"
+		return samlCauseCanonicalizationAlgorithm
 	case errors.Is(err, samlsp.ErrTransformAlgorithm):
-		return "transform-algorithm"
+		return samlCauseTransformAlgorithm
 	case errors.Is(err, samlsp.ErrNoPinnedCertificate):
-		return "unknown-certificate"
+		return samlCauseUnknownCertificate
 	case errors.Is(err, samlsp.ErrAssertionSignature):
-		return "assertion-signature"
+		return samlCauseAssertionSignature
 	case errors.Is(err, samlsp.ErrResponseSignature):
-		return "response-signature"
+		return samlCauseResponseSignature
 	case errors.Is(err, samlsp.ErrSignatureReference):
-		return "signature-reference"
+		return samlCauseSignatureReference
 	case errors.Is(err, samlsp.ErrSignatureStructure):
-		return "signature-structure"
+		return samlCauseSignatureStructure
 	case errors.Is(err, samlsp.ErrResponseStatus):
-		return "response-status"
+		return samlCauseResponseStatus
 	case errors.Is(err, samlsp.ErrResponseIssuer):
-		return "response-issuer-mismatch"
+		return samlCauseResponseIssuerMismatch
 	case errors.Is(err, samlsp.ErrAssertionIssuer):
-		return "assertion-issuer-mismatch"
+		return samlCauseAssertionIssuerMismatch
 	case errors.Is(err, samlsp.ErrInResponseTo):
-		return "request-mismatch"
+		return samlCauseRequestMismatch
 	case errors.Is(err, samlsp.ErrDestination):
-		return "destination-mismatch"
+		return samlCauseDestinationMismatch
 	case errors.Is(err, samlsp.ErrAudienceMissing):
-		return "audience-missing"
+		return samlCauseAudienceMissing
 	case errors.Is(err, samlsp.ErrAudienceMismatch):
-		return "audience-mismatch"
+		return samlCauseAudienceMismatch
 	case errors.Is(err, samlsp.ErrAudience):
-		return "audience-structure"
+		return samlCauseAudienceStructure
 	case errors.Is(err, samlsp.ErrSubjectConfirmationMissing):
-		return "subject-confirmation-missing"
+		return samlCauseSubjectConfirmationMissing
 	case errors.Is(err, samlsp.ErrSubjectConfirmationMethod):
-		return "confirmation-method"
+		return samlCauseConfirmationMethod
 	case errors.Is(err, samlsp.ErrSubjectConfirmationRecipient):
-		return "confirmation-recipient"
+		return samlCauseConfirmationRecipient
 	case errors.Is(err, samlsp.ErrSubjectConfirmationInResponseTo):
-		return "confirmation-request-mismatch"
+		return samlCauseConfirmationRequestMismatch
 	case errors.Is(err, samlsp.ErrSubjectConfirmationExpiryMissing):
-		return "confirmation-expiry-missing"
+		return samlCauseConfirmationExpiryMissing
 	case errors.Is(err, samlsp.ErrSubjectConfirmationExpired):
-		return "confirmation-expired"
+		return samlCauseConfirmationExpired
 	case errors.Is(err, samlsp.ErrSubjectConfirmation):
-		return "subject-confirmation-structure"
+		return samlCauseSubjectConfirmationStructure
 	case errors.Is(err, samlsp.ErrConditionsMissing):
-		return "conditions-missing"
+		return samlCauseConditionsMissing
 	case errors.Is(err, samlsp.ErrConditionsNotBefore):
-		return "conditions-too-early"
+		return samlCauseConditionsTooEarly
 	case errors.Is(err, samlsp.ErrConditionsExpiryMissing):
-		return "conditions-expiry-missing"
+		return samlCauseConditionsExpiryMissing
 	case errors.Is(err, samlsp.ErrConditionsExpired):
-		return "conditions-expired"
+		return samlCauseConditionsExpired
 	case errors.Is(err, samlsp.ErrConditions):
-		return "conditions-structure"
+		return samlCauseConditionsStructure
 	case errors.Is(err, samlsp.ErrResponseIssueInstant):
-		return "response-issue-instant"
+		return samlCauseResponseIssueInstant
 	case errors.Is(err, samlsp.ErrAssertionIssueInstant):
-		return "assertion-issue-instant"
+		return samlCauseAssertionIssueInstant
 	case errors.Is(err, samlsp.ErrIssueInstant):
-		return "issue-instant"
+		return samlCauseIssueInstant
 	case errors.Is(err, samlsp.ErrAuthnStatementCardinality), errors.Is(err, samlsp.ErrAuthnContextCardinality):
 		if errors.Is(err, samlsp.ErrAuthnContextCardinality) {
-			return "authn-context-cardinality"
+			return samlCauseAuthnContextCardinality
 		}
-		return "authn-statement-cardinality"
+		return samlCauseAuthnStatementCardinality
 	case errors.Is(err, samlsp.ErrInvalidAuthnInstant):
-		return "authn-instant"
+		return samlCauseAuthnInstant
 	case errors.Is(err, samlsp.ErrDTD):
-		return "dtd"
+		return samlCauseDTD
 	case errors.Is(err, samlsp.ErrDocumentTooLarge):
-		return "document-size"
+		return samlCauseDocumentSize
 	case errors.Is(err, samlsp.ErrDocumentTooDeep):
-		return "document-depth"
+		return samlCauseDocumentDepth
 	case errors.Is(err, samlsp.ErrTooManyTokens):
-		return "document-token-count"
+		return samlCauseDocumentTokenCount
 	case errors.Is(err, samlsp.ErrRoundTrip):
-		return "xml-roundtrip"
+		return samlCauseXMLRoundTrip
 	case errors.Is(err, samlsp.ErrResponseRoot):
-		return "response-root"
+		return samlCauseResponseRoot
 	case errors.Is(err, ErrSAMLTransientNameID):
-		return "transient-nameid"
+		return samlCauseTransientNameID
 	case errors.Is(err, ErrSAMLEmailNameIDDisabled):
-		return "email-nameid-disabled"
+		return samlCauseEmailNameIDDisabled
 	case errors.Is(err, ErrSAMLNameIDFormat), errors.Is(err, samlsp.ErrEmptyNameID), errors.Is(err, samlsp.ErrNameIDCardinality):
-		return "nameid"
+		return samlCauseNameID
 	default:
-		return "malformed"
+		return samlCauseMalformed
 	}
 }

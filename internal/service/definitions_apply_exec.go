@@ -126,10 +126,7 @@ func (s *Definitions) Apply(ctx context.Context, actor Actor, scope domain.Scope
 		// § 151 schema-revision rate: charged only for a non-empty plan (the
 		// empty-plan no-op returned above), once across the retry loop — see
 		// Keys.UpdateMetadata.
-		if err := s.Budget.chargeOnce(&rateCharged, budgetSchemaRevision, budgetKeys{Project: scope.Project}); err != nil {
-			return err
-		}
-		if err := r.Catalogue().BumpSchemaRevision(ctx, p); err != nil {
+		if err := bumpSchemaRevision(ctx, r, p, s.Budget, &rateCharged, scope.Project); err != nil {
 			return err
 		}
 		newRevision, err := r.Catalogue().SchemaRevision(ctx, p)
@@ -235,15 +232,8 @@ func (s *Definitions) scanApplySkew(ctx context.Context, actor Actor, scope doma
 		if err != nil {
 			return err
 		}
-		if res.refuses() {
-			for _, f := range res.blocked {
-				ev, evErr := blockedEvent(ctx, caller.Principal, f)
-				if evErr != nil {
-					return evErr
-				}
-				az.CaptureAudit(audit.TrailTenant, domain.Scope{Org: scope.Org, Project: scope.Project}, ev)
-			}
-			return &scanRefusalErr{blocked: res.blocked, rejections: res.rejections}
+		if err := captureScanRefusal(ctx, az, caller.Principal, scope, res); err != nil {
+			return err
 		}
 		overrides = res.overridden
 		return nil

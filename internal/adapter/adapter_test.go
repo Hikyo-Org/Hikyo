@@ -6,7 +6,19 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
 )
+
+func TestCredentialAADPreservesAdapterCredentialContract(t *testing.T) {
+	want := crypto.ProjectFieldAAD{
+		OrgID: "org_1", ProjectID: "prj_1",
+		OwnerTable: "adapters", OwnerRowID: "adp_1", FieldTag: "credential",
+	}
+	if got := CredentialAAD("org_1", "prj_1", "adp_1"); got != want {
+		t.Fatalf("CredentialAAD() = %#v, want %#v", got, want)
+	}
+}
 
 func TestValidateManifestRefusesLossyForgejoNamesAndValues(t *testing.T) {
 	tests := []struct {
@@ -101,10 +113,37 @@ func TestLedgerMissingRequiresProviderCustody(t *testing.T) {
 			if _, err := IndexLedger([]LedgerEntry{{Surface: Variable, EffectiveName: "MODE", State: state, Missing: true}}); err == nil {
 				t.Fatalf("IndexLedger() accepted %s+missing", state)
 			}
-			if err := ValidateCompletion(Completion{State: state, Missing: true}); err == nil {
+			if err := ValidateCompletion(Completion{Outcome: OutcomeFailure, State: state, Missing: true}); err == nil {
 				t.Fatalf("ValidateCompletion() accepted %s+missing", state)
 			}
 		})
+	}
+}
+
+func TestCompletionRequiresClosedOutcomeAndExplicitLedgerDisposition(t *testing.T) {
+	valid := []Completion{
+		{Outcome: OutcomeSuccess, State: Owned},
+		{Outcome: OutcomeFailure, State: Dispatched},
+		{Outcome: OutcomeUnknown, State: Dispatched},
+		{Outcome: OutcomeFailure, ReleaseLedger: true},
+	}
+	for _, completion := range valid {
+		if err := ValidateCompletion(completion); err != nil {
+			t.Fatalf("ValidateCompletion(%+v) = %v", completion, err)
+		}
+	}
+
+	invalid := []Completion{
+		{},
+		{Outcome: Outcome("sucess"), State: Owned},
+		{Outcome: OutcomeSuccess},
+		{Outcome: OutcomeSuccess, State: Owned, ReleaseLedger: true},
+		{Outcome: OutcomeFailure, ReleaseLedger: true, Missing: true},
+	}
+	for _, completion := range invalid {
+		if err := ValidateCompletion(completion); err == nil {
+			t.Fatalf("ValidateCompletion(%+v) accepted invalid completion", completion)
+		}
 	}
 }
 

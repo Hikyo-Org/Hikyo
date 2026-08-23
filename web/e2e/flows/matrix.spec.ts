@@ -5,7 +5,7 @@ import {
   expectPinnedAssertionSet,
   expectStatusIsTextAndAria,
 } from '../fixtures/assertions.ts';
-import { fixtureBrowserCall } from '../fixtures/api.ts';
+import { browserApi } from '../fixtures/api.ts';
 import {
   readSeed,
   STORAGE_STATE,
@@ -112,7 +112,7 @@ test.describe('environment matrix', () => {
     const environmentsPath =
       `/api/v1/orgs/${seed.org}/projects/${seed.project}/environments`;
     const orderPath = `${environmentsPath}/order`;
-    await fixtureBrowserCall(page, 'PUT', orderPath, zEnvironmentList, {
+    await browserApi(page, 'PUT', orderPath, zEnvironmentList, {
       environment_ids: [seed.prod, seed.dev],
     });
 
@@ -162,7 +162,7 @@ test.describe('environment matrix', () => {
       await expect.poll(() => readResources.size).toBe(3 + 4 * 2);
     } finally {
       page.off('request', recordMatrixRead);
-      await fixtureBrowserCall(page, 'PUT', orderPath, zEnvironmentList, {
+      await browserApi(page, 'PUT', orderPath, zEnvironmentList, {
         environment_ids: [seed.dev, seed.prod],
       });
     }

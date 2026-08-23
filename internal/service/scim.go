@@ -19,6 +19,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/samlsp"
 	"github.com/Hikyo-Org/hikyo/internal/scimproto"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
 // SCIM provisioning (#73, scim-provisioning ADR). This file is the engine the
@@ -799,6 +800,58 @@ func SetSCIMPhaseObserver(fn func(phase string, state map[string]int)) func() {
 		}
 		scimPhaseObserver.Store(prev)
 	}
+}
+
+// adminTx is the binding-scoped administration transaction preamble. Every
+// caller resolves and authorizes the actor inside the transaction, loads the
+// addressed binding under the resulting proof, and writes any returned audit
+// events before commit. Mutations additionally take §9's binding-row lock;
+// reads deliberately do not serialize with reconciliation.
+type scimAdminContext struct {
+	repos      store.Repos
+	authorizer *authz.TxAuthorizer
+	caller     authz.Identity
+	events     []grantEventInput
+	scimContext
+}
+
+func (a *scimAdminContext) addEvents(events ...grantEventInput) {
+	a.events = append(a.events, events...)
+}
+
+func (s *SCIM) adminTx(
+	ctx context.Context, actor Actor, org domain.OrgID, bindingID string,
+	op authz.Operation, lock bool,
+	body func(context.Context, *scimAdminContext) error,
+) error {
+	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		caller, err := actor.resolve(ctx, az, s.now())
+		if err != nil {
+			return err
+		}
+		p, err := az.Authorize(ctx, caller, op, domain.Scope{Org: org})
+		if err != nil {
+			return err
+		}
+		if lock {
+			unlock, err := lockBindingRow(ctx, r, p, bindingID)
+			if err != nil {
+				return err
+			}
+			defer unlock()
+		}
+		c, err := s.loadBinding(ctx, r, az, p, bindingID, false)
+		if err != nil {
+			return err
+		}
+		a := &scimAdminContext{
+			repos: r, authorizer: az, caller: caller, scimContext: c,
+		}
+		if err := body(ctx, a); err != nil {
+			return err
+		}
+		return insertGrantEvent(ctx, r, p, caller.Principal, domain.LevelOrg, a.events...)
+	})
 }
 
 // lockBindingRow takes §9's per-binding row lock for an ADMINISTRATION mutation

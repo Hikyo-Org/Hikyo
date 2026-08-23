@@ -66,7 +66,7 @@ func (s *Revisions) Restore(ctx context.Context, actor Actor, scope domain.Scope
 		if err != nil {
 			return err
 		}
-		if !target.PayloadPresent {
+		if !target.PayloadPresent() {
 			return collectedRevisionError(target)
 		}
 		keys, err := r.Catalogue().List(ctx, p)

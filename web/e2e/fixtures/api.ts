@@ -3,7 +3,6 @@ import type { Page } from '@playwright/test';
 
 import { ADMIN, BASE_URL } from './instance.ts';
 
-export const zFixtureIgnored = z.object({});
 export const zFixtureStaged = z.object({ version_id: z.string() });
 export const zFixtureRevisionList = z.object({
   items: z.array(
@@ -62,37 +61,41 @@ export async function fixtureApiCall<T>(
   return parsed.data;
 }
 
-/** Drive the same typed fixture call through an authenticated browser cookie. */
-export async function fixtureBrowserCall<T>(
+export class BrowserApiError extends Error {
+  constructor(
+    method: string,
+    path: string,
+    readonly status: number,
+    readonly body: string,
+  ) {
+    super(`${method} ${path} answered ${String(status)}: ${body}`);
+    this.name = 'BrowserApiError';
+  }
+}
+
+/** Drive a typed API call through the page's authenticated browser session. */
+export async function browserApi<T>(
   page: Page,
-  method: string,
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   path: string,
   schema: z.ZodType<T>,
-  body?: Record<string, unknown>,
+  body?: unknown,
 ): Promise<T> {
-  const result = await page.evaluate(
-    async (input: { method: string; path: string; body: Record<string, unknown> | null }) => {
-      const csrf = document.cookie
-        .split(';')
-        .map((part) => part.trim().split('='))
-        .find(([name]) => name === '__Host-hikyo-csrf')
-        ?.slice(1)
-        .join('=') ?? '';
-      const response = await fetch(input.path, {
-        method: input.method,
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', 'X-Hikyo-CSRF': csrf },
-        ...(input.body === null ? {} : { body: JSON.stringify(input.body) }),
-      });
-      return {
-        status: response.status,
-        body: response.status === 204 ? {} : await response.json(),
-      };
-    },
-    { method, path, body: body ?? null },
-  );
-  if (result.status < 200 || result.status >= 300) {
-    throw new Error(`${method} ${path} answered ${String(result.status)}`);
+  // Scope the synchronizer-token lookup to this instance. The shared browser
+  // jar also carries the second e2e instance's cookies (#71).
+  const cookies = await page.context().cookies(BASE_URL);
+  const csrf = cookies.find((cookie) => cookie.name === '__Host-hikyo-csrf')?.value;
+  if (csrf === undefined || csrf === '') {
+    throw new Error(`${method} ${path} cannot run: the page has no CSRF cookie for ${BASE_URL}`);
   }
-  return schema.parse(result.body);
+  const response = await page.request.fetch(`${BASE_URL}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', 'X-Hikyo-CSRF': csrf },
+    ...(body === undefined ? {} : { data: body }),
+  });
+  if (!response.ok()) {
+    throw new BrowserApiError(method, path, response.status(), await response.text());
+  }
+  const value: unknown = response.status() === 204 ? null : await response.json();
+  return schema.parse(value);
 }

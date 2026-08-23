@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -413,7 +414,7 @@ func reencryptProjectCycle(t *testing.T, open func(*testing.T) *store.DB) {
 
 	// adapter + adapter_route_move credential, sealed under v1 (project_field,
 	// AAD owner_row = the adapter id for BOTH).
-	adpAAD := crypto.ProjectFieldAAD{OrgID: org, ProjectID: prj, OwnerTable: "adapters", OwnerRowID: "adp_reenc", FieldTag: "credential"}
+	adpAAD := adapter.CredentialAAD(org, prj, "adp_reenc")
 	adpCT := reencSealField(t, sealer, adpAAD, "adapter-secret")
 	reencExec(t, db, ctx,
 		`INSERT INTO adapters (id, org_id, project_id, provider, origin, credential_ciphertext, credential_set_at, authority_principal_id, state, created_at) VALUES ('adp_reenc','org_a','prj_a1','forgejo','https://reenc-origin',?, '2026-01-01T00:00:00Z','usr_root','active','2026-01-01T00:00:00Z')`,

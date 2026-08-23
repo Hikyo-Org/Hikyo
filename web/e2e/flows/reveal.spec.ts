@@ -1,6 +1,9 @@
 import { expect, type Page } from '@playwright/test';
+import { zGrantResult, zPublishResult, zReauthResult } from '@hikyo/zod';
+import { z } from 'zod';
 
 import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
+import { BrowserApiError, browserApi } from '../fixtures/api.ts';
 import {
   ADMIN,
   countDisclosureEvents,
@@ -49,36 +52,6 @@ function orgGrantPath(principal: string, capability: string): string {
   return `/api/v1/orgs/${seed.org}/grants?${query.toString()}`;
 }
 
-/** apiCall drives the API from inside the page, on the page's own cookies. */
-async function apiCall(
-  page: Page,
-  method: string,
-  path: string,
-  body?: Record<string, string>,
-): Promise<number> {
-  return page.evaluate(
-    async (input: { method: string; path: string; body: Record<string, string> | null }) => {
-      const csrf = (): string => {
-        for (const part of document.cookie.split(';')) {
-          const [name, ...rest] = part.trim().split('=');
-          if (name === '__Host-hikyo-csrf') {
-            return rest.join('=');
-          }
-        }
-        return '';
-      };
-      const resp = await fetch(input.path, {
-        method: input.method,
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', 'X-Hikyo-CSRF': csrf() },
-        ...(input.body === null ? {} : { body: JSON.stringify(input.body) }),
-      });
-      return resp.status;
-    },
-    { method, path, body: body ?? null },
-  );
-}
-
 /** ROTATED is what the blind replacement writes, and what the readback expects. */
 const ROTATED = 'rotated-blind';
 
@@ -118,8 +91,10 @@ async function valueUpdatedAt(page: Page, environment: string, key: string): Pro
  * `pending_version_id` off the signals endpoint and publishes exactly that.
  */
 async function publishOwnDraft(page: Page, environment: string, key: string): Promise<void> {
-  const published = await page.evaluate(
-    async (input: { org: string; project: string; environment: string; key: string }) => {
+  const pending = await page.evaluate(
+    async (
+      input: { org: string; project: string; environment: string; key: string },
+    ): Promise<{ versionID: string | null; error: string | null }> => {
       const base = `/api/v1/orgs/${input.org}/projects/${input.project}/environments/${input.environment}`;
       // The save is fire-and-forget from the DOM's point of view, so the
       // draft may not have committed by the time this runs. Poll the signals
@@ -130,15 +105,15 @@ async function publishOwnDraft(page: Page, environment: string, key: string): Pr
       for (let attempt = 0; attempt < 50 && versionID === undefined; attempt++) {
         const signals = await fetch(`${base}/signals`, { credentials: 'same-origin' });
         if (!signals.ok) {
-          return `signals ${String(signals.status)}`;
+          return { versionID: null, error: `signals ${String(signals.status)}` };
         }
         const body: unknown = await signals.json();
         if (typeof body !== 'object' || body === null) {
-          return 'signals: not a cells object';
+          return { versionID: null, error: 'signals: not a cells object' };
         }
         const cells: unknown = Object(body)['cells'];
         if (!Array.isArray(cells)) {
-          return 'signals: not a cells object';
+          return { versionID: null, error: 'signals: not a cells object' };
         }
         const cell = cells.find((candidate: unknown) => {
           if (typeof candidate !== 'object' || candidate === null) {
@@ -153,29 +128,19 @@ async function publishOwnDraft(page: Page, environment: string, key: string): Pr
         }
       }
       if (versionID === undefined) {
-        return 'no pending draft for key';
+        return { versionID: null, error: 'no pending draft for key' };
       }
-      const cell = { pending_version_id: versionID };
-      const csrf = (): string => {
-        for (const part of document.cookie.split(';')) {
-          const [name, ...rest] = part.trim().split('=');
-          if (name === '__Host-hikyo-csrf') {
-            return rest.join('=');
-          }
-        }
-        return '';
-      };
-      const resp = await fetch(`${base}/publish`, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', 'X-Hikyo-CSRF': csrf() },
-        body: JSON.stringify({ version_ids: [cell.pending_version_id] }),
-      });
-      return resp.ok ? 'published' : `publish ${String(resp.status)}`;
+      return { versionID, error: null };
     },
     { org: seed.org, project: seed.project, environment, key },
   );
-  expect(published, 'publishing the staged draft').toBe('published');
+  if (pending.error !== null || pending.versionID === null) {
+    throw new Error(`publishing the staged draft: ${pending.error ?? 'missing version id'}`);
+  }
+  const base = `/api/v1/orgs/${seed.org}/projects/${seed.project}/environments/${environment}`;
+  await browserApi(page, 'POST', `${base}/publish`, zPublishResult, {
+    version_ids: [pending.versionID],
+  });
 }
 
 /** auditLines is the surface's per-key disclosure record. */
@@ -515,31 +480,21 @@ test.describe('reveal ceremonies', () => {
 
     // And the server agrees: a code presented against this environment is
     // refused by the ENVIRONMENT's state (409), not as a bad code (401).
-    const status = await page.evaluate(
-      async ({ environment, code }: { environment: string; code: string }) => {
-        const csrf = (() => {
-          for (const part of document.cookie.split(';')) {
-            const [name, ...rest] = part.trim().split('=');
-            if (name === '__Host-hikyo-csrf') {
-              return rest.join('=');
-            }
-          }
-          return '';
-        })();
-        const resp = await fetch('/api/v1/auth/reauth/totp', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json', 'X-Hikyo-CSRF': csrf },
-          body: JSON.stringify({ environment_id: environment, code }),
-        });
-        return resp.status;
-      },
-      // The code's VALUE is irrelevant and that is the point: the window
-      // check runs before any code is verified, so a 409 here proves the
-      // environment refused the factor rather than the code being wrong.
-      { environment: seed.prod, code: '000000' },
-    );
-    expect(status, 'a TOTP reauth against a 0-window environment').toBe(409);
+    try {
+      await browserApi(page, 'POST', '/api/v1/auth/reauth/totp', zReauthResult, {
+        // The code's VALUE is irrelevant and that is the point: the window
+        // check runs before any code is verified, so a 409 here proves the
+        // environment refused the factor rather than the code being wrong.
+        environment_id: seed.prod,
+        code: '000000',
+      });
+      throw new Error('a TOTP reauth against a 0-window environment unexpectedly succeeded');
+    } catch (error) {
+      if (!(error instanceof BrowserApiError)) {
+        throw error;
+      }
+      expect(error.status, 'a TOTP reauth against a 0-window environment').toBe(409);
+    }
 
     // And the positive half of "per disclosure": the passkey ceremony
     // authorises ONE, and the next disclosure asks again. A window that
@@ -652,13 +607,11 @@ test.describe('write-only editing', () => {
 
     // Take both inherited `reveal` lines away: the original instance grant and
     // the creator-admin grant now installed at org scope.
-    let revoked = await apiCall(page, 'DELETE', instanceGrantPath(seed.principal, 'reveal'));
-    expect(revoked, 'revoking instance reveal').toBe(204);
+    await browserApi(page, 'DELETE', instanceGrantPath(seed.principal, 'reveal'), z.null());
     await page.context().clearCookies();
     await page.goto(VALUES_PATH);
     await establishSession(page);
-    revoked = await apiCall(page, 'DELETE', orgGrantPath(seed.principal, 'reveal'));
-    expect(revoked, 'revoking org reveal').toBe(204);
+    await browserApi(page, 'DELETE', orgGrantPath(seed.principal, 'reveal'), z.null());
 
     try {
       // The revoke killed that session with it, which is the deprovisioning
@@ -707,19 +660,17 @@ test.describe('write-only editing', () => {
       await page.context().clearCookies();
       await page.goto(VALUES_PATH);
       await establishSession(page);
-      let restored = await apiCall(page, 'POST', '/api/v1/instance/grants', {
+      await browserApi(page, 'POST', '/api/v1/instance/grants', zGrantResult, {
         principal: seed.principal,
         capability: 'reveal',
       });
-      expect(restored, 'restoring instance reveal').toBe(200);
       await page.context().clearCookies();
       await page.goto(VALUES_PATH);
       await establishSession(page);
-      restored = await apiCall(page, 'POST', `/api/v1/orgs/${seed.org}/grants`, {
+      await browserApi(page, 'POST', `/api/v1/orgs/${seed.org}/grants`, zGrantResult, {
         principal: seed.principal,
         capability: 'reveal',
       });
-      expect(restored, 'restoring org reveal').toBe(200);
     }
 
     // Restored, so read it back: the blind rotation stored exactly what was

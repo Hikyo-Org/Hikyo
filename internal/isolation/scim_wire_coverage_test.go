@@ -350,7 +350,8 @@ func TestSCIMZeroAuthorityOnCreatePostgres(t *testing.T) {
 
 func runSCIMZeroAuthorityOnCreate(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, _ := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID
 	_, _ = configureProvider(t, auth, ctx, admin, "okta", service.ProviderInput{
 		DisplayName: "Okta", ClientID: "c", ClientSecret: "s", Scopes: "openid", Enabled: true,
 	})
@@ -418,7 +419,8 @@ const samlEmailFormat = "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
 
 func runSCIMProvisionThenLoginSAMLEmailCarve(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, _ := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID
 	auth.ExternalOrigin = "https://hikyo.test"
 	idp := configureSAMLProviderWithEmailCarve(t, auth, admin)
 	s := scimSvc(db)

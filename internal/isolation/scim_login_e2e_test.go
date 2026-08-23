@@ -34,7 +34,8 @@ func TestSCIMProvisionThenLoginOIDCPostgres(t *testing.T) {
 
 func runSCIMProvisionThenLoginOIDC(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, _ := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID
 	// No JIT policy: an unmatched subject must NOT be provisioned into
 	// existence, or "the provisioned identity reached the known-identity path"
 	// would be unfalsifiable.
@@ -119,7 +120,8 @@ const samlSPEntityID = "https://hikyo.test/api/v1/auth/saml"
 
 func runSCIMProvisionThenLoginSAML(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, _ := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID
 	auth.ExternalOrigin = "https://hikyo.test"
 	idp := configureSAMLProvider(t, auth, admin)
 	s := scimSvc(db)
@@ -528,7 +530,8 @@ func TestSCIMRestoreDrillPostgres(t *testing.T) { runSCIMRestoreDrill(t, seededD
 
 func runSCIMRestoreDrill(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, _ := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID
 	_, _ = configureProvider(t, auth, ctx, admin, "okta", service.ProviderInput{
 		DisplayName: "Okta", ClientID: "c", ClientSecret: "s", Scopes: "openid", Enabled: true,
 	})

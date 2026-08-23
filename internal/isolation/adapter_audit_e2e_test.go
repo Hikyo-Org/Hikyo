@@ -55,13 +55,13 @@ func (auditAdapterModule) Sync(ctx context.Context, _ adapter.SyncRequest, journ
 		return adapter.SyncResult{}, err
 	}
 	if err := journal.Gate(ctx, effect); err != nil {
-		finishErr := journal.Finish(ctx, effect, adapter.Completion{Outcome: "failure", State: prior})
+		finishErr := journal.Finish(ctx, effect, adapter.Completion{Outcome: adapter.OutcomeFailure, State: prior})
 		if finishErr != nil {
 			return adapter.SyncResult{}, finishErr
 		}
 		return adapter.SyncResult{}, err
 	}
-	if err := journal.Finish(ctx, effect, adapter.Completion{Outcome: "success", State: adapter.Owned}); err != nil {
+	if err := journal.Finish(ctx, effect, adapter.Completion{Outcome: adapter.OutcomeSuccess, State: adapter.Owned}); err != nil {
 		return adapter.SyncResult{}, err
 	}
 	return adapter.SyncResult{Changes: []adapter.Change{{

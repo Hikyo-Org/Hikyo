@@ -10,7 +10,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store"
-	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
 // Mapping-table administration (#73 §3, §4).
@@ -132,80 +131,58 @@ func blastWarnings(scope domain.Scope, caps []domain.Capability, members int) []
 // current members, in the authoring transaction (§3).
 func (s *SCIM) CreateMapping(ctx context.Context, actor Actor, org domain.OrgID, bindingID string, spec SCIMMappingSpec) (SCIMMappingResult, error) {
 	var out SCIMMappingResult
-	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		scope := domain.Scope{Org: org}
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpSCIMMappingCreate, scope)
-		if err != nil {
-			return err
-		}
-		// §9: per-binding writes SERIALIZE. The wire takes this lock through
-		// its contact UPDATE; an ADMINISTRATION mutation has no such update,
-		// so it takes the row lock explicitly and holds it to commit. Mapping
-		// authoring reconciles origins in its own transaction, which is the
-		// same origin arithmetic a push performs and needs the same
-		// serialization — so both legs mark the SAME phase pair, and a fixture
-		// asserting strict alternation covers admin-versus-wire races too.
-		unlock, err := lockBindingRow(ctx, r, p, bindingID)
-		if err != nil {
-			return err
-		}
-		defer unlock()
-		c, err := s.loadBinding(ctx, r, az, p, bindingID, false)
-		if err != nil {
-			return err
-		}
-		if err := checkMappingScope(c.binding, spec.Template, spec.ProjectID, spec.EnvID); err != nil {
-			return err
-		}
-		if err := s.resolveMappingScope(ctx, r, az, p, c.binding, spec.ProjectID, spec.EnvID); err != nil {
-			return err
-		}
-		// The row references the binding's group resource BY ITS SERVER-MINTED
-		// ID (§3), so a row naming an id this server never minted is refused
-		// rather than stored as something that can never match.
-		if _, err := r.SCIM().Group(ctx, p, bindingID, spec.GroupID); err != nil {
-			return err
-		}
+	err := s.adminTx(ctx, actor, org, bindingID, authz.OpSCIMMappingCreate, true,
+		func(ctx context.Context, a *scimAdminContext) error {
+			r, az, p, caller, c := a.repos, a.authorizer, a.proof, a.caller, a.scimContext
+			if err := checkMappingScope(c.binding, spec.Template, spec.ProjectID, spec.EnvID); err != nil {
+				return err
+			}
+			if err := s.resolveMappingScope(ctx, r, az, p, c.binding, spec.ProjectID, spec.EnvID); err != nil {
+				return err
+			}
+			// The row references the binding's group resource BY ITS SERVER-MINTED
+			// ID (§3), so a row naming an id this server never minted is refused
+			// rather than stored as something that can never match.
+			if _, err := r.SCIM().Group(ctx, p, bindingID, spec.GroupID); err != nil {
+				return err
+			}
 
-		now := s.now()
-		id, err := newID("scm")
-		if err != nil {
-			return err
-		}
-		if err := r.SCIM().CreateMapping(ctx, p, store.NewSCIMMapping{
-			ID: id, BindingID: bindingID, GroupID: spec.GroupID,
-			Template:       string(spec.Template),
-			ScopeProjectID: spec.ProjectID, ScopeEnvID: spec.EnvID,
-			CreatedAt: now,
-		}); err != nil {
-			return err
-		}
-		row, err := r.SCIM().Mapping(ctx, p, id)
-		if err != nil {
-			return err
-		}
+			now := s.now()
+			id, err := newID("scm")
+			if err != nil {
+				return err
+			}
+			if err := r.SCIM().CreateMapping(ctx, p, store.NewSCIMMapping{
+				ID: id, BindingID: bindingID, GroupID: spec.GroupID,
+				Template:       string(spec.Template),
+				ScopeProjectID: spec.ProjectID, ScopeEnvID: spec.EnvID,
+				CreatedAt: now,
+			}); err != nil {
+				return err
+			}
+			row, err := r.SCIM().Mapping(ctx, p, id)
+			if err != nil {
+				return err
+			}
 
-		events, created, members, err := s.applyRowToMembers(ctx, r, az, c, row, now)
-		if err != nil {
-			return err
-		}
-		caps, err := domain.ExpandTemplate(spec.Template, mustLevel(mappingScope(c.binding, row)))
-		if err != nil {
-			return err
-		}
-		out = SCIMMappingResult{
-			Mapping:         mappingView(row, caps),
-			Warnings:        blastWarnings(mappingScope(c.binding, row), caps, members),
-			MembersAffected: members,
-			GrantsCreated:   created,
-		}
-		events = append(events, mappingEvent(audit.EventSCIMMappingCreated, c, row, caller.Principal))
-		return insertGrantEvent(ctx, r, p, caller.Principal, domain.LevelOrg, events...)
-	})
+			events, created, members, err := s.applyRowToMembers(ctx, r, az, c, row, now)
+			if err != nil {
+				return err
+			}
+			caps, err := domain.ExpandTemplate(spec.Template, mustLevel(mappingScope(c.binding, row)))
+			if err != nil {
+				return err
+			}
+			out = SCIMMappingResult{
+				Mapping:         mappingView(row, caps),
+				Warnings:        blastWarnings(mappingScope(c.binding, row), caps, members),
+				MembersAffected: members,
+				GrantsCreated:   created,
+			}
+			events = append(events, mappingEvent(audit.EventSCIMMappingCreated, c, row, caller.Principal))
+			a.addEvents(events...)
+			return nil
+		})
 	return out, err
 }
 
@@ -220,92 +197,70 @@ func (s *SCIM) CreateMapping(ctx context.Context, actor Actor, org domain.OrgID,
 // with no IdP round-trip (§4).
 func (s *SCIM) UpdateMapping(ctx context.Context, actor Actor, org domain.OrgID, bindingID string, spec SCIMMappingSpec) (SCIMMappingResult, error) {
 	var out SCIMMappingResult
-	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		scope := domain.Scope{Org: org}
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpSCIMMappingUpdate, scope)
-		if err != nil {
-			return err
-		}
-		// §9: per-binding writes SERIALIZE. The wire takes this lock through
-		// its contact UPDATE; an ADMINISTRATION mutation has no such update,
-		// so it takes the row lock explicitly and holds it to commit. Mapping
-		// authoring reconciles origins in its own transaction, which is the
-		// same origin arithmetic a push performs and needs the same
-		// serialization — so both legs mark the SAME phase pair, and a fixture
-		// asserting strict alternation covers admin-versus-wire races too.
-		unlock, err := lockBindingRow(ctx, r, p, bindingID)
-		if err != nil {
-			return err
-		}
-		defer unlock()
-		c, err := s.loadBinding(ctx, r, az, p, bindingID, false)
-		if err != nil {
-			return err
-		}
-		if err := checkMappingScope(c.binding, spec.Template, spec.ProjectID, spec.EnvID); err != nil {
-			return err
-		}
-		if err := s.resolveMappingScope(ctx, r, az, p, c.binding, spec.ProjectID, spec.EnvID); err != nil {
-			return err
-		}
-		row, err := s.addressedMapping(ctx, r, p, bindingID, spec)
-		if err != nil {
-			return err
-		}
-		level := mustLevel(mappingScope(c.binding, row))
-		before, err := domain.ExpandTemplate(domain.Template(row.Template), level)
-		if err != nil {
-			return err
-		}
-		after, err := domain.ExpandTemplate(spec.Template, level)
-		if err != nil {
-			return err
-		}
-		now := s.now()
-		if err := r.SCIM().UpdateMappingTemplate(ctx, p, row.ID, string(spec.Template)); err != nil {
-			return err
-		}
-		row.Template = string(spec.Template)
-
-		var events []grantEventInput
-		released := 0
-		// Narrowing first: release what the row no longer covers, before the
-		// widening half re-reads the members' rows.
-		dropped := missing(before, after)
-		if len(dropped) > 0 {
-			drop := map[domain.Capability]bool{}
-			for _, capability := range dropped {
-				drop[capability] = true
+	err := s.adminTx(ctx, actor, org, bindingID, authz.OpSCIMMappingUpdate, true,
+		func(ctx context.Context, a *scimAdminContext) error {
+			r, az, p, caller, c := a.repos, a.authorizer, a.proof, a.caller, a.scimContext
+			if err := checkMappingScope(c.binding, spec.Template, spec.ProjectID, spec.EnvID); err != nil {
+				return err
 			}
-			evs, count, err := s.releaseRow(ctx, r, az, c, row,
-				func(g domain.Grant) bool { return drop[g.Capability] },
-				domain.CauseMappingDelete, now)
+			if err := s.resolveMappingScope(ctx, r, az, p, c.binding, spec.ProjectID, spec.EnvID); err != nil {
+				return err
+			}
+			row, err := s.addressedMapping(ctx, r, p, bindingID, spec)
 			if err != nil {
 				return err
 			}
-			events = append(events, evs...)
-			released = count
-		}
-		grantEvents, created, members, err := s.applyRowToMembers(ctx, r, az, c, row, now)
-		if err != nil {
-			return err
-		}
-		events = append(events, grantEvents...)
+			level := mustLevel(mappingScope(c.binding, row))
+			before, err := domain.ExpandTemplate(domain.Template(row.Template), level)
+			if err != nil {
+				return err
+			}
+			after, err := domain.ExpandTemplate(spec.Template, level)
+			if err != nil {
+				return err
+			}
+			now := s.now()
+			if err := r.SCIM().UpdateMappingTemplate(ctx, p, row.ID, string(spec.Template)); err != nil {
+				return err
+			}
+			row.Template = string(spec.Template)
 
-		out = SCIMMappingResult{
-			Mapping:         mappingView(row, after),
-			Warnings:        blastWarnings(mappingScope(c.binding, row), after, members),
-			MembersAffected: members,
-			GrantsCreated:   created,
-			OriginsReleased: released,
-		}
-		events = append(events, mappingEvent(audit.EventSCIMMappingUpdated, c, row, caller.Principal))
-		return insertGrantEvent(ctx, r, p, caller.Principal, domain.LevelOrg, events...)
-	})
+			var events []grantEventInput
+			released := 0
+			// Narrowing first: release what the row no longer covers, before the
+			// widening half re-reads the members' rows.
+			dropped := missing(before, after)
+			if len(dropped) > 0 {
+				drop := map[domain.Capability]bool{}
+				for _, capability := range dropped {
+					drop[capability] = true
+				}
+				evs, count, err := s.releaseRow(ctx, r, az, c, row,
+					func(g domain.Grant) bool { return drop[g.Capability] },
+					domain.CauseMappingDelete, now)
+				if err != nil {
+					return err
+				}
+				events = append(events, evs...)
+				released = count
+			}
+			grantEvents, created, members, err := s.applyRowToMembers(ctx, r, az, c, row, now)
+			if err != nil {
+				return err
+			}
+			events = append(events, grantEvents...)
+
+			out = SCIMMappingResult{
+				Mapping:         mappingView(row, after),
+				Warnings:        blastWarnings(mappingScope(c.binding, row), after, members),
+				MembersAffected: members,
+				GrantsCreated:   created,
+				OriginsReleased: released,
+			}
+			events = append(events, mappingEvent(audit.EventSCIMMappingUpdated, c, row, caller.Principal))
+			a.addEvents(events...)
+			return nil
+		})
 	return out, err
 }
 
@@ -314,93 +269,59 @@ func (s *SCIM) UpdateMapping(ctx context.Context, actor Actor, org domain.OrgID,
 // an IdP they don't control".
 func (s *SCIM) DeleteMapping(ctx context.Context, actor Actor, org domain.OrgID, bindingID string, spec SCIMMappingSpec) (SCIMMappingResult, error) {
 	var out SCIMMappingResult
-	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		scope := domain.Scope{Org: org}
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpSCIMMappingDelete, scope)
-		if err != nil {
-			return err
-		}
-		// §9: per-binding writes SERIALIZE. The wire takes this lock through
-		// its contact UPDATE; an ADMINISTRATION mutation has no such update,
-		// so it takes the row lock explicitly and holds it to commit. Mapping
-		// authoring reconciles origins in its own transaction, which is the
-		// same origin arithmetic a push performs and needs the same
-		// serialization — so both legs mark the SAME phase pair, and a fixture
-		// asserting strict alternation covers admin-versus-wire races too.
-		unlock, err := lockBindingRow(ctx, r, p, bindingID)
-		if err != nil {
-			return err
-		}
-		defer unlock()
-		c, err := s.loadBinding(ctx, r, az, p, bindingID, false)
-		if err != nil {
-			return err
-		}
-		row, err := s.addressedMapping(ctx, r, p, bindingID, spec)
-		if err != nil {
-			return err
-		}
-		now := s.now()
-		events, released, err := s.releaseRow(ctx, r, az, c, row, nil, domain.CauseMappingDelete, now)
-		if err != nil {
-			return err
-		}
-		if err := r.SCIM().DeleteMapping(ctx, p, row.ID); err != nil {
-			return err
-		}
-		// The row is gone, so any `inert_mapping` attention it raised is too.
-		// The exit cause is the ACT that cleared it — the mapping was deleted —
-		// not the older act that made it inert. Recording `group_deleted` here
-		// put a false explanation in the trail: the audited exit says why the
-		// state ended, and this state ended because an administrator deleted
-		// the row.
-		cleared, err := s.clearAttention(ctx, r, c, domain.AttentionInertMapping, row.ID, domain.CauseMappingDelete)
-		if err != nil {
-			return err
-		}
-		events = append(events, cleared...)
-		out = SCIMMappingResult{Mapping: mappingView(row, nil), OriginsReleased: released, Warnings: []SCIMBlastWarning{}}
-		events = append(events, mappingEvent(audit.EventSCIMMappingDeleted, c, row, caller.Principal))
-		return insertGrantEvent(ctx, r, p, caller.Principal, domain.LevelOrg, events...)
-	})
+	err := s.adminTx(ctx, actor, org, bindingID, authz.OpSCIMMappingDelete, true,
+		func(ctx context.Context, a *scimAdminContext) error {
+			r, az, p, caller, c := a.repos, a.authorizer, a.proof, a.caller, a.scimContext
+			row, err := s.addressedMapping(ctx, r, p, bindingID, spec)
+			if err != nil {
+				return err
+			}
+			now := s.now()
+			events, released, err := s.releaseRow(ctx, r, az, c, row, nil, domain.CauseMappingDelete, now)
+			if err != nil {
+				return err
+			}
+			if err := r.SCIM().DeleteMapping(ctx, p, row.ID); err != nil {
+				return err
+			}
+			// The row is gone, so any `inert_mapping` attention it raised is too.
+			// The exit cause is the ACT that cleared it — the mapping was deleted —
+			// not the older act that made it inert. Recording `group_deleted` here
+			// put a false explanation in the trail: the audited exit says why the
+			// state ended, and this state ended because an administrator deleted
+			// the row.
+			cleared, err := s.clearAttention(ctx, r, c, domain.AttentionInertMapping, row.ID, domain.CauseMappingDelete)
+			if err != nil {
+				return err
+			}
+			events = append(events, cleared...)
+			out = SCIMMappingResult{Mapping: mappingView(row, nil), OriginsReleased: released, Warnings: []SCIMBlastWarning{}}
+			events = append(events, mappingEvent(audit.EventSCIMMappingDeleted, c, row, caller.Principal))
+			a.addEvents(events...)
+			return nil
+		})
 	return out, err
 }
 
 // ListMappings returns the binding's mapping table.
 func (s *SCIM) ListMappings(ctx context.Context, actor Actor, org domain.OrgID, bindingID string) ([]SCIMMappingView, error) {
 	var out []SCIMMappingView
-	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		scope := domain.Scope{Org: org}
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpSCIMMappingList, scope)
-		if err != nil {
-			return err
-		}
-		c, err := s.loadBinding(ctx, r, az, p, bindingID, false)
-		if err != nil {
-			return err
-		}
-		rows, err := r.SCIM().Mappings(ctx, p, bindingID)
-		if err != nil {
-			return err
-		}
-		for _, row := range rows {
-			caps, err := domain.ExpandTemplate(domain.Template(row.Template), mustLevel(mappingScope(c.binding, row)))
+	err := s.adminTx(ctx, actor, org, bindingID, authz.OpSCIMMappingList, false,
+		func(ctx context.Context, a *scimAdminContext) error {
+			rows, err := a.repos.SCIM().Mappings(ctx, a.proof, bindingID)
 			if err != nil {
 				return err
 			}
-			out = append(out, mappingView(row, caps))
-		}
-		return insertGrantEvent(ctx, r, p, caller.Principal, domain.LevelOrg,
-			adminReadEvent(string(org), bindingID, "mapping", len(out)))
-	})
+			for _, row := range rows {
+				caps, err := domain.ExpandTemplate(domain.Template(row.Template), mustLevel(mappingScope(a.binding, row)))
+				if err != nil {
+					return err
+				}
+				out = append(out, mappingView(row, caps))
+			}
+			a.addEvents(adminReadEvent(string(org), bindingID, "mapping", len(out)))
+			return nil
+		})
 	return out, err
 }
 

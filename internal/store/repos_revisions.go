@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -696,27 +697,43 @@ func revisionSnapshotFromSQLite(row sqlitegen.Snapshot) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
+	var collectedAt time.Time
+	if row.CollectedAt.Valid {
+		collectedAt, err = parseTime("snapshot collection", row.ID, row.CollectedAt.String)
+		if err != nil {
+			return Snapshot{}, err
+		}
+	}
+	collected, err := snapshotCollection(row.ID, row.PayloadPresent == 1, row.CollectedAt.Valid, collectedAt, row.CollectedPolicy)
+	if err != nil {
+		return Snapshot{}, err
+	}
 	snapshot := Snapshot{
 		ID: row.ID, OrgID: row.OrgID, ProjectID: row.ProjectID,
 		EnvironmentID: row.EnvironmentID, Revision: row.Revision,
 		SchemaRevision: row.SchemaRevision, PublishedBy: row.PublishedBy,
-		PublishedAt: published, CollectedPolicy: row.CollectedPolicy,
-		PayloadPresent: row.PayloadPresent == 1,
-	}
-	if row.CollectedAt.Valid {
-		collected, err := parseTime("snapshot collection", row.ID, row.CollectedAt.String)
-		if err != nil {
-			return Snapshot{}, err
-		}
-		snapshot.CollectedAt = &collected
+		PublishedAt: published, Collected: collected,
 	}
 	return snapshot, nil
 }
 
+func snapshotCollection(id string, payloadPresent, hasCollectedAt bool, collectedAt time.Time, policy string) (*SnapshotCollection, error) {
+	if payloadPresent && !hasCollectedAt && policy == "" {
+		return nil, nil
+	}
+	if !payloadPresent && hasCollectedAt && policy != "" {
+		return &SnapshotCollection{At: collectedAt, Policy: policy}, nil
+	}
+	return nil, fmt.Errorf(
+		"store: snapshot %s carries inconsistent collection state (payload_present=%t, collected_at=%t, collected_policy=%t)",
+		id, payloadPresent, hasCollectedAt, policy != "",
+	)
+}
+
 func liveSnapshot(snapshot Snapshot) (Snapshot, error) {
-	if !snapshot.PayloadPresent {
+	if !snapshot.PayloadPresent() {
 		return Snapshot{}, &domain.CollectedRevisionError{
-			Revision: snapshot.Revision, Policy: snapshot.CollectedPolicy,
+			Revision: snapshot.Revision, Policy: snapshot.CollectionPolicy(),
 		}
 	}
 	return snapshot, nil
@@ -1140,7 +1157,7 @@ func (r pgSnapshots) Latest(ctx context.Context, p authz.Proof) (Snapshot, error
 	if err != nil {
 		return Snapshot{}, err
 	}
-	return revisionSnapshotFromPG(row), nil
+	return revisionSnapshotFromPG(row)
 }
 
 func (r pgSnapshots) ProjectRevisions(ctx context.Context, p authz.Proof) (map[string]int64, error) {
@@ -1211,7 +1228,7 @@ func (r pgSnapshots) atRevision(ctx context.Context, orgID, projectID, envID str
 	if err != nil {
 		return Snapshot{}, err
 	}
-	return revisionSnapshotFromPG(row), nil
+	return revisionSnapshotFromPG(row)
 }
 
 func (r pgSnapshots) List(ctx context.Context, p authz.Proof) ([]Snapshot, error) {
@@ -1233,7 +1250,11 @@ func (r pgSnapshots) List(ctx context.Context, p authz.Proof) ([]Snapshot, error
 	}
 	out := make([]Snapshot, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, revisionSnapshotFromPG(row))
+		snapshot, err := revisionSnapshotFromPG(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, snapshot)
 	}
 	return out, nil
 }
@@ -1471,19 +1492,19 @@ func (r pgSnapshots) DeleteEnvironment(ctx context.Context, p authz.Proof) error
 	return constraint(err)
 }
 
-func revisionSnapshotFromPG(row pggen.Snapshot) Snapshot {
-	snapshot := Snapshot{
+func revisionSnapshotFromPG(row pggen.Snapshot) (Snapshot, error) {
+	collected, err := snapshotCollection(
+		row.ID, row.PayloadPresent, row.CollectedAt.Valid, row.CollectedAt.Time.UTC(), row.CollectedPolicy,
+	)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	return Snapshot{
 		ID: row.ID, OrgID: row.OrgID, ProjectID: row.ProjectID,
 		EnvironmentID: row.EnvironmentID, Revision: row.Revision,
 		SchemaRevision: row.SchemaRevision, PublishedBy: row.PublishedBy,
-		PublishedAt: row.PublishedAt.Time.UTC(), CollectedPolicy: row.CollectedPolicy,
-		PayloadPresent: row.PayloadPresent,
-	}
-	if row.CollectedAt.Valid {
-		collected := row.CollectedAt.Time.UTC()
-		snapshot.CollectedAt = &collected
-	}
-	return snapshot
+		PublishedAt: row.PublishedAt.Time.UTC(), Collected: collected,
+	}, nil
 }
 
 type pgPins struct {

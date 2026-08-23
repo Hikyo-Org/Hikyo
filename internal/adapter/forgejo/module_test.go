@@ -224,7 +224,7 @@ func TestOwnedVariableDeletedAtProviderRetriesCreateUnderFreshEffect(t *testing.
 		t.Fatalf("absence-proven variable remained claimed as %q", journal.states["variable:LOG_LEVEL"])
 	}
 	completion := journal.completions["variable:LOG_LEVEL"]
-	if journal.prepares["variable:LOG_LEVEL"] != 1 || len(completion) != 1 || completion[0].Outcome != "failure" || completion[0].State != "" {
+	if journal.prepares["variable:LOG_LEVEL"] != 1 || len(completion) != 1 || completion[0].Outcome != adapter.OutcomeFailure || !completion[0].ReleaseLedger {
 		t.Fatalf("first effect prepare=%d completion=%+v", journal.prepares["variable:LOG_LEVEL"], completion)
 	}
 
@@ -237,7 +237,7 @@ func TestOwnedVariableDeletedAtProviderRetriesCreateUnderFreshEffect(t *testing.
 		t.Fatalf("replay writes=%v, want fresh create attempt %v", api.writes, want)
 	}
 	completion = journal.completions["variable:LOG_LEVEL"]
-	if journal.prepares["variable:LOG_LEVEL"] != 2 || len(completion) != 2 || completion[1].Outcome != "success" || completion[1].State != adapter.Owned {
+	if journal.prepares["variable:LOG_LEVEL"] != 2 || len(completion) != 2 || completion[1].Outcome != adapter.OutcomeSuccess || completion[1].State != adapter.Owned {
 		t.Fatalf("replay effects prepare=%d completion=%+v", journal.prepares["variable:LOG_LEVEL"], completion)
 	}
 }
@@ -265,7 +265,7 @@ func TestPostPrepareGateFailureFinishesWithoutProviderRequest(t *testing.T) {
 				t.Fatalf("provider writes after failed post-Prepare gate = %v", api.writes)
 			}
 			completion := journal.completions["secret:MANAGED_BY_HIKYO"]
-			if len(completion) != 1 || completion[0].Outcome != "failure" || completion[0].State != tt.state || journal.states["secret:MANAGED_BY_HIKYO"] != tt.state {
+			if len(completion) != 1 || completion[0].Outcome != adapter.OutcomeFailure || completion[0].State != tt.state || journal.states["secret:MANAGED_BY_HIKYO"] != tt.state {
 				t.Fatalf("completion=%+v state=%q, want preserved %q", completion, journal.states["secret:MANAGED_BY_HIKYO"], tt.state)
 			}
 		})
@@ -286,7 +286,7 @@ func TestPrunePostPrepareGateFailureFinishesAndReleasesFence(t *testing.T) {
 		t.Fatalf("provider deletes after failed post-Prepare gate = %v", api.writes)
 	}
 	completion := journal.completions["variable:OLD"]
-	if len(completion) != 1 || completion[0].Outcome != "failure" || completion[0].State != adapter.Owned {
+	if len(completion) != 1 || completion[0].Outcome != adapter.OutcomeFailure || completion[0].State != adapter.Owned {
 		t.Fatalf("completion = %+v", completion)
 	}
 }
@@ -589,7 +589,7 @@ func (j *fakeJournal) Finish(_ context.Context, e adapter.Effect, completion ada
 		return j.finishErr
 	}
 	j.completions[effectKey(e)] = append(j.completions[effectKey(e)], completion)
-	if completion.State == "" {
+	if completion.ReleaseLedger {
 		delete(j.states, effectKey(e))
 		delete(j.missing, effectKey(e))
 	} else {

@@ -16,8 +16,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
+import { browserApi } from '../fixtures/api.ts';
 import {
-  browserApi,
   BASE_URL,
   establishSession,
   INSTANCE_GRANT_TARGET,

@@ -1,5 +1,5 @@
 import { chromium, type CDPSession, type Page } from '@playwright/test';
-import { z, type ZodType } from 'zod';
+import { z } from 'zod';
 
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createHash, X509Certificate } from 'node:crypto';
@@ -1259,45 +1259,6 @@ export async function installPasskeyAuthenticator(
     // counter looks like a cloned authenticator and disables the credential.
     persistSharedPasskey(credentials, sharedPasskey);
   };
-}
-
-/**
- * browserApi performs one API call on the PAGE's own session — its cookies,
- * its synchronizer token.
- *
- * Flows use it for fixture work a surface has no control for (creating the
- * throwaway project a settings drill deletes, reading a service account's
- * principal id). Deliberately the page's session rather than a bearer one: a
- * second artifact would be a second thing that can be stale, and the CSRF
- * contract is exercised on the way through rather than bypassed.
- */
-export async function browserApi<T>(
-  page: Page,
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
-  path: string,
-  schema: ZodType<T>,
-  body?: unknown,
-): Promise<T> {
-  // Scoped to THIS instance's origin. The shared jar also carries the serving
-  // instance's cookies (#71 runs two instances), and an unscoped read can hand
-  // back the other origin's synchronizer token — which the CSRF gate refuses
-  // with a 401 that looks exactly like a dead session, several calls from the
-  // mistake.
-  const cookies = await page.context().cookies(BASE_URL);
-  const csrf = cookies.find((cookie) => cookie.name === '__Host-hikyo-csrf')?.value;
-  if (csrf === undefined || csrf === '') {
-    throw new Error(`${method} ${path} cannot run: the page has no CSRF cookie for ${BASE_URL}`);
-  }
-  const response = await page.request.fetch(`${BASE_URL}${path}`, {
-    method,
-    headers: { 'Content-Type': 'application/json', 'X-Hikyo-CSRF': csrf },
-    ...(body === undefined ? {} : { data: body }),
-  });
-  if (!response.ok()) {
-    throw new Error(`${method} ${path} answered ${response.status()}: ${await response.text()}`);
-  }
-  const value: unknown = response.status() === 204 ? null : await response.json();
-  return schema.parse(value);
 }
 
 export async function establishSession(page: Page, stepUp = true): Promise<void> {
