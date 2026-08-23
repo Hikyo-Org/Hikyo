@@ -419,10 +419,10 @@ func scenarioLiveStickySecretRestorePreview(t *testing.T, db *store.DB) {
 	dev := mustEnv(t, envs, actor, scope, "dev")
 	key := mustKey(t, keys, actor, scope, "LIVE_STICKY", string(schema.Secret), schema.DefaultPresenceRules())
 	publishValue(t, db, values, actor, dev, "LIVE_STICKY", "secret-v1")
-	target := latestRevisionOf(t, db, string(dev.Env))
 	if _, _, err := keys.Reclassify(t.Context(), actor, scope, key.ID, string(schema.Config)); err != nil {
 		t.Fatal(err)
 	}
+	target := latestRevisionOf(t, db, string(dev.Env))
 	publishValue(t, db, values, actor, dev, "LIVE_STICKY", "config-v2")
 
 	restorer := newPrincipal(t, db, "usr_restore_live_sticky_"+string(scope.Project), []grantSpec{

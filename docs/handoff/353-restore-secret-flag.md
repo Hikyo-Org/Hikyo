@@ -23,6 +23,10 @@ change selected by `resolveVersions`.
 - The preview must still report `secret` and expose neither `Before` nor `After`.
 - Existing restore formula, payload collection, superseded-secret, pending-draft,
   and server wire tests remain the named regression set.
+- Red-before-green is not available at the public behavior seam: the removed
+  shadow map was byte-equivalent to `PendingChange.Secret`, so old code produces
+  the same preview. The scenario instead fails if the persisted flag stops
+  carrying a reclassified secret occurrence into preview.
 
 ## Validation
 
