@@ -59,15 +59,7 @@ func (a *API) EnrolPasskeyStart(ctx context.Context, req apigen.EnrolPasskeyStar
 		if webauthnPrecondition(err) {
 			return apigen.EnrolPasskeyStart400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 		}
-		switch wireErrorFor(err).code {
-		case apigen.ErrorCodeUnauthenticated:
-			return apigen.EnrolPasskeyStart401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
-		case apigen.ErrorCodeTooManyRequests:
-			return apigen.EnrolPasskeyStart429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
-		default:
-			a.fault(ctx, "passkey enrol start", err)
-			return apigen.EnrolPasskeyStart500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
-		}
+		return nil, err
 	}
 	m, err := webauthnOptions(raw)
 	if err != nil {
@@ -87,15 +79,7 @@ func (a *API) EnrolPasskeyFinish(ctx context.Context, req apigen.EnrolPasskeyFin
 		if webauthnPrecondition(err) {
 			return apigen.EnrolPasskeyFinish400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 		}
-		switch wireErrorFor(err).code {
-		case apigen.ErrorCodeUnauthenticated:
-			return apigen.EnrolPasskeyFinish401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
-		case apigen.ErrorCodeTooManyRequests:
-			return apigen.EnrolPasskeyFinish429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
-		default:
-			a.fault(ctx, "passkey enrol finish", err)
-			return apigen.EnrolPasskeyFinish500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
-		}
+		return nil, err
 	}
 	return sessionResponse(result), nil
 }
@@ -161,15 +145,7 @@ func (a *API) StepUpPasskeyStart(ctx context.Context, _ apigen.StepUpPasskeyStar
 		if webauthnPrecondition(err) {
 			return apigen.StepUpPasskeyStart400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 		}
-		switch wireErrorFor(err).code {
-		case apigen.ErrorCodeUnauthenticated:
-			return apigen.StepUpPasskeyStart401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
-		case apigen.ErrorCodeTooManyRequests:
-			return apigen.StepUpPasskeyStart429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
-		default:
-			a.fault(ctx, "passkey step-up start", err)
-			return apigen.StepUpPasskeyStart500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
-		}
+		return nil, err
 	}
 	m, err := webauthnOptions(raw)
 	if err != nil {
@@ -189,15 +165,7 @@ func (a *API) StepUpPasskeyFinish(ctx context.Context, req apigen.StepUpPasskeyF
 		if webauthnPrecondition(err) {
 			return apigen.StepUpPasskeyFinish400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 		}
-		switch wireErrorFor(err).code {
-		case apigen.ErrorCodeUnauthenticated:
-			return apigen.StepUpPasskeyFinish401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
-		case apigen.ErrorCodeTooManyRequests:
-			return apigen.StepUpPasskeyFinish429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
-		default:
-			a.fault(ctx, "passkey step-up finish", err)
-			return apigen.StepUpPasskeyFinish500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
-		}
+		return nil, err
 	}
 	return sessionResponse(result), nil
 }
@@ -238,15 +206,7 @@ func (a *API) ReauthPasskeyStart(ctx context.Context, req apigen.ReauthPasskeySt
 		if webauthnPrecondition(err) {
 			return apigen.ReauthPasskeyStart400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 		}
-		switch wireErrorFor(err).code {
-		case apigen.ErrorCodeUnauthenticated:
-			return apigen.ReauthPasskeyStart401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
-		case apigen.ErrorCodeTooManyRequests:
-			return apigen.ReauthPasskeyStart429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
-		default:
-			a.fault(ctx, "passkey reauth start", err)
-			return apigen.ReauthPasskeyStart500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
-		}
+		return nil, err
 	}
 	m, err := webauthnOptions(raw)
 	if err != nil {
@@ -277,15 +237,7 @@ func (a *API) ReauthPasskeyFinish(ctx context.Context, req apigen.ReauthPasskeyF
 		if webauthnPrecondition(err) {
 			return apigen.ReauthPasskeyFinish400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 		}
-		switch wireErrorFor(err).code {
-		case apigen.ErrorCodeUnauthenticated:
-			return apigen.ReauthPasskeyFinish401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
-		case apigen.ErrorCodeTooManyRequests:
-			return apigen.ReauthPasskeyFinish429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
-		default:
-			a.fault(ctx, "passkey reauth finish", err)
-			return apigen.ReauthPasskeyFinish500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
-		}
+		return nil, err
 	}
 	resp := reauthPasskeyResponse{body: apigen.ReauthResult{
 		SessionId:      result.SessionID,
@@ -314,15 +266,7 @@ func (a *API) ReauthPasskeyFinish(ctx context.Context, req apigen.ReauthPasskeyF
 func (a *API) ListPasskeys(ctx context.Context, _ apigen.ListPasskeysRequestObject) (apigen.ListPasskeysResponseObject, error) {
 	rows, err := a.Auth.ListPasskeys(ctx, bearer(ctx))
 	if err != nil {
-		switch wireErrorFor(err).code {
-		case apigen.ErrorCodeUnauthenticated:
-			return apigen.ListPasskeys401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
-		case apigen.ErrorCodeTooManyRequests:
-			return apigen.ListPasskeys429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
-		default:
-			a.fault(ctx, "list passkeys", err)
-			return apigen.ListPasskeys500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
-		}
+		return nil, err
 	}
 	out := apigen.PasskeyList{Passkeys: make([]apigen.Passkey, 0, len(rows))}
 	for _, r := range rows {
@@ -343,15 +287,7 @@ func (a *API) RemovePasskey(ctx context.Context, req apigen.RemovePasskeyRequest
 		if webauthnPrecondition(err) {
 			return apigen.RemovePasskey400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 		}
-		switch wireErrorFor(err).code {
-		case apigen.ErrorCodeUnauthenticated:
-			return apigen.RemovePasskey401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
-		case apigen.ErrorCodeTooManyRequests:
-			return apigen.RemovePasskey429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
-		default:
-			a.fault(ctx, "passkey remove", err)
-			return apigen.RemovePasskey500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
-		}
+		return nil, err
 	}
 	return sessionResponse(result), nil
 }
