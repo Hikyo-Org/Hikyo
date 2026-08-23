@@ -178,9 +178,10 @@ describe('row editor state', () => {
     expect(
       matrixDraftChanges(
         ['untouched', 'empty', 'cleared'],
-        new Map([['empty', '']]),
-        new Set(['empty']),
-        new Set(['cleared']),
+        new Map([
+          ['empty', { op: 'set', value: '' }],
+          ['cleared', { op: 'unset' }],
+        ]),
       ),
     ).toEqual([
       { environmentId: 'empty', operation: 'set', value: '' },
