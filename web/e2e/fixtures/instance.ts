@@ -81,6 +81,10 @@ const PORT_TLS = Number(process.env['HIKYO_E2E_PORT_TLS'] ?? 45791);
 
 /** Browser-drivable fake provider, isolated from the two Hikyo listeners. */
 const PORT_OIDC = Number(process.env['HIKYO_E2E_PORT_OIDC'] ?? 45792);
+
+/** Operational listeners stay loopback-only and isolated from both browser origins. */
+const PORT_OPERATIONAL = Number(process.env['HIKYO_E2E_PORT_OPERATIONAL'] ?? 45793);
+const PORT_OPERATIONAL_B = Number(process.env['HIKYO_E2E_PORT_OPERATIONAL_B'] ?? 45794);
 export const OIDC_PROVIDER = { slug: 'e2e-oidc', displayName: 'E2E Identity Provider' };
 
 /** The name the viewing instance knows the serving instance by. */
@@ -149,6 +153,7 @@ type Instance = {
   dir: string;
   binary: string;
   base: string;
+  operationalBase: string;
   host: string;
   cookies: Cookie[];
   /** Set before a deliberate kill so the death-report handler stays quiet. */
@@ -281,7 +286,7 @@ async function waitForHealthz(instance: Instance, deadlineMs = 30_000): Promise<
       throw new Error(`the instance exited immediately with ${String(instance.proc.exitCode)}`);
     }
     try {
-      const resp = await fetch(`${instance.base}/healthz`);
+      const resp = await fetch(`${instance.operationalBase}/healthz`);
       if (resp.ok) {
         break;
       }
@@ -289,7 +294,7 @@ async function waitForHealthz(instance: Instance, deadlineMs = 30_000): Promise<
       // not listening yet
     }
     if (Date.now() > until) {
-      throw new Error(`the instance never became healthy at ${instance.base}`);
+      throw new Error(`the instance never became healthy at ${instance.operationalBase}`);
     }
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
@@ -522,7 +527,12 @@ function portTaken(host: string, port: number): Promise<boolean> {
  * seeded and takes a passkey, B enrols TOTP), and folding both into one
  * function would mean a flag deciding half the body.
  */
-async function startInstanceAt(host: string, port: number, base: string): Promise<Instance> {
+async function startInstanceAt(
+  host: string,
+  port: number,
+  operationalPort: number,
+  base: string,
+): Promise<Instance> {
   // Fail loud on a squatter. A previous run killed mid-flight (a timeout, a
   // ^C) leaves a server on this port with ANOTHER datastore behind it, and the
   // health probe below cannot tell the difference — the bootstrap then writes
@@ -535,6 +545,12 @@ async function startInstanceAt(host: string, port: number, base: string): Promis
   if (await portTaken(host, port)) {
     throw new Error(
       `something is already listening on ${host}:${port}. A previous flow run was killed ` +
+        `without teardown; stop it before running the suite again.`,
+    );
+  }
+  if (await portTaken('127.0.0.1', operationalPort)) {
+    throw new Error(
+      `something is already listening on 127.0.0.1:${String(operationalPort)}. A previous flow run was killed ` +
         `without teardown; stop it before running the suite again.`,
     );
   }
@@ -553,27 +569,39 @@ async function startInstanceAt(host: string, port: number, base: string): Promis
     throw new Error(`HIKYO_E2E_BINARY does not exist: ${prebuiltBinary}`);
   }
 
-  const proc = spawn(binary, ['server', '--dev', '--listen', `${host}:${port}`], {
-    cwd: dir,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    env: {
-      ...process.env,
-      // Every login of every flow, on both viewport projects, arrives from one
-      // loopback address inside about twenty seconds — a traffic shape the
-      // locked per-IP allowance of ten a minute is deliberately not sized for.
-      // Raising it here is not weakening the product: the key is refused
-      // outside `--dev` and the server will not start with it set in
-      // production. The alternative was deleting tests to fit under the
-      // ceiling, which is measuring the throttle instead of the UI.
-      HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE: '500',
-      // Flow scenarios also reuse one authenticated principal and collectively
-      // publish more than the production allowance of ten per minute. Budget
-      // behavior has its own conformance/unit coverage; this harness validates
-      // UI behavior. The server refuses this switch unless --dev is active.
-      HIKYO_DEV_SERVICE_BUDGETS_DISABLED: 'true',
+  const operationalBase = `http://127.0.0.1:${String(operationalPort)}`;
+  const proc = spawn(
+    binary,
+    [
+      'server',
+      '--dev',
+      '--listen',
+      `${host}:${port}`,
+      '--operational-listen',
+      `127.0.0.1:${String(operationalPort)}`,
+    ],
+    {
+      cwd: dir,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        // Every login of every flow, on both viewport projects, arrives from one
+        // loopback address inside about twenty seconds — a traffic shape the
+        // locked per-IP allowance of ten a minute is deliberately not sized for.
+        // Raising it here is not weakening the product: the key is refused
+        // outside `--dev` and the server will not start with it set in
+        // production. The alternative was deleting tests to fit under the
+        // ceiling, which is measuring the throttle instead of the UI.
+        HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE: '500',
+        // Flow scenarios also reuse one authenticated principal and collectively
+        // publish more than the production allowance of ten per minute. Budget
+        // behavior has its own conformance/unit coverage; this harness validates
+        // UI behavior. The server refuses this switch unless --dev is active.
+        HIKYO_DEV_SERVICE_BUDGETS_DISABLED: 'true',
+      },
     },
-  });
-  const instance: Instance = { proc, dir, binary, base, host, cookies: [] };
+  );
+  const instance: Instance = { proc, dir, binary, base, operationalBase, host, cookies: [] };
   instances.push(instance);
   // The last 64 KiB of output is kept regardless of verbosity: when the server
   // dies unexpectedly mid-suite, the diagnosis lives in this buffer and nowhere
@@ -892,8 +920,8 @@ export async function startInstance(): Promise<void> {
   // Concurrently, so the one unavoidable TOTP step-boundary wait is paid once
   // rather than once per instance.
   const [viewing, serving] = await Promise.all([
-    startInstanceAt(HOST, PORT, BASE_URL),
-    startInstanceAt(HOST_B, PORT_B, BASE_URL_B),
+    startInstanceAt(HOST, PORT, PORT_OPERATIONAL, BASE_URL),
+    startInstanceAt(HOST_B, PORT_B, PORT_OPERATIONAL_B, BASE_URL_B),
   ]);
 
   // Only the VIEWING instance needs `instance-directory`: it is the one that
