@@ -149,6 +149,46 @@ func TestAdapterReauthWindowExactBindingPostgres(t *testing.T) {
 	runAdapterReauthWindowExactBinding(t, seededDB(t, openPostgres))
 }
 
+func TestInvalidReauthWindowBindingSQLite(t *testing.T) {
+	runInvalidReauthWindowBinding(t, seededDB(t, openSQLite))
+}
+
+func TestInvalidReauthWindowBindingPostgres(t *testing.T) {
+	runInvalidReauthWindowBinding(t, seededDB(t, openPostgres))
+}
+
+func runInvalidReauthWindowBinding(t *testing.T, db *store.DB) {
+	auth, _, password := bootstrapFactorAdmin(t, db)
+	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	auth.Now = func() time.Time { return now }
+	auth.ReauthWindow = 5 * time.Minute
+	login, err := auth.LocalLogin(t.Context(), "factor-admin", password, service.ArtifactCLI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = tx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+		epoch, err := az.CredentialEpoch(ctx)
+		if err != nil {
+			return err
+		}
+		return az.OpenReauthWindow(ctx, authz.NewReauthWindow{
+			ID: "raw_invalid_binding", SessionID: login.SessionID, EnvironmentID: "env_prod",
+			CeremonyID: "totp_invalid", FactorClass: "totp", AuthenticatedAt: now,
+			WindowExpiresAt: now.Add(5 * time.Minute), HardExpiresAt: now.Add(10 * time.Minute),
+			CredentialEpoch: epoch, CreatedAt: now, BoundKeySet: "DATABASE_URL",
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = consumeWindowFor(t, auth, db, login.SessionID, "env_prod",
+		string(authz.OpValueReveal), []string{"DATABASE_URL"}, now.Add(time.Second))
+	if !errors.Is(err, service.ErrReauthUnitMismatch) {
+		t.Fatalf("keyset-only window consumed with error %v, want ErrReauthUnitMismatch", err)
+	}
+}
+
 func TestAdapterReauthTOTPMixedPolicySQLite(t *testing.T) {
 	runAdapterReauthTOTPMixedPolicy(t, seededDB(t, openSQLite))
 }
@@ -1115,6 +1155,14 @@ func runCLIDisclosureReauthHandoff(t *testing.T, db *store.DB) {
 	if transaction.Purpose != string(service.PurposeReveal) || transaction.Operation != string(authz.OpValueReveal) || strings.Join(transaction.KeyIDs, "\n") != service.CanonicalKeySet(secretKeys) {
 		t.Fatalf("transaction = %+v", transaction)
 	}
+	// A workspace step-up's operation-bound sliding window cannot be widened
+	// into a CLI handoff. The CLI policy accepts only an environment-wide
+	// sliding window or the handoff's own exact single-decision ceremony.
+	execRaw(t, db, `UPDATE reauth_windows SET bound_operation = 'value.reveal', bound_key_set = 'DATABASE_URL' WHERE session_id = '`+browserWindow.SessionID+`'`)
+	if _, err := auth.ApproveCLIReauth(t.Context(), service.Bearer(browserWindow.SessionToken), start.State); !errors.Is(err, service.ErrReauthUnitMismatch) {
+		t.Fatalf("operation-bound sliding window approved for CLI handoff: %v, want ErrReauthUnitMismatch", err)
+	}
+	execRaw(t, db, `UPDATE reauth_windows SET bound_operation = '', bound_key_set = '' WHERE session_id = '`+browserWindow.SessionID+`'`)
 	approved, err := auth.ApproveCLIReauth(t.Context(), service.Bearer(browserWindow.SessionToken), start.State)
 	if err != nil {
 		t.Fatalf("approve: %v", err)
