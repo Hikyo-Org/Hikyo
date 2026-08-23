@@ -1173,11 +1173,7 @@ func resolveMachineTarget(st *State, ios IO, flags commonFlags, cfg *compose.Con
 	if _, err := NewTenantScope(resolved); err != nil {
 		return nil, TrustEntry{}, Resolved{}, "", err
 	}
-	kinds, err := authKindsFor(flags.operation)
-	if err != nil {
-		return nil, TrustEntry{}, Resolved{}, "", err
-	}
-	if !kinds.Allows(AuthKindMachineCredential) {
+	if !flags.kinds.Allows(AuthKindMachineCredential) {
 		return nil, TrustEntry{}, Resolved{}, "", failf(ExitRefused, "hikyo %s does not accept machine credentials", flags.operation)
 	}
 	if flags.Auth == "human" {

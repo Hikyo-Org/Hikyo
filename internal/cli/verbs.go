@@ -1404,6 +1404,7 @@ func runOrg(ctx context.Context, ios IO, args []string) error {
 type commonFlags struct {
 	Flags
 	operation AuthOperation
+	kinds     AuthKinds
 	Auth      string
 	// TokenFile is the machine-credential channel (#61). There is
 	// deliberately no `--token` flag beside it: a secret in argv is visible
@@ -1462,10 +1463,14 @@ func (c commonFlags) checkNoPositionals(verb string) error {
 
 // parseCommon parses the per-dimension flags every server-mediated verb takes.
 func parseCommon(name string, ios IO, args []string, extra func(*flag.FlagSet)) (*State, commonFlags, error) {
+	operation := AuthOperation(name)
+	kinds, err := authKindsFor(operation)
+	if err != nil {
+		return nil, commonFlags{}, err
+	}
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(ios.Stderr)
-	var c commonFlags
-	c.operation = AuthOperation(name)
+	c := commonFlags{operation: operation, kinds: kinds}
 	fs.StringVar(&c.Context, "context", "", "named context to select for this invocation")
 	fs.StringVar(&c.Instance, "instance", "", "instance reference")
 	fs.StringVar(&c.Org, "org", "", "organisation")
@@ -1547,13 +1552,9 @@ func authenticatedResolvedTarget(st *State, ios IO, flags commonFlags, resolved 
 	if err != nil {
 		return nil, nil, Resolved{}, err
 	}
-	kinds, err := authKindsFor(flags.operation)
-	if err != nil {
-		return nil, nil, Resolved{}, err
-	}
 	humanSession, humanPresent := sessions[instance]
 	machinePresent := flags.TokenFile != "" || ios.Env.Getenv("HIKYO_TOKEN") != ""
-	selected, err := selectAuthKind(flags.operation, kinds, flags.Auth, humanPresent, machinePresent)
+	selected, err := selectAuthKind(flags.operation, flags.kinds, flags.Auth, humanPresent, machinePresent)
 	if err != nil {
 		return nil, nil, Resolved{}, err
 	}
