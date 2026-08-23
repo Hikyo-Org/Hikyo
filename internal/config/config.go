@@ -127,6 +127,8 @@ var knownEnv = map[string]bool{
 	"HIKYO_EXTERNAL_ORIGIN":            true,
 	"HIKYO_TRUSTED_PROXY_CIDRS":        true,
 	"HIKYO_ROOT_KEY":                   true,
+	"HIKYO_NEW_ROOT_KEY_FILE":          true,
+	"HIKYO_DIRECTORY_PROXY":            true,
 	"HIKYO_ARGON2_MEMORY_KIB":          true,
 	"HIKYO_ARGON2_TIME":                true,
 	"HIKYO_ARGON2_PARALLELISM":         true,
@@ -146,14 +148,16 @@ var knownEnv = map[string]bool{
 	// mistyped HIKYO_PROJEKT that produced no warning would silently target
 	// the wrong project, which is the class of mistake the explicit-first
 	// context model exists to prevent.
-	"HIKYO_STATE_DIR":    true,
-	"HIKYO_TRUST_BUNDLE": true,
-	"HIKYO_CONTEXT":      true,
-	"HIKYO_INSTANCE":     true,
-	"HIKYO_ORG":          true,
-	"HIKYO_PROJECT":      true,
-	"HIKYO_ENV":          true,
-	"XDG_STATE_HOME":     true,
+	"HIKYO_STATE_DIR":      true,
+	"HIKYO_TRUST_BUNDLE":   true,
+	"HIKYO_CONTEXT":        true,
+	"HIKYO_INSTANCE":       true,
+	"HIKYO_ORG":            true,
+	"HIKYO_PROJECT":        true,
+	"HIKYO_ENV":            true,
+	"HIKYO_TOKEN":          true,
+	"HIKYO_COMPOSE_DOCKER": true,
+	"XDG_STATE_HOME":       true,
 }
 
 const devSQLitePath = "hikyo-dev.db"
