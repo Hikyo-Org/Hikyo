@@ -36,9 +36,18 @@ func TestInvariant01ClassificationTotality(t *testing.T) {
 	wire := facts.Wire()
 	seen := map[string]bool{}
 
-	// HTTP routes, from the actual router.
-	router, ok := server.New(nil, &server.API{}, nil).(chi.Routes)
-	if ok {
+	// HTTP routes, from both actual routers. The public and operational
+	// listeners are separate trust surfaces, but classification totality owns
+	// their union.
+	routers := []http.Handler{
+		server.NewPublic(nil, &server.API{}, nil, server.PublicOptions{}),
+		server.NewOperational(nil, nil),
+	}
+	for _, handler := range routers {
+		router, ok := handler.(chi.Routes)
+		if !ok {
+			t.Fatal("server router no longer implements chi.Routes; the route walk must be updated")
+		}
 		err := chi.Walk(router, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
 			key := "http:" + method + " " + strings.TrimSuffix(route, "/")
 			if route == "/" {
@@ -53,8 +62,6 @@ func TestInvariant01ClassificationTotality(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	} else {
-		t.Fatal("server.New no longer returns a chi router; the route walk must be updated")
 	}
 
 	// CLI verbs: server and migrate are system entry points, version (#46)
