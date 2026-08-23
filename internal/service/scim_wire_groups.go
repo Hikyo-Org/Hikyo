@@ -350,24 +350,12 @@ func (s *SCIM) releaseGroupOrigins(
 	ctx context.Context, r store.Repos, az *authz.TxAuthorizer, c scimContext,
 	principal domain.PrincipalID, groupID string, cause domain.SCIMCause, now time.Time,
 ) ([]grantEventInput, int, error) {
-	outcome, events, err := releaseSCIMOrigins(ctx, az, now, releaseArgs{
-		binding: c.binding.ID, org: domain.OrgID(c.binding.OrgID), principal: principal,
+	outcome, events, err := s.releaseAndSettle(ctx, r, az, c, principal, releaseArgs{
+		binding: c.binding.ID, org: domain.OrgID(c.binding.OrgID),
 		match: matchGroup(c.binding.ID, groupID), cause: cause,
-	})
+	}, advanceIfAuthorityChanged, now)
 	if err != nil {
 		return nil, 0, err
-	}
-	if outcome.AuthorityChanged() {
-		if err := advanceAndSweep(ctx, az, principal); err != nil {
-			return nil, 0, err
-		}
-	}
-	for _, grantID := range outcome.Retained {
-		ev, err := s.enterAttention(ctx, r, c, domain.AttentionLockoutRetention, grantID, cause, now)
-		if err != nil {
-			return nil, 0, err
-		}
-		events = append(events, ev...)
 	}
 	return events, outcome.Released, nil
 }

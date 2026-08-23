@@ -683,11 +683,11 @@ const (
 	// addition rather than smuggled in as if the ADR had named them.
 	EventRemoteCredentialsListed   EventType = "remote.credentials_listed"
 	EventRemoteOriginAllowlistRead EventType = "remote.origin_allowlist_read"
-	// remote.workspace_handoff_read is the approve page reading a live step-up
-	// transaction's bound operation, environment and key set by state. It is an
-	// authenticated human read of ceremony state, so it cannot take the silent
-	// permit rule — and a caller can read then close the popup, producing neither
-	// an approval nor an issuance, so no other event subsumes it.
+	// remote.workspace_handoff_read is the approve page reading a live
+	// transaction's authoritative purpose and any step-up binding by state. It
+	// is an authenticated human read of ceremony state, so it cannot take the
+	// silent permit rule — and a caller can read then close the popup, producing
+	// neither an approval nor an issuance, so no other event subsumes it.
 	EventRemoteWorkspaceHandoffRead EventType = "remote.workspace_handoff_read"
 
 	// adapter.* — deployment-module configuration, provider inspection and
@@ -794,7 +794,7 @@ var registry = map[EventType]TypeSpec{
 			// never a missing-grant enumeration (authorization oracle).
 			"operation":  {Kind: KindString, Required: true},
 			"formula":    {Kind: KindString, Required: true},
-			"resolution": {Kind: KindString, Required: true}, // resolvable | unresolvable
+			"resolution": {Kind: KindString, Required: true, Enum: []string{"resolvable", "unresolvable"}},
 			// Unresolvable denials only: the addressed identifiers as
 			// caller-asserted claims — no chain exists, so none is recorded.
 			"claimed_org":     {Kind: KindFreeText},
@@ -837,10 +837,10 @@ var registry = map[EventType]TypeSpec{
 		Trails:        map[Trail]bool{TrailInstance: true},
 		Schema: Schema{
 			"method":           {Kind: KindString, Required: true}, // local-password | …
-			"artifact":         {Kind: KindString, Required: true}, // cli | browser
+			"artifact":         {Kind: KindString, Required: true, Enum: []string{"cli", "browser"}},
 			"subject_resolved": {Kind: KindBool, Required: true},
 			"account_id":       {Kind: KindString},
-			"assurance":        {Kind: KindString}, // single-factor | multi-factor
+			"assurance":        {Kind: KindString, Enum: []string{"single-factor", "multi-factor"}},
 			"cause":            {Kind: KindString}, // failures only, by class never by detail
 		},
 	},
@@ -886,8 +886,8 @@ var registry = map[EventType]TypeSpec{
 		Schema: Schema{
 			"authority_id": {Kind: KindString, Required: true},
 			"account_id":   {Kind: KindString, Required: true},
-			"issued_by":    {Kind: KindString, Required: true}, // bootstrap | credential-reset | break-glass | recovery
-			"delivery":     {Kind: KindString, Required: true}, // file | terminal | response
+			"issued_by":    {Kind: KindString, Required: true, Enum: []string{"bootstrap", "credential-reset", "break-glass", "recovery"}},
+			"delivery":     {Kind: KindString, Required: true, Enum: []string{"file", "terminal", "stdout", "response"}},
 		},
 	},
 	EventAuthCredentialEstablished: {
@@ -919,7 +919,7 @@ var registry = map[EventType]TypeSpec{
 		Outcomes:      map[Outcome]bool{OutcomeFailure: true},
 		Trails:        map[Trail]bool{TrailInstance: true},
 		Schema: Schema{
-			"scope":            {Kind: KindString, Required: true}, // account | source-ip | instance
+			"scope":            {Kind: KindString, Required: true, Enum: []string{"account", "source-ip", "instance"}},
 			"subject_resolved": {Kind: KindBool, Required: true},
 			"account_id":       {Kind: KindString},
 		},
@@ -1039,9 +1039,9 @@ var registry = map[EventType]TypeSpec{
 		Trails:        map[Trail]bool{TrailInstance: true},
 		Schema: Schema{
 			"method":               {Kind: KindString, Required: true}, // oidc:<issuer>
-			"purpose":              {Kind: KindString, Required: true}, // login | reauth
+			"purpose":              {Kind: KindString, Required: true, Enum: []string{"login", "reauth"}},
 			"account_id":           {Kind: KindString, Required: true},
-			"assurance":            {Kind: KindString, Required: true}, // single-factor | multi-factor
+			"assurance":            {Kind: KindString, Required: true, Enum: []string{"single-factor", "multi-factor"}},
 			"provider_id":          {Kind: KindString, Required: true},
 			"acr":                  {Kind: KindString},              // provider-asserted, raw (A12)
 			"amr":                  {Kind: KindString},              // provider-asserted, raw joined (A12)
@@ -1054,11 +1054,12 @@ var registry = map[EventType]TypeSpec{
 		Outcomes:      map[Outcome]bool{OutcomeFailure: true},
 		Trails:        map[Trail]bool{TrailInstance: true},
 		Schema: Schema{
-			// Closed cause enum, by class never by detail: mixup | nonce |
-			// purpose | state | issuer | audience | signature | epoch |
-			// idp-error | expired | unknown-identity | no-assurance-policy |
-			// no-auth-time | binding | jit-refused | reconciliation.
-			"cause":       {Kind: KindString, Required: true},
+			// Closed cause enum, by class never by detail.
+			"cause": {Kind: KindString, Required: true, Enum: []string{
+				"mixup", "nonce", "purpose", "state", "issuer", "audience", "signature", "epoch",
+				"idp-error", "expired", "unknown-identity", "no-assurance-policy", "no-auth-time", "binding",
+				"jit-refused", "reconciliation", "window-zero", "no-possession", "downgrade",
+			}},
 			"provider_id": {Kind: KindString},
 		},
 	},
@@ -1105,8 +1106,8 @@ var registry = map[EventType]TypeSpec{
 		Trails:        map[Trail]bool{TrailInstance: true},
 		Schema: Schema{
 			"provider_id":    {Kind: KindString, Required: true},
-			"change":         {Kind: KindString, Required: true}, // created | updated | deleted
-			"sessions_swept": {Kind: KindInt, Required: true},    // federated sessions deleted (A3/A4)
+			"change":         {Kind: KindString, Required: true, Enum: []string{"created", "updated", "deleted"}},
+			"sessions_swept": {Kind: KindInt, Required: true}, // federated sessions deleted (A3/A4)
 		},
 	},
 	EventOIDCProviderRead: {
@@ -1115,7 +1116,7 @@ var registry = map[EventType]TypeSpec{
 		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
 		Trails:        map[Trail]bool{TrailInstance: true},
 		Schema: Schema{
-			"query":     {Kind: KindString, Required: true}, // get | list
+			"query":     {Kind: KindString, Required: true, Enum: []string{"get", "list"}},
 			"row_count": {Kind: KindInt, Required: true},
 		},
 	},
@@ -1181,13 +1182,13 @@ var registry = map[EventType]TypeSpec{
 		Trails:   map[Trail]bool{TrailInstance: true},
 		Schema: Schema{
 			"target_principal": {Kind: KindString, Required: true},
-			"issued_by":        {Kind: KindString, Required: true}, // credential-reset | break-glass
-			"authority":        {Kind: KindString, Required: true}, // network | local-host
-			"target_account":   {Kind: KindString},                 // absent for an unknown-target failure
-			"authority_id":     {Kind: KindString},                 // success only
-			"delivery":         {Kind: KindString},                 // success only
-			"sessions_revoked": {Kind: KindBool},                   // success only
-			"cause":            {Kind: KindString},                 // failures only, by class
+			"issued_by":        {Kind: KindString, Required: true, Enum: []string{"credential-reset", "break-glass"}},
+			"authority":        {Kind: KindString, Required: true, Enum: []string{"network", "local-host"}},
+			"target_account":   {Kind: KindString}, // absent for an unknown-target failure
+			"authority_id":     {Kind: KindString}, // success only
+			"delivery":         {Kind: KindString}, // success only
+			"sessions_revoked": {Kind: KindBool},   // success only
+			"cause":            {Kind: KindString}, // failures only, by class
 		},
 	},
 	EventAuthEffectiveWindowLowered: {
@@ -1212,7 +1213,7 @@ var registry = map[EventType]TypeSpec{
 		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
 		Trails:        map[Trail]bool{TrailInstance: true},
 		Schema: Schema{
-			"query":     {Kind: KindString, Required: true}, // get | list
+			"query":     {Kind: KindString, Required: true, Enum: []string{"get", "list", "count"}},
 			"row_count": {Kind: KindInt, Required: true},
 		},
 	},
@@ -2216,7 +2217,7 @@ var registry = map[EventType]TypeSpec{
 		Trails:        map[Trail]bool{TrailInstance: true},
 		Schema: Schema{
 			"origin": {Kind: KindString, Required: true},
-			"change": {Kind: KindString, Required: true}, // added | removed
+			"change": {Kind: KindString, Required: true, Enum: []string{"added", "removed"}},
 			// Removal only: the workspace sessions the SAME transaction
 			// killed. A trail recording the config change without its blast
 			// radius would understate a kill switch.
@@ -2281,7 +2282,7 @@ var registry = map[EventType]TypeSpec{
 			// rather than a nullable one nobody fills.
 			"handoff_id": {Kind: KindString, Required: true},
 			"origin":     {Kind: KindString, Required: true},
-			"stage":      {Kind: KindString, Required: true}, // start | callback | redeem
+			"stage":      {Kind: KindString, Required: true, Enum: []string{"start", "callback", "redeem"}},
 			"cause":      {Kind: KindString, Required: true}, // by class, never by detail
 		},
 	},

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -52,8 +53,14 @@ type cliReauthAuth struct{ stubAuth }
 
 type emptyAccountReads struct{ stubAuth }
 
+type missingPasskeyAccount struct{ stubAuth }
+
 func (emptyAccountReads) ListIdentities(context.Context, string) ([]service.ExternalIdentityView, error) {
 	return nil, nil
+}
+
+func (missingPasskeyAccount) ListPasskeys(context.Context, string) ([]service.PasskeyView, error) {
+	return nil, domain.ErrNotFound
 }
 
 func (cliReauthAuth) StartCLIReauth(context.Context, string, service.ReauthIntent, string, string) (service.CLIReauthStart, error) {
@@ -510,6 +517,24 @@ func callNoRedirect(t *testing.T, srv *httptest.Server, path string, cookies ...
 		t.Fatalf("GET %s -> %d: response violates contract: %v", path, resp.StatusCode, err)
 	}
 	return resp
+}
+
+func TestListPasskeysMachineCredentialNotFoundUsesCentralWirePolicy(t *testing.T) {
+	var logs bytes.Buffer
+	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+		Auth: missingPasskeyAccount{}, Orgs: stubOrgs{}, Providers: stubProviders{}, Version: "test",
+		Projects: stubHierarchy{}, Environments: stubEnvs{}, Values: stubValues{}, Folders: stubFolders{},
+		Log: slog.New(slog.NewJSONHandler(&logs, nil)),
+	}, nil))
+	t.Cleanup(srv.Close)
+
+	resp, payload := call(t, srv, http.MethodGet, "/api/v1/auth/webauthn/credentials", "hik_1_mc_machine", nil)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404; body: %s", resp.StatusCode, payload)
+	}
+	if logs.Len() != 0 {
+		t.Fatalf("routine not-found logged as fault: %s", logs.String())
+	}
 }
 
 func TestOIDCBrowserStartAndCallbackRedirect(t *testing.T) {
@@ -1862,7 +1887,7 @@ func TestWorkspaceHandoffInvalidPreservesContextualRefusals(t *testing.T) {
 	}
 }
 
-func TestWorkspaceHandoffResponseUsesDisclosureOperationSpelling(t *testing.T) {
+func TestWorkspaceHandoffStepUpResponseUsesRequiredBranch(t *testing.T) {
 	workspace := stubWorkspace{show: func(context.Context, service.Actor, string) (service.HandoffView, error) {
 		return service.HandoffView{
 			Purpose: service.HandoffStepUp, Operation: string(service.PurposeReveal),
@@ -1885,8 +1910,36 @@ func TestWorkspaceHandoffResponseUsesDisclosureOperationSpelling(t *testing.T) {
 	if err := json.Unmarshal(payload, &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.Operation == nil || *body.Operation != apigen.WorkspaceHandoffTransactionOperationReveal {
-		t.Fatalf("operation = %v, want reveal", body.Operation)
+	stepUp, err := body.AsWorkspaceHandoffStepUp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stepUp.Purpose != apigen.WorkspaceHandoffStepUpPurposeStepUp {
+		t.Fatalf("purpose = %q, want step-up", stepUp.Purpose)
+	}
+	if stepUp.Operation != apigen.WorkspaceHandoffStepUpOperationReveal {
+		t.Fatalf("operation = %q, want reveal", stepUp.Operation)
+	}
+	if stepUp.Environment != apigen.ID(testEnvID) {
+		t.Fatalf("environment = %q, want %q", stepUp.Environment, testEnvID)
+	}
+}
+
+func TestWorkspaceHandoffResponseRejectsUnknownPurpose(t *testing.T) {
+	workspace := stubWorkspace{show: func(context.Context, service.Actor, string) (service.HandoffView, error) {
+		return service.HandoffView{Purpose: service.HandoffPurpose("future")}, nil
+	}}
+	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+		Auth: stubAuth{identity: liveIdentityFn}, Orgs: stubOrgs{}, Providers: stubProviders{},
+		Projects: stubHierarchy{}, Environments: stubEnvs{}, Values: stubValues{}, Folders: stubFolders{},
+		Workspace: workspace, Version: "test",
+	}, nil))
+	t.Cleanup(srv.Close)
+
+	resp, _ := call(t, srv, http.MethodGet,
+		api.PathPrefix+"/auth/workspace/transactions/live-state", "hik_1_cli_x", nil)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", resp.StatusCode)
 	}
 }
 

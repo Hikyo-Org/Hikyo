@@ -4432,6 +4432,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "429":
           $ref: "#/components/responses/TooManyRequests"
         "500":
@@ -7745,7 +7747,7 @@ paths:
     get:
       operationId: showWorkspaceHandoff
       tags: [auth]
-      summary: Load the step-up policy a live workspace handoff binds.
+      summary: Load the authoritative shape of a live workspace handoff.
       description: |
         The approve page reads the operation, environment and enumerated key set
         the transaction was opened against, rather than trusting them from its
@@ -7758,7 +7760,7 @@ paths:
       x-hikyo-min-revision: 1
       responses:
         "200":
-          description: The live transaction's bound step-up policy — identifiers only.
+          description: The live transaction's authoritative purpose and any bound step-up policy — identifiers only.
           content:
             application/json:
               schema:
@@ -9999,8 +10001,9 @@ components:
       description: A TOTP proof bound to one adapter operation over an exact environment set.
       properties:
         purpose:
-          type: string
-          enum: [adapter]
+          allOf:
+            - $ref: "#/components/schemas/ReauthPurpose"
+            - const: adapter
         operation:
           type: string
           enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync]
@@ -14625,6 +14628,11 @@ components:
             Present only on an elevation.
 
     WorkspaceHandoffTransaction:
+      oneOf:
+        - $ref: "#/components/schemas/WorkspaceHandoffEstablishment"
+        - $ref: "#/components/schemas/WorkspaceHandoffStepUp"
+
+    WorkspaceHandoffEstablishment:
       type: object
       additionalProperties: false
       required: [state, purpose, key_ids, expires_at]
@@ -14634,19 +14642,36 @@ components:
           minLength: 1
         purpose:
           type: string
-          enum: [establishment, step-up]
-        operation:
-          type: string
-          enum: [reveal, copy, publish]
-          description: The disclosure the reauth authorizes. Absent for an establishment.
-        environment:
-          allOf:
-            - $ref: "#/components/schemas/ID"
-          description: The environment the elevation covers. Absent for an establishment.
+          enum: [establishment]
         key_ids:
           type: array
           items: {$ref: "#/components/schemas/ID"}
-          description: The enumerated unit the elevation binds. Empty for an establishment.
+          description: Empty for an establishment.
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+
+    WorkspaceHandoffStepUp:
+      type: object
+      additionalProperties: false
+      required: [state, purpose, operation, environment, key_ids, expires_at]
+      properties:
+        state:
+          type: string
+          minLength: 1
+        purpose:
+          type: string
+          enum: [step-up]
+        operation:
+          type: string
+          enum: [reveal, copy, publish]
+          description: The disclosure the reauth authorizes.
+        environment:
+          $ref: "#/components/schemas/ID"
+          description: The environment the elevation covers.
+        key_ids:
+          type: array
+          items: {$ref: "#/components/schemas/ID"}
+          description: The enumerated unit the elevation binds.
         expires_at:
           $ref: "#/components/schemas/Timestamp"
 

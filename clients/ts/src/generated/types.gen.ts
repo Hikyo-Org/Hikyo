@@ -457,7 +457,7 @@ export type TotpEnvironmentReauthRequest = {
  * A TOTP proof bound to one adapter operation over an exact environment set.
  */
 export type TotpAdapterReauthRequest = {
-    purpose: 'adapter';
+    purpose: ReauthPurpose & 'adapter';
     operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync';
     environment_ids: Array<Id>;
     /**
@@ -3583,19 +3583,31 @@ export type WorkspaceSession = {
     window_expires_at?: Timestamp;
 };
 
-export type WorkspaceHandoffTransaction = {
+export type WorkspaceHandoffTransaction = WorkspaceHandoffEstablishment | WorkspaceHandoffStepUp;
+
+export type WorkspaceHandoffEstablishment = {
     state: string;
-    purpose: 'establishment' | 'step-up';
+    purpose: 'establishment';
     /**
-     * The disclosure the reauth authorizes. Absent for an establishment.
+     * Empty for an establishment.
      */
-    operation?: 'reveal' | 'copy' | 'publish';
+    key_ids: Array<Id>;
+    expires_at: Timestamp;
+};
+
+export type WorkspaceHandoffStepUp = {
+    state: string;
+    purpose: 'step-up';
     /**
-     * The environment the elevation covers. Absent for an establishment.
+     * The disclosure the reauth authorizes.
      */
-    environment?: Id;
+    operation: 'reveal' | 'copy' | 'publish';
     /**
-     * The enumerated unit the elevation binds. Empty for an establishment.
+     * The environment the elevation covers.
+     */
+    environment: Id;
+    /**
+     * The enumerated unit the elevation binds.
      */
     key_ids: Array<Id>;
     expires_at: Timestamp;
@@ -11310,6 +11322,15 @@ export type PutOidcProviderErrors = {
      */
     404: Error;
     /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
      * The instance-wide admission budget or a per-source limit is
      * exhausted. Uniform on every path, with no unbounded work performed.
      *
@@ -16586,7 +16607,7 @@ export type ShowWorkspaceHandoffError = ShowWorkspaceHandoffErrors[keyof ShowWor
 
 export type ShowWorkspaceHandoffResponses = {
     /**
-     * The live transaction's bound step-up policy — identifiers only.
+     * The live transaction's authoritative purpose and any bound step-up policy — identifiers only.
      */
     200: WorkspaceHandoffTransaction;
 };

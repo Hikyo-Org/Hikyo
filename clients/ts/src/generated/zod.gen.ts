@@ -399,29 +399,6 @@ export const zTotpEnvironmentReauthRequest = z.object({
 }).strict();
 
 /**
- * A TOTP proof bound to one adapter operation over an exact environment set.
- */
-export const zTotpAdapterReauthRequest = z.object({
-    purpose: z.enum(['adapter']),
-    operation: z.enum([
-        'adapter.configure',
-        'adapter.credential-set',
-        'adapter.adopt',
-        'adapter.sync'
-    ]),
-    environment_ids: z.array(zId).min(1),
-    code: z.string().min(6).max(10)
-}).strict();
-
-/**
- * A disclosure reauthentication by TOTP in exactly one canonical intent shape.
- */
-export const zTotpReauthRequest = z.union([
-    zTotpEnvironmentReauthRequest,
-    zTotpAdapterReauthRequest
-]);
-
-/**
  * `adapter` carries an adapter-routing decision over an environment set.
  * `reveal` and `copy` carry a DISCLOSURE: the browser runs the same
  * purpose-bound, enumerated-key-set ceremony the UI runs, so `key_ids`
@@ -2193,6 +2170,29 @@ export const zReauthPurpose = z.enum([
     'adapter'
 ]);
 
+/**
+ * A TOTP proof bound to one adapter operation over an exact environment set.
+ */
+export const zTotpAdapterReauthRequest = z.object({
+    purpose: zReauthPurpose.and(z.literal('adapter')),
+    operation: z.enum([
+        'adapter.configure',
+        'adapter.credential-set',
+        'adapter.adopt',
+        'adapter.sync'
+    ]),
+    environment_ids: z.array(zId).min(1),
+    code: z.string().min(6).max(10)
+}).strict();
+
+/**
+ * A disclosure reauthentication by TOTP in exactly one canonical intent shape.
+ */
+export const zTotpReauthRequest = z.union([
+    zTotpEnvironmentReauthRequest,
+    zTotpAdapterReauthRequest
+]);
+
 export const zWebauthnReauthStartRequest = z.object({
     operation: zReauthPurpose,
     environment_id: z.string().max(64),
@@ -2604,18 +2604,30 @@ export const zWorkspaceSession = z.object({
     window_expires_at: zTimestamp.optional()
 });
 
-export const zWorkspaceHandoffTransaction = z.object({
+export const zWorkspaceHandoffEstablishment = z.object({
     state: z.string().min(1),
-    purpose: z.enum(['establishment', 'step-up']),
+    purpose: z.enum(['establishment']),
+    key_ids: z.array(zId),
+    expires_at: zTimestamp
+});
+
+export const zWorkspaceHandoffStepUp = z.object({
+    state: z.string().min(1),
+    purpose: z.enum(['step-up']),
     operation: z.enum([
         'reveal',
         'copy',
         'publish'
-    ]).optional(),
-    environment: zId.optional(),
+    ]),
+    environment: zId,
     key_ids: z.array(zId),
     expires_at: zTimestamp
 });
+
+export const zWorkspaceHandoffTransaction = z.union([
+    zWorkspaceHandoffEstablishment,
+    zWorkspaceHandoffStepUp
+]);
 
 /**
  * One of the caller's own sessions. Metadata only; no verifier is ever returned.
@@ -4813,7 +4825,7 @@ export const zShowWorkspaceHandoffPath = z.object({
 });
 
 /**
- * The live transaction's bound step-up policy — identifiers only.
+ * The live transaction's authoritative purpose and any bound step-up policy — identifiers only.
  */
 export const zShowWorkspaceHandoffResponse = zWorkspaceHandoffTransaction;
 

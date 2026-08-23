@@ -114,7 +114,7 @@ const (
 
 // ErrWeakPassword is a loud, specific refusal — password policy is evaluated
 // at set time, where naming the rule helps the human and reveals nothing.
-var ErrWeakPassword = fmt.Errorf("password must be at least %d characters", PasswordMinLength)
+var ErrWeakPassword = passwordPolicyError(fmt.Sprintf("password must be at least %d characters", PasswordMinLength))
 
 // ErrCredentialRace reports a verifier row that moved underneath a
 // compare-and-swap. It is loud rather than retried-into-silence: the caller
