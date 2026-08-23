@@ -6,7 +6,19 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
 )
+
+func TestCredentialAADPreservesAdapterCredentialContract(t *testing.T) {
+	want := crypto.ProjectFieldAAD{
+		OrgID: "org_1", ProjectID: "prj_1",
+		OwnerTable: "adapters", OwnerRowID: "adp_1", FieldTag: "credential",
+	}
+	if got := CredentialAAD("org_1", "prj_1", "adp_1"); got != want {
+		t.Fatalf("CredentialAAD() = %#v, want %#v", got, want)
+	}
+}
 
 func TestValidateManifestRefusesLossyForgejoNamesAndValues(t *testing.T) {
 	tests := []struct {
