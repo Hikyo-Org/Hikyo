@@ -431,7 +431,7 @@ func TestOrganizationSelectedRepositoryIDsAreVerifiedBeforeRoutingCommit(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	sealed, err := sealer.SealField(crypto.ProjectFieldAAD{OrgID: "org_adapter", ProjectID: "prj_adapter", OwnerTable: "adapters", OwnerRowID: "adp_1", FieldTag: "credential"}, []byte("github_pat_fine"))
+	sealed, err := sealer.SealField(adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), []byte("github_pat_fine"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -711,7 +711,7 @@ func TestApplyTargetMutationConcurrentChangesUseLockedGeneration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sealed, err := sealer.SealField(crypto.ProjectFieldAAD{OrgID: "org_adapter", ProjectID: "prj_adapter", OwnerTable: "adapters", OwnerRowID: "adp_1", FieldTag: "credential"}, []byte("github_pat_fine"))
+	sealed, err := sealer.SealField(adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), []byte("github_pat_fine"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -779,7 +779,7 @@ func TestAdapterTargetAddAuditsTransactionAuthorityTransition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sealed, err := sealer.SealField(crypto.ProjectFieldAAD{OrgID: "org_adapter", ProjectID: "prj_adapter", OwnerTable: "adapters", OwnerRowID: "adp_1", FieldTag: "credential"}, []byte("provider-token"))
+	sealed, err := sealer.SealField(adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), []byte("provider-token"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -836,7 +836,7 @@ func TestAdapterTargetAddRefusesDestinationEffectiveNameCollisionAtomically(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	sealed, err := sealer.SealField(crypto.ProjectFieldAAD{OrgID: "org_adapter", ProjectID: "prj_adapter", OwnerTable: "adapters", OwnerRowID: "adp_1", FieldTag: "credential"}, []byte("provider-token"))
+	sealed, err := sealer.SealField(adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), []byte("provider-token"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -940,7 +940,7 @@ func TestAdapterTargetAddRequiresRevealAcrossEveryAdapterEnvironmentBeforeCreden
 	if err != nil {
 		t.Fatal(err)
 	}
-	sealed, err := sealer.SealField(crypto.ProjectFieldAAD{OrgID: "org_adapter", ProjectID: "prj_adapter", OwnerTable: "adapters", OwnerRowID: "adp_1", FieldTag: "credential"}, []byte("provider-token"))
+	sealed, err := sealer.SealField(adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), []byte("provider-token"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1391,7 +1391,7 @@ func TestAdapterOriginMoveKeepsOldRouteAndCredentialThroughScrubBarrier(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	oldCredential, err := sealer.SealField(crypto.ProjectFieldAAD{OrgID: "org_adapter", ProjectID: "prj_adapter", OwnerTable: "adapters", OwnerRowID: "adp_1", FieldTag: "credential"}, []byte("old-token"))
+	oldCredential, err := sealer.SealField(adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), []byte("old-token"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1940,7 +1940,7 @@ func TestAdapterCredentialReplaceAndRevokeFenceWithoutAutoConverge(t *testing.T)
 	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT credential_ciphertext FROM adapters WHERE id='adp_1'`).Scan(&sealed); err != nil {
 		t.Fatal(err)
 	}
-	plain, err := sealer.OpenField(crypto.ProjectFieldAAD{OrgID: "org_adapter", ProjectID: "prj_adapter", OwnerTable: "adapters", OwnerRowID: "adp_1", FieldTag: "credential"}, sealed)
+	plain, err := sealer.OpenField(adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), sealed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2040,7 +2040,7 @@ func TestAdapterTargetConnectionReauthorizesEveryProviderRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sealed, err := sealer.SealField(crypto.ProjectFieldAAD{OrgID: "org_adapter", ProjectID: "prj_adapter", OwnerTable: "adapters", OwnerRowID: "adp_1", FieldTag: "credential"}, []byte("provider-token"))
+	sealed, err := sealer.SealField(adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), []byte("provider-token"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2116,7 +2116,7 @@ func TestAdapterPlanPersistsProviderConflictArtifactAndInspectReturnsIt(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	sealed, err := sealer.SealField(crypto.ProjectFieldAAD{OrgID: "org_adapter", ProjectID: "prj_adapter", OwnerTable: "adapters", OwnerRowID: "adp_1", FieldTag: "credential"}, []byte("provider-token"))
+	sealed, err := sealer.SealField(adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), []byte("provider-token"))
 	if err != nil {
 		t.Fatal(err)
 	}

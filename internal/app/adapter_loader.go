@@ -52,10 +52,7 @@ func (l *adapterLoader) LoadActivation(ctx context.Context, job adapter.Job, jou
 	if err := journal.Gate(ctx, adapter.Effect{Surface: adapter.Secret, EffectiveName: "credential", Disposition: adapter.Update}); err != nil {
 		return adapter.LoadedActivation{}, err
 	}
-	credential, err := openField(crypto.ProjectFieldAAD{
-		OrgID: job.OrgID, ProjectID: job.ProjectID,
-		OwnerTable: "adapters", OwnerRowID: material.CredentialOwnerID, FieldTag: "credential",
-	}, material.CredentialCiphertext)
+	credential, err := openField(adapter.CredentialAAD(job.OrgID, job.ProjectID, material.CredentialOwnerID), material.CredentialCiphertext)
 	if err != nil {
 		return adapter.LoadedActivation{}, err
 	}
@@ -117,10 +114,7 @@ func (l *adapterLoader) Load(ctx context.Context, job adapter.Job, journal adapt
 	if len(material.CredentialCiphertext) == 0 {
 		return adapter.LoadedSync{}, adapter.ErrProviderAuth
 	}
-	credential, err := openField(crypto.ProjectFieldAAD{
-		OrgID: job.OrgID, ProjectID: job.ProjectID,
-		OwnerTable: "adapters", OwnerRowID: material.CredentialOwnerID, FieldTag: "credential",
-	}, material.CredentialCiphertext)
+	credential, err := openField(adapter.CredentialAAD(job.OrgID, job.ProjectID, material.CredentialOwnerID), material.CredentialCiphertext)
 	if err != nil {
 		return adapter.LoadedSync{}, err
 	}
