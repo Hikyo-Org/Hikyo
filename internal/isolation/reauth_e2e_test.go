@@ -158,7 +158,8 @@ func TestInvalidReauthWindowBindingPostgres(t *testing.T) {
 }
 
 func runInvalidReauthWindowBinding(t *testing.T, db *store.DB) {
-	auth, _, password := bootstrapFactorAdmin(t, db)
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, password := factorAdmin.auth, factorAdmin.password
 	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	auth.Now = func() time.Time { return now }
 	auth.ReauthWindow = 5 * time.Minute
@@ -214,7 +215,8 @@ func TestCLIAdapterReauthHandoffPostgres(t *testing.T) {
 }
 
 func runCLIAdapterReauthHandoff(t *testing.T, db *store.DB) {
-	auth, boot, password := bootstrapFactorAdmin(t, db)
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, boot, password := factorAdmin.auth, factorAdmin.boot, factorAdmin.password
 	execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_cli_adapter_manage','`+string(boot.PrincipalID)+`','manage-adapters','org_a','prj_a1',NULL,`+ts+`)`)
 	execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_cli_adapter_reveal','`+string(boot.PrincipalID)+`','reveal','org_a','prj_a1','env_prod',`+ts+`)`)
 	execRaw(t, db, `INSERT INTO grant_origins (id,grant_id,kind,subject,created_at) VALUES ('gor_cli_adapter_manage','g_cli_adapter_manage','manual','`+string(boot.PrincipalID)+`',`+ts+`)`)
@@ -349,7 +351,8 @@ func runCLIAdapterReauthHandoff(t *testing.T, db *store.DB) {
 }
 
 func runAdapterReauthWebAuthnBindsFullEnvironmentSet(t *testing.T, db *store.DB) {
-	auth, _, token := bootstrapWebAuthnAdmin(t, db)
+	administrator := bootstrapWebAuthnAdmin(t, db)
+	auth, token := administrator.auth, administrator.token
 	auth.ReauthWindow = 5 * time.Minute
 	auth.ReauthHardCap = 10 * time.Minute
 	ctx := t.Context()
@@ -385,7 +388,8 @@ func runAdapterReauthWebAuthnBindsFullEnvironmentSet(t *testing.T, db *store.DB)
 }
 
 func runAdapterReauthTOTPMixedPolicy(t *testing.T, db *store.DB) {
-	auth, boot, password := bootstrapFactorAdmin(t, db)
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, boot, password := factorAdmin.auth, factorAdmin.boot, factorAdmin.password
 	base := time.Date(2026, 8, 17, 2, 0, 0, 0, time.UTC)
 	clock := base
 	auth.Now = func() time.Time { return clock }
@@ -430,7 +434,8 @@ func runAdapterReauthTOTPMixedPolicy(t *testing.T, db *store.DB) {
 }
 
 func runAdapterReauthWindowExactBinding(t *testing.T, db *store.DB) {
-	auth, boot, password := bootstrapFactorAdmin(t, db)
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, boot, password := factorAdmin.auth, factorAdmin.boot, factorAdmin.password
 	now := time.Now().UTC()
 	auth.Now = func() time.Time { return now }
 	auth.ReauthWindow = 5 * time.Minute
@@ -492,7 +497,8 @@ func TestReauthConsumeSingleDecisionPostgres(t *testing.T) {
 // (B11 double-spend). A single-decision window needs a bounded life, so the hard
 // cap is set (the flag limits it to one decision; the clock keeps it alive).
 func runReauthConsumeSingleDecision(t *testing.T, db *store.DB) {
-	auth, _, token := bootstrapWebAuthnAdmin(t, db)
+	administrator := bootstrapWebAuthnAdmin(t, db)
+	auth, token := administrator.auth, administrator.token
 	auth.ReauthWindow = 0 // 0 effective window -> single-decision
 	auth.ReauthHardCap = 5 * time.Minute
 	ctx := t.Context()
@@ -551,7 +557,8 @@ func TestReauthConsumeSlidingHardCapPostgres(t *testing.T) {
 // hard cap (measured from the ceremony, never extended) bounds it, and a
 // disclosure past the hard cap fails closed. An epoch-inert window is also refused.
 func runReauthConsumeSlidingHardCap(t *testing.T, db *store.DB) {
-	auth, _, token := bootstrapWebAuthnAdmin(t, db)
+	administrator := bootstrapWebAuthnAdmin(t, db)
+	auth, token := administrator.auth, administrator.token
 	base := time.Now().UTC().Truncate(time.Second)
 	clk := base
 	auth.Now = func() time.Time { return clk }
@@ -623,7 +630,8 @@ func TestReauthWebAuthnOpenClampsHardCapPostgres(t *testing.T) {
 // opens. The effective window (30m) exceeds the hard cap (10m), so the clamp is
 // load-bearing: without it the row would open to +30m, past its +10m cap.
 func runReauthWebAuthnOpenClampsHardCap(t *testing.T, db *store.DB) {
-	auth, _, token := bootstrapWebAuthnAdmin(t, db)
+	administrator := bootstrapWebAuthnAdmin(t, db)
+	auth, token := administrator.auth, administrator.token
 	auth.ReauthWindow = 30 * time.Minute
 	auth.ReauthHardCap = 10 * time.Minute
 	ctx := t.Context()
@@ -671,7 +679,8 @@ func TestReauthSlideUsesEffectiveWindowPostgres(t *testing.T) {
 // bounds the slide to the lowered value rather than the value the window opened
 // with. The seam is thus the single source shared by open and consume.
 func runReauthSlideUsesEffectiveWindow(t *testing.T, db *store.DB) {
-	auth, _, token := bootstrapWebAuthnAdmin(t, db)
+	administrator := bootstrapWebAuthnAdmin(t, db)
+	auth, token := administrator.auth, administrator.token
 	base := time.Now().UTC().Truncate(time.Second)
 	clk := base
 	auth.Now = func() time.Time { return clk }
@@ -738,7 +747,8 @@ func TestReauthConsumeInvalidationFailsClosedPostgres(t *testing.T) {
 // slide's `consumed_at IS NULL` guard matches 0 rows — which the fix now refuses
 // (before the fix, the dropped rows-affected result let the disclosure proceed).
 func runReauthConsumeInvalidationFailsClosed(t *testing.T, db *store.DB) {
-	auth, _, token := bootstrapWebAuthnAdmin(t, db)
+	administrator := bootstrapWebAuthnAdmin(t, db)
+	auth, token := administrator.auth, administrator.token
 	base := time.Now().UTC().Truncate(time.Second)
 	clk := base
 	auth.Now = func() time.Time { return clk }
@@ -782,7 +792,8 @@ func TestReauthTOTPZeroWindowPostgres(t *testing.T) {
 // effective window it refuses reauth naming the remedy (only WebAuthn opens a
 // 0-window gate); at a non-zero window it opens a sliding window.
 func runReauthTOTPZeroWindow(t *testing.T, db *store.DB) {
-	auth, _, password := bootstrapFactorAdmin(t, db)
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, password := factorAdmin.auth, factorAdmin.password
 	base := time.Now().UTC()
 	clk := base
 	auth.Now = func() time.Time { return clk }
@@ -907,7 +918,8 @@ func grantInstanceCapability(t *testing.T, db *store.DB, target domain.Principal
 // principal-row lock every grant writer also takes (B14, analyzer-enforced), so a
 // concurrent grant landing serializes against the reset.
 func runCredentialResetNetwork(t *testing.T, db *store.DB) {
-	auth, boot, password := bootstrapFactorAdmin(t, db)
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, boot, password := factorAdmin.auth, factorAdmin.boot, factorAdmin.password
 	grantInstanceCapability(t, db, boot.PrincipalID, domain.CapCredentialReset)
 	base := time.Now().UTC()
 	clk := base
@@ -1001,7 +1013,8 @@ func TestCredentialResetMFAMandatoryPostgres(t *testing.T) {
 // the credential-reset operation: uniform on the wire (mapped to 401), detailed
 // in the trail.
 func runCredentialResetMFAMandatory(t *testing.T, db *store.DB) {
-	auth, boot, password := bootstrapFactorAdmin(t, db)
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, boot, password := factorAdmin.auth, factorAdmin.boot, factorAdmin.password
 	grantInstanceCapability(t, db, boot.PrincipalID, domain.CapCredentialReset)
 	ctx := t.Context()
 
@@ -1090,7 +1103,8 @@ func TestCLIDisclosureReauthHandoffPostgres(t *testing.T) {
 // UNBOUND window mirroring the browser's, under which the CLI's reveal
 // succeeds, while the adapter-bound shape is untouched.
 func runCLIDisclosureReauthHandoff(t *testing.T, db *store.DB) {
-	auth, boot, password := bootstrapFactorAdmin(t, db)
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, boot, password := factorAdmin.auth, factorAdmin.boot, factorAdmin.password
 	identityFixtures(t, db)
 	seedDeliveryCatalogue(t, db)
 	for _, row := range [][2]string{{"read", "g_cli_disc_read"}, {"reveal", "g_cli_disc_reveal"}} {
@@ -1211,7 +1225,8 @@ func TestCLIDisclosureHandoffPasskeyBindingPostgres(t *testing.T) {
 // never satisfy a disclosure handoff.
 func runCLIDisclosureHandoffPasskeyBinding(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, browserToken, values, dev := ceremonyFixture(t, db, "handoff-zero")
+	ceremony := ceremonyFixture(t, db, "handoff-zero")
+	auth, browserToken, values, dev := ceremony.admin.auth, ceremony.admin.token, ceremony.values, ceremony.device
 	auth.ReauthWindow = 0
 	auth.ReauthHardCap = time.Hour
 	scope := scopeEnv(orgA, prjA1, envA1)

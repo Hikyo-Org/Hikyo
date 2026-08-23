@@ -41,33 +41,24 @@ func webauthnAuthService(t *testing.T, db *store.DB) *service.Auth {
 	return auth
 }
 
-// bootstrapWebAuthnAdmin mints a first administrator, establishes its password
-// and logs in, returning the acting service, the account id and a live session.
-func bootstrapWebAuthnAdmin(t *testing.T, db *store.DB) (*service.Auth, string, string) {
+// bootstrapWebAuthnAdmin configures the WebAuthn relying party around the
+// shared first-administrator fixture and grants the environment read needed by
+// every reauthentication test in this suite.
+func bootstrapWebAuthnAdmin(t *testing.T, db *store.DB) admin {
 	t.Helper()
 	auth := webauthnAuthService(t, db)
-	ctx := t.Context()
-	boot, err := auth.BootstrapAdmin(ctx, waAdmin, "WA Admin", "terminal")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := auth.EstablishCredential(ctx, boot.Authority, waPassword); err != nil {
-		t.Fatal(err)
-	}
-	login, err := auth.LocalLogin(ctx, waAdmin, waPassword, service.ArtifactCLI)
-	if err != nil {
-		t.Fatal(err)
-	}
-	accountID := queryString(t, db, "SELECT id FROM accounts WHERE username = '"+waAdmin+"'")
+	administrator := bootstrapAdmin(t, db, adminOpts{
+		username: waAdmin, displayName: "WA Admin", password: waPassword,
+		auth: auth, login: true,
+	})
 	// The reauth routes resolve and authorize the environment under `read`
 	// before they will discuss its reauthentication policy — otherwise the
 	// route is an oracle for which environment ids exist and which are
 	// protected. Every reauth fixture in this package addresses org A's
 	// `env_prod`, so the bootstrap administrator is given the `read` that gate
 	// sits behind; bootstrap itself deliberately seeds no tenant capability.
-	grantRead(t, db, domain.PrincipalID(queryString(t, db,
-		"SELECT principal_id FROM accounts WHERE username = '"+waAdmin+"'")))
-	return auth, accountID, login.SessionToken
+	grantRead(t, db, administrator.boot.PrincipalID)
+	return administrator
 }
 
 // enrolPasskey runs a full enrolment with the given device and returns the
@@ -111,7 +102,8 @@ func TestWebAuthnRoundtripPostgres(t *testing.T) { runWebAuthnRoundtrip(t, seede
 // single webauthn factor class, and passes an MFA-mandatory operation the
 // password-only session is refused — the "UV is inherent 2FA" rule made real.
 func runWebAuthnRoundtrip(t *testing.T, db *store.DB) {
-	auth, _, token := bootstrapWebAuthnAdmin(t, db)
+	administrator := bootstrapWebAuthnAdmin(t, db)
+	auth, token := administrator.auth, administrator.token
 	ctx := t.Context()
 	orgs := &service.Orgs{DB: db}
 
@@ -151,7 +143,7 @@ func runWebAuthnRoundtrip(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatalf("a webauthn session must pass an MFA-mandatory op: %v", err)
 	}
-	principal := queryString(t, db, "SELECT principal_id FROM accounts WHERE username = '"+waAdmin+"'")
+	principal := string(administrator.boot.PrincipalID)
 	caps, err := domain.ExpandTemplate(domain.TemplateAdmin, domain.LevelOrg)
 	if err != nil {
 		t.Fatal(err)
@@ -183,7 +175,8 @@ func TestWebAuthnUVRefusedPostgres(t *testing.T) { runWebAuthnUVRefused(t, seede
 // runWebAuthnUVRefused: an assertion whose UV bit is not set is refused. UV is
 // required on every ceremony and re-asserted server-side.
 func runWebAuthnUVRefused(t *testing.T, db *store.DB) {
-	auth, _, token := bootstrapWebAuthnAdmin(t, db)
+	administrator := bootstrapWebAuthnAdmin(t, db)
+	auth, token := administrator.auth, administrator.token
 	ctx := t.Context()
 	dev := webauthntest.New(waRPID, waOrigin)
 	enrolPasskey(t, auth, ctx, token, waPassword, dev)
@@ -209,7 +202,8 @@ func TestWebAuthnClonePostgres(t *testing.T) { runWebAuthnClone(t, seededDB(t, o
 // it, sweeps every session it minted and audits passkey_cloned, before refusing
 // (B9).
 func runWebAuthnClone(t *testing.T, db *store.DB) {
-	auth, accountID, token := bootstrapWebAuthnAdmin(t, db)
+	administrator := bootstrapWebAuthnAdmin(t, db)
+	auth, accountID, token := administrator.auth, administrator.accountID, administrator.token
 	ctx := t.Context()
 	dev := webauthntest.New(waRPID, waOrigin) // non-backup by default
 	enrolPasskey(t, auth, ctx, token, waPassword, dev)
@@ -256,7 +250,8 @@ func TestWebAuthnSyncedNotFlaggedPostgres(t *testing.T) {
 // runWebAuthnSyncedNotFlagged: a backup-eligible (synced) credential whose
 // counter stays 0 across logins is NOT falsely flagged as cloned (B9 skip).
 func runWebAuthnSyncedNotFlagged(t *testing.T, db *store.DB) {
-	auth, _, token := bootstrapWebAuthnAdmin(t, db)
+	administrator := bootstrapWebAuthnAdmin(t, db)
+	auth, token := administrator.auth, administrator.token
 	ctx := t.Context()
 	dev := webauthntest.New(waRPID, waOrigin)
 	dev.SetBackupEligible(true)
@@ -297,7 +292,8 @@ func runWebAuthnPasskeyOnly(t *testing.T, open func(*testing.T) *store.DB) {
 	// refused structurally.
 	t.Run("second_to_last_discoverable_refused", func(t *testing.T) {
 		db := seededDB(t, open)
-		auth, accountID, token := bootstrapWebAuthnAdmin(t, db)
+		administrator := bootstrapWebAuthnAdmin(t, db)
+		auth, accountID, token := administrator.auth, administrator.accountID, administrator.token
 		ctx := t.Context()
 		d1, d2 := webauthntest.New(waRPID, waOrigin), webauthntest.New(waRPID, waOrigin)
 		token = enrolPasskey(t, auth, ctx, token, waPassword, d1)
@@ -321,7 +317,8 @@ func runWebAuthnPasskeyOnly(t *testing.T, open func(*testing.T) *store.DB) {
 	// passwordless account holds no recovery batch.
 	t.Run("no_recovery_batch_refused", func(t *testing.T) {
 		db := seededDB(t, open)
-		auth, accountID, token := bootstrapWebAuthnAdmin(t, db)
+		administrator := bootstrapWebAuthnAdmin(t, db)
+		auth, accountID, token := administrator.auth, administrator.accountID, administrator.token
 		ctx := t.Context()
 		for range 3 {
 			token = enrolPasskey(t, auth, ctx, token, waPassword, webauthntest.New(waRPID, waOrigin))
@@ -345,7 +342,8 @@ func TestWebAuthnEnrolProofPostgres(t *testing.T) {
 // ceremony. A wrong password is refused, and the removal that follows a
 // successful enrol proves with the password, never the passkey.
 func runWebAuthnEnrolProof(t *testing.T, db *store.DB) {
-	auth, _, token := bootstrapWebAuthnAdmin(t, db)
+	administrator := bootstrapWebAuthnAdmin(t, db)
+	auth, token := administrator.auth, administrator.token
 	ctx := t.Context()
 
 	// Enrolment demands the pre-existing password up front; a wrong one refuses
@@ -376,7 +374,8 @@ func TestWebAuthnStepUpReauthPostgres(t *testing.T) {
 // original authentication), and a passkey reauth opens a window over an
 // enumerated unit — single-decision at the default 0 effective window (B11).
 func runWebAuthnStepUpReauth(t *testing.T, db *store.DB) {
-	auth, accountID, token := bootstrapWebAuthnAdmin(t, db)
+	administrator := bootstrapWebAuthnAdmin(t, db)
+	auth, accountID, token := administrator.auth, administrator.accountID, administrator.token
 	ctx := t.Context()
 	dev := webauthntest.New(waRPID, waOrigin)
 	token = enrolPasskey(t, auth, ctx, token, waPassword, dev)
@@ -448,7 +447,8 @@ func TestWebAuthnReauthBindingMismatchPostgres(t *testing.T) {
 // fail-closed, in the same validCeremony check the write tx re-runs against the
 // reloaded row.
 func runWebAuthnReauthBindingMismatch(t *testing.T, db *store.DB) {
-	auth, _, token := bootstrapWebAuthnAdmin(t, db)
+	administrator := bootstrapWebAuthnAdmin(t, db)
+	auth, token := administrator.auth, administrator.token
 	ctx := t.Context()
 	dev := webauthntest.New(waRPID, waOrigin)
 	token = enrolPasskey(t, auth, ctx, token, waPassword, dev)
@@ -486,7 +486,8 @@ func TestWebAuthnDeleteAccountScopedPostgres(t *testing.T) {
 // surrogate id — so an IDOR cannot appear even if a service-layer ownership
 // check regresses. The true owner still deletes its own credential.
 func runWebAuthnDeleteAccountScoped(t *testing.T, db *store.DB) {
-	auth, accountID, token := bootstrapWebAuthnAdmin(t, db)
+	administrator := bootstrapWebAuthnAdmin(t, db)
+	auth, accountID, token := administrator.auth, administrator.accountID, administrator.token
 	ctx := t.Context()
 	enrolPasskey(t, auth, ctx, token, waPassword, webauthntest.New(waRPID, waOrigin))
 	credID := queryString(t, db, "SELECT id FROM webauthn_credentials WHERE account_id = '"+accountID+"' LIMIT 1")
@@ -536,7 +537,8 @@ func TestWebAuthnLoginNoAccountThrottlePostgres(t *testing.T) {
 // admission budget only; per-account backoff lives on the authenticated paths.
 // So after six bad assertions naming the victim, a genuine login still succeeds.
 func runWebAuthnLoginNoAccountThrottle(t *testing.T, db *store.DB) {
-	auth, _, token := bootstrapWebAuthnAdmin(t, db)
+	administrator := bootstrapWebAuthnAdmin(t, db)
+	auth, token := administrator.auth, administrator.token
 	ctx := t.Context()
 	dev := webauthntest.New(waRPID, waOrigin)
 	enrolPasskey(t, auth, ctx, token, waPassword, dev)
@@ -570,7 +572,8 @@ func TestWebAuthnLoginHandleMismatchPostgres(t *testing.T) {
 // credential's account is refused (the account is chosen by the credential,
 // never by the client-supplied handle).
 func runWebAuthnLoginHandleMismatch(t *testing.T, db *store.DB) {
-	auth, accountID, token := bootstrapWebAuthnAdmin(t, db)
+	administrator := bootstrapWebAuthnAdmin(t, db)
+	auth, accountID, token := administrator.auth, administrator.accountID, administrator.token
 	ctx := t.Context()
 	dev := webauthntest.New(waRPID, waOrigin)
 	enrolPasskey(t, auth, ctx, token, waPassword, dev)
@@ -596,7 +599,8 @@ func TestWebAuthnStepUpThrottlePostgres(t *testing.T) {
 // per-account backoff and, once armed, the next step-up finish is refused before
 // verification. Reauth shares the identical finishAssertionElevation gate.
 func runWebAuthnStepUpThrottle(t *testing.T, db *store.DB) {
-	auth, _, token := bootstrapWebAuthnAdmin(t, db)
+	administrator := bootstrapWebAuthnAdmin(t, db)
+	auth, token := administrator.auth, administrator.token
 	ctx := t.Context()
 	dev := webauthntest.New(waRPID, waOrigin)
 	token = enrolPasskey(t, auth, ctx, token, waPassword, dev)
@@ -638,7 +642,8 @@ func TestWebAuthnCeremonyExpiryPostgres(t *testing.T) {
 // against the current clock (both before verification and again inside the write
 // tx), so a challenge accepted just before expiry cannot complete after it.
 func runWebAuthnCeremonyExpiry(t *testing.T, db *store.DB) {
-	auth, _, token := bootstrapWebAuthnAdmin(t, db)
+	administrator := bootstrapWebAuthnAdmin(t, db)
+	auth, token := administrator.auth, administrator.token
 	ctx := t.Context()
 	// A controllable server clock, installed after bootstrap so the ceremony's
 	// life is measured against it.
@@ -675,7 +680,8 @@ func TestRecoveryLastCodePasswordlessPostgres(t *testing.T) {
 // recovery batch. The refusal is non-destructive: the batch is not re-sealed, so
 // the reserve code is not burned (its row_version is unchanged).
 func runRecoveryLastCodePasswordless(t *testing.T, db *store.DB) {
-	auth, accountID, token := bootstrapWebAuthnAdmin(t, db)
+	administrator := bootstrapWebAuthnAdmin(t, db)
+	auth, accountID, token := administrator.auth, administrator.accountID, administrator.token
 	ctx := t.Context()
 	// A legitimate passkey-only account: two discoverable passkeys and a batch.
 	token = enrolPasskey(t, auth, ctx, token, waPassword, webauthntest.New(waRPID, waOrigin))

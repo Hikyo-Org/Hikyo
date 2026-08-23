@@ -58,9 +58,13 @@ const (
 // The Values service takes this Auth deliberately: the window a ceremony opens
 // and the window a disclosure consumes must come from one configuration, and a
 // fixture that wired two would pass while the product could not.
-func ceremonyFixture(t *testing.T, db *store.DB, username string) (
-	*service.Auth, string, *service.Values, *webauthntest.Device,
-) {
+type ceremonyEnv struct {
+	admin  admin
+	values *service.Values
+	device *webauthntest.Device
+}
+
+func ceremonyFixture(t *testing.T, db *store.DB, username string) ceremonyEnv {
 	t.Helper()
 	ctx := t.Context()
 	auth := authService(t, db)
@@ -68,19 +72,12 @@ func ceremonyFixture(t *testing.T, db *store.DB, username string) (
 	if err := auth.ConfigureWebAuthnRP(); err != nil {
 		t.Fatalf("configuring the webauthn relying party: %v", err)
 	}
-	boot, err := auth.BootstrapAdmin(ctx, username, "Ceremony Admin", "terminal")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := auth.EstablishCredential(ctx, boot.Authority, ceremonyPassword); err != nil {
-		t.Fatal(err)
-	}
-	login, err := auth.LocalLogin(ctx, username, ceremonyPassword, service.ArtifactCLI)
-	if err != nil {
-		t.Fatal(err)
-	}
+	administrator := bootstrapAdmin(t, db, adminOpts{
+		username: username, displayName: "Ceremony Admin",
+		password: ceremonyPassword, auth: auth, login: true,
+	})
 	dev := webauthntest.New(ceremonyRPID, ceremonyOrigin)
-	token := enrolPasskey(t, auth, ctx, login.SessionToken, ceremonyPassword, dev)
+	token := enrolPasskey(t, auth, ctx, administrator.token, ceremonyPassword, dev)
 	// `reveal` is MFA-mandatory, and that check sits at authorize() ahead of
 	// the ceremony gate. A password-only session is refused there — correctly,
 	// and for a different reason than the one these fixtures are about — so the
@@ -107,9 +104,9 @@ func ceremonyFixture(t *testing.T, db *store.DB, username string) (
 	for _, cap := range []string{"read", "edit", "publish", "reveal", "project-settings"} {
 		id := "g_cer_" + username + "_" + cap
 		execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) `+
-			`VALUES ('`+id+`', '`+string(boot.PrincipalID)+`', '`+cap+`', 'org_a', NULL, NULL, `+ts+`)`)
+			`VALUES ('`+id+`', '`+string(administrator.boot.PrincipalID)+`', '`+cap+`', 'org_a', NULL, NULL, `+ts+`)`)
 		execRaw(t, db, `INSERT INTO grant_origins (id, grant_id, kind, subject, created_at) `+
-			`VALUES ('gor_`+id+`', '`+id+`', 'manual', '`+string(boot.PrincipalID)+`', `+ts+`)`)
+			`VALUES ('gor_`+id+`', '`+id+`', 'manual', '`+string(administrator.boot.PrincipalID)+`', `+ts+`)`)
 	}
 
 	values := &service.Values{DB: db, Keyring: probeKeyring(t, db), Auth: auth}
@@ -126,7 +123,8 @@ func ceremonyFixture(t *testing.T, db *store.DB, username string) (
 		publishValue(t, values, service.LocalPrincipal(custodian),
 			scopeEnv(orgA, prjA1, envA1), name, "plaintext-"+name)
 	}
-	return auth, token, values, dev
+	administrator.token = token
+	return ceremonyEnv{admin: administrator, values: values, device: dev}
 }
 
 // publishValue stages a value and then publishes it, which is what "seed a
@@ -197,7 +195,8 @@ func TestTOTPOpensARevealWindowPostgres(t *testing.T) {
 // not capped at 0.
 func runTOTPOpensARevealWindow(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, token, values, _ := ceremonyFixture(t, db, "ceremony-totp")
+	ceremony := ceremonyFixture(t, db, "ceremony-totp")
+	auth, token, values := ceremony.admin.auth, ceremony.admin.token, ceremony.values
 	auth.ReauthWindow = 5 * time.Minute
 	auth.ReauthHardCap = time.Hour
 	scope := scopeEnv(orgA, prjA1, envA1)
@@ -288,7 +287,8 @@ func TestRevealNeedsACeremonyPostgres(t *testing.T) {
 // not the check.
 func runRevealNeedsACeremony(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, token, values, dev := ceremonyFixture(t, db, "ceremony-sliding")
+	ceremony := ceremonyFixture(t, db, "ceremony-sliding")
+	auth, token, values, dev := ceremony.admin.auth, ceremony.admin.token, ceremony.values, ceremony.device
 	auth.ReauthWindow = 5 * time.Minute
 	auth.ReauthHardCap = time.Hour
 	scope := scopeEnv(orgA, prjA1, envA1)
@@ -381,7 +381,8 @@ func TestZeroWindowForcesAPasskeyPerDisclosurePostgres(t *testing.T) {
 // path at all.
 func runZeroWindowForcesAPasskeyPerDisclosure(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, token, values, dev := ceremonyFixture(t, db, "ceremony-zero")
+	ceremony := ceremonyFixture(t, db, "ceremony-zero")
+	auth, token, values, dev := ceremony.admin.auth, ceremony.admin.token, ceremony.values, ceremony.device
 	auth.ReauthWindow = 0
 	auth.ReauthHardCap = time.Hour
 	scope := scopeEnv(orgA, prjA1, envA1)
@@ -447,7 +448,8 @@ func TestProtectedEnvironmentCapsTheWindowAtZeroPostgres(t *testing.T) {
 // what lets the browser decide whether to offer the option.
 func runProtectedEnvironmentCapsTheWindow(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, token, values, dev := ceremonyFixture(t, db, "ceremony-protected")
+	ceremony := ceremonyFixture(t, db, "ceremony-protected")
+	auth, token, values, dev := ceremony.admin.auth, ceremony.admin.token, ceremony.values, ceremony.device
 	auth.ReauthWindow = 5 * time.Minute
 	auth.ReauthHardCap = time.Hour
 	scope := scopeEnv(orgA, prjA1, envA1)
@@ -512,7 +514,8 @@ func TestCopySourceTakesTheCeremonyPostgres(t *testing.T) {
 // prototype's copy-without-display.
 func runCopySourceTakesTheCeremony(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, token, values, dev := ceremonyFixture(t, db, "ceremony-copy")
+	ceremony := ceremonyFixture(t, db, "ceremony-copy")
+	auth, token, values, dev := ceremony.admin.auth, ceremony.admin.token, ceremony.values, ceremony.device
 	auth.ReauthWindow = 5 * time.Minute
 	auth.ReauthHardCap = time.Hour
 	req := service.CopyRequest{
@@ -572,11 +575,12 @@ func TestRestorePinAndProtectedPublishTakeCeremoniesPostgres(t *testing.T) {
 
 func runRestorePinAndProtectedPublishTakeCeremonies(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, token, values, dev := ceremonyFixture(t, db, "ceremony-restore-pin")
+	ceremony := ceremonyFixture(t, db, "ceremony-restore-pin")
+	auth, token, values, dev := ceremony.admin.auth, ceremony.admin.token, ceremony.values, ceremony.device
 	auth.ReauthWindow = 0
 	auth.ReauthHardCap = time.Hour
 	scope := scopeEnv(orgA, prjA1, envA1)
-	principal := queryString(t, db, "SELECT principal_id FROM accounts WHERE username = 'ceremony-restore-pin'")
+	principal := string(ceremony.admin.boot.PrincipalID)
 	for _, capability := range []string{"reveal-history", "pin"} {
 		execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_ceremony_extra_"+
 			capability+"', '"+principal+"', '"+capability+"', 'org_a', 'prj_a1', 'env_a1', "+ts+")")
@@ -662,7 +666,8 @@ func TestAMachineNeverReauthenticatesPostgres(t *testing.T) {
 // would prove the exemption for a caller class this assertion is not about.
 func runAMachineNeverReauthenticates(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, _, values, _ := ceremonyFixture(t, db, "ceremony-machine")
+	ceremony := ceremonyFixture(t, db, "ceremony-machine")
+	auth, values := ceremony.admin.auth, ceremony.values
 	auth.ReauthWindow = 0
 	scope := scopeEnv(orgA, prjA1, envA1)
 
@@ -742,7 +747,8 @@ func TestProtectedDestinationRefusesAConfirmationFlagPostgres(t *testing.T) {
 // the copy names, and the flag is the machine plan field it always was.
 func runProtectedDestinationRefusesAConfirmationFlag(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, token, values, dev := ceremonyFixture(t, db, "ceremony-configonly")
+	ceremony := ceremonyFixture(t, db, "ceremony-configonly")
+	auth, token, values, dev := ceremony.admin.auth, ceremony.admin.token, ceremony.values, ceremony.device
 	auth.ReauthWindow = 5 * time.Minute
 	auth.ReauthHardCap = time.Hour
 	project := scopeProject(orgA, prjA1)
@@ -796,7 +802,8 @@ func TestACeremonyIsBoundToItsPurposePostgres(t *testing.T) {
 // the same unit and one they were never shown.
 func runACeremonyIsBoundToItsPurpose(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, token, values, dev := ceremonyFixture(t, db, "ceremony-purpose")
+	ceremony := ceremonyFixture(t, db, "ceremony-purpose")
+	auth, token, values, dev := ceremony.admin.auth, ceremony.admin.token, ceremony.values, ceremony.device
 	auth.ReauthWindow = 0
 	auth.ReauthHardCap = time.Hour
 	scope := scopeEnv(orgA, prjA1, envA1)
@@ -843,7 +850,8 @@ func TestTheTOTPRouteIsNotAnEnvironmentOraclePostgres(t *testing.T) {
 // nonexistent one by presenting nonsense and reading the refusal.
 func runTheTOTPRouteIsNotAnEnvironmentOracle(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, token, _, _ := ceremonyFixture(t, db, "ceremony-oracle")
+	ceremony := ceremonyFixture(t, db, "ceremony-oracle")
+	auth, token := ceremony.admin.auth, ceremony.admin.token
 	auth.ReauthWindow = 5 * time.Minute
 
 	// env_b1 belongs to org B: a real environment this principal cannot reach.
@@ -881,7 +889,8 @@ func TestConcurrentCeremoniesSupersedePostgres(t *testing.T) {
 // into an intermittent failure. The upsert makes the loser update.
 func runConcurrentCeremoniesSupersede(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, token, _, dev := ceremonyFixture(t, db, "ceremony-concurrent")
+	ceremony := ceremonyFixture(t, db, "ceremony-concurrent")
+	auth, token, dev := ceremony.admin.auth, ceremony.admin.token, ceremony.device
 	auth.ReauthWindow = 0
 	auth.ReauthHardCap = time.Hour
 	keyA := "key_" + ceremonySecretA
@@ -965,7 +974,8 @@ func TestAWindowExpiringDuringACopyIsNotSpentPostgres(t *testing.T) {
 // instant would not notice at all.
 func runAWindowExpiringDuringACopyIsNotSpent(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, token, values, dev := ceremonyFixture(t, db, "ceremony-expiry")
+	ceremony := ceremonyFixture(t, db, "ceremony-expiry")
+	auth, token, values, dev := ceremony.admin.auth, ceremony.admin.token, ceremony.values, ceremony.device
 	auth.ReauthWindow = 5 * time.Minute
 	auth.ReauthHardCap = time.Hour
 	project := scopeProject(orgA, prjA1)
@@ -1036,7 +1046,8 @@ func TestThePasskeyRouteIsNotAnEnvironmentOraclePostgres(t *testing.T) {
 // requiring `read(E)` first collapses them into the uniform outcome.
 func runThePasskeyRouteIsNotAnEnvironmentOracle(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, token, _, _ := ceremonyFixture(t, db, "ceremony-pk-oracle")
+	ceremony := ceremonyFixture(t, db, "ceremony-pk-oracle")
+	auth, token := ceremony.admin.auth, ceremony.admin.token
 	auth.ReauthWindow = 5 * time.Minute
 
 	// env_b1 is org B's: real, reachable by someone, not by this principal.

@@ -17,7 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
@@ -27,44 +26,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
-
-// authService builds a real Auth against the harness database: a live
-// keyring (verifiers are envelope-encrypted, so there is nothing to fake) and
-// a real admission limiter. The Argon2id cost is dialled to the floor because
-// the floor is what production runs and the flow exercises it a handful of
-// times.
-func authService(t *testing.T, db *store.DB) *service.Auth {
-	return authServiceWithKeyring(t, db)
-}
-
-// authServiceWithKeyring is authService plus access to the keyring it loaded.
-// The keyring hierarchy is minted ONCE per datastore under one root, so a
-// later loader with a fresh root is refused (correctly) — anything in this
-// suite that needs to seal must therefore share this one.
-func authServiceWithKeyring(t *testing.T, db *store.DB) *service.Auth {
-	t.Helper()
-	kr := probeKeyring(t, db)
-	limiter, err := admission.New(admission.Config{ArgonMemoryKiB: crypto.PasswordFloor.MemoryKiB})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return &service.Auth{DB: db, Keyring: kr, KDF: crypto.PasswordFloor, Admission: limiter}
-}
-
-func queryString(t *testing.T, db *store.DB, q string) string {
-	t.Helper()
-	var s string
-	var err error
-	if db.Engine() == store.EnginePostgres {
-		err = db.PG().QueryRow(t.Context(), q).Scan(&s)
-	} else {
-		err = db.SQLiteRead().QueryRowContext(t.Context(), q).Scan(&s)
-	}
-	if err != nil {
-		t.Fatalf("query %q: %v", q, err)
-	}
-	return s
-}
 
 // hookWriter triggers a side effect on its first write — the mid-export
 // revocation lever.

@@ -147,30 +147,22 @@ func isUnauth(err error) bool {
 
 // --- A1 fixtures ---
 
-// oidcAdmin bootstraps an admin, establishes a password, and returns the acting
-// service, principal and password.
-func oidcAdmin(t *testing.T, db *store.DB) (*service.Auth, domain.PrincipalID, string) {
+// oidcAdmin configures the external origin around the shared
+// first-administrator fixture.
+func oidcAdmin(t *testing.T, db *store.DB) admin {
 	t.Helper()
 	auth := authService(t, db)
 	auth.ExternalOrigin = "https://hikyo.test"
-	boot, err := auth.BootstrapAdmin(t.Context(), "oidc-admin", "OIDC Admin", "terminal")
-	if err != nil {
-		t.Fatal(err)
-	}
-	const password = "correct horse battery staple oidc"
-	if err := auth.EstablishCredential(t.Context(), boot.Authority, password); err != nil {
-		t.Fatal(err)
-	}
-	acc, err := auth.LocalLogin(t.Context(), "oidc-admin", password, service.ArtifactCLI)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return auth, acc.Principal, password
+	return bootstrapAdmin(t, db, adminOpts{
+		username: "oidc-admin", displayName: "OIDC Admin",
+		password: "correct horse battery staple oidc", auth: auth, login: true,
+	})
 }
 
 func runOIDCMixup(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, _ := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID
 	_, idpA := configureProvider(t, auth, ctx, admin, "prov-a", service.ProviderInput{
 		DisplayName: "A", ClientID: "ca", ClientSecret: "sa", Scopes: "openid", Enabled: true,
 	})
@@ -219,7 +211,8 @@ func TestOIDCMixupPostgres(t *testing.T) { runOIDCMixup(t, seededDB(t, openPostg
 // identities, both loginable, never merged.
 func runOIDCByteExactSubject(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, password := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin, password := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID, oidcAdministrator.password
 	configureProvider(t, auth, ctx, admin, "idp", service.ProviderInput{
 		DisplayName: "IdP", ClientID: "c", ClientSecret: "s", Scopes: "openid",
 		JITPolicy: strptr(`{"claim":"sub","values":["alice","Alice"]}`), Enabled: true,
@@ -258,7 +251,8 @@ func oidcRefusedCount(t *testing.T, db *store.DB, cause string) int64 {
 // purpose's branch.
 func runOIDCBinding(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, password := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin, password := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID, oidcAdministrator.password
 	configureProvider(t, auth, ctx, admin, "idp", service.ProviderInput{
 		DisplayName: "IdP", ClientID: "c", ClientSecret: "s", Scopes: "openid",
 		JITPolicy: strptr(`{"claim":"sub","values":["user"]}`), Enabled: true,
@@ -319,7 +313,8 @@ func TestOIDCBindingPostgres(t *testing.T) { runOIDCBinding(t, seededDB(t, openP
 // carries no auth_time (A7). Each cause is audited.
 func runOIDCReauthRefusals(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, password := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin, password := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID, oidcAdministrator.password
 	_, strict := configureProvider(t, auth, ctx, admin, "strict", service.ProviderInput{
 		DisplayName: "Strict", ClientID: "c", ClientSecret: "s", Scopes: "openid",
 		AssurancePolicy: strptr(`{"amr_sets":[["mfa"]]}`), Enabled: true,
@@ -403,7 +398,8 @@ func runOIDCReauthRefusals(t *testing.T, db *store.DB) {
 // and the refusal is named and audited rather than silently opening authority.
 func runOIDCReauthZeroWindow(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, password := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin, password := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID, oidcAdministrator.password
 	auth.ReauthWindow = 0
 	_, idp := configureProvider(t, auth, ctx, admin, "strict", service.ProviderInput{
 		DisplayName: "Strict", ClientID: "c", ClientSecret: "s", Scopes: "openid",
@@ -444,7 +440,8 @@ func TestOIDCReauthZeroWindowPostgres(t *testing.T) {
 // cookie at the transport boundary, so the service returns no stored metadata.
 func runOIDCBrowserOverloadMetadata(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, password := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin, password := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID, oidcAdministrator.password
 	_, idp := configureProvider(t, auth, ctx, admin, "strict", service.ProviderInput{
 		DisplayName: "Strict", ClientID: "c", ClientSecret: "s", Scopes: "openid",
 		AssurancePolicy: strptr(`{"amr_sets":[["mfa"]]}`), Enabled: true,
@@ -499,7 +496,8 @@ func TestOIDCReauthRefusalsPostgres(t *testing.T) {
 
 func runOIDCDisclosureAndCLIHandoff(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, password := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin, password := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID, oidcAdministrator.password
 	auth.ReauthWindow = 5 * time.Minute
 	_, idp := configureProvider(t, auth, ctx, admin, "strict", service.ProviderInput{
 		DisplayName: "Corporate IdP", ClientID: "c", ClientSecret: "s", Scopes: "openid",
@@ -577,7 +575,8 @@ func TestOIDCDisclosureAndCLIHandoffPostgres(t *testing.T) {
 // runOIDCIssuerImmutable: a provider's issuer cannot change on update (A3).
 func runOIDCIssuerImmutable(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, _ := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID
 	_, idp := configureProvider(t, auth, ctx, admin, "idp", service.ProviderInput{
 		DisplayName: "IdP", ClientID: "c", ClientSecret: "s", Scopes: "openid", Enabled: true,
 	})
@@ -613,7 +612,8 @@ func TestOIDCIssuerImmutablePostgres(t *testing.T) {
 // authenticated through it (A4).
 func runOIDCProviderChangeSweeps(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, _ := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID
 	providers, idp := configureProvider(t, auth, ctx, admin, "idp", service.ProviderInput{
 		DisplayName: "IdP", ClientID: "c", ClientSecret: "s", Scopes: "openid",
 		JITPolicy: strptr(`{"claim":"sub","values":["user"]}`), Enabled: true,
@@ -685,7 +685,8 @@ func reauthOn(t *testing.T, auth *service.Auth, ctx context.Context, slug, subje
 // imply possession.
 func runOIDCReauthPossession(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, password := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin, password := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID, oidcAdministrator.password
 	auth.ReauthWindow = time.Minute
 
 	// (a) amr_sets [["pwd"]] satisfied by amr=["pwd"] — possession absent.
@@ -757,7 +758,8 @@ func TestOIDCReauthPossessionPostgres(t *testing.T) {
 // refused, never opens a window (B2), matching completeLogin.
 func runOIDCReauthEpochInert(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, password := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin, password := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID, oidcAdministrator.password
 	auth.ReauthWindow = time.Minute
 	_, idp := configureProvider(t, auth, ctx, admin, "strict", service.ProviderInput{
 		DisplayName: "strict", ClientID: "c", ClientSecret: "s", Scopes: "openid",
@@ -792,7 +794,8 @@ func TestOIDCReauthEpochInertPostgres(t *testing.T) {
 // authenticate through the replacement (A3, provider_id mismatch).
 func runOIDCReauthProviderRebind(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, password := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin, password := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID, oidcAdministrator.password
 	auth.ReauthWindow = time.Minute
 	idp, err := oidctest.New()
 	if err != nil {
@@ -853,7 +856,8 @@ func TestOIDCReauthProviderRebindPostgres(t *testing.T) {
 // session can (positive control).
 func runOIDCReauthDowngrade(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, password := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin, password := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID, oidcAdministrator.password
 	auth.ReauthWindow = time.Minute
 	_, idp := configureProvider(t, auth, ctx, admin, "strict", service.ProviderInput{
 		DisplayName: "strict", ClientID: "c", ClientSecret: "s", Scopes: "openid",
@@ -897,7 +901,8 @@ func TestOIDCReauthDowngradePostgres(t *testing.T) {
 // the race, so a stale policy evaluation cannot open a window (A4/TOCTOU).
 func runOIDCReauthProviderRace(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, password := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin, password := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID, oidcAdministrator.password
 	auth.ReauthWindow = time.Minute
 	providers, idp := configureProvider(t, auth, ctx, admin, "race", service.ProviderInput{
 		DisplayName: "race", ClientID: "c", ClientSecret: "s", Scopes: "openid",
@@ -946,7 +951,8 @@ func TestOIDCReauthProviderRacePostgres(t *testing.T) {
 // session is created in its place.
 func runOIDCLoginProviderRace(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, _ := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID
 	providers, idp := configureProvider(t, auth, ctx, admin, "race-login", service.ProviderInput{
 		DisplayName: "race-login", ClientID: "c", ClientSecret: "s", Scopes: "openid",
 		JITPolicy: strptr(`{"claim":"sub","values":["race-login-user"]}`), Enabled: true,
@@ -1005,7 +1011,8 @@ func TestOIDCLoginProviderRacePostgres(t *testing.T) {
 // deleted — a compromised provider cannot be deleted yet keep live sessions.
 func runOIDCLoginProviderDeleteRace(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, _ := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID
 	providers, idp := configureProvider(t, auth, ctx, admin, "race-del", service.ProviderInput{
 		DisplayName: "race-del", ClientID: "c", ClientSecret: "s", Scopes: "openid",
 		JITPolicy: strptr(`{"claim":"sub","values":["race-del-user"]}`), Enabled: true,
@@ -1066,7 +1073,8 @@ func TestOIDCLoginProviderDeleteRacePostgres(t *testing.T) {
 // 00007 actually enforces the cascade. Without the FK edit this test fails.
 func runOIDCProviderDeleteCascade(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, _ := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID
 	configureProvider(t, auth, ctx, admin, "cascade", service.ProviderInput{
 		DisplayName: "cascade", ClientID: "c", ClientSecret: "s", Scopes: "openid",
 		JITPolicy: strptr(`{"claim":"sub","values":["cascade-user"]}`), Enabled: true,
@@ -1099,7 +1107,8 @@ func TestOIDCProviderDeleteCascadePostgres(t *testing.T) {
 // refused (A validation completeness), audited cause=signature.
 func runOIDCIATRejected(t *testing.T, db *store.DB) {
 	ctx := t.Context()
-	auth, admin, _ := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID
 	_, idp := configureProvider(t, auth, ctx, admin, "idp", service.ProviderInput{
 		DisplayName: "IdP", ClientID: "c", ClientSecret: "s", Scopes: "openid",
 		JITPolicy: strptr(`{"claim":"sub","values":["iat-user"]}`), Enabled: true,

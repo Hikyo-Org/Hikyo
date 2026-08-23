@@ -72,7 +72,8 @@ func samlResponseForStart(t *testing.T, idp *samltest.IdP, start service.SAMLSta
 func runSAMLLoginReplay(t *testing.T, db *store.DB) {
 	t.Helper()
 	ctx := t.Context()
-	auth, admin, password := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin, password := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID, oidcAdministrator.password
 	auth.ExternalOrigin = "https://hikyo.test"
 	idp := configureSAMLProvider(t, auth, admin)
 	providers := &service.SAMLProviders{DB: auth.DB, Keyring: auth.Keyring, ExternalOrigin: auth.ExternalOrigin}
@@ -314,7 +315,8 @@ func TestSAMLLoginReplayPostgres(t *testing.T) {
 func runSAMLProviderRecreation(t *testing.T, db *store.DB) {
 	t.Helper()
 	ctx := t.Context()
-	auth, admin, password := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin, password := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID, oidcAdministrator.password
 	auth.ExternalOrigin = "https://hikyo.test"
 	idp := configureSAMLProvider(t, auth, admin)
 	providers := &service.SAMLProviders{DB: auth.DB, Keyring: auth.Keyring, ExternalOrigin: auth.ExternalOrigin}
@@ -379,7 +381,8 @@ func TestSAMLProviderRecreationPostgres(t *testing.T) {
 func runSAMLSPKeyLifecycle(t *testing.T, db *store.DB) {
 	t.Helper()
 	ctx := t.Context()
-	auth, admin, _ := oidcAdmin(t, db)
+	oidcAdministrator := oidcAdmin(t, db)
+	auth, admin := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID
 	auth.ExternalOrigin = "https://hikyo.test"
 	configureSAMLProvider(t, auth, admin)
 	providers := &service.SAMLProviders{DB: auth.DB, Keyring: auth.Keyring, ExternalOrigin: auth.ExternalOrigin}
