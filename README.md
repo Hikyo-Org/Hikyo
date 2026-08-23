@@ -102,13 +102,16 @@ ships as one Go binary and supports both SQLite and PostgreSQL.
 
 ## Quick start
 
-Requires Go 1.26+, Node.js 24 (see [`.nvmrc`](./.nvmrc)), and Corepack/pnpm.
+Requires Go 1.27+, Node.js 26.7.0 (see [`.nvmrc`](./.nvmrc)), Corepack 0.35.0,
+and pnpm 11.10.0.
 
 ```bash
 git clone https://github.com/Hikyo-Org/Hikyo.git
 cd Hikyo
 
+npm install --global --ignore-scripts corepack@0.35.0
 corepack enable
+corepack install --global pnpm@11.10.0
 pnpm --dir clients/ts install --frozen-lockfile
 pnpm --dir web install --frozen-lockfile
 pnpm --dir web build
@@ -162,19 +165,22 @@ Secret values never belong in command-line arguments. Use `--value-file` or
 
 ## Run in production
 
-Outside `--dev`, provide a datastore, external origin, trusted proxy boundary,
+Outside `--dev`, provide a datastore, native TLS certificate, external origin,
 and root key:
 
 ```bash
 HIKYO_DB=sqlite:/var/lib/hikyo/hikyo.db \
 HIKYO_EXTERNAL_ORIGIN=https://hikyo.example.com \
-HIKYO_TRUSTED_PROXY_CIDRS=127.0.0.1/32 \
-./hikyo server --listen 127.0.0.1:8080 \
+./hikyo server --listen 0.0.0.0:8443 \
+  --operational-listen 127.0.0.1:8081 \
+  --tls-cert-file /etc/hikyo/tls.crt \
+  --tls-key-file /etc/hikyo/tls.key \
   --root-key-file /etc/hikyo/root.key
 ```
 
-`HIKYO_DB` accepts `sqlite:PATH` or a PostgreSQL DSN. Terminate TLS at a reverse
-proxy and keep the Hikyo listener private.
+`HIKYO_DB` accepts `sqlite:PATH` or a PostgreSQL DSN. Native TLS reloads renewed
+files without restart. Reverse-proxy mode remains available when exact trusted
+proxy CIDRs are configured; never expose that plaintext listener directly.
 
 Read [Self-hosting](https://hikyo.app/docs/self-hosting/) before deployment and
 [Configuration](https://hikyo.app/docs/configuration/) for every flag and

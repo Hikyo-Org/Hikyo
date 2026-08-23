@@ -21,20 +21,28 @@ type ReadyChecker interface {
 	Ready(ctx context.Context) error
 }
 
-// New builds the router.
+// PublicOptions carries transport facts that affect public response policy.
+type PublicOptions struct {
+	HSTS bool
+}
+
+// TLSMetrics reports the label-free native TLS gauges served operationally.
+type TLSMetrics interface {
+	TLSMetrics() (notAfterUnix int64, reloadFailures uint64)
+}
+
+// New builds the public API/UI router.
 //
 // Route partitioning, and why it is a partition rather than one stack:
 //
-//   - /healthz and /readyz are operational probes with no principal and no
-//     contract entry. They deliberately sit OUTSIDE the API middleware: a
-//     liveness probe that could be refused by the admission budget would turn
-//     a login flood into a restart loop.
+//   - /healthz, /readyz, and /metrics live only on NewOperational. Keeping them
+//     off this listener means public middleware and traffic cannot affect
+//     probes or expose process metrics.
 //   - /api/v1/* is the contract. Every request there is validated against
 //     api/openapi.yaml before a handler sees it, carries wire metadata for the
 //     audit trail, and renders refusals through one uniform writer.
 //
-// Anything not matching either is a 404 in the contract's own error shape,
-// so a probe cannot tell an unrouted path from a path it may not reach —
+// Anything not matching the API is a 404 in the contract's own error shape,
 // unless `ui` carries an embedded single-page application, in which case the
 // rules in spa.go decide, and only for an HTML navigation to a non-reserved
 // path. A nil `ui` is an API-only binary, which is what a plain `go build`
@@ -62,13 +70,18 @@ func remoteOriginSource(a *API) func(context.Context) []string {
 }
 
 func New(ready ReadyChecker, a *API, ui fs.FS) http.Handler {
+	return NewPublic(ready, a, ui, PublicOptions{})
+}
+
+// NewPublic builds the public router with explicit transport policy.
+func NewPublic(ready ReadyChecker, a *API, ui fs.FS, publicOptions PublicOptions) http.Handler {
 	r := chi.NewRouter()
 	// The static security baseline, on every response including refusals. The
 	// dynamic part — `connect-src` extended with the configured remotes'
 	// origins (#71), a closed list read per DOCUMENT so an added or removed
 	// remote takes effect without a restart — belongs to the SPA writer below,
 	// which is the only response that can use it.
-	r.Use(securityHeaders())
+	r.Use(securityHeaders(publicOptions.HSTS))
 	// Cross-origin readability for allowlisted workspace origins (#71), at the
 	// TOP of the chain rather than inside the API group, and that placement is
 	// load-bearing rather than tidy.
@@ -90,51 +103,6 @@ func New(ready ReadyChecker, a *API, ui fs.FS) http.Handler {
 	// before anything tries to resolve one. Requests without an `Origin` header
 	// pass through untouched, so nothing else on the router changes.
 	r.Use(workspaceCORS(workspaceOriginCheck(a)))
-	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
-	r.Get("/readyz", func(w http.ResponseWriter, req *http.Request) {
-		if err := ready.Ready(req.Context()); err != nil {
-			http.Error(w, "not ready", http.StatusServiceUnavailable)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ready"))
-	})
-	r.Get("/metrics", func(w http.ResponseWriter, req *http.Request) {
-		if a == nil || a.RetentionHealth == nil {
-			http.Error(w, "retention health unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		health, err := a.RetentionHealth.OperationalHealth(req.Context())
-		if err != nil {
-			http.Error(w, "retention health unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		last := int64(0)
-		if health.Recorded {
-			last = health.LastSuccess.Unix()
-		}
-		stale := 0
-		if health.Stale {
-			stale = 1
-		}
-		storageWarn := 0
-		if health.StorageWarn {
-			storageWarn = 1
-		}
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		w.WriteHeader(http.StatusOK)
-		_, _ = fmt.Fprintf(w, "# TYPE hikyo_last_prune_success_timestamp_seconds gauge\n"+
-			"hikyo_last_prune_success_timestamp_seconds %d\n"+
-			"# TYPE hikyo_prune_stale gauge\n"+
-			"hikyo_prune_stale %d\n"+
-			"# TYPE hikyo_project_storage_peak_bytes gauge\n"+
-			"hikyo_project_storage_peak_bytes %d\n"+
-			"# TYPE hikyo_project_storage_warn gauge\n"+
-			"hikyo_project_storage_warn %d\n", last, stale, health.PeakProjectBytes, storageWarn)
-	})
 
 	if a != nil {
 		r.Group(func(g chi.Router) {
@@ -172,6 +140,68 @@ func New(ready ReadyChecker, a *API, ui fs.FS) http.Handler {
 		// A method the contract does not describe on a path it does is,
 		// from outside, the same fact as a path that is not there.
 		writeError(w, wirePolicyForCode(apigen.ErrorCodeNotFound), "")
+	})
+	return r
+}
+
+// NewOperational builds the separate plaintext operational router. It carries
+// no CORS or admission middleware and registers only local process surfaces.
+func NewOperational(ready ReadyChecker, healthService OperationalRetentionHealthService) http.Handler {
+	r := chi.NewRouter()
+	r.Use(securityHeaders(false))
+	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	r.Get("/readyz", func(w http.ResponseWriter, req *http.Request) {
+		if ready == nil || ready.Ready(req.Context()) != nil {
+			http.Error(w, "not ready", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ready"))
+	})
+	r.Get("/metrics", func(w http.ResponseWriter, req *http.Request) {
+		if healthService == nil {
+			http.Error(w, "retention health unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		health, err := healthService.OperationalHealth(req.Context())
+		if err != nil {
+			http.Error(w, "retention health unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		last := int64(0)
+		if health.Recorded {
+			last = health.LastSuccess.Unix()
+		}
+		stale := 0
+		if health.Stale {
+			stale = 1
+		}
+		storageWarn := 0
+		if health.StorageWarn {
+			storageWarn = 1
+		}
+		var tlsNotAfter int64
+		var tlsReloadFailures uint64
+		if metrics, ok := healthService.(TLSMetrics); ok {
+			tlsNotAfter, tlsReloadFailures = metrics.TLSMetrics()
+		}
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintf(w, "# TYPE hikyo_last_prune_success_timestamp_seconds gauge\n"+
+			"hikyo_last_prune_success_timestamp_seconds %d\n"+
+			"# TYPE hikyo_prune_stale gauge\n"+
+			"hikyo_prune_stale %d\n"+
+			"# TYPE hikyo_project_storage_peak_bytes gauge\n"+
+			"hikyo_project_storage_peak_bytes %d\n"+
+			"# TYPE hikyo_project_storage_warn gauge\n"+
+			"hikyo_project_storage_warn %d\n"+
+			"# TYPE hikyo_tls_cert_not_after_timestamp_seconds gauge\n"+
+			"hikyo_tls_cert_not_after_timestamp_seconds %d\n"+
+			"# TYPE hikyo_tls_reload_failures_total counter\n"+
+			"hikyo_tls_reload_failures_total %d\n", last, stale, health.PeakProjectBytes, storageWarn, tlsNotAfter, tlsReloadFailures)
 	})
 	return r
 }

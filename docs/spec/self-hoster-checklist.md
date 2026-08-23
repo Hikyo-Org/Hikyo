@@ -31,7 +31,7 @@ Verdict legend: **PASS** = the capability meets the oss-mechanics test, quoted i
 | M5 import | PASS | All connectors read local files or self-hosted sources; ambient credentials only |
 | M6 multi-instance | PASS | Symmetric, no "main"; zero remotes = zero outbound |
 | O1 single binary & migrations | PASS | `--dev` sqlite; prod explicit datastore |
-| O2 ops conformance | PASS | Pi-4 calibration floor is the self-hoster |
+| O2 ops conformance | PASS | Pi-4 calibration floor is the self-hoster; TLS terminates natively or exact proxy CIDRs are named, and the separate operational listener is not exposed publicly |
 | O3 release pipeline | PASS | Signed artifacts verifiable offline; fail-closed installers |
 | O4–O6 disclosure, governance, support | PASS | Public docs; no CLA; MPL 2.0 |
 | O7 zero unsolicited egress | PASS | CI-enforced air-gap boot |

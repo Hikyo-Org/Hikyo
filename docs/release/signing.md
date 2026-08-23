@@ -53,7 +53,7 @@ Dry-run output is guidance only; it does not create progress state.
 - age `v1.3.1`
 - Syft `v1.50.0`
 - Helm `v4.2.3`
-- Go `1.26.6` from `go.mod`
+- Go `1.27.0` from `go.mod`
 - Docker client `29.7.2` with Buildx `v0.36.1-desktop.1` for live GHCR
   image and chart digest resolution
 

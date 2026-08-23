@@ -1,4 +1,7 @@
-{{- $trustedProxyCIDRs := required "network.trustedProxyCIDRs is required for the non-loopback listener" (join "," .Values.network.trustedProxyCIDRs) }}
+{{- $trustedProxyCIDRs := join "," .Values.network.trustedProxyCIDRs }}
+{{- if and (empty $trustedProxyCIDRs) (empty .Values.tls.existingSecret) }}
+{{- fail "configure tls.existingSecret or network.trustedProxyCIDRs for the non-loopback listener" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -22,30 +25,73 @@ spec:
         runAsNonRoot: true
         runAsUser: 65532
         runAsGroup: 65532
+        {{- if .Values.tls.existingSecret }}
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        {{- end }}
         seccompProfile:
           type: RuntimeDefault
+      {{- if .Values.tls.existingSecret }}
+      initContainers:
+        - name: tls-stage
+          image: "{{ .Values.image.repository }}@{{ required "image.digest is required" .Values.image.digest }}"
+          imagePullPolicy: IfNotPresent
+          args: ["__hikyo-stage-tls", "--once"]
+          volumeMounts:
+            - name: tls-source
+              mountPath: /run/hikyo-tls-source
+              readOnly: true
+            - name: tls
+              mountPath: /run/hikyo-tls
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          resources:
+            {{- toYaml .Values.tls.reloaderResources | nindent 12 }}
+      {{- end }}
       containers:
         - name: server
           image: "{{ .Values.image.repository }}@{{ required "image.digest is required" .Values.image.digest }}"
           imagePullPolicy: IfNotPresent
-          args: ["server", "--listen=0.0.0.0:8080"]
+          args:
+            - server
+            - --listen=0.0.0.0:8080
+            - --operational-listen=0.0.0.0:8081
+            {{- if .Values.tls.existingSecret }}
+            - --tls-cert-file=/run/hikyo-tls/tls.crt
+            - --tls-key-file=/run/hikyo-tls/tls.key
+            {{- end }}
           env:
             - name: HIKYO_DB
               valueFrom:
                 secretKeyRef:
                   name: {{ required "database.existingSecret is required" .Values.database.existingSecret }}
                   key: HIKYO_DB
+            {{- if $trustedProxyCIDRs }}
             - name: HIKYO_TRUSTED_PROXY_CIDRS
               value: {{ $trustedProxyCIDRs | quote }}
+            {{- end }}
           ports:
             - name: http
               containerPort: 8080
+            - name: ops
+              containerPort: 8081
           readinessProbe:
-            tcpSocket:
-              port: http
+            httpGet:
+              path: /readyz
+              port: ops
           livenessProbe:
-            tcpSocket:
-              port: http
+            httpGet:
+              path: /healthz
+              port: ops
+          {{- if .Values.tls.existingSecret }}
+          volumeMounts:
+            - name: tls
+              mountPath: /run/hikyo-tls
+              readOnly: true
+          {{- end }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -53,3 +99,36 @@ spec:
             readOnlyRootFilesystem: true
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+        {{- if .Values.tls.existingSecret }}
+        - name: tls-stage-watch
+          image: "{{ .Values.image.repository }}@{{ required "image.digest is required" .Values.image.digest }}"
+          imagePullPolicy: IfNotPresent
+          args: ["__hikyo-stage-tls"]
+          volumeMounts:
+            - name: tls-source
+              mountPath: /run/hikyo-tls-source
+              readOnly: true
+            - name: tls
+              mountPath: /run/hikyo-tls
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          resources:
+            {{- toYaml .Values.tls.reloaderResources | nindent 12 }}
+        {{- end }}
+      {{- if .Values.tls.existingSecret }}
+      volumes:
+        - name: tls-source
+          secret:
+            secretName: {{ .Values.tls.existingSecret }}
+            defaultMode: 0400
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+        - name: tls
+          emptyDir: {}
+      {{- end }}

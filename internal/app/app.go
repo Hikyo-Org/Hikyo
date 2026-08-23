@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -102,14 +104,18 @@ func beforeMigration(ctx context.Context, cfg *config.Config, log *slog.Logger, 
 
 // Server is a booted, listening server that has not started serving yet.
 type Server struct {
-	Addr          string
-	db            *store.DB
-	keyring       *crypto.Keyring // held for the process lifetime
-	ln            net.Listener
-	handler       http.Handler
-	log           *slog.Logger
-	scheduler     *Scheduler
-	adapterWorker *adapter.Worker
+	Addr               string
+	OperationalAddr    string
+	db                 *store.DB
+	keyring            *crypto.Keyring // held for the process lifetime
+	publicLn           net.Listener
+	operationalLn      net.Listener
+	publicHandler      http.Handler
+	operationalHandler http.Handler
+	tlsReloader        *certReloader
+	log                *slog.Logger
+	scheduler          *Scheduler
+	adapterWorker      *adapter.Worker
 }
 
 // devRootKeyName sits beside the dev sqlite database (cwd when no sqlite
@@ -374,6 +380,21 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	// Registered immediately after Listen so every later error path releases
 	// it, and — being registered after the database — before the database.
 	guard.add(func() error { return resources.closeListener(ln) })
+	operationalLn, err := resources.listen("tcp", cfg.OperationalListen)
+	if err != nil {
+		return nil, fmt.Errorf("boot: operational listen %s: %w", cfg.OperationalListen, err)
+	}
+	guard.add(func() error { return resources.closeListener(operationalLn) })
+
+	var tlsReloader *certReloader
+	var publicLn net.Listener = ln
+	if cfg.TLSCertFile != "" {
+		tlsReloader, err = newCertReloader(cfg.TLSCertFile, cfg.TLSKeyFile, log, 10*time.Second)
+		if err != nil {
+			return nil, fmt.Errorf("boot: TLS certificate: %w", err)
+		}
+		publicLn = tls.NewListener(ln, tlsReloader.tlsConfig())
+	}
 
 	federation := &service.Federation{
 		DB: db, Auth: authSvc, Admission: limiter,
@@ -489,17 +510,21 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		TrustedProxies: proxies,
 	}
 
-	log.Info("boot complete", "engine", sc.Engine, "addr", ln.Addr().String(), "dev", cfg.Dev,
+	log.Info("boot complete", "engine", sc.Engine, "addr", ln.Addr().String(), "operational_addr", operationalLn.Addr().String(), "dev", cfg.Dev,
 		"argon2_memory_kib", cfg.Argon2MemoryKiB, "auth_concurrency", limiter.Concurrency())
 	// Construct the complete owner before disarming: future fallible work added
 	// to construction stays inside the guard's protection.
 	srv := &Server{
-		Addr:    ln.Addr().String(),
-		db:      db,
-		keyring: kr,
-		ln:      ln,
-		handler: server.New(&service.System{DB: db, Store: sc}, api, webui.Assets()),
-		log:     log,
+		Addr:               ln.Addr().String(),
+		OperationalAddr:    operationalLn.Addr().String(),
+		db:                 db,
+		keyring:            kr,
+		publicLn:           publicLn,
+		operationalLn:      operationalLn,
+		publicHandler:      server.NewPublic(&service.System{DB: db, Store: sc}, api, webui.Assets(), server.PublicOptions{HSTS: cfg.TLSCertFile != "" && !config.IsLoopbackListen(cfg.Listen)}),
+		operationalHandler: server.NewOperational(&service.System{DB: db, Store: sc}, operationalHealth{retention: retentionSvc, tls: tlsReloader}),
+		tlsReloader:        tlsReloader,
+		log:                log,
 		scheduler: &Scheduler{Log: log, Jobs: []ScheduledJob{{
 			Name: "payload_gc",
 			Run: func(ctx context.Context) error {
@@ -597,10 +622,10 @@ func parseCIDRs(raw []string) ([]*net.IPNet, error) {
 func newHTTPServer(h http.Handler) *http.Server {
 	return &http.Server{
 		Handler:           h,
-		ReadHeaderTimeout: 5 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		IdleTimeout:       2 * time.Minute,
-		MaxHeaderBytes:    1 << 20,
+		MaxHeaderBytes:    64 << 10,
 	}
 }
 
@@ -637,21 +662,60 @@ func (s *Server) Serve(ctx context.Context) error {
 			<-workerDone
 		}
 	}()
-	srv := newHTTPServer(s.handler)
-	errCh := make(chan error, 1)
-	go func() { errCh <- srv.Serve(s.ln) }()
-	select {
-	case err := <-errCh:
-		return err
-	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		return srv.Shutdown(shutdownCtx)
+	reloaderCtx, stopReloader := context.WithCancel(ctx)
+	var reloaderDone chan struct{}
+	if s.tlsReloader != nil {
+		reloaderDone = make(chan struct{})
+		go func() {
+			defer close(reloaderDone)
+			s.tlsReloader.run(reloaderCtx)
+		}()
 	}
+	defer func() {
+		stopReloader()
+		if reloaderDone != nil {
+			<-reloaderDone
+		}
+	}()
+
+	publicServer := newHTTPServer(s.publicHandler)
+	operationalServer := newHTTPServer(s.operationalHandler)
+	errCh := make(chan error, 2)
+	var serveWG sync.WaitGroup
+	serveWG.Add(2)
+	go func() {
+		defer serveWG.Done()
+		errCh <- publicServer.Serve(s.publicLn)
+	}()
+	go func() {
+		defer serveWG.Done()
+		errCh <- operationalServer.Serve(s.operationalLn)
+	}()
+
+	var serveErr error
+	select {
+	case serveErr = <-errCh:
+	case <-ctx.Done():
+	}
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdownErr := errors.Join(publicServer.Shutdown(shutdownCtx), operationalServer.Shutdown(shutdownCtx))
+	cancel()
+	serveWG.Wait()
+	if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+		return serveErr
+	}
+	return shutdownErr
+}
+
+// ReloadTLS reloads the configured pair immediately, as used by SIGHUP.
+func (s *Server) ReloadTLS() error {
+	if s.tlsReloader == nil {
+		return nil
+	}
+	return s.tlsReloader.reload()
 }
 
 // Close releases resources for a booted server that never served.
 func (s *Server) Close() error {
-	err := s.ln.Close()
-	return errors.Join(err, s.db.Close())
+	return errors.Join(s.publicLn.Close(), s.operationalLn.Close(), s.db.Close())
 }

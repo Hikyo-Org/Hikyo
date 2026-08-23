@@ -177,13 +177,16 @@ func reservedFromFallback(p string) bool {
 // BASELINE policy — the header is still there, self-only, and that is the
 // explicit behaviour rather than a silent omission — and the extension is
 // applied once, by the document writer in serveSPA.
-func securityHeaders() func(http.Handler) http.Handler {
+func securityHeaders(hsts bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			h := w.Header()
 			h.Set("Content-Security-Policy", contentSecurityPolicy)
 			h.Set("X-Content-Type-Options", "nosniff")
 			h.Set("Referrer-Policy", "no-referrer")
+			if hsts {
+				h.Set("Strict-Transport-Security", "max-age=31536000")
+			}
 			next.ServeHTTP(w, r)
 		})
 	}

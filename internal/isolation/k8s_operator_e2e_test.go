@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -17,6 +18,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -48,7 +51,78 @@ func TestK8sOperator(t *testing.T) {
 	t.Run("lifecycle", func(t *testing.T) { testLifecycle(t, restCfg, sch) })
 	t.Run("write_ordering", func(t *testing.T) { testWriteOrdering(t, restCfg, sch) })
 	t.Run("federation", func(t *testing.T) { testFederation(t, restCfg, sch) })
+	t.Run("server_operational_probes", func(t *testing.T) { testServerOperationalProbes(t, restCfg, sch) })
 }
+
+func testServerOperationalProbes(t *testing.T, restCfg *rest.Config, sch *runtime.Scheme) {
+	image := os.Getenv("HIKYO_K8S_E2E_SERVER_IMAGE")
+	if image == "" {
+		t.Skip("HIKYO_K8S_E2E_SERVER_IMAGE not set")
+	}
+	kube, err := client.New(restCfg, client.Options{Scheme: sch})
+	must(t, err)
+	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{GenerateName: "hikyo-server-probes-"}}
+	must(t, kube.Create(t.Context(), namespace))
+	t.Cleanup(func() { _ = kube.Delete(context.Background(), namespace) })
+	replicas := int32(1)
+	labels := map[string]string{"app": "hikyo-server-probe-e2e"}
+	deployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "hikyo-server", Namespace: namespace.Name},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{MatchLabels: labels},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: labels},
+				Spec: corev1.PodSpec{
+					SecurityContext: &corev1.PodSecurityContext{
+						RunAsNonRoot: boolPtr(true),
+						RunAsUser:    int64Ptr(65532),
+						RunAsGroup:   int64Ptr(65532),
+					},
+					Containers: []corev1.Container{{
+						Name:            "server",
+						Image:           image,
+						ImagePullPolicy: corev1.PullNever,
+						WorkingDir:      "/data",
+						Args:            []string{"server", "--dev", "--listen=0.0.0.0:8080", "--operational-listen=0.0.0.0:8081"},
+						Env: []corev1.EnvVar{
+							{Name: "HIKYO_DB", Value: "sqlite:/data/hikyo.db"},
+							{Name: "HIKYO_TRUSTED_PROXY_CIDRS", Value: "10.0.0.0/8"},
+						},
+						Ports: []corev1.ContainerPort{
+							{Name: "http", ContainerPort: 8080},
+							{Name: "ops", ContainerPort: 8081},
+						},
+						LivenessProbe:  &corev1.Probe{ProbeHandler: corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Path: "/healthz", Port: intstr.FromString("ops")}}},
+						ReadinessProbe: &corev1.Probe{ProbeHandler: corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Path: "/readyz", Port: intstr.FromString("ops")}}},
+						VolumeMounts:   []corev1.VolumeMount{{Name: "data", MountPath: "/data"}},
+					}},
+					Volumes: []corev1.Volume{{Name: "data", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}}},
+				},
+			},
+		},
+	}
+	must(t, kube.Create(t.Context(), deployment))
+	must(t, wait.PollUntilContextTimeout(t.Context(), 500*time.Millisecond, 2*time.Minute, true, func(ctx context.Context) (bool, error) {
+		var current appsv1.Deployment
+		if err := kube.Get(ctx, types.NamespacedName{Namespace: namespace.Name, Name: deployment.Name}, &current); err != nil {
+			return false, client.IgnoreNotFound(err)
+		}
+		return current.Status.AvailableReplicas == 1, nil
+	}))
+	var pods corev1.PodList
+	must(t, kube.List(t.Context(), &pods, client.InNamespace(namespace.Name), client.MatchingLabels(labels)))
+	if len(pods.Items) != 1 || len(pods.Items[0].Status.ContainerStatuses) != 1 {
+		t.Fatalf("server probe pods/statuses = %d/%d", len(pods.Items), len(pods.Items[0].Status.ContainerStatuses))
+	}
+	status := pods.Items[0].Status.ContainerStatuses[0]
+	if !status.Ready || status.RestartCount != 0 {
+		t.Fatalf("operational probes did not stay healthy: ready=%t restarts=%d", status.Ready, status.RestartCount)
+	}
+}
+
+func boolPtr(value bool) *bool    { return &value }
+func int64Ptr(value int64) *int64 { return &value }
 
 func allFourMapping() [][2]string {
 	return [][2]string{
