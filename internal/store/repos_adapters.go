@@ -631,7 +631,7 @@ func (d sqliteAdoptDB) Exec(ctx context.Context, query string, args ...any) (int
 	return result.RowsAffected()
 }
 func (sqliteAdoptDB) SQL(sqliteQuery, _ string) string { return sqliteQuery }
-func (sqliteAdoptDB) Stamp(value time.Time) any        { return CanonTime(value).Format(timeFormat) }
+func (sqliteAdoptDB) Stamp(value time.Time) any        { return adapterTimestamp(EngineSQLite, value) }
 
 type pgAdoptDB struct{ db pggen.DBTX }
 
@@ -893,7 +893,7 @@ func (r sqliteAdapters) TeardownTarget(ctx context.Context, p authz.Proof, targe
 		return AdapterTeardownResult{}, err
 	}
 	var target adapterTeardownTarget
-	err = r.db.QueryRowContext(ctx, `SELECT t.adapter_id,t.id,t.environment_id,a.authority_principal_id,t.generation,COALESCE(t.active_job_id,''),CASE WHEN t.provider_lease_job_id IS NOT NULL AND t.provider_lease_expires_at>? THEN 1 ELSE 0 END FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=? AND t.org_id=? AND t.project_id=? AND t.state='active'`, CanonTime(at).Format(timeFormat), targetID, chain.Org, chain.Project).Scan(
+	err = r.db.QueryRowContext(ctx, `SELECT t.adapter_id,t.id,t.environment_id,a.authority_principal_id,t.generation,COALESCE(t.active_job_id,''),CASE WHEN t.provider_lease_job_id IS NOT NULL AND t.provider_lease_expires_at>? THEN 1 ELSE 0 END FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=? AND t.org_id=? AND t.project_id=? AND t.state='active'`, adapterTimestamp(EngineSQLite, at), targetID, chain.Org, chain.Project).Scan(
 		&target.adapterID, &target.targetID, &target.environmentID, &target.authority, &target.generation, &target.activeJob, &target.providerBusy)
 	if errors.Is(err, sql.ErrNoRows) {
 		return AdapterTeardownResult{}, ErrNotFound
@@ -940,7 +940,7 @@ func (r sqliteAdapters) TeardownAdapter(ctx context.Context, p authz.Proof, adap
 	} else if err != nil {
 		return AdapterTeardownBatch{}, err
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT t.adapter_id,t.id,t.environment_id,a.authority_principal_id,t.generation,COALESCE(t.active_job_id,''),CASE WHEN t.provider_lease_job_id IS NOT NULL AND t.provider_lease_expires_at>? THEN 1 ELSE 0 END FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.adapter_id=? AND t.org_id=? AND t.project_id=? AND t.state='active' ORDER BY t.id`, CanonTime(at).Format(timeFormat), adapterID, chain.Org, chain.Project)
+	rows, err := r.db.QueryContext(ctx, `SELECT t.adapter_id,t.id,t.environment_id,a.authority_principal_id,t.generation,COALESCE(t.active_job_id,''),CASE WHEN t.provider_lease_job_id IS NOT NULL AND t.provider_lease_expires_at>? THEN 1 ELSE 0 END FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.adapter_id=? AND t.org_id=? AND t.project_id=? AND t.state='active' ORDER BY t.id`, adapterTimestamp(EngineSQLite, at), adapterID, chain.Org, chain.Project)
 	if err != nil {
 		return AdapterTeardownBatch{}, err
 	}
