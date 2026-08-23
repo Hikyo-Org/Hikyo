@@ -73,6 +73,12 @@ func adapterServiceDB(t *testing.T) *store.DB {
 	return db
 }
 
+type adapterReauthConsumerFunc func(context.Context, *authz.TxAuthorizer, string, string, ReauthIntent, time.Time) error
+
+func (f adapterReauthConsumerFunc) ConsumeAdapterReauthWindow(ctx context.Context, az *authz.TxAuthorizer, sessionID, environmentID string, intent ReauthIntent, now time.Time) error {
+	return f(ctx, az, sessionID, environmentID, intent, now)
+}
+
 // updateTarget and moveTarget preserve the focused assertions of older tests
 // while routing every mutation through the public classifier under test.
 func (s *Adapters) updateTarget(ctx context.Context, actor Actor, scope domain.Scope, request UpdateAdapterTargetRequest) (store.AdapterTarget, error) {
@@ -625,6 +631,56 @@ func TestApplyTargetMutationRequiresCeremonyForUpdateAndMove(t *testing.T) {
 			}
 			if generation != 1 || audits != 0 {
 				t.Fatalf("refused ceremony generation=%d audits=%d", generation, audits)
+			}
+		})
+	}
+}
+
+func TestAdapterCeremonyErrorClassification(t *testing.T) {
+	t.Run("non-reauth seam errors stay raw", func(t *testing.T) {
+		db := adapterServiceDB(t)
+		bearer := adapterCLISession(t, db)
+		consumerCalled := false
+		svc := &Adapters{DB: db, Auth: &Auth{DB: db}, reauthConsumer: adapterReauthConsumerFunc(func(context.Context, *authz.TxAuthorizer, string, string, ReauthIntent, time.Time) error {
+			consumerCalled = true
+			return context.Canceled
+		})}
+		err := storetx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+			caller, err := Bearer(bearer).resolve(ctx, az, time.Now().UTC())
+			if err != nil {
+				return err
+			}
+			return svc.requireAdapterCeremony(ctx, az, caller, domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, []string{"env_one"}, authz.OpAdapterSync, time.Now().UTC())
+		})
+		if !consumerCalled {
+			t.Fatal("requireAdapterCeremony() did not reach reauth consumer")
+		}
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("requireAdapterCeremony() = %v, want context canceled", err)
+		}
+		if errors.Is(err, ErrReauthRequired) {
+			t.Fatalf("requireAdapterCeremony() = %v, do not want reauth required", err)
+		}
+	})
+
+	for _, operation := range []authz.Operation{
+		authz.OpAdapterSync,
+		authz.OpAdapterCredentialSet,
+		authz.OpAdapterAdopt,
+	} {
+		t.Run(string(operation)+" missing window requires reauth", func(t *testing.T) {
+			db := adapterServiceDB(t)
+			bearer := adapterCLISession(t, db)
+			svc := &Adapters{DB: db, Auth: &Auth{DB: db}}
+			err := storetx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+				caller, err := Bearer(bearer).resolve(ctx, az, time.Now().UTC())
+				if err != nil {
+					return err
+				}
+				return svc.requireAdapterCeremony(ctx, az, caller, domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, []string{"env_one"}, operation, time.Now().UTC())
+			})
+			if !errors.Is(err, ErrReauthRequired) {
+				t.Fatalf("requireAdapterCeremony(%s) = %v, want reauth required", operation, err)
 			}
 		})
 	}
