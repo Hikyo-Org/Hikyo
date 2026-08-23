@@ -1,4 +1,4 @@
-import { chromium, type Page } from '@playwright/test';
+import { chromium, type CDPSession, type Page } from '@playwright/test';
 import { z } from 'zod';
 
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
@@ -126,6 +126,23 @@ export const SEEDED = fileURLToPath(new URL('../.auth/seed.json', import.meta.ur
  * account.
  */
 export const PASSKEY = fileURLToPath(new URL('../.auth/passkey.json', import.meta.url));
+
+/** One authenticator contract for setup and every passkey-bearing flow page. */
+const VIRTUAL_AUTHENTICATOR = Object.freeze({
+  protocol: 'ctap2',
+  transport: 'internal',
+  hasResidentKey: true,
+  hasUserVerification: true,
+  isUserVerified: true,
+  automaticPresenceSimulation: true,
+});
+
+async function addVirtualAuthenticator(session: CDPSession): Promise<string> {
+  const { authenticatorId } = await session.send('WebAuthn.addVirtualAuthenticator', {
+    options: VIRTUAL_AUTHENTICATOR,
+  });
+  return authenticatorId;
+}
 
 type Instance = {
   proc: ChildProcess;
@@ -1115,16 +1132,7 @@ async function mintStorageState(keepForeign?: readonly Cookie[]): Promise<void> 
 
     const cdp = await context.newCDPSession(page);
     await cdp.send('WebAuthn.enable');
-    const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
-      options: {
-        protocol: 'ctap2',
-        transport: 'internal',
-        hasResidentKey: true,
-        hasUserVerification: true,
-        isUserVerified: true,
-        automaticPresenceSimulation: true,
-      },
-    });
+    const authenticatorId = await addVirtualAuthenticator(cdp);
     if (!initialMint) {
       await cdp.send('WebAuthn.addCredential', {
         authenticatorId,
@@ -1212,6 +1220,20 @@ export function parseCredential(value: unknown): VirtualCredential {
   return zVirtualCredential.parse(value);
 }
 
+/** Persist the shared credential, refusing a silently empty authenticator. */
+export function persistSharedPasskey(
+  credentials: readonly unknown[],
+  sharedPasskey: VirtualCredential,
+): void {
+  const advanced = credentials
+    .map((credential) => parseCredential(credential))
+    .find((credential) => credential.credentialId === sharedPasskey.credentialId);
+  if (advanced === undefined) {
+    throw new Error('the shared virtual authenticator lost its passkey credential');
+  }
+  writePasskey(advanced);
+}
+
 /** Attach a virtual authenticator and persist the shared credential when it is loaded. */
 export async function installPasskeyAuthenticator(
   page: Page,
@@ -1219,16 +1241,7 @@ export async function installPasskeyAuthenticator(
 ): Promise<() => Promise<void>> {
   const session = await page.context().newCDPSession(page);
   await session.send('WebAuthn.enable');
-  const { authenticatorId } = await session.send('WebAuthn.addVirtualAuthenticator', {
-    options: {
-      protocol: 'ctap2',
-      transport: 'internal',
-      hasResidentKey: true,
-      hasUserVerification: true,
-      isUserVerified: true,
-      automaticPresenceSimulation: true,
-    },
-  });
+  const authenticatorId = await addVirtualAuthenticator(session);
   // Most flows load the already-enrolled credential instead of enrolling
   // again. The account enrolment drill deliberately uses an empty, second
   // authenticator: creating another discoverable credential for the same user
@@ -1242,15 +1255,9 @@ export async function installPasskeyAuthenticator(
       return;
     }
     const { credentials } = await session.send('WebAuthn.getCredentials', { authenticatorId });
-    const advanced = credentials.find(
-      (credential) => credential.credentialId === sharedPasskey.credentialId,
-    );
-    if (advanced === undefined) {
-      throw new Error('the shared virtual authenticator lost its passkey credential');
-    }
     // Persist the authenticator's advanced signature counter: replaying a seen
     // counter looks like a cloned authenticator and disables the credential.
-    writePasskey(parseCredential(advanced));
+    persistSharedPasskey(credentials, sharedPasskey);
   };
 }
 
@@ -1479,17 +1486,49 @@ export async function nextTotpCode(): Promise<string> {
   return totpCode(seed.otpauth, new Date(want * TOTP_PERIOD * 1000));
 }
 
+/** Decide from the file-cookie probe whether re-minting is necessary. */
+export async function refreshSharedSessionFromProbe(
+  probe: () => Promise<number>,
+  remint: () => Promise<void>,
+): Promise<void> {
+  const status = await probe();
+  if (status === 200) {
+    return;
+  }
+  if (status === 401) {
+    await remint();
+    return;
+  }
+  throw new Error(`shared session probe answered ${String(status)}`);
+}
+
+function storageStateCookieHeader(): string {
+  const cookies = zStorageState
+    .parse(JSON.parse(readFileSync(STORAGE_STATE, 'utf8')))
+    .cookies.filter((cookie) => cookie.domain === HOST || cookie.domain === `.${HOST}`);
+  if (!cookies.some((cookie) => cookie.name === '__Host-hikyo')) {
+    throw new Error('the shared storage state has no viewing-instance session cookie');
+  }
+  return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('; ');
+}
+
 /**
- * refreshSharedSession re-mints the storage state and the shared passkey.
+ * Repair the shared session only when its file-backed cookie is stale.
  *
- * A flow that has to change the administrator's GRANTS advances their session
- * generation, which kills every session that principal holds — the suite's
- * shared storage state included. Re-minting is how such a flow leaves the
- * suite as it found it, and it preserves the serving instance's jar by reading
- * it back out of the file it is about to rewrite.
+ * Grant and account-security mutations invalidate every session generation,
+ * while ordinary passkey ceremonies do not. Probing avoids launching a whole
+ * browser for the common live-session case; any non-auth failure stays loud.
  */
 export async function refreshSharedSession(): Promise<void> {
-  await mintStorageState();
+  await refreshSharedSessionFromProbe(
+    async () => {
+      const response = await fetch(`${BASE_URL}/api/v1/me/sessions`, {
+        headers: { Cookie: storageStateCookieHeader() },
+      });
+      return response.status;
+    },
+    mintStorageState,
+  );
 }
 
 export function stopInstance(): void {

@@ -1,4 +1,4 @@
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import {
   zDefinitionsSettings,
   zEnvironment,
@@ -15,11 +15,10 @@ import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures
 import { BrowserApiError, browserApi } from '../fixtures/api.ts';
 import {
   establishSession,
-  installPasskeyAuthenticator,
   readSeed,
-  refreshSharedSession,
   STORAGE_STATE,
 } from '../fixtures/instance.ts';
+import { test, withPasskeyPage } from '../fixtures/passkey.ts';
 import { surfacesForFlow } from '../registry.ts';
 
 /**
@@ -51,38 +50,44 @@ test.describe('organisation settings', () => {
   test.describe.configure({ mode: 'serial' });
   test.use({ storageState: STORAGE_STATE });
 
-  let context: BrowserContext;
   let page: Page;
-  let persistPasskey: () => Promise<void>;
   let drillOrg = '';
   let drillName = '';
 
-  test.beforeAll(async ({ browser }, testInfo) => {
-    context = await browser.newContext({ storageState: STORAGE_STATE });
-    page = await context.newPage();
-    persistPasskey = await installPasskeyAuthenticator(page);
-    await page.goto('/');
+  test.beforeAll(async ({}, testInfo) => {
     drillName = `Settings drill ${testInfo.project.name}`;
-    const created = await browserApi(page, 'POST', '/api/v1/orgs', zOrg, { name: drillName });
-    drillOrg = created.id;
-    await establishSession(page);
   });
 
-  test.afterAll(async () => {
-    if (drillOrg !== '') {
-      // The delete drill below may already have taken it; either way the
-      // instance is left as it was found.
-      try {
-        await browserApi(page, 'DELETE', `/api/v1/orgs/${drillOrg}`, z.null());
-      } catch (error) {
-        if (!isBrowserApiStatus(error, 404)) {
-          throw error;
-        }
-      }
+  test.beforeEach(async ({ passkeyPage }) => {
+    page = passkeyPage;
+    await page.goto('/');
+    if (drillOrg === '') {
+      const created = await browserApi(page, 'POST', '/api/v1/orgs', zOrg, { name: drillName });
+      drillOrg = created.id;
+      await establishSession(page);
     }
-    await persistPasskey();
-    await context.close();
-    await refreshSharedSession();
+  });
+
+  test.afterAll(async ({ browser }) => {
+    if (drillOrg === '') {
+      return;
+    }
+    const context = await browser.newContext({ storageState: STORAGE_STATE });
+    const cleanupPage = await context.newPage();
+    try {
+      await withPasskeyPage(cleanupPage, 'shared', async (page) => {
+        try {
+          await browserApi(page, 'DELETE', `/api/v1/orgs/${drillOrg}`, z.null());
+        } catch (error) {
+          if (!isBrowserApiStatus(error, 404)) {
+            throw error;
+          }
+        }
+        drillOrg = '';
+      });
+    } finally {
+      await context.close();
+    }
   });
 
   test('states the organisation cap and saves a new one', async () => {
@@ -204,7 +209,7 @@ test.describe('organisation settings', () => {
       await browserApi(page, 'DELETE', `/api/v1/orgs/${target.id}`, z.null());
       // Org deletion removes its contained creator grants and therefore kills
       // this principal's sessions. Re-mint before the next serial drill.
-      await context.clearCookies();
+      await page.context().clearCookies();
       await page.goto('/');
       await establishSession(page);
     }
@@ -244,55 +249,64 @@ test.describe('project settings', () => {
   test.describe.configure({ mode: 'serial' });
   test.use({ storageState: STORAGE_STATE });
 
-  let context: BrowserContext;
   let page: Page;
-  let persistPasskey: () => Promise<void>;
   let drillProject = '';
   let drillEnv = '';
   let drillName = '';
 
   const base = () => `/api/v1/orgs/${seed.org}/projects/${drillProject}`;
 
-  test.beforeAll(async ({ browser }, testInfo) => {
-    context = await browser.newContext({ storageState: STORAGE_STATE });
-    page = await context.newPage();
-    persistPasskey = await installPasskeyAuthenticator(page);
-    await page.goto('/');
+  test.beforeAll(async ({}, testInfo) => {
     drillName = `drill-${testInfo.project.name}`;
-    const project = await browserApi(
-      page,
-      'POST',
-      `/api/v1/orgs/${seed.org}/projects`,
-      zProject,
-      { name: drillName },
-    );
-    drillProject = project.id;
-    const environment = await browserApi(
-      page,
-      'POST',
-      `${base()}/environments`,
-      zEnvironment,
-      { name: 'staging' },
-    );
-    drillEnv = environment.id;
   });
 
-  test.afterAll(async () => {
-    if (drillProject !== '') {
-      try {
-        if (drillEnv !== '') {
-          await browserApi(page, 'DELETE', `${base()}/environments/${drillEnv}`, z.null());
-        }
-        await browserApi(page, 'DELETE', base(), z.null());
-      } catch (error) {
-        if (!isBrowserApiStatus(error, 404)) {
-          throw error;
-        }
-      }
+  test.beforeEach(async ({ passkeyPage }) => {
+    page = passkeyPage;
+    await page.goto('/');
+    if (drillProject === '') {
+      const project = await browserApi(
+        page,
+        'POST',
+        `/api/v1/orgs/${seed.org}/projects`,
+        zProject,
+        { name: drillName },
+      );
+      drillProject = project.id;
+      const environment = await browserApi(
+        page,
+        'POST',
+        `${base()}/environments`,
+        zEnvironment,
+        { name: 'staging' },
+      );
+      drillEnv = environment.id;
     }
-    await persistPasskey();
-    await context.close();
-    await refreshSharedSession();
+  });
+
+  test.afterAll(async ({ browser }) => {
+    if (drillProject === '') {
+      return;
+    }
+    const context = await browser.newContext({ storageState: STORAGE_STATE });
+    const cleanupPage = await context.newPage();
+    try {
+      await withPasskeyPage(cleanupPage, 'shared', async (page) => {
+        try {
+          if (drillEnv !== '') {
+            await browserApi(page, 'DELETE', `${base()}/environments/${drillEnv}`, z.null());
+          }
+          await browserApi(page, 'DELETE', base(), z.null());
+        } catch (error) {
+          if (!isBrowserApiStatus(error, 404)) {
+            throw error;
+          }
+        }
+        drillProject = '';
+        drillEnv = '';
+      });
+    } finally {
+      await context.close();
+    }
   });
 
   test('renames the project and leaves the identifier alone', async () => {
@@ -622,7 +636,7 @@ test.describe('project settings', () => {
         z.null(),
       );
       await browserApi(page, 'DELETE', `/api/v1/orgs/${otherOrg.id}`, z.null());
-      await context.clearCookies();
+      await page.context().clearCookies();
       await page.goto('/');
       await establishSession(page);
     }

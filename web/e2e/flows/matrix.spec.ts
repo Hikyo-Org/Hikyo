@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { zEnvironmentList } from '@hikyo/zod';
 
 import {
@@ -7,11 +7,10 @@ import {
 } from '../fixtures/assertions.ts';
 import { browserApi } from '../fixtures/api.ts';
 import {
-  installPasskeyAuthenticator,
   readSeed,
-  refreshSharedSession,
   STORAGE_STATE,
 } from '../fixtures/instance.ts';
+import { test } from '../fixtures/passkey.ts';
 import { surfacesForFlow } from '../registry.ts';
 
 /**
@@ -37,9 +36,7 @@ test.describe('environment matrix', () => {
     await expect(page.getByRole('button', { name: /LOG_LEVEL in development:/ })).toBeVisible();
   });
 
-  test('keeps problems visible and publishes only selected clean environments', async ({ page }, testInfo) => {
-    const persistPasskey = await installPasskeyAuthenticator(page);
-    try {
+  test('keeps problems visible and publishes only selected clean environments', async ({ passkeyPage: page }, testInfo) => {
       await page.getByRole('button', { name: /LOG_LEVEL in development:/ }).click();
       await page.getByRole('dialog').getByLabel('development value').fill(`selective-${testInfo.project.name}`);
       await page.getByRole('dialog').getByRole('button', { name: 'Save 1 draft' }).click();
@@ -109,10 +106,6 @@ test.describe('environment matrix', () => {
       );
       await page.getByRole('button', { name: 'Use a passkey' }).click();
       await expect(page.locator('.notice')).toContainText('Published atomically: production');
-    } finally {
-      await persistPasskey();
-      await refreshSharedSession();
-    }
   });
 
   test('keeps values on their environment IDs after display reorder without adding queries', async ({ page }) => {
@@ -195,14 +188,12 @@ test.describe('environment matrix', () => {
     await expect(group).toHaveAttribute('aria-expanded', 'true');
   });
 
-  test('refreshes a mounted copy destination and routes secret work to Values', async ({ page }, testInfo) => {
-    const persistPasskey = await installPasskeyAuthenticator(page);
-    try {
+  test('refreshes a mounted copy destination and routes secret work to Values', async ({ passkeyPage: page }, testInfo) => {
       // Both cells are already mounted. The destination starts warm with its
       // pre-copy value, so only successful destination invalidation can replace
       // it inside React Query's five-second freshness window.
       await expect(
-        page.getByRole('button', { name: `${seed.config} in production: warn` }),
+        page.getByRole('button', { name: new RegExp(`${seed.config} in production:`) }),
       ).toBeVisible();
       await page
         .getByRole('button', { name: new RegExp(`${seed.config} in development:`) })
@@ -244,15 +235,9 @@ test.describe('environment matrix', () => {
         'href',
         `/orgs/${seed.org}/projects/${seed.project}/environments/${seed.dev}/values`,
       );
-    } finally {
-      await persistPasskey();
-      await refreshSharedSession();
-    }
   });
 
-  test('edits and publishes from the matrix at desktop and 375px mobile', async ({ page }, testInfo) => {
-    const persistPasskey = await installPasskeyAuthenticator(page);
-    try {
+  test('edits and publishes from the matrix at desktop and 375px mobile', async ({ passkeyPage: page }, testInfo) => {
       if (testInfo.project.name === 'mobile') {
         await page.setViewportSize({ width: 375, height: 812 });
       }
@@ -330,10 +315,6 @@ test.describe('environment matrix', () => {
       await expect(page.locator('.notice')).toContainText(/Published atomically: .*Signals updated/);
       await expect(page.getByRole('button', { name: /LOG_LEVEL in development:/ })).not.toHaveAccessibleName(/draft set/);
       await expect(page.getByRole('button', { name: /LOG_LEVEL in development:/ })).toContainText('changed in r');
-    } finally {
-      await persistPasskey();
-      await refreshSharedSession();
-    }
   });
 
   for (const surface of surfacesForFlow('matrix')) {

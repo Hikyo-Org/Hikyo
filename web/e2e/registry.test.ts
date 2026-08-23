@@ -98,6 +98,17 @@ describe('surfacesForFlow', () => {
   });
 });
 
+describe('passkey flow ownership', () => {
+  it('leaves authenticator persistence and shared-session repair to the passkey fixture', () => {
+    const offenders = FLOWS.map((flow) => flow.spec).filter((spec) => {
+      const source = readFileSync(fileURLToPath(new URL(spec, import.meta.url)), 'utf8');
+      return /installPasskeyAuthenticator|persistPasskey|refreshSharedSession/.test(source);
+    });
+
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe('the execution half of closure', () => {
   const log = (...lines: string[]) => lines.map((l) => `${l}\n`).join('');
 

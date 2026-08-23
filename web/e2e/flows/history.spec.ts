@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import {
   zExportValuesRequest,
   zPendingDraftList,
@@ -24,11 +24,10 @@ import {
 import {
   countDisclosureEvents,
   establishSession,
-  installPasskeyAuthenticator,
   readSeed,
-  refreshSharedSession,
   STORAGE_STATE,
 } from '../fixtures/instance.ts';
+import { test } from '../fixtures/passkey.ts';
 import { surfacesForFlow } from '../registry.ts';
 import { zHistoryRollbackResult } from '../../src/api/history.ts';
 
@@ -413,10 +412,8 @@ test.describe('revision history', () => {
   });
 
   test('restores an environment to an earlier revision and publishes the staged drafts', async ({
-    page,
+    passkeyPage: page,
   }) => {
-    const persistPasskey = await installPasskeyAuthenticator(page);
-    try {
       await page.goto(DEV_HISTORY);
       const drawer = page.getByRole('complementary', { name: 'Revision history' });
       await expectNoFixtureSecret(drawer);
@@ -474,14 +471,6 @@ test.describe('revision history', () => {
       expect(publishBody.preview_token).toBe(rollback.preview.token);
       expect([...publishBody.version_ids].sort()).toEqual([...restoredVersions].sort());
       await expect(drawer.locator('.notice')).toContainText('Published the restore');
-    } finally {
-      // A disclosure ceremony REISSUES the browser session, so the suite's
-      // shared storage state now holds a dead cookie — the next test would land
-      // on the sign-in page for a reason several tests in its past. Persist the
-      // counter, then re-mint, exactly as the matrix flow does.
-      await persistPasskey();
-      await refreshSharedSession();
-    }
   });
 
   test('restores one key from the changed-key row', async ({ page }) => {
@@ -604,9 +593,7 @@ test.describe('revision history', () => {
     await expect(drawer.locator('.notice')).toContainText('Published the restore');
   });
 
-  test('renders secret restore impact status-only and never exposes its value', async ({ page }) => {
-    const persistPasskey = await installPasskeyAuthenticator(page);
-    try {
+  test('renders secret restore impact status-only and never exposes its value', async ({ passkeyPage: page }) => {
       await page.goto(DEV_HISTORY);
       const drawer = page.getByRole('complementary', { name: 'Revision history' });
       await expectNoFixtureSecret(drawer);
@@ -653,10 +640,6 @@ test.describe('revision history', () => {
       await api(page, 'POST', `${DEV}/publish`, zPublishResult, {
         version_ids: [reset.version_id],
       });
-    } finally {
-      await persistPasskey();
-      await refreshSharedSession();
-    }
   });
 
   test('refuses a schema-failing restore loud, naming the key', async ({ page }) => {
@@ -764,13 +747,9 @@ test.describe('revision history', () => {
   });
 
   test('requires a fresh-session ceremony for a historical move and audits comparison', async ({
-    browser,
+    passkeyPage: page,
   }) => {
-    const context = await browser.newContext();
-    const page = await context.newPage();
-    const persistPasskey = await installPasskeyAuthenticator(page);
-    try {
-      await context.clearCookies();
+      await page.context().clearCookies();
       await page.goto(DEV_HISTORY);
       await establishSession(page);
       await page.goto(DEV_HISTORY);
@@ -864,10 +843,6 @@ test.describe('revision history', () => {
         revision: latest,
         expires_at: new Date(Date.now() + (seed.history.pinExpiryDays * 24 + 12) * 60 * 60 * 1000).toISOString(),
       });
-    } finally {
-      await persistPasskey();
-      await context.close();
-    }
   });
 
   test('keeps the mobile matrix inert and restores drawer focus', async ({ page }, testInfo) => {
@@ -887,9 +862,7 @@ test.describe('revision history', () => {
     await expectNoFixtureSecret(drawer);
   });
 
-  test('runs renew, schema override, and retention-gated one-click release', async ({ page }) => {
-    const persistPasskey = await installPasskeyAuthenticator(page);
-    try {
+  test('runs renew, schema override, and retention-gated one-click release', async ({ passkeyPage: page }) => {
       await page.goto(DEV_HISTORY);
       const revisions = await api(page, 'GET', `${DEV}/revisions`, zRevisions);
       const latest = revisions.items[0]?.revision;
@@ -959,10 +932,6 @@ test.describe('revision history', () => {
       // Clean up the override pin when the product classifier exposes it.
       await drifted.getByRole('button', { name: 'Release' }).click();
       await expect(drawer.locator('.notice')).toContainText('resumes latest');
-    } finally {
-      await persistPasskey();
-      await refreshSharedSession();
-    }
   });
 
 });

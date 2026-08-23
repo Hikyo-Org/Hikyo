@@ -56,61 +56,70 @@ test.describe('secret scanning warn dialog', () => {
 
     // The matrix has no create-key control; a surface's fixture work goes
     // through the page's own session (browserApi), exactly as other flows do.
-    await browserApi(
+    const created = await browserApi(
       page,
       'POST',
       `/api/v1/orgs/${seed.org}/projects/${seed.project}/keys`,
       zCreatedKey,
       { name: keyName, classification: 'config', declaration: { rule: { type: 'string' } } },
     );
-    await page.reload();
-    const cell = page.getByRole('button', { name: new RegExp(`${keyName} in development:`) });
-    await expect(cell).toBeVisible();
+    try {
+      await page.reload();
+      const cell = page.getByRole('button', { name: new RegExp(`${keyName} in development:`) });
+      await expect(cell).toBeVisible();
 
-    const warn = page.locator('dialog.scan-warn');
+      const warn = page.locator('dialog.scan-warn');
 
     // --- SS2: plant the credential; the save succeeds and the warn fires -----
-    await plantValue(page, cell, CANARY);
+      await plantValue(page, cell, CANARY);
 
-    await expect(
-      warn.getByRole('heading', { name: 'Possible secret in a config value' }),
-    ).toBeVisible();
+      await expect(
+        warn.getByRole('heading', { name: 'Possible secret in a config value' }),
+      ).toBeVisible();
     // The finding names its rule and offers both first-class resolutions.
-    await expect(warn.getByText('aws-access-token')).toBeVisible();
-    await expect(
-      warn.getByRole('button', { name: `Reclassify ${keyName} as secret` }),
-    ).toBeVisible();
-    await expect(warn.getByRole('button', { name: 'Keep as config' })).toBeVisible();
+      await expect(warn.getByText('aws-access-token')).toBeVisible();
+      await expect(
+        warn.getByRole('button', { name: `Reclassify ${keyName} as secret` }),
+      ).toBeVisible();
+      await expect(warn.getByRole('button', { name: 'Keep as config' })).toBeVisible();
     // No blanket ignore-all input exists on the dialog (ADR §4).
-    await expect(warn.getByRole('button', { name: /ignore all/i })).toHaveCount(0);
+      await expect(warn.getByRole('button', { name: /ignore all/i })).toHaveCount(0);
 
     // --- SS4 [UI]: the canary is nowhere in the dialog, nowhere in the console
-    await expect(warn).not.toContainText(CANARY);
-    expect(consoleLines.filter((line) => line.includes(CANARY))).toEqual([]);
+      await expect(warn).not.toContainText(CANARY);
+      expect(consoleLines.filter((line) => line.includes(CANARY))).toEqual([]);
 
     // --- SS2: keep-as-config is the sticky dismissal. It re-submits the
     // identical value with the finding's token; the server re-scans that exact
     // value under the fresh dismissal and returns no finding, so the dialog
     // closes. The dialog closing IS "the identical value no longer warns",
     // proven through the real dismissal path rather than a second editor round.
-    await warn.getByRole('button', { name: 'Keep as config' }).click();
-    await expect(warn).toHaveCount(0);
+      await warn.getByRole('button', { name: 'Keep as config' }).click();
+      await expect(warn).toHaveCount(0);
     // Let the dismissal's re-save cascade (values/signals/pending) settle before
     // reopening the editor: the dev cell now carries a staged draft.
-    await expect(cell).toHaveAccessibleName(/draft set/);
+      await expect(cell).toHaveAccessibleName(/draft set/);
 
     // --- SS2: a distinct offending value re-fires -----------------------------
-    await plantValue(page, cell, DISTINCT);
-    await expect(
-      warn.getByRole('heading', { name: 'Possible secret in a config value' }),
-    ).toBeVisible();
+      await plantValue(page, cell, DISTINCT);
+      await expect(
+        warn.getByRole('heading', { name: 'Possible secret in a config value' }),
+      ).toBeVisible();
 
     // --- SS2: reclassify-as-secret completes ----------------------------------
-    await warn.getByRole('button', { name: `Reclassify ${keyName} as secret` }).click();
-    await expect(warn).toHaveCount(0);
+      await warn.getByRole('button', { name: `Reclassify ${keyName} as secret` }).click();
+      await expect(warn).toHaveCount(0);
     // The key is now secret: the matrix re-fetches and the key row shows the
     // lock. That is reclassification completing, observed end to end.
-    await expect(page.locator('.matrix__key').filter({ hasText: keyName })).toContainText('🔒');
+      await expect(page.locator('.matrix__key').filter({ hasText: keyName })).toContainText('🔒');
+    } finally {
+      await browserApi(
+        page,
+        'DELETE',
+        `/api/v1/orgs/${seed.org}/projects/${seed.project}/keys/${created.id}`,
+        z.null(),
+      );
+    }
   });
 
   for (const surface of surfacesForFlow('scanning')) {
