@@ -201,9 +201,10 @@ type bootGuard struct {
 }
 
 // bootResources is the narrow seam for resources whose acquisition can leave
-// Boot with something to release. Service construction and wiring stay local
-// to boot; tests replace only these constructors and cleanup functions so they
-// can inject failures at the ownership boundaries and count releases.
+// boot or a local-admin command with something to release. Service construction
+// and wiring stay local to their caller; tests replace only these constructors
+// and cleanup functions so they can inject failures at ownership boundaries and
+// count releases.
 type bootResources struct {
 	openDatabase       func(context.Context, store.Config) (*store.DB, error)
 	closeDatabase      func(*store.DB) error
@@ -253,21 +254,71 @@ func (g *bootGuard) disarm() {
 	g.closers = nil
 }
 
+// openKeyed owns the startup prefix shared by server and local-admin commands:
+// harden before key material exists, migrate with the pre-migration safety
+// record, verify the exact schema, resolve the root, open the datastore, load
+// the keyring, and warn about unfinished root rotation. Callers supply the
+// resource guard so every error after datastore acquisition closes it exactly
+// once.
+func openKeyed(ctx context.Context, cfg *config.Config, log *slog.Logger, sc store.Config, resources bootResources, guard *bootGuard) (*store.DB, *crypto.Keyring, error) {
+	if err := crypto.HardenProcess(); err != nil {
+		return nil, nil, err
+	}
+
+	var migrationRecord preMigrationRecord
+	if cfg.AutoMigrate {
+		var err error
+		if migrationRecord, err = beforeMigration(ctx, cfg, log, sc); err != nil {
+			return nil, nil, err
+		}
+		if err := migrate.Run(ctx, sc); err != nil {
+			return nil, nil, err
+		}
+	}
+	// Always verify exact schema match — with auto-migrate off this catches
+	// pending migrations; in both modes it catches a database migrated by a
+	// newer binary (Run applies nothing there and the schema stays ahead).
+	if err := migrate.Check(ctx, sc); err != nil {
+		return nil, nil, err
+	}
+	recordPreMigration(ctx, cfg, log, migrationRecord)
+
+	root, err := resolveRootKey(cfg, log)
+	if err != nil {
+		return nil, nil, err
+	}
+	db, err := resources.openDatabase(ctx, sc)
+	if err != nil {
+		crypto.Zero(root)
+		return nil, nil, err
+	}
+	guard.add(func() error { return resources.closeDatabase(db) })
+
+	// LoadKeyring consumes root: it is zeroed before this returns.
+	kr, err := crypto.LoadKeyring(ctx, &keyring.Store{DB: db}, root)
+	if err != nil {
+		return nil, nil, err
+	}
+	if kr.RootRotationPending() {
+		// A root rotation is half-done — the master is dual-wrapped under two
+		// roots. Bootable under either, but warned on every server or admin start
+		// until `rotate-root-key --finalize` completes it.
+		log.Warn("root key rotation is UNFINISHED: the master is dual-wrapped under the old and new roots; run `hikyo rotate-root-key --verify` then `--finalize` to complete it")
+	}
+	return db, kr, nil
+}
+
 // Boot runs the fail-closed startup sequence: process hardening before any
 // key material exists, migrations (auto-apply by default; with auto-apply
 // disabled a pending migration state refuses to serve), datastore open with
 // the boot-enforced pragma policy, keyring load (root key read, master key
-// unwrapped or minted, root key zeroed — `hikyo server` is the only mode that
-// does this), then the listener. Any error means the process must exit
-// without serving.
+// unwrapped or minted, root key zeroed), then the listener. Any error means the
+// process must exit without serving.
 func Boot(ctx context.Context, cfg *config.Config, log *slog.Logger) (*Server, error) {
 	return boot(ctx, cfg, log, defaultBootResources())
 }
 
 func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources bootResources) (*Server, error) {
-	if err := crypto.HardenProcess(); err != nil {
-		return nil, fmt.Errorf("boot: refusing to serve: %w", err)
-	}
 	sc := storeConfig(cfg)
 
 	// Every resource acquired below has one temporary owner — this guard —
@@ -276,47 +327,9 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	guard := &bootGuard{log: log}
 	defer guard.cleanup()
 
-	var migrationRecord preMigrationRecord
-	if cfg.AutoMigrate {
-		var err error
-		if migrationRecord, err = beforeMigration(ctx, cfg, log, sc); err != nil {
-			return nil, fmt.Errorf("boot: refusing to serve: %w", err)
-		}
-		if err := migrate.Run(ctx, sc); err != nil {
-			return nil, fmt.Errorf("boot: refusing to serve: %w", err)
-		}
-	}
-	// Always verify exact schema match — with auto-migrate off this catches
-	// pending migrations; in both modes it catches a database migrated by a
-	// newer binary (Run applies nothing there and the schema stays ahead).
-	if err := migrate.Check(ctx, sc); err != nil {
-		return nil, fmt.Errorf("boot: refusing to serve: %w", err)
-	}
-	recordPreMigration(ctx, cfg, log, migrationRecord)
-
-	root, err := resolveRootKey(cfg, log)
+	db, kr, err := openKeyed(ctx, cfg, log, sc, resources, guard)
 	if err != nil {
 		return nil, fmt.Errorf("boot: refusing to serve: %w", err)
-	}
-
-	db, err := resources.openDatabase(ctx, sc)
-	if err != nil {
-		crypto.Zero(root)
-		return nil, fmt.Errorf("boot: refusing to serve: %w", err)
-	}
-	// Registered immediately after Open so every later error path releases it.
-	guard.add(func() error { return resources.closeDatabase(db) })
-
-	// LoadKeyring consumes root: it is zeroed before this returns.
-	kr, err := crypto.LoadKeyring(ctx, &keyring.Store{DB: db}, root)
-	if err != nil {
-		return nil, fmt.Errorf("boot: refusing to serve: %w", err)
-	}
-	if kr.RootRotationPending() {
-		// A root rotation is half-done — the master is dual-wrapped under two
-		// roots. Bootable under either, but warned on every start until
-		// `rotate-root-key --finalize` (encryption-model ADR § Rotation).
-		log.Warn("root key rotation is UNFINISHED: the master is dual-wrapped under the old and new roots; run `hikyo rotate-root-key --verify` then `--finalize` to complete it")
 	}
 
 	// The secret-scanning ruleset compiles once at boot; a Load error refuses to
