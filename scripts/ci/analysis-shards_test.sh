@@ -14,7 +14,7 @@ mkdir -p \
 	"$fixture_dir/internal/service" \
 	"$fixture_dir/internal/store"
 
-printf '%s\n' 'module example.com/shards' 'go 1.26.6' >"$fixture_dir/go.mod"
+printf '%s\n' 'module example.com/shards' 'go 1.27.0' >"$fixture_dir/go.mod"
 
 for package in extra internal/crypto internal/isolation internal/service internal/store; do
 	package_name=${package##*/}

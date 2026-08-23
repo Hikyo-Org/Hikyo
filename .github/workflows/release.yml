@@ -31,8 +31,8 @@ jobs:
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         with:
           node-version-file: .nvmrc
-      - name: Enable pnpm
-        run: corepack enable
+      - name: Install Corepack and enable pnpm
+        run: ./scripts/ci/install-corepack.sh
       # working-directory matters: corepack resolves the packageManager pin
       # from the CWD's package.json — from the repo root (which has none) it
       # falls back to its default pnpm and the pinned project refuses it.
