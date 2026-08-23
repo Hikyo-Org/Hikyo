@@ -159,7 +159,7 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 			return result, err
 		}
 		if gateErr := journal.Gate(ctx, effect); gateErr != nil {
-			completion := adapter.Completion{Outcome: "failure", State: state}
+			completion := adapter.Completion{Outcome: adapter.OutcomeFailure, State: state}
 			if record.Missing {
 				completion.Missing = true
 				completion.Finding = "owned_missing"
@@ -173,9 +173,10 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 		absenceProven := row.Surface == adapter.Variable && !record.Missing && (state == adapter.Owned || state == adapter.Dispatched) && IsNotFound(err)
 		if err != nil {
 			if row.Surface == adapter.Variable && (state == adapter.Reserved || !claimed || record.Missing) && IsConflict(err) {
-				completion := adapter.Completion{Outcome: "failure", Conflict: true}
+				completion := adapter.Completion{Outcome: adapter.OutcomeFailure, ReleaseLedger: true, Conflict: true}
 				if record.Missing {
 					completion.State = state
+					completion.ReleaseLedger = false
 					completion.Missing = true
 					completion.Finding = "owned_missing"
 				}
@@ -186,13 +187,13 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 				result.Conflicts = append(result.Conflicts, conflict)
 				return result, fmt.Errorf("%w: variable %s", adapter.ErrConflict, row.EffectiveName)
 			}
-			outcome := "unknown"
+			outcome := adapter.OutcomeUnknown
 			var response *ResponseError
 			if errors.As(err, &response) && response.Status >= 400 && response.Status < 500 {
-				outcome = "failure"
+				outcome = adapter.OutcomeFailure
 			}
 			finalState := adapter.Dispatched
-			if outcome == "failure" {
+			if outcome == adapter.OutcomeFailure {
 				if state == adapter.Reserved || absenceProven {
 					finalState = ""
 				} else {
@@ -200,6 +201,9 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 				}
 			}
 			completion := adapter.Completion{Outcome: outcome, State: finalState}
+			if finalState == "" {
+				completion.ReleaseLedger = true
+			}
 			if record.Missing {
 				completion.Missing = true
 				completion.Finding = "owned_missing"
@@ -208,12 +212,12 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 				return result, completeErr
 			}
 			result.Failed = append(result.Failed, adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: effect.Disposition})
-			if outcome == "unknown" {
+			if outcome == adapter.OutcomeUnknown {
 				return result, fmt.Errorf("%w: %s %s", adapter.ErrIndeterminate, row.Surface, row.EffectiveName)
 			}
 			return result, err
 		}
-		if err := journal.Finish(ctx, effect, adapter.Completion{Outcome: "success", State: adapter.Owned}); err != nil {
+		if err := journal.Finish(ctx, effect, adapter.Completion{Outcome: adapter.OutcomeSuccess, State: adapter.Owned}); err != nil {
 			return result, err
 		}
 		ledger[key] = adapter.LedgerEntry{Surface: row.Surface, EffectiveName: row.EffectiveName, State: adapter.Owned}
@@ -246,17 +250,17 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 			return result, err
 		}
 		if gateErr := journal.Gate(ctx, effect); gateErr != nil {
-			if finishErr := journal.Finish(ctx, effect, adapter.Completion{Outcome: "failure", State: row.State}); finishErr != nil {
+			if finishErr := journal.Finish(ctx, effect, adapter.Completion{Outcome: adapter.OutcomeFailure, State: row.State}); finishErr != nil {
 				return result, finishErr
 			}
 			return result, gateErr
 		}
 		err := m.delete(ctx, req.Target.Destination, row.Surface, row.EffectiveName)
 		if err != nil && !IsNotFound(err) {
-			outcome := "unknown"
+			outcome := adapter.OutcomeUnknown
 			var response *ResponseError
 			if errors.As(err, &response) && response.Status >= 400 && response.Status < 500 {
-				outcome = "failure"
+				outcome = adapter.OutcomeFailure
 			}
 			if finishErr := journal.Finish(ctx, effect, adapter.Completion{Outcome: outcome, State: row.State}); finishErr != nil {
 				return result, finishErr
@@ -264,7 +268,7 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 			result.Failed = append(result.Failed, adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Delete})
 			return result, err
 		}
-		if err := journal.Finish(ctx, effect, adapter.Completion{Outcome: "success", State: adapter.Released}); err != nil {
+		if err := journal.Finish(ctx, effect, adapter.Completion{Outcome: adapter.OutcomeSuccess, State: adapter.Released}); err != nil {
 			return result, err
 		}
 		result.Changes = append(result.Changes, adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Delete})

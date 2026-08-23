@@ -27,6 +27,18 @@ func IndexLedger(rows []LedgerEntry) (map[LedgerKey]LedgerEntry, error) {
 }
 
 func ValidateCompletion(completion Completion) error {
+	switch completion.Outcome {
+	case OutcomeSuccess, OutcomeFailure, OutcomeUnknown:
+	default:
+		return fmt.Errorf("adapter: invalid completion outcome %q", completion.Outcome)
+	}
+	if completion.ReleaseLedger {
+		if completion.State != "" {
+			return fmt.Errorf("adapter: completion cannot set state %q and release ledger", completion.State)
+		}
+	} else if completion.State == "" {
+		return fmt.Errorf("adapter: completion requires ledger state or explicit release")
+	}
 	return validateMissingState(completion.State, completion.Missing)
 }
 

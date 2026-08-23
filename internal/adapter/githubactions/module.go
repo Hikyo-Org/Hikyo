@@ -266,7 +266,7 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 			write, err = m.writeSecret(ctx, journal, effect, req.Target.Destination, row, publicKey)
 			if err != nil && definiteNonRate4xx(err) {
 				firstState := stateAfterFailure(state, err)
-				if finishErr := journal.Finish(ctx, effect, adapter.Completion{Outcome: "failure", State: firstState}); finishErr != nil {
+				if finishErr := journal.Finish(ctx, effect, adapter.Completion{Outcome: adapter.OutcomeFailure, State: firstState}); finishErr != nil {
 					return result, finishErr
 				}
 				if gateErr := journal.Gate(ctx, inspect); gateErr != nil {
@@ -287,7 +287,7 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 			providerStatus = write.Status
 			primaryLanded = err == nil
 			if err == nil && freshReservation && write.Status == http.StatusNoContent {
-				if finishErr := journal.Finish(ctx, effect, adapter.Completion{Outcome: "success", Conflict: true, ProviderStatus: write.Status, Finding: "possible_capture"}); finishErr != nil {
+				if finishErr := journal.Finish(ctx, effect, adapter.Completion{Outcome: adapter.OutcomeSuccess, ReleaseLedger: true, Conflict: true, ProviderStatus: write.Status, Finding: "possible_capture"}); finishErr != nil {
 					return result, finishErr
 				}
 				return addConflict(result, row), fmt.Errorf("%w: possible_capture secret %s", adapter.ErrConflict, row.EffectiveName)
@@ -297,7 +297,7 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 			write, err = m.writeVariable(ctx, journal, effect, req.Target.Destination, row, state, ownedMissing)
 			providerStatus = write.Status
 			if IsStatus(err, http.StatusNotFound) && (state == adapter.Owned || state == adapter.Dispatched) && !ownedMissing {
-				if finishErr := journal.Finish(ctx, effect, adapter.Completion{Outcome: "failure", State: adapter.Owned, Missing: true, ProviderStatus: http.StatusNotFound, Finding: "owned_missing"}); finishErr != nil {
+				if finishErr := journal.Finish(ctx, effect, adapter.Completion{Outcome: adapter.OutcomeFailure, State: adapter.Owned, Missing: true, ProviderStatus: http.StatusNotFound, Finding: "owned_missing"}); finishErr != nil {
 					return result, finishErr
 				}
 				ledger[key] = adapter.LedgerEntry{Surface: row.Surface, EffectiveName: row.EffectiveName, State: adapter.Owned, Missing: true}
@@ -310,9 +310,10 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 				providerStatus = write.Status
 			}
 			if IsStatus(err, http.StatusConflict) {
-				completion := adapter.Completion{Outcome: "failure", Conflict: true, ProviderStatus: http.StatusConflict}
+				completion := adapter.Completion{Outcome: adapter.OutcomeFailure, ReleaseLedger: true, Conflict: true, ProviderStatus: http.StatusConflict}
 				if ownedMissing {
 					completion.State = adapter.Owned
+					completion.ReleaseLedger = false
 					completion.Missing = true
 					completion.Finding = "owned_missing"
 				}
@@ -333,24 +334,28 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 		if err != nil {
 			outcome, finalState := failureCompletion(state, err)
 			completion := adapter.Completion{Outcome: outcome, State: finalState, ProviderStatus: providerStatus}
+			if finalState == "" {
+				completion.ReleaseLedger = true
+			}
 			if ownedMissing {
 				completion.Missing = true
 				completion.Finding = "owned_missing"
 			}
 			if primaryLanded {
-				completion.Outcome = "unknown"
+				completion.Outcome = adapter.OutcomeUnknown
 				completion.State = adapter.Dispatched
+				completion.ReleaseLedger = false
 			}
 			if finishErr := journal.Finish(ctx, effect, completion); finishErr != nil {
 				return result, finishErr
 			}
 			result.Failed = append(result.Failed, adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: effect.Disposition})
-			if outcome == "unknown" {
+			if outcome == adapter.OutcomeUnknown {
 				return result, fmt.Errorf("%w: %s %s", adapter.ErrIndeterminate, row.Surface, row.EffectiveName)
 			}
 			return result, err
 		}
-		if err := journal.Finish(ctx, effect, adapter.Completion{Outcome: "success", State: adapter.Owned, ProviderStatus: providerStatus}); err != nil {
+		if err := journal.Finish(ctx, effect, adapter.Completion{Outcome: adapter.OutcomeSuccess, State: adapter.Owned, ProviderStatus: providerStatus}); err != nil {
 			return result, err
 		}
 		ledger[key] = adapter.LedgerEntry{Surface: row.Surface, EffectiveName: row.EffectiveName, State: adapter.Owned}
@@ -373,7 +378,7 @@ func (m *Module) prepare(ctx context.Context, journal adapter.Journal, effect ad
 		return err
 	}
 	if err := journal.Gate(ctx, effect); err != nil {
-		if finishErr := journal.Finish(ctx, effect, adapter.Completion{Outcome: "failure", State: state}); finishErr != nil {
+		if finishErr := journal.Finish(ctx, effect, adapter.Completion{Outcome: adapter.OutcomeFailure, State: state}); finishErr != nil {
 			return finishErr
 		}
 		return err
@@ -437,12 +442,16 @@ func (m *Module) prune(ctx context.Context, req adapter.SyncRequest, journal ada
 		}
 		if err != nil && !IsStatus(err, http.StatusNotFound) {
 			outcome, state := failureCompletion(row.State, err)
-			if finishErr := journal.Finish(ctx, effect, adapter.Completion{Outcome: outcome, State: state}); finishErr != nil {
+			completion := adapter.Completion{Outcome: outcome, State: state}
+			if state == "" {
+				completion.ReleaseLedger = true
+			}
+			if finishErr := journal.Finish(ctx, effect, completion); finishErr != nil {
 				return result, finishErr
 			}
 			return result, err
 		}
-		if err := journal.Finish(ctx, effect, adapter.Completion{Outcome: "success", State: adapter.Released}); err != nil {
+		if err := journal.Finish(ctx, effect, adapter.Completion{Outcome: adapter.OutcomeSuccess, State: adapter.Released}); err != nil {
 			return result, err
 		}
 		result.Changes = append(result.Changes, adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Delete})
@@ -484,14 +493,14 @@ func stateAfterFailure(prior adapter.LedgerState, err error) adapter.LedgerState
 	return adapter.Dispatched
 }
 
-func failureCompletion(prior adapter.LedgerState, err error) (string, adapter.LedgerState) {
+func failureCompletion(prior adapter.LedgerState, err error) (adapter.Outcome, adapter.LedgerState) {
 	if definiteNonRate4xx(err) || errors.Is(err, adapter.ErrRateLimited) {
 		if prior == adapter.Reserved {
-			return "failure", ""
+			return adapter.OutcomeFailure, ""
 		}
-		return "failure", prior
+		return adapter.OutcomeFailure, prior
 	}
-	return "unknown", adapter.Dispatched
+	return adapter.OutcomeUnknown, adapter.Dispatched
 }
 
 func capacityWarnings(destination adapter.Destination, desiredRows []adapter.DesiredRow, ledger []adapter.LedgerEntry, providerSecrets map[string]bool) []string {

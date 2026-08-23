@@ -173,9 +173,18 @@ type Effect struct {
 	KeyID         string
 }
 
+type Outcome string
+
+const (
+	OutcomeSuccess Outcome = "success"
+	OutcomeFailure Outcome = "failure"
+	OutcomeUnknown Outcome = "unknown"
+)
+
 type Completion struct {
-	Outcome        string
-	State          LedgerState // empty releases the claim
+	Outcome        Outcome
+	State          LedgerState
+	ReleaseLedger  bool
 	Conflict       bool
 	Missing        bool
 	ProviderStatus int
@@ -191,7 +200,7 @@ type Journal interface {
 	Reserve(ctx context.Context, effect Effect) (LedgerState, error)
 	Prepare(ctx context.Context, effect Effect, prior LedgerState) error
 	// Finish atomically writes the terminal OUTCOME, applies the final ledger
-	// state (empty means release), records any conflict artifact, and releases
+	// state or explicitly releases the ledger row, records any conflict artifact, and releases
 	// the provider-write lease held since Prepare.
 	Finish(ctx context.Context, effect Effect, completion Completion) error
 	// Refuse atomically records a pre-dispatch conflict artifact and releases a
