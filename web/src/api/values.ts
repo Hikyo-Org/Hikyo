@@ -3,6 +3,7 @@ import {
   getRevealWindowOp,
   listEnvironmentsOp,
   listValuesOp,
+  oidcStartOp,
   reauthPasskeyFinishOp,
   reauthPasskeyStartOp,
   reauthTotpOp,
@@ -21,6 +22,7 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tan
 import type { z } from 'zod';
 
 import { ApiError, parsed } from './client.ts';
+import { oidcChannelName, rememberOIDCReturn } from './oidcChannel.ts';
 import {
   invalidateAfterCopy,
   valuesKey,
@@ -325,6 +327,71 @@ export async function runTOTPCeremony(environmentId: string, code: string): Prom
   await parsed(reauthTotpOp, { body: { environment_id: environmentId, code } });
 }
 
+const OIDC_TRANSACTION_LIFETIME_MS = 10 * 60 * 1_000;
+
+class OIDCCeremonyError extends Error {
+  override readonly name = 'OIDCCeremonyError';
+}
+
+/** Re-run the current OIDC provider in a popup and await its same-origin return. */
+export async function runOIDCCeremony(providerSlug: string, environmentId: string): Promise<void> {
+  // Open synchronously while the click still carries user activation. A
+  // window opened with the `noopener` feature must return null even when it
+  // succeeds, which makes it indistinguishable from a blocked popup. Opening
+  // same-origin blank first lets us detect blocking, then sever the opener
+  // before any provider-controlled document is loaded.
+  const popup = globalThis.open('', '_blank', 'popup=yes,width=520,height=680');
+  if (popup !== null) popup.opener = null;
+  let started;
+  try {
+    started = await parsed(oidcStartOp, {
+      path: { provider: providerSlug },
+      body: { purpose: 'reauth', environment_id: environmentId, browser: true },
+    });
+  } catch (error) {
+    popup?.close();
+    if (error instanceof ApiError && error.status === 401) {
+      throw new OIDCCeremonyError(
+        'The identity provider refused this reauthentication. Its assurance policy may not permit disclosure reauthentication.',
+      );
+    }
+    throw error;
+  }
+  const state = new URL(started.authorization_url).searchParams.get('state') ?? '';
+  if (state === '') {
+    popup?.close();
+    throw new Error('the identity provider authorization URL carried no transaction state');
+  }
+
+  const channel = new BroadcastChannel(oidcChannelName(state));
+  rememberOIDCReturn(state, globalThis.location.href);
+  if (popup === null) {
+    channel.close();
+    globalThis.location.assign(started.authorization_url);
+    return new Promise<never>(() => undefined);
+  }
+  popup.location.replace(started.authorization_url);
+
+  await new Promise<void>((resolve, reject) => {
+    const timeout = globalThis.setTimeout(() => {
+      channel.close();
+      reject(new Error('identity provider reauthentication timed out'));
+    }, OIDC_TRANSACTION_LIFETIME_MS);
+    channel.onmessage = (event: MessageEvent<unknown>) => {
+      if (typeof event.data !== 'object' || event.data === null) return;
+      const message: Record<string, unknown> = { ...event.data };
+      if (message['state'] !== state || typeof message['ok'] !== 'boolean') return;
+      globalThis.clearTimeout(timeout);
+      channel.close();
+      if (message['ok']) {
+        resolve();
+      } else {
+        reject(new Error(typeof message['error'] === 'string' ? message['error'] : 'OIDC refused'));
+      }
+    };
+  });
+}
+
 /**
  * ceremonyRefusalText names what actually happened.
  *
@@ -334,6 +401,7 @@ export async function runTOTPCeremony(environmentId: string, code: string): Prom
  * that was fine.
  */
 export function ceremonyRefusalText(error: unknown): string {
+  if (error instanceof OIDCCeremonyError) return error.message;
   if (error instanceof ApiError) {
     switch (error.status) {
       case 409:

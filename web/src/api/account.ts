@@ -183,7 +183,9 @@ export function useLinkIdentity() {
           });
         return result.redirect_url;
       }
-      const result = await parsed(linkIdentityOp, { body: { provider: input.provider, proof: input.proof } });
+      const result = await parsed(linkIdentityOp, {
+        body: { provider: input.provider, proof: input.proof, browser: true },
+      });
       return result.authorization_url;
     },
   });

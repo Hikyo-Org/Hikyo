@@ -43,7 +43,7 @@ type AuthService interface {
 	GenerateRecoveryCodes(ctx context.Context, presented, proof string) ([]string, service.LoginResult, error)
 	ConsumeRecoveryCode(ctx context.Context, username, code string) (service.RecoveryResult, error)
 	AuthMethods(ctx context.Context) ([]service.AuthMethodProvider, bool, error)
-	OIDCStart(ctx context.Context, slug, purpose, environmentID, presented, proof string) (service.OIDCStartResult, error)
+	OIDCStart(ctx context.Context, slug, purpose, environmentID, presented, proof string, browser bool) (service.OIDCStartResult, error)
 	OIDCCallback(ctx context.Context, slug, code, state, iss, idpError, bindingCookie, presented string) (service.OIDCCallbackResult, error)
 	ListIdentities(ctx context.Context, presented string) ([]authnIdentity, error)
 	UnlinkIdentity(ctx context.Context, presented, identityID, proof string) (service.LoginResult, error)
@@ -562,9 +562,21 @@ const browserSessionCookie = "__Host-hikyo"
 // clobber each other's binding.
 const oidcBindingCookiePrefix = "__Host-hikyo-oidc-tx-"
 
+// oidcBrowserCookiePrefix marks a transaction whose callback must return to
+// the SPA even when admission refuses before the service can read storage.
+const oidcBrowserCookiePrefix = "__Host-hikyo-oidc-browser-"
+
 // bindingCookieName derives the per-transaction binding cookie name from the
 // state value, deterministically at both start and callback.
 func bindingCookieName(state string) string {
+	return oidcCookieName(oidcBindingCookiePrefix, state)
+}
+
+func browserCookieName(state string) string {
+	return oidcCookieName(oidcBrowserCookiePrefix, state)
+}
+
+func oidcCookieName(prefix, state string) string {
 	suffix := state
 	if i := strings.LastIndex(state, "_"); i >= 0 && i+1 < len(state) {
 		suffix = state[i+1:]
@@ -572,7 +584,7 @@ func bindingCookieName(state string) string {
 	if len(suffix) > 24 {
 		suffix = suffix[:24]
 	}
-	return oidcBindingCookiePrefix + suffix
+	return prefix + suffix
 }
 
 // wireContext attaches the per-request metadata every audit event records.
@@ -830,6 +842,9 @@ func assuranceOf(a service.Assurance) apigen.Assurance {
 		Method:          a.Method,
 		Factors:         factors,
 		AuthenticatedAt: a.AuthenticatedAt,
+	}
+	if a.Provider != "" {
+		out.Provider = &a.Provider
 	}
 	if a.CeremonyID != "" {
 		id := a.CeremonyID

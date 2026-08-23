@@ -79,6 +79,10 @@ export const BASE_URL_B = `http://${HOST_B}:${PORT_B}`;
 /** The TLS front that exists only so `remote add` can be performed for real. */
 const PORT_TLS = Number(process.env['HIKYO_E2E_PORT_TLS'] ?? 45791);
 
+/** Browser-drivable fake provider, isolated from the two Hikyo listeners. */
+const PORT_OIDC = Number(process.env['HIKYO_E2E_PORT_OIDC'] ?? 45792);
+export const OIDC_PROVIDER = { slug: 'e2e-oidc', displayName: 'E2E Identity Provider' };
+
 /** The name the viewing instance knows the serving instance by. */
 export const REMOTE_NAME = 'peer-b';
 
@@ -147,6 +151,7 @@ type Cookie = {
 
 let instances: Instance[] = [];
 let tlsFront: Server | null = null;
+let oidcProcess: ChildProcess | null = null;
 
 function run(command: string, args: string[], options: { cwd: string; env?: NodeJS.ProcessEnv }) {
   const result = spawnSync(command, args, {
@@ -160,6 +165,85 @@ function run(command: string, args: string[], options: { cwd: string; env?: Node
     );
   }
   return result;
+}
+
+/** Start the test-only IdP wrapper and wait for its issuer line. */
+async function startOIDCProvider(instance: Instance): Promise<string> {
+  if (await portTaken('127.0.0.1', PORT_OIDC)) {
+    throw new Error(`something is already listening on 127.0.0.1:${String(PORT_OIDC)}`);
+  }
+  const binary = join(instance.dir, 'oidctest-idp');
+  run('go', ['build', '-o', binary, './internal/oidctest/cmd'], { cwd: repoRoot });
+  const callback = `${BASE_URL}/api/v1/auth/oidc/${OIDC_PROVIDER.slug}/callback`;
+  const proc = spawn(
+    binary,
+    [
+      '-listen', `127.0.0.1:${String(PORT_OIDC)}`,
+      '-redirect-uri', callback,
+      '-amr', 'mfa,otp',
+    ],
+    { cwd: repoRoot, stdio: ['ignore', 'pipe', 'pipe'] },
+  );
+  oidcProcess = proc;
+  const issuer = await new Promise<string>((resolve, reject) => {
+    let stdout = '';
+    let stderr = '';
+    const deadline = setTimeout(() => reject(new Error('the fake OIDC provider did not start')), 10_000);
+    proc.stderr?.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    proc.stdout?.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString();
+      const line = stdout.split('\n')[0]?.trim() ?? '';
+      if (line !== '') {
+        clearTimeout(deadline);
+        resolve(line);
+      }
+    });
+    proc.once('exit', (code) => {
+      clearTimeout(deadline);
+      reject(new Error(`the fake OIDC provider exited (${String(code)}): ${stderr}`));
+    });
+  });
+  const expected = `http://127.0.0.1:${String(PORT_OIDC)}`;
+  if (issuer !== expected) {
+    throw new Error(`fake OIDC issuer = ${issuer}, want ${expected}`);
+  }
+  return issuer;
+}
+
+/** Link the fixture administrator through the provider's real front channel. */
+async function configureAndLinkOIDC(instance: Instance, issuer: string): Promise<void> {
+  await api(instance, 'PUT', `/api/v1/instance/oidc-providers/${OIDC_PROVIDER.slug}`, {
+    display_name: OIDC_PROVIDER.displayName,
+    issuer,
+    client_id: 'e2e-client',
+    client_secret: 'e2e-secret',
+    scopes: 'openid',
+    assurance_policy: '{"amr_sets":[["mfa"]]}',
+    enabled: true,
+  });
+  const started = z
+    .object({ authorization_url: z.string().url() })
+    .parse(
+      await api(instance, 'POST', '/api/v1/auth/identities/link', {
+        provider: OIDC_PROVIDER.slug,
+        proof: ADMIN.password,
+      }),
+    );
+  const authorized = await fetch(started.authorization_url, { redirect: 'manual' });
+  const callback = authorized.headers.get('location');
+  if (authorized.status !== 302 || callback === null) {
+    throw new Error(`fake OIDC authorization answered ${String(authorized.status)} without a callback`);
+  }
+  const linked = await fetch(callback, {
+    redirect: 'manual',
+    headers: { Cookie: cookieHeader(instance) },
+  });
+  if (linked.status !== 200) {
+    throw new Error(`linking the fake OIDC identity answered ${String(linked.status)}: ${await linked.text()}`);
+  }
+  adoptCookies(instance, linked);
 }
 
 /**
@@ -868,6 +952,13 @@ export async function startInstance(): Promise<void> {
   });
   repointRemoteAtB(viewing);
 
+  // Configure and link the browser-drivable IdP last among privileged setup
+  // operations. Linking reissues the browser session without carrying its
+  // earlier account step-up, so putting it before remote configuration would
+  // correctly make that later instance-scope mutation fail closed.
+  const oidcIssuer = await startOIDCProvider(viewing);
+  await configureAndLinkOIDC(viewing, oidcIssuer);
+
   // The shared browser session is minted LAST, and that ordering is
   // load-bearing: seeding issues break-glass grants, a grant advances the
   // principal's session generation, and every session minted before it is dead
@@ -1443,6 +1534,8 @@ export async function refreshSharedSession(): Promise<void> {
 export function stopInstance(): void {
   tlsFront?.close();
   tlsFront = null;
+  oidcProcess?.kill('SIGKILL');
+  oidcProcess = null;
   for (const instance of instances) {
     // SIGKILL, not SIGTERM: a server still inside boot may not have installed
     // its signal handler yet, and a survivor holds the port for the NEXT run —

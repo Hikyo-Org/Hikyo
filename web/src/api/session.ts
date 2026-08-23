@@ -2,6 +2,7 @@ import {
   listMyOrgsOp,
   localLoginOp,
   logoutOp,
+  oidcStartOp,
 } from '@hikyo/operations';
 import { zLoginResult, zMyOrgList } from '@hikyo/zod';
 import { useMutation, useQuery, type UseQueryResult } from '@tanstack/react-query';
@@ -104,5 +105,17 @@ export function useLogout() {
     onMutate: auth.captureTransition,
     mutationFn: () => ok(logoutOp, {}),
     onSuccess: (_result, _input, guard) => auth.endSession(guard),
+  });
+}
+
+/** Start a browser OIDC login whose callback returns through the SPA. */
+export function useOIDCLogin() {
+  return useMutation({
+    mutationFn: (provider: string) =>
+      parsed(oidcStartOp, {
+        path: { provider },
+        body: { purpose: 'login', browser: true },
+      }),
+    onSuccess: (result) => globalThis.location.assign(result.authorization_url),
   });
 }

@@ -35,7 +35,7 @@ export type Flow = {
 };
 
 export const FLOWS: readonly Flow[] = [
-  { id: 'login', spec: 'flows/login.spec.ts', surfaces: ['login'] },
+  { id: 'login', spec: 'flows/login.spec.ts', surfaces: ['login', 'oidc-done'] },
   // `settings` moved to the account flow when the skeleton's session list grew
   // into the whole account & security surface (#60): the chrome flow is about
   // navigation, and a surface with six panels of its own earns its own flow.

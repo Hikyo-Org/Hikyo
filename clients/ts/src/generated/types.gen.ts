@@ -608,6 +608,10 @@ export type SessionArtifact = string;
 export type Assurance = {
     method: AuthMethod;
     /**
+     * The configured provider slug, present only for OIDC sessions.
+     */
+    provider?: string;
+    /**
      * The factor classes actually presented in this session.
      */
     factors: Array<FactorClass>;
@@ -2585,6 +2589,10 @@ export type OidcStartRequest = {
      * Required for link; the pre-existing password.
      */
     proof?: string;
+    /**
+     * Redirect the callback to the SPA done page instead of returning JSON.
+     */
+    browser?: boolean;
 };
 
 export type OidcStartResult = {
@@ -2627,6 +2635,10 @@ export type SamlAcsRequest = {
 export type IdentityLinkRequest = {
     provider: string;
     proof: string;
+    /**
+     * Redirect the callback to the SPA done page instead of returning JSON.
+     */
+    browser?: boolean;
 };
 
 export type IdentityUnlinkRequest = {

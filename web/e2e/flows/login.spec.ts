@@ -45,6 +45,32 @@ async function expectLoginSurface(page: Page, theme: 'dark' | 'light') {
   });
 }
 
+async function expectOIDCDoneSurface(page: Page, theme: 'dark' | 'light') {
+  await page.emulateMedia({ colorScheme: theme });
+  await page.goto('/auth/oidc/done?purpose=reauth');
+
+  const card = page.locator('.login__card');
+  const heading = page.getByRole('heading', { name: 'Returning from your identity provider' });
+  const refusal = page.getByRole('alert');
+  const close = page.getByRole('button', { name: 'Close this window' });
+  await expect(refusal).toContainText('without an OIDC transaction');
+
+  await expectPinnedAssertionSet(page, {
+    flow: 'login',
+    surface: 'oidc-done',
+    theme,
+    text: [heading, refusal],
+    radii: [[card, 'container'], [close, 'control']],
+    fonts: [[heading, 'ui']],
+    colours: [
+      [card, 'backgroundColor', '--bg-raise'],
+      [card, 'borderTopColor', '--line'],
+    ],
+    hairlines: [card],
+    density: [[close, '--touch']],
+  });
+}
+
 /**
  * Flow: login (registry surface `login`).
  *
@@ -53,6 +79,11 @@ async function expectLoginSurface(page: Page, theme: 'dark' | 'light') {
  */
 
 test.describe('login', () => {
+  for (const theme of ['dark', 'light'] as const) {
+    test(`OIDC done page meets the pinned assertion set in ${theme} mode`, async ({ page }) => {
+      await expectOIDCDoneSurface(page, theme);
+    });
+  }
   test.beforeEach(async ({ context }) => {
     await context.clearCookies();
   });

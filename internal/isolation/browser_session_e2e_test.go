@@ -258,7 +258,7 @@ func runBrowserFederationFlow(t *testing.T, db *store.DB) {
 	// Link: `completeLink` reissues the acting session out of the proof
 	// ceremony. A browser that linked an identity and got a `cli` session back
 	// would be logged out by its own success.
-	start, err := auth.OIDCStart(ctx, "browser-idp", "link", "", login.SessionToken, password)
+	start, err := auth.OIDCStart(ctx, "browser-idp", "link", "", login.SessionToken, password, false)
 	if err != nil {
 		t.Fatalf("oidc link start: %v", err)
 	}

@@ -16,6 +16,7 @@ import {
   useTotpStatus,
   useUnlinkIdentity,
 } from '../api/account.ts';
+import { rememberOIDCReturn } from '../api/oidcChannel.ts';
 import { useRevokeSession, useSessions, type ActiveSession } from '../api/remotes.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { themeLabel, useThemeChoice, type ThemeChoice } from '../app/theme.ts';
@@ -160,7 +161,13 @@ export function AccountSecurity() {
         link.mutate(
           { provider: request.provider, kind: request.providerKind, proof: value },
           {
-            onSuccess: (redirect) => window.location.assign(redirect),
+            onSuccess: (redirect) => {
+              if (request.providerKind === 'oidc') {
+                const state = new URL(redirect).searchParams.get('state');
+                if (state !== null) rememberOIDCReturn(state, window.location.href);
+              }
+              window.location.assign(redirect);
+            },
             onError: report,
           },
         );

@@ -514,6 +514,7 @@ export const zFactorClass = z.string();
  */
 export const zAssurance = z.object({
     method: zAuthMethod,
+    provider: z.string().optional(),
     factors: z.array(zFactorClass),
     authenticated_at: zTimestamp,
     ceremony_id: z.string().nullish()
@@ -1907,7 +1908,8 @@ export const zOidcStartRequest = z.object({
         'reauth'
     ]),
     environment_id: z.string().max(64).optional(),
-    proof: z.string().max(1024).optional()
+    proof: z.string().max(1024).optional(),
+    browser: z.boolean().optional().default(false)
 });
 
 export const zOidcStartResult = z.object({
@@ -1935,7 +1937,8 @@ export const zSamlAcsRequest = z.object({
 
 export const zIdentityLinkRequest = z.object({
     provider: z.string().max(64),
-    proof: z.string().max(1024)
+    proof: z.string().max(1024),
+    browser: z.boolean().optional().default(false)
 });
 
 export const zIdentityUnlinkRequest = z.object({

@@ -47,7 +47,7 @@ type OIDCStartResult struct {
 // authenticated session and are session-bound, and link additionally verifies
 // the account-security proof (the pre-existing password) up front, binding it to
 // the transaction ceremony (A6). PKCE S256 is always used.
-func (s *Auth) OIDCStart(ctx context.Context, slug, purpose, environmentID, presented, proof string) (OIDCStartResult, error) {
+func (s *Auth) OIDCStart(ctx context.Context, slug, purpose, environmentID, presented, proof string, browser bool) (OIDCStartResult, error) {
 	// Admission is entered FIRST, uniformly for every purpose and BEFORE the
 	// provider is resolved or the purpose/environment validated. An unknown
 	// slug, a bad purpose, a missing environment and a fully resolved provider
@@ -78,10 +78,12 @@ func (s *Auth) OIDCStart(ctx context.Context, slug, purpose, environmentID, pres
 	// unauthenticated caller refuses identically (uniform 401) whether the slug
 	// is known or not: provider existence is never what a prober learns first.
 	var (
-		provider  authz.OIDCProvider
-		epoch     int64
-		account   authz.Account
-		sessionID string
+		provider          authz.OIDCProvider
+		epoch             int64
+		account           authz.Account
+		sessionID         string
+		sessionMethod     string
+		sessionProviderID string
 	)
 	err = tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
 		var e error
@@ -95,6 +97,8 @@ func (s *Auth) OIDCStart(ctx context.Context, slug, purpose, environmentID, pres
 				return e
 			}
 			sessionID = id.SessionID
+			sessionMethod = id.Assurance.Method
+			sessionProviderID = id.ProviderID
 		}
 		provider, e = az.EnabledProviderBySlug(ctx, slug)
 		if errors.Is(e, domain.ErrNotFound) {
@@ -102,6 +106,10 @@ func (s *Auth) OIDCStart(ctx context.Context, slug, purpose, environmentID, pres
 		}
 		if e != nil {
 			return e
+		}
+		if purpose == purposeReauth &&
+			(sessionMethod != oidcMethod(provider.Issuer) || sessionProviderID != provider.ID) {
+			return domain.ErrUnauthenticated
 		}
 		if epoch, e = az.CredentialEpoch(ctx); e != nil {
 			return e
@@ -179,7 +187,7 @@ func (s *Auth) OIDCStart(ctx context.Context, slug, purpose, environmentID, pres
 	newTx := authz.NewOIDCTransaction{
 		ID: txID, StateVerifier: stateVerifier, Nonce: crypto.ArtifactVerifier(nonce), PKCEVerifier: pkce,
 		ProviderID: provider.ID, Issuer: provider.Issuer, RedirectURI: provider.RedirectURI,
-		Purpose: purpose, EnvironmentID: environmentID, CredentialEpoch: epoch,
+		Purpose: purpose, EnvironmentID: environmentID, Browser: browser, CredentialEpoch: epoch,
 	}
 	var bindingCookie string
 	if purpose == purposeLogin {
@@ -219,6 +227,8 @@ func (s *Auth) OIDCStart(ctx context.Context, slug, purpose, environmentID, pres
 type OIDCCallbackResult struct {
 	Login   LoginResult
 	Purpose string
+	State   string
+	Browser bool
 }
 
 // OIDCCallback processes an IdP redirect against its own transaction. Mix-up is
@@ -264,6 +274,7 @@ func (s *Auth) OIDCCallback(ctx context.Context, slug, code, stateValue, issPara
 		if e != nil {
 			return e
 		}
+		txn = t
 		cause := ""
 		switch {
 		case t.Consumed:
@@ -313,35 +324,40 @@ func (s *Auth) OIDCCallback(ctx context.Context, slug, code, stateValue, issPara
 			refused = domain.ErrUnauthenticated
 			return nil
 		}
-		txn = t
 		prov = provider
 		return nil
 	})
+	metadata := OIDCCallbackResult{Purpose: txn.Purpose, State: stateValue, Browser: txn.Browser}
 	if err != nil {
-		return OIDCCallbackResult{}, err
+		return metadata, err
 	}
 	if refused != nil {
-		return OIDCCallbackResult{}, refused
+		return metadata, refused
 	}
 
 	// Phase B - exchange and validate, outside any transaction.
 	claims, cause := s.exchangeAndVerify(ctx, prov, txn, code)
 	if cause != "" {
-		return OIDCCallbackResult{}, s.refuseOIDC(ctx, cause, prov.ID, "")
+		return metadata, s.refuseOIDC(ctx, cause, prov.ID, "")
 	}
 
 	// Phase C - purpose dispatch. The branch IS the transaction's purpose, so a
 	// response obtained for one purpose cannot complete another.
+	var result OIDCCallbackResult
 	switch txn.Purpose {
 	case purposeLogin:
-		return s.completeLogin(ctx, prov, txn, claims)
+		result, err = s.completeLogin(ctx, prov, txn, claims)
 	case purposeLink:
-		return s.completeLink(ctx, prov, txn, claims, presented)
+		result, err = s.completeLink(ctx, prov, txn, claims, presented)
 	case purposeReauth:
-		return s.completeReauth(ctx, prov, txn, claims, presented)
+		result, err = s.completeReauth(ctx, prov, txn, claims, presented)
 	default:
-		return OIDCCallbackResult{}, ErrBadPurpose
+		return metadata, ErrBadPurpose
 	}
+	result.Purpose = txn.Purpose
+	result.State = stateValue
+	result.Browser = txn.Browser
+	return result, err
 }
 
 // checkBinding enforces the transaction binding (A2). A browser-cookie tx
@@ -745,6 +761,9 @@ func (s *Auth) completeReauth(ctx context.Context, prov authz.OIDCProvider, txn 
 		if e != nil || id.SessionID != txn.InitiatingSessionID {
 			return reject(causeBinding)
 		}
+		if id.Assurance.Method != oidcMethod(prov.Issuer) || id.ProviderID != prov.ID {
+			return reject(causeBinding)
+		}
 		evidence := authz.Assurance{Factors: oidcFactors(mfa)}
 		if authz.AssuranceRank(id.Assurance) > authz.AssuranceRank(evidence) {
 			return reject(causeDowngrade)
@@ -778,6 +797,7 @@ func (s *Auth) completeReauth(ctx context.Context, prov authz.OIDCProvider, txn 
 		if e != nil {
 			return e
 		}
+		completion.Assurance.Provider = prov.Slug
 		windowID, e := newID("raw")
 		if e != nil {
 			return e
@@ -839,7 +859,7 @@ func (s *Auth) mintOIDCSession(ctx context.Context, az *authz.TxAuthorizer, acco
 	}
 	result, err := s.completeSession(ctx, az, CreateSession{
 		account: account, artifact: ArtifactBrowser,
-		assurance: Assurance{Method: oidcMethod(issuer), Factors: factorClasses, AuthenticatedAt: now},
+		assurance: Assurance{Method: oidcMethod(issuer), Provider: prov.Slug, Factors: factorClasses, AuthenticatedAt: now},
 		csrf:      sessionWithCSRF, providerID: prov.ID,
 	}, now)
 	if err != nil {

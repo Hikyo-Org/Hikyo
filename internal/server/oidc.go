@@ -3,9 +3,13 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"net/url"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
@@ -39,13 +43,13 @@ func (a *API) AuthMethods(ctx context.Context, _ apigen.AuthMethodsRequestObject
 // oidcStartResponse sets the browser-binding cookie (A2/A16) on an anonymous
 // login start before writing the JSON body.
 type oidcStartResponse struct {
-	body   apigen.OidcStartResult
-	cookie *http.Cookie
+	body    apigen.OidcStartResult
+	cookies []*http.Cookie
 }
 
 func (r oidcStartResponse) VisitOidcStartResponse(w http.ResponseWriter) error {
-	if r.cookie != nil {
-		writeHTTPOnlyCookie(w, r.cookie)
+	for _, cookie := range r.cookies {
+		writeHTTPOnlyCookie(w, cookie)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -65,16 +69,20 @@ func (a *API) OidcStart(ctx context.Context, req apigen.OidcStartRequestObject) 
 	if req.Body.Proof != nil {
 		proof = *req.Body.Proof
 	}
-	result, err := a.Auth.OIDCStart(ctx, string(req.Provider), string(req.Body.Purpose), env, bearer(ctx), proof)
+	browser := req.Body.Browser != nil && *req.Body.Browser
+	result, err := a.Auth.OIDCStart(ctx, string(req.Provider), string(req.Body.Purpose), env, bearer(ctx), proof, browser)
 	if err != nil {
 		return oidcStartError(a, ctx, err), nil
 	}
 	resp := oidcStartResponse{body: apigen.OidcStartResult{AuthorizationUrl: result.AuthURL}}
 	if result.BindingCookie != "" {
-		resp.cookie = &http.Cookie{
+		resp.cookies = append(resp.cookies, &http.Cookie{
 			Name: bindingCookieName(result.State), Value: result.BindingCookie,
 			Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode,
-		}
+		})
+	}
+	if browser {
+		resp.cookies = append(resp.cookies, oidcBrowserMarker(result.State, result.Purpose))
 	}
 	return resp, nil
 }
@@ -100,13 +108,30 @@ func oidcStartError(a *API, ctx context.Context, err error) apigen.OidcStartResp
 
 func (a *API) OidcCallback(ctx context.Context, req apigen.OidcCallbackRequestObject) (apigen.OidcCallbackResponseObject, error) {
 	code, state, iss, idpErr := strDeref(req.Params.Code), strDeref(req.Params.State), strDeref(req.Params.Iss), strDeref(req.Params.Error)
-	bindingCookie := ""
+	bindingCookie, browserPurpose := "", ""
 	if r := requestFrom(ctx); r != nil && state != "" {
 		if c, err := r.Cookie(bindingCookieName(state)); err == nil {
 			bindingCookie = c.Value
 		}
+		if c, cookieErr := r.Cookie(browserCookieName(state)); cookieErr == nil && validOIDCPurpose(c.Value) {
+			browserPurpose = c.Value
+		}
 	}
 	result, err := a.Auth.OIDCCallback(ctx, string(req.Provider), code, state, iss, idpErr, bindingCookie, bearer(ctx))
+	if !result.Browser && errors.Is(err, admission.ErrOverloaded) && browserPurpose != "" {
+		result = service.OIDCCallbackResult{Browser: true, Purpose: browserPurpose, State: state}
+	}
+	if result.Browser {
+		errorCode := ""
+		if err != nil {
+			policy := wireErrorFor(err)
+			errorCode = string(policy.code)
+			if policy.code == apigen.ErrorCodeInternal {
+				a.fault(ctx, "oidc callback", err)
+			}
+		}
+		return oidcBrowserCallbackResponse(result, errorCode), nil
+	}
 	if err != nil {
 		// Every expected callback refusal is one uniform 401 body: a closed
 		// reauth window, a wrong-purpose transaction (the dispatch default
@@ -126,6 +151,60 @@ func (a *API) OidcCallback(ctx context.Context, req apigen.OidcCallbackRequestOb
 		}
 	}
 	return sessionResponse(result.Login), nil
+}
+
+type oidcBrowserResponse struct {
+	location string
+	cookies  []*http.Cookie
+}
+
+func (r oidcBrowserResponse) VisitOidcCallbackResponse(w http.ResponseWriter) error {
+	w.Header().Set("Location", r.location)
+	return writeJSONWithCookies(w, r.cookies, http.StatusSeeOther, nil)
+}
+
+func oidcBrowserCallbackResponse(result service.OIDCCallbackResult, errorCode string) oidcBrowserResponse {
+	query := url.Values{"state": {result.State}, "purpose": {result.Purpose}}
+	if errorCode != "" {
+		query.Set("error", errorCode)
+	}
+	response := oidcBrowserResponse{
+		location: "/auth/oidc/done?" + query.Encode(),
+		cookies: []*http.Cookie{{
+			Name: browserCookieName(result.State), Value: "", Path: "/", MaxAge: -1,
+			Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode,
+		}},
+	}
+	if errorCode == "" {
+		response.cookies = append(response.cookies, sessionResponse(result.Login).cookies...)
+	}
+	return response
+}
+
+func oidcBrowserMarker(state, purpose string) *http.Cookie {
+	return &http.Cookie{
+		Name: browserCookieName(state), Value: purpose, Path: "/",
+		MaxAge: int((10 * time.Minute) / time.Second), Secure: true, HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	}
+}
+
+func validOIDCPurpose(purpose string) bool {
+	return purpose == "login" || purpose == "link" || purpose == "reauth"
+}
+
+type oidcLinkStartResponse struct {
+	body   apigen.OidcStartResult
+	cookie *http.Cookie
+}
+
+func (r oidcLinkStartResponse) VisitLinkIdentityResponse(w http.ResponseWriter) error {
+	if r.cookie != nil {
+		writeHTTPOnlyCookie(w, r.cookie)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	return json.NewEncoder(w).Encode(r.body)
 }
 
 func (a *API) ListIdentities(ctx context.Context, _ apigen.ListIdentitiesRequestObject) (apigen.ListIdentitiesResponseObject, error) {
@@ -151,7 +230,8 @@ func (a *API) LinkIdentity(ctx context.Context, req apigen.LinkIdentityRequestOb
 	if req.Body == nil {
 		return apigen.LinkIdentity400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 	}
-	result, err := a.Auth.OIDCStart(ctx, req.Body.Provider, "link", "", bearer(ctx), req.Body.Proof)
+	browser := req.Body.Browser != nil && *req.Body.Browser
+	result, err := a.Auth.OIDCStart(ctx, req.Body.Provider, "link", "", bearer(ctx), req.Body.Proof, browser)
 	if err != nil {
 		policy := wireErrorFor(err)
 		switch policy.code {
@@ -168,7 +248,11 @@ func (a *API) LinkIdentity(ctx context.Context, req apigen.LinkIdentityRequestOb
 			return apigen.LinkIdentity500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
 		}
 	}
-	return apigen.LinkIdentity200JSONResponse{AuthorizationUrl: result.AuthURL}, nil
+	response := oidcLinkStartResponse{body: apigen.OidcStartResult{AuthorizationUrl: result.AuthURL}}
+	if browser {
+		response.cookie = oidcBrowserMarker(result.State, result.Purpose)
+	}
+	return response, nil
 }
 
 func (a *API) UnlinkIdentity(ctx context.Context, req apigen.UnlinkIdentityRequestObject) (apigen.UnlinkIdentityResponseObject, error) {

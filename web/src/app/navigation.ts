@@ -284,6 +284,14 @@ export const SURFACES = defineSurfaceRegistry([
     mode: 'public',
     chrome: 'none',
   },
+  {
+    id: 'oidc-done',
+    path: '/auth/oidc/done',
+    label: 'Returning from identity provider',
+    section: null,
+    mode: 'public',
+    chrome: 'none',
+  },
 ]);
 
 export type Surface = (typeof SURFACES)[number];

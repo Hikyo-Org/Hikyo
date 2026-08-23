@@ -531,6 +531,7 @@ type OidcTransaction struct {
 	CreatedAt              pgtype.Timestamptz
 	ExpiresAt              pgtype.Timestamptz
 	ConsumedAt             pgtype.Timestamptz
+	Browser                bool
 }
 
 type Org struct {
