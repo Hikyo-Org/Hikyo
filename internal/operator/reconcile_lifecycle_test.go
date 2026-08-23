@@ -17,6 +17,61 @@ import (
 	hikyov1 "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1"
 )
 
+func TestSummarizeConditions(t *testing.T) {
+	cond := func(condType string, status metav1.ConditionStatus, reason string) metav1.Condition {
+		return metav1.Condition{Type: condType, Status: status, Reason: reason}
+	}
+	tests := []struct {
+		name      string
+		conds     []metav1.Condition
+		ready     bool
+		reason    string
+		lifecycle hikyov1.Lifecycle
+	}{
+		{name: "no conditions", ready: false, reason: hikyov1.ReasonBlocked, lifecycle: hikyov1.LifecycleRetained},
+		{name: "synced", conds: []metav1.Condition{
+			cond(hikyov1.ConditionSynced, metav1.ConditionTrue, hikyov1.ReasonDelivered),
+		}, ready: true, reason: hikyov1.ReasonReconciled, lifecycle: hikyov1.LifecycleSynced},
+		{name: "sync failure", conds: []metav1.Condition{
+			cond(hikyov1.ConditionSynced, metav1.ConditionFalse, hikyov1.ReasonFetchFailed),
+		}, ready: false, reason: hikyov1.ReasonFetchFailed, lifecycle: hikyov1.LifecycleRetained},
+		{name: "designation refusal precedes sync failure", conds: []metav1.Condition{
+			cond(hikyov1.ConditionSynced, metav1.ConditionFalse, hikyov1.ReasonFetchFailed),
+			cond(hikyov1.ConditionDesignation, metav1.ConditionFalse, hikyov1.ReasonSecretNotDesignated),
+		}, ready: false, reason: hikyov1.ReasonSecretNotDesignated, lifecycle: hikyov1.LifecycleRefused},
+		{name: "conflict refuses a synced resource", conds: []metav1.Condition{
+			cond(hikyov1.ConditionSynced, metav1.ConditionTrue, hikyov1.ReasonDelivered),
+			cond(hikyov1.ConditionConflict, metav1.ConditionTrue, hikyov1.ReasonTargetClaimed),
+		}, ready: false, reason: hikyov1.ReasonTargetClaimed, lifecycle: hikyov1.LifecycleRefused},
+		{name: "blocking delivery refuses a synced resource", conds: []metav1.Condition{
+			cond(hikyov1.ConditionSynced, metav1.ConditionTrue, hikyov1.ReasonDelivered),
+			cond(hikyov1.ConditionDelivery, metav1.ConditionFalse, hikyov1.ReasonUndeliveredSecrets),
+		}, ready: false, reason: hikyov1.ReasonUndeliveredSecrets, lifecycle: hikyov1.LifecycleRefused},
+		{name: "informational delivery does not block sync", conds: []metav1.Condition{
+			cond(hikyov1.ConditionSynced, metav1.ConditionTrue, hikyov1.ReasonDelivered),
+			cond(hikyov1.ConditionDelivery, metav1.ConditionFalse, hikyov1.ReasonKeysMissing),
+		}, ready: true, reason: hikyov1.ReasonReconciled, lifecycle: hikyov1.LifecycleSynced},
+		{name: "scrubbed precedes refusal", conds: []metav1.Condition{
+			cond(hikyov1.ConditionDesignation, metav1.ConditionFalse, hikyov1.ReasonSecretNotDesignated),
+			cond(hikyov1.ConditionScrubbed, metav1.ConditionTrue, hikyov1.ReasonAuthorizationWithdrawn),
+		}, ready: false, reason: hikyov1.ReasonAuthorizationWithdrawn, lifecycle: hikyov1.LifecycleScrubbed},
+		{name: "unreconciled precedes scrubbed", conds: []metav1.Condition{
+			cond(hikyov1.ConditionScrubbed, metav1.ConditionTrue, hikyov1.ReasonAuthorizationWithdrawn),
+			cond(hikyov1.ConditionUnreconciled, metav1.ConditionTrue, hikyov1.ReasonNamespaceNotBound),
+		}, ready: false, reason: hikyov1.ReasonNamespaceNotBound, lifecycle: hikyov1.LifecycleUnreconciled},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ready, reason, lifecycle := summarize(tt.conds)
+			if ready != tt.ready || reason != tt.reason || lifecycle != tt.lifecycle {
+				t.Fatalf("summarize() = (%t, %q, %q), want (%t, %q, %q)",
+					ready, reason, lifecycle, tt.ready, tt.reason, tt.lifecycle)
+			}
+		})
+	}
+}
+
 // TestReadyBlockedByUnreconciledAndClearedOnRecovery covers the synced →
 // forbidden → recovered arc (§ 0.3): a previously Synced CR must report
 // Ready=False while an RBAC authority loss (Unreconciled=True/NamespaceNotBound)
@@ -74,6 +129,42 @@ func TestReadyBlockedByUnreconciledAndClearedOnRecovery(t *testing.T) {
 	}
 	requireCond(t, got, hikyov1.ConditionSynced, metav1.ConditionTrue, hikyov1.ReasonDelivered)
 	requireCond(t, got, hikyov1.ConditionReady, metav1.ConditionTrue, hikyov1.ReasonReconciled)
+}
+
+func TestFixedDesignationWithTokenFailureRetains(t *testing.T) {
+	cr := makeCR("app", withSA("worker"))
+	h := newHarness(t, interceptor.Funcs{},
+		makeInstance("aud"), makeServiceAccount("worker", testInstance, false), cr)
+
+	if _, err := h.reconcile("app"); err != nil {
+		t.Fatalf("designation refusal reconcile: %v", err)
+	}
+	requireCond(t, h.getCR("app"), hikyov1.ConditionDesignation, metav1.ConditionFalse, hikyov1.ReasonServiceAccountNotDesignated)
+
+	var sa corev1.ServiceAccount
+	if err := h.cl.Get(context.Background(), types.NamespacedName{Namespace: testNS, Name: "worker"}, &sa); err != nil {
+		t.Fatalf("get ServiceAccount: %v", err)
+	}
+	sa.Labels = map[string]string{
+		hikyov1.LabelDelivery: hikyov1.LabelDeliveryValue,
+		hikyov1.LabelInstance: testInstance,
+	}
+	if err := h.cl.Update(context.Background(), &sa); err != nil {
+		t.Fatalf("fix ServiceAccount designation: %v", err)
+	}
+	h.minter.err = context.DeadlineExceeded
+
+	if _, err := h.reconcile("app"); err == nil {
+		t.Fatal("a failed TokenRequest should surface an error")
+	}
+	got := h.getCR("app")
+	if _, _, ok := condStatus(got, hikyov1.ConditionDesignation); ok {
+		t.Fatalf("fixed designation left a stale refusal: %v", got.Status.Conditions)
+	}
+	requireCond(t, got, hikyov1.ConditionSynced, metav1.ConditionFalse, hikyov1.ReasonFetchFailed)
+	if got.Status.Lifecycle != hikyov1.LifecycleRetained {
+		t.Fatalf("lifecycle = %q, want Retained", got.Status.Lifecycle)
+	}
 }
 
 func TestScopeChangeForcesCursorless(t *testing.T) {

@@ -290,6 +290,33 @@ func TestInvalidResyncIntervalRefused(t *testing.T) {
 	}
 }
 
+func TestInvalidResyncIntervalClearsReady(t *testing.T) {
+	cr := makeCR("app")
+	h := newHarness(t, interceptor.Funcs{},
+		makeInstance(""), makeBootstrapSecret("boot", testInstance, "tok", true), cr)
+	h.stub.set(200, deliveryJSON(false, "v1:c", "v1:t", []deliveredKey{secretVal("API_KEY", "v")}, nil))
+	if _, err := h.reconcile("app"); err != nil {
+		t.Fatalf("initial reconcile: %v", err)
+	}
+	requireCond(t, h.getCR("app"), hikyov1.ConditionReady, metav1.ConditionTrue, hikyov1.ReasonReconciled)
+
+	fresh := h.getCR("app")
+	fresh.Spec.ResyncInterval = "0s"
+	if err := h.cl.Update(context.Background(), fresh); err != nil {
+		t.Fatalf("set invalid resyncInterval: %v", err)
+	}
+	if _, err := h.reconcile("app"); err == nil {
+		t.Fatal("a non-positive resyncInterval must fail loud")
+	}
+
+	got := h.getCR("app")
+	requireCond(t, got, hikyov1.ConditionSynced, metav1.ConditionFalse, hikyov1.ReasonFetchFailed)
+	requireCond(t, got, hikyov1.ConditionReady, metav1.ConditionFalse, hikyov1.ReasonBlocked)
+	if got.Status.Lifecycle != hikyov1.LifecycleRetained {
+		t.Fatalf("lifecycle = %q, want Retained", got.Status.Lifecycle)
+	}
+}
+
 func TestStalledObservedOnCurrentPath(t *testing.T) {
 	cr := makeCR("app")
 	h := newHarness(t, interceptor.Funcs{},
