@@ -32,6 +32,6 @@ authorization.
 - All `TestSCIM*` isolation tests: 66 passed.
 - `internal/service`: 242 passed.
 - Full repository suite: 3,545 passed across 61 packages.
-- Standards review: CLEAN. Spec review requested the red-test disposition
-  recorded above; round-2 verification is pending.
+- Standards review: CLEAN. Spec review: CLEAN in round 2/3 after the
+  characterization-test disposition was recorded.
 - Exact-head CI and merge: pending.
