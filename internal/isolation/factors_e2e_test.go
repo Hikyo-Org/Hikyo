@@ -9,9 +9,11 @@ import (
 
 	"github.com/pquerna/otp/totp"
 
+	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
 // The A1 factor slice end to end on a real datastore (#54, human-auth ADR §
@@ -116,6 +118,96 @@ func TestRecoveryCompleteFlowSQLite(t *testing.T) { runRecoveryFlow(t, seededDB(
 
 func TestRecoveryCompleteFlowPostgres(t *testing.T) { runRecoveryFlow(t, seededDB(t, openPostgres)) }
 
+func TestPasswordReauthEvidenceRejectsReplacedCredentialSQLite(t *testing.T) {
+	runPasswordReauthEvidenceRejectsReplacedCredential(t, seededDB(t, openSQLite))
+}
+
+func TestPasswordReauthEvidenceRejectsReplacedCredentialPostgres(t *testing.T) {
+	runPasswordReauthEvidenceRejectsReplacedCredential(t, seededDB(t, openPostgres))
+}
+
+func TestRecoveryCodeRegenerationTOTPReplaySQLite(t *testing.T) {
+	runRecoveryCodeRegenerationTOTPReplay(t, seededDB(t, openSQLite))
+}
+
+func TestRecoveryCodeRegenerationTOTPReplayPostgres(t *testing.T) {
+	runRecoveryCodeRegenerationTOTPReplay(t, seededDB(t, openPostgres))
+}
+
+func runPasswordReauthEvidenceRejectsReplacedCredential(t *testing.T, db *store.DB) {
+	auth, boot, password := bootstrapFactorAdmin(t, db)
+	ctx := t.Context()
+	login, err := auth.LocalLogin(ctx, "factor-admin", password, service.ArtifactCLI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence, err := auth.VerifyReauthProof(ctx, login.SessionToken, password)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Move the verified password row exactly as a concurrent replacement does.
+	// Reusing the sealed bytes keeps this test focused on evidence liveness: the
+	// row version, not the replacement password's contents, is the CAS boundary.
+	err = tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+		account, err := az.AccountByPrincipal(ctx, boot.PrincipalID)
+		if err != nil {
+			return err
+		}
+		credential, err := az.PasswordCredentialFor(ctx, account.ID)
+		if err != nil {
+			return err
+		}
+		replaced, err := az.ReplacePasswordCredential(ctx, credential, time.Now().UTC())
+		if err != nil {
+			return err
+		}
+		if !replaced {
+			t.Fatal("password credential replacement lost its CAS")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+		return auth.ConsumeReauthEvidence(ctx, az, evidence, boot.PrincipalID)
+	})
+	if !errors.Is(err, domain.ErrUnauthenticated) {
+		t.Fatalf("ConsumeReauthEvidence() after password replacement error = %v, want %v", err, domain.ErrUnauthenticated)
+	}
+}
+
+func runRecoveryCodeRegenerationTOTPReplay(t *testing.T, db *store.DB) {
+	auth, _, password := bootstrapFactorAdmin(t, db)
+	ctx := t.Context()
+	now := time.Now().UTC()
+	auth.Now = func() time.Time { return now }
+	login, err := auth.LocalLogin(ctx, "factor-admin", password, service.ArtifactCLI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uri, err := auth.EnrolTOTPStart(ctx, login.SessionToken, password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	confirmed, err := auth.EnrolTOTPConfirm(ctx, login.SessionToken, totpCode(t, uri, now))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	now = now.Add(60 * time.Second)
+	code := totpCode(t, uri, now)
+	_, reissued, err := auth.GenerateRecoveryCodes(ctx, confirmed.SessionToken, code)
+	if err != nil {
+		t.Fatalf("first regeneration: %v", err)
+	}
+	if _, _, err := auth.GenerateRecoveryCodes(ctx, reissued.SessionToken, code); !errors.Is(err, service.ErrTOTPCodeAlreadyUsed) {
+		t.Fatalf("replayed regeneration code error = %v, want %v", err, service.ErrTOTPCodeAlreadyUsed)
+	}
+}
+
 // runRecoveryFlow is the A1 recovery family: single-use, the complete
 // session-less flow (code -> authority -> establish -> login), and the mid-reset
 // invariant that the authority is not a session.
@@ -127,6 +219,9 @@ func runRecoveryFlow(t *testing.T, db *store.DB) {
 	login, err := auth.LocalLogin(ctx, "factor-admin", password, service.ArtifactCLI)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if _, _, err := auth.GenerateRecoveryCodes(ctx, login.SessionToken, ""); !errors.Is(err, domain.ErrUnauthenticated) {
+		t.Fatalf("missing recovery regeneration proof error = %v, want %v", err, domain.ErrUnauthenticated)
 	}
 	codes, _, err := auth.GenerateRecoveryCodes(ctx, login.SessionToken, password)
 	if err != nil {

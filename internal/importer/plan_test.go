@@ -289,6 +289,21 @@ func TestProjectPlanRefusesFolderConflict(t *testing.T) {
 	}
 }
 
+// TestBuildProjectPlanRefusesCreatedEnvironmentWithID: a created environment is
+// tokenless and addressed by name, so it carries no id. An input that sets both
+// Create and EnvID is malformed intent; the plan refuses it rather than letting a
+// stale id copy onto the artifacts.
+func TestBuildProjectPlanRefusesCreatedEnvironmentWithID(t *testing.T) {
+	_, err := BuildProjectPlan(ProjectPlanInput{
+		Source: k8sSource, Project: "prj_1", DefinitionsRevision: 7,
+		Envs: []EnvInput{{
+			Create: true, EnvName: "env_new", EnvID: "env_stale",
+			Records: []Record{{SourceName: "API_KEY", Value: "k", Type: schema.TypeString}},
+		}},
+	})
+	wantCode(t, err, CodeMalformed)
+}
+
 // TestBucketsAreNewAndSetOnly pins the flat-model amendment: two buckets, and a
 // `set` key is skipped by default and listed by name.
 func TestBucketsAreNewAndSetOnly(t *testing.T) {

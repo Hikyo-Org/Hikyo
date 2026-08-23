@@ -1028,7 +1028,7 @@ func TestAdapterTargetDestinationMoveKeepRemoteReleasesBeforeActivation(t *testi
 		`INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('gr_keep_move_reveal_two','usr_adapter','reveal','org_adapter','prj_adapter','env_two','2026-08-17T00:00:00Z')`,
 		`INSERT INTO keys (id,org_id,project_id,name,folder_path,classification,description,deprecated,deprecation_note,declaration,required_mode,forbidden_mode,created_at) VALUES ('key_keep_move','org_adapter','prj_adapter','API_TOKEN','','secret','',0,'','optional','none','none','2026-08-17T00:00:00Z')`,
 		`INSERT INTO adapter_target_keys (org_id,project_id,environment_id,target_id,adapter_id,key_id) VALUES ('org_adapter','prj_adapter','env_one','tgt_one','adp_1','key_keep_move')`,
-		`INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_id,surface,effective_name,normalized_name,state,updated_at) VALUES ('led_keep_move','org_adapter','prj_adapter','env_one','tgt_one','https://git.example',42,'secret','ONE_API_TOKEN','ONE_API_TOKEN','owned','2026-08-17T00:00:00Z')`,
+		`INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_id,surface,effective_name,normalized_name,state,missing,updated_at) VALUES ('led_keep_move','org_adapter','prj_adapter','env_one','tgt_one','https://git.example',42,'secret','ONE_API_TOKEN','ONE_API_TOKEN','owned',1,'2026-08-17T00:00:00Z')`,
 	} {
 		if _, err := db.SQLiteWrite().ExecContext(t.Context(), statement); err != nil {
 			t.Fatal(err)
@@ -1045,7 +1045,8 @@ func TestAdapterTargetDestinationMoveKeepRemoteReleasesBeforeActivation(t *testi
 		t.Fatalf("orphaned = %v", result.Orphaned)
 	}
 	var ledgerState, moveState, jobKind string
-	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT state FROM adapter_ledger WHERE id='led_keep_move'`).Scan(&ledgerState); err != nil {
+	var ledgerMissing int
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT state,missing FROM adapter_ledger WHERE id='led_keep_move'`).Scan(&ledgerState, &ledgerMissing); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT state FROM adapter_route_moves WHERE id=?`, result.MoveID).Scan(&moveState); err != nil {
@@ -1054,8 +1055,8 @@ func TestAdapterTargetDestinationMoveKeepRemoteReleasesBeforeActivation(t *testi
 	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT kind FROM adapter_outbox WHERE id=?`, result.JobID).Scan(&jobKind); err != nil {
 		t.Fatal(err)
 	}
-	if ledgerState != "released" || moveState != "activating" || jobKind != "activate" {
-		t.Fatalf("keep-remote state ledger=%q move=%q job=%q", ledgerState, moveState, jobKind)
+	if ledgerState != "released" || ledgerMissing != 0 || moveState != "activating" || jobKind != "activate" {
+		t.Fatalf("keep-remote state ledger=%q missing=%d move=%q job=%q", ledgerState, ledgerMissing, moveState, jobKind)
 	}
 	var audited int
 	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM audit_tenant_events WHERE type='adapter.scrub' AND object_id='tgt_one' AND json_extract(payload,'$.orphaned[0]')='secret:ONE_API_TOKEN'`).Scan(&audited); err != nil {
@@ -1784,8 +1785,8 @@ func TestAdapterAdoptRequiresRevealAcrossEveryAdapterEnvironment(t *testing.T) {
 func TestAdapterTargetKeepRemoteReleasesAndEnumeratesCustodyWithoutReveal(t *testing.T) {
 	db := adapterServiceDB(t)
 	statements := []string{
-		`INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_id,surface,effective_name,normalized_name,state,updated_at) VALUES ('led_keep_owned','org_adapter','prj_adapter','env_one','tgt_one','https://git.example',42,'secret','ONE_TOKEN','ONE_TOKEN','owned','2026-08-17T00:00:00Z')`,
-		`INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_id,surface,effective_name,normalized_name,state,updated_at) VALUES ('led_keep_dispatched','org_adapter','prj_adapter','env_one','tgt_one','https://git.example',42,'variable','ONE_CONFIG','ONE_CONFIG','dispatched','2026-08-17T00:00:00Z')`,
+		`INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_id,surface,effective_name,normalized_name,state,missing,updated_at) VALUES ('led_keep_owned','org_adapter','prj_adapter','env_one','tgt_one','https://git.example',42,'secret','ONE_TOKEN','ONE_TOKEN','owned',1,'2026-08-17T00:00:00Z')`,
+		`INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_id,surface,effective_name,normalized_name,state,missing,updated_at) VALUES ('led_keep_dispatched','org_adapter','prj_adapter','env_one','tgt_one','https://git.example',42,'variable','ONE_CONFIG','ONE_CONFIG','dispatched',1,'2026-08-17T00:00:00Z')`,
 		`INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_id,surface,effective_name,normalized_name,state,updated_at) VALUES ('led_keep_reserved','org_adapter','prj_adapter','env_one','tgt_one','https://git.example',42,'secret','ONE_PENDING','ONE_PENDING','reserved','2026-08-17T00:00:00Z')`,
 	}
 	for _, statement := range statements {
@@ -1809,18 +1810,21 @@ func TestAdapterTargetKeepRemoteReleasesAndEnumeratesCustodyWithoutReveal(t *tes
 	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT generation,state,sync_status FROM adapter_targets WHERE id='tgt_one'`).Scan(&generation, &targetState, &syncStatus); err != nil {
 		t.Fatal(err)
 	}
-	var activeLedger, releasedLedger, scrubAudits int
+	var activeLedger, releasedLedger, releasedMissing, scrubAudits int
 	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM adapter_ledger WHERE target_id='tgt_one' AND state<>'released'`).Scan(&activeLedger); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM adapter_ledger WHERE target_id='tgt_one' AND state='released'`).Scan(&releasedLedger); err != nil {
 		t.Fatal(err)
 	}
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM adapter_ledger WHERE target_id='tgt_one' AND state='released' AND missing=1`).Scan(&releasedMissing); err != nil {
+		t.Fatal(err)
+	}
 	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM audit_tenant_events WHERE type='adapter.scrub' AND object_id='tgt_one' AND outcome='success' AND json_extract(payload,'$.orphaned[0]')='secret:ONE_TOKEN' AND json_extract(payload,'$.orphaned[1]')='variable:ONE_CONFIG'`).Scan(&scrubAudits); err != nil {
 		t.Fatal(err)
 	}
-	if generation != 2 || targetState != "tombstoned" || syncStatus != "converged" || activeLedger != 0 || releasedLedger != 3 || scrubAudits != 1 {
-		t.Fatalf("target=%d/%s/%s ledger active=%d released=%d scrub audits=%d", generation, targetState, syncStatus, activeLedger, releasedLedger, scrubAudits)
+	if generation != 2 || targetState != "tombstoned" || syncStatus != "converged" || activeLedger != 0 || releasedLedger != 3 || releasedMissing != 0 || scrubAudits != 1 {
+		t.Fatalf("target=%d/%s/%s ledger active=%d released=%d released_missing=%d scrub audits=%d", generation, targetState, syncStatus, activeLedger, releasedLedger, releasedMissing, scrubAudits)
 	}
 	// A released global name is unowned. A different target can reserve the
 	// same provider identity, while the old row remains as custody history.

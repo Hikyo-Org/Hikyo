@@ -489,12 +489,59 @@ func keySvc(t *testing.T, db *store.DB) *service.Keys {
 // the hierarchy is minted ONCE per store under one root, so a second loader
 // with a fresh root is refused — correctly.
 var (
-	probeKeyringMu sync.Mutex
-	probeKeyrings  = map[*store.DB]*crypto.Keyring{}
-	// probeRoots retains a clone of each keyring's root so tests exercising
-	// master/root rotation can re-supply it (LoadKeyring zeroes the original).
-	probeRoots = map[*store.DB][]byte{}
+	probeKeyringInitMu   sync.Mutex
+	probeKeyringMu       sync.Mutex
+	probeKeyringRegistry = map[*store.DB]probeKeyringRegistration{}
 )
+
+type probeKeyringRegistration struct {
+	keyring *crypto.Keyring
+	// root retains a clone so tests exercising master/root rotation can
+	// re-supply it (LoadKeyring zeroes the original).
+	root []byte
+}
+
+func registerKeyring(t *testing.T, db *store.DB, kr *crypto.Keyring, root []byte) {
+	t.Helper()
+	if err := validateProbeKeyringRegistration(db, kr, root); err != nil {
+		t.Fatal(err)
+	}
+	probeKeyringMu.Lock()
+	defer probeKeyringMu.Unlock()
+	if _, exists := probeKeyringRegistry[db]; exists {
+		t.Fatal("register probe keyring: datastore already registered")
+	}
+	probeKeyringRegistry[db] = probeKeyringRegistration{keyring: kr, root: bytes.Clone(root)}
+	t.Cleanup(func() {
+		probeKeyringMu.Lock()
+		defer probeKeyringMu.Unlock()
+		delete(probeKeyringRegistry, db)
+	})
+}
+
+func validateProbeKeyringRegistration(db *store.DB, kr *crypto.Keyring, root []byte) error {
+	if db == nil {
+		return errors.New("probe keyring registration: datastore is nil")
+	}
+	if kr == nil {
+		return errors.New("probe keyring registration: keyring is nil")
+	}
+	if len(root) != crypto.KeySize {
+		return errors.New("probe keyring registration: root has invalid length")
+	}
+	return nil
+}
+
+func loadAndRegisterKeyring(t *testing.T, db *store.DB, root []byte) *crypto.Keyring {
+	t.Helper()
+	retainedRoot := bytes.Clone(root)
+	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registerKeyring(t, db, kr, retainedRoot)
+	return kr
+}
 
 // probeRootSource is a service.RootKeySource over a probe keyring's retained
 // root, for the rotations that re-read the root from its source. Next returns
@@ -507,7 +554,69 @@ type probeRootSource struct {
 func (s probeRootSource) Current(context.Context) ([]byte, error) {
 	probeKeyringMu.Lock()
 	defer probeKeyringMu.Unlock()
-	return bytes.Clone(probeRoots[s.db]), nil
+	registration, ok := probeKeyringRegistry[s.db]
+	if !ok {
+		return nil, errors.New("probe root source: datastore has no registered keyring")
+	}
+	if err := validateProbeKeyringRegistration(s.db, registration.keyring, registration.root); err != nil {
+		return nil, err
+	}
+	return bytes.Clone(registration.root), nil
+}
+
+func TestProbeRootSourceRejectsUnregisteredDB(t *testing.T) {
+	_, err := (probeRootSource{db: new(store.DB)}).Current(t.Context())
+	if err == nil {
+		t.Fatal("Current() error = nil, want unregistered datastore refusal")
+	}
+}
+
+func TestProbeKeyringRegistrationEvictsOnCleanup(t *testing.T) {
+	db := new(store.DB)
+	root := make([]byte, crypto.KeySize)
+	kr := new(crypto.Keyring)
+
+	t.Run("registered", func(t *testing.T) {
+		registerKeyring(t, db, kr, root)
+		if got := probeKeyring(t, db); got != kr {
+			t.Fatal("probeKeyring() did not return registered keyring")
+		}
+		gotRoot, err := (probeRootSource{db: db}).Current(t.Context())
+		if err != nil {
+			t.Fatalf("Current() error = %v", err)
+		}
+		if !bytes.Equal(gotRoot, root) {
+			t.Fatalf("Current() = %q, want %q", gotRoot, root)
+		}
+	})
+
+	_, err := (probeRootSource{db: db}).Current(t.Context())
+	if err == nil {
+		t.Fatal("Current() error = nil after cleanup, want unregistered datastore refusal")
+	}
+}
+
+func TestProbeKeyringRegistrationRejectsIncompleteState(t *testing.T) {
+	db := new(store.DB)
+	kr := new(crypto.Keyring)
+	root := make([]byte, crypto.KeySize)
+	for _, tc := range []struct {
+		name string
+		db   *store.DB
+		kr   *crypto.Keyring
+		root []byte
+	}{
+		{name: "nil datastore", kr: kr, root: root},
+		{name: "nil keyring", db: db, root: root},
+		{name: "nil root", db: db, kr: kr},
+		{name: "short root", db: db, kr: kr, root: root[:crypto.KeySize-1]},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := validateProbeKeyringRegistration(tc.db, tc.kr, tc.root); err == nil {
+				t.Fatal("validation error = nil, want incomplete-state refusal")
+			}
+		})
+	}
 }
 
 func (s probeRootSource) Next(context.Context) ([]byte, error) {
@@ -562,22 +671,19 @@ func valueSvc(t *testing.T, db *store.DB) *service.Values {
 // the auth service) has to share this one.
 func probeKeyring(t *testing.T, db *store.DB) *crypto.Keyring {
 	t.Helper()
+	probeKeyringInitMu.Lock()
+	defer probeKeyringInitMu.Unlock()
 	probeKeyringMu.Lock()
-	defer probeKeyringMu.Unlock()
-	if kr, ok := probeKeyrings[db]; ok {
-		return kr
+	registration, ok := probeKeyringRegistry[db]
+	probeKeyringMu.Unlock()
+	if ok {
+		return registration.keyring
 	}
 	root, err := crypto.GenerateRootKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	probeRoots[db] = bytes.Clone(root)
-	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	probeKeyrings[db] = kr
-	return kr
+	return loadAndRegisterKeyring(t, db, root)
 }
 func keyGroupSvc(t *testing.T, db *store.DB) *service.KeyGroups {
 	return &service.KeyGroups{DB: db, Keyring: probeKeyring(t, db)}
