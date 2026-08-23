@@ -3,7 +3,7 @@
 Issue: https://github.com/Hikyo-Org/Hikyo/issues/331 (parent #326; audit
 finding `F-S23-1`). Implementation is based on `origin/main` commit
 `8cc1bbf570e57c5836b1533f1abdc00a600d68b4`.
-Before delivery, latest `origin/main` (`4485fdf438fe4ab9a0ee218c34e201e9d9308e47`)
+Before delivery, latest `origin/main` (`ac8a2b6160ebb853db740d5b40599ba674135bed`)
 was merged normally and the full validation was repeated.
 
 ## Contract
@@ -34,6 +34,15 @@ Go test: 3475 passed in 61 packages
 
 rtk go vet ./...
 passed
+
+rtk pnpm --dir clients/ts run verify
+12 passed
+
+rtk pnpm --dir web run typecheck
+passed
+
+rtk pnpm --dir web run test
+310 passed in 37 files
 
 rtk gofmt -l <changed-go-files>
 no output
