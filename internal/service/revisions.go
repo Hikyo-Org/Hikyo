@@ -591,10 +591,11 @@ func (s *Revisions) RotateTokenKey(ctx context.Context, actor Actor) (TokenKeyRo
 	if s.Keyring == nil {
 		return TokenKeyRotation{}, errors.New("service: token key rotation requires a keyring")
 	}
-	next, adopt, err := s.Keyring.PrepareTokenKeyRotation()
+	next, adopt, abort, err := s.Keyring.PrepareTokenKeyRotation()
 	if err != nil {
 		return TokenKeyRotation{}, err
 	}
+	defer abort()
 	next.CreatedAt = store.CanonTime(s.now())
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, err := actor.resolve(ctx, az, s.now())
@@ -661,10 +662,11 @@ func (s *Revisions) RotateScanningKey(ctx context.Context, actor Actor) (Scannin
 	if s.Keyring == nil {
 		return ScanningKeyRotation{}, errors.New("service: scanning key rotation requires a keyring")
 	}
-	next, adopt, err := s.Keyring.PrepareScanningKeyRotation()
+	next, adopt, abort, err := s.Keyring.PrepareScanningKeyRotation()
 	if err != nil {
 		return ScanningKeyRotation{}, err
 	}
+	defer abort()
 	next.CreatedAt = store.CanonTime(s.now())
 	dropped, err := tx.WriteResult(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) (int64, error) {
 		caller, err := actor.resolve(ctx, az, s.now())

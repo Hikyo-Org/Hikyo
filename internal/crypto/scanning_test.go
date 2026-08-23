@@ -17,7 +17,9 @@ func fixedScanningKeyring() *Keyring {
 	for i := range key {
 		key[i] = byte(i)
 	}
-	return &Keyring{scanning: keyHandle{version: 1, key: key}}
+	kr := &Keyring{}
+	kr.scanning.adopt(keyHandle{version: 1, key: key})
+	return kr
 }
 
 // Golden known-answer vector (SS4): pins the exact fingerprint bytes for a
@@ -153,12 +155,13 @@ func TestScanningKeyRotationAdopt(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := kr.ScanningFingerprint("o", "p", "e", "k", []byte("v"))
-	v0 := kr.scanning.version
+	v0 := kr.scanning.get().version
 
-	row, adopt, err := kr.PrepareScanningKeyRotation()
+	row, adopt, abort, err := kr.PrepareScanningKeyRotation()
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer abort()
 	if row.Version != v0+1 {
 		t.Fatalf("rotated row version = %d, want %d", row.Version, v0+1)
 	}
@@ -167,8 +170,8 @@ func TestScanningKeyRotationAdopt(t *testing.T) {
 		t.Fatal("fingerprint changed before adopt")
 	}
 	adopt()
-	if kr.scanning.version != v0+1 {
-		t.Fatalf("live version after adopt = %d, want %d", kr.scanning.version, v0+1)
+	if kr.scanning.get().version != v0+1 {
+		t.Fatalf("live version after adopt = %d, want %d", kr.scanning.get().version, v0+1)
 	}
 	if bytes.Equal(before, kr.ScanningFingerprint("o", "p", "e", "k", []byte("v"))) {
 		t.Fatal("fingerprint unchanged after rotation adopt — old fingerprints must die")
@@ -180,7 +183,8 @@ func TestScanningKeyRotationAdopt(t *testing.T) {
 // relies on to invalidate every dismissal at once.
 func TestScanningFingerprintKeySeparation(t *testing.T) {
 	k1 := fixedScanningKeyring()
-	k2 := &Keyring{scanning: keyHandle{version: 2, key: bytes.Repeat([]byte{0xA5}, KeySize)}}
+	k2 := &Keyring{}
+	k2.scanning.adopt(keyHandle{version: 2, key: bytes.Repeat([]byte{0xA5}, KeySize)})
 	const value = "AKIAIOSFODNN7EXAMPLE"
 	if bytes.Equal(
 		k1.ScanningFingerprint("o", "p", "e", "k", []byte(value)),
