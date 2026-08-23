@@ -35,3 +35,18 @@ internal/store, internal/service, internal/isolation packages passed
 The dialect-ownership regression is compile-time: before this change,
 `adoptDB.Placeholders` did not exist. The dual-engine round-trip pins retained
 public behavior while the contradictory internal state becomes unrepresentable.
+
+## Review disposition
+
+Two-axis review found no implementation defect. Its spec axis noted that the
+public round-trip already passed before the refactor; that is expected because
+the defect was an invalid internal pairing, not an existing production caller.
+`TestAdoptDBOwnsDialectPlaceholders` is the red-before-green compile-time proof,
+and `TestAdapterUpdateTargetRoundTrip` pins public parity on both engines.
+
+The standards axis identified the pre-existing hand-written adapter SQL and
+the pre-existing broad `adoptDB` name. This change adds no query or untyped scan,
+and issue #352 explicitly requires routing these exact queries through
+`adoptDB.SQL` in the smallest mechanical scope. Migrating the adapter query
+layer or renaming its shared shim would broaden this ticket and conflict with
+the parent audit's ordered follow-on work.
