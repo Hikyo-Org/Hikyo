@@ -35,7 +35,8 @@ type ReencryptRepo interface {
 // ReencryptInstanceRow is one instance credential row the walk considers: its id
 // (the AAD owner_row and CAS key), the sealed ciphertext, and — for the five
 // versioned tables — the DEK version it is on and the row version to CAS against.
-// DEKVersion is zero for remotes, signalling the walk to header-parse instead.
+// DEKVersion is zero for remotes and must not be interpreted; that table's
+// registry binding reads the authenticated ciphertext-header version instead.
 type ReencryptInstanceRow struct {
 	ID         string
 	Ciphertext []byte

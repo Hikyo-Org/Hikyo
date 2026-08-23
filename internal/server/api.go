@@ -249,19 +249,10 @@ func (a *API) LocalLogin(ctx context.Context, req apigen.LocalLoginRequestObject
 }
 
 func (a *API) EstablishCredential(ctx context.Context, req apigen.EstablishCredentialRequestObject) (apigen.EstablishCredentialResponseObject, error) {
-	err := a.Auth.EstablishCredential(ctx, req.Body.Authority, req.Body.Password)
-	switch {
-	case err == nil:
-		return apigen.EstablishCredential204Response{}, nil
-	case passwordPrecondition(err):
-		// The one loud refusal on this path: it is the caller's own input,
-		// evaluated before anything is looked up, so naming the rule helps
-		// the human and reveals nothing.
-		return apigen.EstablishCredential400JSONResponse{
-			BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, "password")),
-		}, nil
+	if err := a.Auth.EstablishCredential(ctx, req.Body.Authority, req.Body.Password); err != nil {
+		return nil, err
 	}
-	return nil, err
+	return apigen.EstablishCredential204Response{}, nil
 }
 
 func (a *API) Whoami(ctx context.Context, _ apigen.WhoamiRequestObject) (apigen.WhoamiResponseObject, error) {
@@ -316,11 +307,6 @@ func (a *API) Logout(ctx context.Context, _ apigen.LogoutRequestObject) (apigen.
 func (a *API) EnrolTotpStart(ctx context.Context, req apigen.EnrolTotpStartRequestObject) (apigen.EnrolTotpStartResponseObject, error) {
 	uri, err := a.Auth.EnrolTOTPStart(ctx, bearer(ctx), req.Body.Password)
 	if err != nil {
-		if factorPrecondition(err) {
-			return apigen.EnrolTotpStart400JSONResponse{
-				BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, "")),
-			}, nil
-		}
 		return nil, err
 	}
 	return apigen.EnrolTotpStart200JSONResponse{OtpauthUri: uri}, nil
@@ -329,11 +315,6 @@ func (a *API) EnrolTotpStart(ctx context.Context, req apigen.EnrolTotpStartReque
 func (a *API) EnrolTotpConfirm(ctx context.Context, req apigen.EnrolTotpConfirmRequestObject) (apigen.EnrolTotpConfirmResponseObject, error) {
 	result, err := a.Auth.EnrolTOTPConfirm(ctx, bearer(ctx), req.Body.Code)
 	if err != nil {
-		if factorPrecondition(err) {
-			return apigen.EnrolTotpConfirm400JSONResponse{
-				BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, "")),
-			}, nil
-		}
 		return nil, err
 	}
 	return sessionResponse(result), nil
@@ -342,11 +323,6 @@ func (a *API) EnrolTotpConfirm(ctx context.Context, req apigen.EnrolTotpConfirmR
 func (a *API) StepUpTotp(ctx context.Context, req apigen.StepUpTotpRequestObject) (apigen.StepUpTotpResponseObject, error) {
 	result, err := a.Auth.StepUpTOTP(ctx, bearer(ctx), req.Body.Code)
 	if err != nil {
-		if factorPrecondition(err) {
-			return apigen.StepUpTotp400JSONResponse{
-				BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, "")),
-			}, nil
-		}
 		return nil, err
 	}
 	return sessionResponse(result), nil
@@ -355,11 +331,6 @@ func (a *API) StepUpTotp(ctx context.Context, req apigen.StepUpTotpRequestObject
 func (a *API) RemoveTotp(ctx context.Context, req apigen.RemoveTotpRequestObject) (apigen.RemoveTotpResponseObject, error) {
 	result, err := a.Auth.RemoveTOTP(ctx, bearer(ctx), req.Body.Password)
 	if err != nil {
-		if factorPrecondition(err) {
-			return apigen.RemoveTotp400JSONResponse{
-				BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, "")),
-			}, nil
-		}
 		return nil, err
 	}
 	return sessionResponse(result), nil
@@ -370,15 +341,7 @@ func (a *API) RemoveTotp(ctx context.Context, req apigen.RemoveTotpRequestObject
 func (a *API) GetTotpStatus(ctx context.Context, _ apigen.GetTotpStatusRequestObject) (apigen.GetTotpStatusResponseObject, error) {
 	status, err := a.Auth.TOTPStatus(ctx, bearer(ctx))
 	if err != nil {
-		switch wireErrorFor(err).code {
-		case apigen.ErrorCodeUnauthenticated:
-			return apigen.GetTotpStatus401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
-		case apigen.ErrorCodeTooManyRequests:
-			return apigen.GetTotpStatus429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
-		default:
-			a.fault(ctx, "get totp status", err)
-			return apigen.GetTotpStatus500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
-		}
+		return nil, err
 	}
 	return apigen.GetTotpStatus200JSONResponse(apigen.TotpStatus{
 		Confirmed: status.Confirmed,
@@ -389,11 +352,6 @@ func (a *API) GetTotpStatus(ctx context.Context, _ apigen.GetTotpStatusRequestOb
 func (a *API) RegenerateRecoveryCodes(ctx context.Context, req apigen.RegenerateRecoveryCodesRequestObject) (apigen.RegenerateRecoveryCodesResponseObject, error) {
 	codes, result, err := a.Auth.GenerateRecoveryCodes(ctx, bearer(ctx), req.Body.Proof)
 	if err != nil {
-		if factorPrecondition(err) {
-			return apigen.RegenerateRecoveryCodes400JSONResponse{
-				BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, "")),
-			}, nil
-		}
 		return nil, err
 	}
 	resp := recoveryCodesResponse{body: apigen.RecoveryCodesResult{
@@ -409,13 +367,6 @@ func (a *API) RegenerateRecoveryCodes(ctx context.Context, req apigen.Regenerate
 func (a *API) BeginRecovery(ctx context.Context, req apigen.BeginRecoveryRequestObject) (apigen.BeginRecoveryResponseObject, error) {
 	result, err := a.Auth.ConsumeRecoveryCode(ctx, req.Body.Username, req.Body.Code)
 	if err != nil {
-		// The passkey-only floor refusal (A1): consuming the last code on a
-		// passwordless account is refused loudly. Only a caller holding a VALID
-		// code reaches it, so naming the structural state reveals nothing an
-		// enumerator could not already learn — and the refusal is non-destructive.
-		if recoveryPrecondition(err) {
-			return apigen.BeginRecovery400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
-		}
 		return nil, err
 	}
 	return apigen.BeginRecovery200JSONResponse{

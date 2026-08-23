@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -97,6 +98,22 @@ func TestRegistryWellFormed(t *testing.T) {
 		if spec.Outcomes[OutcomeDisconnected] && typ != EventAuditExportCompleted {
 			t.Errorf("%s: disconnected outcome licensed outside audit.export_completed", typ)
 		}
+	}
+
+	source, err := os.ReadFile("registry.go")
+	if err != nil {
+		t.Fatalf("read registry source: %v", err)
+	}
+	for i, line := range strings.Split(string(source), "\n") {
+		if !strings.Contains(line, "Kind: KindString") || !strings.Contains(line, "//") || !strings.Contains(line, "|") || strings.Contains(line, "Enum:") {
+			continue
+		}
+		// Authentication methods are intentionally open: OIDC and SAML values
+		// include provider-controlled issuer/entity identifiers.
+		if strings.Contains(line, `"method":`) {
+			continue
+		}
+		t.Errorf("registry.go:%d: KindString field closes values only in prose: %s", i+1, strings.TrimSpace(line))
 	}
 }
 
@@ -348,6 +365,98 @@ func TestValidateRefusals(t *testing.T) {
 		if !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: error %q does not mention %q", c.name, err, c.want)
 		}
+	}
+}
+
+func TestValidateRefusesValuesOutsideClosedTaxonomies(t *testing.T) {
+	cases := []struct {
+		name    string
+		typ     EventType
+		outcome Outcome
+		trail   Trail
+		scope   domain.Scope
+		field   string
+		payload Payload
+		want    []string
+	}{
+		{"grant resolution", EventGrantDenied, OutcomeDenied, TrailTenant, domain.Scope{Org: "org_a"}, "resolution",
+			Payload{"operation": "environment.read", "formula": "read@environment", "resolution": "resolvable"},
+			[]string{"resolvable", "unresolvable"}},
+		{"login artifact", EventAuthLogin, OutcomeSuccess, TrailInstance, domain.Scope{}, "artifact",
+			Payload{"method": "local-password", "artifact": "browser", "subject_resolved": true},
+			[]string{"cli", "browser"}},
+		{"login assurance", EventAuthLogin, OutcomeSuccess, TrailInstance, domain.Scope{}, "assurance",
+			Payload{"method": "local-password", "artifact": "browser", "subject_resolved": true, "assurance": "single-factor"},
+			[]string{"single-factor", "multi-factor"}},
+		{"authority issuer", EventAuthAuthorityMinted, OutcomeSuccess, TrailInstance, domain.Scope{}, "issued_by",
+			Payload{"authority_id": "cea_a", "account_id": "acc_a", "issued_by": "bootstrap", "delivery": "terminal"},
+			[]string{"bootstrap", "credential-reset", "break-glass", "recovery"}},
+		{"authority delivery", EventAuthAuthorityMinted, OutcomeSuccess, TrailInstance, domain.Scope{}, "delivery",
+			Payload{"authority_id": "cea_a", "account_id": "acc_a", "issued_by": "bootstrap", "delivery": "stdout"},
+			[]string{"file", "terminal", "stdout", "response"}},
+		{"throttle scope", EventAuthThrottleCrossed, OutcomeFailure, TrailInstance, domain.Scope{}, "scope",
+			Payload{"scope": "account", "subject_resolved": true},
+			[]string{"account", "source-ip", "instance"}},
+		{"OIDC purpose", EventOIDCLogin, OutcomeSuccess, TrailInstance, domain.Scope{}, "purpose",
+			Payload{"method": "oidc:issuer", "purpose": "login", "account_id": "acc_a", "assurance": "single-factor", "provider_id": "idp_a", "provider_row_version": 1},
+			[]string{"login", "reauth"}},
+		{"OIDC assurance", EventOIDCLogin, OutcomeSuccess, TrailInstance, domain.Scope{}, "assurance",
+			Payload{"method": "oidc:issuer", "purpose": "login", "account_id": "acc_a", "assurance": "single-factor", "provider_id": "idp_a", "provider_row_version": 1},
+			[]string{"single-factor", "multi-factor"}},
+		{"OIDC refusal cause", EventOIDCRefused, OutcomeFailure, TrailInstance, domain.Scope{}, "cause",
+			Payload{"cause": "mixup"},
+			[]string{"mixup", "nonce", "purpose", "state", "issuer", "audience", "signature", "epoch", "idp-error", "expired", "unknown-identity", "no-assurance-policy", "no-auth-time", "binding", "jit-refused", "reconciliation", "window-zero", "no-possession", "downgrade"}},
+		{"provider change", EventOIDCProviderChanged, OutcomeSuccess, TrailInstance, domain.Scope{}, "change",
+			Payload{"provider_id": "idp_a", "change": "created", "sessions_swept": 0},
+			[]string{"created", "updated", "deleted"}},
+		{"provider query", EventOIDCProviderRead, OutcomeSuccess, TrailInstance, domain.Scope{}, "query",
+			Payload{"query": "get", "row_count": 1},
+			[]string{"get", "list"}},
+		{"reset issuer", EventAuthCredentialResetIssued, OutcomeFailure, TrailInstance, domain.Scope{}, "issued_by",
+			Payload{"target_principal": "usr_a", "issued_by": "credential-reset", "authority": "network"},
+			[]string{"credential-reset", "break-glass"}},
+		{"reset authority", EventAuthCredentialResetIssued, OutcomeFailure, TrailInstance, domain.Scope{}, "authority",
+			Payload{"target_principal": "usr_a", "issued_by": "credential-reset", "authority": "network"},
+			[]string{"network", "local-host"}},
+		{"organization query", EventOrgRead, OutcomeSuccess, TrailInstance, domain.Scope{}, "query",
+			Payload{"query": "count", "row_count": 1},
+			[]string{"get", "list", "count"}},
+		{"origin allowlist change", EventRemoteOriginAllowlistChanged, OutcomeSuccess, TrailInstance, domain.Scope{}, "change",
+			Payload{"origin": "https://example.com", "change": "added", "sessions_revoked": 0},
+			[]string{"added", "removed"}},
+		{"handoff stage", EventRemoteHandoffFailed, OutcomeFailure, TrailInstance, domain.Scope{}, "stage",
+			Payload{"handoff_id": "hnd_a", "origin": "https://example.com", "stage": "start", "cause": "origin-not-allowed"},
+			[]string{"start", "callback", "redeem"}},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			spec, ok := Spec(c.typ)
+			if !ok {
+				t.Fatalf("%s is not registered", c.typ)
+			}
+			if got := spec.Schema[c.field].Enum; !slices.Equal(got, c.want) {
+				t.Fatalf("%s field %q enum = %v, want %v", c.typ, c.field, got, c.want)
+			}
+
+			e := Event{
+				ID:            "evt_0198b6de-0000-7000-8000-000000000001",
+				Type:          c.typ,
+				SchemaVersion: 1,
+				OccurredAt:    time.Now().UTC(),
+				Actor:         Actor{Class: ActorSystem},
+				Outcome:       c.outcome,
+				Origin:        OriginSystem,
+				Payload:       c.payload,
+			}
+			if err := Validate(e, c.trail, c.scope); err != nil {
+				t.Fatalf("valid event refused: %v", err)
+			}
+			e.Payload[c.field] = "outside-taxonomy"
+			if err := Validate(e, c.trail, c.scope); err == nil || !strings.Contains(err.Error(), "outside the closed set") {
+				t.Fatalf("invalid %s accepted or returned wrong error: %v", c.field, err)
+			}
+		})
 	}
 }
 
