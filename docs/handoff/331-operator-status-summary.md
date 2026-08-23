@@ -3,6 +3,8 @@
 Issue: https://github.com/Hikyo-Org/Hikyo/issues/331 (parent #326; audit
 finding `F-S23-1`). Implementation is based on `origin/main` commit
 `8cc1bbf570e57c5836b1533f1abdc00a600d68b4`.
+Before delivery, latest `origin/main` (`94da1b003467cfe0ee7e1e87c98f061abe8a5b9b`)
+was merged normally and the full validation was repeated.
 
 ## Contract
 
@@ -28,7 +30,7 @@ rtk go test -count=1 ./internal/operator
 Go test: 89 passed in 1 package
 
 rtk go test -count=1 ./...
-Go test: 3471 passed in 61 packages
+Go test: 3473 passed in 61 packages
 
 rtk go vet ./...
 passed
