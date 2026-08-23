@@ -726,14 +726,12 @@ func stepUpFactors(existing []string, add string) []string {
 // recovery codes never authorize their own regeneration. The batch is a sealed
 // JSON array of the codes' verifiers; only the verifiers persist.
 func (s *Auth) GenerateRecoveryCodes(ctx context.Context, presented, proof string) ([]string, LoginResult, error) {
-	// Phase 1 — read. Determine the proof class over the pre-existing set.
+	// Phase 1 — authenticate before VerifyReauthProof so an empty bearer cannot
+	// take that helper's local-authority exemption on this network-only path.
 	var (
-		account   authz.Account
-		cred      authz.PasswordCredential
-		confirmed authz.TOTPCredential
-		existing  authz.RecoveryBatch
-		hasTOTP   bool
-		hasBatch  bool
+		account  authz.Account
+		existing authz.RecoveryBatch
+		hasBatch bool
 	)
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
 		id, err := az.Authenticate(ctx, presented, s.now())
@@ -742,21 +740,6 @@ func (s *Auth) GenerateRecoveryCodes(ctx context.Context, presented, proof strin
 		}
 		account, err = az.AccountByPrincipal(ctx, id.Principal)
 		if err != nil {
-			return err
-		}
-		confirmed, err = az.ConfirmedTOTP(ctx, account.ID)
-		switch {
-		case err == nil:
-			hasTOTP = true
-		case errors.Is(err, domain.ErrNotFound):
-			cred, err = az.PasswordCredentialFor(ctx, account.ID)
-			if errors.Is(err, domain.ErrNotFound) {
-				return ErrNoProofCredential
-			}
-			if err != nil {
-				return err
-			}
-		default:
 			return err
 		}
 		existing, err = az.RecoveryCodesFor(ctx, account.ID)
@@ -773,40 +756,25 @@ func (s *Auth) GenerateRecoveryCodes(ctx context.Context, presented, proof strin
 		return nil, LoginResult{}, err
 	}
 
-	// Admission: whether the proof is a password (Argon2) or a TOTP code, a
-	// stolen session must not make regeneration an unthrottled oracle — a bad
-	// proof here yields a fresh recovery batch, so it is a takeover primitive.
-	release, err := s.enterFactorBudget(ctx, account.ID)
+	// Phase 2 — verify through the shared owner. Argon2/TOTP work and admission
+	// accounting happen outside the write transaction; consumption stays with
+	// the recovery-batch write below.
+	evidence, err := s.VerifyReauthProof(ctx, presented, proof)
 	if err != nil {
+		if err == ErrReauthProofRequired {
+			return nil, LoginResult{}, domain.ErrUnauthenticated
+		}
 		return nil, LoginResult{}, err
 	}
-	defer release()
-
-	// Phase 2 — verify the proof (Argon2 outside any tx for a password).
 	var proofClass string
-	var totpStep int64
-	if hasTOTP {
+	switch evidence.kind {
+	case reauthEvidenceTOTP:
 		proofClass = "totp"
-		seed, oerr := s.Keyring.ForInstance().OpenField(totpSeedAAD(confirmed.ID), confirmed.Seed)
-		if oerr != nil {
-			s.logFault(ctx, "opening a TOTP seed failed", oerr, account.ID)
-			return nil, LoginResult{}, domain.ErrUnauthenticated
-		}
-		var ok bool
-		totpStep, ok = crypto.ValidateTOTP(seed, proof, s.now(), crypto.TOTPSkewSteps)
-		crypto.Zero(seed)
-		if !ok {
-			s.recordFactorFailure(ctx, account.PrincipalID, account.ID)
-			return nil, LoginResult{}, domain.ErrUnauthenticated
-		}
-	} else {
+	case reauthEvidencePassword:
 		proofClass = "password"
-		if !s.verifyPassword(ctx, account.ID, cred, proof) {
-			s.recordFactorFailure(ctx, account.PrincipalID, account.ID)
-			return nil, LoginResult{}, domain.ErrUnauthenticated
-		}
+	default:
+		return nil, LoginResult{}, domain.ErrUnauthenticated
 	}
-	s.Admission.RecordSuccess(account.ID)
 
 	// Mint the batch and seal its verifiers.
 	codes, verifiers, err := crypto.GenerateRecoveryBatch(RecoveryBatchSize)
@@ -838,42 +806,12 @@ func (s *Auth) GenerateRecoveryCodes(ctx context.Context, presented, proof strin
 		if liveID.Principal != account.PrincipalID {
 			return domain.ErrUnauthenticated
 		}
+		if err := s.ConsumeReauthEvidence(ctx, az, evidence, liveID.Principal); err != nil {
+			return err
+		}
 		epoch, err := az.CredentialEpoch(ctx)
 		if err != nil {
 			return err
-		}
-		if hasTOTP {
-			if _, err := az.ConfirmedTOTP(ctx, account.ID); err != nil {
-				if errors.Is(err, domain.ErrNotFound) {
-					return domain.ErrUnauthenticated
-				}
-				return err
-			}
-			// CAS on the row VERIFIED in phase 1 (finding HIGH-5): a code proved
-			// against a since-replaced factor must not consume its successor.
-			consumed, err := az.AdvanceTOTPStep(ctx, confirmed.ID, confirmed.RowVersion, totpStep)
-			if err != nil {
-				return err
-			}
-			if !consumed {
-				// A step already spent on the same row is named; a moved row
-				// (a concurrent replace) stays the uniform refusal.
-				if s.totpStepConsumed(ctx, az, account.ID, confirmed.ID, totpStep) {
-					return totpStepAlreadyUsed()
-				}
-				return domain.ErrUnauthenticated
-			}
-		} else {
-			current, err := az.PasswordCredentialFor(ctx, account.ID)
-			if err != nil {
-				if errors.Is(err, domain.ErrNotFound) {
-					return domain.ErrUnauthenticated
-				}
-				return err
-			}
-			if current.RowVersion != cred.RowVersion || current.CredentialEpoch != epoch {
-				return domain.ErrUnauthenticated
-			}
 		}
 		batch := authz.RecoveryBatch{
 			AccountID: account.ID, Batch: sealed,

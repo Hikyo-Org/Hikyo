@@ -147,7 +147,7 @@ func (s *SCIM) MintCredential(ctx context.Context, actor Actor, org domain.OrgID
 // fails closed rather than skipping the gate.
 func (s *SCIM) verifyMintReauth(ctx context.Context, actor Actor, proof string) (ReauthEvidence, error) {
 	if actor.bearer == "" {
-		return ReauthEvidence{exempt: true}, nil
+		return ReauthEvidence{kind: reauthEvidenceExempt}, nil
 	}
 	if s.Auth == nil {
 		return ReauthEvidence{}, fmt.Errorf(

@@ -289,6 +289,13 @@ type EnvInput struct {
 	Keys []KeyState
 }
 
+// Ref is how every artifact addresses this environment: a created environment by
+// name (it has no id yet), an existing one by id. This is the one place the rule
+// lives; a plan prints and writes the same reference.
+func (e EnvInput) Ref() string {
+	return environmentRef(e.Create, e.EnvName, e.EnvID)
+}
+
 // ProjectPlanInput is one phase-1 session's whole material: one source, one
 // project, and one or more target environments. Keys, types and classifications
 // are project-scoped and reconciled to one canonical identity per key across the
@@ -318,6 +325,20 @@ type EnvPlan struct {
 	Values      ValuesFile
 	// HasValues reports whether this environment's values file carries anything.
 	HasValues bool
+}
+
+// Ref is how every artifact addresses this environment: a created environment by
+// name, an existing one by id. It mirrors EnvInput.Ref so the plan summary and
+// the written bundle agree.
+func (e EnvPlan) Ref() string {
+	return environmentRef(e.Create, e.EnvName, e.EnvID)
+}
+
+func environmentRef(create bool, name, id string) string {
+	if create {
+		return name
+	}
+	return id
 }
 
 // ProjectPlan is a whole session's result: the four artifact families, with one
@@ -387,6 +408,10 @@ func BuildProjectPlan(in ProjectPlanInput) (*ProjectPlan, error) {
 		if e.Create && e.EnvName == "" {
 			return nil, failure(in.Source, CodeMalformed, "",
 				"a created environment is named, not id'd")
+		}
+		if e.Create && e.EnvID != "" {
+			return nil, failure(in.Source, CodeMalformed, "",
+				"a created environment carries no id")
 		}
 		if !e.Create && e.EnvID == "" {
 			return nil, failure(in.Source, CodeMalformed, "",
@@ -531,12 +556,8 @@ func BuildProjectPlan(in ProjectPlanInput) (*ProjectPlan, error) {
 		if err != nil {
 			return nil, err
 		}
-		ref := env.EnvID
-		if env.Create {
-			ref = env.EnvName
-		}
 		plan.Manifest.ValuesDigests = append(plan.Manifest.ValuesDigests,
-			ValuesDigest{Environment: ref, Digest: Digest(body)})
+			ValuesDigest{Environment: env.Ref(), Digest: Digest(body)})
 	}
 	plan.Manifest.ValuesDigests = nonNil(plan.Manifest.ValuesDigests)
 	// Created environments are explicit, reviewable bundle lines (ADR § Targeting
@@ -669,10 +690,7 @@ func reconcileKeys(in ProjectPlanInput, envRows [][]mappedRecord, recordedFolder
 func planEnvironment(in ProjectPlanInput, e EnvInput, rows []mappedRecord, decisions map[string]keyDecision,
 	trimOffenders *[]string, trimSeen map[string]bool) (EnvPlan, error) {
 	envID := e.EnvID
-	envRef := envID
-	if e.Create {
-		envRef = e.EnvName
-	}
+	envRef := e.Ref()
 	overwrite := templateOverwrites(in.Template, envRef)
 	trimAck := templateTrimAcks(in.Template, envRef)
 
@@ -748,13 +766,9 @@ func buildTemplate(in ProjectPlanInput, tmpl Template, renames []Rename, folders
 	}
 	tmpl.Environments = nil
 	for _, e := range in.Envs {
-		target := e.EnvID
-		if e.Create {
-			target = e.EnvName
-		}
 		tmpl.Environments = append(tmpl.Environments, EnvironmentMapping{
 			Source: sourceEnvironment(e.EnvSlug),
-			Target: target,
+			Target: e.Ref(),
 			Create: e.Create,
 		})
 	}
@@ -769,10 +783,7 @@ func buildTemplate(in ProjectPlanInput, tmpl Template, renames []Rename, folders
 	tmpl.Overwrites = nil
 	tmpl.TrimAcknowledgements = nil
 	for i, e := range in.Envs {
-		envRef := e.EnvID
-		if e.Create {
-			envRef = e.EnvName
-		}
+		envRef := e.Ref()
 		for _, name := range envs[i].Overwritten {
 			tmpl.Overwrites = append(tmpl.Overwrites, KeyEnvironment{Key: name, Environment: envRef})
 		}
@@ -811,12 +822,11 @@ func buildManifest(in ProjectPlanInput, encodedTemplate []byte, envRows [][]mapp
 	var keyOrder []string
 	var missing []string
 	for i, e := range in.Envs {
-		envRef := e.EnvID
+		envRef := e.Ref()
 		if e.Create {
 			// Created environments are named, not id'd, and sit in a distinct
 			// field: they are tokenless (no presence read happened), so they
 			// contribute no occurrence row and are outside the precondition.
-			envRef = e.EnvName
 			m.Target.CreatedEnvironments = append(m.Target.CreatedEnvironments, e.EnvName)
 		} else {
 			m.Target.Environments = append(m.Target.Environments, e.EnvID)

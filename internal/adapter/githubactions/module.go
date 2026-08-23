@@ -176,69 +176,16 @@ func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Pla
 	if err != nil {
 		return adapter.Plan{}, err
 	}
-	providerSecrets := stringSet(names)
-	ledger := ledgerMap(req.Ledger)
-	desired := desiredEntries(req.Target.NamePrefix, req.Manifest, true)
-	changes := make([]adapter.Change, 0, len(desired)+len(ledger))
-	desiredSet := make(map[string]bool, len(desired))
-	for _, row := range desired {
-		key := ledgerKey(row.Surface, row.EffectiveName)
-		desiredSet[key] = true
-		record, claimed := ledger[key]
-		state := record.State
-		disposition := adapter.Create
-		switch {
-		case claimed && (state == adapter.Owned || state == adapter.Dispatched) && !record.Missing:
-			disposition = adapter.Update
-		case row.Surface == adapter.Secret && providerSecrets[row.EffectiveName]:
-			disposition = adapter.Conflict
-		case row.Surface == adapter.Variable && !claimed:
-			disposition = adapter.Unknown
-		}
-		changes = append(changes, adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: disposition})
+	providerSecrets := adapter.NameSet(names)
+	ledger, err := adapter.IndexLedger(req.Ledger)
+	if err != nil {
+		return adapter.Plan{}, err
 	}
-	for key, record := range ledger {
-		if desiredSet[key] || record.State == adapter.Reserved {
-			continue
-		}
-		surface, name := splitLedgerKey(key)
-		changes = append(changes, adapter.Change{Surface: surface, EffectiveName: name, Disposition: adapter.Delete})
-	}
-	sortChanges(changes)
-	return adapter.Plan{Changes: changes, Warnings: capacityWarnings(req.Target.Destination, desired, req.Ledger, providerSecrets)}, nil
-}
-
-type desired struct {
-	adapter.ManifestEntry
-	Surface       adapter.Surface
-	EffectiveName string
-}
-
-func desiredEntries(prefix string, manifest []adapter.ManifestEntry, sentinel bool) []desired {
-	rows := make([]desired, 0, len(manifest)+2)
-	if sentinel {
-		rows = append(rows,
-			desired{ManifestEntry: adapter.ManifestEntry{Classification: adapter.SecretClassification, Value: adapter.SentinelName}, Surface: adapter.Secret, EffectiveName: prefix + adapter.SentinelName},
-			desired{ManifestEntry: adapter.ManifestEntry{Classification: adapter.ConfigClassification, Value: adapter.SentinelName}, Surface: adapter.Variable, EffectiveName: prefix + adapter.SentinelName},
-		)
-	}
-	for _, entry := range manifest {
-		rows = append(rows, desired{ManifestEntry: entry, Surface: entry.Surface(), EffectiveName: prefix + entry.CanonicalName})
-	}
-	slices.SortStableFunc(rows, func(a, b desired) int {
-		aSentinel, bSentinel := a.KeyID == "", b.KeyID == ""
-		if aSentinel != bSentinel {
-			if aSentinel {
-				return -1
-			}
-			return 1
-		}
-		if a.Surface != b.Surface {
-			return strings.Compare(string(a.Surface), string(b.Surface))
-		}
-		return strings.Compare(a.EffectiveName, b.EffectiveName)
-	})
-	return rows
+	desired := adapter.DesiredRows(req.Target.NamePrefix, req.Manifest, true)
+	return adapter.Plan{
+		Changes:  adapter.PlanChanges(desired, ledger, providerSecrets),
+		Warnings: capacityWarnings(req.Target.Destination, desired, req.Ledger, providerSecrets),
+	}, nil
 }
 
 func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adapter.Journal) (adapter.SyncResult, error) {
@@ -265,14 +212,11 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 	if err != nil {
 		return adapter.SyncResult{}, err
 	}
-	providerSecrets := stringSet(names)
-	desiredRows := desiredEntries(req.Target.NamePrefix, req.Manifest, !req.Teardown)
-	completed := make(map[string]bool, len(req.Completed))
-	for _, change := range req.Completed {
-		completed[ledgerKey(change.Surface, change.EffectiveName)] = true
-	}
+	providerSecrets := adapter.NameSet(names)
+	desiredRows := adapter.DesiredRows(req.Target.NamePrefix, req.Manifest, !req.Teardown)
+	completed := adapter.CompletedNames(req.Completed)
 	var publicKey PublicKey
-	if slices.ContainsFunc(desiredRows, func(row desired) bool { return row.Surface == adapter.Secret }) {
+	if slices.ContainsFunc(desiredRows, func(row adapter.DesiredRow) bool { return row.Surface == adapter.Secret }) {
 		if err := journal.Gate(ctx, inspect); err != nil {
 			return adapter.SyncResult{}, err
 		}
@@ -281,16 +225,19 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 			return adapter.SyncResult{}, err
 		}
 	}
-	ledger := ledgerMap(req.Ledger)
+	ledger, err := adapter.IndexLedger(req.Ledger)
+	if err != nil {
+		return adapter.SyncResult{}, err
+	}
 	result := adapter.SyncResult{Warnings: capacityWarnings(req.Target.Destination, desiredRows, req.Ledger, providerSecrets)}
 	for _, row := range desiredRows {
-		if completed[ledgerKey(row.Surface, row.EffectiveName)] {
+		if completed[adapter.NewLedgerKey(row.Surface, row.EffectiveName)] {
 			continue
 		}
-		key := ledgerKey(row.Surface, row.EffectiveName)
+		key := adapter.NewLedgerKey(row.Surface, row.EffectiveName)
 		record, claimed := ledger[key]
 		state := record.State
-		ownedMissing := record.Missing && (state == adapter.Owned || state == adapter.Dispatched)
+		ownedMissing := record.Missing
 		effect := adapter.Effect{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Create, KeyID: row.KeyID}
 		if claimed && (state == adapter.Owned || state == adapter.Dispatched) && !ownedMissing {
 			effect.Disposition = adapter.Update
@@ -300,7 +247,7 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 			if err != nil {
 				return result, err
 			}
-			ledger[key] = ledgerRecord{State: state}
+			ledger[key] = adapter.LedgerEntry{Surface: row.Surface, EffectiveName: row.EffectiveName, State: state}
 		}
 		freshReservation := state == adapter.Reserved
 		if freshReservation && row.Surface == adapter.Secret && providerSecrets[row.EffectiveName] {
@@ -353,7 +300,7 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 				if finishErr := journal.Finish(ctx, effect, adapter.Completion{Outcome: "failure", State: adapter.Owned, Missing: true, ProviderStatus: http.StatusNotFound, Finding: "owned_missing"}); finishErr != nil {
 					return result, finishErr
 				}
-				ledger[key] = ledgerRecord{State: adapter.Owned, Missing: true}
+				ledger[key] = adapter.LedgerEntry{Surface: row.Surface, EffectiveName: row.EffectiveName, State: adapter.Owned, Missing: true}
 				ownedMissing = true
 				effect.Disposition = adapter.Create
 				if err = m.prepare(ctx, journal, effect, adapter.Owned, req.Target); err != nil {
@@ -406,7 +353,7 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 		if err := journal.Finish(ctx, effect, adapter.Completion{Outcome: "success", State: adapter.Owned, ProviderStatus: providerStatus}); err != nil {
 			return result, err
 		}
-		ledger[key] = ledgerRecord{State: adapter.Owned}
+		ledger[key] = adapter.LedgerEntry{Surface: row.Surface, EffectiveName: row.EffectiveName, State: adapter.Owned}
 		result.Changes = append(result.Changes, adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: effect.Disposition})
 	}
 	return m.prune(ctx, req, journal, desiredRows, ledger, result)
@@ -434,7 +381,7 @@ func (m *Module) prepare(ctx context.Context, journal adapter.Journal, effect ad
 	return nil
 }
 
-func (m *Module) writeSecret(ctx context.Context, journal adapter.Journal, effect adapter.Effect, destination adapter.Destination, row desired, key PublicKey) (WriteResult, error) {
+func (m *Module) writeSecret(ctx context.Context, journal adapter.Journal, effect adapter.Effect, destination adapter.Destination, row adapter.DesiredRow, key PublicKey) (WriteResult, error) {
 	sealed, err := m.sealer()([]byte(row.Value), key)
 	if err != nil {
 		return WriteResult{}, err
@@ -445,7 +392,7 @@ func (m *Module) writeSecret(ctx context.Context, journal adapter.Journal, effec
 	return m.API.PutSecret(ctx, destination, row.EffectiveName, sealed, key.ID)
 }
 
-func (m *Module) writeVariable(ctx context.Context, journal adapter.Journal, effect adapter.Effect, destination adapter.Destination, row desired, state adapter.LedgerState, forceCreate bool) (WriteResult, error) {
+func (m *Module) writeVariable(ctx context.Context, journal adapter.Journal, effect adapter.Effect, destination adapter.Destination, row adapter.DesiredRow, state adapter.LedgerState, forceCreate bool) (WriteResult, error) {
 	if err := journal.Gate(ctx, effect); err != nil {
 		return WriteResult{}, err
 	}
@@ -463,25 +410,8 @@ func (m *Module) writeVariable(ctx context.Context, journal adapter.Journal, eff
 	return result, err
 }
 
-func (m *Module) prune(ctx context.Context, req adapter.SyncRequest, journal adapter.Journal, desiredRows []desired, ledger map[string]ledgerRecord, result adapter.SyncResult) (adapter.SyncResult, error) {
-	desiredSet := make(map[string]bool, len(desiredRows))
-	for _, row := range desiredRows {
-		desiredSet[ledgerKey(row.Surface, row.EffectiveName)] = true
-	}
-	var reservations, prunes []adapter.LedgerEntry
-	for key, record := range ledger {
-		if desiredSet[key] {
-			continue
-		}
-		surface, name := splitLedgerKey(key)
-		row := adapter.LedgerEntry{Surface: surface, EffectiveName: name, State: record.State, Missing: record.Missing}
-		if record.State == adapter.Reserved {
-			reservations = append(reservations, row)
-		} else {
-			prunes = append(prunes, row)
-		}
-	}
-	sortLedger(reservations, false)
+func (m *Module) prune(ctx context.Context, req adapter.SyncRequest, journal adapter.Journal, desiredRows []adapter.DesiredRow, ledger map[adapter.LedgerKey]adapter.LedgerEntry, result adapter.SyncResult) (adapter.SyncResult, error) {
+	reservations, prunes := adapter.Undesired(desiredRows, ledger)
 	for _, row := range reservations {
 		effect := adapter.Effect{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Delete}
 		if err := journal.Gate(ctx, effect); err != nil {
@@ -491,7 +421,6 @@ func (m *Module) prune(ctx context.Context, req adapter.SyncRequest, journal ada
 			return result, err
 		}
 	}
-	sortLedger(prunes, true)
 	for _, row := range prunes {
 		effect := adapter.Effect{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Delete}
 		if err := m.prepare(ctx, journal, effect, row.State, req.Target); err != nil {
@@ -535,7 +464,7 @@ func (m *Module) verifyDestination(ctx context.Context, target adapter.Target) e
 	return m.API.VerifySelectedRepositories(ctx, target.Destination)
 }
 
-func addConflict(result adapter.SyncResult, row desired) adapter.SyncResult {
+func addConflict(result adapter.SyncResult, row adapter.DesiredRow) adapter.SyncResult {
 	result.Conflicts = append(result.Conflicts, adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Conflict})
 	return result
 }
@@ -565,60 +494,7 @@ func failureCompletion(prior adapter.LedgerState, err error) (string, adapter.Le
 	return "unknown", adapter.Dispatched
 }
 
-func stringSet(values []string) map[string]bool {
-	out := make(map[string]bool, len(values))
-	for _, value := range values {
-		out[strings.ToUpper(value)] = true
-	}
-	return out
-}
-func ledgerKey(surface adapter.Surface, name string) string {
-	return string(surface) + "\x00" + strings.ToUpper(name)
-}
-func splitLedgerKey(key string) (adapter.Surface, string) {
-	parts := strings.SplitN(key, "\x00", 2)
-	return adapter.Surface(parts[0]), parts[1]
-}
-
-type ledgerRecord struct {
-	State   adapter.LedgerState
-	Missing bool
-}
-
-func ledgerMap(rows []adapter.LedgerEntry) map[string]ledgerRecord {
-	out := make(map[string]ledgerRecord, len(rows))
-	for _, row := range rows {
-		out[ledgerKey(row.Surface, row.EffectiveName)] = ledgerRecord{State: row.State, Missing: row.Missing}
-	}
-	return out
-}
-func sortChanges(rows []adapter.Change) {
-	slices.SortFunc(rows, func(a, b adapter.Change) int {
-		if a.Surface != b.Surface {
-			return strings.Compare(string(a.Surface), string(b.Surface))
-		}
-		return strings.Compare(a.EffectiveName, b.EffectiveName)
-	})
-}
-func sortLedger(rows []adapter.LedgerEntry, sentinelsLast bool) {
-	slices.SortFunc(rows, func(a, b adapter.LedgerEntry) int {
-		if sentinelsLast {
-			aSentinel, bSentinel := strings.HasSuffix(a.EffectiveName, adapter.SentinelName), strings.HasSuffix(b.EffectiveName, adapter.SentinelName)
-			if aSentinel != bSentinel {
-				if aSentinel {
-					return 1
-				}
-				return -1
-			}
-		}
-		if a.Surface != b.Surface {
-			return strings.Compare(string(a.Surface), string(b.Surface))
-		}
-		return strings.Compare(a.EffectiveName, b.EffectiveName)
-	})
-}
-
-func capacityWarnings(destination adapter.Destination, desiredRows []desired, ledger []adapter.LedgerEntry, providerSecrets map[string]bool) []string {
+func capacityWarnings(destination adapter.Destination, desiredRows []adapter.DesiredRow, ledger []adapter.LedgerEntry, providerSecrets map[string]bool) []string {
 	secretCap, variableCap := 100, 500
 	scope := "repository"
 	switch destination.Kind {

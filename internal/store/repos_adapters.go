@@ -612,6 +612,7 @@ type adoptDB interface {
 	Query(context.Context, string, ...any) (adapterTargetRows, error)
 	Exec(context.Context, string, ...any) (int64, error)
 	SQL(string, string) string
+	Placeholders(int, int) string
 	Stamp(time.Time) any
 }
 
@@ -631,7 +632,10 @@ func (d sqliteAdoptDB) Exec(ctx context.Context, query string, args ...any) (int
 	return result.RowsAffected()
 }
 func (sqliteAdoptDB) SQL(sqliteQuery, _ string) string { return sqliteQuery }
-func (sqliteAdoptDB) Stamp(value time.Time) any        { return adapterTimestamp(EngineSQLite, value) }
+func (sqliteAdoptDB) Placeholders(n, _ int) string {
+	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
+}
+func (sqliteAdoptDB) Stamp(value time.Time) any { return adapterTimestamp(EngineSQLite, value) }
 
 type pgAdoptDB struct{ db pggen.DBTX }
 
@@ -649,7 +653,14 @@ func (d pgAdoptDB) Exec(ctx context.Context, query string, args ...any) (int64, 
 	return tag.RowsAffected(), nil
 }
 func (pgAdoptDB) SQL(_, postgresQuery string) string { return postgresQuery }
-func (pgAdoptDB) Stamp(value time.Time) any          { return CanonTime(value) }
+func (pgAdoptDB) Placeholders(n, start int) string {
+	out := make([]string, n)
+	for i := range out {
+		out[i] = fmt.Sprintf("$%d", start+i)
+	}
+	return strings.Join(out, ",")
+}
+func (pgAdoptDB) Stamp(value time.Time) any { return CanonTime(value) }
 
 func adoptAdapter(ctx context.Context, db adoptDB, chain domain.Scope, adoption AdapterAdoption) (AdapterAdoptionResult, error) {
 	var adapterID, environmentID, origin, destinationKind, priorJob string
@@ -1059,8 +1070,8 @@ func teardownAdapterTarget(ctx context.Context, db adoptDB, chain domain.Scope, 
 	}
 	if keepRemote {
 		release := db.SQL(
-			`UPDATE adapter_ledger SET state='released',updated_at=? WHERE target_id=? AND org_id=? AND project_id=? AND environment_id=? AND state<>'released'`,
-			`UPDATE adapter_ledger SET state='released',updated_at=$1 WHERE target_id=$2 AND org_id=$3 AND project_id=$4 AND environment_id=$5 AND state<>'released'`)
+			`UPDATE adapter_ledger SET state='released',missing=0,updated_at=? WHERE target_id=? AND org_id=? AND project_id=? AND environment_id=? AND state<>'released'`,
+			`UPDATE adapter_ledger SET state='released',missing=false,updated_at=$1 WHERE target_id=$2 AND org_id=$3 AND project_id=$4 AND environment_id=$5 AND state<>'released'`)
 		if _, err := db.Exec(ctx, release, stamp, target.targetID, chain.Org, chain.Project, target.environmentID); err != nil {
 			return AdapterTeardownResult{}, err
 		}
