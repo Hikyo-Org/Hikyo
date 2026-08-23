@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
@@ -532,6 +533,106 @@ func reencryptRetireRefusesStraggler(t *testing.T, open func(*testing.T) *store.
 	}
 	if states[1] != "retiring" {
 		t.Errorf("DEK v1 state = %q, want retiring (retire must NOT complete with a straggler)", states[1])
+	}
+}
+
+func TestReencryptInstanceRetireRefusesRemoteStraggler(t *testing.T) {
+	t.Run("sqlite", func(t *testing.T) { reencryptInstanceRetireRefusesRemoteStraggler(t, openSQLite) })
+	t.Run("postgres", func(t *testing.T) { reencryptInstanceRetireRefusesRemoteStraggler(t, openPostgres) })
+}
+
+func reencryptInstanceRetireRefusesRemoteStraggler(t *testing.T, open func(*testing.T) *store.DB) {
+	db := seededDB(t, open)
+	kr := probeKeyring(t, db)
+	ctx := tctx(t)
+	inst := kr.ForInstance()
+	aad := crypto.InstanceFieldAAD{OwnerTable: "remotes", OwnerRowID: "rmt_instance_dry", FieldTag: "credential"}
+	oldCiphertext, err := inst.SealField(aad, []byte("remote-dry-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reencExec(t, db, ctx,
+		`INSERT INTO remotes (id, name, url, spki_pin, credential_sealed, created_at, created_by) VALUES ('rmt_instance_dry','instance-dry-remote','https://r','sha256-x',?, '2026-01-01T00:00:00Z','usr_root')`,
+		`INSERT INTO remotes (id, name, url, spki_pin, credential_sealed, created_at, created_by) VALUES ('rmt_instance_dry','instance-dry-remote','https://r','sha256-x',$1, '2026-01-01T00:00:00Z','usr_root')`,
+		oldCiphertext)
+
+	rotation := &service.Rotation{DB: db, Keyring: kr, RootKey: probeRootSource{db: db}}
+	if _, err := rotation.RotateDEK(ctx, service.LocalPrincipal(root), service.DEKScope{Instance: true}); err != nil {
+		t.Fatalf("rotate-dek --instance: %v", err)
+	}
+
+	re := &service.Reencrypt{DB: db, Keyring: kr, ChunkSize: 1, ChunkPause: -1}
+	// Restore the remote's v1 blob after the walk moves it to v2. The shared
+	// registry-backed dryness gate must still inspect its authenticated header.
+	re.BeforeRetire = func(ctx context.Context) error {
+		reencExec(t, db, ctx,
+			`UPDATE remotes SET credential_sealed = ? WHERE id = 'rmt_instance_dry'`,
+			`UPDATE remotes SET credential_sealed = $1 WHERE id = 'rmt_instance_dry'`,
+			oldCiphertext)
+		return nil
+	}
+	_, err = re.ReencryptInstance(ctx, service.LocalPrincipal(root))
+	if !errors.Is(err, domain.ErrConflict) || !strings.Contains(err.Error(), "remotes:rmt_instance_dry") {
+		t.Fatalf("reencrypt --instance with a remote straggler: err = %v, want remotes:rmt_instance_dry domain.ErrConflict", err)
+	}
+	states, err := queryTier3StatesPurpose(db, ctx, "instance", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if states[1] != "retiring" {
+		t.Errorf("instance DEK v1 state = %q, want retiring (retire must NOT complete with a remote straggler)", states[1])
+	}
+}
+
+func TestReencryptInstanceRejectsMalformedRemoteHeader(t *testing.T) {
+	for _, dialect := range []struct {
+		name string
+		open func(*testing.T) *store.DB
+	}{{"sqlite", openSQLite}, {"postgres", openPostgres}} {
+		t.Run(dialect.name, func(t *testing.T) {
+			t.Run("walk", func(t *testing.T) { reencryptInstanceRejectsMalformedRemoteHeader(t, dialect.open, false) })
+			t.Run("gate", func(t *testing.T) { reencryptInstanceRejectsMalformedRemoteHeader(t, dialect.open, true) })
+		})
+	}
+}
+
+func reencryptInstanceRejectsMalformedRemoteHeader(t *testing.T, open func(*testing.T) *store.DB, corruptAtGate bool) {
+	db := seededDB(t, open)
+	kr := probeKeyring(t, db)
+	ctx := tctx(t)
+	inst := kr.ForInstance()
+	aad := crypto.InstanceFieldAAD{OwnerTable: "remotes", OwnerRowID: "rmt_malformed", FieldTag: "credential"}
+	ciphertext, err := inst.SealField(aad, []byte("remote-malformed-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reencExec(t, db, ctx,
+		`INSERT INTO remotes (id, name, url, spki_pin, credential_sealed, created_at, created_by) VALUES ('rmt_malformed','malformed-remote','https://r','sha256-x',?, '2026-01-01T00:00:00Z','usr_root')`,
+		`INSERT INTO remotes (id, name, url, spki_pin, credential_sealed, created_at, created_by) VALUES ('rmt_malformed','malformed-remote','https://r','sha256-x',$1, '2026-01-01T00:00:00Z','usr_root')`,
+		ciphertext)
+
+	rotation := &service.Rotation{DB: db, Keyring: kr, RootKey: probeRootSource{db: db}}
+	if _, err := rotation.RotateDEK(ctx, service.LocalPrincipal(root), service.DEKScope{Instance: true}); err != nil {
+		t.Fatalf("rotate-dek --instance: %v", err)
+	}
+	corrupt := func(ctx context.Context) error {
+		reencExec(t, db, ctx,
+			`UPDATE remotes SET credential_sealed = ? WHERE id = 'rmt_malformed'`,
+			`UPDATE remotes SET credential_sealed = $1 WHERE id = 'rmt_malformed'`,
+			[]byte{0xff})
+		return nil
+	}
+	re := &service.Reencrypt{DB: db, Keyring: kr, ChunkSize: 1, ChunkPause: -1}
+	contextName := "inspect"
+	if corruptAtGate {
+		contextName = "dryness"
+		re.BeforeRetire = corrupt
+	} else if err := corrupt(ctx); err != nil {
+		t.Fatal(err)
+	}
+	_, err = re.ReencryptInstance(ctx, service.LocalPrincipal(root))
+	if !errors.Is(err, crypto.ErrDecrypt) || !strings.Contains(err.Error(), contextName+" remotes rmt_malformed") {
+		t.Fatalf("reencrypt --instance malformed remote during %s: err = %v, want contextual crypto.ErrDecrypt", contextName, err)
 	}
 }
 

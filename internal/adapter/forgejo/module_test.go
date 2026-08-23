@@ -134,6 +134,72 @@ func TestDispatchWindowVariableReplayUsesUpdateNotCreate(t *testing.T) {
 	}
 }
 
+func TestSyncSkipsCompletedNames(t *testing.T) {
+	api := &fakeAPI{id: 42, version: "1.21.0", secrets: map[string]bool{}}
+	journal := newFakeJournal()
+	journal.states["secret:"+adapter.SentinelName] = adapter.Owned
+	journal.states["variable:"+adapter.SentinelName] = adapter.Owned
+	journal.states["variable:LOG_LEVEL"] = adapter.Owned
+
+	_, err := (&Module{API: api}).Sync(t.Context(), adapter.SyncRequest{
+		Target:    testTargetNoPrefix(),
+		Manifest:  []adapter.ManifestEntry{{KeyID: "key_1", CanonicalName: "LOG_LEVEL", Classification: adapter.ConfigClassification, Value: "debug"}},
+		Ledger:    journal.ledger(),
+		Completed: []adapter.Change{{Surface: adapter.Variable, EffectiveName: "LOG_LEVEL", Disposition: adapter.Update}},
+	}, journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(api.writes, "update-variable:LOG_LEVEL") || journal.prepares["variable:LOG_LEVEL"] != 0 {
+		t.Fatalf("completed LOG_LEVEL replayed: writes=%v prepares=%d", api.writes, journal.prepares["variable:LOG_LEVEL"])
+	}
+}
+
+func TestOwnedMissingVariableRetriesCreateOnly(t *testing.T) {
+	api := &fakeAPI{id: 42, version: "1.21.0", secrets: map[string]bool{}}
+	journal := newFakeJournal()
+	journal.states["secret:"+adapter.SentinelName] = adapter.Owned
+	journal.states["variable:"+adapter.SentinelName] = adapter.Owned
+	journal.states["variable:LOG_LEVEL"] = adapter.Owned
+	journal.missing["variable:LOG_LEVEL"] = true
+	_, err := (&Module{API: api}).Sync(t.Context(), adapter.SyncRequest{
+		Target:   testTargetNoPrefix(),
+		Manifest: []adapter.ManifestEntry{{KeyID: "key_1", CanonicalName: "LOG_LEVEL", Classification: adapter.ConfigClassification, Value: "debug"}},
+		Ledger:   journal.ledger(),
+	}, journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(api.writes, "create-variable:LOG_LEVEL") || slices.Contains(api.writes, "update-variable:LOG_LEVEL") {
+		t.Fatalf("owned-missing retry writes=%v, want create without update", api.writes)
+	}
+}
+
+func TestOwnedMissingVariableConflictPreservesMissingCustody(t *testing.T) {
+	api := &fakeAPI{id: 42, version: "1.21.0", secrets: map[string]bool{}, conflict: map[string]bool{"LOG_LEVEL": true}}
+	journal := newFakeJournal()
+	journal.states["secret:"+adapter.SentinelName] = adapter.Owned
+	journal.states["variable:"+adapter.SentinelName] = adapter.Owned
+	journal.states["variable:LOG_LEVEL"] = adapter.Owned
+	journal.missing["variable:LOG_LEVEL"] = true
+
+	_, err := (&Module{API: api}).Sync(t.Context(), adapter.SyncRequest{
+		Target:   testTargetNoPrefix(),
+		Manifest: []adapter.ManifestEntry{{KeyID: "key_1", CanonicalName: "LOG_LEVEL", Classification: adapter.ConfigClassification, Value: "debug"}},
+		Ledger:   journal.ledger(),
+	}, journal)
+	if !errors.Is(err, adapter.ErrConflict) {
+		t.Fatalf("Sync() error = %v, want ErrConflict", err)
+	}
+	completion := journal.completions["variable:LOG_LEVEL"]
+	if len(completion) != 1 || !completion[0].Conflict || completion[0].State != adapter.Owned || !completion[0].Missing || completion[0].Finding != "owned_missing" {
+		t.Fatalf("owned-missing conflict completion=%+v", completion)
+	}
+	if journal.states["variable:LOG_LEVEL"] != adapter.Owned || !journal.missing["variable:LOG_LEVEL"] {
+		t.Fatalf("owned-missing custody state=%q missing=%v", journal.states["variable:LOG_LEVEL"], journal.missing["variable:LOG_LEVEL"])
+	}
+}
+
 func TestOwnedVariableDeletedAtProviderRetriesCreateUnderFreshEffect(t *testing.T) {
 	api := &fakeAPI{id: 42, version: "1.21.0", secrets: map[string]bool{}, failures: map[string]error{"update-variable:LOG_LEVEL": &ResponseError{Status: 404}}}
 	journal := newFakeJournal()
@@ -475,6 +541,7 @@ func (f *fakeAPI) DeleteVariable(_ context.Context, _ adapter.Destination, name 
 
 type fakeJournal struct {
 	states       map[string]adapter.LedgerState
+	missing      map[string]bool
 	prepares     map[string]int
 	completions  map[string][]adapter.Completion
 	trace        *[]string
@@ -488,7 +555,7 @@ type fakeJournal struct {
 }
 
 func newFakeJournal() *fakeJournal {
-	return &fakeJournal{states: map[string]adapter.LedgerState{}, prepares: map[string]int{}, completions: map[string][]adapter.Completion{}, releases: map[string]int{}}
+	return &fakeJournal{states: map[string]adapter.LedgerState{}, missing: map[string]bool{}, prepares: map[string]int{}, completions: map[string][]adapter.Completion{}, releases: map[string]int{}}
 }
 func effectKey(e adapter.Effect) string { return string(e.Surface) + ":" + e.EffectiveName }
 func (j *fakeJournal) Gate(context.Context, adapter.Effect) error {
@@ -524,14 +591,17 @@ func (j *fakeJournal) Finish(_ context.Context, e adapter.Effect, completion ada
 	j.completions[effectKey(e)] = append(j.completions[effectKey(e)], completion)
 	if completion.State == "" {
 		delete(j.states, effectKey(e))
+		delete(j.missing, effectKey(e))
 	} else {
 		j.states[effectKey(e)] = completion.State
+		j.missing[effectKey(e)] = completion.Missing
 	}
 	return nil
 }
 func (j *fakeJournal) Refuse(_ context.Context, e adapter.Effect) error {
 	j.refusals++
 	delete(j.states, effectKey(e))
+	delete(j.missing, effectKey(e))
 	return nil
 }
 func (j *fakeJournal) ReleaseReservation(_ context.Context, e adapter.Effect) error {
@@ -541,13 +611,14 @@ func (j *fakeJournal) ReleaseReservation(_ context.Context, e adapter.Effect) er
 	}
 	j.releases[key]++
 	delete(j.states, key)
+	delete(j.missing, key)
 	return nil
 }
 func (j *fakeJournal) ledger() []adapter.LedgerEntry {
 	out := make([]adapter.LedgerEntry, 0, len(j.states))
 	for key, state := range j.states {
 		parts := strings.SplitN(key, ":", 2)
-		out = append(out, adapter.LedgerEntry{Surface: adapter.Surface(parts[0]), EffectiveName: parts[1], State: state})
+		out = append(out, adapter.LedgerEntry{Surface: adapter.Surface(parts[0]), EffectiveName: parts[1], State: state, Missing: j.missing[key]})
 	}
 	return out
 }

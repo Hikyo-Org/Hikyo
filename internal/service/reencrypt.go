@@ -259,17 +259,30 @@ type projectTable struct {
 	cas  func(context.Context, store.Repos, authz.Proof, string, []byte, []byte) (bool, error)
 }
 
-// ReencryptInstance walks the six instance-DEK credential tables onto the active
-// instanceTable is one row_version instance credential table's reencrypt
-// binding — its paged lister, per-row AAD, and CAS reseal — shared by the walk
-// and the retire dryness gate.
+// instanceTable is one instance credential table's complete reencrypt binding:
+// its paged lister, version source, per-row AAD, and CAS reseal. One registry
+// feeds both the walk and retire dryness gate so table coverage cannot diverge.
 type instanceTable struct {
-	table  string
-	list   func(store.ReencryptRepo, context.Context, authz.Proof, string, int) ([]store.ReencryptInstanceRow, error)
-	aad    func(string) crypto.InstanceFieldAAD
-	reseal func(store.ReencryptRepo, context.Context, authz.Proof, string, []byte, uint32, uint32) (bool, error)
+	table     string
+	list      func(store.ReencryptRepo, context.Context, authz.Proof, string, int) ([]store.ReencryptInstanceRow, error)
+	versionOf func(store.ReencryptInstanceRow) (uint32, error)
+	aad       func(string) crypto.InstanceFieldAAD
+	reseal    func(store.ReencryptRepo, context.Context, authz.Proof, store.ReencryptInstanceRow, []byte, uint32) (bool, error)
 }
 
+func instanceColumnVersion(row store.ReencryptInstanceRow) (uint32, error) {
+	return row.DEKVersion, nil
+}
+
+func versionedInstanceReseal(
+	reseal func(store.ReencryptRepo, context.Context, authz.Proof, string, []byte, uint32, uint32) (bool, error),
+) func(store.ReencryptRepo, context.Context, authz.Proof, store.ReencryptInstanceRow, []byte, uint32) (bool, error) {
+	return func(r store.ReencryptRepo, ctx context.Context, p authz.Proof, row store.ReencryptInstanceRow, ciphertext []byte, active uint32) (bool, error) {
+		return reseal(r, ctx, p, row.ID, ciphertext, active, row.RowVersion)
+	}
+}
+
+// ReencryptInstance walks the six instance-DEK credential tables onto the active
 // instance DEK version, then retires the superseded versions. Instance-scoped:
 // no tenant chain, one InstanceSealer for the whole walk.
 func (s *Reencrypt) ReencryptInstance(ctx context.Context, actor Actor) (ReencryptResult, error) {
@@ -287,48 +300,58 @@ func (s *Reencrypt) ReencryptInstance(ctx context.Context, actor Actor) (Reencry
 	sealer := s.Keyring.ForInstance()
 	active := sealer.Version()
 	moved := 0
-	// The five row_version tables: skip by the dek_version column, CAS on
-	// row_version and stamp the new dek_version.
-	versioned := []instanceTable{
-		{"password_credentials",
-			store.ReencryptRepo.ListPasswordCredsForReencrypt,
-			func(id string) crypto.InstanceFieldAAD {
+	tables := []instanceTable{
+		{table: "password_credentials",
+			list:      store.ReencryptRepo.ListPasswordCredsForReencrypt,
+			versionOf: instanceColumnVersion,
+			aad: func(id string) crypto.InstanceFieldAAD {
 				return crypto.InstanceFieldAAD{OwnerTable: "password_credentials", OwnerRowID: id, FieldTag: "verifier"}
 			},
-			store.ReencryptRepo.ReencryptPasswordCred},
-		{"totp_credentials",
-			store.ReencryptRepo.ListTotpCredsForReencrypt,
-			func(id string) crypto.InstanceFieldAAD {
+			reseal: versionedInstanceReseal(store.ReencryptRepo.ReencryptPasswordCred)},
+		{table: "totp_credentials",
+			list:      store.ReencryptRepo.ListTotpCredsForReencrypt,
+			versionOf: instanceColumnVersion,
+			aad: func(id string) crypto.InstanceFieldAAD {
 				return crypto.InstanceFieldAAD{OwnerTable: "totp_credentials", OwnerRowID: id, FieldTag: "seed"}
 			},
-			store.ReencryptRepo.ReencryptTotpCred},
-		{"recovery_codes",
-			store.ReencryptRepo.ListRecoveryCodesForReencrypt,
-			func(id string) crypto.InstanceFieldAAD {
+			reseal: versionedInstanceReseal(store.ReencryptRepo.ReencryptTotpCred)},
+		{table: "recovery_codes",
+			list:      store.ReencryptRepo.ListRecoveryCodesForReencrypt,
+			versionOf: instanceColumnVersion,
+			aad: func(id string) crypto.InstanceFieldAAD {
 				return crypto.InstanceFieldAAD{OwnerTable: "recovery_codes", OwnerRowID: id, FieldTag: "batch"}
 			},
-			store.ReencryptRepo.ReencryptRecoveryCodes},
-		{"oidc_providers",
-			store.ReencryptRepo.ListOidcProvidersForReencrypt,
-			func(id string) crypto.InstanceFieldAAD {
+			reseal: versionedInstanceReseal(store.ReencryptRepo.ReencryptRecoveryCodes)},
+		{table: "oidc_providers",
+			list:      store.ReencryptRepo.ListOidcProvidersForReencrypt,
+			versionOf: instanceColumnVersion,
+			aad: func(id string) crypto.InstanceFieldAAD {
 				return crypto.InstanceFieldAAD{OwnerTable: "oidc_providers", OwnerRowID: id, FieldTag: "client_secret"}
 			},
-			store.ReencryptRepo.ReencryptOidcProvider},
-		{"saml_sp_keys",
-			store.ReencryptRepo.ListSamlKeysForReencrypt,
-			func(id string) crypto.InstanceFieldAAD {
+			reseal: versionedInstanceReseal(store.ReencryptRepo.ReencryptOidcProvider)},
+		{table: "saml_sp_keys",
+			list:      store.ReencryptRepo.ListSamlKeysForReencrypt,
+			versionOf: instanceColumnVersion,
+			aad: func(id string) crypto.InstanceFieldAAD {
 				return crypto.InstanceFieldAAD{OwnerTable: "saml_sp_keys", OwnerRowID: id, FieldTag: "private_key"}
 			},
-			store.ReencryptRepo.ReencryptSamlKey},
+			reseal: versionedInstanceReseal(store.ReencryptRepo.ReencryptSamlKey)},
+		{table: "remotes",
+			list: store.ReencryptRepo.ListRemotesForReencrypt,
+			versionOf: func(row store.ReencryptInstanceRow) (uint32, error) {
+				return crypto.RecordKeyVersion(row.Ciphertext)
+			},
+			aad: func(id string) crypto.InstanceFieldAAD {
+				return crypto.InstanceFieldAAD{OwnerTable: "remotes", OwnerRowID: id, FieldTag: "credential"}
+			},
+			reseal: func(r store.ReencryptRepo, ctx context.Context, p authz.Proof, row store.ReencryptInstanceRow, ciphertext []byte, _ uint32) (bool, error) {
+				return r.ReencryptRemote(ctx, p, row.ID, ciphertext, row.Ciphertext)
+			}},
 	}
-	for _, t := range versioned {
-		if err := s.walkInstanceVersioned(ctx, actor, t.table, &moved, t.list, t.aad, t.reseal, sealer, active); err != nil {
+	for _, table := range tables {
+		if err := s.walkInstance(ctx, actor, table, &moved, sealer, active); err != nil {
 			return ReencryptResult{}, err
 		}
-	}
-	// remotes has no dek_version: header-parse to skip, CAS on the blob.
-	if err := s.walkRemotes(ctx, actor, &moved, sealer, active); err != nil {
-		return ReencryptResult{}, err
 	}
 
 	if s.BeforeRetire != nil {
@@ -336,7 +359,7 @@ func (s *Reencrypt) ReencryptInstance(ctx context.Context, actor Actor) (Reencry
 			return ReencryptResult{}, err
 		}
 	}
-	if err := s.retireInstance(ctx, actor, moved, active, versioned); err != nil {
+	if err := s.retireInstance(ctx, actor, moved, active, tables); err != nil {
 		return ReencryptResult{}, err
 	}
 	if err := s.Keyring.ReloadInstanceDEK(ctx); err != nil {
@@ -391,14 +414,8 @@ func (s *Reencrypt) walkChunked(
 	}
 }
 
-func (s *Reencrypt) walkInstanceVersioned(
-	ctx context.Context, actor Actor, table string, moved *int,
-	list func(store.ReencryptRepo, context.Context, authz.Proof, string, int) ([]store.ReencryptInstanceRow, error),
-	aadOf func(string) crypto.InstanceFieldAAD,
-	reseal func(store.ReencryptRepo, context.Context, authz.Proof, string, []byte, uint32, uint32) (bool, error),
-	sealer *crypto.InstanceSealer, active uint32,
-) error {
-	return s.walkChunked(ctx, table, moved, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, cursor string) (string, int, int, error) {
+func (s *Reencrypt) walkInstance(ctx context.Context, actor Actor, table instanceTable, moved *int, sealer *crypto.InstanceSealer, active uint32) error {
+	return s.walkChunked(ctx, table.table, moved, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, cursor string) (string, int, int, error) {
 		caller, err := actor.resolve(ctx, az, s.now())
 		if err != nil {
 			return "", 0, 0, err
@@ -411,77 +428,31 @@ func (s *Reencrypt) walkInstanceVersioned(
 		if err := fenceInstanceVersion(ctx, r, p, active); err != nil {
 			return "", 0, 0, err
 		}
-		rows, err := list(r.Reencrypt(), ctx, p, cursor, s.chunkSize())
+		rows, err := table.list(r.Reencrypt(), ctx, p, cursor, s.chunkSize())
 		if err != nil {
 			return "", 0, 0, err
 		}
 		next, delta := cursor, 0
 		for _, row := range rows {
 			next = row.ID // advance over skipped rows too, else a full-skip chunk re-lists forever
-			if row.DEKVersion == active {
+			version, err := table.versionOf(row)
+			if err != nil {
+				return "", 0, 0, fmt.Errorf("reencrypt: inspect %s %s version: %w", table.table, row.ID, err)
+			}
+			if version == active {
 				continue
 			}
-			aad := aadOf(row.ID)
+			aad := table.aad(row.ID)
 			plain, err := sealer.OpenField(aad, row.Ciphertext)
 			if err != nil {
-				return "", 0, 0, fmt.Errorf("reencrypt: open %s %s: %w", table, row.ID, err)
+				return "", 0, 0, fmt.Errorf("reencrypt: open %s %s: %w", table.table, row.ID, err)
 			}
 			resealed, err := sealer.SealField(aad, plain)
 			crypto.Zero(plain)
 			if err != nil {
-				return "", 0, 0, fmt.Errorf("reencrypt: reseal %s %s: %w", table, row.ID, err)
+				return "", 0, 0, fmt.Errorf("reencrypt: reseal %s %s: %w", table.table, row.ID, err)
 			}
-			did, err := reseal(r.Reencrypt(), ctx, p, row.ID, resealed, active, row.RowVersion)
-			if err != nil {
-				return "", 0, 0, err
-			}
-			if did {
-				delta++
-			}
-		}
-		return next, len(rows), delta, nil
-	})
-}
-
-func (s *Reencrypt) walkRemotes(ctx context.Context, actor Actor, moved *int, sealer *crypto.InstanceSealer, active uint32) error {
-	return s.walkChunked(ctx, "remotes", moved, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, cursor string) (string, int, int, error) {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return "", 0, 0, err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpReencryptInstance, domain.Scope{})
-		if err != nil {
-			return "", 0, 0, err
-		}
-		// Per-chunk fence: abort if a rotate-dek --instance demoted our target.
-		if err := fenceInstanceVersion(ctx, r, p, active); err != nil {
-			return "", 0, 0, err
-		}
-		rows, err := r.Reencrypt().ListRemotesForReencrypt(ctx, p, cursor, s.chunkSize())
-		if err != nil {
-			return "", 0, 0, err
-		}
-		next, delta := cursor, 0
-		for _, row := range rows {
-			next = row.ID
-			ver, err := crypto.RecordKeyVersion(row.Ciphertext)
-			if err != nil {
-				return "", 0, 0, fmt.Errorf("reencrypt: remote %s: %w", row.ID, err)
-			}
-			if ver == active {
-				continue
-			}
-			aad := crypto.InstanceFieldAAD{OwnerTable: "remotes", OwnerRowID: row.ID, FieldTag: "credential"}
-			plain, err := sealer.OpenField(aad, row.Ciphertext)
-			if err != nil {
-				return "", 0, 0, fmt.Errorf("reencrypt: open remote %s: %w", row.ID, err)
-			}
-			resealed, err := sealer.SealField(aad, plain)
-			crypto.Zero(plain)
-			if err != nil {
-				return "", 0, 0, fmt.Errorf("reencrypt: reseal remote %s: %w", row.ID, err)
-			}
-			did, err := r.Reencrypt().ReencryptRemote(ctx, p, row.ID, resealed, row.Ciphertext)
+			did, err := table.reseal(r.Reencrypt(), ctx, p, row, resealed, active)
 			if err != nil {
 				return "", 0, 0, err
 			}
@@ -502,7 +473,7 @@ func (s *Reencrypt) pause(ctx context.Context) error {
 	}
 }
 
-func (s *Reencrypt) retireInstance(ctx context.Context, actor Actor, moved int, active uint32, versioned []instanceTable) error {
+func (s *Reencrypt) retireInstance(ctx context.Context, actor Actor, moved int, active uint32, tables []instanceTable) error {
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, err := actor.resolve(ctx, az, s.now())
 		if err != nil {
@@ -517,10 +488,10 @@ func (s *Reencrypt) retireInstance(ctx context.Context, actor Actor, moved int, 
 		if err := fenceInstanceVersion(ctx, r, p, active); err != nil {
 			return err
 		}
-		// Dryness gate across all six instance credential tables (ADR invariant 7):
-		// the five row_version tables by dek_version, remotes by its blob header.
-		for _, t := range versioned {
-			straggler, err := s.instanceVersionedStraggler(ctx, r, p, t, active)
+		// Dryness gate across the same complete instance credential registry the
+		// walk used (encryption-model ADR, invariant 7).
+		for _, table := range tables {
+			straggler, err := s.instanceStraggler(ctx, r, p, table, active)
 			if err != nil {
 				return err
 			}
@@ -528,12 +499,6 @@ func (s *Reencrypt) retireInstance(ctx context.Context, actor Actor, moved int, 
 				return fmt.Errorf("%w: reencrypt cannot retire: %s references a superseded DEK version",
 					domain.ErrConflict, straggler)
 			}
-		}
-		if straggler, err := s.remotesStraggler(ctx, r, p, active); err != nil {
-			return err
-		} else if straggler != "" {
-			return fmt.Errorf("%w: reencrypt cannot retire: %s references a superseded DEK version",
-				domain.ErrConflict, straggler)
 		}
 		if _, err := r.Keys().RetireRetiringTier3(ctx, p, crypto.PurposeInstance, "", ""); err != nil {
 			return err
@@ -548,44 +513,23 @@ func (s *Reencrypt) retireInstance(ctx context.Context, actor Actor, moved int, 
 	})
 }
 
-// instanceVersionedStraggler pages one row_version credential table and returns
-// "table:id" for the first row whose dek_version is off `active`, or "".
-func (s *Reencrypt) instanceVersionedStraggler(ctx context.Context, r store.Repos, p authz.Proof, t instanceTable, active uint32) (string, error) {
+// instanceStraggler pages one credential table and returns "table:id" for the
+// first row whose registry-defined version is off active, or "".
+func (s *Reencrypt) instanceStraggler(ctx context.Context, r store.Repos, p authz.Proof, table instanceTable, active uint32) (string, error) {
 	cursor := ""
 	for {
-		rows, err := t.list(r.Reencrypt(), ctx, p, cursor, s.chunkSize())
+		rows, err := table.list(r.Reencrypt(), ctx, p, cursor, s.chunkSize())
 		if err != nil {
 			return "", err
 		}
 		for _, row := range rows {
 			cursor = row.ID
-			if row.DEKVersion != active {
-				return t.table + ":" + row.ID, nil
-			}
-		}
-		if len(rows) < s.chunkSize() {
-			return "", nil
-		}
-	}
-}
-
-// remotesStraggler pages the remotes table (blob ciphertext, no dek_version
-// column) and returns "remotes:id" for the first row off `active`, or "".
-func (s *Reencrypt) remotesStraggler(ctx context.Context, r store.Repos, p authz.Proof, active uint32) (string, error) {
-	cursor := ""
-	for {
-		rows, err := r.Reencrypt().ListRemotesForReencrypt(ctx, p, cursor, s.chunkSize())
-		if err != nil {
-			return "", err
-		}
-		for _, row := range rows {
-			cursor = row.ID
-			ver, err := crypto.RecordKeyVersion(row.Ciphertext)
+			version, err := table.versionOf(row)
 			if err != nil {
-				return "", fmt.Errorf("reencrypt: dryness remotes %s: %w", row.ID, err)
+				return "", fmt.Errorf("reencrypt: dryness %s %s: %w", table.table, row.ID, err)
 			}
-			if ver != active {
-				return "remotes:" + row.ID, nil
+			if version != active {
+				return table.table + ":" + row.ID, nil
 			}
 		}
 		if len(rows) < s.chunkSize() {

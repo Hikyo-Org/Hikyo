@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -642,6 +643,79 @@ func TestSAMLProviderViewRefusesCorruptStoredTrustState(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			if _, err := samlProviderView(provider, now); err == nil {
 				t.Fatal("samlProviderView accepted corrupt stored trust state")
+			}
+		})
+	}
+}
+
+func TestSAMLSessionsInvalidatedOnlyBySecurityRelevantProviderChanges(t *testing.T) {
+	policy := `["urn:example:mfa"]`
+	changedPolicy := `["urn:example:phishing-resistant"]`
+	base := authz.SAMLProvider{
+		DisplayName:         "Test IdP",
+		SSORedirectURL:      "https://idp.example/sso",
+		SigningCertificates: []byte(`["certificate-a"]`),
+		AssurancePolicy:     &policy,
+		Enabled:             true,
+	}
+
+	for name, test := range map[string]struct {
+		before authz.SAMLProvider
+		mutate func(*authz.SAMLProvider)
+		want   bool
+	}{
+		"Patch disable sweeps": {
+			before: base,
+			mutate: func(provider *authz.SAMLProvider) { provider.Enabled = false },
+			want:   true,
+		},
+		"Patch enable does not sweep": {
+			before: func() authz.SAMLProvider {
+				provider := base
+				provider.Enabled = false
+				return provider
+			}(),
+			mutate: func(provider *authz.SAMLProvider) { provider.Enabled = true },
+			want:   false,
+		},
+		"Patch policy change sweeps": {
+			before: base,
+			mutate: func(provider *authz.SAMLProvider) { provider.AssurancePolicy = &changedPolicy },
+			want:   true,
+		},
+		"Refresh rotated certificate sweeps": {
+			before: base,
+			mutate: func(provider *authz.SAMLProvider) { provider.SigningCertificates = []byte(`["certificate-b"]`) },
+			want:   true,
+		},
+		"Refresh identical certificate does not sweep": {
+			before: base,
+			mutate: func(provider *authz.SAMLProvider) {
+				provider.SigningCertificates = bytes.Clone(provider.SigningCertificates)
+			},
+			want: false,
+		},
+		"Refresh SSO URL change sweeps": {
+			before: base,
+			mutate: func(provider *authz.SAMLProvider) { provider.SSORedirectURL = "https://idp.example/new-sso" },
+			want:   true,
+		},
+		"Patch NameID policy change sweeps": {
+			before: base,
+			mutate: func(provider *authz.SAMLProvider) { provider.AllowEmailNameID = true },
+			want:   true,
+		},
+		"Patch display change does not sweep": {
+			before: base,
+			mutate: func(provider *authz.SAMLProvider) { provider.DisplayName = "Renamed IdP" },
+			want:   false,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			after := test.before
+			test.mutate(&after)
+			if got := samlSessionsInvalidated(test.before, after); got != test.want {
+				t.Fatalf("samlSessionsInvalidated() = %t, want %t", got, test.want)
 			}
 		})
 	}
