@@ -91,7 +91,7 @@ func TestAdapterJournalCommitsIntentOutcomeAndLedgerAtomically(t *testing.T) {
 	if err := journal.Prepare(t.Context(), effect, state); err != nil {
 		t.Fatal(err)
 	}
-	if err := journal.Finish(t.Context(), effect, adapter.Completion{Outcome: "success", State: adapter.Owned, ProviderStatus: 201}); err != nil {
+	if err := journal.Finish(t.Context(), effect, adapter.Completion{Outcome: adapter.OutcomeSuccess, State: adapter.Owned, ProviderStatus: 201}); err != nil {
 		t.Fatal(err)
 	}
 	var ledgerState, effectOutcome string
@@ -124,6 +124,67 @@ func TestAdapterJournalCommitsIntentOutcomeAndLedgerAtomically(t *testing.T) {
 	}
 }
 
+func TestAdapterJournalRejectsZeroCompletionWithoutDeletingLedger(t *testing.T) {
+	db := adapterRuntimeDB(t)
+	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_kind,repository_id,destination_id,surface,effective_name,normalized_name,state,updated_at) VALUES ('led_zero','org_adapter','prj_adapter','env_adapter','tgt_1','https://git.example','repository',0,42,'variable','MODE','MODE','owned','2026-08-17T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	runtime := store.NewAdapterRuntime(db, func(context.Context, adapter.Job, adapter.Effect) error { return nil })
+	job, ok, err := runtime.ClaimDue(t.Context(), "worker_1", time.Now().UTC(), time.Now().UTC().Add(adapter.LeaseTime))
+	if err != nil || !ok {
+		t.Fatalf("ClaimDue() = %+v, %v, %v", job, ok, err)
+	}
+	effect := adapter.Effect{Surface: adapter.Variable, EffectiveName: "MODE", Disposition: adapter.Update}
+	journal := runtime.Journal(job)
+	if err := journal.Prepare(t.Context(), effect, adapter.Owned); err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Finish(t.Context(), effect, adapter.Completion{}); err == nil {
+		t.Fatal("Finish() accepted zero completion")
+	}
+	var ledgerRows, outcomeRows int
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM adapter_ledger WHERE id='led_zero' AND state='owned'`).Scan(&ledgerRows); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM adapter_effects WHERE job_id='job_1' AND outcome IS NOT NULL`).Scan(&outcomeRows); err != nil {
+		t.Fatal(err)
+	}
+	if ledgerRows != 1 || outcomeRows != 0 {
+		t.Fatalf("zero completion changed persistence: ledger=%d outcomes=%d", ledgerRows, outcomeRows)
+	}
+}
+
+func TestAdapterJournalReleasedStateRetainsLedgerRow(t *testing.T) {
+	db := adapterRuntimeDB(t)
+	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_kind,repository_id,destination_id,surface,effective_name,normalized_name,state,updated_at) VALUES ('led_release_state','org_adapter','prj_adapter','env_adapter','tgt_1','https://git.example','repository',0,42,'variable','OLD','OLD','owned','2026-08-17T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	runtime := store.NewAdapterRuntime(db, func(context.Context, adapter.Job, adapter.Effect) error { return nil })
+	job, ok, err := runtime.ClaimDue(t.Context(), "worker_1", time.Now().UTC(), time.Now().UTC().Add(adapter.LeaseTime))
+	if err != nil || !ok {
+		t.Fatalf("ClaimDue() = %+v, %v, %v", job, ok, err)
+	}
+	effect := adapter.Effect{Surface: adapter.Variable, EffectiveName: "OLD", Disposition: adapter.Delete}
+	journal := runtime.Journal(job)
+	if err := journal.Prepare(t.Context(), effect, adapter.Owned); err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Finish(t.Context(), effect, adapter.Completion{Outcome: adapter.OutcomeSuccess, State: adapter.Released}); err != nil {
+		t.Fatal(err)
+	}
+	var state string
+	var rows int
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT state FROM adapter_ledger WHERE id='led_release_state'`).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM adapter_ledger WHERE id='led_release_state'`).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if state != "released" || rows != 1 {
+		t.Fatalf("released state persistence: state=%q rows=%d", state, rows)
+	}
+}
+
 func TestAdapterJournalPersistsOwnedMissingAndAuditFinding(t *testing.T) {
 	db := adapterRuntimeDB(t)
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_kind,repository_id,destination_id,surface,effective_name,normalized_name,state,updated_at) VALUES ('led_missing','org_adapter','prj_adapter','env_adapter','tgt_1','https://git.example','repository',0,42,'variable','MODE','MODE','owned','2026-08-17T00:00:00Z')`); err != nil {
@@ -139,7 +200,7 @@ func TestAdapterJournalPersistsOwnedMissingAndAuditFinding(t *testing.T) {
 	if err := journal.Prepare(t.Context(), effect, adapter.Owned); err != nil {
 		t.Fatal(err)
 	}
-	if err := journal.Finish(t.Context(), effect, adapter.Completion{Outcome: "failure", State: adapter.Owned, Missing: true, ProviderStatus: 404, Finding: "owned_missing"}); err != nil {
+	if err := journal.Finish(t.Context(), effect, adapter.Completion{Outcome: adapter.OutcomeFailure, State: adapter.Owned, Missing: true, ProviderStatus: 404, Finding: "owned_missing"}); err != nil {
 		t.Fatal(err)
 	}
 	var state string
@@ -170,7 +231,7 @@ func TestAdapterJournalRefusesOwnedMissingCompletionAfterRelease(t *testing.T) {
 	if err := journal.Prepare(t.Context(), effect, adapter.Released); err != nil {
 		t.Fatal(err)
 	}
-	err = journal.Finish(t.Context(), effect, adapter.Completion{Outcome: "failure", State: adapter.Owned, Missing: true, ProviderStatus: 404, Finding: "owned_missing"})
+	err = journal.Finish(t.Context(), effect, adapter.Completion{Outcome: adapter.OutcomeFailure, State: adapter.Owned, Missing: true, ProviderStatus: 404, Finding: "owned_missing"})
 	if !errors.Is(err, adapter.ErrSuperseded) {
 		t.Fatalf("Finish() error = %v, want ErrSuperseded", err)
 	}
@@ -203,7 +264,7 @@ func TestAdapterJournalPUTNotFoundEndsEffectBeforeFreshCreateRetry(t *testing.T)
 	if err := first.Prepare(t.Context(), update, adapter.Owned); err != nil {
 		t.Fatal(err)
 	}
-	if err := first.Finish(t.Context(), update, adapter.Completion{Outcome: "failure", State: ""}); err != nil {
+	if err := first.Finish(t.Context(), update, adapter.Completion{Outcome: adapter.OutcomeFailure, ReleaseLedger: true}); err != nil {
 		t.Fatal(err)
 	}
 	var ledgerRows, firstEffects int
@@ -241,7 +302,7 @@ func TestAdapterJournalPUTNotFoundEndsEffectBeforeFreshCreateRetry(t *testing.T)
 	if err := second.Prepare(t.Context(), create, state); err != nil {
 		t.Fatal(err)
 	}
-	if err := second.Finish(t.Context(), create, adapter.Completion{Outcome: "success", State: adapter.Owned}); err != nil {
+	if err := second.Finish(t.Context(), create, adapter.Completion{Outcome: adapter.OutcomeSuccess, State: adapter.Owned}); err != nil {
 		t.Fatal(err)
 	}
 	var effects, intents, outcomes int
@@ -283,7 +344,7 @@ func TestAdapterJournalFinishesUnsentIntentBeforeAuthorityAbort(t *testing.T) {
 	if err := journal.Gate(t.Context(), effect); !errors.Is(err, adapter.ErrUnauthorized) {
 		t.Fatalf("post-Prepare Gate() = %v", err)
 	}
-	if err := journal.Finish(t.Context(), effect, adapter.Completion{Outcome: "failure", State: state}); err != nil {
+	if err := journal.Finish(t.Context(), effect, adapter.Completion{Outcome: adapter.OutcomeFailure, State: state}); err != nil {
 		t.Fatal(err)
 	}
 	if err := runtime.Fail(t.Context(), job, now.Add(time.Second), adapter.ErrUnauthorized); err != nil {
@@ -331,7 +392,7 @@ func TestAdapterJournalFinishesUnsentIntentBeforeGenerationAbort(t *testing.T) {
 	if err := journal.Gate(t.Context(), effect); !errors.Is(err, adapter.ErrSuperseded) {
 		t.Fatalf("post-Prepare Gate() = %v", err)
 	}
-	if err := journal.Finish(t.Context(), effect, adapter.Completion{Outcome: "failure", State: state}); err != nil {
+	if err := journal.Finish(t.Context(), effect, adapter.Completion{Outcome: adapter.OutcomeFailure, State: state}); err != nil {
 		t.Fatal(err)
 	}
 	if err := runtime.Fail(t.Context(), job, now.Add(time.Second), adapter.ErrSuperseded); err != nil {
@@ -402,7 +463,7 @@ func TestPublishedGenerationSupersedesWithoutStealingLiveProviderFence(t *testin
 		t.Fatalf("publish stole live fence: generation=%d lease=%q/%q old=%q", generation, leaseJob, leaseEffect, oldState)
 	}
 
-	if err := journal.Finish(t.Context(), effect, adapter.Completion{Outcome: "success", State: adapter.Owned}); err != nil {
+	if err := journal.Finish(t.Context(), effect, adapter.Completion{Outcome: adapter.OutcomeSuccess, State: adapter.Owned}); err != nil {
 		t.Fatalf("old in-flight effect could not finish after publish generation bump: %v", err)
 	}
 	if err := journal.Gate(t.Context(), adapter.Effect{}); !errors.Is(err, adapter.ErrSuperseded) {
@@ -567,7 +628,7 @@ func TestAdapterFinishPreservesConcurrentReleasedCustody(t *testing.T) {
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapter_ledger SET state='released' WHERE target_id='tgt_1' AND normalized_name='TOKEN'`); err != nil {
 		t.Fatal(err)
 	}
-	if err := journal.Finish(t.Context(), effect, adapter.Completion{Outcome: "success", State: adapter.Owned}); err != nil {
+	if err := journal.Finish(t.Context(), effect, adapter.Completion{Outcome: adapter.OutcomeSuccess, State: adapter.Owned}); err != nil {
 		t.Fatal(err)
 	}
 	var ledgerState, outcome string
@@ -637,7 +698,7 @@ func TestAdapterJournalRejectsTerminalWriteAfterLeaseLoss(t *testing.T) {
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapter_effects SET outcome='failure' WHERE job_id='job_1'`); err != nil {
 		t.Fatal(err)
 	}
-	err = journal.Finish(t.Context(), effect, adapter.Completion{Outcome: "success", State: adapter.Owned})
+	err = journal.Finish(t.Context(), effect, adapter.Completion{Outcome: adapter.OutcomeSuccess, State: adapter.Owned})
 	if err == nil {
 		t.Fatal("Finish accepted a non-exclusive terminal transition")
 	}

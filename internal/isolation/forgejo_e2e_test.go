@@ -311,7 +311,7 @@ func (j *forgejoLifecycleJournal) Prepare(_ context.Context, effect adapter.Effe
 
 func (j *forgejoLifecycleJournal) Finish(_ context.Context, effect adapter.Effect, completion adapter.Completion) error {
 	key := forgejoLifecycleEffectKey(effect)
-	if completion.State == "" {
+	if completion.ReleaseLedger {
 		delete(j.states, key)
 	} else {
 		j.states[key] = completion.State

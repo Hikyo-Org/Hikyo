@@ -694,13 +694,13 @@ func (j *adapterJournal) Finish(ctx context.Context, effect adapter.Effect, comp
 			payload["owned_missing"] = true
 		}
 		payloadJSON, _ := json.Marshal(payload)
-		if err := j.insertAudit(ctx, tx, outcomeID, "adapter.push_outcome", completion.Outcome, now, payloadJSON); err != nil {
+		if err := j.insertAudit(ctx, tx, outcomeID, "adapter.push_outcome", string(completion.Outcome), now, payloadJSON); err != nil {
 			return err
 		}
 		updateEffect := j.runtime.query(
 			`UPDATE adapter_effects SET outcome_audit_id=?,outcome=?,finished_at=? WHERE id=? AND outcome IS NULL`,
 			`UPDATE adapter_effects SET outcome_audit_id=$1,outcome=$2,finished_at=$3 WHERE id=$4 AND outcome IS NULL`)
-		rows, err := tx.Exec(ctx, updateEffect, outcomeID, completion.Outcome, adapterTimestamp(j.runtime.db.Engine(), now), effectID)
+		rows, err := tx.Exec(ctx, updateEffect, outcomeID, string(completion.Outcome), adapterTimestamp(j.runtime.db.Engine(), now), effectID)
 		if err != nil || rows != 1 {
 			return errors.New("store: adapter effect OUTCOME was not recorded exactly once")
 		}
@@ -709,7 +709,7 @@ func (j *adapterJournal) Finish(ctx context.Context, effect adapter.Effect, comp
 				return err
 			}
 		}
-		if completion.State == "" {
+		if completion.ReleaseLedger {
 			remove := j.runtime.query(
 				`DELETE FROM adapter_ledger WHERE org_id=? AND project_id=? AND environment_id=? AND target_id=? AND surface=? AND normalized_name=?`,
 				`DELETE FROM adapter_ledger WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND target_id=$4 AND surface=$5 AND normalized_name=$6`)
@@ -726,7 +726,7 @@ func (j *adapterJournal) Finish(ctx context.Context, effect adapter.Effect, comp
 		if rows != 1 {
 			return adapter.ErrSuperseded
 		}
-		if completion.Outcome == "success" && effect.KeyID != "" && effect.Disposition != adapter.Delete {
+		if completion.Outcome == adapter.OutcomeSuccess && effect.KeyID != "" && effect.Disposition != adapter.Delete {
 			payload, _ := json.Marshal(map[string]string{"key_id": effect.KeyID, "surface": string(effect.Surface), "effective_name": effect.EffectiveName})
 			if err := j.insertAudit(ctx, tx, newAdapterID("aud"), "adapter.key_delivered", "success", now, payload); err != nil {
 				return err

@@ -507,8 +507,13 @@ func (j *fakeJournal) Prepare(_ context.Context, effect adapter.Effect, _ adapte
 	return nil
 }
 func (j *fakeJournal) Finish(_ context.Context, effect adapter.Effect, completion adapter.Completion) error {
-	j.states[effectKey(effect)] = completion.State
-	j.missing[effectKey(effect)] = completion.Missing
+	if completion.ReleaseLedger {
+		delete(j.states, effectKey(effect))
+		delete(j.missing, effectKey(effect))
+	} else {
+		j.states[effectKey(effect)] = completion.State
+		j.missing[effectKey(effect)] = completion.Missing
+	}
 	j.completions[effectKey(effect)] = completion
 	return nil
 }
