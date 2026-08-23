@@ -4,7 +4,9 @@ Issue [#71](https://github.com/Hikyo-Org/Hikyo/issues/71) was **reopened**: the
 directory tier and the handoff ceremony had landed, but the workspace tier was a
 bearer-backed liveness badge — the UI never routed Matrix, Values, history,
 reveal, edit or publish operations to the remote. A live workspace could not
-operate B's data. This run closes that gap.
+operate B's data. PR #259 closed that product gap. PRs #308 and #310 later
+landed and integrated the root session-epoch owner that deliberately kept the
+issue open. #71 is now complete.
 
 The whole change is **frontend**. The server was already complete for the entire
 workspace tier — both establishment and step-up — before this run:
@@ -91,14 +93,17 @@ disclosure retries over the now-elevated transport.
   ceiling, and the binding is authoritative (nothing the popup was handed
   decides the elevation's scope). Mirrors the cli-reauth transaction read.
 
-## Deferred / blockers, by name
+## Closure evidence
 
-- **Epoch-tracker blocker (do NOT close #71 on merge).** The reopen states:
-  "Integrate the private session-epoch tracker before closing; remote-client
-  work can proceed in parallel." The remote-client work is done; the tracker
-  integration is a separate item. No `close #71` in the PR until Marc confirms
-  it. The workspace context already carries the pieces (origin, bearer, live API
-  revision) the tracker would hang off.
+- **Session-epoch integration — RESOLVED.** PR #308 made `AuthProvider` the
+  root browser session-epoch owner. PR #310 connected every workspace aggregate
+  to that owner through `transitionWorkspaceOwner`: login replacement, logout,
+  expiry, and cross-tab replacement clear workspace state before the next root
+  epoch renders; same-session assurance refresh preserves it. Deferred probes
+  and transport responses compare a local workspace epoch before they can
+  mutate or evict a replacement session. Coverage lives in
+  `web/src/app/AuthProvider.test.tsx`, `web/src/api/workspace.test.ts`, and
+  `web/src/api/workspaceClient.test.ts`.
 - **Reveal / protected-publish e2e over the TOTP-in-popup path.** B is an IP
   literal, so a workspace step-up on B must use the TOTP path (no passkey RP).
   The unit tests cover the step-up prepare/elevate client logic; the full
@@ -109,6 +114,10 @@ disclosure retries over the now-elevated transport.
   threading, the unit tests (the generated-SDK-through-workspace-client test
   exercises the value PUT path), and the same tripwire (a leaked edit to A
   would fail it) — but no edit is driven through the matrix UI in the browser.
+- **M6 status — COMPLETE.** The remaining TOTP browser permutation above is a
+  recorded test-shape limitation, not an unimplemented M6 behavior. Server
+  step-up coverage exercises both engines; browser coverage proves the popup,
+  direct remote transport, kill switch, version gate, and no-proxy tripwire.
 - ~~URL length ceiling on step-up `key` params~~ — **RESOLVED** by the
   transaction-read endpoint above (the ceiling that a large reveal-all's key set
   would have hit no longer exists; the URL carries only `state`).
