@@ -32,8 +32,13 @@ type workflow struct {
 }
 
 type workflowJob struct {
-	Needs yaml.Node `yaml:"needs"`
-	If    string    `yaml:"if"`
+	Needs    yaml.Node        `yaml:"needs"`
+	If       string           `yaml:"if"`
+	Strategy workflowStrategy `yaml:"strategy"`
+}
+
+type workflowStrategy struct {
+	Matrix map[string]yaml.Node `yaml:"matrix"`
 }
 
 var planReference = regexp.MustCompile(`fromJSON\(needs\.changes\.outputs\.plan\)(?:\['([^']+)'\]|\.([A-Za-z0-9_-]+))`)
@@ -263,6 +268,17 @@ func validateRegistry(gotRegistry registry, workflowData []byte) error {
 	sort.Strings(wantNeeds)
 	if !reflect.DeepEqual(directNeeds, wantNeeds) {
 		return fmt.Errorf("ci-required needs mismatch: workflow=%v registry=%v", directNeeds, wantNeeds)
+	}
+
+	const shardMatrix = "${{ fromJSON(needs.analysis_shards.outputs.shards) }}"
+	for _, job := range []string{"race_shard", "fuzz_shard"} {
+		if _, registered := gotRegistry.Jobs[job]; !registered {
+			continue
+		}
+		shard := gotWorkflow.Jobs[job].Strategy.Matrix["shard"]
+		if shard.Kind != yaml.ScalarNode || shard.Value != shardMatrix {
+			return fmt.Errorf("job %q shard matrix must be %q", job, shardMatrix)
+		}
 	}
 
 	return nil

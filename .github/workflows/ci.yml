@@ -862,6 +862,7 @@ jobs:
     outputs:
       fuzz_plan: ${{ steps.plan.outputs.fuzz_plan }}
       race_plan: ${{ steps.plan.outputs.race_plan }}
+      shards: ${{ steps.plan.outputs.shards }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -888,15 +889,18 @@ jobs:
 
           race_plan='[]'
           fuzz_plan='[]'
-          for shard in 0 1 2; do
+          shard_count=3
+          shard=0
+          while [ "$shard" -lt "$shard_count" ]; do
             race_shard=$(go run "$trusted_planner" race --root . \
-              --shard "$shard" --shards 3 | jq -Rsc 'split("\n") | map(select(length > 0))')
+              --shard "$shard" --shards "$shard_count" | jq -Rsc 'split("\n") | map(select(length > 0))')
             fuzz_shard=$(go run "$trusted_planner" fuzz --root . \
-              --shard "$shard" --shards 3 | jq -Rsc 'split("\n") | map(select(length > 0))')
+              --shard "$shard" --shards "$shard_count" | jq -Rsc 'split("\n") | map(select(length > 0))')
             race_plan=$(jq -cn --argjson plan "$race_plan" --argjson shard "$race_shard" \
               '$plan + [$shard]')
             fuzz_plan=$(jq -cn --argjson plan "$fuzz_plan" --argjson shard "$fuzz_shard" \
               '$plan + [$shard]')
+            shard=$((shard + 1))
           done
 
           if [ "$(printf '%s' "$race_plan" | jq 'flatten | length')" -eq 0 ] ||
@@ -907,6 +911,7 @@ jobs:
           {
             echo "race_plan=$race_plan"
             echo "fuzz_plan=$fuzz_plan"
+            echo "shards=$(printf '%s' "$race_plan" | jq -c 'keys')"
           } >>"$GITHUB_OUTPUT"
 
   # Race detector as its own context: a concurrent server with transaction
@@ -924,7 +929,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2]
+        shard: ${{ fromJSON(needs.analysis_shards.outputs.shards) }}
     services:
       postgres:
         image: postgres:18@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a
@@ -1011,7 +1016,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2]
+        shard: ${{ fromJSON(needs.analysis_shards.outputs.shards) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
