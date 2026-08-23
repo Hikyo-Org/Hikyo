@@ -2,6 +2,8 @@
 
 # Shared release input validation. Callers remain fail-closed and decide how to
 # report invalid values; these helpers only return success or failure.
+release_semver_pattern='^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$'
+
 sha256_file() {
 	if command -v sha256sum >/dev/null 2>&1; then
 		sha256sum "$1" | awk '{print $1}'
@@ -34,7 +36,7 @@ validate_binary_provenance() {
 }
 
 is_semver() {
-	printf '%s\n' "$1" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$'
+	printf '%s\n' "$1" | grep -Eq "$release_semver_pattern"
 }
 
 is_full_sha() {
@@ -58,10 +60,10 @@ validate_release_candidate_record() (
 		printf 'candidate: record is absent\n' >&2
 		return 1
 	}
-	jq -e '
+	jq -e --arg semver_pattern "$release_semver_pattern" '
 		type == "object" and
 		(keys == ["commit", "key_id", "public_key", "sequence", "version"]) and
-		(.version | type == "string" and test("^[0-9]+\\.[0-9]+\\.[0-9]+([+-][0-9A-Za-z.-]+)?$")) and
+		(.version | type == "string" and test($semver_pattern)) and
 		(.sequence | type == "number" and . >= 1 and floor == .) and
 		(.commit | type == "string" and test("^[0-9a-f]{40}$")) and
 		(.key_id | type == "string" and length > 0) and
@@ -173,7 +175,7 @@ validate_trust_metadata() (
 			return 1
 			;;
 	esac
-	jq -e '
+	jq -e --arg semver_pattern "$release_semver_pattern" '
 		. as $metadata |
 		.event.type as $event_type |
 		if $event_type == "bootstrap" and (.releases | length) == 0 then
@@ -181,18 +183,18 @@ validate_trust_metadata() (
 			.highest_release == null and
 			.highest_release_sequence == null and
 			(.pending_release.version | type == "string" and
-				test("^[0-9]+\\.[0-9]+\\.[0-9]+([+-][0-9A-Za-z.-]+)?$")) and
+				test($semver_pattern)) and
 			.pending_release.sequence == 1 and
 			.pending_release.manifest_sha256 == ("0" * 64)
 		else
 			(.highest_release | type == "string" and
-				test("^[0-9]+\\.[0-9]+\\.[0-9]+([+-][0-9A-Za-z.-]+)?$")) and
+				test($semver_pattern)) and
 			(.highest_release_sequence | type == "number" and
 				. >= 1 and floor == .) and
 			(.releases | length) > 0 and
 			(.pending_release == null or (
 				(.pending_release.version | type == "string" and
-					test("^[0-9]+\\.[0-9]+\\.[0-9]+([+-][0-9A-Za-z.-]+)?$")) and
+					test($semver_pattern)) and
 				.pending_release.sequence > .highest_release_sequence and
 				.pending_release.manifest_sha256 == ("0" * 64)
 			)) and
