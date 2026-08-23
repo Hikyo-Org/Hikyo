@@ -29,7 +29,7 @@ Issue: https://github.com/Hikyo-Org/Hikyo/issues/335 (parent #326; audit finding
 go test -count=1 ./internal/service/...                         237 passed
 go test -count=1 ./internal/isolation                         1,112 passed
 go vet ./internal/service/... ./internal/isolation/...        passed
-go test -count=1 ./...                         3,496 passed / 61 packages
+go test -count=1 ./...                         3,501 passed / 61 packages
 go vet ./...                                                   passed
 gofmt -l <changed Go files>                                    clean
 git diff --check                                               clean
