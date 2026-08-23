@@ -342,7 +342,7 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 					return invalidDetail("pinned delivery of revision %d is refused because the recorded authority no longer holds reveal-history", pin.Revision)
 				}
 			}
-			if !snapshot.PayloadPresent {
+			if !snapshot.PayloadPresent() {
 				return collectedRevisionError(snapshot)
 			}
 			selected = &snapshot
