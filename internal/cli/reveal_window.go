@@ -154,7 +154,7 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 	envID := apigen.ID(env)
 	var body apigen.TotpReauthRequest
 	if err := body.FromTotpEnvironmentReauthRequest(apigen.TotpEnvironmentReauthRequest{Code: code, EnvironmentId: envID}); err != nil {
-		return failf(ExitInternal, "encode TOTP reauthentication request: %v", err)
+		return fmt.Errorf("encode TOTP reauthentication request: %w", err)
 	}
 	var opened apigen.ReauthResult
 	if err := client.Do(ctx, http.MethodPost, api.PathPrefix+"/auth/reauth/totp",

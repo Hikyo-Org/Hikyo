@@ -1,3 +1,4 @@
+import type { WorkspaceHandoffStepUp, WorkspaceHandoffTransaction } from '@hikyo/client';
 import { approveWorkspaceHandoffOp, showWorkspaceHandoffOp } from '@hikyo/operations';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
@@ -6,6 +7,12 @@ import { parsed } from '../api/client.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { ceremonyRefusalText, runPasskeyCeremony, runTOTPCeremony } from '../api/values.ts';
 import { Login } from './Login.tsx';
+
+function isWorkspaceHandoffStepUp(
+  transaction: WorkspaceHandoffTransaction,
+): transaction is WorkspaceHandoffStepUp {
+  return transaction.purpose === 'step-up';
+}
 
 /**
  * The SERVING instance's authorization page (registry surface
@@ -26,10 +33,9 @@ import { Login } from './Login.tsx';
  *    there needs a fresh reauthentication over here first, so the human runs
  *    THIS instance's own #58 ceremony over the bound environment — which opens
  *    the reauth window the approval's server-side freshness gate then requires —
- *    and only then approves. The environment and key set ride the URL for the
- *    ceremony to name; the server validates the fresh window against the
- *    transaction's OWN bound environment, so a tampered parameter only fails
- *    closed.
+ *    and only then approves. The page reads purpose, environment and key set
+ *    from the server-owned transaction by opaque state; the server validates
+ *    the fresh window against that same bound environment.
  *
  * Three details are load-bearing:
  *
@@ -49,18 +55,16 @@ export function WorkspaceApprove() {
   const auth = useAuth();
   const [query] = useState(() => new URLSearchParams(globalThis.location.search));
   const state = query.get('state') ?? '';
-  const isStepUp = query.get('purpose') === 'step-up';
 
-  // The step-up's operation, environment and enumerated key set come from the
-  // SERVER-BOUND transaction, read by state — never from the URL, which carries
-  // only the state and the tiny purpose flag. That is what keeps a large
-  // reveal-all off the URL-length ceiling, and it makes the binding
-  // authoritative: nothing the popup was handed decides the elevation's scope.
-  // Gated on a session, because the read requires one (a step-up always has it).
+  // Purpose and any step-up scope come from the SERVER-BOUND transaction, read
+  // by state — never from the URL, which carries only opaque state. That keeps a
+  // large reveal-all off the URL-length ceiling and makes one source choose the
+  // ceremony. Gated on authentication because the transaction read is audited
+  // as the human who is about to approve it.
   const transaction = useQuery({
     queryKey: ['workspace-handoff', state],
     queryFn: () => parsed(showWorkspaceHandoffOp, { path: { state } }),
-    enabled: isStepUp && state !== '' && auth.state.status === 'authenticated',
+    enabled: state !== '' && auth.state.status === 'authenticated',
     retry: false,
   });
 
@@ -109,7 +113,38 @@ export function WorkspaceApprove() {
     return <Login />;
   }
 
+  if (transaction.isError) {
+    return (
+      <main className="login">
+        <div className="login__card">
+          <h1 className="login__title">Authorization unavailable</h1>
+          <p className="alert" role="alert">
+            <span className="alert__glyph" aria-hidden="true">
+              !
+            </span>
+            <span>
+              This authorization request could not be read — it may have expired or been used
+              already. Close this window and start again from the instance you were browsing.
+            </span>
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  if (transaction.data === undefined) {
+    return (
+      <p className="login" role="status">
+        Loading…
+      </p>
+    );
+  }
+
   const name = auth.identity?.principal.display_name ?? auth.identity?.principal.id ?? '';
+  const stepUpTransaction = isWorkspaceHandoffStepUp(transaction.data)
+    ? transaction.data
+    : undefined;
+  const isStepUp = stepUpTransaction !== undefined;
 
   return (
     <main className="login">
@@ -121,10 +156,10 @@ export function WorkspaceApprove() {
           {isStepUp ? (
             <>
               Signed in as <span className="mono">{name}</span>. A workspace you have open elsewhere
-              is asking to <strong>{transaction.data?.operation ?? 'disclose'}</strong> over{' '}
-              {(transaction.data?.key_ids.length ?? 0) === 0
+              is asking to <strong>{stepUpTransaction.operation}</strong> over{' '}
+              {stepUpTransaction.key_ids.length === 0
                 ? 'this environment'
-                : `${transaction.data?.key_ids.length} key${transaction.data?.key_ids.length === 1 ? '' : 's'}`}
+                : `${stepUpTransaction.key_ids.length} key${stepUpTransaction.key_ids.length === 1 ? '' : 's'}`}
               . Reauthenticate here to allow it — this is a disclosure, not a new sign-in, and it
               covers only this one act.
             </>
@@ -150,28 +185,14 @@ export function WorkspaceApprove() {
           </p>
         ) : null}
 
-        {isStepUp ? (
-          transaction.isError ? (
-            <p className="alert" role="alert">
-              <span className="alert__glyph" aria-hidden="true">
-                !
-              </span>
-              <span>
-                This authorization request could not be read — it may have expired or been used
-                already. Close this window and start again from the instance you were browsing.
-              </span>
-            </p>
-          ) : transaction.data === undefined ? (
-            <p role="status">Loading…</p>
-          ) : (
-            <StepUpReauth
-              operation={transaction.data.operation ?? 'reveal'}
-              environmentId={transaction.data.environment ?? ''}
-              keyIds={transaction.data.key_ids}
-              onReauthed={() => approve.mutate()}
-              approving={approve.isPending}
-            />
-          )
+        {stepUpTransaction !== undefined ? (
+          <StepUpReauth
+            operation={stepUpTransaction.operation}
+            environmentId={stepUpTransaction.environment}
+            keyIds={stepUpTransaction.key_ids}
+            onReauthed={() => approve.mutate()}
+            approving={approve.isPending}
+          />
         ) : (
           <>
             <button

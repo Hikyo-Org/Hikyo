@@ -683,11 +683,11 @@ const (
 	// addition rather than smuggled in as if the ADR had named them.
 	EventRemoteCredentialsListed   EventType = "remote.credentials_listed"
 	EventRemoteOriginAllowlistRead EventType = "remote.origin_allowlist_read"
-	// remote.workspace_handoff_read is the approve page reading a live step-up
-	// transaction's bound operation, environment and key set by state. It is an
-	// authenticated human read of ceremony state, so it cannot take the silent
-	// permit rule — and a caller can read then close the popup, producing neither
-	// an approval nor an issuance, so no other event subsumes it.
+	// remote.workspace_handoff_read is the approve page reading a live
+	// transaction's authoritative purpose and any step-up binding by state. It
+	// is an authenticated human read of ceremony state, so it cannot take the
+	// silent permit rule — and a caller can read then close the popup, producing
+	// neither an approval nor an issuance, so no other event subsumes it.
 	EventRemoteWorkspaceHandoffRead EventType = "remote.workspace_handoff_read"
 
 	// adapter.* — deployment-module configuration, provider inspection and

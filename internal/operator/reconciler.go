@@ -106,12 +106,17 @@ func (r *HikyoSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 // reconcileActive is the non-deletion path.
 func (r *HikyoSecretReconciler) reconcileActive(ctx context.Context, cr *hikyov1.HikyoSecret) (ctrl.Result, error) {
+	// Every active reconcile re-evaluates authority. Clear stale evidence first;
+	// any forbidden namespaced access below re-asserts it before status is written.
+	meta.RemoveStatusCondition(&cr.Status.Conditions, hikyov1.ConditionUnreconciled)
+
 	// Reject an invalid resyncInterval loudly. The CRD pattern rejects malformed
 	// syntax at admission, but "0s"/non-positive/overflow pass the pattern yet
 	// cannot be a requeue cadence — never silently substitute 5m (§ 0.7).
 	if err := validateResyncInterval(cr); err != nil {
 		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonFetchFailed, "invalid resyncInterval: %v", err)
-		cr.Status.Lifecycle = hikyov1.LifecycleRetained
+		r.setCond(cr, hikyov1.ConditionSynced, metav1.ConditionFalse, hikyov1.ReasonFetchFailed,
+			fmt.Sprintf("invalid resyncInterval: %v", err))
 		return r.done(ctx, cr, ctrl.Result{}, fmt.Errorf("operator: invalid resyncInterval: %w", err))
 	}
 
@@ -123,7 +128,6 @@ func (r *HikyoSecretReconciler) reconcileActive(ctx context.Context, cr *hikyov1
 				"HikyoInstance %q not found", cr.Spec.InstanceRef.Name)
 			r.setCond(cr, hikyov1.ConditionSynced, metav1.ConditionFalse, hikyov1.ReasonFetchFailed,
 				fmt.Sprintf("HikyoInstance %q not found", cr.Spec.InstanceRef.Name))
-			cr.Status.Lifecycle = hikyov1.LifecycleRetained
 			return r.done(ctx, cr, ctrl.Result{}, fmt.Errorf("instance %q not found", cr.Spec.InstanceRef.Name))
 		}
 		return ctrl.Result{}, err
@@ -149,7 +153,6 @@ func (r *HikyoSecretReconciler) reconcileActive(ctx context.Context, cr *hikyov1
 			"target %q already claimed by HikyoSecret %q", cr.Spec.Target.Name, winner)
 		r.setCond(cr, hikyov1.ConditionConflict, metav1.ConditionTrue, hikyov1.ReasonTargetClaimed,
 			fmt.Sprintf("target %q is claimed by earlier HikyoSecret %q", cr.Spec.Target.Name, winner))
-		cr.Status.Lifecycle = hikyov1.LifecycleRefused
 		return r.done(ctx, cr, r.resyncResult(cr), nil)
 	}
 	// No active conflict — clear a stale Conflict condition.
@@ -169,7 +172,6 @@ func (r *HikyoSecretReconciler) reconcileActive(ctx context.Context, cr *hikyov1
 			"Secret %q exists without this CR's controller ownerRef", cr.Spec.Target.Name)
 		r.setCond(cr, hikyov1.ConditionConflict, metav1.ConditionTrue, hikyov1.ReasonManagedSecretNotOwned,
 			fmt.Sprintf("Secret %q exists and is not controlled by this HikyoSecret; refusing to adopt", cr.Spec.Target.Name))
-		cr.Status.Lifecycle = hikyov1.LifecycleRefused
 		return r.done(ctx, cr, r.resyncResult(cr), nil)
 	}
 
@@ -184,7 +186,6 @@ func (r *HikyoSecretReconciler) reconcileActive(ctx context.Context, cr *hikyov1
 		msg := loaderControlMessage(refused, extra)
 		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonLoaderControlUnacknowledged, "%s", msg)
 		r.setCond(cr, hikyov1.ConditionDelivery, metav1.ConditionFalse, hikyov1.ReasonLoaderControlUnacknowledged, msg)
-		cr.Status.Lifecycle = hikyov1.LifecycleRefused
 		return r.done(ctx, cr, r.resyncResult(cr), nil)
 	}
 
@@ -200,7 +201,6 @@ func (r *HikyoSecretReconciler) reconcileActive(ctx context.Context, cr *hikyov1
 		}
 		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonFetchFailed, "stamp root: %v", err)
 		r.setCond(cr, hikyov1.ConditionSynced, metav1.ConditionFalse, hikyov1.ReasonFetchFailed, err.Error())
-		cr.Status.Lifecycle = hikyov1.LifecycleRetained
 		return r.done(ctx, cr, ctrl.Result{}, err)
 	}
 	defer crypto.Zero(root)
@@ -215,14 +215,12 @@ func (r *HikyoSecretReconciler) reconcileActive(ctx context.Context, cr *hikyov1
 	if err != nil {
 		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonFetchFailed, "instance caBundle: %v", err)
 		r.setCond(cr, hikyov1.ConditionSynced, metav1.ConditionFalse, hikyov1.ReasonFetchFailed, err.Error())
-		cr.Status.Lifecycle = hikyov1.LifecycleRetained
 		return r.done(ctx, cr, ctrl.Result{}, err)
 	}
 	dc, err := r.clientFactory()(inst.Spec.URL, caBundle)
 	if err != nil {
 		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonFetchFailed, "build delivery client: %v", err)
 		r.setCond(cr, hikyov1.ConditionSynced, metav1.ConditionFalse, hikyov1.ReasonFetchFailed, err.Error())
-		cr.Status.Lifecycle = hikyov1.LifecycleRetained
 		return r.done(ctx, cr, ctrl.Result{}, err)
 	}
 	resp, outcome, fetchErr := dc.Fetch(ctx, opclient.FetchRequest{
@@ -241,12 +239,10 @@ func (r *HikyoSecretReconciler) reconcileActive(ctx context.Context, cr *hikyov1
 		// Retain last-synced Secret unchanged, backoff. Cursor never advanced.
 		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonFetchFailed, "%v", fetchErr)
 		r.setCond(cr, hikyov1.ConditionSynced, metav1.ConditionFalse, hikyov1.ReasonFetchFailed, fetchErr.Error())
-		cr.Status.Lifecycle = hikyov1.LifecycleRetained
 		return r.done(ctx, cr, ctrl.Result{}, fetchErr)
 	case opclient.OutcomeNotMaterialized:
 		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonNotMaterialized, "%v", fetchErr)
 		r.setCond(cr, hikyov1.ConditionSynced, metav1.ConditionFalse, hikyov1.ReasonNotMaterialized, fetchErr.Error())
-		cr.Status.Lifecycle = hikyov1.LifecycleRetained
 		return r.done(ctx, cr, r.resyncResult(cr), nil)
 	case opclient.OutcomeScrub:
 		return r.scrub(ctx, cr, fetchErr, root)
@@ -259,7 +255,6 @@ func (r *HikyoSecretReconciler) reconcileActive(ctx context.Context, cr *hikyov1
 			err := fmt.Errorf("operator: server answered current to a cursor-less fetch")
 			r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonFetchFailed, "%v", err)
 			r.setCond(cr, hikyov1.ConditionSynced, metav1.ConditionFalse, hikyov1.ReasonFetchFailed, err.Error())
-			cr.Status.Lifecycle = hikyov1.LifecycleRetained
 			return r.done(ctx, cr, ctrl.Result{}, err)
 		}
 		return r.deliver(ctx, cr, &inst, cred, resp, existing, existed, root)
@@ -289,7 +284,6 @@ func (r *HikyoSecretReconciler) deliver(
 			}
 			r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonFetchFailed, "observe rollout: %v", err)
 			r.setCond(cr, hikyov1.ConditionSynced, metav1.ConditionFalse, hikyov1.ReasonFetchFailed, err.Error())
-			cr.Status.Lifecycle = hikyov1.LifecycleRetained
 			return r.done(ctx, cr, ctrl.Result{}, err)
 		}
 		if len(stalled) > 0 {
@@ -300,7 +294,6 @@ func (r *HikyoSecretReconciler) deliver(
 		}
 		r.setCond(cr, hikyov1.ConditionSynced, metav1.ConditionTrue, hikyov1.ReasonCurrent,
 			"conditional fetch answered current; managed Secret unchanged")
-		cr.Status.Lifecycle = hikyov1.LifecycleSynced
 		return r.done(ctx, cr, r.resyncResult(cr), nil)
 	}
 
@@ -341,7 +334,6 @@ func (r *HikyoSecretReconciler) deliver(
 			strings.Join(presenceOnly, ", "))
 		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonUndeliveredSecrets, "%s", msg)
 		r.setCond(cr, hikyov1.ConditionDelivery, metav1.ConditionFalse, hikyov1.ReasonUndeliveredSecrets, msg)
-		cr.Status.Lifecycle = hikyov1.LifecycleRefused
 		return r.done(ctx, cr, r.resyncResult(cr), nil)
 	}
 
@@ -384,7 +376,6 @@ func (r *HikyoSecretReconciler) deliver(
 		}
 		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonFetchFailed, "managed Secret write failed: %v", err)
 		r.setCond(cr, hikyov1.ConditionSynced, metav1.ConditionFalse, hikyov1.ReasonFetchFailed, err.Error())
-		cr.Status.Lifecycle = hikyov1.LifecycleRetained
 		return r.done(ctx, cr, ctrl.Result{}, err)
 	}
 
@@ -407,7 +398,6 @@ func (r *HikyoSecretReconciler) deliver(
 		}
 		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonStalled, "workload patch: %v", rolloutErr)
 		r.setCond(cr, hikyov1.ConditionRollout, metav1.ConditionFalse, hikyov1.ReasonStalled, rolloutErr.Error())
-		cr.Status.Lifecycle = hikyov1.LifecycleSynced
 		r.setCond(cr, hikyov1.ConditionSynced, metav1.ConditionTrue, hikyov1.ReasonDelivered,
 			"values delivered to the managed Secret")
 		return r.done(ctx, cr, ctrl.Result{}, rolloutErr)
@@ -430,7 +420,6 @@ func (r *HikyoSecretReconciler) deliver(
 	cr.Status.ManagedSecretUID = string(written.UID)
 	cr.Status.ManagedSecretResourceVersion = written.ResourceVersion
 	cr.Status.LastDelivery = &deliveredAt
-	cr.Status.Lifecycle = hikyov1.LifecycleSynced
 	r.setCond(cr, hikyov1.ConditionSynced, metav1.ConditionTrue, hikyov1.ReasonDelivered,
 		"values delivered to the managed Secret")
 	return r.done(ctx, cr, r.resyncResult(cr), nil)

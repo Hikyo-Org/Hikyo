@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/api"
+	"github.com/getkin/kin-openapi/openapi3"
 )
 
 // The contract's own well-formedness. Cross-checks against the authorization
@@ -46,6 +47,74 @@ func TestAdapterTargetSchemaCarriesPendingConflictArtifacts(t *testing.T) {
 	schema := doc.Components.Schemas["AdapterTarget"].Value
 	if schema == nil || schema.Properties["conflicts"] == nil || !slices.Contains(schema.Required, "conflicts") {
 		t.Fatalf("AdapterTarget must require pending conflict artifacts")
+	}
+}
+
+func TestWorkspaceHandoffTransactionBindsStepUpFieldsToPurpose(t *testing.T) {
+	doc, err := api.Doc()
+	if err != nil {
+		t.Fatal(err)
+	}
+	transaction := doc.Components.Schemas["WorkspaceHandoffTransaction"].Value
+	if transaction == nil || len(transaction.OneOf) != 2 {
+		t.Fatalf("WorkspaceHandoffTransaction oneOf = %v, want establishment and step-up branches", transaction)
+	}
+
+	refs := make([]string, 0, len(transaction.OneOf))
+	for _, branch := range transaction.OneOf {
+		refs = append(refs, branch.Ref)
+	}
+	wantRefs := []string{
+		"#/components/schemas/WorkspaceHandoffEstablishment",
+		"#/components/schemas/WorkspaceHandoffStepUp",
+	}
+	if !slices.Equal(refs, wantRefs) {
+		t.Fatalf("WorkspaceHandoffTransaction branches = %v, want %v", refs, wantRefs)
+	}
+
+	stepUp := doc.Components.Schemas["WorkspaceHandoffStepUp"].Value
+	if stepUp == nil {
+		t.Fatal("WorkspaceHandoffStepUp schema is missing")
+	}
+	for _, field := range []string{"operation", "environment"} {
+		if !slices.Contains(stepUp.Required, field) {
+			t.Errorf("WorkspaceHandoffStepUp required = %v, want %s", stepUp.Required, field)
+		}
+	}
+
+	base := map[string]any{
+		"state": "live-state", "key_ids": []any{}, "expires_at": "2026-08-23T12:00:00Z",
+	}
+	cases := map[string]struct {
+		purpose     string
+		operation   string
+		environment string
+		wantValid   bool
+	}{
+		"establishment":                {purpose: "establishment", wantValid: true},
+		"establishment with operation": {purpose: "establishment", operation: "reveal"},
+		"step-up":                      {purpose: "step-up", operation: "reveal", environment: "env_01900000-0000-7000-8000-000000000001", wantValid: true},
+		"step-up without operation":    {purpose: "step-up", environment: "env_01900000-0000-7000-8000-000000000001"},
+		"step-up without environment":  {purpose: "step-up", operation: "reveal"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			value := make(map[string]any, len(base)+3)
+			for key, item := range base {
+				value[key] = item
+			}
+			value["purpose"] = tc.purpose
+			if tc.operation != "" {
+				value["operation"] = tc.operation
+			}
+			if tc.environment != "" {
+				value["environment"] = tc.environment
+			}
+			err := transaction.VisitJSON(value, openapi3.EnableJSONSchema2020())
+			if (err == nil) != tc.wantValid {
+				t.Fatalf("validation error = %v, want valid %t", err, tc.wantValid)
+			}
+		})
 	}
 }
 
@@ -330,6 +399,36 @@ func TestRequestValidationAcceptsAbsentNullAndValue(t *testing.T) {
 	}
 }
 
+func TestTotpReauthRequestOnlyAcceptsCanonicalIntents(t *testing.T) {
+	environment := "env_00000000-0000-0000-0000-000000000001"
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{name: "code alone", body: `{"code":"123456"}`},
+		{name: "mixed variants", body: `{"code":"123456","environment_id":"` + environment + `","purpose":"adapter","operation":"adapter.sync","environment_ids":["` + environment + `"]}`},
+		{name: "adapter without environments", body: `{"code":"123456","purpose":"adapter","operation":"adapter.sync"}`},
+		{name: "non-adapter purpose", body: `{"code":"123456","purpose":"reveal","operation":"adapter.sync","environment_ids":["` + environment + `"]}`},
+		{name: "environment", body: `{"code":"123456","environment_id":"` + environment + `"}`, want: true},
+		{name: "adapter", body: `{"code":"123456","purpose":"adapter","operation":"adapter.sync","environment_ids":["` + environment + `"]}`, want: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, api.PathPrefix+"/auth/reauth/totp",
+				bytes.NewReader([]byte(tc.body)))
+			req.Header.Set("Content-Type", "application/json")
+			_, err := api.ValidateRequest(req)
+			if tc.want && err != nil {
+				t.Fatalf("canonical intent rejected: %v", err)
+			}
+			if !tc.want && err == nil {
+				t.Fatal("invalid intent accepted")
+			}
+		})
+	}
+}
+
 func TestRequestValidationReportsTheOffendingMember(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, api.PathPrefix+"/auth/local/login",
 		bytes.NewReader([]byte(`{"username":"","password":"x"}`)))
@@ -340,52 +439,6 @@ func TestRequestValidationReportsTheOffendingMember(t *testing.T) {
 	}
 	if verr.Member != "username" {
 		t.Fatalf("member = %q, want username", verr.Member)
-	}
-}
-
-func TestTotpReauthRequestValidationAcceptsOnlyCanonicalVariants(t *testing.T) {
-	environmentID := "env_00000000-0000-0000-0000-000000000001"
-	tests := []struct {
-		name string
-		body string
-		want bool
-	}{
-		{name: "code alone", body: `{"code":"123456"}`, want: false},
-		{
-			name: "mixed variants",
-			body: `{"code":"123456","environment_id":"` + environmentID + `","purpose":"adapter","operation":"adapter.sync","environment_ids":["` + environmentID + `"]}`,
-			want: false,
-		},
-		{
-			name: "adapter without environment ids",
-			body: `{"code":"123456","purpose":"adapter","operation":"adapter.sync"}`,
-			want: false,
-		},
-		{
-			name: "non-adapter purpose",
-			body: `{"code":"123456","purpose":"reveal","operation":"adapter.sync","environment_ids":["` + environmentID + `"]}`,
-			want: false,
-		},
-		{
-			name: "environment",
-			body: `{"code":"123456","environment_id":"` + environmentID + `"}`,
-			want: true,
-		},
-		{
-			name: "adapter",
-			body: `{"code":"123456","purpose":"adapter","operation":"adapter.sync","environment_ids":["` + environmentID + `"]}`,
-			want: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, api.PathPrefix+"/auth/reauth/totp", bytes.NewBufferString(tt.body))
-			req.Header.Set("Content-Type", "application/json")
-			_, err := api.ValidateRequest(req)
-			if got := err == nil; got != tt.want {
-				t.Fatalf("accepted = %t, want %t; err = %v", got, tt.want, err)
-			}
-		})
 	}
 }
 

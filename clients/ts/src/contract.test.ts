@@ -72,34 +72,34 @@ test('a request missing a required member is refused before it is sent', () => {
   assert.throws(() => zCreateOrgRequest.parse({}));
 });
 
-test('TOTP reauthentication accepts only environment or adapter variants', () => {
-  const environmentId = 'env_0198b727-19e3-7c31-a2df-904b89224e4c';
-  assert.deepEqual(
-    zTotpReauthRequest.parse({ environment_id: environmentId, code: '123456' }),
-    { environment_id: environmentId, code: '123456' },
-  );
-  assert.deepEqual(
-    zTotpReauthRequest.parse({
-      purpose: 'adapter',
-      operation: 'adapter.sync',
-      environment_ids: [environmentId],
-      code: '123456',
-    }),
-    {
-      purpose: 'adapter',
-      operation: 'adapter.sync',
-      environment_ids: [environmentId],
-      code: '123456',
-    },
-  );
+test('TOTP reauthentication accepts only one canonical intent variant', () => {
+  const environment = 'env_00000000-0000-0000-0000-000000000001';
   assert.throws(() => zTotpReauthRequest.parse({ code: '123456' }));
   assert.throws(() =>
     zTotpReauthRequest.parse({
-      environment_id: environmentId,
+      code: '123456',
+      environment_id: environment,
       purpose: 'adapter',
       operation: 'adapter.sync',
-      environment_ids: [environmentId],
+      environment_ids: [environment],
+    }),
+  );
+  assert.throws(() =>
+    zTotpReauthRequest.parse({
       code: '123456',
+      purpose: 'adapter',
+      operation: 'adapter.sync',
+    }),
+  );
+  assert.doesNotThrow(() =>
+    zTotpReauthRequest.parse({ code: '123456', environment_id: environment }),
+  );
+  assert.doesNotThrow(() =>
+    zTotpReauthRequest.parse({
+      code: '123456',
+      purpose: 'adapter',
+      operation: 'adapter.sync',
+      environment_ids: [environment],
     }),
   );
 });

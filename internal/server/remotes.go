@@ -217,21 +217,32 @@ func (a *API) ShowWorkspaceHandoff(ctx context.Context, req apigen.ShowWorkspace
 	for _, k := range view.KeySet {
 		keyIDs = append(keyIDs, apigen.ID(k))
 	}
-	resp := apigen.ShowWorkspaceHandoff200JSONResponse{
-		State:     req.State,
-		Purpose:   apigen.WorkspaceHandoffTransactionPurpose(view.Purpose),
-		KeyIds:    keyIDs,
-		ExpiresAt: view.ExpiresAt,
+	var transaction apigen.WorkspaceHandoffTransaction
+	switch view.Purpose {
+	case service.HandoffEstablishment:
+		if view.Operation != "" || view.EnvID != "" {
+			return nil, fmt.Errorf("show workspace handoff: establishment carries a step-up binding")
+		}
+		err = transaction.FromWorkspaceHandoffEstablishment(apigen.WorkspaceHandoffEstablishment{
+			State: req.State, Purpose: apigen.WorkspaceHandoffEstablishmentPurposeEstablishment,
+			KeyIds: keyIDs, ExpiresAt: view.ExpiresAt,
+		})
+	case service.HandoffStepUp:
+		op := apigen.WorkspaceHandoffStepUpOperation(view.Operation)
+		if !op.Valid() || view.EnvID == "" {
+			return nil, fmt.Errorf("show workspace handoff: step-up carries an invalid binding")
+		}
+		err = transaction.FromWorkspaceHandoffStepUp(apigen.WorkspaceHandoffStepUp{
+			State: req.State, Purpose: apigen.WorkspaceHandoffStepUpPurposeStepUp,
+			Operation: op, Environment: apigen.ID(view.EnvID), KeyIds: keyIDs, ExpiresAt: view.ExpiresAt,
+		})
+	default:
+		return nil, fmt.Errorf("show workspace handoff: unknown purpose %q", view.Purpose)
 	}
-	if view.Operation != "" {
-		op := apigen.WorkspaceHandoffTransactionOperation(view.Operation)
-		resp.Operation = &op
+	if err != nil {
+		return nil, fmt.Errorf("show workspace handoff: encode transaction: %w", err)
 	}
-	if view.EnvID != "" {
-		env := apigen.ID(view.EnvID)
-		resp.Environment = &env
-	}
-	return resp, nil
+	return apigen.ShowWorkspaceHandoff200JSONResponse(transaction), nil
 }
 
 func (a *API) ApproveWorkspaceHandoff(ctx context.Context, req apigen.ApproveWorkspaceHandoffRequestObject) (apigen.ApproveWorkspaceHandoffResponseObject, error) {

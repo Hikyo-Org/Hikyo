@@ -17,6 +17,7 @@ import {
   matrixDraftChanges,
   validateMatrixDraft,
   type MatrixDraftChange,
+  type MatrixDraftEdit,
 } from './matrix-state.ts';
 import {
   useProtectedPublishCeremony,
@@ -77,9 +78,7 @@ export function MatrixRowEditor({
       ),
     [keyRecord.classification, rows],
   );
-  const [drafts, setDrafts] = useState<ReadonlyMap<string, string>>(initialDrafts);
-  const [dirty, setDirty] = useState<ReadonlySet<string>>(() => new Set());
-  const [clears, setClears] = useState<ReadonlySet<string>>(() => new Set());
+  const [edits, setEdits] = useState<ReadonlyMap<string, MatrixDraftEdit>>(() => new Map());
   const [fillAll, setFillAll] = useState('');
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
@@ -121,11 +120,11 @@ export function MatrixRowEditor({
 
   const validationByEnvironment = new Map<string, ReturnType<typeof validateMatrixDraft>>();
   for (const row of rows) {
-    if (!dirty.has(row.environmentId) || clears.has(row.environmentId)) {
+    const edit = edits.get(row.environmentId);
+    if (edit?.op !== 'set') {
       continue;
     }
-    const value = drafts.get(row.environmentId) ?? '';
-    const error = validateDeclaration(keyRecord, value);
+    const error = validateDeclaration(keyRecord, edit.value);
     if (error !== null) {
       validationByEnvironment.set(row.environmentId, error);
     }
@@ -133,9 +132,7 @@ export function MatrixRowEditor({
 
   const changes = matrixDraftChanges(
     rows.map((row) => row.environmentId),
-    drafts,
-    dirty,
-    clears,
+    edits,
   );
 
   const protectedTargets = (): readonly ProtectedPublishTarget[] =>
@@ -205,9 +202,9 @@ export function MatrixRowEditor({
                 className="btn"
                 disabled={fillAll === '' || busy || applying}
                 onClick={() => {
-                  setDrafts(new Map(rows.map((row) => [row.environmentId, fillAll])));
-                  setDirty(new Set(rows.map((row) => row.environmentId)));
-                  setClears(new Set());
+                  setEdits(new Map<string, MatrixDraftEdit>(
+                    rows.map((row) => [row.environmentId, { op: 'set', value: fillAll }]),
+                  ));
                 }}
               >
                 Fill all
@@ -219,7 +216,8 @@ export function MatrixRowEditor({
             {rows.map((row) => {
               const rowEnvironmentId = row.environmentId;
               const publishedSet = row.cell?.set === true;
-              const clearing = clears.has(rowEnvironmentId);
+              const edit = edits.get(rowEnvironmentId);
+              const clearing = edit?.op === 'unset';
               const liveValidation = validationByEnvironment.get(rowEnvironmentId) ?? null;
               return (
                 <section
@@ -249,7 +247,13 @@ export function MatrixRowEditor({
                     className="mono matrix-editor__value"
                     rows={keyRecord.declaration.rule?.type === 'json' ? 6 : 2}
                     autoComplete="off"
-                    value={clearing ? '' : drafts.get(rowEnvironmentId) ?? ''}
+                    value={
+                      edit?.op === 'set'
+                        ? edit.value
+                        : clearing
+                          ? ''
+                          : initialDrafts.get(rowEnvironmentId) ?? ''
+                    }
                     placeholder={
                       keyRecord.classification === 'secret'
                         ? publishedSet
@@ -262,14 +266,10 @@ export function MatrixRowEditor({
                     aria-invalid={liveValidation?.level === 'error' ? true : undefined}
                     aria-describedby={liveValidation === null ? undefined : `matrix-error-${rowEnvironmentId}`}
                     onChange={(event) => {
-                      const next = new Map(drafts);
-                      next.set(rowEnvironmentId, event.target.value);
-                      setDrafts(next);
-                      setDirty((current) => new Set(current).add(rowEnvironmentId));
-                      setClears((current) => {
-                        const nextClears = new Set(current);
-                        nextClears.delete(rowEnvironmentId);
-                        return nextClears;
+                      setEdits((current) => {
+                        const next = new Map(current);
+                        next.set(rowEnvironmentId, { op: 'set', value: event.target.value });
+                        return next;
                       });
                     }}
                   />
@@ -297,16 +297,13 @@ export function MatrixRowEditor({
                     className="btn"
                     disabled={busy || applying || (!clearing && !canClearMatrixCell(publishedSet, row.signal?.pending_operation))}
                     onClick={() => {
-                      setClears((current) => {
-                        const next = new Set(current);
-                        if (next.has(rowEnvironmentId)) next.delete(rowEnvironmentId);
-                        else next.add(rowEnvironmentId);
-                        return next;
-                      });
-                      setDirty((current) => {
-                        const next = new Set(current);
-                        next.delete(rowEnvironmentId);
-                        return next;
+                      setEdits((current) => {
+                        if (clearing) {
+                          const kept = new Map(current);
+                          kept.delete(rowEnvironmentId);
+                          return kept;
+                        }
+                        return new Map(current).set(rowEnvironmentId, { op: 'unset' });
                       });
                     }}
                   >

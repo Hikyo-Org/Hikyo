@@ -1768,39 +1768,51 @@ func (e WebauthnReauthStartRequestAdapterOperation) Valid() bool {
 	}
 }
 
-// Defines values for WorkspaceHandoffTransactionOperation.
+// Defines values for WorkspaceHandoffEstablishmentPurpose.
 const (
-	WorkspaceHandoffTransactionOperationCopy    WorkspaceHandoffTransactionOperation = "copy"
-	WorkspaceHandoffTransactionOperationPublish WorkspaceHandoffTransactionOperation = "publish"
-	WorkspaceHandoffTransactionOperationReveal  WorkspaceHandoffTransactionOperation = "reveal"
+	WorkspaceHandoffEstablishmentPurposeEstablishment WorkspaceHandoffEstablishmentPurpose = "establishment"
 )
 
-// Valid indicates whether the value is a known member of the WorkspaceHandoffTransactionOperation enum.
-func (e WorkspaceHandoffTransactionOperation) Valid() bool {
+// Valid indicates whether the value is a known member of the WorkspaceHandoffEstablishmentPurpose enum.
+func (e WorkspaceHandoffEstablishmentPurpose) Valid() bool {
 	switch e {
-	case WorkspaceHandoffTransactionOperationCopy:
-		return true
-	case WorkspaceHandoffTransactionOperationPublish:
-		return true
-	case WorkspaceHandoffTransactionOperationReveal:
+	case WorkspaceHandoffEstablishmentPurposeEstablishment:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for WorkspaceHandoffTransactionPurpose.
+// Defines values for WorkspaceHandoffStepUpOperation.
 const (
-	WorkspaceHandoffTransactionPurposeEstablishment WorkspaceHandoffTransactionPurpose = "establishment"
-	WorkspaceHandoffTransactionPurposeStepUp        WorkspaceHandoffTransactionPurpose = "step-up"
+	WorkspaceHandoffStepUpOperationCopy    WorkspaceHandoffStepUpOperation = "copy"
+	WorkspaceHandoffStepUpOperationPublish WorkspaceHandoffStepUpOperation = "publish"
+	WorkspaceHandoffStepUpOperationReveal  WorkspaceHandoffStepUpOperation = "reveal"
 )
 
-// Valid indicates whether the value is a known member of the WorkspaceHandoffTransactionPurpose enum.
-func (e WorkspaceHandoffTransactionPurpose) Valid() bool {
+// Valid indicates whether the value is a known member of the WorkspaceHandoffStepUpOperation enum.
+func (e WorkspaceHandoffStepUpOperation) Valid() bool {
 	switch e {
-	case WorkspaceHandoffTransactionPurposeEstablishment:
+	case WorkspaceHandoffStepUpOperationCopy:
 		return true
-	case WorkspaceHandoffTransactionPurposeStepUp:
+	case WorkspaceHandoffStepUpOperationPublish:
+		return true
+	case WorkspaceHandoffStepUpOperationReveal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceHandoffStepUpPurpose.
+const (
+	WorkspaceHandoffStepUpPurposeStepUp WorkspaceHandoffStepUpPurpose = "step-up"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceHandoffStepUpPurpose enum.
+func (e WorkspaceHandoffStepUpPurpose) Valid() bool {
+	switch e {
+	case WorkspaceHandoffStepUpPurposeStepUp:
 		return true
 	default:
 		return false
@@ -5712,7 +5724,7 @@ type TokenKeyRotation struct {
 	TokenKeyVersion int64 `json:"token_key_version"`
 }
 
-// TotpAdapterReauthRequest A TOTP proof for an adapter operation over one or more environments.
+// TotpAdapterReauthRequest A TOTP proof bound to one adapter operation over an exact environment set.
 type TotpAdapterReauthRequest struct {
 	// Code A TOTP code from the enrolled authenticator.
 	Code           string                            `json:"code"`
@@ -5764,7 +5776,7 @@ type TotpProofRequest struct {
 	Password string `json:"password"`
 }
 
-// TotpReauthRequest defines model for TotpReauthRequest.
+// TotpReauthRequest A disclosure reauthentication by TOTP in exactly one canonical intent shape.
 type TotpReauthRequest struct {
 	union json.RawMessage
 }
@@ -6121,6 +6133,20 @@ type WorkspaceHandoffApproved struct {
 	RedirectUri string `json:"redirect_uri"`
 }
 
+// WorkspaceHandoffEstablishment defines model for WorkspaceHandoffEstablishment.
+type WorkspaceHandoffEstablishment struct {
+	// ExpiresAt RFC 3339 UTC, microsecond precision.
+	ExpiresAt Timestamp `json:"expires_at"`
+
+	// KeyIds Empty for an establishment.
+	KeyIds  []ID                                 `json:"key_ids"`
+	Purpose WorkspaceHandoffEstablishmentPurpose `json:"purpose"`
+	State   string                               `json:"state"`
+}
+
+// WorkspaceHandoffEstablishmentPurpose defines model for WorkspaceHandoffEstablishment.Purpose.
+type WorkspaceHandoffEstablishmentPurpose string
+
 // WorkspaceHandoffStarted defines model for WorkspaceHandoffStarted.
 type WorkspaceHandoffStarted struct {
 	// ExpiresAt RFC 3339 UTC, microsecond precision.
@@ -6133,28 +6159,33 @@ type WorkspaceHandoffStarted struct {
 	State string `json:"state"`
 }
 
-// WorkspaceHandoffTransaction defines model for WorkspaceHandoffTransaction.
-type WorkspaceHandoffTransaction struct {
-	// Environment The environment the elevation covers. Absent for an establishment.
-	Environment *ID `json:"environment,omitempty"`
+// WorkspaceHandoffStepUp defines model for WorkspaceHandoffStepUp.
+type WorkspaceHandoffStepUp struct {
+	// Environment The environment the elevation covers.
+	Environment ID `json:"environment"`
 
 	// ExpiresAt RFC 3339 UTC, microsecond precision.
 	ExpiresAt Timestamp `json:"expires_at"`
 
-	// KeyIds The enumerated unit the elevation binds. Empty for an establishment.
+	// KeyIds The enumerated unit the elevation binds.
 	KeyIds []ID `json:"key_ids"`
 
-	// Operation The disclosure the reauth authorizes. Absent for an establishment.
-	Operation *WorkspaceHandoffTransactionOperation `json:"operation,omitempty"`
-	Purpose   WorkspaceHandoffTransactionPurpose    `json:"purpose"`
-	State     string                                `json:"state"`
+	// Operation The disclosure the reauth authorizes.
+	Operation WorkspaceHandoffStepUpOperation `json:"operation"`
+	Purpose   WorkspaceHandoffStepUpPurpose   `json:"purpose"`
+	State     string                          `json:"state"`
 }
 
-// WorkspaceHandoffTransactionOperation The disclosure the reauth authorizes. Absent for an establishment.
-type WorkspaceHandoffTransactionOperation string
+// WorkspaceHandoffStepUpOperation The disclosure the reauth authorizes.
+type WorkspaceHandoffStepUpOperation string
 
-// WorkspaceHandoffTransactionPurpose defines model for WorkspaceHandoffTransaction.Purpose.
-type WorkspaceHandoffTransactionPurpose string
+// WorkspaceHandoffStepUpPurpose defines model for WorkspaceHandoffStepUp.Purpose.
+type WorkspaceHandoffStepUpPurpose string
+
+// WorkspaceHandoffTransaction defines model for WorkspaceHandoffTransaction.
+type WorkspaceHandoffTransaction struct {
+	union json.RawMessage
+}
 
 // WorkspaceOrigin defines model for WorkspaceOrigin.
 type WorkspaceOrigin struct {
@@ -7033,6 +7064,68 @@ func (t *TotpReauthRequest) UnmarshalJSON(b []byte) error {
 	return err
 }
 
+// AsWorkspaceHandoffEstablishment returns the union data inside the WorkspaceHandoffTransaction as a WorkspaceHandoffEstablishment
+func (t WorkspaceHandoffTransaction) AsWorkspaceHandoffEstablishment() (WorkspaceHandoffEstablishment, error) {
+	var body WorkspaceHandoffEstablishment
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromWorkspaceHandoffEstablishment overwrites any union data inside the WorkspaceHandoffTransaction as the provided WorkspaceHandoffEstablishment
+func (t *WorkspaceHandoffTransaction) FromWorkspaceHandoffEstablishment(v WorkspaceHandoffEstablishment) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeWorkspaceHandoffEstablishment performs a merge with any union data inside the WorkspaceHandoffTransaction, using the provided WorkspaceHandoffEstablishment
+func (t *WorkspaceHandoffTransaction) MergeWorkspaceHandoffEstablishment(v WorkspaceHandoffEstablishment) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsWorkspaceHandoffStepUp returns the union data inside the WorkspaceHandoffTransaction as a WorkspaceHandoffStepUp
+func (t WorkspaceHandoffTransaction) AsWorkspaceHandoffStepUp() (WorkspaceHandoffStepUp, error) {
+	var body WorkspaceHandoffStepUp
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromWorkspaceHandoffStepUp overwrites any union data inside the WorkspaceHandoffTransaction as the provided WorkspaceHandoffStepUp
+func (t *WorkspaceHandoffTransaction) FromWorkspaceHandoffStepUp(v WorkspaceHandoffStepUp) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeWorkspaceHandoffStepUp performs a merge with any union data inside the WorkspaceHandoffTransaction, using the provided WorkspaceHandoffStepUp
+func (t *WorkspaceHandoffTransaction) MergeWorkspaceHandoffStepUp(v WorkspaceHandoffStepUp) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t WorkspaceHandoffTransaction) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *WorkspaceHandoffTransaction) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// ResetCredential Issue a credential-establishment authority for another account.
@@ -7152,7 +7245,7 @@ type ServerInterface interface {
 	// StartWorkspaceHandoff Open a workspace handoff transaction.
 	// (POST /api/v1/auth/workspace/start)
 	StartWorkspaceHandoff(w http.ResponseWriter, r *http.Request)
-	// ShowWorkspaceHandoff Load the step-up policy a live workspace handoff binds.
+	// ShowWorkspaceHandoff Load the authoritative shape of a live workspace handoff.
 	// (GET /api/v1/auth/workspace/transactions/{state})
 	ShowWorkspaceHandoff(w http.ResponseWriter, r *http.Request, state string)
 	// ListInstanceConnections The connection credentials this instance has minted.
@@ -7983,7 +8076,7 @@ func (_ Unimplemented) StartWorkspaceHandoff(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// ShowWorkspaceHandoff Load the step-up policy a live workspace handoff binds.
+// ShowWorkspaceHandoff Load the authoritative shape of a live workspace handoff.
 // (GET /api/v1/auth/workspace/transactions/{state})
 func (_ Unimplemented) ShowWorkspaceHandoff(w http.ResponseWriter, r *http.Request, state string) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -21297,6 +21390,14 @@ type ShowWorkspaceHandoffResponseObject interface {
 }
 
 type ShowWorkspaceHandoff200JSONResponse WorkspaceHandoffTransaction
+
+func (t ShowWorkspaceHandoff200JSONResponse) MarshalJSON() ([]byte, error) {
+	return WorkspaceHandoffTransaction(t).MarshalJSON()
+}
+
+func (t *ShowWorkspaceHandoff200JSONResponse) UnmarshalJSON(b []byte) error {
+	return (*WorkspaceHandoffTransaction)(t).UnmarshalJSON(b)
+}
 
 func (response ShowWorkspaceHandoff200JSONResponse) VisitShowWorkspaceHandoffResponse(w http.ResponseWriter) error {
 
@@ -40455,7 +40556,7 @@ type StrictServerInterface interface {
 	// StartWorkspaceHandoff Open a workspace handoff transaction.
 	// (POST /api/v1/auth/workspace/start)
 	StartWorkspaceHandoff(ctx context.Context, request StartWorkspaceHandoffRequestObject) (StartWorkspaceHandoffResponseObject, error)
-	// ShowWorkspaceHandoff Load the step-up policy a live workspace handoff binds.
+	// ShowWorkspaceHandoff Load the authoritative shape of a live workspace handoff.
 	// (GET /api/v1/auth/workspace/transactions/{state})
 	ShowWorkspaceHandoff(ctx context.Context, request ShowWorkspaceHandoffRequestObject) (ShowWorkspaceHandoffResponseObject, error)
 	// ListInstanceConnections The connection credentials this instance has minted.

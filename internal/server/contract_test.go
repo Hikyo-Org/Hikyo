@@ -1862,7 +1862,7 @@ func TestWorkspaceHandoffInvalidPreservesContextualRefusals(t *testing.T) {
 	}
 }
 
-func TestWorkspaceHandoffResponseUsesDisclosureOperationSpelling(t *testing.T) {
+func TestWorkspaceHandoffStepUpResponseUsesRequiredBranch(t *testing.T) {
 	workspace := stubWorkspace{show: func(context.Context, service.Actor, string) (service.HandoffView, error) {
 		return service.HandoffView{
 			Purpose: service.HandoffStepUp, Operation: string(service.PurposeReveal),
@@ -1885,8 +1885,36 @@ func TestWorkspaceHandoffResponseUsesDisclosureOperationSpelling(t *testing.T) {
 	if err := json.Unmarshal(payload, &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.Operation == nil || *body.Operation != apigen.WorkspaceHandoffTransactionOperationReveal {
-		t.Fatalf("operation = %v, want reveal", body.Operation)
+	stepUp, err := body.AsWorkspaceHandoffStepUp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stepUp.Purpose != apigen.WorkspaceHandoffStepUpPurposeStepUp {
+		t.Fatalf("purpose = %q, want step-up", stepUp.Purpose)
+	}
+	if stepUp.Operation != apigen.WorkspaceHandoffStepUpOperationReveal {
+		t.Fatalf("operation = %q, want reveal", stepUp.Operation)
+	}
+	if stepUp.Environment != apigen.ID(testEnvID) {
+		t.Fatalf("environment = %q, want %q", stepUp.Environment, testEnvID)
+	}
+}
+
+func TestWorkspaceHandoffResponseRejectsUnknownPurpose(t *testing.T) {
+	workspace := stubWorkspace{show: func(context.Context, service.Actor, string) (service.HandoffView, error) {
+		return service.HandoffView{Purpose: service.HandoffPurpose("future")}, nil
+	}}
+	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+		Auth: stubAuth{identity: liveIdentityFn}, Orgs: stubOrgs{}, Providers: stubProviders{},
+		Projects: stubHierarchy{}, Environments: stubEnvs{}, Values: stubValues{}, Folders: stubFolders{},
+		Workspace: workspace, Version: "test",
+	}, nil))
+	t.Cleanup(srv.Close)
+
+	resp, _ := call(t, srv, http.MethodGet,
+		api.PathPrefix+"/auth/workspace/transactions/live-state", "hik_1_cli_x", nil)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", resp.StatusCode)
 	}
 }
 
