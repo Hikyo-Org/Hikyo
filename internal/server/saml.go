@@ -139,21 +139,12 @@ func (a *API) SamlACS(ctx context.Context, req apigen.SamlACSRequestObject) (api
 
 func (a *API) SamlMetadata(ctx context.Context, req apigen.SamlMetadataRequestObject) (apigen.SamlMetadataResponseObject, error) {
 	payload, err := a.SAMLAuth.SAMLMetadata(ctx, string(req.Provider))
-	if err == nil {
-		return apigen.SamlMetadata200ApplicationsamlmetadataXmlResponse{
-			Body: bytes.NewReader(payload), ContentLength: int64(len(payload)),
-		}, nil
+	if err != nil {
+		return nil, err
 	}
-	policy := wireErrorFor(err)
-	switch policy.code {
-	case apigen.ErrorCodeNotFound:
-		return apigen.SamlMetadata404JSONResponse{NotFoundJSONResponse: apigen.NotFoundJSONResponse(policy.body(err))}, nil
-	case apigen.ErrorCodeTooManyRequests:
-		return apigen.SamlMetadata429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
-	default:
-		a.fault(ctx, "saml metadata", err)
-		return apigen.SamlMetadata500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
-	}
+	return apigen.SamlMetadata200ApplicationsamlmetadataXmlResponse{
+		Body: bytes.NewReader(payload), ContentLength: int64(len(payload)),
+	}, nil
 }
 
 func samlACSPath(provider string) string {
@@ -211,109 +202,44 @@ func samlSPKeyWire(key service.SAMLSPKeyView) apigen.SamlSpKey {
 
 func (a *API) ListSamlSpKeys(ctx context.Context, _ apigen.ListSamlSpKeysRequestObject) (apigen.ListSamlSpKeysResponseObject, error) {
 	keys, err := a.SAMLProviders.ListSPKeys(ctx, service.Bearer(bearer(ctx)))
-	if err == nil {
-		out := apigen.SamlSpKeyList{Keys: make([]apigen.SamlSpKey, 0, len(keys))}
-		for _, key := range keys {
-			out.Keys = append(out.Keys, samlSPKeyWire(key))
-		}
-		return apigen.ListSamlSpKeys200JSONResponse(out), nil
+	if err != nil {
+		return nil, err
 	}
-	switch wireErrorFor(err).code {
-	case apigen.ErrorCodeUnauthenticated:
-		return apigen.ListSamlSpKeys401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
-	case apigen.ErrorCodeForbidden:
-		return apigen.ListSamlSpKeys403JSONResponse{ForbiddenJSONResponse: apigen.ForbiddenJSONResponse(errorBody(apigen.ErrorCodeForbidden, ""))}, nil
-	case apigen.ErrorCodeTooManyRequests:
-		return apigen.ListSamlSpKeys429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
-	default:
-		a.fault(ctx, "list saml sp keys", err)
-		return apigen.ListSamlSpKeys500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
+	out := apigen.SamlSpKeyList{Keys: make([]apigen.SamlSpKey, 0, len(keys))}
+	for _, key := range keys {
+		out.Keys = append(out.Keys, samlSPKeyWire(key))
 	}
+	return apigen.ListSamlSpKeys200JSONResponse(out), nil
 }
 
 func (a *API) RotateSamlSpKey(ctx context.Context, _ apigen.RotateSamlSpKeyRequestObject) (apigen.RotateSamlSpKeyResponseObject, error) {
 	key, err := a.SAMLProviders.RotateSPKey(ctx, service.Bearer(bearer(ctx)))
-	if err == nil {
-		return apigen.RotateSamlSpKey200JSONResponse(samlSPKeyWire(key)), nil
+	if err != nil {
+		return nil, err
 	}
-	policy := wireErrorFor(err)
-	switch policy.code {
-	case apigen.ErrorCodeNotFound:
-		return apigen.RotateSamlSpKey404JSONResponse{NotFoundJSONResponse: apigen.NotFoundJSONResponse(policy.body(err))}, nil
-	case apigen.ErrorCodeConflict:
-		return apigen.RotateSamlSpKey409JSONResponse{ConflictJSONResponse: apigen.ConflictJSONResponse(policy.body(err))}, nil
-	case apigen.ErrorCodeUnauthenticated:
-		return apigen.RotateSamlSpKey401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
-	case apigen.ErrorCodeForbidden:
-		return apigen.RotateSamlSpKey403JSONResponse{ForbiddenJSONResponse: apigen.ForbiddenJSONResponse(errorBody(apigen.ErrorCodeForbidden, ""))}, nil
-	case apigen.ErrorCodeTooManyRequests:
-		return apigen.RotateSamlSpKey429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
-	default:
-		a.fault(ctx, "rotate saml sp key", err)
-		return apigen.RotateSamlSpKey500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
-	}
+	return apigen.RotateSamlSpKey200JSONResponse(samlSPKeyWire(key)), nil
 }
 
 func (a *API) RetireSamlSpKey(ctx context.Context, req apigen.RetireSamlSpKeyRequestObject) (apigen.RetireSamlSpKeyResponseObject, error) {
 	err := a.SAMLProviders.RetireSPKey(ctx, service.Bearer(bearer(ctx)), req.Fingerprint)
-	if err == nil {
-		return apigen.RetireSamlSpKey204Response{}, nil
+	if err != nil {
+		return nil, err
 	}
-	policy := wireErrorFor(err)
-	switch policy.code {
-	case apigen.ErrorCodeNotFound:
-		return apigen.RetireSamlSpKey404JSONResponse{NotFoundJSONResponse: apigen.NotFoundJSONResponse(policy.body(err))}, nil
-	case apigen.ErrorCodeConflict:
-		return apigen.RetireSamlSpKey409JSONResponse{ConflictJSONResponse: apigen.ConflictJSONResponse(policy.body(err))}, nil
-	case apigen.ErrorCodeUnauthenticated:
-		return apigen.RetireSamlSpKey401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
-	case apigen.ErrorCodeForbidden:
-		return apigen.RetireSamlSpKey403JSONResponse{ForbiddenJSONResponse: apigen.ForbiddenJSONResponse(errorBody(apigen.ErrorCodeForbidden, ""))}, nil
-	case apigen.ErrorCodeTooManyRequests:
-		return apigen.RetireSamlSpKey429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
-	default:
-		a.fault(ctx, "retire saml sp key", err)
-		return apigen.RetireSamlSpKey500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
-	}
+	return apigen.RetireSamlSpKey204Response{}, nil
 }
 
 func (a *API) CompromiseRetireSamlSpKey(ctx context.Context, req apigen.CompromiseRetireSamlSpKeyRequestObject) (apigen.CompromiseRetireSamlSpKeyResponseObject, error) {
 	key, err := a.SAMLProviders.CompromiseRetireSPKey(ctx, service.Bearer(bearer(ctx)), req.Fingerprint)
-	if err == nil {
-		return apigen.CompromiseRetireSamlSpKey200JSONResponse(samlSPKeyWire(key)), nil
+	if err != nil {
+		return nil, err
 	}
-	policy := wireErrorFor(err)
-	switch policy.code {
-	case apigen.ErrorCodeNotFound:
-		return apigen.CompromiseRetireSamlSpKey404JSONResponse{NotFoundJSONResponse: apigen.NotFoundJSONResponse(policy.body(err))}, nil
-	case apigen.ErrorCodeConflict:
-		return apigen.CompromiseRetireSamlSpKey409JSONResponse{ConflictJSONResponse: apigen.ConflictJSONResponse(policy.body(err))}, nil
-	case apigen.ErrorCodeUnauthenticated:
-		return apigen.CompromiseRetireSamlSpKey401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
-	case apigen.ErrorCodeForbidden:
-		return apigen.CompromiseRetireSamlSpKey403JSONResponse{ForbiddenJSONResponse: apigen.ForbiddenJSONResponse(errorBody(apigen.ErrorCodeForbidden, ""))}, nil
-	case apigen.ErrorCodeTooManyRequests:
-		return apigen.CompromiseRetireSamlSpKey429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
-	default:
-		a.fault(ctx, "compromise retire saml sp key", err)
-		return apigen.CompromiseRetireSamlSpKey500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
-	}
+	return apigen.CompromiseRetireSamlSpKey200JSONResponse(samlSPKeyWire(key)), nil
 }
 
 func (a *API) ListSamlProviders(ctx context.Context, _ apigen.ListSamlProvidersRequestObject) (apigen.ListSamlProvidersResponseObject, error) {
 	rows, err := a.SAMLProviders.List(ctx, service.Bearer(bearer(ctx)))
 	if err != nil {
-		switch wireErrorFor(err).code {
-		case apigen.ErrorCodeUnauthenticated:
-			return apigen.ListSamlProviders401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
-		case apigen.ErrorCodeForbidden:
-			return apigen.ListSamlProviders403JSONResponse{ForbiddenJSONResponse: apigen.ForbiddenJSONResponse(errorBody(apigen.ErrorCodeForbidden, ""))}, nil
-		case apigen.ErrorCodeTooManyRequests:
-			return apigen.ListSamlProviders429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
-		default:
-			a.fault(ctx, "list saml providers", err)
-			return apigen.ListSamlProviders500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
-		}
+		return nil, err
 	}
 	out := apigen.SamlProviderList{Providers: make([]apigen.SamlProvider, 0, len(rows))}
 	for _, row := range rows {
@@ -324,23 +250,10 @@ func (a *API) ListSamlProviders(ctx context.Context, _ apigen.ListSamlProvidersR
 
 func (a *API) GetSamlProvider(ctx context.Context, req apigen.GetSamlProviderRequestObject) (apigen.GetSamlProviderResponseObject, error) {
 	view, err := a.SAMLProviders.Get(ctx, service.Bearer(bearer(ctx)), string(req.Slug))
-	if err == nil {
-		return apigen.GetSamlProvider200JSONResponse(samlProviderWire(view)), nil
+	if err != nil {
+		return nil, err
 	}
-	policy := wireErrorFor(err)
-	switch policy.code {
-	case apigen.ErrorCodeNotFound:
-		return apigen.GetSamlProvider404JSONResponse{NotFoundJSONResponse: apigen.NotFoundJSONResponse(policy.body(err))}, nil
-	case apigen.ErrorCodeUnauthenticated:
-		return apigen.GetSamlProvider401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
-	case apigen.ErrorCodeForbidden:
-		return apigen.GetSamlProvider403JSONResponse{ForbiddenJSONResponse: apigen.ForbiddenJSONResponse(errorBody(apigen.ErrorCodeForbidden, ""))}, nil
-	case apigen.ErrorCodeTooManyRequests:
-		return apigen.GetSamlProvider429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
-	default:
-		a.fault(ctx, "get saml provider", err)
-		return apigen.GetSamlProvider500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
-	}
+	return apigen.GetSamlProvider200JSONResponse(samlProviderWire(view)), nil
 }
 
 func (a *API) PutSamlProvider(ctx context.Context, req apigen.PutSamlProviderRequestObject) (apigen.PutSamlProviderResponseObject, error) {
@@ -358,25 +271,10 @@ func (a *API) PutSamlProvider(ctx context.Context, req apigen.PutSamlProviderReq
 		ForceSignRequests: req.Body.ForceSignRequests, Enabled: req.Body.Enabled,
 		ConfirmedFingerprints: sliceDeref(req.Body.ConfirmedFingerprints), ConfirmedEndpoints: sliceDeref(req.Body.ConfirmedEndpoints),
 	})
-	if err == nil {
-		return apigen.PutSamlProvider200JSONResponse(samlMutationWire(result)), nil
+	if err != nil {
+		return nil, err
 	}
-	policy := wireErrorFor(err)
-	switch policy.code {
-	case apigen.ErrorCodeBadRequest:
-		return apigen.PutSamlProvider400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(policy.body(err))}, nil
-	case apigen.ErrorCodeUnauthenticated:
-		return apigen.PutSamlProvider401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
-	case apigen.ErrorCodeForbidden:
-		return apigen.PutSamlProvider403JSONResponse{ForbiddenJSONResponse: apigen.ForbiddenJSONResponse(errorBody(apigen.ErrorCodeForbidden, ""))}, nil
-	case apigen.ErrorCodeConflict:
-		return apigen.PutSamlProvider409JSONResponse{ConflictJSONResponse: apigen.ConflictJSONResponse(errorBody(apigen.ErrorCodeConflict, ""))}, nil
-	case apigen.ErrorCodeTooManyRequests:
-		return apigen.PutSamlProvider429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
-	default:
-		a.fault(ctx, "put saml provider", err)
-		return apigen.PutSamlProvider500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
-	}
+	return apigen.PutSamlProvider200JSONResponse(samlMutationWire(result)), nil
 }
 
 func (a *API) PatchSamlProvider(ctx context.Context, req apigen.PatchSamlProviderRequestObject) (apigen.PatchSamlProviderResponseObject, error) {
@@ -387,46 +285,18 @@ func (a *API) PatchSamlProvider(ctx context.Context, req apigen.PatchSamlProvide
 		DisplayName: req.Body.DisplayName, AssurancePolicy: req.Body.AssurancePolicy,
 		AllowEmailNameID: req.Body.AllowEmailNameid, ForceSignRequests: req.Body.ForceSignRequests, Enabled: req.Body.Enabled,
 	})
-	if err == nil {
-		return apigen.PatchSamlProvider200JSONResponse(samlProviderWire(view)), nil
+	if err != nil {
+		return nil, err
 	}
-	policy := wireErrorFor(err)
-	switch policy.code {
-	case apigen.ErrorCodeNotFound:
-		return apigen.PatchSamlProvider404JSONResponse{NotFoundJSONResponse: apigen.NotFoundJSONResponse(policy.body(err))}, nil
-	case apigen.ErrorCodeUnauthenticated:
-		return apigen.PatchSamlProvider401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
-	case apigen.ErrorCodeForbidden:
-		return apigen.PatchSamlProvider403JSONResponse{ForbiddenJSONResponse: apigen.ForbiddenJSONResponse(errorBody(apigen.ErrorCodeForbidden, ""))}, nil
-	case apigen.ErrorCodeConflict:
-		return apigen.PatchSamlProvider409JSONResponse{ConflictJSONResponse: apigen.ConflictJSONResponse(errorBody(apigen.ErrorCodeConflict, ""))}, nil
-	case apigen.ErrorCodeTooManyRequests:
-		return apigen.PatchSamlProvider429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
-	default:
-		a.fault(ctx, "patch saml provider", err)
-		return apigen.PatchSamlProvider500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
-	}
+	return apigen.PatchSamlProvider200JSONResponse(samlProviderWire(view)), nil
 }
 
 func (a *API) DeleteSamlProvider(ctx context.Context, req apigen.DeleteSamlProviderRequestObject) (apigen.DeleteSamlProviderResponseObject, error) {
 	err := a.SAMLProviders.Delete(ctx, service.Bearer(bearer(ctx)), string(req.Slug))
-	if err == nil {
-		return apigen.DeleteSamlProvider204Response{}, nil
+	if err != nil {
+		return nil, err
 	}
-	policy := wireErrorFor(err)
-	switch policy.code {
-	case apigen.ErrorCodeNotFound:
-		return apigen.DeleteSamlProvider404JSONResponse{NotFoundJSONResponse: apigen.NotFoundJSONResponse(policy.body(err))}, nil
-	case apigen.ErrorCodeUnauthenticated:
-		return apigen.DeleteSamlProvider401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
-	case apigen.ErrorCodeForbidden:
-		return apigen.DeleteSamlProvider403JSONResponse{ForbiddenJSONResponse: apigen.ForbiddenJSONResponse(errorBody(apigen.ErrorCodeForbidden, ""))}, nil
-	case apigen.ErrorCodeTooManyRequests:
-		return apigen.DeleteSamlProvider429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
-	default:
-		a.fault(ctx, "delete saml provider", err)
-		return apigen.DeleteSamlProvider500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
-	}
+	return apigen.DeleteSamlProvider204Response{}, nil
 }
 
 func (a *API) RefreshSamlProviderMetadata(ctx context.Context, req apigen.RefreshSamlProviderMetadataRequestObject) (apigen.RefreshSamlProviderMetadataResponseObject, error) {
@@ -441,27 +311,10 @@ func (a *API) RefreshSamlProviderMetadata(ctx context.Context, req apigen.Refres
 		MetadataDocument: document, ConfirmedFingerprints: sliceDeref(req.Body.ConfirmedFingerprints),
 		ConfirmedEndpoints: sliceDeref(req.Body.ConfirmedEndpoints),
 	})
-	if err == nil {
-		return apigen.RefreshSamlProviderMetadata200JSONResponse(samlMutationWire(result)), nil
+	if err != nil {
+		return nil, err
 	}
-	policy := wireErrorFor(err)
-	switch policy.code {
-	case apigen.ErrorCodeNotFound:
-		return apigen.RefreshSamlProviderMetadata404JSONResponse{NotFoundJSONResponse: apigen.NotFoundJSONResponse(policy.body(err))}, nil
-	case apigen.ErrorCodeBadRequest:
-		return apigen.RefreshSamlProviderMetadata400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(policy.body(err))}, nil
-	case apigen.ErrorCodeUnauthenticated:
-		return apigen.RefreshSamlProviderMetadata401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
-	case apigen.ErrorCodeForbidden:
-		return apigen.RefreshSamlProviderMetadata403JSONResponse{ForbiddenJSONResponse: apigen.ForbiddenJSONResponse(errorBody(apigen.ErrorCodeForbidden, ""))}, nil
-	case apigen.ErrorCodeConflict:
-		return apigen.RefreshSamlProviderMetadata409JSONResponse{ConflictJSONResponse: apigen.ConflictJSONResponse(errorBody(apigen.ErrorCodeConflict, ""))}, nil
-	case apigen.ErrorCodeTooManyRequests:
-		return apigen.RefreshSamlProviderMetadata429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
-	default:
-		a.fault(ctx, "refresh saml provider metadata", err)
-		return apigen.RefreshSamlProviderMetadata500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
-	}
+	return apigen.RefreshSamlProviderMetadata200JSONResponse(samlMutationWire(result)), nil
 }
 
 func sliceDeref(values *[]string) []string {

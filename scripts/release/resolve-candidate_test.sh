@@ -10,6 +10,12 @@ version=1.2.3
 
 jq -n '
 	{
+		schema: "hikyo.dev/trust-metadata/v1",
+		sequence: 4,
+		highest_release: "1.2.2",
+		highest_release_sequence: 6,
+		recovery: {id: "recovery-1", sha256: ("f" * 64)},
+		event: {type: "release-candidate", signed_by: "recovery-1"},
 		releases: [{version: "1.2.2", sequence: 6, manifest_sha256: ("1" * 64)}],
 		pending_release: {version: "1.2.3", sequence: 7, manifest_sha256: ("0" * 64)},
 		primary_keys: [
@@ -52,6 +58,21 @@ candidate_sha=$(shasum -a 256 "$fixture_dir/candidate.json" | awk '{print $1}')
 "$script_dir/check-candidate.sh" "$fixture_dir/candidate.json" "$candidate_sha"
 printf 'candidate fixture: pending release resolved canonically\n'
 
+jq '.schema = "hikyo.dev/trust-metadata/v2"' \
+	"$fixture_dir/metadata.json" >"$fixture_dir/wrong-schema.json"
+expect_reject 'wrong trust metadata schema' 'invalid trust metadata' \
+	"$fixture_dir/wrong-schema.json"
+
+jq '.event.type = "unknown"' \
+	"$fixture_dir/metadata.json" >"$fixture_dir/unknown-event.json"
+expect_reject 'unknown trust metadata event' 'invalid trust metadata' \
+	"$fixture_dir/unknown-event.json"
+
+jq '.highest_release = "9.9.9"' \
+	"$fixture_dir/metadata.json" >"$fixture_dir/unknown-highest-release.json"
+expect_reject 'highest release absent from releases' 'invalid trust metadata' \
+	"$fixture_dir/unknown-highest-release.json"
+
 jq '.pending_release = {version: "9.9.9", sequence: 8, manifest_sha256: ("0" * 64)}' \
 	"$fixture_dir/metadata.json" >"$fixture_dir/missing.json"
 expect_reject 'missing release' 'release version is absent' "$fixture_dir/missing.json"
@@ -79,6 +100,11 @@ jq '.releases += [
 ]' "$fixture_dir/metadata.json" >"$fixture_dir/unrelated-duplicate-sequence.json"
 expect_reject 'unrelated duplicate release sequence' 'release sequence is duplicated' \
 	"$fixture_dir/unrelated-duplicate-sequence.json"
+
+jq '.releases += [.releases[0]]' \
+	"$fixture_dir/metadata.json" >"$fixture_dir/duplicate-highest-release.json"
+expect_reject 'duplicate highest release' 'release version is duplicated' \
+	"$fixture_dir/duplicate-highest-release.json"
 
 jq '.primary_keys += [{id: "overlap", public_key: "overlap.pub", sha256: ("c" * 64),
 	valid_from_release_sequence: 7, valid_through_release_sequence: 8, revoked: false}]' \
