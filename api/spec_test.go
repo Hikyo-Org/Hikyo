@@ -330,6 +330,35 @@ func TestRequestValidationAcceptsAbsentNullAndValue(t *testing.T) {
 	}
 }
 
+func TestTotpReauthRequestOnlyAcceptsCanonicalIntents(t *testing.T) {
+	environment := "env_00000000-0000-0000-0000-000000000001"
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{name: "code alone", body: `{"code":"123456"}`},
+		{name: "mixed variants", body: `{"code":"123456","environment_id":"` + environment + `","purpose":"adapter","operation":"adapter.sync","environment_ids":["` + environment + `"]}`},
+		{name: "adapter without environments", body: `{"code":"123456","purpose":"adapter","operation":"adapter.sync"}`},
+		{name: "environment", body: `{"code":"123456","environment_id":"` + environment + `"}`, want: true},
+		{name: "adapter", body: `{"code":"123456","purpose":"adapter","operation":"adapter.sync","environment_ids":["` + environment + `"]}`, want: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, api.PathPrefix+"/auth/reauth/totp",
+				bytes.NewReader([]byte(tc.body)))
+			req.Header.Set("Content-Type", "application/json")
+			_, err := api.ValidateRequest(req)
+			if tc.want && err != nil {
+				t.Fatalf("canonical intent rejected: %v", err)
+			}
+			if !tc.want && err == nil {
+				t.Fatal("invalid intent accepted")
+			}
+		})
+	}
+}
+
 func TestRequestValidationReportsTheOffendingMember(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, api.PathPrefix+"/auth/local/login",
 		bytes.NewReader([]byte(`{"username":"","password":"x"}`)))

@@ -24,6 +24,16 @@ export default defineConfig({
     '@hey-api/typescript',
     '@hey-api/sdk',
     '@hey-api/client-fetch',
-    'zod',
+    {
+      name: 'zod',
+      '~resolvers': {
+        object: (context) => {
+          if (context.schema['x-hikyo-zod-strict'] === true) {
+            return context.nodes.base(context).attr('strict').call();
+          }
+          return undefined;
+        },
+      },
+    },
   ],
 });

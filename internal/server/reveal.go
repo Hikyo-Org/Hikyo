@@ -66,30 +66,29 @@ func (a *API) ReauthTotp(ctx context.Context, req apigen.ReauthTotpRequestObject
 		results []service.ReauthResult
 		err     error
 	)
-	adapterPurpose := req.Body.Purpose != nil && *req.Body.Purpose == apigen.ReauthPurposeAdapter
+	adapter, adapterErr := req.Body.AsTotpAdapterReauthRequest()
+	adapterPurpose := adapterErr == nil && adapter.Purpose == apigen.TotpAdapterReauthRequestPurposeAdapter
 	if adapterPurpose {
-		if req.Body.Operation == nil || req.Body.EnvironmentIds == nil || len(*req.Body.EnvironmentIds) == 0 || req.Body.EnvironmentId != nil {
-			return apigen.ReauthTotp400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
-		}
-		rawIDs := make([]string, 0, len(*req.Body.EnvironmentIds))
-		for _, environmentID := range *req.Body.EnvironmentIds {
+		rawIDs := make([]string, 0, len(adapter.EnvironmentIds))
+		for _, environmentID := range adapter.EnvironmentIds {
 			rawIDs = append(rawIDs, string(environmentID))
 		}
-		intent, intentErr := service.NewAdapterReauthIntent(string(*req.Body.Operation), rawIDs)
+		intent, intentErr := service.NewAdapterReauthIntent(string(adapter.Operation), rawIDs)
 		if intentErr != nil {
 			return apigen.ReauthTotp400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 		}
-		results, err = a.Auth.ReauthAdapterTOTP(ctx, bearer(ctx), intent, req.Body.Code)
+		results, err = a.Auth.ReauthAdapterTOTP(ctx, bearer(ctx), intent, adapter.Code)
 	} else {
-		if req.Body.Purpose != nil || req.Body.Operation != nil || req.Body.EnvironmentIds != nil || req.Body.EnvironmentId == nil {
+		environment, environmentErr := req.Body.AsTotpEnvironmentReauthRequest()
+		if environmentErr != nil {
 			return apigen.ReauthTotp400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 		}
-		intent, intentErr := service.NewUnboundReauthIntent(string(*req.Body.EnvironmentId))
+		intent, intentErr := service.NewUnboundReauthIntent(string(environment.EnvironmentId))
 		if intentErr != nil {
 			return apigen.ReauthTotp400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 		}
 		var result service.ReauthResult
-		result, err = a.Auth.ReauthTOTP(ctx, bearer(ctx), intent, req.Body.Code)
+		result, err = a.Auth.ReauthTOTP(ctx, bearer(ctx), intent, environment.Code)
 		if err == nil {
 			results = []service.ReauthResult{result}
 		}
