@@ -26,12 +26,11 @@ import { surfacesForFlow } from '../registry.ts';
 /** openNav reveals the sidebar, which is a disclosure on a phone. */
 async function openNav(page: Page): Promise<void> {
   const navigation = page.getByRole('navigation', { name: 'Sections', exact: true });
+  const toggle = page.getByRole('button', { name: 'Menu' });
+  await expect(navigation.or(toggle)).toBeVisible();
   if (await navigation.isVisible()) {
     return;
   }
-
-  const toggle = page.getByRole('button', { name: 'Menu' });
-  await expect(toggle).toBeVisible();
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') {
     await toggle.click();
   }
