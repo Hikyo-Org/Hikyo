@@ -2,6 +2,7 @@ package scimproto
 
 import (
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -91,8 +92,49 @@ func TestPatchMatrixCells(t *testing.T) {
 			if e != nil {
 				t.Fatalf("cell refused but the matrix accepts it: %v", e)
 			}
-			if len(ops) != 1 || ops[0].Kind != tc.wantKind {
-				t.Fatalf("kind = %v, want %v", ops[0].Kind, tc.wantKind)
+			if len(ops) != 1 || ops[0].Payload.Kind() != tc.wantKind {
+				t.Fatalf("kind = %v, want %v", ops[0].Payload.Kind(), tc.wantKind)
+			}
+		})
+	}
+}
+
+func TestPatchReturnsTypedPayloadPerKind(t *testing.T) {
+	const head = `{"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[`
+	tests := []struct {
+		name string
+		res  Resource
+		body string
+		want PatchPayload
+	}{
+		{"pathless", ResourceUser, head + `{"op":"add","value":{"userName":"alice"}}]}`,
+			PatchUserObjectPayload{User: User{UserName: "alice", Extra: map[string]any{"userName": "alice"}}}},
+		{"pathless group", ResourceGroup, head + `{"op":"replace","value":{"displayName":"Ops","members":[{"value":"u1"}]}}]}`,
+			PatchGroupObjectPayload{Group: Group{DisplayName: "Ops", Members: []Member{{Value: "u1"}}, Extra: map[string]any{"displayName": "Ops", "members": []any{map[string]any{"value": "u1"}}}}}},
+		{"plain assignment", ResourceUser, head + `{"op":"replace","path":"externalId","value":"ext-1"}]}`,
+			PatchPlainPayload{Attribute: "externalId", Value: "ext-1"}},
+		{"plain removal", ResourceUser, head + `{"op":"remove","path":"externalId"}]}`,
+			PatchPlainPayload{Attribute: "externalId"}},
+		{"active", ResourceUser, head + `{"op":"replace","path":"active","value":"False"}]}`,
+			PatchActivePayload{Active: false}},
+		{"members", ResourceGroup, head + `{"op":"add","path":"members","value":[{"value":"u1"}]}]}`,
+			PatchMemberSetPayload{Members: []Member{{Value: "u1"}}}},
+		{"members clear", ResourceGroup, head + `{"op":"remove","path":"members"}]}`,
+			PatchMemberSetPayload{}},
+		{"member removal", ResourceGroup, head + `{"op":"remove","path":"members[value eq \"u1\"]"}]}`,
+			PatchMemberRemovalPayload{MemberID: "u1"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ops, e := ParsePatch([]byte(tc.body), tc.res)
+			if e != nil {
+				t.Fatalf("ParsePatch: %v", e)
+			}
+			if len(ops) != 1 {
+				t.Fatalf("operations = %d, want 1", len(ops))
+			}
+			if !reflect.DeepEqual(ops[0].Payload, tc.want) {
+				t.Fatalf("payload = %#v, want %#v", ops[0].Payload, tc.want)
 			}
 		})
 	}
@@ -116,8 +158,10 @@ func TestPatchValueShapeIsValidated(t *testing.T) {
 	const head = `{"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[`
 	for name, body := range map[string]string{
 		"pathless scalar": head + `{"op":"add","value":"nope"}]}`,
+		"pathless null":   head + `{"op":"add","value":null}]}`,
 		"active null":     head + `{"op":"replace","path":"active","value":null}]}`,
 		"members scalar":  head + `{"op":"add","path":"members","value":"u1"}]}`,
+		"members null":    head + `{"op":"add","path":"members","value":null}]}`,
 		"plain null":      head + `{"op":"replace","path":"externalId","value":null}]}`,
 	} {
 		res := ResourceUser
@@ -127,6 +171,31 @@ func TestPatchValueShapeIsValidated(t *testing.T) {
 		if _, e := ParsePatch([]byte(body), res); e == nil || e.SCIMType != TypeInvalidValue {
 			t.Fatalf("%s: want invalidValue, got %v", name, e)
 		}
+	}
+}
+
+// Member validity belongs to the parser that owns PatchOp decoding. Callers
+// must not receive a successful ParsedPatch that a second decoder can refuse.
+func TestPatchMembersAreValidatedByParser(t *testing.T) {
+	const head = `{"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[`
+	for name, body := range map[string]string{
+		"members path nested group": head + `{"op":"add","path":"members","value":[{"value":"g1","type":"Group"}]}]}`,
+		"members path empty ref":    head + `{"op":"replace","path":"members","value":[{"value":""}]}]}`,
+		"pathless nested group":     head + `{"op":"add","value":{"members":[{"value":"g1","type":"Group"}]}}]}`,
+		"pathless empty ref":        head + `{"op":"replace","value":{"members":[{"value":""}]}}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, e := ParsePatch([]byte(body), ResourceGroup); e == nil || e.SCIMType != TypeInvalidValue {
+				t.Fatalf("want invalidValue, got %v", e)
+			}
+		})
+	}
+}
+
+func TestPatchPathlessMalformedMemberKeepsInvalidSyntax(t *testing.T) {
+	body := `{"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[{"op":"replace","value":{"members":[{"value":7}]}}]}`
+	if _, e := ParsePatch([]byte(body), ResourceGroup); e == nil || e.SCIMType != TypeInvalidSyntax {
+		t.Fatalf("want invalidSyntax, got %v", e)
 	}
 }
 
