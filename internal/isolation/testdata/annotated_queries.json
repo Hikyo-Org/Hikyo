@@ -1435,6 +1435,12 @@
   },
   {
     "engine": "postgres",
+    "name": "WorkloadPinState",
+    "annotation": "authn-resolution",
+    "hash": "d4f2496c0094b063c110558adc1f66c63441085d56f0895dfb2fa77596f7af07"
+  },
+  {
+    "engine": "postgres",
     "name": "WorkspaceHandoffByCode",
     "annotation": "authn-resolution",
     "hash": "18eeec5b43f932cc2828ba14de2eef6d15435d357d13feb424c657018ddacf9b"
@@ -2884,6 +2890,12 @@
     "name": "UpdateSAMLProviderCAS",
     "annotation": "authn-resolution",
     "hash": "d061f9058bee068f5994e147f82ab3b9c36661b4fbbd4f7b3ceb9b6217392904"
+  },
+  {
+    "engine": "sqlite",
+    "name": "WorkloadPinState",
+    "annotation": "authn-resolution",
+    "hash": "cc5eb6a9795415b433cd31c766637b8965b4561d625db16da0f3869a10f1db0f"
   },
   {
     "engine": "sqlite",

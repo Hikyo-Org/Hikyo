@@ -482,7 +482,7 @@ func (s *SCIM) applyMappings(
 			// lock first, then the principal class and the normative machine
 			// allowlists. A sync must not take a shortcut past a rule a human
 			// grant cannot.
-			if _, err := lockAndClassify(ctx, az, target, capability, scope); err != nil {
+			if _, err := lockAndClassify(ctx, az, target, capability, scope, s.now); err != nil {
 				return nil, 0, err
 			}
 			out, err := writeGrantRow(ctx, az, spec, origin, now)
