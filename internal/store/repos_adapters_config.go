@@ -773,7 +773,7 @@ func (r pgAdapters) UpdateTarget(ctx context.Context, p authz.Proof, m AdapterTa
 	return updateTargetConfig(ctx, pgAdoptDB{db: r.db}, chain, m, true)
 }
 
-func updateTargetConfig(ctx context.Context, db adoptDB, chain domain.Scope, m AdapterTargetUpdate, postgres bool) (AdapterTargetUpdateResult, error) {
+func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m AdapterTargetUpdate, postgres bool) (AdapterTargetUpdateResult, error) {
 	if err := validateTargetMutation(m.Target); err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
