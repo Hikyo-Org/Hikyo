@@ -53,9 +53,10 @@ func runRetentionCLIStartupSweep(t *testing.T, engine store.Engine) {
 		t.Fatalf("first boot: %v", err)
 	}
 	origin := "http://" + first.Addr
+	operationalOrigin := "http://" + first.OperationalAddr
 	cfg.Listen = first.Addr
 	stopFirst := serveRetentionApp(t, first)
-	waitHTTP(t, origin+"/healthz")
+	waitHTTP(t, operationalOrigin+"/healthz")
 
 	db, err := store.Open(t.Context(), retentionStoreConfig(cfg))
 	if err != nil {
@@ -176,7 +177,7 @@ func runRetentionCLIStartupSweep(t *testing.T, engine store.Engine) {
 	}
 	stopSecond := serveRetentionApp(t, second)
 	defer stopSecond()
-	waitHTTP(t, origin+"/healthz")
+	waitHTTP(t, "http://"+second.OperationalAddr+"/healthz")
 	waitForCount(t, db, "SELECT COUNT(*) FROM snapshots WHERE collected_at IS NOT NULL", 3)
 
 	for _, pair := range []string{retentionCLIEnv + ":1", retentionCLIEnv + ":3", retentionCLIEnvInherit + ":1"} {
@@ -288,7 +289,7 @@ func retentionAppConfig(t *testing.T, engine store.Engine) *config.Config {
 		storeCfg = config.Datastore{Engine: config.EnginePostgres, DSN: dsn}
 	}
 	return &config.Config{
-		Dev: true, Listen: "127.0.0.1:0", AutoMigrate: true, Store: storeCfg,
+		Dev: true, Listen: "127.0.0.1:0", OperationalListen: "localhost:0", AutoMigrate: true, Store: storeCfg,
 		ExternalOrigin: "http://127.0.0.1", RootKeyFile: rootPath,
 		Argon2MemoryKiB: crypto.PasswordFloor.MemoryKiB,
 		Argon2Time:      crypto.PasswordFloor.Time, Argon2Parallelism: crypto.PasswordFloor.Parallelism,

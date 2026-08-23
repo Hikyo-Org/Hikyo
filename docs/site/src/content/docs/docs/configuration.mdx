@@ -11,7 +11,10 @@ warning, while malformed security settings stop startup.
 
 | Flag | Default | Purpose |
 | --- | --- | --- |
-| `--listen ADDR` | `127.0.0.1:8080` | Plaintext application listener. |
+| `--listen ADDR` | `127.0.0.1:8080` | Public API/UI listener; HTTPS when a TLS pair is configured. |
+| `--operational-listen ADDR` | `127.0.0.1:8081` | Plaintext health, readiness, and metrics listener. |
+| `--tls-cert-file PATH` | none | PEM certificate chain; configure with the key file. |
+| `--tls-key-file PATH` | none | Matching PEM private key; mode `0400` or `0600`. |
 | `--root-key-file PATH` | none | Mode-`0600`, 64-hex-character root key. |
 | `--auto-migrate=BOOL` | `true` | Apply pending migrations before serving. |
 | `--dev` | off | Evaluation datastore, root key, and text logs. |
@@ -24,14 +27,25 @@ Do not use `--dev` for real secret material or any non-loopback deployment.
 | --- | --- |
 | `HIKYO_DB` | Required: `sqlite:PATH` or `postgres://...` datastore. |
 | `HIKYO_EXTERNAL_ORIGIN` | Set explicitly to the canonical public HTTPS origin. |
-| `HIKYO_TRUSTED_PROXY_CIDRS` | Required for non-loopback listen: allowed proxy networks. |
+| `HIKYO_TLS_CERT_FILE`, `HIKYO_TLS_KEY_FILE` | Native TLS pair; both or neither. |
+| `HIKYO_OPERATIONAL_LISTEN` | Separate operational bind; default `127.0.0.1:8081`. |
+| `HIKYO_TRUSTED_PROXY_CIDRS` | Alternative proxy mode for a non-loopback plaintext public listener. |
 | `HIKYO_ADAPTER_EGRESS_POLICY_FILE` | Optional startup-only Forgejo origin-to-CIDR exception policy. |
 
-When origin is unset, Hikyo derives `http://<listen>`. That fallback supports a
-loopback evaluation, not a public HTTPS deployment or stable WebAuthn identity.
+When origin is unset, Hikyo derives `https://<listen>` with native TLS and
+`http://<listen>` otherwise. Proxy mode should set the public HTTPS origin
+explicitly because the private listener cannot infer it.
 
-The proxy list is mandatory only when the listener is not loopback. It is not a
-list of browser client networks; it names the proxies allowed to reach Hikyo.
+Native TLS is the default direct-deployment posture. Hikyo validates the pair at
+startup, rejects expired or mismatched files, warns within 14 days of expiry,
+polls for replacements every 10 seconds, and also reloads on `SIGHUP`. A bad
+replacement leaves the last known-good certificate live and increments
+`hikyo_tls_reload_failures_total`. HSTS is emitted only for native TLS on a
+non-loopback public listener.
+
+Proxy mode requires trusted CIDRs when the plaintext public listener is not
+loopback. The list names proxies, not browser client networks. Operational
+routes never exist on the public router; keep the operational bind private.
 
 Adapter egress is public-address-only by default. To approve a private Forgejo
 origin, point `HIKYO_ADAPTER_EGRESS_POLICY_FILE` at a JSON object whose keys are

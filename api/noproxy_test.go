@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -563,38 +564,42 @@ var pinnedNonContractRoutes = map[string]string{
 const assetRoutePattern = "/assets/*"
 
 func TestLiveRouterSurfaceIsExhaustivelyPinned(t *testing.T) {
-	// A non-nil ui so the ui-gated routes are registered; the contents are
-	// irrelevant because chi.Walk never invokes a handler, and for the same
-	// reason a nil ReadyChecker is safe.
-	handler := server.New(nil, &server.API{}, fstest.MapFS{"index.html": {Data: []byte("<!doctype html>")}})
-	routes, ok := handler.(chi.Routes)
-	if !ok {
-		t.Fatal("server.New no longer returns a chi router; this closure must be updated, not deleted")
-	}
-
 	walked := map[string]bool{}
 	sawAssetRoute := false
-	err := chi.Walk(routes, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
-		if route == assetRoutePattern {
-			sawAssetRoute = true
-			return nil
+	handlers := []struct {
+		name    string
+		handler http.Handler
+	}{
+		{"public", server.New(nil, &server.API{}, fstest.MapFS{"index.html": {Data: []byte("<!doctype html>")}})},
+		{"operational", server.NewOperational(nil, nil)},
+	}
+	for _, candidate := range handlers {
+		routes, ok := candidate.handler.(chi.Routes)
+		if !ok {
+			t.Fatalf("server %s constructor no longer returns a chi router; this closure must be updated, not deleted", candidate.name)
 		}
-		key := method + " " + route
-		walked[key] = true
-		if pinnedContractSurface[key] || pinnedNonContractRoutes[key] != "" {
+		err := chi.Walk(routes, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+			if route == assetRoutePattern {
+				sawAssetRoute = true
+				return nil
+			}
+			key := method + " " + route
+			walked[key] = true
+			if pinnedContractSurface[key] || pinnedNonContractRoutes[key] != "" {
+				return nil
+			}
+			t.Errorf("%s is a LIVE ROUTE on the %s router that is in neither the pinned contract surface nor the "+
+				"non-API allowlist. If it belongs in the contract, describe it in api/openapi.yaml and "+
+				"pin it there; if it is genuinely a non-API route, add it to pinnedNonContractRoutes "+
+				"with the one thing that pin exists to record — that it returns this instance's own "+
+				"data and never fetches, relays or forwards on the caller's behalf. Criterion 6 is a "+
+				"closure claim, and a route registered in Go rather than in the document is precisely "+
+				"the way one gets made without anyone writing it down.", key, candidate.name)
 			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
 		}
-		t.Errorf("%s is a LIVE ROUTE that is in neither the pinned contract surface nor the "+
-			"non-API allowlist. If it belongs in the contract, describe it in api/openapi.yaml and "+
-			"pin it there; if it is genuinely a non-API route, add it to pinnedNonContractRoutes "+
-			"with the one thing that pin exists to record — that it returns this instance's own "+
-			"data and never fetches, relays or forwards on the caller's behalf. Criterion 6 is a "+
-			"closure claim, and a route registered in Go rather than in the document is precisely "+
-			"the way one gets made without anyone writing it down.", key)
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 	if len(walked) == 0 {
 		t.Fatal("the router registered no routes — this check would be vacuously green")
@@ -617,6 +622,40 @@ func TestLiveRouterSurfaceIsExhaustivelyPinned(t *testing.T) {
 				"entry. A stale allowlist is where a future route quietly inherits an exemption "+
 				"nobody granted it", key, reason)
 		}
+	}
+}
+
+func TestPublicAndOperationalRouterPartitionsDoNotOverlap(t *testing.T) {
+	public := server.New(nil, &server.API{}, nil)
+	operational := server.NewOperational(nil, nil)
+	for _, route := range []string{"/healthz", "/readyz", "/metrics"} {
+		req := httptest.NewRequest(http.MethodGet, route, nil)
+		publicResponse := httptest.NewRecorder()
+		public.ServeHTTP(publicResponse, req)
+		if publicResponse.Code != http.StatusNotFound {
+			t.Errorf("public %s = %d, want 404", route, publicResponse.Code)
+		}
+	}
+	req := httptest.NewRequest(http.MethodGet, api.PathPrefix+"/meta", nil)
+	response := httptest.NewRecorder()
+	operational.ServeHTTP(response, req)
+	if response.Code != http.StatusNotFound {
+		t.Errorf("operational API route = %d, want 404", response.Code)
+	}
+	routes, ok := operational.(chi.Routes)
+	if !ok {
+		t.Fatal("operational router no longer exposes chi routes")
+	}
+	got := map[string]bool{}
+	if err := chi.Walk(routes, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		got[method+" "+route] = true
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"GET /healthz": true, "GET /readyz": true, "GET /metrics": true}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("operational route set = %v, want exactly %v", got, want)
 	}
 }
 

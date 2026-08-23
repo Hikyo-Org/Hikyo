@@ -13,7 +13,7 @@ import (
 
 type bootResourceRecord struct {
 	database       *store.DB
-	listener       net.Listener
+	listeners      []net.Listener
 	databaseCloses int
 	listenerCloses int
 	closeOrder     []string
@@ -33,7 +33,7 @@ func recordingBootResources(record *bootResourceRecord) bootResources {
 	}
 	resources.listen = func(network, address string) (net.Listener, error) {
 		ln, err := net.Listen(network, address)
-		record.listener = ln
+		record.listeners = append(record.listeners, ln)
 		return ln, err
 	}
 	resources.closeListener = func(ln net.Listener) error {
@@ -82,6 +82,31 @@ func TestBootResourceOwnershipOnFailure(t *testing.T) {
 		}
 	})
 
+	t.Run("second listener failure closes public listener then database", func(t *testing.T) {
+		record := &bootResourceRecord{}
+		resources := recordingBootResources(record)
+		listen := resources.listen
+		calls := 0
+		resources.listen = func(network, address string) (net.Listener, error) {
+			calls++
+			if calls == 2 {
+				return nil, injected
+			}
+			return listen(network, address)
+		}
+
+		_, err := boot(t.Context(), devConfig(t), testLogger(), resources)
+		if !errors.Is(err, injected) {
+			t.Fatalf("boot error = %v, want injected operational-listener error", err)
+		}
+		if record.databaseCloses != 1 || record.listenerCloses != 1 {
+			t.Fatalf("close counts = database %d, listener %d; want 1, 1", record.databaseCloses, record.listenerCloses)
+		}
+		if want := []string{"listener", "database"}; !slices.Equal(record.closeOrder, want) {
+			t.Fatalf("close order = %v, want %v", record.closeOrder, want)
+		}
+	})
+
 	t.Run("after listener acquisition closes listener then database", func(t *testing.T) {
 		record := &bootResourceRecord{}
 		resources := recordingBootResources(record)
@@ -93,10 +118,10 @@ func TestBootResourceOwnershipOnFailure(t *testing.T) {
 		if !errors.Is(err, injected) {
 			t.Fatalf("boot error = %v, want injected directory-client error", err)
 		}
-		if record.databaseCloses != 1 || record.listenerCloses != 1 {
-			t.Fatalf("close counts = database %d, listener %d; want 1, 1", record.databaseCloses, record.listenerCloses)
+		if record.databaseCloses != 1 || record.listenerCloses != 2 {
+			t.Fatalf("close counts = database %d, listener %d; want 1, 2", record.databaseCloses, record.listenerCloses)
 		}
-		if want := []string{"listener", "database"}; !slices.Equal(record.closeOrder, want) {
+		if want := []string{"listener", "listener", "database"}; !slices.Equal(record.closeOrder, want) {
 			t.Fatalf("close order = %v, want %v", record.closeOrder, want)
 		}
 	})

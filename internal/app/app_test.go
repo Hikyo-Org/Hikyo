@@ -5,10 +5,12 @@ import (
 	"database/sql"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 
@@ -23,8 +25,11 @@ func devConfig(t *testing.T) *config.Config {
 	t.Helper()
 	cfg, _, err := config.Load("server", []string{"--dev", "--listen", "127.0.0.1:0"},
 		func(k string) string {
-			if k == "HIKYO_DB" {
+			switch k {
+			case "HIKYO_DB":
 				return "sqlite:" + filepath.Join(t.TempDir(), "hikyo.db")
+			case "HIKYO_OPERATIONAL_LISTEN":
+				return "localhost:0"
 			}
 			return ""
 		}, nil)
@@ -34,7 +39,7 @@ func devConfig(t *testing.T) *config.Config {
 	return cfg
 }
 
-func TestDevBootServesHealthAndReady(t *testing.T) {
+func TestDevBootSeparatesPublicAndOperationalRoutes(t *testing.T) {
 	cfg := devConfig(t)
 	srv, err := Boot(t.Context(), cfg, testLogger())
 	if err != nil {
@@ -45,14 +50,54 @@ func TestDevBootServesHealthAndReady(t *testing.T) {
 	go func() { done <- srv.Serve(ctx) }()
 	t.Cleanup(func() { cancel(); <-done })
 
-	for path, want := range map[string]int{"/healthz": 200, "/readyz": 200} {
-		resp, err := http.Get("http://" + srv.Addr + path)
+	for path, want := range map[string]int{"/healthz": 200, "/readyz": 200, "/metrics": 200, "/api/v1/meta": 404} {
+		resp, err := http.Get("http://" + srv.OperationalAddr + path)
 		if err != nil {
 			t.Fatalf("GET %s: %v", path, err)
 		}
 		resp.Body.Close()
 		if resp.StatusCode != want {
 			t.Errorf("GET %s = %d, want %d", path, resp.StatusCode, want)
+		}
+	}
+	resp, err := http.Get("http://" + srv.Addr + "/healthz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("public /healthz = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestServeCancellationStopsBothListeners(t *testing.T) {
+	srv, err := Boot(t.Context(), devConfig(t), testLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- srv.Serve(ctx) }()
+	for _, address := range []string{srv.Addr, srv.OperationalAddr} {
+		conn, err := net.DialTimeout("tcp", address, time.Second)
+		if err != nil {
+			t.Fatalf("listener %s did not start: %v", address, err)
+		}
+		conn.Close()
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Serve cancellation: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Serve did not stop both listeners within 2 seconds")
+	}
+	for _, address := range []string{srv.Addr, srv.OperationalAddr} {
+		if conn, err := net.DialTimeout("tcp", address, 100*time.Millisecond); err == nil {
+			conn.Close()
+			t.Errorf("listener %s still accepts after shutdown", address)
 		}
 	}
 }
@@ -75,6 +120,9 @@ func TestHTTPServerSlowClientLimitsConfigured(t *testing.T) {
 	}
 	if srv.WriteTimeout != 0 {
 		t.Error("WriteTimeout must stay unset until SSE decides it")
+	}
+	if srv.ReadHeaderTimeout != 10*time.Second || srv.MaxHeaderBytes != 64<<10 {
+		t.Fatalf("HTTP limits = header timeout %s, max headers %d", srv.ReadHeaderTimeout, srv.MaxHeaderBytes)
 	}
 }
 

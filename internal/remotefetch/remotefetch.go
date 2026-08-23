@@ -19,10 +19,8 @@ package remotefetch
 import (
 	"bufio"
 	"context"
-	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"net"
@@ -31,6 +29,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/tlspolicy"
 )
 
 // Outcome is the closed result enum the snapshot's `last_outcome` column and
@@ -148,8 +148,7 @@ func CanonicalRemoteURL(raw string) (string, error) {
 // CLI's local trust store uses; one fingerprint spelling for the whole
 // product.
 func SPKIFingerprint(cert *x509.Certificate) string {
-	sum := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
-	return base64.StdEncoding.EncodeToString(sum[:])
+	return tlspolicy.SPKIFingerprint(cert)
 }
 
 // Config is the composable-maxima catalogue's outbound half. Zero values are

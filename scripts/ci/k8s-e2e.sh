@@ -30,12 +30,14 @@ fi
 
 kubeconfig="$(mktemp -t hikyo-e2e-kubeconfig.XXXXXX)"
 config="$(mktemp -t hikyo-e2e-kind.XXXXXX)"
+image_root="$(mktemp -d -t hikyo-e2e-image.XXXXXX)"
 created=false
 cleanup() {
 	if [ "$created" = true ]; then
 		kind delete cluster --name "$CLUSTER" >/dev/null 2>&1 || true
 	fi
 	rm -f "$kubeconfig" "$config"
+	rm -rf "$image_root"
 }
 trap cleanup EXIT HUP INT TERM
 
@@ -53,5 +55,17 @@ created=true
 
 export HIKYO_K8S_E2E_KUBECONFIG="$kubeconfig"
 
-echo "k8s-e2e: running operator kind e2e suite"
+echo "k8s-e2e: building local Hikyo server image"
+CGO_ENABLED=0 GOOS=linux go build -trimpath -o "$image_root/hikyo" ./cmd/hikyo
+cat >"$image_root/Dockerfile" <<'EOF'
+FROM scratch
+COPY --chown=65532:65532 hikyo /hikyo
+USER 65532:65532
+ENTRYPOINT ["/hikyo"]
+EOF
+export HIKYO_K8S_E2E_SERVER_IMAGE="hikyo-k8s-e2e:local"
+docker build -q -t "$HIKYO_K8S_E2E_SERVER_IMAGE" "$image_root" >/dev/null
+kind load docker-image --name "$CLUSTER" "$HIKYO_K8S_E2E_SERVER_IMAGE" >/dev/null
+
+echo "k8s-e2e: running operator and server-probe kind e2e suite"
 go test -count=1 -tags k8se2e -run 'TestK8sOperator' ./internal/isolation/ -timeout 25m
