@@ -388,6 +388,40 @@ export const zTotpCodeRequest = z.object({
 });
 
 /**
+ * A disclosure reauthentication by TOTP. `environment_id` is what the
+ * window is opened OVER — the reveal guard is per environment, so a
+ * window on staging authorizes nothing in production.
+ *
+ */
+export const zTotpEnvironmentReauthRequest = z.object({
+    environment_id: zId,
+    code: z.string().min(6).max(10)
+}).strict();
+
+/**
+ * A TOTP proof bound to one adapter operation over an exact environment set.
+ */
+export const zTotpAdapterReauthRequest = z.object({
+    purpose: z.enum(['adapter']),
+    operation: z.enum([
+        'adapter.configure',
+        'adapter.credential-set',
+        'adapter.adopt',
+        'adapter.sync'
+    ]),
+    environment_ids: z.array(zId).min(1),
+    code: z.string().min(6).max(10)
+}).strict();
+
+/**
+ * A disclosure reauthentication by TOTP in exactly one canonical intent shape.
+ */
+export const zTotpReauthRequest = z.union([
+    zTotpEnvironmentReauthRequest,
+    zTotpAdapterReauthRequest
+]);
+
+/**
  * `adapter` carries an adapter-routing decision over an environment set.
  * `reveal` and `copy` carry a DISCLOSURE: the browser runs the same
  * purpose-bound, enumerated-key-set ceremony the UI runs, so `key_ids`
@@ -2158,25 +2192,6 @@ export const zReauthPurpose = z.enum([
     'mint',
     'adapter'
 ]);
-
-/**
- * A disclosure reauthentication by TOTP. `environment_id` is what the
- * window is opened OVER — the reveal guard is per environment, so a
- * window on staging authorizes nothing in production.
- *
- */
-export const zTotpReauthRequest = z.object({
-    environment_id: zId.optional(),
-    purpose: zReauthPurpose.optional(),
-    operation: z.enum([
-        'adapter.configure',
-        'adapter.credential-set',
-        'adapter.adopt',
-        'adapter.sync'
-    ]).optional(),
-    environment_ids: z.array(zId).min(1).optional(),
-    code: z.string().min(6).max(10)
-});
 
 export const zWebauthnReauthStartRequest = z.object({
     operation: zReauthPurpose,

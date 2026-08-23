@@ -152,9 +152,13 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 		return err
 	}
 	envID := apigen.ID(env)
+	var body apigen.TotpReauthRequest
+	if err := body.FromTotpEnvironmentReauthRequest(apigen.TotpEnvironmentReauthRequest{Code: code, EnvironmentId: envID}); err != nil {
+		return fmt.Errorf("encode TOTP reauthentication request: %w", err)
+	}
 	var opened apigen.ReauthResult
 	if err := client.Do(ctx, http.MethodPost, api.PathPrefix+"/auth/reauth/totp",
-		apigen.TotpReauthRequest{Code: code, EnvironmentId: &envID}, &opened); err != nil {
+		body, &opened); err != nil {
 		return err
 	}
 	// The window opener rotates the session token. Persist it AND present it on
