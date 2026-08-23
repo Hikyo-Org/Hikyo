@@ -1,11 +1,18 @@
 import { createHmac } from 'node:crypto';
 
+import {
+  zEnvironmentSettings,
+  zFederatedBinding,
+  zGrantResult,
+  zKey,
+  zPublishResult,
+  zRevisionPinResult,
+} from '@hikyo/zod';
 import { z } from 'zod';
 
 import {
   fixtureApiCall as call,
   fixtureBearer,
-  zFixtureIgnored as zIgnored,
   zFixtureRevisionList as zRevisionList,
   zFixtureStaged as zStaged,
 } from './api.ts';
@@ -300,7 +307,7 @@ export const MACHINE = {
 
 /** grantReveal creates the revocable instance-scope `reveal` grant. */
 export async function grantReveal(token: string, principal: string): Promise<void> {
-  await call(token, 'POST', '/api/v1/instance/grants', zIgnored, {
+  await call(token, 'POST', '/api/v1/instance/grants', zGrantResult, {
     principal,
     capability: REVEAL_GRANT.capability,
   });
@@ -484,7 +491,7 @@ export async function seedTenant(
     token,
     'POST',
     `/api/v1/orgs/${org}/projects/${project}/environments/${dev}/grants`,
-    zIgnored,
+    zGrantResult,
     { principal: workload.principal_id, capability: 'read' },
   );
   // A binding whose service account reaches no plaintext: `read` delivers
@@ -494,7 +501,7 @@ export async function seedTenant(
     token,
     'POST',
     `/api/v1/orgs/${org}/projects/${project}/service-accounts/${workload.id}/bindings`,
-    zIgnored,
+    zFederatedBinding,
     {
       issuer: MACHINE.issuer,
       subject: MACHINE.subject,
@@ -562,7 +569,7 @@ export async function seedTenant(
     token,
     'POST',
     `/api/v1/orgs/${org}/projects/${project}/environments/${dev}/publish`,
-    zIgnored,
+    zPublishResult,
     { version_ids: devVersions },
   );
 
@@ -591,7 +598,7 @@ export async function seedTenant(
     token,
     'POST',
     `/api/v1/orgs/${org}/projects/${project}/environments/${prod}/publish`,
-    zIgnored,
+    zPublishResult,
     { version_ids: prodVersions },
   );
 
@@ -606,7 +613,7 @@ export async function seedTenant(
     token,
     'PUT',
     `/api/v1/orgs/${org}/projects/${project}/keys/${matrixRequiredID}/declaration`,
-    zIgnored,
+    zKey,
     {
       declaration: { rule: { type: 'string' } },
       presence: {
@@ -630,7 +637,7 @@ export async function seedTenant(
     token,
     'PUT',
     `/api/v1/orgs/${org}/projects/${project}/environments/${dev}/settings`,
-    zIgnored,
+    zEnvironmentSettings,
     { protected: false, reauth_window_seconds: 300 },
   );
 
@@ -640,7 +647,7 @@ export async function seedTenant(
     token,
     'PUT',
     `/api/v1/orgs/${org}/projects/${project}/environments/${prod}/settings`,
-    zIgnored,
+    zEnvironmentSettings,
     { protected: true },
   );
 
@@ -684,7 +691,7 @@ export async function seedTenant(
       token,
       'POST',
       `/api/v1/orgs/${org}/projects/${historyProject}/environments/${environment}/publish`,
-      zIgnored,
+      zPublishResult,
       { version_ids: versions },
     );
   };
@@ -720,7 +727,7 @@ export async function seedTenant(
     token,
     'PUT',
     `/api/v1/orgs/${org}/projects/${historyProject}/keys/${tightenedID}/declaration`,
-    zIgnored,
+    zKey,
     {
       declaration: { rule: { type: 'integer' } },
       presence: { required_in: { mode: 'none' }, forbidden_in: { mode: 'none' } },
@@ -734,7 +741,7 @@ export async function seedTenant(
     token,
     'PUT',
     `/api/v1/orgs/${org}/projects/${historyProject}/environments/${historyDev}/settings`,
-    zIgnored,
+    zEnvironmentSettings,
     { protected: false, reauth_window_seconds: 300 },
   );
 
@@ -765,7 +772,7 @@ export async function seedTenant(
     token,
     'POST',
     `/api/v1/orgs/${org}/projects/${historyProject}/environments/${historyDev}/pins`,
-    zIgnored,
+    zRevisionPinResult,
     {
       workload_principal_id: pinnedWorkload.principal_id,
       // The CURRENT revision, so seeding takes no reveal-history ceremony.

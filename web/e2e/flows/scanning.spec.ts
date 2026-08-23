@@ -2,7 +2,8 @@ import { expect, test } from '@playwright/test';
 import { z } from 'zod';
 
 import { expectPinnedAssertionSet } from '../fixtures/assertions.ts';
-import { browserApi, readSeed, STORAGE_STATE } from '../fixtures/instance.ts';
+import { browserApi } from '../fixtures/api.ts';
+import { readSeed, STORAGE_STATE } from '../fixtures/instance.ts';
 import { surfacesForFlow } from '../registry.ts';
 
 /**
