@@ -130,6 +130,19 @@ func runSAMLLoginReplay(t *testing.T, db *store.DB) {
 	if got := queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type = 'auth.saml_login' AND outcome = 'success'"); got == 0 {
 		t.Fatal("valid SAML login emitted no success audit event")
 	}
+	loginWith := func(label string, loginIDP *samltest.IdP) string {
+		t.Helper()
+		start, err := auth.SAMLStart(ctx, "saml-idp", "login", "", "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		response := samlResponseForStart(t, loginIDP, start, "_response_"+label, "_assertion_"+label)
+		result, err := auth.SAMLACS(ctx, "saml-idp", response, samlAuditRelayState(t, start.RedirectURL), start.InitiatorCookie)
+		if err != nil {
+			t.Fatalf("%s login callback: %v", label, err)
+		}
+		return result.SessionToken
+	}
 
 	concurrent, err := auth.SAMLStart(ctx, "saml-idp", "login", "", "", "")
 	if err != nil {
@@ -185,19 +198,108 @@ func runSAMLLoginReplay(t *testing.T, db *store.DB) {
 		t.Fatalf("durable replay rows = %d, want 1", got)
 	}
 
+	providerNow := time.Now().UTC()
+	providers.Now = func() time.Time {
+		providerNow = providerNow.Add(time.Second)
+		return providerNow
+	}
 	displayName := "Renamed SAML test IdP"
-	if _, err := providers.Patch(ctx, service.LocalPrincipal(admin), "saml-idp", service.SAMLProviderPatch{DisplayName: &displayName}); err != nil {
+	patched, err := providers.Patch(ctx, service.LocalPrincipal(admin), "saml-idp", service.SAMLProviderPatch{DisplayName: &displayName})
+	if err != nil {
 		t.Fatal(err)
+	}
+	persisted, err := providers.Get(ctx, service.LocalPrincipal(admin), "saml-idp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !patched.UpdatedAt.Equal(persisted.UpdatedAt) {
+		t.Fatalf("Patch returned UpdatedAt %s, persisted %s", patched.UpdatedAt, persisted.UpdatedAt)
 	}
 	if _, err := auth.Identity(ctx, login.SessionToken); err != nil {
 		t.Fatalf("display-only provider change swept a SAML session: %v", err)
 	}
+	currentMetadata, err := idp.SignedMetadata(time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	unchanged, err := providers.RefreshMetadata(ctx, service.LocalPrincipal(admin), "saml-idp", service.SAMLMetadataRefreshInput{
+		MetadataDocument: currentMetadata,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !unchanged.Applied {
+		t.Fatalf("identical certificate refresh requires confirmation: %#v", unchanged)
+	}
+	persisted, err = providers.Get(ctx, service.LocalPrincipal(admin), "saml-idp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unchanged.Provider == nil || !unchanged.Provider.UpdatedAt.Equal(persisted.UpdatedAt) {
+		t.Fatalf("RefreshMetadata returned provider = %#v, persisted UpdatedAt %s", unchanged.Provider, persisted.UpdatedAt)
+	}
+	if _, err := auth.Identity(ctx, login.SessionToken); err != nil {
+		t.Fatalf("identical certificate refresh swept a SAML session: %v", err)
+	}
+	disabled := false
+	if _, err := providers.Patch(ctx, service.LocalPrincipal(admin), "saml-idp", service.SAMLProviderPatch{Enabled: &disabled}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := auth.Identity(ctx, login.SessionToken); !errors.Is(err, domain.ErrUnauthenticated) {
+		t.Fatalf("provider disable left SAML session live: %v", err)
+	}
+	enabled := true
+	if _, err := providers.Patch(ctx, service.LocalPrincipal(admin), "saml-idp", service.SAMLProviderPatch{Enabled: &enabled}); err != nil {
+		t.Fatal(err)
+	}
+	policySession := loginWith("policy", idp)
 	policy := []string{"urn:example:mfa"}
 	if _, err := providers.Patch(ctx, service.LocalPrincipal(admin), "saml-idp", service.SAMLProviderPatch{AssurancePolicy: &policy}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := auth.Identity(ctx, login.SessionToken); !errors.Is(err, domain.ErrUnauthenticated) {
+	if _, err := auth.Identity(ctx, policySession); !errors.Is(err, domain.ErrUnauthenticated) {
 		t.Fatalf("assurance-policy change left SAML session live: %v", err)
+	}
+	certificateSession := loginWith("certificate", idp)
+	rotatedIDP, err := samltest.New(time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotatedMetadata, err := rotatedIDP.SignedMetadata(time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotation, err := providers.RefreshMetadata(ctx, service.LocalPrincipal(admin), "saml-idp", service.SAMLMetadataRefreshInput{
+		MetadataDocument: rotatedMetadata,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rotation.Applied || len(rotation.RequiredFingerprints) != 1 {
+		t.Fatalf("rotated certificate preview = %#v", rotation)
+	}
+	rotation, err = providers.RefreshMetadata(ctx, service.LocalPrincipal(admin), "saml-idp", service.SAMLMetadataRefreshInput{
+		MetadataDocument:      rotatedMetadata,
+		ConfirmedFingerprints: rotation.RequiredFingerprints,
+		ConfirmedEndpoints:    rotation.RequiredEndpoints,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rotation.Applied {
+		t.Fatalf("confirmed certificate rotation was not applied: %#v", rotation)
+	}
+	if _, err := auth.Identity(ctx, certificateSession); !errors.Is(err, domain.ErrUnauthenticated) {
+		t.Fatalf("rotated certificate left SAML session live: %v", err)
+	}
+	identicalSession := loginWith("identical", rotatedIDP)
+	if _, err := providers.RefreshMetadata(ctx, service.LocalPrincipal(admin), "saml-idp", service.SAMLMetadataRefreshInput{
+		MetadataDocument: rotatedMetadata,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := auth.Identity(ctx, identicalSession); err != nil {
+		t.Fatalf("identical refreshed certificate swept a SAML session: %v", err)
 	}
 }
 
