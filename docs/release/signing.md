@@ -10,6 +10,31 @@ checksums and an explicit warning, but no release manifest or signature. They
 are evaluation output only: they never create a GitHub Release and cannot enter
 this ceremony as a release candidate.
 
+## Interactive macOS assistant
+
+`scripts/release/ceremony.sh` guides the same locked ceremony as five resumable
+phases: bootstrap, candidate/PR, immutable tag and draft verification, recovery
+binding plus primary signing, and publication plus external verification.
+
+Run a mutation-free preview first:
+
+```sh
+./scripts/release/ceremony.sh --dry-run
+```
+
+Then run the selected real phase without the flag. `state.json` lives under
+`${XDG_STATE_HOME:-~/Library/Application Support}/hikyo/release-ceremony/` and
+contains only version, tag, phase, and repository identity; public draft and
+signed assets live beside it. The assistant never stores a private key or
+passphrase. It refuses an online route during offline
+phases, uses an unindexed macOS RAM disk, disables core dumps, requires exact
+typed confirmation before GitHub mutations, and delegates cryptographic policy
+to the release scripts documented below.
+
+The operator still controls network disconnection, removable-media insertion
+and ejection for normal releases, passphrase entry, GHCR login, and PR review.
+Dry-run output is guidance only; it does not create progress state.
+
 ## Pinned tools
 
 - GoReleaser `v2.17.1`
