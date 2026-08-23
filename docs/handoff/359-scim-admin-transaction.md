@@ -20,9 +20,18 @@ authorization.
 
 ## Validation
 
+- The generic red-before-green acceptance line does not apply to this
+  representation-only simplification: `origin/main` already emitted the same
+  six phase pairs from duplicated preambles. The new phase test is therefore a
+  characterization test that passes on the base and after extraction. A
+  source-shape assertion for `adminTx` would couple the test to an internal
+  implementation detail instead of the ticket's public phase-observer seam.
 - `TestSCIMAdminMutationsMarkSerializedPhaseSQLite`: passed.
 - Named phase, serialization, and credential set: 3 passed; PostgreSQL variants
   skipped locally because `HIKYO_TEST_POSTGRES_DSN` was unset.
 - All `TestSCIM*` isolation tests: 66 passed.
 - `internal/service`: 242 passed.
-- Full repository suite, review, exact-head CI, and merge: pending.
+- Full repository suite: 3,545 passed across 61 packages.
+- Standards review: CLEAN. Spec review requested the red-test disposition
+  recorded above; round-2 verification is pending.
+- Exact-head CI and merge: pending.
