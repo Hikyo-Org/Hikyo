@@ -25,23 +25,37 @@ Run a mutation-free preview first:
 Then run the selected real phase without the flag. `state.json` lives under
 `${XDG_STATE_HOME:-~/Library/Application Support}/hikyo/release-ceremony/` and
 contains only version, tag, phase, and repository identity; public draft and
-signed assets live beside it. The assistant never stores a private key or
-passphrase. It refuses an online route during offline
+signed assets live beside it. Rerunning a phase loads that checkpoint, verifies
+already-created tags, PRs, downloads, OCI signatures, and release assets, then
+continues from the first incomplete boundary. The assistant never stores a
+private key or passphrase on workstation storage. It refuses an online route during offline
 phases, uses an unindexed macOS RAM disk, disables core dumps, requires exact
 typed confirmation before GitHub mutations, and delegates cryptographic policy
-to the release scripts documented below.
+to the release scripts documented below. It refuses to mount signing storage
+unless macOS reports FileVault is on, which keeps workstation swap encrypted.
+Cross-release rollback memory remains separately at
+`${XDG_STATE_HOME:-~/Library/Application Support}/hikyo/release-trust.json`;
+never delete or version-scope that file.
 
 The operator still controls network disconnection, removable-media insertion
-and ejection for normal releases, passphrase entry, GHCR login, and PR review.
+and ejection for normal releases, both passphrase entries used by each key,
+GHCR login, and PR review. Store four distinct secrets in Vaultwarden: primary
+Cosign, recovery Cosign, primary `age`, and recovery `age` passphrases. Never
+attach the `.key.age` files to Vaultwarden items. The assistant accepts those files only
+from external/removable volumes and refuses networking while key media remains
+mounted.
 Dry-run output is guidance only; it does not create progress state.
 
 ## Pinned tools
 
 - GoReleaser `v2.17.1`
 - cosign `v3.1.3`
+- age `v1.3.1`
 - Syft `v1.50.0`
 - Helm `v4.2.3`
 - Go `1.26.6` from `go.mod`
+- Docker client `29.7.2` with Buildx `v0.36.1-desktop.1` for live GHCR
+  image and chart digest resolution
 
 Verify downloaded tool archives against the checksum asset attached to that
 exact upstream release. GitHub Actions are full-SHA pinned in each workflow;
@@ -54,8 +68,11 @@ the repository setting rejects tag-form action references.
    location covered by workstation backups.
 2. Run `cosign generate-key-pair --output-key-prefix primary-1` and separately
    `cosign generate-key-pair --output-key-prefix recovery-1`, using different
-   password-manager passphrases. Copy each encrypted `.key` to two USB devices
-   in separate locations; recovery media must be separate from primary media.
+   password-manager passphrases. While still on memory-backed storage, wrap
+   each Cosign-encrypted `.key` again with `age --passphrase`; copy only the
+   resulting `.key.age` file to two distinct external USB devices in separate
+   locations. Recovery media must be separate from primary media. Store the
+   distinct `age` passphrases in the password manager too.
 3. Commit only both `.pub` files, `release/trust/root.json`, and the initial
    `metadata.json`. `root.json` pins each public-key filename and SHA-256.
    Sequence 1 metadata pins the bootstrap primary from the root and records the
@@ -64,7 +81,7 @@ the repository setting rejects tag-form action references.
    --new-bundle-format=false --tlog-upload=false --use-signing-config=false
    --bundle metadata.sigstore.json`. The legacy-output switches are required by
    pinned cosign v3.1.3: they keep the operation offline and allow the OCI
-   ceremony to emit a raw signature. Commit the bundle. Re-encrypt/eject media,
+   ceremony to emit a raw signature. Commit the bundle. Eject media,
    wipe the tmpfs, then reconnect networking.
 5. Before the first tag, verify the recovery signature, pinned bootstrap key,
    and every public-key hash with
