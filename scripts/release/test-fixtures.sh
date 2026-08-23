@@ -194,8 +194,8 @@ printf 'image:\n  repository: ghcr.io/hikyo-org/hikyo\n  digest: sha256:%064d\n'
 	>"$fixture_dir/chart/hikyo/values.yaml"
 tar -czf "$bundle_dir/hikyo-0.1.0.tgz" -C "$fixture_dir/chart" hikyo
 
-image_digest=sha256:1111111111111111111111111111111111111111111111111111111111111111
-chart_digest=sha256:2222222222222222222222222222222222222222222222222222222222222222
+image_digest=$(printf 'sha256:%064d' 1)
+chart_digest=$(printf 'sha256:%064d' 2)
 jq -n --arg digest "$image_digest" '{critical:{identity:{"docker-reference":"ghcr.io/hikyo-org/hikyo"},image:{"docker-manifest-digest":$digest},type:"cosign container image signature"},optional:null}' \
 	>"$bundle_dir/image-index.oci-payload.json"
 jq -n --arg digest "$chart_digest" '{critical:{identity:{"docker-reference":"ghcr.io/hikyo-org/charts/hikyo"},image:{"docker-manifest-digest":$digest},type:"cosign container image signature"},optional:null}' \
