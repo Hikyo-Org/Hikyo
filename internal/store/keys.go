@@ -10,7 +10,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgtype"
 	sqlite "modernc.org/sqlite"
 	sqlitelib "modernc.org/sqlite/lib"
 
@@ -252,89 +251,19 @@ func tier3FromSQLite(row sqlitegen.Tier3Key) (crypto.WrappedKey, error) {
 }
 
 func (k sqliteKeys) AcquireHierarchyGeneration(ctx context.Context, pf authz.Proof) error {
-	if _, err := authz.Verify(pf, authz.StoreKeysAcquireHierarchyGeneration, k.tok); err != nil {
-		return err
-	}
-	// sqlite: the single write connection plus BEGIN IMMEDIATE already
-	// serializes writers globally; reading the row keeps the call shape (and
-	// proves the row exists) until rotation gives it teeth.
-	_, err := k.q.AcquireHierarchyGeneration(ctx)
-	return err
+	return acquireHierarchyGeneration(ctx, pf, k)
 }
 
 func (k sqliteKeys) InsertMaster(ctx context.Context, pf authz.Proof, key crypto.WrappedKey) error {
-	if _, err := authz.Verify(pf, authz.StoreKeysInsertMaster, k.tok); err != nil {
-		return err
-	}
-	err := k.q.InsertMasterKey(ctx, sqlitegen.InsertMasterKeyParams{
-		Version:      int64(key.Version),
-		RootKeyEpoch: int64(key.RootKeyEpoch),
-		Blob:         key.Blob,
-		CreatedAt:    CanonTime(key.CreatedAt).Format(timeFormat),
-	})
-	if sqliteUniqueViolation(err) {
-		return crypto.ErrKeyExists
-	}
-	return err
+	return insertMaster(ctx, pf, key, k)
 }
 
 func (k sqliteKeys) InsertTier3(ctx context.Context, pf authz.Proof, key crypto.WrappedKey) error {
-	if _, err := authz.Verify(pf, authz.StoreKeysInsertTier3, k.tok); err != nil {
-		return err
-	}
-	err := k.q.InsertTier3Key(ctx, sqlitegen.InsertTier3KeyParams{
-		ID:               key.ID,
-		Purpose:          string(key.Purpose),
-		OrgID:            key.OrgID,
-		ProjectID:        key.ProjectID,
-		Version:          int64(key.Version),
-		MasterKeyVersion: int64(key.MasterKeyVersion),
-		Blob:             key.Blob,
-		CreatedAt:        CanonTime(key.CreatedAt).Format(timeFormat),
-	})
-	if sqliteUniqueViolation(err) {
-		return crypto.ErrKeyExists
-	}
-	return err
+	return insertTier3(ctx, pf, key, k)
 }
 
 func (k sqliteKeys) RotateTokenKey(ctx context.Context, pf authz.Proof, key crypto.WrappedKey) error {
-	if _, err := authz.Verify(pf, authz.StoreKeysRotateTokenKey, k.tok); err != nil {
-		return err
-	}
-	// The fence first, for the reason every other tier-3 write takes it: a
-	// master rotation must not slip between the retire and the insert.
-	if _, err := k.q.AcquireHierarchyGeneration(ctx); err != nil {
-		return err
-	}
-	// Compare-and-swap on the predecessor: the successor row was minted
-	// against version-1, and if the active key is no longer that version a
-	// concurrent rotation already won. Refusing here is what keeps the
-	// in-memory adopt and the datastore agreeing on which key is live.
-	retired, err := k.q.RetireTier3KeyAtVersion(ctx, sqlitegen.RetireTier3KeyAtVersionParams{
-		Purpose: string(crypto.PurposeToken), OrgID: "", ProjectID: "",
-		Version: int64(key.Version) - 1,
-	})
-	if err != nil {
-		return err
-	}
-	if retired != 1 {
-		return ErrRotationSuperseded
-	}
-	err = k.q.InsertTier3Key(ctx, sqlitegen.InsertTier3KeyParams{
-		ID:               key.ID,
-		Purpose:          string(key.Purpose),
-		OrgID:            key.OrgID,
-		ProjectID:        key.ProjectID,
-		Version:          int64(key.Version),
-		MasterKeyVersion: int64(key.MasterKeyVersion),
-		Blob:             key.Blob,
-		CreatedAt:        CanonTime(key.CreatedAt).Format(timeFormat),
-	})
-	if sqliteUniqueViolation(err) {
-		return crypto.ErrKeyExists
-	}
-	return err
+	return rotateRootScopedTier3(ctx, pf, key, k, authz.StoreKeysRotateTokenKey, crypto.PurposeToken)
 }
 
 func (k sqliteKeys) AllOpenableTier3(ctx context.Context, pf authz.Proof) ([]crypto.WrappedKey, error) {
@@ -357,277 +286,35 @@ func (k sqliteKeys) AllOpenableTier3(ctx context.Context, pf authz.Proof) ([]cry
 }
 
 func (k sqliteKeys) RotateMasterKey(ctx context.Context, pf authz.Proof, newMaster crypto.WrappedKey, rewrapped []crypto.WrappedKey) error {
-	if _, err := authz.Verify(pf, authz.StoreKeysRotateMasterKey, k.tok); err != nil {
-		return err
-	}
-	if _, err := k.q.AcquireHierarchyGeneration(ctx); err != nil {
-		return err
-	}
-	masters, err := k.q.GetActiveMasterKeys(ctx)
-	if err != nil {
-		return err
-	}
-	// Exactly one active master, or the root is dual-wrapped (two) / the
-	// hierarchy is missing (zero): the two rotations are mutually exclusive.
-	if len(masters) != 1 {
-		return crypto.ErrMasterRotationBlocked
-	}
-	// The successor must be minted against the master that is still active — a
-	// master rotation that slipped in before this fence moved the predecessor.
-	if int64(newMaster.Version) != masters[0].Version+1 {
-		return ErrRotationSuperseded
-	}
-	retired, err := k.q.RetireMasterAtVersion(ctx, masters[0].Version)
-	if err != nil {
-		return err
-	}
-	if retired != 1 {
-		return ErrRotationSuperseded
-	}
-	err = k.q.InsertMasterKey(ctx, sqlitegen.InsertMasterKeyParams{
-		Version:      int64(newMaster.Version),
-		RootKeyEpoch: int64(newMaster.RootKeyEpoch),
-		Blob:         newMaster.Blob,
-		CreatedAt:    CanonTime(newMaster.CreatedAt).Format(timeFormat),
-	})
-	if sqliteUniqueViolation(err) {
-		return crypto.ErrKeyExists
-	}
-	if err != nil {
-		return err
-	}
-	for _, row := range rewrapped {
-		n, err := k.q.UpdateTier3Wrapping(ctx, sqlitegen.UpdateTier3WrappingParams{
-			Blob:             row.Blob,
-			MasterKeyVersion: int64(row.MasterKeyVersion),
-			ID:               row.ID,
-			Version:          int64(row.Version),
-		})
-		if err != nil {
-			return err
-		}
-		if n != 1 {
-			return fmt.Errorf("store: tier-3 key %s v%d vanished during master rotation", row.ID, row.Version)
-		}
-	}
-	// Zero-reference check INSIDE the fence: a tier-3 key created or
-	// version-appended in the window before this transaction (under the old
-	// master) is not in `rewrapped`, so it still references the retired master.
-	// Refuse and let the caller retry against the now-complete set rather than
-	// strand it — the ADR's "verified by query inside the fence, never assumed".
-	stranded, err := k.q.CountOpenableTier3NotAtMaster(ctx, int64(newMaster.Version))
-	if err != nil {
-		return err
-	}
-	if stranded != 0 {
-		return ErrRotationSuperseded
-	}
-	return nil
-}
-
-// assertActiveMaster is the fence's teeth for a tier-3 rotation, mirroring the
-// boot mint site's check: with the hierarchy generation held, the successor's
-// wrapping master must still be the active one. A master rotation that slipped
-// in between the mint and this insert would otherwise wrap a fresh DEK version
-// under a retired master — CI invariant 9's writer race, structurally refused.
-func (k sqliteKeys) assertActiveMaster(ctx context.Context, masterVersion uint32) error {
-	wrappers, err := k.q.GetActiveMasterKeys(ctx)
-	if err != nil {
-		return err
-	}
-	if len(wrappers) == 0 {
-		return errors.New("store: no active master key — hierarchy missing")
-	}
-	for _, w := range wrappers {
-		if w.Version != int64(masterVersion) {
-			return crypto.ErrStaleMaster
-		}
-	}
-	return nil
+	return rotateMasterKey(ctx, pf, newMaster, rewrapped, k)
 }
 
 func (k sqliteKeys) AssertActiveDEKVersion(ctx context.Context, pf authz.Proof, p crypto.Purpose, orgID, projectID string, version uint32) error {
-	if _, err := authz.Verify(pf, authz.StoreKeysAssertActiveDEKVersion, k.tok); err != nil {
-		return err
-	}
-	state, err := k.q.AssertActiveTier3Version(ctx, sqlitegen.AssertActiveTier3VersionParams{
-		Purpose: string(p), OrgID: orgID, ProjectID: projectID, Version: int64(version),
-	})
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrStaleDEK
-	}
-	if err != nil {
-		return err
-	}
-	if state != "active" {
-		return ErrStaleDEK
-	}
-	return nil
+	return assertActiveDEKVersion(ctx, pf, p, orgID, projectID, version, k)
 }
 
 func (k sqliteKeys) RotateScanningKey(ctx context.Context, pf authz.Proof, key crypto.WrappedKey) error {
-	if _, err := authz.Verify(pf, authz.StoreKeysRotateScanningKey, k.tok); err != nil {
-		return err
-	}
-	// The fence first, then a compare-and-swap on the predecessor version — the
-	// exact shape RotateTokenKey uses, purpose scanning.
-	if _, err := k.q.AcquireHierarchyGeneration(ctx); err != nil {
-		return err
-	}
-	retired, err := k.q.RetireTier3KeyAtVersion(ctx, sqlitegen.RetireTier3KeyAtVersionParams{
-		Purpose: string(crypto.PurposeScanning), OrgID: "", ProjectID: "",
-		Version: int64(key.Version) - 1,
-	})
-	if err != nil {
-		return err
-	}
-	if retired != 1 {
-		return ErrRotationSuperseded
-	}
-	err = k.q.InsertTier3Key(ctx, sqlitegen.InsertTier3KeyParams{
-		ID:               key.ID,
-		Purpose:          string(key.Purpose),
-		OrgID:            key.OrgID,
-		ProjectID:        key.ProjectID,
-		Version:          int64(key.Version),
-		MasterKeyVersion: int64(key.MasterKeyVersion),
-		Blob:             key.Blob,
-		CreatedAt:        CanonTime(key.CreatedAt).Format(timeFormat),
-	})
-	if sqliteUniqueViolation(err) {
-		return crypto.ErrKeyExists
-	}
-	return err
+	return rotateRootScopedTier3(ctx, pf, key, k, authz.StoreKeysRotateScanningKey, crypto.PurposeScanning)
 }
 
 func (k sqliteKeys) RotateDEK(ctx context.Context, pf authz.Proof, key crypto.WrappedKey) error {
-	if _, err := authz.Verify(pf, authz.StoreKeysRotateDEK, k.tok); err != nil {
-		return err
-	}
-	if _, err := k.q.AcquireHierarchyGeneration(ctx); err != nil {
-		return err
-	}
-	if _, err := k.q.AcquireScopeGeneration(ctx, scopeGenerationKey(key.Purpose, key.OrgID, key.ProjectID)); err != nil {
-		return err
-	}
-	if err := k.assertActiveMaster(ctx, key.MasterKeyVersion); err != nil {
-		return err
-	}
-	demoted, err := k.q.DemoteActiveTier3ToRetiring(ctx, sqlitegen.DemoteActiveTier3ToRetiringParams{
-		Purpose: string(key.Purpose), OrgID: key.OrgID, ProjectID: key.ProjectID,
-		Version: int64(key.Version) - 1,
-	})
-	if err != nil {
-		return err
-	}
-	if demoted != 1 {
-		return ErrRotationSuperseded
-	}
-	err = k.q.InsertTier3Key(ctx, sqlitegen.InsertTier3KeyParams{
-		ID:               key.ID,
-		Purpose:          string(key.Purpose),
-		OrgID:            key.OrgID,
-		ProjectID:        key.ProjectID,
-		Version:          int64(key.Version),
-		MasterKeyVersion: int64(key.MasterKeyVersion),
-		Blob:             key.Blob,
-		CreatedAt:        CanonTime(key.CreatedAt).Format(timeFormat),
-	})
-	if sqliteUniqueViolation(err) {
-		return crypto.ErrKeyExists
-	}
-	return err
+	return rotateDEK(ctx, pf, key, k)
 }
 
 func (k sqliteKeys) RetireRetiringTier3(ctx context.Context, pf authz.Proof, p crypto.Purpose, orgID, projectID string) (int64, error) {
-	if _, err := authz.Verify(pf, authz.StoreKeysRetireRetiringTier3, k.tok); err != nil {
-		return 0, err
-	}
-	if _, err := k.q.AcquireScopeGeneration(ctx, scopeGenerationKey(p, orgID, projectID)); err != nil {
-		return 0, err
-	}
-	return k.q.RetireRetiringTier3ForScope(ctx, sqlitegen.RetireRetiringTier3ForScopeParams{
-		Purpose: string(p), OrgID: orgID, ProjectID: projectID,
-	})
+	return retireRetiringTier3(ctx, pf, p, orgID, projectID, k)
 }
 
 func (k sqliteKeys) RootKeyRotatePrepare(ctx context.Context, pf authz.Proof, newWrapper crypto.WrappedKey) error {
-	if _, err := authz.Verify(pf, authz.StoreKeysRootRotatePrepare, k.tok); err != nil {
-		return err
-	}
-	if _, err := k.q.AcquireHierarchyGeneration(ctx); err != nil {
-		return err
-	}
-	masters, err := k.q.GetActiveMasterKeys(ctx)
-	if err != nil {
-		return err
-	}
-	if len(masters) != 1 {
-		return crypto.ErrRootRotationBlocked
-	}
-	// Pin the master version INSIDE the fence: the wrapper was sealed over the
-	// master version that was active when prepare read it. A master rotation that
-	// completed in the gap moved that version, and inserting a wrapper for the old
-	// version alongside the new master's wrapper is the two-different-versions
-	// state the ADR refuses — it bricks boot under the new root. Refuse and retry.
-	if masters[0].Version != int64(newWrapper.Version) {
-		return crypto.ErrRootRotationBlocked
-	}
-	err = k.q.InsertMasterKey(ctx, sqlitegen.InsertMasterKeyParams{
-		Version:      int64(newWrapper.Version),
-		RootKeyEpoch: int64(newWrapper.RootKeyEpoch),
-		Blob:         newWrapper.Blob,
-		CreatedAt:    CanonTime(newWrapper.CreatedAt).Format(timeFormat),
-	})
-	if sqliteUniqueViolation(err) {
-		return crypto.ErrKeyExists
-	}
-	return err
+	return rootKeyRotatePrepare(ctx, pf, newWrapper, k)
 }
 
 func (k sqliteKeys) RootKeyRotateFinalize(ctx context.Context, pf authz.Proof) (uint32, error) {
-	if _, err := authz.Verify(pf, authz.StoreKeysRootRotateFinalize, k.tok); err != nil {
-		return 0, err
-	}
-	if _, err := k.q.AcquireHierarchyGeneration(ctx); err != nil {
-		return 0, err
-	}
-	masters, err := k.q.GetActiveMasterKeys(ctx)
-	if err != nil {
-		return 0, err
-	}
-	if len(masters) != 2 {
-		return 0, crypto.ErrNotDualWrapped
-	}
-	// GetActiveMasterKeys orders by root_key_epoch DESC: [new, old].
-	newEpoch := masters[0].RootKeyEpoch
-	old := masters[len(masters)-1]
-	retired, err := k.q.RetireMasterWrapperAtEpoch(ctx, sqlitegen.RetireMasterWrapperAtEpochParams{
-		Version:      old.Version,
-		RootKeyEpoch: old.RootKeyEpoch,
-	})
-	if err != nil {
-		return 0, err
-	}
-	if retired != 1 {
-		return 0, ErrRotationSuperseded
-	}
-	epoch, err := dbVersion("root key epoch", newEpoch)
-	if err != nil {
-		return 0, err
-	}
-	return epoch, nil
+	return rootKeyRotateFinalize(ctx, pf, k)
 }
 
 func (k sqliteKeys) InsertScopeGeneration(ctx context.Context, pf authz.Proof, p crypto.Purpose, orgID, projectID string) error {
-	if _, err := authz.Verify(pf, authz.StoreKeysInsertScopeGeneration, k.tok); err != nil {
-		return err
-	}
-	err := k.q.InsertKeyGeneration(ctx, scopeGenerationKey(p, orgID, projectID))
-	if sqliteUniqueViolation(err) {
-		return crypto.ErrKeyExists
-	}
-	return err
+	return insertScopeGeneration(ctx, pf, p, orgID, projectID, k)
 }
 
 // --- postgres ---
@@ -741,83 +428,19 @@ func tier3FromPG(row pggen.Tier3Key) (crypto.WrappedKey, error) {
 }
 
 func (k pgKeys) AcquireHierarchyGeneration(ctx context.Context, pf authz.Proof) error {
-	if _, err := authz.Verify(pf, authz.StoreKeysAcquireHierarchyGeneration, k.tok); err != nil {
-		return err
-	}
-	// SELECT ... FOR UPDATE: the row lock serializes tier-3 key creation
-	// against future master/root rotation in the same fence.
-	_, err := k.q.AcquireHierarchyGeneration(ctx)
-	return err
+	return acquireHierarchyGeneration(ctx, pf, k)
 }
 
 func (k pgKeys) InsertMaster(ctx context.Context, pf authz.Proof, key crypto.WrappedKey) error {
-	if _, err := authz.Verify(pf, authz.StoreKeysInsertMaster, k.tok); err != nil {
-		return err
-	}
-	err := k.q.InsertMasterKey(ctx, pggen.InsertMasterKeyParams{
-		Version:      int64(key.Version),
-		RootKeyEpoch: int64(key.RootKeyEpoch),
-		Blob:         key.Blob,
-		CreatedAt:    pgtype.Timestamptz{Time: CanonTime(key.CreatedAt), Valid: true},
-	})
-	if pgUniqueViolation(err) {
-		return crypto.ErrKeyExists
-	}
-	return err
+	return insertMaster(ctx, pf, key, k)
 }
 
 func (k pgKeys) InsertTier3(ctx context.Context, pf authz.Proof, key crypto.WrappedKey) error {
-	if _, err := authz.Verify(pf, authz.StoreKeysInsertTier3, k.tok); err != nil {
-		return err
-	}
-	err := k.q.InsertTier3Key(ctx, pggen.InsertTier3KeyParams{
-		ID:               key.ID,
-		Purpose:          string(key.Purpose),
-		OrgID:            key.OrgID,
-		ProjectID:        key.ProjectID,
-		Version:          int64(key.Version),
-		MasterKeyVersion: int64(key.MasterKeyVersion),
-		Blob:             key.Blob,
-		CreatedAt:        pgtype.Timestamptz{Time: CanonTime(key.CreatedAt), Valid: true},
-	})
-	if pgUniqueViolation(err) {
-		return crypto.ErrKeyExists
-	}
-	return err
+	return insertTier3(ctx, pf, key, k)
 }
 
 func (k pgKeys) RotateTokenKey(ctx context.Context, pf authz.Proof, key crypto.WrappedKey) error {
-	if _, err := authz.Verify(pf, authz.StoreKeysRotateTokenKey, k.tok); err != nil {
-		return err
-	}
-	if _, err := k.q.AcquireHierarchyGeneration(ctx); err != nil {
-		return err
-	}
-	// Compare-and-swap on the predecessor: see the sqlite twin.
-	retired, err := k.q.RetireTier3KeyAtVersion(ctx, pggen.RetireTier3KeyAtVersionParams{
-		Purpose: string(crypto.PurposeToken), OrgID: "", ProjectID: "",
-		Version: int64(key.Version) - 1,
-	})
-	if err != nil {
-		return err
-	}
-	if retired != 1 {
-		return ErrRotationSuperseded
-	}
-	err = k.q.InsertTier3Key(ctx, pggen.InsertTier3KeyParams{
-		ID:               key.ID,
-		Purpose:          string(key.Purpose),
-		OrgID:            key.OrgID,
-		ProjectID:        key.ProjectID,
-		Version:          int64(key.Version),
-		MasterKeyVersion: int64(key.MasterKeyVersion),
-		Blob:             key.Blob,
-		CreatedAt:        pgtype.Timestamptz{Time: CanonTime(key.CreatedAt), Valid: true},
-	})
-	if pgUniqueViolation(err) {
-		return crypto.ErrKeyExists
-	}
-	return err
+	return rotateRootScopedTier3(ctx, pf, key, k, authz.StoreKeysRotateTokenKey, crypto.PurposeToken)
 }
 
 func (k pgKeys) AllOpenableTier3(ctx context.Context, pf authz.Proof) ([]crypto.WrappedKey, error) {
@@ -840,255 +463,33 @@ func (k pgKeys) AllOpenableTier3(ctx context.Context, pf authz.Proof) ([]crypto.
 }
 
 func (k pgKeys) RotateMasterKey(ctx context.Context, pf authz.Proof, newMaster crypto.WrappedKey, rewrapped []crypto.WrappedKey) error {
-	if _, err := authz.Verify(pf, authz.StoreKeysRotateMasterKey, k.tok); err != nil {
-		return err
-	}
-	if _, err := k.q.AcquireHierarchyGeneration(ctx); err != nil {
-		return err
-	}
-	masters, err := k.q.GetActiveMasterKeys(ctx)
-	if err != nil {
-		return err
-	}
-	if len(masters) != 1 {
-		return crypto.ErrMasterRotationBlocked
-	}
-	if int64(newMaster.Version) != masters[0].Version+1 {
-		return ErrRotationSuperseded
-	}
-	retired, err := k.q.RetireMasterAtVersion(ctx, masters[0].Version)
-	if err != nil {
-		return err
-	}
-	if retired != 1 {
-		return ErrRotationSuperseded
-	}
-	err = k.q.InsertMasterKey(ctx, pggen.InsertMasterKeyParams{
-		Version:      int64(newMaster.Version),
-		RootKeyEpoch: int64(newMaster.RootKeyEpoch),
-		Blob:         newMaster.Blob,
-		CreatedAt:    pgtype.Timestamptz{Time: CanonTime(newMaster.CreatedAt), Valid: true},
-	})
-	if pgUniqueViolation(err) {
-		return crypto.ErrKeyExists
-	}
-	if err != nil {
-		return err
-	}
-	for _, row := range rewrapped {
-		n, err := k.q.UpdateTier3Wrapping(ctx, pggen.UpdateTier3WrappingParams{
-			Blob:             row.Blob,
-			MasterKeyVersion: int64(row.MasterKeyVersion),
-			ID:               row.ID,
-			Version:          int64(row.Version),
-		})
-		if err != nil {
-			return err
-		}
-		if n != 1 {
-			return fmt.Errorf("store: tier-3 key %s v%d vanished during master rotation", row.ID, row.Version)
-		}
-	}
-	stranded, err := k.q.CountOpenableTier3NotAtMaster(ctx, int64(newMaster.Version))
-	if err != nil {
-		return err
-	}
-	if stranded != 0 {
-		return ErrRotationSuperseded
-	}
-	return nil
-}
-
-func (k pgKeys) assertActiveMaster(ctx context.Context, masterVersion uint32) error {
-	wrappers, err := k.q.GetActiveMasterKeys(ctx)
-	if err != nil {
-		return err
-	}
-	if len(wrappers) == 0 {
-		return errors.New("store: no active master key — hierarchy missing")
-	}
-	for _, w := range wrappers {
-		if w.Version != int64(masterVersion) {
-			return crypto.ErrStaleMaster
-		}
-	}
-	return nil
+	return rotateMasterKey(ctx, pf, newMaster, rewrapped, k)
 }
 
 func (k pgKeys) AssertActiveDEKVersion(ctx context.Context, pf authz.Proof, p crypto.Purpose, orgID, projectID string, version uint32) error {
-	if _, err := authz.Verify(pf, authz.StoreKeysAssertActiveDEKVersion, k.tok); err != nil {
-		return err
-	}
-	state, err := k.q.AssertActiveTier3Version(ctx, pggen.AssertActiveTier3VersionParams{
-		Purpose: string(p), OrgID: orgID, ProjectID: projectID, Version: int64(version),
-	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return ErrStaleDEK
-	}
-	if err != nil {
-		return err
-	}
-	if state != "active" {
-		return ErrStaleDEK
-	}
-	return nil
+	return assertActiveDEKVersion(ctx, pf, p, orgID, projectID, version, k)
 }
 
 func (k pgKeys) RotateScanningKey(ctx context.Context, pf authz.Proof, key crypto.WrappedKey) error {
-	if _, err := authz.Verify(pf, authz.StoreKeysRotateScanningKey, k.tok); err != nil {
-		return err
-	}
-	if _, err := k.q.AcquireHierarchyGeneration(ctx); err != nil {
-		return err
-	}
-	// Compare-and-swap on the predecessor: see the sqlite twin and RotateTokenKey.
-	retired, err := k.q.RetireTier3KeyAtVersion(ctx, pggen.RetireTier3KeyAtVersionParams{
-		Purpose: string(crypto.PurposeScanning), OrgID: "", ProjectID: "",
-		Version: int64(key.Version) - 1,
-	})
-	if err != nil {
-		return err
-	}
-	if retired != 1 {
-		return ErrRotationSuperseded
-	}
-	err = k.q.InsertTier3Key(ctx, pggen.InsertTier3KeyParams{
-		ID:               key.ID,
-		Purpose:          string(key.Purpose),
-		OrgID:            key.OrgID,
-		ProjectID:        key.ProjectID,
-		Version:          int64(key.Version),
-		MasterKeyVersion: int64(key.MasterKeyVersion),
-		Blob:             key.Blob,
-		CreatedAt:        pgtype.Timestamptz{Time: CanonTime(key.CreatedAt), Valid: true},
-	})
-	if pgUniqueViolation(err) {
-		return crypto.ErrKeyExists
-	}
-	return err
+	return rotateRootScopedTier3(ctx, pf, key, k, authz.StoreKeysRotateScanningKey, crypto.PurposeScanning)
 }
 
 func (k pgKeys) RotateDEK(ctx context.Context, pf authz.Proof, key crypto.WrappedKey) error {
-	if _, err := authz.Verify(pf, authz.StoreKeysRotateDEK, k.tok); err != nil {
-		return err
-	}
-	if _, err := k.q.AcquireHierarchyGeneration(ctx); err != nil {
-		return err
-	}
-	if _, err := k.q.AcquireScopeGeneration(ctx, scopeGenerationKey(key.Purpose, key.OrgID, key.ProjectID)); err != nil {
-		return err
-	}
-	if err := k.assertActiveMaster(ctx, key.MasterKeyVersion); err != nil {
-		return err
-	}
-	demoted, err := k.q.DemoteActiveTier3ToRetiring(ctx, pggen.DemoteActiveTier3ToRetiringParams{
-		Purpose: string(key.Purpose), OrgID: key.OrgID, ProjectID: key.ProjectID,
-		Version: int64(key.Version) - 1,
-	})
-	if err != nil {
-		return err
-	}
-	if demoted != 1 {
-		return ErrRotationSuperseded
-	}
-	err = k.q.InsertTier3Key(ctx, pggen.InsertTier3KeyParams{
-		ID:               key.ID,
-		Purpose:          string(key.Purpose),
-		OrgID:            key.OrgID,
-		ProjectID:        key.ProjectID,
-		Version:          int64(key.Version),
-		MasterKeyVersion: int64(key.MasterKeyVersion),
-		Blob:             key.Blob,
-		CreatedAt:        pgtype.Timestamptz{Time: CanonTime(key.CreatedAt), Valid: true},
-	})
-	if pgUniqueViolation(err) {
-		return crypto.ErrKeyExists
-	}
-	return err
+	return rotateDEK(ctx, pf, key, k)
 }
 
 func (k pgKeys) RetireRetiringTier3(ctx context.Context, pf authz.Proof, p crypto.Purpose, orgID, projectID string) (int64, error) {
-	if _, err := authz.Verify(pf, authz.StoreKeysRetireRetiringTier3, k.tok); err != nil {
-		return 0, err
-	}
-	if _, err := k.q.AcquireScopeGeneration(ctx, scopeGenerationKey(p, orgID, projectID)); err != nil {
-		return 0, err
-	}
-	return k.q.RetireRetiringTier3ForScope(ctx, pggen.RetireRetiringTier3ForScopeParams{
-		Purpose: string(p), OrgID: orgID, ProjectID: projectID,
-	})
+	return retireRetiringTier3(ctx, pf, p, orgID, projectID, k)
 }
 
 func (k pgKeys) RootKeyRotatePrepare(ctx context.Context, pf authz.Proof, newWrapper crypto.WrappedKey) error {
-	if _, err := authz.Verify(pf, authz.StoreKeysRootRotatePrepare, k.tok); err != nil {
-		return err
-	}
-	if _, err := k.q.AcquireHierarchyGeneration(ctx); err != nil {
-		return err
-	}
-	masters, err := k.q.GetActiveMasterKeys(ctx)
-	if err != nil {
-		return err
-	}
-	if len(masters) != 1 {
-		return crypto.ErrRootRotationBlocked
-	}
-	// Pin the master version inside the fence — see the sqlite twin.
-	if masters[0].Version != int64(newWrapper.Version) {
-		return crypto.ErrRootRotationBlocked
-	}
-	err = k.q.InsertMasterKey(ctx, pggen.InsertMasterKeyParams{
-		Version:      int64(newWrapper.Version),
-		RootKeyEpoch: int64(newWrapper.RootKeyEpoch),
-		Blob:         newWrapper.Blob,
-		CreatedAt:    pgtype.Timestamptz{Time: CanonTime(newWrapper.CreatedAt), Valid: true},
-	})
-	if pgUniqueViolation(err) {
-		return crypto.ErrKeyExists
-	}
-	return err
+	return rootKeyRotatePrepare(ctx, pf, newWrapper, k)
 }
 
 func (k pgKeys) RootKeyRotateFinalize(ctx context.Context, pf authz.Proof) (uint32, error) {
-	if _, err := authz.Verify(pf, authz.StoreKeysRootRotateFinalize, k.tok); err != nil {
-		return 0, err
-	}
-	if _, err := k.q.AcquireHierarchyGeneration(ctx); err != nil {
-		return 0, err
-	}
-	masters, err := k.q.GetActiveMasterKeys(ctx)
-	if err != nil {
-		return 0, err
-	}
-	if len(masters) != 2 {
-		return 0, crypto.ErrNotDualWrapped
-	}
-	newEpoch := masters[0].RootKeyEpoch
-	old := masters[len(masters)-1]
-	retired, err := k.q.RetireMasterWrapperAtEpoch(ctx, pggen.RetireMasterWrapperAtEpochParams{
-		Version:      old.Version,
-		RootKeyEpoch: old.RootKeyEpoch,
-	})
-	if err != nil {
-		return 0, err
-	}
-	if retired != 1 {
-		return 0, ErrRotationSuperseded
-	}
-	epoch, err := dbVersion("root key epoch", newEpoch)
-	if err != nil {
-		return 0, err
-	}
-	return epoch, nil
+	return rootKeyRotateFinalize(ctx, pf, k)
 }
 
 func (k pgKeys) InsertScopeGeneration(ctx context.Context, pf authz.Proof, p crypto.Purpose, orgID, projectID string) error {
-	if _, err := authz.Verify(pf, authz.StoreKeysInsertScopeGeneration, k.tok); err != nil {
-		return err
-	}
-	err := k.q.InsertKeyGeneration(ctx, scopeGenerationKey(p, orgID, projectID))
-	if pgUniqueViolation(err) {
-		return crypto.ErrKeyExists
-	}
-	return err
+	return insertScopeGeneration(ctx, pf, p, orgID, projectID, k)
 }
