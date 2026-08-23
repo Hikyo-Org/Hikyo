@@ -154,6 +154,11 @@ func TestSCIMPositionalGrammar(t *testing.T) {
 			want: cli.ExitRefused,
 		},
 		{
+			name: "credential accepts an interspersed output flag",
+			args: []string{"scim", "credential", "list", "-o", "json", "scb_1", "--instance", server.URL},
+			want: cli.ExitRefused,
+		},
+		{
 			name: "directory accepts an interspersed output flag",
 			args: []string{"scim", "user", "list", "-o", "json", "scb_1", "--instance", server.URL},
 			want: cli.ExitRefused,
