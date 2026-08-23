@@ -23331,6 +23331,20 @@ func (response PutOidcProvider404JSONResponse) VisitPutOidcProviderResponse(w ht
 	return err
 }
 
+type PutOidcProvider409JSONResponse struct{ ConflictJSONResponse }
+
+func (response PutOidcProvider409JSONResponse) VisitPutOidcProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PutOidcProvider429JSONResponse struct{ TooManyRequestsJSONResponse }
 
 func (response PutOidcProvider429JSONResponse) VisitPutOidcProviderResponse(w http.ResponseWriter) error {

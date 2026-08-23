@@ -603,27 +603,15 @@ func (s *SCIM) deprovision(
 	if err != nil {
 		return nil, err
 	}
-	outcome, events, err := releaseSCIMOrigins(ctx, az, now, releaseArgs{
-		binding: c.binding.ID, org: domain.OrgID(c.binding.OrgID), principal: principal,
+	outcome, events, err := s.releaseAndSettle(ctx, r, az, c, principal, releaseArgs{
+		binding: c.binding.ID, org: domain.OrgID(c.binding.OrgID),
 		match: func(k domain.SCIMOriginKey) bool {
 			return k.Binding == c.binding.ID && !keep[k.MappingRow]
 		},
 		cause: cause,
-	})
+	}, advanceAlways, now)
 	if err != nil {
 		return nil, err
-	}
-	// UNCONDITIONAL, and deliberately not gated on outcome.AuthorityChanged():
-	// the zero-grant-delta case is exactly the one the rule exists for.
-	if err := advanceAndSweep(ctx, az, principal); err != nil {
-		return nil, err
-	}
-	for _, grantID := range outcome.Retained {
-		ev, err := s.enterAttention(ctx, r, c, domain.AttentionLockoutRetention, grantID, cause, now)
-		if err != nil {
-			return nil, err
-		}
-		events = append(events, ev...)
 	}
 	if outcome.ManualRemains {
 		ev, err := s.enterAttention(ctx, r, c, domain.AttentionManualGrantsRemain, user.ID, cause, now)

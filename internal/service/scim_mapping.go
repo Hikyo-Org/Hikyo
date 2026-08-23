@@ -277,7 +277,13 @@ func (s *SCIM) UpdateMapping(ctx context.Context, actor Actor, org domain.OrgID,
 		// widening half re-reads the members' rows.
 		dropped := missing(before, after)
 		if len(dropped) > 0 {
-			evs, count, err := s.releaseRowCapabilities(ctx, r, az, c, row, dropped, now)
+			drop := map[domain.Capability]bool{}
+			for _, capability := range dropped {
+				drop[capability] = true
+			}
+			evs, count, err := s.releaseRow(ctx, r, az, c, row,
+				func(g domain.Grant) bool { return drop[g.Capability] },
+				domain.CauseMappingDelete, now)
 			if err != nil {
 				return err
 			}
@@ -339,7 +345,7 @@ func (s *SCIM) DeleteMapping(ctx context.Context, actor Actor, org domain.OrgID,
 			return err
 		}
 		now := s.now()
-		events, released, err := s.releaseRow(ctx, r, az, c, row, domain.CauseMappingDelete, now)
+		events, released, err := s.releaseRow(ctx, r, az, c, row, nil, domain.CauseMappingDelete, now)
 		if err != nil {
 			return err
 		}
@@ -468,11 +474,13 @@ func (s *SCIM) applyRowToMembers(
 	return events, created, affected, nil
 }
 
-// releaseRow releases every origin keyed on one mapping row, for every member
-// of its group, under §2.4.
+// releaseRow releases origins keyed on one mapping row, for every member of its
+// group, under §2.4. A nil grant filter releases the whole row; narrowing passes
+// the no-longer-covered capabilities so it shares the same lifecycle owner.
 func (s *SCIM) releaseRow(
 	ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
-	c scimContext, row store.SCIMMapping, cause domain.SCIMCause, now time.Time,
+	c scimContext, row store.SCIMMapping, grant func(domain.Grant) bool,
+	cause domain.SCIMCause, now time.Time,
 ) ([]grantEventInput, int, error) {
 	members, err := r.SCIM().GroupMembers(ctx, c.proof, c.binding.ID, row.GroupID)
 	if err != nil {
@@ -489,82 +497,16 @@ func (s *SCIM) releaseRow(
 		if err != nil {
 			return nil, 0, err
 		}
-		outcome, evs, err := releaseSCIMOrigins(ctx, az, now, releaseArgs{
-			binding: c.binding.ID, org: domain.OrgID(c.binding.OrgID), principal: principal,
+		outcome, evs, err := s.releaseAndSettle(ctx, r, az, c, principal, releaseArgs{
+			binding: c.binding.ID, org: domain.OrgID(c.binding.OrgID),
 			match: matchMappingRows(c.binding.ID, map[string]bool{row.ID: true}), cause: cause,
-		})
+			grant: grant,
+		}, advanceIfAuthorityChanged, now)
 		if err != nil {
 			return nil, 0, err
 		}
 		events = append(events, evs...)
 		released += outcome.Released
-		if outcome.AuthorityChanged() {
-			if err := advanceAndSweep(ctx, az, principal); err != nil {
-				return nil, 0, err
-			}
-		}
-		for _, grantID := range outcome.Retained {
-			ev, err := s.enterAttention(ctx, r, c, domain.AttentionLockoutRetention, grantID, cause, now)
-			if err != nil {
-				return nil, 0, err
-			}
-			events = append(events, ev...)
-		}
-	}
-	return events, released, nil
-}
-
-// releaseRowCapabilities is the NARROWING half: release only the origins the
-// row no longer covers, leaving the ones it still does. It reuses the same
-// algorithm with a grant filter rather than a second release path, because two
-// release paths is how a lockout conversion goes missing from one of them.
-func (s *SCIM) releaseRowCapabilities(
-	ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
-	c scimContext, row store.SCIMMapping, dropped []domain.Capability, now time.Time,
-) ([]grantEventInput, int, error) {
-	members, err := r.SCIM().GroupMembers(ctx, c.proof, c.binding.ID, row.GroupID)
-	if err != nil {
-		return nil, 0, err
-	}
-	drop := map[domain.Capability]bool{}
-	for _, capability := range dropped {
-		drop[capability] = true
-	}
-	var events []grantEventInput
-	released := 0
-	for _, m := range members {
-		user, err := r.SCIM().User(ctx, c.proof, c.binding.ID, m.UserID)
-		if err != nil {
-			return nil, 0, err
-		}
-		principal, err := principalForAccount(ctx, az, user.AccountID)
-		if err != nil {
-			return nil, 0, err
-		}
-		outcome, evs, err := releaseSCIMOrigins(ctx, az, now, releaseArgs{
-			binding: c.binding.ID, org: domain.OrgID(c.binding.OrgID), principal: principal,
-			match: matchMappingRows(c.binding.ID, map[string]bool{row.ID: true}),
-			grant: func(g domain.Grant) bool { return drop[g.Capability] },
-			cause: domain.CauseMappingDelete,
-		})
-		if err != nil {
-			return nil, 0, err
-		}
-		events = append(events, evs...)
-		released += outcome.Released
-		if outcome.AuthorityChanged() {
-			if err := advanceAndSweep(ctx, az, principal); err != nil {
-				return nil, 0, err
-			}
-		}
-		for _, grantID := range outcome.Retained {
-			ev, err := s.enterAttention(ctx, r, c,
-				domain.AttentionLockoutRetention, grantID, domain.CauseMappingDelete, now)
-			if err != nil {
-				return nil, 0, err
-			}
-			events = append(events, ev...)
-		}
 	}
 	return events, released, nil
 }
