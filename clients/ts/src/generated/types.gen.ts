@@ -3583,19 +3583,31 @@ export type WorkspaceSession = {
     window_expires_at?: Timestamp;
 };
 
-export type WorkspaceHandoffTransaction = {
+export type WorkspaceHandoffTransaction = WorkspaceHandoffEstablishment | WorkspaceHandoffStepUp;
+
+export type WorkspaceHandoffEstablishment = {
     state: string;
-    purpose: 'establishment' | 'step-up';
+    purpose: 'establishment';
     /**
-     * The disclosure the reauth authorizes. Absent for an establishment.
+     * Empty for an establishment.
      */
-    operation?: 'reveal' | 'copy' | 'publish';
+    key_ids: Array<Id>;
+    expires_at: Timestamp;
+};
+
+export type WorkspaceHandoffStepUp = {
+    state: string;
+    purpose: 'step-up';
     /**
-     * The environment the elevation covers. Absent for an establishment.
+     * The disclosure the reauth authorizes.
      */
-    environment?: Id;
+    operation: 'reveal' | 'copy' | 'publish';
     /**
-     * The enumerated unit the elevation binds. Empty for an establishment.
+     * The environment the elevation covers.
+     */
+    environment: Id;
+    /**
+     * The enumerated unit the elevation binds.
      */
     key_ids: Array<Id>;
     expires_at: Timestamp;
@@ -16586,7 +16598,7 @@ export type ShowWorkspaceHandoffError = ShowWorkspaceHandoffErrors[keyof ShowWor
 
 export type ShowWorkspaceHandoffResponses = {
     /**
-     * The live transaction's bound step-up policy — identifiers only.
+     * The live transaction's authoritative purpose and any bound step-up policy — identifiers only.
      */
     200: WorkspaceHandoffTransaction;
 };

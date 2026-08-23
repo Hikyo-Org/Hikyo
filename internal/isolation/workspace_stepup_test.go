@@ -501,10 +501,10 @@ func TestStepUpBindingIsConsumedPostgres(t *testing.T) {
 	runStepUpBindingIsConsumed(t, seededDB(t, openPostgres))
 }
 
-// The approve page reads the step-up's operation, environment and key set back
+// The approve page reads the transaction purpose and any step-up binding back
 // from the SERVER-bound transaction by state, rather than trusting them from its
-// URL. This proves the read answers the bound policy, refuses without a session,
-// and refuses an unknown state — the three properties the approve page rests on.
+// URL. This proves the read answers both variants, preserves step-up ownership,
+// refuses without a session, and refuses an unknown state.
 func runShowHandoffReturnsBoundPolicy(t *testing.T, db *store.DB) {
 	ctx := t.Context()
 	ws := stepUpWorkspace(t, db)
@@ -567,8 +567,9 @@ func runShowHandoffReturnsBoundPolicy(t *testing.T, db *store.DB) {
 		t.Errorf("show handoff with a bogus state: err = %v, want ErrHandoffInvalid", err)
 	}
 
-	// An establishment transaction has no bound session to anchor ownership on
-	// and is not readable here — the approve page never asks for one.
+	// An establishment exposes only its purpose and expiry. It has no bound
+	// session or disclosure scope, so any authenticated human holding the opaque
+	// state may read the same transaction they are allowed to approve.
 	establishment, err := ws.StartHandoff(ctx, service.HandoffRequest{
 		Origin: stepUpOrigin, RedirectURI: stepUpOrigin + "/workspace/callback",
 		PKCEChallenge: challenge, Purpose: service.HandoffEstablishment,
@@ -576,8 +577,13 @@ func runShowHandoffReturnsBoundPolicy(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatalf("start establishment handoff: %v", err)
 	}
-	if _, err := ws.ShowHandoff(ctx, service.Bearer(approver), establishment.State); !errors.Is(err, service.ErrHandoffInvalid) {
-		t.Errorf("show handoff for an establishment: err = %v, want ErrHandoffInvalid", err)
+	establishmentView, err := ws.ShowHandoff(ctx, service.Bearer(approver), establishment.State)
+	if err != nil {
+		t.Fatalf("show establishment handoff: %v", err)
+	}
+	if establishmentView.Purpose != service.HandoffEstablishment || establishmentView.Operation != "" ||
+		establishmentView.EnvID != "" || len(establishmentView.KeySet) != 0 {
+		t.Errorf("establishment view = %+v, want purpose-only transaction", establishmentView)
 	}
 }
 

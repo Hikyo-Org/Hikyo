@@ -3328,7 +3328,7 @@ export const redeemWorkspaceHandoff = <ThrowOnError extends boolean = false>(opt
 });
 
 /**
- * Load the step-up policy a live workspace handoff binds.
+ * Load the authoritative shape of a live workspace handoff.
  *
  * The approve page reads the operation, environment and enumerated key set
  * the transaction was opened against, rather than trusting them from its

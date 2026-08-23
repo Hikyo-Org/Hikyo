@@ -439,10 +439,39 @@ test.describe('multi-instance', () => {
     for (const scheme of ['dark', 'light'] as const) {
       test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({ page }) => {
         await page.emulateMedia({ colorScheme: scheme });
+        const workspaceTransactionState = 'hik_1_test';
+        const workspaceTransactionPath =
+          `/api/v1/auth/workspace/transactions/${workspaceTransactionState}`;
+        let workspaceTransactionReads = 0;
         const cliTransactionState = 'hik_1_test';
         const cliTransactionPath =
           `/api/v1/auth/cli-reauth/transactions/${cliTransactionState}`;
         let cliTransactionReads = 0;
+
+        if (surface.id === 'workspace-approve') {
+          // The approval page now derives its ceremony exclusively from the
+          // server-owned transaction purpose. Stub that exact read so this
+          // visual matrix exercises the real establishment branch instead of
+          // rendering the fail-closed missing-transaction state.
+          await page.route(`${BASE_URL}${workspaceTransactionPath}`, async (route) => {
+            const request = route.request();
+            const requestURL = new URL(request.url());
+            expect(request.method()).toBe('GET');
+            expect(requestURL.pathname).toBe(workspaceTransactionPath);
+            expect(requestURL.search).toBe('');
+            workspaceTransactionReads += 1;
+            await route.fulfill({
+              status: 200,
+              contentType: 'application/json',
+              body: JSON.stringify({
+                state: workspaceTransactionState,
+                purpose: 'establishment',
+                key_ids: [],
+                expires_at: '2099-01-01T00:00:00Z',
+              }),
+            });
+          });
+        }
 
         if (surface.id === 'cli-reauth') {
           // This matrix addresses a visual surface, not a durable handoff
@@ -485,7 +514,7 @@ test.describe('multi-instance', () => {
         // refusal state and the one that renders without closing the window.
         const addressedPath =
           surface.id === 'workspace-approve'
-            ? `${surface.path}?state=hik_1_test`
+            ? `${surface.path}?state=${workspaceTransactionState}`
             : surface.id === 'cli-reauth'
               ? `${surface.path}?transaction=${cliTransactionState}`
               : surface.path;
@@ -493,6 +522,11 @@ test.describe('multi-instance', () => {
 
         const heading = page.getByRole('heading', { level: 1 }).first();
         await expect(heading).toBeVisible();
+        if (surface.id === 'workspace-approve') {
+          await expect(page.getByRole('button', { name: 'Authorize' })).toBeVisible();
+          await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible();
+          expect(workspaceTransactionReads).toBe(1);
+        }
         if (surface.id === 'cli-reauth') {
           await expect(page.getByLabel('Authenticator code')).toBeVisible();
           await expect(page.getByRole('button', { name: 'Authorize CLI' })).toBeVisible();

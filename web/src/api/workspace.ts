@@ -460,11 +460,10 @@ export type StepUpParams = {
  * transaction on the remote. It touches no window.
  *
  * With `stepUp` it opens an ELEVATION of an existing session rather than a first
- * establishment. The bound fields ride the approve URL as well as the start
- * body: the approve page needs the environment and key set to run the remote's
- * OWN reauthentication ceremony over them before it may approve — while the
- * server still validates the fresh reauth window against the transaction's own
- * bound environment, so a tampered URL parameter only fails closed.
+ * establishment. The bound fields live only in the start body and the remote's
+ * transaction row: the approve page reads them back to run the remote's OWN
+ * reauthentication ceremony, and the server validates the fresh window against
+ * that same bound environment.
  */
 export async function prepareWorkspace(
   origin: string,
@@ -492,18 +491,13 @@ export async function prepareWorkspace(
   const started = await remoteJSON(origin, '/api/v1/auth/workspace/start', zWorkspaceHandoffStarted, {
     body,
   });
-  // The approve URL carries only STATE and (for a step-up) the tiny purpose
-  // flag. The operation, environment and enumerated key set the approve page
-  // needs are NOT here: they are bound in the remote's own transaction row and
-  // the approve page reads them back by state (`showWorkspaceHandoff`). Putting
-  // the key set on the URL would cap a reveal-all at the browser's URL length;
-  // the server-bound transaction has no such ceiling and is the authoritative
-  // copy anyway, so a tampered parameter could never move the elevation's scope.
+  // The approve URL carries only STATE. Purpose, operation, environment and the
+  // enumerated key set are bound in the remote's own transaction row and read
+  // back by state (`showWorkspaceHandoff`). Putting a second purpose copy here
+  // could select the wrong ceremony; putting the key set here would additionally
+  // cap reveal-all at the browser's URL length.
   const approve = new URL(`${origin}${APPROVE_PATH}`);
   approve.searchParams.set('state', started.state);
-  if (stepUp !== undefined) {
-    approve.searchParams.set('purpose', 'step-up');
-  }
   return { origin, state: started.state, verifier, approveURL: approve.toString() };
 }
 
