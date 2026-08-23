@@ -3,7 +3,7 @@
 Issue: https://github.com/Hikyo-Org/Hikyo/issues/331 (parent #326; audit
 finding `F-S23-1`). Implementation is based on `origin/main` commit
 `8cc1bbf570e57c5836b1533f1abdc00a600d68b4`.
-Before delivery, latest `origin/main` (`4485fdf47b6901ac9f0e767552c3a3f0d9a40fc2`)
+Before delivery, latest `origin/main` (`4485fdf438fe4ab9a0ee218c34e201e9d9308e47`)
 was merged normally and the full validation was repeated.
 
 ## Contract
