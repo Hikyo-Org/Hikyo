@@ -213,19 +213,22 @@ export type MatrixDraftChange =
   | { readonly environmentId: string; readonly operation: 'set'; readonly value: string }
   | { readonly environmentId: string; readonly operation: 'unset' };
 
-/** Dirty and clear are separate so an explicit empty string is not mistaken for absent. */
+export type MatrixDraftEdit =
+  | { readonly op: 'set'; readonly value: string }
+  | { readonly op: 'unset' };
+
+/** Absence is untouched; the tagged edit keeps explicit empty distinct from unset. */
 export function matrixDraftChanges(
   environmentIds: readonly string[],
-  drafts: ReadonlyMap<string, string>,
-  dirty: ReadonlySet<string>,
-  clears: ReadonlySet<string>,
+  edits: ReadonlyMap<string, MatrixDraftEdit>,
 ): readonly MatrixDraftChange[] {
   return environmentIds.flatMap<MatrixDraftChange>((environmentId) => {
-    if (clears.has(environmentId)) {
+    const edit = edits.get(environmentId);
+    if (edit?.op === 'unset') {
       return [{ environmentId, operation: 'unset' }];
     }
-    if (dirty.has(environmentId)) {
-      return [{ environmentId, operation: 'set', value: drafts.get(environmentId) ?? '' }];
+    if (edit?.op === 'set') {
+      return [{ environmentId, operation: 'set', value: edit.value }];
     }
     return [];
   });
