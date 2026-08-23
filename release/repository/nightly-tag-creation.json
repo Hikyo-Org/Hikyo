@@ -1,18 +1,18 @@
 {
-  "name": "release tags require admin role",
+  "name": "nightly tags require GitHub Actions",
   "target": "tag",
   "enforcement": "active",
   "bypass_actors": [
     {
-      "actor_id": 5,
-      "actor_type": "RepositoryRole",
+      "actor_id": 15368,
+      "actor_type": "Integration",
       "bypass_mode": "always"
     }
   ],
   "conditions": {
     "ref_name": {
-      "include": ["refs/tags/v*"],
-      "exclude": ["refs/tags/v*-nightly.*"]
+      "include": ["refs/tags/v*-nightly.*"],
+      "exclude": []
     }
   },
   "rules": [

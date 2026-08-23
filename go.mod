@@ -19,6 +19,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/vault/api v1.23.0
 	github.com/jackc/pgx/v5 v5.10.0
+	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/mattermost/xml-roundtrip-validator v0.1.0
 	github.com/oapi-codegen/runtime v1.7.0
 	github.com/oasdiff/oasdiff v1.29.1

@@ -54,6 +54,12 @@ func run() int {
 	switch {
 	case cmd == "version" || cmd == "--version":
 		fmt.Fprintln(os.Stdout, versionString())
+		cli.NotifyUpdate(ctx, cli.IO{
+			Stderr:           os.Stderr,
+			Env:              cli.Env{Getenv: os.Getenv},
+			Version:          version,
+			StderrIsTerminal: func() bool { return term.IsTerminal(int(os.Stderr.Fd())) },
+		})
 		return 0
 	case cmd == "server":
 		return runServer(ctx, args)
@@ -75,6 +81,7 @@ func run() int {
 			Stderr:          os.Stderr,
 			Env:             cli.Env{Getenv: os.Getenv},
 			Workdir:         workdir(),
+			Version:         version,
 			TerminalSession: terminalSession,
 			TerminalError:   terminalError,
 			OpenURL:         cli.OpenBrowser,

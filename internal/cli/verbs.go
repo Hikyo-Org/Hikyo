@@ -18,6 +18,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
+	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 )
 
 // The v1 verb table this slice ships. The full taxonomy is closed by the
@@ -64,6 +65,11 @@ type IO struct {
 	// hostile config file could set is the rollback surface the snapshot high-
 	// water mark exists to bound.
 	Now func() time.Time
+	// Version is the linker-stamped Hikyo version used for update comparison.
+	Version string
+	// UpdateSource is injected by update tests. Nil uses Hikyo's pinned public
+	// GitHub Releases source.
+	UpdateSource updatecheck.Source
 }
 
 // now returns the injected clock or the real one.
@@ -115,7 +121,11 @@ func Run(ctx context.Context, io IO, args []string) int {
 		Usage(io.Stderr)
 		return ExitUsage
 	}
-	return Report(io.Stderr, handler(ctx, io, rest))
+	code := Report(io.Stderr, handler(ctx, io, rest))
+	if code == ExitOK && verb != "update" {
+		NotifyUpdate(ctx, io)
+	}
+	return code
 }
 
 // verbHandlers is the single source of truth for the served verb set: Run
@@ -154,6 +164,7 @@ var verbHandlers = map[string]func(context.Context, IO, []string) error{
 	"adapter":             runAdapter,
 	"run":                 runRun,
 	"compose":             runCompose,
+	"update":              runUpdate,
 }
 
 // Usage is the frozen help text. Its exact bytes are a committed golden
@@ -186,6 +197,8 @@ contexts:
 
 diagnostics:
   hikyo doctor [--instance REF] [-o table|json]     report provider and retention health
+  hikyo update channel stable|nightly|off           choose local release track
+  hikyo update check                                check the selected release track now
 
 hierarchy:
   hikyo org list [-o table|json]

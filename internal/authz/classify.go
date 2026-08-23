@@ -226,6 +226,7 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	// SAML provider administration (#72), under the same instance-config atom.
 	"http:GET /api/v1/instance/saml-providers":                          {Class: ClassInstance, Ops: []Operation{OpSAMLProviderList}},
 	"http:GET /api/v1/instance/retention-health":                        {Class: ClassInstance, Ops: []Operation{OpRetentionHealthRead}},
+	"http:GET /api/v1/instance/update-status":                           {Class: ClassInstance, Ops: []Operation{OpUpdateStatusRead}},
 	"http:GET /api/v1/instance/saml-providers/{slug}":                   {Class: ClassInstance, Ops: []Operation{OpSAMLProviderGet}},
 	"http:PUT /api/v1/instance/saml-providers/{slug}":                   {Class: ClassInstance, Ops: []Operation{OpSAMLProviderPut}},
 	"http:PATCH /api/v1/instance/saml-providers/{slug}":                 {Class: ClassInstance, Ops: []Operation{OpSAMLProviderPatch}},
@@ -749,6 +750,8 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	// `context` is entirely client-local: the trust store and the named
 	// contexts live on this box and reach no server.
 	"cli:context": {Class: ClassUnauthenticated},
+	// `update` reads and writes only client-local public release metadata.
+	"cli:update": {Class: ClassUnauthenticated},
 	// `org` still reaches the instance-scoped create/list as well as the
 	// tenant-scoped by-id routes, so it carries the wider of the two classes:
 	// a verb whose class understated its reach would let an instance-scoped
@@ -940,6 +943,12 @@ var caches = map[string]Cache{
 		// construction: validating the presented token is what produces a
 		// principal, so no proof can exist yet.
 		ProofGatedAt: "not proof-gated: public issuer signing keys, read pre-authentication (#62)",
+	},
+	"updatecheck.releases": {
+		// One process-wide list from the compile-time fixed Hikyo GitHub
+		// repository. Channel selection happens after the list is read.
+		KeyConstructor: "singleton: github.com/Hikyo-Org/hikyo releases",
+		ProofGatedAt:   "not proof-gated: public release metadata; endpoint authorization precedes access",
 	},
 }
 

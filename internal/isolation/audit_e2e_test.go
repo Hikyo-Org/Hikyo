@@ -25,6 +25,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
+	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 )
 
 // hookWriter triggers a side effect on its first write — the mid-export
@@ -50,6 +51,12 @@ type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) {
 	return 0, errors.New("sink gone")
+}
+
+type updateReleaseSourceFunc func(context.Context) ([]updatecheck.Release, error)
+
+func (fn updateReleaseSourceFunc) Releases(ctx context.Context) ([]updatecheck.Release, error) {
+	return fn(ctx)
 }
 
 func runAuditSuite(t *testing.T, db *store.DB) {
@@ -472,6 +479,26 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// emitter — warned, dismissed, blocked and overridden — driven end to end
 		// through the scanning-enabled value and declaration services.
 		runScanningLifecycle(t, db)
+		beforeUpdateReads := queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type = 'system.update_status_read'")
+		if _, err := (&service.Updates{
+			DB: db, Version: "1.0.0", Channel: updatecheck.ChannelStable,
+			Source: updateReleaseSourceFunc(func(context.Context) ([]updatecheck.Release, error) {
+				return nil, errors.New("release source unavailable")
+			}),
+		}).GetStatus(tctx(t), service.LocalPrincipal(root)); err == nil {
+			t.Fatal("failed update lookup returned success")
+		}
+		if got := queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type = 'system.update_status_read'"); got != beforeUpdateReads {
+			t.Fatalf("failed update lookup wrote %d success events, want %d", got, beforeUpdateReads)
+		}
+		// Release status is an instance-config read. A development version
+		// exercises authorization and the real audit emitter without performing
+		// public network I/O in the isolation suite.
+		if _, err := (&service.Updates{
+			DB: db, Version: "dev", Channel: updatecheck.ChannelStable,
+		}).GetStatus(tctx(t), service.LocalPrincipal(root)); err != nil {
+			t.Fatal(err)
+		}
 		for _, typ := range audit.Types() {
 			spec, _ := audit.Spec(typ)
 			seen := int64(0)

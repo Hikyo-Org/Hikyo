@@ -368,6 +368,7 @@ const (
 	OpProjectRetentionRead   Operation = "retention.project-read"
 	OpProjectRetentionUpdate Operation = "retention.project-update"
 	OpRetentionHealthRead    Operation = "retention.health-read"
+	OpUpdateStatusRead       Operation = "update.status-read"
 
 	// Machine identities (#61). Every one of these asks
 	// `manage-identities(project)` and nothing more, because that is the
@@ -3079,6 +3080,14 @@ var operationTable = map[Operation]opSpec{
 			StoreSnapshotsInstancePayloadByProject: true,
 		},
 		events: []audit.EventType{audit.EventRetentionHealthRead},
+	},
+	OpUpdateStatusRead: {
+		class:   ClassInstance,
+		formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{
+			StoreAuditInstanceInsert: true,
+		},
+		events: []audit.EventType{audit.EventUpdateStatusRead},
 	},
 
 	// Machine identities (#61). The service-account and credential tables are

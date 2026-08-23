@@ -1714,6 +1714,27 @@ func (e UpdateAdapterTargetRequestVisibility) Valid() bool {
 	}
 }
 
+// Defines values for UpdateStatusChannel.
+const (
+	Nightly UpdateStatusChannel = "nightly"
+	Off     UpdateStatusChannel = "off"
+	Stable  UpdateStatusChannel = "stable"
+)
+
+// Valid indicates whether the value is a known member of the UpdateStatusChannel enum.
+func (e UpdateStatusChannel) Valid() bool {
+	switch e {
+	case Nightly:
+		return true
+	case Off:
+		return true
+	case Stable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ValueOccurrenceCandidateIntendedType.
 const (
 	ValueOccurrenceCandidateIntendedTypeBoolean ValueOccurrenceCandidateIntendedType = "boolean"
@@ -5879,6 +5900,20 @@ type UpdateKeyMetadataRequest struct {
 	FolderPath *KeyFolderPath `json:"folder_path,omitempty"`
 }
 
+// UpdateStatus defines model for UpdateStatus.
+type UpdateStatus struct {
+	Available      bool                `json:"available"`
+	Channel        UpdateStatusChannel `json:"channel"`
+	CurrentVersion string              `json:"current_version"`
+	LatestVersion  *string             `json:"latest_version,omitempty"`
+	Prerelease     bool                `json:"prerelease"`
+	PublishedAt    *time.Time          `json:"published_at,omitempty"`
+	ReleaseUrl     *string             `json:"release_url,omitempty"`
+}
+
+// UpdateStatusChannel defines model for UpdateStatus.Channel.
+type UpdateStatusChannel string
+
 // ValueCell One `(key, environment)` cell.
 //
 // PRESENCE IS THE SINGLE BOOLEAN `set`. That is the whole presence
@@ -7371,6 +7406,9 @@ type ServerInterface interface {
 	// CompromiseRetireSamlSpKey Immediately erase and replace a compromised active SAML SP key.
 	// (POST /api/v1/instance/saml-sp-keys/{fingerprint}/compromise-retire)
 	CompromiseRetireSamlSpKey(w http.ResponseWriter, r *http.Request, fingerprint string)
+	// GetUpdateStatus Read the configured release channel and available update.
+	// (GET /api/v1/instance/update-status)
+	GetUpdateStatus(w http.ResponseWriter, r *http.Request)
 	// RemoveWorkspaceOrigin De-allowlist an origin and kill every session bound to it.
 	// (DELETE /api/v1/instance/workspace-origins)
 	RemoveWorkspaceOrigin(w http.ResponseWriter, r *http.Request)
@@ -8325,6 +8363,12 @@ func (_ Unimplemented) RetireSamlSpKey(w http.ResponseWriter, r *http.Request, f
 // CompromiseRetireSamlSpKey Immediately erase and replace a compromised active SAML SP key.
 // (POST /api/v1/instance/saml-sp-keys/{fingerprint}/compromise-retire)
 func (_ Unimplemented) CompromiseRetireSamlSpKey(w http.ResponseWriter, r *http.Request, fingerprint string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetUpdateStatus Read the configured release channel and available update.
+// (GET /api/v1/instance/update-status)
+func (_ Unimplemented) GetUpdateStatus(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -10803,6 +10847,20 @@ func (siw *ServerInterfaceWrapper) CompromiseRetireSamlSpKey(w http.ResponseWrit
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CompromiseRetireSamlSpKey(w, r, fingerprint)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetUpdateStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetUpdateStatus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetUpdateStatus(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -17593,6 +17651,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/instance/retention-health", wrapper.GetRetentionHealth)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/update-status", wrapper.GetUpdateStatus)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/instance/saml-providers", wrapper.ListSamlProviders)
@@ -25568,6 +25629,98 @@ func (response CompromiseRetireSamlSpKey429JSONResponse) VisitCompromiseRetireSa
 type CompromiseRetireSamlSpKey500JSONResponse struct{ InternalJSONResponse }
 
 func (response CompromiseRetireSamlSpKey500JSONResponse) VisitCompromiseRetireSamlSpKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUpdateStatusRequestObject struct {
+}
+
+type GetUpdateStatusResponseObject interface {
+	VisitGetUpdateStatusResponse(w http.ResponseWriter) error
+}
+
+type GetUpdateStatus200JSONResponse UpdateStatus
+
+func (response GetUpdateStatus200JSONResponse) VisitGetUpdateStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUpdateStatus401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetUpdateStatus401JSONResponse) VisitGetUpdateStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUpdateStatus403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetUpdateStatus403JSONResponse) VisitGetUpdateStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUpdateStatus404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetUpdateStatus404JSONResponse) VisitGetUpdateStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUpdateStatus429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetUpdateStatus429JSONResponse) VisitGetUpdateStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUpdateStatus500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetUpdateStatus500JSONResponse) VisitGetUpdateStatusResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -40696,6 +40849,9 @@ type StrictServerInterface interface {
 	// CompromiseRetireSamlSpKey Immediately erase and replace a compromised active SAML SP key.
 	// (POST /api/v1/instance/saml-sp-keys/{fingerprint}/compromise-retire)
 	CompromiseRetireSamlSpKey(ctx context.Context, request CompromiseRetireSamlSpKeyRequestObject) (CompromiseRetireSamlSpKeyResponseObject, error)
+	// GetUpdateStatus Read the configured release channel and available update.
+	// (GET /api/v1/instance/update-status)
+	GetUpdateStatus(ctx context.Context, request GetUpdateStatusRequestObject) (GetUpdateStatusResponseObject, error)
 	// RemoveWorkspaceOrigin De-allowlist an origin and kill every session bound to it.
 	// (DELETE /api/v1/instance/workspace-origins)
 	RemoveWorkspaceOrigin(ctx context.Context, request RemoveWorkspaceOriginRequestObject) (RemoveWorkspaceOriginResponseObject, error)
@@ -43487,6 +43643,30 @@ func (sh *strictHandler) CompromiseRetireSamlSpKey(w http.ResponseWriter, r *htt
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CompromiseRetireSamlSpKeyResponseObject); ok {
 		if err := validResponse.VisitCompromiseRetireSamlSpKeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetUpdateStatus operation middleware
+func (sh *strictHandler) GetUpdateStatus(w http.ResponseWriter, r *http.Request) {
+	var request GetUpdateStatusRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetUpdateStatus(ctx, request.(GetUpdateStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetUpdateStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetUpdateStatusResponseObject); ok {
+		if err := validResponse.VisitGetUpdateStatusResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

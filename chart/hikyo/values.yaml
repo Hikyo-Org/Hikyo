@@ -29,6 +29,10 @@ network:
   # Required only for proxy mode. Native TLS may leave this empty.
   trustedProxyCIDRs: []
 
+updates:
+  # Release notifications only; Hikyo never downloads or installs an update.
+  channel: stable
+
 releaseTrust:
   admissionPolicy:
     # Requires Kyverno. The policy verifies the exact Hikyo image repository

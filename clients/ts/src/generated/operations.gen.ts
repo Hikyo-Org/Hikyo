@@ -142,6 +142,7 @@ import {
   getScimBinding,
   getScimCredential,
   getTotpStatus,
+  getUpdateStatus,
   getValue,
   importValues,
   linkIdentity,
@@ -376,6 +377,7 @@ import type {
   GetScimBindingData,
   GetScimCredentialData,
   GetTotpStatusData,
+  GetUpdateStatusData,
   GetValueData,
   ImportValuesData,
   LinkIdentityData,
@@ -598,6 +600,7 @@ import {
   zGetScimBindingResponse,
   zGetScimCredentialResponse,
   zGetTotpStatusResponse,
+  zGetUpdateStatusResponse,
   zGetValueResponse,
   zImportValuesResponse,
   zLinkIdentityResponse,
@@ -805,6 +808,7 @@ export const getSamlProviderOp: BodyOperation<GetSamlProviderData, typeof zGetSa
 export const getScimBindingOp: BodyOperation<GetScimBindingData, typeof zGetScimBindingResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getScimBinding, [200], zGetScimBindingResponse);
 export const getScimCredentialOp: BodyOperation<GetScimCredentialData, typeof zGetScimCredentialResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getScimCredential, [200], zGetScimCredentialResponse);
 export const getTotpStatusOp: BodyOperation<GetTotpStatusData, typeof zGetTotpStatusResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getTotpStatus, [200], zGetTotpStatusResponse);
+export const getUpdateStatusOp: BodyOperation<GetUpdateStatusData, typeof zGetUpdateStatusResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getUpdateStatus, [200], zGetUpdateStatusResponse);
 export const getValueOp: BodyOperation<GetValueData, typeof zGetValueResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getValue, [200], zGetValueResponse);
 export const importValuesOp: BodyOperation<ImportValuesData, typeof zImportValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(importValues, [200], zImportValuesResponse);
 export const linkIdentityOp: BodyOperation<LinkIdentityData, typeof zLinkIdentityResponse> = /* @__PURE__ */ new GeneratedBodyOperation(linkIdentity, [200], zLinkIdentityResponse);

@@ -3,8 +3,10 @@ import { generatePath, matchPath, NavLink, Outlet, useLocation, useNavigate } fr
 
 import { useLogout, useOrgs, type WhoAmI } from '../api/session.ts';
 import { retentionBanner, storageBanner, useRetentionHealth } from '../api/retention.ts';
+import { useUpdateStatus, type UpdateStatus } from '../api/updates.ts';
 import { effectiveTheme, prefersDark, useThemeChoice, type Theme } from '../app/theme.ts';
 import { needsOrg, SECTIONS, SURFACES, surfaceById, type Surface } from '../app/navigation.ts';
+import { notifyUpdate } from '../app/notifications.tsx';
 import { StepUpBanner } from './StepUpBanner.tsx';
 
 /** Human-readable GiB for the storage high-water banner. */
@@ -29,6 +31,7 @@ function formatGiB(bytes: number): string {
 export function Shell({ session }: { session: WhoAmI }) {
   const orgs = useOrgs(true);
   const retentionHealth = useRetentionHealth(true);
+  const updateStatus = useUpdateStatus(true);
   const location = useLocation();
   const navigate = useNavigate();
   const [navOpen, setNavOpen] = useState(false);
@@ -66,6 +69,7 @@ export function Shell({ session }: { session: WhoAmI }) {
   const activeOrgName = items.find((org) => org.id === activeOrgId)?.name ?? activeOrgId;
   const pruneWarning = retentionBanner(retentionHealth.data, retentionHealth.isError);
   const storageWarning = storageBanner(retentionHealth.data);
+  const availableUpdate = updateStatus.data?.available === true ? updateStatus.data : null;
 
   /**
    * chooseOrg is what a rail circle does. Setting the state is only half of
@@ -122,7 +126,8 @@ export function Shell({ session }: { session: WhoAmI }) {
           ))}
         </ul>
         <span className="rail__spacer" />
-        <AccountEntry session={session} />
+        <UpdateNotice status={availableUpdate} principalId={session.principal.id} />
+        <AccountEntry session={session} update={availableUpdate} />
       </nav>
 
       <nav id="sidebar" className="sidebar" aria-label="Sections" data-open={navOpen}>
@@ -238,22 +243,25 @@ export function Shell({ session }: { session: WhoAmI }) {
   );
 }
 
-function AccountEntry({ session }: { session: WhoAmI }) {
+function AccountEntry({ session, update }: { session: WhoAmI; update: UpdateStatus | null }) {
   const [open, setOpen] = useState(false);
   const logout = useLogout();
   const name = session.principal.display_name ?? session.principal.id;
 
   return (
-    <>
+    <div className="account-entry">
       <button
         type="button"
         className="avatar"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`Account: ${name}`}
+        aria-label={`Account: ${name}${update?.latest_version === undefined ? '' : `; update ${update.latest_version} available`}`}
         onClick={() => setOpen((v) => !v)}
       >
         {monogram(name)}
+        {update?.latest_version === undefined ? null : (
+          <ProfileUpdateBadge version={update.latest_version} />
+        )}
       </button>
       {open ? (
         <div className="menu" role="menu" aria-label="Account">
@@ -271,7 +279,66 @@ function AccountEntry({ session }: { session: WhoAmI }) {
           </button>
         </div>
       ) : null}
-    </>
+    </div>
+  );
+}
+
+const dismissedUpdatePrefix = 'hikyo:update-dismissed:';
+
+function dismissalKey(status: UpdateStatus, principalId: string): string | null {
+  return status.latest_version === undefined
+    ? null
+    : `${dismissedUpdatePrefix}${principalId}:${status.channel}:${status.latest_version}`;
+}
+
+function wasDismissed(key: string): boolean {
+  try {
+    return window.localStorage.getItem(key) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function rememberDismissal(key: string): void {
+  try {
+    window.localStorage.setItem(key, 'true');
+  } catch {
+    // Storage can be unavailable in hardened browsers. Dismissal still lasts
+    // for the current page because the toast store itself is cleared.
+  }
+}
+
+export function UpdateNotice({
+  status,
+  principalId,
+}: {
+  status: UpdateStatus | null;
+  principalId: string;
+}) {
+  useEffect(() => {
+    if (status?.available !== true || status.release_url === undefined) {
+      return;
+    }
+    const key = dismissalKey(status, principalId);
+    if (key === null || wasDismissed(key)) {
+      return;
+    }
+    notifyUpdate(
+      `Hikyo ${status.latest_version} is available on the ${status.channel} channel.`,
+      status.release_url,
+      () => rememberDismissal(key),
+    );
+  }, [principalId, status]);
+  return null;
+}
+
+export function ProfileUpdateBadge({ version }: { version: string }) {
+  return (
+    <span
+      className="account-update-badge"
+      aria-label={`Update ${version} available`}
+      title={`Update ${version} available`}
+    />
   );
 }
 

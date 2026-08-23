@@ -7,6 +7,17 @@ editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs
 Hikyo migrations move forward only. A downgrade means restoring a pre-upgrade
 archive with a compatible binary, not running a down migration.
 
+## Release channels
+
+`stable` follows signed production releases. `nightly` follows unsigned GitHub
+prereleases built from the newest green, changed `main` commit. A stable
+`1.0.0` makes the nightly line `1.1.0-nightly.<date>.<run>.g<sha>`; after stable
+`1.1.0`, it advances to `1.2.0-nightly...`. Nightlies are evaluation artifacts,
+not production releases.
+
+Update checks are notification-only. Read the linked release, verify its
+artifacts, then perform the normal backup and upgrade checklist yourself.
+
 ## Before the change
 
 1. Read the release notes and support status.

@@ -4492,6 +4492,34 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/instance/update-status:
+    get:
+      operationId: getUpdateStatus
+      tags: [instance]
+      summary: Read the configured release channel and available update.
+      x-hikyo-class: instance
+      x-hikyo-operation: update.status-read
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "200":
+          description: Current version and the newest release on the configured channel.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateStatus"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /api/v1/instance/saml-providers:
     get:
       operationId: listSamlProviders
@@ -9932,6 +9960,30 @@ components:
           $ref: "#/components/schemas/Session"
         principal:
           $ref: "#/components/schemas/Principal"
+
+    UpdateStatus:
+      type: object
+      x-hikyo-zod-strict: true
+      additionalProperties: false
+      required: [channel, current_version, available, prerelease]
+      properties:
+        channel:
+          type: string
+          enum: [stable, nightly, off]
+        current_version:
+          type: string
+        latest_version:
+          type: string
+        release_url:
+          type: string
+          format: uri
+        available:
+          type: boolean
+        prerelease:
+          type: boolean
+        published_at:
+          type: string
+          format: date-time
 
     TotpEnrolStartRequest:
       type: object

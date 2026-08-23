@@ -375,6 +375,20 @@ export const zLocalLoginRequest = z.object({
     artifact: z.enum(['cli', 'browser']).optional().default('cli')
 });
 
+export const zUpdateStatus = z.object({
+    channel: z.enum([
+        'stable',
+        'nightly',
+        'off'
+    ]),
+    current_version: z.string(),
+    latest_version: z.string().optional(),
+    release_url: z.url().optional(),
+    available: z.boolean(),
+    prerelease: z.boolean(),
+    published_at: z.iso.datetime().optional()
+}).strict();
+
 export const zTotpEnrolStartRequest = z.object({
     password: z.string().min(1).max(1024)
 });
@@ -4101,6 +4115,11 @@ export const zPutOidcProviderResponse = zOidcProvider;
  * Persisted payload-pruner health.
  */
 export const zGetRetentionHealthResponse = zRetentionHealth;
+
+/**
+ * Current version and the newest release on the configured channel.
+ */
+export const zGetUpdateStatusResponse = zUpdateStatus;
 
 /**
  * The configured SAML providers.

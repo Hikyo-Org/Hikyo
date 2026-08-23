@@ -51,7 +51,9 @@ checksum:
 
 snapshot:
   # Do not derive this from the permanent non-release v-ruleset-probe tag.
-  version_template: "0.0.0-snapshot-{{ .ShortCommit }}"
+  version_template: >-
+    {{ with index .Env "HIKYO_RELEASE_VERSION" }}{{ . }}
+    {{- else }}0.0.0-snapshot-{{ .ShortCommit }}{{ end }}
 
 changelog:
   disable: true

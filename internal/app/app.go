@@ -33,6 +33,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
 	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
+	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 	"github.com/Hikyo-Org/hikyo/internal/webui"
 )
 
@@ -421,6 +422,14 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		return nil, fmt.Errorf("boot: outbound directory client: %w", err)
 	}
 	retentionSvc := &service.Retention{DB: db}
+	updateHTTP, err := updatecheck.NewHTTPClient(3 * time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("boot: update release client: %w", err)
+	}
+	updateSource, err := updatecheck.NewCachedSource(updatecheck.NewGitHubSource(updateHTTP), 6*time.Hour, nil)
+	if err != nil {
+		return nil, fmt.Errorf("boot: update release cache: %w", err)
+	}
 	reencryptSvc := &service.Reencrypt{DB: db, Keyring: kr, Budget: budget}
 	adapterRuntime := store.NewAdapterRuntime(db, func(ctx context.Context, job adapter.Job, _ adapter.Effect) error {
 		return tx.Read(ctx, db, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
@@ -488,6 +497,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		Settings:        &service.ProjectSettings{DB: db, Auth: authSvc},
 		Retention:       retentionSvc,
 		RetentionHealth: retentionSvc,
+		Updates:         &service.Updates{DB: db, Source: updateSource, Version: Version, Channel: updatecheck.Channel(cfg.UpdateChannel)},
 		Providers:       &service.Providers{DB: db, Keyring: kr, ExternalOrigin: cfg.ExternalOrigin, Log: log},
 		SAMLProviders:   samlProviders,
 		Adapters:        adapterService,

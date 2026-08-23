@@ -199,6 +199,8 @@ jobs:
         run: ./scripts/release/probe-tag-move_test.sh
       - name: Release-tag guard fixture
         run: ./scripts/release/check-tag_test.sh
+      - name: Nightly release fixture
+        run: ./scripts/ci/check-nightly-release_test.sh
       - name: OCI version guard fixture
         run: ./scripts/release/check-oci-unused_test.sh
       - name: Release channel fixture
