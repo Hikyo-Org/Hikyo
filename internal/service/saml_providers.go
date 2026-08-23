@@ -251,17 +251,11 @@ func (s *SAMLProviders) Put(ctx context.Context, actor Actor, slug string, input
 			if err := s.ensureSPKey(ctx, repos, az, proof, caller.Principal, generatedKey); err != nil {
 				return err
 			}
-			output, err = samlProviderView(authz.SAMLProvider{
-				ID: provider.ID, Slug: provider.Slug, DisplayName: provider.DisplayName, Kind: SAMLKind,
-				EntityID: provider.EntityID, ACSURL: provider.ACSURL, SSORedirectURL: provider.SSORedirectURL,
-				SigningCertificates: provider.SigningCertificates, AssurancePolicy: provider.AssurancePolicy,
-				AllowEmailNameID: provider.AllowEmailNameID, ForceSignRequests: provider.ForceSignRequests,
-				MetadataWantAuthnRequestsSigned: provider.MetadataWantAuthnRequestsSigned,
-				MetadataSource:                  provider.MetadataSource, MetadataURL: provider.MetadataURL,
-				MetadataSigned: provider.MetadataSigned, MetadataSigningFingerprint: provider.MetadataSigningFingerprint,
-				MetadataValidUntil: provider.MetadataValidUntil, Enabled: provider.Enabled, RowVersion: 1,
-				CreatedAt: now, UpdatedAt: now,
-			}, s.now())
+			created, err := az.SAMLProviderBySlug(ctx, slug)
+			if err != nil {
+				return err
+			}
+			output, err = samlProviderView(created, s.now())
 			if err != nil {
 				return err
 			}
@@ -286,13 +280,21 @@ func (s *SAMLProviders) Put(ctx context.Context, actor Actor, slug string, input
 		if existing.MetadataSigned && !metadata.Signed {
 			return ErrSAMLMetadataSignatureDowngrade
 		}
-		swept, err := s.updateProvider(ctx, az, existing, input.DisplayName, assessment.CertificatesJSON, policy,
-			input.AllowEmailNameID, input.ForceSignRequests, metadata.WantAuthnRequestsSigned,
-			input.MetadataSource, input.MetadataURL, metadata, input.Enabled)
-		if err != nil {
-			return err
-		}
-		updated, err := az.SAMLProviderBySlug(ctx, slug)
+		next := existing
+		next.DisplayName = input.DisplayName
+		next.SSORedirectURL = metadata.SSOURL
+		next.SigningCertificates = assessment.CertificatesJSON
+		next.AssurancePolicy = policy
+		next.AllowEmailNameID = input.AllowEmailNameID
+		next.ForceSignRequests = input.ForceSignRequests
+		next.MetadataWantAuthnRequestsSigned = metadata.WantAuthnRequestsSigned
+		next.MetadataSource = input.MetadataSource
+		next.MetadataURL = input.MetadataURL
+		next.MetadataSigned = metadata.Signed
+		next.MetadataSigningFingerprint = assessment.MetadataFingerprint
+		next.MetadataValidUntil = metadata.ValidUntil
+		next.Enabled = input.Enabled
+		updated, err := s.applyProviderUpdate(ctx, az, existing, next)
 		if err != nil {
 			return err
 		}
@@ -307,7 +309,6 @@ func (s *SAMLProviders) Put(ctx context.Context, actor Actor, slug string, input
 				emailState = "set"
 			}
 		}
-		_ = swept
 		return s.recordProviderMutationEvents(ctx, repos, proof, caller.Principal,
 			audit.EventSAMLProviderConfigure, output, assessment.Diff, input.ConfirmedFingerprints, emailState)
 	})
@@ -370,34 +371,17 @@ func (s *SAMLProviders) Patch(ctx context.Context, actor Actor, slug string, pat
 		if patch.Enabled != nil {
 			enabled = *patch.Enabled
 		}
-		updated, err := az.UpdateSAMLProvider(ctx, authz.SAMLProviderUpdate{
-			ID: provider.ID, DisplayName: displayName, ACSURL: provider.ACSURL,
-			SSORedirectURL: provider.SSORedirectURL, SigningCertificates: provider.SigningCertificates,
-			AssurancePolicy: policy, AllowEmailNameID: allowEmail, ForceSignRequests: forceSign,
-			MetadataWantAuthnRequestsSigned: provider.MetadataWantAuthnRequestsSigned,
-			MetadataSource:                  provider.MetadataSource, MetadataURL: provider.MetadataURL,
-			MetadataSigned: provider.MetadataSigned, MetadataSigningFingerprint: provider.MetadataSigningFingerprint,
-			MetadataValidUntil: provider.MetadataValidUntil, Enabled: enabled,
-			RowVersion: provider.RowVersion, UpdatedAt: s.now(),
-		})
+		next := provider
+		next.DisplayName = displayName
+		next.AssurancePolicy = policy
+		next.AllowEmailNameID = allowEmail
+		next.ForceSignRequests = forceSign
+		next.Enabled = enabled
+		updated, err := s.applyProviderUpdate(ctx, az, provider, next)
 		if err != nil {
 			return err
 		}
-		if !updated {
-			return ErrSAMLProviderRace
-		}
-		swept := int64(0)
-		if provider.Enabled && !enabled || !equalOptionalString(provider.AssurancePolicy, policy) || provider.AllowEmailNameID != allowEmail {
-			swept, err = az.SweepSessionsForSAMLProvider(ctx, provider.ID)
-			if err != nil {
-				return err
-			}
-		}
-		provider.DisplayName, provider.AssurancePolicy = displayName, policy
-		provider.AllowEmailNameID, provider.ForceSignRequests, provider.Enabled = allowEmail, forceSign, enabled
-		provider.RowVersion++
-		provider.UpdatedAt = s.now()
-		output, err = samlProviderView(provider, s.now())
+		output, err = samlProviderView(updated, s.now())
 		if err != nil {
 			return err
 		}
@@ -416,7 +400,6 @@ func (s *SAMLProviders) Patch(ctx context.Context, actor Actor, slug string, pat
 				return eventErr
 			}
 		}
-		_ = swept
 		return s.recordProviderEvent(ctx, repos, proof, caller.Principal, audit.EventSAMLProviderConfigure, output, nil, nil)
 	})
 	return output, err
@@ -503,8 +486,7 @@ func (s *SAMLProviders) Delete(ctx context.Context, actor Actor, slug string) er
 		if err := az.LockSAMLProviderForDelete(ctx, provider.ID); err != nil {
 			return err
 		}
-		swept, err := az.SweepSessionsForSAMLProvider(ctx, provider.ID)
-		if err != nil {
+		if _, err := az.SweepSessionsForSAMLProvider(ctx, provider.ID); err != nil {
 			return err
 		}
 		if err := az.DeleteSAMLProvider(ctx, provider.ID); err != nil {
@@ -514,7 +496,6 @@ func (s *SAMLProviders) Delete(ctx context.Context, actor Actor, slug string) er
 		if err != nil {
 			return err
 		}
-		_ = swept
 		return s.recordProviderEvent(ctx, repos, proof, caller.Principal, audit.EventSAMLProviderRemove, view, nil, nil)
 	})
 }
@@ -580,26 +561,21 @@ func (s *SAMLProviders) RefreshMetadata(ctx context.Context, actor Actor, slug s
 		if fresh.MetadataSigned && !metadata.Signed {
 			return ErrSAMLMetadataSignatureDowngrade
 		}
-		swept, err := s.updateProvider(ctx, az, fresh, fresh.DisplayName, assessment.CertificatesJSON,
-			fresh.AssurancePolicy, fresh.AllowEmailNameID,
-			fresh.ForceSignRequests, metadata.WantAuthnRequestsSigned,
-			fresh.MetadataSource, fresh.MetadataURL, metadata, fresh.Enabled)
+		next := fresh
+		next.SSORedirectURL = metadata.SSOURL
+		next.SigningCertificates = assessment.CertificatesJSON
+		next.MetadataWantAuthnRequestsSigned = metadata.WantAuthnRequestsSigned
+		next.MetadataSigned = metadata.Signed
+		next.MetadataSigningFingerprint = assessment.MetadataFingerprint
+		next.MetadataValidUntil = metadata.ValidUntil
+		updated, err := s.applyProviderUpdate(ctx, az, fresh, next)
 		if err != nil {
 			return err
 		}
-		fresh.SigningCertificates = assessment.CertificatesJSON
-		fresh.SSORedirectURL = metadata.SSOURL
-		fresh.MetadataWantAuthnRequestsSigned = metadata.WantAuthnRequestsSigned
-		fresh.MetadataSigned = metadata.Signed
-		fresh.MetadataSigningFingerprint = assessment.MetadataFingerprint
-		fresh.MetadataValidUntil = metadata.ValidUntil
-		fresh.RowVersion++
-		fresh.UpdatedAt = s.now()
-		output, err = samlProviderView(fresh, s.now())
+		output, err = samlProviderView(updated, s.now())
 		if err != nil {
 			return err
 		}
-		_ = swept
 		return s.recordProviderMutationEvents(ctx, repos, proof, caller.Principal,
 			audit.EventSAMLProviderRefresh, output, assessment.Diff, input.ConfirmedFingerprints, "")
 	})
@@ -849,32 +825,44 @@ func samlProviderWarnings(provider authz.SAMLProvider, now time.Time) ([]SAMLPro
 	return warnings, nil
 }
 
-func (s *SAMLProviders) updateProvider(ctx context.Context, az *authz.TxAuthorizer, provider authz.SAMLProvider,
-	displayName string, certificates []byte, policy *string, allowEmail, forceSign, metadataWantSign bool,
-	metadataSource string, metadataURL *string, metadata samlsp.Metadata, enabled bool,
-) (int64, error) {
+func (s *SAMLProviders) applyProviderUpdate(ctx context.Context, az *authz.TxAuthorizer, before, next authz.SAMLProvider) (authz.SAMLProvider, error) {
 	updated, err := az.UpdateSAMLProvider(ctx, authz.SAMLProviderUpdate{
-		ID: provider.ID, DisplayName: displayName, ACSURL: provider.ACSURL,
-		SSORedirectURL: metadata.SSOURL, SigningCertificates: certificates,
-		AssurancePolicy: policy, AllowEmailNameID: allowEmail, ForceSignRequests: forceSign,
-		MetadataWantAuthnRequestsSigned: metadataWantSign,
-		MetadataSource:                  metadataSource, MetadataURL: metadataURL,
-		MetadataSigned: metadata.Signed, MetadataValidUntil: metadata.ValidUntil,
-		MetadataSigningFingerprint: metadataFingerprint(metadata), Enabled: enabled,
-		RowVersion: provider.RowVersion, UpdatedAt: s.now(),
+		ID: before.ID, DisplayName: next.DisplayName, ACSURL: next.ACSURL,
+		SSORedirectURL: next.SSORedirectURL, SigningCertificates: next.SigningCertificates,
+		AssurancePolicy: next.AssurancePolicy, AllowEmailNameID: next.AllowEmailNameID,
+		ForceSignRequests:               next.ForceSignRequests,
+		MetadataWantAuthnRequestsSigned: next.MetadataWantAuthnRequestsSigned,
+		MetadataSource:                  next.MetadataSource, MetadataURL: next.MetadataURL,
+		MetadataSigned: next.MetadataSigned, MetadataValidUntil: next.MetadataValidUntil,
+		MetadataSigningFingerprint: next.MetadataSigningFingerprint, Enabled: next.Enabled,
+		RowVersion: before.RowVersion, UpdatedAt: s.now(),
 	})
 	if err != nil {
-		return 0, err
+		return authz.SAMLProvider{}, err
 	}
 	if !updated {
-		return 0, ErrSAMLProviderRace
+		return authz.SAMLProvider{}, ErrSAMLProviderRace
 	}
-	if provider.Enabled && !enabled || !equalOptionalString(provider.AssurancePolicy, policy) ||
-		!bytes.Equal(provider.SigningCertificates, certificates) || provider.SSORedirectURL != metadata.SSOURL ||
-		provider.AllowEmailNameID != allowEmail {
-		return az.SweepSessionsForSAMLProvider(ctx, provider.ID)
+	stored, err := az.SAMLProviderBySlug(ctx, before.Slug)
+	if err != nil {
+		return authz.SAMLProvider{}, err
 	}
-	return 0, nil
+	if samlSessionsInvalidated(before, stored) {
+		if _, err := az.SweepSessionsForSAMLProvider(ctx, before.ID); err != nil {
+			return authz.SAMLProvider{}, err
+		}
+	}
+	return stored, nil
+}
+
+// samlSessionsInvalidated owns the provider-bound session deletion required by
+// the saml-sp ADR § Assurance and the human-auth ADR § Invalidation.
+func samlSessionsInvalidated(before, after authz.SAMLProvider) bool {
+	return before.Enabled && !after.Enabled ||
+		!equalOptionalString(before.AssurancePolicy, after.AssurancePolicy) ||
+		!bytes.Equal(before.SigningCertificates, after.SigningCertificates) ||
+		before.SSORedirectURL != after.SSORedirectURL ||
+		before.AllowEmailNameID != after.AllowEmailNameID
 }
 
 func equalOptionalString(left, right *string) bool {
@@ -882,17 +870,6 @@ func equalOptionalString(left, right *string) bool {
 		return left == nil && right == nil
 	}
 	return *left == *right
-}
-
-func metadataFingerprint(metadata samlsp.Metadata) *string {
-	if !metadata.Signed {
-		return nil
-	}
-	fingerprint, err := certificateFingerprint(metadata.SignatureCertificate)
-	if err != nil {
-		return nil
-	}
-	return &fingerprint
 }
 
 func (s *SAMLProviders) metadataBytes(ctx context.Context, source string, document []byte, metadataURL *string) ([]byte, error) {
