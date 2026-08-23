@@ -18,7 +18,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
-	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
 )
 
 // In-process e2e for the Compose delivery verbs (#63): a real app.Boot server,
@@ -71,13 +70,7 @@ func bootComposeRig(t *testing.T, engine store.Engine) *composeRig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, rootKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	probeKeyringMu.Lock()
-	probeKeyrings[db] = kr
-	probeKeyringMu.Unlock()
+	loadAndRegisterKeyring(t, db, rootKey)
 
 	seedComposeCatalogue(t, db)
 
