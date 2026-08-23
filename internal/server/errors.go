@@ -267,25 +267,6 @@ func workspaceHandoffLookupWireErrorFor(err error) WireError {
 	return wireErrorFor(err)
 }
 
-// The helpers below identify the few endpoint-specific precondition families
-// whose timing or enumeration contract deliberately collapses only a subset of
-// otherwise-recognized classes. Keeping the membership here leaves handlers to
-// adapt a decided WireError to generated response types, not classify causes.
-func passwordPrecondition(err error) bool {
-	return errors.Is(err, service.ErrWeakPassword) || errors.Is(err, service.ErrCommonPassword)
-}
-
-func factorPrecondition(err error) bool {
-	return errors.Is(err, service.ErrTOTPAlreadyEnrolled) ||
-		errors.Is(err, service.ErrNoPendingTOTP) ||
-		errors.Is(err, service.ErrNoTOTPFactor) ||
-		errors.Is(err, service.ErrNoProofCredential)
-}
-
-func recoveryPrecondition(err error) bool {
-	return errors.Is(err, service.ErrPasskeyOnlyViolation)
-}
-
 func webauthnPrecondition(err error) bool {
 	return errors.Is(err, service.ErrWebAuthnUnavailable) ||
 		errors.Is(err, service.ErrNoWebAuthnCeremony) ||
