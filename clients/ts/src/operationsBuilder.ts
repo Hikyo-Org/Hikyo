@@ -189,12 +189,14 @@ export function buildOperationsModule(input: {
   const bodyFns: { fn: string; base: string; statuses: readonly number[] }[] = [];
   const bodylessFns: { fn: string; statuses: readonly number[] }[] = [];
   const streamFns: { fn: string; base: string; statuses: readonly number[] }[] = [];
+  const skipped = new Set<string>();
 
   for (const fn of functions) {
     const base = pascal(fn);
     const success = successResponse(input.typesSource, base);
     if (success === null) {
       if (KNOWN_RESPONSELESS.has(fn)) {
+        skipped.add(fn);
         continue;
       }
       throw new Error(
@@ -218,6 +220,14 @@ export function buildOperationsModule(input: {
       );
     }
     bodyFns.push({ fn, base, statuses: success.statuses });
+  }
+
+  for (const known of KNOWN_RESPONSELESS) {
+    if (!skipped.has(known)) {
+      throw new Error(
+        `KNOWN_RESPONSELESS lists ${known}, but no such sdk operation lacks a response - drop the stale entry, it now has a response, was renamed, or was removed from the spec`,
+      );
+    }
   }
 
   const bases = [
