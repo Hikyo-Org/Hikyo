@@ -847,10 +847,10 @@ func (s *Workspace) ApproveHandoff(ctx context.Context, actor Actor, state strin
 	return code, redirectURI, nil
 }
 
-// HandoffView is a live handoff transaction's step-up policy as the remote's
-// approve page reads it: the operation, environment and enumerated key set the
-// transaction was opened against. Identifiers only — never a value, a bearer or
-// a verifier.
+// HandoffView is the live transaction shape the remote's approve page reads.
+// Establishments carry only purpose and expiry; step-ups additionally carry the
+// operation, environment and enumerated key set they were opened against.
+// Identifiers only — never a value, a bearer or a verifier.
 type HandoffView struct {
 	Purpose   HandoffPurpose
 	Operation string
@@ -859,11 +859,10 @@ type HandoffView struct {
 	ExpiresAt time.Time
 }
 
-// ShowHandoff returns the step-up policy a live transaction binds, so the
-// approve page can name the operation, environment and exact key set to this
-// instance's own reauthentication ceremony rather than trusting them from its
-// URL — the key set can be large, and a URL is the wrong place for the
-// authoritative binding to live.
+// ShowHandoff returns the purpose and any step-up policy a live transaction
+// binds, so the approve page chooses the ceremony and names its exact scope from
+// the server-owned row rather than trusting URL parameters. The key set can be
+// large, and a URL is the wrong place for the authoritative binding to live.
 //
 // It READS, it does not consume, and it answers only the authenticated human on
 // this instance (the approve page always has that session for a step-up). What
@@ -889,56 +888,55 @@ func (s *Workspace) ShowHandoff(ctx context.Context, actor Actor, state string) 
 		if err != nil {
 			return ErrHandoffInvalid
 		}
-		// ONLY a step-up is readable here. An establishment binds no session, so
-		// there is nothing to anchor ownership on — and the approve page never
-		// reads one (it shows an establishment its plain Authorize button). A
-		// bare establishment state presented here is treated as not found.
-		if h.Purpose != authz.HandoffStepUp {
-			return ErrHandoffInvalid
-		}
 		if !h.Live(now) {
 			return ErrHandoffInvalid
 		}
-		// OWNERSHIP, and it is the whole point of the endpoint's security.
-		// `StartHandoff` is pre-authentication, so anyone may open a step-up
-		// transaction naming ANY session id; resolving that bound session within
-		// the CALLER's own sessions is what stops one human — or one tenant —
-		// reading another's bound environment and enumerated key set from a
-		// leaked state. The refusal is the SAME `ErrHandoffInvalid` (a 404) as an
-		// unknown state, so the endpoint never distinguishes "not yours" from
-		// "not there". Mirrors the ownership check `elevate` performs at
-		// redemption, moved earlier so a read cannot outrun it.
-		rows, err := az.SessionsForPrincipal(ctx, caller.Principal)
-		if err != nil {
-			return err
-		}
-		owned := false
-		for _, row := range rows {
-			if row.ID == h.SessionID {
-				owned = true
-				break
+		switch h.Purpose {
+		case authz.HandoffEstablishment:
+			if h.SessionID != "" || h.Operation != "" || h.EnvID != "" || h.KeySet != "" {
+				return ErrHandoffInvalid
 			}
-		}
-		if !owned {
+			out = HandoffView{
+				Purpose: h.Purpose, KeySet: []string{}, ExpiresAt: h.ExpiresAt,
+			}
+		case authz.HandoffStepUp:
+			// OWNERSHIP is the step-up branch's security boundary. StartHandoff is
+			// pre-authentication, so resolving the bound session within the caller's
+			// own sessions stops one human reading another's disclosure scope.
+			rows, err := az.SessionsForPrincipal(ctx, caller.Principal)
+			if err != nil {
+				return err
+			}
+			owned := false
+			for _, row := range rows {
+				if row.ID == h.SessionID {
+					owned = true
+					break
+				}
+			}
+			if !owned {
+				return ErrHandoffInvalid
+			}
+			intent, err := newReauthIntentForOperation(authz.Operation(h.Operation), h.EnvID, splitKeySet(h.KeySet))
+			if err != nil {
+				return ErrHandoffInvalid
+			}
+			binding, err := intent.bindingFor("")
+			if err != nil || string(binding.operation) != h.Operation || binding.keySet != h.KeySet {
+				return ErrHandoffInvalid
+			}
+			out = HandoffView{
+				Purpose:   h.Purpose,
+				Operation: string(binding.purpose),
+				EnvID:     h.EnvID,
+				KeySet:    []string{},
+				ExpiresAt: h.ExpiresAt,
+			}
+			if h.KeySet != "" {
+				out.KeySet = splitKeySet(h.KeySet)
+			}
+		default:
 			return ErrHandoffInvalid
-		}
-		intent, err := newReauthIntentForOperation(authz.Operation(h.Operation), h.EnvID, splitKeySet(h.KeySet))
-		if err != nil {
-			return ErrHandoffInvalid
-		}
-		binding, err := intent.bindingFor("")
-		if err != nil || string(binding.operation) != h.Operation || binding.keySet != h.KeySet {
-			return ErrHandoffInvalid
-		}
-		out = HandoffView{
-			Purpose:   h.Purpose,
-			Operation: string(binding.purpose),
-			EnvID:     h.EnvID,
-			KeySet:    []string{},
-			ExpiresAt: h.ExpiresAt,
-		}
-		if h.KeySet != "" {
-			out.KeySet = splitKeySet(h.KeySet)
 		}
 		// The trail records THAT this human read the transaction's shape, keyed
 		// by the handoff id — never the key set, the environment or any value.

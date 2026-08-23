@@ -22,7 +22,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test('a step-up prepare binds the decision into the start body and the approve URL', async () => {
+test('a step-up prepare binds the decision only into server-owned transaction state', async () => {
   vi.stubGlobal('location', { origin: 'https://a.example' });
   const starts: Array<Record<string, unknown>> = [];
   vi.stubGlobal(
@@ -66,16 +66,13 @@ test('a step-up prepare binds the decision into the start body and the approve U
     redirect_uri: 'https://a.example/workspace/callback',
   });
 
-  // The approve URL carries ONLY state and the tiny purpose flag — never the
-  // operation, environment or (unbounded) key set. Those live in the
-  // server-bound transaction the approve page reads back by state, which is what
-  // keeps a large reveal-all off the URL-length ceiling and the binding
-  // authoritative.
+  // The approve URL carries ONLY state. Purpose, operation, environment and the
+  // unbounded key set live in the authoritative server transaction.
   const url = new URL(prepared.approveURL);
   expect(url.origin).toBe(ORIGIN);
   expect(url.pathname).toBe('/workspace/approve');
   expect(url.searchParams.get('state')).toBe('hik_1_hs_abc');
-  expect(url.searchParams.get('purpose')).toBe('step-up');
+  expect(url.searchParams.get('purpose')).toBeNull();
   expect(url.searchParams.get('operation')).toBeNull();
   expect(url.searchParams.get('environment')).toBeNull();
   expect(url.searchParams.getAll('key')).toEqual([]);
