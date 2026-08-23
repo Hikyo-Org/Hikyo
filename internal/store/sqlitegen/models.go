@@ -529,6 +529,7 @@ type OidcTransaction struct {
 	CreatedAt              string
 	ExpiresAt              string
 	ConsumedAt             sql.NullString
+	Browser                int64
 }
 
 type Org struct {

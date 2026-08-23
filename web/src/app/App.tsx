@@ -5,6 +5,7 @@ import { AccountSecurity } from '../routes/AccountSecurity.tsx';
 import { CLIReauth } from '../routes/CLIReauth.tsx';
 import { InstanceAdmin } from '../routes/InstanceAdmin.tsx';
 import { Login } from '../routes/Login.tsx';
+import { OIDCDone } from '../routes/OIDCDone.tsx';
 import { MachineAccess } from '../routes/MachineAccess.tsx';
 import { Matrix } from '../routes/Matrix.tsx';
 import { Members } from '../routes/Members.tsx';
@@ -72,6 +73,7 @@ const ELEMENTS: Record<SurfaceId, ReactElement> = {
   'cli-reauth': <CLIReauth />,
   'workspace-approve': <WorkspaceApprove />,
   'workspace-callback': <WorkspaceCallback />,
+  'oidc-done': <OIDCDone />,
 };
 
 /**

@@ -2223,6 +2223,9 @@ type Assurance struct {
 	// Method OPEN enum — `oidc:<issuer>` and `saml:<entityID>` values are
 	// instance-specific by construction.
 	Method AuthMethod `json:"method"`
+
+	// Provider The configured provider slug, present only for OIDC sessions.
+	Provider *string `json:"provider,omitempty"`
 }
 
 // AuthMethod OPEN enum — `oidc:<issuer>` and `saml:<entityID>` values are
@@ -3518,6 +3521,8 @@ type ID = string
 
 // IdentityLinkRequest defines model for IdentityLinkRequest.
 type IdentityLinkRequest struct {
+	// Browser Redirect the callback to the SPA done page instead of returning JSON.
+	Browser  *bool  `json:"browser,omitempty"`
 	Proof    string `json:"proof"`
 	Provider string `json:"provider"`
 }
@@ -4218,6 +4223,9 @@ type OidcProviderList struct {
 
 // OidcStartRequest defines model for OidcStartRequest.
 type OidcStartRequest struct {
+	// Browser Redirect the callback to the SPA done page instead of returning JSON.
+	Browser *bool `json:"browser,omitempty"`
+
 	// EnvironmentId Required for reauth; the window scope.
 	EnvironmentId *string `json:"environment_id,omitempty"`
 
@@ -18742,6 +18750,20 @@ func (response OidcCallback200JSONResponse) VisitOidcCallbackResponse(w http.Res
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type OidcCallback303ResponseHeaders struct {
+	Location string
+}
+
+type OidcCallback303Response struct {
+	Headers OidcCallback303ResponseHeaders
+}
+
+func (response OidcCallback303Response) VisitOidcCallbackResponse(w http.ResponseWriter) error {
+	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
+	w.WriteHeader(303)
+	return nil
 }
 
 type OidcCallback400JSONResponse struct{ BadRequestJSONResponse }

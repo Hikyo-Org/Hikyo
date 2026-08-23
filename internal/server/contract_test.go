@@ -44,6 +44,8 @@ type stubAuth struct {
 	reissue       func() (service.LoginResult, error)
 	passkeyStart  func(ctx context.Context) ([]byte, error)
 	passkeyFinish func(ctx context.Context, response []byte) (service.LoginResult, error)
+	oidcStart     func(ctx context.Context, slug, purpose, environmentID, presented, proof string, browser bool) (service.OIDCStartResult, error)
+	oidcCallback  func(ctx context.Context, slug, code, state, iss, idpError, bindingCookie, presented string) (service.OIDCCallbackResult, error)
 }
 
 type cliReauthAuth struct{ stubAuth }
@@ -153,11 +155,17 @@ func (s stubAuth) AuthMethods(context.Context) ([]service.AuthMethodProvider, bo
 	return nil, true, nil
 }
 
-func (s stubAuth) OIDCStart(context.Context, string, string, string, string, string) (service.OIDCStartResult, error) {
+func (s stubAuth) OIDCStart(ctx context.Context, slug, purpose, environmentID, presented, proof string, browser bool) (service.OIDCStartResult, error) {
+	if s.oidcStart != nil {
+		return s.oidcStart(ctx, slug, purpose, environmentID, presented, proof, browser)
+	}
 	return service.OIDCStartResult{}, domain.ErrUnauthenticated
 }
 
-func (s stubAuth) OIDCCallback(context.Context, string, string, string, string, string, string, string) (service.OIDCCallbackResult, error) {
+func (s stubAuth) OIDCCallback(ctx context.Context, slug, code, state, iss, idpError, bindingCookie, presented string) (service.OIDCCallbackResult, error) {
+	if s.oidcCallback != nil {
+		return s.oidcCallback(ctx, slug, code, state, iss, idpError, bindingCookie, presented)
+	}
 	return service.OIDCCallbackResult{}, domain.ErrUnauthenticated
 }
 
@@ -482,6 +490,137 @@ func call(t *testing.T, srv *httptest.Server, method, path, bearer string, body 
 	return resp, payload
 }
 
+func callNoRedirect(t *testing.T, srv *httptest.Server, path string, cookies ...*http.Cookie) *http.Response {
+	t.Helper()
+	client := *srv.Client()
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, cookie := range cookies {
+		req.AddCookie(cookie)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	if err := api.ValidateResponse(req, resp.StatusCode, resp.Header, nil); err != nil {
+		t.Fatalf("GET %s -> %d: response violates contract: %v", path, resp.StatusCode, err)
+	}
+	return resp
+}
+
+func TestOIDCBrowserStartAndCallbackRedirect(t *testing.T) {
+	browserSeen := false
+	auth := stubAuth{
+		oidcStart: func(_ context.Context, _, _, _, _, _ string, browser bool) (service.OIDCStartResult, error) {
+			browserSeen = browser
+			return service.OIDCStartResult{AuthURL: "https://idp.example/authorize"}, nil
+		},
+		oidcCallback: func(context.Context, string, string, string, string, string, string, string) (service.OIDCCallbackResult, error) {
+			now := time.Unix(1_800_000_000, 0).UTC()
+			return service.OIDCCallbackResult{
+				Browser: true, Purpose: "reauth", State: "oidc-state",
+				Login: service.LoginResult{
+					SessionToken: "hik_1_bs_rotated", SessionID: "ses_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f33",
+					Artifact: service.ArtifactBrowser, Principal: liveIdentity.Principal,
+					CreatedAt: now, IdleExpires: now.Add(time.Hour), AbsExpires: now.Add(8 * time.Hour),
+					Assurance: service.Assurance{Method: "oidc:https://idp.example", Provider: "corp", Factors: []string{"oidc", "mfa"}, AuthenticatedAt: now},
+				},
+			}, nil
+		},
+	}
+	srv := newTestServer(t, auth, stubOrgs{})
+	response, _ := call(t, srv, http.MethodPost, api.PathPrefix+"/auth/oidc/corp/start", "", map[string]any{"purpose": "login", "browser": true})
+	if response.StatusCode != http.StatusOK || !browserSeen {
+		t.Fatalf("start status=%d browser=%t, want 200/true", response.StatusCode, browserSeen)
+	}
+
+	callback := callNoRedirect(t, srv, api.PathPrefix+"/auth/oidc/corp/callback?code=code&state=oidc-state")
+	if callback.StatusCode != http.StatusSeeOther {
+		t.Fatalf("callback status = %d, want 303", callback.StatusCode)
+	}
+	if got := callback.Header.Get("Location"); got != "/auth/oidc/done?purpose=reauth&state=oidc-state" {
+		t.Fatalf("callback location = %q", got)
+	}
+	var sessionCookie *http.Cookie
+	for _, cookie := range callback.Cookies() {
+		if cookie.Name == "__Host-hikyo" {
+			sessionCookie = cookie
+		}
+	}
+	if sessionCookie == nil || sessionCookie.Value != "hik_1_bs_rotated" {
+		t.Fatalf("callback cookies = %#v", callback.Cookies())
+	}
+}
+
+func TestOIDCBrowserLinkCarriesBrowserIntent(t *testing.T) {
+	browserSeen := false
+	auth := stubAuth{oidcStart: func(_ context.Context, _, purpose, _, _, _ string, browser bool) (service.OIDCStartResult, error) {
+		if purpose != "link" {
+			t.Fatalf("link endpoint purpose = %q", purpose)
+		}
+		browserSeen = browser
+		return service.OIDCStartResult{AuthURL: "https://idp.example/authorize", State: "link-state", Purpose: "link"}, nil
+	}}
+	srv := newTestServer(t, auth, stubOrgs{})
+	response, _ := call(t, srv, http.MethodPost, api.PathPrefix+"/auth/identities/link", "live", map[string]any{
+		"provider": "corp", "proof": "correct horse battery staple", "browser": true,
+	})
+	if response.StatusCode != http.StatusOK || !browserSeen {
+		t.Fatalf("link status=%d browser=%t, want 200/true", response.StatusCode, browserSeen)
+	}
+	if cookies := response.Cookies(); len(cookies) != 1 || !strings.HasPrefix(cookies[0].Name, "__Host-hikyo-oidc-browser-") || cookies[0].Value != "link" {
+		t.Fatalf("link marker cookies = %#v", cookies)
+	}
+}
+
+func TestOIDCBrowserCallbackRefusalRedirectsWithoutSessionCookie(t *testing.T) {
+	auth := stubAuth{oidcCallback: func(context.Context, string, string, string, string, string, string, string) (service.OIDCCallbackResult, error) {
+		return service.OIDCCallbackResult{Browser: true, Purpose: "reauth", State: "refused-state"}, domain.ErrUnauthenticated
+	}}
+	srv := newTestServer(t, auth, stubOrgs{})
+	callback := callNoRedirect(t, srv, api.PathPrefix+"/auth/oidc/corp/callback?code=code&state=refused-state")
+	if got := callback.Header.Get("Location"); got != "/auth/oidc/done?error=unauthenticated&purpose=reauth&state=refused-state" {
+		t.Fatalf("callback location = %q", got)
+	}
+	for _, cookie := range callback.Cookies() {
+		if cookie.Name == "__Host-hikyo" && cookie.Value != "" {
+			t.Fatalf("refused callback set a session cookie: %#v", callback.Cookies())
+		}
+	}
+}
+
+func TestOIDCBrowserCallbackOverloadUsesMarkerWithoutServiceMetadata(t *testing.T) {
+	auth := stubAuth{
+		oidcStart: func(_ context.Context, _, purpose, _, _, _ string, browser bool) (service.OIDCStartResult, error) {
+			return service.OIDCStartResult{
+				AuthURL: "https://idp.example/authorize", State: "overload-state", Purpose: purpose,
+			}, nil
+		},
+		oidcCallback: func(context.Context, string, string, string, string, string, string, string) (service.OIDCCallbackResult, error) {
+			return service.OIDCCallbackResult{}, admission.ErrOverloaded
+		},
+	}
+	srv := newTestServer(t, auth, stubOrgs{})
+	start, _ := call(t, srv, http.MethodPost, api.PathPrefix+"/auth/oidc/corp/start", "", map[string]any{
+		"purpose": "reauth", "environment_id": "env_prod", "browser": true,
+	})
+	callback := callNoRedirect(
+		t, srv,
+		api.PathPrefix+"/auth/oidc/corp/callback?code=code&state=overload-state",
+		start.Cookies()...,
+	)
+	if callback.StatusCode != http.StatusSeeOther {
+		t.Fatalf("overloaded callback status = %d, want 303", callback.StatusCode)
+	}
+	if got := callback.Header.Get("Location"); got != "/auth/oidc/done?error=too_many_requests&purpose=reauth&state=overload-state" {
+		t.Fatalf("overloaded callback location = %q", got)
+	}
+}
+
 func TestEmptyAccountCollectionsEncodeAsArrays(t *testing.T) {
 	srv := newTestServer(t, emptyAccountReads{}, stubOrgs{})
 
@@ -493,6 +632,41 @@ func TestEmptyAccountCollectionsEncodeAsArrays(t *testing.T) {
 	_, identities := call(t, srv, http.MethodGet, api.PathPrefix+"/auth/identities", "live", nil)
 	if !strings.Contains(string(identities), `"identities":[]`) {
 		t.Fatalf("empty external identities must be an array: %s", identities)
+	}
+}
+
+func TestWhoamiCarriesOnlyOIDCProviderProvenance(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		method   string
+		provider string
+		want     string
+	}{
+		{name: "oidc", method: "oidc:https://idp.example", provider: "strict", want: "strict"},
+		{name: "local", method: "local-password"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			identity := liveIdentity
+			identity.Assurance.Method = tc.method
+			identity.Assurance.Provider = tc.provider
+			srv := newTestServer(t, stubAuth{identity: func(context.Context, string) (service.Identity, error) {
+				return identity, nil
+			}}, stubOrgs{})
+			_, payload := call(t, srv, http.MethodGet, api.PathPrefix+"/auth/whoami", "live", nil)
+			var body apigen.WhoAmI
+			if err := json.Unmarshal(payload, &body); err != nil {
+				t.Fatal(err)
+			}
+			if tc.want == "" {
+				if body.Session.Assurance.Provider != nil {
+					t.Fatalf("local assurance provider = %q, want absent", *body.Session.Assurance.Provider)
+				}
+				return
+			}
+			if body.Session.Assurance.Provider == nil || *body.Session.Assurance.Provider != tc.want {
+				t.Fatalf("OIDC assurance provider = %v, want %q", body.Session.Assurance.Provider, tc.want)
+			}
+		})
 	}
 }
 

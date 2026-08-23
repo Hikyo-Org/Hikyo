@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 
 import { useWorkspaceContext } from '../api/transport.tsx';
+import { useAuthMethods } from '../api/account.ts';
+import { useAuth } from '../app/AuthProvider.tsx';
 import {
   ceremonyRefusalText,
   runPasskeyCeremony,
+  runOIDCCeremony,
   runTOTPCeremony,
   type RevealWindow,
 } from '../api/values.ts';
@@ -129,6 +132,14 @@ export function Ceremony({
   // popup (#71), where the remote runs its own locked ceremony and elevates the
   // workspace session — the same modal, a different executor.
   const workspace = useWorkspaceContext();
+  const auth = useAuth();
+  const methods = useAuthMethods();
+  const assurance = auth.identity?.session.assurance;
+  const oidcSession = assurance?.method.startsWith('oidc:') === true;
+  const oidcProvider = methods.data?.providers.find(
+    (provider) => provider.kind === 'oidc' && provider.slug === assurance?.provider,
+  );
+  const offersOIDC = oidcSession && request.window.totp_offered && oidcProvider !== undefined;
 
   const attempt = async (run: () => Promise<void>) => {
     setBusy(true);
@@ -155,6 +166,14 @@ export function Ceremony({
   const onCode = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     void attempt(() => runTOTPCeremony(request.environmentId, code));
+  };
+
+  const onOIDC = () => {
+    if (oidcProvider === undefined) return;
+    void attempt(async () => {
+      await runOIDCCeremony(oidcProvider.slug, request.environmentId);
+      await auth.refreshSession();
+    });
   };
 
   const title = `${PURPOSE_VERB[request.purpose]} · ${request.environmentName}`;
@@ -222,6 +241,9 @@ export function Ceremony({
                 {request.window.protected
                   ? 'This environment is protected, so every disclosure takes its own passkey ceremony. A code cannot authorise it.'
                   : 'This environment allows no reauthentication window, so every disclosure takes its own passkey ceremony. A code cannot authorise it.'}
+                {oidcSession
+                  ? ' Your identity provider cannot satisfy a per-disclosure gate; use a passkey.'
+                  : ''}
               </span>
             </p>
           )}
@@ -239,6 +261,11 @@ export function Ceremony({
             <button className="btn" type="button" onClick={onCancel} disabled={busy}>
               Cancel
             </button>
+            {offersOIDC ? (
+              <button className="btn" type="button" onClick={onOIDC} disabled={busy}>
+                {busy ? 'Waiting for your identity provider…' : `Re-authenticate with ${oidcProvider.display_name}`}
+              </button>
+            ) : null}
           </div>
 
           {request.window.totp_offered ? (

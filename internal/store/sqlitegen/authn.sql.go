@@ -808,15 +808,37 @@ func (q *Queries) GetExternalIdentityByID(ctx context.Context, id string) (Exter
 const getOIDCTransactionByState = `-- name: GetOIDCTransactionByState :one
 SELECT id, state_verifier, nonce, pkce_verifier, provider_id, issuer, redirect_uri,
        purpose, binding_kind, initiating_session_id, browser_binding_verifier,
-       account_id, environment_id, ceremony_id, credential_epoch, created_at,
+       account_id, environment_id, ceremony_id, browser, credential_epoch, created_at,
        expires_at, consumed_at
 FROM oidc_transactions WHERE state_verifier = ?
 `
 
+type GetOIDCTransactionByStateRow struct {
+	ID                     string
+	StateVerifier          []byte
+	Nonce                  []byte
+	PkceVerifier           string
+	ProviderID             string
+	Issuer                 string
+	RedirectUri            string
+	Purpose                string
+	BindingKind            string
+	InitiatingSessionID    sql.NullString
+	BrowserBindingVerifier []byte
+	AccountID              sql.NullString
+	EnvironmentID          sql.NullString
+	CeremonyID             sql.NullString
+	Browser                int64
+	CredentialEpoch        int64
+	CreatedAt              string
+	ExpiresAt              string
+	ConsumedAt             sql.NullString
+}
+
 // hikyo:authn-resolution
-func (q *Queries) GetOIDCTransactionByState(ctx context.Context, stateVerifier []byte) (OidcTransaction, error) {
+func (q *Queries) GetOIDCTransactionByState(ctx context.Context, stateVerifier []byte) (GetOIDCTransactionByStateRow, error) {
 	row := q.db.QueryRowContext(ctx, getOIDCTransactionByState, stateVerifier)
-	var i OidcTransaction
+	var i GetOIDCTransactionByStateRow
 	err := row.Scan(
 		&i.ID,
 		&i.StateVerifier,
@@ -832,6 +854,7 @@ func (q *Queries) GetOIDCTransactionByState(ctx context.Context, stateVerifier [
 		&i.AccountID,
 		&i.EnvironmentID,
 		&i.CeremonyID,
+		&i.Browser,
 		&i.CredentialEpoch,
 		&i.CreatedAt,
 		&i.ExpiresAt,
@@ -1066,7 +1089,7 @@ const getSessionByID = `-- name: GetSessionByID :one
 SELECT id, principal_id, artifact, session_generation, credential_epoch,
        auth_method, factors, authenticated_at, ceremony_id, created_at,
        last_seen_at, idle_expires_at, absolute_expires_at, csrf_verifier,
-       requesting_origin
+       requesting_origin, provider_id
 FROM sessions WHERE id = ?
 `
 
@@ -1086,6 +1109,7 @@ type GetSessionByIDRow struct {
 	AbsoluteExpiresAt string
 	CsrfVerifier      []byte
 	RequestingOrigin  sql.NullString
+	ProviderID        sql.NullString
 }
 
 // hikyo:authn-resolution
@@ -1108,6 +1132,7 @@ func (q *Queries) GetSessionByID(ctx context.Context, id string) (GetSessionByID
 		&i.AbsoluteExpiresAt,
 		&i.CsrfVerifier,
 		&i.RequestingOrigin,
+		&i.ProviderID,
 	)
 	return i, err
 }
@@ -1116,7 +1141,7 @@ const getSessionByVerifier = `-- name: GetSessionByVerifier :one
 SELECT id, principal_id, verifier, artifact, session_generation, credential_epoch,
        auth_method, factors, authenticated_at, ceremony_id, created_at,
        last_seen_at, idle_expires_at, absolute_expires_at, csrf_verifier,
-       requesting_origin
+       requesting_origin, provider_id
 FROM sessions WHERE verifier = ?
 `
 
@@ -1137,6 +1162,7 @@ type GetSessionByVerifierRow struct {
 	AbsoluteExpiresAt string
 	CsrfVerifier      []byte
 	RequestingOrigin  sql.NullString
+	ProviderID        sql.NullString
 }
 
 // hikyo:authn-resolution
@@ -1160,6 +1186,7 @@ func (q *Queries) GetSessionByVerifier(ctx context.Context, verifier []byte) (Ge
 		&i.AbsoluteExpiresAt,
 		&i.CsrfVerifier,
 		&i.RequestingOrigin,
+		&i.ProviderID,
 	)
 	return i, err
 }
@@ -1325,9 +1352,9 @@ const insertOIDCTransaction = `-- name: InsertOIDCTransaction :exec
 INSERT INTO oidc_transactions
     (id, state_verifier, nonce, pkce_verifier, provider_id, issuer, redirect_uri,
      purpose, binding_kind, initiating_session_id, browser_binding_verifier,
-     account_id, environment_id, ceremony_id, credential_epoch, created_at,
+     account_id, environment_id, ceremony_id, browser, credential_epoch, created_at,
      expires_at, consumed_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
 `
 
 type InsertOIDCTransactionParams struct {
@@ -1345,6 +1372,7 @@ type InsertOIDCTransactionParams struct {
 	AccountID              sql.NullString
 	EnvironmentID          sql.NullString
 	CeremonyID             sql.NullString
+	Browser                int64
 	CredentialEpoch        int64
 	CreatedAt              string
 	ExpiresAt              string
@@ -1367,6 +1395,7 @@ func (q *Queries) InsertOIDCTransaction(ctx context.Context, arg InsertOIDCTrans
 		arg.AccountID,
 		arg.EnvironmentID,
 		arg.CeremonyID,
+		arg.Browser,
 		arg.CredentialEpoch,
 		arg.CreatedAt,
 		arg.ExpiresAt,

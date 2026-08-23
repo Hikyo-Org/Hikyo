@@ -7,6 +7,7 @@ import {
   establishSession,
   installPasskeyAuthenticator,
   nextTotpCode,
+  OIDC_PROVIDER,
   readSeed,
   refreshSharedSession,
 } from '../fixtures/instance.ts';
@@ -604,6 +605,50 @@ test.describe('reveal ceremonies', () => {
       page.getByRole('status').filter({ hasText: 'recorded as a disclosure' }),
     ).toBeVisible();
     expect(countDisclosureEvents() - trailBefore, 'server-side disclosure rows').toBe(1);
+  });
+});
+
+/** The complete popup return leg against the browser-drivable fake IdP. */
+test.describe('OIDC disclosure reauthentication', () => {
+  test.describe.configure({ mode: 'serial' });
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  async function signInWithOIDC(page: Page): Promise<void> {
+    await page.goto('/login');
+    await page.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` }).click();
+    await expect(page.getByRole('navigation', { name: 'Organisations' })).toBeVisible();
+  }
+
+  test('reveals after the IdP popup returns through the SPA done page', async ({ page }) => {
+    await signInWithOIDC(page);
+    await page.goto(VALUES_PATH);
+    const secret = seed.secrets[0] ?? '';
+    await page.getByRole('button', { name: `Reveal ${secret}` }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('button', { name: `Re-authenticate with ${OIDC_PROVIDER.displayName}` })).toBeVisible();
+
+    const popupOpened = page.waitForEvent('popup');
+    await dialog
+      .getByRole('button', { name: `Re-authenticate with ${OIDC_PROVIDER.displayName}` })
+      .click();
+    await popupOpened;
+    await expect(dialog).toBeHidden();
+    await expect(page.getByText('hunter2-development')).toBeVisible();
+  });
+
+  test('keeps a protected zero-window environment passkey-only', async ({ page }) => {
+    await signInWithOIDC(page);
+    await page.goto(PROD_PATH);
+    await page.getByRole('button', { name: 'Reveal every secret' }).click();
+    const dialog = page.getByRole('dialog');
+
+    await expect(
+      dialog.getByRole('button', { name: `Re-authenticate with ${OIDC_PROVIDER.displayName}` }),
+    ).toHaveCount(0);
+    await expect(dialog).toContainText(
+      'Your identity provider cannot satisfy a per-disclosure gate; use a passkey.',
+    );
+    await expect(dialog.getByRole('button', { name: 'Use a passkey' })).toBeVisible();
   });
 });
 

@@ -21,6 +21,7 @@ describe('the route policy registry', () => {
       'cli-reauth:ceremony:none',
       'workspace-approve:ceremony:none',
       'workspace-callback:public:none',
+      'oidc-done:public:none',
     ]);
     expect(routeRegistryViolations(SURFACES)).toEqual([]);
   });
@@ -31,6 +32,7 @@ describe('the route policy registry', () => {
       'cli-reauth',
       'workspace-approve',
       'workspace-callback',
+      'oidc-done',
     ]);
     expect(
       allowsAnonymousSession({

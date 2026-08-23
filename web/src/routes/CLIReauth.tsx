@@ -6,12 +6,13 @@ import {
   cliReauthCallbackURL,
   loadCLIReauthTransaction,
 } from '../api/cliReauth.ts';
-import { useTotpStatus } from '../api/account.ts';
+import { useAuthMethods, useTotpStatus } from '../api/account.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import {
   runAdapterPasskeyCeremony,
   runAdapterTOTPCeremony,
   runPasskeyCeremony,
+  runOIDCCeremony,
   runTOTPCeremony,
 } from '../api/values.ts';
 import { Login } from './Login.tsx';
@@ -24,6 +25,12 @@ export function CLIReauth() {
   );
   const [totp, setTOTP] = useState('');
   const totpStatus = useTotpStatus();
+  const methods = useAuthMethods();
+  const assurance = auth.identity?.session.assurance;
+  const oidcSession = assurance?.method.startsWith('oidc:') === true;
+  const oidcProvider = methods.data?.providers.find(
+    (provider) => provider.kind === 'oidc' && provider.slug === assurance?.provider,
+  );
   const transaction = useQuery({
     queryKey: ['cli-reauth', state] as const,
     queryFn: () => loadCLIReauthTransaction(state),
@@ -31,7 +38,7 @@ export function CLIReauth() {
     retry: false,
   });
   const approve = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (strategy: 'factor' | 'oidc') => {
       const handoff = transaction.data;
       if (handoff === undefined) {
         throw new Error('the CLI authorization transaction is unavailable');
@@ -60,7 +67,9 @@ export function CLIReauth() {
         // window TOTP always opens (human-auth ADR: TOTP is a per-step gate,
         // not a per-operation one), never a per-key decision.
         for (const environment of handoff.environments) {
-          if (!environment.requires_webauthn && totp.trim() !== '') {
+          if (strategy === 'oidc' && !environment.requires_webauthn && oidcProvider !== undefined) {
+            await runOIDCCeremony(oidcProvider.slug, environment.environment_id);
+          } else if (!environment.requires_webauthn && totp.trim() !== '') {
             await runTOTPCeremony(environment.environment_id, totp.trim());
           } else {
             await runPasskeyCeremony({
@@ -70,6 +79,7 @@ export function CLIReauth() {
             });
           }
         }
+        if (strategy === 'oidc') await auth.refreshSession();
       }
       const approved = await approveCLIReauth(handoff.state);
       globalThis.location.assign(cliReauthCallbackURL(handoff, approved));
@@ -96,6 +106,8 @@ export function CLIReauth() {
   const hasTotp = totpStatus.isSuccess && totpStatus.data.confirmed;
   const requiresTOTP = !disclosure && slidingEnvironments.length > 0;
   const offersTOTP = disclosure && slidingEnvironments.length > 0 && hasTotp;
+  const offersOIDC =
+    disclosure && oidcSession && slidingEnvironments.length > 0 && oidcProvider !== undefined;
 
   return (
     <main className="login">
@@ -120,7 +132,10 @@ export function CLIReauth() {
                   {transaction.data.key_ids.length === 1 ? '' : 's'} in the environments below.
                   {offersTOTP
                     ? ' A passkey authorises one decision over exactly those keys. A code from your authenticator instead opens the environment-wide window the policy allows, for its duration.'
-                    : ' A passkey authorises one decision over exactly those keys; nothing else.'}
+                    : ' A passkey authorises one decision over exactly those keys.'}
+                  {offersOIDC
+                    ? ' Re-authenticate once per sliding-window environment with your identity provider.'
+                    : ''}
                 </>
               )}
             </p>
@@ -148,9 +163,14 @@ export function CLIReauth() {
               </div>
             ) : null}
             {approve.isError ? <p className="alert" role="alert"><span className="alert__glyph" aria-hidden="true">!</span><span>Authorization failed. No CLI credential was disclosed; return to the terminal and try again.</span></p> : null}
-            <button className="btn btn--primary" type="button" disabled={approve.isPending || (requiresTOTP && totp.trim() === '')} onClick={() => approve.mutate()}>
+            <button className="btn btn--primary" type="button" disabled={approve.isPending || (requiresTOTP && totp.trim() === '')} onClick={() => approve.mutate('factor')}>
               {approve.isPending ? 'Authorizing…' : 'Authorize CLI'}
             </button>
+            {offersOIDC ? (
+              <button className="btn" type="button" disabled={approve.isPending} onClick={() => approve.mutate('oidc')}>
+                {approve.isPending ? 'Authorizing…' : `Re-authenticate with ${oidcProvider.display_name}`}
+              </button>
+            ) : null}
             <button className="btn" type="button" onClick={() => globalThis.close()}>Cancel</button>
           </>
         ) : null}

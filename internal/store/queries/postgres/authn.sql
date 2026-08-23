@@ -86,7 +86,7 @@ SELECT session_generation FROM principals WHERE id = $1;
 SELECT id, principal_id, verifier, artifact, session_generation, credential_epoch,
        auth_method, factors, authenticated_at, ceremony_id, created_at,
        last_seen_at, idle_expires_at, absolute_expires_at, csrf_verifier,
-       requesting_origin
+       requesting_origin, provider_id
 FROM sessions WHERE verifier = $1;
 
 -- hikyo:authn-resolution
@@ -94,7 +94,7 @@ FROM sessions WHERE verifier = $1;
 SELECT id, principal_id, artifact, session_generation, credential_epoch,
        auth_method, factors, authenticated_at, ceremony_id, created_at,
        last_seen_at, idle_expires_at, absolute_expires_at, csrf_verifier,
-       requesting_origin
+       requesting_origin, provider_id
 FROM sessions WHERE id = $1;
 
 -- hikyo:authn-resolution
@@ -325,15 +325,15 @@ FROM oidc_providers WHERE id = $1;
 INSERT INTO oidc_transactions
     (id, state_verifier, nonce, pkce_verifier, provider_id, issuer, redirect_uri,
      purpose, binding_kind, initiating_session_id, browser_binding_verifier,
-     account_id, environment_id, ceremony_id, credential_epoch, created_at,
+     account_id, environment_id, ceremony_id, browser, credential_epoch, created_at,
      expires_at, consumed_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NULL);
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NULL);
 
 -- hikyo:authn-resolution
 -- name: GetOIDCTransactionByState :one
 SELECT id, state_verifier, nonce, pkce_verifier, provider_id, issuer, redirect_uri,
        purpose, binding_kind, initiating_session_id, browser_binding_verifier,
-       account_id, environment_id, ceremony_id, credential_epoch, created_at,
+       account_id, environment_id, ceremony_id, browser, credential_epoch, created_at,
        expires_at, consumed_at
 FROM oidc_transactions WHERE state_verifier = $1;
 

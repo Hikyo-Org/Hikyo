@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -185,6 +186,7 @@ func verifierAAD(accountID string) crypto.InstanceFieldAAD {
 // "handlers extract artifacts, they never evaluate policy" structural.
 type Assurance struct {
 	Method          string
+	Provider        string
 	Factors         []string
 	AuthenticatedAt time.Time
 	CeremonyID      string
@@ -872,6 +874,13 @@ func (s *Auth) Identity(ctx context.Context, presented string) (Identity, error)
 			return err
 		}
 		out = identityOf(id)
+		if id.ProviderID != "" && strings.HasPrefix(id.Assurance.Method, "oidc:") {
+			provider, err := az.ProviderForCallback(ctx, id.ProviderID)
+			if err != nil {
+				return err
+			}
+			out.Assurance.Provider = provider.Slug
+		}
 		return nil
 	})
 	return out, err

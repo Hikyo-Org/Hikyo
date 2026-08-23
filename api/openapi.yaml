@@ -3681,6 +3681,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LoginResult"
+        "303":
+          description: Browser transaction completed; continue on the SPA done page.
+          headers:
+            Location:
+              required: true
+              schema: { type: string }
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -10199,6 +10205,9 @@ components:
       properties:
         method:
           $ref: "#/components/schemas/AuthMethod"
+        provider:
+          type: string
+          description: The configured provider slug, present only for OIDC sessions.
         factors:
           type: array
           description: The factor classes actually presented in this session.
@@ -13055,6 +13064,10 @@ components:
           type: string
           maxLength: 1024
           description: Required for link; the pre-existing password.
+        browser:
+          type: boolean
+          default: false
+          description: Redirect the callback to the SPA done page instead of returning JSON.
 
     OidcStartResult:
       type: object
@@ -13119,6 +13132,10 @@ components:
         proof:
           type: string
           maxLength: 1024
+        browser:
+          type: boolean
+          default: false
+          description: Redirect the callback to the SPA done page instead of returning JSON.
 
     IdentityUnlinkRequest:
       type: object

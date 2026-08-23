@@ -2,12 +2,17 @@ package isolation
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/admission"
+	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/oidctest"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -86,7 +91,7 @@ func runOIDCLifecycle(t *testing.T, auth *service.Auth, ctx context.Context, adm
 	if err != nil {
 		t.Fatalf("local login: %v", err)
 	}
-	start, err := auth.OIDCStart(ctx, "lifecycle-idp", "link", "", login.SessionToken, password)
+	start, err := auth.OIDCStart(ctx, "lifecycle-idp", "link", "", login.SessionToken, password, false)
 	if err != nil {
 		t.Fatalf("oidc link start: %v", err)
 	}
@@ -124,7 +129,7 @@ func runOIDCLifecycle(t *testing.T, auth *service.Auth, ctx context.Context, adm
 // the resulting session.
 func oidcLogin(t *testing.T, auth *service.Auth, ctx context.Context, slug, subject string) service.LoginResult {
 	t.Helper()
-	start, err := auth.OIDCStart(ctx, slug, "login", "", "", "")
+	start, err := auth.OIDCStart(ctx, slug, "login", "", "", "", false)
 	if err != nil {
 		t.Fatalf("oidc login start: %v", err)
 	}
@@ -174,7 +179,7 @@ func runOIDCMixup(t *testing.T, db *store.DB) {
 	})
 
 	// Begin a transaction at A; obtain a code from A's authorize.
-	startA, err := auth.OIDCStart(ctx, "prov-a", "login", "", "", "")
+	startA, err := auth.OIDCStart(ctx, "prov-a", "login", "", "", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +198,7 @@ func runOIDCMixup(t *testing.T, db *store.DB) {
 
 	// The other direction: begin at B, deliver to A's callback. The tx is pinned
 	// to B, so assert B's counter is untouched.
-	startB, err := auth.OIDCStart(ctx, "prov-b", "login", "", "", "")
+	startB, err := auth.OIDCStart(ctx, "prov-b", "login", "", "", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +266,7 @@ func runOIDCBinding(t *testing.T, db *store.DB) {
 
 	// Anonymous login is browser-cookie-bound (A2): a callback with the absent ob
 	// cookie is refused, audited cause=binding.
-	start, err := auth.OIDCStart(ctx, "idp", "login", "", "", "")
+	start, err := auth.OIDCStart(ctx, "idp", "login", "", "", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +281,7 @@ func runOIDCBinding(t *testing.T, db *store.DB) {
 
 	// The correct binding cookie completes the same flow (positive control) - a
 	// fresh transaction, since the first was consumed.
-	start2, err := auth.OIDCStart(ctx, "idp", "login", "", "", "")
+	start2, err := auth.OIDCStart(ctx, "idp", "login", "", "", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +296,7 @@ func runOIDCBinding(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lstart, err := auth.OIDCStart(ctx, "idp", "link", "", login.SessionToken, password)
+	lstart, err := auth.OIDCStart(ctx, "idp", "link", "", login.SessionToken, password, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,7 +329,7 @@ func runOIDCReauthRefusals(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ls, err := auth.OIDCStart(ctx, "strict", "link", "", login.SessionToken, password)
+	ls, err := auth.OIDCStart(ctx, "strict", "link", "", login.SessionToken, password, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -334,18 +339,22 @@ func runOIDCReauthRefusals(t *testing.T, db *store.DB) {
 	}
 
 	// reauth with no environment is refused loudly (would violate the tx CHECK).
-	relogin, err := auth.LocalLogin(ctx, "oidc-admin", password, service.ArtifactCLI)
+	localSession, err := auth.LocalLogin(ctx, "oidc-admin", password, service.ArtifactCLI)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := auth.OIDCStart(ctx, "strict", "reauth", "", relogin.SessionToken, ""); err != service.ErrReauthNoEnvironment {
+	if _, err := auth.OIDCStart(ctx, "strict", "reauth", "env_prod", localSession.SessionToken, "", false); !isUnauth(err) {
+		t.Fatalf("local session starting OIDC reauth should refuse: %v", err)
+	}
+	relogin := oidcLogin(t, auth, ctx, "strict", "reauth-user")
+	if _, err := auth.OIDCStart(ctx, "strict", "reauth", "", relogin.SessionToken, "", false); err != service.ErrReauthNoEnvironment {
 		t.Fatalf("reauth with no environment: want ErrReauthNoEnvironment, got %v", err)
 	}
 
 	// reauth whose token carries amr=mfa but NO auth_time is refused (A7),
 	// audited cause=no-auth-time. (The IdP asserts amr but leaves auth_time zero.)
 	strict.AMR = []string{"mfa"}
-	rs, err := auth.OIDCStart(ctx, "strict", "reauth", "env_prod", relogin.SessionToken, "")
+	rs, err := auth.OIDCStart(ctx, "strict", "reauth", "env_prod", relogin.SessionToken, "", false)
 	if err != nil {
 		t.Fatalf("reauth start: %v", err)
 	}
@@ -358,13 +367,127 @@ func runOIDCReauthRefusals(t *testing.T, db *store.DB) {
 		t.Fatalf("the auth_time refusal was not audited cause=no-auth-time")
 	}
 
+	// A present but stale auth_time is the same freshness refusal. Possession
+	// and assurance both pass, isolating the five-minute bound.
+	strict.AuthTime = time.Now().Add(-6 * time.Minute)
+	strict.AMR = []string{"mfa", "otp"}
+	staleSession := oidcLogin(t, auth, ctx, "strict", "reauth-user")
+	rs, err = auth.OIDCStart(ctx, "strict", "reauth", "env_prod", staleSession.SessionToken, "", false)
+	if err != nil {
+		t.Fatalf("stale reauth start: %v", err)
+	}
+	rc, rst = driveIdP(t, rs.AuthURL+"&sub=reauth-user")
+	before = oidcRefusedCount(t, db, "no-auth-time")
+	if _, err := auth.OIDCCallback(ctx, "strict", rc, rst, "", "", "", staleSession.SessionToken); !isUnauth(err) {
+		t.Fatalf("reauth with stale auth_time should refuse: %v", err)
+	}
+	if oidcRefusedCount(t, db, "no-auth-time") != before+1 {
+		t.Fatalf("the stale auth_time refusal was not audited")
+	}
+
 	// A provider with NO assurance policy refuses reauth by name at start (A5).
-	configureProvider(t, auth, ctx, admin, "loose", service.ProviderInput{
-		DisplayName: "Loose", ClientID: "c", ClientSecret: "s", Scopes: "openid", Enabled: true,
+	_, loose := configureProvider(t, auth, ctx, admin, "loose", service.ProviderInput{
+		DisplayName: "Loose", ClientID: "c", ClientSecret: "s", Scopes: "openid",
+		JITPolicy: strptr(`{"claim":"sub","values":["loose-user"]}`), Enabled: true,
 	})
-	if _, err := auth.OIDCStart(ctx, "loose", "reauth", "env_prod", relogin.SessionToken, ""); err != service.ErrReauthNoPolicy {
+	loose.AuthTime = time.Now()
+	loose.AMR = []string{"mfa", "otp"}
+	looseSession := oidcLogin(t, auth, ctx, "loose", "loose-user")
+	if _, err := auth.OIDCStart(ctx, "loose", "reauth", "env_prod", looseSession.SessionToken, "", false); err != service.ErrReauthNoPolicy {
 		t.Fatalf("policy-less reauth: want ErrReauthNoPolicy, got %v", err)
 	}
+}
+
+// runOIDCReauthZeroWindow pins the corrected server contract on both engines:
+// a current-provider OIDC session still cannot open an effective-zero window,
+// and the refusal is named and audited rather than silently opening authority.
+func runOIDCReauthZeroWindow(t *testing.T, db *store.DB) {
+	ctx := t.Context()
+	auth, admin, password := oidcAdmin(t, db)
+	auth.ReauthWindow = 0
+	_, idp := configureProvider(t, auth, ctx, admin, "strict", service.ProviderInput{
+		DisplayName: "Strict", ClientID: "c", ClientSecret: "s", Scopes: "openid",
+		AssurancePolicy: strptr(`{"amr_sets":[["mfa"]]}`), Enabled: true,
+	})
+	linkOn(t, auth, ctx, "strict", "zero-user", password)
+	idp.AuthTime = time.Now()
+	idp.AMR = []string{"mfa", "otp"}
+	session := oidcLogin(t, auth, ctx, "strict", "zero-user")
+
+	started, err := auth.OIDCStart(ctx, "strict", "reauth", "env_prod", session.SessionToken, "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, state := driveIdP(t, started.AuthURL+"&sub=zero-user")
+	before := oidcRefusedCount(t, db, "window-zero")
+	result, err := auth.OIDCCallback(ctx, "strict", code, state, "", "", "", session.SessionToken)
+	if err != service.ErrReauthWindowClosed {
+		t.Fatalf("OIDC at an effective-zero window = %v, want ErrReauthWindowClosed", err)
+	}
+	if !result.Browser || result.Purpose != "reauth" || result.State != state {
+		t.Fatalf("zero-window browser metadata = %+v", result)
+	}
+	if oidcRefusedCount(t, db, "window-zero") != before+1 {
+		t.Fatalf("the zero-window refusal was not audited cause=window-zero")
+	}
+}
+
+func TestOIDCReauthZeroWindowSQLite(t *testing.T) {
+	runOIDCReauthZeroWindow(t, seededDB(t, openSQLite))
+}
+func TestOIDCReauthZeroWindowPostgres(t *testing.T) {
+	runOIDCReauthZeroWindow(t, seededDB(t, openPostgres))
+}
+
+// runOIDCBrowserOverloadMetadata proves admission refusal happens before any
+// transaction lookup. Browser response shaping belongs to the HTTP-only marker
+// cookie at the transport boundary, so the service returns no stored metadata.
+func runOIDCBrowserOverloadMetadata(t *testing.T, db *store.DB) {
+	ctx := t.Context()
+	auth, admin, password := oidcAdmin(t, db)
+	_, idp := configureProvider(t, auth, ctx, admin, "strict", service.ProviderInput{
+		DisplayName: "Strict", ClientID: "c", ClientSecret: "s", Scopes: "openid",
+		AssurancePolicy: strptr(`{"amr_sets":[["mfa"]]}`), Enabled: true,
+	})
+	linkOn(t, auth, ctx, "strict", "overload-user", password)
+	idp.AuthTime = time.Now()
+	idp.AMR = []string{"mfa", "otp"}
+	session := oidcLogin(t, auth, ctx, "strict", "overload-user")
+	started, err := auth.OIDCStart(ctx, "strict", "reauth", "env_prod", session.SessionToken, "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, state := driveIdP(t, started.AuthURL+"&sub=overload-user")
+
+	limiter, err := admission.New(admission.Config{
+		ArgonMemoryKiB: auth.KDF.MemoryKiB,
+		PerIPPerMinute: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth.Admission = limiter
+	limitedCtx := audit.WithContext(ctx, audit.Context{SourceIP: "192.0.2.195", Origin: audit.OriginAPI})
+	release, err := limiter.Enter(limitedCtx, audit.FromContext(limitedCtx).SourceIP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+
+	result, err := auth.OIDCCallback(limitedCtx, "strict", code, state, "", "", "", session.SessionToken)
+	if !errors.Is(err, admission.ErrOverloaded) {
+		t.Fatalf("overloaded browser callback = %v, want ErrOverloaded", err)
+	}
+	if result.Browser || result.Purpose != "" || result.State != "" || result.Login.SessionToken != "" {
+		t.Fatalf("overloaded callback read transaction metadata = %+v", result)
+	}
+}
+
+func TestOIDCBrowserOverloadMetadataSQLite(t *testing.T) {
+	runOIDCBrowserOverloadMetadata(t, seededDB(t, openSQLite))
+}
+func TestOIDCBrowserOverloadMetadataPostgres(t *testing.T) {
+	runOIDCBrowserOverloadMetadata(t, seededDB(t, openPostgres))
 }
 
 func TestOIDCReauthRefusalsSQLite(t *testing.T) {
@@ -372,6 +495,83 @@ func TestOIDCReauthRefusalsSQLite(t *testing.T) {
 }
 func TestOIDCReauthRefusalsPostgres(t *testing.T) {
 	runOIDCReauthRefusals(t, seededDB(t, openPostgres))
+}
+
+func runOIDCDisclosureAndCLIHandoff(t *testing.T, db *store.DB) {
+	ctx := t.Context()
+	auth, admin, password := oidcAdmin(t, db)
+	auth.ReauthWindow = 5 * time.Minute
+	_, idp := configureProvider(t, auth, ctx, admin, "strict", service.ProviderInput{
+		DisplayName: "Corporate IdP", ClientID: "c", ClientSecret: "s", Scopes: "openid",
+		AssurancePolicy: strptr(`{"amr_sets":[["mfa"]]}`), Enabled: true,
+	})
+	linkOn(t, auth, ctx, "strict", "handoff-user", password)
+	idp.AuthTime = time.Now()
+	idp.AMR = []string{"mfa", "otp"}
+	browser := oidcLogin(t, auth, ctx, "strict", "handoff-user")
+	identity, err := auth.Identity(ctx, browser.SessionToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if identity.Assurance.Provider != "strict" {
+		t.Fatalf("OIDC assurance provider = %q, want strict", identity.Assurance.Provider)
+	}
+	execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_oidc_handoff_reveal', '`+string(identity.Principal)+`', 'reveal', 'org_a', 'prj_a1', 'env_a1', `+ts+`)`)
+	execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_oidc_handoff_read', '`+string(identity.Principal)+`', 'read', 'org_a', 'prj_a1', 'env_a1', `+ts+`)`)
+
+	cli, err := auth.LocalLogin(ctx, "oidc-admin", password, service.ArtifactCLI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const keyID = keyA1
+	verifierHash := sha256.Sum256([]byte("oidc disclosure handoff verifier"))
+	verifier := base64.RawURLEncoding.EncodeToString(verifierHash[:])
+	challengeHash := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(challengeHash[:])
+	intent := disclosureReauthIntent(t, service.PurposeReveal, "env_a1", []string{keyID})
+	handoff, err := auth.StartCLIReauth(ctx, cli.SessionToken, intent, challenge, "http://127.0.0.1:40126/callback")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	started, err := auth.OIDCStart(ctx, "strict", "reauth", "env_a1", browser.SessionToken, "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, state := driveIdP(t, started.AuthURL+"&sub=handoff-user")
+	completed, err := auth.OIDCCallback(ctx, "strict", code, state, "", "", "", browser.SessionToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !completed.Browser || completed.Purpose != "reauth" || completed.State != state {
+		t.Fatalf("browser callback metadata = %+v", completed)
+	}
+	if got := queryString(t, db, "SELECT factor_class FROM reauth_windows WHERE session_id = '"+completed.Login.SessionID+"' AND environment_id = 'env_a1'"); got != "oidc" {
+		t.Fatalf("browser reauth factor = %q, want oidc", got)
+	}
+
+	approved, err := auth.ApproveCLIReauth(ctx, service.Bearer(completed.Login.SessionToken), handoff.State)
+	if err != nil {
+		t.Fatal(err)
+	}
+	redeemed, err := auth.RedeemCLIReauth(ctx, approved.Code, verifier)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(redeemed.Windows) != 1 || redeemed.Windows[0].EnvironmentID != "env_a1" || redeemed.Windows[0].SingleDecision {
+		t.Fatalf("redeemed OIDC windows = %+v", redeemed.Windows)
+	}
+	if got := queryString(t, db, "SELECT factor_class FROM reauth_windows WHERE session_id = '"+redeemed.SessionID+"' AND environment_id = 'env_a1'"); got != "oidc" {
+		t.Fatalf("mirrored CLI factor = %q, want oidc", got)
+	}
+}
+
+func TestOIDCDisclosureAndCLIHandoffSQLite(t *testing.T) {
+	runOIDCDisclosureAndCLIHandoff(t, seededDB(t, openSQLite))
+}
+
+func TestOIDCDisclosureAndCLIHandoffPostgres(t *testing.T) {
+	runOIDCDisclosureAndCLIHandoff(t, seededDB(t, openPostgres))
 }
 
 // runOIDCIssuerImmutable: a provider's issuer cannot change on update (A3).
@@ -456,7 +656,7 @@ func linkOn(t *testing.T, auth *service.Auth, ctx context.Context, slug, subject
 	if err != nil {
 		t.Fatalf("login for link: %v", err)
 	}
-	ls, err := auth.OIDCStart(ctx, slug, "link", "", login.SessionToken, password)
+	ls, err := auth.OIDCStart(ctx, slug, "link", "", login.SessionToken, password, false)
 	if err != nil {
 		t.Fatalf("link start: %v", err)
 	}
@@ -470,7 +670,7 @@ func linkOn(t *testing.T, auth *service.Auth, ctx context.Context, slug, subject
 // slug with the given acting session, returning the callback error.
 func reauthOn(t *testing.T, auth *service.Auth, ctx context.Context, slug, subject, session string) error {
 	t.Helper()
-	rs, err := auth.OIDCStart(ctx, slug, "reauth", "env_prod", session, "")
+	rs, err := auth.OIDCStart(ctx, slug, "reauth", "env_prod", session, "", false)
 	if err != nil {
 		t.Fatalf("reauth start: %v", err)
 	}
@@ -496,10 +696,7 @@ func runOIDCReauthPossession(t *testing.T, db *store.DB) {
 	linkOn(t, auth, ctx, "pwd-amr", "pwd-user", password)
 	amrIdP.AuthTime = time.Now()
 	amrIdP.AMR = []string{"pwd"}
-	relogin, err := auth.LocalLogin(ctx, "oidc-admin", password, service.ArtifactCLI)
-	if err != nil {
-		t.Fatal(err)
-	}
+	relogin := oidcLogin(t, auth, ctx, "pwd-amr", "pwd-user")
 	before := oidcRefusedCount(t, db, "no-possession")
 	if err := reauthOn(t, auth, ctx, "pwd-amr", "pwd-user", relogin.SessionToken); !isUnauth(err) {
 		t.Fatalf("pwd-only amr reauth should refuse: %v", err)
@@ -518,10 +715,7 @@ func runOIDCReauthPossession(t *testing.T, db *store.DB) {
 	acrIdP.AuthTime = time.Now()
 	acrIdP.ACR = "urn:strong"
 	acrIdP.AMR = []string{"pwd"}
-	relogin2, err := auth.LocalLogin(ctx, "oidc-admin", password, service.ArtifactCLI)
-	if err != nil {
-		t.Fatal(err)
-	}
+	relogin2 := oidcLogin(t, auth, ctx, "acr-only", "acr-user")
 	before = oidcRefusedCount(t, db, "no-possession")
 	if err := reauthOn(t, auth, ctx, "acr-only", "acr-user", relogin2.SessionToken); !isUnauth(err) {
 		t.Fatalf("acr-satisfied pwd-amr reauth should refuse: %v", err)
@@ -542,10 +736,7 @@ func runOIDCReauthPossession(t *testing.T, db *store.DB) {
 	linkOn(t, auth, ctx, "mfa-only", "mfa-user", password)
 	mfaIdP.AuthTime = time.Now()
 	mfaIdP.AMR = []string{"mfa"}
-	relogin3, err := auth.LocalLogin(ctx, "oidc-admin", password, service.ArtifactCLI)
-	if err != nil {
-		t.Fatal(err)
-	}
+	relogin3 := oidcLogin(t, auth, ctx, "mfa-only", "mfa-user")
 	before = oidcRefusedCount(t, db, "no-possession")
 	if err := reauthOn(t, auth, ctx, "mfa-only", "mfa-user", relogin3.SessionToken); !isUnauth(err) {
 		t.Fatalf("mfa-only amr reauth should refuse (mfa is not possession): %v", err)
@@ -573,16 +764,13 @@ func runOIDCReauthEpochInert(t *testing.T, db *store.DB) {
 		AssurancePolicy: strptr(`{"amr_sets":[["mfa"]]}`), Enabled: true,
 	})
 	linkOn(t, auth, ctx, "strict", "epoch-user", password)
+	idp.AuthTime = time.Now()
+	idp.AMR = []string{"mfa", "otp"}
+	relogin := oidcLogin(t, auth, ctx, "strict", "epoch-user")
 	// Restore the identity to an earlier epoch WITHOUT bumping the instance
 	// epoch (which would trip the Phase-A epoch check first); this exercises the
 	// reauth-branch epoch check directly.
 	execRaw(t, db, "UPDATE external_identities SET credential_epoch = credential_epoch - 1 WHERE subject = 'epoch-user'")
-	idp.AuthTime = time.Now()
-	idp.AMR = []string{"mfa"}
-	relogin, err := auth.LocalLogin(ctx, "oidc-admin", password, service.ArtifactCLI)
-	if err != nil {
-		t.Fatal(err)
-	}
 	before := oidcRefusedCount(t, db, "epoch")
 	if err := reauthOn(t, auth, ctx, "strict", "epoch-user", relogin.SessionToken); !isUnauth(err) {
 		t.Fatalf("epoch-inert reauth should refuse: %v", err)
@@ -636,12 +824,13 @@ func runOIDCReauthProviderRebind(t *testing.T, db *store.DB) {
 	}); err != nil {
 		t.Fatalf("put p2: %v", err)
 	}
+	// Establish the acting session through p2 with a different identity on the
+	// same account. The callback then returns the surviving p1 identity, which
+	// isolates the external-identity provider provenance check.
+	linkOn(t, auth, ctx, "p2", "p2-session-user", password)
 	idp.AuthTime = time.Now()
-	idp.AMR = []string{"mfa"}
-	relogin, err := auth.LocalLogin(ctx, "oidc-admin", password, service.ArtifactCLI)
-	if err != nil {
-		t.Fatal(err)
-	}
+	idp.AMR = []string{"mfa", "otp"}
+	relogin := oidcLogin(t, auth, ctx, "p2", "p2-session-user")
 	before := oidcRefusedCount(t, db, "reconciliation")
 	if err := reauthOn(t, auth, ctx, "p2", "rebind-user", relogin.SessionToken); !isUnauth(err) {
 		t.Fatalf("reauth through a replacement provider should refuse: %v", err)
@@ -679,10 +868,7 @@ func runOIDCReauthDowngrade(t *testing.T, db *store.DB) {
 	// A rank-2 (WebAuthn) session: OIDC evidence is rank 1, so this is a
 	// downgrade. Forge the factor set directly — the rank comparison is under
 	// test, not the WebAuthn ceremony.
-	strong, err := auth.LocalLogin(ctx, "oidc-admin", password, service.ArtifactCLI)
-	if err != nil {
-		t.Fatal(err)
-	}
+	strong := oidcLogin(t, auth, ctx, "strict", "down-user")
 	execRaw(t, db, "UPDATE sessions SET factors = '[\"webauthn\"]' WHERE id = '"+strong.SessionID+"'")
 	before := oidcRefusedCount(t, db, "downgrade")
 	if err := reauthOn(t, auth, ctx, "strict", "down-user", strong.SessionToken); !isUnauth(err) {
@@ -693,10 +879,7 @@ func runOIDCReauthDowngrade(t *testing.T, db *store.DB) {
 	}
 
 	// Positive control: a single-factor (password) session is re-authorized.
-	weak, err := auth.LocalLogin(ctx, "oidc-admin", password, service.ArtifactCLI)
-	if err != nil {
-		t.Fatal(err)
-	}
+	weak := oidcLogin(t, auth, ctx, "strict", "down-user")
 	if err := reauthOn(t, auth, ctx, "strict", "down-user", weak.SessionToken); err != nil {
 		t.Fatalf("federated reauth of a single-factor session should succeed: %v", err)
 	}
@@ -723,13 +906,9 @@ func runOIDCReauthProviderRace(t *testing.T, db *store.DB) {
 	linkOn(t, auth, ctx, "race", "race-user", password)
 	idp.AuthTime = time.Now()
 	idp.AMR = []string{"mfa"}
-	// The acting session is a LOCAL login (provider_id NULL) so the mid-exchange
-	// sweep does not delete it — the point is the Phase-C revalidation, not the
-	// sweep reaching this session.
-	relogin, err := auth.LocalLogin(ctx, "oidc-admin", password, service.ArtifactCLI)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// The acting session is provider-bound. The mid-exchange provider change
+	// sweeps it, so Phase C must refuse rather than resurrecting its authority.
+	relogin := oidcLogin(t, auth, ctx, "race", "race-user")
 	// Tighten the provider's policy mid-exchange (bumps row_version, sweeps).
 	fired := false
 	idp.OnToken = func() {
@@ -793,7 +972,7 @@ func runOIDCLoginProviderRace(t *testing.T, db *store.DB) {
 		}
 	}
 	before := oidcRefusedCount(t, db, "reconciliation")
-	start, err := auth.OIDCStart(ctx, "race-login", "login", "", "", "")
+	start, err := auth.OIDCStart(ctx, "race-login", "login", "", "", "", false)
 	if err != nil {
 		t.Fatalf("login start: %v", err)
 	}
@@ -852,7 +1031,7 @@ func runOIDCLoginProviderDeleteRace(t *testing.T, db *store.DB) {
 		}
 	}
 	before := oidcRefusedCount(t, db, "reconciliation")
-	start, err := auth.OIDCStart(ctx, "race-del", "login", "", "", "")
+	start, err := auth.OIDCStart(ctx, "race-del", "login", "", "", "", false)
 	if err != nil {
 		t.Fatalf("login start: %v", err)
 	}
@@ -927,7 +1106,7 @@ func runOIDCIATRejected(t *testing.T, db *store.DB) {
 	})
 	// (a) iat far beyond the 2m skew.
 	idp.IAT = time.Now().Add(time.Hour)
-	start, err := auth.OIDCStart(ctx, "idp", "login", "", "", "")
+	start, err := auth.OIDCStart(ctx, "idp", "login", "", "", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -944,7 +1123,7 @@ func runOIDCIATRejected(t *testing.T, db *store.DB) {
 	// relying party's zero-check).
 	idp.IAT = time.Time{}
 	idp.OmitIAT = true
-	start2, err := auth.OIDCStart(ctx, "idp", "login", "", "", "")
+	start2, err := auth.OIDCStart(ctx, "idp", "login", "", "", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}

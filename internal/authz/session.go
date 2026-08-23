@@ -46,6 +46,9 @@ type Identity struct {
 	// no cookie and no assurance record (#16's propagation), which is also
 	// what exempts it from the MFA-mandatory check it could never satisfy.
 	SessionID string
+	// ProviderID is the OIDC provider provenance carried by a federated session.
+	// It remains empty for local, SAML, machine, and workspace identities.
+	ProviderID string
 	// CredentialID names the machine credential presented, and is empty for
 	// a human. It is the forensic answer to "which token", which is the
 	// question after a leak — one service account holds several.
@@ -420,10 +423,11 @@ func (a *TxAuthorizer) authenticateResolvedSession(ctx context.Context, row auth
 	}
 
 	return Identity{
-		Principal: row.PrincipalID,
-		Class:     domain.ClassHuman,
-		SessionID: row.ID,
-		Artifact:  row.Artifact,
+		Principal:  row.PrincipalID,
+		Class:      domain.ClassHuman,
+		SessionID:  row.ID,
+		ProviderID: row.ProviderID,
+		Artifact:   row.Artifact,
 		Assurance: Assurance{
 			Method:          row.AuthMethod,
 			Factors:         factors,

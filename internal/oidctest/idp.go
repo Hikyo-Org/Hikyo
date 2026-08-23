@@ -4,7 +4,8 @@
 // (mvp-boundary A1: mix-up, byte-exact issuer/subject, purpose walls) run
 // against a real wire flow rather than mocks of our own code.
 //
-// It is imported only from _test files; the boundary test pins that.
+// Production packages never import it. The only non-_test consumer is the
+// test-only browser-flow command under this package's cmd directory.
 package oidctest
 
 import (
@@ -14,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -59,6 +61,11 @@ type IdP struct {
 	TokenEndpointHits int
 	// AuthTime, when non-zero, is asserted as the `auth_time` claim.
 	AuthTime time.Time
+	// AuthTimeNow emits auth_time at each token exchange. AuthTimeSkew is
+	// subtracted from that instant so browser flows can exercise fresh and stale
+	// tokens without racing the lifetime of a long Playwright setup.
+	AuthTimeNow  bool
+	AuthTimeSkew time.Duration
 	// ACR and AMR, when set, are asserted in the ID token.
 	ACR string
 	AMR []string
@@ -118,7 +125,22 @@ type retiredKey struct {
 }
 
 // New starts a fake IdP over plain HTTP. Callers own Close via t.Cleanup.
-func New() (*IdP, error) { return newIdP(false) }
+func New() (*IdP, error) { return newIdP(false, nil) }
+
+// NewAt starts a plain-HTTP fixture on one explicit listener address. It is
+// for the browser-flow wrapper, whose parent process owns a collision-free port.
+func NewAt(address string) (*IdP, error) {
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		return nil, fmt.Errorf("oidctest: listen on %s: %w", address, err)
+	}
+	p, err := newIdP(false, listener)
+	if err != nil {
+		_ = listener.Close()
+		return nil, err
+	}
+	return p, nil
+}
 
 // NewTLS starts the same fake IdP over TLS, so its issuer is an `https://` URL.
 //
@@ -128,9 +150,9 @@ func New() (*IdP, error) { return newIdP(false) }
 // federation trust on whoever holds the network path. Rather than carve a
 // loopback exception into production validation to suit a test, the test speaks
 // TLS; Client() hands back the client that trusts this server's certificate.
-func NewTLS() (*IdP, error) { return newIdP(true) }
+func NewTLS() (*IdP, error) { return newIdP(true, nil) }
 
-func newIdP(useTLS bool) (*IdP, error) {
+func newIdP(useTLS bool, listener net.Listener) (*IdP, error) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return nil, fmt.Errorf("oidctest: generate key: %w", err)
@@ -154,10 +176,14 @@ func newIdP(useTLS bool) (*IdP, error) {
 	})
 	mux.HandleFunc("/authorize", p.authorize)
 	mux.HandleFunc("/token", p.token)
+	p.Server = httptest.NewUnstartedServer(mux)
+	if listener != nil {
+		p.Server.Listener = listener
+	}
 	if useTLS {
-		p.Server = httptest.NewTLSServer(mux)
+		p.Server.StartTLS()
 	} else {
-		p.Server = httptest.NewServer(mux)
+		p.Server.Start()
 	}
 	return p, nil
 }
@@ -402,7 +428,9 @@ func (p *IdP) token(w http.ResponseWriter, r *http.Request) {
 	if c.Nonce != "" {
 		claims["nonce"] = c.Nonce
 	}
-	if !p.AuthTime.IsZero() {
+	if p.AuthTimeNow {
+		claims["auth_time"] = now.Add(-p.AuthTimeSkew).Unix()
+	} else if !p.AuthTime.IsZero() {
 		claims["auth_time"] = p.AuthTime.Unix()
 	}
 	if p.ACR != "" {

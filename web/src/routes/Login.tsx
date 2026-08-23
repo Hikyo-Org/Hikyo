@@ -1,15 +1,14 @@
 import { useState, type FormEvent } from 'react';
 
-import { loginFailureText, useLogin } from '../api/session.ts';
+import { useAuthMethods } from '../api/account.ts';
+import { loginFailureText, useLogin, useOIDCLogin } from '../api/session.ts';
 import { passkeysAvailable, stepUpFailureText, usePasskeyLogin } from '../api/stepup.ts';
 
 /**
  * The local password login page.
  *
- * Scope is the local floor and nothing else: #54 shipped OIDC, passkeys, TOTP
- * and recovery, and each of those gets its own surface in its own ticket. What
- * this page owes the rest of the system is a browser session established the
- * way the server actually mints one.
+ * Local credentials and every configured OIDC provider establish the same
+ * browser-session artifact. The provider callback returns through OIDCDone.
  *
  * Refusal presentation follows the locked rule that no state is carried by
  * colour alone: the message is text, it is announced through `role="alert"`,
@@ -19,6 +18,8 @@ import { passkeysAvailable, stepUpFailureText, usePasskeyLogin } from '../api/st
 export function Login() {
   const login = useLogin();
   const passkey = usePasskeyLogin();
+  const oidc = useOIDCLogin();
+  const methods = useAuthMethods();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
 
@@ -92,6 +93,25 @@ export function Login() {
               </p>
             ) : null}
           </>
+        ) : null}
+        {methods.data?.providers
+          .filter((provider) => provider.kind === 'oidc')
+          .map((provider) => (
+            <button
+              className="btn"
+              type="button"
+              key={provider.slug}
+              onClick={() => oidc.mutate(provider.slug)}
+              disabled={login.isPending || passkey.isPending || oidc.isPending}
+            >
+              {oidc.isPending ? 'Contacting identity provider…' : `Continue with ${provider.display_name}`}
+            </button>
+          ))}
+        {oidc.isError ? (
+          <p className="alert" role="alert">
+            <span className="alert__glyph" aria-hidden="true">!</span>
+            <span>{loginFailureText(oidc.error)}</span>
+          </p>
         ) : null}
       </form>
     </main>

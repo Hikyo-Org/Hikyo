@@ -322,6 +322,7 @@ type OIDCTransaction struct {
 	AccountID              string
 	EnvironmentID          string
 	CeremonyID             string
+	Browser                bool
 	CredentialEpoch        int64
 	CreatedAt              time.Time
 	ExpiresAt              time.Time
@@ -344,6 +345,7 @@ type NewOIDCTransaction struct {
 	AccountID              string
 	EnvironmentID          string
 	CeremonyID             string
+	Browser                bool
 	CredentialEpoch        int64
 	CreatedAt              time.Time
 	ExpiresAt              time.Time
@@ -361,6 +363,7 @@ func (r *Resolver) CreateOIDCTransaction(ctx context.Context, t NewOIDCTransacti
 			AccountID:              nullString(t.AccountID),
 			EnvironmentID:          nullString(t.EnvironmentID),
 			CeremonyID:             nullString(t.CeremonyID),
+			Browser:                boolInt(t.Browser),
 			CredentialEpoch:        t.CredentialEpoch,
 			CreatedAt:              encodeTime(t.CreatedAt), ExpiresAt: encodeTime(t.ExpiresAt),
 		})
@@ -374,6 +377,7 @@ func (r *Resolver) CreateOIDCTransaction(ctx context.Context, t NewOIDCTransacti
 		AccountID:              pgText(t.AccountID),
 		EnvironmentID:          pgText(t.EnvironmentID),
 		CeremonyID:             pgText(t.CeremonyID),
+		Browser:                t.Browser,
 		CredentialEpoch:        t.CredentialEpoch,
 		CreatedAt:              pgTime(t.CreatedAt), ExpiresAt: pgTime(t.ExpiresAt),
 	})
@@ -403,7 +407,7 @@ func (r *Resolver) OIDCTransactionByState(ctx context.Context, stateVerifier []b
 			Issuer: row.Issuer, RedirectURI: row.RedirectUri, Purpose: row.Purpose,
 			BindingKind: row.BindingKind, InitiatingSessionID: row.InitiatingSessionID.String,
 			BrowserBindingVerifier: row.BrowserBindingVerifier, AccountID: row.AccountID.String,
-			EnvironmentID: row.EnvironmentID.String, CeremonyID: row.CeremonyID.String,
+			EnvironmentID: row.EnvironmentID.String, CeremonyID: row.CeremonyID.String, Browser: row.Browser != 0,
 			CredentialEpoch: row.CredentialEpoch, CreatedAt: created, ExpiresAt: expires,
 			Consumed: row.ConsumedAt.Valid,
 		}, nil
@@ -420,7 +424,7 @@ func (r *Resolver) OIDCTransactionByState(ctx context.Context, stateVerifier []b
 		Issuer: row.Issuer, RedirectURI: row.RedirectUri, Purpose: row.Purpose,
 		BindingKind: row.BindingKind, InitiatingSessionID: row.InitiatingSessionID.String,
 		BrowserBindingVerifier: row.BrowserBindingVerifier, AccountID: row.AccountID.String,
-		EnvironmentID: row.EnvironmentID.String, CeremonyID: row.CeremonyID.String,
+		EnvironmentID: row.EnvironmentID.String, CeremonyID: row.CeremonyID.String, Browser: row.Browser,
 		CredentialEpoch: row.CredentialEpoch, CreatedAt: row.CreatedAt.Time, ExpiresAt: row.ExpiresAt.Time,
 		Consumed: row.ConsumedAt.Valid,
 	}, nil
