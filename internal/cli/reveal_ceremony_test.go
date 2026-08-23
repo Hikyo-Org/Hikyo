@@ -33,7 +33,8 @@ func ceremonyServer(t *testing.T, window apigen.RevealWindow) (http.Handler, *[]
 		case strings.HasSuffix(r.URL.Path, "/auth/reauth/totp"):
 			var body apigen.TotpReauthRequest
 			_ = json.NewDecoder(r.Body).Decode(&body)
-			if body.Code != "123456" || body.EnvironmentId == nil || string(*body.EnvironmentId) != "env_70" {
+			environment, err := body.AsTotpEnvironmentReauthRequest()
+			if err != nil || environment.Code != "123456" || string(environment.EnvironmentId) != "env_70" {
 				w.WriteHeader(http.StatusUnauthorized)
 				_, _ = w.Write([]byte(`{"error":{"code":"unauthenticated","message":"authentication required"}}`))
 				return

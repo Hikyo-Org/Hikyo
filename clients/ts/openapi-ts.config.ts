@@ -24,6 +24,20 @@ export default defineConfig({
     '@hey-api/typescript',
     '@hey-api/sdk',
     '@hey-api/client-fetch',
-    'zod',
+    {
+      name: 'zod',
+      '~resolvers': {
+        object: (context) => {
+          // Zod objects strip unknown keys by default. These oneOf branches
+          // must instead reject fields from the opposite request variant.
+          const path = context.path['~ref'];
+          const isTotpReauthVariant =
+            path.includes('TotpEnvironmentReauthRequest') ||
+            path.includes('TotpAdapterReauthRequest');
+          const object = context.nodes.base(context);
+          return isTotpReauthVariant ? object.attr('strict').call() : object;
+        },
+      },
+    },
   ],
 });

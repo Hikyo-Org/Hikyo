@@ -7,6 +7,7 @@ import {
   zGrantResult,
   zMeta,
   zProtocolCapability,
+  zTotpReauthRequest,
 } from './generated/zod.gen.ts';
 
 // The TypeScript half of the bound 3.1 profile (system-architecture ADR,
@@ -69,4 +70,36 @@ test('grant mutations expose exactly one closed outcome', () => {
 
 test('a request missing a required member is refused before it is sent', () => {
   assert.throws(() => zCreateOrgRequest.parse({}));
+});
+
+test('TOTP reauthentication accepts only environment or adapter variants', () => {
+  const environmentId = 'env_0198b727-19e3-7c31-a2df-904b89224e4c';
+  assert.deepEqual(
+    zTotpReauthRequest.parse({ environment_id: environmentId, code: '123456' }),
+    { environment_id: environmentId, code: '123456' },
+  );
+  assert.deepEqual(
+    zTotpReauthRequest.parse({
+      purpose: 'adapter',
+      operation: 'adapter.sync',
+      environment_ids: [environmentId],
+      code: '123456',
+    }),
+    {
+      purpose: 'adapter',
+      operation: 'adapter.sync',
+      environment_ids: [environmentId],
+      code: '123456',
+    },
+  );
+  assert.throws(() => zTotpReauthRequest.parse({ code: '123456' }));
+  assert.throws(() =>
+    zTotpReauthRequest.parse({
+      environment_id: environmentId,
+      purpose: 'adapter',
+      operation: 'adapter.sync',
+      environment_ids: [environmentId],
+      code: '123456',
+    }),
+  );
 });

@@ -1639,24 +1639,51 @@ func (e StartWorkspaceHandoffRequestPurpose) Valid() bool {
 	}
 }
 
-// Defines values for TotpReauthRequestOperation.
+// Defines values for TotpAdapterReauthRequestOperation.
 const (
-	TotpReauthRequestOperationAdapterAdopt         TotpReauthRequestOperation = "adapter.adopt"
-	TotpReauthRequestOperationAdapterConfigure     TotpReauthRequestOperation = "adapter.configure"
-	TotpReauthRequestOperationAdapterCredentialSet TotpReauthRequestOperation = "adapter.credential-set"
-	TotpReauthRequestOperationAdapterSync          TotpReauthRequestOperation = "adapter.sync"
+	TotpAdapterReauthRequestOperationAdapterAdopt         TotpAdapterReauthRequestOperation = "adapter.adopt"
+	TotpAdapterReauthRequestOperationAdapterConfigure     TotpAdapterReauthRequestOperation = "adapter.configure"
+	TotpAdapterReauthRequestOperationAdapterCredentialSet TotpAdapterReauthRequestOperation = "adapter.credential-set"
+	TotpAdapterReauthRequestOperationAdapterSync          TotpAdapterReauthRequestOperation = "adapter.sync"
 )
 
-// Valid indicates whether the value is a known member of the TotpReauthRequestOperation enum.
-func (e TotpReauthRequestOperation) Valid() bool {
+// Valid indicates whether the value is a known member of the TotpAdapterReauthRequestOperation enum.
+func (e TotpAdapterReauthRequestOperation) Valid() bool {
 	switch e {
-	case TotpReauthRequestOperationAdapterAdopt:
+	case TotpAdapterReauthRequestOperationAdapterAdopt:
 		return true
-	case TotpReauthRequestOperationAdapterConfigure:
+	case TotpAdapterReauthRequestOperationAdapterConfigure:
 		return true
-	case TotpReauthRequestOperationAdapterCredentialSet:
+	case TotpAdapterReauthRequestOperationAdapterCredentialSet:
 		return true
-	case TotpReauthRequestOperationAdapterSync:
+	case TotpAdapterReauthRequestOperationAdapterSync:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TotpAdapterReauthRequestPurpose.
+const (
+	TotpAdapterReauthRequestPurposeAdapter TotpAdapterReauthRequestPurpose = "adapter"
+	TotpAdapterReauthRequestPurposeCopy    TotpAdapterReauthRequestPurpose = "copy"
+	TotpAdapterReauthRequestPurposeMint    TotpAdapterReauthRequestPurpose = "mint"
+	TotpAdapterReauthRequestPurposePublish TotpAdapterReauthRequestPurpose = "publish"
+	TotpAdapterReauthRequestPurposeReveal  TotpAdapterReauthRequestPurpose = "reveal"
+)
+
+// Valid indicates whether the value is a known member of the TotpAdapterReauthRequestPurpose enum.
+func (e TotpAdapterReauthRequestPurpose) Valid() bool {
+	switch e {
+	case TotpAdapterReauthRequestPurposeAdapter:
+		return true
+	case TotpAdapterReauthRequestPurposeCopy:
+		return true
+	case TotpAdapterReauthRequestPurposeMint:
+		return true
+	case TotpAdapterReauthRequestPurposePublish:
+		return true
+	case TotpAdapterReauthRequestPurposeReveal:
 		return true
 	default:
 		return false
@@ -5685,6 +5712,21 @@ type TokenKeyRotation struct {
 	TokenKeyVersion int64 `json:"token_key_version"`
 }
 
+// TotpAdapterReauthRequest A TOTP proof for an adapter operation over one or more environments.
+type TotpAdapterReauthRequest struct {
+	// Code A TOTP code from the enrolled authenticator.
+	Code           string                            `json:"code"`
+	EnvironmentIds []ID                              `json:"environment_ids"`
+	Operation      TotpAdapterReauthRequestOperation `json:"operation"`
+	Purpose        TotpAdapterReauthRequestPurpose   `json:"purpose"`
+}
+
+// TotpAdapterReauthRequestOperation defines model for TotpAdapterReauthRequest.Operation.
+type TotpAdapterReauthRequestOperation string
+
+// TotpAdapterReauthRequestPurpose defines model for TotpAdapterReauthRequest.Purpose.
+type TotpAdapterReauthRequestPurpose string
+
 // TotpCodeRequest defines model for TotpCodeRequest.
 type TotpCodeRequest struct {
 	// Code A TOTP code from the enrolled authenticator.
@@ -5705,33 +5747,27 @@ type TotpEnrolStartResult struct {
 	OtpauthUri string `json:"otpauth_uri"`
 }
 
+// TotpEnvironmentReauthRequest A disclosure reauthentication by TOTP. `environment_id` is what the
+// window is opened OVER — the reveal guard is per environment, so a
+// window on staging authorizes nothing in production.
+type TotpEnvironmentReauthRequest struct {
+	// Code A TOTP code from the enrolled authenticator.
+	Code string `json:"code"`
+
+	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
+	EnvironmentId ID `json:"environment_id"`
+}
+
 // TotpProofRequest defines model for TotpProofRequest.
 type TotpProofRequest struct {
 	// Password The account-security proof for removing the factor.
 	Password string `json:"password"`
 }
 
-// TotpReauthRequest A disclosure reauthentication by TOTP. `environment_id` is what the
-// window is opened OVER — the reveal guard is per environment, so a
-// window on staging authorizes nothing in production.
+// TotpReauthRequest defines model for TotpReauthRequest.
 type TotpReauthRequest struct {
-	// Code A TOTP code from the enrolled authenticator.
-	Code string `json:"code"`
-
-	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
-	EnvironmentId  *ID                         `json:"environment_id,omitempty"`
-	EnvironmentIds *[]ID                       `json:"environment_ids,omitempty"`
-	Operation      *TotpReauthRequestOperation `json:"operation,omitempty"`
-
-	// Purpose The decision a disclosure ceremony authorizes. It is part of the SIGNED
-	// binding, not a label: without it an assertion given to `reveal` would be
-	// spendable on `publish` over the same environment and keys — the same
-	// unit, a different decision, and the human agreed to only one of them.
-	Purpose *ReauthPurpose `json:"purpose,omitempty"`
+	union json.RawMessage
 }
-
-// TotpReauthRequestOperation defines model for TotpReauthRequest.Operation.
-type TotpReauthRequestOperation string
 
 // TotpStatus defines model for TotpStatus.
 type TotpStatus struct {
@@ -6931,6 +6967,68 @@ func (t ResumeAdapterMoveRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (t *ResumeAdapterMoveRequest) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsTotpEnvironmentReauthRequest returns the union data inside the TotpReauthRequest as a TotpEnvironmentReauthRequest
+func (t TotpReauthRequest) AsTotpEnvironmentReauthRequest() (TotpEnvironmentReauthRequest, error) {
+	var body TotpEnvironmentReauthRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTotpEnvironmentReauthRequest overwrites any union data inside the TotpReauthRequest as the provided TotpEnvironmentReauthRequest
+func (t *TotpReauthRequest) FromTotpEnvironmentReauthRequest(v TotpEnvironmentReauthRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTotpEnvironmentReauthRequest performs a merge with any union data inside the TotpReauthRequest, using the provided TotpEnvironmentReauthRequest
+func (t *TotpReauthRequest) MergeTotpEnvironmentReauthRequest(v TotpEnvironmentReauthRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTotpAdapterReauthRequest returns the union data inside the TotpReauthRequest as a TotpAdapterReauthRequest
+func (t TotpReauthRequest) AsTotpAdapterReauthRequest() (TotpAdapterReauthRequest, error) {
+	var body TotpAdapterReauthRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTotpAdapterReauthRequest overwrites any union data inside the TotpReauthRequest as the provided TotpAdapterReauthRequest
+func (t *TotpReauthRequest) FromTotpAdapterReauthRequest(v TotpAdapterReauthRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTotpAdapterReauthRequest performs a merge with any union data inside the TotpReauthRequest, using the provided TotpAdapterReauthRequest
+func (t *TotpReauthRequest) MergeTotpAdapterReauthRequest(v TotpAdapterReauthRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t TotpReauthRequest) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *TotpReauthRequest) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }

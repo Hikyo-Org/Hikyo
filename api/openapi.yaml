@@ -9967,9 +9967,14 @@ components:
           maxLength: 10
 
     TotpReauthRequest:
+      oneOf:
+        - $ref: "#/components/schemas/TotpEnvironmentReauthRequest"
+        - $ref: "#/components/schemas/TotpAdapterReauthRequest"
+
+    TotpEnvironmentReauthRequest:
       type: object
       additionalProperties: false
-      required: [code]
+      required: [environment_id, code]
       description: |
         A disclosure reauthentication by TOTP. `environment_id` is what the
         window is opened OVER — the reveal guard is per environment, so a
@@ -9977,8 +9982,22 @@ components:
       properties:
         environment_id:
           $ref: "#/components/schemas/ID"
+        code:
+          type: string
+          description: A TOTP code from the enrolled authenticator.
+          minLength: 6
+          maxLength: 10
+
+    TotpAdapterReauthRequest:
+      type: object
+      additionalProperties: false
+      required: [purpose, operation, environment_ids, code]
+      description: A TOTP proof for an adapter operation over one or more environments.
+      properties:
         purpose:
-          $ref: "#/components/schemas/ReauthPurpose"
+          allOf:
+            - $ref: "#/components/schemas/ReauthPurpose"
+            - const: adapter
         operation:
           type: string
           enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync]

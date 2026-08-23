@@ -434,17 +434,29 @@ export type TotpCodeRequest = {
     code: string;
 };
 
+export type TotpReauthRequest = TotpEnvironmentReauthRequest | TotpAdapterReauthRequest;
+
 /**
  * A disclosure reauthentication by TOTP. `environment_id` is what the
  * window is opened OVER — the reveal guard is per environment, so a
  * window on staging authorizes nothing in production.
  *
  */
-export type TotpReauthRequest = {
-    environment_id?: Id;
-    purpose?: ReauthPurpose;
-    operation?: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync';
-    environment_ids?: Array<Id>;
+export type TotpEnvironmentReauthRequest = {
+    environment_id: Id;
+    /**
+     * A TOTP code from the enrolled authenticator.
+     */
+    code: string;
+};
+
+/**
+ * A TOTP proof for an adapter operation over one or more environments.
+ */
+export type TotpAdapterReauthRequest = {
+    purpose: ReauthPurpose & 'adapter';
+    operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync';
+    environment_ids: Array<Id>;
     /**
      * A TOTP code from the enrolled authenticator.
      */

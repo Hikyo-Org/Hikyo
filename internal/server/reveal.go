@@ -66,30 +66,30 @@ func (a *API) ReauthTotp(ctx context.Context, req apigen.ReauthTotpRequestObject
 		results []service.ReauthResult
 		err     error
 	)
-	adapterPurpose := req.Body.Purpose != nil && *req.Body.Purpose == apigen.ReauthPurposeAdapter
-	if adapterPurpose {
-		if req.Body.Operation == nil || req.Body.EnvironmentIds == nil || len(*req.Body.EnvironmentIds) == 0 || req.Body.EnvironmentId != nil {
-			return apigen.ReauthTotp400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
-		}
-		rawIDs := make([]string, 0, len(*req.Body.EnvironmentIds))
-		for _, environmentID := range *req.Body.EnvironmentIds {
+	environmentRequest, environmentErr := req.Body.AsTotpEnvironmentReauthRequest()
+	adapterRequest, adapterErr := req.Body.AsTotpAdapterReauthRequest()
+	isEnvironment := environmentErr == nil && environmentRequest.EnvironmentId != ""
+	isAdapter := adapterErr == nil && adapterRequest.Purpose == apigen.TotpAdapterReauthRequestPurposeAdapter
+	if isEnvironment == isAdapter {
+		return apigen.ReauthTotp400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
+	}
+	if isAdapter {
+		rawIDs := make([]string, 0, len(adapterRequest.EnvironmentIds))
+		for _, environmentID := range adapterRequest.EnvironmentIds {
 			rawIDs = append(rawIDs, string(environmentID))
 		}
-		intent, intentErr := service.NewAdapterReauthIntent(string(*req.Body.Operation), rawIDs)
+		intent, intentErr := service.NewAdapterReauthIntent(string(adapterRequest.Operation), rawIDs)
 		if intentErr != nil {
 			return apigen.ReauthTotp400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 		}
-		results, err = a.Auth.ReauthAdapterTOTP(ctx, bearer(ctx), intent, req.Body.Code)
+		results, err = a.Auth.ReauthAdapterTOTP(ctx, bearer(ctx), intent, adapterRequest.Code)
 	} else {
-		if req.Body.Purpose != nil || req.Body.Operation != nil || req.Body.EnvironmentIds != nil || req.Body.EnvironmentId == nil {
-			return apigen.ReauthTotp400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
-		}
-		intent, intentErr := service.NewUnboundReauthIntent(string(*req.Body.EnvironmentId))
+		intent, intentErr := service.NewUnboundReauthIntent(string(environmentRequest.EnvironmentId))
 		if intentErr != nil {
 			return apigen.ReauthTotp400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 		}
 		var result service.ReauthResult
-		result, err = a.Auth.ReauthTOTP(ctx, bearer(ctx), intent, req.Body.Code)
+		result, err = a.Auth.ReauthTOTP(ctx, bearer(ctx), intent, environmentRequest.Code)
 		if err == nil {
 			results = []service.ReauthResult{result}
 		}
@@ -128,7 +128,7 @@ func (a *API) ReauthTotp(ctx context.Context, req apigen.ReauthTotpRequestObject
 			}, nil
 		}
 	}
-	resp, err := makeReauthTotpResponse(requestFrom(ctx), results, adapterPurpose)
+	resp, err := makeReauthTotpResponse(requestFrom(ctx), results, isAdapter)
 	if err != nil {
 		a.fault(ctx, "totp reauth response", err)
 		return apigen.ReauthTotp500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil

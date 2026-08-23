@@ -343,6 +343,52 @@ func TestRequestValidationReportsTheOffendingMember(t *testing.T) {
 	}
 }
 
+func TestTotpReauthRequestValidationAcceptsOnlyCanonicalVariants(t *testing.T) {
+	environmentID := "env_00000000-0000-0000-0000-000000000001"
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{name: "code alone", body: `{"code":"123456"}`, want: false},
+		{
+			name: "mixed variants",
+			body: `{"code":"123456","environment_id":"` + environmentID + `","purpose":"adapter","operation":"adapter.sync","environment_ids":["` + environmentID + `"]}`,
+			want: false,
+		},
+		{
+			name: "adapter without environment ids",
+			body: `{"code":"123456","purpose":"adapter","operation":"adapter.sync"}`,
+			want: false,
+		},
+		{
+			name: "non-adapter purpose",
+			body: `{"code":"123456","purpose":"reveal","operation":"adapter.sync","environment_ids":["` + environmentID + `"]}`,
+			want: false,
+		},
+		{
+			name: "environment",
+			body: `{"code":"123456","environment_id":"` + environmentID + `"}`,
+			want: true,
+		},
+		{
+			name: "adapter",
+			body: `{"code":"123456","purpose":"adapter","operation":"adapter.sync","environment_ids":["` + environmentID + `"]}`,
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, api.PathPrefix+"/auth/reauth/totp", bytes.NewBufferString(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			_, err := api.ValidateRequest(req)
+			if got := err == nil; got != tt.want {
+				t.Fatalf("accepted = %t, want %t; err = %v", got, tt.want, err)
+			}
+		})
+	}
+}
+
 func TestUnroutedRequestIsDistinguishableFromMalformed(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, api.PathPrefix+"/nothing-here", nil)
 	if _, err := api.ValidateRequest(req); !errors.Is(err, api.ErrNoRoute) {
