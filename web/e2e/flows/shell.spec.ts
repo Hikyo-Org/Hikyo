@@ -27,7 +27,9 @@ import { surfacesForFlow } from '../registry.ts';
 async function openNav(page: Page): Promise<void> {
   const navigation = page.getByRole('navigation', { name: 'Sections', exact: true });
   const toggle = page.getByRole('button', { name: 'Menu' });
-  await expect(navigation.or(toggle)).toBeVisible();
+  await expect
+    .poll(async () => (await navigation.isVisible()) || (await toggle.isVisible()))
+    .toBe(true);
   if (await navigation.isVisible()) {
     return;
   }
