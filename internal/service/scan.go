@@ -900,6 +900,31 @@ func emitFindingOverridden(ctx context.Context, r store.Repos, p authz.Proof, pr
 	return r.Audit().InsertTenant(ctx, p, ev)
 }
 
+// captureScanRefusal shapes a Surface-2 scan result into the ADR §7 refusal
+// transaction. It returns nil when the result does not refuse, so the caller
+// proceeds. On refusal it CAPTURES one finding_blocked event per blocked finding
+// via az.CaptureAudit — the one write path that survives the rollback the
+// refusal forces — and returns a *scanRefusalErr the caller returns from its
+// transaction closure, so the block events land while nothing else persists.
+//
+// scope is the event chain the block events carry, passed as a visible parameter
+// because CaptureAudit binds no chain from the proof. All Surface-2 refusal
+// ingresses share this one path, so the audit invariant lives in a single place.
+func captureScanRefusal(ctx context.Context, az *authz.TxAuthorizer, principal domain.PrincipalID,
+	scope domain.Scope, res declScanResult) error {
+	if !res.refuses() {
+		return nil
+	}
+	for _, f := range res.blocked {
+		ev, err := blockedEvent(ctx, principal, f)
+		if err != nil {
+			return err
+		}
+		az.CaptureAudit(audit.TrailTenant, scope, ev)
+	}
+	return &scanRefusalErr{blocked: res.blocked, rejections: res.rejections}
+}
+
 // applyDeclarationScan runs a Surface-2 scan inside a declaration ingress and
 // shapes the §7 transaction. It runs post-authorize and BEFORE any declaration
 // state persists.
@@ -923,15 +948,8 @@ func applyDeclarationScan(ctx context.Context, r store.Repos, p authz.Proof, az 
 	if err != nil {
 		return err
 	}
-	if res.refuses() {
-		for _, f := range res.blocked {
-			ev, err := blockedEvent(ctx, principal, f)
-			if err != nil {
-				return err
-			}
-			az.CaptureAudit(audit.TrailTenant, scope, ev)
-		}
-		return &scanRefusalErr{blocked: res.blocked, rejections: res.rejections}
+	if err := captureScanRefusal(ctx, az, principal, scope, res); err != nil {
+		return err
 	}
 	for _, o := range res.overridden {
 		if err := emitFindingOverridden(ctx, r, p, principal, o); err != nil {
@@ -988,15 +1006,8 @@ func scanSurface2Preflight(ctx context.Context, db *store.DB, kr *crypto.Keyring
 		if err != nil {
 			return err
 		}
-		if res.refuses() {
-			for _, f := range res.blocked {
-				ev, err := blockedEvent(ctx, caller.Principal, f)
-				if err != nil {
-					return err
-				}
-				az.CaptureAudit(audit.TrailTenant, scope, ev)
-			}
-			return &scanRefusalErr{blocked: res.blocked, rejections: res.rejections}
+		if err := captureScanRefusal(ctx, az, caller.Principal, scope, res); err != nil {
+			return err
 		}
 		overrides = res.overridden
 		return nil
