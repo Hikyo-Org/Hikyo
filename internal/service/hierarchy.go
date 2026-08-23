@@ -839,15 +839,12 @@ func (s *Environments) create(ctx context.Context, actor Actor, scope domain.Sco
 		// schema revision, so it charges the same per-project budget (see
 		// Keys.UpdateMetadata) — a delete/recreate loop must not mint revisions
 		// past the bound.
-		if err := s.Budget.chargeOnce(&rateCharged, budgetSchemaRevision, budgetKeys{Project: scope.Project}); err != nil {
-			return err
-		}
 		// The environment list is definitions-bundle desired state, so its change
 		// advances the definitions revision (#70). Bumped BEFORE the new
 		// environment's initial materialization so that snapshot pins the fresh
 		// revision. Existing environments are not re-materialized: adding an
 		// environment changes no key, declaration or presence rule they deliver.
-		if err := r.Catalogue().BumpSchemaRevision(ctx, p); err != nil {
+		if err := bumpSchemaRevision(ctx, r, p, s.Budget, &rateCharged, scope.Project); err != nil {
 			return err
 		}
 		ev, err := domainEvent(ctx, audit.EventEnvCreated, caller.Principal,
@@ -971,13 +968,10 @@ func (s *Environments) Rename(ctx context.Context, actor Actor, scope domain.Sco
 		}
 		// § 151 schema-revision rate: a rename advances the project's schema
 		// revision (see Environments.create).
-		if err := s.Budget.chargeOnce(&rateCharged, budgetSchemaRevision, budgetKeys{Project: scope.Project}); err != nil {
-			return err
-		}
 		// The environment name is definitions-bundle desired state, so a rename
 		// advances the definitions revision (#70). It materializes nothing — a
 		// rename moves a label nothing is delivered under.
-		if err := r.Catalogue().BumpSchemaRevision(ctx, p); err != nil {
+		if err := bumpSchemaRevision(ctx, r, p, s.Budget, &rateCharged, scope.Project); err != nil {
 			return err
 		}
 		out = before
@@ -1152,13 +1146,10 @@ func (s *Environments) Delete(ctx context.Context, actor Actor, scope domain.Sco
 		// § 151 schema-revision rate: a delete advances the project's schema
 		// revision (see Environments.create) — the other half of the
 		// delete/recreate loop that would otherwise mint revisions unbounded.
-		if err := s.Budget.chargeOnce(&rateCharged, budgetSchemaRevision, budgetKeys{Project: scope.Project}); err != nil {
-			return err
-		}
 		// The environment list is definitions-bundle desired state, so its
 		// deletion advances the definitions revision unconditionally (#70) — even
 		// when the environment carried no presence rows for the cascade to rewrite.
-		if err := r.Catalogue().BumpSchemaRevision(ctx, p); err != nil {
+		if err := bumpSchemaRevision(ctx, r, p, s.Budget, &rateCharged, scope.Project); err != nil {
 			return err
 		}
 		ev, err := domainEvent(ctx, audit.EventEnvDeleted, caller.Principal,
