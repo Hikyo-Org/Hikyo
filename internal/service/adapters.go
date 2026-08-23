@@ -18,6 +18,10 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
+type adapterReauthConsumer interface {
+	ConsumeAdapterReauthWindow(context.Context, *authz.TxAuthorizer, string, string, ReauthIntent, time.Time) error
+}
+
 type Adapters struct {
 	DB      *store.DB
 	Auth    *Auth
@@ -25,9 +29,10 @@ type Adapters struct {
 	// Budget applies the § 179 adapter sync/trigger concurrency bound (4 per
 	// org). Nil disables it. The per-principal 10/min rate is deferred (see
 	// budget.go).
-	Budget        *Budget
-	Now           func() time.Time
-	ModuleFactory adapter.ModuleFactory
+	Budget         *Budget
+	Now            func() time.Time
+	ModuleFactory  adapter.ModuleFactory
+	reauthConsumer adapterReauthConsumer
 }
 
 func (s *Adapters) now() time.Time {
@@ -242,11 +247,26 @@ func (s *Adapters) requireAdapterCeremony(ctx context.Context, az *authz.TxAutho
 		if s.Auth == nil {
 			return ErrNoCeremonySeam
 		}
-		if err := s.Auth.ConsumeAdapterReauthWindow(ctx, az, caller.SessionID, environmentID, intent, now); err != nil {
-			return fmt.Errorf("%w (%s)", ErrReauthRequired, environmentID)
+		consumer := s.reauthConsumer
+		if consumer == nil {
+			consumer = s.Auth
+		}
+		if err := consumer.ConsumeAdapterReauthWindow(ctx, az, caller.SessionID, environmentID, intent, now); err != nil {
+			return adapterCeremonyError(environmentID, err)
 		}
 	}
 	return nil
+}
+
+func adapterCeremonyError(environmentID string, err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, ErrNoReauthWindow), errors.Is(err, ErrReauthWindowExpired), errors.Is(err, ErrReauthUnitMismatch), errors.Is(err, ErrReauthWindowSpent):
+		return fmt.Errorf("%w (%s)", ErrReauthRequired, environmentID)
+	default:
+		return err
+	}
 }
 
 func adapterEnvironmentSet(environmentIDs []string, additional ...string) []string {
@@ -1198,23 +1218,8 @@ func (s *Adapters) SyncTarget(ctx context.Context, actor Actor, scope domain.Sco
 			if err != nil {
 				return err
 			}
-			intent, err := NewAdapterSyncReauthIntent(environments)
-			if err != nil {
+			if err := s.requireAdapterCeremony(ctx, az, caller, scope, environments, authz.OpAdapterSync, now); err != nil {
 				return err
-			}
-			for _, environmentID := range environments {
-				envScope := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(environmentID)}
-				if _, err := az.Authorize(ctx, caller, authz.OpAdapterPush, envScope); err != nil {
-					return err
-				}
-				if !skipsCeremony(caller) {
-					if s.Auth == nil {
-						return ErrNoCeremonySeam
-					}
-					if err := s.Auth.ConsumeAdapterReauthWindow(ctx, az, caller.SessionID, environmentID, intent, now); err != nil {
-						return fmt.Errorf("%w (%s)", ErrReauthRequired, environmentID)
-					}
-				}
 			}
 			result, err = r.Adapters().EnqueueManual(ctx, proof, targetID, string(caller.Principal), now)
 			if err != nil {
@@ -1380,24 +1385,8 @@ func (s *Adapters) ReplaceCredential(ctx context.Context, actor Actor, scope dom
 			if len(environments) == 0 {
 				return store.AdapterCredentialResult{}, ErrAdapterBootstrapCeremonyUnspecified
 			}
-			intent, err := NewAdapterCredentialSetReauthIntent(environments)
-			if err != nil {
+			if err := s.requireAdapterCeremony(ctx, az, caller, scope, environments, authz.OpAdapterCredentialSet, now); err != nil {
 				return store.AdapterCredentialResult{}, err
-			}
-			for _, environmentID := range environments {
-				envScope := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(environmentID)}
-				if _, err := az.Authorize(ctx, caller, authz.OpAdapterPush, envScope); err != nil {
-					return store.AdapterCredentialResult{}, err
-				}
-				if skipsCeremony(caller) {
-					continue
-				}
-				if s.Auth == nil {
-					return store.AdapterCredentialResult{}, ErrNoCeremonySeam
-				}
-				if err := s.Auth.ConsumeAdapterReauthWindow(ctx, az, caller.SessionID, environmentID, intent, now); err != nil {
-					return store.AdapterCredentialResult{}, fmt.Errorf("%w (%s)", ErrReauthRequired, environmentID)
-				}
 			}
 			// Writer fence (invariant 7): refuse if a rotate-dek retired the DEK
 			// version the new credential was sealed under.
@@ -1706,29 +1695,8 @@ func (s *Adapters) Adopt(ctx context.Context, actor Actor, scope domain.Scope, r
 		if len(environments) == 0 {
 			return domain.ErrNotFound
 		}
-		intent, err := NewAdapterAdoptReauthIntent(environments)
-		if err != nil {
+		if err := s.requireAdapterCeremony(ctx, az, caller, scope, environments, authz.OpAdapterAdopt, now); err != nil {
 			return err
-		}
-		for _, environmentID := range environments {
-			envScope := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(environmentID)}
-			if _, err := az.Authorize(ctx, caller, authz.OpAdapterPush, envScope); err != nil {
-				return err
-			}
-			if skipsCeremony(caller) {
-				continue
-			}
-			if s.Auth == nil {
-				return ErrNoCeremonySeam
-			}
-			err := s.Auth.ConsumeAdapterReauthWindow(ctx, az, caller.SessionID, environmentID, intent, now)
-			switch {
-			case err == nil:
-			case errors.Is(err, ErrNoReauthWindow), errors.Is(err, ErrReauthWindowExpired), errors.Is(err, ErrReauthUnitMismatch), errors.Is(err, ErrReauthWindowSpent):
-				return fmt.Errorf("%w (%s)", ErrReauthRequired, environmentID)
-			default:
-				return err
-			}
 		}
 		result, err := r.Adapters().Adopt(ctx, p, store.AdapterAdoption{
 			TargetID: request.TargetID, ArtifactID: request.ArtifactID, Entries: request.Entries,
