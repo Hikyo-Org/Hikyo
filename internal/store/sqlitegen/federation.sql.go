@@ -370,3 +370,42 @@ func (q *Queries) UpdateFederationIssuer(ctx context.Context, arg UpdateFederati
 	}
 	return result.RowsAffected()
 }
+
+const workloadPinState = `-- name: WorkloadPinState :one
+SELECT pin.revision, pin.expires_at, latest.revision AS latest_revision
+FROM revision_pins AS pin
+JOIN snapshots AS latest
+  ON latest.org_id = pin.org_id
+ AND latest.project_id = pin.project_id
+ AND latest.environment_id = pin.environment_id
+ AND latest.revision = (
+      SELECT MAX(candidate.revision)
+      FROM snapshots AS candidate
+      WHERE candidate.org_id = pin.org_id
+        AND candidate.project_id = pin.project_id
+        AND candidate.environment_id = pin.environment_id
+ )
+WHERE pin.workload_principal_id = ? AND pin.environment_id = ?
+`
+
+type WorkloadPinStateParams struct {
+	WorkloadPrincipalID string
+	EnvironmentID       string
+}
+
+type WorkloadPinStateRow struct {
+	Revision       int64
+	ExpiresAt      string
+	LatestRevision int64
+}
+
+// The grant-time conditional admission for workload reveal-history. The pin
+// and latest snapshot are read in one authn-resolution query under the target
+// principal lock; the service evaluates expiry against its canonical clock.
+// hikyo:authn-resolution
+func (q *Queries) WorkloadPinState(ctx context.Context, arg WorkloadPinStateParams) (WorkloadPinStateRow, error) {
+	row := q.db.QueryRowContext(ctx, workloadPinState, arg.WorkloadPrincipalID, arg.EnvironmentID)
+	var i WorkloadPinStateRow
+	err := row.Scan(&i.Revision, &i.ExpiresAt, &i.LatestRevision)
+	return i, err
+}

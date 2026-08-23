@@ -150,6 +150,10 @@ hikyo project-settings machine-reveal set --enabled true   # project-settings + 
 hikyo access grant add --principal <mch_...> --capability reveal --env <env-id>
 ```
 
+A workload pinned to a non-current revision needs `reveal-history` instead;
+that grant is accepted only while the active pin requires historical delivery.
+Releasing the pin leaves the grant row in place but makes it inert.
+
 Withdrawing the opt-in (`--enabled false`) stops every machine secret delivery
 in the project on the next fetch without touching any grant. `--config-only`
 remains the explicit no-secrets projection.

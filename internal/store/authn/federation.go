@@ -71,6 +71,14 @@ type FederationIssuer struct {
 	UpdatedBy        domain.PrincipalID
 }
 
+// WorkloadPinState is the live grant-time fact that conditionally admits
+// reveal-history onto a workload principal.
+type WorkloadPinState struct {
+	Revision       int64
+	LatestRevision int64
+	ExpiresAt      time.Time
+}
+
 // NewFederationIssuer is one issuer configuration.
 type NewFederationIssuer struct {
 	ID               string
@@ -370,6 +378,38 @@ func (r *Resolver) PinGeneration(ctx context.Context, p domain.PrincipalID, env 
 		return 0, nil
 	}
 	return gen, err
+}
+
+// WorkloadPinState reads the workload's pin and the environment's current
+// revision in one transaction-local query. No row remains a real not-found:
+// unlike PinGeneration, absence is the refusal fact the caller must observe.
+func (r *Resolver) WorkloadPinState(ctx context.Context, p domain.PrincipalID, env domain.EnvID) (WorkloadPinState, error) {
+	if r.sq != nil {
+		row, err := r.sq.WorkloadPinState(ctx, sqlitegen.WorkloadPinStateParams{
+			WorkloadPrincipalID: string(p), EnvironmentID: string(env),
+		})
+		if err != nil {
+			return WorkloadPinState{}, notFoundOr(err)
+		}
+		// Revision pins are written by the tenant store with its canonical
+		// RFC3339Nano codec, not authn's fixed-width SQLite timestamp codec.
+		expires, err := time.Parse(time.RFC3339Nano, row.ExpiresAt)
+		if err != nil {
+			return WorkloadPinState{}, err
+		}
+		return WorkloadPinState{
+			Revision: row.Revision, LatestRevision: row.LatestRevision, ExpiresAt: expires,
+		}, nil
+	}
+	row, err := r.pg.WorkloadPinState(ctx, pggen.WorkloadPinStateParams{
+		WorkloadPrincipalID: string(p), EnvironmentID: string(env),
+	})
+	if err != nil {
+		return WorkloadPinState{}, notFoundOr(err)
+	}
+	return WorkloadPinState{
+		Revision: row.Revision, LatestRevision: row.LatestRevision, ExpiresAt: row.ExpiresAt.Time,
+	}, nil
 }
 
 // SetPinGeneration advances the cursor's pin component. #52 owns pin creation,

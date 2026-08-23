@@ -1049,8 +1049,15 @@ func runDeliveryPinnedNonCurrent(t *testing.T, db *store.DB) {
 		t.Error("`reveal` delivered a pinned non-current secret; it requires `reveal-history`")
 	}
 
-	// `reveal-history` delivers it, and the disclosure names the pinned revision.
-	seedMachineReveal(t, db, "g_wl_revh", sa.Principal, domain.CapRevealHistory, envA1)
+	// `reveal-history` now lands through the real grant API. The active
+	// non-current pin is the conditional admission fact; the actor's session
+	// supplies the existing widening ceremony.
+	if _, err := grantSvcWithAuth(db).Create(t.Context(),
+		service.Bearer(sessionWithWindows(t, db, identRevatr, envA1)), service.GrantSpec{
+			Target: sa.Principal, Capability: domain.CapRevealHistory, Scope: envScope(envA1),
+		}); err != nil {
+		t.Fatalf("grant reveal-history under the active pin: %v", err)
+	}
 	res, err = del.Fetch(t.Context(), minted.Value, env, "", service.FetchOptions{})
 	if err != nil {
 		t.Fatalf("pinned fetch with reveal-history: %v", err)
