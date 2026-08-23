@@ -11,9 +11,9 @@ import (
 	"time"
 )
 
-// LoadCertificate reads and validates a server certificate pair. The same
-// function is used at config load and at runtime reload so replacement files
-// cannot enter service under weaker rules than the initial pair.
+// LoadCertificate reads and validates a server certificate pair. Initial load
+// and runtime reload both use it, so replacement files cannot enter service
+// under weaker rules than the startup pair.
 func LoadCertificate(certPath, keyPath string, now time.Time) (*tls.Certificate, *x509.Certificate, error) {
 	info, err := os.Stat(keyPath)
 	if err != nil {

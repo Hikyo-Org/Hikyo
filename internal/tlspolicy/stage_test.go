@@ -37,8 +37,23 @@ func TestWatchAndStageCertificatePairPropagatesRenewal(t *testing.T) {
 	sourceDir := t.TempDir()
 	destination := t.TempDir()
 	firstCert, firstKey, firstLeaf := tlstest.MintServerCert(t, "localhost")
-	sourceCert, sourceKey := tlstest.WritePair(t, sourceDir, firstCert, firstKey)
-	if err := os.Chmod(sourceKey, 0o440); err != nil {
+	firstVersion := filepath.Join(sourceDir, "..first")
+	if err := os.Mkdir(firstVersion, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, firstVersionKey := tlstest.WritePair(t, firstVersion, firstCert, firstKey)
+	if err := os.Chmod(firstVersionKey, 0o440); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Base(firstVersion), filepath.Join(sourceDir, "..data")); err != nil {
+		t.Fatal(err)
+	}
+	sourceCert := filepath.Join(sourceDir, "tls.crt")
+	sourceKey := filepath.Join(sourceDir, "tls.key")
+	if err := os.Symlink(filepath.Join("..data", "tls.crt"), sourceCert); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("..data", "tls.key"), sourceKey); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
@@ -66,14 +81,26 @@ func TestWatchAndStageCertificatePairPropagatesRenewal(t *testing.T) {
 	}
 	waitForSerial(firstLeaf.SerialNumber.String())
 	secondCert, secondKey, secondLeaf := tlstest.MintServerCert(t, "localhost")
-	if err := os.WriteFile(sourceCert, secondCert, 0o644); err != nil {
+	secondVersion := filepath.Join(sourceDir, "..second")
+	if err := os.Mkdir(secondVersion, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(sourceKey, secondKey, 0o440); err != nil {
+	secondVersionCert, secondVersionKey := tlstest.WritePair(t, secondVersion, secondCert, secondKey)
+	if err := os.Chmod(secondVersionKey, 0o440); err != nil {
 		t.Fatal(err)
 	}
 	future := time.Now().Add(time.Second)
-	if err := os.Chtimes(sourceCert, future, future); err != nil {
+	if err := os.Chtimes(secondVersionCert, future, future); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(secondVersionKey, future, future); err != nil {
+		t.Fatal(err)
+	}
+	nextData := filepath.Join(sourceDir, "..data-next")
+	if err := os.Symlink(filepath.Base(secondVersion), nextData); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(nextData, filepath.Join(sourceDir, "..data")); err != nil {
 		t.Fatal(err)
 	}
 	waitForSerial(secondLeaf.SerialNumber.String())

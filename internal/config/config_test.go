@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/Hikyo-Org/hikyo/internal/tlstest"
 )
 
 func env(pairs ...string) func(string) string {
@@ -111,9 +109,9 @@ func TestPostgresRemoteVerifiedTLSAllowed(t *testing.T) {
 
 func TestPostgresHostParamCannotBypassTLSCheck(t *testing.T) {
 	for _, dsn := range []string{
-		"postgres:///hikyo?host=remote.example.com",          // libpq-style host param
-		"postgres://u:p@/hikyo?host=10.0.0.5&sslmode=prefer", // empty authority + host param
-		"postgres:///hikyo", // no host at all (implicit PGHOST)
+		"postgres:///hikyo?host=remote.example.com",              // libpq-style host param
+		"postgres://u:p@/hikyo?host=10.0.0.5&sslmode=prefer",     // empty authority + host param
+		"postgres:///hikyo",                                      // no host at all (implicit PGHOST)
 		"postgres://u:p@localhost/hikyo?host=remote.example.com", // conflicting hosts
 		"postgres:///hikyo?host=a,b",                             // multi-host
 	} {
@@ -237,8 +235,7 @@ func TestNonLoopbackListenRequiresTrustedProxyCIDRs(t *testing.T) {
 }
 
 func TestNativeTLSConfigIsFailClosedAndSetsHTTPSOrigin(t *testing.T) {
-	certPEM, keyPEM, _ := tlstest.MintServerCert(t, "localhost")
-	certPath, keyPath := tlstest.WritePair(t, t.TempDir(), certPEM, keyPEM)
+	certPath, keyPath := "tls.crt", "tls.key"
 	base := []string{
 		"HIKYO_TLS_CERT_FILE", certPath,
 		"HIKYO_TLS_KEY_FILE", keyPath,
@@ -270,50 +267,8 @@ func TestNativeTLSConfigIsFailClosedAndSetsHTTPSOrigin(t *testing.T) {
 	}
 }
 
-func TestNativeTLSRejectsInvalidPairsAndUnsafeKeyMode(t *testing.T) {
-	certPEM, keyPEM, _ := tlstest.MintServerCert(t, "localhost")
-	_, otherKey, _ := tlstest.MintServerCert(t, "localhost")
-	certPath, keyPath := tlstest.WritePair(t, t.TempDir(), certPEM, otherKey)
-	if _, _, err := Load("server", []string{"--dev"}, env("HIKYO_TLS_CERT_FILE", certPath, "HIKYO_TLS_KEY_FILE", keyPath), nil); err == nil {
-		t.Fatal("mismatched certificate and key must refuse")
-	}
-	certPath, keyPath = tlstest.WritePair(t, t.TempDir(), certPEM, keyPEM)
-	if err := os.Chmod(keyPath, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := Load("server", []string{"--dev"}, env("HIKYO_TLS_CERT_FILE", certPath, "HIKYO_TLS_KEY_FILE", keyPath), nil); err == nil || !strings.Contains(err.Error(), "0400 or 0600") {
-		t.Fatalf("unsafe key mode: err = %v", err)
-	}
-}
-
-func TestNativeTLSRejectsExpiredCertificateAndWarnsNearExpiry(t *testing.T) {
-	now := time.Now()
-	expiredCert, expiredKey, _ := tlstest.MintServerCertWithValidity(t, now.Add(-48*time.Hour), now.Add(-time.Hour), "localhost")
-	certPath, keyPath := tlstest.WritePair(t, t.TempDir(), expiredCert, expiredKey)
-	if _, _, err := Load("server", []string{"--dev"}, env("HIKYO_TLS_CERT_FILE", certPath, "HIKYO_TLS_KEY_FILE", keyPath), nil); err == nil || !strings.Contains(err.Error(), "expired") {
-		t.Fatalf("expired certificate: err = %v", err)
-	}
-
-	soonCert, soonKey, _ := tlstest.MintServerCertWithValidity(t, now.Add(-time.Hour), now.Add(7*24*time.Hour), "localhost")
-	certPath, keyPath = tlstest.WritePair(t, t.TempDir(), soonCert, soonKey)
-	_, warnings, err := Load("server", []string{"--dev"}, env("HIKYO_TLS_CERT_FILE", certPath, "HIKYO_TLS_KEY_FILE", keyPath), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(warnings) != 1 || !strings.Contains(warnings[0], "expires within 14 days") {
-		t.Fatalf("warnings = %v", warnings)
-	}
-
-	futureCert, futureKey, _ := tlstest.MintServerCertWithValidity(t, now.Add(time.Hour), now.Add(90*24*time.Hour), "localhost")
-	certPath, keyPath = tlstest.WritePair(t, t.TempDir(), futureCert, futureKey)
-	if _, _, err := Load("server", []string{"--dev"}, env("HIKYO_TLS_CERT_FILE", certPath, "HIKYO_TLS_KEY_FILE", keyPath), nil); err == nil || !strings.Contains(err.Error(), "not valid before") {
-		t.Fatalf("future-dated certificate: err = %v", err)
-	}
-}
-
 func TestListenTransportMatrix(t *testing.T) {
-	certPEM, keyPEM, _ := tlstest.MintServerCert(t, "localhost")
-	certPath, keyPath := tlstest.WritePair(t, t.TempDir(), certPEM, keyPEM)
+	certPath, keyPath := "tls.crt", "tls.key"
 	for _, listen := range []struct {
 		name        string
 		address     string

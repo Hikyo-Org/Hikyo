@@ -5,7 +5,6 @@
 package config
 
 import (
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -18,8 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/Hikyo-Org/hikyo/internal/tlspolicy"
 )
 
 type Engine string
@@ -309,14 +306,6 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 		if (cfg.TLSCertFile == "") != (cfg.TLSKeyFile == "") {
 			return nil, nil, fmt.Errorf("HIKYO_TLS_CERT_FILE and HIKYO_TLS_KEY_FILE must be configured together")
 		}
-		var tlsLeaf *x509.Certificate
-		if cfg.TLSCertFile != "" {
-			_, leaf, err := tlspolicy.LoadCertificate(cfg.TLSCertFile, cfg.TLSKeyFile, time.Now())
-			if err != nil {
-				return nil, nil, err
-			}
-			tlsLeaf = leaf
-		}
 		if cfg.OperationalListen == cfg.Listen {
 			return nil, nil, fmt.Errorf("operational listen %q must differ from public listen", cfg.OperationalListen)
 		}
@@ -327,9 +316,6 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 		cfg.TrustedProxyCIDRs = trustedProxyCIDRs
 		if !IsLoopbackListen(cfg.Listen) && cfg.TLSCertFile == "" && len(cfg.TrustedProxyCIDRs) == 0 {
 			return nil, nil, fmt.Errorf("non-loopback plaintext listen %q requires HIKYO_TRUSTED_PROXY_CIDRS or a TLS certificate pair", cfg.Listen)
-		}
-		if tlsLeaf != nil && time.Until(tlsLeaf.NotAfter) <= 14*24*time.Hour {
-			warnings = append(warnings, fmt.Sprintf("TLS certificate expires within 14 days at %s", tlsLeaf.NotAfter.UTC().Format(time.RFC3339)))
 		}
 		if raw := getenv("HIKYO_DIRECTORY_PROXY"); raw != "" {
 			u, err := url.Parse(raw)

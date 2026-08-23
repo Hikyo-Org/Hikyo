@@ -1,12 +1,15 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -92,6 +95,20 @@ func TestCertReloaderPollsForReplacementFiles(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatal("poller did not load replacement certificate")
+}
+
+func TestCertReloaderWarnsWhenStartupCertificateNearsExpiry(t *testing.T) {
+	now := time.Now()
+	certPEM, keyPEM, _ := tlstest.MintServerCertWithValidity(t, now.Add(-time.Hour), now.Add(7*24*time.Hour), "localhost")
+	certPath, keyPath := tlstest.WritePair(t, t.TempDir(), certPEM, keyPEM)
+	var output bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&output, nil))
+	if _, err := newCertReloader(certPath, keyPath, log, time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "TLS certificate expires within 14 days") {
+		t.Fatalf("startup log = %q", output.String())
+	}
 }
 
 func TestNativeTLSBootServesHTTPSAndKeepsOpsPlaintext(t *testing.T) {

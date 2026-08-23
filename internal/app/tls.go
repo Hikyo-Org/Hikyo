@@ -34,7 +34,8 @@ type certReloader struct {
 }
 
 func newCertReloader(certPath, keyPath string, log *slog.Logger, interval time.Duration) (*certReloader, error) {
-	pair, leaf, err := tlspolicy.LoadCertificate(certPath, keyPath, time.Now())
+	now := time.Now()
+	pair, leaf, err := tlspolicy.LoadCertificate(certPath, keyPath, now)
 	if err != nil {
 		return nil, err
 	}
@@ -45,6 +46,9 @@ func newCertReloader(certPath, keyPath string, log *slog.Logger, interval time.D
 	r := &certReloader{certPath: certPath, keyPath: keyPath, log: log, interval: interval, state: state}
 	r.holder.Store(pair)
 	r.notAfter.Store(leaf.NotAfter.Unix())
+	if leaf.NotAfter.Sub(now) <= 14*24*time.Hour {
+		log.Warn("TLS certificate expires within 14 days", "not_after", leaf.NotAfter.UTC())
+	}
 	return r, nil
 }
 
