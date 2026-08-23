@@ -1,6 +1,10 @@
 #!/bin/sh
 set -eu
 
+script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
+# shellcheck disable=SC1091
+. "$script_dir/../lib/release.sh"
+
 fixture_dir=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-manifest-fixture.XXXXXX")
 trap 'rm -rf "$fixture_dir"' EXIT HUP INT TERM
 dist="$fixture_dir/dist"
@@ -71,15 +75,9 @@ trust_dir="$fixture_dir/trust"
 mkdir -p "$trust_dir"
 printf 'fixture recovery key\n' >"$trust_dir/recovery.pub"
 printf 'fixture primary key\n' >"$trust_dir/primary-1.pub"
-if command -v sha256sum >/dev/null 2>&1; then
-	recovery_sha=$(sha256sum "$trust_dir/recovery.pub" | awk '{print $1}')
-	primary_sha=$(sha256sum "$trust_dir/primary-1.pub" | awk '{print $1}')
-	manifest_sha=$(sha256sum "$dist/release-manifest.json" | awk '{print $1}')
-else
-	recovery_sha=$(shasum -a 256 "$trust_dir/recovery.pub" | awk '{print $1}')
-	primary_sha=$(shasum -a 256 "$trust_dir/primary-1.pub" | awk '{print $1}')
-	manifest_sha=$(shasum -a 256 "$dist/release-manifest.json" | awk '{print $1}')
-fi
+recovery_sha=$(sha256_file "$trust_dir/recovery.pub")
+primary_sha=$(sha256_file "$trust_dir/primary-1.pub")
+manifest_sha=$(sha256_file "$dist/release-manifest.json")
 jq -n --arg recovery_sha "$recovery_sha" --arg primary_sha "$primary_sha" '{
 	schema: "hikyo.dev/trust-root/v1",
 	recovery: {id: "recovery-1", public_key: "recovery.pub", sha256: $recovery_sha},
