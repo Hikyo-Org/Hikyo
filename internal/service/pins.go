@@ -130,7 +130,7 @@ func (s pinRetentionState) consequence(snapshotID, releasingPinID string, now ti
 	if target == nil {
 		return "", store.ErrNotFound
 	}
-	if !target.PayloadPresent {
+	if !target.PayloadPresent() {
 		return RetentionAlreadyCollected, nil
 	}
 	if s.policy.Unlimited || !target.PublishedAt.Before(now.Add(-s.policy.MaxAge)) {
@@ -230,7 +230,7 @@ func (s *Pins) Set(ctx context.Context, actor Actor, scope domain.Scope, request
 		if err != nil {
 			return err
 		}
-		if !target.PayloadPresent {
+		if !target.PayloadPresent() {
 			return collectedRevisionError(target)
 		}
 		renewing := existingErr == nil && existing.Revision == target.Revision

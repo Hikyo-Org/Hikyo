@@ -135,7 +135,7 @@ func (s *Revisions) History(ctx context.Context, actor Actor, scope domain.Scope
 				Revision: snapshot.Revision, SchemaRevision: snapshot.SchemaRevision,
 				PublishedBy: snapshot.PublishedBy, PublishedAt: snapshot.PublishedAt,
 				ChangedKeys:    changedKeys(changes),
-				PayloadPresent: snapshot.PayloadPresent, CollectedPolicy: collectedPolicy(snapshot),
+				PayloadPresent: snapshot.PayloadPresent(), CollectedPolicy: snapshot.CollectionPolicy(),
 			})
 		}
 		return nil
@@ -212,8 +212,8 @@ func (s *Revisions) Show(ctx context.Context, actor Actor, scope domain.Scope, r
 				Revision: snapshot.Revision, SchemaRevision: snapshot.SchemaRevision,
 				PublishedBy: snapshot.PublishedBy, PublishedAt: snapshot.PublishedAt,
 				ChangedKeys:     changedKeys(changes),
-				PayloadPresent:  snapshot.PayloadPresent,
-				CollectedPolicy: snapshot.CollectedPolicy,
+				PayloadPresent:  snapshot.PayloadPresent(),
+				CollectedPolicy: snapshot.CollectionPolicy(),
 			},
 			ChangeToken: token,
 			Keys:        keys,
@@ -235,20 +235,10 @@ func readSnapshot(ctx context.Context, snapshots store.SnapshotReader, p authz.P
 	return snapshots.AtRevision(ctx, p, revision)
 }
 
-// collectedPolicy reports the stamped policy only for a collected payload. A
-// live snapshot carries whatever the column defaulted to, and reporting that as
-// "the policy that collected this" would be a fact about nothing.
-func collectedPolicy(snapshot store.Snapshot) string {
-	if snapshot.PayloadPresent {
-		return ""
-	}
-	return snapshot.CollectedPolicy
-}
-
 func collectedRevisionError(snapshot store.Snapshot) error {
 	return &domain.CollectedRevisionError{
 		Revision: snapshot.Revision,
-		Policy:   snapshot.CollectedPolicy,
+		Policy:   snapshot.CollectionPolicy(),
 	}
 }
 

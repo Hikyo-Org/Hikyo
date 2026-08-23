@@ -92,17 +92,36 @@ type NewPendingChange struct {
 // header. It carries the pinned schema revision; it deliberately carries no
 // change token, which is derived from the current root token key at read.
 type Snapshot struct {
-	ID              string
-	OrgID           string
-	ProjectID       string
-	EnvironmentID   string
-	Revision        int64
-	SchemaRevision  int64
-	PublishedBy     string
-	PublishedAt     time.Time
-	PayloadPresent  bool
-	CollectedAt     *time.Time
-	CollectedPolicy string
+	ID             string
+	OrgID          string
+	ProjectID      string
+	EnvironmentID  string
+	Revision       int64
+	SchemaRevision int64
+	PublishedBy    string
+	PublishedAt    time.Time
+	// Collected is nil while the snapshot payload is live. Collection time and
+	// policy travel together so callers cannot observe or construct only one
+	// part of the durable collection state.
+	Collected *SnapshotCollection
+}
+
+// SnapshotCollection is the indivisible marker stamped when retention removes
+// a snapshot's payload.
+type SnapshotCollection struct {
+	At     time.Time
+	Policy string
+}
+
+// PayloadPresent reports whether retention has not collected the payload.
+func (s Snapshot) PayloadPresent() bool { return s.Collected == nil }
+
+// CollectionPolicy reports the stamped policy only for a collected payload.
+func (s Snapshot) CollectionPolicy() string {
+	if s.Collected == nil {
+		return ""
+	}
+	return s.Collected.Policy
 }
 
 // NewSnapshot carries the caller-suppliable fields of a snapshot insert.

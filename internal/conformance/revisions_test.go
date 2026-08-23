@@ -39,6 +39,7 @@ func init() {
 	corpus = append(corpus,
 		scenario{"publish_is_serialized_per_project", scenarioPublishSerialization},
 		scenario{"selective_publish_closes_over_key_groups", scenarioSelectivePublish},
+		scenario{"revision_list_detail_collection_state_agrees", scenarioRevisionListDetailCollectionParity},
 		scenario{"rotate_token_key_moves_only_the_token", scenarioRotateTokenKey},
 		scenario{"publish_recomputes_signals_for_touched_environments", scenarioPublishSignals},
 		scenario{"pending_draft_preview_is_owner_filtered_and_classification_safe", scenarioPendingDraftPreview},
@@ -58,6 +59,33 @@ func init() {
 		scenario{"pin_lifecycle_quota_and_expiry_refusals_by_name", scenarioPinLifecycle},
 		scenario{"delivery_retry_clears_rolled_back_pin_metadata", scenarioDeliveryRetryClearsPinMetadata},
 	)
+}
+
+func scenarioRevisionListDetailCollectionParity(t *testing.T, db *store.DB) {
+	who, scope, values, envs, keys := valueFixture(t, db, "revisionparity")
+	actor := service.LocalPrincipal(who)
+	dev := mustEnv(t, envs, actor, scope, "dev")
+	mustKey(t, keys, actor, scope, "PARITY", string(schema.Config), schema.DefaultPresenceRules())
+	publishValue(t, db, values, actor, dev, "PARITY", "value")
+
+	revisions := revisionSvc(t, db)
+	history, err := revisions.History(t.Context(), actor, dev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) == 0 {
+		t.Fatal("history is empty after publish")
+	}
+	detail, err := revisions.Show(t.Context(), actor, dev, history[0].Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.PayloadPresent != history[0].PayloadPresent || detail.CollectedPolicy != history[0].CollectedPolicy {
+		t.Fatalf("list/detail collection state disagrees: list=%+v detail=%+v", history[0], detail.RevisionView)
+	}
+	if !detail.PayloadPresent || detail.CollectedPolicy != "" {
+		t.Fatalf("live revision collection state = present %t policy %q, want true and empty", detail.PayloadPresent, detail.CollectedPolicy)
+	}
 }
 
 func scenarioAdapterCrashReservationRelease(t *testing.T, db *store.DB) {
