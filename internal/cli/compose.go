@@ -1897,10 +1897,19 @@ func isUnrevealedSecret(k apigen.DeliveredKey) bool {
 func liveRenderInput(cfg *compose.Config, configOnly bool, keys []apigen.DeliveredKey) compose.RenderInput {
 	rows := make([]compose.RenderSourceRow, 0, len(keys))
 	for _, key := range keys {
-		rows = append(rows, compose.RenderSourceRow{
-			KeyID: key.KeyId, Name: key.Name, Classification: string(key.Classification), Value: key.Value,
-			UnrevealedSecret: !configOnly && isUnrevealedSecret(key),
-		})
+		row := compose.RenderSourceRow{
+			KeyID: key.KeyId, Name: key.Name, Classification: string(key.Classification),
+		}
+		switch {
+		case !configOnly && isUnrevealedSecret(key):
+			row.State = compose.RenderRowUnrevealedSecret
+		case key.Value == nil:
+			row.State = compose.RenderRowNoValue
+		default:
+			row.State = compose.RenderRowValued
+			row.Value = *key.Value
+		}
+		rows = append(rows, row)
 	}
 	return renderInput(cfg, configOnly, compose.AbsentKeyRefuseNotDelivered, rows)
 }
@@ -1908,19 +1917,17 @@ func liveRenderInput(cfg *compose.Config, configOnly bool, keys []apigen.Deliver
 func offlineRenderInput(cfg *compose.Config, configOnly bool, rows []compose.SnapshotRow) compose.RenderInput {
 	sourceRows := make([]compose.RenderSourceRow, 0, len(rows))
 	for _, row := range rows {
-		value := row.Value
 		sourceRows = append(sourceRows, compose.RenderSourceRow{
-			KeyID: row.KeyID, Name: row.Name, Classification: row.Classification, Value: &value,
+			KeyID: row.KeyID, Name: row.Name, Classification: row.Classification,
+			State: compose.RenderRowValued, Value: row.Value,
 		})
 	}
 	return renderInput(cfg, configOnly, compose.AbsentKeyRefuseNotInSnapshot, sourceRows)
 }
 
 func renderInput(cfg *compose.Config, configOnly bool, fullProjectionPolicy compose.AbsentKeyPolicy, rows []compose.RenderSourceRow) compose.RenderInput {
-	projection := compose.RenderProjectionFull
 	absentKeys := fullProjectionPolicy
 	if configOnly {
-		projection = compose.RenderProjectionConfigOnly
 		absentKeys = compose.AbsentKeySkip
 	}
 	targets := make([]compose.RenderTarget, 0, len(cfg.Targets))
@@ -1931,7 +1938,7 @@ func renderInput(cfg *compose.Config, configOnly bool, fullProjectionPolicy comp
 			AcknowledgeLoaderControl: append([]string(nil), target.AcknowledgeLoaderControl...),
 		})
 	}
-	return compose.RenderInput{Projection: projection, AbsentKeys: absentKeys, Targets: targets, Rows: rows}
+	return compose.RenderInput{AbsentKeys: absentKeys, Targets: targets, Rows: rows}
 }
 
 func renderRefusalMessages(refusals []compose.RenderRefusal) []string {
