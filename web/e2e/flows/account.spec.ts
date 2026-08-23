@@ -7,6 +7,7 @@ import {
   BASE_URL,
   installPasskeyAuthenticator,
   nextTotpCode,
+  OIDC_PROVIDER,
   refreshSharedSession,
   STORAGE_STATE,
 } from '../fixtures/instance.ts';
@@ -61,9 +62,14 @@ test.describe('account and security', () => {
       sessions.getByRole('button', { name: /^Revoke the browser session/ }).first(),
     ).toBeVisible();
 
-    // No identity provider is configured on this instance, so linking is
-    // absent with the reason rather than offered and refused.
-    await expect(page.locator('#account-identities')).toContainText('This instance has none');
+    // The OIDC disclosure fixture configures and links one real provider. The
+    // account surface must report that live state and retain the link affordance
+    // for the configured provider instead of rendering the old empty claim.
+    const identities = page.locator('#account-identities');
+    await expect(identities.getByRole('listitem').first()).toContainText('subject user');
+    await expect(
+      identities.getByRole('button', { name: `Link ${OIDC_PROVIDER.displayName}` }),
+    ).toBeVisible();
   });
 
   test('keeps factor and provider empty claims hidden while their reads are pending', async ({
