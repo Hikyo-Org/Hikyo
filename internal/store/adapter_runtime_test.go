@@ -796,6 +796,47 @@ func TestAdapterClaimDueReplaysExpiredLeaseOnly(t *testing.T) {
 	}
 }
 
+func TestAdapterStampsCompareLexicallyAcrossBridges(t *testing.T) {
+	db := adapterRuntimeDB(t)
+	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('gr_adapter','usr_adapter','manage-adapters','org_adapter','prj_adapter',NULL,'2026-08-17T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+
+	repoTime := time.Date(2026, time.August, 17, 12, 34, 5, 0, time.UTC)
+	runtimeTime := repoTime.Add(500 * time.Microsecond)
+	scope := domain.Scope{Org: "org_adapter", Project: "prj_adapter"}
+	var repoJob store.AdapterEnqueueResult
+	if err := storetx.Write(t.Context(), db, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
+		proof, err := az.Authorize(ctx, authz.Identity{Principal: "usr_adapter"}, authz.OpAdapterSync, scope)
+		if err != nil {
+			return err
+		}
+		repoJob, err = repos.Adapters().EnqueueManual(ctx, proof, "tgt_1", "usr_adapter", repoTime)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	runtimeJob, err := store.NewAdapterRuntime(db, nil).Enqueue(t.Context(), adapter.Job{
+		OrgID: "org_adapter", ProjectID: "prj_adapter", EnvironmentID: "env_adapter", TargetID: "tgt_1",
+		Kind: adapter.Converge, AuthorityPrincipal: "usr_adapter",
+	}, runtimeTime)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var repoStamp, runtimeStamp string
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT next_attempt_at FROM adapter_outbox WHERE id=?`, repoJob.JobID).Scan(&repoStamp); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT next_attempt_at FROM adapter_outbox WHERE id=?`, runtimeJob.ID).Scan(&runtimeStamp); err != nil {
+		t.Fatal(err)
+	}
+	if repoStamp >= runtimeStamp {
+		t.Fatalf("timestamp order disagrees with wall clock: repo=%q runtime=%q", repoStamp, runtimeStamp)
+	}
+}
+
 func TestAdapterGateRechecksAuthorityAndGeneration(t *testing.T) {
 	db := adapterRuntimeDB(t)
 	authorized := true
