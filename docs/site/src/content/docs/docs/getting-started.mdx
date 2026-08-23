@@ -14,15 +14,17 @@ SQLite database, and one administrator account.
 ## Prerequisites
 
 - Go 1.26.2 or newer within the Go 1.26 line.
-- Node.js 24, matching the repository's `.nvmrc`.
-- Corepack with pnpm 11.10.0.
+- Node.js 26.7.0, matching the repository's `.nvmrc`.
+- Corepack 0.35.0 with pnpm 11.10.0.
 
 ## 1. Clone and build
 
 ```bash
 git clone https://github.com/Hikyo-Org/Hikyo.git
 cd hikyo
+npm install --global --ignore-scripts corepack@0.35.0
 corepack enable
+corepack install --global pnpm@11.10.0
 pnpm --dir clients/ts install --frozen-lockfile
 pnpm --dir web install --frozen-lockfile
 pnpm --dir web build

@@ -240,8 +240,8 @@ jobs:
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         with:
           node-version-file: .nvmrc
-      - name: Enable pnpm
-        run: corepack enable
+      - name: Install Corepack and enable pnpm
+        run: ./scripts/ci/install-corepack.sh
       - name: Verify and build the SPA
         run: ./scripts/ci/build-spa.sh --verify
       - name: Build the release-shaped app
@@ -321,8 +321,8 @@ jobs:
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         with:
           node-version-file: .nvmrc
-      - name: Enable pnpm
-        run: corepack enable
+      - name: Install Corepack and enable pnpm
+        run: ./scripts/ci/install-corepack.sh
       # Keep this small build parallel with app-build. Serial reuse saves one
       # sub-second Vite build but delays all six GoReleaser targets behind the
       # native browser binary and frontend validation.
@@ -455,8 +455,8 @@ jobs:
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         with:
           node-version-file: .nvmrc
-      - name: Enable pnpm
-        run: corepack enable
+      - name: Install Corepack and enable pnpm
+        run: ./scripts/ci/install-corepack.sh
       - name: Install (frozen lockfile)
         working-directory: clients/ts
         run: pnpm install --frozen-lockfile
@@ -600,8 +600,8 @@ jobs:
           key: go-web-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: |
             go-web-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
-      - name: Enable pnpm
-        run: corepack enable
+      - name: Install Corepack and enable pnpm
+        run: ./scripts/ci/install-corepack.sh
 
       # The SPA consumes clients/ts generated sources through aliases, so the
       # generated Zod schemas resolve `zod` from clients/ts's own node_modules
