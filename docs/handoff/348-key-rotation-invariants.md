@@ -34,7 +34,9 @@ finding `F-S05-1`). Implementation base:
 rtk go test -count=1 ./internal/store -run '^TestKeyRotationInvariantsSQLite$'
                                                         11 passed
 rtk go test -count=1 ./internal/store                   58 passed
-rtk go vet ./internal/store                             passed
+rtk go test -count=1 ./...                 3,541 passed / 61 packages
+rtk go vet ./...                                        passed
+rtk gofmt -l <changed-go-files>                         clean
 rtk git diff --check                                    clean
 ```
 
