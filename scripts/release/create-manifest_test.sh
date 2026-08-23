@@ -33,11 +33,17 @@ jq -n '{
 printf '{"spdxVersion":"SPDX-2.3"}\n' >"$dist/hikyo-source.spdx.json"
 printf '{"spdxVersion":"SPDX-2.3"}\n' >"$dist/hikyo-image.spdx.json"
 printf 'installer\n' >"$dist/install.sh"
-printf '{"critical":{"identity":{"docker-reference":"ghcr.io/hikyo-org/hikyo"},"image":{"docker-manifest-digest":"sha256:%064d"},"type":"cosign container image signature"},"optional":null}\n' 1 >"$dist/image-index.oci-payload.json"
-printf '{"critical":{"identity":{"docker-reference":"ghcr.io/hikyo-org/charts/hikyo"},"image":{"docker-manifest-digest":"sha256:%064d"},"type":"cosign container image signature"},"optional":null}\n' 2 >"$dist/chart-index.oci-payload.json"
+image_digest=sha256:1111111111111111111111111111111111111111111111111111111111111111
+chart_digest=sha256:2222222222222222222222222222222222222222222222222222222222222222
+jq -nc --arg digest "$image_digest" \
+	'{critical:{identity:{"docker-reference":"ghcr.io/hikyo-org/hikyo"},image:{"docker-manifest-digest":$digest},type:"cosign container image signature"},optional:null}' \
+	>"$dist/image-index.oci-payload.json"
+jq -nc --arg digest "$chart_digest" \
+	'{critical:{identity:{"docker-reference":"ghcr.io/hikyo-org/charts/hikyo"},image:{"docker-manifest-digest":$digest},type:"cosign container image signature"},optional:null}' \
+	>"$dist/chart-index.oci-payload.json"
 mkdir -p "$fixture_dir/hikyo"
 printf 'name: hikyo\nversion: 0.1.0\nappVersion: 0.1.0\n' >"$fixture_dir/hikyo/Chart.yaml"
-printf 'image:\n  repository: ghcr.io/hikyo-org/hikyo\n  digest: sha256:%064d\n' 1 \
+printf 'image:\n  repository: ghcr.io/hikyo-org/hikyo\n  digest: %s\n' "$image_digest" \
 	>"$fixture_dir/hikyo/values.yaml"
 tar -czf "$dist/hikyo-0.1.0.tgz" -C "$fixture_dir" hikyo
 printf '{"commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","key_id":"primary-1","public_key":"primary-1.pub","sequence":7,"version":"0.1.0"}\n' \
@@ -45,9 +51,9 @@ printf '{"commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","key_id":"primary-1
 
 "$(dirname "$0")/create-manifest.sh" \
 	"$dist/release-candidate.json" ghcr.io/hikyo-org/hikyo \
-	sha256:1111111111111111111111111111111111111111111111111111111111111111 \
+	"$image_digest" \
 	ghcr.io/hikyo-org/charts/hikyo \
-	sha256:2222222222222222222222222222222222222222222222222222222222222222 \
+	"$chart_digest" \
 	"$dist" >/dev/null
 
 jq -e '
@@ -119,9 +125,9 @@ jq '.source_commit = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' \
 cp "$fixture_dir/wrong-commit.json" "$dist/binary-provenance.json"
 if "$(dirname "$0")/create-manifest.sh" \
 	"$dist/release-candidate.json" ghcr.io/hikyo-org/hikyo \
-	sha256:1111111111111111111111111111111111111111111111111111111111111111 \
+	"$image_digest" \
 	ghcr.io/hikyo-org/charts/hikyo \
-	sha256:2222222222222222222222222222222222222222222222222222222222222222 \
+	"$chart_digest" \
 	"$dist" >"$fixture_dir/wrong-commit.out" 2>"$fixture_dir/wrong-commit.err"
 then
 	printf 'manifest fixture: mismatched binary candidate unexpectedly accepted\n' >&2

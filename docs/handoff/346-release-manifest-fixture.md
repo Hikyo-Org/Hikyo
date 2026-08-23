@@ -20,11 +20,15 @@ finding `F-S36-2`). Fixed point before this work:
 ## Validation
 
 - `git diff --check`: passed before the initial push.
-- Focused and full local checks are deferred until host memory pressure drops.
-- PR #400 exact-head CI started at commit `1b186e3`.
+- `scripts/release/create-manifest_test.sh`: passed; producer output completed
+  verifier checks with only cosign cryptography stubbed.
+- `scripts/release/test-fixtures.sh`: local start blocked because `cosign` is
+  not installed; CI installs its pinned cosign version before this fixture.
+- PR #400 exact-head CI is the full release-fixture gate.
 
 ## Review
 
 - Spec round 1: `CLEAN`.
 - Standards round 1 found this missing handoff and a duplicated SHA helper;
   both were added or replaced with the release library owner.
+- Standards and spec round 2: `CLEAN`.
