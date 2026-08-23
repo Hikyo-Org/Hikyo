@@ -1463,14 +1463,12 @@ func (c commonFlags) checkNoPositionals(verb string) error {
 
 // parseCommon parses the per-dimension flags every server-mediated verb takes.
 func parseCommon(name string, ios IO, args []string, extra func(*flag.FlagSet)) (*State, commonFlags, error) {
-	operation := AuthOperation(name)
-	kinds, err := authKindsFor(operation)
+	c, err := commonFlagsForOperation(name)
 	if err != nil {
 		return nil, commonFlags{}, err
 	}
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(ios.Stderr)
-	c := commonFlags{operation: operation, kinds: kinds}
 	fs.StringVar(&c.Context, "context", "", "named context to select for this invocation")
 	fs.StringVar(&c.Instance, "instance", "", "instance reference")
 	fs.StringVar(&c.Org, "org", "", "organisation")
@@ -1494,6 +1492,15 @@ func parseCommon(name string, ios IO, args []string, extra func(*flag.FlagSet)) 
 		return nil, commonFlags{}, err
 	}
 	return st, c, nil
+}
+
+func commonFlagsForOperation(name string) (commonFlags, error) {
+	operation := AuthOperation(name)
+	kinds, err := authKindsFor(operation)
+	if err != nil {
+		return commonFlags{}, err
+	}
+	return commonFlags{operation: operation, kinds: kinds}, nil
 }
 
 // authenticatedClient resolves the instance and its stored artifact.

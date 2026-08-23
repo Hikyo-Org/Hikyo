@@ -57,7 +57,23 @@ func TestEveryAuthOperationReachesItsRule(t *testing.T) {
 	original := operationAuthKinds
 	t.Cleanup(func() { operationAuthKinds = original })
 
-	operations := slices.Sorted(maps.Keys(original))
+	operations := documentedLeafOperations(t)
+	operationSet := make(map[AuthOperation]bool, len(operations))
+	for _, operation := range operations {
+		operationSet[operation] = true
+		if _, ok := original[operation]; !ok {
+			t.Errorf("documented CLI leaf %q has no authentication-kind rule", operation)
+		}
+	}
+	for operation := range original {
+		if !operationSet[operation] {
+			t.Errorf("authentication-kind rule %q has no documented CLI leaf", operation)
+		}
+	}
+	if t.Failed() {
+		t.FailNow()
+	}
+
 	for _, operation := range operations {
 		t.Run(string(operation), func(t *testing.T) {
 			// These leaves are local or terminal refusals. They deliberately do not
@@ -65,16 +81,7 @@ func TestEveryAuthOperationReachesItsRule(t *testing.T) {
 			// that the auth table's spelling reaches the declared leaf.
 			if operationDoesNotParseCommon(operation) {
 				var stderr bytes.Buffer
-				stateDir := t.TempDir()
-				code := Run(t.Context(), IO{
-					Stdout: &bytes.Buffer{}, Stderr: &stderr,
-					Env: Env{Getenv: func(key string) string {
-						if key == "HIKYO_STATE_DIR" {
-							return stateDir
-						}
-						return ""
-					}}, Workdir: t.TempDir(),
-				}, strings.Fields(string(operation)))
+				code := Run(t.Context(), authOperationTestIO(t, &stderr), strings.Fields(string(operation)))
 				if strings.Contains(stderr.String(), "unknown ") {
 					t.Fatalf("%s did not reach its declared leaf: exit=%d stderr=%q", operation, code, stderr.String())
 				}
@@ -102,16 +109,7 @@ func TestEveryAuthOperationReachesItsRule(t *testing.T) {
 				args = append(args, "binding_1", "credential_1")
 			}
 			var stderr bytes.Buffer
-			stateDir := t.TempDir()
-			code := Run(t.Context(), IO{
-				Stdout: &bytes.Buffer{}, Stderr: &stderr,
-				Env: Env{Getenv: func(key string) string {
-					if key == "HIKYO_STATE_DIR" {
-						return stateDir
-					}
-					return ""
-				}}, Workdir: t.TempDir(),
-			}, args)
+			code := Run(t.Context(), authOperationTestIO(t, &stderr), args)
 			want := "hikyo " + string(operation) + " has no authentication-kind rule"
 			wantCode := ExitInternal
 			if operation == "definitions check" {
@@ -123,6 +121,58 @@ func TestEveryAuthOperationReachesItsRule(t *testing.T) {
 				t.Fatalf("%s reached exit=%d stderr=%q, want exit=%d containing %q", operation, code, stderr.String(), wantCode, want)
 			}
 		})
+	}
+}
+
+func documentedLeafOperations(t *testing.T) []AuthOperation {
+	t.Helper()
+	var usage bytes.Buffer
+	Usage(&usage)
+	operations := map[AuthOperation]bool{
+		// The scanning-key rotation is intentionally documented by its locked
+		// ADR rather than the already-frozen help snapshot.
+		"rotate-scanning-key": true,
+	}
+	for _, line := range strings.Split(usage.String(), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "hikyo ") {
+			continue
+		}
+		command := strings.TrimPrefix(line, "hikyo ")
+		if description := strings.Index(command, "  "); description >= 0 {
+			command = command[:description]
+		}
+		fields := strings.Fields(command)
+		path := make([]string, 0, len(fields))
+		for _, field := range fields {
+			if strings.ContainsAny(field[:1], "-[(<") {
+				break
+			}
+			path = append(path, field)
+		}
+		if len(path) == 0 {
+			continue
+		}
+		choices := strings.Split(path[len(path)-1], "|")
+		for _, choice := range choices {
+			leaf := append(slices.Clone(path[:len(path)-1]), choice)
+			operations[AuthOperation(strings.Join(leaf, " "))] = true
+		}
+	}
+	return slices.Sorted(maps.Keys(operations))
+}
+
+func authOperationTestIO(t *testing.T, stderr *bytes.Buffer) IO {
+	t.Helper()
+	stateDir := t.TempDir()
+	return IO{
+		Stdout: &bytes.Buffer{}, Stderr: stderr,
+		Env: Env{Getenv: func(key string) string {
+			if key == "HIKYO_STATE_DIR" {
+				return stateDir
+			}
+			return ""
+		}}, Workdir: t.TempDir(),
 	}
 }
 
