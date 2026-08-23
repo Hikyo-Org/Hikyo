@@ -25,13 +25,17 @@ import { surfacesForFlow } from '../registry.ts';
 
 /** openNav reveals the sidebar, which is a disclosure on a phone. */
 async function openNav(page: Page): Promise<void> {
-  const toggle = page.getByRole('button', { name: 'Menu' });
-  if (await toggle.isVisible()) {
-    if ((await toggle.getAttribute('aria-expanded')) !== 'true') {
-      await toggle.click();
-    }
+  const navigation = page.getByRole('navigation', { name: 'Sections', exact: true });
+  if (await navigation.isVisible()) {
+    return;
   }
-  await expect(page.getByRole('navigation', { name: 'Sections', exact: true })).toBeVisible();
+
+  const toggle = page.getByRole('button', { name: 'Menu' });
+  await expect(toggle).toBeVisible();
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') {
+    await toggle.click();
+  }
+  await expect(navigation).toBeVisible();
 }
 
 test.describe('app chrome', () => {
@@ -93,6 +97,10 @@ test.describe('app chrome', () => {
   // the empty-state rendering, while the real creator-membership path is
   // covered by the instance-administration flow.
   test('shows the zero-organisation state rather than an empty rail', async ({ page }) => {
+    await page.route('**/api/v1/auth/whoami', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      await route.continue();
+    });
     await page.route('**/api/v1/me/orgs', (route) =>
       route.fulfill({
         status: 200,
