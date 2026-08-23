@@ -126,10 +126,7 @@ func (s *Definitions) Apply(ctx context.Context, actor Actor, scope domain.Scope
 		// § 151 schema-revision rate: charged only for a non-empty plan (the
 		// empty-plan no-op returned above), once across the retry loop — see
 		// Keys.UpdateMetadata.
-		if err := s.Budget.chargeOnce(&rateCharged, budgetSchemaRevision, budgetKeys{Project: scope.Project}); err != nil {
-			return err
-		}
-		if err := r.Catalogue().BumpSchemaRevision(ctx, p); err != nil {
+		if err := bumpSchemaRevision(ctx, r, p, s.Budget, &rateCharged, scope.Project); err != nil {
 			return err
 		}
 		newRevision, err := r.Catalogue().SchemaRevision(ctx, p)
