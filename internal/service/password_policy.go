@@ -2,7 +2,6 @@ package service
 
 import (
 	_ "embed"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -61,7 +60,12 @@ func commonList() map[string]struct{} {
 // floor it is loud and specific: this is the caller's own input, evaluated
 // before anything is looked up, so naming the rule helps the human and
 // reveals nothing about what exists.
-var ErrCommonPassword = errors.New("that password appears in a list of commonly used passwords; choose another")
+var ErrCommonPassword = passwordPolicyError("that password appears in a list of commonly used passwords; choose another")
+
+type passwordPolicyError string
+
+func (e passwordPolicyError) Error() string    { return string(e) }
+func (passwordPolicyError) SafeDetail() string { return "password" }
 
 // CheckPassword applies the whole policy.
 func CheckPassword(password string) error {

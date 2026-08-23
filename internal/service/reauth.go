@@ -43,6 +43,37 @@ var (
 	ErrReauthWindowSpent = errors.New("service: this reauthentication has already been spent")
 )
 
+type reauthWindowBindingKind uint8
+
+const (
+	reauthWindowUnbound reauthWindowBindingKind = iota + 1
+	reauthWindowOperationBound
+	reauthWindowAdapterBound
+)
+
+// windowBindingKind parses the four persisted binding columns as one closed
+// shape. Rows outside these three modes are corrupt or contradictory and must
+// never inherit unbound-window authority through a partial string match.
+func windowBindingKind(w authz.ReauthWindow) (reauthWindowBindingKind, reauthIntentBinding, error) {
+	binding := reauthIntentBinding{
+		purpose:        ReauthPurpose(w.BoundPurpose),
+		operation:      authz.Operation(w.BoundOperation),
+		environmentID:  w.EnvironmentID,
+		keySet:         w.BoundKeySet,
+		environmentSet: w.BoundEnvironmentSet,
+	}
+	switch {
+	case w.BoundPurpose == "" && w.BoundOperation == "" && w.BoundKeySet == "" && w.BoundEnvironmentSet == "":
+		return reauthWindowUnbound, binding, nil
+	case w.BoundPurpose == "" && w.BoundOperation != "" && w.BoundEnvironmentSet == "":
+		return reauthWindowOperationBound, binding, nil
+	case w.BoundPurpose != "" && w.BoundOperation != "" && w.BoundKeySet == "" && w.BoundEnvironmentSet != "":
+		return reauthWindowAdapterBound, binding, nil
+	default:
+		return 0, reauthIntentBinding{}, fmt.Errorf("%w: invalid reauthentication window binding", ErrReauthUnitMismatch)
+	}
+}
+
 // ConsumeReauthWindow is the disclosure-time half of the reauthentication gate.
 // It runs inside the disclosure's own transaction; the future reveal path calls
 // it before disclosing the enumerated keys in one environment.
@@ -115,19 +146,25 @@ func (s *Auth) consumeReauthWindow(ctx context.Context, az *authz.TxAuthorizer, 
 	if w.CredentialEpoch != epoch || !now.Before(w.HardExpiresAt) || !now.Before(w.WindowExpiresAt) {
 		return ErrReauthWindowExpired
 	}
-	// The exact binding, consumed rather than merely stored. An unnamed
-	// operation ("" — every caller that has no operation-scoped consent to
-	// present) can never equal a bound one, so a bound window fails closed for
-	// it rather than being treated as unbound.
-	if w.BoundPurpose != "" || w.BoundEnvironmentSet != "" {
-		if w.BoundPurpose != string(binding.purpose) || string(binding.operation) != w.BoundOperation ||
-			w.BoundKeySet != binding.keySet || w.BoundEnvironmentSet != binding.environmentSet {
+	// Classify all four persisted columns together before applying the mode's
+	// policy. A partial row cannot fall through as an unbound window.
+	kind, windowBinding, err := windowBindingKind(w)
+	if err != nil {
+		return err
+	}
+	switch kind {
+	case reauthWindowUnbound:
+	case reauthWindowOperationBound:
+		if binding.operation != windowBinding.operation || binding.keySet != windowBinding.keySet {
 			return ErrReauthUnitMismatch
 		}
-	} else if w.BoundOperation != "" {
-		if string(binding.operation) != w.BoundOperation || w.BoundKeySet != binding.keySet {
+	case reauthWindowAdapterBound:
+		if binding.purpose != windowBinding.purpose || binding.operation != windowBinding.operation ||
+			binding.environmentSet != windowBinding.environmentSet {
 			return ErrReauthUnitMismatch
 		}
+	default:
+		return ErrReauthUnitMismatch
 	}
 	if w.SingleDecision {
 		// The unit is fixed before the ceremony and cannot grow after it, and it

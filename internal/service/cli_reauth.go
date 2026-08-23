@@ -369,13 +369,22 @@ func (s *Auth) ApproveCLIReauth(ctx context.Context, actor Actor, state string) 
 			if effective <= 0 && (w.FactorClass != "webauthn" || !w.SingleDecision) {
 				return captureCLIReauthFailure(ctx, az, "approve", detail, "reauth_required", ErrReauthRequired)
 			}
+			kind, windowBinding, bindingErr := windowBindingKind(w)
+			if bindingErr != nil {
+				if adapter {
+					return captureCLIReauthFailure(ctx, az, "approve", detail, "reauth_required", ErrReauthRequired)
+				}
+				return captureCLIReauthFailure(ctx, az, "approve", detail, "reauth_required", ErrReauthUnitMismatch)
+			}
 			if !adapter {
 				// The browser ran the disclosure ceremony: a single-decision
 				// passkey window carries its ceremony's pinned (purpose,
 				// environment, key set) binding, which must equal the handoff's
 				// unit byte-exact; a sliding window is unbound by construction and
-				// is accepted as the environment-wide consent it is.
-				if w.BoundPurpose != "" || w.BoundEnvironmentSet != "" {
+				// is accepted as the environment-wide consent it is. An
+				// operation-bound window belongs to its original step-up and cannot
+				// be widened into a CLI handoff.
+				if kind != reauthWindowUnbound {
 					return captureCLIReauthFailure(ctx, az, "approve", detail, "reauth_required", ErrReauthUnitMismatch)
 				}
 				if w.SingleDecision {
@@ -387,7 +396,8 @@ func (s *Auth) ApproveCLIReauth(ctx context.Context, actor Actor, state string) 
 						return captureCLIReauthFailure(ctx, az, "approve", detail, "reauth_required", ErrReauthUnitMismatch)
 					}
 				}
-			} else if w.BoundPurpose != string(binding.purpose) || w.BoundOperation != string(binding.operation) || w.BoundEnvironmentSet != binding.environmentSet {
+			} else if kind != reauthWindowAdapterBound || windowBinding.purpose != binding.purpose ||
+				windowBinding.operation != binding.operation || windowBinding.environmentSet != binding.environmentSet {
 				return captureCLIReauthFailure(ctx, az, "approve", detail, "reauth_required", ErrReauthRequired)
 			}
 			if w.SingleDecision {
