@@ -71,41 +71,11 @@ recovery_key="$root_dir/$recovery_name"
 [ -f "$recovery_key" ] || fail "missing recovery public key $recovery_name"
 [ "$(sha256_file "$recovery_key")" = "$recovery_sha" ] || fail 'recovery public-key hash mismatch'
 
+validate_trust_metadata "$metadata" >/dev/null 2>&1 || fail 'invalid trust metadata'
 jq -e --arg recovery_id "$recovery_id" --arg recovery_sha "$recovery_sha" '
-	. as $metadata |
-	.event.type as $event_type |
-	.schema == "hikyo.dev/trust-metadata/v1" and
-	((.sequence | type) == "number") and .sequence >= 1 and (.sequence | floor) == .sequence and
 	.recovery.id == $recovery_id and
 	.recovery.sha256 == $recovery_sha and
-	.event.signed_by == $recovery_id and
-	(["bootstrap", "release-candidate", "release", "rotation", "revocation"] | index($event_type)) != null and
-	(.primary_keys | type == "array" and length > 0) and
-	(.releases | type == "array") and
-	([.releases[].version] | unique | length) == (.releases | length) and
-	([.releases[].sequence] | unique | length) == (.releases | length) and
-	(if $event_type == "bootstrap" and (.releases | length) == 0 then
-		.sequence == 1 and
-		.highest_release == null and
-		.highest_release_sequence == null and
-		(.pending_release.version | type == "string" and test("^[0-9]+\\.[0-9]+\\.[0-9]+([+-][0-9A-Za-z.-]+)?$")) and
-		.pending_release.sequence == 1 and
-		.pending_release.manifest_sha256 == ("0" * 64)
-	else
-		(.highest_release | type == "string" and test("^[0-9]+\\.[0-9]+\\.[0-9]+([+-][0-9A-Za-z.-]+)?$")) and
-		((.highest_release_sequence | type) == "number") and .highest_release_sequence >= 1 and
-		(.highest_release_sequence | floor) == .highest_release_sequence and
-		(.releases | length) > 0 and
-		all(.releases[]; .manifest_sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
-		(.pending_release == null or (
-			(.pending_release.version | type == "string" and test("^[0-9]+\\.[0-9]+\\.[0-9]+([+-][0-9A-Za-z.-]+)?$")) and
-			((.pending_release.sequence | type) == "number") and
-			(.pending_release.sequence > .highest_release_sequence) and
-			(.pending_release.manifest_sha256 == ("0" * 64)) and
-			([.releases[] | select(.version == $metadata.pending_release.version or .sequence == $metadata.pending_release.sequence)] | length) == 0
-		)) and
-		([.releases[] | select(.version == $metadata.highest_release and .sequence == $metadata.highest_release_sequence)] | length) == 1
-	end)
+	.event.signed_by == $recovery_id
 ' "$metadata" >/dev/null || fail 'invalid trust metadata'
 
 "$COSIGN_BIN" verify-blob --insecure-ignore-tlog \
@@ -120,22 +90,6 @@ bootstrap_matches=$(jq -r \
 	'[.primary_keys[] | select(.id == $id and .sha256 == $sha and .valid_from_release_sequence == 1)] | length' \
 	"$metadata")
 [ "$bootstrap_matches" -eq 1 ] || fail 'bootstrap primary does not match pinned root'
-
-jq -e '
-	all(.primary_keys[]; . as $key |
-		($key.id | type == "string" and length > 0) and
-		($key.public_key | type == "string" and length > 0) and
-		($key.sha256 | test("^[0-9a-f]{64}$")) and
-		(($key.valid_from_release_sequence | type) == "number") and
-		($key.valid_from_release_sequence >= 1) and
-		(($key.valid_from_release_sequence | floor) == $key.valid_from_release_sequence) and
-		($key.valid_through_release_sequence == null or
-			((($key.valid_through_release_sequence | type) == "number") and
-			($key.valid_through_release_sequence >= $key.valid_from_release_sequence) and
-			(($key.valid_through_release_sequence | floor) == $key.valid_through_release_sequence))) and
-		(($key.revoked | type) == "boolean")) and
-	([.primary_keys[].id] | unique | length) == (.primary_keys | length)
-' "$metadata" >/dev/null || fail 'invalid primary-key metadata'
 
 primary_key_total=$(jq -r '.primary_keys | length' "$metadata")
 primary_key_index=0
