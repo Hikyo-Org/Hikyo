@@ -457,7 +457,7 @@ export type TotpEnvironmentReauthRequest = {
  * A TOTP proof bound to one adapter operation over an exact environment set.
  */
 export type TotpAdapterReauthRequest = {
-    purpose: 'adapter';
+    purpose: ReauthPurpose & 'adapter';
     operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync';
     environment_ids: Array<Id>;
     /**

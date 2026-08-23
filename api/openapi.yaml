@@ -9999,8 +9999,9 @@ components:
       description: A TOTP proof bound to one adapter operation over an exact environment set.
       properties:
         purpose:
-          type: string
-          enum: [adapter]
+          allOf:
+            - $ref: "#/components/schemas/ReauthPurpose"
+            - const: adapter
         operation:
           type: string
           enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync]

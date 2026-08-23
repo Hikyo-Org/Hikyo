@@ -409,6 +409,7 @@ func TestTotpReauthRequestOnlyAcceptsCanonicalIntents(t *testing.T) {
 		{name: "code alone", body: `{"code":"123456"}`},
 		{name: "mixed variants", body: `{"code":"123456","environment_id":"` + environment + `","purpose":"adapter","operation":"adapter.sync","environment_ids":["` + environment + `"]}`},
 		{name: "adapter without environments", body: `{"code":"123456","purpose":"adapter","operation":"adapter.sync"}`},
+		{name: "non-adapter purpose", body: `{"code":"123456","purpose":"reveal","operation":"adapter.sync","environment_ids":["` + environment + `"]}`},
 		{name: "environment", body: `{"code":"123456","environment_id":"` + environment + `"}`, want: true},
 		{name: "adapter", body: `{"code":"123456","purpose":"adapter","operation":"adapter.sync","environment_ids":["` + environment + `"]}`, want: true},
 	}

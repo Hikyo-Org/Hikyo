@@ -1666,12 +1666,24 @@ func (e TotpAdapterReauthRequestOperation) Valid() bool {
 // Defines values for TotpAdapterReauthRequestPurpose.
 const (
 	TotpAdapterReauthRequestPurposeAdapter TotpAdapterReauthRequestPurpose = "adapter"
+	TotpAdapterReauthRequestPurposeCopy    TotpAdapterReauthRequestPurpose = "copy"
+	TotpAdapterReauthRequestPurposeMint    TotpAdapterReauthRequestPurpose = "mint"
+	TotpAdapterReauthRequestPurposePublish TotpAdapterReauthRequestPurpose = "publish"
+	TotpAdapterReauthRequestPurposeReveal  TotpAdapterReauthRequestPurpose = "reveal"
 )
 
 // Valid indicates whether the value is a known member of the TotpAdapterReauthRequestPurpose enum.
 func (e TotpAdapterReauthRequestPurpose) Valid() bool {
 	switch e {
 	case TotpAdapterReauthRequestPurposeAdapter:
+		return true
+	case TotpAdapterReauthRequestPurposeCopy:
+		return true
+	case TotpAdapterReauthRequestPurposeMint:
+		return true
+	case TotpAdapterReauthRequestPurposePublish:
+		return true
+	case TotpAdapterReauthRequestPurposeReveal:
 		return true
 	default:
 		return false
