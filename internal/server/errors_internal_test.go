@@ -1,9 +1,11 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/api"
@@ -133,5 +135,77 @@ func TestWirePolicyRedactsDetailUnlessExplicitlyAllowed(t *testing.T) {
 				t.Fatalf("detail = %q, want redacted", *body.Error.Detail)
 			}
 		})
+	}
+}
+
+func renderContractError(t *testing.T, method, path string, err error) *httptest.ResponseRecorder {
+	t.Helper()
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(method, path, nil)
+	(&API{}).writeHandlerError(recorder, request, err)
+	response := recorder.Result()
+	if validationErr := api.ValidateResponse(request, response.StatusCode, response.Header, recorder.Body.Bytes()); validationErr != nil {
+		t.Fatalf("%s %s -> %d violates contract: %v\nbody: %s", method, path, response.StatusCode, validationErr, recorder.Body.String())
+	}
+	return recorder
+}
+
+func TestCentralWirePoliciesFitMigratedOperationContracts(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		err    error
+	}{
+		{"TOTP already enrolled", http.MethodPost, "/api/v1/auth/totp/enrol/start", service.ErrTOTPAlreadyEnrolled},
+		{"no pending TOTP", http.MethodPost, "/api/v1/auth/totp/enrol/confirm", service.ErrNoPendingTOTP},
+		{"no TOTP factor", http.MethodPost, "/api/v1/auth/totp/step-up", service.ErrNoTOTPFactor},
+		{"no proof credential", http.MethodDelete, "/api/v1/auth/totp", service.ErrNoProofCredential},
+		{"passkey-only recovery floor", http.MethodPost, "/api/v1/auth/recovery/begin", service.ErrPasskeyOnlyViolation},
+		{"TOTP account missing", http.MethodGet, "/api/v1/auth/totp", domain.ErrNotFound},
+		{"TOTP status overloaded", http.MethodGet, "/api/v1/auth/totp", admission.ErrOverloaded},
+		{"OIDC provider update raced", http.MethodPut, "/api/v1/instance/oidc-providers/corp", service.ErrProviderRace},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			policy := wireErrorFor(tc.err)
+			recorder := renderContractError(t, tc.method, tc.path, tc.err)
+			if recorder.Code != wirePolicies[policy.code].status {
+				t.Fatalf("status = %d, want central %d for %q", recorder.Code, wirePolicies[policy.code].status, policy.code)
+			}
+			if policy.code == apigen.ErrorCodeBadRequest {
+				var body apigen.Error
+				if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+					t.Fatal(err)
+				}
+				if body.Error.Detail != nil {
+					t.Fatalf("routine TOTP refusal leaked detail %q", *body.Error.Detail)
+				}
+			}
+		})
+	}
+}
+
+func TestCentralConflictBodyIsIdenticalAcrossSAMLHandlers(t *testing.T) {
+	provider := renderContractError(t, http.MethodPut, "/api/v1/instance/saml-providers/corp", service.ErrSAMLProviderRace)
+	spKey := renderContractError(t, http.MethodPost, "/api/v1/instance/saml-sp-keys/rotate", service.ErrSAMLSPKeyRace)
+	if provider.Code != http.StatusConflict || spKey.Code != http.StatusConflict {
+		t.Fatalf("statuses = provider %d, SP key %d; want both 409", provider.Code, spKey.Code)
+	}
+	if provider.Body.String() != spKey.Body.String() {
+		t.Fatalf("conflict bodies differ:\nprovider: %s\nSP key: %s", provider.Body.String(), spKey.Body.String())
+	}
+}
+
+func TestPasswordPolicySentinelsCarryEstablishmentDetail(t *testing.T) {
+	for _, refusal := range []error{service.ErrWeakPassword, service.ErrCommonPassword} {
+		recorder := renderContractError(t, http.MethodPost, "/api/v1/auth/credential/establish", refusal)
+		var body apigen.Error
+		if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if body.Error.Detail == nil || *body.Error.Detail != "password" {
+			t.Fatalf("%v detail = %v, want password", refusal, body.Error.Detail)
+		}
 	}
 }
