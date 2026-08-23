@@ -3,21 +3,18 @@
 Issue: https://github.com/Hikyo-Org/Hikyo/issues/71. ADR: `.xreview/multi-instance-adr.md`
 (locked 2026-08-06). MVP gate: M6 in `.xreview/mvp-boundary.md`.
 
-Status: **IN PROGRESS.** Foundation, store, service, audit, API, CORS/CSP, CLI,
-the Go E2E lifecycle and the two-instance harness are done and green on BOTH
-engines. Criteria 1, 2, 4, 5 and 6 are met; 3 is partly met with two named
-blockers. **What remains: the
-web UI + Playwright flows, and the two-instance E2E harness** — plus two named
-gaps (the workspace session's assurance record, and the step-up elevation path)
-that need Marc. See "Session 2 progress", "Session 2, second half" and
-"STILL NOT DONE".
+Status: **COMPLETE on current main.** Foundation, store, service, audit, API,
+CORS/CSP, CLI, the Go E2E lifecycle, and the two-instance harness landed in
+PR #115. PR #259 completed the browser-to-remote workspace data path and remote
+step-up flow. PRs #308 and #310 then supplied and integrated the root browser
+session-epoch owner that had kept #71 open. All six M6 criteria now have
+executable coverage. See `71-multi-instance-workspace.md` for the final browser
+slice and session-epoch closure evidence.
 
-**Read first if you are resuming:** "STILL NOT DONE" (what is left and why the
-UI is atomic), then "Repo facts", then BOTH trap lists ("Traps hit while
-building this" from session 1 and "More traps hit (session 2)"). Those are the
-parts that cost real time and that no amount of reading the ADR would have told
-you. The decision list runs 1-15 across both sessions and is the review
-surface.
+**Historical note:** sections below preserve the implementation-time progress
+log and therefore describe work as unfinished. For current status, use the
+paragraph above and `71-multi-instance-workspace.md`. The two trap lists remain
+useful when changing this subsystem.
 
 ## Plan (as designed, before code)
 
