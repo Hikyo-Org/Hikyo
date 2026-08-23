@@ -76,6 +76,69 @@ func credentialFingerprint(token string) string {
 	return hex.EncodeToString(sum[:])[:32]
 }
 
+// composeStack owns the values that identify one machine-authenticated Compose
+// stack. Keeping them together prevents snapshot, cursor, offline-flush, and
+// render operations from accidentally using different projections or paths.
+type composeStack struct {
+	cfg             *compose.Config
+	cfgDir          string
+	client          *Client
+	entry           TrustEntry
+	org             string
+	project         string
+	env             string
+	token           string
+	configOnly      bool
+	slug            string
+	stateDir        string
+	runtimeDir      string
+	explicitRuntime bool
+	runtimeErr      error
+}
+
+type composeStackOptions struct {
+	projectDir    string
+	configOnly    bool
+	requireConfig bool
+}
+
+// openComposeStack resolves stack identity and paths but deliberately performs
+// no filesystem writes, snapshot access, offline flush, or network fetch.
+func openComposeStack(st *State, ios IO, flags commonFlags, opts composeStackOptions) (*composeStack, error) {
+	start := startDir(ios, opts.projectDir)
+	cfg, cfgDir, err := findComposeConfig(start)
+	if err != nil {
+		return nil, err
+	}
+	if cfg == nil && opts.requireConfig {
+		if flags.operation == "compose doctor" || flags.operation == "compose sync" {
+			return nil, failf(ExitUsage, "hikyo compose doctor requires a %s (searched up from %s)", composeConfigName, start)
+		}
+		return nil, failf(ExitUsage, "hikyo compose render requires a %s (searched up from %s); the .hikyo.json pin file is not enough — the config carries the render targets",
+			composeConfigName, start)
+	}
+
+	client, entry, resolved, token, err := resolveMachineTarget(st, ios, flags, cfg, cfgDir, topLevelOperation(flags.operation))
+	if err != nil {
+		return nil, err
+	}
+	s := &composeStack{
+		cfg: cfg, cfgDir: cfgDir, client: client, entry: entry,
+		org: resolved.Get(DimOrg), project: resolved.Get(DimProject), env: resolved.Get(DimEnv),
+		token: token, configOnly: opts.configOnly,
+	}
+	if cfg == nil {
+		return s, nil
+	}
+	s.slug, err = composeSlug(cfg, s.org, s.project, s.env)
+	if err != nil {
+		return nil, err
+	}
+	s.stateDir = composeStateDir(st, s.slug)
+	s.runtimeDir, s.explicitRuntime, s.runtimeErr = composeRuntimeDir(ios, cfg, s.slug)
+	return s, nil
+}
+
 // ---------------------------------------------------------------------------
 // hikyo run -- <command>
 // ---------------------------------------------------------------------------
@@ -113,49 +176,35 @@ func runRun(ctx context.Context, ios IO, args []string) error {
 	}
 	allowOverride := splitCSV(allowOverrideRaw)
 
-	cfg, cfgDir, err := findComposeConfig(startDir(ios, projectDir))
-	if err != nil {
-		return err
-	}
-
 	// The single narrow #18 exception, restated exactly (api-cli-surface ADR line
 	// 96): `run` — and only `run` — may use the stored human session, and only
 	// when ALL of the flag, a TTY, an enumerated confirmation, and the bound
 	// reauth ceremony hold. `render` and `sync` have no human path, so this branch
 	// lives here rather than in resolveMachineTarget.
 	if useHumanSession {
+		cfg, _, err := findComposeConfig(startDir(ios, projectDir))
+		if err != nil {
+			return err
+		}
 		if flags.Auth == "machine" {
 			return failf(ExitRefused, "hikyo run --use-human-session conflicts with --auth=machine")
 		}
 		flags.Auth = "human"
 		return runHumanSession(ctx, ios, st, flags, cfg, childArgs, configOnly, allowOverride)
 	}
-	client, entry, resolved, token, err := resolveMachineTarget(st, ios, flags, cfg, cfgDir, "run")
+	stack, err := openComposeStack(st, ios, flags, composeStackOptions{projectDir: projectDir, configOnly: configOnly})
 	if err != nil {
 		return err
 	}
-	org, project, env := resolved.Get(DimOrg), resolved.Get(DimProject), resolved.Get(DimEnv)
-
-	// The state dir exists only when a config file names this stack; run with no
-	// config file writes nothing and holds nothing pending by construction.
-	stateDir := ""
-	var snapshotBinding crypto.SnapshotBinding
-	if cfg != nil {
-		slug, serr := composeSlug(cfg, org, project, env)
-		if serr != nil {
-			return serr
-		}
-		stateDir = composeStateDir(st, slug)
-		snapshotBinding, serr = newSnapshotBinding(stateDir, entry, org, project, env, token, configOnly, []string{runGenerationKey})
-		if serr != nil {
-			return failf(ExitRefused, "hikyo run: snapshot binding: %v", serr)
-		}
-		// Flush-before-fetch (ops-spec § 6 ordering rule): pending offline
-		// records reconcile BEFORE the fetch proceeds; a failure refuses the
-		// fetch.
-		if err := flushOffline(ctx, client, org, project, env, stateDir); err != nil {
-			return err
-		}
+	snapshotBinding, err := stack.newSnapshotBinding([]string{runGenerationKey})
+	if err != nil {
+		return failf(ExitRefused, "hikyo run: snapshot binding: %v", err)
+	}
+	// Flush-before-fetch (ops-spec § 6 ordering rule): pending offline records
+	// reconcile BEFORE the fetch proceeds; a failure refuses the fetch. A run
+	// without config has no state dir, so the stack method is a no-op.
+	if err := stack.flushOffline(ctx); err != nil {
+		return err
 	}
 
 	// Loader-control acknowledgement (compose ADR § "Loader-control keys"): the
@@ -163,24 +212,24 @@ func runRun(ctx context.Context, ios IO, args []string) error {
 	// offline path can refuse a loader-control key BEFORE it appends any offline
 	// record (finding 6).
 	var ack []string
-	if cfg != nil {
-		ack = cfg.Run.AcknowledgeLoaderControl
+	if stack.cfg != nil {
+		ack = stack.cfg.Run.AcknowledgeLoaderControl
 	}
 
-	resp, ferr := fetchDelivery(ctx, client, org, project, env, configOnly, ack, "")
+	resp, ferr := stack.fetchDelivery(ctx, ack, "")
 
 	var (
 		fetched map[string]string
 		live    bool
 	)
 	if ferr != nil {
-		f, herr := serveRunOffline(ios, cfg, stateDir, snapshotBinding, ack, ferr)
+		f, herr := serveRunOffline(ios, stack.cfg, stack.stateDir, snapshotBinding, ack, ferr)
 		if herr != nil {
 			return herr
 		}
 		fetched = f
 	} else {
-		if cfg != nil {
+		if stack.cfg != nil {
 			snapshotBinding, err = bindSnapshotDelivery(snapshotBinding, resp)
 			if err != nil {
 				return failf(ExitRefused, "hikyo run: snapshot binding: %v", err)
@@ -224,8 +273,8 @@ func runRun(ctx context.Context, ios IO, args []string) error {
 	// Snapshot: after a LIVE delivering fetch and only when a config file exists.
 	// Opt-in governs SERVING, not saving — a silent save failure is the silent
 	// fallback the house forbids, so it is a hard error.
-	if live && cfg != nil {
-		if err := saveRunSnapshot(stateDir, snapshotBinding, resp); err != nil {
+	if live && stack.cfg != nil {
+		if err := saveRunSnapshot(stack.stateDir, snapshotBinding, resp); err != nil {
 			return failf(ExitInternal, "hikyo run: saving offline snapshot: %v", err)
 		}
 	}
@@ -480,115 +529,93 @@ func runComposeRender(ctx context.Context, ios IO, args []string) (bool, error) 
 	return moved, err
 }
 
-// renderPaths carries the resolved project/state directories out of a render so
-// `compose sync` can drive its apply-pending marker without re-resolving (which
-// would echo the target line twice).
-type renderPaths struct {
-	cfgDir   string
-	stateDir string
-}
-
 // composeRenderCore is the render pipeline, shared by `compose render` and the
 // render step of `compose sync`. It returns whether any target's stamp moved
-// (so sync knows whether to recreate) and the resolved paths.
-func composeRenderCore(ctx context.Context, ios IO, st *State, flags commonFlags, projectDir string, configOnly bool) (bool, renderPaths, error) {
-	cfg, cfgDir, err := findComposeConfig(startDir(ios, projectDir))
+// (so sync knows whether to recreate) and the opened stack.
+func composeRenderCore(ctx context.Context, ios IO, st *State, flags commonFlags, projectDir string, configOnly bool) (bool, *composeStack, error) {
+	stack, err := openComposeStack(st, ios, flags, composeStackOptions{
+		projectDir: projectDir, configOnly: configOnly, requireConfig: true,
+	})
 	if err != nil {
-		return false, renderPaths{}, err
+		return false, nil, err
 	}
-	if cfg == nil {
-		return false, renderPaths{}, failf(ExitUsage, "hikyo compose render requires a %s (searched up from %s); the .hikyo.json pin file is not enough — the config carries the render targets",
-			composeConfigName, startDir(ios, projectDir))
-	}
-	client, entry, resolved, token, err := resolveMachineTarget(st, ios, flags, cfg, cfgDir, "compose")
+	snapshotBinding, err := stack.newSnapshotBinding(stack.cfg.TargetNames())
 	if err != nil {
-		return false, renderPaths{}, err
+		return false, stack, failf(ExitRefused, "compose render: snapshot binding: %v", err)
 	}
-	org, project, env := resolved.Get(DimOrg), resolved.Get(DimProject), resolved.Get(DimEnv)
-	slug, err := composeSlug(cfg, org, project, env)
-	if err != nil {
-		return false, renderPaths{}, err
-	}
-	stateDir := composeStateDir(st, slug)
-	rp := renderPaths{cfgDir: cfgDir, stateDir: stateDir}
-	snapshotBinding, err := newSnapshotBinding(stateDir, entry, org, project, env, token, configOnly, cfg.TargetNames())
-	if err != nil {
-		return false, rp, failf(ExitRefused, "compose render: snapshot binding: %v", err)
-	}
-	runtimeDir, explicitRuntime, err := composeRuntimeDir(ios, cfg, slug)
-	if err != nil {
-		return false, rp, err
+	if stack.runtimeErr != nil {
+		return false, stack, stack.runtimeErr
 	}
 	// The DEFAULT runtime dir MUST be tmpfs-backed or render refuses (compose ADR
 	// § Where plaintext lives; ops-spec § 6). An EXPLICIT runtime_dir is the
 	// operator's accepted disposition (doctor reports `runtime_not_tmpfs` but the
 	// renderer does not block) — the orchestrator's binding call for finding 2.
-	if !explicitRuntime {
-		if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
-			return false, rp, failf(ExitInternal, "compose render: create runtime dir: %v", err)
+	if !stack.explicitRuntime {
+		if err := os.MkdirAll(stack.runtimeDir, 0o700); err != nil {
+			return false, stack, failf(ExitInternal, "compose render: create runtime dir: %v", err)
 		}
-		if ok, terr := compose.IsTmpfs(runtimeDir); terr != nil {
-			return false, rp, failf(ExitInternal, "compose render: checking runtime dir filesystem: %v", terr)
+		if ok, terr := compose.IsTmpfs(stack.runtimeDir); terr != nil {
+			return false, stack, failf(ExitInternal, "compose render: checking runtime dir filesystem: %v", terr)
 		} else if !ok {
-			return false, rp, failf(ExitRefused, "compose render: default runtime dir %s is not backed by tmpfs; rendered plaintext must live only on tmpfs — set an explicit `runtime_dir` on tmpfs in %s", runtimeDir, composeConfigName)
+			return false, stack, failf(ExitRefused, "compose render: default runtime dir %s is not backed by tmpfs; rendered plaintext must live only on tmpfs — set an explicit `runtime_dir` on tmpfs in %s", stack.runtimeDir, composeConfigName)
 		}
 	}
-	keys, err := loadLocalKeys(stateDir)
+	keys, err := loadLocalKeys(stack.stateDir)
 	if err != nil {
-		return false, rp, err
+		return false, stack, err
 	}
 
-	w := compose.NewWriter(stateDir, nil)
-	lock, err := w.BeginRender(cfgDir)
+	w := compose.NewWriter(stack.stateDir, nil)
+	lock, err := w.BeginRender(stack.cfgDir)
 	if err != nil {
-		return false, rp, failf(ExitRefused, "another hikyo compose process holds the lock for %s", slug)
+		return false, stack, failf(ExitRefused, "another hikyo compose process holds the lock for %s", stack.slug)
 	}
 	defer lock.Close()
 
 	// 1. Recover incomplete (torn) generations before anything reads them.
-	if err := lock.Recover(runtimeDir); err != nil {
-		return false, rp, failf(ExitInternal, "compose render: recover: %v", err)
+	if err := lock.Recover(stack.runtimeDir); err != nil {
+		return false, stack, failf(ExitInternal, "compose render: recover: %v", err)
 	}
 	// 2. Flush-before-fetch.
-	if err := flushOffline(ctx, client, org, project, env, stateDir); err != nil {
-		return false, rp, err
+	if err := stack.flushOffline(ctx); err != nil {
+		return false, stack, err
 	}
 	// 3. Cursor: present it only when the full local eligibility test holds.
-	currentStamps, err := compose.CurrentStamps(cfgDir)
+	currentStamps, err := compose.CurrentStamps(stack.cfgDir)
 	if err != nil {
-		return false, rp, failf(ExitRefused, "compose render: %v", err)
+		return false, stack, failf(ExitRefused, "compose render: %v", err)
 	}
-	present := eligibleCursor(stateDir, cfg, currentStamps, runtimeDir, token, env, configOnly)
+	present := stack.eligibleCursor(currentStamps)
 
 	// The acknowledgement in force for this render is the UNION of every target's
 	// acknowledge_loader_control (#64 audit field). The server records it and
 	// filters nothing; per-target refusal below stays client-side authoritative.
-	resp, ferr := fetchDelivery(ctx, client, org, project, env, configOnly, renderAcknowledged(cfg), present)
+	resp, ferr := stack.fetchDelivery(ctx, renderAcknowledged(stack.cfg), present)
 	if ferr != nil {
-		moved, err := composeRenderOffline(ctx, ios, lock, cfg, cfgDir, stateDir, runtimeDir, keys, snapshotBinding, configOnly, ferr)
-		return moved, rp, err
+		moved, err := stack.renderOffline(ctx, ios, lock, keys, snapshotBinding, ferr)
+		return moved, stack, err
 	}
 	if resp.Current {
-		for _, t := range cfg.TargetNames() {
+		for _, t := range stack.cfg.TargetNames() {
 			fmt.Fprintf(ios.Stderr, "up to date (generation %s)\n", currentStamps[t])
 		}
-		return false, rp, nil
+		return false, stack, nil
 	}
 	snapshotBinding, err = bindSnapshotDelivery(snapshotBinding, resp)
 	if err != nil {
-		return false, rp, failf(ExitRefused, "compose render: snapshot binding: %v", err)
+		return false, stack, failf(ExitRefused, "compose render: snapshot binding: %v", err)
 	}
-	moved, err := composeRenderApply(ios, lock, cfg, stateDir, runtimeDir, keys, snapshotBinding, token, env, configOnly, resp, currentStamps)
-	return moved, rp, err
+	moved, err := stack.renderApply(ios, lock, keys, snapshotBinding, resp, currentStamps)
+	return moved, stack, err
 }
 
-// composeRenderApply renders each target from a live full delivery. On ANY
+// renderApply renders each target from a live full delivery. On ANY
 // refusal it writes no generation and does not advance the cursor.
-func composeRenderApply(ios IO, lock *compose.RenderLock, cfg *compose.Config, stateDir, runtimeDir string, keys *crypto.LocalKeys, binding crypto.SnapshotBinding, token, env string, configOnly bool, resp apigen.DeliveryResponse, currentStamps map[string]string) (bool, error) {
+func (s *composeStack) renderApply(ios IO, lock *compose.RenderLock, keys *crypto.LocalKeys, binding crypto.SnapshotBinding, resp apigen.DeliveryResponse, currentStamps map[string]string) (bool, error) {
 	if _, err := binding.CanonicalAAD(); err != nil {
 		return false, failf(ExitRefused, "compose render: snapshot binding: %v", err)
 	}
-	plan, err := compose.BuildRenderPlan(liveRenderInput(cfg, configOnly, resp.Keys))
+	plan, err := compose.BuildRenderPlan(liveRenderInput(s.cfg, s.configOnly, resp.Keys))
 	if err != nil {
 		return false, failf(ExitInternal, "compose render: %v", err)
 	}
@@ -603,16 +630,16 @@ func composeRenderApply(ios IO, lock *compose.RenderLock, cfg *compose.Config, s
 	for _, target := range plan.Targets {
 		allRows = append(allRows, target.SnapshotRows...)
 	}
-	published, err := publishRenderPlan(lock, runtimeDir, keys, plan)
+	published, err := publishRenderPlan(lock, s.runtimeDir, keys, plan)
 	if err != nil {
-		if pendingErr := persistCommittedPublish(stateDir, runtimeDir, plan, currentStamps, published); pendingErr != nil {
+		if pendingErr := persistCommittedPublish(s.stateDir, s.runtimeDir, plan, currentStamps, published); pendingErr != nil {
 			return false, failf(ExitInternal, "compose render: publish: %v", errors.Join(err, fmt.Errorf("persist apply-pending: %w", pendingErr)))
 		}
 		return false, failf(ExitInternal, "compose render: publish: %v", err)
 	}
 	finalStamps := published.Stamps
-	moved, lines := publishOutcome(runtimeDir, plan, currentStamps, published)
-	if err := persistCommittedPublish(stateDir, runtimeDir, plan, currentStamps, published); err != nil {
+	moved, lines := publishOutcome(s.runtimeDir, plan, currentStamps, published)
+	if err := persistCommittedPublish(s.stateDir, s.runtimeDir, plan, currentStamps, published); err != nil {
 		return false, failf(ExitInternal, "compose render: persist apply-pending: %v", err)
 	}
 
@@ -623,7 +650,7 @@ func composeRenderApply(ios IO, lock *compose.RenderLock, cfg *compose.Config, s
 	if err := saveSnapshot(keys, binding, compose.SnapshotPayload{Rows: allRows, GenerationStamps: finalStamps}); err != nil {
 		return false, failf(ExitInternal, "compose render: save snapshot: %v", err)
 	}
-	if err := saveCursor(stateDir, cfg, resp, token, env, configOnly, finalStamps); err != nil {
+	if err := s.saveCursor(resp, finalStamps); err != nil {
 		return false, failf(ExitInternal, "compose render: save cursor: %v", err)
 	}
 
@@ -633,19 +660,19 @@ func composeRenderApply(ios IO, lock *compose.RenderLock, cfg *compose.Config, s
 	return moved, nil
 }
 
-// composeRenderOffline renders each target from the last snapshot when the
+// renderOffline renders each target from the last snapshot when the
 // server is unreachable and the stack opted in. Row→key_id now comes from the
 // sealed payload's rows (finding 3: no cleartext sidecar).
-func composeRenderOffline(ctx context.Context, ios IO, lock *compose.RenderLock, cfg *compose.Config, cfgDir, stateDir, runtimeDir string, keys *crypto.LocalKeys, binding crypto.SnapshotBinding, configOnly bool, fetchErr error) (bool, error) {
+func (s *composeStack) renderOffline(ctx context.Context, ios IO, lock *compose.RenderLock, keys *crypto.LocalKeys, binding crypto.SnapshotBinding, fetchErr error) (bool, error) {
 	_ = ctx
 	if !isUnavailable(fetchErr) {
 		return false, fetchErr
 	}
-	if !cfg.Snapshot.OfflineServe {
+	if !s.cfg.Snapshot.OfflineServe {
 		fmt.Fprintln(ios.Stderr, "hikyo compose render: offline serve is not enabled for this stack; set snapshot.offline_serve: true to render from the last snapshot during an outage")
 		return false, fetchErr
 	}
-	payload, binding, err := loadOfflineSnapshot(ios, cfg, binding)
+	payload, binding, err := loadOfflineSnapshot(ios, s.cfg, binding)
 	if err != nil {
 		return false, err
 	}
@@ -653,7 +680,7 @@ func composeRenderOffline(ctx context.Context, ios IO, lock *compose.RenderLock,
 	if err != nil {
 		return false, failf(ExitInternal, "compose render: reading offline snapshot binding: %v", err)
 	}
-	plan, err := compose.BuildRenderPlan(offlineRenderInput(cfg, configOnly, payload.Rows))
+	plan, err := compose.BuildRenderPlan(offlineRenderInput(s.cfg, s.configOnly, payload.Rows))
 	if err != nil {
 		return false, failf(ExitInternal, "compose render: %v", err)
 	}
@@ -682,17 +709,17 @@ func composeRenderOffline(ctx context.Context, ios IO, lock *compose.RenderLock,
 			})
 		}
 	}
-	if err := compose.Append(stateDir, records); err != nil {
+	if err := compose.Append(s.stateDir, records); err != nil {
 		return false, failf(ExitInternal, "compose render: recording offline disclosure: %v", err)
 	}
 
-	currentStamps, err := compose.CurrentStamps(cfgDir)
+	currentStamps, err := compose.CurrentStamps(s.cfgDir)
 	if err != nil {
 		return false, failf(ExitRefused, "compose render: %v", err)
 	}
-	published, err := publishRenderPlan(lock, runtimeDir, keys, plan)
+	published, err := publishRenderPlan(lock, s.runtimeDir, keys, plan)
 	if err != nil {
-		if pendingErr := persistCommittedPublish(stateDir, runtimeDir, plan, currentStamps, published); pendingErr != nil {
+		if pendingErr := persistCommittedPublish(s.stateDir, s.runtimeDir, plan, currentStamps, published); pendingErr != nil {
 			return false, failf(ExitInternal, "compose render: publish: %v", errors.Join(err, fmt.Errorf("persist apply-pending: %w", pendingErr)))
 		}
 		return false, failf(ExitInternal, "compose render: publish: %v", err)
@@ -704,8 +731,8 @@ func composeRenderOffline(ctx context.Context, ios IO, lock *compose.RenderLock,
 		}
 		fmt.Fprintf(ios.Stderr, "serving stale from %s, generation %s\n", aad.IssuedAt, stamp)
 	}
-	moved, lines := publishOutcome(runtimeDir, plan, currentStamps, published)
-	if err := persistCommittedPublish(stateDir, runtimeDir, plan, currentStamps, published); err != nil {
+	moved, lines := publishOutcome(s.runtimeDir, plan, currentStamps, published)
+	if err := persistCommittedPublish(s.stateDir, s.runtimeDir, plan, currentStamps, published); err != nil {
 		return false, failf(ExitInternal, "compose render: persist apply-pending: %v", err)
 	}
 	for _, l := range lines {
@@ -794,7 +821,7 @@ func runComposeSync(ctx context.Context, ios IO, args []string) error {
 	}
 
 	// (2) Render (conditional).
-	moved, rp, err := composeRenderCore(ctx, ios, st, flags, projectDir, false)
+	moved, stack, err := composeRenderCore(ctx, ios, st, flags, projectDir, false)
 	if err != nil {
 		return err
 	}
@@ -804,28 +831,28 @@ func runComposeSync(ctx context.Context, ios IO, args []string) error {
 	// last-applied record. The last comparison closes the crash window after the
 	// stamp rename but before a marker write: no active generation can become
 	// permanently unapplied merely because the process died at that boundary.
-	pending := applyPendingExists(rp.stateDir)
-	stamps, err := compose.CurrentStamps(rp.cfgDir)
+	pending := applyPendingExists(stack.stateDir)
+	stamps, err := compose.CurrentStamps(stack.cfgDir)
 	if err != nil {
 		return failf(ExitRefused, "hikyo compose sync: %v", err)
 	}
-	applied, err := loadAppliedStamps(rp.stateDir)
+	applied, err := loadAppliedStamps(stack.stateDir)
 	if err != nil {
 		return failf(ExitRefused, "hikyo compose sync: %v", err)
 	}
 	if !moved && !pending && !stampsNeedApply(stamps, applied) {
 		return nil
 	}
-	if err := writeApplyPending(rp.stateDir, stamps); err != nil {
+	if err := writeApplyPending(stack.stateDir, stamps); err != nil {
 		return failf(ExitInternal, "hikyo compose sync: writing apply-pending marker: %v", err)
 	}
-	if err := dockerComposeUp(ctx, ios, rp.cfgDir); err != nil {
+	if err := dockerComposeUp(ctx, ios, stack.cfgDir); err != nil {
 		return err // marker stays: the next sync retries the apply
 	}
-	if err := writeAppliedStamps(rp.stateDir, stamps); err != nil {
+	if err := writeAppliedStamps(stack.stateDir, stamps); err != nil {
 		return failf(ExitInternal, "hikyo compose sync: recording applied stamps: %v", err)
 	}
-	if err := removeApplyPending(rp.stateDir); err != nil {
+	if err := removeApplyPending(stack.stateDir); err != nil {
 		return failf(ExitInternal, "hikyo compose sync: clearing apply-pending marker: %v", err)
 	}
 	return nil
@@ -979,48 +1006,34 @@ func runComposeDoctor(ctx context.Context, ios IO, args []string) error {
 // modes, and server agreement via a conditional fetch — and returns the merged
 // finding list.
 func composeDoctorGather(ctx context.Context, ios IO, st *State, flags commonFlags, projectDir string, includeServerAgreement bool) ([]compose.Finding, error) {
-	cfg, cfgDir, err := findComposeConfig(startDir(ios, projectDir))
+	stack, err := openComposeStack(st, ios, flags, composeStackOptions{projectDir: projectDir, requireConfig: true})
 	if err != nil {
 		return nil, err
 	}
-	if cfg == nil {
-		return nil, failf(ExitUsage, "hikyo compose doctor requires a %s (searched up from %s)", composeConfigName, startDir(ios, projectDir))
-	}
-	client, _, resolved, token, err := resolveMachineTarget(st, ios, flags, cfg, cfgDir, "compose")
-	if err != nil {
-		return nil, err
-	}
-	org, project, env := resolved.Get(DimOrg), resolved.Get(DimProject), resolved.Get(DimEnv)
-	slug, err := composeSlug(cfg, org, project, env)
-	if err != nil {
-		return nil, err
-	}
-	stateDir := composeStateDir(st, slug)
-	runtimeDir, _, rerr := composeRuntimeDir(ios, cfg, slug)
 
 	// Flush-before-fetch (ops-spec § 6): reconcile pending offline records BEFORE
 	// any doctor network request (the catalogue and agreement fetches), so a POST
 	// always precedes every GET (finding 9). A flush failure is a hard error.
-	if err := flushOffline(ctx, client, org, project, env, stateDir); err != nil {
+	if err := stack.flushOffline(ctx); err != nil {
 		return nil, err
 	}
 
 	var findings []compose.Finding
 
 	// Docker version + resolved config.
-	dockerFindings, version, resolvedConfig := doctorDocker(ctx, ios, cfgDir)
+	dockerFindings, version, resolvedConfig := doctorDocker(ctx, ios, stack.cfgDir)
 	findings = append(findings, dockerFindings...)
 
-	managed, err := compose.CurrentStamps(cfgDir)
+	managed, err := compose.CurrentStamps(stack.cfgDir)
 	if err != nil {
 		return nil, failf(ExitRefused, "compose doctor: %v", err)
 	}
 
-	existingKeyIDs, catFinding := doctorExistingKeyIDs(ctx, client, org, project, cfg)
+	existingKeyIDs, catFinding := doctorExistingKeyIDs(ctx, stack.client, stack.org, stack.project, stack.cfg)
 	if catFinding != nil {
 		findings = append(findings, *catFinding)
 	}
-	stateEntries, scanFinding := doctorStateEntries(stateDir)
+	stateEntries, scanFinding := doctorStateEntries(stack.stateDir)
 	if scanFinding != nil {
 		findings = append(findings, *scanFinding)
 	}
@@ -1028,9 +1041,9 @@ func composeDoctorGather(ctx context.Context, ios IO, st *State, flags commonFla
 	in := compose.DoctorInput{
 		ComposeVersion: version,
 		Config:         resolvedConfig,
-		RawComposeYAML: doctorRawCompose(ios, cfgDir),
+		RawComposeYAML: doctorRawCompose(ios, stack.cfgDir),
 		ManagedStamps:  managed,
-		ConfigTargets:  cfg.Targets,
+		ConfigTargets:  stack.cfg.Targets,
 		ExistingKeyIDs: existingKeyIDs,
 		StateEntries:   stateEntries,
 		TokenFile:      doctorTokenFile(flags.TokenFile),
@@ -1041,10 +1054,10 @@ func composeDoctorGather(ctx context.Context, ios IO, st *State, flags commonFla
 	// runtime_dir must resolve; when it cannot (not root, no XDG_RUNTIME_DIR, no
 	// explicit config), surface it as its own error and do not let the derived
 	// runtime checks fire on an empty path (finding 12).
-	runtimeResolved := rerr == nil
+	runtimeResolved := stack.runtimeErr == nil
 	if runtimeResolved {
-		in.RuntimeDir = runtimeDir
-		in.RuntimeTmpfs = doctorRuntimeTmpfs(runtimeDir)
+		in.RuntimeDir = stack.runtimeDir
+		in.RuntimeTmpfs = doctorRuntimeTmpfs(stack.runtimeDir)
 	}
 
 	// Server agreement: feed compose.Doctor the per-target server stamps it needs
@@ -1055,7 +1068,7 @@ func composeDoctorGather(ctx context.Context, ios IO, st *State, flags commonFla
 	var serverFindings []compose.Finding
 	haveServerStamps := false
 	if includeServerAgreement {
-		serverStamps, serverFindings, haveServerStamps = doctorServerStamps(ctx, client, cfg, stateDir, managed, runtimeDir, org, project, env, token)
+		serverStamps, serverFindings, haveServerStamps = stack.doctorServerStamps(ctx, managed)
 		in.ServerStamps = serverStamps
 	}
 
@@ -1071,7 +1084,7 @@ func composeDoctorGather(ctx context.Context, ios IO, st *State, flags commonFla
 		findings = dropCode(findings, "runtime_not_tmpfs")
 		findings = dropCode(findings, "runtime_dir_not_absolute")
 		findings = append(findings, compose.Finding{Severity: compose.SeverityError, Code: "runtime_dir_unresolved",
-			Message: fmt.Sprintf("could not resolve a runtime dir: %v", rerr)})
+			Message: fmt.Sprintf("could not resolve a runtime dir: %v", stack.runtimeErr)})
 	}
 	// server_stamp_unknown is compose.Doctor's honest "no server stamp to compare"
 	// finding. Drop it whenever we deliberately did not (or could not) obtain the
@@ -1117,15 +1130,15 @@ func doctorDocker(ctx context.Context, ios IO, cfgDir string) ([]compose.Finding
 // per-target server stamps to feed compose.Doctor's structural check, plus any
 // standalone findings. The bool reports whether server stamps were obtained (so
 // the caller can drop the honest server_stamp_unknown when they were not).
-func doctorServerStamps(ctx context.Context, client *Client, cfg *compose.Config, stateDir string, managed map[string]string, runtimeDir, org, project, env, token string) (map[string]string, []compose.Finding, bool) {
-	present := eligibleCursor(stateDir, cfg, managed, runtimeDir, token, env, false)
+func (s *composeStack) doctorServerStamps(ctx context.Context, managed map[string]string) (map[string]string, []compose.Finding, bool) {
+	present := s.eligibleCursor(managed)
 	if present == "" {
 		// No eligible cursor: never rendered, or the local render is gone. A full
 		// fetch would be a disclosure, so doctor does not do one.
 		return nil, []compose.Finding{{Severity: compose.SeverityError, Code: "never_rendered",
 			Message: "no eligible cursor: this box has not rendered, or its render is gone; run `hikyo compose render`"}}, false
 	}
-	resp, err := fetchDelivery(ctx, client, org, project, env, false, renderAcknowledged(cfg), present)
+	resp, err := s.fetchDelivery(ctx, renderAcknowledged(s.cfg), present)
 	if err != nil {
 		sev := compose.SeverityError
 		msg := fmt.Sprintf("the server refused the agreement check: %v", err)
@@ -1369,31 +1382,35 @@ func fetchDelivery(ctx context.Context, client *Client, org, project, env string
 	return resp, nil
 }
 
+func (s *composeStack) fetchDelivery(ctx context.Context, acknowledged []string, cursor string) (apigen.DeliveryResponse, error) {
+	return fetchDelivery(ctx, s.client, s.org, s.project, s.env, s.configOnly, acknowledged, cursor)
+}
+
 // flushOffline reconciles buffered offline records before a fetch (ops-spec § 6
 // ordering rule). Records chunk to the server's 1000-per-call limit; the files
 // are marked flushed only after every chunk is accepted, so a mid-run failure
 // re-sends idempotently rather than dropping evidence.
-func flushOffline(ctx context.Context, client *Client, org, project, env, stateDir string) error {
-	if stateDir == "" {
+func (s *composeStack) flushOffline(ctx context.Context) error {
+	if s.stateDir == "" {
 		return nil
 	}
-	records, files, err := compose.Pending(stateDir)
+	records, files, err := compose.Pending(s.stateDir)
 	if err != nil {
 		return failf(ExitInternal, "reading pending offline records: %v", err)
 	}
 	if len(records) == 0 {
 		return nil
 	}
-	path := deliveryPath(org, project, env) + "/offline-records"
+	path := deliveryPath(s.org, s.project, s.env) + "/offline-records"
 	const batch = 1000
 	for i := 0; i < len(records); i += batch {
 		end := min(i+batch, len(records))
 		body := apigen.ReconcileOfflineRecordsRequest{Records: toAPIRecords(records[i:end])}
-		if err := client.Do(ctx, http.MethodPost, path, body, nil); err != nil {
+		if err := s.client.Do(ctx, http.MethodPost, path, body, nil); err != nil {
 			return err // refuses the fetch: ExitUnavailable or the server's mapped code
 		}
 	}
-	if err := compose.MarkFlushed(stateDir, files); err != nil {
+	if err := compose.MarkFlushed(s.stateDir, files); err != nil {
 		return failf(ExitInternal, "marking offline records flushed: %v", err)
 	}
 	return nil
@@ -1465,12 +1482,16 @@ func loadOfflineSnapshot(ios IO, cfg *compose.Config, binding crypto.SnapshotBin
 // newSnapshotBinding validates and owns the offline-known scope before any
 // snapshot filesystem work. The same value is completed from a live delivery
 // or matched against the stored delivery fields on an offline path.
-func newSnapshotBinding(stateDir string, entry TrustEntry, org, project, env, token string, configOnly bool, targetNames []string) (crypto.SnapshotBinding, error) {
+
+func (s *composeStack) newSnapshotBinding(targetNames []string) (crypto.SnapshotBinding, error) {
+	if s.stateDir == "" {
+		return crypto.SnapshotBinding{}, nil
+	}
 	return crypto.NewSnapshotBinding(crypto.SnapshotBindingScope{
-		StorageDir:     stateDir,
-		InstanceOrigin: entry.Origin,
-		OrgID:          org, ProjectID: project, EnvironmentID: env,
-		CredentialFingerprint: credentialFingerprint(token), ConfigOnly: configOnly,
+		StorageDir:     s.stateDir,
+		InstanceOrigin: s.entry.Origin,
+		OrgID:          s.org, ProjectID: s.project, EnvironmentID: s.env,
+		CredentialFingerprint: credentialFingerprint(s.token), ConfigOnly: s.configOnly,
 		TargetNames: targetNames,
 	})
 }
@@ -1481,12 +1502,12 @@ func newSnapshotBinding(stateDir string, entry TrustEntry, org, project, env, to
 // config_only, and per-target key-id membership are local truth; the pinned
 // revision and projection are server-asserted (unknowable pre-fetch, and the
 // server re-binds anyway), so they come from the stored cursor when present.
-func cursorBinding(cfg *compose.Config, token, env string, configOnly bool, stored *compose.CursorState) compose.CursorBinding {
+func (s *composeStack) cursorBinding(stored *compose.CursorState) compose.CursorBinding {
 	b := compose.CursorBinding{
-		CredentialID: credentialFingerprint(token),
-		Environment:  env,
-		ConfigOnly:   configOnly,
-		TargetKeyIDs: targetKeyIDs(cfg),
+		CredentialID: credentialFingerprint(s.token),
+		Environment:  s.env,
+		ConfigOnly:   s.configOnly,
+		TargetKeyIDs: targetKeyIDs(s.cfg),
 	}
 	if stored != nil {
 		b.PinnedRevision = stored.Binding.PinnedRevision
@@ -1496,33 +1517,33 @@ func cursorBinding(cfg *compose.Config, token, env string, configOnly bool, stor
 }
 
 // saveCursor persists the cursor with its full binding after a committed render.
-func saveCursor(stateDir string, cfg *compose.Config, resp apigen.DeliveryResponse, token, env string, configOnly bool, stamps map[string]string) error {
+func (s *composeStack) saveCursor(resp apigen.DeliveryResponse, stamps map[string]string) error {
 	pinned := int64(0)
 	if resp.PinnedRevision != nil {
 		pinned = *resp.PinnedRevision
 	}
 	binding := compose.CursorBinding{
-		CredentialID:   credentialFingerprint(token),
-		Environment:    env,
-		ConfigOnly:     configOnly,
+		CredentialID:   credentialFingerprint(s.token),
+		Environment:    s.env,
+		ConfigOnly:     s.configOnly,
 		PinnedRevision: pinned,
 		Projection:     deliveryProjection(resp.Keys),
-		TargetKeyIDs:   targetKeyIDs(cfg),
+		TargetKeyIDs:   targetKeyIDs(s.cfg),
 	}
-	return compose.SaveCursor(stateDir, compose.CursorState{
+	return compose.SaveCursor(s.stateDir, compose.CursorState{
 		Cursor: resp.Cursor, Binding: binding, GenerationStamps: stamps,
 	})
 }
 
 // eligibleCursor returns the stored cursor iff the full local eligibility test
 // holds against the currently presented token, env, mode, and target set.
-func eligibleCursor(stateDir string, cfg *compose.Config, currentStamps map[string]string, runtimeDir, token, env string, configOnly bool) string {
-	state, err := compose.LoadCursor(stateDir)
+func (s *composeStack) eligibleCursor(currentStamps map[string]string) string {
+	state, err := compose.LoadCursor(s.stateDir)
 	if err != nil || state == nil {
 		return ""
 	}
-	want := cursorBinding(cfg, token, env, configOnly, state)
-	c, ok := compose.EligibleCursor(state, want, currentStamps, runtimeDir)
+	want := s.cursorBinding(state)
+	c, ok := compose.EligibleCursor(state, want, currentStamps, s.runtimeDir)
 	if !ok {
 		return ""
 	}
