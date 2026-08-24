@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import {
+  expectNoSeriousAxeViolations,
   expectPinnedAssertionSet,
   expectStatusIsTextAndAria,
 } from '../fixtures/assertions.ts';
@@ -90,6 +91,21 @@ test.describe('app chrome', () => {
     // The choice survives a reload: it is a decision, not a session mood.
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-theme', second ?? '');
+  });
+
+  test('Escape dismisses the account menu and restores focus', async ({ page }) => {
+    const account = page.getByRole('button', { name: /^Account:/ });
+    await account.click();
+
+    await expect(account).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByRole('menuitem', { name: 'Sign out' })).toBeFocused();
+    await expectNoSeriousAxeViolations(page);
+
+    await page.keyboard.press('Escape');
+
+    await expect(account).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByRole('menu', { name: 'Account' })).toHaveCount(0);
+    await expect(account).toBeFocused();
   });
 
   // The rail's zero state remains a real supported state even though the
