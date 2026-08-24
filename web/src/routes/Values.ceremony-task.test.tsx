@@ -37,7 +37,7 @@ vi.mock('../api/values.ts', async (importActual) => {
     useRevealWindow: () => ({
       data: revealWindow(true),
     }),
-    useSetValue: () => ({ mutate: vi.fn() }),
+    useSetValue: () => ({ isPending: false, mutateAsync: vi.fn() }),
     useValues: () => ({
       data: {
         items: [{

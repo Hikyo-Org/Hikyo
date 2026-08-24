@@ -14,12 +14,12 @@ Dark (default):
 
 - `--bg` oklch(0.19 0.012 220) surface
 - `--bg-raise` oklch(0.23 0.014 220) raised rows/sheets
-- `--line` oklch(0.34 0.016 220) hairlines
+- `--line` oklch(0.5 0.016 220) hairlines and control boundaries (>=3:1 on `--bg`)
 - `--tx` oklch(0.93 0.008 200) primary text (≈13:1 on bg)
 - `--tx-dim` oklch(0.76 0.01 210) secondary (≈7:1)
 - `--accent` oklch(0.82 0.09 195) interactive teal; text on accent uses oklch(0.2 0.02 220)
 
-Light: linen-tinted paper oklch(0.965 0.008 200), ink oklch(0.25 0.03 225), same accent hue at oklch(0.45 0.085 210).
+Light: linen-tinted paper oklch(0.965 0.008 200), hairlines and control boundaries oklch(0.64 0.012 210) (>=3:1 on the paper), ink oklch(0.25 0.03 225), same accent hue at oklch(0.45 0.085 210).
 
 State vocabulary (always paired with a glyph, never color-only):
 

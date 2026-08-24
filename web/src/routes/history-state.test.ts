@@ -3,6 +3,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import {
   pinAction,
   pinExpiry,
+  pinExpiryDateBounds,
   pinExpiryInstant,
   pinComparedToLatest,
   revisionActionGate,
@@ -129,6 +130,14 @@ describe('revisionsForKeyFilter', () => {
     expect(historyKeyDisplay('key_log', [], logRevision)).toEqual({
       name: 'LOG_LEVEL',
       label: 'LOG_LEVEL (historical name; key no longer exists)',
+      current: false,
+    });
+  });
+
+  it('labels an unknown deleted key when no revision moved it', () => {
+    expect(historyKeyDisplay('key_deleted', [], undefined)).toEqual({
+      name: 'key_deleted',
+      label: 'key_deleted (unknown key)',
       current: false,
     });
   });
@@ -389,6 +398,19 @@ describe('defaultPinExpiry', () => {
 
   it('refuses an impossible date input loudly', () => {
     expect(() => pinExpiryInstant('2026-02-30')).toThrow('Invalid pin expiry date: 2026-02-30');
+  });
+
+  it('caps the date input at the latest end-of-day inside 365 exact days', () => {
+    const now = new Date('2026-03-07T15:00:00Z');
+    const bounds = pinExpiryDateBounds(now);
+
+    expect(bounds).toEqual({ minimum: '2026-03-07', maximum: '2027-03-06' });
+    expect(new Date(pinExpiryInstant(bounds.maximum)).getTime()).toBeLessThanOrEqual(
+      now.getTime() + 365 * 24 * 60 * 60 * 1_000,
+    );
+    expect(new Date(pinExpiryInstant('2027-03-07')).getTime()).toBeGreaterThan(
+      now.getTime() + 365 * 24 * 60 * 60 * 1_000,
+    );
   });
 });
 

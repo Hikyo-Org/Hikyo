@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router';
 
 import {
@@ -11,11 +11,13 @@ import {
   useRevealWindow,
   useSetValue,
   useValues,
+  writeRefusalText,
   type EnvRef,
   type RevealWindow,
   type ValueCell,
 } from '../api/values.ts';
 import { useTransport } from '../api/transport.tsx';
+import { writeClipboard as safeWriteClipboard } from '../app/clipboard.ts';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
 
@@ -101,6 +103,7 @@ export function Values() {
   const [audit, setAudit] = useState<string[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [destination, setDestination] = useState('');
+  const writeGeneration = useRef(0);
   const ceremony = useCeremonyTask([
     env.org,
     env.project,
@@ -115,11 +118,15 @@ export function Values() {
   // waiting to be answered, the act it was staged for, an open editor and the
   // clipboard notice, none of which mean anything in a different environment.
   useEffect(() => {
+    writeGeneration.current += 1;
     setDisclosed({});
     setEditing(null);
     setRefusal(null);
     setNotice(null);
     setAudit([]);
+    return () => {
+      writeGeneration.current += 1;
+    };
   }, [env.org, env.project, env.environment]);
 
   // One ticker drives every countdown on the surface: the remask timers and
@@ -382,6 +389,27 @@ export function Values() {
     );
   };
 
+  const saveDraft = async (cell: ValueCell, value: string): Promise<void> => {
+    // Empty means UNCHANGED. There is no per-row clear: clearing a value stays
+    // a per-cell action, as the prototype's resolution fixed.
+    if (value === '') {
+      return;
+    }
+
+    const generation = writeGeneration.current;
+    setRefusal(null);
+    setNotice(null);
+    try {
+      await setValue.mutateAsync({ key: cell.name, value });
+      if (writeGeneration.current !== generation) return;
+      setEditing((current) => (current === cell.name ? null : current));
+      setNotice(`${cell.name} staged.`);
+    } catch (error) {
+      if (writeGeneration.current !== generation) return;
+      setRefusal(writeRefusalText(error));
+    }
+  };
+
   const chip = guard === undefined ? null : windowChip(guard, now);
 
   return (
@@ -488,6 +516,7 @@ export function Values() {
                     type="button"
                     onClick={() => setEditing(editing === cell.name ? null : cell.name)}
                     aria-expanded={editing === cell.name}
+                    disabled={setValue.isPending}
                   >
                     {cell.name}
                   </button>
@@ -537,15 +566,8 @@ export function Values() {
                     <RowEditor
                       cell={cell}
                       writeOnly={writeOnly}
-                      onSave={(value) => {
-                        setEditing(null);
-                        // Empty means UNCHANGED. There is no per-row clear:
-                        // clearing a value stays a per-cell action, as the
-                        // prototype's resolution fixed.
-                        if (value !== '') {
-                          setValue.mutate({ key: cell.name, value });
-                        }
-                      }}
+                      saving={setValue.isPending}
+                      onSave={(value) => void saveDraft(cell, value)}
                     />
                   </td>
                 ) : null}
@@ -634,10 +656,12 @@ function windowChip(state: RevealWindow, now: number) {
 function RowEditor({
   cell,
   writeOnly,
+  saving,
   onSave,
 }: {
   cell: ValueCell;
   writeOnly: boolean;
+  saving: boolean;
   onSave: (value: string) => void;
 }) {
   const [draft, setDraft] = useState('');
@@ -662,6 +686,7 @@ function RowEditor({
           }
           data-write-only={writeOnly}
           value={draft}
+          disabled={saving}
           onChange={(event) => setDraft(event.target.value)}
         />
       </div>
@@ -671,8 +696,8 @@ function RowEditor({
           changes nothing.
         </p>
       ) : null}
-      <button className="btn btn--primary" type="submit">
-        Save draft
+      <button className="btn btn--primary" type="submit" disabled={saving}>
+        {saving ? 'Saving…' : 'Save draft'}
       </button>
     </form>
   );
@@ -691,9 +716,7 @@ async function writeClipboard(
   setNotice: (text: string | null) => void,
   audited: boolean,
 ): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(value);
-  } catch {
+  if ((await safeWriteClipboard(value)) === 'refused') {
     setNotice('This browser refused clipboard access, so nothing was copied.');
     return;
   }
@@ -704,7 +727,7 @@ async function writeClipboard(
   );
   globalThis.setTimeout(() => {
     if (document.hasFocus()) {
-      void navigator.clipboard.writeText('').catch(() => undefined);
+      void safeWriteClipboard('');
     }
   }, CLIPBOARD_CLEAR_MS);
 }

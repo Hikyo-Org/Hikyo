@@ -2,7 +2,8 @@
 
 Issue: https://github.com/Hikyo-Org/Hikyo/issues/446
 
-**State: implemented; verification running.** Project settings now exposes the
+**State: implemented; exact-head verification passed before the queue-gated
+main merge.** Project settings now exposes the
 four existing environment lifecycle operations: rename, delete, whole-set
 reorder, and atomic clone-at-creation.
 
@@ -29,9 +30,13 @@ operations already present in the generated TypeScript client.
 
 Focused Vitest coverage exercises all four requests, refusal mapping, and the
 rename/delete confirmation flow. The settings Playwright flow proves create,
-rename, delete, then project delete through the SPA. Local execution is delayed
-until host memory pressure subsides; exact commands and results will replace
-this paragraph before merge.
+rename, delete, then project delete through the SPA. Host memory pressure stayed
+elevated, so no local Node suite was started. Trusted CI run `32731450349` on
+head `fd38288dddff441f69684b6a8a1272ca566e0662` passed the SPA verification
+(typecheck, full Vitest suite, and build), app build, docs, no-egress, and both
+desktop and mobile Playwright flow suites. The mobile pass verifies the 44 px
+touch target added after the preceding run exposed it. The queue-gated merge
+head must repeat the repository's required gates before landing.
 
 ## Review disposition
 

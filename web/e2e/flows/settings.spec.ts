@@ -688,7 +688,11 @@ test.describe('project settings', () => {
     const again = page.locator('#project-danger');
     await again.getByLabel('Delete this project').fill(drillName);
     await again.getByRole('button', { name: 'Delete project' }).click();
-    await expect(page.locator('.notice').filter({ hasText: 'Project deleted' })).toBeVisible();
+    await expect(page).toHaveURL(/\/projects$/);
+    await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
+    await expect(
+      page.getByRole('alert').filter({ hasText: 'This project could not be read' }),
+    ).toHaveCount(0);
     drillProject = '';
   });
 
