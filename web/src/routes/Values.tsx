@@ -252,7 +252,7 @@ export function Values() {
     setAudit((prev) => [...names.map((n) => `Disclosure recorded · ${n}`), ...prev].slice(0, AUDIT_LINES));
   }, []);
 
-  const show = useCallback(
+  const recordDisclosures = useCallback(
     (entries: Array<{ id: string; name: string; value: string }>) => {
       const until = Date.now() + REMASK_MS;
       setDisclosed((current) => {
@@ -288,7 +288,7 @@ export function Values() {
               setRefusal('The server disclosed no value for that key.');
               return;
             }
-            show([{ id: fresh.key_id, name: fresh.name, value: fresh.value }]);
+            recordDisclosures([{ id: fresh.key_id, name: fresh.name, value: fresh.value }]);
           });
         } catch (err) {
           ceremony.commit(task, () => {
@@ -307,7 +307,7 @@ export function Values() {
         try {
           const fresh = await revealAll.mutateAsync();
           ceremony.commit(task, () => {
-            show(
+            recordDisclosures(
               fresh.items
                 .filter((c) => c.classification === 'secret' && c.value !== undefined)
                 .map((c) => ({ id: c.key_id, name: c.name, value: c.value ?? '' })),
@@ -431,15 +431,11 @@ export function Values() {
         </p>
       ) : null}
 
-      {revealAnnouncement !== null ? (
-        <p
-          key={revealAnnouncement.id}
-          className="values__reveal-announcement visually-hidden"
-          role="status"
-        >
-          {revealAnnouncement.message}
-        </p>
-      ) : null}
+      <p className="values__reveal-announcement visually-hidden" role="status">
+        {revealAnnouncement === null ? null : (
+          <span key={revealAnnouncement.id}>{revealAnnouncement.message}</span>
+        )}
+      </p>
 
       <div className="values__bar">
         <button

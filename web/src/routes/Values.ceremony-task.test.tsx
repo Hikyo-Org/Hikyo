@@ -132,7 +132,7 @@ beforeEach(() => {
   mocks.revealOne.mockReset();
 });
 
-describe('Values ceremony task ownership', () => {
+describe('Values reveal accessibility', () => {
   it('announces one reveal once and keeps its ticking countdown visual-only', async () => {
     mocks.fetchRevealWindow.mockResolvedValueOnce(revealWindow(true));
     mocks.revealOne.mockResolvedValueOnce({
@@ -145,6 +145,7 @@ describe('Values ceremony task ownership', () => {
     await act(async () => button(container, 'Reveal KEY_A').click());
     await settle();
 
+    expect(container.querySelectorAll('.values__reveal-announcement')).toHaveLength(1);
     const announcement = container.querySelector('.values__reveal-announcement');
     expect(announcement?.getAttribute('role')).toBe('status');
     expect(announcement?.textContent).toBe('KEY_A revealed — re-masks in 10s');
@@ -177,6 +178,9 @@ describe('Values ceremony task ownership', () => {
       ],
     });
     const { container, root } = await renderValues();
+    const liveRegionCount = container.querySelectorAll(
+      '[role="status"], [aria-live="polite"]',
+    ).length;
 
     await act(async () => button(container, 'Reveal every secret').click());
     await settle();
@@ -188,9 +192,14 @@ describe('Values ceremony task ownership', () => {
     expect(container.querySelectorAll('.values__countdown')).toHaveLength(2);
     expect(container.querySelectorAll('.values__countdown[aria-hidden="true"]')).toHaveLength(2);
     expect(container.querySelectorAll('.values__countdown[role]')).toHaveLength(0);
+    expect(container.querySelectorAll('[role="status"], [aria-live="polite"]')).toHaveLength(
+      liveRegionCount,
+    );
     await act(async () => root.unmount());
   });
+});
 
+describe('Values ceremony task ownership', () => {
   it('ignores a guard completion from the environment visited before navigation', async () => {
     const pending = deferred<RevealWindow>();
     mocks.fetchRevealWindow.mockImplementationOnce(() => pending.promise);
