@@ -1,10 +1,10 @@
 {
-  "name": "nightly tags require GitHub Actions",
+  "name": "nightly tags require Hikyo release app",
   "target": "tag",
   "enforcement": "active",
   "bypass_actors": [
     {
-      "actor_id": 15368,
+      "actor_id": 4700019,
       "actor_type": "Integration",
       "bypass_mode": "always"
     }

@@ -7,7 +7,7 @@ on:
 
 permissions:
   actions: read
-  contents: write
+  contents: read
 
 concurrency:
   group: nightly-release
@@ -44,32 +44,84 @@ jobs:
           INITIAL_NIGHTLY_VERSION: 0.0.1
         run: |
           set -o pipefail
-          latest_target=$(gh api "repos/$REPOSITORY/releases?per_page=100" --jq '
-            map(select(.draft == false and .prerelease == true and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-nightly\\.")))) |
-            .[0].target_commitish // ""
-          ')
-          if [ "$latest_target" = "$COMMIT" ]; then
-            printf 'skip=true\n' >>"$GITHUB_OUTPUT"
-            printf 'nightly: commit %s already published\n' "$COMMIT"
-            exit 0
-          fi
-          stable_tag=$(gh api --paginate --slurp \
-            "repos/$REPOSITORY/releases?per_page=100" | \
-            ./scripts/release/latest-stable-version.sh)
-          release_date=$(date -u +%Y%m%d)
-          if [ -n "$stable_tag" ]; then
-            version=$(./scripts/release/next-nightly-version.sh \
-              "$stable_tag" "$release_date" "$RUN_NUMBER" "$COMMIT")
+          tag=$(gh api --paginate --slurp \
+            "repos/$REPOSITORY/git/matching-refs/tags/v" | \
+            ./scripts/release/nightly-run-tag.sh "$RUN_NUMBER")
+          tag_exists=false
+          if [ -n "$tag" ]; then
+            tag_lookup_error="$RUNNER_TEMP/nightly-tag-lookup.err"
+            if ! existing_tag_sha=$(gh api "repos/$REPOSITORY/git/ref/tags/$tag" \
+              --jq '.object.sha' 2>"$tag_lookup_error"); then
+              cat "$tag_lookup_error" >&2
+              exit 1
+            fi
+            if [ "$existing_tag_sha" != "$COMMIT" ]; then
+              printf 'nightly: run %s tag %s resolves to %s, expected %s\n' \
+                "$RUN_NUMBER" "$tag" "$existing_tag_sha" "$COMMIT" >&2
+              exit 1
+            fi
+            release_lookup_error="$RUNNER_TEMP/nightly-release-lookup.err"
+            if release_state=$(gh api "repos/$REPOSITORY/releases/tags/$tag" \
+              --jq '"\(.draft):\(.prerelease)"' 2>"$release_lookup_error"); then
+              if [ "$release_state" != 'false:true' ]; then
+                printf 'nightly: existing release %s has unexpected state %s\n' \
+                  "$tag" "$release_state" >&2
+                exit 1
+              fi
+              printf 'skip=true\n' >>"$GITHUB_OUTPUT"
+              printf 'nightly: workflow run %s already published as %s\n' \
+                "$RUN_NUMBER" "$tag"
+              exit 0
+            elif ! grep -F '(HTTP 404)' "$release_lookup_error" >/dev/null; then
+              cat "$release_lookup_error" >&2
+              exit 1
+            fi
+            version=${tag#v}
+            tag_exists=true
           else
-            version=$(./scripts/release/nightly-version.sh "$INITIAL_NIGHTLY_VERSION" \
-              "$release_date" "$RUN_NUMBER" "$COMMIT")
+            latest_tag=$(gh api --paginate --slurp \
+              "repos/$REPOSITORY/releases?per_page=100" | \
+              ./scripts/release/latest-nightly-tag.sh)
+            latest_commit=
+            if [ -n "$latest_tag" ]; then
+              latest_commit=$(gh api "repos/$REPOSITORY/git/ref/tags/$latest_tag" \
+                --jq '.object.sha')
+            fi
+            if [ "$latest_commit" = "$COMMIT" ]; then
+              printf 'skip=true\n' >>"$GITHUB_OUTPUT"
+              printf 'nightly: commit %s already published\n' "$COMMIT"
+              exit 0
+            fi
+            stable_tag=$(gh api --paginate --slurp \
+              "repos/$REPOSITORY/releases?per_page=100" | \
+              ./scripts/release/latest-stable-version.sh)
+            release_date=$(date -u +%Y%m%d)
+            if [ -n "$stable_tag" ]; then
+              version=$(./scripts/release/next-nightly-version.sh \
+                "$stable_tag" "$release_date" "$RUN_NUMBER" "$COMMIT")
+            else
+              version=$(./scripts/release/nightly-version.sh "$INITIAL_NIGHTLY_VERSION" \
+                "$release_date" "$RUN_NUMBER" "$COMMIT")
+            fi
+            tag="v$version"
+            tag_lookup_error="$RUNNER_TEMP/nightly-tag-lookup.err"
+            if existing_tag_sha=$(gh api "repos/$REPOSITORY/git/ref/tags/$tag" \
+              --jq '.object.sha' 2>"$tag_lookup_error"); then
+              if [ "$existing_tag_sha" != "$COMMIT" ]; then
+                printf 'nightly: tag %s resolves to %s, expected %s\n' \
+                  "$tag" "$existing_tag_sha" "$COMMIT" >&2
+                exit 1
+              fi
+              printf 'nightly: tag %s already resolves to %s; resuming publication\n' \
+                "$tag" "$COMMIT"
+              tag_exists=true
+            elif ! grep -F '(HTTP 404)' "$tag_lookup_error" >/dev/null; then
+              cat "$tag_lookup_error" >&2
+              exit 1
+            fi
           fi
-          tag="v$version"
-          if gh api "repos/$REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
-            printf 'nightly: tag %s already exists\n' "$tag" >&2
-            exit 1
-          fi
-          printf 'skip=false\nversion=%s\ntag=%s\n' "$version" "$tag" >>"$GITHUB_OUTPUT"
+          printf 'skip=false\nversion=%s\ntag=%s\ntag_exists=%s\n' \
+            "$version" "$tag" "$tag_exists" >>"$GITHUB_OUTPUT"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: steps.identity.outputs.skip != 'true'
         with:
@@ -121,12 +173,31 @@ jobs:
             'Use the stable channel for recovery-signed production releases.' \
             >dist/NIGHTLY-BUILD.txt
           cp dist/NIGHTLY-BUILD.txt "$RUNNER_TEMP/nightly-notes.md"
+      - name: Mint scoped nightly release app token
+        id: release_app
+        if: steps.identity.outputs.skip != 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.NIGHTLY_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NIGHTLY_RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+      - name: Create immutable nightly tag
+        if: steps.identity.outputs.skip != 'true' && steps.identity.outputs.tag_exists != 'true'
+        env:
+          GH_TOKEN: ${{ steps.release_app.outputs.token }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ steps.identity.outputs.tag }}
+          COMMIT: ${{ steps.source.outputs.commit }}
+        run: |
+          gh api --method POST "repos/$REPOSITORY/git/refs" \
+            -f ref="refs/tags/$TAG" -f sha="$COMMIT" >/dev/null
       - name: Publish immutable GitHub prerelease
         if: steps.identity.outputs.skip != 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.release_app.outputs.token }}
           TAG: ${{ steps.identity.outputs.tag }}
-          COMMIT: ${{ steps.source.outputs.commit }}
         run: |
           gh release create "$TAG" \
             dist/hikyo_*_Darwin_*.tar.gz \
@@ -136,7 +207,7 @@ jobs:
             dist/binary-provenance.json \
             dist/NIGHTLY-BUILD.txt \
             --repo "$GITHUB_REPOSITORY" \
-            --target "$COMMIT" \
+            --verify-tag \
             --title "$TAG" \
             --notes-file "$RUNNER_TEMP/nightly-notes.md" \
             --prerelease

@@ -175,6 +175,21 @@ SBOMs, installer, chart, digest files, and OCI payloads.
 Hash agreement proves asset consistency, not an honest CI build. Reproducible
 build comparison is the named future control for compromised-CI risk.
 
+## Automated nightly publication identity
+
+Nightly builds do not use either offline signing key. An organization-owned
+GitHub App named `Hikyo Nightly Release`, installed only on this repository,
+owns nightly tag and prerelease publication. It has only repository
+`Contents: read and write`, no webhook, and no event subscriptions.
+
+The workflow stores the app client ID in the
+`NIGHTLY_RELEASE_APP_CLIENT_ID` repository variable and its private key in the
+`NIGHTLY_RELEASE_APP_PRIVATE_KEY` Actions secret. Each run mints a short-lived,
+current-repository-only token and requests only `contents: write`. The built-in
+workflow token remains read-only. `configure-repository.sh` applies the
+dedicated app as the sole bypass actor for creation of `v*-nightly.*`; stable
+tag creation remains admin-only and every `v*` tag remains immutable.
+
 ## Rotation, revocation, and loss
 
 - Rotation: recovery-sign metadata that closes the old primary at a named
