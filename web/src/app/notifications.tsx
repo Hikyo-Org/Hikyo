@@ -76,10 +76,10 @@ export function ToastViewport() {
   const polite = notification !== null && notification.tone !== 'error' ? notification : null;
   return (
     <>
-      <div className="visually-hidden" role="alert" aria-live="assertive">
+      <div className="visually-hidden" role="alert" aria-live="assertive" aria-atomic="true">
         {assertive === null ? null : <span key={assertive.id}>{assertive.message}</span>}
       </div>
-      <div className="visually-hidden" role="status" aria-live="polite">
+      <div className="visually-hidden" role="status" aria-live="polite" aria-atomic="true">
         {polite === null ? null : <span key={polite.id}>{polite.message}</span>}
       </div>
       {notification === null ? null : (
