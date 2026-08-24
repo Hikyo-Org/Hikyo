@@ -18,6 +18,9 @@ upsert_ruleset() {
 	if [ -z "$id" ] && [ "$name" = 'release tags require admin role' ]; then
 		id=$($GH_BIN api "repos/$repository/rulesets" \
 			--jq '.[] | select(.name == "release tags require maintainer role") | .id')
+	elif [ -z "$id" ] && [ "$name" = 'nightly tags require Hikyo release app' ]; then
+		id=$($GH_BIN api "repos/$repository/rulesets" \
+			--jq '.[] | select(.name == "nightly tags require GitHub Actions") | .id')
 	fi
 	if [ -n "$id" ]; then
 		$GH_BIN api --method PUT "repos/$repository/rulesets/$id" --input "$payload" >/dev/null
@@ -40,8 +43,9 @@ $GH_BIN api --method PUT "repos/$repository/immutable-releases" >/dev/null
 $GH_BIN api --method PATCH "repos/$repository/code-scanning/default-setup" \
 	-f state=configured -f query_suite=default \
 	-f 'languages[]=actions' -f 'languages[]=go' -f 'languages[]=javascript-typescript' >/dev/null
+allowed_actions=$($GH_BIN api "repos/$repository/actions/permissions" --jq '.allowed_actions')
 $GH_BIN api --method PUT "repos/$repository/actions/permissions" \
-	-F enabled=true -f allowed_actions=all -F sha_pinning_required=true >/dev/null
+	-F enabled=true -f allowed_actions="$allowed_actions" -F sha_pinning_required=true >/dev/null
 
 rulesets=$($GH_BIN api "repos/$repository/rulesets")
 printf '%s\n' "$rulesets" | jq -e '
@@ -51,7 +55,7 @@ printf '%s\n' "$rulesets" | jq -e '
 	[.[] | select(.name == "release tags require admin role" and .enforcement == "active")] | length == 1
 ' >/dev/null
 printf '%s\n' "$rulesets" | jq -e '
-	[.[] | select(.name == "nightly tags require GitHub Actions" and .enforcement == "active")] | length == 1
+	[.[] | select(.name == "nightly tags require Hikyo release app" and .enforcement == "active")] | length == 1
 ' >/dev/null
 printf '%s\n' "$rulesets" | jq -e '
 	[.[] | select(.name == "main requires PR and release CI" and .enforcement == "active")] | length == 1
@@ -79,11 +83,11 @@ printf '%s\n' "$creation" | jq -e '
 	.conditions.ref_name.include == ["refs/tags/v*"] and
 	.conditions.ref_name.exclude == ["refs/tags/v*-nightly.*"]
 ' >/dev/null
-nightly_id=$(printf '%s\n' "$rulesets" | jq -r '.[] | select(.name == "nightly tags require GitHub Actions") | .id')
+nightly_id=$(printf '%s\n' "$rulesets" | jq -r '.[] | select(.name == "nightly tags require Hikyo release app") | .id')
 nightly=$($GH_BIN api "repos/$repository/rulesets/$nightly_id")
 printf '%s\n' "$nightly" | jq -e '
 	.bypass_actors == [{
-		actor_id: 15368,
+		actor_id: 4700019,
 		actor_type: "Integration",
 		bypass_mode: "always"
 	}] and
