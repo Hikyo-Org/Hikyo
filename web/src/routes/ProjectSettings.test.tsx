@@ -3,6 +3,7 @@ import { act } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { AuthProvider } from '../app/AuthProvider.tsx';
 import { created, renderForm, settle, settleTask, typeInto } from '../testkit/renderForm.tsx';
 import { NewEnvironmentForm, ProjectSettings } from './ProjectSettings.tsx';
 
@@ -69,6 +70,9 @@ describe('definitions policy', () => {
       const input = args[0];
       const request = input instanceof Request ? input : new Request(input);
       const path = new URL(request.url, 'http://localhost').pathname;
+      if (request.method === 'GET' && path === '/api/v1/auth/whoami') {
+        return Promise.resolve(new Response(null, { status: 401 }));
+      }
       if (
         request.method === 'PUT' &&
         path === '/api/v1/orgs/org_1/projects/project_1/definitions/settings'
@@ -86,11 +90,13 @@ describe('definitions policy', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const view = await renderForm(
-      <MemoryRouter initialEntries={['/orgs/org_1/projects/project_1/settings']}>
-        <Routes>
-          <Route path="/orgs/:org/projects/:project/settings" element={<ProjectSettings />} />
-        </Routes>
-      </MemoryRouter>,
+      <AuthProvider>
+        <MemoryRouter initialEntries={['/orgs/org_1/projects/project_1/settings']}>
+          <Routes>
+            <Route path="/orgs/:org/projects/:project/settings" element={<ProjectSettings />} />
+          </Routes>
+        </MemoryRouter>
+      </AuthProvider>,
     );
 
     try {
