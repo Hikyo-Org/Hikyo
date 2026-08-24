@@ -133,6 +133,14 @@ describe('revisionsForKeyFilter', () => {
     });
   });
 
+  it('labels an unknown deleted key when no revision moved it', () => {
+    expect(historyKeyDisplay('key_deleted', [], undefined)).toEqual({
+      name: 'key_deleted',
+      label: 'key_deleted (unknown key)',
+      current: false,
+    });
+  });
+
   it('uses the current name for a per-key restore and refuses a deleted key loud', () => {
     expect(restoreKeyName('key_log', [{ id: 'key_log', name: 'APP_LOG_LEVEL' }], logRevision)).toBe('APP_LOG_LEVEL');
     expect(() => restoreKeyName('key_log', [], logRevision)).toThrow(
