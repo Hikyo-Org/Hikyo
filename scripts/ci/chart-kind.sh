@@ -249,7 +249,7 @@ chart_values=(
 	--set database.existingSecret=hikyo-database \
 	--set database.tls.existingSecret=hikyo-database-ca \
 	--set rootKey.existingSecret=hikyo-root-key \
-	--set externalOrigin=http://hikyo.local \
+	--set externalOrigin=http://127.0.0.1:18080 \
 	--set network.allowPlaintextOrigin=true \
 	--set 'network.trustedProxyCIDRs={10.0.0.0/8}'
 )
@@ -307,7 +307,16 @@ for _ in {1..30}; do
 done
 curl --fail --silent http://127.0.0.1:18081/readyz >/dev/null
 curl --fail --silent http://127.0.0.1:18081/healthz >/dev/null
-curl --fail --silent http://127.0.0.1:18080/ | grep -Eiq '<!doctype html|<html'
+if ! document=$(curl --fail --silent --show-error http://127.0.0.1:18080/); then
+	echo "chart-kind: UI document request failed" >&2
+	cat "$work/port-forward.log" >&2
+	exit 1
+fi
+if [[ ! "$document" =~ \<\!doctype[[:space:]]+html|\<html ]]; then
+	echo "chart-kind: UI root did not return an HTML document" >&2
+	printf '%s\n' "$document" >&2
+	exit 1
+fi
 
 pod=$(kubectl --namespace "$NAMESPACE" get pod \
 	--selector app.kubernetes.io/instance="$RELEASE" -o jsonpath='{.items[0].metadata.name}')
