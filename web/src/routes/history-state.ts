@@ -455,9 +455,30 @@ export function pinSchemaOverrideOffered(detail: string | undefined): boolean {
 
 /** The service's own default pin lifetime (180 days), as a `<input type=date>` value. */
 export function defaultPinExpiry(now: Date): string {
+  return localDateInputValue(localDateAfterDays(now, 180));
+}
+
+/** Native date bounds whose end-of-day instant fits the service's exact 365-day cap. */
+export function pinExpiryDateBounds(now: Date): {
+  readonly minimum: string;
+  readonly maximum: string;
+} {
+  const maximumInstant = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1_000);
+  const maximumDate = new Date(maximumInstant.getTime());
+  maximumDate.setHours(23, 59, 59, 999);
+  if (maximumDate.getTime() > maximumInstant.getTime()) {
+    maximumDate.setDate(maximumDate.getDate() - 1);
+  }
+  return {
+    minimum: localDateInputValue(now),
+    maximum: localDateInputValue(maximumDate),
+  };
+}
+
+function localDateAfterDays(now: Date, days: number): Date {
   const at = new Date(now.getTime());
-  at.setDate(at.getDate() + 180);
-  return localDateInputValue(at);
+  at.setDate(at.getDate() + days);
+  return at;
 }
 
 function localDateInputValue(date: Date): string {
