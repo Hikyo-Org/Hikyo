@@ -32,6 +32,20 @@ export const pendingMatrixKey = (ref: MatrixRef) =>
 export const pendingDraftsKey = (ref: MatrixRef, environment: string) =>
   [...pendingMatrixKey(ref), environment] as const;
 
+/** Project-wide cache prefixes affected when its environment topology changes. */
+export function environmentTopologyQueryPrefixes(ref: MatrixRef) {
+  return [
+    ['values', ref.org, ref.project],
+    ['reveal-window', ref.org, ref.project],
+    ['revisions', ref.org, ref.project],
+    ['revision-detail', ref.org, ref.project],
+    ['revision-pins', ref.org, ref.project],
+    ['matrix-keys', ref.org, ref.project],
+    ['matrix-signals', ref.org, ref.project],
+    ['matrix-pending', ref.org, ref.project],
+  ];
+}
+
 /** Every cache whose destination-owned state changes after a successful copy. */
 export function copyInvalidationKeys(
   ref: MatrixRef,
