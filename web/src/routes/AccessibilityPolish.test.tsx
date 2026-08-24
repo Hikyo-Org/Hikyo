@@ -137,8 +137,8 @@ const grants: readonly Grant[] = [
   },
 ];
 
-beforeEach(() => {
-  mocks.grants = {
+function pendingGrants(): RouteMocks['grants'] {
+  return {
     data: undefined,
     error: null,
     isError: false,
@@ -146,6 +146,21 @@ beforeEach(() => {
     isSuccess: false,
     refetch: vi.fn(),
   };
+}
+
+function loadedGrants(items: readonly Grant[]): RouteMocks['grants'] {
+  return {
+    data: { items: [...items], count: items.length },
+    error: null,
+    isError: false,
+    isPending: false,
+    isSuccess: true,
+    refetch: vi.fn(),
+  };
+}
+
+beforeEach(() => {
+  mocks.grants = pendingGrants();
   mocks.retention = {
     data: undefined,
     isError: false,
@@ -181,14 +196,7 @@ describe('Members accessibility polish', () => {
     );
     await pending.unmount();
 
-    mocks.grants = {
-      data: { items: [...grants], count: grants.length },
-      error: null,
-      isError: false,
-      isPending: false,
-      isSuccess: true,
-      refetch: vi.fn(),
-    };
+    mocks.grants = loadedGrants(grants);
     const loaded = await renderMembers();
 
     expect(loaded.container.querySelector('#members-list [role="status"]')).toBeNull();
@@ -197,14 +205,7 @@ describe('Members accessibility polish', () => {
   });
 
   it('attributes an in-flight revoke to only the acting row', async () => {
-    mocks.grants = {
-      data: { items: [...grants], count: grants.length },
-      error: null,
-      isError: false,
-      isPending: false,
-      isSuccess: true,
-      refetch: vi.fn(),
-    };
+    mocks.grants = loadedGrants(grants);
     const view = await renderMembers();
     const buttons = [...view.container.querySelectorAll<HTMLButtonElement>('#members-list button')]
       .filter((button) => button.textContent === 'Revoke');
