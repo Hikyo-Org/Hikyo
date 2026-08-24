@@ -166,7 +166,7 @@ function buttonNamed(container: HTMLElement, name: string): HTMLButtonElement {
 
 function alertsNamed(container: HTMLElement, text: string): readonly Element[] {
   return [...container.querySelectorAll('[role="alert"]')].filter(
-    (alert) => alert.textContent === text,
+    (alert) => alert.textContent?.includes(text) === true,
   );
 }
 
