@@ -202,10 +202,10 @@ function typeInto(textarea: HTMLTextAreaElement, value: string): void {
   textarea.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-function deferred<T>(): { readonly promise: Promise<T>; readonly reject: (reason?: unknown) => void } {
-  let reject: ((reason?: unknown) => void) | undefined;
+function deferred<T>(): { readonly promise: Promise<T>; readonly reject: (reason: Error) => void } {
+  let reject: ((reason: Error) => void) | undefined;
   const promise = new Promise<T>((_resolve, rejectPromise) => {
-    reject = rejectPromise;
+    reject = (reason) => rejectPromise(reason);
   });
   if (reject === undefined) throw new Error('deferred rejection was not initialized');
   return { promise, reject };
