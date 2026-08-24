@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import {
+  expectNoSeriousAxeViolations,
   expectPinnedAssertionSet,
   expectStatusIsTextAndAria,
 } from '../fixtures/assertions.ts';
@@ -68,12 +69,12 @@ test.describe('app chrome', () => {
     await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
   });
 
-  test('redirects the public login route to overview with a live session', async ({ page }) => {
+  test('redirects the public login route to projects with a live session', async ({ page }) => {
     await page.goto('/login');
 
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/projects$/);
     await expect(page.getByRole('navigation', { name: 'Organisations' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Overview', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
   });
 
   test('the binary toggle flips theme and keeps the choice explicit', async ({ page }) => {
@@ -90,6 +91,21 @@ test.describe('app chrome', () => {
     // The choice survives a reload: it is a decision, not a session mood.
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-theme', second ?? '');
+  });
+
+  test('Escape dismisses the account menu and restores focus', async ({ page }) => {
+    const account = page.getByRole('button', { name: /^Account:/ });
+    await account.click();
+
+    await expect(account).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByRole('menuitem', { name: 'Sign out' })).toBeFocused();
+    await expectNoSeriousAxeViolations(page);
+
+    await page.keyboard.press('Escape');
+
+    await expect(account).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByRole('menu', { name: 'Account' })).toHaveCount(0);
+    await expect(account).toBeFocused();
   });
 
   // The rail's zero state remains a real supported state even though the
@@ -109,11 +125,12 @@ test.describe('app chrome', () => {
         body: JSON.stringify({ items: [], count: 0 }),
       }),
     );
-    await page.reload();
+    await page.goto('/login');
     await openNav(page);
-    const notice = page.getByRole('status');
+    const notice = page.getByRole('status').filter({ hasText: 'No organisations yet' });
     await expectStatusIsTextAndAria(page, notice);
     await expect(notice).toContainText('No organisations yet');
+    await expect(page.getByText(/choose a project/i)).toHaveCount(0);
     // And no step-up wall: nothing on the navigation surface asks for one.
     await expect(page.getByText(/second factor/i)).toHaveCount(0);
   });

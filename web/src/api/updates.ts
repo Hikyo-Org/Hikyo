@@ -94,6 +94,7 @@ export function useRemoteUpdateJob(origin: string, job: string | undefined) {
       }),
     enabled: job !== undefined,
     refetchInterval: (query) => {
+      if (query.state.status === 'error' && query.state.data === undefined) return false;
       const state = query.state.data?.state;
       return state === undefined || state === 'queued' || state === 'running'
         ? updateJobPollMs

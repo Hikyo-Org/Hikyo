@@ -158,7 +158,7 @@ export function App() {
         <Routes>
           <Route
             path={surfaceById('login').path}
-            element={<Navigate to={surfaceById('overview').path} replace />}
+            element={<Navigate to={surfaceById('projects').path} replace />}
           />
           {sessionChromelessSurfaces.map((surface) => (
             <Route key={surface.id} path={surface.path} element={ELEMENTS[surface.id]} />

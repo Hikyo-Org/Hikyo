@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import {
+  expectBoundaryContrast,
   expectContrast,
   expectPinnedAssertionSet,
   expectStatusIsTextAndAria,
@@ -14,8 +15,13 @@ async function expectLoginSurface(page: Page, theme: 'dark' | 'light') {
 
   const card = page.locator('.login__card');
   const submit = page.getByRole('button', { name: 'Sign in' });
+  const username = page.getByLabel('Username');
+  const password = page.getByLabel('Password');
   const heading = page.getByRole('heading', { name: 'Sign in to Hikyo' });
   const lede = page.getByText('Use the credential you established');
+
+  await expectBoundaryContrast(page, username);
+  await expectBoundaryContrast(page, password);
 
   await expectPinnedAssertionSet(page, {
     flow: 'login',
@@ -25,8 +31,8 @@ async function expectLoginSurface(page: Page, theme: 'dark' | 'light') {
     radii: [
       [card, 'container'],
       [submit, 'control'],
-      [page.getByLabel('Username'), 'control'],
-      [page.getByLabel('Password'), 'control'],
+      [username, 'control'],
+      [password, 'control'],
     ],
     fonts: [
       [heading, 'ui'],
@@ -40,7 +46,7 @@ async function expectLoginSurface(page: Page, theme: 'dark' | 'light') {
       [submit, 'backgroundColor', '--accent'],
       [submit, 'color', '--on-accent'],
     ],
-    hairlines: [card, page.getByLabel('Username')],
+    hairlines: [card, username],
     density: [[submit, '--touch']],
   });
 }
@@ -182,9 +188,9 @@ test.describe('login', () => {
     await page.goto('/login');
     for (const scheme of ['dark', 'light'] as const) {
       await page.emulateMedia({ colorScheme: scheme });
-      await expectContrast(page.getByRole('heading', { name: 'Sign in to Hikyo' }));
-      await expectContrast(page.getByText('Use the credential you established'));
-      await expectContrast(page.getByText('Username'));
+      await expectContrast(page, page.getByRole('heading', { name: 'Sign in to Hikyo' }));
+      await expectContrast(page, page.getByText('Use the credential you established'));
+      await expectContrast(page, page.getByText('Username'));
     }
   });
 });

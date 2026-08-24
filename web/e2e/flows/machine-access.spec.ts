@@ -324,6 +324,15 @@ test.describe('machine access', () => {
 
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
+    let createRequests = 0;
+    page.on('request', (request) => {
+      if (
+        request.method() === 'POST' &&
+        /\/service-accounts\/[^/]+\/bindings$/.test(new URL(request.url()).pathname)
+      ) {
+        createRequests += 1;
+      }
+    });
     // The Kubernetes preset fills the byte-exact issuer and the UID pin the
     // server refuses a binding without.
     await expect(dialog.getByLabel('Issuer')).toHaveValue(seed.machine.issuer);
@@ -357,6 +366,24 @@ test.describe('machine access', () => {
     await dialog.getByRole('button', { name: 'Bind this identity' }).click();
     await expect(dialog.getByRole('alert')).toContainText('An audience is mandatory');
     await dialog.getByLabel('Audience').fill(seed.machine.audience);
+
+    // Issuer and subject carry the byte-exact identity. Empty values are
+    // refused locally, before the create mutation can reach the server.
+    const issuer = dialog.getByLabel('Issuer');
+    const validIssuer = await issuer.inputValue();
+    await issuer.fill('');
+    await dialog.getByRole('button', { name: 'Bind this identity' }).click();
+    await expect(dialog.getByRole('alert')).toContainText('An issuer is mandatory');
+    expect(createRequests).toBe(0);
+    await issuer.fill(validIssuer);
+
+    const subject = dialog.getByLabel('Subject, matched byte-for-byte');
+    const validSubject = await subject.inputValue();
+    await subject.fill('');
+    await dialog.getByRole('button', { name: 'Bind this identity' }).click();
+    await expect(dialog.getByRole('alert')).toContainText('A subject is mandatory');
+    expect(createRequests).toBe(0);
+    await subject.fill(validSubject);
 
     await dialog.getByLabel('Event name').selectOption('pull_request_target');
     const refusal = dialog.getByRole('alert');
