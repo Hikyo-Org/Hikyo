@@ -1,7 +1,7 @@
 # Handoff: #463 frontend accessibility and loading-state polish
 
 Issue: https://github.com/Hikyo-Org/Hikyo/issues/463. Base:
-`5543b70e48ebcf5043b69ec2457b6c954091e538`.
+`5543b70eae3f3851247ce34f842e976c60ad02cf`.
 
 ## Contract
 
