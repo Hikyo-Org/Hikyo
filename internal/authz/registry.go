@@ -368,6 +368,9 @@ const (
 	OpProjectRetentionRead   Operation = "retention.project-read"
 	OpProjectRetentionUpdate Operation = "retention.project-update"
 	OpRetentionHealthRead    Operation = "retention.health-read"
+	OpUpdateStatusRead       Operation = "update.status-read"
+	OpUpdateRequest          Operation = "update.request"
+	OpUpdateJobRead          Operation = "update.job-read"
 
 	// Machine identities (#61). Every one of these asks
 	// `manage-identities(project)` and nothing more, because that is the
@@ -3080,6 +3083,30 @@ var operationTable = map[Operation]opSpec{
 		},
 		events: []audit.EventType{audit.EventRetentionHealthRead},
 	},
+	OpUpdateStatusRead: {
+		class:   ClassInstance,
+		formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{
+			StoreAuditInstanceInsert: true,
+		},
+		events: []audit.EventType{audit.EventUpdateStatusRead},
+	},
+	OpUpdateRequest: {
+		class:   ClassInstance,
+		formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{
+			StoreAuditInstanceInsert: true,
+		},
+		events: []audit.EventType{audit.EventUpdateRequested, audit.EventUpdateOutcome},
+	},
+	OpUpdateJobRead: {
+		class:   ClassInstance,
+		formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{
+			StoreAuditInstanceInsert: true,
+		},
+		events: []audit.EventType{audit.EventUpdateOutcome},
+	},
 
 	// Machine identities (#61). The service-account and credential tables are
 	// class=authn, so their reads and writes ride the resolution surface for
@@ -3854,6 +3881,7 @@ var systemSiteEvents = map[SystemSite][]audit.EventType{
 	SiteScheduler: {
 		audit.EventRetentionPayloadGC,
 		audit.EventRetentionPruneRun,
+		audit.EventUpdateOutcome,
 	},
 }
 

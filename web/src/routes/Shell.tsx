@@ -3,8 +3,15 @@ import { generatePath, matchPath, NavLink, Outlet, useLocation, useNavigate } fr
 
 import { useLogout, useOrgs, type WhoAmI } from '../api/session.ts';
 import { retentionBanner, storageBanner, useRetentionHealth } from '../api/retention.ts';
+import {
+  useRemoteUpdateStatuses,
+  useUpdateStatus,
+  type UpdateStatus,
+} from '../api/updates.ts';
+import { useWorkspaces } from '../api/workspace.ts';
 import { effectiveTheme, prefersDark, useThemeChoice, type Theme } from '../app/theme.ts';
 import { needsOrg, SECTIONS, SURFACES, surfaceById, type Surface } from '../app/navigation.ts';
+import { notifyUpdate } from '../app/notifications.tsx';
 import { StepUpBanner } from './StepUpBanner.tsx';
 
 /** Human-readable GiB for the storage high-water banner. */
@@ -29,6 +36,9 @@ function formatGiB(bytes: number): string {
 export function Shell({ session }: { session: WhoAmI }) {
   const orgs = useOrgs(true);
   const retentionHealth = useRetentionHealth(true);
+  const updateStatus = useUpdateStatus(true);
+  const workspaces = useWorkspaces();
+  const remoteUpdateStatuses = useRemoteUpdateStatuses(workspaces);
   const location = useLocation();
   const navigate = useNavigate();
   const [navOpen, setNavOpen] = useState(false);
@@ -66,6 +76,17 @@ export function Shell({ session }: { session: WhoAmI }) {
   const activeOrgName = items.find((org) => org.id === activeOrgId)?.name ?? activeOrgId;
   const pruneWarning = retentionBanner(retentionHealth.data, retentionHealth.isError);
   const storageWarning = storageBanner(retentionHealth.data);
+  const availableUpdate = updateStatus.data?.available === true ? updateStatus.data : null;
+  const availableRemoteUpdates = remoteUpdateStatuses.flatMap(({ origin, status }) =>
+    status?.available === true ? [{ origin, status }] : [],
+  );
+  const remoteUpdateFailures = remoteUpdateStatuses.filter(({ error }) => error !== null);
+  const badgeVersions = [
+    ...(availableUpdate?.latest_version === undefined ? [] : [availableUpdate.latest_version]),
+    ...availableRemoteUpdates.flatMap(({ origin, status }) =>
+      status.latest_version === undefined ? [] : [`${origin}: ${status.latest_version}`],
+    ),
+  ];
 
   /**
    * chooseOrg is what a rail circle does. Setting the state is only half of
@@ -122,7 +143,12 @@ export function Shell({ session }: { session: WhoAmI }) {
           ))}
         </ul>
         <span className="rail__spacer" />
-        <AccountEntry session={session} />
+        <FleetUpdateNotice
+          local={availableUpdate}
+          remotes={availableRemoteUpdates}
+          principalId={session.principal.id}
+        />
+        <AccountEntry session={session} updateVersions={badgeVersions} />
       </nav>
 
       <nav id="sidebar" className="sidebar" aria-label="Sections" data-open={navOpen}>
@@ -194,6 +220,21 @@ export function Shell({ session }: { session: WhoAmI }) {
             <span>Retention health could not be checked. Reload to try again.</span>
           </p>
         ) : null}
+        {updateStatus.isError || remoteUpdateFailures.length > 0 ? (
+          <p className="retention-warning" role="alert">
+            <span className="alert__glyph" aria-hidden="true">
+              !
+            </span>
+            <span>
+              Update checks failed for{' '}
+              {updateStatus.isError ? 'this instance' : `${remoteUpdateFailures.length} remote instance${remoteUpdateFailures.length === 1 ? '' : 's'}`}
+              {updateStatus.isError && remoteUpdateFailures.length > 0
+                ? ` and ${remoteUpdateFailures.length} remote instance${remoteUpdateFailures.length === 1 ? '' : 's'}`
+                : ''}
+              . Reload to retry.
+            </span>
+          </p>
+        ) : null}
         {pruneWarning?.kind === 'stale' ? (
           <p className="retention-warning" role="alert">
             <span className="alert__glyph" aria-hidden="true">
@@ -238,22 +279,31 @@ export function Shell({ session }: { session: WhoAmI }) {
   );
 }
 
-function AccountEntry({ session }: { session: WhoAmI }) {
+function AccountEntry({
+  session,
+  updateVersions,
+}: {
+  session: WhoAmI;
+  updateVersions: readonly string[];
+}) {
   const [open, setOpen] = useState(false);
   const logout = useLogout();
   const name = session.principal.display_name ?? session.principal.id;
 
   return (
-    <>
+    <div className="account-entry">
       <button
         type="button"
         className="avatar"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`Account: ${name}`}
+        aria-label={`Account: ${name}${updateVersions.length === 0 ? '' : `; ${updateVersions.length} update${updateVersions.length === 1 ? '' : 's'} available`}`}
         onClick={() => setOpen((v) => !v)}
       >
         {monogram(name)}
+        {updateVersions.length === 0 ? null : (
+          <ProfileUpdateBadge version={updateVersions.join(', ')} />
+        )}
       </button>
       {open ? (
         <div className="menu" role="menu" aria-label="Account">
@@ -271,7 +321,87 @@ function AccountEntry({ session }: { session: WhoAmI }) {
           </button>
         </div>
       ) : null}
-    </>
+    </div>
+  );
+}
+
+const dismissedUpdatePrefix = 'hikyo:update-dismissed:';
+
+function fleetDismissalKey(
+  local: UpdateStatus | null,
+  remotes: Array<{ origin: string; status: UpdateStatus }>,
+  principalId: string,
+): string | null {
+  const versions = remotes.flatMap(({ origin, status }) =>
+    status.latest_version === undefined
+      ? []
+      : [`${origin}:${status.channel}:${status.latest_version}`],
+  );
+  if (local?.latest_version !== undefined) {
+    versions.push(`local:${local.channel}:${local.latest_version}`);
+  }
+  return versions.length === 0
+    ? null
+    : `${dismissedUpdatePrefix}${principalId}:fleet:${versions.sort().join('|')}`;
+}
+
+function wasDismissed(key: string): boolean {
+  try {
+    return window.localStorage.getItem(key) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function rememberDismissal(key: string): void {
+  try {
+    window.localStorage.setItem(key, 'true');
+  } catch {
+    // Storage can be unavailable in hardened browsers. Dismissal still lasts
+    // for the current page because the toast store itself is cleared.
+  }
+}
+
+export function FleetUpdateNotice({
+  local,
+  remotes,
+  principalId,
+}: {
+  local: UpdateStatus | null;
+  remotes: Array<{ origin: string; status: UpdateStatus }>;
+  principalId: string;
+}) {
+  const availableRemotes = remotes.filter(({ status }) => status.latest_version !== undefined);
+  const availableLocal = local?.latest_version === undefined ? null : local;
+  const count = availableRemotes.length + (availableLocal === null ? 0 : 1);
+  const key = fleetDismissalKey(availableLocal, availableRemotes, principalId);
+  const message =
+    count === 1 && availableLocal !== null
+      ? `Hikyo ${availableLocal.latest_version} is available on the ${availableLocal.channel} channel.`
+      : count === 1
+        ? `Hikyo ${availableRemotes[0]?.status.latest_version} is available for ${availableRemotes[0]?.origin}.`
+        : `${count} Hikyo environments have updates available.`;
+  const href =
+    availableRemotes.length === 0 && availableLocal?.release_url !== undefined
+      ? availableLocal.release_url
+      : '/instance/remotes';
+  const label = availableRemotes.length === 0 ? 'View release' : 'Review updates';
+  useEffect(() => {
+    if (key === null || wasDismissed(key)) {
+      return;
+    }
+    notifyUpdate(message, href, () => rememberDismissal(key), label);
+  }, [href, key, label, message]);
+  return null;
+}
+
+export function ProfileUpdateBadge({ version }: { version: string }) {
+  return (
+    <span
+      className="account-update-badge"
+      aria-label={`Update ${version} available`}
+      title={`Update ${version} available`}
+    />
   );
 }
 

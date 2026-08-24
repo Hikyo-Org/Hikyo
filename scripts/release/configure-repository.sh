@@ -28,6 +28,7 @@ upsert_ruleset() {
 
 upsert_ruleset "$repo_root/release/repository/release-tag-immutability.json"
 upsert_ruleset "$repo_root/release/repository/release-tag-creation.json"
+upsert_ruleset "$repo_root/release/repository/nightly-tag-creation.json"
 upsert_ruleset "$repo_root/release/repository/main-ci-gate.json"
 
 $GH_BIN api --method PUT "repos/$repository/immutable-releases" >/dev/null
@@ -48,6 +49,9 @@ printf '%s\n' "$rulesets" | jq -e '
 ' >/dev/null
 printf '%s\n' "$rulesets" | jq -e '
 	[.[] | select(.name == "release tags require admin role" and .enforcement == "active")] | length == 1
+' >/dev/null
+printf '%s\n' "$rulesets" | jq -e '
+	[.[] | select(.name == "nightly tags require GitHub Actions" and .enforcement == "active")] | length == 1
 ' >/dev/null
 printf '%s\n' "$rulesets" | jq -e '
 	[.[] | select(.name == "main requires PR and release CI" and .enforcement == "active")] | length == 1
@@ -72,7 +76,20 @@ printf '%s\n' "$creation" | jq -e '
 		bypass_mode: "always"
 	}] and
 	([.rules[] | select(.type == "creation")] | length) == 1 and
-	.conditions.ref_name.include == ["refs/tags/v*"]
+	.conditions.ref_name.include == ["refs/tags/v*"] and
+	.conditions.ref_name.exclude == ["refs/tags/v*-nightly.*"]
+' >/dev/null
+nightly_id=$(printf '%s\n' "$rulesets" | jq -r '.[] | select(.name == "nightly tags require GitHub Actions") | .id')
+nightly=$($GH_BIN api "repos/$repository/rulesets/$nightly_id")
+printf '%s\n' "$nightly" | jq -e '
+	.bypass_actors == [{
+		actor_id: 15368,
+		actor_type: "Integration",
+		bypass_mode: "always"
+	}] and
+	([.rules[] | select(.type == "creation")] | length) == 1 and
+	.conditions.ref_name.include == ["refs/tags/v*-nightly.*"] and
+	.conditions.ref_name.exclude == []
 ' >/dev/null
 $GH_BIN api "repos/$repository/immutable-releases" --jq '.enabled' | grep -x true >/dev/null
 $GH_BIN api "repos/$repository/actions/permissions" --jq '.sha_pinning_required' | grep -x true >/dev/null
@@ -105,4 +122,4 @@ fi
 		"$repo_root/scripts/release/probe-tag-move.sh" "$repository" "$probe_tag" "$replacement"
 )
 
-printf 'repository policy: PR/CI main gate, immutable releases, protected v* tags, live move probe, SHA-pinned actions, CodeQL default setup active\n'
+printf 'repository policy: PR/CI main gate, immutable releases, protected stable/nightly tags, live move probe, SHA-pinned actions, CodeQL default setup active\n'

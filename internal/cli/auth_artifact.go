@@ -59,6 +59,7 @@ var authRuleRows = []authRuleRow{
 		"account establish-credential", "account recovery begin",
 		"account passkey enrol", "account passkey list", "account passkey remove",
 		"definitions scaffold",
+		"update channel stable", "update channel nightly", "update channel off", "update check",
 	)},
 	{Kinds: humanOnly, Operations: authOperations(
 		"logout", "whoami",

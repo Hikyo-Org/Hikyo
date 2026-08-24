@@ -69,6 +69,8 @@ spec:
                 secretKeyRef:
                   name: {{ required "database.existingSecret is required" .Values.database.existingSecret }}
                   key: HIKYO_DB
+            - name: HIKYO_UPDATE_CHANNEL
+              value: {{ .Values.updates.channel | quote }}
             {{- if $trustedProxyCIDRs }}
             - name: HIKYO_TRUSTED_PROXY_CIDRS
               value: {{ $trustedProxyCIDRs | quote }}

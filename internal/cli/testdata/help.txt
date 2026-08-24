@@ -24,6 +24,8 @@ contexts:
 
 diagnostics:
   hikyo doctor [--instance REF] [-o table|json]     report provider and retention health
+  hikyo update channel stable|nightly|off           choose local release track
+  hikyo update check                                check the selected release track now
 
 hierarchy:
   hikyo org list [-o table|json]

@@ -1,0 +1,30 @@
+#!/bin/sh
+set -eu
+# Deployment config chooses one root-owned library path.
+# shellcheck disable=SC1090
+. "${HIKYO_UPDATE_LIB:-/usr/local/libexec/hikyo-update-common}"
+job_dir=
+
+phase=${1:-}; version=${2:-}; third=${3:-}; fourth=${4:-}
+if [ "$phase" = verify ]; then release_url=$third; job_id=$fourth; else job_id=$third; fi
+validate_request "$phase" "$version" "$job_id"
+require_bin HIKYO_DOCKER_BIN
+require_absolute HIKYO_COMPOSE_PROJECT_DIR
+require_absolute HIKYO_COMPOSE_FILE
+require_absolute HIKYO_COMPOSE_ENV_FILE
+
+compose() { "$HIKYO_DOCKER_BIN" compose --project-directory "$HIKYO_COMPOSE_PROJECT_DIR" --file "$HIKYO_COMPOSE_FILE" --env-file "$HIKYO_COMPOSE_ENV_FILE" "$@"; }
+case "$phase" in
+	plan) [ -f "$HIKYO_COMPOSE_FILE" ] && [ -f "$HIKYO_COMPOSE_ENV_FILE" ] || fail 'compose file or image env file is missing'; compose config --quiet ;;
+	backup) backup_database; cp "$HIKYO_COMPOSE_ENV_FILE" "$job_dir/previous.env" ;;
+	verify) verify_release "$version" "$release_url" "$job_id" ;;
+	apply)
+		image_ref=$("$HIKYO_JQ_BIN" -r '.artifacts[] | select(.kind == "image") | .image + "@" + .digest' "$job_dir/bundle/release-manifest.json")
+		[ -n "$image_ref" ] || fail 'signed manifest contains no image'
+		printf 'HIKYO_IMAGE=%s\n' "$image_ref" >"$job_dir/next.env"
+		chmod 0600 "$job_dir/next.env" && mv "$job_dir/next.env" "$HIKYO_COMPOSE_ENV_FILE"
+		compose pull && compose up -d
+		;;
+	health) health_check ;;
+	rollback) cp "$job_dir/previous.env" "$HIKYO_COMPOSE_ENV_FILE"; compose down; restore_database; compose up -d; health_check ;;
+esac

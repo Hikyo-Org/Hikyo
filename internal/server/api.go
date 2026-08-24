@@ -19,6 +19,8 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/scimproto"
 	"github.com/Hikyo-Org/hikyo/internal/service"
+	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
+	"github.com/Hikyo-Org/hikyo/internal/updater"
 )
 
 // The API transport. It owns exactly three things — moving bytes, attaching
@@ -156,6 +158,7 @@ type API struct {
 	Settings        SettingsService
 	Retention       RetentionSettingsService
 	RetentionHealth OperationalRetentionHealthService
+	Updates         UpdateService
 	Providers       ProviderService
 	SAMLProviders   SAMLProviderService
 	Adapters        *service.Adapters
@@ -186,6 +189,12 @@ type API struct {
 
 type OperationalRetentionHealthService interface {
 	OperationalHealth(ctx context.Context) (service.PruneHealth, error)
+}
+
+type UpdateService interface {
+	GetStatus(ctx context.Context, actor service.Actor) (updatecheck.Status, error)
+	Request(ctx context.Context, actor service.Actor, version string) (updater.Job, error)
+	GetJob(ctx context.Context, actor service.Actor, id string) (updater.Job, error)
 }
 
 var _ apigen.StrictServerInterface = (*API)(nil)

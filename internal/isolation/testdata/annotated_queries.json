@@ -33,7 +33,7 @@
     "engine": "postgres",
     "name": "ApproveWorkspaceHandoff",
     "annotation": "authn-resolution",
-    "hash": "df6f617122c04b3a57d21e5628efc5ba90665b459883ea3cebdbbc6d4b89a338"
+    "hash": "ad4872d3fadaa4c2a23c7ac0072990497795187a6c6ab6995d34ca32cb94c24c"
   },
   {
     "engine": "postgres",
@@ -1443,13 +1443,13 @@
     "engine": "postgres",
     "name": "WorkspaceHandoffByCode",
     "annotation": "authn-resolution",
-    "hash": "18eeec5b43f932cc2828ba14de2eef6d15435d357d13feb424c657018ddacf9b"
+    "hash": "0df273c9902eb72ac6791da6b8890a072039f8eced3c935c6a0910191a6d7244"
   },
   {
     "engine": "postgres",
     "name": "WorkspaceHandoffByState",
     "annotation": "authn-resolution",
-    "hash": "ce0057eb50bb4659efe9d8729c7e7ccc0c389a471d3d15d1490337a214257c42"
+    "hash": "1322c9beb8d8ea08b1b9afb1880c85bc973381dd3c1a209fc4529f25a0972870"
   },
   {
     "engine": "postgres",
@@ -1491,7 +1491,7 @@
     "engine": "sqlite",
     "name": "ApproveWorkspaceHandoff",
     "annotation": "authn-resolution",
-    "hash": "4b1c5eef6d0c89901e49563522fb7ce6644ea48173b29939b320241044c90021"
+    "hash": "2d8c2e76fe2a51515e2b2a656638e6c41c81396ae4c4120f995095dd09c02b4f"
   },
   {
     "engine": "sqlite",
@@ -2901,13 +2901,13 @@
     "engine": "sqlite",
     "name": "WorkspaceHandoffByCode",
     "annotation": "authn-resolution",
-    "hash": "a40afd621e7cdd1f60c96f4e3abd6b9caad822c8a7b7cdea1bfe03e7b241411c"
+    "hash": "521b54a1228d45dc3e24b2e8cdf87e88f037fdd2e4932eb6d5c8be025edec8cf"
   },
   {
     "engine": "sqlite",
     "name": "WorkspaceHandoffByState",
     "annotation": "authn-resolution",
-    "hash": "6378a81f3ddaeca72eafd4a8796343fd177cbd82e631b862ad45918f88a2bd29"
+    "hash": "3b9e0514d35c2c2bbf7b1224420919520fe1489ce3b27d56414230cb9ee93c8a"
   },
   {
     "engine": "sqlite",

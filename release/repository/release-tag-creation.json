@@ -12,7 +12,7 @@
   "conditions": {
     "ref_name": {
       "include": ["refs/tags/v*"],
-      "exclude": []
+      "exclude": ["refs/tags/v*-nightly.*"]
     }
   },
   "rules": [

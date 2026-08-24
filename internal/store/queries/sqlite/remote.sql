@@ -130,14 +130,14 @@ INSERT INTO workspace_handoffs (
 -- name: WorkspaceHandoffByState :one
 SELECT id, state_verifier, code_verifier, origin, redirect_uri, pkce_challenge,
        purpose, session_id, operation, env_id, key_set, principal_id,
-       created_at, expires_at, consumed_at, factors, factor_class
+       created_at, expires_at, consumed_at, factors, factor_class, authenticated_at
 FROM workspace_handoffs WHERE state_verifier = ?;
 
 -- hikyo:authn-resolution
 -- name: WorkspaceHandoffByCode :one
 SELECT id, state_verifier, code_verifier, origin, redirect_uri, pkce_challenge,
        purpose, session_id, operation, env_id, key_set, principal_id,
-       created_at, expires_at, consumed_at, factors, factor_class
+       created_at, expires_at, consumed_at, factors, factor_class, authenticated_at
 FROM workspace_handoffs WHERE code_verifier = ?;
 
 -- Approval binds the authenticated human and mints the code. The NULL guard on
@@ -146,7 +146,7 @@ FROM workspace_handoffs WHERE code_verifier = ?;
 -- hikyo:authn-resolution
 -- name: ApproveWorkspaceHandoff :execrows
 UPDATE workspace_handoffs SET code_verifier = ?, principal_id = ?, factors = ?,
-    factor_class = ?
+    factor_class = ?, authenticated_at = ?
 WHERE id = ? AND code_verifier IS NULL AND consumed_at IS NULL;
 
 -- Single-use consumption. The NULL guard is the atomic claim, exactly as

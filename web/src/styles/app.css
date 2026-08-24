@@ -377,7 +377,7 @@ select {
   inset: 16px 16px auto auto;
   z-index: 30;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: start;
   gap: 8px;
   width: min(440px, calc(100vw - 32px));
@@ -392,6 +392,24 @@ select {
 .toast--success {
   border-color: var(--accent);
   background: color-mix(in oklch, var(--bg-raise), var(--accent) 8%);
+}
+
+.toast--info {
+  border-color: var(--accent);
+  background: color-mix(in oklch, var(--bg-raise), var(--accent) 8%);
+}
+
+.toast--info .alert__glyph {
+  color: var(--accent);
+}
+
+.toast__action {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .toast--success .alert__glyph {
@@ -448,6 +466,27 @@ select {
 
 .rail__spacer {
   flex: 1;
+}
+
+.account-entry {
+  position: relative;
+  display: grid;
+}
+
+.account-entry > .avatar {
+  position: relative;
+}
+
+.account-update-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--bg-raise);
+  border-radius: 50%;
+  background: var(--accent);
+  pointer-events: none;
 }
 
 .sidebar {
@@ -743,6 +782,7 @@ select {
   }
 
   .menu {
+    position: fixed;
     left: auto;
     right: 12px;
     top: 60px;
@@ -2219,6 +2259,22 @@ select {
 
 .remote__projects {
   color: var(--tx-dim);
+}
+
+.remote__update {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-container);
+  background: color-mix(in oklch, var(--bg), var(--accent) 6%);
+}
+
+.remote__update p {
+  margin: 0 0 8px;
+}
+
+.remote__update p:last-child {
+  margin-bottom: 0;
 }
 
 .remote__actions,

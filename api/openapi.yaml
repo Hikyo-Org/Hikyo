@@ -4492,6 +4492,107 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/instance/update-status:
+    get:
+      operationId: getUpdateStatus
+      tags: [instance]
+      summary: Read the configured release channel and available update.
+      x-hikyo-class: instance
+      x-hikyo-operation: update.status-read
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "200":
+          description: Current version and the newest release on the configured channel.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateStatus"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/instance/update:
+    post:
+      operationId: requestInstanceUpdate
+      tags: [instance]
+      summary: Ask this instance's local updater helper to apply a stable release.
+      description: |
+        Human sessions only, including an origin-bound workspace session used
+        directly from another Hikyo UI. The caller must hold instance-config,
+        have multi-factor assurance, and have authenticated within the last five
+        minutes. The server never receives deployment credentials: it submits a
+        fixed version and release URL to a separately configured local helper.
+
+        Stable releases only. Nightly and other prerelease builds remain
+        notification-only. One update may be active at a time.
+      x-hikyo-class: instance
+      x-hikyo-operation: update.request
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InstanceUpdateRequest"
+      responses:
+        "202":
+          description: Update accepted by the local helper.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstanceUpdateJob"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/instance/updates/{job}:
+    parameters:
+      - $ref: "#/components/parameters/InstanceUpdateJobID"
+    get:
+      operationId: getInstanceUpdateJob
+      tags: [instance]
+      summary: Read one local updater job and reconcile its terminal audit outcome.
+      x-hikyo-class: instance
+      x-hikyo-operation: update.job-read
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "200":
+          description: Durable helper-owned update state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstanceUpdateJob"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /api/v1/instance/saml-providers:
     get:
       operationId: listSamlProviders
@@ -9297,6 +9398,13 @@ components:
       description: Session identifier, always one of the caller's own.
       schema:
         $ref: "#/components/schemas/ID"
+    InstanceUpdateJobID:
+      name: job
+      in: path
+      required: true
+      description: Durable updater-helper job identifier.
+      schema:
+        $ref: "#/components/schemas/ID"
 
   responses:
     BadRequest:
@@ -9932,6 +10040,83 @@ components:
           $ref: "#/components/schemas/Session"
         principal:
           $ref: "#/components/schemas/Principal"
+
+    UpdateStatus:
+      type: object
+      x-hikyo-zod-strict: true
+      additionalProperties: false
+      required: [channel, current_version, available, prerelease, apply_supported]
+      properties:
+        channel:
+          type: string
+          enum: [stable, nightly, off]
+        current_version:
+          type: string
+        latest_version:
+          type: string
+        release_url:
+          type: string
+          format: uri
+        available:
+          type: boolean
+        prerelease:
+          type: boolean
+        published_at:
+          type: string
+          format: date-time
+        apply_supported:
+          type: boolean
+          description: True only while a configured local updater helper answers.
+        apply_backend:
+          $ref: "#/components/schemas/InstanceUpdateBackend"
+        apply_error:
+          type: string
+          description: Operator-safe reason a configured helper cannot currently apply.
+
+    InstanceUpdateBackend:
+      type: string
+      enum: [flux, compose, systemd]
+
+    InstanceUpdateRequest:
+      type: object
+      x-hikyo-zod-strict: true
+      additionalProperties: false
+      required: [version]
+      properties:
+        version:
+          type: string
+          pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+          maxLength: 64
+
+    InstanceUpdateJob:
+      type: object
+      x-hikyo-zod-strict: true
+      additionalProperties: false
+      required: [id, backend, version, state, phase, requested_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/ID"
+        backend:
+          $ref: "#/components/schemas/InstanceUpdateBackend"
+        version:
+          type: string
+          pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+          maxLength: 64
+        state:
+          type: string
+          enum: [queued, running, succeeded, failed, rolled-back, rollback-failed]
+        phase:
+          type: string
+          enum: [queued, plan, backup, verify, apply, health, rollback, complete, admission]
+        failure_code:
+          type: string
+          maxLength: 64
+        requested_at:
+          $ref: "#/components/schemas/Timestamp"
+        started_at:
+          $ref: "#/components/schemas/Timestamp"
+        finished_at:
+          $ref: "#/components/schemas/Timestamp"
 
     TotpEnrolStartRequest:
       type: object

@@ -1,0 +1,13 @@
+{
+  "backend": "systemd",
+  "socket": "/run/hikyo-updater/updater.sock",
+  "state_file": "/var/lib/hikyo-updater/jobs.json",
+  "commands": {
+    "plan": { "name": "/usr/local/libexec/hikyo-update-systemd", "argv": ["plan", "{version}", "{job_id}"], "timeout_seconds": 120 },
+    "backup": { "name": "/usr/local/libexec/hikyo-update-systemd", "argv": ["backup", "{version}", "{job_id}"], "timeout_seconds": 1800 },
+    "verify": { "name": "/usr/local/libexec/hikyo-update-systemd", "argv": ["verify", "{version}", "{release_url}", "{job_id}"], "timeout_seconds": 600 },
+    "apply": { "name": "/usr/local/libexec/hikyo-update-systemd", "argv": ["apply", "{version}", "{job_id}"], "timeout_seconds": 900 },
+    "health": { "name": "/usr/local/libexec/hikyo-update-systemd", "argv": ["health", "{version}", "{job_id}"], "timeout_seconds": 600 },
+    "rollback": { "name": "/usr/local/libexec/hikyo-update-systemd", "argv": ["rollback", "{version}", "{job_id}"], "timeout_seconds": 900 }
+  }
+}

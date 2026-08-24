@@ -1426,6 +1426,30 @@
     ]
   },
   {
+    "operation": "update.job-read",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "update.request",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "update.status-read",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
     "operation": "value.clear",
     "class": "tenant",
     "level": "environment",

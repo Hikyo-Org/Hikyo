@@ -95,6 +95,18 @@ plaintext connections are refused.
 Tune these together under representative load. A malformed value is a startup
 error, not a fallback to the default.
 
+## Update notifications
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `HIKYO_UPDATE_CHANNEL` | `stable` | Server-wide WebUI notification track: `stable`, `nightly`, or `off`. |
+
+The server checks Hikyo's public GitHub releases at most once every six hours.
+Only signed-in principals holding `instance-config@instance` see a toast and a
+badge on the profile icon. Dismissing the toast keeps the badge until the
+installed version catches up. Checks never download or install software, and a
+release-source outage does not stop the server.
+
 `HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE` is for development only. A production
 server refuses to start when it is present.
 
@@ -117,6 +129,15 @@ configured, migrations continue but record a loud skip with no recovery archive.
 | `HIKYO_CONTEXT` | Select a named context for one invocation. |
 | `HIKYO_INSTANCE`, `HIKYO_ORG`, `HIKYO_PROJECT`, `HIKYO_ENV` | Supply target dimensions. |
 | `HIKYO_TOKEN` | Supply a machine credential when a token file is unavailable. |
+
+The CLI channel is local machine state, separate from the server-wide setting:
+
+```bash
+hikyo update channel stable
+hikyo update channel nightly
+hikyo update channel off
+hikyo update check
+```
 
 Prefer flags for visible, one-off target changes and `--token-file` for machine
 credentials. See [contexts and targets](/docs/contexts/).

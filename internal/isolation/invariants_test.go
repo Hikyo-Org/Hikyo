@@ -433,6 +433,8 @@ func TestInvariant12CacheDiscipline(t *testing.T) {
 		// on the TYPE NAME, so a package whose cache is registered still trips it;
 		// the registry entry is what states the keying and the proof-gating.
 		lint.Module + "/internal/oidcfed": true,
+		// Public release metadata cache, registered as updatecheck.releases.
+		lint.Module + "/internal/updatecheck": true,
 	}
 	for _, p := range pkgs {
 		if p.Types == nil || !strings.HasPrefix(p.PkgPath, lint.Module) {

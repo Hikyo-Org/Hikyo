@@ -141,6 +141,8 @@ hikyo migrate
 hikyo admin create --username admin
 hikyo backup export
 hikyo restore run --from <archive> --identity-file <path>
+hikyo update channel stable|nightly|off
+hikyo update check
 
 # Create a scoped environment
 hikyo login <instance-url> --local --as <user>

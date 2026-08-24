@@ -163,6 +163,8 @@ jobs:
         run: ./scripts/ci/check-chart.sh
       - name: Release trust and refusal fixtures
         run: ./scripts/release/test-fixtures.sh
+      - name: Interactive release ceremony fixture
+        run: ./scripts/release/ceremony_test.sh
       - name: Release candidate resolver fixture
         run: ./scripts/release/resolve-candidate_test.sh
       - name: Manifest binding fixture
@@ -197,6 +199,8 @@ jobs:
         run: ./scripts/release/probe-tag-move_test.sh
       - name: Release-tag guard fixture
         run: ./scripts/release/check-tag_test.sh
+      - name: Nightly release fixture
+        run: ./scripts/ci/check-nightly-release_test.sh
       - name: OCI version guard fixture
         run: ./scripts/release/check-oci-unused_test.sh
       - name: Release channel fixture

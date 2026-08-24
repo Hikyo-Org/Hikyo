@@ -12,16 +12,17 @@ import (
 
 const approveWorkspaceHandoff = `-- name: ApproveWorkspaceHandoff :execrows
 UPDATE workspace_handoffs SET code_verifier = ?, principal_id = ?, factors = ?,
-    factor_class = ?
+    factor_class = ?, authenticated_at = ?
 WHERE id = ? AND code_verifier IS NULL AND consumed_at IS NULL
 `
 
 type ApproveWorkspaceHandoffParams struct {
-	CodeVerifier []byte
-	PrincipalID  sql.NullString
-	Factors      string
-	FactorClass  string
-	ID           string
+	CodeVerifier    []byte
+	PrincipalID     sql.NullString
+	Factors         string
+	FactorClass     string
+	AuthenticatedAt string
+	ID              string
 }
 
 // Approval binds the authenticated human and mints the code. The NULL guard on
@@ -34,6 +35,7 @@ func (q *Queries) ApproveWorkspaceHandoff(ctx context.Context, arg ApproveWorksp
 		arg.PrincipalID,
 		arg.Factors,
 		arg.FactorClass,
+		arg.AuthenticatedAt,
 		arg.ID,
 	)
 	if err != nil {
@@ -865,7 +867,7 @@ func (q *Queries) TouchInstanceConnection(ctx context.Context, arg TouchInstance
 const workspaceHandoffByCode = `-- name: WorkspaceHandoffByCode :one
 SELECT id, state_verifier, code_verifier, origin, redirect_uri, pkce_challenge,
        purpose, session_id, operation, env_id, key_set, principal_id,
-       created_at, expires_at, consumed_at, factors, factor_class
+       created_at, expires_at, consumed_at, factors, factor_class, authenticated_at
 FROM workspace_handoffs WHERE code_verifier = ?
 `
 
@@ -891,6 +893,7 @@ func (q *Queries) WorkspaceHandoffByCode(ctx context.Context, codeVerifier []byt
 		&i.ConsumedAt,
 		&i.Factors,
 		&i.FactorClass,
+		&i.AuthenticatedAt,
 	)
 	return i, err
 }
@@ -898,7 +901,7 @@ func (q *Queries) WorkspaceHandoffByCode(ctx context.Context, codeVerifier []byt
 const workspaceHandoffByState = `-- name: WorkspaceHandoffByState :one
 SELECT id, state_verifier, code_verifier, origin, redirect_uri, pkce_challenge,
        purpose, session_id, operation, env_id, key_set, principal_id,
-       created_at, expires_at, consumed_at, factors, factor_class
+       created_at, expires_at, consumed_at, factors, factor_class, authenticated_at
 FROM workspace_handoffs WHERE state_verifier = ?
 `
 
@@ -928,6 +931,7 @@ func (q *Queries) WorkspaceHandoffByState(ctx context.Context, stateVerifier []b
 		&i.ConsumedAt,
 		&i.Factors,
 		&i.FactorClass,
+		&i.AuthenticatedAt,
 	)
 	return i, err
 }

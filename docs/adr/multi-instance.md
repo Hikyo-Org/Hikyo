@@ -79,6 +79,17 @@ The snapshot is **foreign structure at rest on the viewing instance**: instance-
 
 The workspace lets a human read and edit a remote's actual data — matrices, values, publishes, reveals — inside the viewing instance's UI. Its one structural rule, from which everything else follows: **the browser talks to the remote directly; no server in the middle.** The viewing instance's server contributes the shell, the directory, and the deep links, and never touches the session, the calls, or the values.
 
+**Amendment — update notifications and remote apply (2026-08-24).** Update
+status and update requests obey the same direction: a connected workspace's
+browser calls the remote's ordinary authenticated API directly. The remote's
+own server may then submit a stable version over a local Unix socket to its own
+separately privileged updater helper. That local process boundary is not a
+server-side proxy: the viewing server still sees no request, deployment
+credential, job, or release response. Nightlies are notification-only. Remote
+apply requires `instance-config`, MFA, and authentication within five minutes;
+intent and terminal outcome are audited on the remote under the human who
+requested the update.
+
 ### Consent: the origin allowlist
 
 A remote participates only by explicit configuration: an **origin allowlist** under its `instance-config` — exact origins (`https://hikyo.went.io`), no wildcards, no subdomain matching. What the allowlist actually gates, stated precisely: **handoff issuance** (the `redirect_uri` authority and transaction origin binding) and **browser readability** (CORS echoes only a matching origin, without credentials mode — cookies never cross origins here). It is *not* bearer authorization: CORS controls what a browser can read, not what a token can do — anyone who exfiltrates a workspace bearer can replay it from a non-browser client until it expires or is revoked, exactly as the human-auth ADR states for bearer artifacts generally. The server-side controls carry the rest: workspace-session rows are **bound to their requesting origin**, browser requests must present that origin, and **removing an origin from the allowlist atomically revokes every session bound to it** (#16 amendment above) — so de-allowlisting is a real kill switch, not a headers change.

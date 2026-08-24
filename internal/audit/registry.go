@@ -226,6 +226,9 @@ const (
 	EventRetentionHealthRead EventType = "retention.health_read"
 	EventRetentionPayloadGC  EventType = "retention.payload_gc"
 	EventRetentionPruneRun   EventType = "retention.prune_run"
+	EventUpdateStatusRead    EventType = "system.update_status_read"
+	EventUpdateRequested     EventType = "system.update_requested"
+	EventUpdateOutcome       EventType = "system.update_outcome"
 
 	// recovery.break_glass_grant records a grant issued under local host
 	// authority — the one authorization path not evaluated against a grant.
@@ -1695,6 +1698,38 @@ var registry = map[EventType]TypeSpec{
 			// Per-project storage high-water reported alongside prune health (#185).
 			"peak_project_bytes": {Kind: KindInt, Required: true},
 			"storage_warn":       {Kind: KindBool, Required: true},
+		},
+	},
+	EventUpdateStatusRead: {
+		SchemaVersion: 1,
+		Retention:     RetentionAccess,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"channel":         {Kind: KindString, Required: true, Enum: []string{"stable", "nightly", "off"}},
+			"current_version": {Kind: KindString, Required: true},
+		},
+	},
+	EventUpdateRequested: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeIntent: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"version": {Kind: KindString, Required: true},
+			"backend": {Kind: KindString, Required: true, Enum: []string{"flux", "compose", "systemd"}},
+		},
+	},
+	EventUpdateOutcome: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true, OutcomeFailure: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"version":      {Kind: KindString, Required: true},
+			"backend":      {Kind: KindString, Required: true, Enum: []string{"flux", "compose", "systemd"}},
+			"state":        {Kind: KindString, Required: true, Enum: []string{"succeeded", "failed", "rolled-back", "rollback-failed"}},
+			"failure_code": {Kind: KindString},
 		},
 	},
 	EventRetentionPayloadGC: {
