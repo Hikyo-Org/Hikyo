@@ -26,6 +26,14 @@
       "test",
       "web"
     ],
+    "chart": [
+      "k8s-e2e",
+      "lint",
+      "release-snapshot",
+      "supply-chain-checks"
+    ],
+    "chart-kind-script": ["k8s-e2e", "lint"],
+    "chart-runtime": ["k8s-e2e"],
     "client": ["client", "release-snapshot", "web"],
     "compose": ["compose-demo"],
     "core": [
@@ -57,6 +65,12 @@
       "release-snapshot",
       "test",
       "web"
+    ],
+    "image": [
+      "k8s-e2e",
+      "lint",
+      "release-snapshot",
+      "supply-chain-checks"
     ],
     "release": ["lint", "release-snapshot", "supply-chain-checks"],
     "release-policy": [

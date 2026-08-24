@@ -27,17 +27,15 @@ import {
 import {
   forgetWorkspace,
   livenessPollMs,
-  openPrepared,
-  prepareWorkspace,
   probeWorkspace,
   useWorkspaces,
   WorkspaceError,
-  type PreparedWorkspace,
   type WorkspaceBearer,
 } from '../api/workspace.ts';
 import { createWorkspaceClient } from '../api/workspaceClient.ts';
 import { makeQueryClient } from '../app/queryClient.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
 
 /**
  * The multi-instance surface (registry surface `remotes`).
@@ -106,11 +104,20 @@ function RemoteCard({ remote }: { remote: Remote }) {
   const remove = useRemoveRemote();
   const workspaces = useWorkspaces();
   const [failure, setFailure] = useState<string | null>(null);
-  const [opening, setOpening] = useState(false);
   const [ended, setEnded] = useState(false);
-  const [prepared, setPrepared] = useState<PreparedWorkspace | null>(null);
   const origin = safeOriginOf(remote.url);
   const live = workspaces.find((w) => w.origin === origin);
+  const handoff = useWorkspaceHandoff(origin, {
+    // A live card hides the launcher and must not stage an unused transaction.
+    preparation:
+      live === undefined
+        ? { kind: 'establishment' }
+        : { kind: 'unavailable', message: 'This workspace is already open.' },
+    onFailMessage: (error) =>
+      error instanceof WorkspaceError
+        ? error.message
+        : 'The workspace could not be opened. Check that this instance allowlists this origin.',
+  });
   const updateStatuses = useRemoteUpdateStatuses(live === undefined ? [] : [live]);
   const updateProbe = updateStatuses[0];
   const update = updateProbe?.status;
@@ -119,36 +126,17 @@ function RemoteCard({ remote }: { remote: Remote }) {
   const updateJob = useRemoteUpdateJob(origin, updateJobID);
   const staleness = stalenessText(remote);
   useWorkspaceLiveness(live, () => setEnded(true));
-
-  const fail = (error: unknown) =>
-    setFailure(
-      error instanceof WorkspaceError
-        ? error.message
-        : 'The workspace could not be opened. Check that this instance allowlists this origin.',
-    );
-
-  // Step one: the live compatibility check and the handoff transaction. No
-  // window is touched here.
-  const prepare = async () => {
-    setFailure(null);
-    setEnded(false);
-    setOpening(true);
-    try {
-      setPrepared(await prepareWorkspace(origin));
-    } catch (error) {
-      fail(error);
-    } finally {
-      setOpening(false);
-    }
-  };
-
-  // Step two, and it must stay SYNCHRONOUS up to the `window.open` inside
-  // `openPrepared`: a popup opened after an await has lost the user gesture and
-  // the browser blocks it.
-  const go = (ready: PreparedWorkspace) => {
-    setPrepared(null);
-    openPrepared(ready).catch(fail);
-  };
+  const handoffAction = workspaceHandoffAction(
+    handoff,
+    {
+      ready: `Continue to ${origin} to sign in`,
+      authorising: 'Waiting for sign-in…',
+    },
+    () => {
+      setEnded(false);
+      handoff.retry();
+    },
+  );
 
   const applyUpdate = async () => {
     if (update?.latest_version === undefined) {
@@ -228,6 +216,15 @@ function RemoteCard({ remote }: { remote: Remote }) {
         </p>
       )}
 
+      {live !== undefined || handoff.phase.kind !== 'failed' ? null : (
+        <p className="alert" role="alert">
+          <span className="alert__glyph" aria-hidden="true">
+            !
+          </span>
+          <span>{handoff.phase.message}</span>
+        </p>
+      )}
+
       {updateProbe?.error === null || updateProbe?.error === undefined ? null : (
         <p className="alert" role="alert">
           <span className="alert__glyph" aria-hidden="true">!</span>
@@ -290,14 +287,14 @@ function RemoteCard({ remote }: { remote: Remote }) {
       ) : null}
 
       <div className="remote__actions">
-        {live === undefined && prepared !== null ? (
-          <button className="btn btn--primary" type="button" onClick={() => go(prepared)}>
-            Continue to {origin} to sign in
-          </button>
-        ) : null}
-        {live === undefined && prepared === null ? (
-          <button className="btn btn--primary" type="button" onClick={prepare} disabled={opening}>
-            {opening ? 'Contacting…' : 'Open workspace'}
+        {live === undefined ? (
+          <button
+            className="btn btn--primary"
+            type="button"
+            onClick={handoffAction.onClick}
+            disabled={handoffAction.disabled}
+          >
+            {handoffAction.label}
           </button>
         ) : null}
         {live === undefined ? null : (

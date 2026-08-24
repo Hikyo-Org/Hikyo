@@ -30,10 +30,14 @@ render_mode() {
 	shift
 	helm lint "$chart" \
 		--set database.existingSecret=fixture \
+		--set rootKey.existingSecret=fixture-root-key \
+		--set externalOrigin=https://hikyo.example.com \
 		--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
 		"$@" >/dev/null
 	helm template fixture "$chart" \
 		--set database.existingSecret=fixture \
+		--set rootKey.existingSecret=fixture-root-key \
+		--set externalOrigin=https://hikyo.example.com \
 		--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
 		"$@" >"$tmp/$name.yaml"
 }
@@ -199,7 +203,12 @@ def assert_server_network(docs, mode, tls):
                 deployment, server = d, c
     if server is None:
         fail(f"{mode}: no server container")
-    want_args = ["server", "--listen=0.0.0.0:8080", "--operational-listen=0.0.0.0:8081"]
+    want_args = [
+        "server",
+        "--listen=0.0.0.0:8080",
+        "--operational-listen=0.0.0.0:8081",
+        "--root-key-file=/run/hikyo-root-key/root-key",
+    ]
     if tls:
         want_args += ["--tls-cert-file=/run/hikyo-tls/tls.crt", "--tls-key-file=/run/hikyo-tls/tls.key"]
     if server.get("args") != want_args:
@@ -207,26 +216,62 @@ def assert_server_network(docs, mode, tls):
     ports = {p["name"]: p["containerPort"] for p in server.get("ports", [])}
     if ports != {"http": 8080, "ops": 8081}:
         fail(f"{mode}: server ports = {ports}")
-    if server.get("livenessProbe", {}).get("httpGet") != {"path": "/healthz", "port": "ops"}:
-        fail(f"{mode}: liveness probe does not use operational /healthz")
-    if server.get("readinessProbe", {}).get("httpGet") != {"path": "/readyz", "port": "ops"}:
-        fail(f"{mode}: readiness probe does not use operational /readyz")
+    liveness = server.get("livenessProbe", {})
+    if liveness != {
+        "httpGet": {"path": "/healthz", "port": "ops"},
+        "initialDelaySeconds": 5,
+        "periodSeconds": 10,
+        "failureThreshold": 3,
+    }:
+        fail(f"{mode}: liveness probe = {liveness}")
+    readiness = server.get("readinessProbe", {})
+    if readiness != {
+        "httpGet": {"path": "/readyz", "port": "ops"},
+        "periodSeconds": 5,
+        "failureThreshold": 3,
+    }:
+        fail(f"{mode}: readiness probe = {readiness}")
+    startup = server.get("startupProbe", {})
+    if startup != {
+        "httpGet": {"path": "/readyz", "port": "ops"},
+        "periodSeconds": 5,
+        "failureThreshold": 30,
+    }:
+        fail(f"{mode}: startup probe = {startup}")
     env_names = {e["name"] for e in server.get("env", [])}
+    if "HIKYO_EXTERNAL_ORIGIN" not in env_names or "HIKYO_ROOT_KEY" in env_names:
+        fail(f"{mode}: server origin/root-key env boundary = {env_names}")
     if ("HIKYO_TRUSTED_PROXY_CIDRS" in env_names) == tls:
         fail(f"{mode}: trusted-proxy env presence does not match transport mode: {env_names}")
+    mounts = {m["name"]: m for m in server.get("volumeMounts", [])}
+    if mounts.get("root-key", {}).get("mountPath") != "/run/hikyo-root-key" or not mounts["root-key"].get("readOnly"):
+        fail(f"{mode}: staged root-key mount = {mounts.get('root-key')}")
+    if mounts.get("tmp", {}).get("mountPath") != "/tmp":
+        fail(f"{mode}: writable tmp mount = {mounts.get('tmp')}")
+    pod = deployment["spec"]["template"]["spec"]
+    volumes = {v["name"]: v for v in pod.get("volumes", [])}
+    root_source = volumes.get("root-key-source", {}).get("secret", {})
+    if root_source.get("secretName") != "fixture-root-key" or root_source.get("defaultMode") != 0o400:
+        fail(f"{mode}: root-key source volume = {root_source}")
+    if root_source.get("items") != [{"key": "root-key", "path": "root-key"}]:
+        fail(f"{mode}: root-key source item = {root_source.get('items')}")
+    if volumes.get("root-key", {}).get("emptyDir") != {}:
+        fail(f"{mode}: staged root-key emptyDir = {volumes.get('root-key')}")
+    if volumes.get("tmp", {}).get("emptyDir") != {}:
+        fail(f"{mode}: writable tmp emptyDir = {volumes.get('tmp')}")
+    if pod.get("securityContext", {}).get("fsGroup") != 65532:
+        fail(f"{mode}: Secret sources are not readable through fsGroup")
+    root_init = {c["name"]: c for c in pod.get("initContainers", [])}.get("root-key-stage", {})
+    if root_init.get("args") != ["__hikyo-stage-root-key"]:
+        fail(f"{mode}: root-key staging init args = {root_init.get('args')}")
     if tls:
-        mounts = {m["name"]: m for m in server.get("volumeMounts", [])}
         if mounts.get("tls", {}).get("mountPath") != "/run/hikyo-tls" or not mounts["tls"].get("readOnly"):
             fail(f"{mode}: TLS mount = {mounts.get('tls')}")
-        volumes = {v["name"]: v for v in deployment["spec"]["template"]["spec"].get("volumes", [])}
         secret = volumes.get("tls-source", {}).get("secret", {})
         if secret.get("secretName") != "fixture-tls" or secret.get("defaultMode") != 0o400:
             fail(f"{mode}: TLS volume = {secret}")
         if volumes.get("tls", {}).get("emptyDir") != {}:
             fail(f"{mode}: staged TLS emptyDir = {volumes.get('tls')}")
-        pod = deployment["spec"]["template"]["spec"]
-        if pod.get("securityContext", {}).get("fsGroup") != 65532:
-            fail(f"{mode}: TLS source is not readable through fsGroup")
         init = {c["name"]: c for c in pod.get("initContainers", [])}.get("tls-stage", {})
         if init.get("args") != ["__hikyo-stage-tls", "--once"]:
             fail(f"{mode}: TLS staging init args = {init.get('args')}")
@@ -328,20 +373,70 @@ assert_server_network(tls_docs, "native-tls", True)
 print("Chart check: every RBAC rule set, TokenRequest scope, stamp-root grant, hardening, args and the exact env allowlist asserted")
 PY
 
+if grep -Eh '[0-9a-f]{64}' "$tmp"/*.yaml | grep -Ev 'sha256:[0-9a-f]{64}' >/dev/null; then
+	fail 'rendered chart contains a raw 64-hex value outside an image digest'
+fi
+
 # Refusal fixtures: the server listener is invalid without a database Secret and
 # without either a native TLS Secret or explicit trusted proxy CIDRs.
-if helm template fixture "$chart" --set database.existingSecret=fixture >/dev/null 2>&1; then
+required_server_values='--set database.existingSecret=fixture --set rootKey.existingSecret=fixture-root-key --set externalOrigin=https://hikyo.example.com'
+
+# shellcheck disable=SC2086 # Deliberately expand fixed test flags into argv.
+if helm template fixture "$chart" $required_server_values >/dev/null 2>&1; then
 	fail 'chart accepted a server listener without trusted proxy CIDRs'
 fi
-if helm template fixture "$chart" --set 'network.trustedProxyCIDRs={10.42.0.0/16}' >/dev/null 2>&1; then
+# shellcheck disable=SC2086 # Deliberately expand fixed test flags into argv.
+if helm template fixture "$chart" $required_server_values \
+	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
+	--set rootKey.existingSecret= >/dev/null 2>&1; then
+	fail 'chart accepted a server without rootKey.existingSecret'
+fi
+if helm template fixture "$chart" \
+	--set rootKey.existingSecret=fixture-root-key \
+	--set externalOrigin=https://hikyo.example.com \
+	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' >/dev/null 2>&1; then
 	fail 'chart accepted a server without database.existingSecret'
 fi
-if helm template fixture "$chart" --set tls.existingSecret=fixture-tls >/dev/null 2>&1; then
+if helm template fixture "$chart" \
+	--set database.existingSecret=fixture \
+	--set rootKey.existingSecret=fixture-root-key \
+	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' >/dev/null 2>&1; then
+	fail 'chart accepted a server without externalOrigin'
+fi
+if helm template fixture "$chart" \
+	--set rootKey.existingSecret=fixture-root-key \
+	--set externalOrigin=https://hikyo.example.com \
+	--set tls.existingSecret=fixture-tls >/dev/null 2>&1; then
 	fail 'chart accepted native TLS without database.existingSecret'
 fi
+if helm template fixture "$chart" \
+	--set database.existingSecret=fixture \
+	--set rootKey.existingSecret=fixture-root-key \
+	--set externalOrigin=http://hikyo.example.com \
+	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' >/dev/null 2>&1; then
+	fail 'chart accepted plaintext externalOrigin without network.allowPlaintextOrigin'
+fi
+for invalid_origin in \
+	'https://hikyo.example.com/path' \
+	'https://:' \
+	'https://example.com\evil' \
+	'https://EXAMPLE.com' \
+	'https://example.com:443' \
+	'https://example.com:99999'; do
+	origin_json=$(jq -Rn --arg origin "$invalid_origin" '$origin')
+	if helm template fixture "$chart" \
+		--set database.existingSecret=fixture \
+		--set rootKey.existingSecret=fixture-root-key \
+		--set-json externalOrigin="$origin_json" \
+		--set 'network.trustedProxyCIDRs={10.42.0.0/16}' >/dev/null 2>&1; then
+		fail "chart accepted noncanonical externalOrigin $invalid_origin"
+	fi
+done
 # A designated ServiceAccount for a namespace outside the watch set is refused.
 if helm template fixture "$chart" \
 	--set database.existingSecret=fixture \
+	--set rootKey.existingSecret=fixture-root-key \
+	--set externalOrigin=https://hikyo.example.com \
 	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
 	--set 'operator.namespaces={ns-a}' \
 	--set 'operator.designatedServiceAccounts.ns-b={sa-b}' >/dev/null 2>&1; then

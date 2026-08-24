@@ -8,6 +8,22 @@ image:
 database:
   # Name of an existing Secret whose HIKYO_DB key contains the production DSN.
   existingSecret: ""
+  # Optional CA certificate for a private PostgreSQL endpoint. The HIKYO_DB DSN
+  # must use sslmode=verify-full or verify-ca and name this mounted path with
+  # sslrootcert=/run/hikyo-database-ca/ca.crt.
+  tls:
+    existingSecret: ""
+    key: ca.crt
+
+rootKey:
+  # Existing Secret containing the 64-hex-character root key. Hikyo stages the
+  # projected file into an owner-only runtime volume; key bytes never use env.
+  existingSecret: ""
+  key: root-key
+
+# Canonical browser-visible origin. Paths, query strings, fragments, userinfo,
+# and trailing slashes are refused.
+externalOrigin: ""
 
 tls:
   # Optional Secret containing tls.crt and tls.key. Configure this or trusted
@@ -28,6 +44,8 @@ service:
 network:
   # Required only for proxy mode. Native TLS may leave this empty.
   trustedProxyCIDRs: []
+  # Test/development escape hatch for an explicit http:// externalOrigin.
+  allowPlaintextOrigin: false
 
 updates:
   # Release notifications only; Hikyo never downloads or installs an update.

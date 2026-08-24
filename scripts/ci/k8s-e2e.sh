@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Provision an ephemeral kind cluster and run the operator kind-e2e suite
-# against it. Runnable both in CI (the k8s-e2e job) and locally. The `kind`
+# Provision ephemeral kind clusters and run both the operator suite and the
+# real Helm install/readiness suite. Keeping both behind the existing k8s-e2e
+# required job lets trusted base-branch CI execute a PR-head chart gate even in
+# the same PR that introduces or changes the gate. The `kind`
 # binary comes from PATH; the node image is digest-pinned to the default for the
 # pinned kind release (v0.32.0), so the API-server version is reproducible.
 #
@@ -69,3 +71,44 @@ kind load docker-image --name "$CLUSTER" "$HIKYO_K8S_E2E_SERVER_IMAGE" >/dev/nul
 
 echo "k8s-e2e: running operator and server-probe kind e2e suite"
 go test -count=1 -tags k8se2e -run 'TestK8sOperator' ./internal/isolation/ -timeout 25m
+
+# Release the first cluster before chart-kind creates its separately named
+# cluster. Two simultaneous control planes add memory pressure without adding
+# coverage, and each runner owns only the cluster it created.
+kind delete cluster --name "$CLUSTER" >/dev/null
+created=false
+
+echo "k8s-e2e: building release-shaped UI binary for Helm chart gate"
+if [ "$(uname -s)" = Linux ]; then
+	# This compatibility bridge runs inside the existing base-controlled job,
+	# which predates setup-node/setup-helm for the chart gate. Install both
+	# exact toolchains from pinned official archives before executing PR code.
+	tool_dir="$image_root/tools"
+	mkdir -p "$tool_dir"
+	node_archive="$tool_dir/node.tar.xz"
+	curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error \
+		--retry 4 --retry-delay 2 --retry-all-errors \
+		https://nodejs.org/dist/v26.7.0/node-v26.7.0-linux-x64.tar.xz \
+		--output "$node_archive"
+	printf '%s  %s\n' \
+		982aa24dd8be4c889c6a8ab337ddff3b0896645b20f4239356e80552c16277ee \
+		"$node_archive" | sha256sum --check --strict
+	tar -xJf "$node_archive" -C "$tool_dir"
+	export PATH="$tool_dir/node-v26.7.0-linux-x64/bin:$PATH"
+
+	helm_archive="$tool_dir/helm.tar.gz"
+	curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error \
+		--retry 4 --retry-delay 2 --retry-all-errors \
+		https://get.helm.sh/helm-v4.2.3-linux-amd64.tar.gz \
+		--output "$helm_archive"
+	printf '%s  %s\n' \
+		e9b88b4ee95b18c706839c28d3a0220e5bc470e9cd9262410c90793c45ff8b7c \
+		"$helm_archive" | sha256sum --check --strict
+	tar -xzf "$helm_archive" -C "$tool_dir"
+	export PATH="$tool_dir/linux-amd64:$PATH"
+fi
+./scripts/ci/install-corepack.sh
+./scripts/ci/build-spa.sh --verify
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -tags ui \
+	-o "$image_root/hikyo-ui" ./cmd/hikyo
+HIKYO_CHART_KIND_BINARY="$image_root/hikyo-ui" ./scripts/ci/chart-kind.sh

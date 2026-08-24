@@ -44,6 +44,26 @@ refute 'operator args tampered' \
 	templates/operator-deployment.yaml \
 	's/args: \["operator"\]/args: ["server"]/'
 
+refute 'server root-key arg missing' \
+	templates/deployment.yaml \
+	'/--root-key-file=/d'
+
+refute 'root-key source widened to group-readable' \
+	templates/deployment.yaml \
+	'0,/defaultMode: 0400/s//defaultMode: 0440/'
+
+refute 'root-key staging bypassed' \
+	templates/deployment.yaml \
+	's/args: \["__hikyo-stage-root-key"\]/args: ["version"]/'
+
+refute 'semantic readiness path replaced' \
+	templates/deployment.yaml \
+	'0,/path: \/readyz/s//path: \/healthz/'
+
+refute 'external origin env missing' \
+	templates/deployment.yaml \
+	'/- name: HIKYO_EXTERNAL_ORIGIN/,+1d'
+
 # Leak database configuration into the operator pod.
 refute 'operator database env leak' \
 	templates/operator-deployment.yaml \

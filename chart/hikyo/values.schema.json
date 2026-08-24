@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["image", "database", "rootKey", "externalOrigin", "network"],
+  "properties": {
+    "image": {
+      "type": "object",
+      "required": ["repository", "digest"],
+      "properties": {
+        "repository": {"type": "string", "minLength": 1},
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:(RELEASE_IMAGE_DIGEST|[0-9a-f]{64})$"
+        }
+      }
+    },
+    "database": {
+      "type": "object",
+      "required": ["existingSecret", "tls"],
+      "properties": {
+        "existingSecret": {"type": "string", "minLength": 1},
+        "tls": {
+          "type": "object",
+          "required": ["existingSecret", "key"],
+          "properties": {
+            "existingSecret": {"type": "string"},
+            "key": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "rootKey": {
+      "type": "object",
+      "required": ["existingSecret", "key"],
+      "properties": {
+        "existingSecret": {"type": "string", "minLength": 1},
+        "key": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]+$",
+          "not": {"enum": [".", ".."]}
+        }
+      }
+    },
+    "externalOrigin": {"type": "string", "minLength": 1},
+    "network": {
+      "type": "object",
+      "required": ["trustedProxyCIDRs", "allowPlaintextOrigin"],
+      "properties": {
+        "trustedProxyCIDRs": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "allowPlaintextOrigin": {"type": "boolean"}
+      }
+    }
+  }
+}
