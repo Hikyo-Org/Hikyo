@@ -16,6 +16,8 @@ https://github.com/Hikyo-Org/Hikyo/pull/469.
 - Its mocked session refresh never settles; reaching `/projects` therefore
   proves navigation does not wait for refresh or a deleted-resource refetch.
 - The destination cannot render the stale project-read refusal.
+- The existing browser deletion flow now proves the `/projects` destination
+  and absence of the deleted-project alert on desktop and mobile.
 
 ## Validation
 
