@@ -76,3 +76,7 @@ awaits the human merge gate.
 Hosted apt, RPM, APK, and pacman repositories remain out of scope; local
 package files use the signed Hikyo bundle instead of repository-native package
 signatures.
+
+Unsigned nightlies publish the same eight package formats as convenience
+artifacts after snapshot verification. They do not enter the offline signing
+ceremony and do not carry the pinned-root guarantee.

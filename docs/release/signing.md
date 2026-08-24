@@ -198,6 +198,9 @@ Nightly builds do not use either offline signing key. An organization-owned
 GitHub App named `Hikyo Nightly Release`, installed only on this repository,
 owns nightly tag and prerelease publication. It has only repository
 `Contents: read and write`, no webhook, and no event subscriptions.
+Each nightly publishes the six platform archives and all eight native Linux
+packages produced by the same verified GoReleaser snapshot. They remain
+explicitly unsigned development artifacts, not pinned-root releases.
 
 The workflow stores the app client ID in the
 `NIGHTLY_RELEASE_APP_CLIENT_ID` repository variable and its private key in the

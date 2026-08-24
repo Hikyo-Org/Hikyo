@@ -53,6 +53,11 @@ grep -F -- '--prerelease' "$workflow" >/dev/null || fail 'nightly is not marked 
 grep -F 'dist/hikyo_*_Darwin_*.tar.gz' "$workflow" >/dev/null || fail 'macOS assets are missing'
 grep -F 'dist/hikyo_*_Linux_*.tar.gz' "$workflow" >/dev/null || fail 'Linux assets are missing'
 grep -F 'dist/hikyo_*_Windows_*.zip' "$workflow" >/dev/null || fail 'Windows assets are missing'
+grep -F 'dist/hikyo_*.deb' "$workflow" >/dev/null || fail 'Debian package assets are missing'
+grep -F 'dist/hikyo-*.rpm' "$workflow" >/dev/null || fail 'RPM package assets are missing'
+grep -F 'dist/hikyo_*.apk' "$workflow" >/dev/null || fail 'APK package assets are missing'
+grep -F 'dist/hikyo-*.pkg.tar.zst' "$workflow" >/dev/null || fail 'Arch package assets are missing'
+grep -F 'Includes six archives and eight native Linux packages.' "$workflow" >/dev/null || fail 'nightly package warning is missing'
 grep -F '"!v*-nightly.*"' "$official" >/dev/null || fail 'official ceremony still accepts nightly tags'
 grep -F 'index .Env "HIKYO_RELEASE_VERSION"' "$goreleaser" >/dev/null || fail 'snapshot archive version is not injectable'
 grep -F 'release/repository/nightly-tag-creation.json' "$repo_root/scripts/release/configure-repository.sh" >/dev/null || fail 'nightly tag creation policy is not applied'
@@ -80,4 +85,4 @@ fi
 "$repo_root/scripts/release/latest-nightly-tag_test.sh"
 "$repo_root/scripts/release/nightly-run-tag_test.sh"
 "$repo_root/scripts/release/require-green-main_test.sh"
-printf 'nightly release fixture: CI-gated six-platform prereleases stay outside official signing\n'
+printf 'nightly release fixture: CI-gated archives and native packages stay outside official signing\n'
