@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { created, renderForm, settle, typeInto } from '../testkit/renderForm.tsx';
-import { NewEnvironmentForm } from './ProjectSettings.tsx';
+import { created, renderForm, settle, settleTask, typeInto } from '../testkit/renderForm.tsx';
+import { NewEnvironmentForm, ProjectSettings } from './ProjectSettings.tsx';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -60,3 +61,148 @@ describe('NewEnvironmentForm', () => {
     expect(status?.textContent).toContain('Environment staging created.');
   });
 });
+
+describe('definitions policy', () => {
+  it('stages the selected source until Apply sends one mutation', async () => {
+    let savedDefinitionsSource: 'db' | 'git' = 'db';
+    const fetchMock = vi.fn((...args: Parameters<typeof fetch>) => {
+      const input = args[0];
+      const request = input instanceof Request ? input : new Request(input);
+      const path = new URL(request.url, 'http://localhost').pathname;
+      if (
+        request.method === 'PUT' &&
+        path === '/api/v1/orgs/org_1/projects/project_1/definitions/settings'
+      ) {
+        savedDefinitionsSource = 'git';
+      }
+      const json = settingsResponse(request.method, path, savedDefinitionsSource);
+      return Promise.resolve(
+        new Response(JSON.stringify(json), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const view = await renderForm(
+      <MemoryRouter initialEntries={['/orgs/org_1/projects/project_1/settings']}>
+        <Routes>
+          <Route path="/orgs/:org/projects/:project/settings" element={<ProjectSettings />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    try {
+      await settleTask();
+      const source = labelledSelect(view.container, 'Definitions source');
+      const apply = button(view.container, 'Apply definitions source');
+
+      expect(source.value).toBe('db');
+      expect(apply.disabled).toBe(true);
+
+      await act(async () => {
+        selectOption(source, 'git');
+      });
+
+      expect(source.value).toBe('git');
+      expect(apply.disabled).toBe(false);
+      expect(definitionsWrites(fetchMock.mock.calls)).toHaveLength(0);
+
+      await act(async () => {
+        apply.click();
+      });
+      await settleTask();
+
+      const writes = definitionsWrites(fetchMock.mock.calls);
+      expect(writes).toHaveLength(1);
+      const write = writes[0];
+      if (write === undefined) {
+        throw new Error('the definitions mutation is missing');
+      }
+      expect(write.method).toBe('PUT');
+      expect(await write.json()).toEqual({ definitions_source: 'git' });
+      expect(source.value).toBe('git');
+      expect(apply.disabled).toBe(true);
+    } finally {
+      await view.unmount();
+    }
+  });
+});
+
+function settingsResponse(
+  method: string,
+  path: string,
+  definitionsSource: 'db' | 'git',
+): unknown {
+  const projectPath = '/api/v1/orgs/org_1/projects/project_1';
+  if (method === 'GET' && path === projectPath) {
+    return {
+      id: 'prj_123e4567-e89b-12d3-a456-426614174000',
+      org_id: 'org_123e4567-e89b-12d3-a456-426614174001',
+      name: 'project_1',
+      created_at: '2026-01-01T00:00:00Z',
+    };
+  }
+  if (method === 'GET' && path === `${projectPath}/environments`) {
+    return { items: [], count: 0 };
+  }
+  if (method === 'GET' && path === '/api/v1/orgs/org_1/retention') {
+    return { mode: 'keep-if-either', max_age_seconds: 7_776_000, last_revisions: 10 };
+  }
+  if (method === 'GET' && path === `${projectPath}/retention`) {
+    return {
+      inherited: true,
+      mode: 'keep-if-either',
+      max_age_seconds: 7_776_000,
+      last_revisions: 10,
+    };
+  }
+  if (
+    (method === 'GET' || method === 'PUT') &&
+    path === `${projectPath}/definitions/settings`
+  ) {
+    return { definitions_source: definitionsSource };
+  }
+  throw new Error(`unexpected ${method} ${path}`);
+}
+
+function labelledSelect(container: HTMLElement, text: string): HTMLSelectElement {
+  const label = [...container.querySelectorAll('label')].find(
+    (candidate) => candidate.textContent === text,
+  );
+  const select = label?.htmlFor === undefined ? null : container.querySelector(`#${label.htmlFor}`);
+  if (!(select instanceof HTMLSelectElement)) {
+    throw new Error(`${text} select is missing`);
+  }
+  return select;
+}
+
+function button(container: HTMLElement, text: string): HTMLButtonElement {
+  const match = [...container.querySelectorAll('button')].find(
+    (candidate) => candidate.textContent?.trim() === text,
+  );
+  if (!(match instanceof HTMLButtonElement)) {
+    throw new Error(`${text} button is missing`);
+  }
+  return match;
+}
+
+function selectOption(select: HTMLSelectElement, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+  if (setter === undefined) {
+    throw new Error('HTMLSelectElement exposes no value setter');
+  }
+  setter.call(select, value);
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function definitionsWrites(calls: readonly Parameters<typeof fetch>[]): Request[] {
+  return calls.flatMap(([input]) => {
+    const request = input instanceof Request ? input : new Request(input);
+    return request.method === 'PUT' &&
+      new URL(request.url, 'http://localhost').pathname.endsWith('/definitions/settings')
+      ? [request]
+      : [];
+  });
+}

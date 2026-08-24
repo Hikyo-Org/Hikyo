@@ -384,6 +384,7 @@ test.describe('project settings', () => {
 
       // Select by contract value: labels are presentation and may be localised.
       await source.selectOption('git');
+      await policy.getByRole('button', { name: 'Apply definitions source' }).click();
       const gitNotice = policy.getByRole('alert').filter({
         hasText:
           'Definitions for this project are managed in Git — changes arrive through `definitions plan` / `definitions apply`.',
