@@ -384,6 +384,7 @@ test.describe('project settings', () => {
 
       // Select by contract value: labels are presentation and may be localised.
       await source.selectOption('git');
+      await policy.getByRole('button', { name: 'Apply definitions source' }).click();
       const gitNotice = policy.getByRole('alert').filter({
         hasText:
           'Definitions for this project are managed in Git — changes arrive through `definitions plan` / `definitions apply`.',
@@ -430,6 +431,8 @@ test.describe('project settings', () => {
       // project-settings remains capable of changing its own governance mode.
       await persistedSource.selectOption('db');
       await expect(persistedSource).toHaveValue('db');
+      await expect(persistedNotice).toBeVisible();
+      await persistedPolicy.getByRole('button', { name: 'Apply definitions source' }).click();
       await expect(persistedNotice).toHaveCount(0);
       await page.reload();
       await expect(page.locator('#project-policy').getByLabel('Definitions source')).toHaveValue(

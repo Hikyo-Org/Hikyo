@@ -180,7 +180,7 @@ export function ProjectSettings() {
           <DefinitionsPolicy
             settings={definitionsSettings.data}
             busy={setDefinitionsSettings.isPending}
-            onChange={(source) =>
+            onApply={(source) =>
               setDefinitionsSettings.mutate(source, {
                 onSuccess: (result) =>
                   feedback.ok(
@@ -279,23 +279,29 @@ export function ProjectSettings() {
 function DefinitionsPolicy({
   settings,
   busy,
-  onChange,
+  onApply,
 }: {
   settings: DefinitionsSettings;
   busy: boolean;
-  onChange: (source: DefinitionsSettings['definitions_source']) => void;
+  onApply: (source: DefinitionsSettings['definitions_source']) => void;
 }) {
   const sourceId = useId();
+  const [source, setSource] = useState(settings.definitions_source);
   const lastApply = settings.last_apply;
+
+  useEffect(() => {
+    setSource(settings.definitions_source);
+  }, [settings.definitions_source]);
+
   return (
     <div className="settings-block">
       <div className="field">
         <label htmlFor={sourceId}>Definitions source</label>
         <select
           id={sourceId}
-          value={settings.definitions_source}
+          value={source}
           disabled={busy}
-          onChange={(event) => onChange(parseDefinitionsSource(event.currentTarget.value))}
+          onChange={(event) => setSource(parseDefinitionsSource(event.currentTarget.value))}
         >
           <option value="db">Database</option>
           <option value="git">Git</option>
@@ -305,6 +311,16 @@ function DefinitionsPolicy({
           <span className="mono">definitions plan</span> /{' '}
           <span className="mono">definitions apply</span>. Values remain editable in either mode.
         </p>
+      </div>
+      <div className="panel__actions">
+        <button
+          type="button"
+          className="btn"
+          disabled={busy || source === settings.definitions_source}
+          onClick={() => onApply(source)}
+        >
+          Apply definitions source
+        </button>
       </div>
       {settings.definitions_source === 'git' ? <Alert>{GIT_DEFINITIONS_NOTICE}</Alert> : null}
       {lastApply === undefined ? null : (
