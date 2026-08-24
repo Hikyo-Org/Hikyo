@@ -24,7 +24,7 @@ import { surfacesForFlow } from '../registry.ts';
  *      listing it holds.
  *   2. The serving instance's administrator allowlists the viewing origin
  *      THROUGH THE UI — the consent surface, exercised rather than seeded.
- *   3. "Open workspace" opens a popup ON THE REMOTE'S ORIGIN, the human
+ *   3. The origin-labelled workspace action opens a popup ON THE REMOTE'S ORIGIN, the human
  *      authorizes there, the code returns through this origin's own callback
  *      page over a BroadcastChannel, and the shell redeems it cross-origin.
  *      There is no server in the middle at any point.
@@ -119,10 +119,8 @@ test.describe('multi-instance', () => {
     // --- the ceremony -------------------------------------------------------
     await page.goto('/remotes');
     const entry = card(page);
-    await entry.getByRole('button', { name: 'Open workspace' }).click();
-    // Two clicks, and the second is the one that opens the window: a popup
-    // opened after an await has lost its user gesture and the browser blocks
-    // it. The interstitial names the origin the human is about to sign in at.
+    // Preparation is eager; the enabled action proves the network work has
+    // completed before the click that must synchronously open the popup.
     const proceed = entry.getByRole('button', { name: /^Continue to / });
     await expect(proceed).toBeVisible({ timeout: 30_000 });
     const popupOpened = context.waitForEvent('page');
@@ -135,6 +133,7 @@ test.describe('multi-instance', () => {
     );
     const liveness = page.waitForRequest((r) => r.url().includes('/api/v1/me/sessions'));
     await proceed.click();
+    await expect(entry.getByRole('button', { name: 'Waiting for sign-in…' })).toBeDisabled();
 
     const popup = await popupOpened;
     await popup.waitForLoadState();
@@ -237,13 +236,14 @@ test.describe('multi-instance', () => {
 
     // And the shell notices, on its own, within one liveness poll.
     await expect(entry.getByText('Workspace session ended')).toBeVisible({ timeout: 30_000 });
-    await expect(entry.getByRole('button', { name: 'Open workspace' })).toBeVisible();
+    await expect(entry.getByRole('button', { name: /^Continue to / })).toBeVisible({
+      timeout: 30_000,
+    });
 
     // --- kill switch 2: revoked from the remote's active-session list -------
     await onB(b, '/remotes');
     await allowOrigin(b);
 
-    await entry.getByRole('button', { name: 'Open workspace' }).click();
     const proceedAgain = entry.getByRole('button', { name: /^Continue to / });
     await expect(proceedAgain).toBeVisible({ timeout: 30_000 });
     const second = context.waitForEvent('page');
@@ -289,7 +289,6 @@ test.describe('multi-instance', () => {
     // Open the workspace with the popup ceremony.
     await page.goto('/remotes');
     const entry = card(page);
-    await entry.getByRole('button', { name: 'Open workspace' }).click();
     const proceed = entry.getByRole('button', { name: /^Continue to / });
     await expect(proceed).toBeVisible({ timeout: 30_000 });
     const popupOpened = context.waitForEvent('page');
@@ -388,7 +387,6 @@ test.describe('multi-instance', () => {
 
     await page.goto('/remotes');
     const entry = card(page);
-    await entry.getByRole('button', { name: 'Open workspace' }).click();
     const proceed = entry.getByRole('button', { name: /^Continue to / });
     await expect(proceed).toBeVisible({ timeout: 30_000 });
     const popupOpened = context.waitForEvent('page');
