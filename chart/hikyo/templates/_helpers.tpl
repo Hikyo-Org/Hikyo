@@ -18,6 +18,39 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | quote }}
 {{- printf "%s-operator" (include "hikyo.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{- define "hikyo.server.validate" -}}
+{{- $databaseSecret := required "database.existingSecret is required" .Values.database.existingSecret -}}
+{{- $rootKeySecret := required "rootKey.existingSecret is required" .Values.rootKey.existingSecret -}}
+{{- $rootKeyName := required "rootKey.key is required" .Values.rootKey.key -}}
+{{- if or (eq $rootKeyName ".") (eq $rootKeyName "..") (not (regexMatch "^[A-Za-z0-9._-]+$" $rootKeyName)) -}}
+  {{- fail "rootKey.key must be one Secret key name using only letters, digits, dot, underscore, or hyphen" -}}
+{{- end -}}
+{{- $origin := required "externalOrigin is required" .Values.externalOrigin -}}
+{{- if contains "\\" $origin -}}
+  {{- fail "externalOrigin must not contain a backslash" -}}
+{{- end -}}
+{{- if not (regexMatch `^https?://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:[1-9][0-9]{0,4})?$` $origin) -}}
+  {{- fail "externalOrigin must be a canonical lowercase DNS origin without userinfo, path, query, fragment, trailing slash, or default port" -}}
+{{- end -}}
+{{- if and (not (hasPrefix "https://" $origin)) (not .Values.network.allowPlaintextOrigin) -}}
+  {{- fail "externalOrigin must use https:// unless network.allowPlaintextOrigin is true" -}}
+{{- end -}}
+{{- $portSuffix := regexFind `:[0-9]+$` $origin -}}
+{{- if $portSuffix -}}
+  {{- $port := atoi (trimPrefix ":" $portSuffix) -}}
+  {{- if or (gt $port 65535) (and (hasPrefix "https://" $origin) (eq $port 443)) (and (hasPrefix "http://" $origin) (eq $port 80)) -}}
+    {{- fail "externalOrigin port must be in 1..65535 and must omit the scheme default" -}}
+  {{- end -}}
+{{- end -}}
+{{- if .Values.database.tls.existingSecret -}}
+  {{- $databaseCAKey := required "database.tls.key is required when database.tls.existingSecret is set" .Values.database.tls.key -}}
+  {{- if or (eq $databaseCAKey ".") (eq $databaseCAKey "..") (not (regexMatch "^[A-Za-z0-9._-]+$" $databaseCAKey)) -}}
+    {{- fail "database.tls.key must be one Secret key name using only letters, digits, dot, underscore, or hyphen" -}}
+  {{- end -}}
+{{- end -}}
+{{- $imageDigest := required "image.digest is required" .Values.image.digest -}}
+{{- end -}}
+
 {{- define "hikyo.operator.validate" -}}
 {{- if not (hasKey .Values "operator") -}}
   {{- fail "operator values are required" -}}

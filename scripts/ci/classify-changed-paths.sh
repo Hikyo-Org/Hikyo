@@ -46,6 +46,11 @@ else
 			;;
 		esac
 		case "$path" in
+		cmd/hikyo/main.go | cmd/hikyo/rootkey_stage.go | internal/crypto/rootkey_stage.go | internal/crypto/rootkey_stage_test.go | internal/securefile/atomic.go | internal/securefile/atomic_test.go)
+			select_class chart-runtime
+			;;
+		esac
+		case "$path" in
 		.github/workflows/*)
 			all_jobs
 			;;
@@ -95,7 +100,16 @@ else
 		scripts/ci/k8s-e2e.sh)
 			select_class k8s-e2e-script
 			;;
-		release/* | chart/* | scripts/release/* | scripts/lib/* | install/* | Dockerfile.release | .dockerignore)
+		scripts/ci/chart-kind.sh)
+			select_class chart-kind-script
+			;;
+		chart/*)
+			select_class chart
+			;;
+		Dockerfile.release | .dockerignore | scripts/release/prepare-image-root.sh | scripts/release/prepare-image-root_test.sh)
+			select_class image
+			;;
+		release/* | scripts/release/* | scripts/lib/* | install/*)
 			select_class release
 			;;
 		*.go | *.sql)

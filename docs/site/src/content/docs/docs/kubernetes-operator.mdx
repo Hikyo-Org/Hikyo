@@ -21,9 +21,47 @@ the kubelet; `subPath` mounts never update.
 
 ## Install the operator
 
-Add the operator settings to the values file for the Hikyo Helm release:
+Generate the root key and create both required server Secrets first:
+
+```bash
+openssl rand -hex 32 > root-key
+kubectl create namespace hikyo
+kubectl --namespace hikyo create secret generic hikyo-root-key \
+  --from-file=root-key=./root-key
+kubectl --namespace hikyo create secret generic hikyo-database \
+  --from-literal=HIKYO_DB='postgres://hikyo:password@postgres.example.com/hikyo?sslmode=verify-full'
+kubectl --namespace hikyo create secret tls hikyo-server-tls \
+  --cert=./tls.crt \
+  --key=./tls.key
+```
+
+Protect and back up `root-key` separately from the database. The chart supports
+PostgreSQL only: its container root filesystem is read-only. A private database
+CA can be mounted with `database.tls.existingSecret`; name its mounted path in
+the DSN as `sslrootcert=/run/hikyo-database-ca/ca.crt`.
+
+Create a complete values file for the Hikyo server and operator:
 
 ```yaml
+database:
+  existingSecret: hikyo-database
+  tls:
+    existingSecret: "" # Set for a private PostgreSQL CA.
+    key: ca.crt
+
+rootKey:
+  existingSecret: hikyo-root-key
+  key: root-key
+
+externalOrigin: https://hikyo.example.com
+
+tls:
+  existingSecret: hikyo-server-tls
+
+network:
+  trustedProxyCIDRs: []
+  allowPlaintextOrigin: false
+
 operator:
   enabled: true
   namespaces:
@@ -41,20 +79,30 @@ operator:
       memory: 128Mi
 ```
 
-Apply the chart:
+Install a packaged release chart. The package already pins its matching server
+image digest:
 
 ```bash
-helm upgrade --install hikyo ./chart/hikyo \
+helm upgrade --install hikyo oci://ghcr.io/hikyo-org/charts/hikyo \
+  --version <release-version> \
   --namespace hikyo \
-  --create-namespace \
   --values hikyo-values.yaml
 ```
+
+When validating a source checkout instead, use `./chart/hikyo` and pass the
+exact candidate image with `--set image.repository=...` and
+`--set image.digest=sha256:<64-hex-digest>`.
 
 An empty `operator.namespaces` watches cluster-wide. A non-empty list creates
 namespace-scoped bindings and the watch list from the same value. Effective
 reach is the intersection of those watches and RBAC. Add every federated
 ServiceAccount to `operator.designatedServiceAccounts` under its namespace;
 the chart restricts TokenRequest creation to those names.
+
+Helm refuses a missing datastore Secret, root-key Secret, external origin, or
+network boundary. `externalOrigin` must be an origin only: no path, query,
+fragment, credentials, or trailing slash. HTTP requires the explicit
+`network.allowPlaintextOrigin` development escape hatch.
 
 The operator runs as UID/GID 65532 with `runAsNonRoot`, a read-only root
 filesystem, all capabilities dropped, `RuntimeDefault` seccomp, and privilege

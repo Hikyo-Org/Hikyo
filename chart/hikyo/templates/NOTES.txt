@@ -6,12 +6,28 @@ root:
   cosign verify --insecure-ignore-tlog --key release/trust/primary.pub \
     ghcr.io/hikyo-org/charts/hikyo@sha256:CHART_DIGEST
 
-Then name the database Secret and either a TLS Secret or the reverse proxy's
-exact trusted CIDRs:
+Create the root-key and database Secrets before installing. The root key is a
+64-character hex file; Kubernetes never places it in container env:
+
+  openssl rand -hex 32 > root-key
+  kubectl create secret generic hikyo-root-key --from-file=root-key=./root-key
+  kubectl create secret generic hikyo-database \
+    --from-literal=HIKYO_DB='postgres://...?...sslmode=verify-full'
+
+Then name both Secrets, the canonical external origin, and either a TLS Secret
+or the reverse proxy's exact trusted CIDRs:
 
   helm install {{ .Release.Name }} . \
-    --set database.existingSecret=YOUR_SECRET \
+    --set database.existingSecret=hikyo-database \
+    --set rootKey.existingSecret=hikyo-root-key \
+    --set externalOrigin=https://hikyo.example.com \
     --set tls.existingSecret=YOUR_TLS_SECRET
+
+Required production values: database.existingSecret, rootKey.existingSecret,
+externalOrigin, image.digest, and one of tls.existingSecret or
+network.trustedProxyCIDRs. The read-only root filesystem makes PostgreSQL the
+supported chart datastore. For a private PostgreSQL CA, also set
+database.tls.existingSecret and put its key name in database.tls.key.
 
 {{- if .Values.operator.enabled }}
 Operator: enabled
