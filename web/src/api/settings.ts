@@ -1,7 +1,9 @@
 import {
+  cloneEnvironmentOp,
   createEnvironmentOp,
   createOrgOp,
   createProjectOp,
+  deleteEnvironmentOp,
   deleteOrgOp,
   deleteProjectOp,
   getEnvironmentSettingsOp,
@@ -12,8 +14,10 @@ import {
   listEnvironmentsOp,
   listOrgsOp,
   listProjectsOp,
+  renameEnvironmentOp,
   renameOrgOp,
   renameProjectOp,
+  reorderEnvironmentsOp,
   rotateTokenKeyOp,
   setEnvironmentSettingsOp,
   setOrgRetentionOp,
@@ -34,6 +38,7 @@ import {
   useQueries,
   useQuery,
   useQueryClient,
+  type QueryClient,
   type UseQueryResult,
 } from '@tanstack/react-query';
 import type { Client } from '@hikyo/runtime-core';
@@ -41,6 +46,7 @@ import type { z } from 'zod';
 
 import { useAuth } from '../app/AuthProvider.tsx';
 import { ApiError, ok, parsed } from './client.ts';
+import { environmentTopologyQueryPrefixes } from './keys.ts';
 import type { EnvironmentNode, ProjectNode } from './access.ts';
 import { useTransport } from './transport.tsx';
 
@@ -473,6 +479,80 @@ export function useCreateEnvironment(org: string, project: string) {
   });
 }
 
+function invalidateEnvironmentTopology(
+  queries: QueryClient,
+  org: string,
+  project: string,
+) {
+  const queryKeys = [
+    environmentsKey(org, project),
+    ['environment-settings', org, project],
+    ...environmentTopologyQueryPrefixes({ org, project }),
+  ];
+  return Promise.all(
+    queryKeys.map((queryKey) => queries.invalidateQueries({ queryKey })),
+  );
+}
+
+/** Rename one environment and refresh every project view keyed by its topology. */
+export function useRenameEnvironment(org: string, project: string) {
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { environment: string; name: string }) =>
+      parsed(renameEnvironmentOp, {
+        path: { org, project, environment: input.environment },
+        body: { name: input.name },
+      }),
+    onSuccess: () => invalidateEnvironmentTopology(queries, org, project),
+  });
+}
+
+/** Delete one environment and refresh every cache for the topology it removes. */
+export function useDeleteEnvironment(
+  org: string,
+  project: string,
+  onDeleted?: () => void,
+) {
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { environment: string }) =>
+      ok(deleteEnvironmentOp, { path: { org, project, environment: input.environment } }),
+    // The list invalidation unmounts the deleted row. Run its durable parent
+    // feedback callback first; per-call callbacks are not guaranteed to
+    // survive that unmount.
+    onSuccess: async () => {
+      onDeleted?.();
+      await invalidateEnvironmentTopology(queries, org, project);
+    },
+  });
+}
+
+/** Replace display order with the complete environment id set in one transaction. */
+export function useReorderEnvironments(org: string, project: string) {
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { environmentIds: readonly string[] }) =>
+      parsed(reorderEnvironmentsOp, {
+        path: { org, project },
+        body: { environment_ids: [...input.environmentIds] },
+      }),
+    onSuccess: () => invalidateEnvironmentTopology(queries, org, project),
+  });
+}
+
+/** Clone an environment and expose the server's copied/omitted value accounting. */
+export function useCloneEnvironment(org: string, project: string) {
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { sourceEnvironment: string; name: string }) =>
+      parsed(cloneEnvironmentOp, {
+        path: { org, project },
+        body: { source_environment_id: input.sourceEnvironment, name: input.name },
+      }),
+    onSuccess: () => invalidateEnvironmentTopology(queries, org, project),
+  });
+}
+
 /**
  * createProjectRefusalText names the capability the act needs.
  *
@@ -525,6 +605,82 @@ export function createEnvironmentRefusalText(error: unknown): string {
     }
   }
   return 'The server failed; whether the environment was created is unknown — reload to check.';
+}
+
+function environmentLifecyclePermission(action: string): string {
+  return `You are not permitted to ${action} — that needs definitions-edit on the project.`;
+}
+
+type EnvironmentLifecycleRefusal = {
+  readonly action: string;
+  readonly invalid: string;
+  readonly conflict: string;
+  readonly uncertain: string;
+};
+
+function environmentLifecycleRefusalText(
+  error: unknown,
+  refusal: EnvironmentLifecycleRefusal,
+): string {
+  if (error instanceof ApiError) {
+    switch (error.status) {
+      case 400:
+        return error.detail ?? refusal.invalid;
+      case 401:
+        return 'Your session ended. Sign in again to continue.';
+      case 403:
+      case 404:
+        return environmentLifecyclePermission(refusal.action);
+      case 409:
+        return error.detail ?? refusal.conflict;
+      case 429:
+        return 'Too many attempts right now. Wait a moment and try again.';
+    }
+  }
+  return refusal.uncertain;
+}
+
+/** Refusal text for environment rename, including uncertain network outcomes. */
+export function renameEnvironmentRefusalText(error: unknown): string {
+  return environmentLifecycleRefusalText(error, {
+    action: 'rename this environment',
+    invalid: 'The environment name is invalid.',
+    conflict: 'This environment name is already in use.',
+    uncertain:
+      'The server failed; whether the environment was renamed is unknown — reload to check.',
+  });
+}
+
+/** Refusal text for deliberate environment deletion. */
+export function deleteEnvironmentRefusalText(error: unknown): string {
+  return environmentLifecycleRefusalText(error, {
+    action: 'delete this environment',
+    invalid: 'The environment cannot be deleted from this request.',
+    conflict: 'The current environment state refused deletion. Reload before retrying.',
+    uncertain:
+      'The server failed; whether the environment was deleted is unknown — reload to check.',
+  });
+}
+
+/** Refusal text for a complete-set environment reorder. */
+export function reorderEnvironmentsRefusalText(error: unknown): string {
+  return environmentLifecycleRefusalText(error, {
+    action: 'reorder these environments',
+    invalid: 'The complete environment order is invalid. Reload before retrying.',
+    conflict: 'The current environment state refused reordering. Reload before retrying.',
+    uncertain: 'The server failed; whether the order changed is unknown — reload to check.',
+  });
+}
+
+/** Refusal text for atomic clone-at-creation. */
+export function cloneEnvironmentRefusalText(error: unknown): string {
+  return environmentLifecycleRefusalText(error, {
+    action: 'clone this environment',
+    invalid: 'The cloned environment name or source is invalid.',
+    conflict: 'The clone conflicts with the current environment state.',
+    uncertain:
+      'The server failed; whether the environment was cloned is unknown — reload to check.',
+  });
 }
 
 /**

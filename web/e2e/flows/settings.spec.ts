@@ -642,7 +642,7 @@ test.describe('project settings', () => {
     }
   });
 
-  test('refuses to delete a project that still holds an environment, then deletes it', async () => {
+  test('creates, renames, and deletes an environment before deleting its empty project', async () => {
     await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
     const danger = page.locator('#project-danger');
     await danger.getByLabel('Delete this project').fill(drillName);
@@ -651,9 +651,39 @@ test.describe('project settings', () => {
     const refusal = page.getByRole('alert').filter({ hasText: 'never cascades' });
     await expect(refusal).toBeVisible();
 
+    // Clear the setup environment, then prove the whole documented lifecycle
+    // through the SPA rather than preparing the desired state through the API.
     await browserApi(page, 'DELETE', `${base()}/environments/${drillEnv}`, z.null());
     drillEnv = '';
     await page.reload();
+    const policy = page.locator('#project-policy');
+    await policy.getByLabel('Environment name').fill('lifecycle');
+    const createdResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === `${base()}/environments`,
+    );
+    await policy.getByRole('button', { name: 'Create environment' }).click();
+    drillEnv = zEnvironment.parse(await (await createdResponse).json()).id;
+    await expect(policy.getByRole('status').filter({ hasText: 'Environment lifecycle created' })).toBeVisible();
+
+    let row = policy.locator('.envpolicy__row').filter({ hasText: 'lifecycle' });
+    await row.getByText('Manage environment', { exact: true }).click();
+    await row.getByLabel('New name for lifecycle').fill('lifecycle-renamed');
+    await row.getByRole('button', { name: 'Rename environment' }).click();
+    await expect(
+      page.locator('.notice').filter({ hasText: 'Environment lifecycle renamed to lifecycle-renamed' }),
+    ).toBeVisible();
+
+    row = policy.locator('.envpolicy__row').filter({ hasText: 'lifecycle-renamed' });
+    await row.getByLabel('Delete lifecycle-renamed').fill('lifecycle-renamed');
+    await expect(row.getByRole('status').filter({ hasText: 'The name matches' })).toBeVisible();
+    await row.getByRole('button', { name: 'Delete environment' }).click();
+    await expect(
+      page.locator('.notice').filter({ hasText: 'Environment lifecycle-renamed deleted' }),
+    ).toBeVisible();
+    drillEnv = '';
+
     await expect(page.getByLabel('Name', { exact: true })).toHaveValue(drillName);
     const again = page.locator('#project-danger');
     await again.getByLabel('Delete this project').fill(drillName);
