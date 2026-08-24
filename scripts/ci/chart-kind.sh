@@ -307,7 +307,8 @@ for _ in {1..30}; do
 done
 curl --fail --silent http://127.0.0.1:18081/readyz >/dev/null
 curl --fail --silent http://127.0.0.1:18081/healthz >/dev/null
-if ! document=$(curl --fail --silent --show-error http://127.0.0.1:18080/); then
+if ! document=$(curl --fail --silent --show-error \
+	--header 'Accept: text/html' http://127.0.0.1:18080/); then
 	echo "chart-kind: UI document request failed" >&2
 	cat "$work/port-forward.log" >&2
 	exit 1
