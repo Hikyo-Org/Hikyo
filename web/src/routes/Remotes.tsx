@@ -5,8 +5,8 @@ import { generatePath, Link } from 'react-router';
 import { ApiError } from '../api/client.ts';
 import { useProjects } from '../api/matrix.ts';
 import {
-  originOf,
   remoteStateText,
+  safeOriginOf,
   stalenessText,
   useAddRemote,
   useAddWorkspaceOrigin,
@@ -109,7 +109,7 @@ function RemoteCard({ remote }: { remote: Remote }) {
   const [opening, setOpening] = useState(false);
   const [ended, setEnded] = useState(false);
   const [prepared, setPrepared] = useState<PreparedWorkspace | null>(null);
-  const origin = safeOrigin(remote.url);
+  const origin = safeOriginOf(remote.url);
   const live = workspaces.find((w) => w.origin === origin);
   const updateStatuses = useRemoteUpdateStatuses(live === undefined ? [] : [live]);
   const updateProbe = updateStatuses[0];
@@ -337,17 +337,37 @@ function RemoteCard({ remote }: { remote: Remote }) {
   );
 }
 
-function AddRemote() {
+export function AddRemote() {
   const add = useAddRemote();
+  const remotes = useRemotes();
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [pin, setPin] = useState('');
   const [credential, setCredential] = useState('');
+  const [validationFailure, setValidationFailure] = useState<string | null>(null);
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    const trimmedURL = url.trim();
+    const submittedOrigin = remoteOriginForSubmit(trimmedURL);
+    if (submittedOrigin === null) {
+      setValidationFailure(
+        'Enter a bare HTTPS origin, for example https://hikyo.example, with no path, query, fragment, or user information.',
+      );
+      return;
+    }
+    const duplicate = remotes.data?.items.find(
+      (remote) => safeOriginOf(remote.url) === submittedOrigin,
+    );
+    if (duplicate !== undefined) {
+      setValidationFailure(`This origin is already added as ${duplicate.name}.`);
+      return;
+    }
+
+    setValidationFailure(null);
     add.mutate(
-      { name, url, spkiPin: pin, credential },
+      { name, url: submittedOrigin, spkiPin: pin, credential },
       {
         onSuccess: () => {
           setName('');
@@ -368,12 +388,14 @@ function AddRemote() {
         self-signed instance on your own network safe to point at.
       </p>
       <form className="form" onSubmit={onSubmit} noValidate>
-        {add.isError ? (
+        {validationFailure !== null || add.isError ? (
           <p className="alert" role="alert">
             <span className="alert__glyph" aria-hidden="true">
               !
             </span>
-            <span>{addFailureText(add.error)}</span>
+            <span>
+              {validationFailure ?? addFailureText(add.error)}
+            </span>
           </p>
         ) : null}
         <div className="field">
@@ -384,9 +406,14 @@ function AddRemote() {
           <label htmlFor="remote-url">URL</label>
           <input
             id="remote-url"
+            type="url"
             value={url}
-            onChange={(e) => setUrl(e.target.value)}
+            onChange={(e) => {
+              setUrl(e.target.value);
+              setValidationFailure(null);
+            }}
             placeholder="https://hikyo.example"
+            aria-invalid={validationFailure !== null}
             required
           />
         </div>
@@ -632,12 +659,27 @@ function OrgProjects({
   );
 }
 
-/** safeOrigin never throws on a stored URL the browser cannot parse. */
-function safeOrigin(url: string): string {
+/** Mirror the server's bare-HTTPS-origin grammar for client pre-flight checks. */
+function remoteOriginForSubmit(url: string): string | null {
+  if (!/^https:\/\/[^\s/?#@]+\/?$/.test(url)) {
+    return null;
+  }
   try {
-    return originOf(url);
+    const parsed = new URL(url);
+    if (
+      parsed.protocol !== 'https:' ||
+      parsed.hostname === '' ||
+      parsed.username !== '' ||
+      parsed.password !== '' ||
+      parsed.pathname !== '/' ||
+      parsed.search !== '' ||
+      parsed.hash !== ''
+    ) {
+      return null;
+    }
+    return parsed.origin;
   } catch {
-    return url;
+    return null;
   }
 }
 
@@ -647,7 +689,7 @@ function addFailureText(error: unknown): string {
       case 400:
         return 'That entry was refused: the URL must be a bare https origin and the fingerprint must be the base64 SHA-256 of the public key.';
       case 409:
-        return 'That entry was refused at the verifying fetch — it may point at this instance itself, at an instance already added, or at a key that does not match the fingerprint.';
+        return 'The server could not verify this remote. Check that it is reachable, its credential and fingerprint are current, and it is not this instance or an instance already listed under another URL.';
       case 429:
         return 'Too many attempts right now. Wait a moment and try again.';
       default:
