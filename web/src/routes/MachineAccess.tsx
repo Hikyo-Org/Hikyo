@@ -50,6 +50,7 @@ import {
 } from '../api/identities.ts';
 import { useMachineReveal, useSetMachineReveal } from '../api/machineReveal.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
+import { writeClipboard } from '../app/clipboard.ts';
 import { runPasskeyCeremony, useEnvironments } from '../api/values.ts';
 import {
   idleMintLifecycle,
@@ -1240,23 +1241,16 @@ export function MintDialog({
           <button
             className="btn"
             type="button"
-            onClick={() => {
-              void navigator.clipboard
-                .writeText(disclosed.result.value)
-                .then(() =>
-                  move({
-                    type: 'copy-status',
-                    requestId: request.id,
-                    message: 'Copied. The clipboard is now the only copy outside its target system.',
-                  }),
-                )
-                .catch(() =>
-                  move({
-                    type: 'copy-status',
-                    requestId: request.id,
-                    message: 'This browser refused clipboard access, so nothing was copied.',
-                  }),
-                );
+            onClick={async () => {
+              const result = await writeClipboard(disclosed.result.value);
+              move({
+                type: 'copy-status',
+                requestId: request.id,
+                message:
+                  result === 'ok'
+                    ? 'Copied. The clipboard is now the only copy outside its target system.'
+                    : 'This browser refused clipboard access, so nothing was copied.',
+              });
             }}
           >
             Copy to clipboard
