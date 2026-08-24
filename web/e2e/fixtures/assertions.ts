@@ -217,6 +217,27 @@ async function sampleRGB(page: Page, colour: string): Promise<number[]> {
   }, colour);
 }
 
+function relativeLuminance(rgb: readonly number[]): number {
+  const channel = (component: number): number => {
+    const value = component / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  return (
+    0.2126 * channel(rgb[0] ?? 0) +
+    0.7152 * channel(rgb[1] ?? 0) +
+    0.0722 * channel(rgb[2] ?? 0)
+  );
+}
+
+function contrastRatio(first: readonly number[], second: readonly number[]): number {
+  const firstLuminance = relativeLuminance(first);
+  const secondLuminance = relativeLuminance(second);
+  return (
+    (Math.max(firstLuminance, secondLuminance) + 0.05) /
+    (Math.min(firstLuminance, secondLuminance) + 0.05)
+  );
+}
+
 /**
  * measureContrast computes the WCAG ratio from the RENDERED colours: the
  * element's own text colour against the first ancestor that actually paints a
@@ -284,26 +305,8 @@ async function measureContrast(target: Locator): Promise<Contrast> {
 export async function measureSurfaceLuminance(
   page: Page,
 ): Promise<{ colour: string; luminance: number }> {
-  return page.evaluate(() => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 1;
-    canvas.height = 1;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (ctx === null) {
-      throw new Error('no 2d context to sample colours with');
-    }
-    const colour = getComputedStyle(document.body).backgroundColor;
-    ctx.fillStyle = colour;
-    ctx.fillRect(0, 0, 1, 1);
-    const d = ctx.getImageData(0, 0, 1, 1).data;
-    const channel = (c: number) => {
-      const v = c / 255;
-      return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
-    };
-    const luminance =
-      0.2126 * channel(d[0] ?? 0) + 0.7152 * channel(d[1] ?? 0) + 0.0722 * channel(d[2] ?? 0);
-    return { colour, luminance };
-  });
+  const colour = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  return { colour, luminance: relativeLuminance(await sampleRGB(page, colour)) };
 }
 
 export async function expectContrast(target: Locator, minimum = 4.5): Promise<void> {
@@ -338,18 +341,7 @@ export async function expectBoundaryContrast(
     sampleRGB(page, colours.border),
     sampleRGB(page, colours.background),
   ]);
-  const luminance = (rgb: number[]): number => {
-    const channel = (component: number): number => {
-      const value = component / 255;
-      return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-    };
-    return 0.2126 * channel(rgb[0] ?? 0) + 0.7152 * channel(rgb[1] ?? 0) + 0.0722 * channel(rgb[2] ?? 0);
-  };
-  const borderLuminance = luminance(border);
-  const backgroundLuminance = luminance(background);
-  const ratio =
-    (Math.max(borderLuminance, backgroundLuminance) + 0.05) /
-    (Math.min(borderLuminance, backgroundLuminance) + 0.05);
+  const ratio = contrastRatio(border, background);
   expect(
     ratio,
     `boundary contrast ${ratio.toFixed(2)}:1 for ${colours.border} on ${colours.background}, want >= ${minimum}:1`,
