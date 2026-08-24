@@ -31,6 +31,13 @@ publish_output=$(printf '5\n1.0.0-alpha.0\n' | env \
 
 printf '%s\n' "$publish_output" | grep -F 'Dry run: publish 1.0.0-alpha.0' >/dev/null
 printf '%s\n' "$publish_output" | grep -F 'would require exact typed confirmation: publish v1.0.0-alpha.0' >/dev/null
+printf '%s\n' "$publish_output" | grep -F 'skip the stable homebrew-tap for this prerelease' >/dev/null
+
+stable_publish_output=$(printf '5\n1.0.0\n' | env \
+	PATH="$fixture_dir/bin:$PATH" \
+	XDG_STATE_HOME="$fixture_dir/state" \
+	"$script_dir/ceremony.sh" --dry-run)
+printf '%s\n' "$stable_publish_output" | grep -F 'protected homebrew-tap PR only after public release verification' >/dev/null
 
 tag_output=$(printf '3\n1.0.0-alpha.0\n' | env \
 	PATH="$fixture_dir/bin:$PATH" \
@@ -218,6 +225,23 @@ EOF
 		jq -nc --arg name "$binary_name" --arg sha "$binary_sha" \
 			'{name: $name, kind: "binary", sha256: $sha}' >>"$artifacts"
 	done
+	while IFS="$(printf '\t')" read -r package_name package_format package_arch
+	do
+		printf 'native package\n' >"$bundle/$package_name"
+		package_sha=$(shasum -a 256 "$bundle/$package_name" | awk '{print $1}')
+		jq -nc --arg name "$package_name" --arg sha "$package_sha" \
+			--arg format "$package_format" --arg arch "$package_arch" \
+			'{name: $name, kind: "package", format: $format, arch: $arch, sha256: $sha}' >>"$artifacts"
+	done <<'EOF'
+hikyo_1.0.0_alpha.0_amd64.deb	deb	amd64
+hikyo_1.0.0_alpha.0_arm64.deb	deb	arm64
+hikyo-1.0.0_alpha.0-1.x86_64.rpm	rpm	amd64
+hikyo-1.0.0_alpha.0-1.aarch64.rpm	rpm	arm64
+hikyo_1.0.0_alpha.0_x86_64.apk	apk	amd64
+hikyo_1.0.0_alpha.0_aarch64.apk	apk	arm64
+hikyo-1.0.0alpha.0-1-x86_64.pkg.tar.zst	archlinux	amd64
+hikyo-1.0.0alpha.0-1-aarch64.pkg.tar.zst	archlinux	arm64
+EOF
 	for payload_kind in image chart; do
 		payload_name=$payload_kind.oci-payload.json
 		printf '%s\n' "$payload_kind" >"$bundle/$payload_name"

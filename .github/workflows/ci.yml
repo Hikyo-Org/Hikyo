@@ -171,6 +171,14 @@ jobs:
         run: ./scripts/release/bind-manifest_test.sh
       - name: Release manifest fixture
         run: ./scripts/release/create-manifest_test.sh
+      - name: Homebrew cask renderer fixture
+        run: ./scripts/release/render-homebrew-cask_test.sh
+      - name: Protected Homebrew tap publisher fixture
+        run: ./scripts/release/publish-homebrew-cask_test.sh
+      - name: Native package identity fixture
+        run: ./scripts/release/package-identity_test.sh
+      - name: Native package verifier refusal tests
+        run: go test ./scripts/release
       - name: Canonical release binary fixture
         run: ./scripts/release/prepare-image-root_test.sh
       - name: Release binary workflow fixture
@@ -338,6 +346,8 @@ jobs:
           distribution: goreleaser
           version: v2.17.1
           args: release --snapshot --clean --skip=publish
+      - name: Verify every native package payload
+        run: go run ./scripts/release/verify-native-packages.go dist "$(jq -r '.version' dist/metadata.json)"
       - name: Prepare canonical image inputs
         run: >-
           ./scripts/release/prepare-image-root.sh

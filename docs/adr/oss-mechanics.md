@@ -2,6 +2,8 @@
 
 > **Correction (2026-08-06, synthesis [#27](https://github.com/Hikyo-Org/Hikyo/issues/27), per this ADR's own amendment procedure — [#33](https://github.com/Hikyo-Org/Hikyo/issues/33) reopened, correction cross-model reviewed with the synthesis set, re-closed):** three passages in this document misquoted the license decision as Apache-2.0. The locked decision ([#9](https://github.com/Hikyo-Org/Hikyo/issues/9), resolution of 2026-07-29) is **MPL 2.0** — it *replaced* the Apache-2.0 committed at repo init (LICENSE swapped in commit e1f32a5), precisely because Apache-2.0 has zero capture resistance. The committed LICENSE file and mvp-boundary.md O5 both already implement MPL 2.0. This is a scrivener's error corrected in place, not a license change; no decision moves. The no-CLA claim's width is restated under MPL 2.0: file-level copyleft keeps *existing* files open, but does not stop new proprietary code beside old open code — so the pledge's real enforcement remains governance, not law, exactly as argued.
 
+> **Amended 2026-08-24 ([#33](https://github.com/Hikyo-Org/Hikyo/issues/33) reopened per this ADR's amendment procedure; operative):** § Repository shape's single-repository rule now governs **release-bearing source, build logic, signed artifacts, version authority, and signing authority**. Metadata-only ecosystem repositories are the sole exception. They may contain generated package-manager definitions and their repository policy files, but no Hikyo binary, private signing material, independent release tag, build, signature, or version decision. Metadata is generated only from an already-public release that passed the canonical repository's signed-bundle verification; automation opens a protected PR and cannot merge it. A metadata repository may lag without changing release state. **One Hikyo tag still means one ceremony in `Hikyo-Org/Hikyo`; package-manager metadata is downstream discovery, not another release.** Homebrew is expressly a convenience channel under the simultaneous [#22](https://github.com/Hikyo-Org/Hikyo/issues/22) amendment, not a pinned-root official installer.
+
 Context: the license decision ([#9](https://github.com/Hikyo-Org/Hikyo/issues/9)) fixes MPL 2.0 (replacing the Apache-2.0 committed at repo init), DCO-not-CLA as a principle, and the public "no /ee" commitment as a positioning asset; the threat model ([#8](https://github.com/Hikyo-Org/Hikyo/issues/8)) fixes mandatory maintainer security review for crypto/auth/adapter/delivery contributions, protected branches, and maintainer 2FA; the architecture ADR ([#22](https://github.com/Hikyo-Org/Hikyo/issues/22)) fixes the supply-chain trust model (offline cosign key-pair signing the checksum manifest and image digests, pinned trust root, fail-closed installers, digest-pinned chart, full-commit-SHA-pinned toolchains and CI actions, SBOM per release); the API/CLI ADR ([#25](https://github.com/Hikyo-Org/Hikyo/issues/25)) fixes that the compatibility freeze fires at the first *stable* SemVer release and that prerelease tags freeze nothing; the deployment-adapter ADR ([#28](https://github.com/Hikyo-Org/Hikyo/issues/28)) and K8s ADR ([#19](https://github.com/Hikyo-Org/Hikyo/issues/19)) fix the only two extension points (in-tree adapters behind the Go seam; the ESO provider path post-freeze). What those ADRs delegated here is the human machinery around them: **where the project lives, how the repository is shaped, how contributions and disclosures arrive, how releases are cut and signed by an actual person, who governs, and how a future hosted service is structurally prevented from corrupting the open-source edition.** This ADR fixes those.
 
 Granularity note: this ADR fixes process and structure, not artifact content. The spec document set's contents → synthesis ([#27](https://github.com/Hikyo-Org/Hikyo/issues/27)); what is in the first release → MVP boundary ([#26](https://github.com/Hikyo-Org/Hikyo/issues/26)); CI pipeline steps and exact pinned action SHAs → implementation under #22's rules. A delegation satisfied in letter but violating an intent stated here reopens this ADR.
@@ -20,7 +22,7 @@ The owner's standing bias is self-hosted Forgejo — and it does not apply, beca
 
 ## Repository shape — one repo, one tag, one ceremony
 
-**Everything ships from a single repository with a single Go module:**
+**All release-bearing source, build logic, signed artifacts, version authority, and signing authority ship from a single repository with a single Go module:**
 
 ```
 cmd/hikyo/        # multicall entry point (server/operator/migrate/client verbs, #22)
@@ -34,6 +36,8 @@ prototype/           # frozen wayfinding prototypes (kept; not release material)
 
 The load-bearing property is **one tag = one ceremony**: a release tag produces the binary, the image, and the chart together, and one offline signing pass (§ Ceremony) covers all of them. A separate chart repository would put the chart outside the ceremony — either it gets its own key (second custody problem) or it ships unsigned (hole in the fail-closed installer story) — and introduces version skew between chart and image that #22's digest-pinning rule exists to prevent.
 
+**Metadata-only ecosystem repositories are the sole exception.** `Hikyo-Org/homebrew-tap` contains generated Homebrew definitions, repository policy, and licensing only. It receives no Hikyo binary, build job, private key, signature, independent tag, or version authority. The canonical release ceremony may open or refresh a protected tap PR only after it has published and reverified the signed stable release; it cannot merge that PR. The tap may lag or fail without changing Hikyo release state. This preserves one tag and one signing ceremony while keeping ecosystem-specific review and discovery where Homebrew expects them.
+
 **One version, everywhere, by normative table** — for release version `X.Y.Z` (prerelease: `X.Y.Z-rc.N`, the suffix carried identically in every position):
 
 | Artifact | Identity |
@@ -43,6 +47,18 @@ The load-bearing property is **one tag = one ceremony**: a release tag produces 
 | container image tag | `X.Y.Z`, additionally addressed by index digest |
 | chart `version` | `X.Y.Z` |
 | chart `appVersion` | `X.Y.Z`, image pinned by digest (#22) |
+| Debian package | filename `hikyo_X.Y.Z_ARCH.deb`; metadata version `0:X.Y.Z` |
+| RPM package | filename `hikyo-X.Y.Z-1.ARCH.rpm`; metadata EVR `0:X.Y.Z-1` |
+| APK package | filename `hikyo_X.Y.Z_ARCH.apk`; metadata version `X.Y.Z` |
+| Arch package | filename `hikyo-X.Y.Z-1-ARCH.pkg.tar.zst`; metadata version `0:X.Y.Z-1` |
+
+Native package identity is computed from the release version and verified inside
+each package before signing. SemVer build metadata (`+...`) is refused for a
+package-bearing release because Arch package metadata cannot preserve it as an
+independent identity; prerelease separators use each format's ordering syntax
+but remain mechanically derived from the same release version. Prerelease
+identifiers must start with an ASCII letter (`rc.1`, not `4`) so Arch's required
+separator-free form cannot collide with a later stable patch identity.
 
 **The signed release manifest asserts every row of this mapping** — version string, tag, image digest, chart digest — so a mismatch between any two artifacts' claimed identities is a signature-verification failure, not a convention drift. **No artifact of a release exists without the complete set, and no artifact is ever rebuilt under an already-used version** — a changed byte is a new patch release. Prereleases are unsupported (§ Releases).
 

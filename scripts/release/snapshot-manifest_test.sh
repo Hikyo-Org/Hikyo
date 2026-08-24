@@ -38,6 +38,17 @@ do
 	}
 done
 
+for extension in deb rpm apk pkg.tar.zst; do
+	package_count=$(find "$dist" -maxdepth 1 -type f -name "*.$extension" | wc -l | tr -d ' ')
+	[ "$package_count" -eq 2 ] || {
+		printf 'snapshot manifest fixture: expected two %s packages, found %s\n' \
+			"$extension" "$package_count" >&2
+		exit 1
+	}
+done
+
+go run "$script_dir/verify-native-packages.go" "$dist" "$version"
+
 case "$(uname -s):$(uname -m)" in
 	Linux:x86_64 | Linux:amd64) native_archive="hikyo_${version}_Linux_x86_64.tar.gz" ;;
 	Linux:arm64 | Linux:aarch64) native_archive="hikyo_${version}_Linux_arm64.tar.gz" ;;
@@ -80,6 +91,7 @@ jq -ncS --arg version "$version" --arg commit "$commit" '{
 
 jq -e '
 	([.artifacts[] | select(.kind == "binary")] | length) == 6 and
+	([.artifacts[] | select(.kind == "package")] | length) == 8 and
 	([.artifacts[] | select(.kind == "release-candidate")] | length) == 1 and
 	([.artifacts[] | select(.kind == "binary-provenance")] | length) == 1 and
 	([.artifacts[] | select(.kind == "chart")] | length) == 1 and

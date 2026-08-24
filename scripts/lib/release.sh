@@ -2,7 +2,9 @@
 
 # Shared release input validation. Callers remain fail-closed and decide how to
 # report invalid values; these helpers only return success or failure.
-release_semver_pattern='^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$'
+# Every release now carries native packages. Build metadata is excluded because
+# Arch package metadata cannot preserve +... as an independently checked identity.
+release_semver_pattern='^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z][0-9A-Za-z.-]*)?$'
 
 sha256_file() {
 	if command -v sha256sum >/dev/null 2>&1; then
@@ -52,6 +54,101 @@ safe_release_name() {
 		'' | */* | *..*) return 1 ;;
 		*) return 0 ;;
 	esac
+}
+
+package_version_parts() {
+	package_version=$1
+	case "$package_version" in
+		*+*) return 1 ;;
+	esac
+	package_base=${package_version%%-*}
+	package_prerelease=
+	[ "$package_base" = "$package_version" ] || package_prerelease=${package_version#*-}
+	is_semver "$package_version" || return 1
+}
+
+package_native_arch() {
+	case "$1:$2" in
+		deb:amd64) printf 'amd64\n' ;;
+		deb:arm64) printf 'arm64\n' ;;
+		rpm:amd64) printf 'x86_64\n' ;;
+		rpm:arm64) printf 'aarch64\n' ;;
+		apk:amd64) printf 'x86_64\n' ;;
+		apk:arm64) printf 'aarch64\n' ;;
+		archlinux:amd64) printf 'x86_64\n' ;;
+		archlinux:arm64) printf 'aarch64\n' ;;
+		*) return 1 ;;
+	esac
+}
+
+package_metadata_version() {
+	package_version_parts "$1" || return 1
+	package_format=$2
+	package_prerelease_underscore=$(printf '%s' "$package_prerelease" | tr '-' '_')
+	case "$package_format" in
+		deb)
+			printf '0:%s' "$package_base"
+			[ -z "$package_prerelease" ] || printf '~%s' "$package_prerelease"
+			printf '\n'
+			;;
+		rpm)
+			printf '0:%s' "$package_base"
+			[ -z "$package_prerelease" ] || printf '~%s' "$package_prerelease_underscore"
+			printf '%s\n' '-1'
+			;;
+		apk)
+			printf '%s' "$package_base"
+			[ -z "$package_prerelease" ] || printf '_%s' "$package_prerelease"
+			printf '\n'
+			;;
+		archlinux)
+			printf '0:%s%s-1\n' "$package_base" "$package_prerelease_underscore"
+			;;
+		*) return 1 ;;
+	esac
+}
+
+package_file_name() {
+	package_version_parts "$1" || return 1
+	package_format=$2
+	package_arch=$3
+	package_arch_name=$(package_native_arch "$package_format" "$package_arch") || return 1
+	package_prerelease_underscore=$(printf '%s' "$package_prerelease" | tr '-' '_')
+	case "$package_format" in
+		deb)
+			printf 'hikyo_%s' "$package_base"
+			[ -z "$package_prerelease" ] || printf '_%s' "$package_prerelease"
+			printf '_%s.deb\n' "$package_arch_name"
+			;;
+		rpm)
+			printf 'hikyo-%s' "$package_base"
+			[ -z "$package_prerelease" ] || printf '_%s' "$package_prerelease_underscore"
+			printf '%s.%s.rpm\n' '-1' "$package_arch_name"
+			;;
+		apk)
+			printf 'hikyo_%s' "$package_base"
+			[ -z "$package_prerelease" ] || printf '_%s' "$package_prerelease"
+			printf '_%s.apk\n' "$package_arch_name"
+			;;
+		archlinux)
+			printf 'hikyo-%s%s-1-%s.pkg.tar.zst\n' \
+				"$package_base" "$package_prerelease_underscore" "$package_arch_name"
+			;;
+		*) return 1 ;;
+	esac
+}
+
+package_identity_for_name() {
+	package_version=$1
+	package_name=$2
+	for package_format in deb rpm apk archlinux; do
+		for package_arch in amd64 arm64; do
+			[ "$(package_file_name "$package_version" "$package_format" "$package_arch")" = "$package_name" ] || continue
+			printf '%s\t%s\n' "$package_format" "$package_arch"
+			return 0
+		done
+	done
+	return 1
 }
 
 validate_release_candidate_record() (

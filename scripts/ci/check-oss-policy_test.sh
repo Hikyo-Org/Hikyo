@@ -11,6 +11,7 @@ trap 'rm -rf "$fixture_dir"' EXIT HUP INT TERM
 mkdir -p "$fixture_dir/site/.well-known"
 mkdir -p "$fixture_dir/release/repository"
 mkdir -p "$fixture_dir/.github/ISSUE_TEMPLATE" "$fixture_dir/.github/workflows"
+mkdir -p "$fixture_dir/docs/adr" "$fixture_dir/docs/site/src/content/docs/docs"
 for path in README.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LICENSE; do
 	cp "$repo_root/$path" "$fixture_dir/$path"
 done
@@ -22,6 +23,10 @@ cp "$repo_root/.github/ISSUE_TEMPLATE/config.yml" \
 	"$fixture_dir/.github/ISSUE_TEMPLATE/config.yml"
 cp "$repo_root/.github/workflows/security-channel.yml" \
 	"$fixture_dir/.github/workflows/security-channel.yml"
+cp "$repo_root/docs/adr/oss-mechanics.md" "$fixture_dir/docs/adr/oss-mechanics.md"
+cp "$repo_root/docs/adr/system-architecture.md" "$fixture_dir/docs/adr/system-architecture.md"
+cp "$repo_root/docs/site/src/content/docs/docs/installation.mdx" \
+	"$fixture_dir/docs/site/src/content/docs/docs/installation.mdx"
 
 if "$repo_root/scripts/ci/check-oss-policy.sh" "$fixture_dir" "$fixture_dir/site" >/dev/null 2>&1; then
 	printf 'OSS policy fixture failed: missing SECURITY.md was accepted\n' >&2
@@ -97,3 +102,18 @@ if "$repo_root/scripts/ci/check-oss-policy.sh" "$fixture_dir" "$fixture_dir/site
 	printf 'OSS policy fixture failed: silent fallback-channel failure was accepted\n' >&2
 	exit 1
 fi
+
+cp "$repo_root/.github/workflows/security-channel.yml" \
+	"$fixture_dir/.github/workflows/security-channel.yml"
+sed "s/Homebrew does \*\*not\*\* verify Hikyo's pinned signing root/Homebrew verifies downloads/" \
+	"$fixture_dir/docs/site/src/content/docs/docs/installation.mdx" \
+	>"$fixture_dir/installation-trust-erased.mdx"
+mv "$fixture_dir/installation-trust-erased.mdx" \
+	"$fixture_dir/docs/site/src/content/docs/docs/installation.mdx"
+
+if "$repo_root/scripts/ci/check-oss-policy.sh" "$fixture_dir" "$fixture_dir/site" >/dev/null 2>&1; then
+	printf 'OSS policy fixture failed: erased Homebrew trust boundary was accepted\n' >&2
+	exit 1
+fi
+
+printf 'OSS policy fixture: governance, disclosure, and package-manager trust boundaries passed\n'

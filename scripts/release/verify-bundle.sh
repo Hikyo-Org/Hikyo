@@ -179,9 +179,12 @@ jq -e '
 	([.artifacts[].name] | unique | length) == (.artifacts | length) and
 	all(.artifacts[]; . as $artifact |
 		($artifact.name | type == "string" and length > 0) and
-		($artifact.kind as $kind | ["binary", "binary-provenance", "sbom", "image", "checksum", "chart", "chart-digest", "installer", "oci-payload", "release-candidate"] | index($kind) != null) and
+		($artifact.kind as $kind | ["binary", "package", "binary-provenance", "sbom", "image", "checksum", "chart", "chart-digest", "installer", "oci-payload", "release-candidate"] | index($kind) != null) and
 		($artifact.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
-		(if $artifact.kind == "image" then
+			(if $artifact.kind == "package" then
+				($artifact.format as $format | ["apk", "archlinux", "deb", "rpm"] | index($format) != null) and
+				($artifact.arch as $arch | ["amd64", "arm64"] | index($arch) != null)
+		elif $artifact.kind == "image" then
 			($artifact.digest | type == "string" and test("^sha256:[0-9a-f]{64}$")) and
 			$artifact.tag == $manifest.version and
 			($artifact.image | type == "string" and test("^ghcr\\.io/[a-z0-9._-]+/[a-z0-9._/-]+$"))
@@ -242,6 +245,7 @@ primary_key="$root_dir/$primary_name"
 
 artifact_count=$(jq -r '.artifacts | length' "$manifest")
 binary_count=0
+package_count=0
 binary_provenance_count=0
 sbom_count=0
 image_count=0
@@ -270,6 +274,9 @@ while [ "$i" -lt "$artifact_count" ]; do
 	safe_release_name "$name" || fail "unsafe artifact path $name"
 	case "$kind" in
 		binary) binary_count=$((binary_count + 1)) ;;
+		package)
+			package_count=$((package_count + 1))
+			;;
 		binary-provenance) binary_provenance_count=$((binary_provenance_count + 1)) ;;
 		sbom) sbom_count=$((sbom_count + 1)) ;;
 		image) image_count=$((image_count + 1)) ;;
@@ -281,6 +288,14 @@ while [ "$i" -lt "$artifact_count" ]; do
 		checksum) ;;
 		*) fail "unsupported artifact kind $kind" ;;
 	esac
+	if [ "$kind" = package ]; then
+		package_format=$(jq -r --argjson i "$i" '.artifacts[$i].format' "$manifest")
+		package_arch=$(jq -r --argjson i "$i" '.artifacts[$i].arch' "$manifest")
+		expected_package_name=$(package_file_name "$version" "$package_format" "$package_arch") \
+			|| fail "unsupported package version identity: $version"
+		[ "$name" = "$expected_package_name" ] || \
+			fail "package name is not bound to release $version: $name"
+	fi
 	case "$want_sha" in
 		*[!0-9a-f]* | "") fail "invalid SHA-256 for $name" ;;
 	esac
@@ -361,6 +376,14 @@ while [ "$i" -lt "$artifact_count" ]; do
 done
 
 [ "$binary_count" -gt 0 ] || fail 'manifest contains no binary artifacts'
+[ "$package_count" -eq 8 ] || fail 'manifest must contain exactly eight native package artifacts'
+jq -e '
+	. as $manifest |
+	all(["apk", "archlinux", "deb", "rpm"][];
+		. as $format |
+		([$manifest.artifacts[] | select(.kind == "package" and .format == $format and .arch == "amd64")] | length) == 1 and
+		([$manifest.artifacts[] | select(.kind == "package" and .format == $format and .arch == "arm64")] | length) == 1)
+' "$manifest" >/dev/null || fail 'manifest packages must cover amd64 and arm64 exactly once per format'
 [ "$binary_provenance_count" -eq 1 ] || fail 'manifest must contain exactly one binary provenance artifact'
 [ "$sbom_count" -gt 0 ] || fail 'manifest contains no SBOM artifact'
 [ "$image_count" -eq 1 ] || fail 'manifest must contain exactly one image digest artifact'

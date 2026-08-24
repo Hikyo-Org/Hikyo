@@ -166,6 +166,18 @@ jq -n \
 	}' >"$trust_dir/metadata.json"
 
 printf 'fixture binary\n' >"$bundle_dir/hikyo_Linux_arm64.tar.gz"
+for package in \
+	hikyo_0.1.0_amd64.deb \
+	hikyo_0.1.0_arm64.deb \
+	hikyo-0.1.0-1.x86_64.rpm \
+	hikyo-0.1.0-1.aarch64.rpm \
+	hikyo_0.1.0_x86_64.apk \
+	hikyo_0.1.0_aarch64.apk \
+	hikyo-0.1.0-1-x86_64.pkg.tar.zst \
+	hikyo-0.1.0-1-aarch64.pkg.tar.zst
+do
+	printf 'fixture native package\n' >"$bundle_dir/$package"
+done
 candidate_commit=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 jq -n --arg commit "$candidate_commit" '{
 	schema: "hikyo.dev/release-binaries/v1",
@@ -424,34 +436,26 @@ sign_blob "$trust_dir/recovery.key" "$trust_dir/metadata.json" "$trust_dir/metad
 printf 'release fixture: current release remains installable while successor is pending\n'
 
 cp -R "$fixture_dir/bundle-v1" "$fixture_dir/bundle-v2"
-rm "$fixture_dir/bundle-v2/hikyo-0.1.0.tgz" "$fixture_dir/bundle-v2/hikyo-0.1.0.tgz.sigstore.json"
+find "$fixture_dir/bundle-v2" -maxdepth 1 -type f \
+	\( -name '*.sigstore.json' -o -name '*.signature' \) -exec rm {} +
+rm "$fixture_dir/bundle-v2/hikyo-0.1.0.tgz"
+for package_format in deb rpm apk archlinux; do
+	for package_arch in amd64 arm64; do
+		package_v1=$(package_file_name 0.1.0 "$package_format" "$package_arch")
+		package_v2=$(package_file_name 0.2.0 "$package_format" "$package_arch")
+		mv "$fixture_dir/bundle-v2/$package_v1" "$fixture_dir/bundle-v2/$package_v2"
+	done
+done
 printf '{"commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","key_id":"primary-2","public_key":"primary-2.pub","sequence":2,"version":"0.2.0"}\n' \
 	>"$fixture_dir/bundle-v2/release-candidate.json"
-candidate_v2_sha=$(sha256_file "$fixture_dir/bundle-v2/release-candidate.json")
 jq '.version = "0.2.0"' "$fixture_dir/bundle-v2/binary-provenance.json" \
 	>"$fixture_dir/binary-provenance-v2.json"
 mv "$fixture_dir/binary-provenance-v2.json" "$fixture_dir/bundle-v2/binary-provenance.json"
-binary_provenance_v2_sha=$(sha256_file "$fixture_dir/bundle-v2/binary-provenance.json")
 printf 'name: hikyo\nversion: 0.2.0\nappVersion: 0.2.0\n' >"$fixture_dir/chart/hikyo/Chart.yaml"
 tar -czf "$fixture_dir/bundle-v2/hikyo-0.2.0.tgz" -C "$fixture_dir/chart" hikyo
-chart_v2_sha=$(sha256_file "$fixture_dir/bundle-v2/hikyo-0.2.0.tgz")
-jq --arg chart_v2_sha "$chart_v2_sha" \
-	--arg candidate_v2_sha "$candidate_v2_sha" \
-	--arg binary_provenance_v2_sha "$binary_provenance_v2_sha" '
-	.version = "0.2.0" |
-	.tag = "v0.2.0" |
-	.release_sequence = 2 |
-	.signing_key_id = "primary-2" |
-	(.artifacts[] | select(.kind == "release-candidate")).sha256 = $candidate_v2_sha |
-	(.artifacts[] | select(.kind == "binary-provenance")).sha256 = $binary_provenance_v2_sha |
-	(.artifacts[] | select(.kind == "image")).tag = "0.2.0" |
-	(.artifacts[] | select(.kind == "chart")) |= (
-		.name = "hikyo-0.2.0.tgz" |
-		.sha256 = $chart_v2_sha |
-		.chart_version = "0.2.0" |
-		.app_version = "0.2.0"
-	)
-	' "$fixture_dir/bundle-v1/release-manifest.json" >"$fixture_dir/bundle-v2/release-manifest.json"
+"$(dirname "$0")/create-manifest.sh" \
+	"$fixture_dir/bundle-v2/release-candidate.json" ghcr.io/hikyo-org/hikyo "$image_digest" \
+	ghcr.io/hikyo-org/charts/hikyo "$chart_digest" "$fixture_dir/bundle-v2" >/dev/null
 "$(dirname "$0")/bind-manifest.sh" "$fixture_dir/bundle-v2/release-manifest.json" \
 	"$trust_dir/metadata.json" "$trust_dir/metadata-bound.json" >/dev/null
 mv "$trust_dir/metadata-bound.json" "$trust_dir/metadata.json"

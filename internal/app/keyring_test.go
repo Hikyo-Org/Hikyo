@@ -61,7 +61,12 @@ func TestBootWithRootKeyFileAndWrongKeyRefused(t *testing.T) {
 	if err := os.WriteFile(keyPath, []byte(crypto.EncodeRootKey(key)+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	env := map[string]string{"HIKYO_DB": "sqlite:" + filepath.Join(dir, "hikyo.db")}
+	env := map[string]string{
+		"HIKYO_DB": "sqlite:" + filepath.Join(dir, "hikyo.db"),
+		// Keep this boot test hermetic when a developer already runs Hikyo's
+		// default operational listener.
+		"HIKYO_OPERATIONAL_LISTEN": "localhost:0",
+	}
 	cfg, _, err := config.Load("server", []string{"--listen", "127.0.0.1:0", "--root-key-file", keyPath},
 		func(k string) string { return env[k] }, nil)
 	if err != nil {

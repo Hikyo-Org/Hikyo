@@ -65,6 +65,15 @@ while IFS= read -r path; do
 		image-index.oci-payload.json) kind='oci-payload'; subject_kind=image ;;
 		chart-index.oci-payload.json) kind='oci-payload'; subject_kind=chart ;;
 		hikyo_*.tar.gz | hikyo_*.zip) kind=binary ;;
+		*.deb | *.rpm | *.apk | *.pkg.tar.zst)
+			kind=package
+			package_identity=$(package_identity_for_name "$version" "$name") || {
+				printf 'manifest: package name is not bound to release %s: %s\n' "$version" "$name" >&2
+				exit 1
+			}
+			package_format=${package_identity%%	*}
+			package_arch=${package_identity#*	}
+			;;
 		*.spdx.json | *.cdx.json) kind=sbom ;;
 		checksums.txt) kind=checksum ;;
 		image-index.digest) kind=image ;;
@@ -78,6 +87,11 @@ while IFS= read -r path; do
 		jq -nc --arg name "$name" --arg kind "$kind" --arg sha256 "$digest" \
 			--arg image "$image" --arg image_digest "$image_digest" --arg tag "$version" \
 			'{name: $name, kind: $kind, sha256: $sha256, image: $image, tag: $tag, digest: $image_digest}' \
+			>>"$scratch/artifacts.jsonl"
+	elif [ "$kind" = package ]; then
+		jq -nc --arg name "$name" --arg kind "$kind" --arg sha256 "$digest" \
+			--arg format "$package_format" --arg arch "$package_arch" \
+			'{name: $name, kind: $kind, format: $format, arch: $arch, sha256: $sha256}' \
 			>>"$scratch/artifacts.jsonl"
 	elif [ "$kind" = chart-digest ]; then
 		jq -nc --arg name "$name" --arg kind "$kind" --arg sha256 "$digest" \
