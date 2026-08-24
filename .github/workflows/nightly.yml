@@ -44,24 +44,54 @@ jobs:
           INITIAL_NIGHTLY_VERSION: 0.0.1
         run: |
           set -o pipefail
-          latest_tag=$(gh api --paginate --slurp \
-            "repos/$REPOSITORY/releases?per_page=100" | \
-            ./scripts/release/latest-nightly-tag.sh)
-          latest_commit=
-          if [ -n "$latest_tag" ]; then
-            latest_commit=$(gh api "repos/$REPOSITORY/git/ref/tags/$latest_tag" \
-              --jq '.object.sha')
-          fi
-          if [ "$latest_commit" = "$COMMIT" ]; then
-            printf 'skip=true\n' >>"$GITHUB_OUTPUT"
-            printf 'nightly: commit %s already published\n' "$COMMIT"
-            exit 0
-          fi
           tag=$(gh api --paginate --slurp \
             "repos/$REPOSITORY/git/matching-refs/tags/v" | \
             ./scripts/release/nightly-run-tag.sh "$RUN_NUMBER")
-          tag_exists=true
-          if [ -z "$tag" ]; then
+          tag_exists=false
+          if [ -n "$tag" ]; then
+            tag_lookup_error="$RUNNER_TEMP/nightly-tag-lookup.err"
+            if ! existing_tag_sha=$(gh api "repos/$REPOSITORY/git/ref/tags/$tag" \
+              --jq '.object.sha' 2>"$tag_lookup_error"); then
+              cat "$tag_lookup_error" >&2
+              exit 1
+            fi
+            if [ "$existing_tag_sha" != "$COMMIT" ]; then
+              printf 'nightly: run %s tag %s resolves to %s, expected %s\n' \
+                "$RUN_NUMBER" "$tag" "$existing_tag_sha" "$COMMIT" >&2
+              exit 1
+            fi
+            release_lookup_error="$RUNNER_TEMP/nightly-release-lookup.err"
+            if release_state=$(gh api "repos/$REPOSITORY/releases/tags/$tag" \
+              --jq '"\(.draft):\(.prerelease)"' 2>"$release_lookup_error"); then
+              if [ "$release_state" != 'false:true' ]; then
+                printf 'nightly: existing release %s has unexpected state %s\n' \
+                  "$tag" "$release_state" >&2
+                exit 1
+              fi
+              printf 'skip=true\n' >>"$GITHUB_OUTPUT"
+              printf 'nightly: workflow run %s already published as %s\n' \
+                "$RUN_NUMBER" "$tag"
+              exit 0
+            elif ! grep -F '(HTTP 404)' "$release_lookup_error" >/dev/null; then
+              cat "$release_lookup_error" >&2
+              exit 1
+            fi
+            version=${tag#v}
+            tag_exists=true
+          else
+            latest_tag=$(gh api --paginate --slurp \
+              "repos/$REPOSITORY/releases?per_page=100" | \
+              ./scripts/release/latest-nightly-tag.sh)
+            latest_commit=
+            if [ -n "$latest_tag" ]; then
+              latest_commit=$(gh api "repos/$REPOSITORY/git/ref/tags/$latest_tag" \
+                --jq '.object.sha')
+            fi
+            if [ "$latest_commit" = "$COMMIT" ]; then
+              printf 'skip=true\n' >>"$GITHUB_OUTPUT"
+              printf 'nightly: commit %s already published\n' "$COMMIT"
+              exit 0
+            fi
             stable_tag=$(gh api --paginate --slurp \
               "repos/$REPOSITORY/releases?per_page=100" | \
               ./scripts/release/latest-stable-version.sh)
@@ -74,27 +104,21 @@ jobs:
                 "$release_date" "$RUN_NUMBER" "$COMMIT")
             fi
             tag="v$version"
-            tag_exists=false
-          else
-            version=${tag#v}
-          fi
-          tag_lookup_error="$RUNNER_TEMP/nightly-tag-lookup.err"
-          if existing_tag_sha=$(gh api "repos/$REPOSITORY/git/ref/tags/$tag" \
-            --jq '.object.sha' 2>"$tag_lookup_error"); then
-            if [ "$existing_tag_sha" != "$COMMIT" ]; then
-              printf 'nightly: tag %s resolves to %s, expected %s\n' \
-                "$tag" "$existing_tag_sha" "$COMMIT" >&2
+            tag_lookup_error="$RUNNER_TEMP/nightly-tag-lookup.err"
+            if existing_tag_sha=$(gh api "repos/$REPOSITORY/git/ref/tags/$tag" \
+              --jq '.object.sha' 2>"$tag_lookup_error"); then
+              if [ "$existing_tag_sha" != "$COMMIT" ]; then
+                printf 'nightly: tag %s resolves to %s, expected %s\n' \
+                  "$tag" "$existing_tag_sha" "$COMMIT" >&2
+                exit 1
+              fi
+              printf 'nightly: tag %s already resolves to %s; resuming publication\n' \
+                "$tag" "$COMMIT"
+              tag_exists=true
+            elif ! grep -F '(HTTP 404)' "$tag_lookup_error" >/dev/null; then
+              cat "$tag_lookup_error" >&2
               exit 1
             fi
-            printf 'nightly: tag %s already resolves to %s; resuming publication\n' \
-              "$tag" "$COMMIT"
-            tag_exists=true
-          elif [ "$tag_exists" = true ]; then
-            cat "$tag_lookup_error" >&2
-            exit 1
-          elif ! grep -F '(HTTP 404)' "$tag_lookup_error" >/dev/null; then
-            cat "$tag_lookup_error" >&2
-            exit 1
           fi
           printf 'skip=false\nversion=%s\ntag=%s\ntag_exists=%s\n' \
             "$version" "$tag" "$tag_exists" >>"$GITHUB_OUTPUT"

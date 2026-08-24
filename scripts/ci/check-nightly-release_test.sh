@@ -22,6 +22,11 @@ grep -F './scripts/release/latest-nightly-tag.sh' "$workflow" >/dev/null || fail
 grep -F 'git/ref/tags/$latest_tag' "$workflow" >/dev/null || fail 'nightly deduplication trusts target_commitish instead of resolving the tag'
 grep -F './scripts/release/nightly-run-tag.sh "$RUN_NUMBER"' "$workflow" >/dev/null || fail 'reruns do not recover their durable tag identity'
 grep -F 'multiple nightly tags exist for workflow run' "$repo_root/scripts/release/nightly-run-tag.sh" >/dev/null || fail 'ambiguous rerun tag identity is accepted'
+grep -F 'repos/$REPOSITORY/releases/tags/$tag' "$workflow" >/dev/null || fail 'successful reruns attempt to recreate an existing release'
+grep -F 'workflow run %s already published as %s' "$workflow" >/dev/null || fail 'successful reruns are not skipped'
+run_tag_line=$(grep -nF './scripts/release/nightly-run-tag.sh "$RUN_NUMBER"' "$workflow" | cut -d: -f1)
+latest_tag_line=$(grep -nF './scripts/release/latest-nightly-tag.sh' "$workflow" | cut -d: -f1)
+[ "$run_tag_line" -lt "$latest_tag_line" ] || fail 'latest-release deduplication bypasses run-tag mismatch validation'
 if grep -F 'target_commitish' "$workflow" >/dev/null; then
 	fail 'nightly deduplication trusts mutable release metadata'
 fi

@@ -27,9 +27,10 @@ exact checked-out main commit. The workflow run number is the durable retry
 identity, so a rerun finds its tag even after midnight or a new stable release.
 Any different object or multiple tags for one run is fatal. If tag creation
 succeeds but release creation fails, rerunning the same workflow run resumes
-publication without moving or replacing the immutable tag. Published commit
-deduplication resolves the latest nightly tag itself instead of trusting the
-release API's `target_commitish`, which is not the tag target.
+publication without moving or replacing the immutable tag. A rerun of an
+already-published run exits successfully without recreating the release.
+Published commit deduplication resolves the latest nightly tag itself instead
+of trusting the release API's `target_commitish`, which is not the tag target.
 
 ## Adjacent repository-policy repair
 
