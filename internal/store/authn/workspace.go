@@ -80,8 +80,11 @@ type WorkspaceHandoff struct {
 	// demonstrated, this says what was demonstrated for THIS transaction, and
 	// only the second one may license an elevation.
 	FactorClass string
-	CreatedAt   time.Time
-	ExpiresAt   time.Time
+	// AuthenticatedAt is the approving browser session's real authentication
+	// instant. It is not the handoff approval or redemption time.
+	AuthenticatedAt time.Time
+	CreatedAt       time.Time
+	ExpiresAt       time.Time
 	// ConsumedAt is the zero time while the transaction is still redeemable.
 	ConsumedAt time.Time
 }
@@ -369,17 +372,19 @@ func (r *Resolver) WorkspaceHandoffByCode(ctx context.Context, verifier []byte) 
 // ApproveWorkspaceHandoff binds the authenticated human and mints the code. The
 // NULL guard in the statement is the atomic claim, so it reports whether THIS
 // call did the approving.
-func (r *Resolver) ApproveWorkspaceHandoff(ctx context.Context, id string, codeVerifier []byte, p domain.PrincipalID, factors, factorClass string) (bool, error) {
+func (r *Resolver) ApproveWorkspaceHandoff(ctx context.Context, id string, codeVerifier []byte, p domain.PrincipalID, factors, factorClass string, authenticatedAt time.Time) (bool, error) {
 	if r.sq != nil {
 		n, err := r.sq.ApproveWorkspaceHandoff(ctx, sqlitegen.ApproveWorkspaceHandoffParams{
 			CodeVerifier: codeVerifier, PrincipalID: nullString(string(p)),
-			Factors: factors, FactorClass: factorClass, ID: id,
+			Factors: factors, FactorClass: factorClass,
+			AuthenticatedAt: encodeTime(authenticatedAt), ID: id,
 		})
 		return n > 0, err
 	}
 	n, err := r.pg.ApproveWorkspaceHandoff(ctx, pggen.ApproveWorkspaceHandoffParams{
 		CodeVerifier: codeVerifier, PrincipalID: pgText(string(p)),
-		Factors: factors, FactorClass: factorClass, ID: id,
+		Factors: factors, FactorClass: factorClass,
+		AuthenticatedAt: pgTime(authenticatedAt), ID: id,
 	})
 	return n > 0, err
 }
@@ -457,6 +462,10 @@ func handoffFromSQLite(row sqlitegen.WorkspaceHandoff) (WorkspaceHandoff, error)
 	if err != nil {
 		return WorkspaceHandoff{}, err
 	}
+	authenticated, err := decodeTime(row.AuthenticatedAt)
+	if err != nil {
+		return WorkspaceHandoff{}, err
+	}
 	return WorkspaceHandoff{
 		ID: row.ID, StateVerifier: row.StateVerifier, CodeVerifier: row.CodeVerifier,
 		Origin: row.Origin, RedirectURI: row.RedirectUri, PKCEChallenge: row.PkceChallenge,
@@ -464,8 +473,8 @@ func handoffFromSQLite(row sqlitegen.WorkspaceHandoff) (WorkspaceHandoff, error)
 		SessionID: row.SessionID.String, Operation: row.Operation.String,
 		EnvID: row.EnvID.String, KeySet: row.KeySet.String,
 		PrincipalID: domain.PrincipalID(row.PrincipalID.String), Factors: row.Factors,
-		FactorClass: row.FactorClass,
-		CreatedAt:   created, ExpiresAt: expires, ConsumedAt: consumed,
+		FactorClass: row.FactorClass, AuthenticatedAt: authenticated,
+		CreatedAt: created, ExpiresAt: expires, ConsumedAt: consumed,
 	}, nil
 }
 
@@ -477,8 +486,8 @@ func handoffFromPG(row pggen.WorkspaceHandoff) (WorkspaceHandoff, error) {
 		SessionID: row.SessionID.String, Operation: row.Operation.String,
 		EnvID: row.EnvID.String, KeySet: row.KeySet.String,
 		PrincipalID: domain.PrincipalID(row.PrincipalID.String), Factors: row.Factors,
-		FactorClass: row.FactorClass,
-		CreatedAt:   row.CreatedAt.Time, ExpiresAt: row.ExpiresAt.Time,
+		FactorClass: row.FactorClass, AuthenticatedAt: row.AuthenticatedAt.Time,
+		CreatedAt: row.CreatedAt.Time, ExpiresAt: row.ExpiresAt.Time,
 		ConsumedAt: row.ConsumedAt.Time,
 	}, nil
 }

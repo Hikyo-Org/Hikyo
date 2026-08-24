@@ -1,0 +1,30 @@
+[Unit]
+Description=Hikyo local update helper
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hikyo-updater
+Group=hikyo
+ExecStart=/usr/local/bin/hikyo updater --config /etc/hikyo/updater.json
+EnvironmentFile=/etc/hikyo/updater.env
+Restart=on-failure
+RestartSec=5s
+UMask=0007
+RuntimeDirectory=hikyo-updater
+RuntimeDirectoryMode=0750
+StateDirectory=hikyo-updater
+StateDirectoryMode=0750
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+
+# Give this identity only the backend-specific capability its phase executable
+# needs. For example: a scoped Git deploy key for Flux, rootless Docker access
+# for Compose, or narrowly enumerated sudo/polkit actions for systemd. Never
+# place those capabilities on the hikyo server identity.
+
+[Install]
+WantedBy=multi-user.target

@@ -4,7 +4,7 @@ Context: the v1 persona ([#3](https://github.com/Hikyo-Org/Hikyo/issues/3)) is a
 
 ## Declared amendments
 
-Five, stated up front. This ADR does not claim conformance anywhere it changes locked text.
+Six, stated up front. This ADR does not claim conformance anywhere it changes locked text.
 
 > **1. Amends the threat model ([threat-model.md](./threat-model.md), [#8](https://github.com/Hikyo-Org/Hikyo/issues/8)) — environment-variable delivery is an integrity capability, not only a disclosure one.** Environment variables are interpreted by the consuming runtime, and some of them redirect what it executes: `LD_PRELOAD`, `LD_LIBRARY_PATH`, `BASH_ENV`, `NODE_OPTIONS`, `PYTHONSTARTUP`, `PERL5OPT`, `PATH`. It follows that a principal holding **`edit` ∧ `publish`** on an environment — the pair needed to author a value and commit it, not `publish` alone — can obtain **code execution inside every workload that consumes those variables as environment**, without holding `reveal` and without touching the compose file. § *Loader-control keys* fixes a defence-in-depth mitigation; it is explicitly **not** a boundary, and the residual — hostile values in the application's *own* configuration keys, which no name list can catch — belongs to the permission model as a workload-integrity risk rather than to a deny-list here.
 
@@ -15,6 +15,8 @@ Five, stated up front. This ADR does not claim conformance anywhere it changes l
 > **4. Amends the source-of-truth ADR ([source-of-truth.md § Non-goals](./source-of-truth.md), [#13](https://github.com/Hikyo-Org/Hikyo/issues/13)) — the no-restart sentence.** That ADR states *"Compose has no reconciler at all… no Hikyo publish causes a Compose service to restart"*, while the same document delegates *"restart and reconciliation behaviour → Compose (#18)"* and says Compose *"owns restart/watch semantics"*. This ADR exercises that delegation and therefore **narrows the sentence**: `hikyo compose sync`, when the operator installs its timer, does cause a Compose service to restart after a publish. What #13 rules out and this ADR **inherits unchanged** is *Compose GitOps reconciliation* — no Git watching, no Git↔DB convergence, no bidirectional controller. `sync` reconciles delivered values against running containers; it never reconciles a repository against anything.
 
 > **5. Extends the encryption ADR ([encryption-model.md](./encryption-model.md), [#14](https://github.com/Hikyo-Org/Hikyo/issues/14)) — a client-side key it does not currently cover.** That ADR fixes the server key hierarchy and the AEAD used at every layer. The offline snapshot and the stamp key are **client-side** artifacts outside that hierarchy, but they are not exempt from its rules: § *Offline behaviour* fixes a versioned XChaCha20-Poly1305 container with a domain-separated HKDF and a normative AAD tuple, matching #14's primitive choice rather than inventing one.
+
+> **6. Amends the no-resident-agent decision below for instance upgrades only.** A separately privileged local updater helper may reside beside Hikyo and accept one narrow, stable-release job protocol over a Unix socket. It has no value-delivery API, keyring, root key, browser bearer, Docker socket exposed to the Hikyo server, or generic command surface. Its backend adapter may hold only the deployment and backup/restore authority needed for the selected installation. This exception exists because a remote update cannot survive an HTTP request lifecycle and because the privileged deployment authority must not enter the Hikyo server process. It does not watch values, render secrets, or change the two delivery paths fixed by this ADR.
 
 Granularity note: this is the wayfinding-level Compose ADR. It fixes the delivery paths, the change-propagation mechanism, on-disk behaviour, offline behaviour, the merge rules and the adoption flow. Mechanism-level detail is delegated: concrete verb names, flags, exit codes and the complete per-verb authorization formulas → API & CLI ([#25](https://github.com/Hikyo-Org/Hikyo/issues/25)); event shapes → audit ([#24](https://github.com/Hikyo-Org/Hikyo/issues/24)); snapshot maximum age, sync interval defaults, runtime-directory conventions and generation-retention counts → operations spec (fog); the resident-process question → architecture ([#22](https://github.com/Hikyo-Org/Hikyo/issues/22)). Each delegated ticket MUST satisfy the constraints stated here; a delegation satisfied in letter but violating an intent stated here reopens this ADR.
 
@@ -54,7 +56,15 @@ The exact byte-level grammar is #25's to write down; the properties above bind i
 
 ## No Docker socket
 
-**Hikyo never mounts, reads or connects to the Docker socket.** No component — server, CLI, or any future agent — is configured with `docker.sock`.
+**The Hikyo server and value-delivery CLI never mount, read or connect to the
+Docker socket.** A separately privileged, explicitly configured updater helper
+may invoke a Compose phase executable with rootless Docker access (or, on a
+rootful installation, the equivalent host authority). That helper has no
+keyring, root key, browser session, or secret-value API access; its configured
+adapter holds only deployment plus backup/restore authority. The server can
+send it only a validated stable version, fixed Hikyo release URL and
+opaque job ID over a local Unix socket. This narrow exception exists only for
+instance-version rollout and does not create a resident value-delivery agent.
 
 Three independent grounds:
 

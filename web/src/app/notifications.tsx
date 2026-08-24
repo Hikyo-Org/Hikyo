@@ -42,8 +42,13 @@ export function notifySuccess(message: string): void {
   publish('success', message);
 }
 
-export function notifyUpdate(message: string, href: string, onDismiss: () => void): void {
-  publish('info', message, { href, label: 'View release' }, onDismiss);
+export function notifyUpdate(
+  message: string,
+  href: string,
+  onDismiss: () => void,
+  label = 'View release',
+): void {
+  publish('info', message, { href, label }, onDismiss);
 }
 
 export function clearNotification(): void {

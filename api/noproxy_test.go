@@ -277,7 +277,12 @@ var pinnedContractSurface = map[string]bool{
 	"GET /api/v1/instance/retention-health":                                                                   true,
 	// Reads the fixed Hikyo release authority only; no request member selects
 	// or relays an arbitrary upstream, and the response is public metadata.
-	"GET /api/v1/instance/update-status":                                                       true,
+	"GET /api/v1/instance/update-status": true,
+	// The public API controls only this instance's local Unix-socket helper.
+	// A remote WebUI reaches its remote Hikyo origin directly; no Hikyo server
+	// fetches or forwards an update request on a caller's behalf.
+	"POST /api/v1/instance/update":                                                             true,
+	"GET /api/v1/instance/updates/{job}":                                                       true,
 	"GET /api/v1/instance/saml-providers/{slug}":                                               true,
 	"GET /api/v1/instance/saml-sp-keys":                                                        true,
 	"GET /api/v1/instance/workspace-origins":                                                   true,

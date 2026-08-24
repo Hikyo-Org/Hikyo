@@ -171,7 +171,7 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		// templates
 		authz.OpTemplateApplyEnv, authz.OpTemplateApplyProject, authz.OpTemplateApplyOrg, authz.OpTemplateApplyInstance,
 		// instance operational reads
-		authz.OpRetentionHealthRead, authz.OpUpdateStatusRead,
+		authz.OpRetentionHealthRead, authz.OpUpdateStatusRead, authz.OpUpdateRequest, authz.OpUpdateJobRead,
 	)
 
 	return m

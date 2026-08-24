@@ -856,6 +856,96 @@ func (e ImpactChangeStatus) Valid() bool {
 	}
 }
 
+// Defines values for InstanceUpdateBackend.
+const (
+	Compose InstanceUpdateBackend = "compose"
+	Flux    InstanceUpdateBackend = "flux"
+	Systemd InstanceUpdateBackend = "systemd"
+)
+
+// Valid indicates whether the value is a known member of the InstanceUpdateBackend enum.
+func (e InstanceUpdateBackend) Valid() bool {
+	switch e {
+	case Compose:
+		return true
+	case Flux:
+		return true
+	case Systemd:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InstanceUpdateJobPhase.
+const (
+	InstanceUpdateJobPhaseAdmission InstanceUpdateJobPhase = "admission"
+	InstanceUpdateJobPhaseApply     InstanceUpdateJobPhase = "apply"
+	InstanceUpdateJobPhaseBackup    InstanceUpdateJobPhase = "backup"
+	InstanceUpdateJobPhaseComplete  InstanceUpdateJobPhase = "complete"
+	InstanceUpdateJobPhaseHealth    InstanceUpdateJobPhase = "health"
+	InstanceUpdateJobPhasePlan      InstanceUpdateJobPhase = "plan"
+	InstanceUpdateJobPhaseQueued    InstanceUpdateJobPhase = "queued"
+	InstanceUpdateJobPhaseRollback  InstanceUpdateJobPhase = "rollback"
+	InstanceUpdateJobPhaseVerify    InstanceUpdateJobPhase = "verify"
+)
+
+// Valid indicates whether the value is a known member of the InstanceUpdateJobPhase enum.
+func (e InstanceUpdateJobPhase) Valid() bool {
+	switch e {
+	case InstanceUpdateJobPhaseAdmission:
+		return true
+	case InstanceUpdateJobPhaseApply:
+		return true
+	case InstanceUpdateJobPhaseBackup:
+		return true
+	case InstanceUpdateJobPhaseComplete:
+		return true
+	case InstanceUpdateJobPhaseHealth:
+		return true
+	case InstanceUpdateJobPhasePlan:
+		return true
+	case InstanceUpdateJobPhaseQueued:
+		return true
+	case InstanceUpdateJobPhaseRollback:
+		return true
+	case InstanceUpdateJobPhaseVerify:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InstanceUpdateJobState.
+const (
+	InstanceUpdateJobStateFailed         InstanceUpdateJobState = "failed"
+	InstanceUpdateJobStateQueued         InstanceUpdateJobState = "queued"
+	InstanceUpdateJobStateRollbackFailed InstanceUpdateJobState = "rollback-failed"
+	InstanceUpdateJobStateRolledBack     InstanceUpdateJobState = "rolled-back"
+	InstanceUpdateJobStateRunning        InstanceUpdateJobState = "running"
+	InstanceUpdateJobStateSucceeded      InstanceUpdateJobState = "succeeded"
+)
+
+// Valid indicates whether the value is a known member of the InstanceUpdateJobState enum.
+func (e InstanceUpdateJobState) Valid() bool {
+	switch e {
+	case InstanceUpdateJobStateFailed:
+		return true
+	case InstanceUpdateJobStateQueued:
+		return true
+	case InstanceUpdateJobStateRollbackFailed:
+		return true
+	case InstanceUpdateJobStateRolledBack:
+		return true
+	case InstanceUpdateJobStateRunning:
+		return true
+	case InstanceUpdateJobStateSucceeded:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for IssuerType.
 const (
 	IssuerTypeForgejo       IssuerType = "forgejo"
@@ -1464,31 +1554,31 @@ func (e SamlStartRequestPurpose) Valid() bool {
 
 // Defines values for ScanFindingSurface.
 const (
-	Apply            ScanFindingSurface = "apply"
-	Check            ScanFindingSurface = "check"
-	Declassification ScanFindingSurface = "declassification"
-	Edit             ScanFindingSurface = "edit"
-	ImportValue      ScanFindingSurface = "import_value"
-	Plan             ScanFindingSurface = "plan"
-	ValueWrite       ScanFindingSurface = "value_write"
+	ScanFindingSurfaceApply            ScanFindingSurface = "apply"
+	ScanFindingSurfaceCheck            ScanFindingSurface = "check"
+	ScanFindingSurfaceDeclassification ScanFindingSurface = "declassification"
+	ScanFindingSurfaceEdit             ScanFindingSurface = "edit"
+	ScanFindingSurfaceImportValue      ScanFindingSurface = "import_value"
+	ScanFindingSurfacePlan             ScanFindingSurface = "plan"
+	ScanFindingSurfaceValueWrite       ScanFindingSurface = "value_write"
 )
 
 // Valid indicates whether the value is a known member of the ScanFindingSurface enum.
 func (e ScanFindingSurface) Valid() bool {
 	switch e {
-	case Apply:
+	case ScanFindingSurfaceApply:
 		return true
-	case Check:
+	case ScanFindingSurfaceCheck:
 		return true
-	case Declassification:
+	case ScanFindingSurfaceDeclassification:
 		return true
-	case Edit:
+	case ScanFindingSurfaceEdit:
 		return true
-	case ImportValue:
+	case ScanFindingSurfaceImportValue:
 		return true
-	case Plan:
+	case ScanFindingSurfacePlan:
 		return true
-	case ValueWrite:
+	case ScanFindingSurfaceValueWrite:
 		return true
 	default:
 		return false
@@ -3767,6 +3857,41 @@ type InstanceConnectionList struct {
 	Items []InstanceConnection `json:"items"`
 }
 
+// InstanceUpdateBackend defines model for InstanceUpdateBackend.
+type InstanceUpdateBackend string
+
+// InstanceUpdateJob defines model for InstanceUpdateJob.
+type InstanceUpdateJob struct {
+	Backend     InstanceUpdateBackend `json:"backend"`
+	FailureCode *string               `json:"failure_code,omitempty"`
+
+	// FinishedAt RFC 3339 UTC, microsecond precision.
+	FinishedAt *Timestamp `json:"finished_at,omitempty"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id    ID                     `json:"id"`
+	Phase InstanceUpdateJobPhase `json:"phase"`
+
+	// RequestedAt RFC 3339 UTC, microsecond precision.
+	RequestedAt Timestamp `json:"requested_at"`
+
+	// StartedAt RFC 3339 UTC, microsecond precision.
+	StartedAt *Timestamp             `json:"started_at,omitempty"`
+	State     InstanceUpdateJobState `json:"state"`
+	Version   string                 `json:"version"`
+}
+
+// InstanceUpdateJobPhase defines model for InstanceUpdateJob.Phase.
+type InstanceUpdateJobPhase string
+
+// InstanceUpdateJobState defines model for InstanceUpdateJob.State.
+type InstanceUpdateJobState string
+
+// InstanceUpdateRequest defines model for InstanceUpdateRequest.
+type InstanceUpdateRequest struct {
+	Version string `json:"version"`
+}
+
 // IssuerType The federation issuer's platform. It is DECLARED rather than inferred
 // from the issuer URL, because the per-platform binding rules differ — a
 // Forgejo or GitHub Actions binding MUST pin `event_name`, a Kubernetes one
@@ -5902,6 +6027,13 @@ type UpdateKeyMetadataRequest struct {
 
 // UpdateStatus defines model for UpdateStatus.
 type UpdateStatus struct {
+	ApplyBackend *InstanceUpdateBackend `json:"apply_backend,omitempty"`
+
+	// ApplyError Operator-safe reason a configured helper cannot currently apply.
+	ApplyError *string `json:"apply_error,omitempty"`
+
+	// ApplySupported True only while a configured local updater helper answers.
+	ApplySupported bool                `json:"apply_supported"`
 	Available      bool                `json:"available"`
 	Channel        UpdateStatusChannel `json:"channel"`
 	CurrentVersion string              `json:"current_version"`
@@ -6335,6 +6467,9 @@ type GrantPrincipal = ID
 // IdentityID A prefixed UUIDv7, e.g. `org_0198…`.
 type IdentityID = ID
 
+// InstanceUpdateJobID A prefixed UUIDv7, e.g. `org_0198…`.
+type InstanceUpdateJobID = ID
+
 // KeyGroupID A prefixed UUIDv7, e.g. `org_0198…`.
 type KeyGroupID = ID
 
@@ -6761,6 +6896,9 @@ type PutSamlProviderJSONRequestBody = SamlProviderInput
 
 // RefreshSamlProviderMetadataJSONRequestBody defines body for RefreshSamlProviderMetadata for application/json ContentType.
 type RefreshSamlProviderMetadataJSONRequestBody = SamlMetadataRefreshRequest
+
+// RequestInstanceUpdateJSONRequestBody defines body for RequestInstanceUpdate for application/json ContentType.
+type RequestInstanceUpdateJSONRequestBody = InstanceUpdateRequest
 
 // RemoveWorkspaceOriginJSONRequestBody defines body for RemoveWorkspaceOrigin for application/json ContentType.
 type RemoveWorkspaceOriginJSONRequestBody = WorkspaceOriginRequest
@@ -7406,9 +7544,15 @@ type ServerInterface interface {
 	// CompromiseRetireSamlSpKey Immediately erase and replace a compromised active SAML SP key.
 	// (POST /api/v1/instance/saml-sp-keys/{fingerprint}/compromise-retire)
 	CompromiseRetireSamlSpKey(w http.ResponseWriter, r *http.Request, fingerprint string)
+	// RequestInstanceUpdate Ask this instance's local updater helper to apply a stable release.
+	// (POST /api/v1/instance/update)
+	RequestInstanceUpdate(w http.ResponseWriter, r *http.Request)
 	// GetUpdateStatus Read the configured release channel and available update.
 	// (GET /api/v1/instance/update-status)
 	GetUpdateStatus(w http.ResponseWriter, r *http.Request)
+	// GetInstanceUpdateJob Read one local updater job and reconcile its terminal audit outcome.
+	// (GET /api/v1/instance/updates/{job})
+	GetInstanceUpdateJob(w http.ResponseWriter, r *http.Request, job InstanceUpdateJobID)
 	// RemoveWorkspaceOrigin De-allowlist an origin and kill every session bound to it.
 	// (DELETE /api/v1/instance/workspace-origins)
 	RemoveWorkspaceOrigin(w http.ResponseWriter, r *http.Request)
@@ -8366,9 +8510,21 @@ func (_ Unimplemented) CompromiseRetireSamlSpKey(w http.ResponseWriter, r *http.
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// RequestInstanceUpdate Ask this instance's local updater helper to apply a stable release.
+// (POST /api/v1/instance/update)
+func (_ Unimplemented) RequestInstanceUpdate(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // GetUpdateStatus Read the configured release channel and available update.
 // (GET /api/v1/instance/update-status)
 func (_ Unimplemented) GetUpdateStatus(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetInstanceUpdateJob Read one local updater job and reconcile its terminal audit outcome.
+// (GET /api/v1/instance/updates/{job})
+func (_ Unimplemented) GetInstanceUpdateJob(w http.ResponseWriter, r *http.Request, job InstanceUpdateJobID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -10856,11 +11012,51 @@ func (siw *ServerInterfaceWrapper) CompromiseRetireSamlSpKey(w http.ResponseWrit
 	handler.ServeHTTP(w, r)
 }
 
+// RequestInstanceUpdate operation middleware
+func (siw *ServerInterfaceWrapper) RequestInstanceUpdate(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RequestInstanceUpdate(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetUpdateStatus operation middleware
 func (siw *ServerInterfaceWrapper) GetUpdateStatus(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetUpdateStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInstanceUpdateJob operation middleware
+func (siw *ServerInterfaceWrapper) GetInstanceUpdateJob(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "job" -------------
+	var job InstanceUpdateJobID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "job", chi.URLParam(r, "job"), &job, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "job", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInstanceUpdateJob(w, r, job)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -17654,6 +17850,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/instance/update-status", wrapper.GetUpdateStatus)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/update", wrapper.RequestInstanceUpdate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/updates/{job}", wrapper.GetInstanceUpdateJob)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/instance/saml-providers", wrapper.ListSamlProviders)
@@ -25640,6 +25842,112 @@ func (response CompromiseRetireSamlSpKey500JSONResponse) VisitCompromiseRetireSa
 	return err
 }
 
+type RequestInstanceUpdateRequestObject struct {
+	Body *RequestInstanceUpdateJSONRequestBody
+}
+
+type RequestInstanceUpdateResponseObject interface {
+	VisitRequestInstanceUpdateResponse(w http.ResponseWriter) error
+}
+
+type RequestInstanceUpdate202JSONResponse InstanceUpdateJob
+
+func (response RequestInstanceUpdate202JSONResponse) VisitRequestInstanceUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestInstanceUpdate400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RequestInstanceUpdate400JSONResponse) VisitRequestInstanceUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestInstanceUpdate401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RequestInstanceUpdate401JSONResponse) VisitRequestInstanceUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestInstanceUpdate403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RequestInstanceUpdate403JSONResponse) VisitRequestInstanceUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestInstanceUpdate404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RequestInstanceUpdate404JSONResponse) VisitRequestInstanceUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestInstanceUpdate409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RequestInstanceUpdate409JSONResponse) VisitRequestInstanceUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestInstanceUpdate500JSONResponse struct{ InternalJSONResponse }
+
+func (response RequestInstanceUpdate500JSONResponse) VisitRequestInstanceUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetUpdateStatusRequestObject struct {
 }
 
@@ -25721,6 +26029,84 @@ func (response GetUpdateStatus429JSONResponse) VisitGetUpdateStatusResponse(w ht
 type GetUpdateStatus500JSONResponse struct{ InternalJSONResponse }
 
 func (response GetUpdateStatus500JSONResponse) VisitGetUpdateStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceUpdateJobRequestObject struct {
+	Job InstanceUpdateJobID `json:"job"`
+}
+
+type GetInstanceUpdateJobResponseObject interface {
+	VisitGetInstanceUpdateJobResponse(w http.ResponseWriter) error
+}
+
+type GetInstanceUpdateJob200JSONResponse InstanceUpdateJob
+
+func (response GetInstanceUpdateJob200JSONResponse) VisitGetInstanceUpdateJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceUpdateJob401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetInstanceUpdateJob401JSONResponse) VisitGetInstanceUpdateJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceUpdateJob403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetInstanceUpdateJob403JSONResponse) VisitGetInstanceUpdateJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceUpdateJob404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetInstanceUpdateJob404JSONResponse) VisitGetInstanceUpdateJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceUpdateJob500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetInstanceUpdateJob500JSONResponse) VisitGetInstanceUpdateJobResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -40849,9 +41235,15 @@ type StrictServerInterface interface {
 	// CompromiseRetireSamlSpKey Immediately erase and replace a compromised active SAML SP key.
 	// (POST /api/v1/instance/saml-sp-keys/{fingerprint}/compromise-retire)
 	CompromiseRetireSamlSpKey(ctx context.Context, request CompromiseRetireSamlSpKeyRequestObject) (CompromiseRetireSamlSpKeyResponseObject, error)
+	// RequestInstanceUpdate Ask this instance's local updater helper to apply a stable release.
+	// (POST /api/v1/instance/update)
+	RequestInstanceUpdate(ctx context.Context, request RequestInstanceUpdateRequestObject) (RequestInstanceUpdateResponseObject, error)
 	// GetUpdateStatus Read the configured release channel and available update.
 	// (GET /api/v1/instance/update-status)
 	GetUpdateStatus(ctx context.Context, request GetUpdateStatusRequestObject) (GetUpdateStatusResponseObject, error)
+	// GetInstanceUpdateJob Read one local updater job and reconcile its terminal audit outcome.
+	// (GET /api/v1/instance/updates/{job})
+	GetInstanceUpdateJob(ctx context.Context, request GetInstanceUpdateJobRequestObject) (GetInstanceUpdateJobResponseObject, error)
 	// RemoveWorkspaceOrigin De-allowlist an origin and kill every session bound to it.
 	// (DELETE /api/v1/instance/workspace-origins)
 	RemoveWorkspaceOrigin(ctx context.Context, request RemoveWorkspaceOriginRequestObject) (RemoveWorkspaceOriginResponseObject, error)
@@ -43650,6 +44042,37 @@ func (sh *strictHandler) CompromiseRetireSamlSpKey(w http.ResponseWriter, r *htt
 	}
 }
 
+// RequestInstanceUpdate operation middleware
+func (sh *strictHandler) RequestInstanceUpdate(w http.ResponseWriter, r *http.Request) {
+	var request RequestInstanceUpdateRequestObject
+
+	var body RequestInstanceUpdateJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RequestInstanceUpdate(ctx, request.(RequestInstanceUpdateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RequestInstanceUpdate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RequestInstanceUpdateResponseObject); ok {
+		if err := validResponse.VisitRequestInstanceUpdateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetUpdateStatus operation middleware
 func (sh *strictHandler) GetUpdateStatus(w http.ResponseWriter, r *http.Request) {
 	var request GetUpdateStatusRequestObject
@@ -43667,6 +44090,32 @@ func (sh *strictHandler) GetUpdateStatus(w http.ResponseWriter, r *http.Request)
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetUpdateStatusResponseObject); ok {
 		if err := validResponse.VisitGetUpdateStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInstanceUpdateJob operation middleware
+func (sh *strictHandler) GetInstanceUpdateJob(w http.ResponseWriter, r *http.Request, job InstanceUpdateJobID) {
+	var request GetInstanceUpdateJobRequestObject
+
+	request.Job = job
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInstanceUpdateJob(ctx, request.(GetInstanceUpdateJobRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInstanceUpdateJob")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInstanceUpdateJobResponseObject); ok {
+		if err := validResponse.VisitGetInstanceUpdateJobResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

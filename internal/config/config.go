@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -123,6 +124,9 @@ type Config struct {
 	ReauthWindow time.Duration
 	// UpdateChannel is this server installation's release notification track.
 	UpdateChannel string
+	// UpdaterSocket is the optional Unix socket of the separately privileged
+	// local updater helper. Empty keeps update checks notification-only.
+	UpdaterSocket string
 }
 
 // knownEnv is the closed set of HIKYO_* keys this build understands.
@@ -146,6 +150,7 @@ var knownEnv = map[string]bool{
 	"HIKYO_ADAPTER_EGRESS_POLICY_FILE": true,
 	"HIKYO_REAUTH_WINDOW_SECONDS":      true,
 	"HIKYO_UPDATE_CHANNEL":             true,
+	"HIKYO_UPDATER_SOCKET":             true,
 
 	// Development-only. Named so the deployment it does not belong in is
 	// obvious at a glance, and refused at boot outside --dev regardless.
@@ -212,6 +217,12 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 		RootKeyFile:       *rootKeyFile,
 		RootKeyFromEnv:    getenv("HIKYO_ROOT_KEY") != "",
 		NewRootKeyFile:    getenv("HIKYO_NEW_ROOT_KEY_FILE"),
+	}
+	if subcommand == "server" {
+		cfg.UpdaterSocket = strings.TrimSpace(getenv("HIKYO_UPDATER_SOCKET"))
+		if cfg.UpdaterSocket != "" && !filepath.IsAbs(cfg.UpdaterSocket) {
+			return nil, nil, fmt.Errorf("HIKYO_UPDATER_SOCKET: path must be absolute")
+		}
 	}
 	updateChannel := getenv("HIKYO_UPDATE_CHANNEL")
 	if updateChannel == "" {

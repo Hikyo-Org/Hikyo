@@ -20,6 +20,11 @@ import {
 import { useOrgs } from '../api/session.ts';
 import { WorkspaceContextProvider, withRemote } from '../api/transport.tsx';
 import {
+  useRemoteUpdateJob,
+  useRemoteUpdateStatuses,
+  useRequestRemoteUpdate,
+} from '../api/updates.ts';
+import {
   forgetWorkspace,
   livenessPollMs,
   openPrepared,
@@ -106,6 +111,12 @@ function RemoteCard({ remote }: { remote: Remote }) {
   const [prepared, setPrepared] = useState<PreparedWorkspace | null>(null);
   const origin = safeOrigin(remote.url);
   const live = workspaces.find((w) => w.origin === origin);
+  const updateStatuses = useRemoteUpdateStatuses(live === undefined ? [] : [live]);
+  const updateProbe = updateStatuses[0];
+  const update = updateProbe?.status;
+  const requestUpdate = useRequestRemoteUpdate();
+  const [updateJobID, setUpdateJobID] = useState<string>();
+  const updateJob = useRemoteUpdateJob(origin, updateJobID);
   const staleness = stalenessText(remote);
   useWorkspaceLiveness(live, () => setEnded(true));
 
@@ -137,6 +148,27 @@ function RemoteCard({ remote }: { remote: Remote }) {
   const go = (ready: PreparedWorkspace) => {
     setPrepared(null);
     openPrepared(ready).catch(fail);
+  };
+
+  const applyUpdate = async () => {
+    if (update?.latest_version === undefined) {
+      return;
+    }
+    setFailure(null);
+    try {
+      const job = await requestUpdate.mutateAsync({ origin, version: update.latest_version });
+      setUpdateJobID(job.id);
+    } catch (error) {
+      setFailure(
+        error instanceof ApiError && error.status === 403
+          ? `Sign out and back in on ${origin}, then reconnect to confirm this update with fresh authentication.`
+          : error instanceof ApiError && error.status === 409
+            ? 'The remote updater refused the request because another update is active.'
+            : error instanceof ApiError
+              ? `The remote updater request failed with HTTP ${error.status}.`
+              : 'The remote updater request failed. Check the remote instance logs.',
+      );
+    }
   };
 
   return (
@@ -196,6 +228,13 @@ function RemoteCard({ remote }: { remote: Remote }) {
         </p>
       )}
 
+      {updateProbe?.error === null || updateProbe?.error === undefined ? null : (
+        <p className="alert" role="alert">
+          <span className="alert__glyph" aria-hidden="true">!</span>
+          <span>The remote update check failed. Reload or inspect the remote instance logs.</span>
+        </p>
+      )}
+
       {ended && live === undefined ? (
         <p className="alert" role="alert">
           <span className="alert__glyph" aria-hidden="true">
@@ -206,6 +245,48 @@ function RemoteCard({ remote }: { remote: Remote }) {
             or became unreachable. Reconnect to continue.
           </span>
         </p>
+      ) : null}
+
+      {live !== undefined && update?.available === true ? (
+        <div className="remote__update" role="status">
+          <p>
+            Hikyo <span className="mono">{update.latest_version}</span> is available on the{' '}
+            {update.channel} channel.
+          </p>
+          {update.prerelease || update.channel !== 'stable' ? (
+            <p>Prerelease builds are notification-only and cannot be remotely applied.</p>
+          ) : update.apply_supported ? (
+            <button
+              className="btn btn--primary"
+              type="button"
+              onClick={applyUpdate}
+              disabled={
+                requestUpdate.isPending ||
+                updateJob.data?.state === 'queued' ||
+                updateJob.data?.state === 'running'
+              }
+            >
+              {requestUpdate.isPending ? 'Submitting…' : `Update remote to ${update.latest_version}`}
+            </button>
+          ) : (
+            <p>
+              {update.apply_error ??
+                'This remote has no local updater helper configured; notification remains available.'}
+            </p>
+          )}
+          {updateJobID === undefined ? null : (
+            <p>
+              Update job <span className="mono">{updateJobID}</span>:{' '}
+              {updateJob.data?.state ?? 'queued'}
+              {updateJob.data?.phase === undefined ? '' : ` (${updateJob.data.phase})`}
+            </p>
+          )}
+          {updateJob.isError ? (
+            <p className="alert" role="alert">
+              The update job status could not be read. Inspect the remote instance logs before retrying.
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       <div className="remote__actions">

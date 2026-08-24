@@ -3,7 +3,12 @@ import { generatePath, matchPath, NavLink, Outlet, useLocation, useNavigate } fr
 
 import { useLogout, useOrgs, type WhoAmI } from '../api/session.ts';
 import { retentionBanner, storageBanner, useRetentionHealth } from '../api/retention.ts';
-import { useUpdateStatus, type UpdateStatus } from '../api/updates.ts';
+import {
+  useRemoteUpdateStatuses,
+  useUpdateStatus,
+  type UpdateStatus,
+} from '../api/updates.ts';
+import { useWorkspaces } from '../api/workspace.ts';
 import { effectiveTheme, prefersDark, useThemeChoice, type Theme } from '../app/theme.ts';
 import { needsOrg, SECTIONS, SURFACES, surfaceById, type Surface } from '../app/navigation.ts';
 import { notifyUpdate } from '../app/notifications.tsx';
@@ -32,6 +37,8 @@ export function Shell({ session }: { session: WhoAmI }) {
   const orgs = useOrgs(true);
   const retentionHealth = useRetentionHealth(true);
   const updateStatus = useUpdateStatus(true);
+  const workspaces = useWorkspaces();
+  const remoteUpdateStatuses = useRemoteUpdateStatuses(workspaces);
   const location = useLocation();
   const navigate = useNavigate();
   const [navOpen, setNavOpen] = useState(false);
@@ -70,6 +77,16 @@ export function Shell({ session }: { session: WhoAmI }) {
   const pruneWarning = retentionBanner(retentionHealth.data, retentionHealth.isError);
   const storageWarning = storageBanner(retentionHealth.data);
   const availableUpdate = updateStatus.data?.available === true ? updateStatus.data : null;
+  const availableRemoteUpdates = remoteUpdateStatuses.flatMap(({ origin, status }) =>
+    status?.available === true ? [{ origin, status }] : [],
+  );
+  const remoteUpdateFailures = remoteUpdateStatuses.filter(({ error }) => error !== null);
+  const badgeVersions = [
+    ...(availableUpdate?.latest_version === undefined ? [] : [availableUpdate.latest_version]),
+    ...availableRemoteUpdates.flatMap(({ origin, status }) =>
+      status.latest_version === undefined ? [] : [`${origin}: ${status.latest_version}`],
+    ),
+  ];
 
   /**
    * chooseOrg is what a rail circle does. Setting the state is only half of
@@ -126,8 +143,12 @@ export function Shell({ session }: { session: WhoAmI }) {
           ))}
         </ul>
         <span className="rail__spacer" />
-        <UpdateNotice status={availableUpdate} principalId={session.principal.id} />
-        <AccountEntry session={session} update={availableUpdate} />
+        <FleetUpdateNotice
+          local={availableUpdate}
+          remotes={availableRemoteUpdates}
+          principalId={session.principal.id}
+        />
+        <AccountEntry session={session} updateVersions={badgeVersions} />
       </nav>
 
       <nav id="sidebar" className="sidebar" aria-label="Sections" data-open={navOpen}>
@@ -199,6 +220,21 @@ export function Shell({ session }: { session: WhoAmI }) {
             <span>Retention health could not be checked. Reload to try again.</span>
           </p>
         ) : null}
+        {updateStatus.isError || remoteUpdateFailures.length > 0 ? (
+          <p className="retention-warning" role="alert">
+            <span className="alert__glyph" aria-hidden="true">
+              !
+            </span>
+            <span>
+              Update checks failed for{' '}
+              {updateStatus.isError ? 'this instance' : `${remoteUpdateFailures.length} remote instance${remoteUpdateFailures.length === 1 ? '' : 's'}`}
+              {updateStatus.isError && remoteUpdateFailures.length > 0
+                ? ` and ${remoteUpdateFailures.length} remote instance${remoteUpdateFailures.length === 1 ? '' : 's'}`
+                : ''}
+              . Reload to retry.
+            </span>
+          </p>
+        ) : null}
         {pruneWarning?.kind === 'stale' ? (
           <p className="retention-warning" role="alert">
             <span className="alert__glyph" aria-hidden="true">
@@ -243,7 +279,13 @@ export function Shell({ session }: { session: WhoAmI }) {
   );
 }
 
-function AccountEntry({ session, update }: { session: WhoAmI; update: UpdateStatus | null }) {
+function AccountEntry({
+  session,
+  updateVersions,
+}: {
+  session: WhoAmI;
+  updateVersions: readonly string[];
+}) {
   const [open, setOpen] = useState(false);
   const logout = useLogout();
   const name = session.principal.display_name ?? session.principal.id;
@@ -255,12 +297,12 @@ function AccountEntry({ session, update }: { session: WhoAmI; update: UpdateStat
         className="avatar"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`Account: ${name}${update?.latest_version === undefined ? '' : `; update ${update.latest_version} available`}`}
+        aria-label={`Account: ${name}${updateVersions.length === 0 ? '' : `; ${updateVersions.length} update${updateVersions.length === 1 ? '' : 's'} available`}`}
         onClick={() => setOpen((v) => !v)}
       >
         {monogram(name)}
-        {update?.latest_version === undefined ? null : (
-          <ProfileUpdateBadge version={update.latest_version} />
+        {updateVersions.length === 0 ? null : (
+          <ProfileUpdateBadge version={updateVersions.join(', ')} />
         )}
       </button>
       {open ? (
@@ -285,10 +327,22 @@ function AccountEntry({ session, update }: { session: WhoAmI; update: UpdateStat
 
 const dismissedUpdatePrefix = 'hikyo:update-dismissed:';
 
-function dismissalKey(status: UpdateStatus, principalId: string): string | null {
-  return status.latest_version === undefined
+function fleetDismissalKey(
+  local: UpdateStatus | null,
+  remotes: Array<{ origin: string; status: UpdateStatus }>,
+  principalId: string,
+): string | null {
+  const versions = remotes.flatMap(({ origin, status }) =>
+    status.latest_version === undefined
+      ? []
+      : [`${origin}:${status.channel}:${status.latest_version}`],
+  );
+  if (local?.latest_version !== undefined) {
+    versions.push(`local:${local.channel}:${local.latest_version}`);
+  }
+  return versions.length === 0
     ? null
-    : `${dismissedUpdatePrefix}${principalId}:${status.channel}:${status.latest_version}`;
+    : `${dismissedUpdatePrefix}${principalId}:fleet:${versions.sort().join('|')}`;
 }
 
 function wasDismissed(key: string): boolean {
@@ -308,27 +362,36 @@ function rememberDismissal(key: string): void {
   }
 }
 
-export function UpdateNotice({
-  status,
+export function FleetUpdateNotice({
+  local,
+  remotes,
   principalId,
 }: {
-  status: UpdateStatus | null;
+  local: UpdateStatus | null;
+  remotes: Array<{ origin: string; status: UpdateStatus }>;
   principalId: string;
 }) {
+  const availableRemotes = remotes.filter(({ status }) => status.latest_version !== undefined);
+  const availableLocal = local?.latest_version === undefined ? null : local;
+  const count = availableRemotes.length + (availableLocal === null ? 0 : 1);
+  const key = fleetDismissalKey(availableLocal, availableRemotes, principalId);
+  const message =
+    count === 1 && availableLocal !== null
+      ? `Hikyo ${availableLocal.latest_version} is available on the ${availableLocal.channel} channel.`
+      : count === 1
+        ? `Hikyo ${availableRemotes[0]?.status.latest_version} is available for ${availableRemotes[0]?.origin}.`
+        : `${count} Hikyo environments have updates available.`;
+  const href =
+    availableRemotes.length === 0 && availableLocal?.release_url !== undefined
+      ? availableLocal.release_url
+      : '/instance/remotes';
+  const label = availableRemotes.length === 0 ? 'View release' : 'Review updates';
   useEffect(() => {
-    if (status?.available !== true || status.release_url === undefined) {
-      return;
-    }
-    const key = dismissalKey(status, principalId);
     if (key === null || wasDismissed(key)) {
       return;
     }
-    notifyUpdate(
-      `Hikyo ${status.latest_version} is available on the ${status.channel} channel.`,
-      status.release_url,
-      () => rememberDismissal(key),
-    );
-  }, [principalId, status]);
+    notifyUpdate(message, href, () => rememberDismissal(key), label);
+  }, [href, key, label, message]);
   return null;
 }
 

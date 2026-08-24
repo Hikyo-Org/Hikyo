@@ -136,14 +136,14 @@ INSERT INTO workspace_handoffs (
 -- name: WorkspaceHandoffByState :one
 SELECT id, state_verifier, code_verifier, origin, redirect_uri, pkce_challenge,
        purpose, session_id, operation, env_id, key_set, principal_id,
-       created_at, expires_at, consumed_at, factors, factor_class
+       created_at, expires_at, consumed_at, factors, factor_class, authenticated_at
 FROM workspace_handoffs WHERE state_verifier = sqlc.arg(state_verifier);
 
 -- hikyo:authn-resolution
 -- name: WorkspaceHandoffByCode :one
 SELECT id, state_verifier, code_verifier, origin, redirect_uri, pkce_challenge,
        purpose, session_id, operation, env_id, key_set, principal_id,
-       created_at, expires_at, consumed_at, factors, factor_class
+       created_at, expires_at, consumed_at, factors, factor_class, authenticated_at
 FROM workspace_handoffs WHERE code_verifier = sqlc.arg(code_verifier);
 
 -- Approval binds the authenticated human and mints the code. The NULL guard on
@@ -153,7 +153,8 @@ FROM workspace_handoffs WHERE code_verifier = sqlc.arg(code_verifier);
 -- name: ApproveWorkspaceHandoff :execrows
 UPDATE workspace_handoffs
 SET code_verifier = sqlc.arg(code_verifier), principal_id = sqlc.arg(principal_id),
-    factors = sqlc.arg(factors), factor_class = sqlc.arg(factor_class)
+    factors = sqlc.arg(factors), factor_class = sqlc.arg(factor_class),
+    authenticated_at = sqlc.arg(authenticated_at)
 WHERE id = sqlc.arg(id) AND code_verifier IS NULL AND consumed_at IS NULL;
 
 -- Single-use consumption. The NULL guard is the atomic claim, exactly as

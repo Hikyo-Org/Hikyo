@@ -11,7 +11,7 @@ type sourceFunc func(context.Context) ([]Release, error)
 
 func (fn sourceFunc) Releases(ctx context.Context) ([]Release, error) { return fn(ctx) }
 
-func TestCachedSourceRefreshesOncePerTTLAndFallsBackToLastSuccess(t *testing.T) {
+func TestCachedSourceRefreshesOncePerTTLAndReportsRefreshFailure(t *testing.T) {
 	now := time.Date(2026, 8, 24, 8, 0, 0, 0, time.UTC)
 	calls := 0
 	fail := false
@@ -38,12 +38,17 @@ func TestCachedSourceRefreshesOncePerTTLAndFallsBackToLastSuccess(t *testing.T) 
 
 	now = now.Add(7 * time.Hour)
 	fail = true
-	releases, err := cached.Releases(t.Context())
-	if err != nil {
-		t.Fatalf("stale fallback failed: %v", err)
+	if _, err := cached.Releases(t.Context()); err == nil || err.Error() != "offline" {
+		t.Fatalf("refresh error = %v, want offline", err)
 	}
-	if calls != 2 || len(releases) != 1 || releases[0].Version != "1.0.1" {
-		t.Fatalf("fallback = %+v after %d calls", releases, calls)
+	if calls != 2 {
+		t.Fatalf("source calls = %d, want two", calls)
+	}
+	if _, err := cached.Releases(t.Context()); err == nil {
+		t.Fatal("failed refresh incorrectly advanced cache freshness")
+	}
+	if calls != 3 {
+		t.Fatalf("source calls after retry = %d, want three", calls)
 	}
 }
 

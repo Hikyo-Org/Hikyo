@@ -26,6 +26,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
+	"github.com/Hikyo-Org/hikyo/internal/updater"
 )
 
 // hookWriter triggers a side effect on its first write — the mid-export
@@ -58,6 +59,21 @@ type updateReleaseSourceFunc func(context.Context) ([]updatecheck.Release, error
 func (fn updateReleaseSourceFunc) Releases(ctx context.Context) ([]updatecheck.Release, error) {
 	return fn(ctx)
 }
+
+type auditUpdateControl struct{ job updater.Job }
+
+func (c *auditUpdateControl) Capability(context.Context) (updater.Capability, error) {
+	return updater.Capability{Backend: updater.BackendFlux}, nil
+}
+func (c *auditUpdateControl) Submit(_ context.Context, req updater.Request) (updater.Job, error) {
+	c.job = updater.Job{
+		ID: req.ID, Backend: updater.BackendFlux, Version: req.Version, RequestedBy: req.RequestedBy,
+		State: updater.StateQueued, Phase: "queued", RequestedAt: time.Now().UTC(),
+	}
+	return c.job, nil
+}
+func (c *auditUpdateControl) Job(context.Context, string) (updater.Job, error) { return c.job, nil }
+func (c *auditUpdateControl) AcknowledgeOutcome(context.Context, string) error { return nil }
 
 func runAuditSuite(t *testing.T, db *store.DB) {
 	audits := &service.Audits{DB: db}
@@ -497,6 +513,57 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		if _, err := (&service.Updates{
 			DB: db, Version: "dev", Channel: updatecheck.ChannelStable,
 		}).GetStatus(tctx(t), service.LocalPrincipal(root)); err != nil {
+			t.Fatal(err)
+		}
+		// The apply pair runs under a real fresh human session because update
+		// intent deliberately cannot be emitted through local-principal authority.
+		artifact, verifier, err := crypto.NewArtifact(crypto.ArtifactCLISession)
+		if err != nil {
+			t.Fatal(err)
+		}
+		now := time.Now().UTC()
+		var sessionGeneration int64
+		var stateErr error
+		if db.Engine() == store.EnginePostgres {
+			stateErr = db.PG().QueryRow(tctx(t),
+				`SELECT session_generation FROM principals WHERE id = 'usr_root'`,
+			).Scan(&sessionGeneration)
+		} else {
+			stateErr = db.SQLiteRead().QueryRowContext(tctx(t),
+				`SELECT session_generation FROM principals WHERE id = 'usr_root'`,
+			).Scan(&sessionGeneration)
+		}
+		if stateErr != nil {
+			t.Fatal(stateErr)
+		}
+		if err := tx.Write(tctx(t), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+			return az.MintSession(ctx, authz.NewSession{
+				ID: "ses_update_audit", PrincipalID: root, Verifier: verifier, Artifact: "cli",
+				SessionGeneration: sessionGeneration, CredentialEpoch: 1,
+				AuthMethod: "local-passkey", Factors: `["webauthn","mfa"]`,
+				AuthenticatedAt: now, CreatedAt: now, IdleExpiresAt: now.Add(time.Hour),
+				AbsoluteExpiresAt: now.Add(24 * time.Hour), SourceIP: "127.0.0.1", UserAgent: "audit-e2e",
+			})
+		}); err != nil {
+			t.Fatal(err)
+		}
+		control := &auditUpdateControl{}
+		updates := &service.Updates{
+			DB: db, Version: "1.0.0", Channel: updatecheck.ChannelStable, Control: control,
+			Source: updateReleaseSourceFunc(func(context.Context) ([]updatecheck.Release, error) {
+				return []updatecheck.Release{{
+					Version: "1.1.0", URL: "https://github.com/Hikyo-Org/hikyo/releases/tag/v1.1.0", PublishedAt: now,
+				}}, nil
+			}),
+		}
+		job, err := updates.Request(tctx(t), service.Bearer(artifact), "1.1.0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		control.job.State = updater.StateSucceeded
+		control.job.Phase = "complete"
+		control.job.FinishedAt = time.Now().UTC()
+		if _, err := updates.GetJob(tctx(t), service.Bearer(artifact), job.ID); err != nil {
 			t.Fatal(err)
 		}
 		for _, typ := range audit.Types() {

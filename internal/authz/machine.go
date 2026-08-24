@@ -403,8 +403,8 @@ func (a *TxAuthorizer) WorkspaceHandoffByCode(ctx context.Context, verifier []by
 	return a.r.WorkspaceHandoffByCode(ctx, verifier)
 }
 
-func (a *TxAuthorizer) ApproveWorkspaceHandoff(ctx context.Context, id string, codeVerifier []byte, p domain.PrincipalID, factors, factorClass string) (bool, error) {
-	return a.r.ApproveWorkspaceHandoff(ctx, id, codeVerifier, p, factors, factorClass)
+func (a *TxAuthorizer) ApproveWorkspaceHandoff(ctx context.Context, id string, codeVerifier []byte, p domain.PrincipalID, factors, factorClass string, authenticatedAt time.Time) (bool, error) {
+	return a.r.ApproveWorkspaceHandoff(ctx, id, codeVerifier, p, factors, factorClass, authenticatedAt)
 }
 
 // LockWorkspaceOrigin and LockInstanceIdentityRow are the two row locks the

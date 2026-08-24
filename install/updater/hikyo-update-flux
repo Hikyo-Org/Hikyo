@@ -1,0 +1,47 @@
+#!/bin/sh
+set -eu
+# Deployment config chooses one root-owned library path.
+# shellcheck disable=SC1090
+. "${HIKYO_UPDATE_LIB:-/usr/local/libexec/hikyo-update-common}"
+job_dir=
+
+phase=${1:-}; version=${2:-}; third=${3:-}; fourth=${4:-}
+if [ "$phase" = verify ]; then release_url=$third; job_id=$fourth; else job_id=$third; fi
+validate_request "$phase" "$version" "$job_id"
+require_bin HIKYO_GIT_BIN
+require_bin HIKYO_YQ_BIN
+require_bin HIKYO_FLUX_BIN
+require_absolute HIKYO_FLUX_REPO
+require_absolute HIKYO_FLUX_VALUES_FILE
+require_var HIKYO_FLUX_KUSTOMIZATION
+
+git_repo() { "$HIKYO_GIT_BIN" -C "$HIKYO_FLUX_REPO" "$@"; }
+case "$phase" in
+	plan)
+		if ! git_repo diff --quiet || ! git_repo diff --cached --quiet; then fail 'Flux checkout is dirty'; fi
+		git_repo fetch origin
+		[ "$(git_repo rev-parse HEAD)" = "$(git_repo rev-parse '@{u}')" ] || fail 'Flux checkout is not at its exact upstream head'
+		;;
+	backup) backup_database; git_repo rev-parse HEAD >"$job_dir/previous-commit" ;;
+	verify) verify_release "$version" "$release_url" "$job_id" ;;
+	apply)
+		digest=$("$HIKYO_JQ_BIN" -r '.artifacts[] | select(.kind == "image") | .digest' "$job_dir/bundle/release-manifest.json")
+		printf '%s' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$' || fail 'signed manifest contains no image digest'
+		HIKYO_NEW_VERSION="$version" HIKYO_NEW_DIGEST="$digest" "$HIKYO_YQ_BIN" -i '.image.tag = strenv(HIKYO_NEW_VERSION) | .image.digest = strenv(HIKYO_NEW_DIGEST)' "$HIKYO_FLUX_VALUES_FILE"
+		git_repo add -- "$HIKYO_FLUX_VALUES_FILE"
+		git_repo commit -m "chore(hikyo): update to $version"
+		git_repo push origin HEAD
+		"$HIKYO_FLUX_BIN" reconcile kustomization "$HIKYO_FLUX_KUSTOMIZATION" --with-source
+		;;
+	health) health_check ;;
+	rollback)
+		previous=$(cat "$job_dir/previous-commit")
+		git_repo revert --no-edit HEAD
+		git_repo push origin HEAD
+		"$HIKYO_FLUX_BIN" reconcile kustomization "$HIKYO_FLUX_KUSTOMIZATION" --with-source
+		restore_database
+		"$HIKYO_FLUX_BIN" reconcile kustomization "$HIKYO_FLUX_KUSTOMIZATION" --with-source
+		health_check
+		printf '%s\n' "$previous" >"$job_dir/rollback-from"
+		;;
+esac

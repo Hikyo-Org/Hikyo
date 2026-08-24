@@ -181,7 +181,11 @@ func (a sqliteAudit) InsertInstance(ctx context.Context, p authz.Proof, e audit.
 	if err != nil {
 		return err
 	}
-	return a.q.InsertInstanceAuditEvent(ctx, auditrow.SQLiteInstance(row))
+	err = a.q.InsertInstanceAuditEvent(ctx, auditrow.SQLiteInstance(row))
+	if sqliteUniqueViolation(err) {
+		return fmt.Errorf("%w: duplicate instance audit event", ErrConflict)
+	}
+	return err
 }
 
 func (a sqliteAudit) ClaimOfflineRecord(ctx context.Context, p authz.Proof, principalID, recordID string, at time.Time) (bool, error) {
@@ -379,7 +383,11 @@ func (a pgAudit) InsertInstance(ctx context.Context, p authz.Proof, e audit.Even
 	if err != nil {
 		return err
 	}
-	return a.q.InsertInstanceAuditEvent(ctx, auditrow.PGInstance(row))
+	err = a.q.InsertInstanceAuditEvent(ctx, auditrow.PGInstance(row))
+	if pgUniqueViolation(err) {
+		return fmt.Errorf("%w: duplicate instance audit event", ErrConflict)
+	}
+	return err
 }
 
 func (a pgAudit) ClaimOfflineRecord(ctx context.Context, p authz.Proof, principalID, recordID string, at time.Time) (bool, error) {

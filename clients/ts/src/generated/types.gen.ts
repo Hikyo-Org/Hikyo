@@ -417,6 +417,33 @@ export type UpdateStatus = {
     available: boolean;
     prerelease: boolean;
     published_at?: string;
+    /**
+     * True only while a configured local updater helper answers.
+     */
+    apply_supported: boolean;
+    apply_backend?: InstanceUpdateBackend;
+    /**
+     * Operator-safe reason a configured helper cannot currently apply.
+     */
+    apply_error?: string;
+};
+
+export type InstanceUpdateBackend = 'flux' | 'compose' | 'systemd';
+
+export type InstanceUpdateRequest = {
+    version: string;
+};
+
+export type InstanceUpdateJob = {
+    id: Id;
+    backend: InstanceUpdateBackend;
+    version: string;
+    state: 'queued' | 'running' | 'succeeded' | 'failed' | 'rolled-back' | 'rollback-failed';
+    phase: 'queued' | 'plan' | 'backup' | 'verify' | 'apply' | 'health' | 'rollback' | 'complete' | 'admission';
+    failure_code?: string;
+    requested_at: Timestamp;
+    started_at?: Timestamp;
+    finished_at?: Timestamp;
 };
 
 export type TotpEnrolStartRequest = {
@@ -3883,6 +3910,11 @@ export type ConnectionId = Id;
  * Session identifier, always one of the caller's own.
  */
 export type SessionId = Id;
+
+/**
+ * Durable updater-helper job identifier.
+ */
+export type InstanceUpdateJobId = Id;
 
 export type GetMetaData = {
     body?: never;
@@ -11484,6 +11516,137 @@ export type GetUpdateStatusResponses = {
 };
 
 export type GetUpdateStatusResponse = GetUpdateStatusResponses[keyof GetUpdateStatusResponses];
+
+export type RequestInstanceUpdateData = {
+    body: InstanceUpdateRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/instance/update';
+};
+
+export type RequestInstanceUpdateErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type RequestInstanceUpdateError = RequestInstanceUpdateErrors[keyof RequestInstanceUpdateErrors];
+
+export type RequestInstanceUpdateResponses = {
+    /**
+     * Update accepted by the local helper.
+     */
+    202: InstanceUpdateJob;
+};
+
+export type RequestInstanceUpdateResponse = RequestInstanceUpdateResponses[keyof RequestInstanceUpdateResponses];
+
+export type GetInstanceUpdateJobData = {
+    body?: never;
+    path: {
+        /**
+         * Durable updater-helper job identifier.
+         */
+        job: Id;
+    };
+    query?: never;
+    url: '/api/v1/instance/updates/{job}';
+};
+
+export type GetInstanceUpdateJobErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type GetInstanceUpdateJobError = GetInstanceUpdateJobErrors[keyof GetInstanceUpdateJobErrors];
+
+export type GetInstanceUpdateJobResponses = {
+    /**
+     * Durable helper-owned update state.
+     */
+    200: InstanceUpdateJob;
+};
+
+export type GetInstanceUpdateJobResponse = GetInstanceUpdateJobResponses[keyof GetInstanceUpdateJobResponses];
 
 export type ListSamlProvidersData = {
     body?: never;

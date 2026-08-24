@@ -1003,23 +1003,24 @@ type WebauthnCredential struct {
 }
 
 type WorkspaceHandoff struct {
-	ID            string
-	StateVerifier []byte
-	CodeVerifier  []byte
-	Origin        string
-	RedirectUri   string
-	PkceChallenge string
-	Purpose       string
-	SessionID     pgtype.Text
-	Operation     pgtype.Text
-	EnvID         pgtype.Text
-	KeySet        pgtype.Text
-	PrincipalID   pgtype.Text
-	CreatedAt     pgtype.Timestamptz
-	ExpiresAt     pgtype.Timestamptz
-	ConsumedAt    pgtype.Timestamptz
-	Factors       string
-	FactorClass   string
+	ID              string
+	StateVerifier   []byte
+	CodeVerifier    []byte
+	Origin          string
+	RedirectUri     string
+	PkceChallenge   string
+	Purpose         string
+	SessionID       pgtype.Text
+	Operation       pgtype.Text
+	EnvID           pgtype.Text
+	KeySet          pgtype.Text
+	PrincipalID     pgtype.Text
+	CreatedAt       pgtype.Timestamptz
+	ExpiresAt       pgtype.Timestamptz
+	ConsumedAt      pgtype.Timestamptz
+	Factors         string
+	FactorClass     string
+	AuthenticatedAt pgtype.Timestamptz
 }
 
 type WorkspaceOrigin struct {

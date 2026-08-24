@@ -32,8 +32,9 @@ func NewCachedSource(source Source, ttl time.Duration, now func() time.Time) (*C
 	return &CachedSource{source: source, ttl: ttl, now: now}, nil
 }
 
-// Releases refreshes at most once per TTL. A last successful immutable
-// release list remains usable during a source outage.
+// Releases refreshes at most once per TTL. Refresh failures are returned
+// loudly and do not advance freshness; callers may retain their last rendered
+// state, but they cannot mistake stale release data for a successful check.
 func (c *CachedSource) Releases(ctx context.Context) ([]Release, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -44,11 +45,7 @@ func (c *CachedSource) Releases(ctx context.Context) ([]Release, error) {
 	}
 	releases, err := c.source.Releases(ctx)
 	if err != nil {
-		if c.checkedAt.IsZero() {
-			return nil, err
-		}
-		c.checkedAt = now
-		return slices.Clone(c.releases), nil
+		return nil, err
 	}
 	c.checkedAt = now
 	c.releases = slices.Clone(releases)

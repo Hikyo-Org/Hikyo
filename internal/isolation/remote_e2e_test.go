@@ -209,6 +209,16 @@ func runRemoteLifecycle(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatalf("remote.workspace_session_issued: %v", err)
 	}
+	var browserAuthenticatedAt, workspaceAuthenticatedAt string
+	if err := db.SQLiteRead().QueryRowContext(ctx, `SELECT authenticated_at FROM sessions WHERE id = ?`, sessionIDOf(t, db, humanBearer)).Scan(&browserAuthenticatedAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SQLiteRead().QueryRowContext(ctx, `SELECT authenticated_at FROM sessions WHERE id = ?`, ws.SessionID).Scan(&workspaceAuthenticatedAt); err != nil {
+		t.Fatal(err)
+	}
+	if workspaceAuthenticatedAt != browserAuthenticatedAt {
+		t.Fatalf("workspace authentication time = %q, want approving login time %q", workspaceAuthenticatedAt, browserAuthenticatedAt)
+	}
 
 	// A step-up transaction, and the approve page reading its bound policy back:
 	// remote.workspace_handoff_read. Only START + READ here — the elevation

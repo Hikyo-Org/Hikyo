@@ -35,6 +35,9 @@ type Status struct {
 	Available      bool      `json:"available"`
 	Prerelease     bool      `json:"prerelease"`
 	PublishedAt    time.Time `json:"published_at,omitempty"`
+	ApplySupported bool      `json:"apply_supported"`
+	ApplyBackend   string    `json:"apply_backend,omitempty"`
+	ApplyError     string    `json:"apply_error,omitempty"`
 }
 
 // ParseChannel validates a configured release track.

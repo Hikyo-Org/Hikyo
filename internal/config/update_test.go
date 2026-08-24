@@ -1,6 +1,7 @@
 package config
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -26,6 +27,31 @@ func TestUpdateChannelDefaultsStableAndParsesConfiguredTrack(t *testing.T) {
 		if cfg.UpdateChannel != test.want {
 			t.Fatalf("raw %q: channel = %q, want %q", test.raw, cfg.UpdateChannel, test.want)
 		}
+	}
+}
+
+func TestUpdaterSocketIsOptionalAndMustBeAbsolute(t *testing.T) {
+	want := filepath.Join(t.TempDir(), "updater.sock")
+	cfg, _, err := Load("server", []string{"--dev"}, func(name string) string {
+		if name == "HIKYO_UPDATER_SOCKET" {
+			return want
+		}
+		return ""
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.UpdaterSocket != want {
+		t.Fatalf("socket = %q, want %q", cfg.UpdaterSocket, want)
+	}
+	_, _, err = Load("server", []string{"--dev"}, func(name string) string {
+		if name == "HIKYO_UPDATER_SOCKET" {
+			return "run/updater.sock"
+		}
+		return ""
+	}, nil)
+	if err == nil || !strings.Contains(err.Error(), "HIKYO_UPDATER_SOCKET") {
+		t.Fatalf("relative socket error = %v, want named refusal", err)
 	}
 }
 

@@ -126,6 +126,7 @@ import {
   getEnvironmentSettings,
   getEnvironmentSignals,
   getFolder,
+  getInstanceUpdateJob,
   getKey,
   getKeyGroup,
   getMachineReveal,
@@ -219,6 +220,7 @@ import {
   renameProject,
   renameRemote,
   reorderEnvironments,
+  requestInstanceUpdate,
   resetCredential,
   resumeAdapterMove,
   retireSamlSpKey,
@@ -361,6 +363,7 @@ import type {
   GetEnvironmentSettingsData,
   GetEnvironmentSignalsData,
   GetFolderData,
+  GetInstanceUpdateJobData,
   GetKeyData,
   GetKeyGroupData,
   GetMachineRevealData,
@@ -454,6 +457,7 @@ import type {
   RenameProjectData,
   RenameRemoteData,
   ReorderEnvironmentsData,
+  RequestInstanceUpdateData,
   ResetCredentialData,
   ResumeAdapterMoveData,
   RetireSamlSpKeyData,
@@ -584,6 +588,7 @@ import {
   zGetEnvironmentSettingsResponse,
   zGetEnvironmentSignalsResponse,
   zGetFolderResponse,
+  zGetInstanceUpdateJobResponse,
   zGetKeyGroupResponse,
   zGetKeyResponse,
   zGetMachineRevealResponse,
@@ -675,6 +680,7 @@ import {
   zRenameProjectResponse,
   zRenameRemoteResponse,
   zReorderEnvironmentsResponse,
+  zRequestInstanceUpdateResponse,
   zResetCredentialResponse,
   zResumeAdapterMoveResponse,
   zRevealValueDiffResponse,
@@ -792,6 +798,7 @@ export const getEnvironmentOp: BodyOperation<GetEnvironmentData, typeof zGetEnvi
 export const getEnvironmentSettingsOp: BodyOperation<GetEnvironmentSettingsData, typeof zGetEnvironmentSettingsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getEnvironmentSettings, [200], zGetEnvironmentSettingsResponse);
 export const getEnvironmentSignalsOp: BodyOperation<GetEnvironmentSignalsData, typeof zGetEnvironmentSignalsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getEnvironmentSignals, [200], zGetEnvironmentSignalsResponse);
 export const getFolderOp: BodyOperation<GetFolderData, typeof zGetFolderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getFolder, [200], zGetFolderResponse);
+export const getInstanceUpdateJobOp: BodyOperation<GetInstanceUpdateJobData, typeof zGetInstanceUpdateJobResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getInstanceUpdateJob, [200], zGetInstanceUpdateJobResponse);
 export const getKeyOp: BodyOperation<GetKeyData, typeof zGetKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getKey, [200], zGetKeyResponse);
 export const getKeyGroupOp: BodyOperation<GetKeyGroupData, typeof zGetKeyGroupResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getKeyGroup, [200], zGetKeyGroupResponse);
 export const getMachineRevealOp: BodyOperation<GetMachineRevealData, typeof zGetMachineRevealResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getMachineReveal, [200], zGetMachineRevealResponse);
@@ -883,6 +890,7 @@ export const renameOrgOp: BodyOperation<RenameOrgData, typeof zRenameOrgResponse
 export const renameProjectOp: BodyOperation<RenameProjectData, typeof zRenameProjectResponse> = /* @__PURE__ */ new GeneratedBodyOperation(renameProject, [200], zRenameProjectResponse);
 export const renameRemoteOp: BodyOperation<RenameRemoteData, typeof zRenameRemoteResponse> = /* @__PURE__ */ new GeneratedBodyOperation(renameRemote, [200], zRenameRemoteResponse);
 export const reorderEnvironmentsOp: BodyOperation<ReorderEnvironmentsData, typeof zReorderEnvironmentsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(reorderEnvironments, [200], zReorderEnvironmentsResponse);
+export const requestInstanceUpdateOp: BodyOperation<RequestInstanceUpdateData, typeof zRequestInstanceUpdateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(requestInstanceUpdate, [202], zRequestInstanceUpdateResponse);
 export const resetCredentialOp: BodyOperation<ResetCredentialData, typeof zResetCredentialResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resetCredential, [200], zResetCredentialResponse);
 export const resumeAdapterMoveOp: BodyOperation<ResumeAdapterMoveData, typeof zResumeAdapterMoveResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resumeAdapterMove, [202], zResumeAdapterMoveResponse);
 export const revealValueOp: BodyOperation<RevealValueData, typeof zRevealValueResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revealValue, [200], zRevealValueResponse);

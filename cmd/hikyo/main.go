@@ -19,6 +19,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
 	"github.com/Hikyo-Org/hikyo/internal/importer"
 	"github.com/Hikyo-Org/hikyo/internal/operator"
+	"github.com/Hikyo-Org/hikyo/internal/updater"
 )
 
 // Set by GoReleaser. Development builds deliberately identify themselves as
@@ -65,6 +66,8 @@ func run() int {
 		return runServer(ctx, args)
 	case cmd == "operator":
 		return runOperatorMode(ctx)
+	case cmd == "updater":
+		return runUpdaterMode(ctx, args)
 	case cmd == "migrate":
 		return runMigrate(ctx, args)
 	case cmd == "admin":
@@ -145,6 +148,17 @@ func runOperatorMode(ctx context.Context) int {
 	return 0
 }
 
+// runUpdaterMode is a separately privileged local deployment helper. It loads
+// no Hikyo datastore, root key, or keyring; only its explicit JSON profile.
+func runUpdaterMode(ctx context.Context, args []string) int {
+	log := app.Logger(false)
+	if err := updater.Run(ctx, args, log); err != nil {
+		log.Error("updater failed", "err", err)
+		return 1
+	}
+	return 0
+}
+
 // runAdmin is the local-admin group: `hikyo admin create` on the server's own
 // host. It is a client verb of the same binary, not a new multicall mode -
 // the mode set (server/operator/migrate/client) is unchanged. It shares
@@ -213,6 +227,9 @@ server commands:
 
 kubernetes operator (separate deployable; HIKYO_OPERATOR_* env only):
   hikyo operator
+
+privileged local update helper (separate service; JSON config only):
+  hikyo updater --config /etc/hikyo/updater.json
 
 version:
   hikyo version

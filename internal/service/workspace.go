@@ -831,7 +831,7 @@ func (s *Workspace) ApproveHandoff(ctx context.Context, actor Actor, state strin
 		if err != nil {
 			return err
 		}
-		claimed, err := az.ApproveWorkspaceHandoff(ctx, h.ID, verifier, caller.Principal, string(factors), factorClass)
+		claimed, err := az.ApproveWorkspaceHandoff(ctx, h.ID, verifier, caller.Principal, string(factors), factorClass, caller.Assurance.AuthenticatedAt)
 		if err != nil {
 			return err
 		}
@@ -1134,7 +1134,7 @@ func (s *Workspace) RedeemHandoff(ctx context.Context, code, pkceVerifier, origi
 			// single-factor and structurally unable to reach any MFA-mandatory
 			// operation, whatever ceremony the human had just performed.
 			Factors:         h.Factors,
-			AuthenticatedAt: now, CeremonyID: h.ID, CreatedAt: now,
+			AuthenticatedAt: h.AuthenticatedAt, CeremonyID: h.ID, CreatedAt: now,
 			IdleExpiresAt: idle, AbsoluteExpiresAt: absolute,
 			SourceIP: wire.SourceIP, UserAgent: wire.UserAgent,
 			RequestingOrigin: h.Origin, HandoffID: h.ID,

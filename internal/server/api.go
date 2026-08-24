@@ -20,6 +20,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/scimproto"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
+	"github.com/Hikyo-Org/hikyo/internal/updater"
 )
 
 // The API transport. It owns exactly three things — moving bytes, attaching
@@ -192,6 +193,8 @@ type OperationalRetentionHealthService interface {
 
 type UpdateService interface {
 	GetStatus(ctx context.Context, actor service.Actor) (updatecheck.Status, error)
+	Request(ctx context.Context, actor service.Actor, version string) (updater.Job, error)
+	GetJob(ctx context.Context, actor service.Actor, id string) (updater.Job, error)
 }
 
 var _ apigen.StrictServerInterface = (*API)(nil)

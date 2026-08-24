@@ -375,6 +375,12 @@ export const zLocalLoginRequest = z.object({
     artifact: z.enum(['cli', 'browser']).optional().default('cli')
 });
 
+export const zInstanceUpdateBackend = z.enum([
+    'flux',
+    'compose',
+    'systemd'
+]);
+
 export const zUpdateStatus = z.object({
     channel: z.enum([
         'stable',
@@ -386,7 +392,43 @@ export const zUpdateStatus = z.object({
     release_url: z.url().optional(),
     available: z.boolean(),
     prerelease: z.boolean(),
-    published_at: z.iso.datetime().optional()
+    published_at: z.iso.datetime().optional(),
+    apply_supported: z.boolean(),
+    apply_backend: zInstanceUpdateBackend.optional(),
+    apply_error: z.string().optional()
+}).strict();
+
+export const zInstanceUpdateRequest = z.object({
+    version: z.string().max(64).regex(/^[0-9]+\.[0-9]+\.[0-9]+$/)
+}).strict();
+
+export const zInstanceUpdateJob = z.object({
+    id: zId,
+    backend: zInstanceUpdateBackend,
+    version: z.string().max(64).regex(/^[0-9]+\.[0-9]+\.[0-9]+$/),
+    state: z.enum([
+        'queued',
+        'running',
+        'succeeded',
+        'failed',
+        'rolled-back',
+        'rollback-failed'
+    ]),
+    phase: z.enum([
+        'queued',
+        'plan',
+        'backup',
+        'verify',
+        'apply',
+        'health',
+        'rollback',
+        'complete',
+        'admission'
+    ]),
+    failure_code: z.string().max(64).optional(),
+    requested_at: zTimestamp,
+    started_at: zTimestamp.optional(),
+    finished_at: zTimestamp.optional()
 }).strict();
 
 export const zTotpEnrolStartRequest = z.object({
@@ -2899,6 +2941,11 @@ export const zConnectionId = zId;
 export const zSessionId = zId;
 
 /**
+ * Durable updater-helper job identifier.
+ */
+export const zInstanceUpdateJobId = zId;
+
+/**
  * Instance metadata.
  */
 export const zGetMetaResponse = zMeta;
@@ -4120,6 +4167,22 @@ export const zGetRetentionHealthResponse = zRetentionHealth;
  * Current version and the newest release on the configured channel.
  */
 export const zGetUpdateStatusResponse = zUpdateStatus;
+
+export const zRequestInstanceUpdateBody = zInstanceUpdateRequest;
+
+/**
+ * Update accepted by the local helper.
+ */
+export const zRequestInstanceUpdateResponse = zInstanceUpdateJob;
+
+export const zGetInstanceUpdateJobPath = z.object({
+    job: zId
+});
+
+/**
+ * Durable helper-owned update state.
+ */
+export const zGetInstanceUpdateJobResponse = zInstanceUpdateJob;
 
 /**
  * The configured SAML providers.

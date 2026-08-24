@@ -2261,6 +2261,22 @@ select {
   color: var(--tx-dim);
 }
 
+.remote__update {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-container);
+  background: color-mix(in oklch, var(--bg), var(--accent) 6%);
+}
+
+.remote__update p {
+  margin: 0 0 8px;
+}
+
+.remote__update p:last-child {
+  margin-bottom: 0;
+}
+
 .remote__actions,
 .origin,
 .session__head {
