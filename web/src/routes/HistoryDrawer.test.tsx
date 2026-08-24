@@ -127,9 +127,9 @@ describe('PinReleaseOutcome', () => {
   }
 });
 
-function drawer() {
+function drawer(initialEntry = '/orgs/org_a/projects/prj_a/matrix/history?env=env_a&rev=4') {
   return (
-    <MemoryRouter initialEntries={['/orgs/org_a/projects/prj_a/matrix/history?env=env_a&rev=4']}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <HistoryDrawer
         refData={{ org: 'org_a', project: 'prj_a' }}
         environments={[{
@@ -207,5 +207,17 @@ describe('HistoryDrawer pin release flow', () => {
       "make r3's values eligible for immediate collection",
     );
     expect(buttonNamed(container, 'Move pin from r3 to r4 — old values may be collected')).toBeTruthy();
+  });
+});
+
+describe('HistoryDrawer key filter', () => {
+  it('renders the empty state for an unknown deleted key', async () => {
+    const { container } = await renderForm(
+      drawer('/orgs/org_a/projects/prj_a/matrix/history?env=env_a&key=key_deleted'),
+    );
+
+    expect(container.querySelector('.history__empty')?.textContent).toBe(
+      'No revision has moved key_deleted (unknown key) in this environment.',
+    );
   });
 });

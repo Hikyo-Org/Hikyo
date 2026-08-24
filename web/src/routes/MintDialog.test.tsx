@@ -76,4 +76,66 @@ describe('MintDialog', () => {
     expect(client.getQueryCache().getAll()).toEqual([]);
     expect(client.getMutationCache().getAll()).toEqual([]);
   });
+
+  it.each([
+    ['the clipboard API is absent', undefined],
+    [
+      'clipboard access throws synchronously',
+      {
+        writeText: vi.fn(() => {
+          throw new TypeError('clipboard unavailable');
+        }),
+      },
+    ],
+  ])('keeps the display-once value guarded when %s', async (_case, clipboard) => {
+    const fetchMock = vi.fn((..._args: Parameters<typeof fetch>) =>
+      Promise.resolve(
+        new Response(JSON.stringify({ value: SENTINEL, clamped: false }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('navigator', clipboard === undefined ? {} : { clipboard });
+
+    const { container } = await renderForm(<MintHarness />);
+    const mintButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Mint credential',
+    );
+    if (mintButton === undefined) {
+      throw new Error('the mint dialog has no mint button');
+    }
+    await act(async () => mintButton.click());
+    await settle();
+
+    const copyButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Copy to clipboard',
+    );
+    if (copyButton === undefined) {
+      throw new Error('the disclosed mint dialog has no copy button');
+    }
+    await act(async () => copyButton.click());
+    await settle();
+
+    expect(container.querySelector('.machine__token')?.textContent).toBe(SENTINEL);
+    expect(container.textContent).toContain(
+      'This browser refused clipboard access, so nothing was copied.',
+    );
+    expect(container.querySelector<HTMLInputElement>('#mint-stored')?.checked).toBe(false);
+
+    const doneButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Done',
+    );
+    if (doneButton === undefined) {
+      throw new Error('the disclosed mint dialog has no done button');
+    }
+    await act(async () => doneButton.click());
+    await settle();
+
+    expect(container.querySelector('.machine__token')?.textContent).toBe(SENTINEL);
+    expect(container.textContent).toContain(
+      'Confirm you have stored it — there is no second look at this value.',
+    );
+  });
 });

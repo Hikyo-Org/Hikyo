@@ -16,6 +16,7 @@ import {
   type ValueCell,
 } from '../api/values.ts';
 import { useTransport } from '../api/transport.tsx';
+import { writeClipboard as safeWriteClipboard } from '../app/clipboard.ts';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
 
@@ -691,9 +692,7 @@ async function writeClipboard(
   setNotice: (text: string | null) => void,
   audited: boolean,
 ): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(value);
-  } catch {
+  if ((await safeWriteClipboard(value)) === 'refused') {
     setNotice('This browser refused clipboard access, so nothing was copied.');
     return;
   }
@@ -704,7 +703,7 @@ async function writeClipboard(
   );
   globalThis.setTimeout(() => {
     if (document.hasFocus()) {
-      void navigator.clipboard.writeText('').catch(() => undefined);
+      void safeWriteClipboard('');
     }
   }, CLIPBOARD_CLEAR_MS);
 }
