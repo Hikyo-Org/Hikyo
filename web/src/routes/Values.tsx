@@ -11,6 +11,7 @@ import {
   useRevealWindow,
   useSetValue,
   useValues,
+  writeRefusalText,
   type EnvRef,
   type RevealWindow,
   type ValueCell,
@@ -382,6 +383,25 @@ export function Values() {
     );
   };
 
+  const saveDraft = async (cell: ValueCell, value: string): Promise<void> => {
+    // Empty means UNCHANGED. There is no per-row clear: clearing a value stays
+    // a per-cell action, as the prototype's resolution fixed.
+    if (value === '') {
+      setEditing(null);
+      return;
+    }
+
+    setRefusal(null);
+    setNotice(null);
+    try {
+      await setValue.mutateAsync({ key: cell.name, value });
+      setEditing((current) => (current === cell.name ? null : current));
+      setNotice(`${cell.name} staged.`);
+    } catch (error) {
+      setRefusal(writeRefusalText(error));
+    }
+  };
+
   const chip = guard === undefined ? null : windowChip(guard, now);
 
   return (
@@ -537,15 +557,8 @@ export function Values() {
                     <RowEditor
                       cell={cell}
                       writeOnly={writeOnly}
-                      onSave={(value) => {
-                        setEditing(null);
-                        // Empty means UNCHANGED. There is no per-row clear:
-                        // clearing a value stays a per-cell action, as the
-                        // prototype's resolution fixed.
-                        if (value !== '') {
-                          setValue.mutate({ key: cell.name, value });
-                        }
-                      }}
+                      saving={setValue.isPending}
+                      onSave={(value) => void saveDraft(cell, value)}
                     />
                   </td>
                 ) : null}
@@ -634,10 +647,12 @@ function windowChip(state: RevealWindow, now: number) {
 function RowEditor({
   cell,
   writeOnly,
+  saving,
   onSave,
 }: {
   cell: ValueCell;
   writeOnly: boolean;
+  saving: boolean;
   onSave: (value: string) => void;
 }) {
   const [draft, setDraft] = useState('');
@@ -662,6 +677,7 @@ function RowEditor({
           }
           data-write-only={writeOnly}
           value={draft}
+          disabled={saving}
           onChange={(event) => setDraft(event.target.value)}
         />
       </div>
@@ -671,8 +687,8 @@ function RowEditor({
           changes nothing.
         </p>
       ) : null}
-      <button className="btn btn--primary" type="submit">
-        Save draft
+      <button className="btn btn--primary" type="submit" disabled={saving}>
+        {saving ? 'Saving…' : 'Save draft'}
       </button>
     </form>
   );
