@@ -12,6 +12,18 @@ mkdir -p "$dist"
 
 printf 'binary\n' >"$dist/hikyo_0.1.0_Linux_arm64.tar.gz"
 printf 'binary\n' >"$dist/hikyo_0.1.0_Windows_arm64.zip"
+for package in \
+	hikyo_0.1.0_amd64.deb \
+	hikyo_0.1.0_arm64.deb \
+	hikyo-0.1.0-1.x86_64.rpm \
+	hikyo-0.1.0-1.aarch64.rpm \
+	hikyo_0.1.0_x86_64.apk \
+	hikyo_0.1.0_aarch64.apk \
+	hikyo-0.1.0-1-x86_64.pkg.tar.zst \
+	hikyo-0.1.0-1-aarch64.pkg.tar.zst
+do
+	printf 'native package\n' >"$dist/$package"
+done
 printf 'checksums\n' >"$dist/checksums.txt"
 jq -n '{
 	schema: "hikyo.dev/release-binaries/v1",
@@ -61,6 +73,14 @@ jq -e '
 	.tag == "v0.1.0" and
 	.release_sequence == 7 and
 	([.artifacts[] | select(.kind == "binary")] | length) == 2 and
+	([.artifacts[] | select(.kind == "package")] | length) == 8 and
+	([.artifacts[] | select(.kind == "package") | .format] | sort ==
+		["apk", "apk", "archlinux", "archlinux", "deb", "deb", "rpm", "rpm"]) and
+	([.artifacts[] | select(.kind == "package") | [.format, .arch]] | sort ==
+		[["apk", "amd64"], ["apk", "arm64"],
+		 ["archlinux", "amd64"], ["archlinux", "arm64"],
+		 ["deb", "amd64"], ["deb", "arm64"],
+		 ["rpm", "amd64"], ["rpm", "arm64"]]) and
 	([.artifacts[] | select(.kind == "sbom")] | length) == 2 and
 	([.artifacts[] | select(.kind == "checksum")] | length) == 1 and
 	([.artifacts[] | select(.kind == "binary-provenance")] | length) == 1 and
@@ -119,6 +139,48 @@ COSIGN_BIN="$fixture_dir/cosign" "$(dirname "$0")/verify-bundle.sh" \
 	--metadata "$trust_dir/metadata.json" \
 	--metadata-signature "$trust_dir/metadata.sigstore.json" \
 	--bundle "$dist" --state "$fixture_dir/verification-state.json" --latest >/dev/null
+
+duplicate_package=hikyo_0.1.0_duplicate_amd64.deb
+cp "$dist/hikyo_0.1.0_arm64.deb" "$dist/$duplicate_package"
+cp "$dist/hikyo_0.1.0_arm64.deb.sigstore.json" "$dist/$duplicate_package.sigstore.json"
+jq --arg name "$duplicate_package" '
+	(.artifacts[] | select(.kind == "package" and .format == "deb" and .arch == "arm64")) |=
+		(.arch = "amd64" | .name = $name)
+' \
+	"$dist/release-manifest.json" >"$fixture_dir/duplicate-package-arch.json"
+cp "$fixture_dir/duplicate-package-arch.json" "$dist/release-manifest.json"
+duplicate_manifest_sha=$(sha256_file "$dist/release-manifest.json")
+jq --arg sha "$duplicate_manifest_sha" \
+	'(.releases[] | select(.version == "0.1.0")).manifest_sha256 = $sha' \
+	"$trust_dir/metadata.json" >"$fixture_dir/duplicate-package-metadata.json"
+if COSIGN_BIN="$fixture_dir/cosign" "$(dirname "$0")/verify-bundle.sh" \
+	--root "$trust_dir/root.json" \
+	--metadata "$fixture_dir/duplicate-package-metadata.json" \
+	--metadata-signature "$trust_dir/metadata.sigstore.json" \
+	--bundle "$dist" --state "$fixture_dir/duplicate-package-state.json" --latest \
+	>"$fixture_dir/duplicate-package.out" 2>"$fixture_dir/duplicate-package.err"
+then
+	printf 'manifest fixture: duplicate package architecture unexpectedly accepted\n' >&2
+	exit 1
+fi
+grep -F 'package name is not bound to release 0.1.0' \
+	"$fixture_dir/duplicate-package.err" >/dev/null
+rm "$dist/$duplicate_package" "$dist/$duplicate_package.sigstore.json"
+"$(dirname "$0")/create-manifest.sh" \
+	"$dist/release-candidate.json" ghcr.io/hikyo-org/hikyo \
+	"$image_digest" ghcr.io/hikyo-org/charts/hikyo "$chart_digest" "$dist" >/dev/null
+
+printf 'unknown package architecture\n' >"$dist/hikyo_0.1.0_s390x.deb"
+if "$(dirname "$0")/create-manifest.sh" \
+	"$dist/release-candidate.json" ghcr.io/hikyo-org/hikyo \
+	"$image_digest" ghcr.io/hikyo-org/charts/hikyo "$chart_digest" "$dist" \
+	>"$fixture_dir/unknown-package.out" 2>"$fixture_dir/unknown-package.err"
+then
+	printf 'manifest fixture: unknown package architecture unexpectedly accepted\n' >&2
+	exit 1
+fi
+grep -F 'manifest: package name is not bound to release 0.1.0' "$fixture_dir/unknown-package.err" >/dev/null
+rm "$dist/hikyo_0.1.0_s390x.deb"
 
 jq '.source_commit = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' \
 	"$dist/binary-provenance.json" >"$fixture_dir/wrong-commit.json"

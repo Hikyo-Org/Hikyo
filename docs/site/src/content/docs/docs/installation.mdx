@@ -25,6 +25,50 @@ production release.
   not substitutes for that ceremony.
 </Callout>
 
+## Native packages after a signed release
+
+Published releases include local-install packages for Linux amd64 and arm64:
+Debian (`.deb`), RPM (`.rpm`), Alpine (`.apk`), and Arch Linux
+(`.pkg.tar.zst`). Download the **complete** release bundle first and verify it
+against the recovery-signed trust metadata with the release's pinned
+`verify-bundle.sh`. Follow the [release verification
+runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/release/signing.md#per-release-ceremony);
+do not install a package copied out of an unverified or draft bundle.
+
+After verification, install the matching local file. These examples show amd64
+names for version `1.0.0`:
+
+```sh
+sudo apt install ./hikyo_1.0.0_amd64.deb
+sudo dnf install --nogpgcheck ./hikyo-1.0.0-1.x86_64.rpm
+sudo apk add --allow-untrusted ./hikyo_1.0.0_x86_64.apk
+sudo pacman -U ./hikyo-1.0.0-1-x86_64.pkg.tar.zst
+```
+
+`--nogpgcheck` and `--allow-untrusted` disable native repository signatures,
+not Hikyo's verification. The preceding signed-bundle check is mandatory;
+hosted Linux repositories and their package-index keys are intentionally not
+published yet. For arm64, package filenames use `arm64` (Debian) or `aarch64`
+(RPM, APK, and Arch).
+
+Each package installs only `/usr/bin/hikyo` and
+`/usr/share/doc/hikyo/LICENSE`. It does not create configuration, generate
+keys, install a service, or start a server.
+
+After a stable release's protected tap PR is merged, macOS users can install
+the same macOS archive bytes through the Homebrew convenience channel:
+
+```sh
+brew install --cask hikyo-org/tap/hikyo
+```
+
+Homebrew does **not** verify Hikyo's pinned signing root. It authorizes the
+tap/cask and verifies the archive SHA-256 recorded in that cask; compromise of
+the tap could replace the verification instructions, key, URL, and checksum
+together. Use the complete signed-bundle verification flow above when the
+Hikyo-root guarantee is required. The Homebrew path is convenient distribution,
+not an official fail-closed installer.
+
 ## Unsigned development snapshots
 
 Every successful trusted `main` build attaches a 14-day

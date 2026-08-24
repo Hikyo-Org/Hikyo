@@ -123,7 +123,8 @@ an ADR amendment, not an implementation refactor.
    `v-ruleset-probe` tag is rejected, builds GoReleaser archives for
    Linux/macOS/Windows on amd64/arm64,
    copies the same GoReleaser Linux binaries into the distroless amd64/arm64
-   image, pushes that image and the digest-pinned Helm chart, emits binary
+   image, produces Debian, RPM, APK, and Arch Linux packages for amd64/arm64,
+   pushes that image and the digest-pinned Helm chart, emits binary
    provenance binding both package inputs to the candidate commit and hashes,
    source and image SPDX SBOMs, renders an installer containing the exact trust
    root and verifier hashes, and opens a draft GitHub release. CI also makes the
@@ -164,12 +165,28 @@ an ADR amendment, not an implementation refactor.
    verifier code still come from the immutable release tag.
    GitHub immutable releases locks its assets at publication. Preserve that
    state file; deleting it discards locally remembered rollback protection.
+8. After the now-public release is downloaded and verified again, the ceremony
+   renders `Casks/hikyo.rb` from the signed macOS archive records and opens or
+   refreshes `Hikyo-Org/homebrew-tap`'s protected release PR. Drafts never reach
+   this step, prereleases do not update the stable cask, and the ceremony never
+   merges the tap PR. Review its `ci-required` result and merge separately.
+   Homebrew authorizes the tap/cask and checks the rendered SHA-256, but does
+   not independently verify Hikyo's pinned signing root; this is a convenience
+   channel, not an official fail-closed installer. Users requiring that trust
+   guarantee must use the complete signed-bundle verification path.
 
-`checksums.txt` is GoReleaser's bare-binary checksum list.
+`checksums.txt` remains GoReleaser's exact six-archive checksum list. Native
+packages are not added to that legacy list; each package byte stream is instead
+hashed in the release manifest and receives its own offline Cosign bundle. The
+package payload is only `/usr/bin/hikyo` plus the MPL-2.0 license: it creates no
+configuration and never installs or starts a service. Before the draft is
+created, the release build extracts all eight packages and compares their
+binary and license bytes with the canonical architecture archives and source
+license.
 `binary-provenance.json` records the GoReleaser configuration hash and proves
 that each Linux archive input and OCI image input has the same binary hash. The
 signed release manifest is authoritative for the canonical release candidate,
-binaries, binary provenance,
+binaries, native packages, binary provenance,
 SBOMs, installer, chart, digest files, and OCI payloads.
 
 Hash agreement proves asset consistency, not an honest CI build. Reproducible

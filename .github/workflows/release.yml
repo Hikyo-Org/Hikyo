@@ -141,6 +141,9 @@ jobs:
             .commit == $candidate[0].commit
           ' dist/metadata.json >/dev/null
 
+      - name: Verify every native package payload
+        run: go run ./scripts/release/verify-native-packages.go dist "${{ steps.candidate.outputs.version }}"
+
       - name: Prepare canonical image inputs
         env:
           CANDIDATE: ${{ steps.candidate.outputs.path }}

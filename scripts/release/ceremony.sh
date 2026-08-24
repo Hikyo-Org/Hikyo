@@ -208,11 +208,29 @@ validate_manifest_assets() {
 		.schema == "hikyo.dev/release-manifest/v1" and
 		.version == $version and .tag == $tag and
 		([.artifacts[] | select(.kind == "binary")] | length) == 6 and
+		([.artifacts[] | select(.kind == "package")] | length) == 8 and
+		. as $manifest |
+		all(["apk", "archlinux", "deb", "rpm"][];
+			. as $format |
+			([$manifest.artifacts[] | select(.kind == "package" and .format == $format and .arch == "amd64")] | length) == 1 and
+			([$manifest.artifacts[] | select(.kind == "package" and .format == $format and .arch == "arm64")] | length) == 1) and
 		([.artifacts[] | select(.kind == "oci-payload")] | length) == 2
 	' "$manifest" >/dev/null || fail 'release manifest identity or target matrix is invalid'
 	asset_failure=false
-	while IFS="$(printf '\t')" read -r name expected_sha; do
+	while IFS="$(printf '\t')" read -r name expected_sha kind package_format package_arch; do
 		safe_release_name "$name" || { printf 'Unsafe asset name: %s\n' "$name" >&2; asset_failure=true; continue; }
+		if [ "$kind" = package ]; then
+			expected_package_name=$(package_file_name "$version" "$package_format" "$package_arch") || {
+				printf 'Unsupported package version identity: %s\n' "$version" >&2
+				asset_failure=true
+				continue
+			}
+			[ "$name" = "$expected_package_name" ] || {
+				printf 'Package name is not release-bound: %s\n' "$name" >&2
+				asset_failure=true
+				continue
+			}
+		fi
 		case "$expected_sha" in *[!0-9a-f]* | '') asset_failure=true; continue ;; esac
 		[ "${#expected_sha}" -eq 64 ] || { asset_failure=true; continue; }
 		[ -f "$bundle/$name" ] || { printf 'Missing asset: %s\n' "$name" >&2; asset_failure=true; continue; }
@@ -222,7 +240,7 @@ validate_manifest_assets() {
 			asset_failure=true
 		}
 	done <<EOF
-$(jq -r '.artifacts[] | [.name, .sha256] | @tsv' "$manifest")
+$(jq -r '.artifacts[] | [.name, .sha256, .kind, (.format // ""), (.arch // "")] | @tsv' "$manifest")
 EOF
 	[ "$asset_failure" = false ] || fail 'draft asset validation failed'
 	while IFS= read -r actual_path; do
@@ -299,6 +317,8 @@ validate_unsigned_draft() {
 	authorize_release_candidate "$repo_root/release/trust/metadata.json" "$candidate" || \
 		fail 'release candidate is not authorized by trust metadata'
 	validate_checksum_manifest "$bundle" "$manifest"
+	go run "$script_dir/verify-native-packages.go" "$bundle" "$version" || \
+		fail 'native package payload or metadata verification failed'
 	image_ref=$(jq -r '.artifacts[] | select(.kind == "image") | .image' "$manifest")
 	image_digest=$(tr -d '\n' <"$bundle/image-index.digest")
 	chart_ref=$(jq -r '.artifacts[] | select(.kind == "chart-digest") | .chart' "$manifest")
@@ -433,8 +453,13 @@ dry_run_phase() {
 		5)
 			printf 'Dry run: publish %s\n' "$version"
 			printf '%s\n' \
-				'Would attach OCI signatures, upload Sigstore bundles, and verify published subjects.' \
-				"would require exact typed confirmation: publish $tag"
+				'Would attach OCI signatures, upload Sigstore bundles, and verify published subjects.'
+			if [ "$("$script_dir/release-channel.sh" "$tag")" = prerelease ]; then
+				printf '%s\n' 'Would skip the stable homebrew-tap for this prerelease.'
+			else
+				printf '%s\n' 'Would open or refresh a protected homebrew-tap PR only after public release verification.'
+			fi
+			printf '%s\n' "would require exact typed confirmation: publish $tag"
 			;;
 	esac
 }
@@ -591,7 +616,7 @@ phase_candidate() {
 }
 
 phase_tag() {
-	for command_name in cosign docker gh git jq route shasum; do require_command "$command_name"; done
+	for command_name in cosign docker gh git go jq route shasum; do require_command "$command_name"; done
 	require_saved_phase candidate-merged tag-pushed draft-verified
 	require_online
 	confirm_exact "prepare tag worktree $version"
@@ -663,7 +688,7 @@ phase_tag() {
 }
 
 phase_sign() {
-	for command_name in age cosign diskutil docker gh git hdiutil jq route shasum; do require_command "$command_name"; done
+	for command_name in age cosign diskutil docker gh git go hdiutil jq route shasum; do require_command "$command_name"; done
 	require_saved_phase draft-verified bound-local bound-merged signed
 	if [ "$saved_phase" = signed ]; then
 		printf 'Release bundle was already signed. Choose phase 5.\n'
@@ -765,6 +790,19 @@ phase_sign() {
 	printf 'Reconnect networking, then choose phase 5.\n'
 }
 
+verify_published_release_and_prepare_tap() {
+	published_bundle=$1
+	"$script_dir/verify-bundle.sh" --root "$repo_root/release/trust/root.json" \
+		--metadata "$repo_root/release/trust/metadata.json" \
+		--metadata-signature "$repo_root/release/trust/metadata.sigstore.json" \
+		--bundle "$published_bundle" --state "$trust_state_path" --published --latest
+	# Record core publication before tap work. If tap publication fails, phase 5
+	# resumes at the already-published branch and retries without republishing.
+	record_state published
+	"$script_dir/publish-homebrew-cask.sh" "$repository" "$tag" \
+		"$published_bundle" "${HIKYO_HOMEBREW_TAP_REPOSITORY:-Hikyo-Org/homebrew-tap}"
+}
+
 phase_publish() {
 	for command_name in cosign gh jq route; do require_command "$command_name"; done
 	require_saved_phase signed signatures-staged published
@@ -776,10 +814,7 @@ phase_publish() {
 		final_dir=$(mktemp -d "$release_dir/final.XXXXXX")
 		gh release download "$tag" --repo "$repository" --dir "$final_dir"
 		validate_manifest_assets "$final_dir" published
-		"$script_dir/verify-bundle.sh" --root "$repo_root/release/trust/root.json" \
-			--metadata "$repo_root/release/trust/metadata.json" \
-			--metadata-signature "$repo_root/release/trust/metadata.sigstore.json" \
-			--bundle "$final_dir" --state "$trust_state_path" --published --latest
+		verify_published_release_and_prepare_tap "$final_dir"
 		printf 'Published release remains externally verified: %s\n' "$tag"
 		return 0
 	fi
@@ -813,6 +848,7 @@ EOF
 				"# Hikyo $version" '' \
 				'Prerelease and unsupported. This does not freeze the API or CLI.' '' \
 				'- Linux, macOS, and Windows archives for amd64 and arm64.' \
+				'- Debian, RPM, APK, and Arch Linux packages for amd64 and arm64.' \
 				'- Signed multi-architecture OCI image and Helm chart.' \
 				'- Verify the signed release manifest before installation.' >"$notes_file"
 		else
@@ -820,6 +856,8 @@ EOF
 				"# Hikyo $version" '' \
 				"Signed Hikyo $version release." '' \
 				'- Linux, macOS, and Windows archives for amd64 and arm64.' \
+				'- Debian, RPM, APK, and Arch Linux packages for amd64 and arm64.' \
+				'- Homebrew cask follows through the protected homebrew-tap review.' \
 				'- Signed multi-architecture OCI image and Helm chart.' \
 				'- Verify the signed release manifest before installation.' >"$notes_file"
 		fi
@@ -842,11 +880,7 @@ EOF
 	final_dir=$(mktemp -d "$release_dir/final.XXXXXX")
 	gh release download "$tag" --repo "$repository" --dir "$final_dir"
 	validate_manifest_assets "$final_dir" published
-	"$script_dir/verify-bundle.sh" --root "$repo_root/release/trust/root.json" \
-		--metadata "$repo_root/release/trust/metadata.json" \
-		--metadata-signature "$repo_root/release/trust/metadata.sigstore.json" \
-		--bundle "$final_dir" --state "$trust_state_path" --published --latest
-	record_state published
+	verify_published_release_and_prepare_tap "$final_dir"
 	printf 'Published and externally reverified: %s\n' "$tag"
 }
 

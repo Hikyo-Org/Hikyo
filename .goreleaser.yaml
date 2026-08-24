@@ -34,7 +34,8 @@ builds:
         -X main.buildDate={{ .CommitDate }}
 
 archives:
-  - ids: [hikyo]
+  - id: hikyo-archives
+    ids: [hikyo]
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_{{ title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
@@ -46,8 +47,38 @@ archives:
     files:
       - LICENSE
 
+nfpms:
+  - id: hikyo-packages
+    ids: [hikyo]
+    package_name: hikyo
+    # GitHub rewrites '~' in asset names. Keep nFPM's format-native identity,
+    # but use '_' in the transport filename so signed manifest names stay exact.
+    file_name_template: '{{ replace .ConventionalFileName "~" "_" }}'
+    vendor: Hikyo
+    homepage: https://hikyo.app/
+    maintainer: Marc Went <marc@went.io>
+    description: Self-hosted control plane for secrets and configuration.
+    license: MPL-2.0
+    # nFPM's Arch packager includes prerelease identity in .PKGINFO only when an
+    # epoch is present. Epoch zero is ordering-neutral and keeps all formats
+    # release-bound, including prereleases.
+    epoch: 0
+    bindir: /usr/bin
+    formats:
+      - deb
+      - rpm
+      - apk
+      - archlinux
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/hikyo/LICENSE
+
 checksum:
   name_template: checksums.txt
+  # The release ceremony intentionally treats this as the exact six bare
+  # archives. Native packages are independently hashed and signed through the
+  # release manifest, so adding them must not widen this legacy checksum set.
+  ids: [hikyo-archives]
 
 snapshot:
   # Do not derive this from the permanent non-release v-ruleset-probe tag.

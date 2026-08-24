@@ -93,6 +93,16 @@ require_text "$repo_root/GOVERNANCE.md" 'implementation-status ledger'
 require_text "$repo_root/GOVERNANCE.md" 'historical handoff'
 reject_text "$repo_root/GOVERNANCE.md" '2FA enforcement remains pending'
 
+oss_adr="$repo_root/docs/adr/oss-mechanics.md"
+architecture_adr="$repo_root/docs/adr/system-architecture.md"
+installation_source="$repo_root/docs/site/src/content/docs/docs/installation.mdx"
+require_file "$oss_adr"
+require_file "$architecture_adr"
+require_file "$installation_source"
+require_text "$oss_adr" 'Metadata-only ecosystem repositories are the sole exception.'
+require_text "$architecture_adr" "Homebrew does not verify Hikyo's pinned signing root"
+require_text "$installation_source" "Homebrew does **not** verify Hikyo's pinned signing root"
+
 security_txt="$repo_root/docs/site/public/.well-known/security.txt"
 require_file "$security_txt"
 favicon="$repo_root/docs/site/public/favicon-hikyo-48.png"
@@ -172,6 +182,8 @@ reject_text "$site_root/docs/index.html" 'href="/hikyo/'
 require_text "$site_root/docs/getting-started/index.html" 'Build Hikyo from source'
 require_text "$site_root/docs/getting-started/index.html" 'authority is single-use'
 require_text "$site_root/docs/installation/index.html" 'has no published stable release yet'
+require_text "$site_root/docs/installation/index.html" "pinned signing root"
+require_text "$site_root/docs/installation/index.html" 'not an official fail-closed installer'
 require_text "$site_root/docs/build-from-source/index.html" 'frozen lockfiles prevent dependency resolution'
 require_text "$site_root/docs/first-project/index.html" 'Changing your own grants revokes your current session'
 require_text "$site_root/docs/core-concepts/index.html" 'Values do not inherit'
