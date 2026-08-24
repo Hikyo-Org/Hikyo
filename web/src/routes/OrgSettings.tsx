@@ -127,11 +127,12 @@ export function OrgSettings() {
           <label htmlFor={nameId}>Name</label>
           <input
             id={nameId}
+            aria-describedby={`${nameId}-hint`}
             value={name}
             disabled={current === undefined}
             onChange={(event) => setName(event.target.value)}
           />
-          <p className="field__hint">
+          <p id={`${nameId}-hint`} className="field__hint">
             Renaming an organisation is instance-operator work: the permission model has no
             org-lifecycle capability, so an organisation administrator is refused here with the same
             answer a missing organisation gets.
@@ -164,6 +165,7 @@ export function OrgSettings() {
           The cap every project in this organisation inherits, and the ceiling no project override
           may exceed. Payload collection is what this bounds; who changed what is permanent.
         </p>
+        {retention.isPending ? <p role="status">Loading the retention policy…</p> : null}
         {retention.isError ? (
           <Alert>The retention policy could not be read for this organisation.</Alert>
         ) : null}

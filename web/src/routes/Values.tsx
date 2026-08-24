@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router';
 
 import {
@@ -11,6 +11,7 @@ import {
   useRevealWindow,
   useSetValue,
   useValues,
+  writeRefusalText,
   type EnvRef,
   type RevealWindow,
   type ValueCell,
@@ -63,6 +64,7 @@ const MASK = '••••••••';
 const AUDIT_LINES = 12;
 
 type Disclosed = { value: string; until: number };
+type RevealAnnouncement = { id: number; message: string };
 
 /**
  * cellKey identifies a disclosed cell by ENVIRONMENT and key id.
@@ -99,9 +101,11 @@ export function Values() {
   const [now, setNow] = useState(() => Date.now());
   const [refusal, setRefusal] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [revealAnnouncement, setRevealAnnouncement] = useState<RevealAnnouncement | null>(null);
   const [audit, setAudit] = useState<string[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [destination, setDestination] = useState('');
+  const writeGeneration = useRef(0);
   const ceremony = useCeremonyTask([
     env.org,
     env.project,
@@ -116,11 +120,16 @@ export function Values() {
   // waiting to be answered, the act it was staged for, an open editor and the
   // clipboard notice, none of which mean anything in a different environment.
   useEffect(() => {
+    writeGeneration.current += 1;
     setDisclosed({});
     setEditing(null);
     setRefusal(null);
     setNotice(null);
+    setRevealAnnouncement(null);
     setAudit([]);
+    return () => {
+      writeGeneration.current += 1;
+    };
   }, [env.org, env.project, env.environment]);
 
   // One ticker drives every countdown on the surface: the remask timers and
@@ -250,7 +259,7 @@ export function Values() {
     setAudit((prev) => [...names.map((n) => `Disclosure recorded · ${n}`), ...prev].slice(0, AUDIT_LINES));
   }, []);
 
-  const show = useCallback(
+  const recordDisclosures = useCallback(
     (entries: Array<{ id: string; name: string; value: string }>) => {
       const until = Date.now() + REMASK_MS;
       setDisclosed((current) => {
@@ -260,6 +269,16 @@ export function Values() {
         }
         return next;
       });
+      const [first] = entries;
+      if (first !== undefined) {
+        const subject =
+          entries.length === 1 ? `${first.name} revealed` : `${entries.length} secrets revealed`;
+        const verb = entries.length === 1 ? 're-masks' : 're-mask';
+        setRevealAnnouncement((current) => ({
+          id: (current?.id ?? 0) + 1,
+          message: `${subject} — ${verb} in ${String(REMASK_MS / 1000)} seconds`,
+        }));
+      }
       noteDisclosure(entries.map((e) => e.name));
     },
     [env.environment, noteDisclosure],
@@ -276,7 +295,7 @@ export function Values() {
               setRefusal('The server disclosed no value for that key.');
               return;
             }
-            show([{ id: fresh.key_id, name: fresh.name, value: fresh.value }]);
+            recordDisclosures([{ id: fresh.key_id, name: fresh.name, value: fresh.value }]);
           });
         } catch (err) {
           ceremony.commit(task, () => {
@@ -295,7 +314,7 @@ export function Values() {
         try {
           const fresh = await revealAll.mutateAsync();
           ceremony.commit(task, () => {
-            show(
+            recordDisclosures(
               fresh.items
                 .filter((c) => c.classification === 'secret' && c.value !== undefined)
                 .map((c) => ({ id: c.key_id, name: c.name, value: c.value ?? '' })),
@@ -383,6 +402,27 @@ export function Values() {
     );
   };
 
+  const saveDraft = async (cell: ValueCell, value: string): Promise<void> => {
+    // Empty means UNCHANGED. There is no per-row clear: clearing a value stays
+    // a per-cell action, as the prototype's resolution fixed.
+    if (value === '') {
+      return;
+    }
+
+    const generation = writeGeneration.current;
+    setRefusal(null);
+    setNotice(null);
+    try {
+      await setValue.mutateAsync({ key: cell.name, value });
+      if (writeGeneration.current !== generation) return;
+      setEditing((current) => (current === cell.name ? null : current));
+      setNotice(`${cell.name} staged.`);
+    } catch (error) {
+      if (writeGeneration.current !== generation) return;
+      setRefusal(writeRefusalText(error));
+    }
+  };
+
   const chip = guard === undefined ? null : windowChip(guard, now);
 
   return (
@@ -418,6 +458,12 @@ export function Values() {
           <span>{notice}</span>
         </p>
       ) : null}
+
+      <p className="values__reveal-announcement visually-hidden" role="status">
+        {revealAnnouncement === null ? null : (
+          <span key={revealAnnouncement.id}>{revealAnnouncement.message}</span>
+        )}
+      </p>
 
       <div className="values__bar">
         <button
@@ -489,6 +535,7 @@ export function Values() {
                     type="button"
                     onClick={() => setEditing(editing === cell.name ? null : cell.name)}
                     aria-expanded={editing === cell.name}
+                    disabled={setValue.isPending}
                   >
                     {cell.name}
                   </button>
@@ -497,9 +544,9 @@ export function Values() {
                   {!cell.set ? (
                     <span className="values__absent">absent</span>
                   ) : live !== undefined ? (
-                    <span className="mono values__plain">
+                    <span className="mono values__plain" aria-label={`${cell.name} revealed`}>
                       {live.value}
-                      <span className="values__countdown" role="status">
+                      <span className="values__countdown" aria-hidden="true">
                         {`re-masks in ${remaining}s`}
                       </span>
                     </span>
@@ -538,15 +585,8 @@ export function Values() {
                     <RowEditor
                       cell={cell}
                       writeOnly={writeOnly}
-                      onSave={(value) => {
-                        setEditing(null);
-                        // Empty means UNCHANGED. There is no per-row clear:
-                        // clearing a value stays a per-cell action, as the
-                        // prototype's resolution fixed.
-                        if (value !== '') {
-                          setValue.mutate({ key: cell.name, value });
-                        }
-                      }}
+                      saving={setValue.isPending}
+                      onSave={(value) => void saveDraft(cell, value)}
                     />
                   </td>
                 ) : null}
@@ -635,10 +675,12 @@ function windowChip(state: RevealWindow, now: number) {
 function RowEditor({
   cell,
   writeOnly,
+  saving,
   onSave,
 }: {
   cell: ValueCell;
   writeOnly: boolean;
+  saving: boolean;
   onSave: (value: string) => void;
 }) {
   const [draft, setDraft] = useState('');
@@ -663,6 +705,7 @@ function RowEditor({
           }
           data-write-only={writeOnly}
           value={draft}
+          disabled={saving}
           onChange={(event) => setDraft(event.target.value)}
         />
       </div>
@@ -672,8 +715,8 @@ function RowEditor({
           changes nothing.
         </p>
       ) : null}
-      <button className="btn btn--primary" type="submit">
-        Save draft
+      <button className="btn btn--primary" type="submit" disabled={saving}>
+        {saving ? 'Saving…' : 'Save draft'}
       </button>
     </form>
   );

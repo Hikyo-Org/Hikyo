@@ -1,5 +1,5 @@
-import { useEffect, useId, useState, type FormEvent } from 'react';
-import { generatePath, Link, useParams } from 'react-router';
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
+import { generatePath, Link, useNavigate, useParams } from 'react-router';
 
 import {
   GIT_DEFINITIONS_NOTICE,
@@ -9,21 +9,29 @@ import {
   type DefinitionsSettings,
 } from '../api/definitions.ts';
 import {
+  cloneEnvironmentRefusalText,
   createEnvironmentRefusalText,
+  deleteEnvironmentRefusalText,
   projectRetentionInherited,
   retentionBoundsPayload,
   retentionDayState,
   retentionSentence,
+  renameEnvironmentRefusalText,
+  reorderEnvironmentsRefusalText,
   settingsFailureText,
   settingsOperationFailure,
+  useCloneEnvironment,
   useCreateEnvironment,
+  useDeleteEnvironment,
   useDeleteProject,
   useEnvironmentSettings,
   useEnvironments,
   useOrgRetention,
   useProject,
   useProjectRetention,
+  useRenameEnvironment,
   useRenameProject,
+  useReorderEnvironments,
   useSetEnvironmentSettings,
   useSetProjectRetention,
   type EnvironmentSettingsReadState,
@@ -53,6 +61,7 @@ import { useFeedback } from './useModalDialog.ts';
  * values, never definitions.
  */
 export function ProjectSettings() {
+  const navigate = useNavigate();
   const params = useParams();
   const org = params.org === undefined ? '' : params.org;
   const project = params.project === undefined ? '' : params.project;
@@ -63,7 +72,7 @@ export function ProjectSettings() {
   const definitionsSettings = useDefinitionsSettings(org, project);
   const setDefinitionsSettings = useSetDefinitionsSettings(org, project);
   const rename = useRenameProject(org);
-  const remove = useDeleteProject(org);
+  const remove = useDeleteProject(org, () => navigate(surfaceById('projects').path));
   const nameId = useId();
 
   const [name, setName] = useState('');
@@ -257,7 +266,6 @@ export function ProjectSettings() {
             remove.mutate(
               { project },
               {
-                onSuccess: () => feedback.ok('Project deleted.'),
                 onError: (error) => report('delete-project', error),
               },
             )
@@ -457,9 +465,13 @@ function EnvironmentPolicy({
       {environments.map((environment) => (
         <EnvironmentPolicyItem
           key={environment.id}
+          org={org}
+          project={project}
           environment={environment}
+          environments={environments}
           state={protection.get(environment.id)}
           busy={save.isPending}
+          onDone={onDone}
           onSave={(next) =>
             save.mutate(
               { environment: environment.id, ...next },
@@ -481,20 +493,38 @@ function EnvironmentPolicy({
 }
 
 function EnvironmentPolicyItem({
+  org,
+  project,
   environment,
+  environments,
   state,
   busy,
+  onDone,
   onSave,
 }: {
+  org: string;
+  project: string;
   environment: { id: string; name: string };
+  environments: readonly { id: string; name: string }[];
   state: EnvironmentSettingsReadState | undefined;
   busy: boolean;
+  onDone: (text: string) => void;
   onSave: (next: { protectedFlag: boolean; reauthWindowSeconds: number | null }) => void;
 }) {
   if (state === undefined) {
     throw new Error(`environment ${environment.id} has no settings read state`);
   }
-  return <EnvironmentRow environment={environment} state={state} busy={busy} onSave={onSave} />;
+  return (
+    <EnvironmentRow environment={environment} state={state} busy={busy} onSave={onSave}>
+      <EnvironmentLifecycleActions
+        org={org}
+        project={project}
+        environment={environment}
+        environments={environments}
+        onDone={onDone}
+      />
+    </EnvironmentRow>
+  );
 }
 
 function EnvironmentRow({
@@ -502,11 +532,13 @@ function EnvironmentRow({
   state,
   busy,
   onSave,
+  children,
 }: {
   environment: { id: string; name: string };
   state: EnvironmentSettingsReadState;
   busy: boolean;
   onSave: (next: { protectedFlag: boolean; reauthWindowSeconds: number | null }) => void;
+  children: ReactNode;
 }) {
   const protectedId = useId();
   const windowId = useId();
@@ -611,7 +643,201 @@ function EnvironmentRow({
           Save policy
         </button>
       </div>
+      {children}
     </li>
+  );
+}
+
+/** All project-scoped environment topology mutations, kept with the row they affect. */
+export function EnvironmentLifecycleActions({
+  org,
+  project,
+  environment,
+  environments,
+  onDone,
+}: {
+  readonly org: string;
+  readonly project: string;
+  readonly environment: { readonly id: string; readonly name: string };
+  readonly environments: readonly { readonly id: string; readonly name: string }[];
+  readonly onDone: (text: string) => void;
+}) {
+  const rename = useRenameEnvironment(org, project);
+  const remove = useDeleteEnvironment(org, project, () =>
+    onDone(`Environment ${environment.name} deleted.`),
+  );
+  const reorder = useReorderEnvironments(org, project);
+  const clone = useCloneEnvironment(org, project);
+  const renameId = useId();
+  const cloneId = useId();
+  const [renameName, setRenameName] = useState('');
+  const [cloneName, setCloneName] = useState('');
+  const [failure, setFailure] = useState<string | null>(null);
+
+  const index = environments.findIndex((candidate) => candidate.id === environment.id);
+  if (index === -1) {
+    throw new Error(`environment ${environment.id} is missing from its project order`);
+  }
+
+  const busy = rename.isPending || remove.isPending || reorder.isPending || clone.isPending;
+  const move = (offset: -1 | 1) => {
+    const target = environments[index + offset];
+    if (target === undefined) {
+      return;
+    }
+    setFailure(null);
+    reorder.mutate(
+      {
+        environmentIds: environments.map((candidate) => {
+          if (candidate.id === environment.id) {
+            return target.id;
+          }
+          if (candidate.id === target.id) {
+            return environment.id;
+          }
+          return candidate.id;
+        }),
+      },
+      {
+        onSuccess: () => onDone(`Environment ${environment.name} moved ${offset === -1 ? 'up' : 'down'}.`),
+        onError: (error) => setFailure(reorderEnvironmentsRefusalText(error)),
+      },
+    );
+  };
+
+  return (
+    <details className="environment-lifecycle">
+      <summary>Manage environment</summary>
+      {failure === null ? null : <Alert>{failure}</Alert>}
+      <form
+        className="environment-lifecycle__action"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const name = renameName.trim();
+          if (name === '' || name === environment.name) {
+            return;
+          }
+          setFailure(null);
+          rename.mutate(
+            { environment: environment.id, name },
+            {
+              onSuccess: (renamed) => {
+                setRenameName('');
+                onDone(`Environment ${environment.name} renamed to ${renamed.name}.`);
+              },
+              onError: (error) => setFailure(renameEnvironmentRefusalText(error)),
+            },
+          );
+        }}
+      >
+        <div className="field">
+          <label htmlFor={renameId}>New name for {environment.name}</label>
+          <input
+            id={renameId}
+            name="rename-environment"
+            value={renameName}
+            disabled={busy}
+            onChange={(event) => setRenameName(event.target.value)}
+          />
+        </div>
+        <button
+          type="submit"
+          className="btn"
+          disabled={busy || renameName.trim() === '' || renameName.trim() === environment.name}
+        >
+          Rename environment
+        </button>
+      </form>
+
+      <div className="environment-lifecycle__action">
+        <p className="field__hint">Move sends the complete project order as one atomic change.</p>
+        <div className="panel__actions">
+          <button
+            type="button"
+            className="btn"
+            aria-label={`Move ${environment.name} up`}
+            disabled={busy || index === 0}
+            onClick={() => move(-1)}
+          >
+            Move up
+          </button>
+          <button
+            type="button"
+            className="btn"
+            aria-label={`Move ${environment.name} down`}
+            disabled={busy || index === environments.length - 1}
+            onClick={() => move(1)}
+          >
+            Move down
+          </button>
+        </div>
+      </div>
+
+      <form
+        className="environment-lifecycle__action"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const name = cloneName.trim();
+          if (name === '') {
+            return;
+          }
+          setFailure(null);
+          clone.mutate(
+            { sourceEnvironment: environment.id, name },
+            {
+              onSuccess: (result) => {
+                setCloneName('');
+                const copied = result.copied.length;
+                const omitted = result.uncopied_secrets.length;
+                onDone(
+                  `Environment ${environment.name} cloned to ${result.environment.name}. Copied ${copied} ${copied === 1 ? 'value' : 'values'}; ${omitted} ${omitted === 1 ? 'secret' : 'secrets'} could not be copied.`,
+                );
+              },
+              onError: (error) => setFailure(cloneEnvironmentRefusalText(error)),
+            },
+          );
+        }}
+      >
+        <div className="field">
+          <label htmlFor={cloneId}>Clone {environment.name} into</label>
+          <input
+            id={cloneId}
+            name="clone-environment"
+            value={cloneName}
+            disabled={busy}
+            onChange={(event) => setCloneName(event.target.value)}
+          />
+        </div>
+        <button type="submit" className="btn" disabled={busy || cloneName.trim() === ''}>
+          Clone environment
+        </button>
+      </form>
+
+      <div className="environment-lifecycle__action environment-lifecycle__danger">
+        <TypedNameConfirm
+          key={environment.id}
+          label={`Delete ${environment.name}`}
+          expect={environment.name}
+          action="Delete environment"
+          busy={busy}
+          hint={
+            <>
+              This permanently deletes the environment and its values, drafts, revision history,
+              pins, and snapshots. Type its name exactly to continue.
+            </>
+          }
+          onConfirm={() => {
+            setFailure(null);
+            remove.mutate(
+              { environment: environment.id },
+              {
+                onError: (error) => setFailure(deleteEnvironmentRefusalText(error)),
+              },
+            );
+          }}
+        />
+      </div>
+    </details>
   );
 }
 

@@ -3040,6 +3040,37 @@ select {
   background: var(--bg);
 }
 
+.environment-lifecycle {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.environment-lifecycle > summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--touch);
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.environment-lifecycle__action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.environment-lifecycle__action .field {
+  width: min(100%, 420px);
+}
+
+.environment-lifecycle__danger {
+  width: 100%;
+}
+
 .project-retention-list {
   display: flex;
   flex-direction: column;

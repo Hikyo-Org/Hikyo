@@ -4,17 +4,21 @@ import { act, createRef } from 'react';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { renderForm, settle } from '../testkit/renderForm.tsx';
+import { renderForm, settle, typeInto } from '../testkit/renderForm.tsx';
 import { HistoryDrawer, PinReleaseOutcome } from './HistoryDrawer.tsx';
 
 type HistoryDrawerMocks = {
   preview: RetentionConsequence;
+  ceremonyRun: ReturnType<typeof vi.fn>;
   releaseMutate: ReturnType<typeof vi.fn>;
+  setPinMutate: ReturnType<typeof vi.fn>;
 };
 
 const mocks = vi.hoisted<HistoryDrawerMocks>(() => ({
   preview: 'retained',
+  ceremonyRun: vi.fn(),
   releaseMutate: vi.fn(),
+  setPinMutate: vi.fn(),
 }));
 
 vi.mock('../api/history.ts', async (importActual) => {
@@ -57,9 +61,15 @@ vi.mock('../api/history.ts', async (importActual) => {
       data: { inherited: false, mode: 'keep-if-either', max_age_seconds: 3600, last_revisions: 1 },
       isError: false,
     }),
-    useRevisionDetail: () => ({ data: { keys: [] }, isSuccess: true, isError: false }),
+    useRevisionDetail: () => ({
+      data: {
+        keys: [{ key_id: 'key_secret', name: 'TOKEN', classification: 'secret' }],
+      },
+      isSuccess: true,
+      isError: false,
+    }),
     useRestoreRevision: () => ({ mutate: vi.fn(), isPending: false }),
-    useSetRevisionPin: () => ({ mutate: vi.fn(), isPending: false }),
+    useSetRevisionPin: () => ({ mutate: mocks.setPinMutate, isPending: false }),
     useReleaseRevisionPin: () => ({ mutate: mocks.releaseMutate, isPending: false }),
   };
 });
@@ -94,7 +104,7 @@ vi.mock('./useProtectedPublishCeremony.ts', () => ({
   useProtectedPublishCeremony: () => ({
     request: null,
     error: null,
-    run: vi.fn(),
+    run: mocks.ceremonyRun,
     onAuthorised: vi.fn(),
     onCancel: vi.fn(),
   }),
@@ -102,7 +112,9 @@ vi.mock('./useProtectedPublishCeremony.ts', () => ({
 
 beforeEach(() => {
   mocks.preview = 'retained';
+  mocks.ceremonyRun.mockReset();
   mocks.releaseMutate.mockReset();
+  mocks.setPinMutate.mockReset();
 });
 
 describe('PinReleaseOutcome', () => {
@@ -162,6 +174,30 @@ function buttonNamed(container: HTMLElement, name: string): HTMLButtonElement {
 }
 
 describe('HistoryDrawer pin release flow', () => {
+  it('refuses a cleared expiry before starting disclosure or pinning', async () => {
+    const { container } = await renderForm(drawer());
+
+    await act(async () => buttonNamed(container, 'Pin r4…').click());
+    const expiry = container.querySelector<HTMLInputElement>('#history-pin-expiry');
+    const submit = container.querySelector<HTMLButtonElement>('#history-pin-submit');
+    if (expiry === null || submit === null) {
+      throw new Error('pin expiry controls are missing');
+    }
+
+    expect(expiry.min).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(expiry.max).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(expiry.max > expiry.min).toBe(true);
+    await act(async () => typeInto(expiry, ''));
+    await settle();
+
+    expect(submit.disabled).toBe(true);
+    expect(container.querySelector('#history-pin-refusal')?.textContent).toContain(
+      'Invalid pin expiry date',
+    );
+    expect(mocks.ceremonyRun).not.toHaveBeenCalled();
+    expect(mocks.setPinMutate).not.toHaveBeenCalled();
+  });
+
   it('passes the server response into the outcome instead of stale drawer state', async () => {
     mocks.releaseMutate.mockImplementation((_workload, options) => {
       options.onSuccess({ revision: 11n, retention_consequence: 'already_collected' });

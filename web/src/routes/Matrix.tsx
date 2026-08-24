@@ -104,7 +104,10 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
   const [validationErrors, setValidationErrors] = useState<readonly MatrixValidationError[]>([]);
   const [publishOpen, setPublishOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [mutationError, setMutationError] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<{
+    readonly owner: Selection;
+    readonly message: string;
+  } | null>(null);
   const matrixScroll = useRef<HTMLDivElement>(null);
   const historyOpener = useRef<HTMLAnchorElement>(null);
   const [mobileLayout, setMobileLayout] = useState(
@@ -130,6 +133,7 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
     setCollapsedGroups(new Set());
     setFilter('all');
     setSelection(null);
+    setMutationError(null);
   }, [ref.org, ref.project, environmentSignature]);
 
   const valuesByCell = useMemo(() => {
@@ -454,13 +458,6 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
         </p>
       )}
 
-      {mutationError === null ? null : (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">!</span>
-          <span>{mutationError}</span>
-        </p>
-      )}
-
       {backgroundRefreshError ? (
         <p className="alert" role="status">
           <span className="alert__glyph" aria-hidden="true">!</span>
@@ -754,7 +751,7 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
         </div>
       </div>
 
-      {selectedKey === undefined || selectedEnvironment === undefined ? null : (
+      {selection === null || selectedKey === undefined || selectedEnvironment === undefined ? null : (
         <MatrixRowEditor
           refData={ref}
           keyRecord={selectedKey}
@@ -773,8 +770,11 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
             };
           })}
           busy={stage.isPending || clear.isPending || copy.isPending}
-          mutationError={mutationError}
-          onClose={() => setSelection(null)}
+          mutationError={mutationError?.owner === selection ? mutationError.message : null}
+          onClose={() => {
+            setMutationError(null);
+            setSelection(null);
+          }}
           onApply={async (changes) => {
             setMutationError(null);
             let normalizedCount = 0;
@@ -811,12 +811,13 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
                 }
                 clearValidation(selectedKey.id, change.environmentId);
               } catch (error) {
-                setMutationError(
-                  matrixMutationError(
+                setMutationError({
+                  owner: selection,
+                  message: matrixMutationError(
                     error instanceof Error ? error : new Error('matrix mutation failed'),
                     change.operation === 'set' ? 'stage' : 'clear',
                   ),
-                );
+                });
                 throw error;
               }
             }
@@ -845,7 +846,10 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
                   );
                   setSelection(null);
                 },
-                onError: (error) => setMutationError(matrixMutationError(error, 'copy')),
+                onError: (error) => setMutationError({
+                  owner: selection,
+                  message: matrixMutationError(error, 'copy'),
+                }),
               },
             );
           }}

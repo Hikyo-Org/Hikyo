@@ -1,12 +1,14 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type Route } from '@playwright/test';
 
 import {
+  expectBoundaryContrast,
   expectContrast,
+  expectNoSeriousAxeViolations,
   expectPinnedAssertionSet,
   expectStatusIsTextAndAria,
   measureSurfaceLuminance,
 } from '../fixtures/assertions.ts';
-import { ADMIN } from '../fixtures/instance.ts';
+import { ADMIN, OIDC_PROVIDER } from '../fixtures/instance.ts';
 
 async function expectLoginSurface(page: Page, theme: 'dark' | 'light') {
   await page.emulateMedia({ colorScheme: theme });
@@ -14,8 +16,13 @@ async function expectLoginSurface(page: Page, theme: 'dark' | 'light') {
 
   const card = page.locator('.login__card');
   const submit = page.getByRole('button', { name: 'Sign in' });
+  const username = page.getByLabel('Username');
+  const password = page.getByLabel('Password');
   const heading = page.getByRole('heading', { name: 'Sign in to Hikyo' });
   const lede = page.getByText('Use the credential you established');
+
+  await expectBoundaryContrast(page, username);
+  await expectBoundaryContrast(page, password);
 
   await expectPinnedAssertionSet(page, {
     flow: 'login',
@@ -25,8 +32,8 @@ async function expectLoginSurface(page: Page, theme: 'dark' | 'light') {
     radii: [
       [card, 'container'],
       [submit, 'control'],
-      [page.getByLabel('Username'), 'control'],
-      [page.getByLabel('Password'), 'control'],
+      [username, 'control'],
+      [password, 'control'],
     ],
     fonts: [
       [heading, 'ui'],
@@ -40,7 +47,7 @@ async function expectLoginSurface(page: Page, theme: 'dark' | 'light') {
       [submit, 'backgroundColor', '--accent'],
       [submit, 'color', '--on-accent'],
     ],
-    hairlines: [card, page.getByLabel('Username')],
+    hairlines: [card, username],
     density: [[submit, '--touch']],
   });
 }
@@ -141,6 +148,53 @@ test.describe('login', () => {
     expect(JSON.stringify(stored)).not.toContain('hik_1_');
   });
 
+  test('keeps every login control accessible while an OIDC ceremony is pending', async ({
+    page,
+  }) => {
+    const startPath = `**/api/v1/auth/oidc/${OIDC_PROVIDER.slug}/start`;
+    let releaseStart: () => void = () => undefined;
+    let startHandlerActive = false;
+    let finishStartHandler: () => void = () => undefined;
+    const pendingStart = new Promise<void>((resolve) => {
+      releaseStart = resolve;
+    });
+    const startHandlerFinished = new Promise<void>((resolve) => {
+      finishStartHandler = resolve;
+    });
+    const holdStart = async (route: Route) => {
+      startHandlerActive = true;
+      await pendingStart;
+      try {
+        await route.abort();
+      } finally {
+        finishStartHandler();
+      }
+    };
+    await page.route(startPath, holdStart);
+
+    try {
+      await page.goto('/login');
+      const oidc = page.getByRole('button', {
+        name: `Continue with ${OIDC_PROVIDER.displayName}`,
+      });
+      await oidc.click();
+      await expect(
+        page.getByRole('button', { name: 'Contacting identity provider…' }),
+      ).toBeDisabled();
+
+      const controls = page.locator('input, button');
+      await expect(controls).toHaveCount(5);
+      for (const control of await controls.all()) {
+        await expect(control).toBeDisabled();
+      }
+      await expectNoSeriousAxeViolations(page);
+    } finally {
+      releaseStart();
+      if (startHandlerActive) await startHandlerFinished;
+      await page.unroute(startPath, holdStart);
+    }
+  });
+
   // The palette is a dual-theme palette, so conformance is a dual-theme claim:
   // the pinned set runs on the surface in both schemes.
   for (const scheme of ['dark', 'light'] as const) {
@@ -182,9 +236,9 @@ test.describe('login', () => {
     await page.goto('/login');
     for (const scheme of ['dark', 'light'] as const) {
       await page.emulateMedia({ colorScheme: scheme });
-      await expectContrast(page.getByRole('heading', { name: 'Sign in to Hikyo' }));
-      await expectContrast(page.getByText('Use the credential you established'));
-      await expectContrast(page.getByText('Username'));
+      await expectContrast(page, page.getByRole('heading', { name: 'Sign in to Hikyo' }));
+      await expectContrast(page, page.getByText('Use the credential you established'));
+      await expectContrast(page, page.getByText('Username'));
     }
   });
 });
