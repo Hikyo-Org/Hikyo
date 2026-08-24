@@ -121,10 +121,25 @@ jobs:
             .version == $version and .commit == $commit
           ' "$CANDIDATE" >/dev/null
 
+      - name: Encode stable updater trust material
+        id: update-trust
+        run: |
+          recovery=$(jq -r '.recovery.public_key' release/trust/root.json)
+          {
+            printf 'root='
+            base64 <release/trust/root.json | tr -d '\n'
+            printf '\nrecovery='
+            base64 <"release/trust/$recovery" | tr -d '\n'
+            printf '\n'
+          } >>"$GITHUB_OUTPUT"
+
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         env:
           HIKYO_RELEASE_VERSION: ${{ steps.candidate.outputs.version }}
           HIKYO_RELEASE_COMMIT: ${{ steps.candidate.outputs.commit }}
+          HIKYO_UPDATE_CHANNEL: stable
+          HIKYO_UPDATE_TRUST_ROOT: ${{ steps.update-trust.outputs.root }}
+          HIKYO_UPDATE_RECOVERY_KEY: ${{ steps.update-trust.outputs.recovery }}
         with:
           distribution: goreleaser
           version: v2.17.1

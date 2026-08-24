@@ -21,6 +21,11 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 )
 
+// BinaryUpdater applies one selected release to the current executable.
+type BinaryUpdater interface {
+	Apply(context.Context, updatecheck.Status) error
+}
+
 // The v1 verb table this slice ships. The full taxonomy is closed by the
 // api-cli-surface ADR; what is here is the machinery plus the verbs the first
 // slice needs, and each remaining family lands with its own ticket against
@@ -67,9 +72,15 @@ type IO struct {
 	Now func() time.Time
 	// Version is the linker-stamped Hikyo version used for update comparison.
 	Version string
+	// DefaultUpdateChannel is linker-stamped with the artifact's release track.
+	// An empty value is fail-closed as off, matching a source build.
+	DefaultUpdateChannel updatecheck.Channel
 	// UpdateSource is injected by update tests. Nil uses Hikyo's pinned public
 	// GitHub Releases source.
 	UpdateSource updatecheck.Source
+	// BinaryUpdater replaces the current executable after interactive consent.
+	// Nil preserves notification-only behavior when no updater is configured.
+	BinaryUpdater BinaryUpdater
 }
 
 // now returns the injected clock or the real one.
@@ -121,11 +132,7 @@ func Run(ctx context.Context, io IO, args []string) int {
 		Usage(io.Stderr)
 		return ExitUsage
 	}
-	code := Report(io.Stderr, handler(ctx, io, rest))
-	if code == ExitOK && verb != "update" {
-		NotifyUpdate(ctx, io)
-	}
-	return code
+	return Report(io.Stderr, handler(ctx, io, rest))
 }
 
 // verbHandlers is the single source of truth for the served verb set: Run

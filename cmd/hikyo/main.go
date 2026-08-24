@@ -19,6 +19,8 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
 	"github.com/Hikyo-Org/hikyo/internal/importer"
 	"github.com/Hikyo-Org/hikyo/internal/operator"
+	binaryupdate "github.com/Hikyo-Org/hikyo/internal/selfupdate"
+	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 	"github.com/Hikyo-Org/hikyo/internal/updater"
 )
 
@@ -28,6 +30,12 @@ var (
 	version   = "dev"
 	commit    = "unknown"
 	buildDate = "unknown"
+	// updateChannel is stamped by release builds. Direct source builds stay off.
+	updateChannel = "off"
+	// Stable artifacts also stamp the pinned recovery root and the canonical
+	// verifier used by the offline signing ceremony. Empty values fail closed.
+	updateTrustRoot   = ""
+	updateRecoveryKey = ""
 )
 
 func main() {
@@ -37,6 +45,9 @@ func main() {
 func run() int {
 	if handled, code := runRootKeyStageMode(os.Args[1:]); handled {
 		return code
+	}
+	if err := binaryupdate.CleanupPrevious(); err != nil {
+		fmt.Fprintln(os.Stderr, "hikyo: clean up previous update:", err)
 	}
 	if handled, code := runTLSStageMode(os.Args[1:]); handled {
 		return code
@@ -49,21 +60,28 @@ func run() int {
 		return 2
 	}
 	cmd, args := os.Args[1], os.Args[2:]
+	builtChannel, err := builtUpdateChannel()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "hikyo:", err)
+		return 1
+	}
 
 	app.Version = version
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if shouldCheckForUpdate(cmd) {
+		terminalSession, terminalError := disclose.OpenTerminalSession()
+		updated := cli.NotifyUpdate(ctx, updateIO(terminalSession, terminalError, builtChannel))
+		_ = terminalSession.Close()
+		if updated {
+			return 0
+		}
+	}
 
 	switch {
 	case cmd == "version" || cmd == "--version":
 		fmt.Fprintln(os.Stdout, versionString())
-		cli.NotifyUpdate(ctx, cli.IO{
-			Stderr:           os.Stderr,
-			Env:              cli.Env{Getenv: os.Getenv},
-			Version:          version,
-			StderrIsTerminal: func() bool { return term.IsTerminal(int(os.Stderr.Fd())) },
-		})
 		return 0
 	case cmd == "server":
 		return runServer(ctx, args)
@@ -81,20 +99,7 @@ func run() int {
 		return runOperator(ctx, "restore", args, app.RunRestore)
 	case slices.Contains(cli.Verbs, cmd):
 		terminalSession, terminalError := disclose.OpenTerminalSession()
-		return cli.Run(ctx, cli.IO{
-			Stdin:           os.Stdin,
-			Stdout:          os.Stdout,
-			Stderr:          os.Stderr,
-			Env:             cli.Env{Getenv: os.Getenv},
-			Workdir:         workdir(),
-			Version:         version,
-			TerminalSession: terminalSession,
-			TerminalError:   terminalError,
-			OpenURL:         cli.OpenBrowser,
-			StderrIsTerminal: func() bool {
-				return term.IsTerminal(int(os.Stderr.Fd()))
-			},
-		}, os.Args[1:])
+		return cli.Run(ctx, updateIO(terminalSession, terminalError, builtChannel), os.Args[1:])
 	case slices.Contains(app.ClientVerbs, cmd):
 		fmt.Fprintf(os.Stderr, "hikyo %s: not implemented yet\n", cmd)
 		return 2
@@ -110,6 +115,59 @@ func versionString() string {
 		return "hikyo dev"
 	}
 	return fmt.Sprintf("hikyo %s (%s, %s)", version, commit, buildDate)
+}
+
+func builtUpdateChannel() (updatecheck.Channel, error) {
+	channel, err := updatecheck.ParseChannel(updateChannel)
+	if err != nil {
+		return "", fmt.Errorf("invalid built-in update channel: %w", err)
+	}
+	return channel, nil
+}
+
+type unavailableBinaryUpdater struct{ err error }
+
+func (u unavailableBinaryUpdater) Apply(context.Context, updatecheck.Status) error {
+	return u.err
+}
+
+func binaryUpdater() cli.BinaryUpdater {
+	state, err := cli.NewState(cli.Env{Getenv: os.Getenv})
+	if err != nil {
+		return unavailableBinaryUpdater{err: err}
+	}
+	installer, err := binaryupdate.NewInstaller(binaryupdate.Config{
+		StateDir:          state.Dir(),
+		TrustRootBase64:   updateTrustRoot,
+		RecoveryKeyBase64: updateRecoveryKey,
+	})
+	if err != nil {
+		return unavailableBinaryUpdater{err: err}
+	}
+	return installer
+}
+
+func updateIO(terminalSession *disclose.TerminalSession, terminalError error, channel updatecheck.Channel) cli.IO {
+	return cli.IO{
+		Stdin:                os.Stdin,
+		Stdout:               os.Stdout,
+		Stderr:               os.Stderr,
+		Env:                  cli.Env{Getenv: os.Getenv},
+		Workdir:              workdir(),
+		Version:              version,
+		DefaultUpdateChannel: channel,
+		TerminalSession:      terminalSession,
+		TerminalError:        terminalError,
+		OpenURL:              cli.OpenBrowser,
+		BinaryUpdater:        binaryUpdater(),
+		StderrIsTerminal: func() bool {
+			return term.IsTerminal(int(os.Stderr.Fd()))
+		},
+	}
+}
+
+func shouldCheckForUpdate(command string) bool {
+	return command != "update"
 }
 
 func runServer(ctx context.Context, args []string) int {

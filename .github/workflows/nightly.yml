@@ -137,12 +137,29 @@ jobs:
       - name: Build tested embedded WebUI
         if: steps.identity.outputs.skip != 'true'
         run: ./scripts/ci/build-spa.sh
+      - name: Encode stable updater trust material when bootstrapped
+        id: update-trust
+        if: steps.identity.outputs.skip != 'true'
+        run: |
+          if [ -f release/trust/root.json ]; then
+            recovery=$(jq -r '.recovery.public_key' release/trust/root.json)
+            {
+              printf 'root='
+              base64 <release/trust/root.json | tr -d '\n'
+              printf '\nrecovery='
+              base64 <"release/trust/$recovery" | tr -d '\n'
+              printf '\n'
+            } >>"$GITHUB_OUTPUT"
+          fi
       - name: Build six nightly archives and eight native packages
         if: steps.identity.outputs.skip != 'true'
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         env:
           HIKYO_RELEASE_VERSION: ${{ steps.identity.outputs.version }}
           HIKYO_RELEASE_COMMIT: ${{ steps.source.outputs.commit }}
+          HIKYO_UPDATE_CHANNEL: nightly
+          HIKYO_UPDATE_TRUST_ROOT: ${{ steps.update-trust.outputs.root }}
+          HIKYO_UPDATE_RECOVERY_KEY: ${{ steps.update-trust.outputs.recovery }}
         with:
           distribution: goreleaser
           version: v2.17.1
