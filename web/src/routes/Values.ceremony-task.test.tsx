@@ -148,7 +148,7 @@ describe('Values reveal accessibility', () => {
     expect(container.querySelectorAll('.values__reveal-announcement')).toHaveLength(1);
     const announcement = container.querySelector('.values__reveal-announcement');
     expect(announcement?.getAttribute('role')).toBe('status');
-    expect(announcement?.textContent).toBe('KEY_A revealed');
+    expect(announcement?.textContent).toBe('KEY_A revealed — re-masks in 10 seconds');
     expect(container.querySelector('.values__plain')?.getAttribute('aria-label')).toBe(
       'KEY_A revealed',
     );
@@ -187,7 +187,7 @@ describe('Values reveal accessibility', () => {
 
     expect(container.querySelectorAll('.values__reveal-announcement')).toHaveLength(1);
     expect(container.querySelector('.values__reveal-announcement')?.textContent).toBe(
-      '2 secrets revealed',
+      '2 secrets revealed — re-mask in 10 seconds',
     );
     expect(container.querySelectorAll('.values__countdown')).toHaveLength(2);
     expect(container.querySelectorAll('.values__countdown[aria-hidden="true"]')).toHaveLength(2);

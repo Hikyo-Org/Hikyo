@@ -264,10 +264,12 @@ export function Values() {
       });
       const [first] = entries;
       if (first !== undefined) {
+        const subject =
+          entries.length === 1 ? `${first.name} revealed` : `${entries.length} secrets revealed`;
+        const verb = entries.length === 1 ? 're-masks' : 're-mask';
         setRevealAnnouncement((current) => ({
           id: (current?.id ?? 0) + 1,
-          message:
-            entries.length === 1 ? `${first.name} revealed` : `${entries.length} secrets revealed`,
+          message: `${subject} — ${verb} in ${String(REMASK_MS / 1000)} seconds`,
         }));
       }
       noteDisclosure(entries.map((e) => e.name));
