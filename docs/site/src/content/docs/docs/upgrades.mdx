@@ -15,6 +15,10 @@ prereleases built from the newest green, changed `main` commit. A stable
 `1.1.0`, it advances to `1.2.0-nightly...`. Nightlies are evaluation artifacts,
 not production releases.
 
+Before any stable release exists, the first line is
+`0.0.1-nightly.<date>.<run>.g<sha>`. Release discovery is paginated; a long
+nightly history cannot hide the latest published stable release.
+
 Checks remain notification-only unless the instance operator configures the
 separately privileged local updater helper. Remote apply admits stable releases
 only; nightlies can never cross that boundary.
