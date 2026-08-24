@@ -70,7 +70,7 @@ export function AccountSecurity() {
   const link = useLinkIdentity();
 
   const [proof, setProof] = useState<ProofRequest | null>(null);
-  const { done, report: recordFailure, ok: recordSuccess } = useFeedback(accountFailureText);
+  const { done, failure, report: recordFailure, ok: recordSuccess } = useFeedback(accountFailureText);
   const report = (error: unknown) => {
     notifyFailure(accountFailureText(error));
     recordFailure(error);
@@ -199,6 +199,7 @@ export function AccountSecurity() {
       />
 
       {done !== null ? <Done>{done}</Done> : null}
+      {failure !== null ? <Alert>{failure}</Alert> : null}
 
       <Panel id="account-profile" title="Profile">
         <dl className="kv">
