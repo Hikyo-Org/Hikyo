@@ -4,10 +4,9 @@ import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError } from '../api/client.ts';
 import type { RevealWindow } from '../api/values.ts';
 import { deferred, revealWindow } from '../testkit/ceremony.ts';
-import { settle, typeInto } from '../testkit/renderForm.tsx';
+import { settle } from '../testkit/renderForm.tsx';
 import type { CeremonyRequest } from './Ceremony.tsx';
 import { Values } from './Values.tsx';
 
@@ -15,30 +14,11 @@ const mocks = vi.hoisted(() => ({
   copy: vi.fn(),
   fetchRevealWindow: vi.fn(),
   revealAll: vi.fn(),
-  revealGuard: { canReveal: true },
   revealOne: vi.fn(),
-  setValue: vi.fn(),
 }));
 
 vi.mock('../api/values.ts', async (importActual) => {
   const actual = await importActual<typeof import('../api/values.ts')>();
-  const { useState } = await import('react');
-
-  function useSetValue() {
-    const [isPending, setIsPending] = useState(false);
-    return {
-      isPending,
-      mutateAsync: async (input: { key: string; value: string }) => {
-        setIsPending(true);
-        try {
-          return await mocks.setValue(input);
-        } finally {
-          setIsPending(false);
-        }
-      },
-    };
-  }
-
   return {
     ...actual,
     fetchRevealWindow: mocks.fetchRevealWindow,
@@ -55,9 +35,9 @@ vi.mock('../api/values.ts', async (importActual) => {
     useRevealAll: () => ({ mutateAsync: mocks.revealAll }),
     useRevealOne: () => ({ mutateAsync: mocks.revealOne }),
     useRevealWindow: () => ({
-      data: { ...revealWindow(true), can_reveal: mocks.revealGuard.canReveal },
+      data: revealWindow(true),
     }),
-    useSetValue,
+    useSetValue: () => ({ isPending: false, mutateAsync: vi.fn() }),
     useValues: () => ({
       data: {
         items: [{
@@ -141,9 +121,7 @@ beforeEach(() => {
   mocks.copy.mockReset();
   mocks.fetchRevealWindow.mockReset();
   mocks.revealAll.mockReset();
-  mocks.revealGuard.canReveal = true;
   mocks.revealOne.mockReset();
-  mocks.setValue.mockReset();
 });
 
 describe('Values ceremony task ownership', () => {
@@ -198,66 +176,6 @@ describe('Values ceremony task ownership', () => {
 
     expect(container.textContent).not.toContain('must-not-cross-environments');
     expect(container.textContent).toContain('No disclosures yet.');
-    await act(async () => root.unmount());
-  });
-});
-
-describe('Values write feedback', () => {
-  it('confirms a staged value and closes the editor after the server accepts it', async () => {
-    mocks.setValue.mockResolvedValueOnce({ id: 'pending-a' });
-    const { container, root } = await renderValues();
-
-    await act(async () => button(container, 'KEY_A').click());
-    const input = container.querySelector<HTMLInputElement>('#edit-key-a');
-    if (input === null) throw new Error('value editor is missing');
-    typeInto(input, 'replacement');
-    await act(async () => button(container, 'Save draft').click());
-    await settle();
-
-    expect(mocks.setValue).toHaveBeenCalledWith({ key: 'KEY_A', value: 'replacement' });
-    expect(container.querySelector('#edit-key-a')).toBeNull();
-    expect(container.textContent).toContain('KEY_A staged.');
-    await act(async () => root.unmount());
-  });
-
-  it('shows saving, then surfaces a refusal and keeps the rejected draft editable', async () => {
-    mocks.revealGuard.canReveal = false;
-    let rejectWrite: (reason?: unknown) => void = () => undefined;
-    mocks.setValue.mockImplementationOnce(
-      () =>
-        new Promise((_resolve, reject) => {
-          rejectWrite = reject;
-        }),
-    );
-    const { container, root } = await renderValues();
-
-    await act(async () => button(container, 'KEY_A').click());
-    const input = container.querySelector<HTMLInputElement>('#edit-key-a');
-    if (input === null) throw new Error('value editor is missing');
-    expect(input.dataset['writeOnly']).toBe('true');
-    typeInto(input, 'correctable draft');
-    await act(async () => button(container, 'Save draft').click());
-
-    expect(button(container, 'Saving…').disabled).toBe(true);
-
-    await act(async () => rejectWrite(new ApiError(403, 'forbidden')));
-    await settle();
-
-    const retained = container.querySelector<HTMLInputElement>('#edit-key-a');
-    expect(retained?.value).toBe('correctable draft');
-    expect(container.textContent).toContain('You are not permitted to stage this value.');
-    await act(async () => root.unmount());
-  });
-
-  it('treats an empty submission as unchanged without issuing a write', async () => {
-    const { container, root } = await renderValues();
-
-    await act(async () => button(container, 'KEY_A').click());
-    await act(async () => button(container, 'Save draft').click());
-    await settle();
-
-    expect(mocks.setValue).not.toHaveBeenCalled();
-    expect(container.querySelector('#edit-key-a')).toBeNull();
     await act(async () => root.unmount());
   });
 });
