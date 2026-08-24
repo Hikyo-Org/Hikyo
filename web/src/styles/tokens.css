@@ -18,7 +18,7 @@
   /* Colour — OKLCH throughout, tinted neutrals plus one teal accent. */
   --bg: oklch(0.19 0.012 220);
   --bg-raise: oklch(0.23 0.014 220);
-  --line: oklch(0.34 0.016 220);
+  --line: oklch(0.5 0.016 220);
   --tx: oklch(0.93 0.008 200);
   --tx-dim: oklch(0.76 0.01 210);
   --accent: oklch(0.82 0.09 195);
@@ -54,7 +54,7 @@
   :root:not([data-theme='dark']) {
     --bg: oklch(0.965 0.008 200);
     --bg-raise: oklch(0.995 0.004 200);
-    --line: oklch(0.84 0.012 210);
+    --line: oklch(0.64 0.012 210);
     --tx: oklch(0.25 0.03 225);
     --tx-dim: oklch(0.44 0.02 220);
     --accent: oklch(0.45 0.085 210);
@@ -68,7 +68,7 @@
   color-scheme: light;
   --bg: oklch(0.965 0.008 200);
   --bg-raise: oklch(0.995 0.004 200);
-  --line: oklch(0.84 0.012 210);
+  --line: oklch(0.64 0.012 210);
   --tx: oklch(0.25 0.03 225);
   --tx-dim: oklch(0.44 0.02 220);
   --accent: oklch(0.45 0.085 210);

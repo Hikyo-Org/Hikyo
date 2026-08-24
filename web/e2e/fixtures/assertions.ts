@@ -320,6 +320,42 @@ export async function expectEveryContrast(targets: Locator[], minimum = 4.5): Pr
   }
 }
 
+/**
+ * expectBoundaryContrast checks WCAG 1.4.11 against rendered control pixels.
+ * axe-core cannot infer whether a border is the only visual affordance, so the
+ * login flow names that seam and compares its unfocused border to its fill.
+ */
+export async function expectBoundaryContrast(
+  page: Page,
+  target: Locator,
+  minimum = 3,
+): Promise<void> {
+  const colours = await target.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { border: style.borderTopColor, background: style.backgroundColor };
+  });
+  const [border, background] = await Promise.all([
+    sampleRGB(page, colours.border),
+    sampleRGB(page, colours.background),
+  ]);
+  const luminance = (rgb: number[]): number => {
+    const channel = (component: number): number => {
+      const value = component / 255;
+      return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * channel(rgb[0] ?? 0) + 0.7152 * channel(rgb[1] ?? 0) + 0.0722 * channel(rgb[2] ?? 0);
+  };
+  const borderLuminance = luminance(border);
+  const backgroundLuminance = luminance(background);
+  const ratio =
+    (Math.max(borderLuminance, backgroundLuminance) + 0.05) /
+    (Math.min(borderLuminance, backgroundLuminance) + 0.05);
+  expect(
+    ratio,
+    `boundary contrast ${ratio.toFixed(2)}:1 for ${colours.border} on ${colours.background}, want >= ${minimum}:1`,
+  ).toBeGreaterThanOrEqual(minimum);
+}
+
 // --- 5. touch targets ------------------------------------------------------
 
 /** The floor DESIGN.md fixes for touch: ~44px targets on mobile. */
