@@ -19,7 +19,8 @@ Issue: https://github.com/Hikyo-Org/Hikyo/issues/454. Base:
   clipboard payloads, success feedback, refusal feedback, and unchanged storage
   gate.
 - Local execution was deferred before the first push because host memory
-  pressure was high. Run the focused web test, web typecheck, lint, and the full
-  repository suite before merge when pressure subsides; exact-head CI remains
-  authoritative.
+  pressure was high. After pressure subsided, the focused component test passed
+  3/3, the full web suite passed 343/343 across 45 files, TypeScript typechecking
+  passed, and the production Vite build passed. The web package has no ESLint
+  script; exact-head CI remains authoritative for repository gates.
 - Generated outputs: none.
