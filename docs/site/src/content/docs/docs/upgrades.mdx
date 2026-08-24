@@ -19,9 +19,40 @@ Before any stable release exists, the first line is
 `0.0.1-nightly.<date>.<run>.g<sha>`. Release discovery is paginated; a long
 nightly history cannot hide the latest published stable release.
 
-Checks remain notification-only unless the instance operator configures the
-separately privileged local updater helper. Remote apply admits stable releases
-only; nightlies can never cross that boundary.
+Server-side checks remain notification-only unless the instance operator
+configures the separately privileged local updater helper. Remote apply admits
+stable releases only; nightlies can never cross that boundary.
+
+Release binaries also check their own CLI track before dispatching a command
+when stderr and a controlling terminal are available. Stable artifacts default to `stable`, nightly artifacts default to
+`nightly`, and binaries built directly from source default to `off`. A local
+`hikyo update channel ...` choice is persisted and overrides a published
+artifact's default. Source builds remain `off`; install a published artifact to
+join a release channel.
+
+At most once per 24 hours, Hikyo refreshes the selected track. When a newer
+release exists, the controlling terminal asks whether to install it. Accepting
+downloads the exact archive for the running OS and architecture. Nightlies
+require GitHub's immutable asset digest plus GoReleaser's `checksums.txt`.
+Stable updates additionally require an immutable release and use Hikyo's
+in-process, recovery-root-pinned signature verifier over the current trust
+metadata, signed manifest, candidate, and selected archive. No external shell,
+`jq`, or `cosign` executable participates in the self-update trust boundary.
+
+After verification Hikyo extracts only the expected executable, takes a
+cross-process replacement lock, and writes and syncs a unique same-directory
+file. Unix atomically renames it over the resolved binary. Windows recoverably
+moves the mapped old image aside before publishing the replacement at the
+original path, then removes the backup on a later start after its last process
+exits. The current command stops before dispatch. Repeat the command to run the
+new version. An already running `hikyo server` process keeps its old in-memory
+image until its service is restarted.
+
+The updater never elevates privileges. If the current binary is managed by a
+system package or is not writable by the current user, the replacement fails
+without changing it; use that installation's package or service procedure.
+`hikyo update check` bypasses the 24-hour refresh interval and performs the same
+confirmation flow immediately.
 
 ## Optional local updater helper
 

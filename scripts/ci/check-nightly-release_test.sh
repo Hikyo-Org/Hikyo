@@ -40,6 +40,9 @@ if grep -F 'releases/latest' "$workflow" >/dev/null; then
 	fail 'no-release bootstrap still depends on the latest-release endpoint'
 fi
 grep -F 'HIKYO_RELEASE_VERSION: ${{ steps.identity.outputs.version }}' "$workflow" >/dev/null || fail 'GoReleaser does not receive nightly version'
+grep -F 'HIKYO_UPDATE_CHANNEL: nightly' "$workflow" >/dev/null || fail 'nightly binary is not stamped onto the nightly update channel'
+grep -F 'HIKYO_UPDATE_CHANNEL: stable' "$official" >/dev/null || fail 'official binary is not stamped onto the stable update channel'
+grep -F 'HIKYO_UPDATE_TRUST_ROOT: ${{ steps.update-trust.outputs.root }}' "$official" >/dev/null || fail 'official binary lacks the pinned stable trust root'
 grep -F 'contents: read' "$workflow" >/dev/null || fail 'built-in workflow token retains repository write permission'
 grep -F 'actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1' "$workflow" >/dev/null || fail 'nightly app token action is missing or unpinned'
 grep -F 'client-id: ${{ vars.NIGHTLY_RELEASE_APP_CLIENT_ID }}' "$workflow" >/dev/null || fail 'nightly release app client ID variable is missing'
@@ -60,6 +63,9 @@ grep -F 'dist/hikyo-*.pkg.tar.zst' "$workflow" >/dev/null || fail 'Arch package 
 grep -F 'Includes six archives and eight native Linux packages.' "$workflow" >/dev/null || fail 'nightly package warning is missing'
 grep -F '"!v*-nightly.*"' "$official" >/dev/null || fail 'official ceremony still accepts nightly tags'
 grep -F 'index .Env "HIKYO_RELEASE_VERSION"' "$goreleaser" >/dev/null || fail 'snapshot archive version is not injectable'
+grep -F 'index .Env "HIKYO_UPDATE_CHANNEL"' "$goreleaser" >/dev/null || fail 'artifact update channel is not linker-stamped'
+grep -F 'index .Env "HIKYO_UPDATE_TRUST_ROOT"' "$goreleaser" >/dev/null || fail 'stable updater trust root is not linker-stamped'
+grep -F 'else }}off{{ end }}' "$goreleaser" >/dev/null || fail 'source and unstamped snapshot builds do not default updates off'
 grep -F 'release/repository/nightly-tag-creation.json' "$repo_root/scripts/release/configure-repository.sh" >/dev/null || fail 'nightly tag creation policy is not applied'
 if grep -F 'allowed_actions=all' "$repo_root/scripts/release/configure-repository.sh" >/dev/null; then
 	fail 'repository configuration broadens organization Actions policy'

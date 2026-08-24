@@ -23,7 +23,17 @@ type Release struct {
 	Version     string    `json:"version"`
 	URL         string    `json:"url"`
 	Prerelease  bool      `json:"prerelease"`
+	Immutable   bool      `json:"immutable"`
 	PublishedAt time.Time `json:"published_at"`
+	Assets      []Asset   `json:"assets,omitempty"`
+}
+
+// Asset is one immutable GitHub release download.
+type Asset struct {
+	Name   string `json:"name"`
+	URL    string `json:"url"`
+	Digest string `json:"digest,omitempty"`
+	Size   int64  `json:"size"`
 }
 
 // Status is the complete notification decision for one installed version.
@@ -34,10 +44,12 @@ type Status struct {
 	URL            string    `json:"url,omitempty"`
 	Available      bool      `json:"available"`
 	Prerelease     bool      `json:"prerelease"`
+	Immutable      bool      `json:"immutable"`
 	PublishedAt    time.Time `json:"published_at,omitempty"`
 	ApplySupported bool      `json:"apply_supported"`
 	ApplyBackend   string    `json:"apply_backend,omitempty"`
 	ApplyError     string    `json:"apply_error,omitempty"`
+	Assets         []Asset   `json:"-"`
 }
 
 // ParseChannel validates a configured release track.
@@ -63,7 +75,6 @@ func Select(current string, channel Channel, releases []Release) (Status, error)
 	if status.CurrentVersion == "dev" {
 		return status, nil
 	}
-
 	installed, err := semver.StrictNewVersion(status.CurrentVersion)
 	if err != nil {
 		return Status{}, fmt.Errorf("updatecheck: installed version %q is not SemVer: %w", current, err)
@@ -88,7 +99,9 @@ func Select(current string, channel Channel, releases []Release) (Status, error)
 	status.LatestVersion = latest.Original()
 	status.URL = selected.URL
 	status.Prerelease = selected.Prerelease
+	status.Immutable = selected.Immutable
 	status.PublishedAt = selected.PublishedAt
+	status.Assets = selected.Assets
 	status.Available = latest.GreaterThan(installed)
 	return status, nil
 }

@@ -139,5 +139,11 @@ hikyo update channel off
 hikyo update check
 ```
 
+Stable and nightly release artifacts start on their matching channel. Direct
+source builds stay on `off`; install a published artifact before selecting a
+release channel. Interactive command invocations refresh release
+metadata before dispatch at most once per 24 hours and offer an in-place binary update when one
+is available; `hikyo update check` refreshes immediately.
+
 Prefer flags for visible, one-off target changes and `--token-file` for machine
 credentials. See [contexts and targets](/docs/contexts/).

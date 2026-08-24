@@ -7,7 +7,7 @@ toolchain go1.27.0
 require (
 	filippo.io/age v1.3.1
 	github.com/BurntSushi/toml v1.6.0
-	github.com/Masterminds/semver/v3 v3.4.0
+	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/beevik/etree v1.7.1
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/descope/virtualwebauthn v1.0.5
@@ -219,7 +219,7 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/tjfoc/gmsm v1.4.1 // indirect
-	github.com/ulikunitz/xz v0.5.12 // indirect
+	github.com/ulikunitz/xz v0.5.15 // indirect
 	github.com/urfave/cli v1.22.17 // indirect
 	github.com/vmware-labs/yaml-jsonpath v0.3.2 // indirect
 	github.com/wI2L/jsondiff v0.7.1 // indirect

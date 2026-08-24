@@ -85,6 +85,10 @@ suite, release fixtures, generated code, documentation, and supply-chain rules.
 
 ## Update a source build
 
+Source builds stamp the CLI update channel as `off`: they do not silently
+replace themselves with a release artifact. Fetch and rebuild from the reviewed
+source revision instead.
+
 Do not overwrite a running production binary in place. First create an
 encrypted Hikyo export and preserve the root key through its separate recovery
 path.
