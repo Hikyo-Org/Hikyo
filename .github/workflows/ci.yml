@@ -354,15 +354,18 @@ jobs:
           dist image-root "$(git rev-parse HEAD)" .goreleaser.yaml
       - name: Smoke the exact candidate image
         run: |
+          image=hikyo-release-snapshot:${{ github.sha }}
           docker build --build-arg TARGETARCH=amd64 \
-            --tag hikyo-release-snapshot:${{ github.sha }} \
+            --tag "$image" \
             --file Dockerfile.release .
+          image_id=$(docker image inspect --format '{{.Id}}' "$image")
           expected=$(jq -r '.version' dist/metadata.json)
-          actual=$(docker run --rm hikyo-release-snapshot:${{ github.sha }} version)
+          actual=$(docker run --rm "$image_id" version)
           case "$actual" in
             "hikyo $expected ("*) ;;
             *) printf 'candidate image: version mismatch: %s\n' "$actual" >&2; exit 1 ;;
           esac
+          ./scripts/release/smoke-image-ui.sh "$image_id"
       # This fixture works on a temporary copy of dist. Keep it before upload:
       # failed archive/version/manifest checks must not leave a download behind.
       - name: Classify complete snapshot manifest
