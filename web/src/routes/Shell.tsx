@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { generatePath, matchPath, NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 
 import { useLogout, useOrgs, type WhoAmI } from '../api/session.ts';
@@ -279,7 +279,7 @@ export function Shell({ session }: { session: WhoAmI }) {
   );
 }
 
-function AccountEntry({
+export function AccountEntry({
   session,
   updateVersions,
 }: {
@@ -287,14 +287,55 @@ function AccountEntry({
   updateVersions: readonly string[];
 }) {
   const [open, setOpen] = useState(false);
+  const entryRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuItemRef = useRef<HTMLButtonElement>(null);
   const logout = useLogout();
+  const location = useLocation();
   const name = session.principal.display_name ?? session.principal.id;
 
+  useEffect(() => setOpen(false), [location.pathname]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    menuItemRef.current?.focus();
+    const dismissOutside = (event: PointerEvent) => {
+      const entry = entryRef.current;
+      if (entry !== null && !event.composedPath().includes(entry)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', dismissOutside);
+    return () => document.removeEventListener('pointerdown', dismissOutside);
+  }, [open]);
+
   return (
-    <div className="account-entry">
+    <div
+      className="account-entry"
+      ref={entryRef}
+      onBlur={(event) => {
+        const next = event.relatedTarget;
+        if (!(next instanceof Node) || !event.currentTarget.contains(next)) {
+          setOpen(false);
+        }
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape' || !open) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        setOpen(false);
+        triggerRef.current?.focus();
+      }}
+    >
       <button
         type="button"
         className="avatar"
+        ref={triggerRef}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`Account: ${name}${updateVersions.length === 0 ? '' : `; ${updateVersions.length} update${updateVersions.length === 1 ? '' : 's'} available`}`}
@@ -307,13 +348,14 @@ function AccountEntry({
       </button>
       {open ? (
         <div className="menu" role="menu" aria-label="Account">
-          <p className="menu__label">
+          <p className="menu__label" role="none">
             Signed in as <span className="mono">{name}</span>
           </p>
           <button
             type="button"
             role="menuitem"
             className="menu__item"
+            ref={menuItemRef}
             onClick={() => logout.mutate()}
             disabled={logout.isPending}
           >
