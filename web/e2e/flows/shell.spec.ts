@@ -111,7 +111,7 @@ test.describe('app chrome', () => {
     );
     await page.goto('/login');
     await openNav(page);
-    const notice = page.getByRole('status');
+    const notice = page.getByRole('status').filter({ hasText: 'No organisations yet' });
     await expectStatusIsTextAndAria(page, notice);
     await expect(notice).toContainText('No organisations yet');
     await expect(page.getByText(/choose a project/i)).toHaveCount(0);
