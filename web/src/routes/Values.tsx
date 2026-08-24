@@ -64,6 +64,7 @@ const MASK = '••••••••';
 const AUDIT_LINES = 12;
 
 type Disclosed = { value: string; until: number };
+type RevealAnnouncement = { id: number; message: string };
 
 /**
  * cellKey identifies a disclosed cell by ENVIRONMENT and key id.
@@ -100,6 +101,7 @@ export function Values() {
   const [now, setNow] = useState(() => Date.now());
   const [refusal, setRefusal] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [revealAnnouncement, setRevealAnnouncement] = useState<RevealAnnouncement | null>(null);
   const [audit, setAudit] = useState<string[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [destination, setDestination] = useState('');
@@ -123,6 +125,7 @@ export function Values() {
     setEditing(null);
     setRefusal(null);
     setNotice(null);
+    setRevealAnnouncement(null);
     setAudit([]);
     return () => {
       writeGeneration.current += 1;
@@ -256,7 +259,7 @@ export function Values() {
     setAudit((prev) => [...names.map((n) => `Disclosure recorded · ${n}`), ...prev].slice(0, AUDIT_LINES));
   }, []);
 
-  const show = useCallback(
+  const recordDisclosures = useCallback(
     (entries: Array<{ id: string; name: string; value: string }>) => {
       const until = Date.now() + REMASK_MS;
       setDisclosed((current) => {
@@ -266,6 +269,16 @@ export function Values() {
         }
         return next;
       });
+      const [first] = entries;
+      if (first !== undefined) {
+        const subject =
+          entries.length === 1 ? `${first.name} revealed` : `${entries.length} secrets revealed`;
+        const verb = entries.length === 1 ? 're-masks' : 're-mask';
+        setRevealAnnouncement((current) => ({
+          id: (current?.id ?? 0) + 1,
+          message: `${subject} — ${verb} in ${String(REMASK_MS / 1000)} seconds`,
+        }));
+      }
       noteDisclosure(entries.map((e) => e.name));
     },
     [env.environment, noteDisclosure],
@@ -282,7 +295,7 @@ export function Values() {
               setRefusal('The server disclosed no value for that key.');
               return;
             }
-            show([{ id: fresh.key_id, name: fresh.name, value: fresh.value }]);
+            recordDisclosures([{ id: fresh.key_id, name: fresh.name, value: fresh.value }]);
           });
         } catch (err) {
           ceremony.commit(task, () => {
@@ -301,7 +314,7 @@ export function Values() {
         try {
           const fresh = await revealAll.mutateAsync();
           ceremony.commit(task, () => {
-            show(
+            recordDisclosures(
               fresh.items
                 .filter((c) => c.classification === 'secret' && c.value !== undefined)
                 .map((c) => ({ id: c.key_id, name: c.name, value: c.value ?? '' })),
@@ -446,6 +459,12 @@ export function Values() {
         </p>
       ) : null}
 
+      <p className="values__reveal-announcement visually-hidden" role="status">
+        {revealAnnouncement === null ? null : (
+          <span key={revealAnnouncement.id}>{revealAnnouncement.message}</span>
+        )}
+      </p>
+
       <div className="values__bar">
         <button
           className="btn"
@@ -525,9 +544,9 @@ export function Values() {
                   {!cell.set ? (
                     <span className="values__absent">absent</span>
                   ) : live !== undefined ? (
-                    <span className="mono values__plain">
+                    <span className="mono values__plain" aria-label={`${cell.name} revealed`}>
                       {live.value}
-                      <span className="values__countdown" role="status">
+                      <span className="values__countdown" aria-hidden="true">
                         {`re-masks in ${remaining}s`}
                       </span>
                     </span>
