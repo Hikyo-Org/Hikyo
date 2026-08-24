@@ -130,6 +130,7 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
     setCollapsedGroups(new Set());
     setFilter('all');
     setSelection(null);
+    setMutationError(null);
   }, [ref.org, ref.project, environmentSignature]);
 
   const valuesByCell = useMemo(() => {
@@ -454,13 +455,6 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
         </p>
       )}
 
-      {mutationError === null ? null : (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">!</span>
-          <span>{mutationError}</span>
-        </p>
-      )}
-
       {backgroundRefreshError ? (
         <p className="alert" role="status">
           <span className="alert__glyph" aria-hidden="true">!</span>
@@ -774,7 +768,10 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
           })}
           busy={stage.isPending || clear.isPending || copy.isPending}
           mutationError={mutationError}
-          onClose={() => setSelection(null)}
+          onClose={() => {
+            setMutationError(null);
+            setSelection(null);
+          }}
           onApply={async (changes) => {
             setMutationError(null);
             let normalizedCount = 0;
