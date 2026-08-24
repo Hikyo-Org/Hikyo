@@ -23,6 +23,7 @@ Issue: https://github.com/Hikyo-Org/Hikyo/issues/444. Base:
 - The mint-dialog regression covers the operator-visible refusal, retained
   display-once value, and unchecked stored confirmation.
 - Local web validation was deferred before the first push because host memory
-  pressure remained high. Hosted CI and final local validation results must be
-  green before merge.
+  pressure remained high. After pressure subsided, Vitest passed all 43 files
+  and 337 tests; TypeScript typechecking and the production Vite build also
+  passed.
 - Generated outputs: none.
