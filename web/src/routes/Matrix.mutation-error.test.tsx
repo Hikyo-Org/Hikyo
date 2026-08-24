@@ -131,13 +131,7 @@ beforeEach(() => {
 
 describe('Matrix mutation refusal ownership', () => {
   it('shows an editor refusal once and removes it when the editor closes', async () => {
-    const view = await renderForm(
-      <MemoryRouter initialEntries={['/orgs/org_a/projects/project_a/matrix']}>
-        <Routes>
-          <Route path="/orgs/:org/projects/:project/matrix" element={<Matrix />} />
-        </Routes>
-      </MemoryRouter>,
-    );
+    const view = await renderMatrix();
 
     await act(async () => buttonNamed(view.container, 'LOG_LEVEL in development: info').click());
     const textarea = view.container.querySelector<HTMLTextAreaElement>('textarea');
@@ -154,7 +148,38 @@ describe('Matrix mutation refusal ownership', () => {
 
     await view.unmount();
   });
+
+  it('does not carry a late refusal into a reopened editor', async () => {
+    const pending = deferred<{ readonly findings: readonly never[] }>();
+    mocks.stage.mockReturnValue(pending.promise);
+    const view = await renderMatrix();
+
+    await act(async () => buttonNamed(view.container, 'LOG_LEVEL in development: info').click());
+    const textarea = view.container.querySelector<HTMLTextAreaElement>('textarea');
+    if (textarea === null) throw new Error('matrix row editor textarea is missing');
+    await act(async () => typeInto(textarea, 'debug'));
+    await act(async () => buttonNamed(view.container, 'Save 1 draft').click());
+    await act(async () => buttonNamed(view.container, 'Close row editor').click());
+
+    pending.reject(new Error('stage rejected after close'));
+    await settle();
+    await act(async () => buttonNamed(view.container, 'LOG_LEVEL in development: info').click());
+
+    expect(alertsNamed(view.container, 'The server could not stage this value.')).toHaveLength(0);
+
+    await view.unmount();
+  });
 });
+
+function renderMatrix() {
+  return renderForm(
+    <MemoryRouter initialEntries={['/orgs/org_a/projects/project_a/matrix']}>
+      <Routes>
+        <Route path="/orgs/:org/projects/:project/matrix" element={<Matrix />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
 
 function buttonNamed(container: HTMLElement, name: string): HTMLButtonElement {
   const button = [...container.querySelectorAll('button')].find(
@@ -175,4 +200,13 @@ function typeInto(textarea: HTMLTextAreaElement, value: string): void {
   if (setter === undefined) throw new Error('HTMLTextAreaElement exposes no value setter');
   setter.call(textarea, value);
   textarea.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function deferred<T>(): { readonly promise: Promise<T>; readonly reject: (reason?: unknown) => void } {
+  let reject: ((reason?: unknown) => void) | undefined;
+  const promise = new Promise<T>((_resolve, rejectPromise) => {
+    reject = rejectPromise;
+  });
+  if (reject === undefined) throw new Error('deferred rejection was not initialized');
+  return { promise, reject };
 }
