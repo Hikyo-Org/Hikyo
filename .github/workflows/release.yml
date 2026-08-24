@@ -197,6 +197,12 @@ jobs:
             org.opencontainers.image.revision=${{ steps.candidate.outputs.commit }}
             org.opencontainers.image.version=${{ steps.candidate.outputs.version }}
 
+      - name: Smoke the published candidate image
+        env:
+          IMAGE: ${{ steps.identity.outputs.image }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: ./scripts/release/smoke-image-ui.sh "$IMAGE@$IMAGE_DIGEST"
+
       - name: Published image SBOM
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:

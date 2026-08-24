@@ -119,13 +119,19 @@ test.describe('account and security', () => {
     await dialog.getByLabel('Password').fill(`${ADMIN.password}-wrong`);
     await dialog.getByRole('button', { name: 'Confirm' }).click();
 
-    const alert = page.getByRole('alert').filter({ hasText: 'did not authorise the change' });
-    await expect(alert).toContainText('did not authorise the change');
-    await expect(alert).toBeInViewport();
+    const inlineAlert = page
+      .locator('#content')
+      .getByRole('alert')
+      .filter({ hasText: 'did not authorise the change' });
+    await expect(inlineAlert).toContainText('did not authorise the change');
+    const toastAlert = page
+      .locator('.toast[role="alert"]')
+      .filter({ hasText: 'did not authorise the change' });
+    await expect(toastAlert).toBeInViewport();
     // Never presented as a bare "wrong password": a 401 here is either a
     // refused proof or an ended session, and the sentence covers both without
     // guessing which.
-    await expect(alert).toContainText('or this session has ended');
+    await expect(inlineAlert).toContainText('or this session has ended');
   });
 
   test('keeps the theme choice explicit and local', async ({ page }) => {

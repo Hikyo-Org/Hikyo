@@ -22,6 +22,7 @@ export function Login() {
   const methods = useAuthMethods();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const busy = login.isPending || passkey.isPending || oidc.isPending;
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -50,6 +51,7 @@ export function Login() {
             name="username"
             autoComplete="username"
             required
+            disabled={busy}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
           />
@@ -63,12 +65,13 @@ export function Login() {
             type="password"
             autoComplete="current-password"
             required
+            disabled={busy}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
         </div>
 
-        <button className="btn btn--primary" type="submit" disabled={login.isPending}>
+        <button className="btn btn--primary" type="submit" disabled={busy}>
           {login.isPending ? 'Signing in…' : 'Sign in'}
         </button>
         {passkeysAvailable() ? (
@@ -80,7 +83,7 @@ export function Login() {
               className="btn"
               type="button"
               onClick={() => passkey.mutate()}
-              disabled={login.isPending || passkey.isPending}
+              disabled={busy}
             >
               {passkey.isPending ? 'Waiting for the passkey…' : 'Use a passkey instead'}
             </button>
@@ -102,7 +105,7 @@ export function Login() {
               type="button"
               key={provider.slug}
               onClick={() => oidc.mutate(provider.slug)}
-              disabled={login.isPending || passkey.isPending || oidc.isPending}
+              disabled={busy}
             >
               {oidc.isPending ? 'Contacting identity provider…' : `Continue with ${provider.display_name}`}
             </button>

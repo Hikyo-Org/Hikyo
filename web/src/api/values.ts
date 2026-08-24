@@ -444,6 +444,32 @@ export function disclosureRefusalText(error: unknown): string {
   return 'The values could not be disclosed.';
 }
 
+/** Map a value-write refusal without pretending an unconfirmed request was rolled back. */
+export function writeRefusalText(error: unknown): string {
+  if (error instanceof ApiError) {
+    switch (error.status) {
+      case 400:
+        return error.detail ?? 'The server refused this value as invalid.';
+      case 401:
+        return 'Your session ended. Sign in again before staging this value.';
+      case 403:
+        return 'You are not permitted to stage this value.';
+      case 404:
+        return 'This value is no longer here. Reload before trying again.';
+      case 409:
+        return (
+          error.detail ??
+          'This value changed before your draft could be staged. Reload and try again.'
+        );
+      case 429:
+        return 'Too many requests right now. Wait a moment and try again.';
+      default:
+        return 'The server did not confirm whether this value was staged. Reload to check before trying again.';
+    }
+  }
+  return 'The server did not confirm whether this value was staged. Reload to check before trying again.';
+}
+
 /** useRevealOne discloses a single cell. */
 export function useRevealOne(env: EnvRef) {
   const queries = useQueryClient();

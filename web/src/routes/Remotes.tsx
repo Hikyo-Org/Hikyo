@@ -5,8 +5,8 @@ import { generatePath, Link } from 'react-router';
 import { ApiError } from '../api/client.ts';
 import { useProjects } from '../api/matrix.ts';
 import {
-  originOf,
   remoteStateText,
+  safeOriginOf,
   stalenessText,
   useAddRemote,
   useAddWorkspaceOrigin,
@@ -27,17 +27,15 @@ import {
 import {
   forgetWorkspace,
   livenessPollMs,
-  openPrepared,
-  prepareWorkspace,
   probeWorkspace,
   useWorkspaces,
   WorkspaceError,
-  type PreparedWorkspace,
   type WorkspaceBearer,
 } from '../api/workspace.ts';
 import { createWorkspaceClient } from '../api/workspaceClient.ts';
 import { makeQueryClient } from '../app/queryClient.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
 
 /**
  * The multi-instance surface (registry surface `remotes`).
@@ -106,11 +104,20 @@ function RemoteCard({ remote }: { remote: Remote }) {
   const remove = useRemoveRemote();
   const workspaces = useWorkspaces();
   const [failure, setFailure] = useState<string | null>(null);
-  const [opening, setOpening] = useState(false);
   const [ended, setEnded] = useState(false);
-  const [prepared, setPrepared] = useState<PreparedWorkspace | null>(null);
-  const origin = safeOrigin(remote.url);
+  const origin = safeOriginOf(remote.url);
   const live = workspaces.find((w) => w.origin === origin);
+  const handoff = useWorkspaceHandoff(origin, {
+    // A live card hides the launcher and must not stage an unused transaction.
+    preparation:
+      live === undefined
+        ? { kind: 'establishment' }
+        : { kind: 'unavailable', message: 'This workspace is already open.' },
+    onFailMessage: (error) =>
+      error instanceof WorkspaceError
+        ? error.message
+        : 'The workspace could not be opened. Check that this instance allowlists this origin.',
+  });
   const updateStatuses = useRemoteUpdateStatuses(live === undefined ? [] : [live]);
   const updateProbe = updateStatuses[0];
   const update = updateProbe?.status;
@@ -119,36 +126,17 @@ function RemoteCard({ remote }: { remote: Remote }) {
   const updateJob = useRemoteUpdateJob(origin, updateJobID);
   const staleness = stalenessText(remote);
   useWorkspaceLiveness(live, () => setEnded(true));
-
-  const fail = (error: unknown) =>
-    setFailure(
-      error instanceof WorkspaceError
-        ? error.message
-        : 'The workspace could not be opened. Check that this instance allowlists this origin.',
-    );
-
-  // Step one: the live compatibility check and the handoff transaction. No
-  // window is touched here.
-  const prepare = async () => {
-    setFailure(null);
-    setEnded(false);
-    setOpening(true);
-    try {
-      setPrepared(await prepareWorkspace(origin));
-    } catch (error) {
-      fail(error);
-    } finally {
-      setOpening(false);
-    }
-  };
-
-  // Step two, and it must stay SYNCHRONOUS up to the `window.open` inside
-  // `openPrepared`: a popup opened after an await has lost the user gesture and
-  // the browser blocks it.
-  const go = (ready: PreparedWorkspace) => {
-    setPrepared(null);
-    openPrepared(ready).catch(fail);
-  };
+  const handoffAction = workspaceHandoffAction(
+    handoff,
+    {
+      ready: `Continue to ${origin} to sign in`,
+      authorising: 'Waiting for sign-in…',
+    },
+    () => {
+      setEnded(false);
+      handoff.retry();
+    },
+  );
 
   const applyUpdate = async () => {
     if (update?.latest_version === undefined) {
@@ -228,6 +216,15 @@ function RemoteCard({ remote }: { remote: Remote }) {
         </p>
       )}
 
+      {live !== undefined || handoff.phase.kind !== 'failed' ? null : (
+        <p className="alert" role="alert">
+          <span className="alert__glyph" aria-hidden="true">
+            !
+          </span>
+          <span>{handoff.phase.message}</span>
+        </p>
+      )}
+
       {updateProbe?.error === null || updateProbe?.error === undefined ? null : (
         <p className="alert" role="alert">
           <span className="alert__glyph" aria-hidden="true">!</span>
@@ -290,14 +287,14 @@ function RemoteCard({ remote }: { remote: Remote }) {
       ) : null}
 
       <div className="remote__actions">
-        {live === undefined && prepared !== null ? (
-          <button className="btn btn--primary" type="button" onClick={() => go(prepared)}>
-            Continue to {origin} to sign in
-          </button>
-        ) : null}
-        {live === undefined && prepared === null ? (
-          <button className="btn btn--primary" type="button" onClick={prepare} disabled={opening}>
-            {opening ? 'Contacting…' : 'Open workspace'}
+        {live === undefined ? (
+          <button
+            className="btn btn--primary"
+            type="button"
+            onClick={handoffAction.onClick}
+            disabled={handoffAction.disabled}
+          >
+            {handoffAction.label}
           </button>
         ) : null}
         {live === undefined ? null : (
@@ -337,17 +334,37 @@ function RemoteCard({ remote }: { remote: Remote }) {
   );
 }
 
-function AddRemote() {
+export function AddRemote() {
   const add = useAddRemote();
+  const remotes = useRemotes();
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [pin, setPin] = useState('');
   const [credential, setCredential] = useState('');
+  const [validationFailure, setValidationFailure] = useState<string | null>(null);
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    const trimmedURL = url.trim();
+    const submittedOrigin = remoteOriginForSubmit(trimmedURL);
+    if (submittedOrigin === null) {
+      setValidationFailure(
+        'Enter a bare HTTPS origin, for example https://hikyo.example, with no path, query, fragment, or user information.',
+      );
+      return;
+    }
+    const duplicate = remotes.data?.items.find(
+      (remote) => safeOriginOf(remote.url) === submittedOrigin,
+    );
+    if (duplicate !== undefined) {
+      setValidationFailure(`This origin is already added as ${duplicate.name}.`);
+      return;
+    }
+
+    setValidationFailure(null);
     add.mutate(
-      { name, url, spkiPin: pin, credential },
+      { name, url: submittedOrigin, spkiPin: pin, credential },
       {
         onSuccess: () => {
           setName('');
@@ -368,12 +385,14 @@ function AddRemote() {
         self-signed instance on your own network safe to point at.
       </p>
       <form className="form" onSubmit={onSubmit} noValidate>
-        {add.isError ? (
+        {validationFailure !== null || add.isError ? (
           <p className="alert" role="alert">
             <span className="alert__glyph" aria-hidden="true">
               !
             </span>
-            <span>{addFailureText(add.error)}</span>
+            <span>
+              {validationFailure ?? addFailureText(add.error)}
+            </span>
           </p>
         ) : null}
         <div className="field">
@@ -384,9 +403,14 @@ function AddRemote() {
           <label htmlFor="remote-url">URL</label>
           <input
             id="remote-url"
+            type="url"
             value={url}
-            onChange={(e) => setUrl(e.target.value)}
+            onChange={(e) => {
+              setUrl(e.target.value);
+              setValidationFailure(null);
+            }}
             placeholder="https://hikyo.example"
+            aria-invalid={validationFailure !== null}
             required
           />
         </div>
@@ -632,12 +656,27 @@ function OrgProjects({
   );
 }
 
-/** safeOrigin never throws on a stored URL the browser cannot parse. */
-function safeOrigin(url: string): string {
+/** Mirror the server's bare-HTTPS-origin grammar for client pre-flight checks. */
+function remoteOriginForSubmit(url: string): string | null {
+  if (!/^https:\/\/[^\s/?#@]+\/?$/.test(url)) {
+    return null;
+  }
   try {
-    return originOf(url);
+    const parsed = new URL(url);
+    if (
+      parsed.protocol !== 'https:' ||
+      parsed.hostname === '' ||
+      parsed.username !== '' ||
+      parsed.password !== '' ||
+      parsed.pathname !== '/' ||
+      parsed.search !== '' ||
+      parsed.hash !== ''
+    ) {
+      return null;
+    }
+    return parsed.origin;
   } catch {
-    return url;
+    return null;
   }
 }
 
@@ -647,7 +686,7 @@ function addFailureText(error: unknown): string {
       case 400:
         return 'That entry was refused: the URL must be a bare https origin and the fingerprint must be the base64 SHA-256 of the public key.';
       case 409:
-        return 'That entry was refused at the verifying fetch — it may point at this instance itself, at an instance already added, or at a key that does not match the fingerprint.';
+        return 'The server could not verify this remote. Check that it is reachable, its credential and fingerprint are current, and it is not this instance or an instance already listed under another URL.';
       case 429:
         return 'Too many attempts right now. Wait a moment and try again.';
       default:

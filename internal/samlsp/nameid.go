@@ -10,7 +10,10 @@ import (
 	"math"
 )
 
-var ErrEmptyNameID = errors.New("samlsp: NameID value is empty")
+var (
+	ErrEmptyNameID    = errors.New("samlsp: NameID value is empty")
+	ErrNameIDTooLarge = errors.New("samlsp: NameID value is too large")
+)
 
 // NameID is the byte-exact identity material extracted from a verified SAML
 // Assertion. Pointers preserve the difference between an absent XML attribute
@@ -29,8 +32,12 @@ func EncodeNameID(id NameID) ([]byte, error) {
 	if len(id.Value) == 0 {
 		return nil, ErrEmptyNameID
 	}
+	if len(id.Value) > math.MaxInt-20 {
+		return nil, ErrNameIDTooLarge
+	}
 
-	encoded := make([]byte, 0, len(id.Value)+20)
+	capHint := len(id.Value) + 20
+	encoded := make([]byte, 0, capHint)
 	encoded = appendPresentField(encoded, id.Value)
 	encoded = appendOptionalField(encoded, id.Format)
 	encoded = appendOptionalField(encoded, id.NameQualifier)

@@ -159,6 +159,8 @@ export function Members() {
           operator, so it does not offer to revoke one.
         </p>
 
+        {grants.isPending ? <p role="status">Loading members…</p> : null}
+
         {grants.isSuccess && rows.length === 0 ? (
           <p role="status">
             No grants inside this organisation yet. Everyone reaching it does so from instance scope.
@@ -191,32 +193,38 @@ export function Members() {
                   </td>
                   <td>
                     <ul className="capabilities">
-                      {row.grants.map((grant) => (
-                        <li key={grant.id} className="capability">
-                          <span className="capability__name mono">{grant.capability}</span>
-                          {/* Origin chips per capability line: the SCIM
-                              amendment's own requirement, and the one thing
-                              that tells a break-glass grant from an ordinary
-                              one after an incident. */}
-                          {grant.origins.map((origin) => (
-                            <span
-                              className="badge"
-                              key={`${origin.kind}:${origin.subject}`}
+                      {row.grants.map((grant) => {
+                        const revoking =
+                          revoke.isPending && revoke.variables?.grant.id === grant.id;
+                        const revokeLabel = `${revoking ? 'Revoking' : 'Revoke'} ${grant.capability} on ${row.scopeLabel} for ${row.principal}`;
+                        return (
+                          <li key={grant.id} className="capability">
+                            <span className="capability__name mono">{grant.capability}</span>
+                            {/* Origin chips per capability line: the SCIM
+                                amendment's own requirement, and the one thing
+                                that tells a break-glass grant from an ordinary
+                                one after an incident. */}
+                            {grant.origins.map((origin) => (
+                              <span
+                                className="badge"
+                                key={`${origin.kind}:${origin.subject}`}
+                              >
+                                {origin.kind}: {origin.subject}
+                              </span>
+                            ))}
+                            <button
+                              type="button"
+                              className="btn btn--quiet"
+                              disabled={revoking}
+                              aria-busy={revoking ? true : undefined}
+                              aria-label={revokeLabel}
+                              onClick={() => onRevoke(grant)}
                             >
-                              {origin.kind}: {origin.subject}
-                            </span>
-                          ))}
-                          <button
-                            type="button"
-                            className="btn btn--quiet"
-                            disabled={revoke.isPending}
-                            aria-label={`Revoke ${grant.capability} on ${row.scopeLabel} for ${row.principal}`}
-                            onClick={() => onRevoke(grant)}
-                          >
-                            Revoke
-                          </button>
-                        </li>
-                      ))}
+                              {revoking ? 'Revoking…' : 'Revoke'}
+                            </button>
+                          </li>
+                        );
+                      })}
                     </ul>
                   </td>
                 </tr>

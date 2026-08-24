@@ -8,15 +8,13 @@ import {
   assertCompatible,
   forgetWorkspace,
   livenessPollMs,
-  openPrepared,
-  prepareWorkspace,
   probeWorkspace,
   useWorkspaces,
   WorkspaceError,
-  type PreparedWorkspace,
 } from '../api/workspace.ts';
 import { createWorkspaceClient } from '../api/workspaceClient.ts';
 import { makeQueryClient } from '../app/queryClient.ts';
+import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
 
 /**
  * WorkspaceScope is the boundary between operating THIS instance and operating a
@@ -243,40 +241,22 @@ function WorkspaceBanner({ origin }: { origin: string }) {
 /**
  * Reconnect is the state a deep-linked workspace URL lands in when the bearer
  * is gone — which is EVERY reload, because the bearer lives in memory only, and
- * also the moment a kill switch fires. It is the same two-click ceremony the
- * remotes card uses: prepare (a network round trip that names the origin the
- * human is about to sign in at), then a synchronous open on the gesture.
+ * also the moment a kill switch fires. It is the same eager preparation the
+ * remotes card uses: finish the network round trip first, then synchronously
+ * open the popup from the origin-labelled action's user gesture.
  */
-function Reconnect({ origin, name }: { origin: string; name: string }) {
-  const [prepared, setPrepared] = useState<PreparedWorkspace | null>(null);
-  const [opening, setOpening] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
-
-  const fail = (error: unknown) =>
-    setFailure(
+export function Reconnect({ origin, name }: { origin: string; name: string }) {
+  const handoff = useWorkspaceHandoff(origin, {
+    preparation: { kind: 'establishment' },
+    onFailMessage: (error) =>
       error instanceof WorkspaceError
         ? error.message
         : 'The workspace could not be reconnected. Check that this instance allowlists this origin.',
-    );
-
-  const prepare = async () => {
-    setFailure(null);
-    setOpening(true);
-    try {
-      setPrepared(await prepareWorkspace(origin));
-    } catch (error) {
-      fail(error);
-    } finally {
-      setOpening(false);
-    }
-  };
-
-  // Must stay synchronous to the gesture: a popup opened after an await has lost
-  // the user activation and the browser blocks it.
-  const go = (ready: PreparedWorkspace) => {
-    setPrepared(null);
-    openPrepared(ready).catch(fail);
-  };
+  });
+  const action = workspaceHandoffAction(handoff, {
+    ready: `Continue to ${origin} to sign in`,
+    authorising: 'Waiting for sign-in…',
+  });
 
   return (
     <section className="card" aria-labelledby="workspace-reconnect">
@@ -285,23 +265,22 @@ function Reconnect({ origin, name }: { origin: string; name: string }) {
         Your workspace on <span className="mono">{origin}</span> is not open. Reconnect to operate
         it — you will sign in on that instance&apos;s own origin, in a popup.
       </p>
-      {failure === null ? null : (
+      {handoff.phase.kind !== 'failed' ? null : (
         <p className="alert" role="alert">
           <span className="alert__glyph" aria-hidden="true">
             !
           </span>
-          <span>{failure}</span>
+          <span>{handoff.phase.message}</span>
         </p>
       )}
-      {prepared === null ? (
-        <button className="btn btn--primary" type="button" onClick={prepare} disabled={opening}>
-          {opening ? 'Contacting…' : 'Reconnect workspace'}
-        </button>
-      ) : (
-        <button className="btn btn--primary" type="button" onClick={() => go(prepared)}>
-          Continue to {origin} to sign in
-        </button>
-      )}
+      <button
+        className="btn btn--primary"
+        type="button"
+        onClick={action.onClick}
+        disabled={action.disabled}
+      >
+        {action.label}
+      </button>
     </section>
   );
 }

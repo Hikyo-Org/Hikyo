@@ -40,6 +40,7 @@ import {
   pinAction,
   pinCeremonyUnit,
   pinExpiry,
+  pinExpiryDateBounds,
   pinExpiryInstant,
   pinComparedToLatest,
   pinSchemaOverrideOffered,
@@ -184,6 +185,7 @@ export function HistoryDrawer({
   // whose rows disagree about "now" by a few milliseconds can render two
   // different expiry tiers for the same instant.
   const [now] = useState(() => new Date());
+  const expiryBounds = pinExpiryDateBounds(now);
 
   const revisions = useMemo<readonly HistoryRevision[]>(
     () => (history.data?.items ?? []).map(toHistoryRevision),
@@ -342,6 +344,16 @@ export function HistoryDrawer({
     readonly overrideSchema: boolean;
     readonly revisionKeys: readonly HistorySnapshotKey[];
   }) => {
+    let expiresAt: string;
+    try {
+      expiresAt = pinExpiryInstant(input.expiresAt);
+    } catch (error) {
+      if (!(error instanceof Error)) {
+        throw error;
+      }
+      setRefusal(error.message);
+      return;
+    }
     const historical = input.revision !== currentRevision;
     const unit = historical
       ? pinCeremonyUnit(input.revisionKeys, cellsByEnvironment.get(environment.id) ?? [])
@@ -351,7 +363,7 @@ export function HistoryDrawer({
         {
           workloadPrincipalID: input.workloadPrincipalID,
           revision: input.revision,
-          expiresAt: pinExpiryInstant(input.expiresAt),
+          expiresAt,
           overrideSchema: input.overrideSchema,
         },
         {
@@ -735,6 +747,8 @@ export function HistoryDrawer({
             existingPin: pinRows.find((pin) => pin.workloadPrincipalId === account.principal_id),
           }))}
           state={sheet}
+          expiryMinimum={expiryBounds.minimum}
+          expiryMaximum={expiryBounds.maximum}
           busy={setPin.isPending}
           refusal={refusal ?? guard.error}
           comparisonBusy={comparePin.isPending}
@@ -768,7 +782,24 @@ export function HistoryDrawer({
               : null
           }
           onCompare={() => comparePin.mutate({ environmentId: environment.id, revision: sheet.revision })}
-          onChange={(next) => setSheet({ ...sheet, ...next })}
+          onChange={(next) => {
+            setSheet({ ...sheet, ...next });
+            if (next.expiresAt === undefined) {
+              return;
+            }
+            if (next.expiresAt !== '') {
+              setRefusal(null);
+              return;
+            }
+            try {
+              pinExpiryInstant(next.expiresAt);
+            } catch (error) {
+              if (!(error instanceof Error)) {
+                throw error;
+              }
+              setRefusal(error.message);
+            }
+          }}
           onSubmit={() =>
             runPin({
               revision: sheet.revision,
@@ -1210,6 +1241,8 @@ function PinSheet({
   currentRevision,
   workloads,
   state,
+  expiryMinimum,
+  expiryMaximum,
   busy,
   refusal,
   comparisonBusy,
@@ -1235,6 +1268,8 @@ function PinSheet({
     readonly overrideSchema: boolean;
     readonly offerOverride: boolean;
   };
+  expiryMinimum: string;
+  expiryMaximum: string;
   busy: boolean;
   refusal: string | null;
   comparisonBusy: boolean;
@@ -1339,6 +1374,8 @@ function PinSheet({
         id="history-pin-expiry"
         className="mono"
         type="date"
+        min={expiryMinimum}
+        max={expiryMaximum}
         value={state.expiresAt}
         onChange={(event) => onChange({ expiresAt: event.target.value })}
       />
@@ -1400,7 +1437,7 @@ function PinSheet({
           id="history-pin-submit"
           type="button"
           className="btn btn--primary"
-          disabled={busy || state.workloadPrincipalID === ''}
+          disabled={busy || state.workloadPrincipalID === '' || state.expiresAt === ''}
           onClick={onSubmit}
         >
           {busy ? 'Pinning…' : moveMayCollect ? `${plan.label} — old values may be collected` : plan.label}

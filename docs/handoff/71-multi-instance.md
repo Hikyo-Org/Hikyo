@@ -1057,13 +1057,12 @@ it, so surface + route + flow landed together):
 
 **Two UI decisions worth review:**
 
-1. **The ceremony is TWO clicks and the platform forces it.** `window.open`
-   only survives the popup blocker inside the task of a real user gesture, and
-   the handoff transaction cannot be opened without a network round trip first.
-   So click one prepares (`prepareWorkspace`: live meta read + transaction) and
-   click two opens (`openPrepared`, whose first statement is the `window.open`).
-   It buys something worth having anyway: the human reads which origin they are
-   about to be sent to before a window appears.
+1. **The ceremony prepares eagerly before its popup-launch click.** `window.open`
+   only survives the popup blocker inside the task of a real user gesture, while
+   the handoff transaction needs a network round trip first. The launcher stays
+   disabled and says `Contacting…` until `prepareWorkspace` completes; its
+   enabled, origin-labelled action then calls `openPrepared` synchronously. The
+   human still reads which origin they are about to visit before a window opens.
 2. **A liveness poll, and it is how both kill switches become visible.**
    `probeWorkspace` GETs the remote's `/api/v1/me/sessions` with the bearer
    every 5s. A 401/403 drops it. An OPAQUE failure counts a strike and two
