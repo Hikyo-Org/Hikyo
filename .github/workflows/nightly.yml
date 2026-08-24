@@ -41,7 +41,9 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           COMMIT: ${{ steps.source.outputs.commit }}
           RUN_NUMBER: ${{ github.run_number }}
+          INITIAL_NIGHTLY_VERSION: 0.0.1
         run: |
+          set -o pipefail
           latest_target=$(gh api "repos/$REPOSITORY/releases?per_page=100" --jq '
             map(select(.draft == false and .prerelease == true and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-nightly\\.")))) |
             .[0].target_commitish // ""
@@ -51,9 +53,17 @@ jobs:
             printf 'nightly: commit %s already published\n' "$COMMIT"
             exit 0
           fi
-          stable_tag=$(gh api "repos/$REPOSITORY/releases/latest" --jq .tag_name)
-          version=$(./scripts/release/next-nightly-version.sh \
-            "$stable_tag" "$(date -u +%Y%m%d)" "$RUN_NUMBER" "$COMMIT")
+          stable_tag=$(gh api --paginate --slurp \
+            "repos/$REPOSITORY/releases?per_page=100" | \
+            ./scripts/release/latest-stable-version.sh)
+          release_date=$(date -u +%Y%m%d)
+          if [ -n "$stable_tag" ]; then
+            version=$(./scripts/release/next-nightly-version.sh \
+              "$stable_tag" "$release_date" "$RUN_NUMBER" "$COMMIT")
+          else
+            version=$(./scripts/release/nightly-version.sh "$INITIAL_NIGHTLY_VERSION" \
+              "$release_date" "$RUN_NUMBER" "$COMMIT")
+          fi
           tag="v$version"
           if gh api "repos/$REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
             printf 'nightly: tag %s already exists\n' "$tag" >&2
