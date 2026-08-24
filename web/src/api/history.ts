@@ -20,9 +20,11 @@ import { z } from 'zod';
 import { ApiError, parsed } from './client.ts';
 import {
   pinsKey,
+  pendingMatrixKey,
   projectRetentionKey,
   revisionDetailKey,
   revisionsKey,
+  signalsMatrixKey,
   valuesKey,
   type EnvRef,
   type MatrixRef,
@@ -237,8 +239,10 @@ export function useRestoreRevision(env: EnvRef) {
     onSuccess: () =>
       Promise.all([
         queries.invalidateQueries({ queryKey: valuesKey(env) }),
-        queries.invalidateQueries({ queryKey: ['matrix-signals', env.org, env.project] }),
-        queries.invalidateQueries({ queryKey: ['matrix-pending', env.org, env.project] }),
+        queries.invalidateQueries({ queryKey: signalsMatrixKey(env) }),
+        queries.invalidateQueries({ queryKey: pendingMatrixKey(env) }),
+        queries.invalidateQueries({ queryKey: revisionsKey(env) }),
+        queries.invalidateQueries({ queryKey: pinsKey(env) }),
       ]),
   });
 }

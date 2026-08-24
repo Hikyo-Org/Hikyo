@@ -31,10 +31,13 @@ import {
   matrixGroupsKey,
   matrixKeysKey,
   pendingDraftsKey,
+  pendingMatrixKey,
   pinsKey,
   revisionsKey,
   signalsKey,
+  signalsMatrixKey,
   valuesKey,
+  valuesMatrixKey,
   windowKey,
   type MatrixRef,
 } from './keys.ts';
@@ -671,9 +674,9 @@ export function usePublishMatrix(ref: MatrixRef) {
     onSuccess: (result, input) => {
       forgetRestorePreviews(ref, input.versionIds);
       return Promise.all([
-        queries.invalidateQueries({ queryKey: ['values', ref.org, ref.project] }),
-        queries.invalidateQueries({ queryKey: ['matrix-signals', ref.org, ref.project] }),
-        queries.invalidateQueries({ queryKey: ['matrix-pending', ref.org, ref.project] }),
+        queries.invalidateQueries({ queryKey: valuesMatrixKey(ref) }),
+        queries.invalidateQueries({ queryKey: signalsMatrixKey(ref) }),
+        queries.invalidateQueries({ queryKey: pendingMatrixKey(ref) }),
         ...result.environments.flatMap((published) => {
           const env = { ...ref, environment: published.environment_id };
           return [
