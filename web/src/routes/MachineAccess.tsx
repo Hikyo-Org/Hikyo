@@ -1405,6 +1405,18 @@ function BindingDialog({
       );
       return;
     }
+    if (issuer.trim() === '') {
+      setFailure(
+        'An issuer is mandatory because federated bindings match it byte-for-byte. Nothing was bound.',
+      );
+      return;
+    }
+    if (subject.trim() === '') {
+      setFailure(
+        'A subject is mandatory because federated bindings match it byte-for-byte. Nothing was bound.',
+      );
+      return;
+    }
     const pins = pinsOrRefusal();
     if (typeof pins === 'string') {
       setFailure(pins);
