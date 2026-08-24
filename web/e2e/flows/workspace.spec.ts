@@ -236,14 +236,15 @@ test.describe('multi-instance', () => {
 
     // And the shell notices, on its own, within one liveness poll.
     await expect(entry.getByText('Workspace session ended')).toBeVisible({ timeout: 30_000 });
-    await expect(entry.getByRole('button', { name: /^Continue to / })).toBeVisible({
-      timeout: 30_000,
-    });
+    // Eager preparation correctly fails while this origin is no longer
+    // allowlisted; the launcher must expose a truthful retry, not claim ready.
+    await expect(entry.getByRole('button', { name: 'Try again' })).toBeVisible({ timeout: 30_000 });
 
     // --- kill switch 2: revoked from the remote's active-session list -------
     await onB(b, '/remotes');
     await allowOrigin(b);
 
+    await entry.getByRole('button', { name: 'Try again' }).click();
     const proceedAgain = entry.getByRole('button', { name: /^Continue to / });
     await expect(proceedAgain).toBeVisible({ timeout: 30_000 });
     const second = context.waitForEvent('page');
