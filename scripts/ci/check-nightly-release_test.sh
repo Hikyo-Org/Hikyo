@@ -18,7 +18,13 @@ fail() {
 grep -F 'cron: "0 2 * * *"' "$workflow" >/dev/null || fail '02:00 UTC schedule is missing'
 grep -F 'ref: refs/heads/main' "$workflow" >/dev/null || fail 'nightly checkout is not pinned to main'
 grep -F 'COMMIT: ${{ steps.source.outputs.commit }}' "$workflow" >/dev/null || fail 'nightly does not use the checked-out main SHA'
-grep -F 'select(.draft == false and .prerelease == true' "$workflow" >/dev/null || fail 'draft nightlies can suppress publication'
+grep -F './scripts/release/latest-nightly-tag.sh' "$workflow" >/dev/null || fail 'published nightly discovery is missing'
+grep -F 'git/ref/tags/$latest_tag' "$workflow" >/dev/null || fail 'nightly deduplication trusts target_commitish instead of resolving the tag'
+grep -F './scripts/release/nightly-run-tag.sh "$RUN_NUMBER"' "$workflow" >/dev/null || fail 'reruns do not recover their durable tag identity'
+grep -F 'multiple nightly tags exist for workflow run' "$repo_root/scripts/release/nightly-run-tag.sh" >/dev/null || fail 'ambiguous rerun tag identity is accepted'
+if grep -F 'target_commitish' "$workflow" >/dev/null; then
+	fail 'nightly deduplication trusts mutable release metadata'
+fi
 grep -F './scripts/release/require-green-main.sh "$REPOSITORY" "$COMMIT"' "$workflow" >/dev/null || fail 'nightly does not require exact-head green main CI'
 grep -F 'INITIAL_NIGHTLY_VERSION: 0.0.1' "$workflow" >/dev/null || fail 'first nightly version is not explicit'
 grep -F 'set -o pipefail' "$workflow" >/dev/null || fail 'paginated release discovery can hide API failures'
@@ -66,5 +72,7 @@ fi
 
 "$repo_root/scripts/release/next-nightly-version_test.sh"
 "$repo_root/scripts/release/latest-stable-version_test.sh"
+"$repo_root/scripts/release/latest-nightly-tag_test.sh"
+"$repo_root/scripts/release/nightly-run-tag_test.sh"
 "$repo_root/scripts/release/require-green-main_test.sh"
 printf 'nightly release fixture: CI-gated six-platform prereleases stay outside official signing\n'
