@@ -1,4 +1,4 @@
-package crypto
+package securefile
 
 import (
 	"bytes"
@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Hikyo-Org/hikyo/internal/securefile"
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
 )
 
 // StageRootKey validates a group-readable projected Secret and atomically
@@ -18,18 +18,18 @@ func StageRootKey(source, destination string) error {
 	if err != nil {
 		return fmt.Errorf("read projected root key: %w", err)
 	}
-	defer Zero(raw)
+	defer crypto.Zero(raw)
 
-	decoded, err := decodeRootKey(raw)
+	decoded, err := crypto.ReadRootKey("", string(raw))
 	if err != nil {
 		return fmt.Errorf("validate projected root key: %w", err)
 	}
-	Zero(decoded)
+	crypto.Zero(decoded)
 
 	if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
 		return fmt.Errorf("create staged root-key directory: %w", err)
 	}
-	if err := securefile.WriteAtomic(destination, bytes.TrimSpace(raw), 0o400); err != nil {
+	if err := WriteAtomic(destination, bytes.TrimSpace(raw), 0o400); err != nil {
 		return fmt.Errorf("publish staged root key: %w", err)
 	}
 	return nil

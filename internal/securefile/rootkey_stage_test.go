@@ -1,10 +1,12 @@
-package crypto
+package securefile
 
 import (
 	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
 )
 
 func TestStageRootKeyCreatesOwnerOnlyRuntimeFile(t *testing.T) {
@@ -16,8 +18,8 @@ func TestStageRootKeyCreatesOwnerOnlyRuntimeFile(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	want := bytes.Repeat([]byte{0x5a}, KeySize)
-	if err := os.WriteFile(source, []byte(EncodeRootKey(want)), 0o440); err != nil {
+	want := bytes.Repeat([]byte{0x5a}, crypto.KeySize)
+	if err := os.WriteFile(source, []byte(crypto.EncodeRootKey(want)), 0o440); err != nil {
 		t.Fatal(err)
 	}
 
@@ -31,11 +33,11 @@ func TestStageRootKeyCreatesOwnerOnlyRuntimeFile(t *testing.T) {
 	if got := info.Mode().Perm(); got != 0o400 {
 		t.Fatalf("staged root key mode = %04o, want 0400", got)
 	}
-	got, err := ReadRootKey(destination, "")
+	got, err := crypto.ReadRootKey(destination, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer Zero(got)
+	defer crypto.Zero(got)
 	if !bytes.Equal(got, want) {
 		t.Fatal("staged root key bytes differ from source")
 	}
