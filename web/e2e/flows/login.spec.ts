@@ -146,7 +146,7 @@ test.describe('login', () => {
     page,
   }) => {
     const startPath = `**/api/v1/auth/oidc/${OIDC_PROVIDER.slug}/start`;
-    let releaseStart = () => undefined;
+    let releaseStart: () => void = () => undefined;
     const pendingStart = new Promise<void>((resolve) => {
       releaseStart = resolve;
     });
