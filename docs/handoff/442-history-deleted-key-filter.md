@@ -21,9 +21,16 @@ Issue: https://github.com/Hikyo-Org/Hikyo/issues/442
 
 ## Validation
 
-Pending while local memory pressure is high. Pull-request CI is the first test
-run; local focused and package checks follow when pressure subsides.
+```text
+pnpm --dir web exec vitest run src/routes/history-state.test.ts src/routes/HistoryDrawer.test.tsx
+                                                     2 files / 46 tests passed
+pnpm --dir web typecheck                            passed
+pnpm --dir web test                                 42 files / 333 tests passed
+pnpm --dir web build                                passed
+git diff --check                                    passed
+```
 
 ## Review
 
-Pending two-axis standards and issue-spec review.
+Two-axis review returned `CLEAN` for both repository standards and issue-spec
+compliance.
