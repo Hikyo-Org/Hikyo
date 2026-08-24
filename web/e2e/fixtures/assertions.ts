@@ -95,76 +95,50 @@ export async function expectVisibleFocusIndicator(page: Page, target: Locator): 
   await target.focus();
   await expect(target).toBeFocused();
 
-  const ring = await target.evaluate((el) => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 1;
-    canvas.height = 1;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (ctx === null) {
-      throw new Error('no 2d context to sample colours with');
-    }
-    const sample = (value: string): [number, number, number, number] => {
-      ctx.clearRect(0, 0, 1, 1);
-      ctx.fillStyle = value;
-      ctx.fillRect(0, 0, 1, 1);
-      const d = ctx.getImageData(0, 0, 1, 1).data;
-      return [d[0] ?? 0, d[1] ?? 0, d[2] ?? 0, (d[3] ?? 0) / 255];
-    };
-    const luminance = ([r, g, b]: [number, number, number, number]) => {
-      const ch = (c: number) => {
-        const v = c / 255;
-        return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
-      };
-      return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b);
-    };
-    // The ring is painted OUTSIDE the element, over whatever its ancestors
-    // paint — so that, not the element's own fill, is what it must stand out
-    // against.
-    let node: Element | null = el.parentElement;
-    let behind = getComputedStyle(document.body).backgroundColor;
-    while (node !== null) {
-      const value = getComputedStyle(node).backgroundColor;
-      if (sample(value)[3] > 0.99) {
-        behind = value;
-        break;
-      }
-      node = node.parentElement;
-    }
-
+  const drawn = await target.evaluate((el) => {
     const style = getComputedStyle(el);
-    const drawn: Array<{ how: string; colour: string }> = [];
+    const rings: Array<{ how: string; colour: string }> = [];
     if (style.outlineStyle !== 'none' && Number.parseFloat(style.outlineWidth) > 0) {
-      drawn.push({ how: `outline ${style.outlineWidth} ${style.outlineStyle}`, colour: style.outlineColor });
+      rings.push({
+        how: `outline ${style.outlineWidth} ${style.outlineStyle}`,
+        colour: style.outlineColor,
+      });
     }
     if (style.boxShadow !== 'none' && style.boxShadow !== '') {
       // Computed box-shadow starts with its colour.
       const colour = /^(rgba?\([^)]*\)|oklch\([^)]*\)|#[0-9a-f]+)/i.exec(style.boxShadow)?.[1];
       if (colour !== undefined) {
-        drawn.push({ how: `box-shadow ${style.boxShadow}`, colour });
+        rings.push({ how: `box-shadow ${style.boxShadow}`, colour });
       }
     }
-
-    const behindL = luminance(sample(behind));
-    const rings = drawn.map((d) => {
-      const rgba = sample(d.colour);
-      const l = luminance(rgba);
-      return {
-        how: d.how,
-        colour: d.colour,
-        alpha: rgba[3],
-        contrast: (Math.max(l, behindL) + 0.05) / (Math.min(l, behindL) + 0.05),
-      };
-    });
-    return { behind, rings };
+    return rings;
   });
+  // The ring is painted OUTSIDE the element, over whatever its ancestors
+  // paint — so that, not the element's own fill, is what it must stand out
+  // against.
+  const behind = await paintedBackground(target, false);
+  const behindSample = await sampleColour(page, behind);
+  const rings = await Promise.all(
+    drawn.map(async (candidate) => {
+      const sample = await sampleColour(page, candidate.colour);
+      return {
+        ...candidate,
+        alpha: sample.alpha,
+        contrast: contrastRatio(sample.rgb, behindSample.rgb),
+      };
+    }),
+  );
 
-  expect(ring.rings.length, 'nothing is drawn on focus: no outline and no box-shadow').toBeGreaterThan(0);
-  const visible = ring.rings.filter((r) => r.alpha > 0.99 && r.contrast >= 3);
+  expect(rings.length, 'nothing is drawn on focus: no outline and no box-shadow').toBeGreaterThan(0);
+  const visible = rings.filter((ring) => ring.alpha > 0.99 && ring.contrast >= 3);
   expect(
     visible.length,
-    `no VISIBLE focus ring against ${ring.behind}: ` +
-      ring.rings
-        .map((r) => `${r.how} (${r.colour}, alpha ${r.alpha}, contrast ${r.contrast.toFixed(2)}:1)`)
+    `no VISIBLE focus ring against ${behind}: ` +
+      rings
+        .map(
+          (ring) =>
+            `${ring.how} (${ring.colour}, alpha ${ring.alpha}, contrast ${ring.contrast.toFixed(2)}:1)`,
+        )
         .join('; '),
   ).toBeGreaterThan(0);
 
@@ -199,8 +173,14 @@ export async function expectEveryFocusIndicator(page: Page, targets: Locator[]):
 
 type Contrast = { ratio: number; foreground: string; background: string };
 
+type SampledColour = { rgb: number[]; alpha: number };
+
 /** sampleRGB asks the browser what sRGB a CSS colour actually paints. */
 async function sampleRGB(page: Page, colour: string): Promise<number[]> {
+  return (await sampleColour(page, colour)).rgb;
+}
+
+async function sampleColour(page: Page, colour: string): Promise<SampledColour> {
   return page.evaluate((value) => {
     const canvas = document.createElement('canvas');
     canvas.width = 1;
@@ -213,8 +193,38 @@ async function sampleRGB(page: Page, colour: string): Promise<number[]> {
     ctx.fillStyle = value;
     ctx.fillRect(0, 0, 1, 1);
     const d = ctx.getImageData(0, 0, 1, 1).data;
-    return [d[0] ?? 0, d[1] ?? 0, d[2] ?? 0];
+    return {
+      rgb: [d[0] ?? 0, d[1] ?? 0, d[2] ?? 0],
+      alpha: (d[3] ?? 0) / 255,
+    };
   }, colour);
+}
+
+async function paintedBackground(target: Locator, includeTarget: boolean): Promise<string> {
+  return target.evaluate((el, includeSelf) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (ctx === null) {
+      throw new Error('no 2d context to sample colours with');
+    }
+    let node: Element | null = includeSelf ? el : el.parentElement;
+    let background = getComputedStyle(document.body).backgroundColor;
+    while (node !== null) {
+      const value = getComputedStyle(node).backgroundColor;
+      ctx.clearRect(0, 0, 1, 1);
+      ctx.fillStyle = value;
+      ctx.fillRect(0, 0, 1, 1);
+      const alpha = (ctx.getImageData(0, 0, 1, 1).data[3] ?? 0) / 255;
+      if (alpha > 0.99) {
+        background = value;
+        break;
+      }
+      node = node.parentElement;
+    }
+    return background;
+  }, includeTarget);
 }
 
 function relativeLuminance(rgb: readonly number[]): number {
@@ -244,56 +254,20 @@ function contrastRatio(first: readonly number[], second: readonly number[]): num
  * background. Reading the token values instead would prove the tokens contrast
  * with each other, not that this element does.
  */
-async function measureContrast(target: Locator): Promise<Contrast> {
-  return target.evaluate((el) => {
-    // Colours are authored in OKLCH and `getComputedStyle` returns them that
-    // way, so the ratio cannot be computed by pulling three numbers out of the
-    // string. Painting each colour into a 1x1 canvas asks the BROWSER for the
-    // sRGB it will actually display, which is the only honest source — and it
-    // keeps working when the palette moves to another colour space.
-    const canvas = document.createElement('canvas');
-    canvas.width = 1;
-    canvas.height = 1;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (ctx === null) {
-      throw new Error('no 2d context to sample colours with');
-    }
-    const sample = (value: string): [number, number, number, number] => {
-      ctx.clearRect(0, 0, 1, 1);
-      ctx.fillStyle = value;
-      ctx.fillRect(0, 0, 1, 1);
-      const d = ctx.getImageData(0, 0, 1, 1).data;
-      return [d[0] ?? 0, d[1] ?? 0, d[2] ?? 0, (d[3] ?? 0) / 255];
-    };
-    const luminance = ([r, g, b]: [number, number, number, number]): number => {
-      const channel = (c: number) => {
-        const v = c / 255;
-        return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
-      };
-      return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
-    };
-
-    const foreground = getComputedStyle(el).color;
-    // The effective background is the first ancestor that actually paints one.
-    // A translucent layer keeps the walk going rather than being blended: the
-    // skeleton has none, and guessing at compositing would make the number
-    // look more precise than it is.
-    let node: Element | null = el;
-    let background = getComputedStyle(document.body).backgroundColor;
-    while (node !== null) {
-      const value = getComputedStyle(node).backgroundColor;
-      if (sample(value)[3] > 0.99) {
-        background = value;
-        break;
-      }
-      node = node.parentElement;
-    }
-
-    const lf = luminance(sample(foreground));
-    const lb = luminance(sample(background));
-    const ratio = (Math.max(lf, lb) + 0.05) / (Math.min(lf, lb) + 0.05);
-    return { ratio, foreground, background };
-  });
+async function measureContrast(page: Page, target: Locator): Promise<Contrast> {
+  const [foreground, background] = await Promise.all([
+    target.evaluate((el) => getComputedStyle(el).color),
+    paintedBackground(target, true),
+  ]);
+  const [foregroundSample, backgroundSample] = await Promise.all([
+    sampleRGB(page, foreground),
+    sampleRGB(page, background),
+  ]);
+  return {
+    ratio: contrastRatio(foregroundSample, backgroundSample),
+    foreground,
+    background,
+  };
 }
 
 /**
@@ -309,17 +283,21 @@ export async function measureSurfaceLuminance(
   return { colour, luminance: relativeLuminance(await sampleRGB(page, colour)) };
 }
 
-export async function expectContrast(target: Locator, minimum = 4.5): Promise<void> {
-  const { ratio, foreground, background } = await measureContrast(target);
+export async function expectContrast(page: Page, target: Locator, minimum = 4.5): Promise<void> {
+  const { ratio, foreground, background } = await measureContrast(page, target);
   expect(
     ratio,
     `contrast ${ratio.toFixed(2)}:1 for ${foreground} on ${background}, want >= ${minimum}:1`,
   ).toBeGreaterThanOrEqual(minimum);
 }
 
-export async function expectEveryContrast(targets: Locator[], minimum = 4.5): Promise<void> {
+export async function expectEveryContrast(
+  page: Page,
+  targets: Locator[],
+  minimum = 4.5,
+): Promise<void> {
   for (const target of targets) {
-    await expectContrast(target, minimum);
+    await expectContrast(page, target, minimum);
   }
 }
 
@@ -631,7 +609,7 @@ export async function expectPinnedAssertionSet(page: Page, surface: PinnedSurfac
   const interactive = await interactiveElements(page);
   await expectEveryFocusIndicator(page, interactive);
   await expectTouchTargets(page, interactive);
-  await expectEveryContrast([...interactive, ...surface.text]);
+  await expectEveryContrast(page, [...interactive, ...surface.text]);
 
   for (const [target, role] of surface.radii) {
     await expectRadiusRole(page, target, role);

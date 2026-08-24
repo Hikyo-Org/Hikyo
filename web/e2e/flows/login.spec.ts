@@ -188,9 +188,9 @@ test.describe('login', () => {
     await page.goto('/login');
     for (const scheme of ['dark', 'light'] as const) {
       await page.emulateMedia({ colorScheme: scheme });
-      await expectContrast(page.getByRole('heading', { name: 'Sign in to Hikyo' }));
-      await expectContrast(page.getByText('Use the credential you established'));
-      await expectContrast(page.getByText('Username'));
+      await expectContrast(page, page.getByRole('heading', { name: 'Sign in to Hikyo' }));
+      await expectContrast(page, page.getByText('Use the credential you established'));
+      await expectContrast(page, page.getByText('Username'));
     }
   });
 });
