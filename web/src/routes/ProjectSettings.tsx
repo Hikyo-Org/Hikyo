@@ -64,7 +64,7 @@ export function ProjectSettings() {
   const definitionsSettings = useDefinitionsSettings(org, project);
   const setDefinitionsSettings = useSetDefinitionsSettings(org, project);
   const rename = useRenameProject(org);
-  const remove = useDeleteProject(org);
+  const remove = useDeleteProject(org, () => navigate(surfaceById('projects').path));
   const nameId = useId();
 
   const [name, setName] = useState('');
@@ -258,7 +258,6 @@ export function ProjectSettings() {
             remove.mutate(
               { project },
               {
-                onSuccess: () => navigate(surfaceById('projects').path),
                 onError: (error) => report('delete-project', error),
               },
             )

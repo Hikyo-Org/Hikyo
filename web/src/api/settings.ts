@@ -430,11 +430,12 @@ export function useRenameProject(org: string) {
   });
 }
 
-export function useDeleteProject(org: string) {
+export function useDeleteProject(org: string, onDeleted?: () => void) {
   const auth = useAuth();
   return useMutation({
     mutationFn: (input: { project: string }) =>
       ok(deleteProjectOp, { path: { org, project: input.project } }),
+    onSuccess: onDeleted,
     onSettled: () => auth.refreshSession(),
   });
 }

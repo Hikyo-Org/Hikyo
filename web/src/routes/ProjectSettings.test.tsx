@@ -51,6 +51,9 @@ afterEach(() => {
 
 describe('ProjectSettings', () => {
   it('navigates to the project list after deleting the current project', async () => {
+    // The redirect must not wait for session refresh: refresh immediately
+    // invalidates the deleted project's query in the real provider.
+    mocks.refreshSession.mockReturnValue(new Promise<void>(() => {}));
     const fetchMock = vi.fn((..._args: Parameters<typeof fetch>) =>
       Promise.resolve(new Response(null, { status: 204 })),
     );
