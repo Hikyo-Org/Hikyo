@@ -62,6 +62,7 @@ const MASK = '••••••••';
 const AUDIT_LINES = 12;
 
 type Disclosed = { value: string; until: number };
+type RevealAnnouncement = { id: number; message: string };
 
 /**
  * cellKey identifies a disclosed cell by ENVIRONMENT and key id.
@@ -98,6 +99,7 @@ export function Values() {
   const [now, setNow] = useState(() => Date.now());
   const [refusal, setRefusal] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [revealAnnouncement, setRevealAnnouncement] = useState<RevealAnnouncement | null>(null);
   const [audit, setAudit] = useState<string[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [destination, setDestination] = useState('');
@@ -119,6 +121,7 @@ export function Values() {
     setEditing(null);
     setRefusal(null);
     setNotice(null);
+    setRevealAnnouncement(null);
     setAudit([]);
   }, [env.org, env.project, env.environment]);
 
@@ -259,6 +262,16 @@ export function Values() {
         }
         return next;
       });
+      const [first] = entries;
+      if (first !== undefined) {
+        const subject =
+          entries.length === 1 ? `${first.name} revealed` : `${entries.length} secrets revealed`;
+        const verb = entries.length === 1 ? 're-masks' : 're-mask';
+        setRevealAnnouncement((current) => ({
+          id: (current?.id ?? 0) + 1,
+          message: `${subject} — ${verb} in ${String(REMASK_MS / 1000)}s`,
+        }));
+      }
       noteDisclosure(entries.map((e) => e.name));
     },
     [env.environment, noteDisclosure],
@@ -418,6 +431,16 @@ export function Values() {
         </p>
       ) : null}
 
+      {revealAnnouncement !== null ? (
+        <p
+          key={revealAnnouncement.id}
+          className="values__reveal-announcement visually-hidden"
+          role="status"
+        >
+          {revealAnnouncement.message}
+        </p>
+      ) : null}
+
       <div className="values__bar">
         <button
           className="btn"
@@ -496,9 +519,9 @@ export function Values() {
                   {!cell.set ? (
                     <span className="values__absent">absent</span>
                   ) : live !== undefined ? (
-                    <span className="mono values__plain">
+                    <span className="mono values__plain" aria-label={`${cell.name} revealed`}>
                       {live.value}
-                      <span className="values__countdown" role="status">
+                      <span className="values__countdown" aria-hidden="true">
                         {`re-masks in ${remaining}s`}
                       </span>
                     </span>
