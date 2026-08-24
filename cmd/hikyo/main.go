@@ -35,6 +35,9 @@ func main() {
 }
 
 func run() int {
+	if handled, code := runRootKeyStageMode(os.Args[1:]); handled {
+		return code
+	}
 	if handled, code := runTLSStageMode(os.Args[1:]); handled {
 		return code
 	}

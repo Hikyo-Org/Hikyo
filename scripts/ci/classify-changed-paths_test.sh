@@ -51,6 +51,10 @@ expect_plan 'client' '["client","release-snapshot","web"]' \
 	'clients/ts/src/generated/types.gen.ts'
 expect_plan 'release' '["lint","release-snapshot","supply-chain-checks"]' \
 	'scripts/release/check-tag.sh'
+expect_plan 'chart' '["k8s-e2e","lint","release-snapshot","supply-chain-checks"]' \
+	'chart/hikyo/values.yaml'
+expect_plan 'release image' '["k8s-e2e","lint","release-snapshot","supply-chain-checks"]' \
+	'Dockerfile.release'
 expect_plan 'LICENSE' '["docs","release-snapshot"]' 'LICENSE'
 expect_plan 'main CI gate' \
 	'["docs","lint","release-snapshot","supply-chain-checks"]' \
@@ -122,6 +126,10 @@ expect_plan 'generated CRD' \
 	'["generated","k8s-e2e","lint","release-snapshot","supply-chain-checks"]' \
 	'chart/hikyo/crds/hikyo.dev_hikyosecrets.yaml'
 expect_plan 'k8s e2e runner' '["k8s-e2e","lint"]' 'scripts/ci/k8s-e2e.sh'
+expect_plan 'chart kind runner' '["k8s-e2e","lint"]' 'scripts/ci/chart-kind.sh'
+expect_plan 'root-key staging runtime' \
+	'["fuzz","generated","headline-guarantee","k8s-e2e","race","release-snapshot","test","web"]' \
+	'internal/crypto/rootkey_stage.go'
 
 for fail_closed_input in \
 	'' \

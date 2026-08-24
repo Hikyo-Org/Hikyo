@@ -238,8 +238,12 @@ jobs:
           grep -Fx "  repository: $IMAGE" "$chart_dir/values.yaml"
           grep -Fx "  digest: $IMAGE_DIGEST" "$chart_dir/values.yaml"
           helm lint "$chart_dir" --set database.existingSecret=hikyo-database \
+            --set rootKey.existingSecret=hikyo-root-key \
+            --set externalOrigin=https://hikyo.example.com \
             --set 'network.trustedProxyCIDRs={10.42.0.0/16}'
           helm template fixture "$chart_dir" --set database.existingSecret=hikyo-database \
+            --set rootKey.existingSecret=hikyo-root-key \
+            --set externalOrigin=https://hikyo.example.com \
             --set 'network.trustedProxyCIDRs={10.42.0.0/16}' >/dev/null
           helm package "$chart_dir" --version "$version" --app-version "$version" --destination dist
           printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$ACTOR" --password-stdin

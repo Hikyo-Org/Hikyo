@@ -1,3 +1,4 @@
+{{- include "hikyo.server.validate" . -}}
 {{- $trustedProxyCIDRs := join "," .Values.network.trustedProxyCIDRs }}
 {{- if and (empty $trustedProxyCIDRs) (empty .Values.tls.existingSecret) }}
 {{- fail "configure tls.existingSecret or network.trustedProxyCIDRs for the non-loopback listener" }}
@@ -25,14 +26,27 @@ spec:
         runAsNonRoot: true
         runAsUser: 65532
         runAsGroup: 65532
-        {{- if .Values.tls.existingSecret }}
         fsGroup: 65532
         fsGroupChangePolicy: OnRootMismatch
-        {{- end }}
         seccompProfile:
           type: RuntimeDefault
-      {{- if .Values.tls.existingSecret }}
       initContainers:
+        - name: root-key-stage
+          image: "{{ .Values.image.repository }}@{{ required "image.digest is required" .Values.image.digest }}"
+          imagePullPolicy: IfNotPresent
+          args: ["__hikyo-stage-root-key"]
+          volumeMounts:
+            - name: root-key-source
+              mountPath: /run/hikyo-root-key-source
+              readOnly: true
+            - name: root-key
+              mountPath: /run/hikyo-root-key
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+      {{- if .Values.tls.existingSecret }}
         - name: tls-stage
           image: "{{ .Values.image.repository }}@{{ required "image.digest is required" .Values.image.digest }}"
           imagePullPolicy: IfNotPresent
@@ -59,6 +73,7 @@ spec:
             - server
             - --listen=0.0.0.0:8080
             - --operational-listen=0.0.0.0:8081
+            - --root-key-file=/run/hikyo-root-key/root-key
             {{- if .Values.tls.existingSecret }}
             - --tls-cert-file=/run/hikyo-tls/tls.crt
             - --tls-key-file=/run/hikyo-tls/tls.key
@@ -71,6 +86,8 @@ spec:
                   key: HIKYO_DB
             - name: HIKYO_UPDATE_CHANNEL
               value: {{ .Values.updates.channel | quote }}
+            - name: HIKYO_EXTERNAL_ORIGIN
+              value: {{ .Values.externalOrigin | quote }}
             {{- if $trustedProxyCIDRs }}
             - name: HIKYO_TRUSTED_PROXY_CIDRS
               value: {{ $trustedProxyCIDRs | quote }}
@@ -84,12 +101,33 @@ spec:
             httpGet:
               path: /readyz
               port: ops
+            periodSeconds: 5
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /healthz
               port: ops
-          {{- if .Values.tls.existingSecret }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /readyz
+              port: ops
+            periodSeconds: 5
+            failureThreshold: 30
           volumeMounts:
+            - name: root-key
+              mountPath: /run/hikyo-root-key
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.database.tls.existingSecret }}
+            - name: database-ca
+              mountPath: /run/hikyo-database-ca
+              readOnly: true
+            {{- end }}
+            {{- if .Values.tls.existingSecret }}
             - name: tls
               mountPath: /run/hikyo-tls
               readOnly: true
@@ -120,8 +158,28 @@ spec:
           resources:
             {{- toYaml .Values.tls.reloaderResources | nindent 12 }}
         {{- end }}
-      {{- if .Values.tls.existingSecret }}
       volumes:
+        - name: root-key-source
+          secret:
+            secretName: {{ .Values.rootKey.existingSecret }}
+            defaultMode: 0400
+            items:
+              - key: {{ .Values.rootKey.key }}
+                path: root-key
+        - name: root-key
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.database.tls.existingSecret }}
+        - name: database-ca
+          secret:
+            secretName: {{ .Values.database.tls.existingSecret }}
+            defaultMode: 0444
+            items:
+              - key: {{ .Values.database.tls.key }}
+                path: ca.crt
+        {{- end }}
+        {{- if .Values.tls.existingSecret }}
         - name: tls-source
           secret:
             secretName: {{ .Values.tls.existingSecret }}

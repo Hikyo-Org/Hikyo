@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/securefile"
 )
 
 // StageCertificatePair copies a read-only source pair to owner-readable files.
@@ -28,45 +30,16 @@ func StageCertificatePair(certSource, keySource, destinationDir string) error {
 	}
 	certPath := filepath.Join(destinationDir, "tls.crt")
 	keyPath := filepath.Join(destinationDir, "tls.key")
-	if err := atomicWrite(certPath, certPEM, 0o444); err != nil {
+	if err := securefile.WriteAtomic(certPath, certPEM, 0o444); err != nil {
 		return fmt.Errorf("stage TLS certificate: %w", err)
 	}
-	if err := atomicWrite(keyPath, keyPEM, 0o400); err != nil {
+	if err := securefile.WriteAtomic(keyPath, keyPEM, 0o400); err != nil {
 		return fmt.Errorf("stage TLS key: %w", err)
 	}
 	if _, _, err := LoadCertificate(certPath, keyPath, time.Now()); err != nil {
 		return fmt.Errorf("validate staged TLS pair: %w", err)
 	}
 	return nil
-}
-
-func atomicWrite(path string, contents []byte, mode os.FileMode) (returnErr error) {
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".tls-stage-*")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	defer func() {
-		if returnErr != nil {
-			_ = os.Remove(tmpPath)
-		}
-	}()
-	if err := tmp.Chmod(mode); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if _, err := tmp.Write(contents); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmpPath, path)
 }
 
 // WatchAndStageCertificatePair stages once, then polls the source files for
