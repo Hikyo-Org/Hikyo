@@ -2,11 +2,12 @@ import { expect, test, type Page } from '@playwright/test';
 
 import {
   expectContrast,
+  expectNoSeriousAxeViolations,
   expectPinnedAssertionSet,
   expectStatusIsTextAndAria,
   measureSurfaceLuminance,
 } from '../fixtures/assertions.ts';
-import { ADMIN } from '../fixtures/instance.ts';
+import { ADMIN, OIDC_PROVIDER } from '../fixtures/instance.ts';
 
 async function expectLoginSurface(page: Page, theme: 'dark' | 'light') {
   await page.emulateMedia({ colorScheme: theme });
@@ -139,6 +140,39 @@ test.describe('login', () => {
       session: Object.entries(globalThis.sessionStorage),
     }));
     expect(JSON.stringify(stored)).not.toContain('hik_1_');
+  });
+
+  test('keeps every login control accessible while an OIDC ceremony is pending', async ({
+    page,
+  }) => {
+    const startPath = `**/api/v1/auth/oidc/${OIDC_PROVIDER.slug}/start`;
+    let releaseStart = () => undefined;
+    const pendingStart = new Promise<void>((resolve) => {
+      releaseStart = resolve;
+    });
+    await page.route(startPath, async (route) => {
+      await pendingStart;
+      await route.abort();
+    });
+
+    try {
+      await page.goto('/login');
+      const oidc = page.getByRole('button', {
+        name: `Continue with ${OIDC_PROVIDER.displayName}`,
+      });
+      await oidc.click();
+      await expect(oidc).toHaveText('Contacting identity provider…');
+
+      const controls = page.locator('input, button');
+      await expect(controls).toHaveCount(5);
+      for (const control of await controls.all()) {
+        await expect(control).toBeDisabled();
+      }
+      await expectNoSeriousAxeViolations(page);
+    } finally {
+      releaseStart();
+      await page.unroute(startPath);
+    }
   });
 
   // The palette is a dual-theme palette, so conformance is a dual-theme claim:

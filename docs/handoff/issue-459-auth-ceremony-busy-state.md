@@ -15,6 +15,9 @@ Issue: https://github.com/Hikyo-Org/Hikyo/issues/459. Base:
 
 - Component tests cover both passkey and OIDC pending states through the
   rendered login form and require all five available controls to be disabled.
+- Browser coverage holds the OIDC start request pending, requires the same five
+  controls to be disabled, and runs the serious/critical axe assertion against
+  that pending state.
 - Local web validation was deferred before the first push because host swap
   remained above 89% used. CI validates the initial exact PR head while local
   validation waits for memory pressure to subside.
