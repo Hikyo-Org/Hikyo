@@ -3046,6 +3046,9 @@ select {
 }
 
 .environment-lifecycle > summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--touch);
   cursor: pointer;
   font-weight: 650;
 }
