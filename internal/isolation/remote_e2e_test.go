@@ -209,14 +209,9 @@ func runRemoteLifecycle(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatalf("remote.workspace_session_issued: %v", err)
 	}
-	var browserAuthenticatedAt, workspaceAuthenticatedAt string
-	if err := db.SQLiteRead().QueryRowContext(ctx, `SELECT authenticated_at FROM sessions WHERE id = ?`, sessionIDOf(t, db, humanBearer)).Scan(&browserAuthenticatedAt); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.SQLiteRead().QueryRowContext(ctx, `SELECT authenticated_at FROM sessions WHERE id = ?`, ws.SessionID).Scan(&workspaceAuthenticatedAt); err != nil {
-		t.Fatal(err)
-	}
-	if workspaceAuthenticatedAt != browserAuthenticatedAt {
+	browserAuthenticatedAt := sessionAuthenticatedAt(t, db, sessionIDOf(t, db, humanBearer))
+	workspaceAuthenticatedAt := sessionAuthenticatedAt(t, db, ws.SessionID)
+	if !workspaceAuthenticatedAt.Equal(browserAuthenticatedAt) {
 		t.Fatalf("workspace authentication time = %q, want approving login time %q", workspaceAuthenticatedAt, browserAuthenticatedAt)
 	}
 
@@ -426,6 +421,26 @@ func sessionIDOf(t *testing.T, db *store.DB, bearer string) string {
 		t.Fatalf("resolve session id: %v", err)
 	}
 	return id
+}
+
+func sessionAuthenticatedAt(t *testing.T, db *store.DB, sessionID string) time.Time {
+	t.Helper()
+	if db.Engine() == store.EnginePostgres {
+		var at time.Time
+		if err := db.PG().QueryRow(t.Context(), `SELECT authenticated_at FROM sessions WHERE id = $1`, sessionID).Scan(&at); err != nil {
+			t.Fatalf("read session authentication time: %v", err)
+		}
+		return store.CanonTime(at)
+	}
+	var encoded string
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT authenticated_at FROM sessions WHERE id = ?`, sessionID).Scan(&encoded); err != nil {
+		t.Fatalf("read session authentication time: %v", err)
+	}
+	at, err := time.Parse(time.RFC3339Nano, encoded)
+	if err != nil {
+		t.Fatalf("parse session authentication time %q: %v", encoded, err)
+	}
+	return store.CanonTime(at)
 }
 
 // runScopedCoalescing pins the exact sequence a scope-blind coalescing cache
