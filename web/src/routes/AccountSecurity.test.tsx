@@ -75,7 +75,7 @@ vi.mock('../api/remotes.ts', () => ({
     isPending: false,
     mutate: (
       _session: string,
-      callbacks: { readonly onError: (error: unknown) => void },
+      callbacks: { readonly onError: (error: Error) => void },
     ) => callbacks.onError(new Error('revoke failed')),
   }),
 }));
