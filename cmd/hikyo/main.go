@@ -5,17 +5,20 @@ package main
 import (
 	"context"
 	"fmt"
-	"golang.org/x/term"
 	"io"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/signal"
 	"slices"
 	"syscall"
 
+	"golang.org/x/term"
+
 	"github.com/Hikyo-Org/hikyo/internal/app"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
 	"github.com/Hikyo-Org/hikyo/internal/config"
+	"github.com/Hikyo-Org/hikyo/internal/console"
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
 	"github.com/Hikyo-Org/hikyo/internal/importer"
 	"github.com/Hikyo-Org/hikyo/internal/operator"
@@ -80,8 +83,17 @@ func run() int {
 	}
 
 	switch {
-	case cmd == "version" || cmd == "--version":
-		fmt.Fprintln(os.Stdout, versionString())
+	case cmd == "--version":
+		writeMachineVersion(os.Stdout)
+		return 0
+	case cmd == "version":
+		writeVersion(os.Stdout)
+		return 0
+	case cmd == "about":
+		writeAbout(os.Stdout)
+		return 0
+	case cmd == "welcome":
+		writeWelcome(os.Stdout)
 		return 0
 	case cmd == "server":
 		return runServer(ctx, args)
@@ -110,11 +122,26 @@ func run() int {
 	}
 }
 
-func versionString() string {
-	if version == "dev" {
-		return "hikyo dev"
-	}
-	return fmt.Sprintf("hikyo %s (%s, %s)", version, commit, buildDate)
+func writeVersion(output io.Writer) {
+	fmt.Fprint(output, console.VersionMessage(console.VersionInfo{
+		Version: version, Commit: commit, BuildDate: buildDate,
+	}))
+}
+
+func writeMachineVersion(output io.Writer) {
+	fmt.Fprintln(output, version)
+}
+
+func writeAbout(output io.Writer) {
+	fmt.Fprint(output, console.AboutMessage(console.VersionInfo{
+		Version: version, Commit: commit, BuildDate: buildDate,
+	}))
+}
+
+func writeWelcome(output io.Writer) {
+	fmt.Fprint(output, console.WelcomeMessage(console.VersionInfo{
+		Version: version, Commit: commit, BuildDate: buildDate,
+	}))
 }
 
 func builtUpdateChannel() (updatecheck.Channel, error) {
@@ -167,7 +194,7 @@ func updateIO(terminalSession *disclose.TerminalSession, terminalError error, ch
 }
 
 func shouldCheckForUpdate(command string) bool {
-	return command != "update"
+	return command != "update" && command != "version" && command != "--version" && command != "about" && command != "welcome"
 }
 
 func runServer(ctx context.Context, args []string) int {
@@ -185,13 +212,34 @@ func runServer(ctx context.Context, args []string) int {
 		log.Error("startup failed", "err", err)
 		return 1
 	}
+	mode := "production"
+	if cfg.Dev {
+		mode = "development"
+	}
+	appURL := serverAppURL(cfg, srv)
+	message := console.ServerStartupMessage(console.ServerInfo{
+		Version:        version,
+		AppURL:         appURL,
+		ListenAddress:  srv.Addr,
+		OperationalURL: "http://" + srv.OperationalAddr,
+		Mode:           mode,
+	}, term.IsTerminal(int(os.Stdout.Fd())))
 	stopTLSReload := watchTLSReloadSignal(ctx, srv.ReloadTLS)
 	defer stopTLSReload()
-	if err := srv.Serve(ctx); err != nil {
+	if err := srv.ServeWithReady(ctx, func() { fmt.Fprint(os.Stdout, message) }); err != nil {
 		log.Error("server failed", "err", err)
 		return 1
 	}
 	return 0
+}
+
+func serverAppURL(cfg *config.Config, srv *app.Server) string {
+	origin, err := url.Parse(cfg.ExternalOrigin)
+	if err != nil || origin.Host != cfg.Listen {
+		return cfg.ExternalOrigin
+	}
+	origin.Host = srv.Addr
+	return origin.String()
 }
 
 // runOperatorMode is the `hikyo operator` deployable (k8s-integration ADR): a
@@ -292,8 +340,10 @@ kubernetes operator (separate deployable; HIKYO_OPERATOR_* env only):
 privileged local update helper (separate service; JSON config only):
   hikyo updater --config /etc/hikyo/updater.json
 
-version:
+information:
   hikyo version
+  hikyo about
+  hikyo welcome
 
 local host authority (server host only):
   hikyo admin create --username USER

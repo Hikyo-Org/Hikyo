@@ -109,9 +109,9 @@ func TestPostgresRemoteVerifiedTLSAllowed(t *testing.T) {
 
 func TestPostgresHostParamCannotBypassTLSCheck(t *testing.T) {
 	for _, dsn := range []string{
-		"postgres:///hikyo?host=remote.example.com",          // libpq-style host param
-		"postgres://u:p@/hikyo?host=10.0.0.5&sslmode=prefer", // empty authority + host param
-		"postgres:///hikyo", // no host at all (implicit PGHOST)
+		"postgres:///hikyo?host=remote.example.com",              // libpq-style host param
+		"postgres://u:p@/hikyo?host=10.0.0.5&sslmode=prefer",     // empty authority + host param
+		"postgres:///hikyo",                                      // no host at all (implicit PGHOST)
 		"postgres://u:p@localhost/hikyo?host=remote.example.com", // conflicting hosts
 		"postgres:///hikyo?host=a,b",                             // multi-host
 	} {
@@ -264,6 +264,26 @@ func TestNativeTLSConfigIsFailClosedAndSetsHTTPSOrigin(t *testing.T) {
 		if _, _, err := Load("server", []string{"--dev"}, env(pairs...), nil); err == nil || !strings.Contains(err.Error(), "configured together") {
 			t.Errorf("missing %s: err = %v", missing, err)
 		}
+	}
+}
+
+func TestExternalOriginMustBeCanonicalAndCannotContainCredentials(t *testing.T) {
+	for _, origin := range []string{
+		"https://user:password@hikyo.example.com",
+		"https://hikyo.example.com/path",
+		"https://hikyo.example.com?token=secret",
+		"https://hikyo.example.com#fragment",
+		"ftp://hikyo.example.com",
+	} {
+		t.Run(origin, func(t *testing.T) {
+			_, _, err := Load("server", nil, env(
+				"HIKYO_DB", "sqlite:/data/hikyo.db",
+				"HIKYO_EXTERNAL_ORIGIN", origin,
+			), nil)
+			if err == nil || !strings.Contains(err.Error(), "HIKYO_EXTERNAL_ORIGIN") {
+				t.Fatalf("Load() error = %v, want HIKYO_EXTERNAL_ORIGIN refusal", err)
+			}
+		})
 	}
 }
 

@@ -58,11 +58,11 @@ case "$(uname -s):$(uname -m)" in
 esac
 mkdir -p "$fixture_dir/native"
 tar -xzf "$dist/$native_archive" -C "$fixture_dir/native" hikyo
-native_version=$("$fixture_dir/native/hikyo" version)
-case "$native_version" in
-	"hikyo $version ("*) ;;
-	*) printf 'snapshot manifest fixture: binary version does not match archive version\n' >&2; exit 1 ;;
-esac
+native_version=$("$fixture_dir/native/hikyo" --version)
+if [ "$native_version" != "$version" ]; then
+	printf 'snapshot manifest fixture: binary version does not match archive version\n' >&2
+	exit 1
+fi
 fixture_dist="$fixture_dir/dist"
 cp -R "$dist" "$fixture_dist"
 rm -f "$fixture_dist/artifacts.json" "$fixture_dist/config.yaml" "$fixture_dist/metadata.json"
