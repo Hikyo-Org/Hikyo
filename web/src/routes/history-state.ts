@@ -126,7 +126,7 @@ export function historyKeyDisplay(
   }
   const historical = revision?.changedKeys.find((key) => key.keyId === keyId);
   if (historical === undefined) {
-    throw new Error(`History filter names unknown key ${keyId}.`);
+    return { name: keyId, label: `${keyId} (unknown key)`, current: false };
   }
   return {
     name: historical.name,
