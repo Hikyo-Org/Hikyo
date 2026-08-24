@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, type FormEvent } from 'react';
-import { generatePath, Link, useParams } from 'react-router';
+import { generatePath, Link, useNavigate, useParams } from 'react-router';
 
 import {
   GIT_DEFINITIONS_NOTICE,
@@ -53,6 +53,7 @@ import { useFeedback } from './useModalDialog.ts';
  * values, never definitions.
  */
 export function ProjectSettings() {
+  const navigate = useNavigate();
   const params = useParams();
   const org = params.org === undefined ? '' : params.org;
   const project = params.project === undefined ? '' : params.project;
@@ -257,7 +258,7 @@ export function ProjectSettings() {
             remove.mutate(
               { project },
               {
-                onSuccess: () => feedback.ok('Project deleted.'),
+                onSuccess: () => navigate(surfaceById('projects').path),
                 onError: (error) => report('delete-project', error),
               },
             )
