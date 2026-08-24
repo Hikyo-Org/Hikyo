@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type Route } from '@playwright/test';
 
 import {
   expectContrast,
@@ -147,13 +147,24 @@ test.describe('login', () => {
   }) => {
     const startPath = `**/api/v1/auth/oidc/${OIDC_PROVIDER.slug}/start`;
     let releaseStart: () => void = () => undefined;
+    let startHandlerActive = false;
+    let finishStartHandler: () => void = () => undefined;
     const pendingStart = new Promise<void>((resolve) => {
       releaseStart = resolve;
     });
-    await page.route(startPath, async (route) => {
-      await pendingStart;
-      await route.abort();
+    const startHandlerFinished = new Promise<void>((resolve) => {
+      finishStartHandler = resolve;
     });
+    const holdStart = async (route: Route) => {
+      startHandlerActive = true;
+      await pendingStart;
+      try {
+        await route.abort();
+      } finally {
+        finishStartHandler();
+      }
+    };
+    await page.route(startPath, holdStart);
 
     try {
       await page.goto('/login');
@@ -161,7 +172,9 @@ test.describe('login', () => {
         name: `Continue with ${OIDC_PROVIDER.displayName}`,
       });
       await oidc.click();
-      await expect(oidc).toHaveText('Contacting identity provider…');
+      await expect(
+        page.getByRole('button', { name: 'Contacting identity provider…' }),
+      ).toBeDisabled();
 
       const controls = page.locator('input, button');
       await expect(controls).toHaveCount(5);
@@ -171,7 +184,8 @@ test.describe('login', () => {
       await expectNoSeriousAxeViolations(page);
     } finally {
       releaseStart();
-      await page.unroute(startPath);
+      if (startHandlerActive) await startHandlerFinished;
+      await page.unroute(startPath, holdStart);
     }
   });
 
