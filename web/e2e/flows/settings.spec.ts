@@ -431,6 +431,8 @@ test.describe('project settings', () => {
       // project-settings remains capable of changing its own governance mode.
       await persistedSource.selectOption('db');
       await expect(persistedSource).toHaveValue('db');
+      await expect(persistedNotice).toBeVisible();
+      await persistedPolicy.getByRole('button', { name: 'Apply definitions source' }).click();
       await expect(persistedNotice).toHaveCount(0);
       await page.reload();
       await expect(page.locator('#project-policy').getByLabel('Definitions source')).toHaveValue(
