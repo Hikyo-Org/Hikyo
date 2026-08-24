@@ -421,13 +421,12 @@ const CEREMONY_TIMEOUT_MS = 5 * 60_000;
  * PreparedWorkspace is a handoff transaction that exists but has not been shown
  * to the human yet.
  *
- * The ceremony is TWO clicks and that is forced by the platform, not chosen:
- * `window.open` only survives the popup blocker inside the task of a real user
- * gesture, and the transaction cannot be opened without a network round trip
- * first. Preparing on the first click and opening on the second keeps the open
- * synchronous — and it buys something worth having anyway, since the human sees
- * exactly which origin they are about to be sent to sign in at before a window
- * appears, which is the one anti-phishing check a popup ceremony can offer.
+ * The ceremony prepares eagerly because `window.open` only survives the popup
+ * blocker inside the task of a real user gesture, while the transaction needs a
+ * network round trip first. The enabled, origin-labelled action therefore means
+ * preparation has completed and its click can open synchronously — while still
+ * giving the human the anti-phishing check of seeing the exact destination
+ * before a window appears.
  */
 export type PreparedWorkspace = {
   readonly origin: string;

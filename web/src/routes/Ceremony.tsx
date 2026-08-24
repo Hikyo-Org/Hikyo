@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 
 import { useWorkspaceContext } from '../api/transport.tsx';
 import { useSessionOIDCProvider } from '../api/account.ts';
@@ -11,13 +11,11 @@ import {
   type RevealWindow,
 } from '../api/values.ts';
 import {
-  openPrepared,
-  prepareWorkspace,
   workspaceBearer,
   WorkspaceError,
-  type PreparedWorkspace,
 } from '../api/workspace.ts';
 import { useModalDialog } from './useModalDialog.ts';
+import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
 
 /**
  * The purpose-bound ceremony modal (#58, locked prototype #21 iteration 6,
@@ -310,7 +308,7 @@ export function Ceremony({
  * the same session id), `openPrepared` installs it, and the caller resumes the
  * disclosure over the now-elevated transport.
  */
-function WorkspaceStepUp({
+export function WorkspaceStepUp({
   origin,
   operation,
   environmentId,
@@ -327,10 +325,6 @@ function WorkspaceStepUp({
   onAuthorised: () => void;
   onCancel: () => void;
 }) {
-  const [prepared, setPrepared] = useState<PreparedWorkspace | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
-
   // The decision's key set as a STABLE dependency. `keyIds` is a fresh array on
   // every parent render — Ceremony rebuilds it from `request.keys.map(...)`, and
   // the matrix behind it re-renders every couple of seconds as signals poll — so
@@ -338,62 +332,47 @@ function WorkspaceStepUp({
   // the remote on every one of those renders and rate-limit the human out of
   // their own ceremony. The content, joined, changes only when the target does.
   const keySetKey = keyIds.join(',');
-  useEffect(() => {
-    const bearer = workspaceBearer(origin);
-    if (bearer === undefined) {
-      setFailure('This workspace is no longer connected. Reconnect to the remote and try again.');
-      return;
-    }
-    let live = true;
-    prepareWorkspace(origin, {
-      session: bearer.session,
-      operation,
-      environment: environmentId,
-      keySet: keySetKey === '' ? [] : keySetKey.split(','),
-    })
-      .then((ready) => {
-        if (live) setPrepared(ready);
-      })
-      .catch((error: unknown) => {
-        if (live)
-          setFailure(
-            error instanceof WorkspaceError
-              ? error.message
-              : 'The remote could not be reached to authorise this disclosure.',
-          );
-      });
-    return () => {
-      live = false;
-    };
-    // Bound to the exact decision by content, not array identity: a re-prepare
-    // is warranted only if the target itself changes, which stages a new modal.
-  }, [origin, operation, environmentId, keySetKey]);
-
-  // Must stay synchronous to the click: the popup inside openPrepared only
-  // survives the blocker on a live user gesture.
-  const go = (ready: PreparedWorkspace) => {
-    setBusy(true);
-    setFailure(null);
-    openPrepared(ready)
-      .then(() => onAuthorised())
-      .catch((error: unknown) => {
-        setBusy(false);
-        setFailure(
-          error instanceof WorkspaceError
-            ? error.message
-            : 'The authorisation did not complete. Nothing was disclosed.',
-        );
-      });
-  };
+  const bearer = workspaceBearer(origin);
+  const handoff = useWorkspaceHandoff(origin, {
+    preparation:
+      bearer === undefined
+        ? {
+            kind: 'unavailable',
+            message:
+              'This workspace is no longer connected. Reconnect to the remote and try again.',
+          }
+        : {
+            kind: 'step-up',
+            params: {
+              session: bearer.session,
+              operation,
+              environment: environmentId,
+              keySet: keySetKey === '' ? [] : keySetKey.split(','),
+            },
+          },
+    onFailMessage: (error, stage) =>
+      error instanceof WorkspaceError
+        ? error.message
+        : stage === 'prepare'
+          ? 'The remote could not be reached to authorise this disclosure.'
+          : 'The authorisation did not complete. Nothing was disclosed.',
+    onAuthorised,
+  });
+  const { phase } = handoff;
+  const authorising = phase.kind === 'authorising';
+  const action = workspaceHandoffAction(handoff, {
+    ready: `Continue to ${origin} to authorise`,
+    authorising: 'Authorising…',
+  });
 
   return (
     <>
-      {failure === null ? null : (
+      {phase.kind !== 'failed' ? null : (
         <p className="alert" role="alert">
           <span className="alert__glyph" aria-hidden="true">
             !
           </span>
-          <span>{failure}</span>
+          <span>{phase.message}</span>
         </p>
       )}
       <div className="ceremony__actions">
@@ -401,16 +380,12 @@ function WorkspaceStepUp({
           className="btn btn--primary"
           type="button"
           ref={firstRef}
-          onClick={() => (prepared === null ? undefined : go(prepared))}
-          disabled={busy || prepared === null}
+          onClick={action.onClick}
+          disabled={action.disabled}
         >
-          {busy
-            ? 'Authorising…'
-            : prepared === null
-              ? 'Contacting…'
-              : `Continue to ${origin} to authorise`}
+          {action.label}
         </button>
-        <button className="btn" type="button" onClick={onCancel} disabled={busy}>
+        <button className="btn" type="button" onClick={onCancel} disabled={authorising}>
           Cancel
         </button>
       </div>
