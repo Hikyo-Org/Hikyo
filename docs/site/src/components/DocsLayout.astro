@@ -1,4 +1,5 @@
 ---
+import PostHog from './posthog.astro';
 import PwaHead from './PwaHead.astro';
 import { themeBootstrapScript } from '../lib/site';
 
@@ -24,5 +25,6 @@ const { title, description = 'Hikyo documentation' } = Astro.props;
   </head>
   <body class="flex min-h-screen flex-col">
     <slot />
+    <PostHog />
   </body>
 </html>

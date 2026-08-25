@@ -1,4 +1,5 @@
 ---
+import PostHog from '../components/posthog.astro';
 import PwaHead from '../components/PwaHead.astro';
 import { repositoryUrl, siteUrl, themeBootstrapScript } from '../lib/site';
 import '../styles/landing.css';
@@ -50,7 +51,7 @@ const links = {
             <span class="theme-icon" aria-hidden="true">◐</span>
             <span class="theme-label">Light</span>
           </button>
-          <a class="button button-primary header-cta" href={repository}>View on GitHub</a>
+          <a class="button button-primary header-cta" href={repository} data-posthog-event="github_cta_clicked" data-posthog-placement="header">View on GitHub</a>
         </div>
       </nav>
     </header>
@@ -65,8 +66,8 @@ const links = {
             Every value is explicit, every disclosure is deliberate, and production features stay open.
           </p>
           <div class="hero-actions">
-            <a class="button button-primary" href={repository}>Follow development <span aria-hidden="true">↗</span></a>
-            <a class="button button-line" href={links.docs}>Read the docs</a>
+            <a class="button button-primary" href={repository} data-posthog-event="github_cta_clicked" data-posthog-placement="hero">Follow development <span aria-hidden="true">↗</span></a>
+            <a class="button button-line" href={links.docs} data-posthog-event="documentation_cta_clicked" data-posthog-placement="hero">Read the docs</a>
           </div>
           <p class="subtrust">
             <strong>Mozilla Public License 2.0.</strong> No account required. No enterprise-only directory.
@@ -239,7 +240,7 @@ const links = {
               or PostgreSQL, and hold the root key outside the datastore it protects.
             </p>
             <div class="section-actions">
-              <a class="button button-primary" href={repository}>Inspect the source</a>
+              <a class="button button-primary" href={repository} data-posthog-event="github_cta_clicked" data-posthog-placement="self_host">Inspect the source</a>
               <a class="button button-line" href={links.security}>Read the security policy</a>
             </div>
           </div>
@@ -402,8 +403,8 @@ const links = {
           <h2 id="final-heading">Config you can reason about.</h2>
           <p>Hikyo is under active 0.x development. Read the code, inspect the decisions, and follow the road to 1.0.</p>
           <div class="section-actions">
-            <a class="button button-primary" href={repository}>View on GitHub <span aria-hidden="true">↗</span></a>
-            <a class="button button-line" href={links.docs}>Read project docs</a>
+            <a class="button button-primary" href={repository} data-posthog-event="github_cta_clicked" data-posthog-placement="final">View on GitHub <span aria-hidden="true">↗</span></a>
+            <a class="button button-line" href={links.docs} data-posthog-event="documentation_cta_clicked" data-posthog-placement="final">Read project docs</a>
           </div>
         </div>
       </section>
@@ -432,6 +433,8 @@ const links = {
         <span>© 2026 Hikyo contributors</span><span>MPL-2.0 · self-hosted</span>
       </div>
     </footer>
+
+    <PostHog />
 
     <script>
       import { themeStorageKey } from '../lib/site';
