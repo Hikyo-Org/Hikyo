@@ -1,4 +1,5 @@
 ---
+import PostHog from '../components/posthog.astro';
 import PwaHead from '../components/PwaHead.astro';
 import { repositoryUrl, siteUrl, themeBootstrapScript } from '../lib/site';
 import '../styles/landing.css';
@@ -109,7 +110,12 @@ const faq = [
             <span class="theme-icon" aria-hidden="true">◐</span>
             <span class="theme-label">Light</span>
           </button>
-          <a class="button button-primary header-cta" href={repository}><span>Explore on </span>GitHub</a>
+          <a
+            class="button button-primary header-cta"
+            href={repository}
+            data-posthog-event="github_cta_clicked"
+            data-posthog-placement="header"
+          ><span>Explore on </span>GitHub</a>
         </div>
       </nav>
     </header>
@@ -126,8 +132,18 @@ const faq = [
               values move.
             </p>
             <div class="hero-actions">
-              <a class="button button-primary" href={repository}>Explore on GitHub <span aria-hidden="true">↗</span></a>
-              <a class="text-link" href={links.docs}>Read the docs <span aria-hidden="true">→</span></a>
+              <a
+                class="button button-primary"
+                href={repository}
+                data-posthog-event="github_cta_clicked"
+                data-posthog-placement="hero"
+              >Explore on GitHub <span aria-hidden="true">↗</span></a>
+              <a
+                class="text-link"
+                href={links.docs}
+                data-posthog-event="documentation_cta_clicked"
+                data-posthog-placement="hero"
+              >Read the docs <span aria-hidden="true">→</span></a>
             </div>
             <p class="subtrust">
               <strong>MPL-2.0.</strong> Active 0.x development. No enterprise-only directory.
@@ -332,7 +348,7 @@ const faq = [
               or PostgreSQL, and hold the root key outside the datastore it protects.
             </p>
             <div class="section-actions">
-              <a class="button button-primary" href={repository}>Inspect the source</a>
+              <a class="button button-primary" href={repository} data-posthog-event="github_cta_clicked" data-posthog-placement="self_host">Inspect the source</a>
               <a class="button button-line" href={links.security}>Read the security policy</a>
             </div>
           </div>
@@ -499,7 +515,12 @@ const faq = [
               Hikyo is open, self-hosted, and still pre-1.0. These boundaries matter before you place it near real
               configuration or secret material.
             </p>
-            <a class="text-link" href={links.docs}>Read the complete documentation <span aria-hidden="true">→</span></a>
+            <a
+              class="text-link"
+              href={links.docs}
+              data-posthog-event="documentation_cta_clicked"
+              data-posthog-placement="faq"
+            >Read the complete documentation <span aria-hidden="true">→</span></a>
           </div>
           <dl class="faq-list">
             {faq.map((item) => (
@@ -517,8 +538,18 @@ const faq = [
           <h2 id="final-heading">Config you can reason about.</h2>
           <p>Hikyo is under active 0.x development. Read the code, inspect the decisions, and follow the road to 1.0.</p>
           <div class="section-actions">
-            <a class="button button-primary" href={repository}>Explore on GitHub <span aria-hidden="true">↗</span></a>
-            <a class="text-link" href={links.docs}>Read the docs <span aria-hidden="true">→</span></a>
+            <a
+              class="button button-primary"
+              href={repository}
+              data-posthog-event="github_cta_clicked"
+              data-posthog-placement="final"
+            >Explore on GitHub <span aria-hidden="true">↗</span></a>
+            <a
+              class="text-link"
+              href={links.docs}
+              data-posthog-event="documentation_cta_clicked"
+              data-posthog-placement="final"
+            >Read the docs <span aria-hidden="true">→</span></a>
           </div>
         </div>
       </section>
@@ -547,6 +578,8 @@ const faq = [
         <span>© 2026 Hikyo contributors</span><span>MPL-2.0 · self-hosted</span>
       </div>
     </footer>
+
+    <PostHog />
 
     <script>
       import { themeStorageKey } from '../lib/site';
