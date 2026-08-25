@@ -267,6 +267,26 @@ func TestNativeTLSConfigIsFailClosedAndSetsHTTPSOrigin(t *testing.T) {
 	}
 }
 
+func TestExternalOriginMustBeCanonicalAndCannotContainCredentials(t *testing.T) {
+	for _, origin := range []string{
+		"https://user:password@hikyo.example.com",
+		"https://hikyo.example.com/path",
+		"https://hikyo.example.com?token=secret",
+		"https://hikyo.example.com#fragment",
+		"ftp://hikyo.example.com",
+	} {
+		t.Run(origin, func(t *testing.T) {
+			_, _, err := Load("server", nil, env(
+				"HIKYO_DB", "sqlite:/data/hikyo.db",
+				"HIKYO_EXTERNAL_ORIGIN", origin,
+			), nil)
+			if err == nil || !strings.Contains(err.Error(), "HIKYO_EXTERNAL_ORIGIN") {
+				t.Fatalf("Load() error = %v, want HIKYO_EXTERNAL_ORIGIN refusal", err)
+			}
+		})
+	}
+}
+
 func TestListenTransportMatrix(t *testing.T) {
 	certPath, keyPath := "tls.crt", "tls.key"
 	for _, listen := range []struct {

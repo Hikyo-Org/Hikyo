@@ -8,7 +8,7 @@
     "dev": "pnpm run prepare-content && astro dev",
     "check": "pnpm run prepare-content && astro check",
     "build": "pnpm run prepare-content && astro build && node scripts/build-pwa.mjs",
-    "test": "pnpm run build && ../../scripts/ci/check-oss-policy.sh ../.. dist && ../../scripts/ci/check-docs-pwa.sh ../.. dist && node scripts/test-pwa-offline.mjs",
+    "test": "pnpm run build && ../../scripts/ci/check-oss-policy.sh ../.. dist && ../../scripts/ci/check-docs-pwa.sh ../.. dist && node scripts/test-posthog.mjs && node scripts/test-pwa-offline.mjs",
     "verify": "pnpm run check && pnpm run test"
   },
   "dependencies": {
@@ -37,5 +37,5 @@
     "typescript": "6.0.3",
     "workbox-build": "7.4.1"
   },
-  "packageManager": "pnpm@11.10.0"
+  "packageManager": "pnpm@11.24.0"
 }

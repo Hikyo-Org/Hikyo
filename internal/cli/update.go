@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/console"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 	"github.com/gofrs/flock"
 )
@@ -140,6 +141,7 @@ func runUpdate(ctx context.Context, ios IO, args []string) error {
 			fmt.Fprintln(ios.Stdout, "Update checks are off.")
 			return nil
 		}
+		fmt.Fprint(ios.Stderr, console.UpdateCheckMessage(string(current.Channel)))
 		if err := refreshReleaseSnapshot(ctx, ios); err != nil {
 			return failf(ExitUnavailable, "update check failed: %v", err)
 		}
@@ -152,12 +154,16 @@ func runUpdate(ctx context.Context, ios IO, args []string) error {
 			return err
 		}
 		if !status.Available {
-			fmt.Fprintf(ios.Stdout, "Hikyo %s is current on %s.\n", ios.Version, current.Channel)
+			fmt.Fprint(ios.Stdout, console.UpdateCurrentMessage(console.UpdateInfo{
+				Current: ios.Version, Channel: string(current.Channel),
+			}))
 			return nil
 		}
-		fmt.Fprintf(ios.Stdout, "Update available on %s: %s (current %s)\n%s\n",
-			current.Channel, status.LatestVersion, ios.Version, status.URL)
-		if _, err := offerUpdate(ctx, ios, status); err != nil {
+		fmt.Fprint(ios.Stdout, console.UpdateAvailableMessage(console.UpdateInfo{
+			Current: ios.Version, Latest: status.LatestVersion,
+			Channel: string(current.Channel), ReleaseURL: status.URL,
+		}))
+		if _, err := promptAndApplyUpdate(ctx, ios, status); err != nil {
 			return failf(ExitUnavailable, "update failed: %v", err)
 		}
 		return nil
@@ -245,16 +251,18 @@ func NotifyUpdate(ctx context.Context, ios IO) bool {
 	if err != nil || !status.Available {
 		return false
 	}
-	updated, err := offerUpdate(ctx, ios, status)
+	fmt.Fprint(ios.Stderr, console.UpdateAvailableMessage(console.UpdateInfo{
+		Current: ios.Version, Latest: status.LatestVersion,
+		Channel: string(status.Channel), ReleaseURL: status.URL,
+	}))
+	updated, err := promptAndApplyUpdate(ctx, ios, status)
 	if err != nil {
 		fmt.Fprintf(ios.Stderr, "Update failed: %v\n", err)
 	}
 	return updated
 }
 
-func offerUpdate(ctx context.Context, ios IO, status updatecheck.Status) (bool, error) {
-	fmt.Fprintf(ios.Stderr, "Update available: %s (current %s, %s). %s\n",
-		status.LatestVersion, ios.Version, status.Channel, status.URL)
+func promptAndApplyUpdate(ctx context.Context, ios IO, status updatecheck.Status) (bool, error) {
 	if ios.TerminalSession == nil {
 		return false, nil
 	}

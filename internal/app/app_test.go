@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"io"
@@ -99,6 +100,54 @@ func TestServeCancellationStopsBothListeners(t *testing.T) {
 			conn.Close()
 			t.Errorf("listener %s still accepts after shutdown", address)
 		}
+	}
+}
+
+func TestServeWithReadySignalsOnlyAfterHTTPServingStarts(t *testing.T) {
+	var logged bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&logged, nil))
+	srv, err := Boot(t.Context(), devConfig(t), log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(logged.String(), "server ready") {
+		srv.Close()
+		t.Fatal("boot logged readiness before serving started")
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	ready := make(chan error, 1)
+	go func() {
+		done <- srv.ServeWithReady(ctx, func() {
+			response, err := http.Get("http://" + srv.Addr + "/api/v1/meta")
+			if err == nil {
+				response.Body.Close()
+			}
+			ready <- err
+		})
+	}()
+
+	select {
+	case err := <-ready:
+		if err != nil {
+			cancel()
+			<-done
+			t.Fatalf("ready callback ran before HTTP serving: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		cancel()
+		<-done
+		t.Fatal("ready callback was not called")
+	}
+	if !strings.Contains(logged.String(), "server ready") {
+		cancel()
+		<-done
+		t.Fatal("serving did not emit the structured ready log")
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("ServeWithReady cancellation: %v", err)
 	}
 }
 

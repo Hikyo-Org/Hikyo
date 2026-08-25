@@ -737,9 +737,11 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"cli:backup":  {Class: ClassSystem, Events: []audit.EventType{audit.EventBackupExported, audit.EventBackupExportSkipped}},
 	"cli:restore": {Class: ClassSystem, Events: []audit.EventType{audit.EventRestoreCompleted, audit.EventRestorePrincipalReconciled}},
 
-	// `hikyo version` (#46): local print of build metadata — no principal,
+	// Local product-information commands print build metadata — no principal,
 	// no server, no store; the pre-auth contract is trivially total.
 	"cli:version": {Class: ClassUnauthenticated},
+	"cli:about":   {Class: ClassUnauthenticated},
+	"cli:welcome": {Class: ClassUnauthenticated},
 
 	// Client verbs that reach the server. Their probe contract is the HTTP
 	// route they call, classified above; the verb itself carries the class of

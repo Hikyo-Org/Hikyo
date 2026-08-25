@@ -360,11 +360,11 @@ jobs:
             --file Dockerfile.release .
           image_id=$(docker image inspect --format '{{.Id}}' "$image")
           expected=$(jq -r '.version' dist/metadata.json)
-          actual=$(docker run --rm "$image_id" version)
-          case "$actual" in
-            "hikyo $expected ("*) ;;
-            *) printf 'candidate image: version mismatch: %s\n' "$actual" >&2; exit 1 ;;
-          esac
+          actual=$(docker run --rm "$image_id" --version)
+          if [ "$actual" != "$expected" ]; then
+            printf 'candidate image: version mismatch: %s\n' "$actual" >&2
+            exit 1
+          fi
           ./scripts/release/smoke-image-ui.sh "$image_id"
       # This fixture works on a temporary copy of dist. Keep it before upload:
       # failed archive/version/manifest checks must not leave a download behind.
@@ -513,6 +513,10 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-docs-${{ runner.os }}-${{ hashFiles('docs/site/pnpm-lock.yaml') }}
       - name: Typecheck, build, and assert O4-O6 policy content
+        env:
+          POSTHOG_REQUIRED: true
+          PUBLIC_POSTHOG_HOST: ${{ vars.PUBLIC_POSTHOG_HOST }}
+          PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ vars.PUBLIC_POSTHOG_PROJECT_TOKEN }}
         run: ./scripts/ci/verify-docs.sh
       - name: Save Playwright browsers
         if: >-

@@ -369,6 +369,13 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 		}
 		cfg.ExternalOrigin = scheme + cfg.Listen
 	}
+	origin, err := url.Parse(cfg.ExternalOrigin)
+	if err != nil || (origin.Scheme != "http" && origin.Scheme != "https") ||
+		origin.Host == "" || origin.User != nil || origin.Path != "" ||
+		origin.RawQuery != "" || origin.Fragment != "" ||
+		cfg.ExternalOrigin != origin.Scheme+"://"+origin.Host {
+		return nil, nil, fmt.Errorf("HIKYO_EXTERNAL_ORIGIN must be an exact canonical HTTP(S) origin without credentials, path, query, or fragment")
+	}
 
 	if err := loadBackupPolicy(cfg, getenv); err != nil {
 		return nil, nil, err

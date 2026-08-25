@@ -83,8 +83,14 @@ func TestUpdateChannelPersistsAndCheckReportsSelectedTrack(t *testing.T) {
 		t.Fatalf("check exit = %d: %s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "1.1.0-nightly.20260824.42.gbbbbbbbb") ||
-		!strings.Contains(stdout.String(), "nightly") {
+		!strings.Contains(stdout.String(), "Hikyo update available") {
 		t.Fatalf("stdout = %q, want nightly update", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "Checking for updates on nightly...") {
+		t.Fatalf("stderr = %q, want update-check progress", stderr.String())
+	}
+	if got := strings.Count(stdout.String()+stderr.String(), "Hikyo update available"); got != 1 {
+		t.Fatalf("combined output announces available update %d times, want once: stdout=%q stderr=%q", got, stdout.String(), stderr.String())
 	}
 
 	statePath := filepath.Join(ios.Env.Getenv("HIKYO_STATE_DIR"), "updates.json")
@@ -122,7 +128,9 @@ func TestUpdateCheckUsesTheBuildChannelUntilTheUserOverridesIt(t *testing.T) {
 	if code := Run(t.Context(), ios, []string{"update", "check"}); code != ExitOK {
 		t.Fatalf("stable override check exit = %d: %s", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "Update available on stable: 1.0.1") {
+	if !strings.Contains(stdout.String(), "Hikyo update available") ||
+		!strings.Contains(stdout.String(), "Channel    stable") ||
+		!strings.Contains(stdout.String(), "Latest     1.0.1") {
 		t.Fatalf("stdout = %q, want persisted stable override", stdout.String())
 	}
 }
@@ -293,6 +301,26 @@ func TestExplicitUpdateCheckFailsWhenAcceptedInstallFails(t *testing.T) {
 	}
 }
 
+func TestUpdateCheckClearlyReportsCurrentVersion(t *testing.T) {
+	source := updateSourceFunc(func(context.Context) ([]updatecheck.Release, error) {
+		return []updatecheck.Release{{Version: "1.0.0"}}, nil
+	})
+	ios, stdout, stderr := updateIO(t, source)
+
+	if code := Run(t.Context(), ios, []string{"update", "check"}); code != ExitOK {
+		t.Fatalf("check exit = %d: %s", code, stderr.String())
+	}
+	want := "Hikyo is up to date\n" +
+		"  Version  1.0.0\n" +
+		"  Channel  stable\n"
+	if stdout.String() != want {
+		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+	}
+	if stderr.String() != "Checking for updates on stable...\n" {
+		t.Fatalf("stderr = %q, want update-check progress", stderr.String())
+	}
+}
+
 func TestNotifyUpdateUsesFreshSnapshotWithoutNetwork(t *testing.T) {
 	calls := 0
 	source := updateSourceFunc(func(context.Context) ([]updatecheck.Release, error) {
@@ -307,7 +335,9 @@ func TestNotifyUpdateUsesFreshSnapshotWithoutNetwork(t *testing.T) {
 	if calls != 1 {
 		t.Fatalf("source calls = %d, want cached second check", calls)
 	}
-	if !strings.Contains(stderr.String(), "Update available: 1.0.1") {
+	if !strings.Contains(stderr.String(), "Hikyo update available") ||
+		!strings.Contains(stderr.String(), "Installed  1.0.0") ||
+		!strings.Contains(stderr.String(), "Latest     1.0.1") {
 		t.Fatalf("stderr = %q, want update notice", stderr.String())
 	}
 }

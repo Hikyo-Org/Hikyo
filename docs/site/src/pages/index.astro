@@ -1,4 +1,5 @@
 ---
+import PostHog from '../components/posthog.astro';
 import PwaHead from '../components/PwaHead.astro';
 import { repositoryUrl, siteUrl, themeBootstrapScript } from '../lib/site';
 import '../styles/landing.css';
@@ -13,6 +14,41 @@ const links = {
   security: `${base}security/`,
   support: `${base}support/`,
 };
+const title = 'Hikyo — explicit secrets and configuration across environments';
+const description =
+  'Hikyo is a fully open-source, self-hosted control plane that makes configuration state explicit across every environment.';
+const faq = [
+  {
+    question: 'What problem does Hikyo solve?',
+    answer:
+      'Hikyo gives each environment an explicit value state. A key is set or absent, so production cannot silently inherit a development default.',
+  },
+  {
+    question: 'Is Hikyo ready for a stable production rollout?',
+    answer:
+      'Hikyo is under active 0.x development and has not published its stable 1.0 release. Review the implementation-status ledger and deploy from a reviewed commit if you evaluate it today.',
+  },
+  {
+    question: 'Does self-hosting require a Hikyo cloud account?',
+    answer:
+      'No Hikyo cloud account is required. You run the Go binary and embedded web UI on infrastructure you operate, with SQLite or PostgreSQL as the datastore.',
+  },
+  {
+    question: 'When can a workload receive secret plaintext?',
+    answer:
+      'Only after an operator enables the project machine-reveal policy and grants that machine principal reveal access for the environment. Otherwise secret delivery refuses before the workload starts.',
+  },
+  {
+    question: 'Where does Hikyo keep the root key?',
+    answer:
+      'The operator supplies root key material separately from the SQLite or PostgreSQL datastore. The self-hosting guide documents the supported custody options and startup checks.',
+  },
+  {
+    question: 'Are production capabilities hidden in a paid edition?',
+    answer:
+      'Hikyo keeps its production path in the same MPL-2.0 repository. There is no separate enterprise-only implementation directory.',
+  },
+];
 ---
 
 <!doctype html>
@@ -22,12 +58,36 @@ const links = {
     <meta name="viewport" content="width=device-width" />
     <meta
       name="description"
-      content="Hikyo is a fully open-source, self-hosted control plane for validated secrets and configuration across environments."
+      content={description}
     />
     <meta name="theme-color" content="#1b2225" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Hikyo" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content="https://hikyo.app/" />
+    <meta property="og:image" content="https://hikyo.app/pwa-512x512.png" />
+    <meta property="og:image:alt" content="Hikyo logo" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content="https://hikyo.app/pwa-512x512.png" />
     <PwaHead />
     <link rel="canonical" href="https://hikyo.app/" />
-    <title>Hikyo — fully open secrets and configuration</title>
+    <title>{title}</title>
+    <script
+      type="application/ld+json"
+      is:inline
+      set:html={JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        mainEntity: faq.map((item) => ({
+          '@type': 'Question',
+          name: item.question,
+          acceptedAnswer: { '@type': 'Answer', text: item.answer },
+        })),
+      })}
+    ></script>
     <script is:inline set:html={themeBootstrapScript}></script>
   </head>
   <body>
@@ -50,38 +110,56 @@ const links = {
             <span class="theme-icon" aria-hidden="true">◐</span>
             <span class="theme-label">Light</span>
           </button>
-          <a class="button button-primary header-cta" href={repository}>View on GitHub</a>
+          <a
+            class="button button-primary header-cta"
+            href={repository}
+            data-posthog-event="github_cta_clicked"
+            data-posthog-placement="header"
+          ><span>Explore on </span>GitHub</a>
         </div>
       </nav>
     </header>
 
     <main id="main">
       <section class="hero">
-        <div class="wrap">
-          <p class="eyebrow"><span class="live" aria-hidden="true"></span> 0.x · one Go binary · self-hosted</p>
-          <h1>See every value.<br /><span>Trust every decision.</span></h1>
-          <p class="lede">
-            Hikyo is a self-hosted control plane for validated secrets and configuration across environments.
-            Every value is explicit, every disclosure is deliberate, and production features stay open.
-          </p>
-          <div class="hero-actions">
-            <a class="button button-primary" href={repository}>Follow development <span aria-hidden="true">↗</span></a>
-            <a class="button button-line" href={links.docs}>Read the docs</a>
+        <div class="wrap hero-grid">
+          <div class="hero-copy">
+            <p class="eyebrow"><span class="live" aria-hidden="true"></span> 0.x · one Go binary · self-hosted</p>
+            <h1>Every environment<br /><span>answers for itself.</span></h1>
+            <p class="lede">
+              Hikyo gives self-hosting teams one view of validated configuration and secrets. Every value is
+              explicit: see what is set, catch what is missing, and require deliberate access before sensitive
+              values move.
+            </p>
+            <div class="hero-actions">
+              <a
+                class="button button-primary"
+                href={repository}
+                data-posthog-event="github_cta_clicked"
+                data-posthog-placement="hero"
+              >Explore on GitHub <span aria-hidden="true">↗</span></a>
+              <a
+                class="text-link"
+                href={links.docs}
+                data-posthog-event="documentation_cta_clicked"
+                data-posthog-placement="hero"
+              >Read the docs <span aria-hidden="true">→</span></a>
+            </div>
+            <p class="subtrust">
+              <strong>MPL-2.0.</strong> Active 0.x development. No enterprise-only directory.
+            </p>
           </div>
-          <p class="subtrust">
-            <strong>Mozilla Public License 2.0.</strong> No account required. No enterprise-only directory.
-          </p>
 
-          <div class="surface" id="matrix">
+          <div class="surface hero-surface" id="matrix">
             <div class="surface-bar">
-              <div class="crumb"><span class="avatar">AC</span> <strong>acme</strong><span>/</span> payments-api</div>
+              <div class="crumb"><span class="avatar">EX</span> <strong>example</strong><span>/</span> payments-api</div>
               <div class="environment-chips" aria-label="Visible environments">
                 <span>development</span><span>staging</span><span>production</span>
               </div>
             </div>
             <div class="matrix-scroll">
               <table class="matrix">
-                <caption class="sr-only">Explicit configuration values for three environments</caption>
+                <caption class="sr-only">Example configuration matrix for three environments</caption>
                 <thead>
                   <tr><th>Key</th><th>development</th><th>staging</th><th>production</th></tr>
                 </thead>
@@ -122,6 +200,7 @@ const links = {
               </table>
             </div>
             <div class="surface-foot" aria-label="Value state legend">
+              <span class="sample-label">example data</span>
               <span><i class="dot set-dot"></i> set here</span>
               <span><i class="dot absent-dot"></i> absent</span>
               <span><i class="dot masked-dot"></i> secret set</span>
@@ -138,13 +217,43 @@ const links = {
         </div>
       </div>
 
+      <section class="block flow" aria-labelledby="flow-heading">
+        <div class="wrap flow-grid">
+          <div>
+            <p class="kicker">// one path from intent to runtime</p>
+            <h2 id="flow-heading">Declare once. Decide per environment.</h2>
+            <p class="section-lede">
+              Hikyo separates the shape of a key from each environment's value, then keeps delivery inside the
+              same authorization model.
+            </p>
+          </div>
+          <ol class="steps" data-flow-steps>
+            <li>
+              <span>01</span>
+              <div><h3>Declare the contract</h3><p>Choose config or secret, add validation, and state where the key is required.</p></div>
+              <code>key create</code>
+            </li>
+            <li>
+              <span>02</span>
+              <div><h3>Set and review state</h3><p>Work in an explicit matrix where absence, invalid input, and pending changes stay visible.</p></div>
+              <code>values set</code>
+            </li>
+            <li>
+              <span>03</span>
+              <div><h3>Deliver with intent</h3><p>Fetch at runtime, render for Compose, reconcile Kubernetes, or use a declared adapter.</p></div>
+              <code>hikyo run</code>
+            </li>
+          </ol>
+        </div>
+      </section>
+
       <section class="block" aria-labelledby="product-heading">
         <div class="wrap">
           <p class="kicker">// explicit state, deliberate access</p>
           <h2 id="product-heading">A dense surface that stays honest.</h2>
           <p class="section-lede">
-            Fifty keys across four environments should stay scannable. Hikyo makes absence visible and keeps
-            secret material behind a separate disclosure path.
+            A growing key catalogue across several environments should stay scannable. Hikyo makes absence visible
+            and keeps secret material behind a separate disclosure path.
           </p>
 
           <article class="feature-row">
@@ -208,22 +317,22 @@ const links = {
 
           <article class="feature-row flip">
             <div class="feature-copy">
-              <h3>Machine access has an honest boundary.</h3>
+              <h3>Delivery fails closed at the boundary.</h3>
               <p>
-                Today, workload fetch returns the authorized key catalogue, classification, and declared presence.
-                It does not return plaintext values. Every request still reaches the same authorization chokepoint.
+                A workload gets configuration through its scoped identity. Secret plaintext also requires the
+                project machine-reveal opt-in and a reveal grant; otherwise delivery stops before the child starts.
               </p>
-              <p class="feature-note"><span>▸</span> Unauthorized resources remain indistinguishable from nonexistent ones.</p>
+              <p class="feature-note"><span>▸</span> The happy path writes no plaintext file to the host disk.</p>
             </div>
             <div class="artifact frame terminal">
-              <div class="frame-head"><i></i><i></i><i></i><span>catalogue fetch · production</span></div>
-              <pre><span># workload presents its own identity</span>
-<b>authorize</b> payments-api / production
+              <div class="frame-head"><i></i><i></i><i></i><span>hikyo run · production</span></div>
+              <pre><span># start a process with an authorized environment</span>
+<b>hikyo run</b> -- ./payments-api
   <em>✓</em> identity verified
   <em>✓</em> grant constrained to project + environment
-  <em>✓</em> 18 key declarations returned
-  <span>→ required 4 · optional 13 · forbidden 1</span>
-  <strong>!</strong> no plaintext on this surface</pre>
+  <em>✓</em> config ready for the child process
+  <span>→ secret plaintext needs explicit machine reveal</span>
+  <strong>!</strong> inaccessible secret stops launch</pre>
             </div>
           </article>
         </div>
@@ -239,7 +348,7 @@ const links = {
               or PostgreSQL, and hold the root key outside the datastore it protects.
             </p>
             <div class="section-actions">
-              <a class="button button-primary" href={repository}>Inspect the source</a>
+              <a class="button button-primary" href={repository} data-posthog-event="github_cta_clicked" data-posthog-placement="self_host">Inspect the source</a>
               <a class="button button-line" href={links.security}>Read the security policy</a>
             </div>
           </div>
@@ -325,16 +434,16 @@ const links = {
                 <tr>
                   <th scope="row">Dynamic secrets</th>
                   <td class="hikyo-column">
-                    <a class="comparison-status planned" href={`${repository}/issues/147`} aria-label="Planned for version 1.1, issue 147">◷ <small>v1.1</small></a>
+                    <a class="comparison-status planned" href={`${repository}/issues/147`} aria-label="Planned for version 1.1, issue 147"><span>◷ <small>v1.1</small></span></a>
                   </td>
                   <td><span class="comparison-status yes" aria-label="Included">✓</span></td>
-                  <td><span class="comparison-status tier" aria-label="Enterprise tier">EE</span></td>
+                  <td><span class="comparison-status tier" aria-label="Advanced paid tier">Adv</span></td>
                   <td><span class="comparison-status tier" aria-label="Enterprise tier">EE</span></td>
                 </tr>
                 <tr>
                   <th scope="row">Automated secret rotation</th>
                   <td class="hikyo-column">
-                    <a class="comparison-status planned" href={`${repository}/issues/148`} aria-label="Planned for version 1.1, issue 148">◷ <small>v1.1</small></a>
+                    <a class="comparison-status planned" href={`${repository}/issues/148`} aria-label="Planned for version 1.1, issue 148"><span>◷ <small>v1.1</small></span></a>
                   </td>
                   <td><span class="comparison-status yes" aria-label="Included">✓</span></td>
                   <td><span class="comparison-status tier" aria-label="Paid Pro tier">Pro</span></td>
@@ -350,7 +459,7 @@ const links = {
                 <tr>
                   <th scope="row">Native multi-node HA</th>
                   <td class="hikyo-column">
-                    <a class="comparison-status planned" href={`${repository}/issues/146`} aria-label="Planned for version 1.1, issue 146">◷ <small>v1.1</small></a>
+                    <a class="comparison-status planned" href={`${repository}/issues/146`} aria-label="Planned for version 1.1, issue 146"><span>◷ <small>v1.1</small></span></a>
                   </td>
                   <td><span class="comparison-status yes" aria-label="Included">✓</span></td>
                   <td><span class="comparison-status partial" aria-label="Deployment dependent">—</span></td>
@@ -368,10 +477,10 @@ const links = {
           </div>
 
           <div class="comparison-notes">
-            <p><span class="yes">✓ included</span><span>— partial or indirect</span><span>× unavailable</span><span>Pro paid tier</span><span>EE enterprise tier</span></p>
+            <p><span class="yes">✓ included</span><span>— partial or indirect</span><span>× unavailable</span><span>Adv/Pro paid tier</span><span>EE enterprise tier</span></p>
             <p>
               Clocks link to public roadmap tickets. Compared against public self-hosted documentation and plan
-              availability on 17 August 2026: <a href="https://openbao.org/docs/what-is-openbao/">OpenBao</a>,
+              availability on 25 August 2026: <a href="https://openbao.org/docs/use-cases/">OpenBao</a>,
               <a href="https://infisical.com/pricing">Infisical</a>, and <a href="https://phase.dev/pricing/">Phase</a>.
             </p>
           </div>
@@ -397,13 +506,50 @@ const links = {
         </div>
       </section>
 
+      <section class="block faq" id="faq" aria-labelledby="faq-heading">
+        <div class="wrap faq-grid">
+          <div class="faq-intro">
+            <p class="kicker">// before you evaluate it</p>
+            <h2 id="faq-heading">Questions worth answering plainly.</h2>
+            <p class="section-lede">
+              Hikyo is open, self-hosted, and still pre-1.0. These boundaries matter before you place it near real
+              configuration or secret material.
+            </p>
+            <a
+              class="text-link"
+              href={links.docs}
+              data-posthog-event="documentation_cta_clicked"
+              data-posthog-placement="faq"
+            >Read the complete documentation <span aria-hidden="true">→</span></a>
+          </div>
+          <dl class="faq-list">
+            {faq.map((item) => (
+              <div>
+                <dt>{item.question}</dt>
+                <dd>{item.answer}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </section>
+
       <section class="final-cta" aria-labelledby="final-heading">
         <div class="wrap">
           <h2 id="final-heading">Config you can reason about.</h2>
           <p>Hikyo is under active 0.x development. Read the code, inspect the decisions, and follow the road to 1.0.</p>
           <div class="section-actions">
-            <a class="button button-primary" href={repository}>View on GitHub <span aria-hidden="true">↗</span></a>
-            <a class="button button-line" href={links.docs}>Read project docs</a>
+            <a
+              class="button button-primary"
+              href={repository}
+              data-posthog-event="github_cta_clicked"
+              data-posthog-placement="final"
+            >Explore on GitHub <span aria-hidden="true">↗</span></a>
+            <a
+              class="text-link"
+              href={links.docs}
+              data-posthog-event="documentation_cta_clicked"
+              data-posthog-placement="final"
+            >Read the docs <span aria-hidden="true">→</span></a>
           </div>
         </div>
       </section>
@@ -433,6 +579,8 @@ const links = {
       </div>
     </footer>
 
+    <PostHog />
+
     <script>
       import { themeStorageKey } from '../lib/site';
 
@@ -451,6 +599,43 @@ const links = {
         localStorage.setItem(themeStorageKey, theme);
         renderTheme(theme);
       });
+
+      const flowSteps = document.querySelector<HTMLOListElement>('[data-flow-steps]');
+
+      if (flowSteps) {
+        const prepareFlowReveal = () => {
+          const rect = flowSteps.getBoundingClientRect();
+          const alreadyVisible = rect.top < window.innerHeight && rect.bottom > 0;
+          const fragmentId = window.location.hash.slice(1);
+          const fragmentTarget = fragmentId ? document.getElementById(fragmentId) : null;
+          const flowSection = flowSteps.closest('.flow');
+          const fragmentTargetsFlow = fragmentTarget !== null && flowSection?.contains(fragmentTarget) === true;
+
+          if (alreadyVisible || fragmentTargetsFlow || !('IntersectionObserver' in window)) return;
+
+          flowSteps.dataset.motionReady = 'true';
+
+          const observer = new IntersectionObserver(
+            ([entry]) => {
+              if (!entry?.isIntersecting) return;
+
+              flowSteps.dataset.revealed = 'true';
+              observer.disconnect();
+            },
+            { threshold: 0.25 },
+          );
+
+          observer.observe(flowSteps);
+        };
+
+        const scheduleFlowReveal = () => requestAnimationFrame(prepareFlowReveal);
+
+        if (document.readyState === 'complete') {
+          scheduleFlowReveal();
+        } else {
+          window.addEventListener('load', scheduleFlowReveal, { once: true });
+        }
+      }
     </script>
   </body>
 </html>

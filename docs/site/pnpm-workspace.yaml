@@ -1,3 +1,5 @@
+virtualStoreType: global
+
 allowBuilds:
   esbuild: true
   sharp: true
