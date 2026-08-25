@@ -1,6 +1,7 @@
 {
-  "_comment": "Name-pinned exemptions from the audit completeness invariant (audit-model ADR CI invariant 2). The ADR's default-deny rule refuses `audited: none` to unauthenticated- and system-class operations, but declares no event types for health probes, or local version prints; the demonstration org reads are #44 scaffolding whose real surface (#48) must map them. Every entry here is a reviewed deviation, not a hole: removing an entry without mapping the operation fails the build.",
+  "_comment": "Name-pinned exemptions from the audit completeness invariant (audit-model ADR CI invariant 2). The ADR's default-deny rule refuses `audited: none` to unauthenticated- and system-class operations, but declares no event types for health probes, or local product/build prints; the demonstration org reads are #44 scaffolding whose real surface (#48) must map them. Every entry here is a reviewed deviation, not a hole: removing an entry without mapping the operation fails the build.",
   "wire": {
+    "cli:about": "local product-information and build-metadata print: no server, no store",
     "cli:access": "client transport for the /grants routes at every depth, whose operations carry the audit mapping (grant.created / grant.modified / grant.revoked / grant.template_applied / grant.membership_read)",
     "cli:adapter": "client transport for the tenant-scoped deployment-adapter routes, whose operations carry the complete adapter.* audit mapping; the local browser handoff opens no separate server-side act",
     "cli:account": "client transport for POST /api/v1/auth/credential/establish, audited server-side as auth.credential_established / auth.credential_authority_refused",
@@ -34,6 +35,7 @@
     "cli:update": "client-local read and write of public Hikyo release metadata and the chosen local channel; it reaches no Hikyo server operation and holds no secret or tenant material",
     "cli:values": "client transport for the tenant-scoped value routes, whose operations carry the audit mapping",
     "cli:version": "local build-metadata print: no server, no store",
+    "cli:welcome": "local first-contact and build-version print: no server, no store",
     "cli:whoami": "client transport for GET /api/v1/auth/whoami, which is itself exempt (it reports the session the caller already holds and writes nothing)",
     "http:GET /api/v1/auth/identities": "reports the caller's own linked identities and writes nothing; a self read whose subjects are already recorded at link/unlink time (auth.identity_linked / auth.identity_unlinked), so an event here would duplicate that once per poll, exactly like whoami",
     "http:GET /api/v1/auth/methods": "unauthenticated public discovery: the enabled provider slugs and whether local login is on, instance-level and never per-account; no principal, no tenant data, no state change, same class as GET /api/v1/meta",

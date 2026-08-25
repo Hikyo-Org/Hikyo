@@ -621,11 +621,11 @@ func verifyExecutable(binary []byte, version string) error {
 	if err := os.WriteFile(filename, binary, 0o700); err != nil {
 		return err
 	}
-	out, err := exec.Command(filename, "version").CombinedOutput()
+	out, err := exec.Command(filename, "--version").CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("packaged binary version command failed: %s", strings.TrimSpace(string(out)))
 	}
-	if !strings.Contains(string(out), "hikyo "+version+" (") {
+	if strings.TrimSpace(string(out)) != version {
 		return fmt.Errorf("packaged binary reports unexpected version: %s", strings.TrimSpace(string(out)))
 	}
 	return nil

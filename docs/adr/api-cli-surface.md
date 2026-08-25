@@ -57,9 +57,12 @@ Serving the SPA shell itself (static assets under the route partitioning #22 fix
 
 **Noun-verb groups**, matching the shape the locked ADRs already use. The v1 set — verbs previously fixed elsewhere cite their ADR; the rest are fixed here. **This set is closed for v1** with one declared join point: the deployment-adapter verbs land in [#28](https://github.com/Hikyo-Org/Hikyo/issues/28) and join the taxonomy under this ADR's grammar (context, output, artifact-eligibility rules) — #28 adds spellings, never new grammar.
 
+> **Declared amendment (2026-08-25):** the closed local product-information class contains `version`, `about`, and `welcome`; `--version` is the machine-readable flag form. These commands are not operational verbs: they use only build-time product metadata and embedded artwork, contact no server or store, require no principal, and change no state. Their stdout is their requested payload; `--version` remains exactly one version value. Adding another member reopens this ADR.
+
 | Group | Verbs | Source |
 |---|---|---|
 | modes | `server`, `operator`, `migrate` | #22 (multicall) |
+| information | `version`, `about`, `welcome`; flag: `--version` | declared amendment above |
 | auth | `login`, `logout`, `whoami` | #16; transports fixed here |
 | context | `context list \| show \| create \| delete` | here (§ Context model — no persistent `use`) |
 | browse | `org list`, `project list`, `env list`, `key list` | here — names/metadata, never values |

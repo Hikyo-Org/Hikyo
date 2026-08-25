@@ -40,7 +40,7 @@ fi
 require_text "$snapshot_block" './scripts/release/prepare-image-root.sh'
 require_text "$snapshot_block" 'name: Smoke the exact candidate image'
 require_text "$snapshot_block" 'image_id=$(docker image inspect --format '\''{{.Id}}'\'' "$image")'
-require_text "$snapshot_block" 'docker run --rm "$image_id" version'
+require_text "$snapshot_block" 'docker run --rm "$image_id" --version'
 require_text "$snapshot_block" './scripts/release/smoke-image-ui.sh "$image_id"'
 require_text "$release_image_block" 'name: Smoke the published candidate image'
 require_text "$release_image_block" './scripts/release/smoke-image-ui.sh "$IMAGE@$IMAGE_DIGEST"'

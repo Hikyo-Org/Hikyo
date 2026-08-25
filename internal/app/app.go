@@ -527,7 +527,8 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		TrustedProxies: proxies,
 	}
 
-	log.Info("boot complete", "engine", sc.Engine, "addr", ln.Addr().String(), "operational_addr", operationalLn.Addr().String(), "dev", cfg.Dev,
+	log.Info("boot complete", "version", Version, "engine", sc.Engine, "external_origin", cfg.ExternalOrigin,
+		"addr", ln.Addr().String(), "operational_addr", operationalLn.Addr().String(), "dev", cfg.Dev, "update_channel", cfg.UpdateChannel,
 		"argon2_memory_kib", cfg.Argon2MemoryKiB, "auth_concurrency", limiter.Concurrency())
 	// Construct the complete owner before disarming: future fallible work added
 	// to construction stays inside the guard's protection.
@@ -649,6 +650,17 @@ func newHTTPServer(h http.Handler) *http.Server {
 
 // Serve blocks until ctx is cancelled, then shuts down gracefully.
 func (s *Server) Serve(ctx context.Context) error {
+	return s.serve(ctx, nil)
+}
+
+// ServeWithReady behaves like Serve and calls ready after both HTTP serving
+// goroutines have started. The command uses it to present an accurate startup
+// summary without teaching the application package about terminal output.
+func (s *Server) ServeWithReady(ctx context.Context, ready func()) error {
+	return s.serve(ctx, ready)
+}
+
+func (s *Server) serve(ctx context.Context, ready func()) error {
 	defer s.db.Close()
 	schedulerCtx, stopScheduler := context.WithCancel(ctx)
 	var schedulerDone chan struct{}
@@ -724,6 +736,11 @@ func (s *Server) Serve(ctx context.Context) error {
 		defer serveWG.Done()
 		errCh <- operationalServer.Serve(s.operationalLn)
 	}()
+	addr, operationalAddr := s.Addr, s.OperationalAddr
+	s.log.Info("server ready", "version", Version, "addr", addr, "operational_addr", operationalAddr)
+	if ready != nil {
+		ready()
+	}
 
 	var serveErr error
 	select {
