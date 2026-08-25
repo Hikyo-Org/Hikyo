@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@11.10.0",
+  "packageManager": "pnpm@11.24.0",
   "description": "The Hikyo single-page application. Built by Vite into ../internal/webui/dist, embedded by the server binary under the `ui` build tag.",
   "scripts": {
     "dev": "vite",

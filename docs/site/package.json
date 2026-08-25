@@ -37,5 +37,5 @@
     "typescript": "6.0.3",
     "workbox-build": "7.4.1"
   },
-  "packageManager": "pnpm@11.10.0"
+  "packageManager": "pnpm@11.24.0"
 }
