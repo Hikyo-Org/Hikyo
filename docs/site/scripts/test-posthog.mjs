@@ -6,6 +6,15 @@ import { fileURLToPath } from 'node:url';
 const dist = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
 const landingPage = await readFile(resolve(dist, 'index.html'), 'utf8');
 const docsPage = await readFile(resolve(dist, 'docs/index.html'), 'utf8');
+const postHogBuilt = /\/static\/array\.js/.test(landingPage);
+
+if (!postHogBuilt) {
+  assert.notEqual(process.env.POSTHOG_REQUIRED, 'true', 'required PostHog build omitted analytics');
+  assert.doesNotMatch(docsPage, /\/static\/array\.js/, 'documentation analytics differs from landing page');
+  assert.doesNotMatch(landingPage, /data-posthog-consent/, 'disabled analytics rendered consent controls');
+  console.log('PostHog gate: analytics disabled because deploy configuration is not required');
+  process.exit(0);
+}
 
 assert.match(landingPage, /\/static\/array\.js/, 'landing page does not initialize PostHog');
 assert.match(docsPage, /\/static\/array\.js/, 'documentation pages do not initialize PostHog');

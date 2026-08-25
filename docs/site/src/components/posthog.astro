@@ -1,16 +1,20 @@
 ---
 const apiKey = import.meta.env.PUBLIC_POSTHOG_PROJECT_TOKEN;
 const apiHost = import.meta.env.PUBLIC_POSTHOG_HOST;
+const postHogRequired = import.meta.env.POSTHOG_REQUIRED === 'true';
 
-if (!apiKey) {
+if (postHogRequired && !apiKey) {
   throw new Error('PUBLIC_POSTHOG_PROJECT_TOKEN is required to build the Hikyo site');
 }
 
-if (!apiHost) {
+if (postHogRequired && !apiHost) {
   throw new Error('PUBLIC_POSTHOG_HOST is required to build the Hikyo site');
 }
+
+const postHogEnabled = Boolean(apiKey && apiHost);
 ---
 
+{postHogEnabled && <Fragment>
 <aside class="analytics-consent" data-posthog-consent hidden aria-label="Optional site analytics">
   <p>
     <strong>Optional site analytics.</strong> Allow anonymous pageviews and named link clicks to help improve
@@ -171,3 +175,4 @@ if (!apiHost) {
     display: none;
   }
 </style>
+</Fragment>}
