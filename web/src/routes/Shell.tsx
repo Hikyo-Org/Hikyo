@@ -126,6 +126,10 @@ export function Shell({ session }: { session: WhoAmI }) {
   const activeProjectName =
     projectItems.find((project) => project.id === routeProjectId)?.name ?? routeProjectId;
   const accountName = session.principal.display_name ?? session.principal.id;
+  // Roles are templates, not stored identities. Production therefore uses the
+  // honest membership label; prototype mode owns its illustrative admin copy.
+  const isPrototype = import.meta.env.MODE === 'prototype';
+  const activeOrgRole = isPrototype ? 'org admin' : 'Organisation member';
   const visibleRetentionHealth = retentionHealth.data?.health;
   const showInstanceAdministration = retentionHealth.data?.instanceAdmin === true;
   const pruneWarning = retentionBanner(visibleRetentionHealth, retentionHealth.isError);
@@ -371,6 +375,7 @@ export function Shell({ session }: { session: WhoAmI }) {
               orgName={activeOrgName}
               project={routeProjectId}
               projectName={activeProjectName}
+              orgRole={activeOrgRole}
               remote={remote}
               state={projectSidebar}
               onNavigate={onSidebarNavigate}
@@ -558,6 +563,7 @@ function ProjectNavigation({
   orgName,
   project,
   projectName,
+  orgRole,
   remote,
   state,
   onNavigate,
@@ -566,19 +572,20 @@ function ProjectNavigation({
   orgName: string;
   project: string;
   projectName: string;
+  orgRole: string;
   remote: string;
   state: ProjectSidebarState | null;
   onNavigate: () => void;
 }) {
-  const projectPath = (id: 'matrix' | 'history' | 'machine-access' | 'project-settings') => {
+  const projectPath = (id: 'matrix' | 'project-settings') => {
     const path = generatePath(surfaceById(id).path, { org, project });
-    return id === 'matrix' || id === 'history' ? withRemote(path, remote) : path;
+    return id === 'matrix' ? withRemote(path, remote) : path;
   };
   const orgPath = (id: 'members' | 'org-settings') => {
     const surface = surfaceById(id);
     return generatePath(surface.path, { org });
   };
-  const localOnlyDestination = (label: string, id: 'machine-access' | 'project-settings' | 'members') =>
+  const localOnlyDestination = (label: string, id: 'project-settings' | 'members') =>
     remote === '' ? (
       <NavLink
         className="sidebar__link"
@@ -603,7 +610,7 @@ function ProjectNavigation({
           <span className="avatar project-sidebar__org-avatar">{monogram(orgName)}</span>
           <span>
             <strong>{orgName}</strong>
-            <small>Organisation member</small>
+            <small>{orgRole}</small>
           </span>
         </div>
         <h2 id="project-sidebar-title">
@@ -623,16 +630,17 @@ function ProjectNavigation({
                   key={group.id}
                   disabled={group.hidden}
                   title={group.hidden ? 'hidden by the problems filter' : undefined}
-                  aria-label={`${group.name}/ · ${String(group.keyCount)} ${group.keyCount === 1 ? 'key' : 'keys'}${group.problemCount === 0 ? '' : ` · ${String(group.problemCount)} problems`}`}
+                  aria-label={`${group.name} · ${String(group.keyCount)} ${group.keyCount === 1 ? 'key' : 'keys'}${group.problemCount === 0 ? '' : ` · ${String(group.problemCount)} problems`}`}
                   onClick={() => {
                     state.onSelectGroup(group.id);
                     onNavigate();
                   }}
                 >
-                  <span className="mono">{group.name}/</span>
-                  <span>{String(group.keyCount)}</span>
-                  {group.problemCount === 0 ? null : (
-                    <span className="matrix__count count">! {String(group.problemCount)}</span>
+                  <span>{group.name}</span>
+                  {group.problemCount === 0 ? (
+                    <span className="project-sidebar__group-count">{String(group.keyCount)}</span>
+                  ) : (
+                    <span className="matrix__count count">{String(group.problemCount)}</span>
                   )}
                 </button>
               ))}
@@ -645,21 +653,17 @@ function ProjectNavigation({
                   onNavigate();
                 }}
               >
-                <span>Problems</span>
+                <span>problems</span>
                 <span className="matrix__count count">{String(state.problemCount)}</span>
               </button>
             </div>
           )}
-          <NavLink className="sidebar__link" to={projectPath('history')} onClick={onNavigate}>
-            Version history
-          </NavLink>
-          {localOnlyDestination('Machine access', 'machine-access')}
           {localOnlyDestination('Members & access', 'members')}
           {localOnlyDestination('Project settings', 'project-settings')}
         </nav>
       </section>
       <section className="sidebar__section project-sidebar__organisation">
-        <h2>Organisation</h2>
+        <h2>Organization</h2>
         <ul className="sidebar__items">
           <li>
             <NavLink className="sidebar__link" to={orgPath('members')} onClick={onNavigate}>

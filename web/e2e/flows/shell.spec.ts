@@ -59,11 +59,26 @@ test.describe('app chrome', () => {
     const sidebar = page.getByRole('navigation', { name: 'Sections', exact: true });
     const header = page.locator('.header');
 
+    await rail.getByRole('button', { name: /^Project / }).first().click();
+
     await expect(rail).toHaveCSS('width', '56px');
     await expect(sidebar).toHaveCSS('width', '218px');
     await expect(header).toHaveCSS('height', '61px');
     await expect(header.getByText('Signed in as')).toBeVisible();
     await expect(rail.getByRole('link', { name: 'Instance administration' })).toBeVisible();
+
+    const projectNav = sidebar.getByRole('navigation', { name: 'Project' });
+    const matrixLink = projectNav.getByRole('link', { name: 'Environment matrix' });
+    await expect(matrixLink).toHaveCSS('min-height', '38px');
+    await expect(matrixLink).toHaveCSS('font-size', '13px');
+    await expect(sidebar.locator('.project-sidebar__org-avatar')).toHaveCSS('width', '28px');
+    await expect(sidebar.locator('.project-sidebar__org small')).toHaveText(
+      'Organisation member',
+    );
+    await expect(sidebar.locator('.project-sidebar__group').first()).toHaveCSS('height', '38px');
+    await expect(sidebar.getByRole('heading', { name: 'Organization' })).toBeVisible();
+    await expect(projectNav.getByRole('link', { name: 'Version history' })).toHaveCount(0);
+    await expect(projectNav.getByRole('link', { name: 'Machine access' })).toHaveCount(0);
   });
 
   test('keeps every chrome destination in the fixed mobile drawer', async ({ page }, testInfo) => {
@@ -318,7 +333,7 @@ test.describe('app chrome', () => {
             [well, 'backgroundColor', '--bg-raise'],
             [well, 'borderTopColor', '--line'],
             // Treatment e's hairline rule: the sub-items hang off it.
-            [page.locator('.sidebar__items').first(), 'borderLeftColor', '--line'],
+            [page.locator('.sidebar__items').first(), 'borderLeftColor', '--chrome-line'],
           ],
           hairlines: [well],
           density: [[theme, '--touch']],

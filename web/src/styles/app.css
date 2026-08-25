@@ -436,6 +436,7 @@ select {
 /* --- Chrome -------------------------------------------------------------- */
 
 .chrome {
+  --chrome-faint: color-mix(in oklch, var(--tx-dim), var(--bg-raise) 10%);
   display: grid;
   grid-template-columns: var(--rail) 218px 1fr;
   grid-template-rows: 1fr;
@@ -451,7 +452,7 @@ select {
   align-items: center;
   gap: 8px;
   padding: 14px 0 12px;
-  border-right: 1px solid var(--line);
+  border-right: 1px solid var(--chrome-line);
   background: var(--bg-raise);
 }
 
@@ -474,8 +475,32 @@ select {
 }
 
 .rail__divider {
-  width: 28px;
-  border-top: 1px solid var(--line);
+  width: 26px;
+  margin: 4px 0;
+  border-top: 1px solid var(--chrome-line);
+}
+
+.rail .avatar {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.rail .avatar[aria-current='true'] {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-color: transparent;
+  background: var(--bg);
+  color: var(--tx);
+}
+
+.rail__orgs li:first-child .avatar {
+  background: oklch(0.62 0.11 190);
+  color: oklch(0.12 0.02 220);
+}
+
+.rail__orgs li:nth-child(2) .avatar {
+  background: oklch(0.62 0.11 270);
+  color: oklch(0.12 0.02 220);
 }
 
 .project-avatar {
@@ -489,15 +514,31 @@ select {
   background: var(--bg);
   color: var(--tx-dim);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 700;
   cursor: pointer;
 }
 
 .project-avatar:hover,
 .project-avatar[aria-current='true'] {
   border-color: var(--accent);
-  color: var(--tx);
-  background: color-mix(in oklch, var(--bg), var(--accent) 9%);
+  color: var(--on-accent);
+  background: var(--accent);
+}
+
+.rail__projects li:nth-child(2) .project-avatar {
+  background: oklch(0.28 0.035 260);
+  color: oklch(0.93 0.008 200);
+}
+
+.rail__projects li:nth-child(3) .project-avatar {
+  background: oklch(0.27 0.025 65);
+  color: oklch(0.93 0.008 200);
+}
+
+.rail__projects li .project-avatar[aria-current='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .rail__mobile-context {
@@ -553,6 +594,10 @@ select {
 
 .account-entry > .avatar {
   position: relative;
+  border-color: transparent;
+  background: var(--bg);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .account-update-badge {
@@ -572,16 +617,23 @@ select {
   flex-direction: column;
   gap: 0;
   padding: 6px 0 20px;
-  border-right: 1px solid var(--line);
+  border-right: 1px solid var(--chrome-line);
   background: var(--bg-raise);
   overflow-y: auto;
 }
 
 .sidebar > .sidebar__section + .sidebar__section,
-.project-sidebar__organisation,
 .sidebar__mobile-account,
 .sidebar__mobile-projects {
   margin-top: 30px;
+}
+
+.project-sidebar__organisation {
+  margin-top: 0;
+}
+
+.sidebar__section.project-sidebar__organisation h2 {
+  padding-top: 30px;
 }
 
 .sidebar__empty {
@@ -609,17 +661,19 @@ select {
   padding: 0;
   list-style: none;
   /* treatment e: sub-items hang off a hairline rule */
-  border-left: 1px solid var(--line);
+  border-left: 1px solid var(--chrome-line);
 }
 
 .sidebar__link {
   display: flex;
   align-items: center;
-  min-height: var(--touch);
+  min-height: 38px;
   width: 100%;
-  padding: 0 13px;
-  border-radius: var(--radius-control);
+  padding: 9px 13px;
+  border-radius: 0;
   color: var(--tx-dim);
+  font-size: 13px;
+  line-height: 20px;
   text-decoration: none;
 }
 
@@ -657,13 +711,14 @@ select {
 
 .sidebar__link:hover {
   color: var(--tx);
-  background: var(--bg-raise);
+  background: color-mix(in oklch, var(--bg-raise), var(--tx) 7%);
 }
 
 .sidebar__link[aria-current='page'] {
   color: var(--tx);
-  background: var(--bg-raise);
-  box-shadow: inset 2px 0 0 var(--accent);
+  background: color-mix(in oklch, var(--bg-raise), var(--accent) 14%);
+  box-shadow: inset 1px 0 0 var(--accent);
+  font-weight: 600;
 }
 
 .sidebar__link--disabled {
@@ -681,7 +736,7 @@ select {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 16px 12px;
+  padding: 12px 16px 4px;
   min-width: 0;
 }
 
@@ -689,6 +744,7 @@ select {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  line-height: 1.2;
 }
 
 .project-sidebar__org strong,
@@ -703,15 +759,20 @@ select {
 }
 
 .project-sidebar__org small {
-  color: var(--tx-faint);
+  color: var(--chrome-faint);
   font-family: var(--font-mono);
   font-size: 10px;
 }
 
 .project-sidebar__org-avatar.avatar {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   flex: none;
+  border: 0;
+  background: oklch(0.62 0.11 190);
+  color: oklch(0.12 0.02 220);
+  font-size: 10px;
+  font-weight: 700;
   cursor: default;
 }
 
@@ -732,13 +793,14 @@ select {
 .project-sidebar > nav {
   display: flex;
   flex-direction: column;
+  width: calc(100% - 19px);
+  margin-left: 19px;
+  border-left: 1px solid var(--chrome-line);
 }
 
 .project-sidebar > nav > .sidebar__link,
 .project-sidebar__groups {
-  width: calc(100% - 19px);
-  margin-left: 19px;
-  border-left: 1px solid var(--line);
+  width: 100%;
 }
 
 .project-sidebar > nav > .sidebar__link {
@@ -748,16 +810,30 @@ select {
 .project-sidebar__groups {
   display: flex;
   flex-direction: column;
-  margin-top: 2px;
-  margin-bottom: 8px;
-  padding: 2px 0 2px 13px;
-  background: var(--bg-raise);
+  margin: 0;
+  padding: 0;
+  background: transparent;
 }
 
-.project-sidebar__group {
-  min-height: var(--touch);
-  padding-block: 3px;
-  font-size: 12px;
+.project-sidebar .project-sidebar__group {
+  min-height: 38px;
+  padding: 9px 13px 9px 28px;
+  border-radius: 0;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.project-sidebar__group-count {
+  color: var(--chrome-faint);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.project-sidebar .matrix__count {
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
 }
 
 .main {
@@ -814,7 +890,7 @@ select {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  color: var(--tx-faint);
+  color: var(--chrome-faint);
   font-size: 11px;
 }
 
@@ -1051,7 +1127,7 @@ select {
     width: min(300px, 80vw);
     height: 100dvh;
     max-height: none;
-    border-right: 1px solid var(--line);
+    border-right: 1px solid var(--chrome-line);
     box-shadow: 12px 0 36px oklch(0 0 0 / 0.32);
   }
 
@@ -1117,6 +1193,13 @@ select {
 
   .header > .btn--icon {
     flex: none;
+  }
+
+  .sidebar__link,
+  .project-sidebar__group {
+    min-height: var(--touch);
+    padding-top: 12px;
+    padding-bottom: 12px;
   }
 
   .menu {
