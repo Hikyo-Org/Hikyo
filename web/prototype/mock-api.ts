@@ -4,9 +4,16 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import {
   zApplyTemplateRequest,
+  zCreateOrgRequest,
   zCreateGrantRequest,
   zCreateProjectRequest,
+  zEnvironmentSettings,
   zPublishRequest,
+  zRenameRequest,
+  zRetentionPolicy,
+  zSetCredentialPolicyRequest,
+  zSetDefinitionsSettingsRequest,
+  zSetProjectRetentionRequest,
   zSetValueRequest,
 } from '../../clients/ts/src/generated/zod.gen.ts';
 import { expandTemplate, type Level } from '../src/api/access-templates.ts';
@@ -30,6 +37,22 @@ export function createPrototypeSessionTimes(requestedAt: number) {
 // stable matters: AuthProvider intentionally treats a changed assurance time as
 // a security transition and invalidates every query below it.
 export const prototypeSessionTimes = createPrototypeSessionTimes(Date.now());
+
+function prototypeLoginResult() {
+  return {
+    session: {
+      id: ids.session,
+      artifact: 'browser',
+      ...prototypeSessionTimes,
+      assurance: {
+        method: 'local-password+totp',
+        factors: ['password', 'totp'],
+        authenticated_at: prototypeSessionTimes.created_at,
+      },
+    },
+    principal: { id: ids.principal, kind: 'human', display_name: 'Alex Lee' },
+  };
+}
 
 const ids = {
   session: 'ses_11111111-1111-4111-8111-111111111111',
@@ -109,7 +132,7 @@ type PrototypeGrant = {
   readonly principal_id: string;
   readonly capability: string;
   readonly scope: {
-    readonly org_id: string;
+    readonly org_id?: string;
     readonly project_id?: string;
     readonly environment_id?: string;
   };
@@ -156,6 +179,12 @@ const prototypeGrantSeeds: readonly PrototypeGrant[] = [
     'grn_aaaaaaaa-1111-4111-8111-111111111111',
     ids.principal,
     'audit-read',
+    { org_id: ids.org },
+  ),
+  prototypeGrant(
+    'grn_bbbbbbbb-1111-4111-8111-111111111111',
+    ids.principal,
+    'reveal-history',
     { org_id: ids.org },
   ),
   prototypeGrant(
@@ -229,6 +258,73 @@ let draftSequence = 1;
 let grantSequence = 1;
 let revision = 12;
 let prototypeGrants = [...prototypeGrantSeeds];
+let prototypeOrgName = 'acme';
+let prototypeOrgDeleted = false;
+let prototypeProjectNames = new Map<string, string>([
+  [ids.project, 'demo'],
+  [ids.webProject, 'website'],
+  [ids.mobileProject, 'mobile-app'],
+]);
+let prototypeOrgRetention: {
+  mode: 'keep-if-either' | 'unlimited';
+  max_age_seconds: number | null;
+  last_revisions: number | null;
+} = {
+  mode: 'keep-if-either',
+  max_age_seconds: 2_592_000,
+  last_revisions: 6,
+};
+let prototypeProjectRetentions = new Map<string, {
+  inherited: boolean;
+  mode: 'keep-if-either';
+  max_age_seconds: number | null;
+  last_revisions: number | null;
+}>([
+  [ids.project, { inherited: true, mode: 'keep-if-either', max_age_seconds: 2_592_000, last_revisions: 6 }],
+  [ids.webProject, { inherited: false, mode: 'keep-if-either', max_age_seconds: 2_592_000, last_revisions: 4 }],
+  [ids.mobileProject, { inherited: false, mode: 'keep-if-either', max_age_seconds: 2_592_000, last_revisions: 10 }],
+]);
+let prototypeDefinitionsSource: 'db' | 'git' = 'db';
+let prototypeEnvironmentSettings = new Map<string, {
+  protected: boolean;
+  reauth_window_seconds: number | null;
+}>(Object.values(ids.environments).map((environmentId) => [
+  environmentId,
+  {
+    protected: environmentId === ids.environments.production,
+    reauth_window_seconds: environmentId === ids.environments.production ? 0 : 900,
+  },
+]));
+let prototypePasskeys = new Set([
+  'psk_11111111-1111-4111-8111-111111111111',
+  'psk_22222222-2222-4222-8222-222222222222',
+]);
+let prototypeTotpConfirmed = true;
+let prototypeTotpPending = false;
+let prototypeRevokedSessions = new Set<string>();
+let prototypeIdentityLinked = true;
+let prototypeCredentialPolicy = {
+  max_finite_lifetime_seconds: 7_776_000,
+  allow_indefinite: false,
+  max_live_credentials: 5,
+  updated_at: fixtureTime,
+  updated_by: ids.principal,
+};
+type PrototypeOrgRow = {
+  readonly id: string;
+  readonly name: string;
+  readonly active: boolean;
+  readonly metadata: object | null;
+  readonly created_at: string;
+};
+type PrototypeProjectRow = {
+  readonly id: string;
+  readonly org_id: string;
+  readonly name: string;
+  readonly created_at: string;
+};
+let prototypeExtraOrgs: PrototypeOrgRow[] = [];
+let prototypeExtraProjects: PrototypeProjectRow[] = [];
 
 function reset(): void {
   drafts.clear();
@@ -238,6 +334,48 @@ function reset(): void {
   grantSequence = 1;
   revision = 12;
   prototypeGrants = [...prototypeGrantSeeds];
+  prototypeOrgName = 'acme';
+  prototypeOrgDeleted = false;
+  prototypeProjectNames = new Map([
+    [ids.project, 'demo'],
+    [ids.webProject, 'website'],
+    [ids.mobileProject, 'mobile-app'],
+  ]);
+  prototypeOrgRetention = {
+    mode: 'keep-if-either',
+    max_age_seconds: 2_592_000,
+    last_revisions: 6,
+  };
+  prototypeProjectRetentions = new Map([
+    [ids.project, { inherited: true, mode: 'keep-if-either', max_age_seconds: 2_592_000, last_revisions: 6 }],
+    [ids.webProject, { inherited: false, mode: 'keep-if-either', max_age_seconds: 2_592_000, last_revisions: 4 }],
+    [ids.mobileProject, { inherited: false, mode: 'keep-if-either', max_age_seconds: 2_592_000, last_revisions: 10 }],
+  ]);
+  prototypeDefinitionsSource = 'db';
+  prototypeEnvironmentSettings = new Map(Object.values(ids.environments).map((environmentId) => [
+    environmentId,
+    {
+      protected: environmentId === ids.environments.production,
+      reauth_window_seconds: environmentId === ids.environments.production ? 0 : 900,
+    },
+  ]));
+  prototypePasskeys = new Set([
+    'psk_11111111-1111-4111-8111-111111111111',
+    'psk_22222222-2222-4222-8222-222222222222',
+  ]);
+  prototypeTotpConfirmed = true;
+  prototypeTotpPending = false;
+  prototypeRevokedSessions = new Set();
+  prototypeIdentityLinked = true;
+  prototypeCredentialPolicy = {
+    max_finite_lifetime_seconds: 7_776_000,
+    allow_indefinite: false,
+    max_live_credentials: 5,
+    updated_at: fixtureTime,
+    updated_by: ids.principal,
+  };
+  prototypeExtraOrgs = [];
+  prototypeExtraProjects = [];
 }
 
 function scenarioFrom(request: IncomingMessage): Scenario {
@@ -308,10 +446,206 @@ function valuesFor(environmentId: string, scenario: Scenario) {
   });
 }
 
+type PrototypeReadFixture = {
+  readonly status: number;
+  readonly body: object;
+};
+
+function canonicalPrototypePath(path: string): string {
+  return path
+    .replace('/orgs/acme', `/orgs/${ids.org}`)
+    .replace('/projects/demo', `/projects/${ids.project}`)
+    .replace('/projects/website', `/projects/${ids.webProject}`)
+    .replace('/projects/mobile-app', `/projects/${ids.mobileProject}`);
+}
+
+/** Static reads required to exercise every finalized app-chrome surface locally. */
+export function prototypeReadFixture(
+  path: string,
+  scenario: Scenario = 'populated',
+): PrototypeReadFixture | undefined {
+  path = canonicalPrototypePath(path);
+  if (path === '/api/v1/auth/methods') {
+    return {
+      status: 200,
+      body: {
+        local_login_enabled: true,
+        providers: [{ slug: 'git', display_name: 'git.example.com', kind: 'oidc' }],
+      },
+    };
+  }
+  if (path === '/api/v1/auth/identities') {
+    return {
+      status: 200,
+      body: {
+        identities: scenario === 'empty' || !prototypeIdentityLinked ? [] : [{
+          id: 'idn_11111111-1111-4111-8111-111111111111',
+          kind: 'oidc',
+          issuer: 'https://git.example.com',
+          subject: 'alex',
+          provider_id: 'git',
+          created_at: '2026-06-02T10:00:00Z',
+        }],
+      },
+    };
+  }
+  if (path === '/api/v1/me/sessions') {
+    const items = (scenario === 'empty' ? [] : [
+      {
+        id: ids.session,
+        artifact: 'browser',
+        auth_method: 'local-password+totp',
+        created_at: fixtureTime,
+        last_seen_at: fixtureTime,
+        idle_expires_at: prototypeIdleExpiry,
+        absolute_expires_at: prototypeAbsoluteExpiry,
+        source_ip: '193.28.x.x',
+        user_agent: 'Safari · macOS',
+      },
+      {
+        id: 'ses_22222222-2222-4222-8222-222222222222',
+        artifact: 'browser',
+        auth_method: 'local-password',
+        created_at: '2026-08-22T10:00:00Z',
+        last_seen_at: '2026-08-22T10:00:00Z',
+        idle_expires_at: prototypeIdleExpiry,
+        absolute_expires_at: prototypeAbsoluteExpiry,
+        source_ip: '193.28.x.x',
+        user_agent: 'Firefox · Fedora',
+      },
+      {
+        id: 'ses_33333333-3333-4333-8333-333333333333',
+        artifact: 'cli',
+        auth_method: 'device-authorization',
+        created_at: '2026-08-24T09:35:00Z',
+        last_seen_at: '2026-08-24T09:35:00Z',
+        idle_expires_at: prototypeIdleExpiry,
+        absolute_expires_at: prototypeAbsoluteExpiry,
+        user_agent: 'hikyo CLI · laptop.example',
+      },
+      {
+        id: 'ses_44444444-4444-4333-8333-444444444444',
+        artifact: 'cli',
+        auth_method: 'device-authorization',
+        created_at: '2026-08-18T09:35:00Z',
+        last_seen_at: '2026-08-18T09:35:00Z',
+        idle_expires_at: prototypeIdleExpiry,
+        absolute_expires_at: prototypeAbsoluteExpiry,
+        user_agent: 'hikyo CLI · example-cluster-0',
+      },
+    ]).filter((session) => !prototypeRevokedSessions.has(session.id));
+    return { status: 200, body: { items, count: items.length } };
+  }
+  if (path === '/api/v1/orgs') {
+    const items = scenario === 'empty' ? [] : [
+      ...(prototypeOrgDeleted ? [] : [
+      {
+        id: ids.org,
+        name: prototypeOrgName,
+        active: true,
+        metadata: null,
+        created_at: fixtureTime,
+      },
+      ]),
+      {
+        id: ids.sandboxOrg,
+        name: 'sample-org',
+        active: true,
+        metadata: null,
+        created_at: fixtureTime,
+      },
+      ...prototypeExtraOrgs,
+    ];
+    return { status: 200, body: { items, count: items.length } };
+  }
+  const extraOrgRead = /^\/api\/v1\/orgs\/([^/]+)$/.exec(path);
+  if (extraOrgRead !== null) {
+    const orgId = extraOrgRead[1];
+    const org = orgId === undefined
+      ? undefined
+      : prototypeExtraOrgs.find((candidate) => candidate.id === orgId);
+    if (org !== undefined) return { status: 200, body: org };
+  }
+  const extraOrgChildren = /^\/api\/v1\/orgs\/([^/]+)\/(projects|grants|retention)$/.exec(path);
+  if (extraOrgChildren !== null) {
+    const orgId = extraOrgChildren[1];
+    const resource = extraOrgChildren[2];
+    if (prototypeExtraOrgs.some((candidate) => candidate.id === orgId)) {
+      if (resource === 'retention') return { status: 200, body: prototypeOrgRetention };
+      return { status: 200, body: { items: [], count: 0 } };
+    }
+  }
+  if (path === '/api/v1/instance/grants') {
+    const items = scenario === 'empty' ? [] : [
+      prototypeGrant(
+        'grn_cccccccc-1111-4111-8111-111111111111',
+        ids.principal,
+        'instance-config',
+        {},
+      ),
+    ];
+    return { status: 200, body: { items, count: items.length } };
+  }
+  if (path === '/api/v1/instance/credential-policy') {
+    return { status: 200, body: prototypeCredentialPolicy };
+  }
+
+  const extraProjectRead = new RegExp(
+    `^/api/v1/orgs/${ids.org}/projects/([^/]+)$`,
+  ).exec(path);
+  if (extraProjectRead !== null) {
+    const projectId = extraProjectRead[1];
+    const project = projectId === undefined
+      ? undefined
+      : prototypeExtraProjects.find((candidate) => candidate.id === projectId);
+    if (project !== undefined) return { status: 200, body: project };
+  }
+
+  const projectRead = new RegExp(
+    `^/api/v1/orgs/${ids.org}/projects/(${ids.project}|${ids.webProject}|${ids.mobileProject})$`,
+  ).exec(path);
+  if (projectRead !== null) {
+    const projectId = projectRead[1];
+    if (projectId === undefined) {
+      throw new Error('prototype project read matched without a project id');
+    }
+    const name = prototypeProjectNames.get(projectId);
+    if (name === undefined) return undefined;
+    return {
+      status: 200,
+      body: {
+        id: projectId,
+        org_id: ids.org,
+        name,
+        created_at: fixtureTime,
+      },
+    };
+  }
+  if (path === `/api/v1/orgs/${ids.org}/retention`) {
+    return { status: 200, body: prototypeOrgRetention };
+  }
+  const projectRetention = new RegExp(
+    `^/api/v1/orgs/${ids.org}/projects/(${ids.project}|${ids.webProject}|${ids.mobileProject})/retention$`,
+  ).exec(path);
+  if (projectRetention !== null) {
+    const projectId = projectRetention[1];
+    const policy = projectId === undefined ? undefined : prototypeProjectRetentions.get(projectId);
+    return policy === undefined ? undefined : { status: 200, body: policy };
+  }
+  if (path === `/api/v1/orgs/${ids.org}/projects/${ids.project}/definitions/settings`) {
+    return { status: 200, body: { definitions_source: prototypeDefinitionsSource } };
+  }
+  if (path === `/api/v1/orgs/${ids.org}/projects/${ids.project}/grants`) {
+    const items = prototypeGrants.filter((grant) => grant.scope.project_id === ids.project);
+    return { status: 200, body: { items, count: items.length } };
+  }
+  return undefined;
+}
+
 function mockApi(request: IncomingMessage, response: ServerResponse): boolean | Promise<boolean> {
   const method = request.method ?? 'GET';
   const url = new URL(request.url ?? '/', 'http://prototype.local');
-  const path = url.pathname;
+  const path = canonicalPrototypePath(url.pathname);
   const scenario = scenarioFrom(request);
 
   if (path === '/__prototype/reset' && method === 'POST') {
@@ -321,28 +655,324 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
   }
   if (!path.startsWith('/api/v1/')) return false;
 
-  if (path === '/api/v1/auth/whoami' && method === 'GET') {
+  if (method === 'GET') {
+    const fixture = prototypeReadFixture(path, scenario);
+    if (fixture !== undefined) {
+      send(response, fixture.status, fixture.body);
+      return true;
+    }
+  }
+
+  if (path === '/api/v1/orgs' && method === 'POST') {
+    return body(request).then((raw) => {
+      const input = zCreateOrgRequest.parse(JSON.parse(raw));
+      const org: PrototypeOrgRow = {
+        id: 'org_99999999-9999-4999-8999-999999999999',
+        name: input.name,
+        active: input.active,
+        metadata: input.metadata ?? null,
+        created_at: fixtureTime,
+      };
+      prototypeExtraOrgs = [...prototypeExtraOrgs, org];
+      send(response, 201, org);
+      return true;
+    });
+  }
+
+  if (path === `/api/v1/orgs/${ids.org}` && method === 'PATCH') {
+    return body(request).then((raw) => {
+      const input = zRenameRequest.parse(JSON.parse(raw));
+      prototypeOrgName = input.name;
+      send(response, 200, {
+        id: ids.org,
+        name: prototypeOrgName,
+        active: true,
+        metadata: null,
+        created_at: fixtureTime,
+      });
+      return true;
+    });
+  }
+
+  if (path === `/api/v1/orgs/${ids.org}` && method === 'DELETE') {
+    prototypeOrgDeleted = true;
+    prototypeProjectNames.clear();
+    send(response, 204);
+    return true;
+  }
+
+  const extraOrgMutation = /^\/api\/v1\/orgs\/([^/]+)$/.exec(path);
+  if (extraOrgMutation !== null && method === 'PATCH') {
+    return body(request).then((raw) => {
+      const orgId = extraOrgMutation[1];
+      const input = zRenameRequest.parse(JSON.parse(raw));
+      const current = prototypeExtraOrgs.find((candidate) => candidate.id === orgId);
+      if (current === undefined) return false;
+      const updated = { ...current, name: input.name };
+      prototypeExtraOrgs = prototypeExtraOrgs.map((candidate) =>
+        candidate.id === orgId ? updated : candidate,
+      );
+      send(response, 200, updated);
+      return true;
+    });
+  }
+
+  const extraOrgRetentionMutation = /^\/api\/v1\/orgs\/([^/]+)\/retention$/.exec(path);
+  if (extraOrgRetentionMutation !== null && method === 'PUT') {
+    return body(request).then((raw) => {
+      const orgId = extraOrgRetentionMutation[1];
+      if (!prototypeExtraOrgs.some((candidate) => candidate.id === orgId)) return false;
+      const input = zRetentionPolicy.parse(JSON.parse(raw));
+      prototypeOrgRetention = {
+        mode: input.mode,
+        max_age_seconds: input.max_age_seconds ?? null,
+        last_revisions: input.last_revisions ?? null,
+      };
+      send(response, 200, prototypeOrgRetention);
+      return true;
+    });
+  }
+
+  if (extraOrgMutation !== null && method === 'DELETE') {
+    const orgId = extraOrgMutation[1];
+    const exists = prototypeExtraOrgs.some((candidate) => candidate.id === orgId);
+    if (!exists) return false;
+    prototypeExtraOrgs = prototypeExtraOrgs.filter((candidate) => candidate.id !== orgId);
+    send(response, 204);
+    return true;
+  }
+
+  const projectMutation = new RegExp(
+    `^/api/v1/orgs/${ids.org}/projects/(${ids.project}|${ids.webProject}|${ids.mobileProject})$`,
+  ).exec(path);
+  if (projectMutation !== null && method === 'PATCH') {
+    return body(request).then((raw) => {
+      const projectId = projectMutation[1];
+      if (projectId === undefined) throw new Error('prototype project mutation has no id');
+      const input = zRenameRequest.parse(JSON.parse(raw));
+      prototypeProjectNames.set(projectId, input.name);
+      send(response, 200, {
+        id: projectId,
+        org_id: ids.org,
+        name: input.name,
+        created_at: fixtureTime,
+      });
+      return true;
+    });
+  }
+  if (projectMutation !== null && method === 'DELETE') {
+    const projectId = projectMutation[1];
+    if (projectId !== undefined) prototypeProjectNames.delete(projectId);
+    send(response, 204);
+    return true;
+  }
+
+  if (path === `/api/v1/orgs/${ids.org}/retention` && method === 'PUT') {
+    return body(request).then((raw) => {
+      const input = zRetentionPolicy.parse(JSON.parse(raw));
+      prototypeOrgRetention = {
+        mode: input.mode,
+        max_age_seconds: input.max_age_seconds ?? null,
+        last_revisions: input.last_revisions ?? null,
+      };
+      send(response, 200, prototypeOrgRetention);
+      return true;
+    });
+  }
+
+  const projectRetentionMutation = new RegExp(
+    `^/api/v1/orgs/${ids.org}/projects/(${ids.project}|${ids.webProject}|${ids.mobileProject})/retention$`,
+  ).exec(path);
+  if (projectRetentionMutation !== null && method === 'PUT') {
+    return body(request).then((raw) => {
+      const projectId = projectRetentionMutation[1];
+      if (projectId === undefined) throw new Error('prototype retention mutation has no project id');
+      const input = zSetProjectRetentionRequest.parse(JSON.parse(raw));
+      const policy: {
+        inherited: boolean;
+        mode: 'keep-if-either';
+        max_age_seconds: number | null;
+        last_revisions: number | null;
+      } = {
+        inherited: input.inherited,
+        mode: 'keep-if-either',
+        max_age_seconds: input.max_age_seconds ?? null,
+        last_revisions: input.last_revisions ?? null,
+      };
+      prototypeProjectRetentions.set(projectId, policy);
+      send(response, 200, policy);
+      return true;
+    });
+  }
+
+  if (
+    path === `/api/v1/orgs/${ids.org}/projects/${ids.project}/definitions/settings`
+    && method === 'PUT'
+  ) {
+    return body(request).then((raw) => {
+      const input = zSetDefinitionsSettingsRequest.parse(JSON.parse(raw));
+      prototypeDefinitionsSource = input.definitions_source;
+      send(response, 200, { definitions_source: prototypeDefinitionsSource });
+      return true;
+    });
+  }
+
+  const environmentSettingsMutation = new RegExp(
+    `^/api/v1/orgs/${ids.org}/projects/${ids.project}/environments/([^/]+)/settings$`,
+  ).exec(path);
+  if (environmentSettingsMutation !== null && method === 'PUT') {
+    return body(request).then((raw) => {
+      const environmentId = environmentSettingsMutation[1];
+      if (environmentId === undefined) throw new Error('prototype settings mutation has no environment id');
+      const input = zEnvironmentSettings.parse(JSON.parse(raw));
+      const settings = {
+        protected: input.protected,
+        reauth_window_seconds: input.reauth_window_seconds ?? null,
+      };
+      prototypeEnvironmentSettings.set(environmentId, settings);
+      send(response, 200, settings);
+      return true;
+    });
+  }
+
+  if (path === '/api/v1/instance/credential-policy' && method === 'PUT') {
+    return body(request).then((raw) => {
+      const input = zSetCredentialPolicyRequest.parse(JSON.parse(raw));
+      prototypeCredentialPolicy = {
+        max_finite_lifetime_seconds: input.max_finite_lifetime_seconds,
+        allow_indefinite: input.allow_indefinite,
+        max_live_credentials: input.max_live_credentials,
+        updated_at: fixtureTime,
+        updated_by: ids.principal,
+      };
+      send(response, 200, {
+        applied: true,
+        policy: prototypeCredentialPolicy,
+        affected: [],
+        clamped_count: 0,
+      });
+      return true;
+    });
+  }
+
+  if (path === '/api/v1/instance/rotate-token-key' && method === 'POST') {
+    send(response, 200, { token_key_version: 2 });
+    return true;
+  }
+
+  const removePasskey = /^\/api\/v1\/auth\/webauthn\/credentials\/([^/]+)$/.exec(path);
+  if (removePasskey !== null && method === 'DELETE') {
+    const passkeyId = removePasskey[1];
+    if (passkeyId !== undefined) prototypePasskeys.delete(passkeyId);
+    send(response, 200, prototypeLoginResult());
+    return true;
+  }
+
+  if (path === '/api/v1/auth/totp' && method === 'DELETE') {
+    prototypeTotpConfirmed = false;
+    prototypeTotpPending = false;
+    send(response, 200, prototypeLoginResult());
+    return true;
+  }
+
+  if (path === '/api/v1/auth/totp/enrol/start' && method === 'POST') {
+    prototypeTotpPending = true;
     send(response, 200, {
-      session: {
-        id: ids.session,
-        artifact: 'browser',
-        ...prototypeSessionTimes,
-        assurance: {
-          method: 'local-password+totp',
-          factors: ['password', 'totp'],
-          authenticated_at: prototypeSessionTimes.created_at,
-        },
-      },
-      principal: { id: ids.principal, kind: 'human', display_name: 'Alex Lee' },
+      otpauth_uri: 'otpauth://totp/Hikyo:alex?secret=JBSWY3DPEHPK3PXP&issuer=Hikyo',
     });
     return true;
   }
+
+  if (path === '/api/v1/auth/totp/enrol/confirm' && method === 'POST') {
+    prototypeTotpConfirmed = true;
+    prototypeTotpPending = false;
+    send(response, 200, prototypeLoginResult());
+    return true;
+  }
+
+  if (path === '/api/v1/auth/webauthn/enrol/start' && method === 'POST') {
+    send(response, 200, {
+      challenge: 'AQIDBA',
+      rp: { name: 'Hikyo', id: 'localhost' },
+      user: { id: 'AQIDBA', name: 'alex', displayName: 'Alex' },
+      pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
+      authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
+      timeout: 60_000,
+    });
+    return true;
+  }
+
+  if (path === '/api/v1/auth/webauthn/enrol/finish' && method === 'POST') {
+    prototypePasskeys.add('psk_33333333-3333-4333-8333-333333333333');
+    send(response, 200, prototypeLoginResult());
+    return true;
+  }
+
+  if (path === '/api/v1/auth/recovery-codes/regenerate' && method === 'POST') {
+    send(response, 200, {
+      recovery_codes: ['alpha-bravo', 'charlie-delta', 'echo-foxtrot'],
+      login: prototypeLoginResult(),
+    });
+    return true;
+  }
+
+  if (path === '/api/v1/auth/identities/link' && method === 'POST') {
+    prototypeIdentityLinked = true;
+    send(response, 200, { authorization_url: '/settings' });
+    return true;
+  }
+
+  if (/^\/api\/v1\/auth\/identities\/[^/]+$/.test(path) && method === 'DELETE') {
+    prototypeIdentityLinked = false;
+    send(response, 200, prototypeLoginResult());
+    return true;
+  }
+
+  const revokeSession = /^\/api\/v1\/me\/sessions\/([^/]+)$/.exec(path);
+  if (revokeSession !== null && method === 'DELETE') {
+    const sessionId = revokeSession[1];
+    if (sessionId !== undefined) prototypeRevokedSessions.add(sessionId);
+    send(response, 204);
+    return true;
+  }
+
+  if (path === '/api/v1/auth/whoami' && method === 'GET') {
+    send(response, 200, prototypeLoginResult());
+    return true;
+  }
   if (path === '/api/v1/auth/totp' && method === 'GET') {
-    send(response, 200, { confirmed: true, pending: false });
+    send(response, 200, { confirmed: prototypeTotpConfirmed, pending: prototypeTotpPending });
     return true;
   }
   if (path === '/api/v1/auth/webauthn/credentials' && method === 'GET') {
-    send(response, 200, { passkeys: [] });
+    send(response, 200, {
+      passkeys: scenario === 'empty' ? [] : [
+        {
+          id: 'psk_11111111-1111-4111-8111-111111111111',
+          label: 'MacBook Touch ID',
+          discoverable: true,
+          disabled: false,
+          created_at: '2026-05-12T10:00:00Z',
+          last_used_at: fixtureTime,
+        },
+        {
+          id: 'psk_22222222-2222-4222-8222-222222222222',
+          label: 'YubiKey 5C',
+          discoverable: true,
+          disabled: false,
+          created_at: '2026-05-12T10:00:00Z',
+          last_used_at: fixtureTime,
+        },
+        {
+          id: 'psk_33333333-3333-4333-8333-333333333333',
+          label: 'New passkey',
+          discoverable: true,
+          disabled: false,
+          created_at: fixtureTime,
+          last_used_at: fixtureTime,
+        },
+      ].filter((passkey) => prototypePasskeys.has(passkey.id)),
+    });
     return true;
   }
   if (path === '/api/v1/auth/logout' && method === 'POST') {
@@ -351,16 +981,21 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
   }
   if (path === '/api/v1/me/orgs' && method === 'GET') {
     const items = scenario === 'empty' ? [] : [
-      { id: ids.org, name: 'acme' },
+      ...(prototypeOrgDeleted ? [] : [{ id: ids.org, name: prototypeOrgName }]),
       { id: ids.sandboxOrg, name: 'sandbox' },
+      ...prototypeExtraOrgs.map((org) => ({ id: org.id, name: org.name })),
     ];
     send(response, 200, { items, count: items.length });
     return true;
   }
   if (path === `/api/v1/orgs/${ids.org}` && method === 'GET') {
+    if (prototypeOrgDeleted) {
+      send(response, 404, { code: 'not_found' });
+      return true;
+    }
     send(response, 200, {
       id: ids.org,
-      name: 'acme',
+      name: prototypeOrgName,
       active: true,
       metadata: null,
       created_at: fixtureTime,
@@ -469,9 +1104,11 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
   const projectCollection = new RegExp(`^/api/v1/orgs/${ids.org}/projects$`);
   if (projectCollection.test(path) && method === 'GET') {
     const items = scenario === 'empty' ? [] : [
-      { id: ids.project, org_id: ids.org, name: 'demo', created_at: fixtureTime },
-      { id: ids.webProject, org_id: ids.org, name: 'web', created_at: fixtureTime },
-      { id: ids.mobileProject, org_id: ids.org, name: 'mobile', created_at: fixtureTime },
+      ...[ids.project, ids.webProject, ids.mobileProject].flatMap((projectId) => {
+        const name = prototypeProjectNames.get(projectId);
+        return name === undefined ? [] : [{ id: projectId, org_id: ids.org, name, created_at: fixtureTime }];
+      }),
+      ...prototypeExtraProjects,
     ];
     send(response, 200, { items, count: items.length });
     return true;
@@ -479,13 +1116,14 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
   if (projectCollection.test(path) && method === 'POST') {
     return body(request).then((raw) => {
       const input = zCreateProjectRequest.parse(JSON.parse(raw));
-      const project = {
+      const project: PrototypeProjectRow = {
         id: `prj_99999999-9999-4999-8999-${String(projectSequence).padStart(12, '0')}`,
         org_id: ids.org,
         name: input.name,
         created_at: fixtureTime,
       };
       projectSequence += 1;
+      prototypeExtraProjects = [...prototypeExtraProjects, project];
       send(response, 201, project);
       return true;
     });
@@ -527,10 +1165,12 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
       return true;
     }
     if (resource === 'settings') {
-      send(response, 200, {
-        protected: environmentId === ids.environments.production,
-        reauth_window_seconds: environmentId === ids.environments.production ? 0 : 900,
-      });
+      const settings = prototypeEnvironmentSettings.get(environmentId);
+      if (settings === undefined) {
+        send(response, 404, { error: { code: 'not_found' } });
+        return true;
+      }
+      send(response, 200, settings);
       return true;
     }
     const environmentDrafts = [...drafts.values()].filter((draft) => draft.environmentId === environmentId);

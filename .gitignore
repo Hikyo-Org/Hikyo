@@ -37,6 +37,7 @@ hikyo-dev.db*
 
 # Cross-model review artifacts
 .xreview/
+.DS_Store
 .playwright-cli/
 
 # Release build output

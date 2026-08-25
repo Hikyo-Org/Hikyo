@@ -173,7 +173,7 @@ describe('display-once account secrets', () => {
     mocks.writeClipboard.mockResolvedValue('ok');
 
     const { container } = await renderForm(<AccountSecurity />);
-    await act(async () => buttonNamed(container, 'Enrol an authenticator').click());
+    await act(async () => buttonNamed(container, 'enrol').click());
     await submitProof(container);
     await act(async () => buttonNamed(container, 'Copy').click());
     await settle();

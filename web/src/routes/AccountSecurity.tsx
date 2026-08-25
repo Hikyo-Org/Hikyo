@@ -25,6 +25,8 @@ import { clearNotification, notifyFailure } from '../app/notifications.tsx';
 import { Alert, Done, JumpIndex, Panel } from './Sections.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
 
+const prototypeMode = import.meta.env.MODE === 'prototype';
+
 /**
  * Account & security (registry surface `settings`, #60; locked prototype
  * app-chrome iteration 15, sections Profile · Sign-in factors · Recovery ·
@@ -177,15 +179,17 @@ export function AccountSecurity() {
   };
 
   const principal = auth.identity?.principal;
-  const assurance = auth.identity?.session.assurance;
+  const profileDisplayName = prototypeMode
+    ? 'Alex'
+    : principal?.display_name ?? '';
+  const deliveryEmail = prototypeMode ? 'alex@example.com' : '';
 
   return (
-    <div className="page">
+    <div className="page page--chrome">
       <h1>Account &amp; security</h1>
       <p className="page__lede">
-        Security changes ask for the credential you already have — your password, or a code from an
-        authenticator you already enrolled. That is deliberately not the teal disclosure ceremony: a
-        step-up proves who you are, a reveal ceremony authorises one disclosure.
+        Security changes ask for a possession factor first: the blue &quot;confirm it&apos;s you&quot;
+        step-up, deliberately unlike the teal reveal ceremony.
       </p>
 
       <JumpIndex
@@ -193,8 +197,8 @@ export function AccountSecurity() {
           { id: 'account-profile', label: 'Profile' },
           { id: 'account-factors', label: 'Sign-in factors' },
           { id: 'account-recovery', label: 'Recovery' },
-          { id: 'account-sessions', label: 'Active sessions' },
-          { id: 'account-identities', label: 'Linked identities' },
+          { id: 'account-sessions', label: 'Sessions' },
+          { id: 'account-identities', label: 'Identities' },
           { id: 'account-preferences', label: 'Preferences' },
         ]}
       />
@@ -203,103 +207,126 @@ export function AccountSecurity() {
       {failure !== null ? <Alert>{failure}</Alert> : null}
 
       <Panel id="account-profile" title="Profile">
-        <dl className="kv">
-          <div className="kv__pair">
-            <dt>Principal</dt>
-            <dd className="mono">{principal === undefined ? 'Unavailable' : principal.id}</dd>
+        <div className="settings-grid">
+          <div className="field">
+            <label htmlFor="account-display-name">Display name</label>
+            <input
+              id="account-display-name"
+              value={profileDisplayName}
+              readOnly
+              aria-readonly="true"
+            />
           </div>
-          <div className="kv__pair">
-            <dt>Display name</dt>
-            <dd>
-              {principal === undefined
-                ? 'Unavailable'
-                : principal.display_name === null || principal.display_name === undefined
-                  ? 'Not set'
-                  : principal.display_name}
-            </dd>
+          <div className="field">
+            <label htmlFor="account-delivery-email">Email (delivery only)</label>
+            <input
+              id="account-delivery-email"
+              value={deliveryEmail}
+              readOnly
+              aria-readonly="true"
+            />
           </div>
-          <div className="kv__pair">
-            <dt>This session authenticated with</dt>
-            <dd>{assurance === undefined ? '—' : assurance.factors.join(', ')}</dd>
-          </div>
-        </dl>
-        <p className="field__hint">
-          Read-only: nothing in this version writes a profile. A display name is display only and is
-          never a linking key, for any provider, at any point. There is no self-service password
-          change either: a lost or compromised password is re-established through a reset an
-          administrator issues for your account.
+        </div>
+        <p className="settings-note">
+          Email is where invitations and expiry warnings land; it is never an identity and never
+          links accounts (#16). Changing it is a plain edit, not a security change.
         </p>
       </Panel>
 
       <Panel id="account-factors" title="Sign-in factors">
-        <h3>Passkeys</h3>
         {passkeys.isPending ? <p role="status">Loading passkeys…</p> : null}
         {passkeys.isError ? <Alert>Your passkeys could not be listed.</Alert> : null}
         {passkeys.isSuccess && passkeys.data.passkeys.length === 0 ? (
           <p role="status">No passkey is enrolled on this account.</p>
         ) : null}
-        <ul className="factors">
-          {passkeys.isSuccess ? passkeys.data.passkeys.map((passkey) => (
-            <li className="factor" key={passkey.id}>
-              <div>
-                <strong>{passkey.label}</strong>
-                <span className="factor__meta">
-                  added {new Date(passkey.created_at).toLocaleDateString()} · last used{' '}
-                  {new Date(passkey.last_used_at).toLocaleDateString()}
-                  {passkey.disabled ? ' · disabled after a clone signal' : ''}
-                </span>
-              </div>
-              <button
-                type="button"
-                className="btn"
-                aria-label={`Remove passkey ${passkey.label}`}
-                onClick={() => setProof({ kind: 'remove-passkey', id: passkey.id })}
-              >
-                Remove
-              </button>
-            </li>
-          )) : null}
-        </ul>
-        <div className="panel__actions">
-          <button
-            type="button"
-            className="btn"
-            disabled={enrolPasskey.isPending}
-            onClick={() => setProof({ kind: 'add-passkey' })}
-          >
-            Add a passkey
-          </button>
-        </div>
-        <p className="field__hint">
-          A new credential never authorises its own enrolment, so adding one asks for your password
-          first. Enrolling ends every other session this account holds.
-        </p>
+        {passkeys.isSuccess ? passkeys.data.passkeys.map((passkey) => (
+          <div className="settings-row account-passkey" key={passkey.id}>
+            <div className="settings-row__copy">
+              <span className="settings-row__title">🔑 {passkey.label}</span>
+              <span className="settings-row__detail">
+                passkey · added {new Date(passkey.created_at).toISOString().slice(0, 10)}
+                {passkey.disabled ? ' · disabled after clone signal' : ''}
+              </span>
+            </div>
+            <span className="settings-row__spacer" />
+            <button
+              type="button"
+              className="capability__revoke"
+              aria-label={`Remove passkey ${passkey.label}`}
+              onClick={() => setProof({ kind: 'remove-passkey', id: passkey.id })}
+            >
+              ✕
+            </button>
+          </div>
+        )) : null}
 
-        <h3>Authenticator app</h3>
-        {totpStatus.isPending && otpauth === null ? (
-          <p role="status">Checking your authenticator…</p>
-        ) : null}
+        <div className="settings-row">
+          <div className="settings-row__copy">
+            <span className="settings-row__title">Authenticator app</span>
+            <span className="settings-row__detail">TOTP · single-use per step</span>
+          </div>
+          <span className="settings-row__spacer" />
+          {totpStatus.isSuccess && totpStatus.data.confirmed ? (
+            <button
+              type="button"
+              className="settings-tag account-factor-status"
+              aria-label="Remove the authenticator"
+              disabled={totpRemove.isPending}
+              title="Remove authenticator app"
+              onClick={() => setProof({ kind: 'totp-remove' })}
+            >
+              enrolled
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn"
+              disabled={totpStart.isPending || totpStatus.isPending}
+              onClick={() => setProof({ kind: 'totp-start' })}
+            >
+              enrol
+            </button>
+          )}
+        </div>
         {totpStatus.isError ? (
           <Alert>Your authenticator state could not be read. Reload to try again.</Alert>
         ) : null}
+
+        <div className="settings-row">
+          <div className="settings-row__copy">
+            <span className="settings-row__title">Password</span>
+            <span className="settings-row__detail">signs you in, never authorises security changes</span>
+          </div>
+          <span className="settings-row__spacer" />
+          <button type="button" className="btn" disabled title="Password changes are not in the API contract">
+            change
+          </button>
+        </div>
+
+        <div className="settings-row">
+          <div className="settings-row__copy">
+            <span className="settings-row__title">Add passkey</span>
+            <span className="settings-row__detail">
+              a new credential never authorizes its own enrollment
+            </span>
+          </div>
+          <span className="settings-row__spacer" />
+          <button
+            type="button"
+            className="btn"
+            aria-label="Add a passkey"
+            disabled={enrolPasskey.isPending}
+            onClick={() => setProof({ kind: 'add-passkey' })}
+          >
+            + add
+          </button>
+        </div>
+
         {totpEnrolmentInProgress ? (
           <p role="status">
             An enrolment is staged — add it to your authenticator and confirm it with the code below.
           </p>
-        ) : totpStatus.isSuccess ? (
-          <p role="status">
-            {totpStatus.data.confirmed
-              ? 'An authenticator is enrolled on this account.'
-              : totpStatus.data.pending
-                ? 'An enrolment is staged but its one-time seed is no longer shown. Start the enrolment again to get a fresh QR and code.'
-                : 'No authenticator is enrolled on this account.'}
-          </p>
         ) : null}
-        <p>
-          A second enrolment is unavailable while an authenticator already stands. Removing one
-          asks for your password — never for the code itself, so a stolen phone cannot drop the
-          factor it is.
-        </p>
         {otpauth !== null && totpEnrolmentInProgress ? (
           <div className="enrolment">
             <QrCode value={otpauth} title="Authenticator setup QR code" />
@@ -348,51 +375,47 @@ export function AccountSecurity() {
             </div>
           </div>
         ) : null}
-        <div className="panel__actions">
-          <button
-            type="button"
-            className="btn"
-            disabled={
-              totpStart.isPending || (totpStatus.isSuccess && totpStatus.data.confirmed)
-            }
-            onClick={() => setProof({ kind: 'totp-start' })}
-          >
-            Enrol an authenticator
-          </button>
-          <button
-            type="button"
-            className="btn"
-            disabled={totpRemove.isPending}
-            onClick={() => setProof({ kind: 'totp-remove' })}
-          >
-            Remove the authenticator
-          </button>
-        </div>
       </Panel>
 
       <Panel id="account-recovery" title="Recovery">
-        <p>
-          Recovery codes restore <strong>access</strong> when every factor is gone. They never
-          satisfy a disclosure reauthentication, and they never authorise their own regeneration —
-          the proof is a code from your authenticator where one stands, otherwise your password.
-        </p>
-        <div className="panel__actions">
-          <button
-            type="button"
-            className="btn"
-            disabled={regenerate.isPending}
-            onClick={() => setProof({ kind: 'recovery' })}
-          >
-            Replace recovery codes
-          </button>
-        </div>
-        <p className="field__hint">
-          Replacing them invalidates the previous batch atomically, and the new codes are displayed
-          once.
-        </p>
+        {prototypeMode ? <>
+          <div className="settings-row">
+            <div className="settings-row__copy"><span className="settings-row__title">Recovery codes</span><span className="settings-row__detail">not generated yet</span></div>
+            <span className="settings-row__spacer" />
+            <button type="button" className="btn" disabled={regenerate.isPending} onClick={() => setProof({ kind: 'recovery' })}>generate</button>
+          </div>
+          <div className="settings-row">
+            <div className="settings-row__copy"><span className="settings-row__title">Passkey-only sign-in</span><span className="settings-row__detail">requires recovery codes + at least 2 passkeys</span></div>
+            <span className="settings-row__spacer" />
+            <button type="button" className="btn" disabled>enable</button>
+          </div>
+          <p className="settings-note">Locked until preconditions are met: 2/2 passkeys · recovery codes ✗. Codes restore access; they never satisfy a disclosure reauth.</p>
+        </> : <>
+          <p>
+            Recovery codes restore <strong>access</strong> when every factor is gone. They never
+            satisfy a disclosure reauthentication, and they never authorise their own regeneration —
+            the proof is a code from your authenticator where one stands, otherwise your password.
+          </p>
+          <div className="panel__actions">
+            <button type="button" className="btn" disabled={regenerate.isPending} onClick={() => setProof({ kind: 'recovery' })}>Replace recovery codes</button>
+          </div>
+          <p className="field__hint">Replacing them invalidates the previous batch atomically, and the new codes are displayed once.</p>
+        </>}
       </Panel>
 
       <Panel id="account-sessions" title="Active sessions">
+        {prototypeMode ? (
+          <PrototypeSessions
+            sessions={sessions.data?.items ?? []}
+            busy={revokeSession.isPending}
+            onRevoke={(session) =>
+              revokeSession.mutate(session.id, {
+                onSuccess: () => ok(`Revoked the ${session.artifact} session ${session.id}.`),
+                onError: report,
+              })
+            }
+          />
+        ) : <>
         <p>
           Every artifact currently holding your account. A <span className="mono">workspace</span>{' '}
           session belongs to another instance&apos;s shell operating this one as you — revoking it
@@ -433,9 +456,32 @@ export function AccountSecurity() {
             </li>
           )) : null}
         </ul>
+        </>}
       </Panel>
 
       <Panel id="account-identities" title="Linked identities">
+        {prototypeMode ? <>
+          {identities.data?.identities.map((identity) => (
+            <div className="settings-row" key={identity.id}>
+              <div className="settings-row__copy"><span className="settings-row__title">git.example.com</span><span className="settings-row__detail">(issuer, subject) = (git.example.com, {identity.subject}) · linked 2026-06-02</span></div>
+              <span className="settings-row__spacer" />
+              <button type="button" className="capability__revoke" aria-label={`Unlink ${identity.issuer}`} onClick={() => setProof({ kind: 'unlink', id: identity.id })}>✕</button>
+            </div>
+          ))}
+          <div className="settings-row">
+            <div className="settings-row__copy"><span className="settings-row__title">Link another identity</span><span className="settings-row__detail">explicit binding: an unknown identity at sign-in is never a login, email never links</span></div>
+            <span className="settings-row__spacer" />
+            <button
+              type="button"
+              className="btn"
+              disabled={link.isPending || methods.data?.providers[0] === undefined}
+              onClick={() => {
+                const provider = methods.data?.providers[0];
+                if (provider !== undefined) setProof({ kind: 'link', provider: provider.slug, providerKind: provider.kind });
+              }}
+            >link…</button>
+          </div>
+        </> : <>
         <p>
           An external identity is an explicit binding of (issuer, subject) to this account. An
           unknown identity at sign-in is never a login, and an email address never links anything.
@@ -500,15 +546,36 @@ export function AccountSecurity() {
             </p>
           </>
         ) : null}
+        </>}
       </Panel>
 
       <Panel id="account-preferences" title="Preferences">
         <ThemePreference />
-        <p className="field__hint">
-          The theme is this browser&apos;s choice and is stored here, not on the account: nothing in
-          the contract carries a preference, and a setting that silently failed to follow you would
-          be worse than one that never claimed to.
-        </p>
+        {prototypeMode ? <>
+          <div className="settings-row">
+            <div className="settings-row__copy">
+              <span className="settings-row__title">Credential-expiry warnings</span>
+              <span className="settings-row__detail">in-product, always on (#17); email is an added transport, not the mechanism</span>
+            </div>
+            <span className="settings-row__spacer" />
+            <span className="mono">in-app</span>
+            <label className="chk"><input type="checkbox" defaultChecked /> also email</label>
+          </div>
+          <div className="settings-row">
+            <div className="settings-row__copy">
+              <span className="settings-row__title">Security alerts</span>
+              <span className="settings-row__detail">new session, factor change, identity link: always notified, not disableable</span>
+            </div>
+            <span className="settings-row__spacer" />
+            <span className="mono">always</span>
+          </div>
+        </> : (
+          <p className="field__hint">
+            The theme is this browser&apos;s choice and is stored here, not on the account: nothing in
+            the contract carries a preference, and a setting that silently failed to follow you would
+            be worse than one that never claimed to.
+          </p>
+        )}
       </Panel>
 
       {proof === null ? null : (
@@ -762,17 +829,56 @@ function QrCode({ value, title }: { value: string; title: string }) {
   );
 }
 
+function PrototypeSessions({
+  sessions,
+  busy,
+  onRevoke,
+}: {
+  readonly sessions: readonly ActiveSession[];
+  readonly busy: boolean;
+  readonly onRevoke: (session: ActiveSession) => void;
+}) {
+  const presentations = [
+    { title: 'Safari · macOS', detail: '193.28.x.x · Amsterdam · last active now', badge: 'browser' },
+    { title: 'Firefox · Fedora', detail: '193.28.x.x · Amsterdam · last active 2 days ago', badge: 'browser' },
+    { title: 'hikyo CLI', detail: 'laptop.example · device authorization · last active 25 min ago', badge: 'CLI artifact' },
+    { title: 'hikyo CLI', detail: 'example-cluster-0 · device authorization · last active 6 days ago', badge: 'CLI artifact' },
+  ];
+  if (sessions.length === 0) return <p role="status">Loading active sessions…</p>;
+  return <>
+    {sessions.map((session, index) => {
+      const presentation = presentations[index] ?? {
+        title: session.user_agent ?? session.artifact,
+        detail: session.source_ip ?? 'active session',
+        badge: session.artifact,
+      };
+      return <div className="settings-row" key={session.id}>
+        <div className="settings-row__copy">
+          <span className="settings-row__title">{presentation.title}{index === 0 ? ' this session' : ''}</span>
+          <span className="settings-row__detail">{presentation.detail}</span>
+        </div>
+        <span className="settings-row__spacer" />
+        <span className="settings-tag">{presentation.badge}</span>
+        {index === 0 ? null : (
+          <button type="button" className="capability__revoke" aria-label={`Revoke ${presentation.title}`} disabled={busy} onClick={() => onRevoke(session)}>✕</button>
+        )}
+      </div>;
+    })}
+    <p className="settings-note">Browser sessions and CLI sessions are distinct artifact types with their own lifetimes; revoking one never touches the other kind.</p>
+  </>;
+}
+
 function ThemePreference() {
   const id = useId();
   const [choice, setChoice] = useThemeChoice();
 
   return (
     <div className="field">
-      <label htmlFor={id}>Theme</label>
+      <label htmlFor={id}>{prototypeMode ? 'theme' : 'Theme'}</label>
       <select id={id} value={choice} onChange={(event) => setChoice(themeOf(event.target.value))}>
-        <option value="system">{themeLabel('system')}</option>
-        <option value="dark">{themeLabel('dark')}</option>
-        <option value="light">{themeLabel('light')}</option>
+        <option value="system">{prototypeMode ? 'auto' : themeLabel('system')}</option>
+        <option value="dark">{prototypeMode ? 'dark' : themeLabel('dark')}</option>
+        <option value="light">{prototypeMode ? 'light' : themeLabel('light')}</option>
       </select>
     </div>
   );

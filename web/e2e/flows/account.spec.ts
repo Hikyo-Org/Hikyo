@@ -44,15 +44,20 @@ test.describe('account and security', () => {
   test('shows the account as it is, including whether a factor stands', async ({ page }) => {
     // Profile is read-only because nothing writes it: no operation anywhere in
     // the contract sets a display name or an email.
-    await expect(page.locator('#account-profile')).toContainText('Read-only');
+    await expect(page.locator('#account-profile input')).toHaveCount(2);
+    for (const field of await page.locator('#account-profile input').all()) {
+      await expect(field).toHaveJSProperty('readOnly', true);
+    }
 
     // Passkeys are listable, so they are listed. The authenticator factor is
     // now readable too: this suite's administrator has a confirmed one, and the
     // panel reports it rather than disclaiming knowledge.
     const factors = page.locator('#account-factors');
     await expect(factors.getByRole('button', { name: 'Add a passkey' })).toBeVisible();
-    await expect(factors).toContainText('An authenticator is enrolled on this account.');
-    await expect(factors.getByRole('listitem').first()).toContainText('last used');
+    await expect(factors.getByRole('button', { name: 'Remove the authenticator' })).toContainText(
+      'enrolled',
+    );
+    await expect(factors.locator('.account-passkey').first()).toContainText('added');
 
     // The kill switch, absorbed from #71: this session is in the list.
     const sessions = page.locator('#account-sessions');
@@ -194,7 +199,7 @@ test.describe('account and security', () => {
           flow: 'account',
           surface: 'settings',
           theme: scheme,
-          text: [heading, page.locator('.factor__meta').first(), page.locator('.kv dd').first()],
+          text: [heading, page.locator('.factor__meta').first(), page.locator('.page__lede')],
           radii: [
             [well, 'container'],
             [add, 'control'],
@@ -202,15 +207,15 @@ test.describe('account and security', () => {
           ],
           fonts: [
             [heading, 'ui'],
-            [page.locator('.kv dd').first(), 'mono'],
+            [page.locator('.factor__meta').first(), 'mono'],
           ],
           colours: [
             [heading, 'color', '--tx'],
-            [well, 'backgroundColor', '--bg-raise'],
-            [well, 'borderTopColor', '--line'],
+            [well, 'backgroundColor', '--bg-panel'],
+            [well, 'borderTopColor', '--panel-line'],
           ],
           hairlines: [well],
-          density: [[add, '--touch']],
+          density: [],
         });
       } finally {
         await page.emulateMedia({ colorScheme: null });
@@ -230,13 +235,13 @@ test.describe('account and security', () => {
       // The factor state is now readable: the suite's administrator has a
       // confirmed authenticator, and the panel reports it rather than
       // disclaiming knowledge.
-      await expect(page.locator('#account-factors')).toContainText(
-        'An authenticator is enrolled on this account.',
-      );
-      await expect(page.getByRole('button', { name: 'Enrol an authenticator' })).toBeDisabled();
+      await expect(
+        page.getByRole('button', { name: 'Remove the authenticator' }),
+      ).toContainText('enrolled');
+      await expect(page.getByRole('button', { name: 'enrol' })).toHaveCount(0);
       await expect(page.locator('.enrolment')).toHaveCount(0);
 
-      const rows = page.locator('#account-factors li.factor');
+      const rows = page.locator('#account-factors .account-passkey');
       const before = await rows.count();
       await page.getByRole('button', { name: 'Add a passkey' }).click();
       const addProof = page.getByRole('dialog');
@@ -246,7 +251,7 @@ test.describe('account and security', () => {
       await expect(page.getByRole('status').filter({ hasText: 'Passkey enrolled' })).toBeVisible();
 
       const added = rows.last();
-      await expect(added).toContainText('last used');
+      await expect(added).toContainText('added');
       await added.getByRole('button', { name: /Remove passkey/ }).click();
       const removeProof = page.getByRole('dialog');
       await removeProof.getByLabel('Password').fill(ADMIN.password);

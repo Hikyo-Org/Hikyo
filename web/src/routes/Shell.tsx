@@ -30,6 +30,13 @@ import { withRemote } from '../api/transport.tsx';
 import { effectiveTheme, prefersDark, useThemeChoice, type Theme } from '../app/theme.ts';
 import { needsOrg, SECTIONS, SURFACES, surfaceById, type Surface } from '../app/navigation.ts';
 import { notifyUpdate } from '../app/notifications.tsx';
+import {
+  CHROME_IDENTITY_EVENT,
+  chromeIdentityMark,
+  chromeIdentityStyle,
+  chromeMonogram,
+  readChromeIdentity,
+} from './chrome-identity.ts';
 import { StepUpBanner } from './StepUpBanner.tsx';
 
 export type ProjectSidebarGroup = {
@@ -90,12 +97,19 @@ export function Shell({ session }: { session: WhoAmI }) {
   const navigate = useNavigate();
   const [navOpen, setNavOpen] = useState(false);
   const [chosenOrgId, setChosenOrgId] = useState('');
+  const [chosenProjectId, setChosenProjectId] = useState('');
   const [projectSidebar, setProjectSidebar] = useState<ProjectSidebarState | null>(null);
+  const [, setIdentityRevision] = useState(0);
   const navToggleRef = useRef<HTMLButtonElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
 
   // A navigation on a phone must close the sheet it was chosen from.
   useEffect(() => setNavOpen(false), [location.pathname]);
+  useEffect(() => {
+    const refreshIdentity = () => setIdentityRevision((revision) => revision + 1);
+    window.addEventListener(CHROME_IDENTITY_EVENT, refreshIdentity);
+    return () => window.removeEventListener(CHROME_IDENTITY_EVENT, refreshIdentity);
+  }, []);
 
   const items = orgs.data === undefined ? [] : orgs.data.items;
   const here = matchedSurface(location.pathname);
@@ -109,8 +123,9 @@ export function Shell({ session }: { session: WhoAmI }) {
   // A deep link is a selection too. Persist it only after the organisation
   // listing confirms the id, then unscoped destinations keep the same tenant.
   useEffect(() => {
-    if (routeOrgId !== '' && items.some((org) => org.id === routeOrgId)) {
-      setChosenOrgId(routeOrgId);
+    const routedOrg = items.find((org) => org.id === routeOrgId || org.name === routeOrgId);
+    if (routedOrg !== undefined) {
+      setChosenOrgId(routedOrg.id);
     }
   }, [items, routeOrgId]);
 
@@ -126,16 +141,36 @@ export function Shell({ session }: { session: WhoAmI }) {
    */
   const chosenOrg = items.find((org) => org.id === chosenOrgId);
   const fallbackOrg = chosenOrg === undefined ? items[0] : chosenOrg;
+  const routedOrg = items.find((org) => org.id === routeOrgId || org.name === routeOrgId);
   const activeOrgId =
-    routeOrgId !== '' ? routeOrgId : fallbackOrg === undefined ? '' : fallbackOrg.id;
+    routeOrgId !== '' ? routedOrg?.id ?? routeOrgId : fallbackOrg === undefined ? '' : fallbackOrg.id;
   const activeOrgName = items.find((org) => org.id === activeOrgId)?.name ?? activeOrgId;
   // Shell sits outside WorkspaceScope, so a remote project name is not fetched
   // from this instance. Its route id remains the honest label until the remote
   // workspace can publish chrome identity through the same explicit seam.
   const projects = useProjects(remote === '' ? activeOrgId : '');
   const projectItems = projects.data?.items ?? [];
+  useEffect(() => {
+    const routedProject = projectItems.find(
+      (project) => project.id === routeProjectId || project.name === routeProjectId,
+    );
+    if (routedProject !== undefined) {
+      setChosenProjectId(routedProject.id);
+    }
+  }, [projectItems, routeProjectId]);
+  const chosenProject = projectItems.find((project) => project.id === chosenProjectId);
+  const fallbackProject = chosenProject === undefined ? projectItems[0] : chosenProject;
+  const routedProject = projectItems.find(
+    (project) => project.id === routeProjectId || project.name === routeProjectId,
+  );
+  const activeProjectId =
+    routeProjectId !== ''
+      ? routedProject?.id ?? routeProjectId
+      : fallbackProject === undefined
+        ? ''
+        : fallbackProject.id;
   const activeProjectName =
-    projectItems.find((project) => project.id === routeProjectId)?.name ?? routeProjectId;
+    projectItems.find((project) => project.id === activeProjectId)?.name ?? activeProjectId;
   const accountName = session.principal.display_name ?? session.principal.id;
   // Roles are templates, not stored identities. Production therefore uses the
   // honest membership label; prototype mode owns its illustrative admin copy.
@@ -180,6 +215,7 @@ export function Shell({ session }: { session: WhoAmI }) {
   };
 
   const chooseProject = (project: string) => {
+    setChosenProjectId(project);
     void navigate(
       generatePath(surfaceById('matrix').path, { org: activeOrgId, project }),
     );
@@ -248,9 +284,9 @@ export function Shell({ session }: { session: WhoAmI }) {
     const result = ['hikyo'];
     if (activeOrgId !== '') result.push(activeOrgName);
     if (routeProjectId !== '') result.push(activeProjectName);
-    if (membersProjectId === '') result.push(here?.surface.label ?? 'Not found');
+    if (routeProjectId === '') result.push(chromeCrumbLabel(here?.surface));
     return result;
-  }, [activeOrgId, activeOrgName, activeProjectName, here?.surface.label, membersProjectId, routeProjectId]);
+  }, [activeOrgId, activeOrgName, activeProjectName, here?.surface, routeProjectId]);
   const onSidebarNavigate = navOpen ? dismissNavigation : () => setNavOpen(false);
 
   return (
@@ -261,39 +297,43 @@ export function Shell({ session }: { session: WhoAmI }) {
 
       <nav className="rail" aria-label="Organisations" inert={navOpen ? true : undefined}>
         <ul className="rail__orgs">
-          {items.map((org) => (
-            <li key={org.id}>
+          {items.map((org) => {
+            const identity = readChromeIdentity('org', org.id, isPrototype);
+            return <li key={org.id}>
               <button
                 type="button"
                 className="avatar"
+                style={chromeIdentityStyle(identity)}
                 aria-current={org.id === activeOrgId}
                 aria-label={`Organisation ${org.name}`}
                 title={org.name}
                 onClick={() => chooseOrg(org.id)}
               >
-                {monogram(org.name)}
+                {chromeIdentityMark(identity, org.name)}
               </button>
-            </li>
-          ))}
+            </li>;
+          })}
         </ul>
         {projectItems.length === 0 ? null : (
           <>
             <span className="rail__divider" aria-hidden="true" />
             <ul className="rail__projects" aria-label="Projects">
-              {projectItems.map((project) => (
-                <li key={project.id}>
+              {projectItems.map((project) => {
+                const identity = readChromeIdentity('project', project.id, isPrototype);
+                return <li key={project.id}>
                   <button
                     type="button"
                     className="project-avatar"
-                    aria-current={project.id === routeProjectId}
+                    style={chromeIdentityStyle(identity)}
+                    aria-current={project.id === activeProjectId}
                     aria-label={`Project ${project.name}`}
                     title={project.name}
                     onClick={() => chooseProject(project.id)}
                   >
-                    {monogram(project.name)}
+                    {chromeIdentityMark(identity, project.name)}
                   </button>
-                </li>
-              ))}
+                </li>;
+              })}
             </ul>
           </>
         )}
@@ -337,8 +377,9 @@ export function Shell({ session }: { session: WhoAmI }) {
         >
           <h2 id="mobile-organisations-title">Organizations</h2>
           <ul className="sidebar__items">
-            {items.map((org) => (
-              <li key={org.id}>
+            {items.map((org) => {
+              const identity = readChromeIdentity('org', org.id, isPrototype);
+              return <li key={org.id}>
                 <button
                   type="button"
                   className="sidebar__link sidebar__switcher"
@@ -348,14 +389,19 @@ export function Shell({ session }: { session: WhoAmI }) {
                     dismissNavigation();
                   }}
                 >
-                  <span className="avatar sidebar__switcher-avatar">{monogram(org.name)}</span>
+                  <span
+                    className="avatar sidebar__switcher-avatar"
+                    style={chromeIdentityStyle(identity)}
+                  >
+                    {chromeIdentityMark(identity, org.name)}
+                  </span>
                   <span>{org.name}</span>
                   {org.id === activeOrgId ? (
                     <span className="sidebar__switcher-check">✓</span>
                   ) : null}
                 </button>
-              </li>
-            ))}
+              </li>;
+            })}
           </ul>
         </section>
         {orgs.isSuccess && items.length === 0 ? (
@@ -379,12 +425,12 @@ export function Shell({ session }: { session: WhoAmI }) {
             <span>Your organisations could not be loaded. Reload to try again.</span>
           </p>
         ) : null}
-        {routeProjectId !== '' ? (
+        {activeProjectId !== '' ? (
           <>
             <ProjectNavigation
               org={activeOrgId}
               orgName={activeOrgName}
-              project={routeProjectId}
+              project={activeProjectId}
               projectName={activeProjectName}
               orgRole={activeOrgRole}
               remote={remote}
@@ -431,8 +477,9 @@ export function Shell({ session }: { session: WhoAmI }) {
           >
             <h2 id="mobile-projects-title">Projects</h2>
             <ul className="sidebar__items">
-              {projectItems.map((project) => (
-                <li key={project.id}>
+              {projectItems.map((project) => {
+                const identity = readChromeIdentity('project', project.id, isPrototype);
+                return <li key={project.id}>
                   <button
                     type="button"
                     className="sidebar__link sidebar__switcher"
@@ -442,17 +489,20 @@ export function Shell({ session }: { session: WhoAmI }) {
                       dismissNavigation();
                     }}
                   >
-                    <span className="sidebar__switcher-avatar sidebar__switcher-avatar--project">
-                      {monogram(project.name)}
+                    <span
+                      className="sidebar__switcher-avatar sidebar__switcher-avatar--project"
+                      style={chromeIdentityStyle(identity)}
+                    >
+                      {chromeIdentityMark(identity, project.name)}
                     </span>
                     <span>{project.name}</span>
                   </button>
-                </li>
-              ))}
+                </li>;
+              })}
             </ul>
           </section>
         )}
-        {routeProjectId === '' ? null : (
+        {activeProjectId === '' ? null : (
           <MobileAccountNavigation
             onNavigate={dismissNavigation}
             showInstanceAdministration={showInstanceAdministration}
@@ -494,10 +544,19 @@ export function Shell({ session }: { session: WhoAmI }) {
             ))}
           </ol>
           <span className="header__spacer" />
-          <span className="header__identity">
-            <span className="header__identity-label">Signed in as</span>
-            <NavLink to={surfaceById('settings').path}>{accountName}</NavLink>
-          </span>
+          {isPrototype ? (
+            <label className="header__identity">
+              <span className="header__identity-label">acting as</span>
+              <select aria-label="Prototype persona" defaultValue="alex">
+                <option value="alex">alex · 2 orgs · org+instance admin</option>
+              </select>
+            </label>
+          ) : (
+            <span className="header__identity">
+              <span className="header__identity-label">Signed in as</span>
+              <NavLink to={surfaceById('settings').path}>{accountName}</NavLink>
+            </span>
+          )}
           <ThemeToggle />
         </header>
         {pruneWarning?.kind === 'error' ? (
@@ -588,6 +647,7 @@ function ProjectNavigation({
   state: ProjectSidebarState | null;
   onNavigate: () => void;
 }) {
+  const orgIdentity = readChromeIdentity('org', org, import.meta.env.MODE === 'prototype');
   const location = useLocation();
   const projectPath = (id: 'matrix' | 'project-settings') => {
     const path = generatePath(surfaceById(id).path, { org, project });
@@ -634,7 +694,12 @@ function ProjectNavigation({
     <>
       <section className="project-sidebar" aria-labelledby="project-sidebar-title">
         <div className="project-sidebar__org">
-          <span className="avatar project-sidebar__org-avatar">{monogram(orgName)}</span>
+          <span
+            className="avatar project-sidebar__org-avatar"
+            style={chromeIdentityStyle(orgIdentity)}
+          >
+            {chromeIdentityMark(orgIdentity, orgName)}
+          </span>
           <span>
             <strong>{orgName}</strong>
             <small>{orgRole}</small>
@@ -814,7 +879,7 @@ export function AccountEntry({
         aria-label={`Account: ${name}${updateVersions.length === 0 ? '' : `; ${updateVersions.length} update${updateVersions.length === 1 ? '' : 's'} available`}`}
         onClick={() => setOpen((v) => !v)}
       >
-        {monogram(name)}
+        {chromeMonogram(name)}
         {updateVersions.length === 0 ? null : (
           <ProfileUpdateBadge version={updateVersions.join(', ')} />
         )}
@@ -1025,23 +1090,18 @@ function matchedSurface(
   return undefined;
 }
 
-/** monogram is the identity circle's content: one or two letters, never an image. */
-function monogram(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) {
-    return '?';
+/** The compact surface names fixed by the app-chrome breadcrumb treatment. */
+export function chromeCrumbLabel(surface: Surface | undefined): string {
+  switch (surface?.id) {
+    case 'members':
+      return 'org members';
+    case 'org-settings':
+      return 'org settings';
+    case 'settings':
+      return 'account';
+    case 'instance-admin':
+      return 'instance';
+    default:
+      return surface?.label ?? 'Not found';
   }
-  if (words.length === 1) {
-    const only = words[0];
-    if (only === undefined) {
-      throw new Error('one-word monogram has no word');
-    }
-    return only.slice(0, 2).toUpperCase();
-  }
-  const first = words[0];
-  const second = words[1];
-  if (first === undefined || second === undefined) {
-    throw new Error('multi-word monogram has fewer than two words');
-  }
-  return (first.charAt(0) + second.charAt(0)).toUpperCase();
 }

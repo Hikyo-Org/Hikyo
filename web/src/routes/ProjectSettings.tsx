@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { generatePath, Link, useNavigate, useParams } from 'react-router';
 
 import {
@@ -9,51 +9,32 @@ import {
   type DefinitionsSettings,
 } from '../api/definitions.ts';
 import {
-  cloneEnvironmentRefusalText,
-  createEnvironmentRefusalText,
-  deleteEnvironmentRefusalText,
-  projectRetentionInherited,
-  retentionBoundsPayload,
-  retentionDayState,
   retentionSentence,
-  renameEnvironmentRefusalText,
-  reorderEnvironmentsRefusalText,
   settingsFailureText,
   settingsOperationFailure,
-  useCloneEnvironment,
-  useCreateEnvironment,
-  useDeleteEnvironment,
   useDeleteProject,
   useEnvironmentSettings,
   useEnvironments,
   useOrgRetention,
   useProject,
   useProjectRetention,
-  useRenameEnvironment,
   useRenameProject,
-  useReorderEnvironments,
   useSetEnvironmentSettings,
   useSetProjectRetention,
-  type EnvironmentSettingsReadState,
   type ProjectRetentionPolicy,
-  type RetentionDayState,
+  type RetentionPolicy,
   type SettingsOperation,
 } from '../api/settings.ts';
 import { surfaceById } from '../app/navigation.ts';
-import { RetentionBoundsFields } from './RetentionBoundsFields.tsx';
+import { ChromeIdentityControls } from './ChromeIdentityControls.tsx';
 import { Alert, Done, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback } from './useModalDialog.ts';
+
+const prototypeMode = import.meta.env.MODE === 'prototype';
 
 /**
  * Project settings (registry surface `project-settings`, #60; locked prototype
  * app-chrome iteration 15, retention panel from iteration 16).
- *
- * Sections: Identity · Policy · Retention · Access · Danger zone. One of the
- * prototype's is deliberately absent, by name rather than by omission:
- *
- *  - **Metadata** (description, icon, hue). The project contract carries id,
- *    org, name and creation time and nothing else — there is no field to write
- *    and no operation to write it with.
  *
  * Definitions governance does live here. Definition authoring does not yet
  * exist in the web app, so this is the only surface that needs the persistent
@@ -93,18 +74,18 @@ export function ProjectSettings() {
   };
 
   return (
-    <div className="page">
-      <h1>Project settings</h1>
+    <div className="page page--chrome">
+      <h1>Project settings · {current?.name ?? 'project'}</h1>
       <p className="page__lede">
-        The guards on the definitions editor live here rather than with the editor they restrain:
-        whoever can flip a guard back must not be whoever the guard is aimed at.
+        Project identity and metadata. Access management is its own surface: one entry point, no
+        second permission editor here.
       </p>
 
       <JumpIndex
         sections={[
           { id: 'project-identity', label: 'Identity' },
+          { id: 'project-metadata', label: 'Metadata' },
           { id: 'project-policy', label: 'Policy' },
-          { id: 'project-retention', label: 'Retention' },
           { id: 'project-access', label: 'Access' },
           { id: 'project-danger', label: 'Danger zone' },
         ]}
@@ -120,20 +101,15 @@ export function ProjectSettings() {
       {feedback.done !== null ? <Done>{feedback.done}</Done> : null}
 
       <Panel id="project-identity" title="Identity">
-        <dl className="kv">
-          <div className="kv__pair">
-            <dt>Identifier</dt>
-            <dd className="mono">{project}</dd>
-          </div>
-          <div className="kv__pair">
-            <dt>Organisation</dt>
-            <dd className="mono">{org}</dd>
-          </div>
-          <div className="kv__pair">
-            <dt>Created</dt>
-            <dd>{current === undefined ? '—' : new Date(current.created_at).toLocaleString()}</dd>
-          </div>
-        </dl>
+        <ChromeIdentityControls
+          identityId={current?.id ?? project}
+          name={current?.name ?? 'project'}
+          kind="project"
+        />
+      </Panel>
+
+      <Panel id="project-metadata" title="Metadata">
+        <div className="settings-grid">
         <div className="field">
           <label htmlFor={nameId}>Name</label>
           <input
@@ -141,35 +117,46 @@ export function ProjectSettings() {
             value={name}
             disabled={current === undefined}
             onChange={(event) => setName(event.target.value)}
-          />
-        </div>
-        <div className="panel__actions">
-          <button
-            type="button"
-            className="btn"
-            disabled={
-              current === undefined || rename.isPending || name === '' || name === current.name
-            }
-            onClick={() =>
+            onBlur={() => {
+              if (current === undefined || name === '' || name === current.name) return;
               rename.mutate(
                 { project, name },
                 {
                   onSuccess: (result) => feedback.ok(`Renamed to ${result.name}.`),
                   onError: (error) => report('rename-project', error),
                 },
-              )
-            }
-          >
-            Rename
-          </button>
+              );
+            }}
+          />
         </div>
-        <p className="field__hint">
-          The identifier never moves: it is what every URL, every pin and every audit row already
-          names. Renaming changes the label and nothing else.
-        </p>
+          <div className="field">
+            <label htmlFor={`${nameId}-description`}>Description</label>
+            <input
+              id={`${nameId}-description`}
+              value={prototypeMode ? 'Demo project for the spec prototypes' : ''}
+              placeholder={prototypeMode ? undefined : 'Description is not available in the API'}
+              disabled={!prototypeMode}
+              readOnly
+              aria-readonly="true"
+            />
+          </div>
+        </div>
       </Panel>
 
       <Panel id="project-policy" title="Policy">
+        {environments.isError ? (
+          <Alert>This project&apos;s environments could not be read.</Alert>
+        ) : null}
+        {environments.isPending ? <p role="status">Loading environment policies…</p> : null}
+        {environments.isSuccess ? (
+          <EnvironmentPolicy
+            org={org}
+            project={project}
+            environments={environments.data.items}
+            onDone={feedback.ok}
+            onError={(error) => report('set-environment-settings', error)}
+          />
+        ) : null}
         {definitionsSettings.isPending ? (
           <p role="status">Loading definitions policy…</p>
         ) : null}
@@ -193,75 +180,84 @@ export function ProjectSettings() {
             }
           />
         )}
-        <p>
-          Per environment: whether it is protected, and how long one successful reauthentication
-          stands for further disclosures. A protected environment caps that window at zero — a
-          passkey per disclosure, and a code cannot authorise one.
-        </p>
-        {environments.isError ? (
-          <Alert>This project&apos;s environments could not be read.</Alert>
-        ) : null}
-        {environments.isPending ? <p role="status">Loading environment policies…</p> : null}
-        {environments.isSuccess ? (
-          <EnvironmentPolicy
-            org={org}
-            project={project}
-            environments={environments.data.items}
-            onDone={feedback.ok}
-            onError={(error) => report('set-environment-settings', error)}
-          />
-        ) : null}
-        <NewEnvironmentForm org={org} project={project} />
-      </Panel>
-
-      <Panel id="project-retention" title="Retention">
+        <div id="project-retention">
         {orgRetention.isPending ? <p role="status">Loading the organisation cap…</p> : null}
         {orgRetention.isError ? (
           <Alert>The organisation retention cap could not be read.</Alert>
-        ) : null}
-        {orgRetention.isSuccess ? (
-          <p>Organisation cap — {retentionSentence(orgRetention.data)}</p>
         ) : null}
         {projectRetention.isError ? (
           <Alert>This project&apos;s retention policy could not be read.</Alert>
         ) : null}
         {projectRetention.data === undefined || orgRetention.data === undefined ? null : (
-          <ProjectRetentionEditorController
+          <CompactProjectRetention
             org={org}
             project={project}
             policy={projectRetention.data}
+            orgPolicy={orgRetention.data}
             onDone={feedback.ok}
             onError={(error) => report('set-project-retention', error)}
           />
         )}
+        </div>
+        <p className="settings-note">
+          These are the project-settings capability&apos;s contents: the guards on the definitions
+          editor live apart from the editor they restrain.
+        </p>
       </Panel>
 
       <Panel id="project-access" title="Access">
-        <p>
-          Grants on this project and its environments are administered on the organisation&apos;s
-          members surface, which lists every depth at once — an environment-only listing would omit
-          the grants that reach it from above.
-        </p>
-        <div className="panel__actions">
-          <Link className="btn" to={generatePath(surfaceById('members').path, { org })}>
-            Open members
+        <div className="settings-row">
+          <div className="settings-row__copy">
+            <span className="settings-row__title">Members &amp; grants</span>
+            <span className="settings-row__detail">
+              {prototypeMode
+                ? '7 grant lines on this project'
+                : 'Open the members surface to inspect project grants'}
+            </span>
+          </div>
+          <span className="settings-row__spacer" />
+          <Link
+            className="btn"
+            to={`${generatePath(surfaceById('members').path, { org })}?project=${encodeURIComponent(project)}`}
+          >
+            open members →
           </Link>
         </div>
+        <p className="settings-note">
+          Entry point only: granting, revoking and inspection live on the members surface.
+        </p>
       </Panel>
 
       <Panel id="project-danger" title="Danger zone" danger>
+        {prototypeMode ? (
+          <div className="settings-row">
+            <div className="settings-row__copy">
+              <span className="settings-row__title">Rename slug</span>
+              <span className="settings-row__detail">Changing the slug changes every URL under it.</span>
+            </div>
+            <span className="settings-row__spacer" />
+            <input
+              className="settings-input settings-input--compact mono"
+              aria-label="Project slug"
+              defaultValue={project}
+            />
+            <button type="button" className="btn" onClick={() => feedback.ok('Slug renamed (demo).')}>
+              rename
+            </button>
+          </div>
+        ) : null}
         <TypedNameConfirm
           key={current === undefined ? `pending-${project}` : current.id}
           label="Delete this project"
           expect={current === undefined ? null : current.name}
           action="Delete project"
           busy={remove.isPending}
-          hint={
-            <>
-              Deletion never cascades: a project that still holds any environment is refused. Delete
-              its environments first, deliberately and one at a time.
-            </>
-          }
+          hint={prototypeMode
+            ? <>Deletes every environment and value in it. Grants and audit history follow the retention policy.</>
+            : <>
+                Deletion never cascades: a project that still holds any environment is refused.
+                Delete its environments first, deliberately and one at a time.
+              </>}
           onConfirm={() =>
             remove.mutate(
               { project },
@@ -287,156 +283,37 @@ function DefinitionsPolicy({
 }) {
   const sourceId = useId();
   const [source, setSource] = useState(settings.definitions_source);
-  const lastApply = settings.last_apply;
 
   useEffect(() => {
     setSource(settings.definitions_source);
   }, [settings.definitions_source]);
 
   return (
-    <div className="settings-block">
-      <div className="field">
-        <label htmlFor={sourceId}>Definitions source</label>
-        <select
-          id={sourceId}
-          value={source}
-          disabled={busy}
-          onChange={(event) => setSource(parseDefinitionsSource(event.currentTarget.value))}
-        >
-          <option value="db">Database</option>
-          <option value="git">Git</option>
-        </select>
-        <p className="field__hint">
-          In Git mode, definitions become read-only in the UI and arrive through{' '}
-          <span className="mono">definitions plan</span> /{' '}
-          <span className="mono">definitions apply</span>. Values remain editable in either mode.
-        </p>
+    <div className="settings-row">
+      <div className="settings-row__copy">
+        <span className="settings-row__title">Definitions source</span>
+        <span className="settings-row__detail">
+          definitions edited in the UI; switch to git for a review gate
+        </span>
       </div>
-      <div className="panel__actions">
-        <button
-          type="button"
-          className="btn"
-          disabled={busy || source === settings.definitions_source}
-          onClick={() => onApply(source)}
-        >
-          Apply definitions source
-        </button>
-      </div>
+      <span className="settings-row__spacer" />
+      <label className="visually-hidden" htmlFor={sourceId}>Definitions source</label>
+      <select
+        id={sourceId}
+        className="settings-select mono"
+        value={source}
+        disabled={busy}
+        onChange={(event) => {
+          const next = parseDefinitionsSource(event.currentTarget.value);
+          setSource(next);
+          onApply(next);
+        }}
+      >
+        <option value="db">db</option>
+        <option value="git">git</option>
+      </select>
       {settings.definitions_source === 'git' ? <Alert>{GIT_DEFINITIONS_NOTICE}</Alert> : null}
-      {lastApply === undefined ? null : (
-        <div>
-          <h3>Last definitions apply</h3>
-          <dl className="kv">
-            {lastApply.commit === undefined ? null : (
-              <div className="kv__pair">
-                <dt>Commit</dt>
-                <dd className="mono">{lastApply.commit}</dd>
-              </div>
-            )}
-            {lastApply.ref === undefined ? null : (
-              <div className="kv__pair">
-                <dt>Ref</dt>
-                <dd className="mono">{lastApply.ref}</dd>
-              </div>
-            )}
-            {lastApply.actor === undefined ? null : (
-              <div className="kv__pair">
-                <dt>Actor</dt>
-                <dd>{lastApply.actor}</dd>
-              </div>
-            )}
-            <div className="kv__pair">
-              <dt>Applied</dt>
-              <dd>
-                <time dateTime={lastApply.applied_at}>
-                  {new Date(lastApply.applied_at).toLocaleString()}
-                </time>
-              </dd>
-            </div>
-            <div className="kv__pair">
-              <dt>Revision</dt>
-              <dd className="mono">{String(lastApply.revision)}</dd>
-            </div>
-          </dl>
-          <p className="field__hint">
-            Provenance is supplied by the apply client and is shown only as a label; it is not
-            trusted as authority.
-          </p>
-        </div>
-      )}
     </div>
-  );
-}
-
-/** The reveal-reauthentication windows the surface offers, in seconds. */
-const WINDOWS: ReadonlyArray<{ value: string; label: string }> = [
-  { value: 'inherit', label: 'inherit the instance default' },
-  { value: '0', label: '0 — every disclosure reauthenticates' },
-  { value: '300', label: '5 minutes' },
-  { value: '900', label: '15 minutes' },
-  { value: '3600', label: '60 minutes' },
-];
-
-/**
- * NewEnvironmentForm creates an environment in this project.
- *
- * It sits beside the per-environment policy list because that is the list it
- * grows. Creating one needs `definitions-edit`; a refusal is named as such,
- * never carried by colour: `role="alert"` text with the glyph, `role="status"`
- * on the created row.
- */
-export function NewEnvironmentForm({
-  org,
-  project,
-}: {
-  readonly org: string;
-  readonly project: string;
-}) {
-  const create = useCreateEnvironment(org, project);
-  const nameId = useId();
-  const [name, setName] = useState('');
-
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const trimmed = name.trim();
-    if (trimmed === '') {
-      return;
-    }
-    create.mutate({ name: trimmed }, { onSuccess: () => setName('') });
-  };
-
-  return (
-    <form className="settings-block" onSubmit={onSubmit} noValidate aria-labelledby="new-environment-title">
-      <h3 id="new-environment-title">New environment</h3>
-      {create.isError ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">!</span>
-          <span>{createEnvironmentRefusalText(create.error)}</span>
-        </p>
-      ) : null}
-      {create.isSuccess ? (
-        <p role="status">Environment {create.data.name} created.</p>
-      ) : null}
-      <div className="field">
-        <label htmlFor={nameId}>Environment name</label>
-        <input
-          id={nameId}
-          name="name"
-          required
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-        />
-      </div>
-      <div className="panel__actions">
-        <button
-          className="btn btn--primary"
-          type="submit"
-          disabled={create.isPending || name.trim() === ''}
-        >
-          {create.isPending ? 'Creating…' : 'Create environment'}
-        </button>
-      </div>
-    </form>
   );
 }
 
@@ -455,540 +332,197 @@ function EnvironmentPolicy({
 }) {
   const protection = useEnvironmentSettings(org, project, environments);
   const save = useSetEnvironmentSettings(org, project);
+  const windowId = useId();
+  const [windowValue, setWindowValue] = useState('900');
 
   if (environments.length === 0) {
     return <p role="status">This project holds no environments yet.</p>;
   }
 
   return (
-    <ul className="envpolicy">
-      {environments.map((environment) => (
-        <EnvironmentPolicyItem
-          key={environment.id}
-          org={org}
-          project={project}
-          environment={environment}
-          environments={environments}
-          state={protection.get(environment.id)}
-          busy={save.isPending}
-          onDone={onDone}
-          onSave={(next) =>
-            save.mutate(
-              { environment: environment.id, ...next },
-              {
-                onSuccess: (saved) =>
-                  onDone(
-                    saved.protected
-                      ? `${environment.name} is protected: its reveal window is capped at 0, so every disclosure takes its own passkey ceremony.`
-                      : `${environment.name} is not protected. Its reveal window is ${saved.reauth_window_seconds === null || saved.reauth_window_seconds === undefined ? 'the instance default' : `${saved.reauth_window_seconds} seconds`}.`,
-                  ),
-                onError,
-              },
-            )
-          }
-        />
-      ))}
-    </ul>
-  );
-}
-
-function EnvironmentPolicyItem({
-  org,
-  project,
-  environment,
-  environments,
-  state,
-  busy,
-  onDone,
-  onSave,
-}: {
-  org: string;
-  project: string;
-  environment: { id: string; name: string };
-  environments: readonly { id: string; name: string }[];
-  state: EnvironmentSettingsReadState | undefined;
-  busy: boolean;
-  onDone: (text: string) => void;
-  onSave: (next: { protectedFlag: boolean; reauthWindowSeconds: number | null }) => void;
-}) {
-  if (state === undefined) {
-    throw new Error(`environment ${environment.id} has no settings read state`);
-  }
-  return (
-    <EnvironmentRow environment={environment} state={state} busy={busy} onSave={onSave}>
-      <EnvironmentLifecycleActions
-        org={org}
-        project={project}
-        environment={environment}
-        environments={environments}
-        onDone={onDone}
-      />
-    </EnvironmentRow>
-  );
-}
-
-function EnvironmentRow({
-  environment,
-  state,
-  busy,
-  onSave,
-  children,
-}: {
-  environment: { id: string; name: string };
-  state: EnvironmentSettingsReadState;
-  busy: boolean;
-  onSave: (next: { protectedFlag: boolean; reauthWindowSeconds: number | null }) => void;
-  children: ReactNode;
-}) {
-  const protectedId = useId();
-  const windowId = useId();
-  const [flag, setFlag] = useState(state.status === 'ready' && state.protected);
-  const [reauthWindow, setReauthWindow] = useState(
-    state.status !== 'ready' ||
-      state.reauth_window_seconds === null ||
-      state.reauth_window_seconds === undefined
-      ? 'inherit'
-      : String(state.reauth_window_seconds),
-  );
-
-  useEffect(() => {
-    if (state.status === 'ready') {
-      setFlag(state.protected);
-      setReauthWindow(
-        state.reauth_window_seconds === null || state.reauth_window_seconds === undefined
-          ? 'inherit'
-          : String(state.reauth_window_seconds),
-      );
-    }
-  }, [
-    state.status,
-    state.status === 'ready' ? state.protected : undefined,
-    state.status === 'ready' ? state.reauth_window_seconds : undefined,
-  ]);
-
-  const ready = state.status === 'ready';
-  const windowOptions =
-    reauthWindow === 'inherit' || WINDOWS.some((option) => option.value === reauthWindow)
-      ? WINDOWS
-      : [...WINDOWS, { value: reauthWindow, label: `${reauthWindow} seconds (current)` }];
-
-  return (
-    <li className="envpolicy__row">
-      <h3>{environment.name}</h3>
-      {state.status === 'pending' ? (
-        <p role="status">Loading this environment&apos;s policy…</p>
-      ) : null}
-      {state.status === 'unreadable' ? (
-        <p role="status">
-          This environment&apos;s policy could not be read, so nothing here claims to know it.
-          Reading it needs <span className="mono">read</span> on the environment, which managing
-          members does not confer.
-        </p>
-      ) : null}
-      {state.status === 'forbidden' ? (
-        <Alert>You are not permitted to read this environment&apos;s policy.</Alert>
-      ) : null}
-      {state.status === 'error' ? (
-        <Alert>This environment&apos;s policy failed to load. Reload to try again.</Alert>
-      ) : null}
-      <div className="field chk">
-        <input
-          id={protectedId}
-          type="checkbox"
-          checked={flag}
-          disabled={!ready}
-          onChange={(event) => setFlag(event.target.checked)}
-        />
-        <label htmlFor={protectedId}>Protected environment</label>
+    <>
+      <div className="settings-row">
+        <div className="settings-row__copy">
+          <span className="settings-row__title">Protected environments</span>
+          <span className="settings-row__detail">
+            a protected environment caps the reveal window at 0: passkey per disclosure, no TOTP
+          </span>
+        </div>
+        <span className="settings-row__spacer" />
+        {environments.map((environment) => {
+          const state = protection.get(environment.id);
+          const ready = state?.status === 'ready';
+          const protectedFlag = ready && state.protected;
+          return (
+            <span className="environment-policy-control" key={environment.id}>
+              <button
+                type="button"
+                className={`settings-tag${protectedFlag ? ' settings-tag--danger' : ''}`}
+                disabled={!ready || save.isPending}
+                aria-pressed={protectedFlag}
+                onClick={() =>
+                  save.mutate(
+                    {
+                      environment: environment.id,
+                      protectedFlag: !protectedFlag,
+                      reauthWindowSeconds: protectedFlag ? Number(windowValue) : 0,
+                    },
+                    {
+                      onSuccess: (saved) =>
+                        onDone(
+                          saved.protected
+                            ? `${environment.name} is now protected.`
+                            : `${environment.name} is no longer protected.`,
+                        ),
+                      onError,
+                    },
+                  )
+                }
+              >
+                {protectedFlag ? '🔒 ' : ''}{environment.name}
+              </button>
+              {state?.status === 'unreadable' ? (
+                <span role="status">This environment&apos;s policy could not be read.</span>
+              ) : null}
+              {state?.status === 'forbidden' ? (
+                <Alert>You are not permitted to read this environment&apos;s policy.</Alert>
+              ) : null}
+              {state?.status === 'error' ? (
+                <Alert>This environment&apos;s policy failed to load. Reload to try again.</Alert>
+              ) : null}
+            </span>
+          );
+        })}
       </div>
-      <div className="field">
-        <label htmlFor={windowId}>Reveal reauthentication window</label>
+      <div className="settings-row">
+        <div className="settings-row__copy">
+          <span className="settings-row__title">Reveal reauth window</span>
+          <span className="settings-row__detail">
+            how long a successful reveal reauth stands for further disclosures
+          </span>
+        </div>
+        <span className="settings-row__spacer" />
+        <label className="visually-hidden" htmlFor={windowId}>Reveal reauth window</label>
         <select
           id={windowId}
-          value={flag ? '0' : reauthWindow}
-          disabled={!ready || flag}
-          onChange={(event) => setReauthWindow(event.target.value)}
-        >
-          {windowOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        {/* Stated, not merely disabled: "protected" and "someone set the
-            window to 0" are different sentences, and the human is owed
-            whichever one is true. */}
-        <p className="field__hint">
-          {!ready
-            ? 'Save stays disabled until this exact policy has been read.'
-            : flag
-            ? 'Protected caps this window at 0. The control is fixed there rather than hidden, so the cap is visible as the reason.'
-            : 'Inheriting means this environment follows the instance default; 0 means every disclosure reauthenticates, which is a legal setting and not the same statement.'}
-        </p>
-      </div>
-      <div className="panel__actions">
-        <button
-          type="button"
-          className="btn"
-          disabled={busy || !ready}
-          aria-label={`Save policy for ${environment.name}`}
-          onClick={() =>
-            onSave({
-              protectedFlag: flag,
-              reauthWindowSeconds:
-                flag ? 0 : reauthWindow === 'inherit' ? null : Number(reauthWindow),
-            })
-          }
-        >
-          Save policy
-        </button>
-      </div>
-      {children}
-    </li>
-  );
-}
-
-/** All project-scoped environment topology mutations, kept with the row they affect. */
-export function EnvironmentLifecycleActions({
-  org,
-  project,
-  environment,
-  environments,
-  onDone,
-}: {
-  readonly org: string;
-  readonly project: string;
-  readonly environment: { readonly id: string; readonly name: string };
-  readonly environments: readonly { readonly id: string; readonly name: string }[];
-  readonly onDone: (text: string) => void;
-}) {
-  const rename = useRenameEnvironment(org, project);
-  const remove = useDeleteEnvironment(org, project, () =>
-    onDone(`Environment ${environment.name} deleted.`),
-  );
-  const reorder = useReorderEnvironments(org, project);
-  const clone = useCloneEnvironment(org, project);
-  const renameId = useId();
-  const cloneId = useId();
-  const [renameName, setRenameName] = useState('');
-  const [cloneName, setCloneName] = useState('');
-  const [failure, setFailure] = useState<string | null>(null);
-
-  const index = environments.findIndex((candidate) => candidate.id === environment.id);
-  if (index === -1) {
-    throw new Error(`environment ${environment.id} is missing from its project order`);
-  }
-
-  const busy = rename.isPending || remove.isPending || reorder.isPending || clone.isPending;
-  const move = (offset: -1 | 1) => {
-    const target = environments[index + offset];
-    if (target === undefined) {
-      return;
-    }
-    setFailure(null);
-    reorder.mutate(
-      {
-        environmentIds: environments.map((candidate) => {
-          if (candidate.id === environment.id) {
-            return target.id;
-          }
-          if (candidate.id === target.id) {
-            return environment.id;
-          }
-          return candidate.id;
-        }),
-      },
-      {
-        onSuccess: () => onDone(`Environment ${environment.name} moved ${offset === -1 ? 'up' : 'down'}.`),
-        onError: (error) => setFailure(reorderEnvironmentsRefusalText(error)),
-      },
-    );
-  };
-
-  return (
-    <details className="environment-lifecycle">
-      <summary>Manage environment</summary>
-      {failure === null ? null : <Alert>{failure}</Alert>}
-      <form
-        className="environment-lifecycle__action"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const name = renameName.trim();
-          if (name === '' || name === environment.name) {
-            return;
-          }
-          setFailure(null);
-          rename.mutate(
-            { environment: environment.id, name },
-            {
-              onSuccess: (renamed) => {
-                setRenameName('');
-                onDone(`Environment ${environment.name} renamed to ${renamed.name}.`);
-              },
-              onError: (error) => setFailure(renameEnvironmentRefusalText(error)),
-            },
-          );
-        }}
-      >
-        <div className="field">
-          <label htmlFor={renameId}>New name for {environment.name}</label>
-          <input
-            id={renameId}
-            name="rename-environment"
-            value={renameName}
-            disabled={busy}
-            onChange={(event) => setRenameName(event.target.value)}
-          />
-        </div>
-        <button
-          type="submit"
-          className="btn"
-          disabled={busy || renameName.trim() === '' || renameName.trim() === environment.name}
-        >
-          Rename environment
-        </button>
-      </form>
-
-      <div className="environment-lifecycle__action">
-        <p className="field__hint">Move sends the complete project order as one atomic change.</p>
-        <div className="panel__actions">
-          <button
-            type="button"
-            className="btn"
-            aria-label={`Move ${environment.name} up`}
-            disabled={busy || index === 0}
-            onClick={() => move(-1)}
-          >
-            Move up
-          </button>
-          <button
-            type="button"
-            className="btn"
-            aria-label={`Move ${environment.name} down`}
-            disabled={busy || index === environments.length - 1}
-            onClick={() => move(1)}
-          >
-            Move down
-          </button>
-        </div>
-      </div>
-
-      <form
-        className="environment-lifecycle__action"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const name = cloneName.trim();
-          if (name === '') {
-            return;
-          }
-          setFailure(null);
-          clone.mutate(
-            { sourceEnvironment: environment.id, name },
-            {
-              onSuccess: (result) => {
-                setCloneName('');
-                const copied = result.copied.length;
-                const omitted = result.uncopied_secrets.length;
-                onDone(
-                  `Environment ${environment.name} cloned to ${result.environment.name}. Copied ${copied} ${copied === 1 ? 'value' : 'values'}; ${omitted} ${omitted === 1 ? 'secret' : 'secrets'} could not be copied.`,
-                );
-              },
-              onError: (error) => setFailure(cloneEnvironmentRefusalText(error)),
-            },
-          );
-        }}
-      >
-        <div className="field">
-          <label htmlFor={cloneId}>Clone {environment.name} into</label>
-          <input
-            id={cloneId}
-            name="clone-environment"
-            value={cloneName}
-            disabled={busy}
-            onChange={(event) => setCloneName(event.target.value)}
-          />
-        </div>
-        <button type="submit" className="btn" disabled={busy || cloneName.trim() === ''}>
-          Clone environment
-        </button>
-      </form>
-
-      <div className="environment-lifecycle__action environment-lifecycle__danger">
-        <TypedNameConfirm
-          key={environment.id}
-          label={`Delete ${environment.name}`}
-          expect={environment.name}
-          action="Delete environment"
-          busy={busy}
-          hint={
-            <>
-              This permanently deletes the environment and its values, drafts, revision history,
-              pins, and snapshots. Type its name exactly to continue.
-            </>
-          }
-          onConfirm={() => {
-            setFailure(null);
-            remove.mutate(
-              { environment: environment.id },
-              {
-                onError: (error) => setFailure(deleteEnvironmentRefusalText(error)),
-              },
+          className="settings-select"
+          value={windowValue}
+          disabled={save.isPending}
+          onChange={(event) => {
+            const next = event.currentTarget.value;
+            setWindowValue(next);
+            const editable = environments.filter((environment) => {
+              const state = protection.get(environment.id);
+              return state?.status === 'ready' && !state.protected;
+            });
+            editable.forEach((environment, index) =>
+              save.mutate(
+                {
+                  environment: environment.id,
+                  protectedFlag: false,
+                  reauthWindowSeconds: Number(next),
+                },
+                {
+                  onSuccess: () => {
+                    if (index === editable.length - 1) {
+                      onDone(`Reveal reauthentication window changed to ${next} seconds.`);
+                    }
+                  },
+                  onError,
+                },
+              ),
             );
           }}
-        />
+        >
+          <option value="0">0 (every disclosure)</option>
+          <option value="300">5m</option>
+          <option value="900">15m</option>
+          <option value="3600">60m</option>
+        </select>
       </div>
-    </details>
+    </>
   );
 }
 
-/** ProjectRetentionEditor sends the policy to the authoritative cap validator. */
-function ProjectRetentionEditorController({
+function CompactProjectRetention({
   org,
   project,
   policy,
+  orgPolicy,
   onDone,
   onError,
 }: {
   org: string;
   project: string;
   policy: ProjectRetentionPolicy;
+  orgPolicy: RetentionPolicy;
   onDone: (text: string) => void;
   onError: (error: unknown) => void;
 }) {
   const save = useSetProjectRetention(org, project);
-  return (
-    <ProjectRetentionEditor
-      scope={`${org}/${project}`}
-      policy={policy}
-      busy={save.isPending}
-      onSave={(input) => saveProjectRetention(save, input, onDone, onError)}
-    />
+  const [customRevisions, setCustomRevisions] = useState(
+    String(policy.last_revisions ?? orgPolicy.last_revisions ?? 6),
   );
-}
+  const effective = policy.last_revisions ?? orgPolicy.last_revisions ?? 6;
 
-export function ProjectRetentionEditor({
-  scope,
-  policy,
-  busy,
-  onSave,
-}: {
-  scope: string;
-  policy: ProjectRetentionPolicy;
-  busy: boolean;
-  onSave: (input: {
-    inherited: boolean;
-    maxAgeSeconds: number | null;
-    lastRevisions: number | null;
-  }) => void;
-}) {
-  const modeId = useId();
-  const [inherited, setInherited] = useState(policy.inherited);
-  const [age, setAge] = useState<RetentionDayState>(() =>
-    retentionDayState(policy.max_age_seconds),
-  );
-  const [count, setCount] = useState(
-    policy.last_revisions === null || policy.last_revisions === undefined
-      ? ''
-      : String(policy.last_revisions),
-  );
-  const [refusal, setRefusal] = useState<string | null>(null);
-
-  useEffect(() => {
-    setInherited(policy.inherited);
-    setAge(retentionDayState(policy.max_age_seconds));
-    setCount(
-      policy.last_revisions === null || policy.last_revisions === undefined
-        ? ''
-        : String(policy.last_revisions),
+  const apply = (inherited: boolean, revisions: number) => {
+    save.mutate(
+      {
+        inherited,
+        maxAgeSeconds:
+          inherited ? null : policy.max_age_seconds ?? orgPolicy.max_age_seconds ?? null,
+        lastRevisions: inherited ? null : revisions,
+      },
+      {
+        onSuccess: () => onDone('Revision retention saved.'),
+        onError,
+      },
     );
-    setRefusal(null);
-  }, [scope, policy.inherited, policy.last_revisions, policy.max_age_seconds]);
+  };
 
   return (
     <>
-      <p className="retention__current" role="status">
-        {policy.inherited
-          ? `This project inherits the organisation cap and follows it when it changes. Effective: ${retentionSentence(policy)}`
-          : `This project holds its own override, detached from later organisation changes. Effective: ${retentionSentence(policy)}`}
-      </p>
-      {refusal !== null ? <Alert>{refusal}</Alert> : null}
-      <div className="field">
-        <label htmlFor={modeId}>Policy</label>
+      <div className="settings-row">
+        <div className="settings-row__copy">
+          <span className="settings-row__title">Revision retention</span>
+          <span className="settings-row__detail">
+            {policy.inherited
+              ? `inherits the org default — values kept for the last ${String(effective)} revisions per environment; follows org changes`
+              : `custom — values kept for the last ${String(effective)} revisions per environment`}
+          </span>
+        </div>
+        <span className="settings-row__spacer" />
         <select
-          id={modeId}
-          value={inherited ? 'inherit' : 'override'}
+          className="settings-select"
+          aria-label="Retention mode"
+          value={policy.inherited ? 'inherit' : 'custom'}
+          disabled={save.isPending}
           onChange={(event) => {
-            setRefusal(null);
-            setInherited(projectRetentionInherited(event.target.value));
+            const inherit = event.currentTarget.value === 'inherit';
+            apply(inherit, Number(customRevisions));
           }}
         >
-          <option value="inherit">inherit the organisation cap</option>
-          <option value="override">override, at or below the cap</option>
+          <option value="inherit">inherit org ({String(orgPolicy.last_revisions ?? 6)})</option>
+          <option value="custom">custom</option>
         </select>
+        {policy.inherited ? null : (
+          <input
+            className="settings-input settings-input--compact"
+            type="number"
+            min="1"
+            max={orgPolicy.last_revisions ?? undefined}
+            aria-label="Revisions kept per environment"
+            value={customRevisions}
+            disabled={save.isPending}
+            onChange={(event) => setCustomRevisions(event.currentTarget.value)}
+            onBlur={() => apply(false, Number(customRevisions))}
+          />
+        )}
       </div>
-      {inherited ? null : (
-        <RetentionBoundsFields
-          age={age}
-          count={count}
-          onAgeChange={(next) => {
-            setRefusal(null);
-            setAge(next);
-          }}
-          onCountChange={(next) => {
-            setRefusal(null);
-            setCount(next);
-          }}
-        />
-      )}
-      <div className="panel__actions">
-        <button
-          type="button"
-          className="btn"
-          disabled={busy}
-          onClick={() => {
-            if (inherited) {
-              setRefusal(null);
-              onSave({ inherited: true, maxAgeSeconds: null, lastRevisions: null });
-              return;
-            }
-            const payload = retentionBoundsPayload(
-              age.kind === 'days' ? age.days : '',
-              count,
-            );
-            if (!payload.ok) {
-              setRefusal(payload.message);
-              return;
-            }
-            setRefusal(null);
-            onSave({
-              inherited: false,
-              maxAgeSeconds: payload.maxAgeSeconds,
-              lastRevisions: payload.lastRevisions,
-            });
-          }}
-        >
-          Save retention
-        </button>
-      </div>
+      <p className="settings-note">
+        Older revisions lose their values as collection runs (pinned ones always stay); who-changed-what
+        history is permanent. A custom value may not exceed the org default. Changes are audited.
+      </p>
     </>
   );
-}
-
-type ProjectRetentionMutation = ReturnType<typeof useSetProjectRetention>;
-
-function saveProjectRetention(
-  save: ProjectRetentionMutation,
-  input: { inherited: boolean; maxAgeSeconds: number | null; lastRevisions: number | null },
-  onDone: (text: string) => void,
-  onError: (error: unknown) => void,
-): void {
-  save.mutate(input, {
-    onSuccess: (saved) =>
-      onDone(
-        saved.inherited
-          ? 'Override cleared. This project follows the organisation cap live.'
-          : `Override saved. ${retentionSentence(saved)}`,
-      ),
-    onError,
-  });
 }

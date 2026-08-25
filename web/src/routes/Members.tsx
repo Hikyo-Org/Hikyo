@@ -48,7 +48,10 @@ const projectCapabilityOrder = new Map([
   ['read', 0],
   ['edit', 1],
   ['publish', 2],
-  ['reveal', 3],
+  ['manage-members', 3],
+  ['reveal', 4],
+  ['reveal-history', 5],
+  ['audit-read', 6],
 ]);
 
 const projectInspectorCapabilities = [
@@ -112,7 +115,7 @@ export function Members() {
     environment: (id: string) =>
       topology.projects.flatMap((p) => p.environments).find((e) => e.id === id)?.name ?? id,
   };
-  const allOptions = scopeOptions(org, orgName, topology.projects);
+  const allOptions = scopeOptions(orgQuery.data?.id ?? org, orgName, topology.projects);
   const projectOptions = projectId === ''
     ? []
     : allOptions.filter((option) =>
@@ -120,7 +123,9 @@ export function Members() {
         option.scope.project === projectId,
       );
   const inspectOptions = projectId === ''
-    ? allOptions
+    ? prototypeMode
+      ? prototypeProjectOptions(allOptions, names, ['production', 'staging', 'project', 'org'])
+      : allOptions
     : prototypeMode
       ? prototypeProjectOptions(projectOptions, names, ['production', 'staging', 'project'])
       : projectOptions;
@@ -142,6 +147,7 @@ export function Members() {
       });
   const rows = membershipRows(visibleLines, names);
   const me = auth.identity?.principal.id ?? '';
+  const compactPresentation = projectId !== '' || prototypeMode;
 
   const [draft, setDraft] = useState<GrantDraft>({
     principal: '',
@@ -190,8 +196,12 @@ export function Members() {
   };
 
   return (
-    <div className={projectId === '' ? 'page' : 'page page--members'}>
-      <h1>{projectId === '' ? 'Members' : `Members & access\u00a0·\u00a0${projectName}`}</h1>
+    <div className="page page--members">
+      <h1>
+        {projectId === ''
+          ? `Org members & grants\u00a0·\u00a0${orgName}`
+          : `Members & access\u00a0·\u00a0${projectName}`}
+      </h1>
       <p className="page__lede">
         One row per member per scope; each capability chip is still its own revocable grant; roles
         are templates that expand at grant time, so revoking a chip never drags a bundle with it.
@@ -219,12 +229,12 @@ export function Members() {
         names={names}
         grantsPending={grants.isPending}
         grantsSucceeded={grants.isSuccess}
-        projectContext={projectId !== ''}
+        projectContext={projectId !== '' || prototypeMode}
       />
 
       <Panel id="members-list" title="Members">
         {projectId === '' ? (
-          <p>
+          <p className="visually-hidden">
             Every grant line scoped inside {orgName}. Instance-scope grants reach this organisation
             by inheritance and are deliberately absent: this page has no authority over an instance
             operator, so it does not offer to revoke one.
@@ -262,16 +272,16 @@ export function Members() {
                       environment.id === scope.environment && environment.isProtected === true,
                   ) === true;
                 });
-                const visibleScopeLabel = projectId === ''
-                  ? row.scopeLabel
-                  : compactGrantScopeLabel(row.grants, row.scopeLabel, names);
+                const visibleScopeLabel = compactPresentation
+                  ? compactGrantScopeLabel(row.grants, row.scopeLabel, names)
+                  : row.scopeLabel;
                 return (
                   <tr key={row.key}>
                     <td>
-                      <span className={projectId === '' ? 'mono' : 'member-name'}>
+                      <span className={compactPresentation ? 'member-name' : 'mono'}>
                         {principalLabel(row.principal)}
                       </span>
-                      {row.principal === me ? <span className="badge">you</span> : null}
+                      {row.principal === me && !compactPresentation ? <span className="badge">you</span> : null}
                     </td>
                     <td>
                       <span
@@ -285,29 +295,29 @@ export function Members() {
                     </td>
                     <td>
                       <ul className="capabilities">
-                        {orderedMembershipGrants(row.grants, projectId !== '').map((grant) => {
+                        {orderedMembershipGrants(row.grants, compactPresentation).map((grant) => {
                           const revoking =
                             revoke.isPending && revoke.variables?.grant.id === grant.id;
                           const revokeLabel = `${revoking ? 'Revoking' : 'Revoke'} ${grant.capability} on ${row.scopeLabel} for ${row.principal}`;
-                          const revokeText = projectId === ''
-                            ? (revoking ? 'Revoking…' : 'Revoke')
-                            : (revoking ? '…' : '✕');
+                          const revokeText = compactPresentation
+                            ? (revoking ? '…' : '✕')
+                            : (revoking ? 'Revoking…' : 'Revoke');
                           return (
                             <li
                               key={grant.id}
-                              className={projectId === ''
-                                ? 'capability'
-                                : 'capability capability--compact'}
-                              title={projectId === ''
-                                ? undefined
-                                : `${grant.capability} · ${grant.origins.map((origin) => `${origin.kind}: ${origin.subject}`).join(', ')}`}
+                              className={compactPresentation
+                                ? 'capability capability--compact'
+                                : 'capability'}
+                              title={compactPresentation
+                                ? `${grant.capability} · ${grant.origins.map((origin) => `${origin.kind}: ${origin.subject}`).join(', ')}`
+                                : undefined}
                             >
                               <span className="capability__name mono">{grant.capability}</span>
                               {/* Origin chips per capability line: the SCIM
                                   amendment's own requirement, and the one thing
                                   that tells a break-glass grant from an ordinary
                                   one after an incident. */}
-                              {projectId === '' ? grant.origins.map((origin) => (
+                              {!compactPresentation ? grant.origins.map((origin) => (
                                   <span
                                     className="badge"
                                     key={`${origin.kind}:${origin.subject}`}
@@ -335,9 +345,9 @@ export function Members() {
                                 )}
                               <button
                                 type="button"
-                                className={projectId === ''
-                                  ? 'btn btn--quiet'
-                                  : 'capability__revoke'}
+                                className={compactPresentation
+                                  ? 'capability__revoke'
+                                  : 'btn btn--quiet'}
                                 disabled={revoking}
                                 aria-busy={revoking ? true : undefined}
                                 aria-label={revokeLabel}
@@ -376,21 +386,27 @@ export function Members() {
               setModal('grant');
             }}
           >
-            {projectId === '' ? 'New grant' : '+ new grant'}
+            {compactPresentation ? '+ new grant' : 'New grant'}
           </button>
+          {prototypeMode && projectId === '' ? (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => feedback.ok('Member invitations are not implemented in the API yet.')}
+            >
+              ✉ invite member
+            </button>
+          ) : null}
         </div>
-        {/* The prototype's second action here is "invite member". It is not
-            built and not stubbed: there is no invitation anywhere in the
-            contract — no table, no claim flow, no delivery channel, no expiry
-            — and a button that opened a form nothing could submit would be a
-            worse answer than its absence (#55 scope cut 1). */}
+        {/* Prototype mode keeps the finalized second action in place while
+            saying plainly that its delivery contract does not exist yet. */}
       </Panel>
 
       {modal === 'none' ? null : (
         <GrantModal
           orgName={orgName}
           options={grantOptions}
-          projectContext={projectId !== ''}
+          projectContext={compactPresentation}
           draft={draft}
           stage={modal}
           projects={topology.projects}

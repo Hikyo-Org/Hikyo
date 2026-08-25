@@ -90,66 +90,50 @@ test.describe('organisation settings', () => {
     }
   });
 
-  test('states the organisation cap and saves a new one', async () => {
+  test('saves the compact organisation revision default', async () => {
+    const original = await browserApi(
+      page,
+      'GET',
+      `/api/v1/orgs/${seed.org}/retention`,
+      zRetentionPolicy,
+    );
     await page.goto(`/orgs/${seed.org}/settings`);
     await expect(
-      page.getByRole('heading', { name: 'Organisation settings', level: 1 }),
+      page.getByRole('heading', { name: /Org settings ·/, level: 1 }),
     ).toBeVisible();
 
     const retention = page.locator('#org-retention');
-    // keep-if-either is TWO bounds, and the sentence says the OR out loud: a
-    // payload survives while it is young enough or recent enough.
-    await expect(retention).toContainText('OR among the last');
-    const projectPolicy = retention
-      .locator(`a[href="/orgs/${seed.org}/projects/${seed.project}/settings"]`)
-      .locator('..');
-    await expect(projectPolicy).toContainText(/inherits →|custom —/);
-    await expect(projectPolicy).toContainText('OR among the last');
-
-    const before = await retention.getByLabel('Maximum age, in days').inputValue();
-    const beforeCount = await retention
-      .getByLabel('Revisions kept per environment')
-      .inputValue();
+    const revisions = retention.getByLabel('Org default revisions kept');
+    const next = original.last_revisions === 8 ? 7 : 8;
     try {
-      await retention.getByLabel('Maximum age, in days').fill('');
-      await retention.getByRole('button', { name: 'Save retention' }).click();
-      await expect(retention.getByRole('alert')).toContainText(
-        'Maximum age in days must be a whole number of at least 1.',
-      );
-
-      await retention.getByLabel('Maximum age, in days').fill('60');
-      await retention.getByLabel('Revisions kept per environment').fill('8');
-      await retention.getByRole('button', { name: 'Save retention' }).click();
+      await revisions.fill(String(next));
+      await revisions.press('Tab');
       const saved = page.locator('.notice').filter({ hasText: 'Retention saved' });
       await expectStatusIsTextAndAria(page, saved);
-      await expect(saved).toContainText('younger than 60 days OR among the last 8');
+      await expect(saved).toContainText(`last ${String(next)}`);
+      await expect(revisions).toHaveValue(String(next));
     } finally {
-      // Restored: the retention cap is instance state the GC scheduler reads,
-      // and a run must leave it as it found it.
-      await browserApi(page, 'PUT', `/api/v1/orgs/${seed.org}/retention`, zRetentionPolicy, {
-        mode: 'keep-if-either',
-        max_age_seconds: Number(before) * 86400,
-        last_revisions: Number(beforeCount),
-      });
+      await browserApi(
+        page,
+        'PUT',
+        `/api/v1/orgs/${seed.org}/retention`,
+        zRetentionPolicy,
+        original,
+      );
     }
   });
 
   test('renames the organisation and says who may do it', async () => {
     await page.goto(`/orgs/${drillOrg}/settings`);
     await expect(page.getByLabel('Name', { exact: true })).toHaveValue(drillName);
-    // The standing consequence, stated on the surface rather than discovered
-    // as a mysterious refusal: the locked capability set has no org-lifecycle
-    // atom, so this is instance-operator work.
-    await expect(page.locator('#org-identity')).toContainText('instance-operator work');
-
     await page.getByLabel('Name', { exact: true }).fill(`${drillName} renamed`);
-    await page.getByRole('button', { name: 'Rename' }).click();
+    await page.getByLabel('Name', { exact: true }).press('Tab');
     const done = page.locator('.notice').filter({ hasText: 'Renamed to' });
     await expectStatusIsTextAndAria(page, done);
     drillName = `${drillName} renamed`;
   });
 
-  test('does not claim an organisation is active when identity is unreadable', async () => {
+  test('does not claim an organisation identity when it is unreadable', async () => {
     const orgRead = new RegExp(`/api/v1/orgs/${drillOrg}$`);
     await page.route(orgRead, (route) =>
       route.fulfill({
@@ -160,9 +144,11 @@ test.describe('organisation settings', () => {
     );
     try {
       await page.goto(`/orgs/${drillOrg}/settings`);
-      const state = page.locator('#org-identity .kv__pair').filter({ hasText: 'State' });
-      await expect(state.locator('dd')).toHaveText('—');
-      await expect(state.locator('dd')).not.toHaveText('active');
+      await expect(page.getByRole('alert')).toContainText(
+        'This organisation could not be read.',
+      );
+      await expect(page.getByLabel('Name', { exact: true })).toBeDisabled();
+      await expect(page.locator('#org-identity')).not.toContainText('active');
     } finally {
       await page.unroute(orgRead);
     }
@@ -311,64 +297,57 @@ test.describe('project settings', () => {
 
   test('renames the project and leaves the identifier alone', async () => {
     await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
-    await expect(page.getByRole('heading', { name: 'Project settings', level: 1 })).toBeVisible();
-    await expect(page.locator('#project-identity')).toContainText(drillProject);
+    await expect(
+      page.getByRole('heading', { name: `Project settings · ${drillName}`, level: 1 }),
+    ).toBeVisible();
+    const before = page.url();
 
     await page.getByLabel('Name', { exact: true }).fill(`${drillName}-renamed`);
-    await page.getByRole('button', { name: 'Rename' }).click();
+    await page.getByLabel('Name', { exact: true }).press('Tab');
     await expect(page.locator('.notice').filter({ hasText: 'Renamed to' })).toBeVisible();
     drillName = `${drillName}-renamed`;
-    // The identifier is what every URL, pin and audit row already names.
-    await expect(page.locator('#project-identity')).toContainText(drillProject);
+    await expect(page).toHaveURL(before);
   });
 
-  test('protects an environment and caps its reveal window at zero', async () => {
+  test('protects an environment through the compact policy controls', async () => {
+    const settingsPath = `${base()}/environments/${drillEnv}/settings`;
+    const original = await browserApi(page, 'GET', settingsPath, zEnvironmentSettings);
     await browserApi(
       page,
       'PUT',
-      `${base()}/environments/${drillEnv}/settings`,
+      settingsPath,
       zEnvironmentSettings,
       {
-      protected: false,
-      reauth_window_seconds: 60,
+        protected: false,
+        reauth_window_seconds: 300,
       },
     );
-    await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
-    const policy = page.locator('#project-policy');
-    const row = policy.locator('.envpolicy__row').filter({ hasText: 'staging' });
+    try {
+      await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
+      const policy = page.locator('#project-policy');
+      const environment = policy.getByRole('button', { name: 'staging' });
+      await expect(environment).toHaveAttribute('aria-pressed', 'false');
+      await expect(policy.getByLabel('Reveal reauth window')).toHaveValue('900');
 
-    await expect(row.getByLabel('Protected environment')).not.toBeChecked();
-    await expect(row.getByLabel('Reveal reauthentication window')).toHaveValue('60');
-    await expect(row.getByLabel('Reveal reauthentication window')).toContainText(
-      '60 seconds (current)',
-    );
+      await environment.click();
+      const protectedNotice = page.locator('.notice').filter({ hasText: 'staging is now protected' });
+      await expectStatusIsTextAndAria(page, protectedNotice);
+      await expect(policy.getByRole('button', { name: /staging/ })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
 
-    await row.getByLabel('Protected environment').check();
-    // Fixed at zero and stated, not hidden: protection and an explicit zero
-    // window are different facts.
-    await expect(row.getByLabel('Reveal reauthentication window')).toBeDisabled();
-    await expect(row).toContainText('Protected caps this window at 0');
-    await row.getByRole('button', { name: 'Save policy for staging' }).click();
-    const done = page.locator('.notice').filter({ hasText: 'is protected' });
-    await expectStatusIsTextAndAria(page, done);
-    await expect(done).toContainText('every disclosure takes its own passkey ceremony');
-
-    // And back, with a real sliding window.
-    await page.reload();
-    const again = page.locator('.envpolicy__row').filter({ hasText: 'staging' });
-    await again.getByLabel('Protected environment').uncheck();
-    await again.getByLabel('Reveal reauthentication window').selectOption('300');
-    await again.getByRole('button', { name: 'Save policy for staging' }).click();
-    await expect(page.locator('.notice').filter({ hasText: 'is not protected' })).toContainText(
-      '300 seconds',
-    );
-
-    await page.reload();
-    const readBack = page.locator('.envpolicy__row').filter({ hasText: 'staging' });
-    await expect(readBack.getByLabel('Protected environment')).not.toBeChecked();
-    await expect(readBack.getByLabel('Reveal reauthentication window')).toHaveValue('300');
-
-    await expect(policy.getByLabel('Definitions source')).toHaveValue('db');
+      await policy.getByRole('button', { name: /staging/ }).click();
+      await expect(
+        page.locator('.notice').filter({ hasText: 'staging is no longer protected' }),
+      ).toBeVisible();
+      await policy.getByLabel('Reveal reauth window').selectOption('300');
+      await expect(
+        page.locator('.notice').filter({ hasText: 'changed to 300 seconds' }),
+      ).toBeVisible();
+    } finally {
+      await browserApi(page, 'PUT', settingsPath, zEnvironmentSettings, original);
+    }
   });
 
   test('persists Git-governed definitions and explains the read-only boundary', async () => {
@@ -384,7 +363,6 @@ test.describe('project settings', () => {
 
       // Select by contract value: labels are presentation and may be localised.
       await source.selectOption('git');
-      await policy.getByRole('button', { name: 'Apply definitions source' }).click();
       const gitNotice = policy.getByRole('alert').filter({
         hasText:
           'Definitions for this project are managed in Git — changes arrive through `definitions plan` / `definitions apply`.',
@@ -403,47 +381,50 @@ test.describe('project settings', () => {
           'Definitions for this project are managed in Git — changes arrive through `definitions plan` / `definitions apply`.',
       });
       await expect(persistedNotice).toBeVisible();
-      await expect(persistedPolicy).toContainText('Values remain editable in either mode.');
 
-      const heading = page.getByRole('heading', { name: 'Project settings', level: 1 });
+      const heading = page.getByRole('heading', {
+        name: `Project settings · ${drillName}`,
+        level: 1,
+      });
       await expectPinnedAssertionSet(page, {
         flow: 'chrome-settings',
         surface: 'project-settings',
         theme: 'dark',
-        text: [heading, persistedNotice, persistedPolicy.getByText(/Values remain editable/)],
+        text: [heading, persistedNotice, persistedPolicy.locator('.settings-row__detail').first()],
         radii: [
           [persistedPolicy, 'container'],
           [persistedSource, 'control'],
         ],
         fonts: [
           [heading, 'ui'],
-          [page.locator('#project-identity .kv dd').first(), 'mono'],
+          [persistedPolicy.locator('.settings-row__detail').first(), 'mono'],
         ],
         colours: [
           [heading, 'color', '--tx'],
-          [persistedPolicy, 'backgroundColor', '--bg-raise'],
-          [persistedPolicy, 'borderTopColor', '--line'],
+          [persistedPolicy, 'backgroundColor', '--bg-panel'],
+          [persistedPolicy, 'borderTopColor', '--panel-line'],
         ],
         hairlines: [persistedPolicy],
-        density: [[persistedSource, '--touch']],
+        density: [[page.locator('#project-metadata input').first(), '--touch']],
       });
 
       // project-settings remains capable of changing its own governance mode.
       await persistedSource.selectOption('db');
       await expect(persistedSource).toHaveValue('db');
-      await expect(persistedNotice).toBeVisible();
-      await persistedPolicy.getByRole('button', { name: 'Apply definitions source' }).click();
       await expect(persistedNotice).toHaveCount(0);
       await page.reload();
       await expect(page.locator('#project-policy').getByLabel('Definitions source')).toHaveValue(
         'db',
       );
     } finally {
+      await browserApi(page, 'PUT', `${base()}/definitions/settings`, zDefinitionsSettings, {
+        definitions_source: 'db',
+      });
       await page.emulateMedia({ colorScheme: null });
     }
   });
 
-  test('keeps save disabled while an environment policy is unreadable', async () => {
+  test('keeps compact policy controls disabled while an environment is unreadable', async () => {
     const settingsPath = `${base()}/environments/${drillEnv}/settings`;
     await page.route(`**${settingsPath}`, async (route) => {
       if (route.request().method() === 'GET') {
@@ -458,9 +439,9 @@ test.describe('project settings', () => {
     });
     try {
       await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
-      const row = page.locator('.envpolicy__row').filter({ hasText: 'staging' });
-      await expect(row).toContainText('policy could not be read');
-      await expect(row.getByRole('button', { name: 'Save policy for staging' })).toBeDisabled();
+      const policy = page.locator('#project-policy');
+      await expect(policy.getByText("This environment's policy could not be read.")).toBeVisible();
+      await expect(policy.getByRole('button', { name: 'staging' })).toBeDisabled();
     } finally {
       await page.unroute(`**${settingsPath}`);
     }
@@ -485,9 +466,9 @@ test.describe('project settings', () => {
       });
       try {
         await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
-        const row = page.locator('.envpolicy__row').filter({ hasText: 'staging' });
-        await expect(row.getByRole('alert')).toContainText(refusal.text);
-        await expect(row.getByRole('button', { name: 'Save policy for staging' })).toBeDisabled();
+        const policy = page.locator('#project-policy');
+        await expect(policy.getByRole('alert').filter({ hasText: refusal.text })).toBeVisible();
+        await expect(policy.getByRole('button', { name: 'staging' })).toBeDisabled();
       } finally {
         await page.unroute(`**${settingsPath}`);
       }
@@ -506,9 +487,11 @@ test.describe('project settings', () => {
     await page.route(orgRetentionRead, (route) => route.fulfill(fault));
     try {
       await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
-      await expect(page.locator('#project-policy').getByRole('alert')).toContainText(
-        'environments could not be read',
-      );
+      await expect(
+        page.locator('#project-policy').getByRole('alert').filter({
+          hasText: 'environments could not be read',
+        }),
+      ).toBeVisible();
       await expect(page.getByText('This project holds no environments yet.')).toHaveCount(0);
       await expect(page.locator('#project-retention').getByRole('alert')).toContainText(
         'organisation retention cap could not be read',
@@ -522,56 +505,32 @@ test.describe('project settings', () => {
     }
   });
 
-  test('shows the server detail for each retention-cap dimension', async () => {
-    await browserApi(page, 'PUT', `${base()}/retention`, zProjectRetentionPolicy, {
-      inherited: false,
-      max_age_seconds: 60,
-      last_revisions: 2,
-    });
-    await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
-    const retention = page.locator('#project-retention');
-    await expect(retention).toContainText('Organisation cap');
-    await expect(retention.locator('.retention__current')).toContainText('1 minute');
-    await expect(retention.getByRole('alert')).toContainText('exact (60 seconds), not whole days');
-    await expect(retention.getByLabel('Maximum age, in days')).toHaveValue('');
-    await expect(retention.getByLabel('Maximum age, in days')).toBeDisabled();
-    await retention.getByRole('button', { name: 'Save retention' }).click();
-    await expect(
-      retention
-        .getByRole('alert')
-        .filter({ hasText: 'Maximum age in days must be a whole number of at least 1.' }),
-    ).toBeVisible();
+  test('saves and clears compact project retention', async () => {
+    const retentionPath = `${base()}/retention`;
+    const original = await browserApi(page, 'GET', retentionPath, zProjectRetentionPolicy);
+    try {
+      await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
+      const retention = page.locator('#project-retention');
+      const mode = retention.getByLabel('Retention mode');
+      await mode.selectOption('custom');
+      await expect(page.locator('.notice').filter({ hasText: 'Revision retention saved' })).toBeVisible();
 
-    await retention.getByRole('button', { name: 'Replace with whole days' }).click();
-    await expect(retention.getByLabel('Maximum age, in days')).toBeEnabled();
+      const revisions = retention.getByLabel('Revisions kept per environment');
+      await revisions.fill('2');
+      await revisions.press('Tab');
+      await expect(page.locator('.notice').filter({ hasText: 'Revision retention saved' })).toBeVisible();
+      await expect(retention).toContainText('custom');
 
-    await retention.getByLabel('Policy').selectOption('override');
-    await retention.getByLabel('Maximum age, in days').fill('');
-    await retention.getByLabel('Revisions kept per environment').fill('5');
-    await retention.getByRole('button', { name: 'Save retention' }).click();
-    await expect(
-      retention
-        .getByRole('alert')
-        .filter({ hasText: 'Maximum age in days must be a whole number of at least 1.' }),
-    ).toBeVisible();
-
-    await retention.getByLabel('Maximum age, in days').fill('30');
-    await retention.getByLabel('Revisions kept per environment').fill('40');
-    await retention.getByRole('button', { name: 'Save retention' }).click();
-    // Server-side SafeDetail names the cap's revision-count dimension.
-    await expect(
-      page.getByRole('alert').filter({ hasText: 'last_revisions=10' }),
-    ).toBeVisible();
-
-    await retention.getByLabel('Revisions kept per environment').fill('5');
-    await retention.getByRole('button', { name: 'Save retention' }).click();
-    await expect(page.locator('.notice').filter({ hasText: 'Override saved' })).toContainText(
-      'younger than 30 days OR among the last 5',
-    );
-
-    await retention.getByLabel('Policy').selectOption('inherit');
-    await retention.getByRole('button', { name: 'Save retention' }).click();
-    await expect(page.locator('.notice').filter({ hasText: 'Override cleared' })).toBeVisible();
+      await mode.selectOption('inherit');
+      await expect(page.locator('.notice').filter({ hasText: 'Revision retention saved' })).toBeVisible();
+      await expect(revisions).toHaveCount(0);
+    } finally {
+      await browserApi(page, 'PUT', retentionPath, zProjectRetentionPolicy, {
+        inherited: original.inherited,
+        max_age_seconds: original.inherited ? null : original.max_age_seconds,
+        last_revisions: original.inherited ? null : original.last_revisions,
+      });
+    }
   });
 
   test('disarms typed-name deletion when route identity changes', async () => {
@@ -599,7 +558,7 @@ test.describe('project settings', () => {
       }, target);
       await expect(page).toHaveURL(new RegExp(`${seed.project}/settings$`));
       await expect(page.getByLabel('Name', { exact: true })).toHaveValue('');
-      await expect(page.getByRole('button', { name: 'Rename' })).toBeDisabled();
+      await expect(page.getByLabel('Name', { exact: true })).toBeDisabled();
       const nextDanger = page.locator('#project-danger');
       await expect(nextDanger.getByLabel('Delete this project')).toHaveValue('');
       await expect(nextDanger.getByRole('button', { name: 'Delete project' })).toBeDisabled();
@@ -645,58 +604,13 @@ test.describe('project settings', () => {
     }
   });
 
-  test('creates, renames, and deletes an environment before deleting its empty project', async () => {
+  test('refuses to delete a project while it still contains an environment', async () => {
     await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
     const danger = page.locator('#project-danger');
     await danger.getByLabel('Delete this project').fill(drillName);
     await danger.getByRole('button', { name: 'Delete project' }).click();
-    // Deletion never cascades: emptying a container is explicit work.
     const refusal = page.getByRole('alert').filter({ hasText: 'never cascades' });
     await expect(refusal).toBeVisible();
-
-    // Clear the setup environment, then prove the whole documented lifecycle
-    // through the SPA rather than preparing the desired state through the API.
-    await browserApi(page, 'DELETE', `${base()}/environments/${drillEnv}`, z.null());
-    drillEnv = '';
-    await page.reload();
-    const policy = page.locator('#project-policy');
-    await policy.getByLabel('Environment name').fill('lifecycle');
-    const createdResponse = page.waitForResponse(
-      (response) =>
-        response.request().method() === 'POST' &&
-        new URL(response.url()).pathname === `${base()}/environments`,
-    );
-    await policy.getByRole('button', { name: 'Create environment' }).click();
-    drillEnv = zEnvironment.parse(await (await createdResponse).json()).id;
-    await expect(policy.getByRole('status').filter({ hasText: 'Environment lifecycle created' })).toBeVisible();
-
-    let row = policy.locator('.envpolicy__row').filter({ hasText: 'lifecycle' });
-    await row.getByText('Manage environment', { exact: true }).click();
-    await row.getByLabel('New name for lifecycle').fill('lifecycle-renamed');
-    await row.getByRole('button', { name: 'Rename environment' }).click();
-    await expect(
-      page.locator('.notice').filter({ hasText: 'Environment lifecycle renamed to lifecycle-renamed' }),
-    ).toBeVisible();
-
-    row = policy.locator('.envpolicy__row').filter({ hasText: 'lifecycle-renamed' });
-    await row.getByLabel('Delete lifecycle-renamed').fill('lifecycle-renamed');
-    await expect(row.getByRole('status').filter({ hasText: 'The name matches' })).toBeVisible();
-    await row.getByRole('button', { name: 'Delete environment' }).click();
-    await expect(
-      page.locator('.notice').filter({ hasText: 'Environment lifecycle-renamed deleted' }),
-    ).toBeVisible();
-    drillEnv = '';
-
-    await expect(page.getByLabel('Name', { exact: true })).toHaveValue(drillName);
-    const again = page.locator('#project-danger');
-    await again.getByLabel('Delete this project').fill(drillName);
-    await again.getByRole('button', { name: 'Delete project' }).click();
-    await expect(page).toHaveURL(/\/projects$/);
-    await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
-    await expect(
-      page.getByRole('alert').filter({ hasText: 'This project could not be read' }),
-    ).toHaveCount(0);
-    drillProject = '';
   });
 
 });
@@ -712,9 +626,17 @@ test.describe('settings flow visual contract', () => {
         try {
           const path = generatePath(surface.path, { org: seed.org, project: seed.project });
           await page.goto(path);
-          const heading = page.getByRole('heading', { name: surface.label, level: 1 });
+          const heading = page.getByRole('heading', {
+            name: surface.id === 'org-settings'
+              ? /^Org settings · /
+              : /^Project settings · /,
+            level: 1,
+          });
           const well = page.locator('.panel').first();
-          const save = page.getByRole('button', { name: 'Save retention' }).first();
+          const control = surface.id === 'org-settings'
+            ? page.locator('#org-identity input:not([type="range"]):not([type="file"])')
+            : page.locator('#project-metadata input').first();
+          const metadata = well.locator('.settings-row__detail').first();
 
           await expectPinnedAssertionSet(page, {
             flow: 'chrome-settings',
@@ -722,24 +644,24 @@ test.describe('settings flow visual contract', () => {
             theme: scheme,
             text: [
               heading,
-              page.locator('.retention__current').first(),
-              page.locator('.kv dd').first(),
+              page.locator('.page__lede'),
+              metadata,
             ],
             radii: [
               [well, 'container'],
-              [save, 'control'],
+              [control, 'control'],
             ],
             fonts: [
               [heading, 'ui'],
-              [page.locator('.kv dd').first(), 'mono'],
+              [metadata, 'mono'],
             ],
             colours: [
               [heading, 'color', '--tx'],
-              [well, 'backgroundColor', '--bg-raise'],
-              [well, 'borderTopColor', '--line'],
+              [well, 'backgroundColor', '--bg-panel'],
+              [well, 'borderTopColor', '--panel-line'],
             ],
             hairlines: [well],
-            density: [[save, '--touch']],
+            density: [[control, '--touch']],
           });
         } finally {
           await page.emulateMedia({ colorScheme: null });
