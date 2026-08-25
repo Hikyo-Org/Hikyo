@@ -1,0 +1,173 @@
+---
+const apiKey = import.meta.env.PUBLIC_POSTHOG_PROJECT_TOKEN;
+const apiHost = import.meta.env.PUBLIC_POSTHOG_HOST;
+
+if (!apiKey) {
+  throw new Error('PUBLIC_POSTHOG_PROJECT_TOKEN is required to build the Hikyo site');
+}
+
+if (!apiHost) {
+  throw new Error('PUBLIC_POSTHOG_HOST is required to build the Hikyo site');
+}
+---
+
+<aside class="analytics-consent" data-posthog-consent hidden aria-label="Optional site analytics">
+  <p>
+    <strong>Optional site analytics.</strong> Allow anonymous pageviews and named link clicks to help improve
+    hikyo.app. No cookies, session recording, form content, exceptions, or product data. Only this choice is saved
+    in your browser.
+  </p>
+  <div>
+    <button type="button" data-posthog-accept>Allow analytics</button>
+    <button type="button" data-posthog-reject>No thanks</button>
+  </div>
+</aside>
+<button class="analytics-settings" type="button" data-posthog-settings>Analytics settings</button>
+
+<script is:inline define:vars={{ apiKey, apiHost }}>
+  var consentKey = 'hikyo.analytics.consent';
+  var analyticsStarted = false;
+  var consent = document.querySelector('[data-posthog-consent]');
+
+  function savedConsent() {
+    try {
+      return localStorage.getItem(consentKey);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function saveConsent(value) {
+    try {
+      localStorage.setItem(consentKey, value);
+    } catch (_) {
+      // The current-page choice still applies when storage is unavailable.
+    }
+  }
+
+  function initializePostHog() {
+    if (analyticsStarted) return;
+    analyticsStarted = true;
+
+    !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="capture identify alias people.set people.set_once set_config register register_once unregister opt_out_capturing has_opted_out_capturing opt_in_capturing reset isFeatureEnabled onFeatureFlags getFeatureFlag getFeatureFlagPayload reloadFeatureFlags group updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures getSurveys getNextSurveyStep onSessionId".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+    window.posthog.init(apiKey, {
+      api_host: apiHost,
+      defaults: '2026-01-30',
+      persistence: 'memory',
+      disable_persistence: true,
+      person_profiles: 'never',
+      autocapture: false,
+      capture_pageview: true,
+      capture_pageleave: false,
+      capture_performance: false,
+      capture_dead_clicks: false,
+      capture_heatmaps: false,
+      capture_exceptions: false,
+      disable_session_recording: true,
+      disable_surveys: true,
+      disable_product_tours: true,
+      disable_web_experiments: true,
+      disable_external_dependency_loading: true,
+      advanced_disable_flags: true,
+      before_send: function (event) {
+        if (event && event.properties) event.properties.$geoip_disable = true;
+        return event;
+      },
+    });
+
+    document.addEventListener('click', function (event) {
+      if (!(event.target instanceof Element)) return;
+
+      var target = event.target.closest('[data-posthog-event]');
+      var eventName = target && target.getAttribute('data-posthog-event');
+      if (!target || !eventName) return;
+
+      window.posthog.capture(eventName, {
+        placement: target.getAttribute('data-posthog-placement'),
+        $geoip_disable: true,
+      });
+    });
+  }
+
+  document.querySelector('[data-posthog-accept]')?.addEventListener('click', function () {
+    saveConsent('granted');
+    consent.hidden = true;
+    initializePostHog();
+  });
+
+  document.querySelector('[data-posthog-reject]')?.addEventListener('click', function () {
+    saveConsent('denied');
+    consent.hidden = true;
+    if (analyticsStarted) location.reload();
+  });
+
+  document.querySelector('[data-posthog-settings]')?.addEventListener('click', function () {
+    consent.hidden = false;
+  });
+
+  if (savedConsent() === 'granted') {
+    initializePostHog();
+  } else if (savedConsent() !== 'denied') {
+    consent.hidden = false;
+  }
+</script>
+
+<style>
+  .analytics-consent {
+    position: fixed;
+    z-index: 1000;
+    right: 1rem;
+    bottom: 1rem;
+    max-width: 30rem;
+    padding: 1rem;
+    border: 1px solid #526167;
+    border-radius: 0.75rem;
+    color: #ecf1f2;
+    background: #1b2225;
+    box-shadow: 0 1rem 3rem rgb(0 0 0 / 35%);
+    font: 0.875rem/1.5 system-ui, sans-serif;
+  }
+
+  .analytics-consent p {
+    margin: 0 0 0.75rem;
+  }
+
+  .analytics-consent div {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .analytics-consent button,
+  .analytics-settings {
+    min-height: 2.75rem;
+    padding: 0.55rem 0.8rem;
+    border: 1px solid #78898f;
+    border-radius: 0.45rem;
+    color: inherit;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .analytics-consent [data-posthog-accept] {
+    border-color: #8dd6c2;
+    color: #10201c;
+    background: #8dd6c2;
+  }
+
+  .analytics-settings {
+    position: fixed;
+    z-index: 999;
+    left: 0.75rem;
+    bottom: 0.75rem;
+    min-height: 2rem;
+    padding: 0.25rem 0.5rem;
+    color: #aebcc0;
+    background: #1b2225;
+    font: 0.75rem/1.2 system-ui, sans-serif;
+  }
+
+  [data-posthog-consent][hidden] {
+    display: none;
+  }
+</style>
