@@ -14,13 +14,15 @@ Dark (default):
 
 - `--bg` oklch(0.19 0.012 220) surface
 - `--bg-raise` oklch(0.23 0.014 220) raised rows/sheets
+- `--bg-panel` oklch(0.225 0.014 220) dense settings and inspection panels
 - `--line` oklch(0.5 0.016 220) hairlines and control boundaries (>=3:1 on `--bg`)
 - `--chrome-line` oklch(0.3488 0.01488 220) low-contrast structural rules inside persistent chrome
+- `--panel-line` oklch(0.34 0.014 220) dense settings-panel boundaries
 - `--tx` oklch(0.93 0.008 200) primary text (≈13:1 on bg)
 - `--tx-dim` oklch(0.76 0.01 210) secondary (≈7:1)
 - `--accent` oklch(0.82 0.09 195) interactive teal; text on accent uses oklch(0.2 0.02 220)
 
-Light: linen-tinted paper oklch(0.965 0.008 200), hairlines and control boundaries oklch(0.64 0.012 210) (>=3:1 on the paper), structural chrome rules oklch(0.8388 0.00752 204.4), ink oklch(0.25 0.03 225), same accent hue at oklch(0.45 0.085 210).
+Light: linen-tinted paper oklch(0.965 0.008 200), dense panels oklch(0.935 0.01 200), panel boundaries oklch(0.82 0.014 210), hairlines and control boundaries oklch(0.64 0.012 210) (>=3:1 on the paper), structural chrome rules oklch(0.8388 0.00752 204.4), ink oklch(0.25 0.03 225), same accent hue at oklch(0.45 0.085 210).
 
 State vocabulary (always paired with a glyph or text, never color-only):
 

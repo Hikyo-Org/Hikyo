@@ -7,7 +7,15 @@ import {
   useRef,
   useState,
 } from 'react';
-import { generatePath, matchPath, NavLink, Outlet, useLocation, useNavigate } from 'react-router';
+import {
+  generatePath,
+  Link,
+  matchPath,
+  NavLink,
+  Outlet,
+  useLocation,
+  useNavigate,
+} from 'react-router';
 
 import { useLogout, useOrgs, type WhoAmI } from '../api/session.ts';
 import { useProjects } from '../api/settings.ts';
@@ -92,8 +100,11 @@ export function Shell({ session }: { session: WhoAmI }) {
   const items = orgs.data === undefined ? [] : orgs.data.items;
   const here = matchedSurface(location.pathname);
   const routeOrgId = here?.params.org === undefined ? '' : here.params.org;
-  const routeProjectId = here?.params.project === undefined ? '' : here.params.project;
-  const remote = new URLSearchParams(location.search).get('remote') ?? '';
+  const search = new URLSearchParams(location.search);
+  const pathProjectId = here?.params.project === undefined ? '' : here.params.project;
+  const membersProjectId = here?.surface.id === 'members' ? search.get('project') ?? '' : '';
+  const routeProjectId = pathProjectId === '' ? membersProjectId : pathProjectId;
+  const remote = search.get('remote') ?? '';
 
   // A deep link is a selection too. Persist it only after the organisation
   // listing confirms the id, then unscoped destinations keep the same tenant.
@@ -237,9 +248,9 @@ export function Shell({ session }: { session: WhoAmI }) {
     const result = ['hikyo'];
     if (activeOrgId !== '') result.push(activeOrgName);
     if (routeProjectId !== '') result.push(activeProjectName);
-    result.push(here?.surface.label ?? 'Not found');
+    if (membersProjectId === '') result.push(here?.surface.label ?? 'Not found');
     return result;
-  }, [activeOrgId, activeOrgName, activeProjectName, here?.surface.label, routeProjectId]);
+  }, [activeOrgId, activeOrgName, activeProjectName, here?.surface.label, membersProjectId, routeProjectId]);
   const onSidebarNavigate = navOpen ? dismissNavigation : () => setNavOpen(false);
 
   return (
@@ -577,6 +588,7 @@ function ProjectNavigation({
   state: ProjectSidebarState | null;
   onNavigate: () => void;
 }) {
+  const location = useLocation();
   const projectPath = (id: 'matrix' | 'project-settings') => {
     const path = generatePath(surfaceById(id).path, { org, project });
     return id === 'matrix' ? withRemote(path, remote) : path;
@@ -585,15 +597,30 @@ function ProjectNavigation({
     const surface = surfaceById(id);
     return generatePath(surface.path, { org });
   };
+  const projectMembersPath = `${orgPath('members')}?project=${encodeURIComponent(project)}`;
+  const selectedMembersProject = new URLSearchParams(location.search).get('project');
+  const projectMembersActive =
+    location.pathname === orgPath('members') &&
+    selectedMembersProject === project;
+  const orgMembersActive =
+    location.pathname === orgPath('members') &&
+    selectedMembersProject === null;
   const localOnlyDestination = (label: string, id: 'project-settings' | 'members') =>
     remote === '' ? (
-      <NavLink
-        className="sidebar__link"
-        to={id === 'members' ? orgPath(id) : projectPath(id)}
-        onClick={onNavigate}
-      >
-        {label}
-      </NavLink>
+      id === 'members' ? (
+        <Link
+          className="sidebar__link"
+          to={projectMembersPath}
+          aria-current={projectMembersActive ? 'page' : undefined}
+          onClick={onNavigate}
+        >
+          {label}
+        </Link>
+      ) : (
+        <NavLink className="sidebar__link" to={projectPath(id)} onClick={onNavigate}>
+          {label}
+        </NavLink>
+      )
     ) : (
       <span
         className="sidebar__link sidebar__link--disabled"
@@ -666,9 +693,14 @@ function ProjectNavigation({
         <h2>Organization</h2>
         <ul className="sidebar__items">
           <li>
-            <NavLink className="sidebar__link" to={orgPath('members')} onClick={onNavigate}>
+            <Link
+              className="sidebar__link"
+              to={orgPath('members')}
+              aria-current={orgMembersActive ? 'page' : undefined}
+              onClick={onNavigate}
+            >
               Org members &amp; grants
-            </NavLink>
+            </Link>
           </li>
           <li>
             <NavLink className="sidebar__link" to={orgPath('org-settings')} onClick={onNavigate}>

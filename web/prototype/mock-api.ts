@@ -3,10 +3,13 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import {
+  zApplyTemplateRequest,
+  zCreateGrantRequest,
   zCreateProjectRequest,
   zPublishRequest,
   zSetValueRequest,
 } from '../../clients/ts/src/generated/zod.gen.ts';
+import { expandTemplate, type Level } from '../src/api/access-templates.ts';
 import type { Plugin } from 'vite';
 
 type Scenario = 'populated' | 'attention' | 'empty';
@@ -36,6 +39,9 @@ const ids = {
   project: 'prj_11111111-1111-4111-8111-111111111111',
   webProject: 'prj_22222222-2222-4222-8222-222222222222',
   mobileProject: 'prj_33333333-3333-4333-8333-333333333333',
+  dana: 'prn_44444444-4444-4444-8444-444444444444',
+  sam: 'prn_55555555-5555-4555-8555-555555555555',
+  priya: 'prn_66666666-6666-4666-8666-666666666666',
   environments: {
     development: 'env_11111111-1111-4111-8111-111111111111',
     staging: 'env_22222222-2222-4222-8222-222222222222',
@@ -98,6 +104,116 @@ const groups = [
   created_at: fixtureTime,
 }));
 
+type PrototypeGrant = {
+  readonly id: string;
+  readonly principal_id: string;
+  readonly capability: string;
+  readonly scope: {
+    readonly org_id: string;
+    readonly project_id?: string;
+    readonly environment_id?: string;
+  };
+  readonly origins: readonly { readonly kind: 'manual'; readonly subject: string }[];
+  readonly created_at: string;
+};
+
+type PrototypeGrantOutcome = {
+  readonly grant_id: string;
+  readonly capability: string;
+  readonly outcome: 'created' | 'unchanged';
+};
+
+function prototypeGrant(
+  id: string,
+  principalId: string,
+  capability: string,
+  scope: PrototypeGrant['scope'],
+): PrototypeGrant {
+  return {
+    id,
+    principal_id: principalId,
+    capability,
+    scope,
+    origins: [{ kind: 'manual', subject: principalId }],
+    created_at: fixtureTime,
+  };
+}
+
+const prototypeGrantSeeds: readonly PrototypeGrant[] = [
+  prototypeGrant(
+    'grn_11111111-1111-4111-8111-111111111111',
+    ids.principal,
+    'manage-members',
+    { org_id: ids.org },
+  ),
+  prototypeGrant(
+    'grn_22222222-2222-4222-8222-222222222222',
+    ids.principal,
+    'reveal',
+    { org_id: ids.org },
+  ),
+  prototypeGrant(
+    'grn_aaaaaaaa-1111-4111-8111-111111111111',
+    ids.principal,
+    'audit-read',
+    { org_id: ids.org },
+  ),
+  prototypeGrant(
+    'grn_33333333-3333-4333-8333-333333333333',
+    ids.dana,
+    'read',
+    { org_id: ids.org, project_id: ids.project },
+  ),
+  prototypeGrant(
+    'grn_44444444-4444-4444-8444-444444444444',
+    ids.dana,
+    'edit',
+    { org_id: ids.org, project_id: ids.project },
+  ),
+  prototypeGrant(
+    'grn_55555555-5555-4555-8555-555555555555',
+    ids.dana,
+    'publish',
+    {
+      org_id: ids.org,
+      project_id: ids.project,
+      environment_id: ids.environments.staging,
+    },
+  ),
+  prototypeGrant(
+    'grn_66666666-6666-4666-8666-666666666666',
+    ids.dana,
+    'reveal',
+    {
+      org_id: ids.org,
+      project_id: ids.project,
+      environment_id: ids.environments.staging,
+    },
+  ),
+  prototypeGrant(
+    'grn_77777777-7777-4777-8777-777777777777',
+    ids.sam,
+    'read',
+    { org_id: ids.org, project_id: ids.project },
+  ),
+  prototypeGrant(
+    'grn_88888888-8888-4888-8888-888888888888',
+    ids.priya,
+    'read',
+    { org_id: ids.org, project_id: ids.project },
+  ),
+  prototypeGrant(
+    'grn_99999999-9999-4999-8999-999999999999',
+    ids.priya,
+    'reveal',
+    {
+      org_id: ids.org,
+      project_id: ids.project,
+      environment_id: ids.environments.production,
+    },
+  ),
+];
+
 type Draft = {
   versionId: string;
   environmentId: string;
@@ -110,14 +226,18 @@ const drafts = new Map<string, Draft>();
 const published = new Map<string, string | null>();
 let projectSequence = 1;
 let draftSequence = 1;
+let grantSequence = 1;
 let revision = 12;
+let prototypeGrants = [...prototypeGrantSeeds];
 
 function reset(): void {
   drafts.clear();
   published.clear();
   projectSequence = 1;
   draftSequence = 1;
+  grantSequence = 1;
   revision = 12;
+  prototypeGrants = [...prototypeGrantSeeds];
 }
 
 function scenarioFrom(request: IncomingMessage): Scenario {
@@ -237,6 +357,16 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
     send(response, 200, { items, count: items.length });
     return true;
   }
+  if (path === `/api/v1/orgs/${ids.org}` && method === 'GET') {
+    send(response, 200, {
+      id: ids.org,
+      name: 'acme',
+      active: true,
+      metadata: null,
+      created_at: fixtureTime,
+    });
+    return true;
+  }
   if (path === '/api/v1/instance/retention-health' && method === 'GET') {
     send(response, 200, {
       last_prune_success: scenario === 'attention' ? '2026-08-20T08:15:00Z' : fixtureTime,
@@ -260,16 +390,80 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
   }
 
   if (path === `/api/v1/orgs/${ids.org}/grants` && method === 'GET') {
-    const items = [{
-      id: 'grn_77777777-7777-4777-8777-777777777777',
-      principal_id: ids.principal,
-      capability: 'manage-members',
-      scope: { org_id: ids.org },
-      origins: [{ kind: 'manual', subject: ids.principal }],
-      created_at: fixtureTime,
-    }];
+    const items = scenario === 'empty' ? [] : prototypeGrants;
     send(response, 200, { items, count: items.length });
     return true;
+  }
+
+  const grantPathMatch = new RegExp(
+    `^/api/v1/orgs/${ids.org}(?:/projects/([^/]+)(?:/environments/([^/]+))?)?/grants$`,
+  ).exec(path);
+  if (grantPathMatch !== null && (method === 'POST' || method === 'DELETE')) {
+    const projectId = grantPathMatch[1];
+    const environmentId = grantPathMatch[2];
+    const scope = {
+      org_id: ids.org,
+      ...(projectId === undefined ? {} : { project_id: projectId }),
+      ...(environmentId === undefined ? {} : { environment_id: environmentId }),
+    };
+    const sameScope = (grant: PrototypeGrant) =>
+      grant.scope.org_id === scope.org_id &&
+      grant.scope.project_id === scope.project_id &&
+      grant.scope.environment_id === scope.environment_id;
+
+    if (method === 'DELETE') {
+      const principal = url.searchParams.get('principal');
+      const capability = url.searchParams.get('capability');
+      prototypeGrants = prototypeGrants.filter(
+        (grant) =>
+          grant.principal_id !== principal ||
+          grant.capability !== capability ||
+          !sameScope(grant),
+      );
+      send(response, 204);
+      return true;
+    }
+
+    return body(request).then((raw) => {
+      const createOutcome = (principal: string, capability: string): PrototypeGrantOutcome => {
+        const existing = prototypeGrants.find(
+          (grant) =>
+            grant.principal_id === principal &&
+            grant.capability === capability &&
+            sameScope(grant),
+        );
+        if (existing !== undefined) {
+          return {
+            grant_id: existing.id,
+            capability: existing.capability,
+            outcome: 'unchanged',
+          };
+        }
+        const id = `grn_aaaaaaaa-aaaa-4aaa-8aaa-${String(grantSequence).padStart(12, '0')}`;
+        grantSequence += 1;
+        prototypeGrants = [
+          ...prototypeGrants,
+          prototypeGrant(id, principal, capability, scope),
+        ];
+        return { grant_id: id, capability, outcome: 'created' };
+      };
+
+      const input = zCreateGrantRequest.or(zApplyTemplateRequest).parse(JSON.parse(raw));
+      if ('template' in input) {
+        const level: Level = environmentId !== undefined
+          ? 'environment'
+          : projectId !== undefined ? 'project' : 'org';
+        const capabilities = expandTemplate(input.template, level);
+        const items = capabilities.map((capability) =>
+          createOutcome(input.principal, capability),
+        );
+        send(response, 200, { items, count: items.length });
+        return true;
+      }
+
+      send(response, 201, createOutcome(input.principal, input.capability));
+      return true;
+    });
   }
 
   const projectCollection = new RegExp(`^/api/v1/orgs/${ids.org}/projects$`);
@@ -298,8 +492,13 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
   }
 
   const projectRoot = `/api/v1/orgs/${ids.org}/projects/${ids.project}`;
-  if (path === `${projectRoot}/environments` && method === 'GET') {
-    const items = scenario === 'empty' ? [] : environmentItems;
+  const projectEnvironmentMatch = new RegExp(
+    `^/api/v1/orgs/${ids.org}/projects/(${ids.project}|${ids.webProject}|${ids.mobileProject})/environments$`,
+  ).exec(path);
+  if (projectEnvironmentMatch !== null && method === 'GET') {
+    const items = scenario === 'empty' || projectEnvironmentMatch[1] !== ids.project
+      ? []
+      : environmentItems;
     send(response, 200, { items, count: items.length });
     return true;
   }
