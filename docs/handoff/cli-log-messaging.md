@@ -9,8 +9,9 @@
 - Timestamped text logs in development and structured JSON logs in production
   remain authoritative operational output on stderr, so production JSON logs
   do not mix with human prose.
-- `hikyo version` shows readable build metadata; `hikyo --version` remains one
-  machine-friendly version value.
+- Interactive `hikyo version` shows readable build metadata. Redirected
+  `hikyo version` retains its legacy one-line release identity while consumers
+  migrate; `hikyo --version` is the exact machine-friendly version value.
 - `hikyo about` and `hikyo welcome` show the supplied full 44-by-80 artwork;
   the embedded bytes are pinned by SHA-256 in tests.
 - Explicit and passive update checks show labeled installed/latest/channel and
@@ -20,6 +21,6 @@
 
 - Focused console, command, and update tests pass.
 - Redaction lint and isolation invariants pass.
-- `go test ./... -count=1`: 4,028 tests passed across 69 packages.
+- `go test ./... -count=1`: 4,029 tests passed across 69 packages.
 - Live development-server startup showed both timestamped logs and the readable
   server summary with resolved ephemeral listener ports.

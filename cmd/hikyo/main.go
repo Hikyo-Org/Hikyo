@@ -87,7 +87,7 @@ func run() int {
 		writeMachineVersion(os.Stdout)
 		return 0
 	case cmd == "version":
-		writeVersion(os.Stdout)
+		writeVersion(os.Stdout, term.IsTerminal(int(os.Stdout.Fd())))
 		return 0
 	case cmd == "about":
 		writeAbout(os.Stdout)
@@ -122,10 +122,21 @@ func run() int {
 	}
 }
 
-func writeVersion(output io.Writer) {
+func writeVersion(output io.Writer, interactive bool) {
+	if !interactive {
+		fmt.Fprintln(output, legacyVersionString())
+		return
+	}
 	fmt.Fprint(output, console.VersionMessage(console.VersionInfo{
 		Version: version, Commit: commit, BuildDate: buildDate,
 	}))
+}
+
+func legacyVersionString() string {
+	if version == "dev" {
+		return "hikyo dev"
+	}
+	return fmt.Sprintf("hikyo %s (%s, %s)", version, commit, buildDate)
 }
 
 func writeMachineVersion(output io.Writer) {
