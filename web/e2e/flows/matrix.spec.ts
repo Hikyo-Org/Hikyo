@@ -28,11 +28,24 @@ const SCHEMES: readonly ('dark' | 'light')[] = ['dark', 'light'];
 
 test.describe('environment matrix', () => {
   test.describe.configure({ mode: 'serial' });
-  test.use({ storageState: STORAGE_STATE });
+  test.use({
+    storageState: STORAGE_STATE,
+    permissions: ['clipboard-read', 'clipboard-write'],
+  });
 
   test.beforeEach(async ({ page }) => {
     await page.goto(MATRIX_PATH);
     await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
+    const menu = page.getByRole('button', { name: 'Menu' });
+    const mobileNavigation = await menu.isVisible();
+    if (mobileNavigation) await menu.click();
+    const projectNavigation = page.getByRole('navigation', { name: 'Project' });
+    await expect(page.locator('.project-sidebar').getByRole('heading', { name: 'payments' })).toBeVisible();
+    await expect(
+      projectNavigation.getByRole('link', { name: 'Environment matrix', exact: true }),
+    ).toHaveAttribute('aria-current', 'page');
+    await expect(projectNavigation.getByRole('button', { name: /app\/.*1 key/ })).toBeVisible();
+    if (mobileNavigation) await menu.click();
     await expect(page.getByRole('button', { name: /LOG_LEVEL in development:/ })).toBeVisible();
   });
 
@@ -60,6 +73,8 @@ test.describe('environment matrix', () => {
         `Publish blocked: ${seed.matrixRequired} in production`,
       );
 
+      const menu = page.getByRole('button', { name: 'Menu' });
+      if (await menu.isVisible()) await menu.click();
       await page.getByRole('button', { name: /Problems/ }).click();
       const bar = page.locator('.matrix__filter');
       await expectStatusIsTextAndAria(page, bar);
@@ -75,6 +90,7 @@ test.describe('environment matrix', () => {
       await expect(hiddenApp).toBeDisabled();
       await expect(hiddenApp).toHaveAttribute('title', 'hidden by the problems filter');
 
+      if (await menu.isVisible()) await menu.click();
       await page.locator('.matrix__group-link', { hasText: 'ops/' }).click();
       await expect(bar).toBeVisible();
       await expect(bar).toContainText('filter active: problems');
@@ -108,7 +124,7 @@ test.describe('environment matrix', () => {
       await expect(page.locator('.notice')).toContainText('Published atomically: production');
   });
 
-  test('keeps values on their environment IDs after display reorder without adding queries', async ({ page }) => {
+  test('keeps values on their environment IDs after display reorder', async ({ page }) => {
     const environmentsPath =
       `/api/v1/orgs/${seed.org}/projects/${seed.project}/environments`;
     const orderPath = `${environmentsPath}/order`;
@@ -148,16 +164,15 @@ test.describe('environment matrix', () => {
       const editor = page.getByRole('dialog');
       await editor.getByLabel('production value').fill('identity-check-not-saved');
       await expect(editor.getByLabel('production value')).toHaveValue('identity-check-not-saved');
+      await expect(editor.getByLabel('development value')).toHaveCount(0);
+      await editor.getByRole('button', { name: 'Edit all environments' }).click();
       await expect(editor.getByLabel('development value')).not.toHaveValue(
         'identity-check-not-saved',
-      );
-      await expect(editor.getByRole('link', { name: 'Open Values' })).toHaveAttribute(
-        'href',
-        `/orgs/${seed.org}/projects/${seed.project}/environments/${seed.prod}/values`,
       );
       await editor.getByRole('button', { name: 'Close row editor' }).click();
 
       // Three project reads plus four existing query families per environment.
+      // Config cells do not need a secret-disclosure capability request.
       // Re-keying changes representation, not observer/query count.
       await expect.poll(() => readResources.size).toBe(3 + 4 * 2);
     } finally {
@@ -172,12 +187,12 @@ test.describe('environment matrix', () => {
     const chooser = page.locator('.matrix__environment-picker');
     await chooser.locator('summary').click();
     await chooser.getByText('production', { exact: true }).click();
-    await expect(chooser.locator('summary')).toContainText('Environments 1/2');
+    await expect(chooser.locator('summary')).toContainText('envs 1/2');
     await expect(page.getByRole('columnheader', { name: 'production' })).toHaveCount(0);
     await expect(chooser.getByRole('checkbox', { name: 'development' })).toBeDisabled();
 
     await chooser.getByText('production', { exact: true }).click();
-    await expect(chooser.locator('summary')).toContainText('Environments 2/2');
+    await expect(chooser.locator('summary')).toContainText('envs 2/2');
     await chooser.locator('summary').click();
 
     const group = page.locator('.matrix__group-row button', { hasText: 'app' });
@@ -188,7 +203,7 @@ test.describe('environment matrix', () => {
     await expect(group).toHaveAttribute('aria-expanded', 'true');
   });
 
-  test('refreshes a mounted copy destination and routes secret work to Values', async ({ passkeyPage: page }, testInfo) => {
+  test('refreshes a mounted copy destination and keeps secret work in the cell modal', async ({ passkeyPage: page }, testInfo) => {
       // Both cells are already mounted. The destination starts warm with its
       // pre-copy value, so only successful destination invalidation can replace
       // it inside React Query's five-second freshness window.
@@ -229,11 +244,29 @@ test.describe('environment matrix', () => {
       await page
         .getByRole('button', { name: new RegExp(`${secret} in development:`) })
         .click();
-      await expect(
-        page.getByRole('dialog').getByRole('link', { name: 'Open Values' }),
-      ).toHaveAttribute(
-        'href',
-        `/orgs/${seed.org}/projects/${seed.project}/environments/${seed.dev}/values`,
+      const secretEditor = page.getByRole('dialog');
+      await expect(secretEditor.getByRole('button', { name: `Reveal ${secret}` })).toBeVisible();
+      await expect(secretEditor.getByRole('button', { name: `Copy ${secret}` })).toBeVisible();
+      await expect(secretEditor.getByRole('button', { name: 'Edit all environments' })).toBeVisible();
+      await expect(secretEditor.getByRole('link', { name: 'Open Values' })).toHaveCount(0);
+      await secretEditor.getByRole('button', { name: `Reveal ${secret}` }).click();
+      await expect(page.getByRole('heading', { name: 'reveal · development' })).toBeVisible();
+      await expect(page.getByRole('list', { name: 'Keys this decision covers' })).toContainText(secret);
+      await page.getByRole('button', { name: 'Use a passkey' }).click();
+      const revealed = secretEditor.getByLabel(`${secret} revealed`);
+      await expect(revealed).toBeVisible();
+      await expect(revealed).toHaveCount(0, { timeout: 12_000 });
+      await secretEditor.getByRole('button', { name: 'Close row editor' }).click();
+
+      await page
+        .getByRole('button', { name: new RegExp(`${secret} in production:`) })
+        .click();
+      const productionSecretEditor = page.getByRole('dialog');
+      await productionSecretEditor.getByRole('button', { name: `Copy ${secret}` }).click();
+      await expect(page.getByRole('heading', { name: 'copy to clipboard · production' })).toBeVisible();
+      await page.getByRole('button', { name: 'Use a passkey' }).click();
+      await expect(productionSecretEditor.getByRole('status')).toContainText(
+        'Copied, and recorded as a disclosure',
       );
   });
 
@@ -247,6 +280,8 @@ test.describe('environment matrix', () => {
       await expect(editor).toBeVisible();
       await expect(editor).toContainText('Updated by');
       await expect(editor).toContainText('Revision');
+      await expect(editor.getByText('PROTECTED', { exact: true })).toHaveCount(0);
+      await editor.getByRole('button', { name: 'Edit all environments' }).click();
       await expect(editor.getByText('PROTECTED', { exact: true })).toBeVisible();
       const firstEditorRow = editor.locator('.matrix-row-editor__row').first();
       await expectPinnedAssertionSet(page, {
@@ -294,6 +329,7 @@ test.describe('environment matrix', () => {
       await page.getByRole('button', { name: /^LOG_LEVEL in development:/ }).click();
       const reopened = page.getByRole('dialog');
       await expect(reopened.getByLabel('development value')).toHaveValue(value);
+      await reopened.getByRole('button', { name: 'Edit all environments' }).click();
       await expect(reopened.getByLabel('production value')).toHaveValue(`${value}-production`);
       await reopened.getByRole('button', { name: 'Close row editor' }).click();
 
@@ -324,8 +360,7 @@ test.describe('environment matrix', () => {
         await page.goto(MATRIX_PATH);
 
         const heading = page.getByRole('heading', { name: 'Environment matrix', level: 1 });
-        const layout = page.locator('.matrix__layout');
-        const groups = page.locator('.matrix__groups');
+        const groups = page.locator('.project-sidebar__groups');
         const chooser = page.locator('.matrix__environment-picker summary');
         const key = page.locator('.matrix__key').first();
         const cell = page.locator('.matrix-cell').first();
@@ -336,9 +371,8 @@ test.describe('environment matrix', () => {
           theme: scheme,
           text: [heading, key, cell],
           radii: [
-            [layout, 'container'],
             [chooser, 'control'],
-            [cell, 'pill'],
+            [cell, 'control'],
           ],
           fonts: [
             [heading, 'ui'],
@@ -348,11 +382,11 @@ test.describe('environment matrix', () => {
           colours: [
             [heading, 'color', '--tx'],
             [groups, 'backgroundColor', '--bg-raise'],
-            [layout, 'borderTopColor', '--line'],
           ],
-          hairlines: [layout],
+          hairlines: [],
           density: [[chooser, '--touch']],
         });
+        expect(await groups.evaluate((element) => getComputedStyle(element).borderLeftWidth)).toBe('1px');
       });
     }
   }

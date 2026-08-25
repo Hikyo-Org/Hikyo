@@ -21,14 +21,13 @@ Dark (default):
 
 Light: linen-tinted paper oklch(0.965 0.008 200), hairlines and control boundaries oklch(0.64 0.012 210) (>=3:1 on the paper), ink oklch(0.25 0.03 225), same accent hue at oklch(0.45 0.085 210).
 
-State vocabulary (always paired with a glyph, never color-only):
+State vocabulary (always paired with a glyph or text, never color-only):
 
-- set-here: filled accent pill
-- inherited: outline pill + `◂ origin`
-- from-defaults: tinted pill + `◂ def`
-- masked: hatched pill + `∅`
+- explicit value: plain monospaced text; no decorative border
+- explicit absence: muted `· absent`
+- secret present: masked text and a lock on the key label
 - missing/violation: red-family oklch(0.72 0.13 25) dark / oklch(0.48 0.14 30) light, + `!` or `✕`
-- changed: `Δ` in blue-violet-free slate oklch(0.78 0.07 250)
+- pending/changed: `Δ` in blue-violet-free slate oklch(0.78 0.07 250)
 
 ## Typography
 
@@ -39,19 +38,19 @@ State vocabulary (always paired with a glyph, never color-only):
 ## Shape & Space
 
 - **Radius carries a role** (decided app-chrome iteration 8, ticket #29): containers/cards 6px; controls (buttons, inputs, selects) 4px; badges/tags/chips 3px.
-- **The 999px pill is reserved** for exactly three things: identity circles (org and account avatars), count badges, and the matrix cell-state vocabulary. Nothing else is a pill.
-- Hairline borders (1px) over shadows; shadows only on overlays (bottom sheet).
+- **The 999px pill is reserved** for identity circles and count badges. Matrix values are table content, not badges.
+- Hairline borders (1px) over shadows; shadows only on modal overlays.
 - Density: matrix rows ~36px desktop, ~44px touch targets mobile.
 
 ## Motion
 
 - 150-220ms, ease-out-quart. Transform/opacity only.
-- Bottom sheet slides up; group collapse animates via grid-template-rows.
+- Group collapse animates via grid-template-rows.
 - `prefers-reduced-motion`: transitions off.
 
 ## Components
 
-- Environment chips: toggleable visibility, show base-chain arrow and protected badge.
-- Cell pills: the state vocabulary above.
-- Bottom sheet: single editing/inspection surface (provenance chain, value editor, mask/clear/reveal actions), same component desktop and mobile.
+- Environment controls: toggleable visibility in the table header, with protected state named in text.
+- Cells: plain monospaced value/state text; borders only name problems or active draft state.
+- Centred cell modal: one selected key/environment first, with provenance, schema, edit, copy, clear, reveal, and history actions. Multi-environment editing is explicit secondary disclosure.
 - Group headers: collapsible; collapsed state shows comma-separated key names.

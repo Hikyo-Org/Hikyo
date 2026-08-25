@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { generatePath, Link, useParams } from 'react-router';
 
 import { historyHref } from '../api/history.ts';
@@ -34,6 +34,7 @@ import {
 } from './MatrixPublishSheet.tsx';
 import { MatrixRowEditor } from './MatrixRowEditor.tsx';
 import { ScanWarnDialog, type ScanWarnItem } from './ScanWarnDialog.tsx';
+import { useProjectSidebar } from './Shell.tsx';
 import {
   computeMatrixProblems,
   groupProblemCounts,
@@ -65,11 +66,11 @@ type DisplayRow =
 /**
  * Whole-project environment matrix (#57, frozen prototype iteration 31).
  *
- * The prototype supplies the Cascade geometry and density valves. The flat
+ * The prototype supplies the table geometry and density valves. The flat
  * model supplies the semantics: every cell is set or absent in exactly one
  * environment. No inheritance labels, masks, provenance chains, or ambient
  * cross-environment comparison survive here. Lineage is one gesture away in
- * the row editor as the API's actor, timestamp, and revision facts.
+ * the cell modal as the API's actor, timestamp, and revision facts.
  */
 export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) {
   const params = useParams();
@@ -239,6 +240,35 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
     estimateSize: (index) => (displayRows[index]?.kind === 'group' ? 44 : 58),
     overscan: 8,
   });
+  const selectProjectGroup = useCallback((groupId: string) => {
+    const index = groupRowIndexes.get(groupId);
+    if (index !== undefined) rowVirtualizer.scrollToIndex(index, { align: 'start' });
+  }, [groupRowIndexes, rowVirtualizer]);
+  const toggleProblems = useCallback(() => {
+    setFilter((current) => current === 'all' ? 'problems' : 'all');
+  }, []);
+  const projectSidebarState = useMemo(() => ({
+    groups: displayGroupList.map((group) => ({
+      id: group.id,
+      name: group.name,
+      keyCount: group.keys.length,
+      problemCount: problemCounts.get(group.id) ?? 0,
+      hidden: filter === 'problems' && group.keys.every((key) => !filteredKeyIDs.has(key.id)),
+    })),
+    problemCount: problems.length,
+    problemsActive: filter === 'problems',
+    onSelectGroup: selectProjectGroup,
+    onToggleProblems: toggleProblems,
+  }), [
+    displayGroupList,
+    filter,
+    filteredKeyIDs,
+    problemCounts,
+    problems.length,
+    selectProjectGroup,
+    toggleProblems,
+  ]);
+  useProjectSidebar(projectSidebarState);
   const visibleEnvironments = environments.filter((environment) =>
     visibleEnvironmentIds.includes(environment.id),
   );
@@ -488,41 +518,6 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
       ) : null}
 
       <div className="matrix__layout">
-        <nav className="matrix__groups" aria-label="Key groups">
-          <h2>Groups</h2>
-          {displayGroupList.map((group) => {
-            const actuallyHidden =
-              filter === 'problems' && group.keys.every((key) => !filteredKeyIDs.has(key.id));
-            const count = problemCounts.get(group.id) ?? 0;
-            return (
-              <button
-                type="button"
-                className="matrix__group-link"
-                key={group.id}
-                disabled={actuallyHidden}
-                title={actuallyHidden ? 'hidden by the problems filter' : undefined}
-                onClick={() => {
-                  const index = groupRowIndexes.get(group.id);
-                  if (index !== undefined) rowVirtualizer.scrollToIndex(index, { align: 'start' });
-                }}
-              >
-                <span className="mono">{group.name}/</span>
-                <span>{String(group.keys.length)}</span>
-                {count === 0 ? null : <span className="matrix__count count">! {String(count)}</span>}
-              </button>
-            );
-          })}
-          <button
-            type="button"
-            className="matrix__group-link"
-            aria-pressed={filter === 'problems'}
-            onClick={() => setFilter((current) => current === 'all' ? 'problems' : 'all')}
-          >
-            <span>⚠ Problems</span>
-            {problems.length === 0 ? null : <span className="matrix__count count">{String(problems.length)}</span>}
-          </button>
-        </nav>
-
         <div className="matrix__surface">
           {filter === 'problems' ? (
             <div className="matrix__filter" role="status">
@@ -532,37 +527,6 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
               </button>
             </div>
           ) : null}
-
-          <details className="matrix__environment-picker">
-            <summary className="btn">
-              {`Environments ${String(visibleEnvironments.length)}/${String(environments.length)}`}
-            </summary>
-            <fieldset>
-              <legend>Visible environments</legend>
-              {environments.map((environment) => {
-                const checked = visibleEnvironmentIds.includes(environment.id);
-                return (
-                  <label key={environment.id}>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      disabled={checked && visibleEnvironmentIds.length === 1}
-                      onChange={() =>
-                        setVisibleEnvironmentIds((current) =>
-                          toggleVisibleEnvironment(
-                            current,
-                            environment.id,
-                            environments.map((candidate) => candidate.id),
-                          ),
-                        )
-                      }
-                    />
-                    <span>{environment.name}</span>
-                  </label>
-                );
-              })}
-            </fieldset>
-          </details>
 
           {environments.length === 0 ? (
             <div className="matrix__empty" role="status">
@@ -609,7 +573,41 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
               <table className="matrix__table">
                 <thead>
                   <tr>
-                    <th scope="col">Key</th>
+                    <th scope="col">
+                      <div className="matrix__key-heading">
+                        <span>Key</span>
+                        <details className="matrix__environment-picker">
+                          <summary className="btn">
+                            {`envs ${String(visibleEnvironments.length)}/${String(environments.length)}`}
+                          </summary>
+                          <fieldset>
+                            <legend>Visible environments</legend>
+                            {environments.map((environment) => {
+                              const checked = visibleEnvironmentIds.includes(environment.id);
+                              return (
+                                <label key={environment.id}>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    disabled={checked && visibleEnvironmentIds.length === 1}
+                                    onChange={() =>
+                                      setVisibleEnvironmentIds((current) =>
+                                        toggleVisibleEnvironment(
+                                          current,
+                                          environment.id,
+                                          environments.map((candidate) => candidate.id),
+                                        ),
+                                      )
+                                    }
+                                  />
+                                  <span>{environment.name}</span>
+                                </label>
+                              );
+                            })}
+                          </fieldset>
+                        </details>
+                      </div>
+                    </th>
                     {visibleEnvironments.map((environment) => {
                       const revision = revisionsByEnvironment.get(environment.id);
                       return (
@@ -690,6 +688,7 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
                     const { key } = row;
                     return (
                       <tr
+                        className="matrix__key-row"
                         key={key.id}
                         data-index={virtualRow.index}
                         ref={rowVirtualizer.measureElement}
@@ -930,7 +929,7 @@ function MatrixCell({
     state = '✕ value problem';
     stateClass = 'matrix-cell--problem';
   } else if (cell?.set === true && keyRecord.classification === 'secret') {
-    state = '🔒 set';
+    state = '••••••••';
     stateClass = 'matrix-cell--secret';
   } else if (cell?.set === true) {
     state = cell.value ?? 'set';
@@ -946,7 +945,12 @@ function MatrixCell({
 
   return (
     <>
-      <button type="button" className={`matrix-cell cell-state ${stateClass}`} aria-label={label} onClick={onOpen}>
+      <button
+        type="button"
+        className={`matrix-cell ${stateClass}${pending === null ? '' : ' matrix-cell--pending'}`}
+        aria-label={label}
+        onClick={onOpen}
+      >
         <span className="matrix-cell__value">{state}</span>
         {pending === null ? null : <span className="matrix-cell__signal">{pending}</span>}
         {signal?.pending_by_others === true ? (

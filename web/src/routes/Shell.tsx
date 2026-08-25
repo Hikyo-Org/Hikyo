@@ -1,7 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { generatePath, matchPath, NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 
 import { useLogout, useOrgs, type WhoAmI } from '../api/session.ts';
+import { useProjects } from '../api/settings.ts';
 import { retentionBanner, storageBanner, useRetentionHealth } from '../api/retention.ts';
 import {
   useRemoteUpdateStatuses,
@@ -9,10 +17,40 @@ import {
   type UpdateStatus,
 } from '../api/updates.ts';
 import { useWorkspaces } from '../api/workspace.ts';
+import { withRemote } from '../api/transport.tsx';
 import { effectiveTheme, prefersDark, useThemeChoice, type Theme } from '../app/theme.ts';
 import { needsOrg, SECTIONS, SURFACES, surfaceById, type Surface } from '../app/navigation.ts';
 import { notifyUpdate } from '../app/notifications.tsx';
 import { StepUpBanner } from './StepUpBanner.tsx';
+
+export type ProjectSidebarGroup = {
+  readonly id: string;
+  readonly name: string;
+  readonly keyCount: number;
+  readonly problemCount: number;
+  readonly hidden: boolean;
+};
+
+export type ProjectSidebarState = {
+  readonly groups: readonly ProjectSidebarGroup[];
+  readonly problemCount: number;
+  readonly problemsActive: boolean;
+  readonly onSelectGroup: (groupId: string) => void;
+  readonly onToggleProblems: () => void;
+};
+
+const ProjectSidebarPublisher = createContext<
+  ((state: ProjectSidebarState | null) => void) | null
+>(null);
+
+/** Lets a project surface fill the shell-owned project navigation without duplicating chrome. */
+export function useProjectSidebar(state: ProjectSidebarState): void {
+  const publish = useContext(ProjectSidebarPublisher);
+  useEffect(() => {
+    publish?.(state);
+    return () => publish?.(null);
+  }, [publish, state]);
+}
 
 /** Human-readable GiB for the storage high-water banner. */
 function formatGiB(bytes: number): string {
@@ -43,6 +81,7 @@ export function Shell({ session }: { session: WhoAmI }) {
   const navigate = useNavigate();
   const [navOpen, setNavOpen] = useState(false);
   const [chosenOrgId, setChosenOrgId] = useState('');
+  const [projectSidebar, setProjectSidebar] = useState<ProjectSidebarState | null>(null);
 
   // A navigation on a phone must close the sheet it was chosen from.
   useEffect(() => setNavOpen(false), [location.pathname]);
@@ -50,6 +89,8 @@ export function Shell({ session }: { session: WhoAmI }) {
   const items = orgs.data === undefined ? [] : orgs.data.items;
   const here = matchedSurface(location.pathname);
   const routeOrgId = here?.params.org === undefined ? '' : here.params.org;
+  const routeProjectId = here?.params.project === undefined ? '' : here.params.project;
+  const remote = new URLSearchParams(location.search).get('remote') ?? '';
 
   // A deep link is a selection too. Persist it only after the organisation
   // listing confirms the id, then unscoped destinations keep the same tenant.
@@ -74,6 +115,13 @@ export function Shell({ session }: { session: WhoAmI }) {
   const activeOrgId =
     routeOrgId !== '' ? routeOrgId : fallbackOrg === undefined ? '' : fallbackOrg.id;
   const activeOrgName = items.find((org) => org.id === activeOrgId)?.name ?? activeOrgId;
+  // Shell sits outside WorkspaceScope, so a remote project name is not fetched
+  // from this instance. Its route id remains the honest label until the remote
+  // workspace can publish chrome identity through the same explicit seam.
+  const projects = useProjects(remote === '' ? activeOrgId : '');
+  const projectItems = projects.data?.items ?? [];
+  const activeProjectName =
+    projectItems.find((project) => project.id === routeProjectId)?.name ?? routeProjectId;
   const pruneWarning = retentionBanner(retentionHealth.data, retentionHealth.isError);
   const storageWarning = storageBanner(retentionHealth.data);
   const availableUpdate = updateStatus.data?.available === true ? updateStatus.data : null;
@@ -110,6 +158,20 @@ export function Shell({ session }: { session: WhoAmI }) {
     );
   };
 
+  const chooseProject = (project: string) => {
+    void navigate(
+      generatePath(surfaceById('matrix').path, { org: activeOrgId, project }),
+    );
+  };
+
+  const crumbs = useMemo(() => {
+    const result = ['hikyo'];
+    if (activeOrgId !== '') result.push(activeOrgName);
+    if (routeProjectId !== '') result.push(activeProjectName);
+    result.push(here?.surface.label ?? 'Not found');
+    return result;
+  }, [activeOrgId, activeOrgName, activeProjectName, here?.surface.label, routeProjectId]);
+
   return (
     <div className="chrome" data-nav={navOpen ? 'open' : 'closed'}>
       <a className="skip" href="#content">
@@ -126,6 +188,9 @@ export function Shell({ session }: { session: WhoAmI }) {
         >
           Menu
         </button>
+        <span className="rail__mobile-context">
+          {routeProjectId === '' ? activeOrgName : `${activeOrgName} / ${activeProjectName}`}
+        </span>
         <ul className="rail__orgs">
           {items.map((org) => (
             <li key={org.id}>
@@ -142,6 +207,27 @@ export function Shell({ session }: { session: WhoAmI }) {
             </li>
           ))}
         </ul>
+        {projectItems.length === 0 ? null : (
+          <>
+            <span className="rail__divider" aria-hidden="true" />
+            <ul className="rail__projects" aria-label="Projects">
+              {projectItems.map((project) => (
+                <li key={project.id}>
+                  <button
+                    type="button"
+                    className="project-avatar"
+                    aria-current={project.id === routeProjectId}
+                    aria-label={`Project ${project.name}`}
+                    title={project.name}
+                    onClick={() => chooseProject(project.id)}
+                  >
+                    {monogram(project.name)}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
         <span className="rail__spacer" />
         <FleetUpdateNotice
           local={availableUpdate}
@@ -173,7 +259,17 @@ export function Shell({ session }: { session: WhoAmI }) {
             <span>Your organisations could not be loaded. Reload to try again.</span>
           </p>
         ) : null}
-        {SECTIONS.map((section) => {
+        {routeProjectId !== '' ? (
+          <ProjectNavigation
+            org={activeOrgId}
+            orgName={activeOrgName}
+            project={routeProjectId}
+            projectName={activeProjectName}
+            remote={remote}
+            state={projectSidebar}
+            onNavigate={() => setNavOpen(false)}
+          />
+        ) : SECTIONS.map((section) => {
           // An org-scoped destination needs an organisation to point at. With
           // none active the entry is absent rather than dead: a link that
           // resolves to `/orgs//members` is a 404 dressed as navigation.
@@ -205,9 +301,12 @@ export function Shell({ session }: { session: WhoAmI }) {
       <div className="main">
         <header className="header">
           <ol className="header__crumbs" aria-label="Breadcrumb">
-            <li>{activeOrgId === '' ? 'No organisation' : activeOrgName}</li>
-            <li aria-hidden="true">/</li>
-            <li>{here?.surface.label ?? 'Not found'}</li>
+            {crumbs.map((crumb, index) => (
+              <li key={`${crumb}-${String(index)}`}>
+                {index === 0 ? null : <span aria-hidden="true">/</span>}
+                <span>{crumb}</span>
+              </li>
+            ))}
           </ol>
           <span className="header__spacer" />
           <ThemeToggle />
@@ -272,10 +371,119 @@ export function Shell({ session }: { session: WhoAmI }) {
             its content overflows on a phone. */}
         <main className="content" id="content" tabIndex={0}>
           <StepUpBanner session={session} />
-          <Outlet context={{ activeOrgId }} />
+          <ProjectSidebarPublisher.Provider value={setProjectSidebar}>
+            <Outlet context={{ activeOrgId }} />
+          </ProjectSidebarPublisher.Provider>
         </main>
       </div>
     </div>
+  );
+}
+
+function ProjectNavigation({
+  org,
+  orgName,
+  project,
+  projectName,
+  remote,
+  state,
+  onNavigate,
+}: {
+  org: string;
+  orgName: string;
+  project: string;
+  projectName: string;
+  remote: string;
+  state: ProjectSidebarState | null;
+  onNavigate: () => void;
+}) {
+  const projectPath = (id: 'matrix' | 'history' | 'machine-access' | 'project-settings') => {
+    const path = generatePath(surfaceById(id).path, { org, project });
+    return id === 'matrix' || id === 'history' ? withRemote(path, remote) : path;
+  };
+  const orgPath = (id: 'projects' | 'members' | 'org-settings') => {
+    const surface = surfaceById(id);
+    return id === 'projects' ? surface.path : generatePath(surface.path, { org });
+  };
+  const localOnlyDestination = (label: string, id: 'machine-access' | 'project-settings' | 'members') =>
+    remote === '' ? (
+      <NavLink
+        className="sidebar__link"
+        to={id === 'members' ? orgPath(id) : projectPath(id)}
+        onClick={onNavigate}
+      >
+        {label}
+      </NavLink>
+    ) : (
+      <span
+        className="sidebar__link sidebar__link--disabled"
+        aria-disabled="true"
+        title={`${label} is not available for remote workspaces yet`}
+      >
+        {`${label} · local only`}
+      </span>
+    );
+  return (
+    <>
+      <section className="project-sidebar" aria-labelledby="project-sidebar-title">
+        <p className="project-sidebar__eyebrow">{orgName}</p>
+        <h2 id="project-sidebar-title">{projectName}</h2>
+        <nav aria-label="Project">
+          <NavLink className="sidebar__link" to={projectPath('matrix')} end onClick={onNavigate}>
+            Environment matrix
+          </NavLink>
+          {state === null ? null : (
+            <div className="project-sidebar__groups">
+              {state.groups.map((group) => (
+                <button
+                  type="button"
+                  className="matrix__group-link project-sidebar__group"
+                  key={group.id}
+                  disabled={group.hidden}
+                  title={group.hidden ? 'hidden by the problems filter' : undefined}
+                  aria-label={`${group.name}/ · ${String(group.keyCount)} ${group.keyCount === 1 ? 'key' : 'keys'}${group.problemCount === 0 ? '' : ` · ${String(group.problemCount)} problems`}`}
+                  onClick={() => {
+                    state.onSelectGroup(group.id);
+                    onNavigate();
+                  }}
+                >
+                  <span className="mono">{group.name}/</span>
+                  <span>{String(group.keyCount)}</span>
+                  {group.problemCount === 0 ? null : (
+                    <span className="matrix__count count">! {String(group.problemCount)}</span>
+                  )}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="matrix__group-link project-sidebar__group"
+                aria-pressed={state.problemsActive}
+                onClick={() => {
+                  state.onToggleProblems();
+                  onNavigate();
+                }}
+              >
+                <span>Problems</span>
+                <span className="matrix__count count">{String(state.problemCount)}</span>
+              </button>
+            </div>
+          )}
+          <NavLink className="sidebar__link" to={projectPath('history')} onClick={onNavigate}>
+            Version history
+          </NavLink>
+          {localOnlyDestination('Machine access', 'machine-access')}
+          {localOnlyDestination('Members & access', 'members')}
+          {localOnlyDestination('Project settings', 'project-settings')}
+        </nav>
+      </section>
+      <section className="sidebar__section project-sidebar__organisation">
+        <h2>Organisation</h2>
+        <ul className="sidebar__items">
+          <li><NavLink className="sidebar__link" to={orgPath('projects')} onClick={onNavigate}>Projects</NavLink></li>
+          <li><NavLink className="sidebar__link" to={orgPath('org-settings')} onClick={onNavigate}>Org settings</NavLink></li>
+        </ul>
+      </section>
+    </>
   );
 }
 

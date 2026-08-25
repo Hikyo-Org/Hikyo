@@ -129,8 +129,7 @@ test.describe('secret scanning warn dialog', () => {
         await page.goto(MATRIX_PATH);
 
         const heading = page.getByRole('heading', { name: 'Environment matrix', level: 1 });
-        const layout = page.locator('.matrix__layout');
-        const groups = page.locator('.matrix__groups');
+        const groups = page.locator('.project-sidebar__groups');
         const chooser = page.locator('.matrix__environment-picker summary');
         const key = page.locator('.matrix__key').first();
         const cell = page.locator('.matrix-cell').first();
@@ -141,9 +140,8 @@ test.describe('secret scanning warn dialog', () => {
           theme: scheme,
           text: [heading, key, cell],
           radii: [
-            [layout, 'container'],
             [chooser, 'control'],
-            [cell, 'pill'],
+            [cell, 'control'],
           ],
           fonts: [
             [heading, 'ui'],
@@ -153,11 +151,11 @@ test.describe('secret scanning warn dialog', () => {
           colours: [
             [heading, 'color', '--tx'],
             [groups, 'backgroundColor', '--bg-raise'],
-            [layout, 'borderTopColor', '--line'],
           ],
-          hairlines: [layout],
+          hairlines: [],
           density: [[chooser, '--touch']],
         });
+        expect(await groups.evaluate((element) => getComputedStyle(element).borderLeftWidth)).toBe('1px');
       });
     }
   }

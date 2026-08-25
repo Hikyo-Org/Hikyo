@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { generatePath, Link } from 'react-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router';
 
 import { historyHref } from '../api/history.ts';
 import type {
@@ -7,9 +7,17 @@ import type {
   MatrixRef,
   MatrixSignalCell,
 } from '../api/matrix.ts';
-import type { EnvironmentList, ValueCell } from '../api/values.ts';
-import { surfaceById } from '../app/navigation.ts';
-import { Ceremony } from './Ceremony.tsx';
+import { withRemote, useTransport, useWorkspaceContext } from '../api/transport.tsx';
+import {
+  disclosureRefusalText,
+  fetchRevealWindow,
+  useRevealOne,
+  useRevealWindow,
+  type EnvironmentList,
+  type ValueCell,
+} from '../api/values.ts';
+import { writeExpiringClipboard } from '../app/clipboard.ts';
+import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import {
   canClearMatrixCell,
   copyRequiresProtectedConfirmation,
@@ -23,6 +31,7 @@ import {
   useProtectedPublishCeremony,
   type ProtectedPublishTarget,
 } from './useProtectedPublishCeremony.ts';
+import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
 import { useModalDialog } from './useModalDialog.ts';
 
 type MatrixKey = MatrixKeyList['items'][number];
@@ -40,7 +49,9 @@ type EditorRow = {
 
 export type MatrixEditorChange = MatrixDraftChange;
 
-/** Locked row editor: one independently staged field per readable environment. */
+const REMASK_MS = 10_000;
+
+/** Locked cell modal: one environment first, with explicit multi-environment editing. */
 export function MatrixRowEditor({
   refData,
   keyRecord,
@@ -83,6 +94,7 @@ export function MatrixRowEditor({
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
   const [copyOpen, setCopyOpen] = useState(false);
+  const [editAll, setEditAll] = useState(false);
   const [destinations, setDestinations] = useState<readonly string[]>([]);
   const [protectedCopyConfirmed, setProtectedCopyConfirmed] = useState(false);
   const protectedEnvironmentIds = rows.flatMap((row) =>
@@ -99,13 +111,10 @@ export function MatrixRowEditor({
     throw new Error(`matrix editor environment ${environmentId} is not in its keyed rows`);
   }
   const environment = sourceRow.environment;
-
-  const valuesPath = generatePath(surfaceById('values').path, {
-    org: refData.org,
-    project: refData.project,
-    environment: environmentId,
-  });
+  const workspace = useWorkspaceContext();
   const sourceSet = sourceRow.cell?.set === true;
+  const disclosure = useCellDisclosure(refData, keyRecord, sourceRow);
+  const visibleRows = editAll ? rows : [sourceRow];
   const protectedConfirmationRequired = copyRequiresProtectedConfirmation(
     destinations,
     protectedEnvironmentIds,
@@ -167,13 +176,16 @@ export function MatrixRowEditor({
         >
           <div className="matrix-editor__head">
             <div>
+              <p className="matrix-editor__eyebrow">
+                {`${environment.name} · ${keyRecord.classification}`}
+              </p>
               <h2 className="mono">
                 {keyRecord.classification === 'secret' ? (
                   <span aria-hidden="true">🔒 </span>
                 ) : null}
                 {keyRecord.name}
               </h2>
-              <p>One independent draft per readable environment. Untouched fields stay unchanged; a touched empty field stages an explicit empty value.</p>
+              <p>{keyRecord.description || 'Explicit value and provenance for this environment.'}</p>
             </div>
             <button
               type="button"
@@ -185,7 +197,15 @@ export function MatrixRowEditor({
             </button>
           </div>
 
-          <div className="matrix-row-editor__fill">
+          <details className="matrix-editor__schema">
+            <summary>Schema and presence rules</summary>
+            <pre className="mono">{JSON.stringify({
+              declaration: keyRecord.declaration,
+              presence: keyRecord.presence,
+            }, null, 2)}</pre>
+          </details>
+
+          {editAll ? <div className="matrix-row-editor__fill">
             <label htmlFor="matrix-fill-all">Fill all environments</label>
             <div>
               <input
@@ -210,10 +230,10 @@ export function MatrixRowEditor({
                 Fill all
               </button>
             </div>
-          </div>
+          </div> : null}
 
           <div className="matrix-row-editor__rows">
-            {rows.map((row) => {
+            {visibleRows.map((row) => {
               const rowEnvironmentId = row.environmentId;
               const publishedSet = row.cell?.set === true;
               const edit = edits.get(rowEnvironmentId);
@@ -292,6 +312,12 @@ export function MatrixRowEditor({
                       <dd>{row.signal?.changed_in_revision === undefined ? 'No change signal' : `r${String(row.signal.changed_in_revision)}`}</dd>
                     </div>
                   </dl>
+                  {rowEnvironmentId === environmentId && disclosure.revealed !== null ? (
+                    <p className="matrix-editor__revealed mono" aria-label={`${keyRecord.name} revealed`}>
+                      <span>{disclosure.revealed.value}</span>
+                      <small>{`re-masks in ${String(disclosure.revealed.remaining)}s`}</small>
+                    </p>
+                  ) : null}
                   <button
                     type="button"
                     className="btn"
@@ -316,6 +342,8 @@ export function MatrixRowEditor({
 
           {applyError === null ? null : <p className="alert" role="alert">{applyError}</p>}
           {mutationError === null ? null : <p className="alert" role="alert">{mutationError}</p>}
+          {disclosure.error === null ? null : <p className="alert" role="alert">{disclosure.error}</p>}
+          {disclosure.notice === null ? null : <p className="notice" role="status">{disclosure.notice}</p>}
 
           <div className="matrix-editor__actions">
             <button
@@ -325,7 +353,21 @@ export function MatrixRowEditor({
             >
               {busy || applying ? 'Saving drafts…' : `Save ${String(changes.length)} draft${changes.length === 1 ? '' : 's'}`}
             </button>
-            <Link className="btn" to={valuesPath}>Open Values</Link>
+            {!editAll && rows.length > 1 ? (
+              <button type="button" className="btn" onClick={() => setEditAll(true)}>
+                Edit all environments
+              </button>
+            ) : null}
+            {sourceSet && keyRecord.classification === 'secret' && disclosure.canReveal ? (
+              <button type="button" className="btn" onClick={disclosure.reveal}>
+                {`Reveal ${keyRecord.name}`}
+              </button>
+            ) : null}
+            {sourceSet ? (
+              <button type="button" className="btn" onClick={disclosure.copy}>
+                {`Copy ${keyRecord.name}`}
+              </button>
+            ) : null}
             {/*
               The per-key history entry point. Per-key history is a FILTER over
               the same lineage, so it is the history surface with `key` set —
@@ -333,7 +375,10 @@ export function MatrixRowEditor({
             */}
             <Link
               className="btn"
-              to={historyHref({ ...refData, env: environment.id, keyId: keyRecord.id })}
+              to={withRemote(
+                historyHref({ ...refData, env: environment.id, keyId: keyRecord.id }),
+                workspace?.remote ?? '',
+              )}
             >
               {`History for ${keyRecord.name}`}
             </Link>
@@ -414,8 +459,142 @@ export function MatrixRowEditor({
           onCancel={protectedGuard.onCancel}
         />
       )}
+      {disclosure.ceremony.request === null ? null : (
+        <Ceremony
+          key={disclosure.ceremony.requestKey}
+          request={disclosure.ceremony.request}
+          onAuthorised={disclosure.ceremony.onAuthorised}
+          onCancel={disclosure.ceremony.onCancel}
+        />
+      )}
     </>
   );
+}
+
+function useCellDisclosure(
+  refData: MatrixRef,
+  keyRecord: MatrixKey,
+  sourceRow: EditorRow,
+) {
+  const env = { ...refData, environment: sourceRow.environmentId };
+  const transport = useTransport();
+  const window = useRevealWindow(env, keyRecord.classification === 'secret');
+  const revealOne = useRevealOne(env);
+  const ceremony = useCeremonyTask([
+    refData.org,
+    refData.project,
+    sourceRow.environmentId,
+    keyRecord.id,
+  ]);
+  const [plaintext, setPlaintext] = useState<{ value: string; until: number } | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (plaintext === null) return;
+    const timer = globalThis.setInterval(() => setNow(Date.now()), 250);
+    return () => globalThis.clearInterval(timer);
+  }, [plaintext]);
+
+  useEffect(() => {
+    if (plaintext !== null && plaintext.until <= now) setPlaintext(null);
+  }, [now, plaintext]);
+
+  useEffect(() => {
+    setPlaintext(null);
+    setError(null);
+    setNotice(null);
+  }, [keyRecord.id, sourceRow.environmentId]);
+
+  const clipboardMessage = useCallback(
+    (value: string, audited: boolean) => writeExpiringClipboard(value, audited),
+    [],
+  );
+
+  const withDisclosure = useCallback(async (
+    purpose: CeremonyPurpose,
+    act: (task: CeremonyTask) => Promise<void>,
+  ) => {
+    const task = ceremony.begin([purpose, sourceRow.environmentId, keyRecord.id]);
+    setError(null);
+    setNotice(null);
+    let state;
+    try {
+      state = await fetchRevealWindow(env, transport.client, task.signal);
+    } catch {
+      if (ceremony.commit(task, () => setError('The reveal window could not be read, so nothing was disclosed.'))) {
+        ceremony.finish(task);
+      }
+      return;
+    }
+    if (!ceremony.isCurrent(task)) return;
+    if (state.live && !state.single_decision) {
+      await act(task);
+      return;
+    }
+    ceremony.stage(task, {
+      purpose,
+      environmentId: sourceRow.environmentId,
+      environmentName: sourceRow.environment.name,
+      keys: [{ id: keyRecord.id, name: keyRecord.name }],
+      window: state,
+    }, () => void act(task));
+  }, [ceremony, env, keyRecord.id, keyRecord.name, sourceRow.environment.name, sourceRow.environmentId, transport.client]);
+
+  const discloseValue = useCallback(async (
+    task: CeremonyTask,
+    onValue: (value: string) => Promise<void> | void,
+  ) => {
+    try {
+      const fresh = await revealOne.mutateAsync(keyRecord.name);
+      if (fresh.value === undefined) {
+        ceremony.commit(task, () => setError('The server disclosed no value for that key.'));
+        return;
+      }
+      if (ceremony.isCurrent(task)) await onValue(fresh.value);
+    } catch (caught) {
+      ceremony.commit(task, () => {
+        setPlaintext(null);
+        setError(disclosureRefusalText(caught));
+      });
+    } finally {
+      ceremony.finish(task);
+    }
+  }, [ceremony, keyRecord.name, revealOne]);
+
+  const reveal = useCallback(() => {
+    void withDisclosure('reveal', (task) => discloseValue(task, (value) => {
+      ceremony.commit(task, () => {
+        setPlaintext({ value, until: Date.now() + REMASK_MS });
+        setNotice('Disclosure recorded.');
+      });
+    }));
+  }, [ceremony, discloseValue, withDisclosure]);
+
+  const copy = useCallback(() => {
+    if (keyRecord.classification === 'config') {
+      void clipboardMessage(sourceRow.cell?.value ?? '', false).then(setNotice);
+      return;
+    }
+    void withDisclosure('clipboard', (task) => discloseValue(task, async (value) => {
+      const message = await clipboardMessage(value, true);
+      ceremony.commit(task, () => setNotice(message));
+    }));
+  }, [ceremony, clipboardMessage, discloseValue, keyRecord.classification, sourceRow.cell?.value, withDisclosure]);
+
+  return {
+    canReveal: window.data?.can_reveal !== false,
+    ceremony,
+    copy,
+    error,
+    notice,
+    reveal,
+    revealed: plaintext === null ? null : {
+      value: plaintext.value,
+      remaining: Math.max(0, Math.ceil((plaintext.until - now) / 1000)),
+    },
+  };
 }
 
 function validateDeclaration(

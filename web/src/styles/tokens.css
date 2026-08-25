@@ -30,8 +30,7 @@
   --radius-container: 6px;
   --radius-control: 4px;
   --radius-badge: 3px;
-  /* Reserved for exactly three things: identity circles, count badges, and
-     the matrix cell-state vocabulary. Nothing else is a pill. */
+  /* Reserved for identity circles and count badges. Nothing else is a pill. */
   --radius-pill: 999px;
 
   /* Type */

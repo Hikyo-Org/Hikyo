@@ -1,9 +1,27 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { writeClipboard } from './clipboard.ts';
+import { writeClipboard, writeExpiringClipboard } from './clipboard.ts';
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+describe('writeExpiringClipboard', () => {
+  it('reports audited copy honestly and clears while the tab remains focused', async () => {
+    vi.useFakeTimers();
+    const writeText = vi.fn(() => Promise.resolve());
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    vi.stubGlobal('document', { hasFocus: () => true });
+
+    await expect(writeExpiringClipboard('secret', true)).resolves.toContain(
+      'recorded as a disclosure',
+    );
+    await vi.advanceTimersByTimeAsync(45_000);
+
+    expect(writeText).toHaveBeenNthCalledWith(1, 'secret');
+    expect(writeText).toHaveBeenNthCalledWith(2, '');
+  });
 });
 
 describe('writeClipboard', () => {

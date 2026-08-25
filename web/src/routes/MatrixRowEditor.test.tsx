@@ -2,6 +2,7 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { MatrixRowEditor, type MatrixEditorChange } from './MatrixRowEditor.tsx';
@@ -108,20 +109,23 @@ async function renderEditor() {
   const root = createRoot(container);
 
   await act(async () => {
+    const queries = new QueryClient({ defaultOptions: { queries: { enabled: false } } });
     root.render(
-      <MemoryRouter>
-        <MatrixRowEditor
-          refData={{ org: 'org-a', project: 'project-a' }}
-          keyRecord={keyRecord}
-          environmentId={environmentId}
-          rows={rows}
-          busy={false}
-          mutationError={null}
-          onClose={vi.fn()}
-          onApply={onApply}
-          onCopy={vi.fn()}
-        />
-      </MemoryRouter>,
+      <QueryClientProvider client={queries}>
+        <MemoryRouter>
+          <MatrixRowEditor
+            refData={{ org: 'org-a', project: 'project-a' }}
+            keyRecord={keyRecord}
+            environmentId={environmentId}
+            rows={rows}
+            busy={false}
+            mutationError={null}
+            onClose={vi.fn()}
+            onApply={onApply}
+            onCopy={vi.fn()}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
   });
 
