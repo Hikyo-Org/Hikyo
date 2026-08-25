@@ -223,7 +223,10 @@ button {
 .brand:active,
 .nav-links a:active,
 .site-footer a:active,
-.theme-toggle:active {
+.theme-toggle:active,
+.text-link:active,
+.comparison-status.planned:active,
+.comparison-notes a:active {
   transform: scale(0.97);
 }
 
@@ -291,10 +294,6 @@ button {
 .text-link:hover {
   color: var(--text);
   text-decoration-color: var(--accent);
-}
-
-.text-link:active {
-  transform: scale(0.97);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -1270,10 +1269,6 @@ h2 {
   outline-offset: 2px;
 }
 
-.comparison-status.planned:active {
-  transform: scale(0.97);
-}
-
 .comparison-notes {
   display: grid;
   grid-template-columns: 1fr minmax(18rem, 0.85fr);
@@ -1315,10 +1310,6 @@ h2 {
 
 .comparison-notes a:hover {
   text-decoration-color: var(--accent);
-}
-
-.comparison-notes a:active {
-  transform: scale(0.97);
 }
 
 .why {
