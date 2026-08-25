@@ -101,9 +101,11 @@ done
 for dependency_or_config in \
 	'go.sum' \
 	'web/pnpm-lock.yaml' \
+	'web/pnpm-workspace.yaml' \
 	'clients/ts/package.json' \
 	'clients/ts/pnpm-workspace.yaml' \
 	'docs/site/package.json' \
+	'docs/site/pnpm-workspace.yaml' \
 	'.goreleaser.yaml'; do
 	expect_plan "$dependency_or_config" "$all_jobs" "$dependency_or_config"
 done

@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { generatePath, Link, useParams } from 'react-router';
 
 import { historyHref } from '../api/history.ts';
@@ -620,7 +620,7 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
                               className="btn matrix__history-link"
                               data-history-environment={environment.id}
                               to={historyLink({ ...ref, env: environment.id })}
-                              onClick={(event) => {
+                              onClick={(event: MouseEvent<HTMLAnchorElement>) => {
                                 historyOpener.current = event.currentTarget;
                               }}
                             >
