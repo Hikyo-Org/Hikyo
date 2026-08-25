@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -69,7 +70,7 @@ function formatGiB(bytes: number): string {
  * Three things here are load-bearing rather than decorative and must survive
  * later edits: the org rail owns organisation switching (iteration 4), the
  * account entry sits at the rail's foot, and the whole thing collapses to a
- * single column with a nav disclosure below 800px.
+ * single column with a nav disclosure at 700px.
  */
 export function Shell({ session }: { session: WhoAmI }) {
   const orgs = useOrgs(true);
@@ -82,6 +83,8 @@ export function Shell({ session }: { session: WhoAmI }) {
   const [navOpen, setNavOpen] = useState(false);
   const [chosenOrgId, setChosenOrgId] = useState('');
   const [projectSidebar, setProjectSidebar] = useState<ProjectSidebarState | null>(null);
+  const navToggleRef = useRef<HTMLButtonElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
 
   // A navigation on a phone must close the sheet it was chosen from.
   useEffect(() => setNavOpen(false), [location.pathname]);
@@ -122,8 +125,11 @@ export function Shell({ session }: { session: WhoAmI }) {
   const projectItems = projects.data?.items ?? [];
   const activeProjectName =
     projectItems.find((project) => project.id === routeProjectId)?.name ?? routeProjectId;
-  const pruneWarning = retentionBanner(retentionHealth.data, retentionHealth.isError);
-  const storageWarning = storageBanner(retentionHealth.data);
+  const accountName = session.principal.display_name ?? session.principal.id;
+  const visibleRetentionHealth = retentionHealth.data?.health;
+  const showInstanceAdministration = retentionHealth.data?.instanceAdmin === true;
+  const pruneWarning = retentionBanner(visibleRetentionHealth, retentionHealth.isError);
+  const storageWarning = storageBanner(visibleRetentionHealth);
   const availableUpdate = updateStatus.data?.available === true ? updateStatus.data : null;
   const availableRemoteUpdates = remoteUpdateStatuses.flatMap(({ origin, status }) =>
     status?.available === true ? [{ origin, status }] : [],
@@ -164,6 +170,65 @@ export function Shell({ session }: { session: WhoAmI }) {
     );
   };
 
+  const dismissNavigation = useCallback(() => {
+    setNavOpen(false);
+    window.requestAnimationFrame(() => navToggleRef.current?.focus());
+  }, []);
+
+  useEffect(() => {
+    if (!navOpen) {
+      return;
+    }
+    const drawer = sidebarRef.current;
+    const destination =
+      drawer?.querySelector<HTMLElement>('[aria-current="page"]') ??
+      drawer?.querySelector<HTMLElement>('a[href], button:not(:disabled)');
+    destination?.focus();
+    const handleDrawerKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        dismissNavigation();
+        return;
+      }
+      if (event.key !== 'Tab' || drawer === null) {
+        return;
+      }
+      const controls = Array.from(
+        drawer.querySelectorAll<HTMLElement>('a[href], button:not(:disabled)'),
+      ).filter((control) => control.getClientRects().length > 0);
+      const first = controls[0];
+      const last = controls.at(-1);
+      if (event.shiftKey && document.activeElement === first && last !== undefined) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last && first !== undefined) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', handleDrawerKey);
+    return () => document.removeEventListener('keydown', handleDrawerKey);
+  }, [dismissNavigation, navOpen]);
+
+  useEffect(() => {
+    if (!navOpen) {
+      return;
+    }
+    const mobile = window.matchMedia('(max-width: 700px)');
+    const releaseDrawerOnDesktop = () => {
+      if (mobile.matches) {
+        return;
+      }
+      setNavOpen(false);
+      window.requestAnimationFrame(() => {
+        document.querySelector<HTMLButtonElement>('.chrome__account button')?.focus();
+      });
+    };
+    releaseDrawerOnDesktop();
+    mobile.addEventListener('change', releaseDrawerOnDesktop);
+    return () => mobile.removeEventListener('change', releaseDrawerOnDesktop);
+  }, [navOpen]);
+
   const crumbs = useMemo(() => {
     const result = ['hikyo'];
     if (activeOrgId !== '') result.push(activeOrgName);
@@ -171,26 +236,15 @@ export function Shell({ session }: { session: WhoAmI }) {
     result.push(here?.surface.label ?? 'Not found');
     return result;
   }, [activeOrgId, activeOrgName, activeProjectName, here?.surface.label, routeProjectId]);
+  const onSidebarNavigate = navOpen ? dismissNavigation : () => setNavOpen(false);
 
   return (
     <div className="chrome" data-nav={navOpen ? 'open' : 'closed'}>
-      <a className="skip" href="#content">
+      <a className="skip" href="#content" tabIndex={navOpen ? -1 : undefined}>
         Skip to content
       </a>
 
-      <nav className="rail" aria-label="Organisations">
-        <button
-          type="button"
-          className="btn nav-toggle"
-          aria-expanded={navOpen}
-          aria-controls="sidebar"
-          onClick={() => setNavOpen((open) => !open)}
-        >
-          Menu
-        </button>
-        <span className="rail__mobile-context">
-          {routeProjectId === '' ? activeOrgName : `${activeOrgName} / ${activeProjectName}`}
-        </span>
+      <nav className="rail" aria-label="Organisations" inert={navOpen ? true : undefined}>
         <ul className="rail__orgs">
           {items.map((org) => (
             <li key={org.id}>
@@ -234,10 +288,61 @@ export function Shell({ session }: { session: WhoAmI }) {
           remotes={availableRemoteUpdates}
           principalId={session.principal.id}
         />
-        <AccountEntry session={session} updateVersions={badgeVersions} />
+        {showInstanceAdministration ? (
+          <NavLink
+            className="rail__action"
+            to={surfaceById('instance-admin').path}
+            aria-label="Instance administration"
+            title="Instance administration"
+          >
+            <span aria-hidden="true">⚙</span>
+          </NavLink>
+        ) : null}
+        <span className="rail__account-space" aria-hidden="true" />
       </nav>
 
-      <nav id="sidebar" className="sidebar" aria-label="Sections" data-open={navOpen}>
+      <nav
+        id="sidebar"
+        className="sidebar"
+        aria-label="Sections"
+        data-open={navOpen}
+        ref={sidebarRef}
+      >
+        <button
+          type="button"
+          className="btn btn--icon sidebar__close sidebar__mobile-only"
+          aria-label="Close navigation"
+          onClick={dismissNavigation}
+        >
+          <span aria-hidden="true">×</span>
+        </button>
+        <section
+          className="sidebar__section sidebar__mobile-only sidebar__mobile-organisations"
+          aria-labelledby="mobile-organisations-title"
+        >
+          <h2 id="mobile-organisations-title">Organizations</h2>
+          <ul className="sidebar__items">
+            {items.map((org) => (
+              <li key={org.id}>
+                <button
+                  type="button"
+                  className="sidebar__link sidebar__switcher"
+                  aria-current={org.id === activeOrgId ? 'page' : undefined}
+                  onClick={() => {
+                    chooseOrg(org.id);
+                    dismissNavigation();
+                  }}
+                >
+                  <span className="avatar sidebar__switcher-avatar">{monogram(org.name)}</span>
+                  <span>{org.name}</span>
+                  {org.id === activeOrgId ? (
+                    <span className="sidebar__switcher-check">✓</span>
+                  ) : null}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
         {orgs.isSuccess && items.length === 0 ? (
           // The zero-org state (prototype iteration 14). It is a real state,
           // not an error: a principal whose grants name no organisation has
@@ -260,20 +365,26 @@ export function Shell({ session }: { session: WhoAmI }) {
           </p>
         ) : null}
         {routeProjectId !== '' ? (
-          <ProjectNavigation
-            org={activeOrgId}
-            orgName={activeOrgName}
-            project={routeProjectId}
-            projectName={activeProjectName}
-            remote={remote}
-            state={projectSidebar}
-            onNavigate={() => setNavOpen(false)}
-          />
+          <>
+            <ProjectNavigation
+              org={activeOrgId}
+              orgName={activeOrgName}
+              project={routeProjectId}
+              projectName={activeProjectName}
+              remote={remote}
+              state={projectSidebar}
+              onNavigate={onSidebarNavigate}
+            />
+          </>
         ) : SECTIONS.map((section) => {
           // An org-scoped destination needs an organisation to point at. With
           // none active the entry is absent rather than dead: a link that
           // resolves to `/orgs//members` is a 404 dressed as navigation.
-          const entries = section.items.filter((item) => !needsOrg(item) || activeOrgId !== '');
+          const entries = section.items.filter(
+            (item) =>
+              (!needsOrg(item) || activeOrgId !== '') &&
+              (item.id !== 'instance-admin' || showInstanceAdministration),
+          );
           if (entries.length === 0) {
             return null;
           }
@@ -287,6 +398,7 @@ export function Shell({ session }: { session: WhoAmI }) {
                       className="sidebar__link"
                       to={needsOrg(item) ? generatePath(item.path, { org: activeOrgId }) : item.path}
                       end={item.path === '/'}
+                      onClick={navOpen ? dismissNavigation : undefined}
                     >
                       {item.label}
                     </NavLink>
@@ -296,19 +408,80 @@ export function Shell({ session }: { session: WhoAmI }) {
             </div>
           );
         })}
+        {activeOrgId === '' ? null : (
+          <section
+            className="sidebar__section sidebar__mobile-only sidebar__mobile-projects"
+            aria-labelledby="mobile-projects-title"
+          >
+            <h2 id="mobile-projects-title">Projects</h2>
+            <ul className="sidebar__items">
+              {projectItems.map((project) => (
+                <li key={project.id}>
+                  <button
+                    type="button"
+                    className="sidebar__link sidebar__switcher"
+                    aria-current={project.id === routeProjectId ? 'page' : undefined}
+                    onClick={() => {
+                      chooseProject(project.id);
+                      dismissNavigation();
+                    }}
+                  >
+                    <span className="sidebar__switcher-avatar sidebar__switcher-avatar--project">
+                      {monogram(project.name)}
+                    </span>
+                    <span>{project.name}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        {routeProjectId === '' ? null : (
+          <MobileAccountNavigation
+            onNavigate={dismissNavigation}
+            showInstanceAdministration={showInstanceAdministration}
+          />
+        )}
       </nav>
 
-      <div className="main">
+      <div className="chrome__account" inert={navOpen ? true : undefined}>
+        <AccountEntry session={session} updateVersions={badgeVersions} />
+      </div>
+
+      <div
+        className="nav-scrim"
+        aria-hidden="true"
+        onClick={dismissNavigation}
+      />
+
+      <div className="main" inert={navOpen ? true : undefined}>
         <header className="header">
+          <button
+            type="button"
+            className="btn nav-toggle"
+            ref={navToggleRef}
+            aria-expanded={navOpen}
+            aria-controls="sidebar"
+            onClick={() => setNavOpen((open) => !open)}
+          >
+            Menu
+          </button>
           <ol className="header__crumbs" aria-label="Breadcrumb">
             {crumbs.map((crumb, index) => (
-              <li key={`${crumb}-${String(index)}`}>
+              <li
+                key={`${crumb}-${String(index)}`}
+                data-crumb={index === 0 ? 'root' : index === crumbs.length - 1 ? 'surface' : 'scope'}
+              >
                 {index === 0 ? null : <span aria-hidden="true">/</span>}
                 <span>{crumb}</span>
               </li>
             ))}
           </ol>
           <span className="header__spacer" />
+          <span className="header__identity">
+            <span className="header__identity-label">Signed in as</span>
+            <NavLink to={surfaceById('settings').path}>{accountName}</NavLink>
+          </span>
           <ThemeToggle />
         </header>
         {pruneWarning?.kind === 'error' ? (
@@ -401,9 +574,9 @@ function ProjectNavigation({
     const path = generatePath(surfaceById(id).path, { org, project });
     return id === 'matrix' || id === 'history' ? withRemote(path, remote) : path;
   };
-  const orgPath = (id: 'projects' | 'members' | 'org-settings') => {
+  const orgPath = (id: 'members' | 'org-settings') => {
     const surface = surfaceById(id);
-    return id === 'projects' ? surface.path : generatePath(surface.path, { org });
+    return generatePath(surface.path, { org });
   };
   const localOnlyDestination = (label: string, id: 'machine-access' | 'project-settings' | 'members') =>
     remote === '' ? (
@@ -426,8 +599,17 @@ function ProjectNavigation({
   return (
     <>
       <section className="project-sidebar" aria-labelledby="project-sidebar-title">
-        <p className="project-sidebar__eyebrow">{orgName}</p>
-        <h2 id="project-sidebar-title">{projectName}</h2>
+        <div className="project-sidebar__org">
+          <span className="avatar project-sidebar__org-avatar">{monogram(orgName)}</span>
+          <span>
+            <strong>{orgName}</strong>
+            <small>Organisation member</small>
+          </span>
+        </div>
+        <h2 id="project-sidebar-title">
+          <span>Project · </span>
+          {projectName}
+        </h2>
         <nav aria-label="Project">
           <NavLink className="sidebar__link" to={projectPath('matrix')} end onClick={onNavigate}>
             Environment matrix
@@ -479,11 +661,58 @@ function ProjectNavigation({
       <section className="sidebar__section project-sidebar__organisation">
         <h2>Organisation</h2>
         <ul className="sidebar__items">
-          <li><NavLink className="sidebar__link" to={orgPath('projects')} onClick={onNavigate}>Projects</NavLink></li>
-          <li><NavLink className="sidebar__link" to={orgPath('org-settings')} onClick={onNavigate}>Org settings</NavLink></li>
+          <li>
+            <NavLink className="sidebar__link" to={orgPath('members')} onClick={onNavigate}>
+              Org members &amp; grants
+            </NavLink>
+          </li>
+          <li>
+            <NavLink className="sidebar__link" to={orgPath('org-settings')} onClick={onNavigate}>
+              Org settings
+            </NavLink>
+          </li>
         </ul>
       </section>
     </>
+  );
+}
+
+function MobileAccountNavigation({
+  onNavigate,
+  showInstanceAdministration,
+}: {
+  onNavigate: () => void;
+  showInstanceAdministration: boolean;
+}) {
+  return (
+    <section
+      className="sidebar__section sidebar__mobile-only sidebar__mobile-account"
+      aria-labelledby="mobile-account-title"
+    >
+      <h2 id="mobile-account-title">You</h2>
+      <ul className="sidebar__items">
+        <li>
+          <NavLink
+            className="sidebar__link"
+            to={surfaceById('settings').path}
+            onClick={onNavigate}
+          >
+            Account &amp; security
+          </NavLink>
+        </li>
+        {showInstanceAdministration ? (
+          <li>
+            <NavLink
+              className="sidebar__link"
+              to={surfaceById('instance-admin').path}
+              onClick={onNavigate}
+            >
+              Instance administration
+            </NavLink>
+          </li>
+        ) : null}
+      </ul>
+    </section>
   );
 }
 
@@ -497,7 +726,7 @@ export function AccountEntry({
   const [open, setOpen] = useState(false);
   const entryRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuItemRef = useRef<HTMLButtonElement>(null);
+  const menuItemRef = useRef<HTMLAnchorElement>(null);
   const logout = useLogout();
   const location = useLocation();
   const name = session.principal.display_name ?? session.principal.id;
@@ -559,11 +788,18 @@ export function AccountEntry({
           <p className="menu__label" role="none">
             Signed in as <span className="mono">{name}</span>
           </p>
+          <NavLink
+            role="menuitem"
+            className="menu__item"
+            ref={menuItemRef}
+            to={surfaceById('settings').path}
+          >
+            Account &amp; security
+          </NavLink>
           <button
             type="button"
             role="menuitem"
             className="menu__item"
-            ref={menuItemRef}
             onClick={() => logout.mutate()}
             disabled={logout.isPending}
           >

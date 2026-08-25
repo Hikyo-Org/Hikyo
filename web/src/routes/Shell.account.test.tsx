@@ -45,12 +45,12 @@ function accountButton(container: HTMLElement): HTMLButtonElement {
   return button;
 }
 
-function signOutButton(container: HTMLElement): HTMLButtonElement {
-  const button = container.querySelector('[role="menuitem"]');
-  if (!(button instanceof HTMLButtonElement)) {
-    throw new Error('account menu has no sign-out item');
+function firstMenuItem(container: HTMLElement): HTMLElement {
+  const item = container.querySelector('[role="menuitem"]');
+  if (!(item instanceof HTMLElement)) {
+    throw new Error('account menu has no item');
   }
-  return button;
+  return item;
 }
 
 async function renderAccountEntry(): Promise<{
@@ -86,12 +86,13 @@ describe('account menu', () => {
     const { container, trigger, unmount } = await renderAccountEntry();
     await act(async () => trigger.click());
 
-    const signOut = signOutButton(container);
+    const firstItem = firstMenuItem(container);
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
-    expect(document.activeElement).toBe(signOut);
+    expect(firstItem.textContent).toBe('Account & security');
+    expect(document.activeElement).toBe(firstItem);
 
     await act(async () => {
-      signOut.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Escape' }));
+      firstItem.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Escape' }));
     });
 
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
@@ -125,7 +126,7 @@ describe('account menu', () => {
     document.body.append(outside);
     const { container, trigger, unmount } = await renderAccountEntry();
     await act(async () => trigger.click());
-    expect(document.activeElement).toBe(signOutButton(container));
+    expect(document.activeElement).toBe(firstMenuItem(container));
 
     await act(async () => outside.focus());
 
