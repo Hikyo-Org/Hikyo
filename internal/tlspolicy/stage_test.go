@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -58,8 +59,14 @@ func TestWatchAndStageCertificatePairPropagatesRenewal(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
+	var mu sync.Mutex
+	var watchErr error
 	go func() {
-		done <- tlspolicy.WatchAndStageCertificatePair(ctx, sourceCert, sourceKey, destination, 20*time.Millisecond)
+		err := tlspolicy.WatchAndStageCertificatePair(ctx, sourceCert, sourceKey, destination, 20*time.Millisecond)
+		mu.Lock()
+		watchErr = err
+		mu.Unlock()
+		done <- err
 	}()
 	t.Cleanup(func() {
 		cancel()
@@ -69,15 +76,27 @@ func TestWatchAndStageCertificatePairPropagatesRenewal(t *testing.T) {
 	})
 	waitForSerial := func(want string) {
 		t.Helper()
+		mu.Lock()
+		err := watchErr
+		mu.Unlock()
+		if err != nil {
+			t.Fatalf("watcher exited before staging serial %s: %v", want, err)
+		}
 		deadline := time.Now().Add(time.Second)
 		for time.Now().Before(deadline) {
 			_, leaf, err := tlspolicy.LoadCertificate(filepath.Join(destination, "tls.crt"), filepath.Join(destination, "tls.key"), time.Now())
 			if err == nil && leaf.SerialNumber.String() == want {
 				return
 			}
+			mu.Lock()
+			watchFailed := watchErr
+			mu.Unlock()
+			if watchFailed != nil {
+				t.Fatalf("watcher exited before staging serial %s: %v", want, watchFailed)
+			}
 			time.Sleep(5 * time.Millisecond)
 		}
-		t.Fatalf("staged certificate did not reach serial %s", want)
+		t.Fatalf("staged certificate did not reach serial %s within deadline", want)
 	}
 	waitForSerial(firstLeaf.SerialNumber.String())
 	secondCert, secondKey, secondLeaf := tlstest.MintServerCert(t, "localhost")
