@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"sort"
@@ -849,7 +849,9 @@ func unmarshalAttributes(raw string) (map[string]any, error) {
 		return map[string]any{}, nil
 	}
 	// Parse, never cast: what came back out of storage goes through the same
-	// decoder the trust boundary used on the way in.
+	// decoder the trust boundary used on the way in. The stored form is
+	// written by marshalAttributes, so the v2 decoder's strict defaults
+	// (duplicate names, invalid UTF-8) hold it to exactly what we produce.
 	var out map[string]any
 	if err := json.Unmarshal([]byte(raw), &out); err != nil {
 		return nil, fmt.Errorf("service: stored SCIM attributes are not a JSON object: %w", err)
