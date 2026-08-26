@@ -2,7 +2,6 @@ package authz
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
@@ -90,14 +89,7 @@ const (
 // claims. Instance-operation refusals are resolvable grant refusals with no
 // tenant object, so they take the instance trail too.
 func (a *TxAuthorizer) captureDenial(ctx context.Context, principal domain.PrincipalID, op Operation, spec authorizationSpec, resolution string, resolvedChain domain.Scope, claimed domain.Scope) {
-	id, err := audit.NewEventID()
-	if err != nil {
-		// Cannot mint an id (entropy exhaustion): nothing writable exists,
-		// so record the capture failure — settleDenials converts it into
-		// the loud refusal instead of the uniform denial (fail-closed).
-		a.captureErr = errors.Join(a.captureErr, err)
-		return
-	}
+	id := audit.NewEventID()
 	wire := audit.FromContext(ctx)
 	payload := audit.Payload{
 		"operation":  string(op),

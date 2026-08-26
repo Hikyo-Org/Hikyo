@@ -181,10 +181,7 @@ func (s *Auth) StartCLIReauth(ctx context.Context, presented string, intent Reau
 			return CLIReauthStart{}, s.rejectCLIReauthRequest(ctx, "start", ErrReauthUnitMismatch)
 		}
 	}
-	id, err := newID("crh")
-	if err != nil {
-		return CLIReauthStart{}, err
-	}
+	id := newID("crh")
 	state, verifier, err := crypto.NewArtifact(crypto.ArtifactHandoffState)
 	if err != nil {
 		return CLIReauthStart{}, err
@@ -490,10 +487,7 @@ func (s *Auth) RedeemCLIReauth(ctx context.Context, code, pkceVerifier string) (
 			if !now.Before(approved.WindowExpiresAt) || !now.Before(approved.HardExpiresAt) {
 				return captureCLIReauthFailure(ctx, az, "redeem", detail, "reauth_required", ErrCLIReauthInvalid)
 			}
-			id, err := newID("raw")
-			if err != nil {
-				return err
-			}
+			id := newID("raw")
 			// The CLI's window reproduces the browser window's binding exactly:
 			// an adapter share stays bound to its (purpose, operation, set); a
 			// disclosure window stays bound through its ceremony id alone, so

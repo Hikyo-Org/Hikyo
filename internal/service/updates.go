@@ -166,10 +166,7 @@ func (s *Updates) Request(ctx context.Context, actor Actor, version string) (upd
 	if err != nil {
 		return updater.Job{}, fmt.Errorf("update helper unavailable: %w", err)
 	}
-	jobID, err := newID("upd")
-	if err != nil {
-		return updater.Job{}, err
-	}
+	jobID := newID("upd")
 	now := time.Now
 	if s.Now != nil {
 		now = s.Now

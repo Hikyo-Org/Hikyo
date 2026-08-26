@@ -291,10 +291,7 @@ func (s *Definitions) persistPlan(ctx context.Context, r store.Repos, az *authz.
 		return PlanView{}, err
 	}
 
-	planID, err := newID("dpl")
-	if err != nil {
-		return PlanView{}, err
-	}
+	planID := newID("dpl")
 	// The plan stores the CANONICAL bundle bytes, so a re-parse at apply is
 	// byte-identical to what was pinned.
 	canonical, err := definitions.Encode(bundle)

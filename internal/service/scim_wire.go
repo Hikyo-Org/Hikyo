@@ -224,10 +224,7 @@ func (s *SCIM) CreateUser(ctx context.Context, actor Actor, org domain.OrgID, bi
 			if err != nil {
 				return nil, err
 			}
-			id, err := newID("scu")
-			if err != nil {
-				return nil, err
-			}
+			id := newID("scu")
 			if err := c.checkDeclaredSchemas(in.Attributes); err != nil {
 				return nil, err
 			}
@@ -300,17 +297,11 @@ func (s *SCIM) attachOrCreateAccount(
 		return "", "", err
 	}
 
-	principalID, err := newID("prn")
-	if err != nil {
-		return "", "", err
-	}
+	principalID := newID("prn")
 	if err := az.CreateHumanPrincipal(ctx, domain.PrincipalID(principalID), now); err != nil {
 		return "", "", err
 	}
-	newAccountID, err := newID("acc")
-	if err != nil {
-		return "", "", err
-	}
+	newAccountID := newID("acc")
 	// The account HANDLE is opaque, not the SCIM `userName`.
 	//
 	// `accounts.username` is globally unique and is the LOCAL LOGIN handle; a
@@ -320,20 +311,14 @@ func (s *SCIM) attachOrCreateAccount(
 	// DIFFERENT humans collided, and the collision failed create while attach
 	// succeeded, which is an existence oracle across orgs. The SCIM userName
 	// keeps living in `scim_users`, where it is scoped the way SCIM scopes it.
-	handle, err := newID("scim")
-	if err != nil {
-		return "", "", err
-	}
+	handle := newID("scim")
 	if err := az.CreateAccount(ctx, authz.Account{
 		ID: newAccountID, PrincipalID: domain.PrincipalID(principalID),
 		Username: handle, DisplayName: in.UserName, CreatedAt: now,
 	}); err != nil {
 		return "", "", err
 	}
-	identityID, err := newID("eid")
-	if err != nil {
-		return "", "", err
-	}
+	identityID := newID("eid")
 	epoch, err := az.CredentialEpoch(ctx)
 	if err != nil {
 		return "", "", err

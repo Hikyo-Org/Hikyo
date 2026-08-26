@@ -105,18 +105,9 @@ func (s *Auth) BootstrapAdmin(ctx context.Context, username, displayName, delive
 	if err != nil {
 		return BootstrapResult{}, err
 	}
-	principalID, err := newID("usr")
-	if err != nil {
-		return BootstrapResult{}, err
-	}
-	accountID, err := newID("acc")
-	if err != nil {
-		return BootstrapResult{}, err
-	}
-	authorityID, err := newID("cea")
-	if err != nil {
-		return BootstrapResult{}, err
-	}
+	principalID := newID("usr")
+	accountID := newID("acc")
+	authorityID := newID("cea")
 
 	now := s.now()
 	expires := now.Add(BootstrapLifetime)
@@ -148,10 +139,7 @@ func (s *Auth) BootstrapAdmin(ctx context.Context, username, displayName, delive
 		}
 		// One row per capability: the expansion is the point.
 		for _, capability := range caps {
-			grantID, err := newID("grt")
-			if err != nil {
-				return err
-			}
+			grantID := newID("grt")
 			if err := az.CreateGrant(ctx, grantID, domain.PrincipalID(principalID),
 				domain.Grant{Capability: capability}, now); err != nil {
 				return err
@@ -162,10 +150,7 @@ func (s *Auth) BootstrapAdmin(ctx context.Context, username, displayName, delive
 			// is the self-grant the amendment's own wording implies for
 			// pre-existing rows: manual(granted_by), visible as such on the
 			// membership line rather than invented as somebody else's act.
-			originID, err := newID("gor")
-			if err != nil {
-				return err
-			}
+			originID := newID("gor")
 			if err := az.AddGrantOrigin(ctx, originID, grantID, domain.PrincipalID(principalID),
 				authz.Origin{Kind: domain.OriginManual, Subject: principalID}, now); err != nil {
 				return err

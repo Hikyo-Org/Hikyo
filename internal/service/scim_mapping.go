@@ -148,10 +148,7 @@ func (s *SCIM) CreateMapping(ctx context.Context, actor Actor, org domain.OrgID,
 			}
 
 			now := s.now()
-			id, err := newID("scm")
-			if err != nil {
-				return err
-			}
+			id := newID("scm")
 			if err := r.SCIM().CreateMapping(ctx, p, store.NewSCIMMapping{
 				ID: id, BindingID: bindingID, GroupID: spec.GroupID,
 				Template:       string(spec.Template),

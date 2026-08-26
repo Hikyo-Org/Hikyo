@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
+	"uuid"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/admission"
@@ -448,7 +448,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	moduleWiring := newAdapterModuleWiring(cfg.AdapterEgressPolicy)
 	adapterWorker := &adapter.Worker{
 		Store: adapterRuntime, Loader: &adapterLoader{runtime: adapterRuntime, keyring: kr, moduleFactory: moduleWiring.worker},
-		ID: "adapter-worker-" + uuid.Must(uuid.NewV7()).String(), Poll: time.Second, Log: log,
+		ID: "adapter-worker-" + uuid.NewV7().String(), Poll: time.Second, Log: log,
 	}
 	adapterService := &service.Adapters{DB: db, Auth: authSvc, Keyring: kr, Budget: budget, ModuleFactory: moduleWiring.service}
 	definitionsService := &service.Definitions{DB: db, Keyring: kr, Advisory: advisory, Budget: budget, Scan: ruleset}

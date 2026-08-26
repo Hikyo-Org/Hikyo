@@ -205,17 +205,11 @@ func (s *Identities) CreateServiceAccount(ctx context.Context, actor Actor, scop
 	if !domain.IsServiceAccountKind(kind) {
 		return ServiceAccountView{}, ErrServiceAccountKind
 	}
-	saID, err := newID("sa")
-	if err != nil {
-		return ServiceAccountView{}, err
-	}
-	principalID, err := newID("mch")
-	if err != nil {
-		return ServiceAccountView{}, err
-	}
+	saID := newID("sa")
+	principalID := newID("mch")
 	now := s.now()
 	var out ServiceAccountView
-	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, err := actor.resolve(ctx, az, now)
 		if err != nil {
 			return err
@@ -358,13 +352,10 @@ func (s *Identities) MintCredential(ctx context.Context, actor Actor, scope doma
 	if req.Lifetime < 0 {
 		return MintResult{}, ErrCredentialLifetime
 	}
-	credID, err := newID("mcr")
-	if err != nil {
-		return MintResult{}, err
-	}
+	credID := newID("mcr")
 	now := s.now()
 	var out MintResult
-	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, err := actor.resolve(ctx, az, now)
 		if err != nil {
 			return err

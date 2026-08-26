@@ -536,10 +536,7 @@ func (s *Keys) Create(ctx context.Context, actor Actor, scope domain.Scope, spec
 	// declaration that differs from the one a later read returns, byte for
 	// byte, on exactly the values the canonicalization exists to normalize.
 	stored := compiled.Declaration()
-	id, err := newID("key")
-	if err != nil {
-		return Key{}, err
-	}
+	id := newID("key")
 	row := store.NewCatalogueKey{
 		ID: id, Name: spec.Name, FolderPath: spec.FolderPath,
 		Classification: spec.Classification, Description: spec.Description,
@@ -1510,13 +1507,10 @@ func (s *KeyGroups) Create(ctx context.Context, actor Actor, scope domain.Scope,
 	if err := schema.CheckGroupName(name); err != nil {
 		return KeyGroupView{}, fmt.Errorf("%w: %s", domain.ErrInvalid, err)
 	}
-	id, err := newID("kgr")
-	if err != nil {
-		return KeyGroupView{}, err
-	}
+	id := newID("kgr")
 	created := store.CanonTime(time.Now())
 	var rateCharged bool
-	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, err := actor.resolve(ctx, az, time.Now().UTC())
 		if err != nil {
 			return err

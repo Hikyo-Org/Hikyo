@@ -321,10 +321,7 @@ func (s *Auth) EnrolTOTPStart(ctx context.Context, presented, password string) (
 		return "", err
 	}
 	defer crypto.Zero(rawSeed)
-	totpID, err := newID("totp")
-	if err != nil {
-		return "", err
-	}
+	totpID := newID("totp")
 	sealer := s.Keyring.ForInstance()
 	sealed, err := sealer.SealField(totpSeedAAD(totpID), rawSeed)
 	if err != nil {
@@ -975,10 +972,7 @@ func (s *Auth) attemptRecovery(ctx context.Context, username, code string) (Reco
 	if err != nil {
 		return RecoveryResult{}, err
 	}
-	authorityID, err := newID("cea")
-	if err != nil {
-		return RecoveryResult{}, err
-	}
+	authorityID := newID("cea")
 	var (
 		out     RecoveryResult
 		refused error

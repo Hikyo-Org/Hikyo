@@ -165,10 +165,7 @@ func (s *Orgs) Create(ctx context.Context, actor Actor, name string, active bool
 	if err := checkName("organisation name", name); err != nil {
 		return Org{}, err
 	}
-	id, err := newID("org")
-	if err != nil {
-		return Org{}, err
-	}
+	id := newID("org")
 	now := time.Now().UTC()
 	org := store.Org{
 		ID:        id,
@@ -182,7 +179,7 @@ func (s *Orgs) Create(ctx context.Context, actor Actor, name string, active bool
 	// creates do not spend their bounded retries waiting on stale snapshots.
 	// This is a low-rate control-plane operation; sqlite already admits one
 	// writer at a time through BEGIN IMMEDIATE.
-	err = tx.WriteSerialized(ctx, s.DB, "hikyo:org-create", func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+	err := tx.WriteSerialized(ctx, s.DB, "hikyo:org-create", func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, err := actor.resolve(ctx, az, now)
 		if err != nil {
 			return err
@@ -516,12 +513,9 @@ func (s *Projects) Create(ctx context.Context, actor Actor, org domain.OrgID, na
 	if err := checkName("project name", name); err != nil {
 		return Project{}, err
 	}
-	id, err := newID("prj")
-	if err != nil {
-		return Project{}, err
-	}
+	id := newID("prj")
 	proj := store.NewProject{ID: id, Name: name, CreatedAt: store.CanonTime(time.Now())}
-	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, err := actor.resolve(ctx, az, time.Now().UTC())
 		if err != nil {
 			return err
@@ -747,10 +741,7 @@ func (s *Environments) create(ctx context.Context, actor Actor, scope domain.Sco
 	if err := checkName("environment name", name); err != nil {
 		return Environment{}, CloneResult{}, err
 	}
-	id, err := newID("env")
-	if err != nil {
-		return Environment{}, CloneResult{}, err
-	}
+	id := newID("env")
 	// Surface-2 block (#74) reached BEFORE the sealer mints the project DEK.
 	// Environment create is a first-mint ingress (a fresh project's first
 	// materialization mints the DEK here), so scanning only inside the write
@@ -1227,12 +1218,9 @@ func (s *Folders) Create(ctx context.Context, actor Actor, scope domain.Scope, p
 	if err := checkFolderPath(path); err != nil {
 		return Folder{}, err
 	}
-	id, err := newID("fld")
-	if err != nil {
-		return Folder{}, err
-	}
+	id := newID("fld")
 	folder := store.NewFolder{ID: id, Path: path, CreatedAt: store.CanonTime(time.Now())}
-	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, err := actor.resolve(ctx, az, time.Now().UTC())
 		if err != nil {
 			return err

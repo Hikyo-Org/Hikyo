@@ -532,10 +532,7 @@ func (s *Definitions) executeResolution(ctx context.Context, r store.Repos, az *
 		}
 	}
 	for _, name := range res.EnvCreates {
-		id, err := newID("env")
-		if err != nil {
-			return err
-		}
+		id := newID("env")
 		order, err := r.Environments().NextOrder(ctx, p)
 		if err != nil {
 			return err
@@ -565,10 +562,7 @@ func (s *Definitions) executeResolution(ctx context.Context, r store.Repos, az *
 		}
 	}
 	for _, name := range res.GroupCreates {
-		id, err := newID("kgr")
-		if err != nil {
-			return err
-		}
+		id := newID("kgr")
 		if err := r.Catalogue().CreateGroup(ctx, p, store.NewCatalogueGroup{ID: id, Name: name, CreatedAt: now}); err != nil {
 			return err
 		}
@@ -781,10 +775,7 @@ func (s *Definitions) createKey(ctx context.Context, r store.Repos, caller authz
 	if err != nil {
 		return fmt.Errorf("%w: %s", domain.ErrInvalid, err)
 	}
-	id, err := newID("key")
-	if err != nil {
-		return err
-	}
+	id := newID("key")
 	groupID := ""
 	if k.Group != "" {
 		groupID = groupIDByName[k.Group]

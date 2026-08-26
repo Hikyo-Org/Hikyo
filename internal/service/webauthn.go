@@ -196,10 +196,7 @@ func (s *Auth) EnrolPasskeyStart(ctx context.Context, presented, password, code 
 		if err != nil {
 			return err
 		}
-		ceremonyID, err := newID("wac")
-		if err != nil {
-			return err
-		}
+		ceremonyID := newID("wac")
 		if err := az.CreateWebAuthnCeremony(ctx, authz.NewWebAuthnCeremony{
 			ID: ceremonyID, ChallengeVerifier: challengeVerifier(challenge), SessionData: sessionData,
 			AccountID: account.ID, SessionID: live.SessionID, Purpose: "enrol",
@@ -273,10 +270,7 @@ func (s *Auth) EnrolPasskeyFinish(ctx context.Context, presented string, respons
 	}
 	discoverable := credPropsDiscoverable(reg.CredProps)
 
-	credID, err := newID("wacred")
-	if err != nil {
-		return LoginResult{}, err
-	}
+	credID := newID("wacred")
 	result, err := writeCommittedLoginResult(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer, result *LoginResult) error {
 		now := s.now()
 		live, err := az.Authenticate(ctx, presented, now)
@@ -362,10 +356,7 @@ func (s *Auth) PasskeyLoginStart(ctx context.Context) ([]byte, error) {
 		if err != nil {
 			return err
 		}
-		ceremonyID, err := newID("wac")
-		if err != nil {
-			return err
-		}
+		ceremonyID := newID("wac")
 		return az.CreateWebAuthnCeremony(ctx, authz.NewWebAuthnCeremony{
 			ID: ceremonyID, ChallengeVerifier: challengeVerifier(challenge), SessionData: sessionData,
 			Purpose: "login", CredentialEpoch: epoch,
@@ -676,10 +667,7 @@ func (s *Auth) ReauthPasskeyFinish(ctx context.Context, presented string, respon
 		if err != nil {
 			return err
 		}
-		windowID, err := newID("raw")
-		if err != nil {
-			return err
-		}
+		windowID := newID("raw")
 		// The environment's effective window is resolved through the one seam, not
 		// the global s.ReauthWindow (A2): once #55 persists per-environment
 		// overrides, an env lowered to 0 opens the mandated single-decision gate
@@ -798,10 +786,7 @@ func (s *Auth) beginAccountCeremony(ctx context.Context, presented, purpose, ope
 		if err != nil {
 			return err
 		}
-		ceremonyID, err := newID("wac")
-		if err != nil {
-			return err
-		}
+		ceremonyID := newID("wac")
 		if err := az.CreateWebAuthnCeremony(ctx, authz.NewWebAuthnCeremony{
 			ID: ceremonyID, ChallengeVerifier: challengeVerifier(challenge), SessionData: sessionData,
 			AccountID: account.ID, SessionID: id.SessionID, Purpose: purpose,

@@ -170,13 +170,10 @@ func (s *Federation) CreateIssuer(ctx context.Context, actor Actor, req IssuerRe
 	if err := checkIssuerRequest(req); err != nil {
 		return IssuerView{}, err
 	}
-	id, err := newID("fis")
-	if err != nil {
-		return IssuerView{}, err
-	}
+	id := newID("fis")
 	now := s.now()
 	var out IssuerView
-	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, err := actor.resolve(ctx, az, now)
 		if err != nil {
 			return err
@@ -426,10 +423,7 @@ func (s *Federation) CreateBinding(ctx context.Context, actor Actor, scope domai
 	if err != nil {
 		return BindingView{}, err
 	}
-	credID, err := newID("mcr")
-	if err != nil {
-		return BindingView{}, err
-	}
+	credID := newID("mcr")
 	now := s.now()
 	var out BindingView
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {

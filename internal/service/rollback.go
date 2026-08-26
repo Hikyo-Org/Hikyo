@@ -214,11 +214,9 @@ func (s *Revisions) Restore(ctx context.Context, actor Actor, scope domain.Scope
 			if !changed {
 				continue
 			}
-			versionID, err := newID("pcv")
-			if err != nil {
-				return err
-			}
+			versionID := newID("pcv")
 			var sealed []byte
+			var err error
 			if operation == store.PendingSet {
 				sealed, err = sealer.SealField(pendingAAD(
 					string(scope.Org), string(scope.Project), string(scope.Env), key.ID, versionID), []byte(value))

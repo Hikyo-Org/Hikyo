@@ -918,10 +918,7 @@ func TestSCIMPayloadSchemasAreValidatedOnWrite(t *testing.T) {
 // every failure the fixture observes is attributable to the PAYLOAD.
 func scimAuditEnvelope(t *testing.T, typ audit.EventType, spec audit.TypeSpec) (audit.Event, audit.Trail, domain.Scope) {
 	t.Helper()
-	id, err := audit.NewEventID()
-	if err != nil {
-		t.Fatal(err)
-	}
+	id := audit.NewEventID()
 	e := audit.Event{
 		ID: id, Type: typ, SchemaVersion: spec.SchemaVersion,
 		OccurredAt: time.Now().UTC(),

@@ -229,10 +229,7 @@ func (s *SAMLProviders) Put(ctx context.Context, actor Actor, slug string, input
 			if previous != nil {
 				return ErrSAMLProviderRace
 			}
-			providerID, idErr := newID("samlp")
-			if idErr != nil {
-				return idErr
-			}
+			providerID := newID("samlp")
 			now := s.now()
 			provider := authz.NewSAMLProvider{
 				ID: providerID, Slug: slug, DisplayName: input.DisplayName, EntityID: metadata.EntityID,
@@ -1170,10 +1167,7 @@ type generatedSAMLSPKey struct {
 // to ensureSPKey, which fences on that version (fenceInstanceVersion) in the
 // write transaction before the SP-key row is inserted.
 func (s *SAMLProviders) generateSPKey() (generatedSAMLSPKey, error) {
-	id, err := newID("samlkey")
-	if err != nil {
-		return generatedSAMLSPKey{}, err
-	}
+	id := newID("samlkey")
 	privateKey, err := rsa.GenerateKey(rand.Reader, 3072)
 	if err != nil {
 		return generatedSAMLSPKey{}, err

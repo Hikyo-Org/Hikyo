@@ -159,10 +159,7 @@ func (s *Auth) createCompletedSession(ctx context.Context, az *authz.TxAuthorize
 			return LoginResult{}, err
 		}
 	}
-	sessionID, err := newID("ses")
-	if err != nil {
-		return LoginResult{}, err
-	}
+	sessionID := newID("ses")
 	generation, err := az.PrincipalGeneration(ctx, completion.account.PrincipalID)
 	if err != nil {
 		return LoginResult{}, err

@@ -306,17 +306,11 @@ func (s *Auth) SAMLStart(ctx context.Context, slug, purpose, environmentID, pres
 	if err != nil {
 		return SAMLStartResult{}, err
 	}
-	transactionID, err := newID("samltx")
-	if err != nil {
-		return SAMLStartResult{}, err
-	}
+	transactionID := newID("samltx")
 	transaction := newSAMLTransaction(transactionID, request.RequestID, relayState, initiator,
 		provider, purpose, sessionID, account.ID, environmentID, epoch)
 	if purpose == purposeLink {
-		transaction.CeremonyID, err = newID("cer")
-		if err != nil {
-			return SAMLStartResult{}, err
-		}
+		transaction.CeremonyID = newID("cer")
 	}
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		now := s.now()
@@ -597,10 +591,7 @@ func (s *Auth) completeSAMLLink(ctx context.Context, az *authz.TxAuthorizer, cer
 		}
 		return LoginResult{}, ceremony.refuse(ctx, az, samlCauseInitiatorMismatch)
 	}
-	identityID, err := newID("eid")
-	if err != nil {
-		return LoginResult{}, err
-	}
+	identityID := newID("eid")
 	if err := az.CreateExternalIdentity(ctx, authz.NewExternalIdentity{
 		ID: identityID, AccountID: account.ID, Kind: SAMLKind, Issuer: transaction.EntityID,
 		Subject: subject, ProviderID: provider.ID, CredentialEpoch: epoch, CreatedAt: now,
@@ -687,10 +678,7 @@ func (s *Auth) completeSAMLReauth(ctx context.Context, az *authz.TxAuthorizer, c
 	if err != nil {
 		return LoginResult{}, err
 	}
-	windowID, err := newID("raw")
-	if err != nil {
-		return LoginResult{}, err
-	}
+	windowID := newID("raw")
 	hardCap := s.ReauthHardCap
 	if hardCap <= 0 {
 		hardCap = effectiveWindow

@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/google/uuid"
+	"uuid"
 )
 
 // Purpose distinguishes the tier-3 keys: one DEK per project, one instance
@@ -518,10 +518,7 @@ func (k *Keyring) mintTier3At(p Purpose, orgID, projectID string, version uint32
 	if err != nil {
 		return keyHandle{}, WrappedKey{}, err
 	}
-	id, err := uuid.NewV7()
-	if err != nil {
-		return keyHandle{}, WrappedKey{}, fmt.Errorf("crypto: generate key id: %w", err)
-	}
+	id := uuid.NewV7()
 	m := k.master.Load()
 	row := WrappedKey{
 		ID:               "dek_" + id.String(),

@@ -307,14 +307,8 @@ func (s *Adapters) Create(ctx context.Context, actor Actor, scope domain.Scope, 
 	if _, err := s.consumeAdapterCeremony(ctx, actor, scope, []string{request.Target.EnvironmentID}, authz.OpAdapterConfigure, now); err != nil {
 		return AdapterView{}, err
 	}
-	adapterID, err := newID("adp")
-	if err != nil {
-		return AdapterView{}, err
-	}
-	targetID, err := newID("tgt")
-	if err != nil {
-		return AdapterView{}, err
-	}
+	adapterID := newID("adp")
+	targetID := newID("tgt")
 	sealer, err := sealerFor(ctx, s.DB, s.Keyring, actor, authz.OpAdapterConfigure, scope)
 	if err != nil {
 		return AdapterView{}, err
@@ -333,10 +327,7 @@ func (s *Adapters) Create(ctx context.Context, actor Actor, scope domain.Scope, 
 	if err := lease.Module.ValidateConfig(adapter.Config{Origin: request.Origin}); err != nil {
 		return AdapterView{}, err
 	}
-	configureEventID, err := audit.NewEventID()
-	if err != nil {
-		return AdapterView{}, err
-	}
+	configureEventID := audit.NewEventID()
 	beforeCreate, afterCreate := s.environmentCreateAudit(actor, scope, targetID, request.Target, configureEventID)
 	destination := adapterDestination(request.Target)
 	connection, err := lease.Module.TestConnection(ctx, adapter.ConnectionRequest{Config: adapter.Config{Origin: request.Origin}, Destination: destination, Access: adapter.Access{Credential: string(plain)}, Gate: s.providerGate(actor, authz.OpAdapterConfigure, scope, request.Target.EnvironmentID), AllowEnvironmentCreate: true, BeforeEnvironmentCreate: beforeCreate, AfterEnvironmentCreate: afterCreate})
@@ -518,14 +509,8 @@ func (s *Adapters) AddTarget(ctx context.Context, actor Actor, scope domain.Scop
 		return store.AdapterTarget{}, err
 	}
 	defer lease.Release()
-	targetID, err := newID("tgt")
-	if err != nil {
-		return store.AdapterTarget{}, err
-	}
-	configureEventID, err := audit.NewEventID()
-	if err != nil {
-		return store.AdapterTarget{}, err
-	}
+	targetID := newID("tgt")
+	configureEventID := audit.NewEventID()
 	beforeCreate, afterCreate := s.environmentCreateAudit(actor, scope, targetID, input, configureEventID)
 	destination := adapterDestination(input)
 	connection, err := lease.Module.TestConnection(ctx, adapter.ConnectionRequest{Config: adapter.Config{Origin: record.Origin}, Destination: destination, Access: adapter.Access{Credential: string(plain)}, Gate: s.providerGate(actor, authz.OpAdapterConfigure, scope, input.EnvironmentID), AllowEnvironmentCreate: true, BeforeEnvironmentCreate: beforeCreate, AfterEnvironmentCreate: afterCreate})
@@ -1560,10 +1545,7 @@ func (s *Adapters) Plan(ctx context.Context, actor Actor, scope domain.Scope, ta
 	if err != nil {
 		return AdapterPlanResult{}, err
 	}
-	artifactID, err := newID("apl")
-	if err != nil {
-		return AdapterPlanResult{}, err
-	}
+	artifactID := newID("apl")
 	now := store.CanonTime(s.now())
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, err := actor.resolve(ctx, az, now)
@@ -1654,19 +1636,13 @@ func (s *Adapters) Adopt(ctx context.Context, actor Actor, scope domain.Scope, r
 	}
 	ledgerIDs := make([]string, len(request.Entries))
 	for i := range ledgerIDs {
-		id, err := newID("adl")
-		if err != nil {
-			return AdoptAdapterResult{}, err
-		}
+		id := newID("adl")
 		ledgerIDs[i] = id
 	}
-	jobID, err := newID("job")
-	if err != nil {
-		return AdoptAdapterResult{}, err
-	}
+	jobID := newID("job")
 	now := store.CanonTime(s.now())
 	var out AdoptAdapterResult
-	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, err := actor.resolve(ctx, az, now)
 		if err != nil {
 			return err

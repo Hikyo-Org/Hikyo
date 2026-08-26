@@ -63,10 +63,7 @@ func (s *Auth) ResetCredential(ctx context.Context, actor Actor, targetPrincipal
 	if err != nil {
 		return ResetResult{}, err
 	}
-	authorityID, err := newID("cea")
-	if err != nil {
-		return ResetResult{}, err
-	}
+	authorityID := newID("cea")
 	now := s.now()
 	target := domain.PrincipalID(targetPrincipal)
 	var out ResetResult
@@ -190,10 +187,7 @@ func (s *Auth) BreakGlassResetCredential(ctx context.Context, targetPrincipal, d
 	if err != nil {
 		return ResetResult{}, err
 	}
-	authorityID, err := newID("cea")
-	if err != nil {
-		return ResetResult{}, err
-	}
+	authorityID := newID("cea")
 	now := s.now()
 	target := domain.PrincipalID(targetPrincipal)
 	var out ResetResult

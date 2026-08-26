@@ -72,10 +72,7 @@ func (s *SCIM) CreateGroup(ctx context.Context, actor Actor, org domain.OrgID, b
 			// duplicate `userName` and a subject-source collision. A
 			// `displayName eq` probe that matches two groups is answered with
 			// two, which is what a ListResponse is for.
-			id, err := newID("scg")
-			if err != nil {
-				return nil, err
-			}
+			id := newID("scg")
 			if err := r.SCIM().CreateGroup(ctx, c.proof, store.NewSCIMGroup{
 				ID: id, BindingID: bindingID, DisplayName: in.DisplayName,
 				DisplayNameLower: fold(in.DisplayName), ExternalID: in.ExternalID,
@@ -251,10 +248,7 @@ func (s *SCIM) setMembers(
 		// left those users unauthorized until somebody happened to change the
 		// group.
 		if !have[id] {
-			memberID, err := newID("sgm")
-			if err != nil {
-				return nil, nil, nil, err
-			}
+			memberID := newID("sgm")
 			if err := r.SCIM().AddGroupMember(ctx, c.proof, store.SCIMGroupMember{
 				ID: memberID, BindingID: c.binding.ID, GroupID: groupID, UserID: id, CreatedAt: now,
 			}); err != nil {

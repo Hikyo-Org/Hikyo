@@ -334,10 +334,7 @@ func (s *Providers) sealSecret(providerID, secret string) ([]byte, int64, error)
 }
 
 func (s *Providers) create(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof, principal domain.PrincipalID, slug string, in ProviderInput, out *ProviderView) error {
-	id, err := newID("oidcp")
-	if err != nil {
-		return err
-	}
+	id := newID("oidcp")
 	sealed, dek, err := s.sealSecret(id, in.ClientSecret)
 	if err != nil {
 		return err

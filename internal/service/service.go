@@ -9,10 +9,9 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"time"
 
-	"github.com/google/uuid"
+	"uuid"
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
@@ -30,10 +29,7 @@ import (
 // carries the request's wire metadata; the actor class is resolved
 // server-side at the store boundary.
 func newAuditEvent(ctx context.Context, typ audit.EventType, principal domain.PrincipalID, obj audit.Object, outcome audit.Outcome, correlationID string, payload audit.Payload) (audit.Event, error) {
-	id, err := audit.NewEventID()
-	if err != nil {
-		return audit.Event{}, err
-	}
+	id := audit.NewEventID()
 	wire := audit.FromContext(ctx)
 	return audit.Event{
 		ID: id, Type: typ, SchemaVersion: 1,
@@ -187,10 +183,6 @@ func (a Actor) resolveSelf(ctx context.Context, az *authz.TxAuthorizer, now time
 	return az.AuthenticateSelfSurface(ctx, a.bearer, now)
 }
 
-func newID(prefix string) (string, error) {
-	id, err := uuid.NewV7()
-	if err != nil {
-		return "", fmt.Errorf("service: generate %s id: %w", prefix, err)
-	}
-	return prefix + "_" + id.String(), nil
+func newID(prefix string) string {
+	return prefix + "_" + uuid.NewV7().String()
 }

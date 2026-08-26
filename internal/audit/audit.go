@@ -16,7 +16,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
+	"uuid"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 )
@@ -133,12 +133,8 @@ type Event struct {
 }
 
 // NewEventID mints the project-pattern UUIDv7 id for an event.
-func NewEventID() (string, error) {
-	id, err := uuid.NewV7()
-	if err != nil {
-		return "", fmt.Errorf("audit: generate event id: %w", err)
-	}
-	return "evt_" + id.String(), nil
+func NewEventID() string {
+	return "evt_" + uuid.NewV7().String()
 }
 
 // Validate checks the event against the closed registry: registered type,

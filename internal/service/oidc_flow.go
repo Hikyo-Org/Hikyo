@@ -180,10 +180,7 @@ func (s *Auth) OIDCStart(ctx context.Context, slug, purpose, environmentID, pres
 	}
 	authURL := rp.AuthCodeURL(provider.ClientID, provider.RedirectURI, provider.Scopes, state, nonce, pkce, extra)
 
-	txID, err := newID("oidctx")
-	if err != nil {
-		return OIDCStartResult{}, err
-	}
+	txID := newID("oidctx")
 	newTx := authz.NewOIDCTransaction{
 		ID: txID, StateVerifier: stateVerifier, Nonce: crypto.ArtifactVerifier(nonce), PKCEVerifier: pkce,
 		ProviderID: provider.ID, Issuer: provider.Issuer, RedirectURI: provider.RedirectURI,
@@ -204,10 +201,7 @@ func (s *Auth) OIDCStart(ctx context.Context, slug, purpose, environmentID, pres
 		newTx.AccountID = account.ID
 	}
 	if purpose == purposeLink {
-		ceremonyID, cerr := newID("cer")
-		if cerr != nil {
-			return OIDCStartResult{}, cerr
-		}
+		ceremonyID := newID("cer")
 		newTx.CeremonyID = ceremonyID
 	}
 
@@ -571,18 +565,9 @@ func (s *Auth) jitProvision(ctx context.Context, az *authz.TxAuthorizer, prov au
 	if err != nil {
 		return authz.Account{}, "", err
 	}
-	principalID, err := newID("usr")
-	if err != nil {
-		return authz.Account{}, "", err
-	}
-	accountID, err := newID("acc")
-	if err != nil {
-		return authz.Account{}, "", err
-	}
-	identityID, err := newID("eid")
-	if err != nil {
-		return authz.Account{}, "", err
-	}
+	principalID := newID("usr")
+	accountID := newID("acc")
+	identityID := newID("eid")
 	// A generated handle, never the email or a provider-supplied username, so a
 	// JIT account cannot collide with or impersonate a local handle.
 	username := "oidc-" + accountID
@@ -640,10 +625,7 @@ func (s *Auth) completeLink(ctx context.Context, prov authz.OIDCProvider, txn au
 		} else if !errors.Is(e, domain.ErrNotFound) {
 			return e
 		}
-		identityID, e := newID("eid")
-		if e != nil {
-			return e
-		}
+		identityID := newID("eid")
 		if e := az.CreateExternalIdentity(ctx, authz.NewExternalIdentity{
 			ID: identityID, AccountID: account.ID, Kind: OIDCKind, Issuer: txn.Issuer,
 			Subject: claims.Subject, ProviderID: prov.ID, CredentialEpoch: epoch, CreatedAt: now,
@@ -798,10 +780,7 @@ func (s *Auth) completeReauth(ctx context.Context, prov authz.OIDCProvider, txn 
 			return e
 		}
 		completion.Assurance.Provider = prov.Slug
-		windowID, e := newID("raw")
-		if e != nil {
-			return e
-		}
+		windowID := newID("raw")
 		hardCap := s.hardCap()
 		hardExpires := now.Add(hardCap)
 		windowExpires := now.Add(effWin)

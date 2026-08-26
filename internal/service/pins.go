@@ -287,10 +287,7 @@ func (s *Pins) Set(ctx context.Context, actor Actor, scope domain.Scope, request
 		}
 		action := PinCreated
 		eventType := audit.EventPinCreated
-		id, err := newID("pin")
-		if err != nil {
-			return err
-		}
+		id := newID("pin")
 		createdAt := now
 		if existingErr == nil {
 			if renewing {

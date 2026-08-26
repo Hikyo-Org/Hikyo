@@ -394,10 +394,7 @@ func checkNotForbidden(key store.CatalogueKey, rules schema.PresenceRules, envID
 // into.
 func writeCell(ctx context.Context, r store.Repos, p authz.Proof, sealer *crypto.ProjectSealer,
 	scope domain.Scope, key store.CatalogueKey, principal domain.PrincipalID, value string) (time.Time, error) {
-	id, err := newID("val")
-	if err != nil {
-		return time.Time{}, err
-	}
+	id := newID("val")
 	entry := store.ValueEntry{
 		ID: id, OrgID: string(scope.Org), ProjectID: string(scope.Project),
 		EnvironmentID: string(scope.Env), KeyID: key.ID,
@@ -534,10 +531,7 @@ func (s *Values) stage(ctx context.Context, actor Actor, scope domain.Scope, key
 		default:
 			baseline = entry.ID
 		}
-		versionID, err := newID("pcv")
-		if err != nil {
-			return stageWriteResult{}, err
-		}
+		versionID := newID("pcv")
 		var sealed []byte
 		if operation == store.PendingSet {
 			if sealed, err = sealer.SealField(

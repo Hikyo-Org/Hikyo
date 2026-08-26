@@ -156,10 +156,7 @@ func (s *Remotes) AddRemote(ctx context.Context, actor Actor, name, rawURL, pin,
 	if s.Fetch == nil {
 		return RemoteView{}, errors.New("service: the directory surface has no outbound client wired")
 	}
-	id, err := newID("rmt")
-	if err != nil {
-		return RemoteView{}, err
-	}
+	id := newID("rmt")
 	now := s.now()
 
 	// Phase 1: authorize, and read the state the identity checks need. The

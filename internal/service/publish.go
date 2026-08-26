@@ -1075,10 +1075,7 @@ func materialize(ctx context.Context, r store.Repos, p authz.Proof, sealer *cryp
 	}
 
 	revision := previous + 1
-	snapshotID, err := newID("snp")
-	if err != nil {
-		return PublishedEnvironment{}, err
-	}
+	snapshotID := newID("snp")
 	if err := r.Snapshots().Insert(ctx, p, store.NewSnapshot{
 		ID: snapshotID, Revision: revision, SchemaRevision: schemaRevision,
 		PublishedBy: string(publisher), PublishedAt: now,
@@ -1100,10 +1097,7 @@ func materialize(ctx context.Context, r store.Repos, p authz.Proof, sealer *cryp
 		if !cell.set {
 			continue
 		}
-		entryID, err := newID("sne")
-		if err != nil {
-			return PublishedEnvironment{}, err
-		}
+		entryID := newID("sne")
 		sealed, err := sealer.SealField(snapshotAAD(
 			string(scope.Org), string(scope.Project), string(scope.Env), cell.key.ID, snapshotID, entryID), []byte(cell.value))
 		if err != nil {
@@ -1279,10 +1273,7 @@ func lineage(ctx context.Context, r store.Repos, p authz.Proof,
 func putCell(ctx context.Context, r store.Repos, p authz.Proof, sealer *crypto.ProjectSealer,
 	scope domain.Scope, key store.CatalogueKey, principal domain.PrincipalID,
 	value string, now time.Time) (string, error) {
-	id, err := newID("val")
-	if err != nil {
-		return "", err
-	}
+	id := newID("val")
 	entry := store.ValueEntry{
 		ID: id, OrgID: string(scope.Org), ProjectID: string(scope.Project),
 		EnvironmentID: string(scope.Env), KeyID: key.ID,

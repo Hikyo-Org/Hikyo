@@ -214,21 +214,12 @@ func (s *Workspace) MintConnection(ctx context.Context, actor Actor, label strin
 	if req.Lifetime < 0 {
 		return MintConnectionResult{}, ErrCredentialLifetime
 	}
-	connID, err := newID("icn")
-	if err != nil {
-		return MintConnectionResult{}, err
-	}
-	principalID, err := newID("mch")
-	if err != nil {
-		return MintConnectionResult{}, err
-	}
-	grantID, err := newID("grn")
-	if err != nil {
-		return MintConnectionResult{}, err
-	}
+	connID := newID("icn")
+	principalID := newID("mch")
+	grantID := newID("grn")
 	now := s.now()
 	var out MintConnectionResult
-	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, err := actor.resolve(ctx, az, now)
 		if err != nil {
 			return err
@@ -706,10 +697,7 @@ func (s *Workspace) StartHandoff(ctx context.Context, req HandoffRequest) (Hando
 		return HandoffStart{}, fmt.Errorf("%w: unknown handoff purpose %q", domain.ErrInvalid, req.Purpose)
 	}
 
-	id, err := newID("hnd")
-	if err != nil {
-		return HandoffStart{}, err
-	}
+	id := newID("hnd")
 	state, stateVerifier, err := crypto.NewArtifact(crypto.ArtifactHandoffState)
 	if err != nil {
 		return HandoffStart{}, err
@@ -1045,10 +1033,7 @@ func (s *Workspace) RedeemHandoff(ctx context.Context, code, pkceVerifier, origi
 	if err != nil {
 		return WorkspaceSession{}, err
 	}
-	sessionID, err := newID("ses")
-	if err != nil {
-		return WorkspaceSession{}, err
-	}
+	sessionID := newID("ses")
 	now := s.now()
 	var out WorkspaceSession
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
@@ -1271,10 +1256,7 @@ func (s *Workspace) elevate(
 	if err != nil {
 		return WorkspaceSession{}, err
 	}
-	windowID, err := newID("raw")
-	if err != nil {
-		return WorkspaceSession{}, err
-	}
+	windowID := newID("raw")
 	value, verifier, err := crypto.NewArtifact(crypto.ArtifactWorkspaceSession)
 	if err != nil {
 		return WorkspaceSession{}, err

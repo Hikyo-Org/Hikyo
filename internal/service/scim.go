@@ -587,10 +587,7 @@ func (s *SCIM) enterAttention(
 			return nil, nil
 		}
 	}
-	id, err := newID("sat")
-	if err != nil {
-		return nil, err
-	}
+	id := newID("sat")
 	if err := r.SCIM().EnterAttention(ctx, c.proof, store.SCIMAttentionRow{
 		ID: id, BindingID: c.binding.ID, State: string(state),
 		SubjectRef: subjectRef, Cause: string(cause), EnteredAt: now,
@@ -703,10 +700,7 @@ func (s *SCIM) mintCredential(
 	if err != nil {
 		return "", store.NewSCIMCredential{}, err
 	}
-	id, err := newID("scr")
-	if err != nil {
-		return "", store.NewSCIMCredential{}, err
-	}
+	id := newID("scr")
 	epoch, err := az.CredentialEpoch(ctx)
 	if err != nil {
 		return "", store.NewSCIMCredential{}, err

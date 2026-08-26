@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"uuid"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
@@ -488,7 +488,7 @@ func adapterEffectKey(effect adapter.Effect) string {
 	return string(effect.Surface) + "\x00" + strings.ToUpper(effect.EffectiveName)
 }
 
-func newAdapterID(prefix string) string { return prefix + "_" + uuid.Must(uuid.NewV7()).String() }
+func newAdapterID(prefix string) string { return prefix + "_" + uuid.NewV7().String() }
 
 func (j *adapterJournal) Reserve(ctx context.Context, effect adapter.Effect) (adapter.LedgerState, error) {
 	state := adapter.Reserved

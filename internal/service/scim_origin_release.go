@@ -246,10 +246,7 @@ func releaseSCIMOrigins(
 			// survives on a system-minted retention origin recording what
 			// triggered the conversion, and the binding enters the attention
 			// state naming the retained grant and principal.
-			originID, err := newID("gor")
-			if err != nil {
-				return out, nil, err
-			}
+			originID := newID("gor")
 			retention := authz.Origin{
 				Kind: domain.OriginLockoutRetention,
 				Subject: domain.SCIMRetentionKey{

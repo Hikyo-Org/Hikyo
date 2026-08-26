@@ -99,14 +99,8 @@ func (s *SCIM) CreateBinding(ctx context.Context, actor Actor, org domain.OrgID,
 		}
 
 		now := s.now()
-		bindingID, err := newID("scb")
-		if err != nil {
-			return err
-		}
-		principalID, err := newID("prn")
-		if err != nil {
-			return err
-		}
+		bindingID := newID("scb")
+		principalID := newID("prn")
 		// The principal first: the binding row references it, and it carries
 		// its class at INSERT so it is never briefly unclassified.
 		if err := az.CreateProvisioningPrincipal(ctx, domain.PrincipalID(principalID), now); err != nil {

@@ -2,7 +2,6 @@ package authz
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/api"
@@ -28,11 +27,7 @@ func (a *TxAuthorizer) AdmitOperation(ctx context.Context, caller Identity) erro
 		return nil
 	}
 
-	id, err := audit.NewEventID()
-	if err != nil {
-		a.captureErr = errors.Join(a.captureErr, err)
-		return domain.ErrNotFound
-	}
+	id := audit.NewEventID()
 	wire := audit.FromContext(ctx)
 	credentialID := caller.CredentialID
 	if credentialID == "" {

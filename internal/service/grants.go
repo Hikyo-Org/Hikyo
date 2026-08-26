@@ -789,10 +789,7 @@ func writeGrantRowState(ctx context.Context, az *authz.TxAuthorizer, spec GrantS
 					domain.ErrLimitExceeded, MaxGrantsPerOrg)
 			}
 		}
-		grantID, err := newID("grt")
-		if err != nil {
-			return GrantResult{}, err
-		}
+		grantID := newID("grt")
 		if err := az.CreateGrant(ctx, grantID, spec.Target,
 			domain.Grant{Capability: spec.Capability, Scope: spec.Scope}, now); err != nil {
 			return GrantResult{}, err
@@ -813,10 +810,7 @@ func writeGrantRowState(ctx context.Context, az *authz.TxAuthorizer, spec GrantS
 		attach = !held
 	}
 	if attach {
-		originID, err := newID("gor")
-		if err != nil {
-			return GrantResult{}, err
-		}
+		originID := newID("gor")
 		if err := az.AddGrantOrigin(ctx, originID, out.GrantID, spec.Target, origin, now); err != nil {
 			return GrantResult{}, err
 		}

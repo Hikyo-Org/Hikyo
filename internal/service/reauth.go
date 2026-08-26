@@ -581,10 +581,7 @@ func (s *Auth) reauthTOTP(ctx context.Context, presented string, intent ReauthIn
 			return err
 		}
 		for _, environmentID := range windowEnvironments {
-			windowID, err := newID("raw")
-			if err != nil {
-				return err
-			}
+			windowID := newID("raw")
 			windowExpires := now.Add(effectiveWindows[environmentID])
 			if windowExpires.After(hardExpires) {
 				windowExpires = hardExpires

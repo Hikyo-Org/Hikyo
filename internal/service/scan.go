@@ -468,10 +468,7 @@ func scanConfigValue(ctx context.Context, r store.Repos, p authz.Proof, kr *cryp
 
 func recordDismissal(ctx context.Context, r store.Repos, p authz.Proof, kr *crypto.Keyring,
 	keyID, ruleDigest string, fingerprint []byte, ruleID string, principal domain.PrincipalID) error {
-	id, err := newID("dsm")
-	if err != nil {
-		return err
-	}
+	id := newID("dsm")
 	if err := r.ScanningDismissals().Insert(ctx, p, store.NewDismissal{
 		ID: id, KeyID: keyID, RuleDigest: ruleDigest, Fingerprint: fingerprint,
 		CreatedBy: string(principal), CreatedAt: time.Now(),
