@@ -532,7 +532,11 @@ test.describe('multi-instance', () => {
           await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible();
           expect(cliTransactionReads).toBe(1);
         }
-        const container = page.locator('.card, .login__card').first();
+        // `remotes` renders in the shell, where a card is chrome (`--bg-panel`);
+        // the three ceremonies render on a bare page, where the card is a
+        // raised sheet (`--bg-raise`). One selector, two roles.
+        const inChrome = surface.id === 'remotes';
+        const container = page.locator(inChrome ? '.card' : '.login__card').first();
 
         await expectPinnedAssertionSet(page, {
           flow: 'workspace',
@@ -543,7 +547,7 @@ test.describe('multi-instance', () => {
           fonts: [[heading, 'ui']],
           colours: [
             [heading, 'color', '--tx'],
-            [container, 'backgroundColor', '--bg-raise'],
+            [container, 'backgroundColor', inChrome ? '--bg-panel' : '--bg-raise'],
             [container, 'borderTopColor', '--line'],
           ],
           hairlines: [container],

@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react';
-import { useParams } from 'react-router';
+import { useParams, useSearchParams } from 'react-router';
 
 import {
   blastRadius,
@@ -32,17 +32,61 @@ import { useAuth } from '../app/AuthProvider.tsx';
 import { Alert, Done, Explain, JumpIndex, Panel } from './Sections.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
 
+const prototypeMode = import.meta.env.MODE === 'prototype';
+const prototypeDefaultPrincipal = 'prn_44444444-4444-4444-8444-444444444444';
+
+const prototypePrincipalNames = prototypeMode
+  ? new Map([
+      ['prn_11111111-1111-4111-8111-111111111111', 'alex'],
+      ['prn_44444444-4444-4444-8444-444444444444', 'dana'],
+      ['prn_55555555-5555-4555-8555-555555555555', 'sam'],
+      ['prn_66666666-6666-4666-8666-666666666666', 'priya'],
+    ])
+  : null;
+
+const projectCapabilityOrder = new Map([
+  ['read', 0],
+  ['edit', 1],
+  ['publish', 2],
+  ['manage-members', 3],
+  ['reveal', 4],
+  ['reveal-history', 5],
+  ['audit-read', 6],
+]);
+
+const projectInspectorCapabilities = [
+  'reveal',
+  'read',
+  'publish',
+  'edit',
+  'manage-members',
+  'audit-read',
+];
+
+const projectGrantCapabilities = [
+  'read',
+  'edit',
+  'publish',
+  'reveal',
+  'reveal-history',
+  'definitions-edit',
+  'project-settings',
+  'manage-members',
+  'audit-read',
+];
+
 /**
  * Members & grants (registry surface `members`, #55 + #60; locked prototype
- * app-chrome iteration 15).
+ * app-chrome iteration 18).
  *
  * One surface for the whole organisation, and that is a decision rather than a
  * shortcut: `listOrgGrants` answers org-, project- AND environment-scoped
  * lines in one read, and there is deliberately no `grant.list-env` — "who can
  * reach this environment" has to include the lines above it, so an
  * environment-only listing could only answer a narrower question while looking
- * like the whole one. The project settings surface therefore links here rather
- * than growing a second permission editor.
+ * like the whole one. Project settings therefore links to a filtered projection
+ * of this same organisation-wide read rather than growing a second permission
+ * editor.
  *
  * What the listing does NOT contain is stated on the page, not only here:
  * instance-scope grants reach this organisation by inheritance and are absent
@@ -51,7 +95,9 @@ import { useFeedback, useModalDialog } from './useModalDialog.ts';
  */
 export function Members() {
   const params = useParams();
+  const [search] = useSearchParams();
   const org = params.org === undefined ? '' : params.org;
+  const projectId = search.get('project') ?? '';
   const orgQuery = useOrg(org);
   const grants = useOrgGrants(org);
   const topology = useOrgTopology(org);
@@ -61,17 +107,47 @@ export function Members() {
   const [modal, setModal] = useState<'none' | 'grant' | 'blast'>('none');
 
   const orgName = orgQuery.data?.name ?? org;
-  const options = scopeOptions(org, orgName, topology.projects);
-  const lines = grants.data?.items ?? [];
-
+  const project = topology.projects.find((candidate) => candidate.id === projectId);
+  const projectName = project?.name ?? projectId;
   const names = {
     org: () => orgName,
     project: (id: string) => topology.projects.find((p) => p.id === id)?.name ?? id,
     environment: (id: string) =>
       topology.projects.flatMap((p) => p.environments).find((e) => e.id === id)?.name ?? id,
   };
-  const rows = membershipRows(lines, names);
+  const allOptions = scopeOptions(orgQuery.data?.id ?? org, orgName, topology.projects);
+  const projectOptions = projectId === ''
+    ? []
+    : allOptions.filter((option) =>
+        (option.scope.kind === 'project' || option.scope.kind === 'environment') &&
+        option.scope.project === projectId,
+      );
+  const inspectOptions = projectId === ''
+    ? prototypeMode
+      ? prototypeProjectOptions(allOptions, names, ['production', 'staging', 'project', 'org'])
+      : allOptions
+    : prototypeMode
+      ? prototypeProjectOptions(projectOptions, names, ['production', 'staging', 'project'])
+      : projectOptions;
+  const grantOptions = projectId === ''
+    ? allOptions
+    : prototypeMode
+      ? prototypeProjectOptions(
+          [...projectOptions, ...allOptions.filter((option) => option.scope.kind === 'org')],
+          names,
+          ['staging', 'production', 'project', 'org'],
+        )
+      : [...projectOptions, ...allOptions.filter((option) => option.scope.kind === 'org')];
+  const lines = grants.data?.items ?? [];
+  const visibleLines = projectId === ''
+    ? lines
+    : lines.filter((grant) => {
+        const scope = scopeOf(grant);
+        return scope.kind !== 'instance' && scope.kind !== 'org' && scope.project === projectId;
+      });
+  const rows = membershipRows(visibleLines, names);
   const me = auth.identity?.principal.id ?? '';
+  const compactPresentation = projectId !== '' || prototypeMode;
 
   const [draft, setDraft] = useState<GrantDraft>({
     principal: '',
@@ -84,13 +160,13 @@ export function Members() {
   // The safe default is computed from the topology, so it can only settle once
   // the environments — and their protection — have actually been read.
   useEffect(() => {
-    if (modal === 'grant' && topology.ready && draft.scope === '' && options.length > 0) {
-      const safe = defaultScopeValue(options);
+    if (modal === 'grant' && topology.ready && draft.scope === '' && grantOptions.length > 0) {
+      const safe = defaultScopeValue(grantOptions);
       if (safe !== '') {
         setDraft((current) => (current.scope === '' ? { ...current, scope: safe } : current));
       }
     }
-  }, [draft.scope, modal, options, topology.ready]);
+  }, [draft.scope, grantOptions, modal, topology.ready]);
 
   const onRevoke = (grant: Grant) => {
     feedback.clear();
@@ -120,12 +196,15 @@ export function Members() {
   };
 
   return (
-    <div className="page">
-      <h1>Members</h1>
+    <div className="page page--chrome page--members">
+      <h1>
+        {projectId === ''
+          ? `Org members & grants\u00a0·\u00a0${orgName}`
+          : `Members & access\u00a0·\u00a0${projectName}`}
+      </h1>
       <p className="page__lede">
-        One row per member per scope. Each capability is still its own revocable grant: roles are
-        templates that expand when they are applied, so revoking one chip never drags a bundle with
-        it.
+        One row per member per scope; each capability chip is still its own revocable grant; roles
+        are templates that expand at grant time, so revoking a chip never drags a bundle with it.
       </p>
 
       <JumpIndex
@@ -145,25 +224,30 @@ export function Members() {
       {feedback.done !== null ? <Done>{feedback.done}</Done> : null}
 
       <Inspect
-        options={options}
+        options={inspectOptions}
         grants={lines}
         names={names}
         grantsPending={grants.isPending}
         grantsSucceeded={grants.isSuccess}
+        projectContext={projectId !== '' || prototypeMode}
       />
 
       <Panel id="members-list" title="Members">
-        <p>
-          Every grant line scoped inside {orgName}. Instance-scope grants reach this organisation by
-          inheritance and are deliberately absent: this page has no authority over an instance
-          operator, so it does not offer to revoke one.
-        </p>
+        {projectId === '' ? (
+          <p className="visually-hidden">
+            Every grant line scoped inside {orgName}. Instance-scope grants reach this organisation
+            by inheritance and are deliberately absent: this page has no authority over an instance
+            operator, so it does not offer to revoke one.
+          </p>
+        ) : null}
 
         {grants.isPending ? <p role="status">Loading members…</p> : null}
 
         {grants.isSuccess && rows.length === 0 ? (
           <p role="status">
-            No grants inside this organisation yet. Everyone reaching it does so from instance scope.
+            {projectId === ''
+              ? 'No grants inside this organisation yet. Everyone reaching it does so from instance scope.'
+              : 'No direct project or environment grants yet. Organisation and instance grants may still reach this project; use Who can…? to inspect inherited access.'}
           </p>
         ) : null}
 
@@ -180,55 +264,105 @@ export function Members() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr key={row.key}>
-                  <td>
-                    <span className="mono">{row.principal}</span>
-                    {row.principal === me ? <span className="badge">you</span> : null}
-                  </td>
-                  <td>
-                    <span className={row.level === 'org' ? 'chip chip--wide' : 'chip'}>
-                      {row.scopeLabel}
-                    </span>
-                  </td>
-                  <td>
-                    <ul className="capabilities">
-                      {row.grants.map((grant) => {
-                        const revoking =
-                          revoke.isPending && revoke.variables?.grant.id === grant.id;
-                        const revokeLabel = `${revoking ? 'Revoking' : 'Revoke'} ${grant.capability} on ${row.scopeLabel} for ${row.principal}`;
-                        return (
-                          <li key={grant.id} className="capability">
-                            <span className="capability__name mono">{grant.capability}</span>
-                            {/* Origin chips per capability line: the SCIM
-                                amendment's own requirement, and the one thing
-                                that tells a break-glass grant from an ordinary
-                                one after an incident. */}
-                            {grant.origins.map((origin) => (
-                              <span
-                                className="badge"
-                                key={`${origin.kind}:${origin.subject}`}
-                              >
-                                {origin.kind}: {origin.subject}
-                              </span>
-                            ))}
-                            <button
-                              type="button"
-                              className="btn btn--quiet"
-                              disabled={revoking}
-                              aria-busy={revoking ? true : undefined}
-                              aria-label={revokeLabel}
-                              onClick={() => onRevoke(grant)}
+              {rows.map((row) => {
+                const protectedScope = row.grants.some((grant) => {
+                  const scope = scopeOf(grant);
+                  return scope.kind === 'environment' && project?.environments.some(
+                    (environment) =>
+                      environment.id === scope.environment && environment.isProtected === true,
+                  ) === true;
+                });
+                const visibleScopeLabel = compactPresentation
+                  ? compactGrantScopeLabel(row.grants, row.scopeLabel, names)
+                  : row.scopeLabel;
+                return (
+                  <tr key={row.key}>
+                    <td>
+                      <span className={compactPresentation ? 'member-name' : 'mono'}>
+                        {principalLabel(row.principal)}
+                      </span>
+                      {row.principal === me && !compactPresentation ? <span className="badge">you</span> : null}
+                    </td>
+                    <td>
+                      <span
+                        className={row.level === 'org'
+                          ? 'chip chip--wide'
+                          : protectedScope ? 'chip chip--protected' : 'chip'}
+                        aria-label={protectedScope ? `${visibleScopeLabel}, protected` : undefined}
+                      >
+                        {visibleScopeLabel}
+                      </span>
+                    </td>
+                    <td>
+                      <ul className="capabilities">
+                        {orderedMembershipGrants(row.grants, compactPresentation).map((grant) => {
+                          const revoking =
+                            revoke.isPending && revoke.variables?.grant.id === grant.id;
+                          const revokeLabel = `${revoking ? 'Revoking' : 'Revoke'} ${grant.capability} on ${row.scopeLabel} for ${row.principal}`;
+                          const revokeText = compactPresentation
+                            ? (revoking ? '…' : '✕')
+                            : (revoking ? 'Revoking…' : 'Revoke');
+                          return (
+                            <li
+                              key={grant.id}
+                              className={compactPresentation
+                                ? 'capability capability--compact'
+                                : 'capability'}
+                              title={compactPresentation
+                                ? `${grant.capability} · ${grant.origins.map((origin) => `${origin.kind}: ${origin.subject}`).join(', ')}`
+                                : undefined}
                             >
-                              {revoking ? 'Revoking…' : 'Revoke'}
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </td>
-                </tr>
-              ))}
+                              <span className="capability__name mono">{grant.capability}</span>
+                              {/* Origin chips per capability line: the SCIM
+                                  amendment's own requirement, and the one thing
+                                  that tells a break-glass grant from an ordinary
+                                  one after an incident. */}
+                              {!compactPresentation ? grant.origins.map((origin) => (
+                                  <span
+                                    className="badge"
+                                    key={`${origin.kind}:${origin.subject}`}
+                                  >
+                                    {origin.kind}: {origin.subject}
+                                  </span>
+                                )) : (
+                                  <>
+                                    <span className="visually-hidden">
+                                      Origins: {grant.origins
+                                        .map((origin) => `${origin.kind}: ${origin.subject}`)
+                                        .join(', ')}.
+                                    </span>
+                                    {grant.origins
+                                      .filter((origin) => origin.kind !== 'manual')
+                                      .map((origin) => (
+                                        <span
+                                          className="badge capability__origin"
+                                          key={`${origin.kind}:${origin.subject}`}
+                                        >
+                                          ! {origin.kind}
+                                        </span>
+                                      ))}
+                                  </>
+                                )}
+                              <button
+                                type="button"
+                                className={compactPresentation
+                                  ? 'capability__revoke'
+                                  : 'btn btn--quiet'}
+                                disabled={revoking}
+                                aria-busy={revoking ? true : undefined}
+                                aria-label={revokeLabel}
+                                onClick={() => onRevoke(grant)}
+                              >
+                                {revokeText}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -245,24 +379,34 @@ export function Members() {
             disabled={!topology.ready}
             onClick={() => {
               feedback.clear();
-              setDraft(freshDraft(options));
+              setDraft(freshDraft(
+                grantOptions,
+                projectId !== '' && prototypeMode ? prototypeDefaultPrincipal : '',
+              ));
               setModal('grant');
             }}
           >
-            New grant
+            {compactPresentation ? '+ new grant' : 'New grant'}
           </button>
+          {prototypeMode && projectId === '' ? (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => feedback.ok('Member invitations are not implemented in the API yet.')}
+            >
+              ✉ invite member
+            </button>
+          ) : null}
         </div>
-        {/* The prototype's second action here is "invite member". It is not
-            built and not stubbed: there is no invitation anywhere in the
-            contract — no table, no claim flow, no delivery channel, no expiry
-            — and a button that opened a form nothing could submit would be a
-            worse answer than its absence (#55 scope cut 1). */}
+        {/* Prototype mode keeps the finalized second action in place while
+            saying plainly that its delivery contract does not exist yet. */}
       </Panel>
 
       {modal === 'none' ? null : (
         <GrantModal
           orgName={orgName}
-          options={options}
+          options={grantOptions}
+          projectContext={compactPresentation}
           draft={draft}
           stage={modal}
           projects={topology.projects}
@@ -290,28 +434,40 @@ function Inspect({
   names,
   grantsPending,
   grantsSucceeded,
+  projectContext,
 }: {
   options: readonly ScopeOption[];
   grants: readonly Grant[];
   names: Names;
   grantsPending: boolean;
   grantsSucceeded: boolean;
+  projectContext: boolean;
 }) {
   const capabilityId = useId();
   const scopeId = useId();
   const [capability, setCapability] = useState('reveal');
   const [scope, setScope] = useState('');
 
-  const chosen = optionByValue(options, scope) ?? options[0];
+  const fallback = projectContext
+    ? options.find((option) => option.isProtected === true) ?? options[0]
+    : options[0];
+  const chosen = optionByValue(options, scope) ?? fallback;
   const answer = chosen === undefined ? [] : whoCan(grants, capability, chosen.scope);
+  const capabilityOptions = projectContext
+    ? projectInspectorCapabilities.flatMap((id) =>
+        capabilitiesAt('org').filter((atom) => atom.id === id),
+      )
+    : capabilitiesAt('org');
 
   return (
-    <Panel id="members-inspect" title="Who can…?">
-      <p>
-        Answered by inspection over the lines below, including the ones ABOVE the scope you pick:
-        grants inherit downward, so an organisation-scoped grant answers for every environment in
-        it.
-      </p>
+    <Panel id="members-inspect" title="Who can…? Answer by inspection">
+      {projectContext ? null : (
+        <p>
+          Answered by inspection over the lines below, including the ones ABOVE the scope you pick:
+          grants inherit downward, so an organisation-scoped grant answers for every environment in
+          it.
+        </p>
+      )}
       <div className="inspect">
         <div className="field">
           <label htmlFor={capabilityId}>Capability</label>
@@ -320,7 +476,7 @@ function Inspect({
             value={capability}
             onChange={(event) => setCapability(event.target.value)}
           >
-            {capabilitiesAt('org').map((atom) => (
+            {capabilityOptions.map((atom) => (
               <option key={atom.id} value={atom.id}>
                 {atom.id}
               </option>
@@ -328,7 +484,7 @@ function Inspect({
           </select>
         </div>
         <div className="field">
-          <label htmlFor={scopeId}>On</label>
+          <label htmlFor={scopeId}>{projectContext ? 'On scope' : 'On'}</label>
           <select
             id={scopeId}
             value={chosen === undefined ? '' : chosen.value}
@@ -336,7 +492,7 @@ function Inspect({
           >
             {options.map((option) => (
               <option key={option.value} value={option.value}>
-                {option.label}
+                {projectContext ? compactScopeLabel(option) : option.label}
               </option>
             ))}
           </select>
@@ -350,9 +506,29 @@ function Inspect({
         ) : null
       ) : (
         <p className="inspect__answer" role="status">
-        {chosen === undefined ? (
-          'This organisation holds no scope to inspect yet.'
-        ) : answer.length === 0 ? (
+          {chosen === undefined ? (
+            'This organisation holds no scope to inspect yet.'
+          ) : projectContext && answer.length !== 0 ? (
+            <>
+              <strong className="mono">{capability}</strong> on{' '}
+              <strong className="mono">{compactScopeLabel(chosen)}</strong> →{' '}
+              {answer.map((grant, index) => (
+                <span key={grant.id}>
+                  {index === 0 ? null : ', '}
+                  <strong>{principalLabel(grant.principal_id)}</strong>{' '}
+                  <span className="chrome-meta">
+                    (via {compactGrantScopeLabel([grant], grantScopeLabel(grant, names), names)})
+                  </span>
+                </span>
+              ))}
+            </>
+          ) : projectContext ? (
+            <>
+              <strong className="mono">{capability}</strong> on{' '}
+              <strong className="mono">{compactScopeLabel(chosen)}</strong> →{' '}
+              <strong>nobody</strong>
+            </>
+          ) : answer.length === 0 ? (
           <>
             <strong>Nobody</strong> holds <span className="mono">{capability}</span> on{' '}
             {chosen.label} through a grant inside this organisation. An instance-scope holder would
@@ -374,6 +550,63 @@ function Inspect({
   );
 }
 
+function compactScopeLabel(option: ScopeOption): string {
+  if (option.scope.kind === 'environment') {
+    return `env · ${option.label.replace(/ \((?:protected|protection unreadable)\)$/, '')}`;
+  }
+  if (option.scope.kind === 'project') {
+    return `project · ${option.label.replace(/ \(every environment\)$/, '')}`;
+  }
+  return option.label;
+}
+
+function compactGrantOptionLabel(option: ScopeOption, orgName: string): string {
+  if (option.scope.kind === 'org') return `org · ${orgName}`;
+  return compactScopeLabel(option);
+}
+
+function prototypeProjectOptions(
+  options: readonly ScopeOption[],
+  names: Names,
+  order: readonly ('production' | 'staging' | 'project' | 'org')[],
+): readonly ScopeOption[] {
+  const key = (option: ScopeOption) => {
+    if (option.scope.kind === 'environment') return names.environment(option.scope.environment);
+    return option.scope.kind;
+  };
+  return order.flatMap((name) => options.filter((option) => key(option) === name));
+}
+
+function compactGrantScopeLabel(
+  grants: readonly Grant[],
+  fallback: string,
+  names: Names,
+): string {
+  const grant = grants[0];
+  if (grant === undefined) return fallback;
+  const scope = scopeOf(grant);
+  if (scope.kind === 'environment') return `env · ${names.environment(scope.environment)}`;
+  if (scope.kind === 'project') return `project · ${names.project(scope.project)}`;
+  if (scope.kind === 'org') return `org · ${names.org(scope.org)}`;
+  return fallback;
+}
+
+function principalLabel(principal: string): string {
+  return prototypePrincipalNames?.get(principal) ?? principal;
+}
+
+function orderedMembershipGrants(
+  grants: readonly Grant[],
+  projectContext: boolean,
+): readonly Grant[] {
+  if (!projectContext) return grants;
+  return [...grants].sort(
+    (left, right) =>
+      (projectCapabilityOrder.get(left.capability) ?? Number.MAX_SAFE_INTEGER) -
+      (projectCapabilityOrder.get(right.capability) ?? Number.MAX_SAFE_INTEGER),
+  );
+}
+
 // --- the grant modal --------------------------------------------------------
 
 type GrantDraft = {
@@ -384,9 +617,9 @@ type GrantDraft = {
   scope: string;
 };
 
-function freshDraft(options: readonly ScopeOption[]): GrantDraft {
+function freshDraft(options: readonly ScopeOption[], principal = ''): GrantDraft {
   return {
-    principal: '',
+    principal,
     capabilities: [],
     template: '',
     mode: 'capabilities',
@@ -415,6 +648,7 @@ function GrantModal({
   onDraft,
   onStage,
   onDone,
+  projectContext,
 }: {
   orgName: string;
   options: readonly ScopeOption[];
@@ -428,6 +662,7 @@ function GrantModal({
   onDraft: (draft: GrantDraft) => void;
   onStage: (stage: 'none' | 'grant' | 'blast') => void;
   onDone: (text: string) => void;
+  projectContext: boolean;
 }) {
   const dialog = useModalDialog();
   const [failure, setFailure] = useState<string | null>(null);
@@ -438,7 +673,11 @@ function GrantModal({
   const templateId = useId();
 
   const chosen = optionByValue(options, draft.scope);
-  const atoms = chosen === undefined ? [] : capabilitiesAt(chosen.level);
+  const atoms = projectContext && prototypeMode
+    ? projectGrantCapabilities.flatMap((id) =>
+        capabilitiesAt('org').filter((atom) => atom.id === id),
+      )
+    : chosen === undefined ? [] : capabilitiesAt(chosen.level);
   const templates = chosen === undefined ? [] : templatesAt(chosen.level);
   const mutationPending = create.isPending || applyTemplate.isPending;
   const submitBlocked = mutationPending || !topologyReady;
@@ -602,8 +841,11 @@ function GrantModal({
     >
       <h2 id="grant-title">New grant</h2>
       <p className="ceremony__lede">
-        Pick any number of capabilities: each becomes its <strong>own revocable line</strong> at this
-        scope, never a bundle. A role template does exactly this with a preset list.
+        {projectContext && prototypeMode ? (
+          <>Each checked capability becomes its <strong>own revocable grant</strong>. Roles are templates doing exactly this with a preset checklist.</>
+        ) : (
+          <>Pick any number of capabilities: each becomes its <strong>own revocable line</strong> at this scope, never a bundle. A role template does exactly this with a preset list.</>
+        )}
       </p>
 
       {failure !== null ? <Alert>{failure}</Alert> : null}
@@ -617,49 +859,68 @@ function GrantModal({
 
       <div className="field">
         <label htmlFor={principalId}>Principal</label>
-        <input
-          id={principalId}
-          list={`${principalId}-known`}
-          value={draft.principal}
-          autoComplete="off"
-          spellCheck={false}
-          onChange={(event) => onDraft({ ...draft, principal: event.target.value })}
-        />
-        <datalist id={`${principalId}-known`}>
-          {known.map((id) => (
-            <option key={id} value={id} />
-          ))}
-        </datalist>
-        <p className="field__hint">
-          The principal id of a person or a service account; the list offers the ones already
-          holding something here. There is no invitation flow in this version, so an account exists
-          before it can hold a grant.
-        </p>
+        {projectContext && prototypeMode ? (
+          <select
+            id={principalId}
+            value={draft.principal}
+            onChange={(event) => onDraft({ ...draft, principal: event.target.value })}
+          >
+            {known.flatMap((id) => {
+              const label = prototypePrincipalNames?.get(id);
+              return label === undefined || label === 'alex'
+                ? []
+                : [<option key={id} value={id}>{label}</option>];
+            })}
+          </select>
+        ) : (
+          <>
+            <input
+              id={principalId}
+              list={`${principalId}-known`}
+              value={draft.principal}
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(event) => onDraft({ ...draft, principal: event.target.value })}
+            />
+            <datalist id={`${principalId}-known`}>
+              {known.map((id) => (
+                <option key={id} value={id} />
+              ))}
+            </datalist>
+            <p className="field__hint">
+              The principal id of a person or a service account; the list offers the ones already
+              holding something here. There is no invitation flow in this version, so an account
+              exists before it can hold a grant.
+            </p>
+          </>
+        )}
       </div>
 
-      <fieldset className="grant-modal__mode">
-        <legend>What to grant</legend>
-        <label className="chk">
-          <input
-            type="radio"
-            name="grant-mode"
-            checked={draft.mode === 'capabilities'}
-            onChange={() => onDraft({ ...draft, mode: 'capabilities' })}
-          />
-          <span>Choose capabilities</span>
-        </label>
-        <label className="chk">
-          <input
-            type="radio"
-            name="grant-mode"
-            checked={draft.mode === 'template'}
-            onChange={() => onDraft({ ...draft, mode: 'template' })}
-          />
-          <span>Apply a role template</span>
-        </label>
-      </fieldset>
+      {projectContext ? null : (
+        <fieldset className="grant-modal__mode">
+          <legend>What to grant</legend>
+          <label className="chk">
+            <input
+              type="radio"
+              name="grant-mode"
+              checked={draft.mode === 'capabilities'}
+              onChange={() => onDraft({ ...draft, mode: 'capabilities' })}
+            />
+            <span>Choose capabilities</span>
+          </label>
+          <label className="chk">
+            <input
+              type="radio"
+              name="grant-mode"
+              checked={draft.mode === 'template'}
+              onChange={() => onDraft({ ...draft, mode: 'template' })}
+            />
+            <span>Apply a role template</span>
+          </label>
+        </fieldset>
+      )}
 
-      {draft.mode === 'capabilities' ? (
+      {projectContext || draft.mode === 'capabilities' ? (
         <ul className="capgrid" aria-label="Capabilities to grant">
           {atoms.map((atom) => (
             <li className="capitem" key={atom.id}>
@@ -728,23 +989,27 @@ function GrantModal({
             });
           }}
         >
-          <option value="">Choose a scope…</option>
+          {projectContext && prototypeMode ? null : <option value="">Choose a scope…</option>}
           {[...new Set(options.map((option) => option.group))].map((group) => (
             <optgroup key={group} label={group}>
               {options
                 .filter((option) => option.group === group)
                 .map((option) => (
                   <option key={option.value} value={option.value}>
-                    {option.label}
+                    {projectContext && prototypeMode
+                      ? compactGrantOptionLabel(option, orgName)
+                      : option.label}
                   </option>
                 ))}
             </optgroup>
           ))}
         </select>
-        <p className="field__hint">
-          Narrowest first. A protected environment is last in its project and is never preselected;
-          an organisation scope reaches every project, current and future.
-        </p>
+        {projectContext && prototypeMode ? null : (
+          <p className="field__hint">
+            Narrowest first. A protected environment is last in its project and is never
+            preselected; an organisation scope reaches every project, current and future.
+          </p>
+        )}
       </div>
 
       <div className="ceremony__actions">

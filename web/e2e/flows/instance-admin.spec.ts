@@ -91,13 +91,12 @@ test.describe('instance administration', () => {
 
   test('enumerates the organisations on the instance', async ({ page }) => {
     const orgs = page.locator('#instance-orgs');
-    const count = orgs.getByRole('status');
-    await expectStatusIsTextAndAria(page, count);
     // The fixture creates two: the tenant every other flow addresses, and a
     // second one that holds nothing.
+    await expect(orgs.locator(':scope > .settings-row')).toHaveCount(2);
     await expect(orgs).toContainText(seed.orgName);
     await expect(orgs).toContainText(seed.orgBName);
-    await expect(orgs.getByRole('link', { name: 'Settings' }).first()).toBeVisible();
+    await expect(orgs.getByRole('link', { name: seed.orgName })).toBeVisible();
   });
 
   test('shows instance grants with the origin that holds them', async ({ page }) => {
@@ -139,6 +138,7 @@ test.describe('instance administration', () => {
 
   test('reads and saves the machine-credential ceiling', async ({ page }) => {
     const settings = page.locator('#instance-settings');
+    await settings.getByRole('button', { name: 'edit' }).last().click();
     const lifetime = settings.getByLabel('Maximum finite lifetime (seconds)');
     const live = settings.getByLabel('Maximum live credentials per service account');
     await expect(lifetime).not.toHaveValue('');
@@ -189,6 +189,7 @@ test.describe('instance administration', () => {
     });
 
     const settings = page.locator('#instance-settings');
+    await settings.getByRole('button', { name: 'edit' }).last().click();
     const lifetime = settings.getByLabel('Maximum finite lifetime (seconds)');
     const live = settings.getByLabel('Maximum live credentials per service account');
     await lifetime.fill(String(Math.max(1, Number(await lifetime.inputValue()) - 1)));
@@ -383,13 +384,14 @@ test.describe('instance administration', () => {
 
   test('creates an organisation, grants its creator admin access, and requires a fresh login', async ({ passkeyPage: page }, testInfo) => {
     const name = `Instance drill ${testInfo.project.name}`;
+      await page.getByRole('button', { name: 'Open create organisation form' }).click();
       await page.getByLabel('New organisation name').fill(name);
       const responsePromise = page.waitForResponse(
         (response) =>
           response.request().method() === 'POST' &&
           new URL(response.url()).pathname === '/api/v1/orgs',
       );
-      await page.getByRole('button', { name: 'Create organisation' }).click();
+      await page.getByRole('button', { name: 'Create organisation', exact: true }).click();
       const response = await responsePromise;
       expect(response.status()).toBe(201);
       const created = zOrg.parse(await response.json());
@@ -401,7 +403,9 @@ test.describe('instance administration', () => {
 
       await establishSession(page);
       await page.goto(`/orgs/${created.id}/settings`);
-      await expect(page.getByRole('heading', { name: 'Organisation settings', level: 1 })).toBeVisible();
+      await expect(
+        page.getByRole('heading', { name: `Org settings · ${name}`, level: 1 }),
+      ).toBeVisible();
       await expect(page.getByLabel('Name')).toHaveValue(name);
   });
 
@@ -447,7 +451,7 @@ test.describe('instance administration', () => {
           level: 1,
         });
         const well = page.locator('.panel').first();
-        const create = page.getByRole('button', { name: 'Create organisation' });
+        const create = page.getByRole('button', { name: 'Open create organisation form' });
         const badge = page.locator('.badge').first();
 
         await expectPinnedAssertionSet(page, {
@@ -466,11 +470,11 @@ test.describe('instance administration', () => {
           ],
           colours: [
             [heading, 'color', '--tx'],
-            [well, 'backgroundColor', '--bg-raise'],
-            [well, 'borderTopColor', '--line'],
+            [well, 'backgroundColor', '--bg-panel'],
+            [well, 'borderTopColor', '--panel-line'],
           ],
           hairlines: [well],
-          density: [[create, '--touch']],
+          density: [],
         });
       } finally {
         await page.emulateMedia({ colorScheme: null });

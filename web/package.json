@@ -7,10 +7,11 @@
   "description": "The Hikyo single-page application. Built by Vite into ../internal/webui/dist, embedded by the server binary under the `ui` build tag.",
   "scripts": {
     "dev": "vite",
+    "prototype": "vite --mode prototype",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "e2e": "pnpm run build && playwright test",
+    "e2e": "pnpm run build && playwright test --project=desktop && playwright test --project=mobile",
     "e2e:install": "playwright install --with-deps chromium"
   },
   "dependencies": {

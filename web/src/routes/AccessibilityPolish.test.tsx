@@ -248,25 +248,23 @@ describe('Organisation settings accessibility polish', () => {
       ),
     ).toBe(false);
     expect(
-      [...loaded.container.querySelectorAll('#org-retention button')].some(
-        (button) => button.textContent === 'Save retention',
-      ),
-    ).toBe(true);
+      loaded.container.querySelector<HTMLInputElement>(
+        '#org-retention input[aria-label="Org default revisions kept"]',
+      )?.value,
+    ).toBe('6');
     await loaded.unmount();
   });
 
-  it('associates the organisation Name input with its explanatory hint', async () => {
+  it('associates the organisation Name input with its visible label', async () => {
     const view = await renderOrgSettings();
-    const input = view.container.querySelector<HTMLInputElement>('#org-identity input');
+    const input = view.container.querySelector<HTMLInputElement>(
+      '#org-identity input:not([type="range"]):not([type="file"])',
+    );
     if (input === null) {
       throw new Error('organisation Name input is missing');
     }
-    const hintId = input.getAttribute('aria-describedby');
-    const hint = hintId === null ? null : view.container.ownerDocument.getElementById(hintId);
-
-    expect(hintId).not.toBeNull();
-    expect(hint === null ? false : view.container.contains(hint)).toBe(true);
-    expect(hint?.textContent).toContain('Renaming an organisation is instance-operator work');
+    const label = view.container.querySelector<HTMLLabelElement>(`label[for="${input.id}"]`);
+    expect(label?.textContent).toBe('Name');
     await view.unmount();
   });
 });

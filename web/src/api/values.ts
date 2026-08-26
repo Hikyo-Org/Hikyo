@@ -117,7 +117,10 @@ export async function fetchRevealWindow(
  * open caps the window at 0, and a client extrapolating from its own last
  * ceremony would keep offering TOTP that the server will refuse.
  */
-export function useRevealWindow(env: EnvRef): UseQueryResult<RevealWindow> {
+export function useRevealWindow(
+  env: EnvRef,
+  enabled = true,
+): UseQueryResult<RevealWindow> {
   const transport = useTransport();
   return useQuery({
     queryKey: windowKey(env),
@@ -130,6 +133,7 @@ export function useRevealWindow(env: EnvRef): UseQueryResult<RevealWindow> {
           },
           ...transport,
         }),
+    enabled,
     retry: false,
   });
 }

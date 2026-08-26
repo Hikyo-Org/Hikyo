@@ -43,9 +43,89 @@ async function openNav(page: Page): Promise<void> {
 test.describe('app chrome', () => {
   test.use({ storageState: STORAGE_STATE });
 
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page }, testInfo) => {
     await page.goto('/');
-    await expect(page.getByRole('navigation', { name: 'Organisations' })).toBeVisible();
+    if (testInfo.project.name === 'mobile') {
+      await expect(page.getByRole('button', { name: 'Menu' })).toBeVisible();
+    } else {
+      await expect(page.getByRole('navigation', { name: 'Organisations' })).toBeVisible();
+    }
+  });
+
+  test('matches the locked desktop chrome composition', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name === 'mobile', 'desktop chrome geometry');
+
+    const rail = page.getByRole('navigation', { name: 'Organisations' });
+    const sidebar = page.getByRole('navigation', { name: 'Sections', exact: true });
+    const header = page.locator('.header');
+
+    await rail.getByRole('button', { name: /^Project / }).first().click();
+
+    await expect(rail).toHaveCSS('width', '56px');
+    await expect(sidebar).toHaveCSS('width', '218px');
+    await expect(header).toHaveCSS('height', '61px');
+    await expect(header.getByText('Signed in as')).toBeVisible();
+    await expect(rail.getByRole('link', { name: 'Instance administration' })).toBeVisible();
+
+    const projectNav = sidebar.getByRole('navigation', { name: 'Project' });
+    const matrixLink = projectNav.getByRole('link', { name: 'Environment matrix' });
+    await expect(matrixLink).toHaveCSS('min-height', '38px');
+    await expect(matrixLink).toHaveCSS('font-size', '13px');
+    await expect(sidebar.locator('.project-sidebar__org-avatar')).toHaveCSS('width', '28px');
+    await expect(sidebar.locator('.project-sidebar__org small')).toHaveText(
+      'Organisation member',
+    );
+    await expect(sidebar.locator('.project-sidebar__group').first()).toHaveCSS('height', '38px');
+    await expect(sidebar.getByRole('heading', { name: 'Organization' })).toBeVisible();
+    await expect(projectNav.getByRole('link', { name: 'Version history' })).toHaveCount(0);
+    await expect(projectNav.getByRole('link', { name: 'Machine access' })).toHaveCount(0);
+  });
+
+  test('keeps every chrome destination in the fixed mobile drawer', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'mobile', 'mobile drawer contract');
+
+    const toggle = page.getByRole('button', { name: 'Menu' });
+    await toggle.click();
+
+    const drawer = page.getByRole('navigation', { name: 'Sections', exact: true });
+    await expect(drawer).toBeVisible();
+    await expect(drawer).toHaveCSS('position', 'fixed');
+    await expect(drawer).toHaveCSS('width', '300px');
+    await expect(drawer.locator('.sidebar__mobile-organisations button')).not.toHaveCount(0);
+    await expect(drawer.locator('.sidebar__mobile-projects button')).not.toHaveCount(0);
+    await expect(drawer.getByRole('link', { name: 'Account & security' })).toBeVisible();
+    await expect(drawer.getByRole('link', { name: 'Instance administration' })).toBeVisible();
+    await expect(drawer.locator(':focus')).toBeVisible();
+
+    await page.keyboard.press('Shift+Tab');
+    await expect(page.getByRole('button', { name: 'Close navigation' })).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(drawer.locator(':focus')).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(drawer).toBeHidden();
+    await expect(toggle).toBeFocused();
+
+    await toggle.click();
+    await page.locator('.nav-scrim').click();
+    await expect(drawer).toBeHidden();
+    await expect(toggle).toBeFocused();
+  });
+
+  test('releases the mobile drawer when the viewport becomes desktop', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'mobile', 'mobile-to-desktop transition');
+
+    await page.getByRole('button', { name: 'Menu' }).click();
+    await expect(page.locator('.chrome')).toHaveAttribute('data-nav', 'open');
+
+    await page.setViewportSize({ width: 1024, height: 720 });
+
+    await expect(page.locator('.chrome')).toHaveAttribute('data-nav', 'closed');
+    await expect(page.getByRole('navigation', { name: 'Organisations' })).not.toHaveAttribute(
+      'inert',
+      '',
+    );
+    await expect(page.getByRole('button', { name: /^Account:/ })).toBeFocused();
   });
 
   test('reaches every section of the skeleton', async ({ page }) => {
@@ -69,11 +149,15 @@ test.describe('app chrome', () => {
     await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
   });
 
-  test('redirects the public login route to projects with a live session', async ({ page }) => {
+  test('redirects the public login route to projects with a live session', async ({ page }, testInfo) => {
     await page.goto('/login');
 
     await expect(page).toHaveURL(/\/projects$/);
-    await expect(page.getByRole('navigation', { name: 'Organisations' })).toBeVisible();
+    if (testInfo.project.name === 'mobile') {
+      await expect(page.getByRole('button', { name: 'Menu' })).toBeVisible();
+    } else {
+      await expect(page.getByRole('navigation', { name: 'Organisations' })).toBeVisible();
+    }
     await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
   });
 
@@ -98,7 +182,7 @@ test.describe('app chrome', () => {
     await account.click();
 
     await expect(account).toHaveAttribute('aria-expanded', 'true');
-    await expect(page.getByRole('menuitem', { name: 'Sign out' })).toBeFocused();
+    await expect(page.getByRole('menuitem', { name: 'Account & security' })).toBeFocused();
     await expectNoSeriousAxeViolations(page);
 
     await page.keyboard.press('Escape');
@@ -182,12 +266,22 @@ test.describe('app chrome', () => {
   });
 
   for (const status of [403, 404]) {
-    test(`silently hides pruning health when the endpoint returns ${status}`, async ({ page }) => {
+    test(`silently hides pruning health when the endpoint returns ${status}`, async ({ page }, testInfo) => {
       await page.route('**/api/v1/instance/retention-health', (route) =>
         route.fulfill({ status, contentType: 'application/json', body: '{}' }),
       );
       await page.reload();
       await expect(page.locator('.retention-warning')).toHaveCount(0);
+      if (testInfo.project.name === 'mobile') {
+        await openNav(page);
+      }
+      const instanceAdmin =
+        testInfo.project.name === 'mobile'
+          ? page
+              .getByRole('navigation', { name: 'Sections', exact: true })
+              .getByRole('link', { name: 'Instance administration' })
+          : page.locator('.rail__action[aria-label="Instance administration"]');
+      await expect(instanceAdmin).toHaveCount(0);
     });
   }
 
@@ -236,10 +330,25 @@ test.describe('app chrome', () => {
           ],
           colours: [
             [heading, 'color', '--tx'],
-            [well, 'backgroundColor', '--bg-raise'],
+            // Cards are persistent-chrome surfaces, which is `--bg-panel`, not
+            // the `--bg-raise` of a raised row. The two are a rounding apart in
+            // dark and opposite sides of the page in light.
+            [well, 'backgroundColor', '--bg-panel'],
             [well, 'borderTopColor', '--line'],
-            // Treatment e's hairline rule: the sub-items hang off it.
-            [page.locator('.sidebar__items').first(), 'borderLeftColor', '--line'],
+            // Treatment e's hairline rule belongs to each ROW, so that the
+            // current row can own its segment of it and turn it accent.
+            // Not `.first()`: the first link on this surface IS the current one,
+            // and the current row's whole point is that its segment of the rule
+            // turns accent. Assert the rule on a row that is not current.
+            [
+              page.locator('.sidebar__link:not([aria-current="page"])').first(),
+              'borderLeftColor',
+              '--chrome-line',
+            ],
+            // ...and the current row owns its segment of that rule in accent.
+            // Asserting only the hairline would pass just as well with the rule
+            // on the container and a second line drawn inside the row.
+            [active, 'borderLeftColor', '--accent'],
           ],
           hairlines: [well],
           density: [[theme, '--touch']],
@@ -266,7 +375,7 @@ test.describe('sign out', () => {
     await page.getByLabel('Username').fill(ADMIN.username);
     await page.getByLabel('Password').fill(ADMIN.password);
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page.getByRole('navigation', { name: 'Organisations' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Account:/ })).toBeVisible();
 
     await page.getByRole('button', { name: /^Account:/ }).click();
     await page.getByRole('menuitem', { name: 'Sign out' }).click();
@@ -290,8 +399,8 @@ test.describe('sign out', () => {
     await page.getByLabel('Password').fill(ADMIN.password);
     await page.getByRole('button', { name: 'Sign in' }).click();
 
-    await expect(page.getByRole('navigation', { name: 'Organisations' })).toBeVisible();
-    await expect(other.getByRole('navigation', { name: 'Organisations' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Account:/ })).toBeVisible();
+    await expect(other.getByRole('button', { name: /^Account:/ })).toBeVisible();
 
     await page.getByRole('button', { name: /^Account:/ }).click();
     await page.getByRole('menuitem', { name: 'Sign out' }).click();

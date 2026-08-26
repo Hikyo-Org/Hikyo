@@ -17,7 +17,7 @@ import {
   type ValueCell,
 } from '../api/values.ts';
 import { useTransport } from '../api/transport.tsx';
-import { writeClipboard as safeWriteClipboard } from '../app/clipboard.ts';
+import { writeExpiringClipboard } from '../app/clipboard.ts';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
 
@@ -48,9 +48,6 @@ import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
 
 /** REMASK_MS is the 10s-class default the prototype fixed; the exact value becomes a project setting. */
 const REMASK_MS = 10_000;
-/** CLIPBOARD_CLEAR_MS is the best-effort clipboard clear the prototype fixed at 45s. */
-const CLIPBOARD_CLEAR_MS = 45_000;
-
 const MASK = '••••••••';
 
 /**
@@ -340,7 +337,7 @@ export function Values() {
    */
   const doCopy = (cell: ValueCell) => {
     if (cell.classification !== 'secret') {
-      void writeClipboard(cell.value ?? '', setNotice, false);
+      void writeExpiringClipboard(cell.value ?? '', false).then(setNotice);
       return;
     }
     void withCeremony(
@@ -355,11 +352,8 @@ export function Values() {
             return;
           }
           ceremony.commit(task, () => noteDisclosure([fresh.name]));
-          await writeClipboard(
-            fresh.value,
-            (text) => ceremony.commit(task, () => setNotice(text)),
-            true,
-          );
+          const message = await writeExpiringClipboard(fresh.value, true);
+          ceremony.commit(task, () => setNotice(message));
         } catch (err) {
           ceremony.commit(task, () => setRefusal(disclosureRefusalText(err)));
         }
@@ -720,33 +714,4 @@ function RowEditor({
       </button>
     </form>
   );
-}
-
-/**
- * writeClipboard copies and then clears, best effort, with microcopy that does
- * not overclaim.
- *
- * The caveat is the point: the clear only runs while this tab is focused and
- * the operating system may keep its own clipboard history. Promising "cleared
- * in 45 seconds" full stop would be a promise the browser cannot keep.
- */
-async function writeClipboard(
-  value: string,
-  setNotice: (text: string | null) => void,
-  audited: boolean,
-): Promise<void> {
-  if ((await safeWriteClipboard(value)) === 'refused') {
-    setNotice('This browser refused clipboard access, so nothing was copied.');
-    return;
-  }
-  setNotice(
-    audited
-      ? 'Copied, and recorded as a disclosure. Cleared in 45s if this tab stays focused — the OS may keep clipboard history.'
-      : 'Copied. This value is not a secret, so no disclosure was recorded.',
-  );
-  globalThis.setTimeout(() => {
-    if (document.hasFocus()) {
-      void safeWriteClipboard('');
-    }
-  }, CLIPBOARD_CLEAR_MS);
 }

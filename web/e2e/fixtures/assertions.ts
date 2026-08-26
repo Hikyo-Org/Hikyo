@@ -92,8 +92,17 @@ export async function expectVisibleFocusIndicator(page: Page, target: Locator): 
   // straight from a click-driven test would measure the wrong state and report
   // a missing ring on a surface that has one.
   await page.keyboard.press('Tab');
-  await target.focus();
-  await expect(target).toBeFocused();
+  // Focus, then CONFIRM focus, retrying both together. A background query
+  // settling — the org's per-project retention policies arrive one at a time —
+  // re-renders the row under the cursor, and React can hand focus back to the
+  // document between the call and the check. Retrying only the assertion (what
+  // `toBeFocused` does on its own) waits for a state that nothing will restore.
+  // The subject here is "does this control draw a ring when focused", not "does
+  // focus survive an unrelated re-render", so re-focusing is the right retry.
+  await expect(async () => {
+    await target.focus();
+    await expect(target).toBeFocused({ timeout: 1000 });
+  }).toPass({ timeout: 10_000 });
 
   const drawn = await target.evaluate((el) => {
     const style = getComputedStyle(el);
@@ -162,10 +171,27 @@ export async function expectVisibleFocusIndicator(page: Page, target: Locator): 
   }
 }
 
-/** expectEveryFocusIndicator runs the focus assertion over a flow's controls. */
+/**
+ * expectEveryFocusIndicator runs the focus assertion over a flow's controls.
+ *
+ * The failure names the control. Without that the report is "one of the 40
+ * things on this page has no focus ring", which is a search, not a finding —
+ * and the elements come from a discovered set, so there is no line number to
+ * work back from either.
+ */
 export async function expectEveryFocusIndicator(page: Page, targets: Locator[]): Promise<void> {
   for (const target of targets) {
-    await expectVisibleFocusIndicator(page, target);
+    try {
+      await expectVisibleFocusIndicator(page, target);
+    } catch (failure) {
+      const what = await target
+        .evaluate((el) => {
+          const name = el.getAttribute('aria-label') ?? el.textContent?.trim().slice(0, 40) ?? '';
+          return `<${el.tagName.toLowerCase()} class="${el.className}">${name}`;
+        })
+        .catch(() => 'an element that no longer resolves');
+      throw new Error(`${what}\n${failure instanceof Error ? failure.message : String(failure)}`);
+    }
   }
 }
 
@@ -473,14 +499,19 @@ export async function expectFontRole(page: Page, target: Locator, role: FontRole
 }
 
 /**
- * expectNoStrayPills fails when anything other than an identity circle, a
- * count badge or a matrix cell-state pill is fully rounded. DESIGN.md reserves
- * the shape for exactly those three, and a reserved shape only stays reserved
- * if something checks.
+ * expectNoStrayPills fails when anything other than an identity circle or a
+ * count badge is fully rounded. DESIGN.md reserves the shape for exactly those
+ * two, and a reserved shape only stays reserved if something checks.
+ *
+ * The matrix cell-state pill used to be the third. It went when the flat model
+ * did: a cell is table content, not a badge, and the vocabulary it once needed
+ * a pill to carry is now plain monospaced text. The class it was allowed under
+ * exists nowhere, so keeping the allowance would license a shape nothing in the
+ * design language asks for any more.
  */
 export async function expectNoStrayPills(page: Page): Promise<void> {
   const stray = await page.evaluate(() => {
-    const allowed = ['avatar', 'count', 'cell-state'];
+    const allowed = ['avatar', 'count'];
     const offenders: string[] = [];
     for (const el of document.querySelectorAll<HTMLElement>('body *')) {
       const box = el.getBoundingClientRect();
@@ -495,9 +526,7 @@ export async function expectNoStrayPills(page: Page): Promise<void> {
     }
     return offenders;
   });
-  expect(stray, 'the 999px pill is reserved for identity circles, count badges and cell states').toEqual(
-    [],
-  );
+  expect(stray, 'the 999px pill is reserved for identity circles and count badges').toEqual([]);
 }
 
 // --- the whole set, over everything the flow can touch ---------------------

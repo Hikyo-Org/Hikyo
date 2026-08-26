@@ -8,7 +8,7 @@ Binds the design system ([DESIGN.md](../../DESIGN.md) — dual theme dark-defaul
 |---|---|---|
 | Environment matrix (signature surface; flat model trialed and adopted here) | `prototype/env-matrix/` iteration 31 | [#20](https://github.com/Hikyo-Org/Hikyo/issues/20) |
 | Secret reveal, masking & multi-env editing — **ceremony modal**; validation-error presentation; write-only replacement; change review & confirm | `prototype/reveal-edit/` iteration 6 | [#21](https://github.com/Hikyo-Org/Hikyo/issues/21) |
-| App chrome — organisation, account & access surfaces (incl. `definitions_source` select + read-only consequence) | `prototype/app-chrome/` iteration 15 | [#29](https://github.com/Hikyo-Org/Hikyo/issues/29) |
+| App chrome — organisation, account & access surfaces (incl. `definitions_source` select + read-only consequence) | `prototype/app-chrome/` iteration 15, **plus** the retention surfaces from iteration 16 and sidebar treatment **e** from iteration 18 — all three locked | [#29](https://github.com/Hikyo-Org/Hikyo/issues/29) |
 | Version history & rollback — list + detail, write-presence-only secret signals, others'-pending markers, least-blast restore preview, pins | `prototype/revision-history/` iteration 6 | [#30](https://github.com/Hikyo-Org/Hikyo/issues/30) |
 | Workload integration & machine-identity surfaces — write-only credential list, display-once mint, grant-mutation warning, federation management, restore reconciliation, K8s CR-condition vocabulary | `prototype/machine-access/` iteration 3 | [#31](https://github.com/Hikyo-Org/Hikyo/issues/31) |
 

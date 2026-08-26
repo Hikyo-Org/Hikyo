@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { type MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { generatePath, Link, useParams } from 'react-router';
 
 import { historyHref } from '../api/history.ts';
@@ -34,6 +34,7 @@ import {
 } from './MatrixPublishSheet.tsx';
 import { MatrixRowEditor } from './MatrixRowEditor.tsx';
 import { ScanWarnDialog, type ScanWarnItem } from './ScanWarnDialog.tsx';
+import { useProjectSidebar } from './Shell.tsx';
 import {
   computeMatrixProblems,
   groupProblemCounts,
@@ -60,16 +61,24 @@ type DisplayGroup = {
 
 type DisplayRow =
   | { readonly kind: 'group'; readonly group: DisplayGroup }
-  | { readonly kind: 'key'; readonly key: MatrixKey };
+  /**
+   * `alt` is the zebra stripe, decided here rather than in CSS.
+   *
+   * `nth-child` cannot express it: the striping restarts at every group so a
+   * group always opens unshaded, and it counts only the rows the problems
+   * filter left standing. The virtualiser's two spacer rows would shift the
+   * parity of every `nth-child` calculation anyway.
+   */
+  | { readonly kind: 'key'; readonly key: MatrixKey; readonly alt: boolean };
 
 /**
  * Whole-project environment matrix (#57, frozen prototype iteration 31).
  *
- * The prototype supplies the Cascade geometry and density valves. The flat
+ * The prototype supplies the table geometry and density valves. The flat
  * model supplies the semantics: every cell is set or absent in exactly one
  * environment. No inheritance labels, masks, provenance chains, or ambient
  * cross-environment comparison survive here. Lineage is one gesture away in
- * the row editor as the API's actor, timestamp, and revision facts.
+ * the cell modal as the API's actor, timestamp, and revision facts.
  */
 export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) {
   const params = useParams();
@@ -109,7 +118,36 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
     readonly message: string;
   } | null>(null);
   const matrixScroll = useRef<HTMLDivElement>(null);
+  const matrixTable = useRef<HTMLTableElement>(null);
+  // A state ref, not a `useRef`: the table only exists in one of this
+  // component's four bodies, so the effect below has to run when the node
+  // ARRIVES, and a ref object mutating does not re-run anything.
+  const [matrixHead, setMatrixHead] = useState<HTMLTableSectionElement | null>(null);
   const historyOpener = useRef<HTMLAnchorElement>(null);
+
+  /**
+   * The group rows stick UNDER the column header, so they need its height.
+   *
+   * Measured rather than assumed: the header is a 44px minimum, not a 44px
+   * box, and it grows when the webfont lands or a long environment name wraps.
+   * `getBoundingClientRect` and not `offsetHeight` because the fractional part
+   * is the difference between the two rows meeting and a one-pixel seam of
+   * scrolling content between them.
+   */
+  useEffect(() => {
+    const table = matrixTable.current;
+    if (matrixHead === null || table === null) return;
+    const sync = () => {
+      table.style.setProperty('--gh', `${String(matrixHead.getBoundingClientRect().height)}px`);
+    };
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(matrixHead);
+    return () => {
+      observer.disconnect();
+    };
+  }, [matrixHead]);
+
   const [mobileLayout, setMobileLayout] = useState(
     () =>
       typeof window !== 'undefined' &&
@@ -219,7 +257,11 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
               { kind: 'group', group },
               ...(collapsedGroups.has(group.id)
                 ? []
-                : group.keys.map((key): DisplayRow => ({ kind: 'key', key }))),
+                : group.keys.map((key, index): DisplayRow => ({
+                    kind: 'key',
+                    key,
+                    alt: index % 2 === 1,
+                  }))),
             ],
       ),
     [collapsedGroups, groups],
@@ -239,6 +281,35 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
     estimateSize: (index) => (displayRows[index]?.kind === 'group' ? 44 : 58),
     overscan: 8,
   });
+  const selectProjectGroup = useCallback((groupId: string) => {
+    const index = groupRowIndexes.get(groupId);
+    if (index !== undefined) rowVirtualizer.scrollToIndex(index, { align: 'start' });
+  }, [groupRowIndexes, rowVirtualizer]);
+  const toggleProblems = useCallback(() => {
+    setFilter((current) => current === 'all' ? 'problems' : 'all');
+  }, []);
+  const projectSidebarState = useMemo(() => ({
+    groups: displayGroupList.map((group) => ({
+      id: group.id,
+      name: group.name,
+      keyCount: group.keys.length,
+      problemCount: problemCounts.get(group.id) ?? 0,
+      hidden: filter === 'problems' && group.keys.every((key) => !filteredKeyIDs.has(key.id)),
+    })),
+    problemCount: problems.length,
+    problemsActive: filter === 'problems',
+    onSelectGroup: selectProjectGroup,
+    onToggleProblems: toggleProblems,
+  }), [
+    displayGroupList,
+    filter,
+    filteredKeyIDs,
+    problemCounts,
+    problems.length,
+    selectProjectGroup,
+    toggleProblems,
+  ]);
+  useProjectSidebar(projectSidebarState);
   const visibleEnvironments = environments.filter((environment) =>
     visibleEnvironmentIds.includes(environment.id),
   );
@@ -439,6 +510,7 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
           <p>{`${String(keys.length)} keys across ${String(environments.length)} environments`}</p>
         </div>
         <span className="matrix__head-spacer" />
+        <MatrixLegend />
         <button
           type="button"
           className="btn"
@@ -488,41 +560,6 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
       ) : null}
 
       <div className="matrix__layout">
-        <nav className="matrix__groups" aria-label="Key groups">
-          <h2>Groups</h2>
-          {displayGroupList.map((group) => {
-            const actuallyHidden =
-              filter === 'problems' && group.keys.every((key) => !filteredKeyIDs.has(key.id));
-            const count = problemCounts.get(group.id) ?? 0;
-            return (
-              <button
-                type="button"
-                className="matrix__group-link"
-                key={group.id}
-                disabled={actuallyHidden}
-                title={actuallyHidden ? 'hidden by the problems filter' : undefined}
-                onClick={() => {
-                  const index = groupRowIndexes.get(group.id);
-                  if (index !== undefined) rowVirtualizer.scrollToIndex(index, { align: 'start' });
-                }}
-              >
-                <span className="mono">{group.name}/</span>
-                <span>{String(group.keys.length)}</span>
-                {count === 0 ? null : <span className="matrix__count count">! {String(count)}</span>}
-              </button>
-            );
-          })}
-          <button
-            type="button"
-            className="matrix__group-link"
-            aria-pressed={filter === 'problems'}
-            onClick={() => setFilter((current) => current === 'all' ? 'problems' : 'all')}
-          >
-            <span>⚠ Problems</span>
-            {problems.length === 0 ? null : <span className="matrix__count count">{String(problems.length)}</span>}
-          </button>
-        </nav>
-
         <div className="matrix__surface">
           {filter === 'problems' ? (
             <div className="matrix__filter" role="status">
@@ -532,37 +569,6 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
               </button>
             </div>
           ) : null}
-
-          <details className="matrix__environment-picker">
-            <summary className="btn">
-              {`Environments ${String(visibleEnvironments.length)}/${String(environments.length)}`}
-            </summary>
-            <fieldset>
-              <legend>Visible environments</legend>
-              {environments.map((environment) => {
-                const checked = visibleEnvironmentIds.includes(environment.id);
-                return (
-                  <label key={environment.id}>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      disabled={checked && visibleEnvironmentIds.length === 1}
-                      onChange={() =>
-                        setVisibleEnvironmentIds((current) =>
-                          toggleVisibleEnvironment(
-                            current,
-                            environment.id,
-                            environments.map((candidate) => candidate.id),
-                          ),
-                        )
-                      }
-                    />
-                    <span>{environment.name}</span>
-                  </label>
-                );
-              })}
-            </fieldset>
-          </details>
 
           {environments.length === 0 ? (
             <div className="matrix__empty" role="status">
@@ -606,15 +612,58 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
             </div>
           ) : (
             <div className="matrix__scroll" ref={matrixScroll}>
-              <table className="matrix__table">
-                <thead>
+              <table className="matrix__table" ref={matrixTable}>
+                <thead ref={setMatrixHead}>
                   <tr>
-                    <th scope="col">Key</th>
+                    <th scope="col">
+                      <div className="matrix__key-heading">
+                        <span>Key</span>
+                        <details className="matrix__environment-picker">
+                          <summary className="btn">
+                            {`envs ${String(visibleEnvironments.length)}/${String(environments.length)}`}
+                          </summary>
+                          <fieldset>
+                            <legend>Visible environments</legend>
+                            {environments.map((environment) => {
+                              const checked = visibleEnvironmentIds.includes(environment.id);
+                              return (
+                                <label key={environment.id}>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    disabled={checked && visibleEnvironmentIds.length === 1}
+                                    onChange={() =>
+                                      setVisibleEnvironmentIds((current) =>
+                                        toggleVisibleEnvironment(
+                                          current,
+                                          environment.id,
+                                          environments.map((candidate) => candidate.id),
+                                        ),
+                                      )
+                                    }
+                                  />
+                                  <span>{environment.name}</span>
+                                  {protectedEnvironmentIds.includes(environment.id) ? (
+                                    <span className="matrix__protected">PROTECTED</span>
+                                  ) : null}
+                                </label>
+                              );
+                            })}
+                          </fieldset>
+                        </details>
+                      </div>
+                    </th>
                     {visibleEnvironments.map((environment) => {
                       const revision = revisionsByEnvironment.get(environment.id);
                       return (
                         <th scope="col" key={environment.id}>
                           <span>{environment.name}</span>
+                          {/* DESIGN.md: the protected state is named in text, in
+                              the header — a column you cannot reveal from should
+                              say so before you try, not after the refusal. */}
+                          {protectedEnvironmentIds.includes(environment.id) ? (
+                            <span className="matrix__protected">PROTECTED</span>
+                          ) : null}
                           {revision === undefined ? null : (
                             <Link
                               className="btn matrix__history-link"
@@ -669,7 +718,9 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
                                 })
                               }
                             >
-                              <span aria-hidden="true">{collapsed ? '▸' : '▾'}</span>
+                              <span className="matrix__group-chevron" aria-hidden="true">
+                                ▾
+                              </span>
                               <span>{group.name}</span>
                               <span>{String(group.keys.length)}</span>
                               {count === 0 ? null : (
@@ -690,6 +741,7 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
                     const { key } = row;
                     return (
                       <tr
+                        className={`matrix__key-row${row.alt ? ' matrix__key-row--alt' : ''}`}
                         key={key.id}
                         data-index={virtualRow.index}
                         ref={rowVirtualizer.measureElement}
@@ -927,10 +979,14 @@ function MatrixCell({
     state = '! required · absent';
     stateClass = 'matrix-cell--problem';
   } else if (validationProblem !== undefined) {
-    state = '✕ value problem';
+    // Name the offending value, not just the fact of one. Reading a column of
+    // "value problem" tells you where to click; reading `✕ ten` tells you what
+    // happened. `offendingValue` is absent for anything the caller may not
+    // read, so a secret stays a secret in its own failure.
+    state = `✕ ${offendingValue(cell, keyRecord) ?? 'value problem'}`;
     stateClass = 'matrix-cell--problem';
   } else if (cell?.set === true && keyRecord.classification === 'secret') {
-    state = '🔒 set';
+    state = '••••••••';
     stateClass = 'matrix-cell--secret';
   } else if (cell?.set === true) {
     state = cell.value ?? 'set';
@@ -946,20 +1002,86 @@ function MatrixCell({
 
   return (
     <>
-      <button type="button" className={`matrix-cell cell-state ${stateClass}`} aria-label={label} onClick={onOpen}>
+      <button
+        type="button"
+        className={`matrix-cell ${stateClass}${pending === null ? '' : ' matrix-cell--pending'}`}
+        aria-label={label}
+        onClick={onOpen}
+      >
         <span className="matrix-cell__value">{state}</span>
         {pending === null ? null : <span className="matrix-cell__signal">{pending}</span>}
         {signal?.pending_by_others === true ? (
           <span className="matrix-cell__other">◌ draft by another editor</span>
         ) : null}
         {changed === null ? null : <span className="matrix-cell__signal">{changed}</span>}
-        <span className="matrix-cell__edit" aria-hidden="true">✎</span>
       </button>
       {validationProblem === undefined ? null : (
         <span className="matrix-cell__error">{validationProblem.message}</span>
       )}
     </>
   );
+}
+
+/**
+ * MatrixLegend says what the cell vocabulary means.
+ *
+ * The matrix is dense on purpose, and density is bought with abbreviation: `·`,
+ * `••••••••`, `Δ` and `✕` are all shorter than the sentences they replace. That
+ * trade is only honest if the expansion is one gesture away on the surface
+ * itself — a reader who has to leave to find out what a glyph means has been
+ * handed a puzzle, not a table.
+ *
+ * A `<details>`, like the environment chooser beside it: the platform already
+ * owns the disclosure, the escape key and the accessible name.
+ */
+function MatrixLegend() {
+  return (
+    <details className="matrix__legend">
+      <summary className="btn">what the cells mean</summary>
+      <div className="matrix__legend-body">
+        <dl>
+          <dt className="mono">value</dt>
+          <dd>set in that environment — nothing inherits</dd>
+          <dt className="mono">••••••••</dt>
+          <dd>a secret is set; 🔒 marks the key. Open the cell to reveal it, if permitted</dd>
+          <dt className="mono">· absent</dt>
+          <dd>not set here, so nothing is delivered</dd>
+          <dt className="mono">! required · absent</dt>
+          <dd>required in this environment and absent — publish is blocked</dd>
+          <dt className="mono">✕ value</dt>
+          <dd>the value is set but fails its declaration</dd>
+          <dt className="mono">Δ</dt>
+          <dd>an unpublished draft, or changed in the revision named beside it</dd>
+          <dt className="mono">◌</dt>
+          <dd>another editor has a draft here</dd>
+        </dl>
+        <p>Choose any cell to inspect or edit it.</p>
+      </div>
+    </details>
+  );
+}
+
+/** How much of a rejected value a cell shows before the CSS ellipsis takes over. */
+const OFFENDING_VALUE_CHARS = 42;
+
+/**
+ * offendingValue is the rejected value as a cell may print it, or null when the
+ * cell must not print one.
+ *
+ * A secret never qualifies, whatever the wire happens to be carrying: the
+ * matrix is not a disclosure surface, and a validation failure is not a reason
+ * to become one. JSON is collapsed onto one line first, because a pretty-printed
+ * object in a table row is a column of whitespace.
+ */
+function offendingValue(cell: ValueCell | undefined, keyRecord: MatrixKey): string | null {
+  if (keyRecord.classification === 'secret') return null;
+  const value = cell?.value;
+  if (value === undefined || value === '') return null;
+  const flat = value.replace(/\s+/g, ' ').trim();
+  if (flat === '') return null;
+  return flat.length > OFFENDING_VALUE_CHARS
+    ? `${flat.slice(0, OFFENDING_VALUE_CHARS)}…`
+    : flat;
 }
 
 function cellID(keyId: string, environmentId: string): string {

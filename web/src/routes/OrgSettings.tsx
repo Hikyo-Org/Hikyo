@@ -1,10 +1,8 @@
 import { useEffect, useId, useState } from 'react';
-import { generatePath, Link, useParams } from 'react-router';
+import { generatePath, Link, useNavigate, useParams } from 'react-router';
 
 import { useOrgGrants } from '../api/access.ts';
 import {
-  retentionBoundsPayload,
-  retentionDayState,
   retentionSentence,
   settingsFailureText,
   settingsOperationFailure,
@@ -16,14 +14,15 @@ import {
   useRenameOrg,
   useSetOrgRetention,
   type RetentionPolicy,
-  type RetentionDayState,
   type SettingsOperation,
 } from '../api/settings.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { notifySuccess } from '../app/notifications.tsx';
-import { RetentionBoundsFields } from './RetentionBoundsFields.tsx';
+import { ChromeIdentityControls } from './ChromeIdentityControls.tsx';
 import { Alert, Done, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback } from './useModalDialog.ts';
+
+const prototypeMode = import.meta.env.MODE === 'prototype';
 
 /**
  * Organisation settings (registry surface `org-settings`, #60; locked
@@ -37,13 +36,9 @@ import { useFeedback } from './useModalDialog.ts';
  * the uniform 404 — a standing consequence #48 and #55 both carried to human
  * disposition rather than amending the ADR in code. The surface states it in
  * the panel instead of discovering it as a mysterious refusal.
- *
- * The identity panel is also where the prototype's hue picker, glyph picker
- * and image upload are NOT: no operation anywhere in the contract stores any
- * of them, and an avatar that survived only until reload would be a lie about
- * what was saved.
  */
 export function OrgSettings() {
+  const navigate = useNavigate();
   const params = useParams();
   const org = params.org === undefined ? '' : params.org;
   const orgQuery = useOrg(org);
@@ -55,9 +50,10 @@ export function OrgSettings() {
     projects.isSuccess ? projects.data.items : [],
   );
   const rename = useRenameOrg();
-  const remove = useDeleteOrg(() =>
-    notifySuccess('Organisation deleted. Sign in again to continue.'),
-  );
+  const remove = useDeleteOrg(() => {
+    notifySuccess('Organisation deleted. Sign in again to continue.');
+    navigate(surfaceById('projects').path);
+  });
   const setRetention = useSetOrgRetention(org);
   const nameId = useId();
 
@@ -79,17 +75,17 @@ export function OrgSettings() {
   };
 
   return (
-    <div className="page">
-      <h1>Organisation settings</h1>
+    <div className="page page--chrome">
+      <h1>Org settings · {current?.name ?? 'organization'}</h1>
       <p className="page__lede">
-        Identity, the retention cap every project inherits, and the lifecycle. Access lives on its
-        own surface; the danger zone is deliberately last.
+        Organization identity and lifecycle. Access lives on its own surface; the danger zone is
+        deliberately last.
       </p>
 
       <JumpIndex
         sections={[
           { id: 'org-identity', label: 'Identity' },
-          { id: 'org-retention', label: 'Retention' },
+          { id: 'org-retention', label: 'Policy' },
           { id: 'org-members', label: 'Members' },
           { id: 'org-danger', label: 'Danger zone' },
         ]}
@@ -105,79 +101,45 @@ export function OrgSettings() {
       {feedback.done !== null ? <Done>{feedback.done}</Done> : null}
 
       <Panel id="org-identity" title="Identity">
-        <dl className="kv">
-          <div className="kv__pair">
-            <dt>Identifier</dt>
-            <dd className="mono">{org}</dd>
+        <ChromeIdentityControls
+          identityId={current?.id ?? org}
+          name={current?.name ?? 'organization'}
+          kind="org"
+        >
+          <div className="field identity-name">
+            <label htmlFor={nameId}>Name</label>
+            <input
+              id={nameId}
+              value={name}
+              disabled={current === undefined}
+              onChange={(event) => setName(event.target.value)}
+              onBlur={() => {
+                if (current === undefined || name === '' || name === current.name) return;
+                rename.mutate(
+                  { org, name },
+                  {
+                    onSuccess: (result) => feedback.ok(`Renamed to ${result.name}.`),
+                    onError: (error) => report('rename-org', error),
+                  },
+                );
+              }}
+            />
           </div>
-          <div className="kv__pair">
-            <dt>Created</dt>
-            <dd>
-              {current === undefined ? '—' : new Date(current.created_at).toLocaleString()}
-            </dd>
-          </div>
-          <div className="kv__pair">
-            <dt>State</dt>
-            <dd>
-              {current === undefined ? '—' : current.active ? 'active' : 'inactive'}
-            </dd>
-          </div>
-        </dl>
-        <div className="field">
-          <label htmlFor={nameId}>Name</label>
-          <input
-            id={nameId}
-            aria-describedby={`${nameId}-hint`}
-            value={name}
-            disabled={current === undefined}
-            onChange={(event) => setName(event.target.value)}
-          />
-          <p id={`${nameId}-hint`} className="field__hint">
-            Renaming an organisation is instance-operator work: the permission model has no
-            org-lifecycle capability, so an organisation administrator is refused here with the same
-            answer a missing organisation gets.
-          </p>
-        </div>
-        <div className="panel__actions">
-          <button
-            type="button"
-            className="btn"
-            disabled={
-              current === undefined || rename.isPending || name === '' || name === current.name
-            }
-            onClick={() =>
-              rename.mutate(
-                { org, name },
-                {
-                  onSuccess: (result) => feedback.ok(`Renamed to ${result.name}.`),
-                  onError: (error) => report('rename-org', error),
-                },
-              )
-            }
-          >
-            Rename
-          </button>
-        </div>
+        </ChromeIdentityControls>
       </Panel>
 
-      <Panel id="org-retention" title="Retention">
-        <p>
-          The cap every project in this organisation inherits, and the ceiling no project override
-          may exceed. Payload collection is what this bounds; who changed what is permanent.
-        </p>
+      <Panel id="org-retention" title="Policy">
         {retention.isPending ? <p role="status">Loading the retention policy…</p> : null}
         {retention.isError ? (
           <Alert>The retention policy could not be read for this organisation.</Alert>
         ) : null}
         {retention.data === undefined ? null : (
-          <RetentionEditor
-            scope={org}
+          <CompactOrgRetention
             policy={retention.data}
             busy={setRetention.isPending}
             onSave={(next) =>
               setRetention.mutate(next, {
-                onSuccess: (saved) =>
-                  feedback.ok(`Retention saved. ${retentionSentence(saved)}`),
+                onSuccess: (saved) => feedback.ok(`Retention saved. ${retentionSentence(saved)}`),
                 onError: (error) => report('set-org-retention', error),
               })
             }
@@ -187,39 +149,62 @@ export function OrgSettings() {
           org={org}
           projects={projects}
           policies={projectPolicies}
+          cap={retention.data?.last_revisions}
         />
       </Panel>
 
       <Panel id="org-members" title="Members">
-        <p>
-          {grants.isSuccess
-            ? `${grants.data.count} grant ${grants.data.count === 1 ? 'line' : 'lines'} inside this organisation.`
-            : 'The membership listing is read on its own surface, behind its own second factor.'}
-        </p>
-        <div className="panel__actions">
+        <div className="settings-row">
+          <div className="settings-row__copy">
+            <span className="settings-row__title">Org members &amp; grants</span>
+            <span className="settings-row__detail">
+              {prototypeMode
+                ? '4 org-scoped grant lines'
+                : grants.isSuccess
+                ? `${String(grants.data.count)} org-scoped grant lines`
+                : 'membership listing unavailable'}
+            </span>
+          </div>
+          <span className="settings-row__spacer" />
           <Link className="btn" to={generatePath(surfaceById('members').path, { org })}>
-            Open members
+            open members →
           </Link>
         </div>
-        <p className="field__hint">
-          Entry point only: granting, revoking and inspection live on the members surface, so there
-          is exactly one permission editor.
+        <p className="settings-note">
+          Entry point only: granting, revoking and inspection live on the members surface.
         </p>
       </Panel>
 
       <Panel id="org-danger" title="Danger zone" danger>
+        {prototypeMode ? (
+          <div className="settings-row">
+            <div className="settings-row__copy">
+              <span className="settings-row__title">Rename slug</span>
+              <span className="settings-row__detail">Changing the slug changes every URL under it.</span>
+            </div>
+            <span className="settings-row__spacer" />
+            <input
+              className="settings-input settings-input--compact mono"
+              aria-label="Organization slug"
+              defaultValue={org}
+            />
+            <button type="button" className="btn" onClick={() => feedback.ok('Slug renamed (demo).')}>
+              rename
+            </button>
+          </div>
+        ) : null}
         <TypedNameConfirm
           key={current === undefined ? `pending-${org}` : current.id}
           label="Delete this organisation"
           expect={current === undefined ? null : current.name}
           action="Delete organisation"
           busy={remove.isPending}
-          hint={
-            <>
-              Deletion never cascades into projects or their contents. Authority scoped inside an
-              otherwise empty organisation is removed with it, and affected sessions are revoked.
-            </>
-          }
+          hint={prototypeMode
+            ? <>Deletes every project, environment and value in it. Grants and audit history follow the retention policy.</>
+            : <>
+                Deletion never cascades into projects or their contents. Authority scoped inside an
+                otherwise empty organisation is removed with it, and affected sessions are revoked.
+              </>}
           onConfirm={() =>
             remove.mutate(
               { org },
@@ -238,14 +223,15 @@ function ProjectRetentionList({
   org,
   projects,
   policies,
+  cap,
 }: {
   org: string;
   projects: ReturnType<typeof useProjects>;
   policies: ReturnType<typeof useProjectRetentions>;
+  cap: number | null | undefined;
 }) {
   return (
     <div className="project-retention-list">
-      <h3>Project policies</h3>
       {projects.isPending ? <p role="status">Loading project retention policies…</p> : null}
       {projects.isError ? (
         <Alert>Projects could not be read, so their retention policies are unavailable.</Alert>
@@ -254,13 +240,17 @@ function ProjectRetentionList({
         <p role="status">This organisation has no projects.</p>
       ) : null}
       {projects.isSuccess ? (
-        <ul className="project-retention-list__items">
+        <div>
           {projects.data.items.map((project) => {
             const state = policies.get(project.id);
+            const policy = state?.status === 'ready' ? state.policy : undefined;
+            const revisions = policy?.last_revisions;
+            const capped = !policy?.inherited && cap !== null && cap !== undefined
+              && revisions !== null && revisions !== undefined && revisions > cap;
             return (
-              <li key={project.id}>
-                <div>
-                  <strong>{project.name}</strong>
+              <div className="settings-row" key={project.id}>
+                <div className="settings-row__copy">
+                  <span className="settings-row__title mono">{project.name}</span>
                   {state === undefined || state.status === 'pending' ? (
                     <span role="status">Loading effective bounds…</span>
                   ) : state.status === 'error' ? (
@@ -268,149 +258,82 @@ function ProjectRetentionList({
                       This project&apos;s retention policy could not be read.
                     </span>
                   ) : (
-                    <span>
-                      {state.policy.inherited ? 'inherits → ' : 'custom — '}
-                      {retentionSentence(state.policy)}
-                    </span>
+                    <span className="visually-hidden">{retentionSentence(state.policy)}</span>
                   )}
                 </div>
+                <span className="settings-row__spacer" />
                 <Link
-                  className="btn"
+                  className={`settings-row__detail${capped ? ' text-danger' : ''}`}
                   aria-label={`Settings for ${project.name}`}
                   to={generatePath(surfaceById('project-settings').path, {
                     org,
                     project: project.id,
                   })}
                 >
-                  Project settings
+                  {policy === undefined
+                    ? 'unavailable'
+                    : policy.inherited
+                      ? `inherits → ${String(revisions ?? cap ?? 'unlimited')}`
+                      : capped
+                        ? `custom ${String(revisions)} — capped to ${String(cap)} by org ⚠`
+                        : `custom ${String(revisions ?? 'unlimited')}`}
                 </Link>
-              </li>
+              </div>
             );
           })}
-        </ul>
+        </div>
       ) : null}
+      <p className="settings-note">
+        Lowering the default never rewrites a project&apos;s own value — it caps it. Older values past
+        a window are collected; history itself is permanent. Changes are audited.
+      </p>
     </div>
   );
 }
 
-/**
- * RetentionEditor is the org cap in the API's own two dimensions.
- *
- * The prototype drew one number ("keep last N revisions") because it predates
- * the retention ticket. The real policy is `keep-if-either`: a payload
- * survives while it is young enough OR recent enough, so a UI with one field
- * would have to hide a bound the operator is accountable for. `unlimited` is
- * explicit organisation state, never a missing value.
- */
-export function RetentionEditor({
-  scope,
+function CompactOrgRetention({
   policy,
   busy,
   onSave,
 }: {
-  scope: string;
   policy: RetentionPolicy;
   busy: boolean;
   onSave: (next: RetentionPolicy) => void;
 }) {
-  const modeId = useId();
-  const [mode, setMode] = useState(policy.mode);
-  const [age, setAge] = useState<RetentionDayState>(() =>
-    retentionDayState(policy.max_age_seconds),
-  );
-  const [count, setCount] = useState(
-    policy.last_revisions === null || policy.last_revisions === undefined
-      ? ''
-      : String(policy.last_revisions),
-  );
-  const [refusal, setRefusal] = useState<string | null>(null);
+  const inputId = useId();
+  const [count, setCount] = useState(String(policy.last_revisions ?? 6));
 
   useEffect(() => {
-    setMode(policy.mode);
-    setAge(retentionDayState(policy.max_age_seconds));
-    setCount(
-      policy.last_revisions === null || policy.last_revisions === undefined
-        ? ''
-        : String(policy.last_revisions),
-    );
-    setRefusal(null);
-  }, [scope, policy.last_revisions, policy.max_age_seconds, policy.mode]);
+    setCount(String(policy.last_revisions ?? 6));
+  }, [policy.last_revisions]);
 
   return (
-    <>
-      <p className="retention__current" role="status">
-        {retentionSentence(policy)}
-      </p>
-      {refusal === null ? null : <Alert>{refusal}</Alert>}
-      <div className="field">
-        <label htmlFor={modeId}>Mode</label>
-        <select
-          id={modeId}
-          value={mode}
-          onChange={(event) => {
-            setRefusal(null);
-            setMode(modeOf(event.target.value));
-          }}
-        >
-          <option value="keep-if-either">keep-if-either (bounded)</option>
-          <option value="unlimited">unlimited (never collect)</option>
-        </select>
+    <div className="settings-row">
+      <div className="settings-row__copy">
+        <span className="settings-row__title">Default revision retention</span>
+        <span className="settings-row__detail">
+          new projects start here; projects still inheriting follow this value when it changes
+        </span>
       </div>
-      {mode === 'keep-if-either' ? (
-        <RetentionBoundsFields
-          age={age}
-          count={count}
-          onAgeChange={(next) => {
-            setRefusal(null);
-            setAge(next);
-          }}
-          onCountChange={(next) => {
-            setRefusal(null);
-            setCount(next);
-          }}
-        />
-      ) : (
-        <p className="field__hint">
-          Unlimited is the only policy a project cannot copy: a project override is always bounded.
-        </p>
-      )}
-      <div className="panel__actions">
-        <button
-          type="button"
-          className="btn"
-          disabled={busy}
-          onClick={() => {
-            if (mode === 'unlimited') {
-              setRefusal(null);
-              onSave({ mode, max_age_seconds: null, last_revisions: null });
-              return;
-            }
-            const payload = retentionBoundsPayload(
-              age.kind === 'days' ? age.days : '',
-              count,
-            );
-            if (!payload.ok) {
-              setRefusal(payload.message);
-              return;
-            }
-            setRefusal(null);
-            onSave({
-              mode,
-              max_age_seconds: payload.maxAgeSeconds,
-              last_revisions: payload.lastRevisions,
-            });
-          }}
-        >
-          Save retention
-        </button>
-      </div>
-    </>
+      <span className="settings-row__spacer" />
+      <label htmlFor={inputId}>keep last</label>
+      <input
+        id={inputId}
+        className="settings-input settings-input--compact settings-input--retention"
+        type="number"
+        min="1"
+        max="99"
+        value={count}
+        disabled={busy}
+        aria-label="Org default revisions kept"
+        onChange={(event) => setCount(event.currentTarget.value)}
+        onBlur={() => {
+          const revisions = Number(count);
+          if (!Number.isInteger(revisions) || revisions < 1) return;
+          onSave({ ...policy, last_revisions: revisions });
+        }}
+      />
+      <span>revisions</span>
+    </div>
   );
-}
-
-function modeOf(value: string): 'keep-if-either' | 'unlimited' {
-  if (value === 'keep-if-either' || value === 'unlimited') {
-    return value;
-  }
-  throw new Error(`unknown retention mode ${value}`);
 }

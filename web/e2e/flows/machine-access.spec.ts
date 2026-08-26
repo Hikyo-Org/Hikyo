@@ -476,7 +476,7 @@ test.describe('machine access', () => {
           ],
           colours: [
             [heading, 'color', '--tx'],
-            [well, 'backgroundColor', '--bg-raise'],
+            [well, 'backgroundColor', '--bg-panel'],
             [well, 'borderTopColor', '--line'],
           ],
           hairlines: [well],
@@ -511,7 +511,7 @@ test.describe('machine access', () => {
         [dialog.locator('.machine__token'), 'control'],
       ],
       fonts: [[dialog.locator('.machine__token'), 'mono']],
-      colours: [[dialog, 'backgroundColor', '--bg-raise']],
+      colours: [[dialog, 'backgroundColor', '--bg-panel']],
       hairlines: [dialog],
       density: [[dialog.getByRole('button', { name: 'Done' }), '--touch']],
     });

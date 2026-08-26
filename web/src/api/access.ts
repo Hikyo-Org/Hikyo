@@ -20,8 +20,18 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tan
 import type { z } from 'zod';
 
 import { useAuth } from '../app/AuthProvider.tsx';
+import {
+  expandTemplate,
+  ROLE_TEMPLATES,
+  templatesAt,
+  type Level,
+  type RoleTemplateId,
+} from './access-templates.ts';
 import { ApiError, ok, parsed } from './client.ts';
 import type { Grant } from './identities.ts';
+
+export { expandTemplate, ROLE_TEMPLATES, templatesAt };
+export type { Level };
 
 /**
  * The membership surface, as the SPA sees it (#55, #60; locked prototype
@@ -51,13 +61,6 @@ import type { Grant } from './identities.ts';
  */
 
 // --- the closed atom table --------------------------------------------------
-
-/**
- * Level is the scope depth a grant is written at. `instance` is present
- * because the instance-administration surface grants there; it is not offered
- * inside an organisation.
- */
-export type Level = 'instance' | 'org' | 'project' | 'environment';
 
 type CapabilityAtom = {
   readonly id: string;
@@ -171,68 +174,6 @@ export function capabilitiesAt(level: Level): readonly CapabilityAtom[] {
     );
   }
   return TENANT_CAPABILITIES.filter((atom) => DEPTH[level] <= DEPTH[atom.deepest]);
-}
-
-/** RoleTemplate is the closed v1 set, with the levels its ADR row admits. */
-const ROLE_TEMPLATE_IDS = [
-  'viewer',
-  'editor',
-  'publisher',
-  'revealer',
-  'historian',
-  'maintainer',
-  'admin',
-  'operator',
-] as const;
-
-type RoleTemplate = {
-  readonly id: (typeof ROLE_TEMPLATE_IDS)[number];
-  readonly levels: readonly Level[];
-  readonly seeds: readonly string[];
-  readonly orgOnly: readonly string[];
-};
-
-/**
- * ROLE_TEMPLATES is the shortcut, not a stored thing: applying one expands AT
- * GRANT TIME into independent grants. Level filtering keeps `operator` on the
- * instance surface and every tenant template off it.
- */
-export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
-  { id: 'viewer', levels: ['org', 'project', 'environment'], seeds: ['read'], orgOnly: [] },
-  { id: 'editor', levels: ['org', 'project', 'environment'], seeds: ['read', 'edit'], orgOnly: [] },
-  {
-    id: 'publisher',
-    levels: ['org', 'project', 'environment'],
-    seeds: ['read', 'edit', 'publish', 'pin'],
-    orgOnly: [],
-  },
-  { id: 'revealer', levels: ['org', 'project', 'environment'], seeds: ['reveal'], orgOnly: [] },
-  { id: 'historian', levels: ['org', 'project', 'environment'], seeds: ['reveal-history'], orgOnly: [] },
-  {
-    id: 'maintainer',
-    levels: ['org', 'project'],
-    seeds: ['read', 'edit', 'publish', 'pin', 'definitions-edit', 'manage-identities', 'manage-adapters'],
-    orgOnly: [],
-  },
-  {
-    id: 'admin',
-    levels: ['org', 'project'],
-    seeds: ['read', 'edit', 'publish', 'pin', 'definitions-edit', 'manage-identities', 'manage-adapters', 'project-settings', 'manage-members', 'reveal', 'reveal-history'],
-    orgOnly: ['manage-projects'],
-  },
-  { id: 'operator', levels: ['instance'], seeds: ['backup-export', 'restore', 'rotate-root-key', 'rotate-master-key', 'rotate-dek', 'reencrypt', 'instance-config', 'manage-members'], orgOnly: [] },
-];
-
-export function templatesAt(level: Level): readonly RoleTemplate[] {
-  return ROLE_TEMPLATES.filter((template) => template.levels.includes(level));
-}
-
-export function expandTemplate(templateId: RoleTemplate['id'], level: Level): readonly string[] {
-  const template = ROLE_TEMPLATES.find((candidate) => candidate.id === templateId);
-  if (template === undefined || !template.levels.includes(level)) {
-    throw new Error(`role template ${templateId} is not admitted at ${level} scope`);
-  }
-  return level === 'org' ? [...template.seeds, ...template.orgOnly] : template.seeds;
 }
 
 // --- scopes -----------------------------------------------------------------
@@ -718,9 +659,7 @@ export function useApplyTemplate() {
  * cast: the generated request type names the eight, and an unknown one is a
  * bug in this file rather than something to send and let the server judge.
  */
-function templateOf(
-  value: string,
-): RoleTemplate['id'] {
+function templateOf(value: string): RoleTemplateId {
   for (const template of ROLE_TEMPLATES) {
     if (template.id === value) {
       return template.id;

@@ -40,15 +40,23 @@ export function Panel({
   id,
   title,
   danger = false,
+  question = false,
   children,
 }: {
   id: string;
   title: string;
   danger?: boolean;
+  /**
+   * A panel that poses an open question rather than presenting a decision.
+   * It is drawn with a dashed boundary and no fill so it never reads as one of
+   * the settled cards beside it — the distinction is the point of the card.
+   */
+  question?: boolean;
   children: ReactNode;
 }) {
+  const variant = danger ? ' panel--danger' : question ? ' panel--question' : '';
   return (
-    <section className={danger ? 'card panel panel--danger' : 'card panel'} id={id} tabIndex={-1}>
+    <section className={`card panel${variant}`} id={id} tabIndex={-1}>
       <h2>{title}</h2>
       {children}
     </section>

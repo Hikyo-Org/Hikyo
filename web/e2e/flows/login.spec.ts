@@ -129,7 +129,11 @@ test.describe('login', () => {
     await page.getByLabel('Password').fill(ADMIN.password);
     await page.getByRole('button', { name: 'Sign in' }).click();
 
-    await expect(page.getByRole('navigation', { name: 'Organisations' })).toBeVisible();
+    // The org rail is desktop chrome — a phone reaches organisations through
+    // the drawer, so the rail is `display:none` there. What proves the shell
+    // came up at BOTH widths is the breadcrumb, which only the authenticated
+    // chrome renders.
+    await expect(page.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
 
     const cookies = await page.context().cookies();
     const session = cookies.find((c) => c.name === '__Host-hikyo');

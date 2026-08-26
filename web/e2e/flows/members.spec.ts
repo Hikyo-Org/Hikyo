@@ -12,7 +12,7 @@ import {
 /**
  * Flow: members & grants (registry surface `members`) — mvp-boundary S3's
  * "members (grant modal incl. blast warning + staging default)", against the
- * locked prototype #29 iteration 15.
+ * locked prototype #29 iteration 18.
  *
  * What it proves, in the permission ADR's own terms:
  *
@@ -41,6 +41,7 @@ const seed = readSeed();
 /** The seed's safest scope: its one confirmed-unprotected environment named staging. */
 const DEFAULT_SCOPE = `env:${seed.history.project}:${seed.history.staging}`;
 const PATH = `/orgs/${seed.org}/members`;
+const PROJECT_PATH = `${PATH}?project=${seed.project}`;
 
 /**
  * automationPrincipal is the grant target: the seeded `automation` service
@@ -111,6 +112,47 @@ test.describe('members and grants', () => {
     // Instance-scope grants reach this org by inheritance and are absent by
     // design; the surface says so rather than leaving a hole.
     await expect(page.getByText('Instance-scope grants reach this organisation')).toBeVisible();
+  });
+
+  test('keeps project chrome and narrows the members projection from a project link', async ({
+    page,
+  }) => {
+    await page.goto(`/orgs/${seed.org}/projects/${seed.project}/matrix`);
+    const menu = page.getByRole('button', { name: 'Menu' });
+    if (await menu.isVisible()) await menu.click();
+    const projectNav = page.getByRole('navigation', { name: 'Project' });
+    await projectNav.getByRole('link', { name: 'Members & access' }).click();
+
+    await expect(page).toHaveURL(PROJECT_PATH);
+    if (await menu.isVisible()) await menu.click();
+    await expect(page.getByRole('heading', { name: 'Project · payments' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Members & access · payments', level: 1 }),
+    ).toBeVisible();
+    await expect(projectNav.getByRole('link', { name: 'Members & access' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    if (await menu.isVisible()) await page.keyboard.press('Escape');
+
+    const scope = page.getByLabel('On scope', { exact: true });
+    await expect(scope.locator(`option[value="project:${seed.project}"]`)).toHaveCount(1);
+    await expect(scope.locator(`option[value="project:${seed.history.project}"]`)).toHaveCount(0);
+    await expect(scope.locator(`option[value="org:${seed.org}"]`)).toHaveCount(0);
+    await expect(page.getByLabel('Capability').locator('option')).toHaveText([
+      'reveal',
+      'read',
+      'publish',
+      'edit',
+      'manage-members',
+      'audit-read',
+    ]);
+
+    await page.getByRole('button', { name: '+ new grant' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('Apply a role template', { exact: true })).toHaveCount(0);
+    await expect(dialog.getByLabel('Scope').locator(`option[value="org:${seed.org}"]`)).toHaveCount(1);
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
   });
 
   test('answers "who can…?" by inspection, counting the grants above the scope', async ({
@@ -392,15 +434,23 @@ test.describe('members and grants', () => {
     const view = await freshPage(browser);
     try {
         await view.page.goto(`/orgs/${seed.org}/projects/${seed.project}/matrix`);
+        const menu = view.page.getByRole('button', { name: 'Menu' });
+        const mobile = await menu.isVisible();
+        if (mobile) {
+          await menu.click();
+        }
         const rail = view.page.getByRole('navigation', { name: 'Organisations' });
-        await expect(rail.getByRole('button', { name: `Organisation ${seed.orgName}` })).toHaveAttribute(
+        const mobileOrganizations = view.page.getByRole('region', { name: 'Organizations' });
+        const orgButton = (name: string) => mobile
+          ? mobileOrganizations.getByRole('button').filter({ hasText: name })
+          : rail.getByRole('button', { name: `Organisation ${name}` });
+        await expect(orgButton(seed.orgName)).toHaveAttribute(
           'aria-current',
-          'true',
+          mobile ? 'page' : 'true',
         );
-        await rail.getByRole('button', { name: `Organisation ${seed.orgBName}` }).click();
+        await orgButton(seed.orgBName).click();
         await expect(view.page).toHaveURL(/\/projects$/);
         await expect(view.page.getByLabel('Breadcrumb')).toContainText(seed.orgBName);
-        const menu = view.page.getByRole('button', { name: 'Menu' });
         if (await menu.isVisible()) {
           await menu.click();
         }
@@ -422,18 +472,27 @@ test.describe('members and grants', () => {
         await view.page.getByRole('link', { name: 'Projects', exact: true }).click();
         await expect(view.page).toHaveURL(/\/projects$/);
         await expect(view.page.getByLabel('Breadcrumb')).toContainText(seed.orgBName);
-        await expect(
-          rail.getByRole('button', { name: `Organisation ${seed.orgBName}` }),
-        ).toHaveAttribute('aria-current', 'true');
+        if (mobile) {
+          await menu.click();
+        }
+        await expect(orgButton(seed.orgBName)).toHaveAttribute(
+          'aria-current',
+          mobile ? 'page' : 'true',
+        );
     } finally {
       await view.context.close();
     }
   });
 
   for (const scheme of ['dark', 'light'] as const) {
-    test(`meets the pinned assertion set on members (${scheme})`, async ({ page }) => {
+    test(`meets the pinned assertion set on members (${scheme})`, async ({ page }, testInfo) => {
       await page.emulateMedia({ colorScheme: scheme });
       try {
+        // Chrome surfaces are two-tier by design: DESIGN.md's 36px `--row` on a
+        // mouse-driven grid, lifted to the 44px `--touch` floor on a phone.
+        // `expectDensity` is an exact match and is not pointer-gated the way
+        // `expectTouchTargets` is, so the claim has to name which tier it is on.
+        const rowDensity = testInfo.project.name === 'mobile' ? '--touch' : '--row';
         const heading = page.getByRole('heading', { name: 'Members', level: 1 });
         const well = page.locator('.panel').first();
         const jump = page.getByRole('link', { name: 'Who can…?' });
@@ -456,13 +515,15 @@ test.describe('members and grants', () => {
           ],
           colours: [
             [heading, 'color', '--tx'],
-            [well, 'backgroundColor', '--bg-raise'],
-            [well, 'borderTopColor', '--line'],
+            [well, 'backgroundColor', '--bg-panel'],
+            // A settings panel's boundary is `--panel-line` (DESIGN.md); `--line`
+            // is the control boundary, and a panel is not a control.
+            [well, 'borderTopColor', '--panel-line'],
           ],
           hairlines: [well],
           density: [
-            [newGrant, '--touch'],
-            [jump, '--touch'],
+            [newGrant, rowDensity],
+            [jump, rowDensity],
           ],
         });
       } finally {
@@ -494,7 +555,7 @@ test.describe('members and grants', () => {
             [composition.getByRole('button', { name: 'Cancel' }), 'control'],
           ],
           fonts: [[composition.locator('.mono').first(), 'mono']],
-          colours: [[composition, 'backgroundColor', '--bg-raise']],
+          colours: [[composition, 'backgroundColor', '--bg-panel']],
           hairlines: [composition],
           density: [[composition.getByRole('button', { name: 'Cancel' }), '--touch']],
         });
@@ -519,7 +580,7 @@ test.describe('members and grants', () => {
             [blast.getByRole('button', { name: 'Back, change scope' }), 'control'],
           ],
           fonts: [[blast.locator('.mono').first(), 'mono']],
-          colours: [[blast, 'backgroundColor', '--bg-raise']],
+          colours: [[blast, 'backgroundColor', '--bg-panel']],
           hairlines: [blast, blastRow],
           density: [[blast.getByRole('button', { name: 'Back, change scope' }), '--touch']],
         });

@@ -4,17 +4,19 @@ import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
+import { prototypeMockApi } from './prototype/mock-api.ts';
+
 const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 // The build is constrained by the server's CSP baseline, not by taste
 // (internal/server/spa.go asserts the header; internal/server/spa_test.go
 // asserts it has no `unsafe-inline`). Two settings below exist only to keep
 // the emitted document legal under it — they are load-bearing, not tuning.
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   // Root-only, per the system-architecture ADR: subpath mounting is deferred,
   // which keeps RP ID/origin and asset resolution trivial.
   base: '/',
-  plugins: [react()],
+  plugins: [react(), ...(mode === 'prototype' ? [prototypeMockApi()] : [])],
   resolve: {
     alias: {
       // The generated client is consumed as source rather than as a published
@@ -60,4 +62,4 @@ export default defineConfig({
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'e2e/**/*.test.ts'],
     environment: 'node',
   },
-});
+}));

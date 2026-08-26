@@ -8,6 +8,10 @@ import type { z } from 'zod';
 import { ApiError, parsed } from './client.ts';
 
 export type RetentionHealth = z.infer<typeof zRetentionHealth>;
+export type RetentionHealthAccess = {
+  readonly health: RetentionHealth | null;
+  readonly instanceAdmin: boolean;
+};
 
 export const retentionHealthKey = ['retention-health'] as const;
 // The health read is audited. Match the hourly scheduler cadence so long-lived
@@ -25,21 +29,24 @@ export function retentionHealthRefetchInterval(health: RetentionHealth | null | 
  * is absence here rather than a noisy global error. Every visible answer is
  * still parsed against the generated contract before the banner sees it.
  */
-export function useRetentionHealth(enabled: boolean): UseQueryResult<RetentionHealth | null> {
+export function useRetentionHealth(enabled: boolean): UseQueryResult<RetentionHealthAccess> {
   return useQuery({
     queryKey: retentionHealthKey,
     queryFn: async () => {
       try {
-        return await parsed(getRetentionHealthOp, {});
+        return { health: await parsed(getRetentionHealthOp, {}), instanceAdmin: true };
       } catch (error) {
         if (error instanceof ApiError && (error.status === 403 || error.status === 404)) {
-          return null;
+          // A 403 can be either a step-up refusal or a grant denial, while 404
+          // is the nondisclosed form of the same boundary. Neither proves the
+          // caller is an operator, so chrome discovery stays fail-closed.
+          return { health: null, instanceAdmin: false };
         }
         throw error;
       }
     },
     enabled,
-    refetchInterval: (query) => retentionHealthRefetchInterval(query.state.data),
+    refetchInterval: (query) => retentionHealthRefetchInterval(query.state.data?.health),
     retry: false,
   });
 }
