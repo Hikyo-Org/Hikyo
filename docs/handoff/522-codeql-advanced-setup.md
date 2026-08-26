@@ -15,7 +15,7 @@ available at analysis time — a separate but related freshness problem.
 ## Decision
 
 Replace default setup with an explicit advanced-setup workflow
-(`.github/workflows/codeql.yml`).
+(`.github/workflows/codeql-analysis.yml`).
 
 | Aspect | Default setup | Advanced setup (chosen) |
 |---|---|---|
@@ -77,7 +77,7 @@ workflow's SARIF upload will then succeed on re-run.
 
 ## Rollback
 
-1. Delete `.github/workflows/codeql.yml`
+1. Delete `.github/workflows/codeql-analysis.yml`
 2. Flip configure-repository.sh back to `state=configured` with the
    original PATCH block
 3. Run `scripts/release/configure-repository.sh` to re-enable default

@@ -35,7 +35,7 @@ upsert_ruleset "$repo_root/release/repository/nightly-tag-creation.json"
 upsert_ruleset "$repo_root/release/repository/main-ci-gate.json"
 
 $GH_BIN api --method PUT "repos/$repository/immutable-releases" >/dev/null
-# CodeQL runs as an advanced-setup workflow (.github/workflows/codeql.yml),
+# CodeQL runs as an advanced-setup workflow (.github/workflows/codeql-analysis.yml),
 # which controls its own Go toolchain and CodeQL bundle. Default setup and
 # an advanced workflow are mutually exclusive — the upload API rejects SARIF
 # while it is enabled — so the repository setting is held off here.
