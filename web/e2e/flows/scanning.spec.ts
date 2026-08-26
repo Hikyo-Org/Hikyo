@@ -129,7 +129,8 @@ test.describe('secret scanning warn dialog', () => {
         await page.goto(MATRIX_PATH);
 
         const heading = page.getByRole('heading', { name: 'Environment matrix', level: 1 });
-        const groups = page.locator('.project-sidebar__groups');
+        const sidebar = page.locator('.sidebar');
+        const groupRow = page.locator('.project-sidebar__group').first();
         const chooser = page.locator('.matrix__environment-picker summary');
         const key = page.locator('.matrix__key').first();
         const cell = page.locator('.matrix-cell').first();
@@ -150,12 +151,16 @@ test.describe('secret scanning warn dialog', () => {
           ],
           colours: [
             [heading, 'color', '--tx'],
-            [groups, 'backgroundColor', '--bg-raise'],
+            [sidebar, 'backgroundColor', '--bg-panel'],
           ],
           hairlines: [],
           density: [[chooser, '--touch']],
         });
-        expect(await groups.evaluate((element) => getComputedStyle(element).borderLeftWidth)).toBe('1px');
+        // Sidebar treatment e draws the hairline on each ROW, so the row is
+        // where the rule has to be — a border on the list around them would
+        // satisfy a container assertion while the active row could not own its
+        // own segment of the line.
+        expect(await groupRow.evaluate((element) => getComputedStyle(element).borderLeftWidth)).toBe('1px');
       });
     }
   }

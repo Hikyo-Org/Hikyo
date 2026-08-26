@@ -1,4 +1,4 @@
-import { expect } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import { zEnvironmentList } from '@hikyo/zod';
 
 import {
@@ -26,6 +26,28 @@ const seed = readSeed();
 const MATRIX_PATH = `/orgs/${seed.org}/projects/${seed.project}/matrix`;
 const SCHEMES: readonly ('dark' | 'light')[] = ['dark', 'light'];
 
+/**
+ * The project navigation is a fixed drawer on a phone and a column on a desktop.
+ *
+ * Closing it is NOT "click Menu again": the open drawer is `position: fixed` and
+ * 300px wide, so it sits on top of the toggle that opened it and swallows the
+ * click. The app's own ways out are Escape and the drawer's close button; these
+ * use Escape, which shell.spec also proves restores focus to the toggle.
+ */
+async function withProjectNavigation(
+  page: Page,
+  read: (navigation: Locator) => Promise<void>,
+): Promise<void> {
+  const menu = page.getByRole('button', { name: 'Menu' });
+  const drawer = await menu.isVisible();
+  if (drawer) await menu.click();
+  await read(page.getByRole('navigation', { name: 'Project' }));
+  if (drawer) {
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('navigation', { name: 'Sections', exact: true })).toBeHidden();
+  }
+}
+
 test.describe('environment matrix', () => {
   test.describe.configure({ mode: 'serial' });
   test.use({
@@ -36,16 +58,15 @@ test.describe('environment matrix', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(MATRIX_PATH);
     await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
-    const menu = page.getByRole('button', { name: 'Menu' });
-    const mobileNavigation = await menu.isVisible();
-    if (mobileNavigation) await menu.click();
-    const projectNavigation = page.getByRole('navigation', { name: 'Project' });
-    await expect(page.locator('.project-sidebar').getByRole('heading', { name: 'payments' })).toBeVisible();
-    await expect(
-      projectNavigation.getByRole('link', { name: 'Environment matrix', exact: true }),
-    ).toHaveAttribute('aria-current', 'page');
-    await expect(projectNavigation.getByRole('button', { name: /app\/.*1 key/ })).toBeVisible();
-    if (mobileNavigation) await menu.click();
+    await withProjectNavigation(page, async (projectNavigation) => {
+      await expect(
+        page.locator('.project-sidebar').getByRole('heading', { name: 'payments' }),
+      ).toBeVisible();
+      await expect(
+        projectNavigation.getByRole('link', { name: 'Environment matrix', exact: true }),
+      ).toHaveAttribute('aria-current', 'page');
+      await expect(projectNavigation.getByRole('button', { name: /app\/.*1 key/ })).toBeVisible();
+    });
     await expect(page.getByRole('button', { name: /LOG_LEVEL in development:/ })).toBeVisible();
   });
 
@@ -75,7 +96,10 @@ test.describe('environment matrix', () => {
 
       const menu = page.getByRole('button', { name: 'Menu' });
       if (await menu.isVisible()) await menu.click();
-      await page.getByRole('button', { name: /Problems/ }).click();
+      // Anchored: a group that HAS problems carries "problems" in its own
+      // aria-label ("app/ · 1 key · 2 problems"), so an unanchored match is
+      // ambiguous the moment the filter has anything to show.
+      await page.getByRole('button', { name: /^problems/ }).click();
       const bar = page.locator('.matrix__filter');
       await expectStatusIsTextAndAria(page, bar);
       await expect(bar).toContainText('filter active: problems');
@@ -360,7 +384,8 @@ test.describe('environment matrix', () => {
         await page.goto(MATRIX_PATH);
 
         const heading = page.getByRole('heading', { name: 'Environment matrix', level: 1 });
-        const groups = page.locator('.project-sidebar__groups');
+        const sidebar = page.locator('.sidebar');
+        const groupRow = page.locator('.project-sidebar__group').first();
         const chooser = page.locator('.matrix__environment-picker summary');
         const key = page.locator('.matrix__key').first();
         const cell = page.locator('.matrix-cell').first();
@@ -381,12 +406,16 @@ test.describe('environment matrix', () => {
           ],
           colours: [
             [heading, 'color', '--tx'],
-            [groups, 'backgroundColor', '--bg-raise'],
+            [sidebar, 'backgroundColor', '--bg-panel'],
           ],
           hairlines: [],
           density: [[chooser, '--touch']],
         });
-        expect(await groups.evaluate((element) => getComputedStyle(element).borderLeftWidth)).toBe('1px');
+        // Sidebar treatment e draws the hairline on each ROW, so the row is
+        // where the rule has to be — a border on the list around them would
+        // satisfy a container assertion while the active row could not own its
+        // own segment of the line.
+        expect(await groupRow.evaluate((element) => getComputedStyle(element).borderLeftWidth)).toBe('1px');
       });
     }
   }

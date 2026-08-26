@@ -136,7 +136,13 @@ export function ChromeIdentityControls({
             reader.readAsDataURL(file);
           }}
         />
-        <label className="btn" aria-disabled={!prototypeMode} htmlFor={uploadId}>
+        {/* aria-disabled alone leaves a control that looks and focuses like a
+            live button; the class is what tells a sighted reader it is not. */}
+        <label
+          className={prototypeMode ? 'btn' : 'btn btn--disabled'}
+          aria-disabled={!prototypeMode}
+          htmlFor={uploadId}
+        >
           {identity.image === null ? 'upload…' : 'replace…'}
         </label>
         {identity.image === null ? null : (
@@ -152,8 +158,17 @@ export function ChromeIdentityControls({
       <p className="settings-note">
         {kind === 'project'
           ? 'Monogram + hue is the default; glyph and image are opt-in (image wins). The custom-hue slider keeps every choice on the brand formula: same lightness and chroma, hue free.'
-          : 'The org avatar stays a circle: identity circles are one of the three reserved pill shapes.'}
+          : 'The org avatar stays a circle: identity circles are one of the two shapes the 999px pill is reserved for.'}
       </p>
+      {/* Every control above is inert outside prototype mode, because there is
+          no API to store the choice against yet. A disabled control that never
+          says why reads as a bug; saying so is the honest state. */}
+      {prototypeMode ? null : (
+        <p className="settings-note" role="status">
+          Choosing an icon is not available yet — the appearance above is the
+          default, and there is nowhere to save a change to it.
+        </p>
+      )}
     </>
   );
 }

@@ -464,6 +464,19 @@ function CompactProjectRetention({
     String(policy.last_revisions ?? orgPolicy.last_revisions ?? 6),
   );
   const effective = policy.last_revisions ?? orgPolicy.last_revisions ?? 6;
+  // Lowering the org default never rewrites a project's own number — it caps
+  // what that number can deliver. The org list already names this state; a
+  // project reading "custom 20" while it actually keeps 10 disagrees with its
+  // own organisation about the same fact.
+  const cap = orgPolicy.last_revisions;
+  const own = policy.last_revisions;
+  const capped =
+    !policy.inherited
+    && cap !== null
+    && cap !== undefined
+    && own !== null
+    && own !== undefined
+    && own > cap;
 
   const apply = (inherited: boolean, revisions: number) => {
     save.mutate(
@@ -485,10 +498,12 @@ function CompactProjectRetention({
       <div className="settings-row">
         <div className="settings-row__copy">
           <span className="settings-row__title">Revision retention</span>
-          <span className="settings-row__detail">
+          <span className={`settings-row__detail${capped ? ' text-danger' : ''}`}>
             {policy.inherited
               ? `inherits the org default — values kept for the last ${String(effective)} revisions per environment; follows org changes`
-              : `custom — values kept for the last ${String(effective)} revisions per environment`}
+              : capped
+                ? `custom ${String(own)}, capped to ${String(cap)} by the org — a project may never keep more than the org allows`
+                : `custom ${String(effective)} — values kept for the last ${String(effective)} revisions per environment; detached from later org changes`}
           </span>
         </div>
         <span className="settings-row__spacer" />
@@ -507,7 +522,7 @@ function CompactProjectRetention({
         </select>
         {policy.inherited ? null : (
           <input
-            className="settings-input settings-input--compact"
+            className={`settings-input settings-input--compact${capped ? ' settings-input--capped' : ''}`}
             type="number"
             min="1"
             max={orgPolicy.last_revisions ?? undefined}

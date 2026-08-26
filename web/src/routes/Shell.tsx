@@ -35,6 +35,7 @@ import {
   chromeIdentityMark,
   chromeIdentityStyle,
   chromeMonogram,
+  chromeRailIdentityStyle,
   readChromeIdentity,
 } from './chrome-identity.ts';
 import { StepUpBanner } from './StepUpBanner.tsx';
@@ -296,27 +297,34 @@ export function Shell({ session }: { session: WhoAmI }) {
       </a>
 
       <nav className="rail" aria-label="Organisations" inert={navOpen ? true : undefined}>
-        <ul className="rail__orgs">
-          {items.map((org) => {
-            const identity = readChromeIdentity('org', org.id, isPrototype);
-            return <li key={org.id}>
-              <button
-                type="button"
-                className="avatar"
-                style={chromeIdentityStyle(identity)}
-                aria-current={org.id === activeOrgId}
-                aria-label={`Organisation ${org.name}`}
-                title={org.name}
-                onClick={() => chooseOrg(org.id)}
-              >
-                {chromeIdentityMark(identity, org.name)}
-              </button>
-            </li>;
-          })}
-        </ul>
+        {/* "Unauthorized is nonexistent" (permission ADR #15) applied to the
+            chrome: a principal who holds one organisation is not being shown a
+            switcher with one option, they are shown no switcher. There is
+            nothing to switch to, and an affordance that cannot do anything is a
+            question the reader has to answer before dismissing it. */}
+        {items.length < 2 ? null : (
+          <ul className="rail__orgs">
+            {items.map((org) => {
+              const identity = readChromeIdentity('org', org.id, isPrototype);
+              return <li key={org.id}>
+                <button
+                  type="button"
+                  className="avatar"
+                  style={chromeRailIdentityStyle(identity, org.id === activeOrgId)}
+                  aria-current={org.id === activeOrgId}
+                  aria-label={`Organisation ${org.name}`}
+                  title={org.name}
+                  onClick={() => chooseOrg(org.id)}
+                >
+                  {chromeIdentityMark(identity, org.name)}
+                </button>
+              </li>;
+            })}
+          </ul>
+        )}
         {projectItems.length === 0 ? null : (
           <>
-            <span className="rail__divider" aria-hidden="true" />
+            {items.length < 2 ? null : <span className="rail__divider" aria-hidden="true" />}
             <ul className="rail__projects" aria-label="Projects">
               {projectItems.map((project) => {
                 const identity = readChromeIdentity('project', project.id, isPrototype);
@@ -324,7 +332,7 @@ export function Shell({ session }: { session: WhoAmI }) {
                   <button
                     type="button"
                     className="project-avatar"
-                    style={chromeIdentityStyle(identity)}
+                    style={chromeRailIdentityStyle(identity, project.id === activeProjectId)}
                     aria-current={project.id === activeProjectId}
                     aria-label={`Project ${project.name}`}
                     title={project.name}
@@ -371,39 +379,41 @@ export function Shell({ session }: { session: WhoAmI }) {
         >
           <span aria-hidden="true">×</span>
         </button>
-        <section
-          className="sidebar__section sidebar__mobile-only sidebar__mobile-organisations"
-          aria-labelledby="mobile-organisations-title"
-        >
-          <h2 id="mobile-organisations-title">Organizations</h2>
-          <ul className="sidebar__items">
-            {items.map((org) => {
-              const identity = readChromeIdentity('org', org.id, isPrototype);
-              return <li key={org.id}>
-                <button
-                  type="button"
-                  className="sidebar__link sidebar__switcher"
-                  aria-current={org.id === activeOrgId ? 'page' : undefined}
-                  onClick={() => {
-                    chooseOrg(org.id);
-                    dismissNavigation();
-                  }}
-                >
-                  <span
-                    className="avatar sidebar__switcher-avatar"
-                    style={chromeIdentityStyle(identity)}
+        {items.length < 2 ? null : (
+          <section
+            className="sidebar__section sidebar__mobile-only sidebar__mobile-organisations"
+            aria-labelledby="mobile-organisations-title"
+          >
+            <h2 id="mobile-organisations-title">Organizations</h2>
+            <ul className="sidebar__items">
+              {items.map((org) => {
+                const identity = readChromeIdentity('org', org.id, isPrototype);
+                return <li key={org.id}>
+                  <button
+                    type="button"
+                    className="sidebar__link sidebar__switcher"
+                    aria-current={org.id === activeOrgId ? 'page' : undefined}
+                    onClick={() => {
+                      chooseOrg(org.id);
+                      dismissNavigation();
+                    }}
                   >
-                    {chromeIdentityMark(identity, org.name)}
-                  </span>
-                  <span>{org.name}</span>
-                  {org.id === activeOrgId ? (
-                    <span className="sidebar__switcher-check">✓</span>
-                  ) : null}
-                </button>
-              </li>;
-            })}
-          </ul>
-        </section>
+                    <span
+                      className="avatar sidebar__switcher-avatar"
+                      style={chromeIdentityStyle(identity)}
+                    >
+                      {chromeIdentityMark(identity, org.name)}
+                    </span>
+                    <span>{org.name}</span>
+                    {org.id === activeOrgId ? (
+                      <span className="sidebar__switcher-check">✓</span>
+                    ) : null}
+                  </button>
+                </li>;
+              })}
+            </ul>
+          </section>
+        )}
         {orgs.isSuccess && items.length === 0 ? (
           // The zero-org state (prototype iteration 14). It is a real state,
           // not an error: a principal whose grants name no organisation has
@@ -425,7 +435,13 @@ export function Shell({ session }: { session: WhoAmI }) {
             <span>Your organisations could not be loaded. Reload to try again.</span>
           </p>
         ) : null}
-        {activeProjectId !== '' ? (
+        {/* The PROJECT panel replaces the section list only while the route is
+            actually project-scoped. Keying it on `activeProjectId` instead
+            looked equivalent and was not: that value falls back to the org's
+            first project so the rail always has a tile to mark, so it is never
+            empty once an organisation has a project — and Overview, Projects
+            and the rest of the section list became unreachable everywhere. */}
+        {routeProjectId !== '' ? (
           <>
             <ProjectNavigation
               org={activeOrgId}
@@ -502,7 +518,12 @@ export function Shell({ session }: { session: WhoAmI }) {
             </ul>
           </section>
         )}
-        {activeProjectId === '' ? null : (
+        {/* Only when the section list above did NOT render. On a project route
+            the sidebar is the project's, so the drawer would otherwise lose the
+            account and instance destinations the rail carries on desktop; on
+            every other route the section list already has them, and rendering
+            both puts the same link in the drawer twice. */}
+        {routeProjectId === '' ? null : (
           <MobileAccountNavigation
             onNavigate={dismissNavigation}
             showInstanceAdministration={showInstanceAdministration}
@@ -538,19 +559,26 @@ export function Shell({ session }: { session: WhoAmI }) {
                 key={`${crumb}-${String(index)}`}
                 data-crumb={index === 0 ? 'root' : index === crumbs.length - 1 ? 'surface' : 'scope'}
               >
-                {index === 0 ? null : <span aria-hidden="true">/</span>}
+                {index === 0 ? null : (
+                  <span className="header__crumb-separator" aria-hidden="true">
+                    /
+                  </span>
+                )}
                 <span>{crumb}</span>
               </li>
             ))}
           </ol>
           <span className="header__spacer" />
           {isPrototype ? (
-            <label className="header__identity">
+            /* The prototype's persona switcher had three principals and drove
+               the whole chrome from them. There is one here and the mock serves
+               one, so this states it rather than offering a choice: a select
+               with a single option and no handler is a control that cannot do
+               the one thing its shape promises. */
+            <span className="header__identity">
               <span className="header__identity-label">acting as</span>
-              <select aria-label="Prototype persona" defaultValue="alex">
-                <option value="alex">alex · 2 orgs · org+instance admin</option>
-              </select>
-            </label>
+              <span className="mono">alex · 2 orgs · org+instance admin</span>
+            </span>
           ) : (
             <span className="header__identity">
               <span className="header__identity-label">Signed in as</span>
@@ -722,13 +750,16 @@ function ProjectNavigation({
                   key={group.id}
                   disabled={group.hidden}
                   title={group.hidden ? 'hidden by the problems filter' : undefined}
-                  aria-label={`${group.name} · ${String(group.keyCount)} ${group.keyCount === 1 ? 'key' : 'keys'}${group.problemCount === 0 ? '' : ` · ${String(group.problemCount)} problems`}`}
+                  aria-label={`${group.name}/ · ${String(group.keyCount)} ${group.keyCount === 1 ? 'key' : 'keys'}${group.problemCount === 0 ? '' : ` · ${String(group.problemCount)} problems`}`}
                   onClick={() => {
                     state.onSelectGroup(group.id);
                     onNavigate();
                   }}
                 >
-                  <span>{group.name}</span>
+                  {/* The trailing slash is what says "folder", not "key" — the
+                      matrix's own jump index carried it before this list moved
+                      into the sidebar, and the flow reads groups by it. */}
+                  <span className="mono">{`${group.name}/`}</span>
                   {group.problemCount === 0 ? (
                     <span className="project-sidebar__group-count">{String(group.keyCount)}</span>
                   ) : (
@@ -740,12 +771,16 @@ function ProjectNavigation({
                 type="button"
                 className="matrix__group-link project-sidebar__group"
                 aria-pressed={state.problemsActive}
+                title={state.problemsActive ? 'back to all keys' : 'show only keys with problems'}
                 onClick={() => {
                   state.onToggleProblems();
                   onNavigate();
                 }}
               >
-                <span>problems</span>
+                <span>
+                  <span aria-hidden="true">⚠ </span>
+                  problems
+                </span>
                 <span className="matrix__count count">{String(state.problemCount)}</span>
               </button>
             </div>

@@ -196,7 +196,7 @@ export function Members() {
   };
 
   return (
-    <div className="page page--members">
+    <div className="page page--chrome page--members">
       <h1>
         {projectId === ''
           ? `Org members & grants\u00a0·\u00a0${orgName}`

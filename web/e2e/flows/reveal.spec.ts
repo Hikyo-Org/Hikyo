@@ -412,7 +412,7 @@ test.describe('reveal ceremonies', () => {
       ],
       radii: [[dialog, 'container']],
       fonts: [[dialog.getByRole('heading', { level: 2 }), 'ui']],
-      colours: [[dialog, 'backgroundColor', '--bg-raise']],
+      colours: [[dialog, 'backgroundColor', '--bg-panel']],
       hairlines: [dialog],
       density: [[dialog.getByRole('button', { name: 'Use a passkey' }), '--touch']],
     });
@@ -548,7 +548,11 @@ test.describe('OIDC disclosure reauthentication', () => {
   async function signInWithOIDC(page: Page): Promise<void> {
     await page.goto('/login');
     await page.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` }).click();
-    await expect(page.getByRole('navigation', { name: 'Organisations' })).toBeVisible();
+    // The org rail is desktop chrome — a phone reaches organisations through
+    // the drawer, so the rail is `display:none` there. What proves the shell
+    // came up at BOTH widths is the breadcrumb, which only the authenticated
+    // chrome renders.
+    await expect(page.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
   }
 
   test('reveals after the IdP popup returns through the SPA done page', async ({ page }) => {
@@ -728,7 +732,7 @@ test.describe('pinned assertion set', () => {
         ],
         colours: [
           [heading, 'color', '--tx'],
-          [well, 'backgroundColor', '--bg-raise'],
+          [well, 'backgroundColor', '--bg-panel'],
           [well, 'borderTopColor', '--line'],
         ],
         hairlines: [well],

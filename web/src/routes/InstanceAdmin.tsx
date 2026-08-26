@@ -224,7 +224,7 @@ export function InstanceAdmin() {
         <p className="field__hint">Root-key rotation, master-key rotation, re-encryption, <span className="mono">init</span>, <span className="mono">migrate</span>, restore reconciliation and break-glass are local host authority. They are deliberately absent from every network surface — CLI-at-the-box, not CLI-over-network.</p>
       </>}
     </Panel>
-    <Panel id="instance-connected" title="Connected instances · exploration">
+    <Panel id="instance-connected" title="Connected instances · exploration" question>
       {prototypeMode ? <>
         <div className="settings-row"><div className="settings-row__copy"><span className="settings-row__title">this instance</span><span className="settings-row__detail">hikyo.example.com · v1.0</span></div><span className="settings-row__spacer" /><span className="settings-tag">main</span></div>
         <div className="settings-row"><div className="settings-row__copy"><span className="settings-row__title">example-cluster</span><span className="settings-row__detail">hikyo.k3s.internal · v1.0 · reachable · 1 org, 4 projects</span></div><span className="settings-row__spacer" /><span className="settings-tag mono">connected</span></div>

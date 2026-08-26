@@ -85,7 +85,10 @@ select {
   background: color-mix(in oklch, var(--accent), black 10%);
 }
 
-.btn[disabled] {
+/* `[disabled]` covers real controls; the modifier covers the ones that cannot
+   carry the attribute — a <label> standing in for a file input, for instance. */
+.btn[disabled],
+.btn--disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -436,13 +439,17 @@ select {
 /* --- Chrome -------------------------------------------------------------- */
 
 .chrome {
-  --chrome-faint: color-mix(in oklch, var(--tx-dim), var(--bg-raise) 10%);
   display: grid;
   grid-template-columns: var(--rail) 218px 1fr;
   grid-template-rows: 1fr;
   height: 100%;
 }
 
+/* DESIGN.md's `--bg-panel` is the persistent-chrome surface (the prototype's
+   `--bg2`): raised above the page in dark, RECESSED below it in light. The
+   distinction is invisible in dark, where both tokens sit near 0.23, and
+   load-bearing in light, where `--bg-raise` is 0.995 — brighter than the 0.965
+   page, which inverts the chrome/content relationship the prototype draws. */
 .rail {
   /* The account menu is absolutely positioned against this column so it opens
      next to the avatar at the rail's foot, not against the viewport. */
@@ -453,7 +460,7 @@ select {
   gap: 8px;
   padding: 14px 0 12px;
   border-right: 1px solid var(--chrome-line);
-  background: var(--bg-raise);
+  background: var(--bg-panel);
 }
 
 .rail__orgs {
@@ -489,18 +496,8 @@ select {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-color: transparent;
-  background: var(--bg);
+  background: var(--bg-hover);
   color: var(--tx);
-}
-
-.rail__orgs li:first-child .avatar {
-  background: oklch(0.62 0.11 190);
-  color: oklch(0.12 0.02 220);
-}
-
-.rail__orgs li:nth-child(2) .avatar {
-  background: oklch(0.62 0.11 270);
-  color: oklch(0.12 0.02 220);
 }
 
 .project-avatar {
@@ -519,24 +516,13 @@ select {
   cursor: pointer;
 }
 
-.project-avatar:hover,
+.project-avatar:hover {
+  border-color: var(--line);
+  color: var(--tx);
+}
+
 .project-avatar[aria-current='true'] {
   border-color: var(--accent);
-  color: var(--on-accent);
-  background: var(--accent);
-}
-
-.rail__projects li:nth-child(2) .project-avatar {
-  background: oklch(0.28 0.035 260);
-  color: oklch(0.93 0.008 200);
-}
-
-.rail__projects li:nth-child(3) .project-avatar {
-  background: oklch(0.27 0.025 65);
-  color: oklch(0.93 0.008 200);
-}
-
-.rail__projects li .project-avatar[aria-current='true'] {
   background: var(--accent);
   color: var(--on-accent);
 }
@@ -618,7 +604,7 @@ select {
   gap: 0;
   padding: 6px 0 20px;
   border-right: 1px solid var(--chrome-line);
-  background: var(--bg-raise);
+  background: var(--bg-panel);
   overflow-y: auto;
 }
 
@@ -642,6 +628,10 @@ select {
   max-width: 40ch;
 }
 
+/* The prototype's three-step text hierarchy: --tx for content, --tx-dim for
+   secondary, --tx-faint for the labels that NAME a region rather than say
+   anything in it. Both of these read --tx-dim only because --tx-faint did not
+   exist; --tx-faint clears 4.5:1 on every surface in both themes. */
 .sidebar__section h2 {
   margin: 0;
   padding: 16px 16px 6px;
@@ -649,7 +639,7 @@ select {
   font-weight: 700;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: var(--tx-dim);
+  color: var(--tx-faint);
 }
 
 .sidebar__items {
@@ -660,7 +650,19 @@ select {
   margin-left: 19px;
   padding: 0;
   list-style: none;
-  /* treatment e: sub-items hang off a hairline rule */
+}
+
+/* Sidebar treatment e (app-chrome iteration 18): sub-items hang off a hairline,
+   and the rule belongs to the ROWS, not to the list around them. That is what
+   lets the current row own its own segment of the line and turn it accent — a
+   rule on the container plus a second accent line inside the row draws two
+   lines where the design has one. */
+.sidebar__link,
+.project-sidebar .project-sidebar__group {
+  /* All four sides, because these rows are <a> and <button> alike and a button
+     brings its own border. Setting only `border-left` left the switcher rows
+     resetting it back to zero from their own `border: 0`. */
+  border: 0;
   border-left: 1px solid var(--chrome-line);
 }
 
@@ -679,7 +681,6 @@ select {
 
 .sidebar__switcher {
   gap: 8px;
-  border: 0;
   background: transparent;
   font: inherit;
   text-align: left;
@@ -711,13 +712,13 @@ select {
 
 .sidebar__link:hover {
   color: var(--tx);
-  background: color-mix(in oklch, var(--bg-raise), var(--tx) 7%);
+  background: var(--bg-hover);
 }
 
 .sidebar__link[aria-current='page'] {
   color: var(--tx);
-  background: color-mix(in oklch, var(--bg-raise), var(--accent) 14%);
-  box-shadow: inset 1px 0 0 var(--accent);
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
   font-weight: 600;
 }
 
@@ -759,7 +760,7 @@ select {
 }
 
 .project-sidebar__org small {
-  color: var(--chrome-faint);
+  color: var(--tx-faint);
   font-family: var(--font-mono);
   font-size: 10px;
 }
@@ -769,8 +770,6 @@ select {
   height: 28px;
   flex: none;
   border: 0;
-  background: oklch(0.62 0.11 190);
-  color: oklch(0.12 0.02 220);
   font-size: 10px;
   font-weight: 700;
   cursor: default;
@@ -795,12 +794,6 @@ select {
   flex-direction: column;
   width: calc(100% - 19px);
   margin-left: 19px;
-  border-left: 1px solid var(--chrome-line);
-}
-
-.project-sidebar > nav > .sidebar__link,
-.project-sidebar__groups {
-  width: 100%;
 }
 
 .project-sidebar > nav > .sidebar__link {
@@ -810,9 +803,9 @@ select {
 .project-sidebar__groups {
   display: flex;
   flex-direction: column;
+  width: 100%;
   margin: 0;
   padding: 0;
-  background: transparent;
 }
 
 .project-sidebar .project-sidebar__group {
@@ -824,7 +817,7 @@ select {
 }
 
 .project-sidebar__group-count {
-  color: var(--chrome-faint);
+  color: var(--tx-faint);
   font-family: var(--font-mono);
   font-size: 10.5px;
 }
@@ -849,7 +842,11 @@ select {
   gap: 12px;
   min-height: 61px;
   padding: 8px 16px;
-  border-bottom: 1px solid var(--line);
+  /* The same structural rule the rail and the sidebar draw. Reaching for
+     `--line` here made the header seam brighter than the rail seam in dark and
+     darker in light — an inconsistency the prototype does not have, because it
+     has one hairline value for all three. */
+  border-bottom: 1px solid var(--chrome-line);
 }
 
 .header__crumbs {
@@ -858,6 +855,8 @@ select {
   gap: 8px;
   margin: 0;
   padding: 0;
+  font-size: 15px;
+  font-weight: 600;
   list-style: none;
   min-width: 0;
   color: var(--tx-dim);
@@ -865,7 +864,10 @@ select {
 
 .header__crumbs li:last-child {
   color: var(--tx);
-  font-weight: 500;
+}
+
+.header__crumbs .header__crumb-separator {
+  color: var(--accent);
 }
 
 .header__crumbs li {
@@ -890,7 +892,7 @@ select {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  color: var(--chrome-faint);
+  color: var(--tx-faint);
   font-size: 11px;
 }
 
@@ -1006,7 +1008,7 @@ select {
 .card {
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
-  background: var(--bg-raise);
+  background: var(--bg-panel);
   padding: 16px;
   max-width: 72ch;
 }
@@ -1035,7 +1037,7 @@ select {
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
-  background: var(--bg-raise);
+  background: var(--bg-panel);
   box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
 }
 
@@ -1418,9 +1420,14 @@ select {
   cursor: pointer;
 }
 
-.matrix__group-link:hover,
+.matrix__group-link:hover {
+  background: var(--bg-hover);
+  color: var(--tx);
+}
+
 .matrix__group-link[aria-pressed='true'] {
-  background: color-mix(in oklch, var(--bg-raise), var(--accent) 12%);
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
   color: var(--tx);
 }
 
@@ -1464,9 +1471,79 @@ select {
   font-size: 12px;
 }
 
+/* The legend is a popover off the head, the same disclosure shape as the
+   environment chooser. It floats rather than pushing the table down, because a
+   reader opens it to check one glyph and then keeps reading the row. */
+.matrix__legend {
+  position: relative;
+  z-index: 9;
+}
+
+.matrix__legend > summary {
+  display: inline-flex;
+  align-items: center;
+  list-style: none;
+}
+
+.matrix__legend > summary::-webkit-details-marker {
+  display: none;
+}
+
+.matrix__legend-body {
+  position: absolute;
+  right: 0;
+  width: min(340px, calc(100vw - 24px));
+  margin-top: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-container);
+  background: var(--bg-panel);
+  color: var(--tx-dim);
+  font-size: 12px;
+}
+
+.matrix__legend-body dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 10px;
+  margin: 0;
+}
+
+.matrix__legend-body dt {
+  color: var(--tx);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.matrix__legend-body dd {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.matrix__legend-body p {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  line-height: 1.5;
+}
+
 .matrix__environment-picker {
   position: relative;
   z-index: 8;
+}
+
+/* The protected marker: a word, not a colour — the state has to survive being
+   read aloud and being read by someone who cannot see the red. */
+.matrix__protected {
+  color: var(--danger);
+  font-family: var(--font-ui);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.matrix__environment-picker .matrix__protected {
+  margin-left: auto;
 }
 
 .matrix__key-heading {
@@ -1592,17 +1669,23 @@ select {
   z-index: 10;
 }
 
-.matrix__key-row:nth-child(even) > td,
-.matrix__key-row:nth-child(even) > th {
+.matrix__key-row--alt > td,
+.matrix__key-row--alt > th {
   background: color-mix(in oklch, var(--bg), var(--bg-raise) 42%);
 }
 
+/* The group row sticks under the header, so it has to know how tall the header
+   actually is. `--gh` is measured and written by the matrix (fractional, from
+   getBoundingClientRect) rather than assumed to be `--touch`: the header is a
+   minimum of 44px, not exactly 44px, and once the webfont loads a rounded guess
+   leaves either a seam or an overlap. The `- 1px` sits the row on the header's
+   own bottom hairline instead of below it. */
 .matrix__group-row th {
   position: sticky;
-  top: var(--touch);
+  top: calc(var(--gh, var(--touch)) - 1px);
   z-index: 3;
   padding: 0;
-  background: var(--bg-raise);
+  background: var(--bg-panel);
 }
 
 .matrix__group-row button {
@@ -1617,10 +1700,20 @@ select {
   color: var(--accent);
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.14em;
   text-align: left;
   text-transform: uppercase;
   cursor: pointer;
+}
+
+.matrix__group-chevron {
+  color: var(--tx-faint);
+  font-size: 10px;
+  transition: transform var(--dur) var(--ease);
+}
+
+.matrix__group-row button[aria-expanded='false'] .matrix__group-chevron {
+  transform: rotate(-90deg);
 }
 
 .matrix__problem-count {
@@ -1674,8 +1767,8 @@ select {
 .matrix-cell {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  max-width: 250px;
+  gap: 6px;
+  max-width: 240px;
   min-height: var(--row);
   padding: 5px 10px;
   border: 1px solid transparent;
@@ -1689,6 +1782,25 @@ select {
 
 .matrix-cell:hover {
   background: var(--bg-raise);
+}
+
+/* The editable-slot affordance (env-matrix iteration 22): every slot you can
+   edit carries a faint trailing pencil, accent on hover. A pseudo-element
+   rather than a span because it is decoration — it is not in the accessibility
+   tree, cannot be selected, and can never become the click target inside a
+   button that is already one.
+   The two problem states are deliberately excluded: they already carry a
+   glyph and a colour saying what to do, and a third mark beside them is noise
+   on the one cell that most needs to be read quickly. */
+.matrix-cell:not(.matrix-cell--problem)::after {
+  content: '✎';
+  margin-left: -1px;
+  color: var(--tx-faint);
+  font-size: 10px;
+}
+
+.matrix-cell:not(.matrix-cell--problem):hover::after {
+  color: var(--accent);
 }
 
 .matrix-cell__value {
@@ -1707,11 +1819,6 @@ select {
 
 .matrix-cell__other {
   color: var(--tx-dim);
-}
-
-.matrix-cell__edit {
-  color: var(--tx-dim);
-  font-size: 10px;
 }
 
 .matrix-cell--absent,
@@ -1760,7 +1867,7 @@ select {
   padding: 20px;
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
-  background: var(--bg-raise);
+  background: var(--bg-panel);
   color: var(--tx);
   box-shadow: 0 14px 42px rgb(0 0 0 / 45%);
   overflow: auto;
@@ -2067,7 +2174,11 @@ select {
   }
 
   .matrix-cell {
+    /* Taller for the thumb, narrower for the viewport: at 375px a 240px cell
+       plus the sticky key column is most of the screen spent on one
+       environment. */
     min-height: var(--touch);
+    max-width: 170px;
   }
 
   .matrix__key {
@@ -2289,7 +2400,7 @@ select {
   padding: 20px;
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
-  background: var(--bg-raise);
+  background: var(--bg-panel);
   color: var(--tx);
 }
 
@@ -2810,7 +2921,7 @@ select {
   width: min(640px, 100%);
   padding: 16px;
   border-left: 1px solid var(--line);
-  background: var(--bg-raise);
+  background: var(--bg-panel);
   color: var(--tx);
   overflow-y: auto;
 }
@@ -3273,8 +3384,23 @@ select {
   font-weight: 700;
 }
 
+/* The prototype's danger card is a two-part signal: a border MUTED toward the
+   hairline, and a heading in full danger. Shouting with the border instead and
+   leaving the heading the same colour as every other panel title inverts it —
+   the loudest thing on the surface becomes the part that carries no words. */
 .panel--danger {
-  border-color: var(--danger);
+  border-color: color-mix(in oklch, var(--danger) 45%, var(--line));
+}
+
+.page--chrome .panel--danger h2 {
+  color: var(--danger);
+}
+
+/* An open question, not a decision: the prototype marks it with a dashed
+   boundary and no fill so it never reads as one of the settled cards. */
+.panel--question {
+  border-style: dashed;
+  background: transparent;
 }
 
 .panel__actions {
@@ -3341,6 +3467,7 @@ select {
   font-size: 12.5px;
 }
 
+
 .page--chrome .panel {
   padding: 16px 18px;
   border-color: var(--panel-line);
@@ -3348,7 +3475,7 @@ select {
 }
 
 .page--chrome .panel h2 {
-  color: var(--tx-dim);
+  color: var(--tx-faint);
   font-size: 13px;
   line-height: 15px;
   letter-spacing: 0.05em;
@@ -3577,6 +3704,12 @@ select {
   color: var(--danger);
 }
 
+/* The number is the thing being over-ruled, so the number is what carries the
+   warning boundary — the prototype puts it here, not on the row. */
+.settings-input--capped {
+  border-color: var(--danger);
+}
+
 .text-danger {
   color: var(--danger);
 }
@@ -3663,6 +3796,14 @@ select {
   min-height: 36px;
 }
 
+/* The 36px density belongs to the settings PAGE, not to an overlay opened over
+   it. A dialog is a decision surface with two or three buttons in it, and it
+   keeps the touch floor whatever page it happens to be a descendant of. */
+.page--chrome .ceremony .btn,
+.page--chrome .matrix-editor .btn {
+  min-height: var(--touch);
+}
+
 .page--chrome #account-factors > h3:first-of-type {
   display: none;
 }
@@ -3692,63 +3833,12 @@ select {
 
 /* --- members ------------------------------------------------------------- */
 
-.page--members {
-  display: grid;
-  width: 100%;
-  max-width: 860px;
-  margin-right: auto;
-  margin-left: auto;
-  gap: 18px;
-}
-
-.content > .page--members {
-  margin-top: 32px;
-}
-
-.page--members h1 {
-  font-size: 19px;
-  line-height: normal;
-  letter-spacing: -0.01em;
-}
-
+/* Members carries `page--chrome` too, so the settings measure, card treatment
+   and jump index come from the one place that defines them. Only the genuine
+   difference lives here: the lede is narrower because it sits beside the
+   inspector rather than running the full column. */
 .page--members .page__lede {
   max-width: 480px;
-  margin-top: -12px;
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.page--members .jump {
-  margin: -10px 0;
-  padding: 10px 0;
-  border-bottom: 0;
-}
-
-.page--members .jump ul {
-  gap: 6px;
-}
-
-.page--members .jump__link {
-  min-height: 36px;
-  padding: 7px 14px;
-  border-color: var(--chrome-line);
-  color: var(--tx-dim);
-  font-size: 12.5px;
-}
-
-.page--members .panel {
-  padding: 16px 18px;
-  border-color: var(--panel-line);
-  background: var(--bg-panel);
-  max-width: none;
-}
-
-.page--members .panel h2 {
-  margin: 0;
-  color: var(--tx-dim);
-  font-size: 13px;
-  line-height: 15px;
-  letter-spacing: 0.05em;
 }
 
 .grants {
@@ -3970,20 +4060,6 @@ select {
   font-size: 13px;
 }
 
-@media (max-width: 700px) {
-  .page--members .jump__link,
-  .page--members .btn--primary,
-  .page--members .capability__revoke {
-    min-height: var(--touch);
-  }
-
-  .page--members .capability__revoke {
-    width: var(--touch);
-    min-width: var(--touch);
-    margin-top: -12px;
-    margin-bottom: -12px;
-  }
-}
 
 /* --- the grant modal ----------------------------------------------------- */
 
@@ -4005,11 +4081,18 @@ select {
 }
 
 .capgrid {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  /* Auto-fill at 170px, inside its own bordered well: nine capability atoms in
+     one column is a modal the reader has to scroll to see the choice they are
+     being asked to make, and the well is what separates the checklist from the
+     scope controls above it. */
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 2px;
   margin: 0;
-  padding: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-container);
+  background: var(--bg);
   list-style: none;
   /* No inner scroller: `.ceremony` is a scrolling flex column, and a second
      scroll container inside one shrinks its siblings into each other — which
@@ -4318,6 +4401,11 @@ select {
 
 /* The shell's second-factor step-up: a strip above the content, present only
    while the session is password-only AND the account has a factor to present. */
+/* ADR #16 asks that "confirm it's you" stay visually distinct from "disclose a
+   secret": the account step-up is the CHANGED slate, the reveal ceremony is the
+   accent teal. This surface is a banner rather than the prototype's modal (see
+   StepUpBanner.tsx for why), but the colour is the part carrying the
+   distinction, and a neutral banner drops it. */
 .stepup {
   display: flex;
   flex-wrap: wrap;
@@ -4325,9 +4413,9 @@ select {
   align-items: flex-end;
   margin: 0 0 16px;
   padding: 12px 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-container, 8px);
-  background: var(--bg-raise);
+  border: 1px solid var(--changed);
+  border-radius: var(--radius-container);
+  background: var(--changed-soft);
 }
 
 .stepup__text {
@@ -4335,8 +4423,9 @@ select {
 }
 
 .stepup__title {
-  font-size: 1rem;
   margin: 0 0 4px;
+  color: var(--changed);
+  font-size: 1rem;
 }
 
 .stepup__lede {
@@ -4382,4 +4471,52 @@ select {
 .sidebar__empty code {
   overflow-wrap: anywhere;
   white-space: normal;
+}
+
+/* --- the mobile touch floor ----------------------------------------------
+ *
+ * LAST in the file, and that is load-bearing. A media query adds no
+ * specificity, so `@media (max-width: 700px) { .settings-input { … } }` loses
+ * to a plain `.settings-input { min-height: 36px }` declared further down —
+ * which is exactly how these controls stayed at their desktop density on a
+ * phone while looking like they had been fixed.
+ *
+ * The 36px and 32px densities above are the DESIGN.md desktop-pointer scale,
+ * not a waiver of the 44px floor: `expectTouchTargets` enforces the floor only
+ * on a coarse pointer, and every one of those rules needs the partner below.
+ * They were missing, and each failure masked the next, because the touch sweep
+ * stops at its first offender.
+ */
+@media (max-width: 700px) {
+  .page--chrome .jump__link,
+  .page--chrome .btn,
+  .settings-select,
+  .settings-input,
+  .settings-tag,
+  .page--members .inspect select {
+    min-height: var(--touch);
+  }
+
+  /* An icon-only control has to clear the floor on BOTH axes. The negative
+     margins keep the row's own height where it was, so growing the hit area
+     does not grow the list. */
+  .capability__revoke {
+    width: var(--touch);
+    min-width: var(--touch);
+    min-height: var(--touch);
+    margin-top: -12px;
+    margin-bottom: -12px;
+  }
+
+  /* A settings row's title and detail are often links — to the organisation
+     whose policy the row describes, to the project's own settings. They read as
+     text and are sized as text, which on a phone leaves a 20px tap target in
+     the middle of a 44px row. Growing the LINK rather than the row keeps the
+     list's density and gives the target its floor. */
+  a.settings-row__title,
+  a.settings-row__detail {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--touch);
+  }
 }

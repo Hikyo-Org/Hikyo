@@ -485,9 +485,14 @@ test.describe('members and grants', () => {
   });
 
   for (const scheme of ['dark', 'light'] as const) {
-    test(`meets the pinned assertion set on members (${scheme})`, async ({ page }) => {
+    test(`meets the pinned assertion set on members (${scheme})`, async ({ page }, testInfo) => {
       await page.emulateMedia({ colorScheme: scheme });
       try {
+        // Chrome surfaces are two-tier by design: DESIGN.md's 36px `--row` on a
+        // mouse-driven grid, lifted to the 44px `--touch` floor on a phone.
+        // `expectDensity` is an exact match and is not pointer-gated the way
+        // `expectTouchTargets` is, so the claim has to name which tier it is on.
+        const rowDensity = testInfo.project.name === 'mobile' ? '--touch' : '--row';
         const heading = page.getByRole('heading', { name: 'Members', level: 1 });
         const well = page.locator('.panel').first();
         const jump = page.getByRole('link', { name: 'Who can…?' });
@@ -510,13 +515,15 @@ test.describe('members and grants', () => {
           ],
           colours: [
             [heading, 'color', '--tx'],
-            [well, 'backgroundColor', '--bg-raise'],
-            [well, 'borderTopColor', '--line'],
+            [well, 'backgroundColor', '--bg-panel'],
+            // A settings panel's boundary is `--panel-line` (DESIGN.md); `--line`
+            // is the control boundary, and a panel is not a control.
+            [well, 'borderTopColor', '--panel-line'],
           ],
           hairlines: [well],
           density: [
-            [newGrant, '--touch'],
-            [jump, '--touch'],
+            [newGrant, rowDensity],
+            [jump, rowDensity],
           ],
         });
       } finally {
@@ -548,7 +555,7 @@ test.describe('members and grants', () => {
             [composition.getByRole('button', { name: 'Cancel' }), 'control'],
           ],
           fonts: [[composition.locator('.mono').first(), 'mono']],
-          colours: [[composition, 'backgroundColor', '--bg-raise']],
+          colours: [[composition, 'backgroundColor', '--bg-panel']],
           hairlines: [composition],
           density: [[composition.getByRole('button', { name: 'Cancel' }), '--touch']],
         });
@@ -573,7 +580,7 @@ test.describe('members and grants', () => {
             [blast.getByRole('button', { name: 'Back, change scope' }), 'control'],
           ],
           fonts: [[blast.locator('.mono').first(), 'mono']],
-          colours: [[blast, 'backgroundColor', '--bg-raise']],
+          colours: [[blast, 'backgroundColor', '--bg-panel']],
           hairlines: [blast, blastRow],
           density: [[blast.getByRole('button', { name: 'Back, change scope' }), '--touch']],
         });

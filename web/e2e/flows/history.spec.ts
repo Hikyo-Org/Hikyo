@@ -287,7 +287,7 @@ test.describe('revision history', () => {
           ],
           colours: [
             [heading, 'color', '--tx'],
-            [drawer, 'backgroundColor', '--bg-raise'],
+            [drawer, 'backgroundColor', '--bg-panel'],
             [retention, 'borderTopColor', '--line'],
           ],
           hairlines: [retention],

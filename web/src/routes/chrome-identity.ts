@@ -85,6 +85,36 @@ export function chromeIdentityStyle(identity: ChromeIdentity): CSSProperties {
   };
 }
 
+/**
+ * chromeRailIdentityStyle is the rail's tile treatment, which is NOT the avatar
+ * treatment above.
+ *
+ * The rail's job is to say which project you are in. That is a selection state,
+ * and selection is the stylesheet's to draw — `.project-avatar[aria-current]`
+ * fills with the accent, `.rail .avatar[aria-current]` outlines. An inline
+ * style would win against both, so the ACTIVE tile is given no inline colour at
+ * all; returning `{}` is the point, not an omission. An inactive tile carries
+ * its identity as a quiet 18% wash, the same fraction the prototype uses, so a
+ * rail of six projects reads as one selected tile among five tinted ones rather
+ * than six equally loud ones.
+ *
+ * An uploaded image is identity regardless of selection, so it survives both.
+ */
+export function chromeRailIdentityStyle(
+  identity: ChromeIdentity,
+  active: boolean,
+): CSSProperties {
+  const image = identity.image === null
+    ? {}
+    : {
+        backgroundImage: `url(${identity.image})`,
+        backgroundPosition: 'center',
+        backgroundSize: 'cover',
+      };
+  if (active) return image;
+  return { background: `oklch(0.62 0.11 ${String(identity.hue)} / 0.18)`, ...image };
+}
+
 export function chromeIdentityMark(identity: ChromeIdentity, name: string): string {
   if (identity.image !== null) return '';
   return identity.glyph ?? chromeMonogram(name);

@@ -330,10 +330,25 @@ test.describe('app chrome', () => {
           ],
           colours: [
             [heading, 'color', '--tx'],
-            [well, 'backgroundColor', '--bg-raise'],
+            // Cards are persistent-chrome surfaces, which is `--bg-panel`, not
+            // the `--bg-raise` of a raised row. The two are a rounding apart in
+            // dark and opposite sides of the page in light.
+            [well, 'backgroundColor', '--bg-panel'],
             [well, 'borderTopColor', '--line'],
-            // Treatment e's hairline rule: the sub-items hang off it.
-            [page.locator('.sidebar__items').first(), 'borderLeftColor', '--chrome-line'],
+            // Treatment e's hairline rule belongs to each ROW, so that the
+            // current row can own its segment of it and turn it accent.
+            // Not `.first()`: the first link on this surface IS the current one,
+            // and the current row's whole point is that its segment of the rule
+            // turns accent. Assert the rule on a row that is not current.
+            [
+              page.locator('.sidebar__link:not([aria-current="page"])').first(),
+              'borderLeftColor',
+              '--chrome-line',
+            ],
+            // ...and the current row owns its segment of that rule in accent.
+            // Asserting only the hairline would pass just as well with the rule
+            // on the container and a second line drawn inside the row.
+            [active, 'borderLeftColor', '--accent'],
           ],
           hairlines: [well],
           density: [[theme, '--touch']],
