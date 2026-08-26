@@ -1,8 +1,7 @@
 package compose
 
 import (
-	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -90,9 +89,7 @@ func LoadCursor(stateDir string) (*CursorState, error) {
 		return nil, fmt.Errorf("compose: read cursor: %w", err)
 	}
 	var c CursorState
-	dec := json.NewDecoder(bytes.NewReader(b))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&c); err != nil {
+	if err := json.Unmarshal(b, &c, json.RejectUnknownMembers(true)); err != nil {
 		return nil, fmt.Errorf("compose: parse cursor: %w", err)
 	}
 	return &c, nil
