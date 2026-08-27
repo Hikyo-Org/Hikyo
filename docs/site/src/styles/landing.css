@@ -23,22 +23,11 @@
   --sans: 'Instrument Sans', sans-serif;
   --max-width: 70rem;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  /*
-   * Section separators that sit on open ground rather than on a tinted band.
-   * The raked field runs straight under them, so a plain hairline disappears
-   * into it; these carry the accent so the page still reads as sectioned. Used
-   * on the feature rules and the closing rule under the comparison table; the
-   * stack strip keeps the plain hairline, since it reads as a band already.
-   */
+  /* Separators over open ground: a plain hairline vanishes into the pattern. */
   --rule-open: color-mix(in oklab, var(--accent) 55%, var(--line));
-  /*
-   * Groove colour: the logo's dark navy, held at its hue and its muted chroma
-   * but lifted in lightness. The literal ink (#111E2F) cannot be used here -
-   * against this background it measures 1.10, below even the page's own 1.58
-   * hairlines, so the pattern would simply not exist.
-   * Alternates: cyan oklch(0.52 0.08 200), warm oklch(0.52 0.08 50).
-   */
+  /* Groove colour: the logo navy, lifted. The literal ink reads 1.10 here. */
   --rake: oklch(0.48 0.05 258);
+  /* Sub-pixel ramp per groove edge: gradients get no supersampling. */
   --rake-aa: 0.75px;
   color-scheme: dark;
 }
@@ -59,9 +48,7 @@
   --danger-quiet: oklch(0.5 0.15 30 / 0.1);
   --warning: oklch(0.52 0.13 75);
   --rule-open: color-mix(in oklab, var(--accent) 55%, var(--line));
-  /* Same navy on paper. The literal ink measures 15.20 here, darker than the
-   * body text; this keeps the hue and lands near the other themes' weight.
-   * Alternates: cyan oklch(0.76 0.07 200), warm oklch(0.76 0.07 58). */
+  /* Same navy on paper; the literal ink reads 15.20, darker than body text. */
   --rake: oklch(0.7 0.05 258);
   color-scheme: light;
 }
@@ -151,36 +138,14 @@ button {
 
 /* ------------------------------------------------------------- atmosphere */
 
-/*
- * --rake-gap has to be a registered property, not a plain custom property:
- * unregistered ones are interpolated as tokens, so an animation would jump
- * between the two values instead of easing through the lengths between them.
- */
+/* Registered so it can be animated; unregistered properties jump, not ease. */
 @property --rake-gap {
   syntax: '<length>';
   inherits: false;
   initial-value: 28px;
 }
 
-/*
- * Karesansui: one stone, one rake.
- *
- * A single field anchored to the whole document, so it never restarts at a
- * section boundary. The stone sits off the top-right corner and the grooves
- * sweep out from it across the entire scroll length: tight arcs up by the hero,
- * flattening into long slow curves by the footer, the way a raked field reads
- * as it recedes.
- *
- * Groove spacing is constant, so density is even top to bottom and only
- * curvature changes. That is what keeps it feeling like one continuous surface
- * rather than a texture that repeats.
- *
- * The grooves are antialiased analytically: CSS gradients are evaluated per
- * pixel with no supersampling, so a hard stop stair-steps along a curve. The
- * --rake-aa ramp on either side makes each boundary pixel coverage-weighted,
- * which is what a rasteriser's AA does, at zero cost. Keep it sub-pixel; much
- * past 1px it stops reading as a sharp line and starts reading as blur.
- */
+/* Raked sand: one stone off the top-right, arcs across the whole document. */
 body::before {
   --stone: 94% -2%;
   --rake-gap: 28px;
@@ -199,18 +164,7 @@ body::before {
     transparent calc(var(--rake-gap) + 1px + var(--rake-aa))
   );
 
-  /*
-   * Even presence down the length, easing off only at the extreme ends so the
-   * sand neither collides with the header nor stops abruptly at the footer.
-   *
-   * Strength lives on `opacity` rather than in the mask alpha, so the mask is
-   * purely shape and the two are independent to tune.
-   *
-   * The groove colour has to clear the page's own hairlines to register at all:
-   * --line sits at about 1.58 contrast against the background, so anything at
-   * or below that reads as more of the same furniture. These sit near 3.3 in
-   * dark and 2.0 in light before opacity is applied.
-   */
+  /* Shape only; strength is on opacity so the two tune independently. */
   mask-image: linear-gradient(
     to bottom,
     transparent 0%,
@@ -220,31 +174,7 @@ body::before {
   );
 }
 
-/*
- * The sand breathes: the grooves themselves open and close, rather than the
- * layer being scaled. Scaling would thicken the 1px strokes along with the
- * spacing; animating the gap leaves the strokes crisp and moves only the
- * intervals, which is what a comb drawn slowly through sand actually does.
- *
- * Amplitude and duration are locked together by the geometry. The rings are
- * anchored at the stone, so a ring at radius R sits at index R/gap, and
- * widening the gap by d moves it by (R/gap) * d. That multiplier is about 45
- * up by the hero and about 325 at the foot of the page, so the bottom always
- * travels roughly seven times further than the top for the same d.
- *
- * 28px to 52px is a deep breath: the field nearly halves its density at the top
- * of the cycle and closes right back up.
- *
- * Two details make it read as moving rather than parked. The easing is a sine
- * in-out rather than the default ease-in-out, which sits nearly still at both
- * ends of the cycle. And the negative delay starts the page a quarter of the way
- * in, at peak velocity, instead of at the bottom of the breath where nothing
- * appears to happen for the first half-minute.
- *
- * Duration still trades against the far field: a ring at radius R moves
- * (R/gap) * d, and that multiplier is about 45 by the hero but 335 at the foot
- * of the page. Shorten this much further and the bottom starts to visibly flow.
- */
+/* Gaps open and close; scaling instead would thicken the strokes with them. */
 @media (prefers-reduced-motion: no-preference) {
   body::before {
     animation: rake-breathe 300s cubic-bezier(0.37, 0, 0.63, 1) -75s infinite alternate;
@@ -1234,11 +1164,7 @@ h2 {
   margin-block-end: 0.15rem;
 }
 
-/*
- * The data cells are transparent, so the raked field behind the page reads
- * straight through the table and fights the glyphs. A frosted panel puts the
- * pattern out of focus behind the numbers while keeping it present.
- */
+/* Frosted so the pattern sits out of focus behind the glyphs, not through them. */
 .comparison-scroll {
   margin-block-start: clamp(2rem, 5vw, 3.25rem);
   overflow-x: auto;
@@ -1248,8 +1174,7 @@ h2 {
   backdrop-filter: blur(3px) saturate(1.08);
 }
 
-/* No backdrop-filter, or the reader has asked for less transparency: fall back
- * to an opaque panel rather than leaving the pattern showing through. */
+/* No backdrop-filter: opaque panel rather than the pattern showing through. */
 @supports not (backdrop-filter: blur(2px)) {
   .comparison-scroll {
     background: var(--bg);
@@ -1770,7 +1695,7 @@ h2 {
     z-index: 1;
   }
 
-  /* Sticky again means opaque again: cells must not scroll visibly beneath it. */
+  /* Sticky, so opaque: cells must not scroll visibly beneath it. */
   .comparison-table tbody th {
     background: var(--bg);
   }
