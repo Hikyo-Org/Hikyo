@@ -23,6 +23,12 @@
   --sans: 'Instrument Sans', sans-serif;
   --max-width: 70rem;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Separators over open ground: a plain hairline vanishes into the pattern. */
+  --rule-open: color-mix(in oklab, var(--accent) 55%, var(--line));
+  /* Groove colour: the logo navy, lifted. The literal ink reads 1.10 here. */
+  --rake: oklch(0.48 0.05 258);
+  /* Sub-pixel ramp per groove edge: gradients get no supersampling. */
+  --rake-aa: 0.75px;
   color-scheme: dark;
 }
 
@@ -41,6 +47,9 @@
   --danger: oklch(0.48 0.16 30);
   --danger-quiet: oklch(0.5 0.15 30 / 0.1);
   --warning: oklch(0.52 0.13 75);
+  --rule-open: color-mix(in oklab, var(--accent) 55%, var(--line));
+  /* Same navy on paper; the literal ink reads 15.20, darker than body text. */
+  --rake: oklch(0.7 0.05 258);
   color-scheme: light;
 }
 
@@ -53,6 +62,7 @@ html {
 }
 
 body {
+  position: relative; /* containing block for the page-length garden field */
   min-width: 20rem;
   margin: 0;
   background: var(--bg);
@@ -125,6 +135,58 @@ button {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
+
+/* ------------------------------------------------------------- atmosphere */
+
+/* Registered so it can be animated; unregistered properties jump, not ease. */
+@property --rake-gap {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 28px;
+}
+
+/* Raked sand: one stone off the top-right, arcs across the whole document. */
+body::before {
+  --stone: 94% -2%;
+  --rake-gap: 28px;
+
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: '';
+  pointer-events: none;
+  opacity: 0.4;
+  background: repeating-radial-gradient(
+    circle at var(--stone),
+    transparent 0 calc(var(--rake-gap) - var(--rake-aa)),
+    var(--rake) var(--rake-gap),
+    var(--rake) calc(var(--rake-gap) + 1px),
+    transparent calc(var(--rake-gap) + 1px + var(--rake-aa))
+  );
+
+  /* Shape only; strength is on opacity so the two tune independently. */
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #000 3%,
+    #000 95%,
+    transparent 100%
+  );
+}
+
+/* Gaps open and close; scaling instead would thicken the strokes with them. */
+@media (prefers-reduced-motion: no-preference) {
+  body::before {
+    animation: rake-breathe 300s cubic-bezier(0.37, 0, 0.63, 1) -75s infinite alternate;
+  }
+}
+
+@keyframes rake-breathe {
+  to {
+    --rake-gap: 52px;
+  }
+}
+
 
 .site-header {
   position: sticky;
@@ -811,7 +873,7 @@ h2 {
   align-items: center;
   gap: clamp(1.75rem, 5vw, 4.25rem);
   padding-block: clamp(2.5rem, 6vw, 4.5rem);
-  border-block-start: 1px solid var(--line-soft);
+  border-block-start: 1px solid var(--rule-open);
 }
 
 .feature-row:first-of-type {
@@ -1087,12 +1149,8 @@ h2 {
   font-size: 0.875rem;
 }
 
-.specs strong {
-  color: var(--text);
-}
-
 .comparison {
-  border-block-end: 1px solid var(--line);
+  border-block-end: 1px solid var(--rule-open);
 }
 
 .comparison-intro {
@@ -1106,11 +1164,28 @@ h2 {
   margin-block-end: 0.15rem;
 }
 
+/* Frosted so the pattern sits out of focus behind the glyphs, not through them. */
 .comparison-scroll {
   margin-block-start: clamp(2rem, 5vw, 3.25rem);
   overflow-x: auto;
   border-block: 1px solid var(--line);
   outline: none;
+  background: color-mix(in oklab, var(--bg) 46%, transparent);
+  backdrop-filter: blur(3px) saturate(1.08);
+}
+
+/* No backdrop-filter: opaque panel rather than the pattern showing through. */
+@supports not (backdrop-filter: blur(2px)) {
+  .comparison-scroll {
+    background: var(--bg);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .comparison-scroll {
+    background: var(--bg);
+    backdrop-filter: none;
+  }
 }
 
 .comparison-scroll:focus-visible {
@@ -1172,14 +1247,14 @@ h2 {
 }
 
 .comparison-table tbody th {
-  background: var(--bg);
+  background: transparent;
   color: var(--text-dim);
   font-size: 0.875rem;
   font-weight: 500;
 }
 
 .comparison-table .hikyo-column {
-  background: color-mix(in oklab, var(--accent) 7%, var(--bg));
+  background: color-mix(in oklab, var(--accent) 9%, transparent);
 }
 
 .comparison-table thead .hikyo-column {
@@ -1189,7 +1264,7 @@ h2 {
 
 .comparison-table tbody tr:hover th,
 .comparison-table tbody tr:hover td:not(.hikyo-column) {
-  background: color-mix(in oklab, var(--accent) 3%, var(--bg));
+  background: color-mix(in oklab, var(--accent) 5%, transparent);
 }
 
 .comparison-status {
@@ -1333,8 +1408,15 @@ h2 {
   margin: 0;
 }
 
-.why-body strong {
-  color: var(--text);
+/* Keywords inside the grey body copy: the page accent, at full weight. */
+.lede strong,
+.section-lede strong,
+.feature-copy p strong,
+.final-cta p strong,
+.why-body strong,
+.specs strong {
+  color: var(--accent);
+  font-weight: 700;
 }
 
 .signature {
@@ -1611,6 +1693,11 @@ h2 {
     position: sticky;
     left: 0;
     z-index: 1;
+  }
+
+  /* Sticky, so opaque: cells must not scroll visibly beneath it. */
+  .comparison-table tbody th {
+    background: var(--bg);
   }
 
   .comparison-table thead th:first-child {

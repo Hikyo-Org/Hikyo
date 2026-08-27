@@ -127,8 +127,8 @@ const faq = [
             <p class="eyebrow"><span class="live" aria-hidden="true"></span> 0.x · one Go binary · self-hosted</p>
             <h1>Every environment<br /><span>answers for itself.</span></h1>
             <p class="lede">
-              Hikyo gives self-hosting teams one view of validated configuration and secrets. Every value is
-              explicit: see what is set, catch what is missing, and require deliberate access before sensitive
+              Hikyo gives <strong>self-hosting</strong> teams one view of validated configuration and secrets. Every value is
+              explicit: see what is set, catch what is missing, and require <strong>deliberate access</strong> before sensitive
               values move.
             </p>
             <div class="hero-actions">
@@ -223,8 +223,8 @@ const faq = [
             <p class="kicker">// one path from intent to runtime</p>
             <h2 id="flow-heading">Declare once. Decide per environment.</h2>
             <p class="section-lede">
-              Hikyo separates the shape of a key from each environment's value, then keeps delivery inside the
-              same authorization model.
+              Hikyo separates the <strong>shape of a key</strong> from each environment's value, then keeps delivery inside the
+              same <strong>authorization model</strong>.
             </p>
           </div>
           <ol class="steps" data-flow-steps>
@@ -252,15 +252,14 @@ const faq = [
           <p class="kicker">// explicit state, deliberate access</p>
           <h2 id="product-heading">A dense surface that stays honest.</h2>
           <p class="section-lede">
-            A growing key catalogue across several environments should stay scannable. Hikyo makes absence visible
-            and keeps secret material behind a separate disclosure path.
+            A growing key catalogue across several environments should <strong>stay scannable</strong>. Hikyo makes <strong>absence visible</strong> and keeps secret material behind a separate <strong>disclosure path</strong>.
           </p>
 
           <article class="feature-row">
             <div class="feature-copy">
               <h3>Every environment answers for itself.</h3>
               <p>
-                Values never fall through a hidden inheritance chain. Each cell is explicitly set or absent, so
+                Values never fall through a <strong>hidden inheritance</strong> chain. Each cell is <strong>explicitly set or absent</strong>, so
                 production cannot quietly borrow a development default.
               </p>
               <p class="feature-note"><span>▸</span> Flat values: no inheritance, no hidden fallback.</p>
@@ -280,8 +279,8 @@ const faq = [
             <div class="feature-copy">
               <h3>Revealing a secret is a ceremony.</h3>
               <p>
-                Secrets stay masked until you deliberately re-authenticate. Reveal windows remask automatically,
-                and clipboard copies become individual audited disclosures.
+                Secrets <strong>stay masked</strong> until you deliberately re-authenticate. Reveal windows remask automatically,
+                and clipboard copies become individual <strong>audited disclosures</strong>.
               </p>
               <p class="feature-note"><span>▸</span> Write-only replacement never needs the current plaintext.</p>
             </div>
@@ -299,8 +298,8 @@ const faq = [
             <div class="feature-copy">
               <h3>Invalid changes stop at write time.</h3>
               <p>
-                Key declarations distinguish config from secrets and attach validation rules. Invalid values are
-                refused, and a value required in an environment cannot be cleared there.
+                Key declarations distinguish config from secrets and attach <strong>validation rules</strong>. Invalid values are
+                refused, and a value required in an environment <strong>cannot be cleared</strong> there.
               </p>
               <p class="feature-note"><span>▸</span> The server validates the value and presence rule together.</p>
             </div>
@@ -319,8 +318,8 @@ const faq = [
             <div class="feature-copy">
               <h3>Delivery fails closed at the boundary.</h3>
               <p>
-                A workload gets configuration through its scoped identity. Secret plaintext also requires the
-                project machine-reveal opt-in and a reveal grant; otherwise delivery stops before the child starts.
+                A workload gets configuration through its <strong>scoped identity</strong>. Secret plaintext also requires the
+                project <strong>machine-reveal opt-in</strong> and a <strong>reveal grant</strong>; otherwise delivery stops before the child starts.
               </p>
               <p class="feature-note"><span>▸</span> The happy path writes no plaintext file to the host disk.</p>
             </div>
@@ -344,8 +343,8 @@ const faq = [
             <p class="kicker">// runs where you do</p>
             <h2 id="self-host-heading">Own the keys. Own the data.</h2>
             <p class="section-lede">
-              Self-hosting is the product, not a paid tier. Run one binary with its embedded web UI, choose SQLite
-              or PostgreSQL, and hold the root key outside the datastore it protects.
+              Self-hosting is the product, <strong>not a paid tier</strong>. Run one binary with its embedded web UI, choose SQLite
+              or PostgreSQL, and hold the root key <strong>outside the datastore</strong> it protects.
             </p>
             <div class="section-actions">
               <a class="button button-primary" href={repository} data-posthog-event="github_cta_clicked" data-posthog-placement="self_host">Inspect the source</a>
@@ -369,7 +368,7 @@ const faq = [
               <h2 id="comparison-heading">Different tools, different jobs.</h2>
             </div>
             <p class="section-lede">
-              Hikyo starts with explicit environment state and validated values. OpenBao leads on dynamic
+              Hikyo starts with <strong>explicit environment state</strong> and validated values. OpenBao leads on dynamic
               infrastructure credentials; Infisical and Phase pair broad delivery workflows with paid tiers.
             </p>
           </div>
@@ -498,9 +497,9 @@ const faq = [
             </p>
             <p>
               The environment matrix is the core idea: <strong>explicit state you can inspect</strong>, disclosure
-              you must intend, and refusals that name the safe next action.
+              you <strong>must intend</strong>, and refusals that name the <strong>safe</strong> next action.
             </p>
-            <p>No badge wall. No hidden operational tier. Infrastructure you can reason about.</p>
+            <p>No badge wall. <strong>No hidden operational tier</strong>. Infrastructure you can reason about.</p>
           </div>
           <p class="signature">Built in the open · MPL-2.0 · no <code>/ee</code></p>
         </div>
@@ -512,7 +511,7 @@ const faq = [
             <p class="kicker">// before you evaluate it</p>
             <h2 id="faq-heading">Questions worth answering plainly.</h2>
             <p class="section-lede">
-              Hikyo is open, self-hosted, and still pre-1.0. These boundaries matter before you place it near real
+              Hikyo is open, self-hosted, and still <strong>pre-1.0</strong>. These boundaries matter before you place it near real
               configuration or secret material.
             </p>
             <a
@@ -536,7 +535,7 @@ const faq = [
       <section class="final-cta" aria-labelledby="final-heading">
         <div class="wrap">
           <h2 id="final-heading">Config you can reason about.</h2>
-          <p>Hikyo is under active 0.x development. Read the code, inspect the decisions, and follow the road to 1.0.</p>
+          <p>Hikyo is under active 0.x development. Read the code, inspect the decisions, and follow the <strong>road to 1.0</strong>.</p>
           <div class="section-actions">
             <a
               class="button button-primary"
