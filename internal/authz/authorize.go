@@ -416,6 +416,38 @@ func (a *TxAuthorizer) CallerHolds(ctx context.Context, caller Identity,
 	return !a.assuranceInadequate(caller, op), nil
 }
 
+// HoldsInstanceCapability reports whether the caller's own grants satisfy an
+// INSTANCE-scoped operation's formula and its assurance floor, WITHOUT
+// recording an operation or a denial. It is the disclosure-safe "may I even
+// attempt this instance surface" check the UI gates on; real authorization is
+// still evaluated at the chokepoint per request.
+//
+// It deliberately mirrors authorizeInstance rather than CallerHolds: an
+// instance op evaluates its formula against the empty scope and resolves no
+// tenant chain, so routing it through the scoped path (CallerHolds) would ask
+// ResolveChain to resolve an empty scope and error. It refuses a non-instance
+// op for the same reason — the caller would get a silently wrong answer.
+func (a *TxAuthorizer) HoldsInstanceCapability(ctx context.Context, caller Identity, op Operation) (bool, error) {
+	if caller.Principal == "" {
+		return false, errors.New("authz: empty principal")
+	}
+	spec, ok := registry.authorizationSpec(op)
+	if !ok {
+		return false, fmt.Errorf("authz: operation %q is not in the operation registry", op)
+	}
+	if spec.class != ClassInstance {
+		return false, fmt.Errorf("authz: operation %q is not instance-scoped", op)
+	}
+	grants, err := a.r.Grants(ctx, caller.Principal)
+	if err != nil {
+		return false, err
+	}
+	if !evaluate(spec.formula, domain.Scope{}, grants) {
+		return false, nil
+	}
+	return !a.assuranceInadequate(caller, op), nil
+}
+
 // RecordedPrincipalHolds checks the grant formula for a principal recorded as
 // authority on a standing delegation. It deliberately does not synthesize a
 // caller identity or apply session policy: the principal is not the caller,

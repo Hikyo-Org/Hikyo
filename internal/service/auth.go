@@ -896,11 +896,13 @@ func (s *Auth) Identity(ctx context.Context, presented string) (Identity, error)
 		// different capability or an assurance floor on one of them — this single
 		// flag would mis-gate the other, and the honest fix is a second
 		// capability, not a wider reading of this one.
-		operator, err := az.CallerHolds(ctx, id, authz.OpRetentionHealthRead, domain.Scope{})
-		if err != nil {
-			return err
+		//
+		// It is a HINT: if it cannot be computed we return it false rather than
+		// fail identity resolution, because a chrome affordance must never be the
+		// reason whoami — the request the whole SPA depends on — refuses.
+		if operator, capErr := az.HoldsInstanceCapability(ctx, id, authz.OpRetentionHealthRead); capErr == nil {
+			out.InstanceOperator = operator
 		}
-		out.InstanceOperator = operator
 		return nil
 	})
 	return out, err
