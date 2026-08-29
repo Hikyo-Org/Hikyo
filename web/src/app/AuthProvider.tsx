@@ -18,6 +18,17 @@ import { makeQueryClient } from './queryClient.ts';
 
 export type WhoAmI = z.infer<typeof zWhoAmI>;
 
+/**
+ * The source identity of a session transition. `whoami` carries `capabilities`;
+ * a login or step-up RESULT does not — that response predates knowing the
+ * caller's grants. `acceptSession` binds the epoch from it immediately and then
+ * hydrates the real capabilities from a `whoami`, so the operator chrome a fresh
+ * operator session is entitled to appears within one round trip rather than
+ * waiting for the next revalidation.
+ */
+export type AcceptedIdentity = Omit<WhoAmI, 'capabilities'> &
+  Partial<Pick<WhoAmI, 'capabilities'>>;
+
 export type AuthState =
   | { readonly status: 'checking' }
   | { readonly status: 'anonymous' }
@@ -33,7 +44,7 @@ type AuthContextValue = {
   readonly identity: WhoAmI | null;
   readonly failure: Error | null;
   readonly captureTransition: () => SessionTransitionGuard;
-  readonly acceptSession: (identity: WhoAmI, guard: SessionTransitionGuard) => void;
+  readonly acceptSession: (identity: AcceptedIdentity, guard: SessionTransitionGuard) => void;
   readonly endSession: (guard: SessionTransitionGuard) => void;
   readonly refreshSession: () => Promise<void>;
   readonly revalidate: () => Promise<void>;
@@ -56,6 +67,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 const CHANNEL_NAME = 'hikyo-root-auth';
 const CHANNEL_MESSAGE = 'session-changed';
 const MAX_TIMEOUT_MS = 2_147_483_647;
+const FOCUS_CHECK_INTERVAL_MS = 1_000;
 
 /** Read root identity without putting it in a session-owned query cache. */
 async function readIdentity(): Promise<WhoAmI | null> {
@@ -88,6 +100,10 @@ function identityVersion(identity: WhoAmI | null): string | null {
     identity.principal.id,
     identity.session.assurance.method,
     identity.session.assurance.authenticated_at,
+    // A capability change is a change: without it the quiet focus check would
+    // treat a mid-session grant/revoke as no-op and leave the operator chrome
+    // (all gated on this) stale until a blocking revalidate.
+    String(identity.capabilities.instance_operator),
     ...identity.session.assurance.factors,
   ].join('\u001f');
 }
@@ -114,6 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const requestRef = useRef(0);
   const transitionRevisionRef = useRef(0);
   const channelRef = useRef<BroadcastChannel | null>(null);
+  const lastFocusCheckRef = useRef(0);
 
   const commit = useCallback((next: Snapshot) => {
     snapshotRef.current = next;
@@ -216,17 +233,77 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [checkSession],
   );
 
+  // A window refocus is not, on its own, a session change. Password managers
+  // blur and refocus the window every time their overlay opens or closes, so a
+  // blocking revalidate here would tear the whole tree down to "Loading…" (and,
+  // on the login page, keep re-firing an anonymous whoami 401 and resetting the
+  // form the manager is trying to fill). Instead re-read identity quietly: keep
+  // painting the current session, and only settle when the answer actually
+  // differs.
+  //
+  // Unlike the other checks this one deliberately does NOT claim `requestRef`:
+  // that guard cancels in-flight work, and a refocus arriving during a
+  // post-mutation `refreshSession` must not cancel its settle/publish. It guards
+  // its own late settle instead — against the identity it read, and only if no
+  // authoritative check has replaced that identity meanwhile.
+  const revalidateOnFocus = useCallback(async () => {
+    const baseline = snapshotRef.current;
+    if (baseline.state.status !== 'authenticated') {
+      return;
+    }
+    const now = Date.now();
+    if (now - lastFocusCheckRef.current < FOCUS_CHECK_INTERVAL_MS) {
+      return;
+    }
+    // Reserve the window up front so a burst of refocus events reads once; a
+    // failed read frees it again so a network blip does not burn the interval.
+    lastFocusCheckRef.current = now;
+    let identity: WhoAmI | null;
+    try {
+      identity = await readIdentity();
+    } catch {
+      // A focus-time network blip must not blank the app or drop the session;
+      // the expiry timer and the next user action remain the authoritative
+      // checks. (A whoami 401 is not a blip — it is an authoritative end of
+      // session, so readIdentity returns null and we settle to anonymous below.)
+      lastFocusCheckRef.current = 0;
+      return;
+    }
+    const latest = snapshotRef.current;
+    if (latest.identity !== baseline.identity) {
+      // An authoritative check (mount, refresh, expiry, or a peer tab) settled
+      // while we were reading. Defer to it rather than overwrite with a
+      // possibly-staler read.
+      return;
+    }
+    if (identityVersion(identity) === identityVersion(latest.identity)) {
+      return;
+    }
+    settleIdentity(identity, true);
+  }, [settleIdentity]);
+
   const captureTransition = useCallback(
     (): SessionTransitionGuard => ({ revision: transitionRevisionRef.current }),
     [],
   );
 
   const acceptSession = useCallback(
-    (identity: WhoAmI, guard: SessionTransitionGuard) => {
+    (identity: AcceptedIdentity, guard: SessionTransitionGuard) => {
       if (guard.revision !== transitionRevisionRef.current) {
         void reconcileTransition();
         return;
       }
+      // A login/step-up result carries no capabilities. Bind the epoch now with
+      // a fail-closed default, then hydrate the authoritative value from whoami
+      // so an operator's instance chrome appears without waiting for the next
+      // revalidation. A whoami always carries capabilities, so re-accepting one
+      // (the guard-mismatch reconcile path) skips the extra round trip.
+      const hydrated: WhoAmI = {
+        session: identity.session,
+        principal: identity.principal,
+        capabilities: identity.capabilities ?? { instance_operator: false },
+      };
+      const hydrateCapabilities = identity.capabilities === undefined;
       transitionRevisionRef.current += 1;
       const request = requestRef.current + 1;
       requestRef.current = request;
@@ -234,11 +311,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       commit({ ...current, state: { status: 'transitioning' }, failure: null });
       queueMicrotask(() => {
         if (requestRef.current === request) {
-          settleIdentity(identity, true);
+          settleIdentity(hydrated, true);
+          if (hydrateCapabilities) {
+            void refreshSession();
+          }
         }
       });
     },
-    [commit, reconcileTransition, settleIdentity],
+    [commit, reconcileTransition, refreshSession, settleIdentity],
   );
 
   const endSession = useCallback(
@@ -292,10 +372,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [revalidate]);
 
   useEffect(() => {
-    const onFocus = () => void revalidate();
+    const onFocus = () => void revalidateOnFocus();
     globalThis.addEventListener?.('focus', onFocus);
     return () => globalThis.removeEventListener?.('focus', onFocus);
-  }, [revalidate]);
+  }, [revalidateOnFocus]);
 
   useEffect(() => {
     if (snapshot.state.status !== 'authenticated' || snapshot.identity === null) {

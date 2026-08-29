@@ -35,6 +35,7 @@ const session: WhoAmI = {
     kind: 'human',
     display_name: 'Alice Example',
   },
+  capabilities: { instance_operator: false },
 };
 
 function accountButton(container: HTMLElement): HTMLButtonElement {

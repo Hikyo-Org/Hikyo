@@ -201,6 +201,11 @@ type Identity struct {
 	CreatedAt         time.Time
 	IdleExpiresAt     time.Time
 	AbsoluteExpiresAt time.Time
+	// InstanceOperator is a disclosure-safe UI hint: the caller holds the
+	// instance-config authority the operator-only reads (retention health,
+	// update status) require. It is a reflection of the caller's own grant, not
+	// an authorization — every one of those reads is still judged per request.
+	InstanceOperator bool
 }
 
 func identityOf(i authz.Identity) Identity {
@@ -880,6 +885,23 @@ func (s *Auth) Identity(ctx context.Context, presented string) (Identity, error)
 				return err
 			}
 			out.Assurance.Provider = provider.Slug
+		}
+		// A disclosure-safe grant check (no operation is recorded), so the SPA
+		// can gate the operator-only chrome polls instead of discovering the
+		// answer from their refusals.
+		//
+		// One check speaks for both gated reads BECAUSE OpRetentionHealthRead and
+		// OpUpdateStatusRead share one formula today (CapInstanceConfig at
+		// instance scope; see authz/registry.go). If that ever diverges — a
+		// different capability or an assurance floor on one of them — this single
+		// flag would mis-gate the other, and the honest fix is a second
+		// capability, not a wider reading of this one.
+		//
+		// It is a HINT: if it cannot be computed we return it false rather than
+		// fail identity resolution, because a chrome affordance must never be the
+		// reason whoami — the request the whole SPA depends on — refuses.
+		if operator, capErr := az.HoldsInstanceCapability(ctx, id, authz.OpRetentionHealthRead); capErr == nil {
+			out.InstanceOperator = operator
 		}
 		return nil
 	})

@@ -61,7 +61,19 @@ function identity(
       kind: 'human',
       display_name: `Person ${principalSuffix}`,
     },
+    capabilities: { instance_operator: false },
   };
+}
+
+/** A login/step-up result: the same identity a mutation returns, minus the
+ *  capabilities only whoami carries. */
+function loginIdentity(sessionSuffix: string, principalSuffix: string): WhoAmI {
+  const { capabilities: _omitted, ...rest } = identity(sessionSuffix, principalSuffix);
+  return rest as WhoAmI;
+}
+
+function operatorWhoAmI(sessionSuffix: string, principalSuffix: string): WhoAmI {
+  return { ...identity(sessionSuffix, principalSuffix), capabilities: { instance_operator: true } };
 }
 
 function json(body: object, status = 200): Response {
@@ -100,6 +112,9 @@ function Probe({
       </output>
       <output data-testid="private">
         {auth.state.status === 'authenticated' ? (privateQuery.data ?? '') : ''}
+      </output>
+      <output data-testid="operator">
+        {auth.identity === null ? '' : String(auth.identity.capabilities.instance_operator)}
       </output>
       <output data-testid="marker">{String(queries.getQueryData(['marker']) ?? '')}</output>
       <button type="button" onClick={() => void auth.revalidate()}>
@@ -247,7 +262,7 @@ describe('AuthProvider', () => {
     expect(workspaceBearer(workspace.origin)).toBeUndefined();
   });
 
-  it('suspends authenticated routes while focus discovers a replacement session', async () => {
+  it('keeps painting the current session while a focus check is in flight, then settles a replacement', async () => {
     const replacement = deferred<Response>();
     const fetchMock = vi
       .fn<(...args: Parameters<typeof fetch>) => Promise<Response>>()
@@ -262,13 +277,72 @@ describe('AuthProvider', () => {
     );
     await expectTextEventually(container, 'private', id('ses', '00'));
 
+    // A refocus must not blank the tree: the session we hold keeps painting
+    // until the quiet check learns it has actually been replaced.
     await act(async () => globalThis.dispatchEvent(new Event('focus')));
-    expect(text(container, 'state')).toBe('transitioning');
-    expect(text(container, 'private')).toBe('');
+    expect(text(container, 'state')).toContain(`authenticated:${id('ses', '00')}`);
+    expect(text(container, 'private')).toContain(id('ses', '00'));
 
     await act(async () => replacement.resolve(json(identity('01', '11'))));
     await settle();
     expect(text(container, 'state')).toContain(`authenticated:${id('ses', '01')}`);
+  });
+
+  it('leaves an unchanged session untouched on refocus', async () => {
+    const fetchMock = vi
+      .fn<(...args: Parameters<typeof fetch>) => Promise<Response>>()
+      .mockResolvedValueOnce(json(identity('00', '10')))
+      .mockResolvedValueOnce(json(identity('00', '10')));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { container } = await renderAuth(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+    await settle();
+
+    const buttons = container.querySelectorAll('button');
+    await act(async () => buttons[1]?.click());
+    rememberWorkspace(workspace);
+    expect(text(container, 'marker')).toBe('owned');
+
+    await act(async () => globalThis.dispatchEvent(new Event('focus')));
+    await settle();
+
+    // No flash to a loading state, and no session-cache teardown: the refocus
+    // re-read the same identity and changed nothing.
+    expect(text(container, 'state')).toContain(`authenticated:${id('ses', '00')}`);
+    expect(text(container, 'marker')).toBe('owned');
+    expect(workspaceBearer(workspace.origin)).toBe(workspace);
+  });
+
+  it('defaults capabilities on a login result and hydrates them from whoami', async () => {
+    const mutationResult = deferred<WhoAmI>();
+    const fetchMock = vi
+      .fn<(...args: Parameters<typeof fetch>) => Promise<Response>>()
+      .mockResolvedValueOnce(json(identity('00', '10')))
+      .mockResolvedValueOnce(json(operatorWhoAmI('01', '11')));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { container } = await renderAuth(
+      <AuthProvider>
+        <Probe mutationResult={mutationResult} />
+      </AuthProvider>,
+    );
+    await settle();
+    expect(text(container, 'operator')).toBe('false');
+
+    const buttons = container.querySelectorAll('button');
+    await act(async () => buttons[2]?.click());
+    // The login result carries no capabilities, so the session binds with the
+    // fail-closed default and then a whoami hydrates the authoritative value —
+    // without a second login.
+    await act(async () => mutationResult.resolve(loginIdentity('01', '11')));
+    await settle();
+    expect(text(container, 'state')).toContain(`authenticated:${id('ses', '01')}`);
+    expect(text(container, 'operator')).toBe('true');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('ignores a mutation result captured before a newer session replacement', async () => {

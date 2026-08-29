@@ -279,6 +279,9 @@ func (a *API) Whoami(ctx context.Context, _ apigen.WhoamiRequestObject) (apigen.
 			Assurance:         assuranceOf(id.Assurance),
 		},
 		Principal: apigen.Principal{Id: string(id.Principal), Kind: apigen.Human},
+		Capabilities: apigen.PrincipalCapabilities{
+			InstanceOperator: id.InstanceOperator,
+		},
 	}, nil
 }
 

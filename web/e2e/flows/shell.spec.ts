@@ -266,24 +266,50 @@ test.describe('app chrome', () => {
   });
 
   for (const status of [403, 404]) {
-    test(`silently hides pruning health when the endpoint returns ${status}`, async ({ page }, testInfo) => {
+    // An operator whose health endpoint refuses the read still keeps the
+    // administration chrome — that is gated on the whoami capability, not on
+    // this poll — but the pruning banner has no health to show, so it is silent.
+    test(`silently hides pruning health when the endpoint returns ${status}`, async ({ page }) => {
       await page.route('**/api/v1/instance/retention-health', (route) =>
         route.fulfill({ status, contentType: 'application/json', body: '{}' }),
       );
       await page.reload();
       await expect(page.locator('.retention-warning')).toHaveCount(0);
-      if (testInfo.project.name === 'mobile') {
-        await openNav(page);
-      }
-      const instanceAdmin =
-        testInfo.project.name === 'mobile'
-          ? page
-              .getByRole('navigation', { name: 'Sections', exact: true })
-              .getByRole('link', { name: 'Instance administration' })
-          : page.locator('.rail__action[aria-label="Instance administration"]');
-      await expect(instanceAdmin).toHaveCount(0);
     });
   }
+
+  // The administration chrome and its background polls are gated on the whoami
+  // `instance_operator` capability: an ordinary member neither sees the surface
+  // nor fires the operator-only reads it would only be refused.
+  test('gates instance administration on the operator capability', async ({ page }, testInfo) => {
+    await page.route('**/api/v1/auth/whoami', async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      body.capabilities = { ...body.capabilities, instance_operator: false };
+      await route.fulfill({ response, json: body });
+    });
+    let retentionCalled = false;
+    await page.route('**/api/v1/instance/retention-health', (route) => {
+      retentionCalled = true;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    });
+    await page.reload();
+    if (testInfo.project.name === 'mobile') {
+      await openNav(page);
+    }
+    const instanceAdmin =
+      testInfo.project.name === 'mobile'
+        ? page
+            .getByRole('navigation', { name: 'Sections', exact: true })
+            .getByRole('link', { name: 'Instance administration' })
+        : page.locator('.rail__action[aria-label="Instance administration"]');
+    await expect(instanceAdmin).toHaveCount(0);
+    expect(retentionCalled).toBe(false);
+    // whoami is re-read on load, focus and hydrate, so drop the async override
+    // before the page tears down — a route.fetch still in flight at test end
+    // would otherwise error against the closing context.
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
 
   test('fails loud when pruning health cannot be checked', async ({ page }) => {
     await page.route('**/api/v1/instance/retention-health', (route) =>
