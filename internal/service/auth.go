@@ -201,6 +201,11 @@ type Identity struct {
 	CreatedAt         time.Time
 	IdleExpiresAt     time.Time
 	AbsoluteExpiresAt time.Time
+	// InstanceOperator is a disclosure-safe UI hint: the caller holds the
+	// instance-config authority the operator-only reads (retention health,
+	// update status) require. It is a reflection of the caller's own grant, not
+	// an authorization — every one of those reads is still judged per request.
+	InstanceOperator bool
 }
 
 func identityOf(i authz.Identity) Identity {
@@ -881,6 +886,15 @@ func (s *Auth) Identity(ctx context.Context, presented string) (Identity, error)
 			}
 			out.Assurance.Provider = provider.Slug
 		}
+		// A disclosure-safe grant check (no operation is recorded), so the SPA
+		// can gate the operator-only chrome polls instead of discovering the
+		// answer from their refusals. Both those reads share this formula, so one
+		// check speaks for both.
+		operator, err := az.CallerHolds(ctx, id, authz.OpRetentionHealthRead, domain.Scope{})
+		if err != nil {
+			return err
+		}
+		out.InstanceOperator = operator
 		return nil
 	})
 	return out, err

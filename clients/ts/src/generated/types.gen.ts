@@ -407,6 +407,17 @@ export type LoginResult = {
 export type WhoAmI = {
     session: Session;
     principal: Principal;
+    capabilities: PrincipalCapabilities;
+};
+
+/**
+ * UI-gating hints for the calling principal: what instance surfaces this session may even attempt, so the SPA does not fire an operator-only request it will only be refused. These are disclosure-safe reflections of the caller's own grants — never authorization itself, which is still evaluated per request at the server chokepoint.
+ */
+export type PrincipalCapabilities = {
+    /**
+     * True when the caller holds instance-config authority — the grant the retention-health and update-status reads require. The instance administration chrome and those background polls gate on it.
+     */
+    instance_operator: boolean;
 };
 
 export type UpdateStatus = {

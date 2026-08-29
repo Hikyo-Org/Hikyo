@@ -90,8 +90,13 @@ function formatGiB(bytes: number): string {
  */
 export function Shell({ session }: { session: WhoAmI }) {
   const orgs = useOrgs(true);
-  const retentionHealth = useRetentionHealth(true);
-  const updateStatus = useUpdateStatus(true);
+  // whoami tells us whether this caller holds instance-config authority, so the
+  // operator-only chrome polls never fire for an ordinary member (each would
+  // only be refused with a 403). The reads still swallow a 403 as belt-and-
+  // suspenders; this just stops us provoking it.
+  const isInstanceOperator = session.capabilities.instance_operator;
+  const retentionHealth = useRetentionHealth(isInstanceOperator);
+  const updateStatus = useUpdateStatus(isInstanceOperator);
   const workspaces = useWorkspaces();
   const remoteUpdateStatuses = useRemoteUpdateStatuses(workspaces);
   const location = useLocation();
@@ -178,7 +183,7 @@ export function Shell({ session }: { session: WhoAmI }) {
   const isPrototype = import.meta.env.MODE === 'prototype';
   const activeOrgRole = isPrototype ? 'org admin' : 'Organisation member';
   const visibleRetentionHealth = retentionHealth.data?.health;
-  const showInstanceAdministration = retentionHealth.data?.instanceAdmin === true;
+  const showInstanceAdministration = isInstanceOperator;
   const pruneWarning = retentionBanner(visibleRetentionHealth, retentionHealth.isError);
   const storageWarning = storageBanner(visibleRetentionHealth);
   const availableUpdate = updateStatus.data?.available === true ? updateStatus.data : null;

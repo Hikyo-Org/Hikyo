@@ -10034,12 +10034,31 @@ components:
 
     WhoAmI:
       type: object
-      required: [session, principal]
+      required: [session, principal, capabilities]
       properties:
         session:
           $ref: "#/components/schemas/Session"
         principal:
           $ref: "#/components/schemas/Principal"
+        capabilities:
+          $ref: "#/components/schemas/PrincipalCapabilities"
+
+    PrincipalCapabilities:
+      type: object
+      description: >-
+        UI-gating hints for the calling principal: what instance surfaces this
+        session may even attempt, so the SPA does not fire an operator-only
+        request it will only be refused. These are disclosure-safe reflections
+        of the caller's own grants — never authorization itself, which is still
+        evaluated per request at the server chokepoint.
+      required: [instance_operator]
+      properties:
+        instance_operator:
+          type: boolean
+          description: >-
+            True when the caller holds instance-config authority — the grant the
+            retention-health and update-status reads require. The instance
+            administration chrome and those background polls gate on it.
 
     UpdateStatus:
       type: object

@@ -18,6 +18,17 @@ import { makeQueryClient } from './queryClient.ts';
 
 export type WhoAmI = z.infer<typeof zWhoAmI>;
 
+/**
+ * The source identity of a session transition. `whoami` carries `capabilities`;
+ * a login or step-up RESULT does not — that response predates knowing the
+ * caller's grants. `acceptSession` binds the epoch from it immediately and then
+ * hydrates the real capabilities from a `whoami`, so the operator chrome a fresh
+ * operator session is entitled to appears within one round trip rather than
+ * waiting for the next revalidation.
+ */
+export type AcceptedIdentity = Omit<WhoAmI, 'capabilities'> &
+  Partial<Pick<WhoAmI, 'capabilities'>>;
+
 export type AuthState =
   | { readonly status: 'checking' }
   | { readonly status: 'anonymous' }
@@ -33,7 +44,7 @@ type AuthContextValue = {
   readonly identity: WhoAmI | null;
   readonly failure: Error | null;
   readonly captureTransition: () => SessionTransitionGuard;
-  readonly acceptSession: (identity: WhoAmI, guard: SessionTransitionGuard) => void;
+  readonly acceptSession: (identity: AcceptedIdentity, guard: SessionTransitionGuard) => void;
   readonly endSession: (guard: SessionTransitionGuard) => void;
   readonly refreshSession: () => Promise<void>;
   readonly revalidate: () => Promise<void>;
@@ -273,11 +284,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const acceptSession = useCallback(
-    (identity: WhoAmI, guard: SessionTransitionGuard) => {
+    (identity: AcceptedIdentity, guard: SessionTransitionGuard) => {
       if (guard.revision !== transitionRevisionRef.current) {
         void reconcileTransition();
         return;
       }
+      // A login/step-up result carries no capabilities. Bind the epoch now with
+      // a fail-closed default, then hydrate the authoritative value from whoami
+      // so an operator's instance chrome appears without waiting for the next
+      // revalidation. A whoami always carries capabilities, so re-accepting one
+      // (the guard-mismatch reconcile path) skips the extra round trip.
+      const hydrated: WhoAmI = {
+        session: identity.session,
+        principal: identity.principal,
+        capabilities: identity.capabilities ?? { instance_operator: false },
+      };
+      const hydrateCapabilities = identity.capabilities === undefined;
       transitionRevisionRef.current += 1;
       const request = requestRef.current + 1;
       requestRef.current = request;
@@ -285,11 +307,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       commit({ ...current, state: { status: 'transitioning' }, failure: null });
       queueMicrotask(() => {
         if (requestRef.current === request) {
-          settleIdentity(identity, true);
+          settleIdentity(hydrated, true);
+          if (hydrateCapabilities) {
+            void refreshSession();
+          }
         }
       });
     },
-    [commit, reconcileTransition, settleIdentity],
+    [commit, reconcileTransition, refreshSession, settleIdentity],
   );
 
   const endSession = useCallback(

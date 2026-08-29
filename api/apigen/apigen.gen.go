@@ -4567,6 +4567,12 @@ type Principal struct {
 	Kind PrincipalKind `json:"kind"`
 }
 
+// PrincipalCapabilities UI-gating hints for the calling principal: what instance surfaces this session may even attempt, so the SPA does not fire an operator-only request it will only be refused. These are disclosure-safe reflections of the caller's own grants — never authorization itself, which is still evaluated per request at the server chokepoint.
+type PrincipalCapabilities struct {
+	// InstanceOperator True when the caller holds instance-config authority — the grant the retention-health and update-status reads require. The instance administration chrome and those background polls gate on it.
+	InstanceOperator bool `json:"instance_operator"`
+}
+
 // PrincipalKind Closed set — the human/machine distinction is structural in audit attribution.
 type PrincipalKind string
 
@@ -6289,8 +6295,9 @@ type WebauthnResponse map[string]interface{}
 
 // WhoAmI defines model for WhoAmI.
 type WhoAmI struct {
-	Principal Principal `json:"principal"`
-	Session   Session   `json:"session"`
+	Capabilities PrincipalCapabilities `json:"capabilities"`
+	Principal    Principal             `json:"principal"`
+	Session      Session               `json:"session"`
 }
 
 // WorkspaceHandoffApproved defines model for WorkspaceHandoffApproved.

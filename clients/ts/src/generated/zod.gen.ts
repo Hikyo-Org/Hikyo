@@ -375,6 +375,13 @@ export const zLocalLoginRequest = z.object({
     artifact: z.enum(['cli', 'browser']).optional().default('cli')
 });
 
+/**
+ * UI-gating hints for the calling principal: what instance surfaces this session may even attempt, so the SPA does not fire an operator-only request it will only be refused. These are disclosure-safe reflections of the caller's own grants — never authorization itself, which is still evaluated per request at the server chokepoint.
+ */
+export const zPrincipalCapabilities = z.object({
+    instance_operator: z.boolean()
+});
+
 export const zInstanceUpdateBackend = z.enum([
     'flux',
     'compose',
@@ -615,7 +622,8 @@ export const zLoginResult = z.object({
 
 export const zWhoAmI = z.object({
     session: zSession,
-    principal: zPrincipal
+    principal: zPrincipal,
+    capabilities: zPrincipalCapabilities
 });
 
 export const zRecoveryCodesResult = z.object({

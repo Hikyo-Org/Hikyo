@@ -51,6 +51,7 @@ function prototypeLoginResult() {
       },
     },
     principal: { id: ids.principal, kind: 'human', display_name: 'Alex Lee' },
+    capabilities: { instance_operator: true },
   };
 }
 
