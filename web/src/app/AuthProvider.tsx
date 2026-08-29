@@ -56,6 +56,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 const CHANNEL_NAME = 'hikyo-root-auth';
 const CHANNEL_MESSAGE = 'session-changed';
 const MAX_TIMEOUT_MS = 2_147_483_647;
+const FOCUS_CHECK_INTERVAL_MS = 1_000;
 
 /** Read root identity without putting it in a session-owned query cache. */
 async function readIdentity(): Promise<WhoAmI | null> {
@@ -114,6 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const requestRef = useRef(0);
   const transitionRevisionRef = useRef(0);
   const channelRef = useRef<BroadcastChannel | null>(null);
+  const lastFocusCheckRef = useRef(0);
 
   const commit = useCallback((next: Snapshot) => {
     snapshotRef.current = next;
@@ -216,6 +218,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [checkSession],
   );
 
+  // A window refocus is not, on its own, a session change. Password managers
+  // blur and refocus the window every time their overlay opens or closes, so a
+  // blocking revalidate here would tear the whole tree down to "Loading…" (and,
+  // on the login page, keep re-firing an anonymous whoami 401 and resetting the
+  // form the manager is trying to fill). Instead re-read identity quietly: keep
+  // painting the current session, and only settle when the answer actually
+  // differs.
+  //
+  // Unlike the other checks this one deliberately does NOT claim `requestRef`:
+  // that guard cancels in-flight work, and a refocus arriving during a
+  // post-mutation `refreshSession` must not cancel its settle/publish. It guards
+  // its own late settle instead — against the identity it read, and only if no
+  // authoritative check has replaced that identity meanwhile.
+  const revalidateOnFocus = useCallback(async () => {
+    const baseline = snapshotRef.current;
+    if (baseline.state.status !== 'authenticated') {
+      return;
+    }
+    const now = Date.now();
+    if (now - lastFocusCheckRef.current < FOCUS_CHECK_INTERVAL_MS) {
+      return;
+    }
+    // Reserve the window up front so a burst of refocus events reads once; a
+    // failed read frees it again so a network blip does not burn the interval.
+    lastFocusCheckRef.current = now;
+    let identity: WhoAmI | null;
+    try {
+      identity = await readIdentity();
+    } catch {
+      // A focus-time network blip must not blank the app or drop the session;
+      // the expiry timer and the next user action remain the authoritative
+      // checks. (A whoami 401 is not a blip — it is an authoritative end of
+      // session, so readIdentity returns null and we settle to anonymous below.)
+      lastFocusCheckRef.current = 0;
+      return;
+    }
+    const latest = snapshotRef.current;
+    if (latest.identity !== baseline.identity) {
+      // An authoritative check (mount, refresh, expiry, or a peer tab) settled
+      // while we were reading. Defer to it rather than overwrite with a
+      // possibly-staler read.
+      return;
+    }
+    if (identityVersion(identity) === identityVersion(latest.identity)) {
+      return;
+    }
+    settleIdentity(identity, true);
+  }, [settleIdentity]);
+
   const captureTransition = useCallback(
     (): SessionTransitionGuard => ({ revision: transitionRevisionRef.current }),
     [],
@@ -292,10 +343,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [revalidate]);
 
   useEffect(() => {
-    const onFocus = () => void revalidate();
+    const onFocus = () => void revalidateOnFocus();
     globalThis.addEventListener?.('focus', onFocus);
     return () => globalThis.removeEventListener?.('focus', onFocus);
-  }, [revalidate]);
+  }, [revalidateOnFocus]);
 
   useEffect(() => {
     if (snapshot.state.status !== 'authenticated' || snapshot.identity === null) {

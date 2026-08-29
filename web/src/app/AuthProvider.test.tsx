@@ -247,7 +247,7 @@ describe('AuthProvider', () => {
     expect(workspaceBearer(workspace.origin)).toBeUndefined();
   });
 
-  it('suspends authenticated routes while focus discovers a replacement session', async () => {
+  it('keeps painting the current session while a focus check is in flight, then settles a replacement', async () => {
     const replacement = deferred<Response>();
     const fetchMock = vi
       .fn<(...args: Parameters<typeof fetch>) => Promise<Response>>()
@@ -262,13 +262,44 @@ describe('AuthProvider', () => {
     );
     await expectTextEventually(container, 'private', id('ses', '00'));
 
+    // A refocus must not blank the tree: the session we hold keeps painting
+    // until the quiet check learns it has actually been replaced.
     await act(async () => globalThis.dispatchEvent(new Event('focus')));
-    expect(text(container, 'state')).toBe('transitioning');
-    expect(text(container, 'private')).toBe('');
+    expect(text(container, 'state')).toContain(`authenticated:${id('ses', '00')}`);
+    expect(text(container, 'private')).toContain(id('ses', '00'));
 
     await act(async () => replacement.resolve(json(identity('01', '11'))));
     await settle();
     expect(text(container, 'state')).toContain(`authenticated:${id('ses', '01')}`);
+  });
+
+  it('leaves an unchanged session untouched on refocus', async () => {
+    const fetchMock = vi
+      .fn<(...args: Parameters<typeof fetch>) => Promise<Response>>()
+      .mockResolvedValueOnce(json(identity('00', '10')))
+      .mockResolvedValueOnce(json(identity('00', '10')));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { container } = await renderAuth(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+    await settle();
+
+    const buttons = container.querySelectorAll('button');
+    await act(async () => buttons[1]?.click());
+    rememberWorkspace(workspace);
+    expect(text(container, 'marker')).toBe('owned');
+
+    await act(async () => globalThis.dispatchEvent(new Event('focus')));
+    await settle();
+
+    // No flash to a loading state, and no session-cache teardown: the refocus
+    // re-read the same identity and changed nothing.
+    expect(text(container, 'state')).toContain(`authenticated:${id('ses', '00')}`);
+    expect(text(container, 'marker')).toBe('owned');
+    expect(workspaceBearer(workspace.origin)).toBe(workspace);
   });
 
   it('ignores a mutation result captured before a newer session replacement', async () => {
