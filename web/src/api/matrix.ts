@@ -24,6 +24,11 @@ import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/rea
 import { useMemo } from 'react';
 import { z } from 'zod';
 
+import {
+  signalsPollInterval,
+  useAdvisoryStream,
+  type AdvisoryEvent,
+} from './advisory.ts';
 import { ApiError, parsed } from './client.ts';
 import { callerSafeRefusal } from './history.ts';
 import {
@@ -52,9 +57,10 @@ export type { MatrixRef } from './keys.ts';
  *
  * The matrix reads one project catalogue and then fans out over the project's
  * environments. Every body crosses the generated Zod schema at this boundary;
- * the component receives only parsed domain records. Signals poll because the
- * API documents this endpoint as the fallback when the advisory SSE stream is
- * unavailable, and this surface does not need a second live-update protocol.
+ * the component receives only parsed domain records. Live updates ride the
+ * advisory SSE stream (#510): one subscription per open project invalidates
+ * the caches an event names, and the signals poll survives only as the
+ * documented fallback while that stream is not healthy.
  */
 
 export type MatrixKeyList = z.infer<typeof zKeyList>;
@@ -364,6 +370,44 @@ export function signalsRequireValuesRefresh(
 }
 
 /**
+ * advisoryInvalidations maps one advisory event (#510) onto exactly the cache
+ * prefixes it names — the event payload is metadata-only, so the mapping is
+ * this mechanical and the pure function is the whole of it:
+ *
+ *  - `revision.published`: the environment advanced. Its values moved, its
+ *    published drafts stopped being pending, and its signals carry the new
+ *    revision and cleared markers. The signals queryFn keeps the ordering
+ *    cascade (`signalsRequireValuesRefresh`), so the values invalidation here
+ *    is direct rather than deferred.
+ *  - `cell.changed`: the named cell moved; the signals refetch decides from
+ *    the revision whether values must follow.
+ *  - `pending.staged`: a draft appeared — the recipient's own (the projection
+ *    blanks other actors) or another principal's write-presence marker. Both
+ *    the draft list and the pending cells render that fact.
+ */
+export function advisoryInvalidations(
+  ref: MatrixRef,
+  event: AdvisoryEvent,
+): readonly (readonly string[])[] {
+  const environmentId = event.environmentId;
+  switch (event.type) {
+    case 'revision.published':
+      return [
+        valuesKey({ ...ref, environment: environmentId }),
+        signalsKey(ref, environmentId),
+        pendingDraftsKey(ref, environmentId),
+      ];
+    case 'cell.changed':
+      return [signalsKey(ref, environmentId)];
+    case 'pending.staged':
+      return [
+        pendingDraftsKey(ref, environmentId),
+        signalsKey(ref, environmentId),
+      ];
+  }
+}
+
+/**
  * The caller's own drafts, as the publish sheet previews them.
  *
  * Previews come from the server (`listPendingDrafts`), bound to the immutable
@@ -452,6 +496,21 @@ export function useMatrixProject(ref: MatrixRef) {
   const queries = useQueryClient();
   const transport = useTransport();
   const environments = useEnvironments(ref.org, ref.project);
+  // The live channel (#510): one advisory stream for the whole project. An
+  // event invalidates exactly the caches its payload names; the connection
+  // state gates the signals fallback poll below. Subscribing here — inside
+  // the same hook that owns the matrix's queries — is what makes the
+  // subscription die with the route and never outlive its ref.
+  const signalsStream = useAdvisoryStream(
+    ref,
+    transport,
+    (event) => {
+      for (const queryKey of advisoryInvalidations(ref, event)) {
+        void queries.invalidateQueries({ queryKey });
+      }
+    },
+    ref.org !== '' && ref.project !== '',
+  );
   const keys = useQuery({
     queryKey: matrixKeysKey(ref),
     queryFn: () => parsed(listKeysOp, { path: ref, ...transport }),
@@ -519,7 +578,12 @@ export function useMatrixProject(ref: MatrixRef) {
         return next;
       },
       select: (value: MatrixEnvironmentSignals) => ({ environmentId: environment.id, value }),
-      refetchInterval: 2_000,
+      // The fallback, not the heartbeat (#510): the advisory stream owns
+      // liveness while it is healthy, and this cadence exists only for a
+      // stream that has not connected or has failed. A healthy stream shows
+      // `false` and the tab holds exactly one events connection, zero
+      // periodic signals requests.
+      refetchInterval: signalsPollInterval(signalsStream),
       retry: false,
     })),
   });

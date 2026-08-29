@@ -664,6 +664,27 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
     }
   }
 
+  // The advisory stream (#510). The prototype has no event source to subscribe
+  // to, but the matrix asks for one and — without an answer — reconnects at
+  // its backoff forever while the fallback poll runs. Answer with a healthy,
+  // never-ending stream of heartbeats instead: the stream goes healthy, the
+  // fallback poll never starts, and the prototype exercises the same
+  // one-connection shape the real server serves. No events are emitted: the
+  // prototype's mutations invalidate their own caches through the ordinary
+  // mutation responses.
+  if (method === 'GET' && path.endsWith('/events')) {
+    response.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+    });
+    response.write('retry: 5000\n\n');
+    const heartbeat = setInterval(() => response.write(': heartbeat\n\n'), 15_000);
+    response.on('close', () => {
+      clearInterval(heartbeat);
+    });
+    return true;
+  }
+
   if (path === '/api/v1/orgs' && method === 'POST') {
     return body(request).then((raw) => {
       const input = zCreateOrgRequest.parse(JSON.parse(raw));
