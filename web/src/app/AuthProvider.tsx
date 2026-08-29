@@ -100,6 +100,10 @@ function identityVersion(identity: WhoAmI | null): string | null {
     identity.principal.id,
     identity.session.assurance.method,
     identity.session.assurance.authenticated_at,
+    // A capability change is a change: without it the quiet focus check would
+    // treat a mid-session grant/revoke as no-op and leave the operator chrome
+    // (all gated on this) stale until a blocking revalidate.
+    String(identity.capabilities.instance_operator),
     ...identity.session.assurance.factors,
   ].join('\u001f');
 }

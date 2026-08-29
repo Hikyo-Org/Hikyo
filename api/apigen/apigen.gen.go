@@ -6295,6 +6295,7 @@ type WebauthnResponse map[string]interface{}
 
 // WhoAmI defines model for WhoAmI.
 type WhoAmI struct {
+	// Capabilities UI-gating hints for the calling principal: what instance surfaces this session may even attempt, so the SPA does not fire an operator-only request it will only be refused. These are disclosure-safe reflections of the caller's own grants — never authorization itself, which is still evaluated per request at the server chokepoint.
 	Capabilities PrincipalCapabilities `json:"capabilities"`
 	Principal    Principal             `json:"principal"`
 	Session      Session               `json:"session"`

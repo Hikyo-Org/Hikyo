@@ -10,7 +10,6 @@ import { ApiError, parsed } from './client.ts';
 export type RetentionHealth = z.infer<typeof zRetentionHealth>;
 export type RetentionHealthAccess = {
   readonly health: RetentionHealth | null;
-  readonly instanceAdmin: boolean;
 };
 
 export const retentionHealthKey = ['retention-health'] as const;
@@ -24,23 +23,23 @@ export function retentionHealthRefetchInterval(health: RetentionHealth | null | 
 }
 
 /**
- * The chrome is shared by ordinary tenant members and instance operators.
- * A uniform 403/404 means this principal has no visible health surface, so it
- * is absence here rather than a noisy global error. Every visible answer is
- * still parsed against the generated contract before the banner sees it.
+ * Callers gate this on the whoami `instance_operator` capability, so an
+ * ordinary member never fires it. The 403/404 swallow remains as belt-and-
+ * suspenders: a caller who reaches the read without the grant gets absence here
+ * rather than a noisy global error. Every visible answer is still parsed against
+ * the generated contract before the banner sees it.
  */
 export function useRetentionHealth(enabled: boolean): UseQueryResult<RetentionHealthAccess> {
   return useQuery({
     queryKey: retentionHealthKey,
     queryFn: async () => {
       try {
-        return { health: await parsed(getRetentionHealthOp, {}), instanceAdmin: true };
+        return { health: await parsed(getRetentionHealthOp, {}) };
       } catch (error) {
         if (error instanceof ApiError && (error.status === 403 || error.status === 404)) {
           // A 403 can be either a step-up refusal or a grant denial, while 404
-          // is the nondisclosed form of the same boundary. Neither proves the
-          // caller is an operator, so chrome discovery stays fail-closed.
-          return { health: null, instanceAdmin: false };
+          // is the nondisclosed form of the same boundary.
+          return { health: null };
         }
         throw error;
       }

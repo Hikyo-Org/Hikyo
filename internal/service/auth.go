@@ -888,8 +888,14 @@ func (s *Auth) Identity(ctx context.Context, presented string) (Identity, error)
 		}
 		// A disclosure-safe grant check (no operation is recorded), so the SPA
 		// can gate the operator-only chrome polls instead of discovering the
-		// answer from their refusals. Both those reads share this formula, so one
-		// check speaks for both.
+		// answer from their refusals.
+		//
+		// One check speaks for both gated reads BECAUSE OpRetentionHealthRead and
+		// OpUpdateStatusRead share one formula today (CapInstanceConfig at
+		// instance scope; see authz/registry.go). If that ever diverges — a
+		// different capability or an assurance floor on one of them — this single
+		// flag would mis-gate the other, and the honest fix is a second
+		// capability, not a wider reading of this one.
 		operator, err := az.CallerHolds(ctx, id, authz.OpRetentionHealthRead, domain.Scope{})
 		if err != nil {
 			return err
