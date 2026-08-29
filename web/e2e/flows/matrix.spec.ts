@@ -467,8 +467,15 @@ test.describe('environment matrix', () => {
 
     // Leaving the matrix is the subscription's whole teardown: the stream's
     // request is aborted, not left open behind the route. A client-side link,
-    // so this proves the React cleanup and not just a document teardown.
-    await page.locator('.matrix__history-link').first().click();
+    // so this proves the React cleanup and not just a document teardown —
+    // matrix/history renders the same Matrix with its drawer open and
+    // deliberately keeps the stream, so the target is another surface.
+    const menu = page.getByRole('button', { name: 'Menu' });
+    if (await menu.isVisible()) {
+      await menu.click();
+    }
+    await page.getByRole('link', { name: 'Members & access', exact: true }).click();
+    await expect(page).toHaveURL(/\/members/);
     await expect
       .poll(() => eventsFailedCount, { timeout: 10_000 })
       .toBeGreaterThan(0);
@@ -509,14 +516,20 @@ test.describe('environment matrix', () => {
 
   test('delivers another session\u2019s publish to an idle matrix without a reload', async ({ passkeyPage: page }, testInfo) => {
     const eventsPath = `/api/v1/orgs/${seed.org}/projects/${seed.project}/events`;
-    // Reload under THIS test's listener, so the 200 below is this page's own
-    // stream and the idle assertion is about the stream, not a stale one.
+    // Register the listener BEFORE the navigation: the stream can open before
+    // the heading settles, and the 200 below must be THIS page's own stream —
+    // the idle assertion at the end is about live delivery, not a stale poll.
+    let streamOpen = false;
+    page.on('response', (response) => {
+      if (new URL(response.url()).pathname === eventsPath && response.status() === 200) {
+        streamOpen = true;
+      }
+    });
     await page.goto(MATRIX_PATH);
     await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
-    await page.waitForResponse(
-      (response) => new URL(response.url()).pathname === eventsPath && response.status() === 200,
-      { timeout: 15_000 },
-    );
+    await expect
+      .poll(() => streamOpen, { timeout: 15_000 })
+      .toBe(true);
 
     // A second page in the same context is a second browser session over the
     // same signed-in identity. It stages and publishes through the ordinary
