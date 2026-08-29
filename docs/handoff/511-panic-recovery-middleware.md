@@ -41,6 +41,9 @@ Issue: https://github.com/Hikyo-Org/Hikyo/issues/511 (ox-alpha audit, P1). Base:
   byte-identical to the fault leg, panic logged with method + path.
 - `TestRecoveryLeavesACommittedResponseAlone` — a panic after
   `WriteHeader(418)`: status and committed bytes unchanged.
+- `TestRecoveryKeepsTheAdvisoryStreamAStream` — the advisory stream visitor
+  behind the full stack: recoveryWriter satisfies and forwards `http.Flusher`,
+  so SSE keeps flushing (the visitor refuses a non-flushing writer outright).
 
 ## Verification
 

@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
 func TestRecoveryRendersUniformInternalBody(t *testing.T) {
@@ -90,6 +92,34 @@ func TestRecoveryCoversTheLiveRouter(t *testing.T) {
 		if !strings.Contains(pipeline.String(), want) {
 			t.Fatalf("panic did not land in the slog pipeline (%q missing):\n%s", want, pipeline.String())
 		}
+	}
+}
+
+func TestRecoveryKeepsTheAdvisoryStreamAStream(t *testing.T) {
+	api := &API{}
+	stack := api.Middleware()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	stream := eventStream{ctx: ctx, events: make(chan service.AdvisoryEvent), retry: advisoryRetryBase}
+	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The visitor refuses a non-flushing writer outright; running it behind
+		// the full stack proves recoveryWriter satisfies and forwards Flusher.
+		if err := stream.VisitWatchProjectEventsResponse(w); err != nil {
+			t.Error(err)
+		}
+	})
+	for i := len(stack) - 1; i >= 0; i-- {
+		handler = stack[i](handler)
+	}
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/meta", nil))
+
+	if !recorder.Flushed {
+		t.Fatal("flush did not reach the recorder; the advisory stream would buffer until it ended")
+	}
+	if !strings.HasPrefix(recorder.Body.String(), "retry: ") {
+		t.Fatalf("SSE preamble lost through the stack: %q", recorder.Body.String())
 	}
 }
 
