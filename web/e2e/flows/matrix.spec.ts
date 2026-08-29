@@ -419,4 +419,137 @@ test.describe('environment matrix', () => {
       });
     }
   }
+
+  /**
+   * The advisory stream (#510). These sit after the edit/publish legs so the
+   * fixture tenant is in its settled shape: one healthy stream replaces the
+   * 2s-per-environment signals poll, the poll returns only while the stream
+   * is not healthy, and a publish on a SECOND tab reaches the first without a
+   * reload — which is the whole point of demoting the poll.
+   */
+
+  test('holds one advisory stream, drops the fallback poll while healthy, and closes it on route leave', async ({ page }) => {
+    const eventsPath = `/api/v1/orgs/${seed.org}/projects/${seed.project}/events`;
+    const signals: string[] = [];
+    let eventsResponses = 0;
+    let eventsFailedCount = 0;
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.endsWith('/signals')) {
+        signals.push(request.url());
+      }
+    });
+    page.on('response', (response) => {
+      if (new URL(response.url()).pathname === eventsPath && response.status() === 200) {
+        eventsResponses += 1;
+      }
+    });
+    page.on('requestfailed', (request) => {
+      if (new URL(request.url()).pathname === eventsPath) {
+        eventsFailedCount += 1;
+      }
+    });
+
+    // A fresh navigation under THESE listeners: the stream this test reasons
+    // about is the one it can see open.
+    await page.goto(MATRIX_PATH);
+    await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
+    // Exactly one stream, and it actually opened: the 200 carries the retry
+    // hint the client's reconnection cadence then honours.
+    await expect
+      .poll(() => eventsResponses, { timeout: 15_000 })
+      .toBe(1);
+
+    // Idle window longer than three fallback cadences: a healthy stream holds
+    // ZERO periodic signals requests — the failure mode #510 exists to fix.
+    const before = signals.length;
+    await page.waitForTimeout(7_000);
+    expect(signals.slice(before).length).toBe(0);
+
+    // Leaving the matrix is the subscription's whole teardown: the stream's
+    // request is aborted, not left open behind the route. A client-side link,
+    // so this proves the React cleanup and not just a document teardown.
+    await page.locator('.matrix__history-link').first().click();
+    await expect
+      .poll(() => eventsFailedCount, { timeout: 10_000 })
+      .toBeGreaterThan(0);
+  });
+
+  test('activates the 2s fallback poll when the stream cannot connect and stops it on recovery', async ({ page }) => {
+    const eventsPath = `/api/v1/orgs/${seed.org}/projects/${seed.project}/events`;
+    await page.route('**/api/v1/orgs/*/projects/*/events', (route) => route.abort());
+    // The reload is what puts the block in front of THIS page's stream: the
+    // beforeEach navigation already opened one before the route existed.
+    await page.goto(MATRIX_PATH);
+    await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
+    await page.waitForTimeout(1_500); // the mount-time signals fetches land
+
+    // With the stream refused, the fallback owns freshness: signals requests
+    // keep arriving at the fallback cadence.
+    let signalsCount = 0;
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.endsWith('/signals')) {
+        signalsCount += 1;
+      }
+    });
+    await page.waitForTimeout(6_000);
+    expect(signalsCount).toBeGreaterThanOrEqual(2);
+
+    // Recovery: unblock the stream; the client's retry loop reconnects, the
+    // stream goes healthy, and the fallback falls silent again.
+    await page.unroute('**/api/v1/orgs/*/projects/*/events');
+    await page.waitForResponse(
+      (response) => new URL(response.url()).pathname === eventsPath && response.status() === 200,
+      { timeout: 20_000 },
+    );
+    await page.waitForTimeout(1_000); // let the healthy transition land
+    const atRecovery = signalsCount;
+    await page.waitForTimeout(6_000);
+    expect(signalsCount).toBe(atRecovery);
+  });
+
+  test('delivers another session\u2019s publish to an idle matrix without a reload', async ({ passkeyPage: page }, testInfo) => {
+    const eventsPath = `/api/v1/orgs/${seed.org}/projects/${seed.project}/events`;
+    // Reload under THIS test's listener, so the 200 below is this page's own
+    // stream and the idle assertion is about the stream, not a stale one.
+    await page.goto(MATRIX_PATH);
+    await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
+    await page.waitForResponse(
+      (response) => new URL(response.url()).pathname === eventsPath && response.status() === 200,
+      { timeout: 15_000 },
+    );
+
+    // A second page in the same context is a second browser session over the
+    // same signed-in identity. It stages and publishes through the ordinary
+    // matrix UI — development only, so no protected ceremony is involved —
+    // while the first page sits idle on the same surface.
+    const observer = await page.context().newPage();
+    try {
+      await observer.goto(MATRIX_PATH);
+      await expect(observer.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
+
+      const value = `live-${testInfo.project.name}`;
+      await observer.getByRole('button', { name: /^LOG_LEVEL in development:/ }).click();
+      const editor = observer.getByRole('dialog');
+      await editor.getByLabel('development value').fill(value);
+      await editor.getByRole('button', { name: 'Save 1 draft' }).click();
+      await expect(observer.locator('.notice')).toContainText(`1 draft updated for LOG_LEVEL`);
+
+      await observer.getByRole('button', { name: /Review & publish/ }).click();
+      const publishSheet = observer.getByRole('region', { name: 'Publish drafts' });
+      const publish = publishSheet.getByRole('button', { name: /Publish selected/ });
+      await expect(publish).toBeEnabled();
+      await publish.click();
+      await expect(observer.locator('.notice')).toContainText(/Published atomically/);
+
+      // The idle page repaints the published cell from the advisory events —
+      // the signals fallback poll is not running, so nothing else could have
+      // brought the new value in.
+      await expect(page.getByRole('button', { name: /LOG_LEVEL in development:/ })).toContainText(
+        value,
+        { timeout: 10_000 },
+      );
+    } finally {
+      await observer.close();
+    }
+  });
 });
