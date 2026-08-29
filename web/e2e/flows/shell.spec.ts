@@ -305,6 +305,10 @@ test.describe('app chrome', () => {
         : page.locator('.rail__action[aria-label="Instance administration"]');
     await expect(instanceAdmin).toHaveCount(0);
     expect(retentionCalled).toBe(false);
+    // whoami is re-read on load, focus and hydrate, so drop the async override
+    // before the page tears down — a route.fetch still in flight at test end
+    // would otherwise error against the closing context.
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 
   test('fails loud when pruning health cannot be checked', async ({ page }) => {
