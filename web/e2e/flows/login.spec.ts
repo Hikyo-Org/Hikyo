@@ -58,7 +58,10 @@ async function expectOIDCDoneSurface(page: Page, theme: 'dark' | 'light') {
 
   const card = page.locator('.login__card');
   const heading = page.getByRole('heading', { name: 'Returning from your identity provider' });
-  const refusal = page.getByRole('alert');
+  // Scoped to the card: the app-level toast announcer holds role="alert" for
+  // its whole lifetime (it must exist empty before an announcement lands), so
+  // a page-wide alert query resolves two elements.
+  const refusal = card.getByRole('alert');
   const close = page.getByRole('button', { name: 'Close this window' });
   await expect(refusal).toContainText('without an OIDC transaction');
 
@@ -103,7 +106,9 @@ test.describe('login', () => {
     await page.getByLabel('Password').fill('not the password at all');
     await page.getByRole('button', { name: 'Sign in' }).click();
 
-    const alert = page.getByRole('alert');
+    // Scoped to the card for the same reason as the OIDC-done surface above:
+    // the toast announcer is a second, always-present role="alert".
+    const alert = page.locator('.login__card').getByRole('alert');
     await expectStatusIsTextAndAria(page, alert);
     // The refusal must not name which half was wrong: the server closes that
     // oracle deliberately and the UI must not reopen it.

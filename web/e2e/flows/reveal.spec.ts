@@ -649,7 +649,12 @@ test.describe('write-only editing', () => {
       // the reveal this principal is about to get again.
       await field.fill(ROTATED);
       await page.getByRole('button', { name: 'Save draft' }).click();
-      await expect(page.getByRole('alert')).toHaveCount(0);
+      // No error may surface. The app-level assertive announcer holds
+      // role="alert" for its whole lifetime — it must exist empty before an
+      // announcement lands — so "no alert fired" is pinned as an absent error
+      // toast plus an announcer that stayed empty.
+      await expect(page.locator('.toast--error')).toHaveCount(0);
+      await expect(page.locator('.visually-hidden[role="alert"]')).toHaveText('');
       await expect(page.getByLabel(`${secret} is masked`)).toBeVisible();
       // A save STAGES (#51); the blind edit only lands on delivery when its
       // draft is published. `edit` staged it, `publish` commits it — and

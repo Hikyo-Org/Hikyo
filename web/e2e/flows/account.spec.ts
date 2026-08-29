@@ -129,10 +129,15 @@ test.describe('account and security', () => {
       .getByRole('alert')
       .filter({ hasText: 'did not authorise the change' });
     await expect(inlineAlert).toContainText('did not authorise the change');
-    const toastAlert = page
-      .locator('.toast[role="alert"]')
-      .filter({ hasText: 'did not authorise the change' });
-    await expect(toastAlert).toBeInViewport();
+    // The toast node is presentational; the announcement lives in the
+    // app-level visually-hidden assertive region, so both halves are pinned.
+    const toast = page.locator('.toast').filter({ hasText: 'did not authorise the change' });
+    await expect(toast).toBeInViewport();
+    await expect(
+      page
+        .locator('.visually-hidden[role="alert"]')
+        .filter({ hasText: 'did not authorise the change' }),
+    ).toContainText('did not authorise the change');
     // Never presented as a bare "wrong password": a 401 here is either a
     // refused proof or an ended session, and the sentence covers both without
     // guessing which.
