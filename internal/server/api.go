@@ -487,9 +487,12 @@ func (a *API) GetOrg(ctx context.Context, req apigen.GetOrgRequestObject) (apige
 // Middleware
 // ---------------------------------------------------------------------------
 
-// Middleware returns the API stack, outermost first.
+// Middleware returns the API stack, outermost first. recoverPanics leads it so
+// an invariant panic anywhere below becomes the uniform internal refusal — see
+// internal/server/recovery.go.
 func (a *API) Middleware() []func(http.Handler) http.Handler {
 	return []func(http.Handler) http.Handler{
+		a.recoverPanics,
 		a.wireContext,
 		a.stashRequest,
 		a.extractBearer,
