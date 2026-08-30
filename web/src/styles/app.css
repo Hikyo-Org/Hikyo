@@ -2320,6 +2320,18 @@ select {
     line-height: var(--touch);
   }
 
+  /* env-matrix 31 added two matrix-head/group controls that opt out of a
+     touch-height base (`+ key` zeroes the group-row button floor; drafts is a
+     bare pill). Both need the 44px floor back on a phone — the add-key selector
+     matches the base's specificity so this later rule wins. */
+  .matrix__group-row .matrix__add-key {
+    min-height: var(--touch);
+  }
+
+  .matrix__drafts {
+    min-height: var(--touch);
+  }
+
   .matrix__environment-picker input,
   .matrix-editor__copy input,
   .matrix__publish input {
