@@ -549,7 +549,7 @@ test.describe('environment matrix', () => {
       await editor.getByRole('button', { name: 'Save 1 draft' }).click();
       await expect(observer.locator('.notice')).toContainText(`1 draft updated for LOG_LEVEL`);
 
-      await observer.getByRole('button', { name: /Review & publish/ }).click();
+      await observer.getByRole('button', { name: /unpublished edit/ }).click();
       const publishSheet = observer.getByRole('region', { name: 'Publish drafts' });
       const publish = publishSheet.getByRole('button', { name: /Publish selected/ });
       await expect(publish).toBeEnabled();
