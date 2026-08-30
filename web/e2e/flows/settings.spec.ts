@@ -144,7 +144,9 @@ test.describe('organisation settings', () => {
     );
     try {
       await page.goto(`/orgs/${drillOrg}/settings`);
-      await expect(page.getByRole('alert')).toContainText(
+      // Scoped to the inline page alert: the app-level toast announcer holds a
+      // second, always-present role="alert", so a page-wide query resolves two.
+      await expect(page.locator('.alert[role="alert"]')).toContainText(
         'This organisation could not be read.',
       );
       await expect(page.getByLabel('Name', { exact: true })).toBeDisabled();
