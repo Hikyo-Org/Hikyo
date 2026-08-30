@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,6 +21,26 @@ import (
 
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+// syncBuffer guards a bytes.Buffer so a background server goroutine can log
+// through it while the test goroutine inspects what has been logged. A plain
+// bytes.Buffer is not safe for concurrent Write and String.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 func devConfig(t *testing.T) *config.Config {
@@ -104,7 +125,7 @@ func TestServeCancellationStopsBothListeners(t *testing.T) {
 }
 
 func TestServeWithReadySignalsOnlyAfterHTTPServingStarts(t *testing.T) {
-	var logged bytes.Buffer
+	var logged syncBuffer
 	log := slog.New(slog.NewTextHandler(&logged, nil))
 	srv, err := Boot(t.Context(), devConfig(t), log)
 	if err != nil {
