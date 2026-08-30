@@ -12,6 +12,7 @@ import {
   restorePreviewWasAttached,
   useClearMatrixValue,
   useCopyMatrixConfig,
+  useCreateKey,
   useMatrixProject,
   usePublishMatrix,
   useReclassifyKey,
@@ -32,6 +33,7 @@ import {
   MatrixPublishSheet,
   type MatrixPendingEntry,
 } from './MatrixPublishSheet.tsx';
+import { MatrixKeyCreate, type MatrixKeyCreatePayload } from './MatrixKeyCreate.tsx';
 import { MatrixRowEditor } from './MatrixRowEditor.tsx';
 import { ScanWarnDialog, type ScanWarnItem } from './ScanWarnDialog.tsx';
 import { useProjectSidebar } from './Shell.tsx';
@@ -96,6 +98,7 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
   const publish = usePublishMatrix(ref);
   const copy = useCopyMatrixConfig(ref);
   const reclassify = useReclassifyKey(ref);
+  const createKey = useCreateKey(ref);
 
   const environmentRows = matrix.environmentRows;
   const environments = environmentRows.map((row) => row.environment);
@@ -105,6 +108,10 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
   const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(() => new Set());
   const [filter, setFilter] = useState<MatrixFilter>('all');
   const [selection, setSelection] = useState<Selection | null>(null);
+  // env-matrix 31 `+ key`: the create modal, opened with a folder prefilled from
+  // a group header or `null` from the empty state / a new group.
+  const [create, setCreate] = useState<{ readonly folder: string | null } | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [warn, setWarn] = useState<{
     readonly keyId: string;
     readonly keyName: string;
@@ -163,6 +170,32 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
     const update = () => setMobileLayout(query.matches);
     query.addEventListener('change', update);
     return () => query.removeEventListener('change', update);
+  }, []);
+
+  // The legend and environment-picker are native <details> popovers. Native
+  // <details> only close by re-clicking their summary — so, like the prototype's
+  // popovers, close them on an outside pointer-down or Escape. Opening one this
+  // way also closes the other (its summary click lands outside the first).
+  useEffect(() => {
+    const selector =
+      'details.matrix__legend[open], details.matrix__environment-picker[open]';
+    const closeOutside = (event: Event) => {
+      const target = event.target as Node | null;
+      for (const open of document.querySelectorAll(selector)) {
+        if (event.type === 'keydown' || target === null || !open.contains(target)) {
+          open.removeAttribute('open');
+        }
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeOutside(event);
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      document.removeEventListener('keydown', onKey);
+    };
   }, []);
 
   const environmentSignature = environments.map((environment) => environment.id).join('/');
@@ -504,23 +537,26 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
       aria-labelledby="matrix-title"
       inert={historyOpen && mobileLayout}
     >
+      {/* env-matrix 31 trims the head to the essentials: the legend is a `?`
+          icon and drafts surface as a pill only once there is something to
+          publish. The level-1 heading stays — every surface carries one (see
+          shell.spec) — but its restated key/env count is gone; the matrix says
+          that itself. */}
       <div className="matrix__head">
-        <div>
-          <h1 id="matrix-title">Environment matrix</h1>
-          <p>{`${String(keys.length)} keys across ${String(environments.length)} environments`}</p>
-        </div>
+        <h1 id="matrix-title">Environment matrix</h1>
         <span className="matrix__head-spacer" />
         <MatrixLegend />
-        <button
-          type="button"
-          className="btn"
-          disabled={pendingCount === 0}
-          aria-expanded={publishOpen}
-          aria-controls="matrix-publish"
-          onClick={() => setPublishOpen((open) => !open)}
-        >
-          {pendingCount === 0 ? 'No unpublished drafts' : `Δ Review & publish ${String(pendingCount)} draft${pendingCount === 1 ? '' : 's'}`}
-        </button>
+        {pendingCount === 0 ? null : (
+          <button
+            type="button"
+            className="matrix__drafts"
+            aria-expanded={publishOpen}
+            aria-controls="matrix-publish"
+            onClick={() => setPublishOpen((open) => !open)}
+          >
+            {`Δ ${String(pendingCount)} unpublished edit${pendingCount === 1 ? '' : 's'} · publish…`}
+          </button>
+        )}
       </div>
 
       {notice === null ? null : (
@@ -591,13 +627,22 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
             <div className="matrix__empty" role="status">
               <h2>No keys yet</h2>
               <p>
-                Declare a key, then give each environment its own explicit value. Key declaration
-                has no web surface in this build — it is done at the CLI:
+                Declare a key once, give each environment its own explicit value — the matrix shows
+                the whole configuration surface at a glance.
               </p>
-              <pre className="matrix__cli">
-                <code>{'hikyo key create --context <ctx> --name NAME --classification config|secret --declaration \'{"rule":{"type":"string"}}\''}</code>
-              </pre>
-              <p>or scaffold every key from an existing file, then apply:</p>
+              <div className="matrix__empty-actions">
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  onClick={() => {
+                    setCreateError(null);
+                    setCreate({ folder: null });
+                  }}
+                >
+                  Declare first key
+                </button>
+              </div>
+              <p>Or import every key from an existing file through the CLI, then apply:</p>
               <pre className="matrix__cli">
                 <code>{'hikyo definitions scaffold --from .env\nhikyo definitions apply'}</code>
               </pre>
@@ -620,7 +665,7 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
                         <span>Key</span>
                         <details className="matrix__environment-picker">
                           <summary className="btn">
-                            {`envs ${String(visibleEnvironments.length)}/${String(environments.length)}`}
+                            {`envs ${String(visibleEnvironments.length)}/${String(environments.length)} ▾`}
                           </summary>
                           <fieldset>
                             <legend>Visible environments</legend>
@@ -705,35 +750,57 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
                           ref={rowVirtualizer.measureElement}
                         >
                           <th colSpan={visibleEnvironments.length + 1}>
-                            <button
-                              type="button"
-                              id={groupDOMID(group.id)}
-                              aria-expanded={!collapsed}
-                              onClick={() =>
-                                setCollapsedGroups((current) => {
-                                  const next = new Set(current);
-                                  if (next.has(group.id)) next.delete(group.id);
-                                  else next.add(group.id);
-                                  return next;
-                                })
-                              }
-                            >
-                              <span className="matrix__group-chevron" aria-hidden="true">
-                                ▾
-                              </span>
-                              <span>{group.name}</span>
-                              <span>{String(group.keys.length)}</span>
-                              {count === 0 ? null : (
-                                <span className="matrix__problem-count count">
-                                  {`! ${String(count)} problem${count === 1 ? '' : 's'}`}
+                            <div className="matrix__group-row-inner">
+                              <button
+                                type="button"
+                                className="matrix__group-toggle"
+                                id={groupDOMID(group.id)}
+                                aria-expanded={!collapsed}
+                                onClick={() =>
+                                  setCollapsedGroups((current) => {
+                                    const next = new Set(current);
+                                    if (next.has(group.id)) next.delete(group.id);
+                                    else next.add(group.id);
+                                    return next;
+                                  })
+                                }
+                              >
+                                <span className="matrix__group-chevron" aria-hidden="true">
+                                  ▾
                                 </span>
+                                <span>{group.name}</span>
+                                <span>{String(group.keys.length)}</span>
+                                {count === 0 ? null : (
+                                  <span className="matrix__problem-count count">
+                                    {`! ${String(count)} problem${count === 1 ? '' : 's'}`}
+                                  </span>
+                                )}
+                                {collapsed ? (
+                                  <span className="matrix__group-summary mono">
+                                    {group.keys.map((key) => key.name).join(', ')}
+                                  </span>
+                                ) : null}
+                              </button>
+                              {/* env-matrix 31: declare a key straight into this
+                                  group. Hidden while collapsed to match the
+                                  prototype — you open a group, then add to it. */}
+                              {collapsed ? null : (
+                                <button
+                                  type="button"
+                                  className="matrix__add-key"
+                                  onClick={() => {
+                                    setCreateError(null);
+                                    // Prefill the actual folder_path, not the
+                                    // display name — an explicit key-group's name
+                                    // can differ from its folder, and the
+                                    // ungrouped pseudo-group has none (→ blank).
+                                    setCreate({ folder: group.keys[0]?.folder_path || null });
+                                  }}
+                                >
+                                  + key
+                                </button>
                               )}
-                              {collapsed ? (
-                                <span className="matrix__group-summary mono">
-                                  {group.keys.map((key) => key.name).join(', ')}
-                                </span>
-                              ) : null}
-                            </button>
+                            </div>
                           </th>
                         </tr>
                       );
@@ -908,6 +975,77 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
         />
       )}
 
+      {create === null ? null : (
+        <MatrixKeyCreate
+          folders={[...new Set(keys.map((key) => key.folder_path).filter((path) => path !== ''))]}
+          environments={environments}
+          protectedEnvironmentIds={protectedEnvironmentIds}
+          initialFolder={create.folder}
+          existingKeyNames={keys.map((key) => key.name)}
+          busy={createKey.isPending || stage.isPending}
+          mutationError={createError}
+          onClose={() => {
+            setCreateError(null);
+            setCreate(null);
+          }}
+          onCreate={async (payload: MatrixKeyCreatePayload) => {
+            setCreateError(null);
+            // Phase 1 — declaration. A failure here keeps the modal open with
+            // its fields intact (rethrow), because nothing was created yet.
+            try {
+              await createKey.mutateAsync({
+                name: payload.name,
+                classification: payload.classification,
+                type: payload.type,
+                folderPath: payload.folderPath,
+                requiredEnvironmentIds: payload.requiredEnvironmentIds,
+                environmentCount: environments.length,
+              });
+            } catch (error) {
+              setCreateError(
+                matrixMutationError(
+                  error instanceof Error ? error : new Error('key declaration failed'),
+                  'create',
+                ),
+              );
+              throw error;
+            }
+            // Phase 2 — opening values. The key now exists, so the modal closes
+            // regardless; a value that fails to stage is reported against the
+            // declared key rather than implying the declaration itself failed.
+            setCreate(null);
+            let stagedCount = 0;
+            const failedEnvironments: string[] = [];
+            if (payload.firstValue !== null) {
+              for (const environmentId of payload.firstValue.environmentIds) {
+                try {
+                  await stage.mutateAsync({
+                    environment: environmentId,
+                    key: payload.name,
+                    value: normalizeMatrixDraftValue(payload.firstValue.value),
+                  });
+                  stagedCount += 1;
+                } catch {
+                  failedEnvironments.push(
+                    environments.find((candidate) => candidate.id === environmentId)?.name ??
+                      environmentId,
+                  );
+                }
+              }
+            }
+            const staged =
+              stagedCount === 0
+                ? ''
+                : ` with a draft value in ${String(stagedCount)} environment${stagedCount === 1 ? '' : 's'}`;
+            setNotice(
+              failedEnvironments.length === 0
+                ? `Declared ${payload.name}${staged}.`
+                : `Declared ${payload.name}${staged}. Its opening value could not be staged in ${failedEnvironments.join(', ')} — set it from the cell.`,
+            );
+          }}
+        />
+      )}
+
       {warn === null ? null : (
         <ScanWarnDialog
           keyName={warn.keyName}
@@ -992,28 +1130,59 @@ function MatrixCell({
     state = cell.value ?? 'set';
     stateClass = 'matrix-cell--set';
   }
-  const pending = signal?.pending === undefined
-    ? null
-    : `Δ draft ${signal.pending.operation === 'unset' ? 'clear' : 'set'}`;
-  const changed = signal?.changed_in_revision === undefined
-    ? null
-    : `Δ changed in r${String(signal.changed_in_revision)}`;
-  const label = `${keyRecord.name} in ${environment.name}: ${state}${pending === null ? '' : `, ${pending}`}`;
+  // env-matrix 31 fixes the changed/draft vocabulary to bare marks, not
+  // sentences: a set cell carries a `Δ` when it changed since publish and a
+  // draft dot when it holds an unpublished edit. The revision and the set/clear
+  // sense move to the mark's tooltip and the accessible label, off the row.
+  const draftSense =
+    signal?.pending === undefined
+      ? null
+      : signal.pending.operation === 'unset'
+        ? 'clear'
+        : 'set';
+  const changedRevision = signal?.changed_in_revision;
+  const otherDraft = signal?.pending_by_others === true;
+  const signalWords = [
+    draftSense === null ? null : `unpublished draft ${draftSense}`,
+    changedRevision === undefined ? null : `changed in r${String(changedRevision)}`,
+    otherDraft ? 'another editor has a draft here' : null,
+  ].filter((word): word is string => word !== null);
+  const label = `${keyRecord.name} in ${environment.name}: ${state}${signalWords.length === 0 ? '' : `, ${signalWords.join(', ')}`}`;
 
   return (
     <>
       <button
         type="button"
-        className={`matrix-cell ${stateClass}${pending === null ? '' : ' matrix-cell--pending'}`}
+        className={`matrix-cell ${stateClass}`}
         aria-label={label}
         onClick={onOpen}
       >
         <span className="matrix-cell__value">{state}</span>
-        {pending === null ? null : <span className="matrix-cell__signal">{pending}</span>}
-        {signal?.pending_by_others === true ? (
-          <span className="matrix-cell__other">◌ draft by another editor</span>
+        {changedRevision === undefined ? null : (
+          <span
+            className="matrix-cell__delta"
+            aria-hidden="true"
+            title={`changed in r${String(changedRevision)}`}
+          >
+            Δ
+          </span>
+        )}
+        {draftSense === null ? null : (
+          <span
+            className="matrix-cell__draft-dot"
+            aria-hidden="true"
+            title={`unpublished draft — ${draftSense}`}
+          />
+        )}
+        {otherDraft ? (
+          <span
+            className="matrix-cell__other"
+            aria-hidden="true"
+            title="another editor has a draft here"
+          >
+            ◌
+          </span>
         ) : null}
-        {changed === null ? null : <span className="matrix-cell__signal">{changed}</span>}
       </button>
       {validationProblem === undefined ? null : (
         <span className="matrix-cell__error">{validationProblem.message}</span>
@@ -1037,7 +1206,13 @@ function MatrixCell({
 function MatrixLegend() {
   return (
     <details className="matrix__legend">
-      <summary className="btn">what the cells mean</summary>
+      <summary
+        className="btn matrix__legend-toggle"
+        aria-label="what the cells mean"
+        title="what the cells mean"
+      >
+        ?
+      </summary>
       <div className="matrix__legend-body">
         <dl>
           <dt className="mono">value</dt>
@@ -1051,7 +1226,12 @@ function MatrixLegend() {
           <dt className="mono">✕ value</dt>
           <dd>the value is set but fails its declaration</dd>
           <dt className="mono">Δ</dt>
-          <dd>an unpublished draft, or changed in the revision named beside it</dd>
+          <dd>changed since the last publish</dd>
+          <dt>
+            <span className="matrix-cell__draft-dot" aria-hidden="true" />
+            <span className="visually-hidden">draft dot</span>
+          </dt>
+          <dd>an unpublished draft of your own</dd>
           <dt className="mono">◌</dt>
           <dd>another editor has a draft here</dd>
         </dl>
@@ -1127,7 +1307,9 @@ function requiredLabel(key: MatrixKey, environments: readonly Environment[]): st
   const required = environments.filter((environment) =>
     requiredInEnvironment(matrixPresence(key), environment.id),
   );
+  // env-matrix 31 keeps the required marker terse and inline beside the key —
+  // `req` when it is required everywhere, `req · <envs>` when only in some.
   if (required.length === 0) return '';
-  if (required.length === environments.length) return 'required · all';
-  return `required · ${required.map((environment) => environment.name).join(', ')}`;
+  if (required.length === environments.length) return 'req';
+  return `req · ${required.map((environment) => environment.name).join(', ')}`;
 }

@@ -1167,6 +1167,40 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
     send(response, 200, { items, count: items.length, schema_revision: 4 });
     return true;
   }
+  if (path === `${projectRoot}/keys` && method === 'POST') {
+    return body(request).then((raw) => {
+      const input = JSON.parse(raw) as {
+        name: string;
+        classification: 'config' | 'secret';
+        declaration?: unknown;
+        folder_path?: string;
+        description?: string;
+        presence?: unknown;
+      };
+      const folder = typeof input.folder_path === 'string' ? input.folder_path : '';
+      const key = {
+        id: `key_${globalThis.crypto.randomUUID()}`,
+        org_id: ids.org,
+        project_id: ids.project,
+        name: input.name,
+        folder_path: folder,
+        classification: input.classification,
+        description: typeof input.description === 'string' ? input.description : '',
+        deprecated: false,
+        deprecation_note: '',
+        declaration: input.declaration ?? { rule: { type: 'string', allow_empty: false } },
+        presence: input.presence ?? {
+          required_in: { mode: 'none' },
+          forbidden_in: { mode: 'none' },
+        },
+        group_id: folder,
+        created_at: fixtureTime,
+      };
+      keys.push(key as (typeof keys)[number]);
+      send(response, 201, key);
+      return true;
+    });
+  }
   if (path === `${projectRoot}/key-groups` && method === 'GET') {
     const items = scenario === 'empty' ? [] : groups;
     send(response, 200, { items, count: items.length });

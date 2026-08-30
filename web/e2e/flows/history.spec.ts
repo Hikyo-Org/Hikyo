@@ -501,7 +501,7 @@ test.describe('revision history', () => {
       page.getByRole('button', { name: new RegExp(`${seed.history.configKey} in development:.*draft set`) }),
     ).toBeVisible();
 
-    await page.getByRole('button', { name: /Review & publish/ }).click();
+    await page.getByRole('button', { name: /unpublished edit/ }).click();
     const publishSheet = page.getByRole('region', { name: 'Publish drafts' });
     await expectNoFixtureSecret(publishSheet);
     const publishRequest = page.waitForRequest(
@@ -545,7 +545,7 @@ test.describe('revision history', () => {
     await page.getByRole('button', { name: 'Save 1 draft' }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
 
-    await page.getByRole('button', { name: /Review & publish/ }).click();
+    await page.getByRole('button', { name: /unpublished edit/ }).click();
     const publishSheet = page.getByRole('region', { name: 'Publish drafts' });
     await expectNoFixtureSecret(publishSheet);
     await expect(publishSheet).toContainText(seed.history.configKey);
@@ -687,7 +687,7 @@ test.describe('revision history', () => {
         name: new RegExp(`${seed.history.tightenedKey} in development:.*draft set`),
       }),
     ).toBeVisible();
-    await page.getByRole('button', { name: /Review & publish/ }).click();
+    await page.getByRole('button', { name: /unpublished edit/ }).click();
     const publishSheet = page.getByRole('region', { name: 'Publish drafts' });
     await expectNoFixtureSecret(publishSheet);
     await publishSheet.getByRole('button', { name: /Publish selected/ }).click();

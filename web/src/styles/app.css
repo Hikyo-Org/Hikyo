@@ -1310,6 +1310,37 @@ select {
   flex: 1;
 }
 
+/* Legend reduces to a `?` icon (env-matrix 31); square it off like the app's
+   other icon buttons rather than the wide text button it replaced. */
+.matrix__legend-toggle.btn {
+  min-width: var(--touch);
+  padding: 0;
+  font-size: 14px;
+}
+
+/* Drafts surface as a pill in the accent-for-change hue, and only once there is
+   something to publish — the disabled "No unpublished drafts" button is gone. */
+.matrix__drafts {
+  padding: 6px 12px;
+  border: 1px solid var(--changed);
+  /* Rounded rect, not a full pill (DESIGN.md; expectNoStrayPills). */
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--changed);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.matrix__drafts:hover {
+  background: var(--changed);
+  color: var(--bg);
+}
+
 .matrix__publish {
   display: flex;
   flex-direction: column;
@@ -1706,6 +1737,44 @@ select {
   cursor: pointer;
 }
 
+/* The group row now carries a `+ key` beside its toggle (env-matrix 31), so the
+   toggle shares the row rather than owning its full width. */
+.matrix__group-row-inner {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding-right: 12px;
+}
+
+.matrix__group-row .matrix__group-toggle {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+}
+
+/* `+ key`: a dashed pill in the group's own hue, not the uppercased group text
+   the base selector would otherwise give it. */
+.matrix__group-row .matrix__add-key {
+  flex: none;
+  width: auto;
+  min-height: 0;
+  padding: 4px 12px;
+  border: 1px dashed var(--line);
+  /* Rounded rect, not a full pill — DESIGN.md reserves the pill for identity
+     circles and count badges (expectNoStrayPills). */
+  border-radius: var(--radius-control);
+  color: var(--tx-faint);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.matrix__group-row .matrix__add-key:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .matrix__group-chevron {
   color: var(--tx-faint);
   font-size: 10px;
@@ -1734,14 +1803,15 @@ select {
 }
 
 .matrix__key {
-  display: block;
-  max-width: 190px;
+  display: inline-block;
+  max-width: calc(100% - 46px);
   padding: 0;
   overflow: hidden;
   border: 0;
   background: transparent;
   color: var(--tx);
   cursor: pointer;
+  vertical-align: bottom;
   text-overflow: ellipsis;
   text-decoration: none;
   white-space: nowrap;
@@ -1754,13 +1824,11 @@ select {
 }
 
 .matrix__required {
-  display: block;
-  max-width: 190px;
-  overflow: hidden;
-  color: var(--tx-dim);
-  font-size: 10px;
+  display: inline;
+  margin-left: 6px;
+  color: var(--tx-faint);
+  font-size: 9.5px;
   font-weight: 400;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -1810,15 +1878,28 @@ select {
   white-space: nowrap;
 }
 
-.matrix-cell__signal,
-.matrix-cell__other {
+/* env-matrix 31 marks: a `Δ` glyph for changed-since-publish and a filled dot
+   for an unpublished draft — the words move to the tooltip and aria-label. */
+.matrix-cell__delta {
   color: var(--changed);
-  font-size: 10px;
-  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.matrix-cell__draft-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  /* Half of the 6px box — a full circle, but a small px radius so it is not read
+     as a reserved "pill" shape (DESIGN.md; expectNoStrayPills). */
+  border-radius: 3px;
+  background: var(--changed);
+  flex: none;
 }
 
 .matrix-cell__other {
   color: var(--tx-dim);
+  font-size: 11px;
 }
 
 .matrix-cell--absent,
@@ -1835,10 +1916,6 @@ select {
   background: color-mix(in oklch, var(--bg), var(--danger) 12%);
   border-color: var(--danger);
   color: var(--danger);
-}
-
-.matrix-cell--pending {
-  border-color: var(--changed);
 }
 
 .matrix-cell__error {
@@ -2055,6 +2132,63 @@ select {
   border-color: var(--danger);
 }
 
+/* Declare-key modal (env-matrix 31). Field pairs stack tight; the modal itself
+   reuses .matrix-editor for shell, backdrop, actions, and copy fieldsets. */
+.matrix-key-create__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.matrix-key-create label {
+  color: var(--tx-dim);
+  font-size: 12px;
+}
+
+.matrix-key-create__field input,
+.matrix-key-create__type select {
+  min-height: var(--touch);
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg);
+  color: var(--tx);
+}
+
+.matrix-key-create__field input {
+  width: 100%;
+}
+
+.matrix-key-create__type {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.matrix-key-create__type select {
+  min-width: 130px;
+}
+
+.matrix-key-create__secret {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.matrix-key-create__secret input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+
+.matrix__empty-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 4px 0;
+}
+
 .matrix-row-editor__row-head {
   display: flex;
   align-items: center;
@@ -2184,6 +2318,18 @@ select {
   .matrix__key {
     min-height: var(--touch);
     line-height: var(--touch);
+  }
+
+  /* env-matrix 31 added two matrix-head/group controls that opt out of a
+     touch-height base (`+ key` zeroes the group-row button floor; drafts is a
+     bare pill). Both need the 44px floor back on a phone — the add-key selector
+     matches the base's specificity so this later rule wins. */
+  .matrix__group-row .matrix__add-key {
+    min-height: var(--touch);
+  }
+
+  .matrix__drafts {
+    min-height: var(--touch);
   }
 
   .matrix__environment-picker input,
