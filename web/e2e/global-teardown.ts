@@ -12,15 +12,19 @@ import { readRunLog, unexecutedClaims } from './registry.ts';
  *
  * It is skipped under `--grep` or a positional spec filter: a filtered run is
  * deliberately partial, and failing it would make the check something people
- * work around instead of with. CI runs unfiltered.
+ * work around instead of with.
  *
- * `--shard` is REFUSED rather than skipped. CI #169 parallelises by viewport
- * project, where each runner still runs every flow and both themes; one runner
- * legitimately sees only one viewport. The run log names each project, so a
- * combined run must close every claim independently for both viewports. A
- * `--shard` run splits the flows themselves, so the log is partial while the
- * run still looks complete. Left alone it would fail as a wall of "claims more
- * than it runs" lines that say nothing about the real cause, so it says it.
+ * CI RELIES ON THAT SKIP. The `web` job splits the flows across matrix legs and
+ * runs each leg with a positional spec list (see .github/workflows/ci.yml), so
+ * each leg is a partial run and skips here — the `web-closure` aggregator job
+ * then merges every leg's run log and runs this same closure over the whole set
+ * (e2e/check-closure.ts). A local unfiltered `pnpm run e2e` still closes here.
+ *
+ * `--shard` is REFUSED rather than skipped. It would split the flows the same
+ * way, but WITHOUT the positional-filter marker, so the log would be partial
+ * while the run still looked complete — a wall of "claims more than it runs"
+ * lines that say nothing about the real cause. The CI split uses positional
+ * specs precisely so the skip is honest; `--shard` is not, so it says so.
  */
 export default function globalTeardown(config: FullConfig): void {
   stopInstance();

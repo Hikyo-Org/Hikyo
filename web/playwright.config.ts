@@ -25,14 +25,19 @@ import { BASE_URL } from './e2e/fixtures/instance.ts';
  * one process race all three, and each race surfaces as an `unauthenticated`
  * several tests away from its cause.
  *
- * So the suite is parallelised across RUNNERS instead, one per project — see
- * the `web` job's matrix in .github/workflows/ci.yml. Two runners share none of
- * that state: each boots its own instances, seeds its own tenant and mints its
- * own passkey. Both projects run every flow, so a per-project shard still
- * executes every claim in the registry and the teardown closure check stays
- * whole. Sharding any finer (`--shard`) splits the flows themselves and breaks
- * that property; global teardown refuses it by name rather than failing as a
- * pile of unexecuted claims.
+ * So the suite is parallelised across RUNNERS instead — see the `web` job's
+ * matrix in .github/workflows/ci.yml, which fans out over (viewport project ×
+ * flow group). Every runner boots its own instances, seeds its own tenant and
+ * mints its own passkey, so it shares none of that state: splitting the FLOWS
+ * across runners races nothing that two workers in one process would.
+ *
+ * Each leg runs its group's specs positionally, which makes the teardown skip
+ * its per-run execution-closure check (a positional run is partial by design);
+ * the `web-closure` aggregator job then merges every leg's run log and runs the
+ * closure over the whole set, so no claim escapes. Sharding with `--shard`
+ * would split the flows the same way but WITHOUT that positional marker, so the
+ * log would look complete while missing flows — global teardown refuses it by
+ * name rather than failing as a pile of unexecuted claims.
  */
 export default defineConfig({
   testDir: './e2e/flows',

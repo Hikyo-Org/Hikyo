@@ -169,15 +169,17 @@ export function surfacesForFlow(flowID: string): readonly Surface[] {
 // are separate processes, this suite runs with `workers: 1`, and a line per
 // surface-and-theme is a few dozen bytes per run.
 //
-// CI parallelism does not change that. It shards by VIEWPORT project, one
-// runner each (#169), so a legitimate run sees only the project recorded in
-// that shard. A combined run records both. For EVERY project that appears
-// anywhere in the log, every flow/surface/theme claim must appear for that
-// same project; one complete viewport can never conceal a partial second one.
-// ponytail: single-writer append. The shapes that would need merging are a
-// worker split (blocked by the fixture's single administrator, see
-// playwright.config.ts) and a `--shard` split of the flows, which global
-// teardown refuses by name for exactly this reason.
+// CI parallelism does not change what the log MEANS. It splits the flows across
+// matrix legs, one runner per (viewport project, flow group), so each leg's log
+// is partial by design and its teardown skips the execution check. The
+// `web-closure` job concatenates every leg's log and runs `unexecutedClaims`
+// over the whole thing (e2e/check-closure.ts): for EVERY project that appears
+// anywhere in the merged log, every flow/surface/theme claim must appear for
+// that same project, so one complete viewport can never conceal a partial
+// second one. The append stays single-writer PER LEG; the aggregator merges the
+// legs by concatenation, which needs no coordination. A `--shard` split is
+// still refused by global teardown — it fragments the flows without the
+// positional-filter marker the skip is keyed on.
 
 export const RUN_LOG = fileURLToPath(new URL('.runs/pinned.log', import.meta.url));
 
