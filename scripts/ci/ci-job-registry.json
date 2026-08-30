@@ -109,6 +109,8 @@
       "plan_jobs": ["compose-demo"]
     },
     "web": {"required_gate": "planned", "plan_jobs": ["web"]},
+    "web-closure": {"required_gate": "planned", "plan_jobs": ["web"]},
+    "web-go": {"required_gate": "planned", "plan_jobs": ["web"]},
     "test": {"required_gate": "planned", "plan_jobs": ["test"]},
     "k8s-e2e": {
       "required_gate": "planned",

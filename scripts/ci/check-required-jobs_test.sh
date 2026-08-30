@@ -63,7 +63,9 @@ all_success='{
 	"release-snapshot":{"result":"success"},
 	"supply-chain-checks":{"result":"success"},
 	"test":{"result":"success"},
-	"web":{"result":"success"}
+	"web":{"result":"success"},
+	"web-closure":{"result":"success"},
+	"web-go":{"result":"success"}
 }'
 
 docs_plan=$(printf '%s' "$all_plan" | jq 'map_values(false) | .docs = true')
@@ -80,7 +82,9 @@ docs_success=$(printf '%s' "$all_success" | jq '
 	.["release-snapshot"].result = "skipped" |
 	.["supply-chain-checks"].result = "skipped" |
 	.test.result = "skipped" |
-	.web.result = "skipped"
+	.web.result = "skipped" |
+	.["web-closure"].result = "skipped" |
+	.["web-go"].result = "skipped"
 ')
 
 expect_accept 'successful full pull request' pull_request "$all_success" "$all_plan"
