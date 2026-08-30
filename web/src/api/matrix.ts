@@ -1,6 +1,7 @@
 import {
   clearValueOp,
   copyValuesOp,
+  createKeyOp,
   getEnvironmentSignalsOp,
   listKeyGroupsOp,
   listKeysOp,
@@ -596,6 +597,59 @@ export function useStageMatrixValue(ref: MatrixRef) {
  * handling and drops the key's config-dismissals server-side. The keys query
  * is invalidated so the matrix reflects the new classification (the 🔒 lock).
  */
+/**
+ * useCreateKey declares a new key into the project catalogue (env-matrix 31's
+ * web `+ key` / declare surface). The type maps to a single-rule declaration;
+ * presence carries the required-in set as `all`/`none`/`explicit`. First values
+ * are staged separately by the caller after the key exists, so a declaration
+ * and its opening values ride the normal draft → publish pipeline.
+ */
+export type CreateKeyType = 'string' | 'integer' | 'boolean' | 'url' | 'json';
+
+export function useCreateKey(ref: MatrixRef) {
+  const queries = useQueryClient();
+  const transport = useTransport();
+  return useMutation({
+    mutationFn: (input: {
+      readonly name: string;
+      readonly classification: 'config' | 'secret';
+      readonly type: CreateKeyType;
+      readonly folderPath?: string;
+      readonly requiredEnvironmentIds: readonly string[];
+      readonly environmentCount: number;
+    }) =>
+      parsed(createKeyOp, {
+          path: { ...ref },
+          body: {
+            name: input.name,
+            classification: input.classification,
+            declaration: { rule: { type: input.type } },
+            ...(input.folderPath === undefined || input.folderPath === ''
+              ? {}
+              : { folder_path: input.folderPath }),
+            presence: {
+              required_in:
+                input.requiredEnvironmentIds.length === 0
+                  ? { mode: 'none' as const }
+                  : input.requiredEnvironmentIds.length === input.environmentCount
+                    ? { mode: 'all' as const }
+                    : {
+                        mode: 'explicit' as const,
+                        environment_ids: [...input.requiredEnvironmentIds],
+                      },
+              forbidden_in: { mode: 'none' as const },
+            },
+          },
+          ...transport,
+        }),
+    onSuccess: () =>
+      Promise.all([
+        queries.invalidateQueries({ queryKey: matrixKeysKey(ref) }),
+        queries.invalidateQueries({ queryKey: matrixGroupsKey(ref) }),
+      ]),
+  });
+}
+
 export function useReclassifyKey(ref: MatrixRef) {
   const queries = useQueryClient();
   const transport = useTransport();
@@ -736,7 +790,7 @@ export function useCopyMatrixConfig(ref: MatrixRef) {
  */
 export function matrixMutationError(
   error: Error,
-  action: 'stage' | 'clear' | 'copy' | 'publish',
+  action: 'stage' | 'clear' | 'copy' | 'publish' | 'create',
   restorePreviewAttached = false,
 ): string {
   if (error instanceof RestorePreviewSelectionError) {
@@ -745,6 +799,8 @@ export function matrixMutationError(
   if (action === 'publish' && restorePreviewAttached && error instanceof ApiError && error.status === 409) {
     return 'Publish refused: the restore preview is stale or missing — stage the restore again from the history drawer.';
   }
+  // `create` declares a key, not a value: its fallbacks read as a declaration.
+  const object = action === 'create' ? 'declare this key' : `${action} this value`;
   if (error instanceof ApiError) {
     const detailed = callerSafeRefusal(error, action === 'publish' ? 'Publish refused' : 'Refused');
     if (detailed !== null) {
@@ -755,18 +811,22 @@ export function matrixMutationError(
     if (error.status === 403) {
       return action === 'publish'
         ? 'You do not have permission to publish the selected drafts.'
-        : `You do not have permission to ${action} this value.`;
+        : action === 'create'
+          ? 'You do not have permission to declare keys in this project.'
+          : `You do not have permission to ${action} this value.`;
     }
     if (error.status === 409) {
       return action === 'publish'
         ? 'Publish was refused. Fix the named matrix problems, then retry.'
-        : `The server refused this ${action}; reload the matrix and retry.`;
+        : action === 'create'
+          ? 'The server refused the declaration; reload the matrix and retry.'
+          : `The server refused this ${action}; reload the matrix and retry.`;
     }
     return action === 'publish'
       ? `The server could not publish the selected drafts (error ${String(error.status)}).`
-      : `The server could not ${action} this value (error ${String(error.status)}).`;
+      : `The server could not ${object} (error ${String(error.status)}).`;
   }
   return action === 'publish'
     ? 'The server could not publish the selected drafts.'
-    : `The server could not ${action} this value.`;
+    : `The server could not ${object}.`;
 }

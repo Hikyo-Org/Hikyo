@@ -80,7 +80,7 @@ test.describe('environment matrix', () => {
       await page.getByRole('dialog').getByRole('button', { name: 'Save 1 draft' }).click();
       await expect(page.locator('.notice')).toContainText(`1 draft updated for ${seed.matrixRequired}`);
 
-      await page.getByRole('button', { name: /Review & publish/ }).click();
+      await page.getByRole('button', { name: /unpublished edit/ }).click();
       const publishSheet = page.getByRole('region', { name: 'Publish drafts' });
       const development = publishSheet.getByRole('checkbox', { name: /development/ });
       const production = publishSheet.getByRole('checkbox', { name: /production/ });
@@ -130,7 +130,7 @@ test.describe('environment matrix', () => {
       await editor.getByLabel('production value').fill(`required-${testInfo.project.name}`);
       await editor.getByRole('button', { name: 'Save 1 draft' }).click();
 
-      await page.getByRole('button', { name: /Review & publish/ }).click();
+      await page.getByRole('button', { name: /unpublished edit/ }).click();
       const repairedSheet = page.getByRole('region', { name: 'Publish drafts' });
       await expect(repairedSheet.getByText('PROTECTED — confirms before publish')).toBeVisible();
       const protectedConfirmation = repairedSheet.getByRole('checkbox', {
@@ -359,7 +359,7 @@ test.describe('environment matrix', () => {
 
       await page.reload();
 
-      const review = page.getByRole('button', { name: /Review & publish/ });
+      const review = page.getByRole('button', { name: /unpublished edit/ });
       await review.click();
       const publishSheet = page.getByRole('region', { name: 'Publish drafts' });
       await expect(publishSheet).toContainText(value);
@@ -374,7 +374,9 @@ test.describe('environment matrix', () => {
       await page.getByRole('button', { name: 'Use a passkey' }).click();
       await expect(page.locator('.notice')).toContainText(/Published atomically: .*Signals updated/);
       await expect(page.getByRole('button', { name: /LOG_LEVEL in development:/ })).not.toHaveAccessibleName(/draft set/);
-      await expect(page.getByRole('button', { name: /LOG_LEVEL in development:/ })).toContainText('changed in r');
+      // env-matrix 31: the changed state is a bare `Δ` mark; its revision moved
+      // off the row text and into the cell's accessible name.
+      await expect(page.getByRole('button', { name: /LOG_LEVEL in development:/ })).toHaveAccessibleName(/changed in r/);
   });
 
   for (const surface of surfacesForFlow('matrix')) {

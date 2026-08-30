@@ -161,7 +161,14 @@ export function MatrixRowEditor({
 
   return (
     <>
-      <dialog className="matrix-editor matrix-row-editor" ref={dialog} onClose={onClose}>
+      <dialog
+        className="matrix-editor matrix-row-editor"
+        ref={dialog}
+        onClose={onClose}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) onClose();
+        }}
+      >
         <form
           method="dialog"
           onSubmit={(event) => {
