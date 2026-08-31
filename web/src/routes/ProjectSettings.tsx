@@ -9,9 +9,11 @@ import {
   type DefinitionsSettings,
 } from '../api/definitions.ts';
 import {
+  createEnvironmentRefusalText,
   retentionSentence,
   settingsFailureText,
   settingsOperationFailure,
+  useCreateEnvironment,
   useDeleteProject,
   useEnvironmentSettings,
   useEnvironments,
@@ -85,6 +87,7 @@ export function ProjectSettings() {
         sections={[
           { id: 'project-identity', label: 'Identity' },
           { id: 'project-metadata', label: 'Metadata' },
+          { id: 'project-environments', label: 'Environments' },
           { id: 'project-policy', label: 'Policy' },
           { id: 'project-access', label: 'Access' },
           { id: 'project-danger', label: 'Danger zone' },
@@ -143,10 +146,39 @@ export function ProjectSettings() {
         </div>
       </Panel>
 
-      <Panel id="project-policy" title="Policy">
+      <Panel id="project-environments" title="Environments">
+        <p className="settings-note">
+          An environment is a named column of the matrix — every key gets its own explicit value in
+          each one. A project starts with none; add the first here before declaring keys.
+        </p>
         {environments.isError ? (
           <Alert>This project&apos;s environments could not be read.</Alert>
         ) : null}
+        {environments.isPending ? <p role="status">Loading environments…</p> : null}
+        {environments.isSuccess && environments.data.items.length === 0 ? (
+          <p role="status">This project holds no environments yet.</p>
+        ) : null}
+        {environments.isSuccess && environments.data.items.length > 0 ? (
+          <ul className="factors">
+            {environments.data.items.map((environment) => (
+              <li className="factor" key={environment.id}>
+                <strong className="mono">{environment.name}</strong>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <NewEnvironment
+          org={org}
+          project={project}
+          disabled={current === undefined}
+          onDone={feedback.ok}
+        />
+      </Panel>
+
+      <Panel id="project-policy" title="Policy">
+        {/* The environments-read failure is surfaced once, by the Environments
+            panel above; both panels read the same query, so repeating the alert
+            here would show it twice on one page. */}
         {environments.isPending ? <p role="status">Loading environment policies…</p> : null}
         {environments.isSuccess ? (
           <EnvironmentPolicy
@@ -314,6 +346,85 @@ function DefinitionsPolicy({
       </select>
       {settings.definitions_source === 'git' ? <Alert>{GIT_DEFINITIONS_NOTICE}</Alert> : null}
     </div>
+  );
+}
+
+/**
+ * NewEnvironment is the create affordance the empty matrix points to
+ * ("Project settings › New environment"). The refusal stays local to the form
+ * so it lands beside the input that produced it; success is reported through
+ * the page feedback the query invalidation then fills with the new row.
+ */
+function NewEnvironment({
+  org,
+  project,
+  disabled,
+  onDone,
+}: {
+  org: string;
+  project: string;
+  disabled: boolean;
+  onDone: (text: string) => void;
+}) {
+  const create = useCreateEnvironment(org, project);
+  const nameId = useId();
+  const [name, setName] = useState('');
+  const [failure, setFailure] = useState<string | null>(null);
+  const trimmed = name.trim();
+
+  const submit = () => {
+    if (trimmed === '') return;
+    setFailure(null);
+    create.mutate(
+      { name: trimmed },
+      {
+        onSuccess: (result) => {
+          setName('');
+          onDone(`Environment ${result.name} created.`);
+        },
+        onError: (error) => setFailure(createEnvironmentRefusalText(error)),
+      },
+    );
+  };
+
+  return (
+    <>
+      <form
+        className="settings-row"
+        onSubmit={(event) => {
+          event.preventDefault();
+          submit();
+        }}
+      >
+        <div className="settings-row__copy">
+          <span className="settings-row__title">New environment</span>
+          <span className="settings-row__detail">
+            a lowercase name like <span className="mono">production</span> or{' '}
+            <span className="mono">staging</span>
+          </span>
+        </div>
+        <span className="settings-row__spacer" />
+        <label className="visually-hidden" htmlFor={nameId}>
+          New environment name
+        </label>
+        <input
+          id={nameId}
+          className="settings-input settings-input--compact mono"
+          value={name}
+          placeholder="production"
+          disabled={disabled || create.isPending}
+          onChange={(event) => setName(event.target.value)}
+        />
+        <button
+          type="submit"
+          className="btn btn--primary"
+          disabled={disabled || create.isPending || trimmed === ''}
+        >
+          Create
+        </button>
+      </form>
+      {failure === null ? null : <Alert>{failure}</Alert>}
+    </>
   );
 }
 

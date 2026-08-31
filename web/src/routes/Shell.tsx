@@ -22,6 +22,7 @@ import { useProjects } from '../api/settings.ts';
 import { retentionBanner, storageBanner, useRetentionHealth } from '../api/retention.ts';
 import {
   useRemoteUpdateStatuses,
+  useServerVersion,
   useUpdateStatus,
   type UpdateStatus,
 } from '../api/updates.ts';
@@ -97,6 +98,7 @@ export function Shell({ session }: { session: WhoAmI }) {
   const isInstanceOperator = session.capabilities.instance_operator;
   const retentionHealth = useRetentionHealth(isInstanceOperator);
   const updateStatus = useUpdateStatus(isInstanceOperator);
+  const serverVersion = useServerVersion();
   const workspaces = useWorkspaces();
   const remoteUpdateStatuses = useRemoteUpdateStatuses(workspaces);
   const location = useLocation();
@@ -534,6 +536,7 @@ export function Shell({ session }: { session: WhoAmI }) {
             showInstanceAdministration={showInstanceAdministration}
           />
         )}
+        <SidebarVersion version={serverVersion.data} />
       </nav>
 
       <div className="chrome__account" inert={navOpen ? true : undefined}>
@@ -854,6 +857,24 @@ function MobileAccountNavigation({
         ) : null}
       </ul>
     </section>
+  );
+}
+
+/**
+ * The running build's version, pinned to the foot of the sidebar. It reads the
+ * contract's own `server_version` (`dev` for an unreleased build) and renders
+ * nothing until it resolves — a footer that flashed a placeholder would be
+ * noisier than one that simply arrives.
+ */
+function SidebarVersion({ version }: { version: string | undefined }) {
+  if (version === undefined) {
+    return null;
+  }
+  return (
+    <p className="sidebar__version">
+      <span className="sidebar__version-label">Version</span>
+      <span className="mono">{version}</span>
+    </p>
   );
 }
 

@@ -1,5 +1,6 @@
 import {
   getInstanceUpdateJobOp,
+  getMetaOp,
   getUpdateStatusOp,
   requestInstanceUpdateOp,
 } from '@hikyo/operations';
@@ -8,7 +9,7 @@ import { zInstanceUpdateJob, zUpdateStatus } from '@hikyo/zod';
 import { useMutation, useQueries, useQuery, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
-import { ApiError, parsed } from './client.ts';
+import { ApiError, parsed, parsedPick } from './client.ts';
 import type { WorkspaceBearer } from './workspace.ts';
 import { createWorkspaceClient } from './workspaceClient.ts';
 
@@ -21,8 +22,26 @@ export type RemoteUpdateProbe = {
 };
 
 export const updateStatusKey = ['update-status'];
+export const serverVersionKey = ['server-version'];
 export const updateStatusPollMs = 6 * 60 * 60 * 1_000;
 const updateJobPollMs = 2_000;
+
+/**
+ * useServerVersion reads the running build's version from the contract meta
+ * endpoint (`server_version`, `dev` for an unreleased build). It is the same
+ * fact every caller of `/api/v1/meta` already trusts, narrowed to the one
+ * field the chrome shows. The version is fixed for the life of a process — an
+ * applied update reloads the SPA — so it never goes stale in-session.
+ */
+export function useServerVersion(): UseQueryResult<string> {
+  return useQuery({
+    queryKey: serverVersionKey,
+    queryFn: async () =>
+      (await parsedPick(getMetaOp, {}, { server_version: true })).server_version,
+    staleTime: Infinity,
+    retry: false,
+  });
+}
 
 async function readStatus(client?: Client): Promise<UpdateStatus | null> {
   try {
