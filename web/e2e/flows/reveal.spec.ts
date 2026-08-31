@@ -546,16 +546,19 @@ test.describe('OIDC disclosure reauthentication', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
   async function signInWithOIDC(page: Page): Promise<void> {
-    await page.goto('/login');
-    // The provider buttons render only after the login page has read the
-    // instance's configured identity providers, and that read can lag under a
-    // loaded runner. Wait for our provider button explicitly and generously
-    // before driving it, so a slow providers read reads as a wait rather than a
-    // click that spends the whole test budget on auto-wait.
     const oidcSignIn = page.getByRole('button', {
       name: `Continue with ${OIDC_PROVIDER.displayName}`,
     });
-    await expect(oidcSignIn).toBeVisible({ timeout: 15_000 });
+    // The provider buttons render only from the login page's read of the
+    // instance's configured identity providers. When that read resolves before
+    // the provider seed is live it caches an EMPTY list, and no amount of
+    // waiting on the same page will make the button appear — so reload until the
+    // button is there, which refetches the provider list each attempt. Safe to
+    // reload here: no sign-in has happened yet, so there is no progress to lose.
+    await expect(async () => {
+      await page.goto('/login');
+      await expect(oidcSignIn).toBeVisible({ timeout: 5_000 });
+    }).toPass({ timeout: 30_000 });
     await oidcSignIn.click();
     // The org rail is desktop chrome — a phone reaches organisations through
     // the drawer, so the rail is `display:none` there. What proves the shell
