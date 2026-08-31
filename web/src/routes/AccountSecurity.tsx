@@ -208,8 +208,13 @@ export function AccountSecurity() {
 
       <Panel id="account-profile" title="Profile">
         <div className="settings-grid">
-          <div className="field">
-            <label htmlFor="account-display-name">Display name</label>
+          <div className="field field--readonly">
+            <label htmlFor="account-display-name">
+              Display name
+              <span className="field__readonly-tag">
+                <span aria-hidden="true">🔒 </span>read-only
+              </span>
+            </label>
             <input
               id="account-display-name"
               value={profileDisplayName}
@@ -217,8 +222,13 @@ export function AccountSecurity() {
               aria-readonly="true"
             />
           </div>
-          <div className="field">
-            <label htmlFor="account-delivery-email">Email (delivery only)</label>
+          <div className="field field--readonly">
+            <label htmlFor="account-delivery-email">
+              Email (delivery only)
+              <span className="field__readonly-tag">
+                <span aria-hidden="true">🔒 </span>read-only
+              </span>
+            </label>
             <input
               id="account-delivery-email"
               value={deliveryEmail}
@@ -228,8 +238,10 @@ export function AccountSecurity() {
           </div>
         </div>
         <p className="settings-note">
-          Email is where invitations and expiry warnings land; it is never an identity and never
-          links accounts (#16). Changing it is a plain edit, not a security change.
+          Neither field is editable here: nothing in the API contract writes a display name or a
+          delivery email, so both are shown as read-only facts about the signed-in principal. Email
+          is where invitations and expiry warnings land; it is never an identity and never links
+          accounts (#16).
         </p>
       </Panel>
 

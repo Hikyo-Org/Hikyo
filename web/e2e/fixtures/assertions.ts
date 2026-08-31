@@ -92,64 +92,68 @@ export async function expectVisibleFocusIndicator(page: Page, target: Locator): 
   // straight from a click-driven test would measure the wrong state and report
   // a missing ring on a surface that has one.
   await page.keyboard.press('Tab');
-  // Focus, then CONFIRM focus, retrying both together. A background query
-  // settling — the org's per-project retention policies arrive one at a time —
-  // re-renders the row under the cursor, and React can hand focus back to the
-  // document between the call and the check. Retrying only the assertion (what
-  // `toBeFocused` does on its own) waits for a state that nothing will restore.
-  // The subject here is "does this control draw a ring when focused", not "does
-  // focus survive an unrelated re-render", so re-focusing is the right retry.
+  // Focus, MEASURE, and assert the ring together under one retry. A background
+  // query settling — the org's per-project retention policies arrive one at a
+  // time — re-renders the row under the cursor, and React can hand focus back
+  // to the document (so `:focus-visible` stops matching and the ring vanishes)
+  // in the window between the focus call and the measurement. Retrying only the
+  // focus and then measuring outside the retry leaves that window open, so a
+  // late re-render reads as a control that draws no ring at all. Folding the
+  // whole leg into the retry re-focuses and re-measures against a settled DOM;
+  // a control that GENUINELY draws no ring still fails once the timeout lapses.
   await expect(async () => {
     await target.focus();
     await expect(target).toBeFocused({ timeout: 1000 });
-  }).toPass({ timeout: 10_000 });
 
-  const drawn = await target.evaluate((el) => {
-    const style = getComputedStyle(el);
-    const rings: Array<{ how: string; colour: string }> = [];
-    if (style.outlineStyle !== 'none' && Number.parseFloat(style.outlineWidth) > 0) {
-      rings.push({
-        how: `outline ${style.outlineWidth} ${style.outlineStyle}`,
-        colour: style.outlineColor,
-      });
-    }
-    if (style.boxShadow !== 'none' && style.boxShadow !== '') {
-      // Computed box-shadow starts with its colour.
-      const colour = /^(rgba?\([^)]*\)|oklch\([^)]*\)|#[0-9a-f]+)/i.exec(style.boxShadow)?.[1];
-      if (colour !== undefined) {
-        rings.push({ how: `box-shadow ${style.boxShadow}`, colour });
+    const drawn = await target.evaluate((el) => {
+      const style = getComputedStyle(el);
+      const rings: Array<{ how: string; colour: string }> = [];
+      if (style.outlineStyle !== 'none' && Number.parseFloat(style.outlineWidth) > 0) {
+        rings.push({
+          how: `outline ${style.outlineWidth} ${style.outlineStyle}`,
+          colour: style.outlineColor,
+        });
       }
-    }
-    return rings;
-  });
-  // The ring is painted OUTSIDE the element, over whatever its ancestors
-  // paint — so that, not the element's own fill, is what it must stand out
-  // against.
-  const behind = await paintedBackground(target, false);
-  const behindSample = await sampleColour(page, behind);
-  const rings = await Promise.all(
-    drawn.map(async (candidate) => {
-      const sample = await sampleColour(page, candidate.colour);
-      return {
-        ...candidate,
-        alpha: sample.alpha,
-        contrast: contrastRatio(sample.rgb, behindSample.rgb),
-      };
-    }),
-  );
+      if (style.boxShadow !== 'none' && style.boxShadow !== '') {
+        // Computed box-shadow starts with its colour.
+        const colour = /^(rgba?\([^)]*\)|oklch\([^)]*\)|#[0-9a-f]+)/i.exec(style.boxShadow)?.[1];
+        if (colour !== undefined) {
+          rings.push({ how: `box-shadow ${style.boxShadow}`, colour });
+        }
+      }
+      return rings;
+    });
+    // The ring is painted OUTSIDE the element, over whatever its ancestors
+    // paint — so that, not the element's own fill, is what it must stand out
+    // against.
+    const behind = await paintedBackground(target, false);
+    const behindSample = await sampleColour(page, behind);
+    const rings = await Promise.all(
+      drawn.map(async (candidate) => {
+        const sample = await sampleColour(page, candidate.colour);
+        return {
+          ...candidate,
+          alpha: sample.alpha,
+          contrast: contrastRatio(sample.rgb, behindSample.rgb),
+        };
+      }),
+    );
 
-  expect(rings.length, 'nothing is drawn on focus: no outline and no box-shadow').toBeGreaterThan(0);
-  const visible = rings.filter((ring) => ring.alpha > 0.99 && ring.contrast >= 3);
-  expect(
-    visible.length,
-    `no VISIBLE focus ring against ${behind}: ` +
-      rings
-        .map(
-          (ring) =>
-            `${ring.how} (${ring.colour}, alpha ${ring.alpha}, contrast ${ring.contrast.toFixed(2)}:1)`,
-        )
-        .join('; '),
-  ).toBeGreaterThan(0);
+    expect(rings.length, 'nothing is drawn on focus: no outline and no box-shadow').toBeGreaterThan(
+      0,
+    );
+    const visible = rings.filter((ring) => ring.alpha > 0.99 && ring.contrast >= 3);
+    expect(
+      visible.length,
+      `no VISIBLE focus ring against ${behind}: ` +
+        rings
+          .map(
+            (ring) =>
+              `${ring.how} (${ring.colour}, alpha ${ring.alpha}, contrast ${ring.contrast.toFixed(2)}:1)`,
+          )
+          .join('; '),
+    ).toBeGreaterThan(0);
+  }).toPass({ timeout: 10_000 });
 
   // Forced colors: the OS owns the palette, so an author-coloured ring is
   // gone. Chromium repaints `outline` with the system highlight; a component
@@ -157,15 +161,23 @@ export async function expectVisibleFocusIndicator(page: Page, target: Locator): 
   // here, which is the failure this leg exists to catch.
   await page.emulateMedia({ forcedColors: 'active' });
   try {
-    await target.focus();
-    const forced = await target.evaluate((el) => {
-      const s = getComputedStyle(el);
-      return { style: s.outlineStyle, width: Number.parseFloat(s.outlineWidth) };
-    });
-    expect(
-      forced.style !== 'none' && forced.width > 0,
-      `no focus outline under forced-colors (outline: ${forced.width}px ${forced.style})`,
-    ).toBe(true);
+    // Same re-render race as the author-colour leg: re-focus and re-measure
+    // together so a late re-render is not read as a suppressed outline.
+    await expect(async () => {
+      await target.focus();
+      await expect(target).toBeFocused({ timeout: 1000 });
+      const forced = await target.evaluate((el) => {
+        const s = getComputedStyle(el);
+        return { style: s.outlineStyle, width: Number.parseFloat(s.outlineWidth) };
+      });
+      expect(
+        forced.style !== 'none' && forced.width > 0,
+        `no focus outline under forced-colors (outline: ${forced.width}px ${forced.style})`,
+      ).toBe(true);
+      // Shorter than the author-colour leg: this check is cheap and the ring is
+      // already known to be present, so a genuine forced-colors regression need
+      // not spend the full budget before it fails.
+    }).toPass({ timeout: 3_000 });
   } finally {
     await page.emulateMedia({ forcedColors: 'none' });
   }

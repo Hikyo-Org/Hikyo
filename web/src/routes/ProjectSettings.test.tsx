@@ -142,6 +142,79 @@ describe('definitions policy', () => {
   });
 });
 
+describe('environment creation', () => {
+  it('posts the typed name to the project environments endpoint', async () => {
+    const fetchMock = vi.fn((...args: Parameters<typeof fetch>) => {
+      const input = args[0];
+      const request = input instanceof Request ? input : new Request(input);
+      const path = new URL(request.url, 'http://localhost').pathname;
+      if (request.method === 'GET' && path === '/api/v1/auth/whoami') {
+        return Promise.resolve(new Response(null, { status: 401 }));
+      }
+      if (
+        request.method === 'POST' &&
+        path === '/api/v1/orgs/org_1/projects/project_1/environments'
+      ) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: 'env_123e4567-e89b-12d3-a456-426614174002',
+              org_id: 'org_123e4567-e89b-12d3-a456-426614174001',
+              project_id: 'prj_123e4567-e89b-12d3-a456-426614174000',
+              name: 'production',
+              display_order: 0,
+              created_at: '2026-01-01T00:00:00Z',
+            }),
+            { status: 201, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      const json = settingsResponse(request.method, path, 'db');
+      return Promise.resolve(
+        new Response(JSON.stringify(json), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const view = await renderForm(
+      <AuthProvider>
+        <MemoryRouter initialEntries={['/orgs/org_1/projects/project_1/settings']}>
+          <Routes>
+            <Route path="/orgs/:org/projects/:project/settings" element={<ProjectSettings />} />
+          </Routes>
+        </MemoryRouter>
+      </AuthProvider>,
+    );
+
+    try {
+      await settleTask();
+      const input = labelledInput(view.container, 'New environment name');
+      await act(async () => typeInto(input, 'production'));
+      await act(async () => button(view.container, 'Create').click());
+      await settleTask();
+
+      const post = fetchMock.mock.calls
+        .map(([input]) => (input instanceof Request ? input : new Request(input)))
+        .find(
+          (candidate) =>
+            candidate.method === 'POST' &&
+            new URL(candidate.url).pathname ===
+              '/api/v1/orgs/org_1/projects/project_1/environments',
+        );
+      if (post === undefined) {
+        throw new Error('the create-environment request is missing');
+      }
+      expect(await post.json()).toEqual({ name: 'production' });
+      expect(view.container.textContent).toContain('Environment production created.');
+    } finally {
+      await view.unmount();
+    }
+  });
+});
+
 function settingsResponse(
   method: string,
   path: string,
@@ -188,6 +261,17 @@ function labelledSelect(container: HTMLElement, text: string): HTMLSelectElement
     throw new Error(`${text} select is missing`);
   }
   return select;
+}
+
+function labelledInput(container: HTMLElement, text: string): HTMLInputElement {
+  const label = [...container.querySelectorAll('label')].find(
+    (candidate) => candidate.textContent === text,
+  );
+  const input = label?.htmlFor === undefined ? null : container.querySelector(`#${label.htmlFor}`);
+  if (!(input instanceof HTMLInputElement)) {
+    throw new Error(`${text} input is missing`);
+  }
+  return input;
 }
 
 function button(container: HTMLElement, text: string): HTMLButtonElement {
