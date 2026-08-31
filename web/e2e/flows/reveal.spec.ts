@@ -547,12 +547,21 @@ test.describe('OIDC disclosure reauthentication', () => {
 
   async function signInWithOIDC(page: Page): Promise<void> {
     await page.goto('/login');
-    await page.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` }).click();
+    // The provider buttons render only after the login page has read the
+    // instance's configured identity providers, and that read can lag under a
+    // loaded runner. Wait for our provider button explicitly and generously
+    // before driving it, so a slow providers read reads as a wait rather than a
+    // click that spends the whole test budget on auto-wait.
+    const oidcSignIn = page.getByRole('button', {
+      name: `Continue with ${OIDC_PROVIDER.displayName}`,
+    });
+    await expect(oidcSignIn).toBeVisible({ timeout: 15_000 });
+    await oidcSignIn.click();
     // The org rail is desktop chrome — a phone reaches organisations through
     // the drawer, so the rail is `display:none` there. What proves the shell
     // came up at BOTH widths is the breadcrumb, which only the authenticated
     // chrome renders.
-    await expect(page.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Breadcrumb' })).toBeVisible({ timeout: 15_000 });
   }
 
   test('reveals after the IdP popup returns through the SPA done page', async ({ page }) => {
@@ -561,12 +570,17 @@ test.describe('OIDC disclosure reauthentication', () => {
     const secret = seed.secrets[0] ?? '';
     await page.getByRole('button', { name: `Reveal ${secret}` }).click();
     const dialog = page.getByRole('dialog');
-    await expect(dialog.getByRole('button', { name: `Re-authenticate with ${OIDC_PROVIDER.displayName}` })).toBeVisible();
+    await expect(dialog).toBeVisible();
+    // The reauth dialog offers the OIDC option only once it too has the provider
+    // list; give that read the same generous window as sign-in rather than the
+    // 5s default, so a slow read does not read as a missing button.
+    const reauth = dialog.getByRole('button', {
+      name: `Re-authenticate with ${OIDC_PROVIDER.displayName}`,
+    });
+    await expect(reauth).toBeVisible({ timeout: 15_000 });
 
     const popupOpened = page.waitForEvent('popup');
-    await dialog
-      .getByRole('button', { name: `Re-authenticate with ${OIDC_PROVIDER.displayName}` })
-      .click();
+    await reauth.click();
     await popupOpened;
     await expect(dialog).toBeHidden();
     await expect(page.getByText('hunter2-development')).toBeVisible();
