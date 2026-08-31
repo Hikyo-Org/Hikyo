@@ -35,14 +35,15 @@ upsert_ruleset "$repo_root/release/repository/nightly-tag-creation.json"
 upsert_ruleset "$repo_root/release/repository/main-ci-gate.json"
 
 $GH_BIN api --method PUT "repos/$repository/immutable-releases" >/dev/null
-# CodeQL runs as GitHub's default setup (a repository setting, not workflow
-# YAML): actions, Go and the TypeScript surfaces, weekly and on every PR.
-# Default setup and an advanced-setup workflow are mutually exclusive — the
-# upload API rejects the latter while the former is enabled — so the setting
-# is asserted here rather than duplicated under .github/workflows.
-$GH_BIN api --method PATCH "repos/$repository/code-scanning/default-setup" \
-	-f state=configured -f query_suite=default \
-	-f 'languages[]=actions' -f 'languages[]=go' -f 'languages[]=javascript-typescript' >/dev/null
+# CodeQL runs as an advanced-setup workflow (.github/workflows/codeql-analysis.yml),
+# which controls its own Go toolchain and CodeQL bundle. Default setup and
+# an advanced workflow are mutually exclusive — the upload API rejects SARIF
+# while it is enabled — so the repository setting is held off here.
+default_setup_state=$($GH_BIN api "repos/$repository/code-scanning/default-setup" --jq '.state')
+if [ "$default_setup_state" != "not-configured" ]; then
+	$GH_BIN api --method PATCH "repos/$repository/code-scanning/default-setup" \
+		-f state=not-configured >/dev/null
+fi
 allowed_actions=$($GH_BIN api "repos/$repository/actions/permissions" --jq '.allowed_actions')
 $GH_BIN api --method PUT "repos/$repository/actions/permissions" \
 	-F enabled=true -f allowed_actions="$allowed_actions" -F sha_pinning_required=true >/dev/null
@@ -126,4 +127,4 @@ fi
 		"$repo_root/scripts/release/probe-tag-move.sh" "$repository" "$probe_tag" "$replacement"
 )
 
-printf 'repository policy: PR/CI main gate, immutable releases, protected stable/nightly tags, live move probe, SHA-pinned actions, CodeQL default setup active\n'
+printf 'repository policy: PR/CI main gate, immutable releases, protected stable/nightly tags, live move probe, SHA-pinned actions, CodeQL advanced setup\n'

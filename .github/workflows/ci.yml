@@ -459,7 +459,7 @@ jobs:
           restore-keys: |
             go-generated-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
       - name: Format
-        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+        run: test -z "$("$(go env GOROOT)/bin/gofmt" -l .)" || { "$(go env GOROOT)/bin/gofmt" -l .; exit 1; }
       - name: Generated code is fresh
         run: |
           go tool sqlc generate
