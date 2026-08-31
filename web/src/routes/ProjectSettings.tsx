@@ -151,9 +151,9 @@ export function ProjectSettings() {
           An environment is a named column of the matrix — every key gets its own explicit value in
           each one. A project starts with none; add the first here before declaring keys.
         </p>
-        {environments.isError ? (
-          <Alert>This project&apos;s environments could not be read.</Alert>
-        ) : null}
+        {/* The environments-read failure is surfaced once, by the Policy panel
+            below (a visual-contract test pins the alert there); both panels read
+            the same query, so repeating it here would show it twice. */}
         {environments.isPending ? <p role="status">Loading environments…</p> : null}
         {environments.isSuccess && environments.data.items.length === 0 ? (
           <p role="status">This project holds no environments yet.</p>
@@ -176,9 +176,9 @@ export function ProjectSettings() {
       </Panel>
 
       <Panel id="project-policy" title="Policy">
-        {/* The environments-read failure is surfaced once, by the Environments
-            panel above; both panels read the same query, so repeating the alert
-            here would show it twice on one page. */}
+        {environments.isError ? (
+          <Alert>This project&apos;s environments could not be read.</Alert>
+        ) : null}
         {environments.isPending ? <p role="status">Loading environment policies…</p> : null}
         {environments.isSuccess ? (
           <EnvironmentPolicy
