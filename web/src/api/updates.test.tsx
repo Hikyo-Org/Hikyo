@@ -51,13 +51,19 @@ test('server version reads server_version from the contract meta endpoint', asyn
         </QueryClientProvider>,
       );
     });
-    for (let attempt = 0; attempt < 20 && container.textContent === ''; attempt += 1) {
-      await act(async () => {
-        await Promise.resolve();
-      });
-    }
-
-    expect(container.textContent).toBe('1.4.0');
+    // Wait on the query settling with a real-timer poll rather than a fixed
+    // count of microtask flushes: react-query commits on its own schedule, so a
+    // bounded flush loop can read '' before the value lands (it did, under CI
+    // timing). vi.waitFor retries against the wall clock until the value arrives.
+    await vi.waitFor(
+      async () => {
+        await act(async () => {
+          await Promise.resolve();
+        });
+        expect(container.textContent).toBe('1.4.0');
+      },
+      { timeout: 2_000, interval: 20 },
+    );
     const metaCall = fetchMock.mock.calls
       .map(([input]) => (input instanceof Request ? input : new Request(input)))
       .find((request) => new URL(request.url, 'http://localhost').pathname === '/api/v1/meta');
