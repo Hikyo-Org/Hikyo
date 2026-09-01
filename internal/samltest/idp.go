@@ -229,6 +229,3 @@ func DecodeRequest(redirectURL string) (Request, error) {
 	}
 	return request, nil
 }
-
-// Certificate returns the fixture's signing certificate.
-func (i *IdP) Certificate() *x509.Certificate { return i.certificate }

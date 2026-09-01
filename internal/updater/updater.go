@@ -372,21 +372,6 @@ func (j *Journal) Get(id string) (Job, error) {
 	return Job{}, ErrJobNotFound
 }
 
-func (j *Journal) Active() (Job, bool, error) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	state, err := j.read()
-	if err != nil {
-		return Job{}, false, err
-	}
-	for i := len(state.Jobs) - 1; i >= 0; i-- {
-		if !state.Jobs[i].State.Terminal() {
-			return state.Jobs[i], true, nil
-		}
-	}
-	return Job{}, false, nil
-}
-
 func (j *Journal) PendingOutcomes() ([]Job, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()

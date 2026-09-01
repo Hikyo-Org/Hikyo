@@ -144,10 +144,6 @@ func invalidDetail(format string, args ...any) error {
 	return detail(domain.ErrInvalid, format, args...)
 }
 
-func conflictDetail(format string, args ...any) error {
-	return detail(domain.ErrConflict, format, args...)
-}
-
 func limitDetail(format string, args ...any) error {
 	return detail(domain.ErrLimitExceeded, format, args...)
 }

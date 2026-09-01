@@ -97,7 +97,8 @@ type ManagerOption func(*managerOptions)
 
 type managerOptions struct{ leaderElection bool }
 
-// WithLeaderElection overrides the default (on). Only the e2e harness sets it.
+// WithLeaderElection overrides the default (on). It is an intentional API seam
+// used by the build-tagged kind e2e harness, outside deadcode's default tags.
 func WithLeaderElection(on bool) ManagerOption {
 	return func(o *managerOptions) { o.leaderElection = on }
 }

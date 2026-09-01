@@ -48,6 +48,8 @@ type proof struct {
 	tok   *TxToken
 }
 
+// deadcode reports this marker as unreachable by design. Its signature closes
+// Proof to implementations from this package; removing it breaks that boundary.
 func (p *proof) proof() *proof { return p }
 
 // TxToken is the transaction identity a proof is bound to. The transaction

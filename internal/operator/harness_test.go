@@ -484,26 +484,3 @@ func (w *secretWrites) interceptors() interceptor.Funcs {
 		},
 	}
 }
-
-// statusFields captures the status object written on each SubResourceUpdate, so
-// write-ordering can require the cursor/binding/stamp/RV were all present on the
-// LAST status write rather than accepting any status update.
-type statusField struct {
-	cursor, binding, stamp, rv string
-}
-
-func recordStatusWrites(dst *[]statusField) interceptor.Funcs {
-	return interceptor.Funcs{
-		SubResourceUpdate: func(ctx context.Context, c client.Client, sub string, obj client.Object, opts ...client.SubResourceUpdateOption) error {
-			if cr, ok := obj.(*hikyov1.HikyoSecret); ok {
-				*dst = append(*dst, statusField{
-					cursor:  cr.Status.Cursor,
-					binding: cr.Status.CursorBinding,
-					stamp:   cr.Status.Stamp,
-					rv:      cr.Status.ManagedSecretResourceVersion,
-				})
-			}
-			return c.Status().Update(ctx, obj, opts...)
-		},
-	}
-}

@@ -1,6 +1,6 @@
 # Design
 
-Seed DESIGN.md (pre-implementation). Re-run `/impeccable document` once real frontend code exists.
+Living reference for the implemented web app and documentation-site design system. Update it alongside changes to shared visual language and interaction patterns.
 
 ## Theme
 
