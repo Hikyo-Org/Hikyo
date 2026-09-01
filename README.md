@@ -55,7 +55,7 @@ remain immutable evidence.
 | [`CAP-ENTERPRISE-IDENTITY`](./docs/status/README.md#cap-enterprise-identity) Enterprise identity protocols | SAML service-provider support and SCIM provisioning, fully open-source |
 | [`CAP-BACKUP-RESTORE`](./docs/status/README.md#cap-backup-restore) Backup and restore | Encrypted export/restore plus the cross-engine recovery drill |
 | [`CAP-REVISION-LIFECYCLE`](./docs/status/README.md#cap-revision-lifecycle) Revision lifecycle | Drafts, snapshots, selective publish, rollback, durable pins, retention, GC, and history restore/pin lifecycle |
-| [`CAP-ADMINISTRATION-UI`](./docs/status/README.md#cap-administration-ui) Administration UI | Members, organisation/project settings, account security, instance administration, and browser step-up |
+| [`CAP-ADMINISTRATION-UI`](./docs/status/README.md#cap-administration-ui) Administration UI | Members at organisation, project and instance scope, organisation/project/instance settings, account security, and browser step-up |
 | [`CAP-IMPORTS-ONBOARDING`](./docs/status/README.md#cap-imports-onboarding) Imports and onboarding | Kubernetes, SOPS, and Infisical file imports; live Kubernetes and Vault/OpenBao connectors; import wizard; dotenv scaffolding |
 | [`CAP-DELIVERY`](./docs/status/README.md#cap-delivery) Delivery | Compose delivery and `hikyo run`, Kubernetes operator/CRDs, Forgejo and GitHub Actions adapters, and machine-reveal opt-in |
 | [`CAP-KEY-ROTATION`](./docs/status/README.md#cap-key-rotation) Key rotation | Root, master, DEK, token, and scanning-key rotation plus resumable re-encryption |
