@@ -13,12 +13,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -44,12 +47,13 @@ import (
 
 // accessWireEnv is the assembled real stack for these tests.
 type accessWireEnv struct {
-	srv   *httptest.Server
-	token string
-	db    *store.DB
-	auth  *service.Auth
-	admin domain.PrincipalID
-	org   string
+	srv       *httptest.Server
+	token     string
+	db        *store.DB
+	auth      *service.Auth
+	workspace *service.Workspace
+	admin     domain.PrincipalID
+	org       string
 	// project and env genuinely EXIST under org. They are what makes the
 	// "unauthorized" leg unauthorized-and-existing rather than a second kind
 	// of missing: probing a child of a real org that the caller may not reach
@@ -105,6 +109,7 @@ func newAccessWireEnv(t *testing.T, db *store.DB) accessWireEnv {
 			`VALUES ('%s', '%s', '%s', 'wire-env', '', %s, 0)`,
 		wireEnv, org.ID, wireProject, ts))
 
+	workspace := &service.Workspace{DB: db, Version: "wire"}
 	srv := httptest.NewServer(server.New(&service.System{DB: db}, &server.API{
 		Auth:         auth,
 		Orgs:         orgs,
@@ -115,11 +120,12 @@ func newAccessWireEnv(t *testing.T, db *store.DB) accessWireEnv {
 		Settings:     &service.ProjectSettings{DB: db, Auth: auth},
 		Delivery:     &service.Delivery{DB: db, Keyring: auth.Keyring},
 		SCIMWire:     &service.SCIM{DB: db},
+		Workspace:    workspace,
 		Version:      "wire",
 	}, nil))
 	t.Cleanup(srv.Close)
 	return accessWireEnv{
-		srv: srv, token: token, db: db, auth: auth, admin: administrator.boot.PrincipalID,
+		srv: srv, token: token, db: db, auth: auth, workspace: workspace, admin: administrator.boot.PrincipalID,
 		org: org.ID, project: wireProject, env: wireEnv,
 	}
 }
@@ -164,6 +170,165 @@ func TestAccessWireUniformitySQLite(t *testing.T) {
 }
 func TestAccessWireUniformityPostgres(t *testing.T) {
 	runAccessWireUniformity(t, seededDB(t, openPostgres))
+}
+
+func TestSessionClockResolutionReuseSQLite(t *testing.T) {
+	runSessionClockResolutionReuse(t, seededDB(t, openSQLite))
+}
+
+func TestSessionClockResolutionReusePostgres(t *testing.T) {
+	runSessionClockResolutionReuse(t, seededDB(t, openPostgres))
+}
+
+// runSessionClockResolutionReuse pins the HTTP seam #512 changes: the
+// post-response idle-clock touch consumes authentication already resolved by
+// the handler instead of opening a second read transaction to resolve it
+// again. GetSessionByVerifier is the first fixed-cost query on every session
+// resolution, so exactly one occurrence means exactly one resolution pass.
+//
+// A fabricated but grammatically valid bearer on a public route is the
+// complementary control. The route itself touches no storage; zero observed
+// queries therefore proves the post-response path did not start the full
+// authentication read it used to run for every Authorization header.
+func runSessionClockResolutionReuse(t *testing.T, db *store.DB) {
+	e := newAccessWireEnv(t, db)
+
+	t.Run("authenticated_get_resolves_once", func(t *testing.T) {
+		var sessionReads int
+		restore := authn.SetQueryObserver(func(query string) {
+			if strings.Contains(query, "-- name: GetSessionByVerifier ") {
+				sessionReads++
+			}
+		})
+		defer restore()
+
+		code, body := e.call(t, http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
+		if code != http.StatusOK {
+			t.Fatalf("whoami = %d %s, want 200", code, body)
+		}
+		if sessionReads != 1 {
+			t.Fatalf("authenticated GET resolved the session %d times, want exactly 1 read transaction", sessionReads)
+		}
+	})
+
+	t.Run("fabricated_bearer_on_public_get_does_no_db_work", func(t *testing.T) {
+		fabricated, _, err := crypto.NewArtifact(crypto.ArtifactCLISession)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var queries int
+		restore := authn.SetQueryObserver(func(string) { queries++ })
+		defer restore()
+
+		code, body := e.callAs(t, fabricated, http.MethodGet, api.PathPrefix+"/meta", nil)
+		if code != http.StatusOK {
+			t.Fatalf("meta = %d %s, want 200", code, body)
+		}
+		if queries != 0 {
+			t.Fatalf("fabricated bearer caused %d DB queries on a public GET, want 0", queries)
+		}
+	})
+
+	t.Run("due_idle_clock_still_slides", func(t *testing.T) {
+		now := time.Now().UTC().Add(2 * service.SlideGranularity)
+		e.auth.Now = func() time.Time { return now }
+		defer func() { e.auth.Now = nil }()
+
+		var touches int
+		restore := authn.SetQueryObserver(func(query string) {
+			if strings.Contains(query, "-- name: TouchSession ") {
+				touches++
+			}
+		})
+		defer restore()
+
+		code, body := e.call(t, http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
+		if code != http.StatusOK {
+			t.Fatalf("whoami = %d %s, want 200", code, body)
+		}
+		if touches != 1 {
+			t.Fatalf("due idle clock was touched %d times, want exactly 1", touches)
+		}
+	})
+
+	t.Run("fresh_cross_instance_slide_suppresses_duplicate_write", func(t *testing.T) {
+		// The preceding due-clock case advanced this same session by two
+		// granularities; move beyond that stamp so this request is due too.
+		now := time.Now().UTC().Add(4 * service.SlideGranularity)
+		var (
+			nowCalls      int
+			competitorErr error
+			competitorMu  sync.Mutex
+		)
+		e.auth.Now = func() time.Time {
+			nowCalls++
+			if nowCalls == 2 {
+				competitorMu.Lock()
+				competitorErr = tx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+					id, err := az.AuthenticateCaller(ctx, e.token, now)
+					if err != nil {
+						return err
+					}
+					return az.SlideSession(ctx, id.SessionID, now, now.Add(time.Hour))
+				})
+				competitorMu.Unlock()
+			}
+			return now
+		}
+		defer func() { e.auth.Now = nil }()
+
+		var touches int
+		restore := authn.SetQueryObserver(func(query string) {
+			if strings.Contains(query, "-- name: TouchSession ") {
+				touches++
+			}
+		})
+		defer restore()
+
+		code, body := e.call(t, http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
+		if code != http.StatusOK {
+			t.Fatalf("whoami = %d %s, want 200", code, body)
+		}
+		competitorMu.Lock()
+		err := competitorErr
+		competitorMu.Unlock()
+		if err != nil {
+			t.Fatalf("cross-instance slide: %v", err)
+		}
+		if touches != 1 {
+			t.Fatalf("fresh cross-instance slide was followed by %d total touches, want only its 1", touches)
+		}
+	})
+
+	t.Run("instance_connection_uses_only_its_own_touch_path", func(t *testing.T) {
+		value := mintInstanceConnection(t, db, "slide-path")
+		e.workspace.Now = func() time.Time {
+			return time.Now().UTC().Add(-2 * service.SlideGranularity)
+		}
+		defer func() { e.workspace.Now = nil }()
+
+		var instanceTouches, machineTouches int
+		restore := authn.SetQueryObserver(func(query string) {
+			switch {
+			case strings.Contains(query, "-- name: TouchInstanceConnection "):
+				instanceTouches++
+			case strings.Contains(query, "-- name: TouchMachineCredential "):
+				machineTouches++
+			}
+		})
+		defer restore()
+
+		code, body := e.callAs(t, value, http.MethodGet, api.PathPrefix+"/instance/directory", nil)
+		if code != http.StatusOK {
+			t.Fatalf("directory = %d %s, want 200", code, body)
+		}
+		if instanceTouches != 1 {
+			t.Fatalf("directory handler touched instance connection %d times, want 1", instanceTouches)
+		}
+		if machineTouches != 0 {
+			t.Fatalf("generic post-response path touched machine credentials %d times, want 0", machineTouches)
+		}
+	})
 }
 
 // runAccessWireUniformity drives the pair the acceptance criterion names, for

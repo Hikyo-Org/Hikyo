@@ -975,43 +975,22 @@ func (s *Auth) Logout(ctx context.Context, presented string) error {
 // SlideGranularity. The transport calls it after a successful response, so
 // the write never sits between authorization and the answer.
 //
-// The decision is made in a READ transaction and a write is opened only when
-// one is actually needed. That ordering matters more than it looks: the
-// transport calls this for every request carrying any bearer at all,
-// including a fabricated one, so opening a write transaction first would let
-// anyone contend for sqlite's single write connection just by sending an
-// Authorization header full of noise.
+// The decision reuses the request's own authentication read, and a write is
+// opened only when one is actually needed. That ordering matters more than it
+// looks: a fabricated bearer has no resolved CallerActivity, so it cannot
+// contend for sqlite's single write connection by supplying header noise.
 //
 // It is a no-op — not an error — when the session has since died: the request
 // it belonged to already succeeded, and failing here would report a problem
 // that no longer has a subject.
-func (s *Auth) SlideIdleClock(ctx context.Context, presented string) error {
+func (s *Auth) SlideIdleClock(ctx context.Context, presented string, activity CallerActivity) error {
 	now := s.now()
-	var sessionID, credentialID string
-	err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
-		// Both classes: this path stamps a session's idle clock OR a machine
-		// credential's last-used, and it runs for every request.
-		id, err := az.AuthenticateCaller(ctx, presented, now)
-		if errors.Is(err, domain.ErrUnauthenticated) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		// The SCIM wire stamps provisioning credentials inside its binding-
-		// checked transaction. This generic post-response path owns sessions and
-		// service-account credentials only.
-		if id.Class == domain.ClassProvisioning {
-			return nil
-		}
-		if now.Sub(id.LastSeenAt) < SlideGranularity {
-			return nil
-		}
-		sessionID, credentialID = id.SessionID, id.CredentialID
+	// The request's own resolution already loaded both values. A fabricated
+	// bearer has no CallerActivity and never reaches this method. Provisioning
+	// and instance-connection credentials own separate touch paths and are not
+	// slideable here.
+	if !activity.resolved.Slideable() || now.Sub(activity.resolved.LastSeenAt()) < SlideGranularity {
 		return nil
-	})
-	if err != nil || (sessionID == "" && credentialID == "") {
-		return err
 	}
 	return tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		// Re-authenticate inside the write transaction: the session may have
@@ -1024,6 +1003,13 @@ func (s *Auth) SlideIdleClock(ctx context.Context, presented string) error {
 		if err != nil {
 			return err
 		}
+		// Another instance may have touched the same row after this request's
+		// authentication read. The request-local hint avoids the common second
+		// read transaction; the fresh row in this authoritative write transaction
+		// still enforces the cross-instance granularity bound.
+		if now.Sub(id.LastSeenAt) < SlideGranularity {
+			return nil
+		}
 		// A MACHINE credential has no clock to slide — its lifetime is fixed
 		// at mint and no activity extends it (#61). What it has is a
 		// last-used stamp, which is observability and never an authorization
@@ -1035,9 +1021,12 @@ func (s *Auth) SlideIdleClock(ctx context.Context, presented string) error {
 		// It is checked FIRST because a machine identity's Artifact is a
 		// credential kind, not a session artifact: handing it to the
 		// per-artifact idle window below would ask a nonsense question.
-		if id.CredentialID != "" {
+		if domain.IsServiceAccountKind(id.Class) && id.CredentialID != "" {
 			return az.TouchMachineCredential(ctx, id.CredentialID, now)
 		}
-		return az.SlideSession(ctx, id.SessionID, now, now.Add(Artifact(id.Artifact).idle()))
+		if id.SessionID != "" {
+			return az.SlideSession(ctx, id.SessionID, now, now.Add(Artifact(id.Artifact).idle()))
+		}
+		return nil
 	})
 }

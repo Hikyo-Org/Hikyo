@@ -36,7 +36,7 @@ type AuthService interface {
 	Identity(ctx context.Context, presented string) (service.Identity, error)
 	Logout(ctx context.Context, presented string) error
 	VerifyBrowserCSRF(ctx context.Context, presented, csrfToken string) error
-	SlideIdleClock(ctx context.Context, presented string) error
+	SlideIdleClock(ctx context.Context, presented string, activity service.CallerActivity) error
 	EnrolTOTPStart(ctx context.Context, presented, password string) (string, error)
 	EnrolTOTPConfirm(ctx context.Context, presented, code string) (service.LoginResult, error)
 	StepUpTOTP(ctx context.Context, presented, code string) (service.LoginResult, error)
@@ -768,16 +768,21 @@ func (a *API) scimBodyIsOneValue(w http.ResponseWriter, r *http.Request) bool {
 // storm does not become a write storm.
 func (a *API) SlideSessionClocks(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(service.TrackCallerActivity(r.Context()))
 		next.ServeHTTP(w, r)
 		presented := bearer(r.Context())
 		if presented == "" {
+			return
+		}
+		activity, ok := service.ResolvedCallerActivity(r.Context())
+		if !ok {
 			return
 		}
 		// Detached from the request context: the client may already have
 		// disconnected, and the session's clock is still the server's to keep.
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
 		defer cancel()
-		if err := a.Auth.SlideIdleClock(ctx, presented); err != nil {
+		if err := a.Auth.SlideIdleClock(ctx, presented, activity); err != nil {
 			a.fault(ctx, "slide session idle clock", err)
 		}
 	})
