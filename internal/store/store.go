@@ -34,10 +34,11 @@ const (
 // Config selects and locates the datastore. Exactly one of Path (sqlite) or
 // DSN (postgres) is used, per Engine.
 type Config struct {
-	Engine       Engine
-	Path         string
-	DSN          string
-	SQLiteDriver string // optional database/sql driver name for test instrumentation
+	Engine          Engine
+	Path            string
+	DSN             string
+	PostgresPoolMax int32  // zero selects DSN pool_max_conns or the locked default
+	SQLiteDriver    string // optional database/sql driver name for test instrumentation
 }
 
 // Org is the tenancy boundary. Creation, listing and counting are
@@ -867,6 +868,29 @@ func (d *DB) SQLiteWrite() *sql.DB { return d.sqWrite }
 func (d *DB) SQLiteRead() *sql.DB  { return d.sqRead }
 func (d *DB) PG() *pgxpool.Pool    { return d.pool }
 
+// ConnectionPoolLimits reports the effective datastore-owned limits without
+// requiring callers to reach through the raw driver accessors. Primary is the
+// PostgreSQL general pool or SQLite write pool; ReadOnly is the SQLite read
+// pool and zero for PostgreSQL.
+type ConnectionPoolLimits struct {
+	Primary  int
+	ReadOnly int
+}
+
+func (d *DB) ConnectionPoolLimits() ConnectionPoolLimits {
+	switch d.engine {
+	case EngineSQLite:
+		return ConnectionPoolLimits{
+			Primary:  d.sqWrite.Stats().MaxOpenConnections,
+			ReadOnly: d.sqRead.Stats().MaxOpenConnections,
+		}
+	case EnginePostgres:
+		return ConnectionPoolLimits{Primary: int(d.pool.Config().MaxConns)}
+	default:
+		return ConnectionPoolLimits{}
+	}
+}
+
 // AuditExportSnapshotTime returns the authoritative upper time bound for an
 // unbounded audit export. Postgres event inserts use the same server clock, so
 // a transaction that inserted before this cutoff remains in the snapshot even
@@ -938,7 +962,10 @@ func Open(ctx context.Context, cfg Config) (*DB, error) {
 	case EngineSQLite:
 		return openSQLite(ctx, cfg.Path, cfg.SQLiteDriver)
 	case EnginePostgres:
-		return openPostgres(ctx, cfg.DSN)
+		if cfg.PostgresPoolMax < 0 {
+			return nil, errors.New("store: postgres pool maximum must be positive when configured")
+		}
+		return openPostgres(ctx, cfg.DSN, cfg.PostgresPoolMax)
 	default:
 		return nil, fmt.Errorf("store: unknown engine %q", cfg.Engine)
 	}
@@ -961,6 +988,10 @@ func openSQLite(ctx context.Context, path, driverName string) (*DB, error) {
 		write.Close()
 		return nil, fmt.Errorf("store: open sqlite read pool: %w", err)
 	}
+	// The ops-spec fixes the SQLite engine shape at one writer plus four WAL
+	// readers. The finite read pool prevents bursts from opening unbounded
+	// connections that can retain WAL snapshots.
+	read.SetMaxOpenConns(sqliteReadPoolMaxConnections)
 	d := &DB{engine: EngineSQLite, sqWrite: write, sqRead: read}
 	for name, pool := range map[string]*sql.DB{"write": write, "read": read} {
 		if err := verifySQLitePragmas(ctx, pool); err != nil {
@@ -997,8 +1028,17 @@ func verifySQLitePragmas(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-func openPostgres(ctx context.Context, dsn string) (*DB, error) {
-	pool, err := pgxpool.New(ctx, dsn)
+func openPostgres(ctx context.Context, dsn string, configuredMax int32) (*DB, error) {
+	poolConfig, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("store: parse postgres pool config: %w", err)
+	}
+	if configuredMax > 0 {
+		poolConfig.MaxConns = configuredMax
+	} else if !postgresDSNHasPoolMax(dsn) {
+		poolConfig.MaxConns = postgresPoolDefaultMaxConnections
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		return nil, fmt.Errorf("store: open postgres pool: %w", err)
 	}
@@ -1011,6 +1051,19 @@ func openPostgres(ctx context.Context, dsn string) (*DB, error) {
 		return nil, err
 	}
 	return &DB{engine: EnginePostgres, pool: pool}, nil
+}
+
+// Locked by ops-spec §10: larger PostgreSQL deployments use explicit
+// instance configuration; SQLite keeps its fixed single-writer/four-reader
+// engine shape on every host.
+const (
+	postgresPoolDefaultMaxConnections int32 = 10
+	sqliteReadPoolMaxConnections            = 4
+)
+
+func postgresDSNHasPoolMax(dsn string) bool {
+	u, err := url.Parse(dsn)
+	return err == nil && u.Query().Has("pool_max_conns")
 }
 
 // pgSettingQuerier is the seam verifyPGDurability tests through: the fsync

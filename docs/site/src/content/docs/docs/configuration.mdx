@@ -26,6 +26,7 @@ Do not use `--dev` for real secret material or any non-loopback deployment.
 | Variable | Meaning |
 | --- | --- |
 | `HIKYO_DB` | Required: `sqlite:PATH` or `postgres://...` datastore. |
+| `HIKYO_PG_POOL_MAX` | Optional positive PostgreSQL connection-pool maximum. |
 | `HIKYO_EXTERNAL_ORIGIN` | Set explicitly to the canonical public HTTPS origin. |
 | `HIKYO_TLS_CERT_FILE`, `HIKYO_TLS_KEY_FILE` | Native TLS pair; both or neither. |
 | `HIKYO_OPERATIONAL_LISTEN` | Separate operational bind; default `127.0.0.1:8081`. |
@@ -109,11 +110,17 @@ outside the backup identity's custody store.
 ## Datastore
 
 SQLite uses `HIKYO_DB=sqlite:/absolute/path/hikyo.db`. Ensure the service user
-owns the parent directory and no other user can read it.
+owns the parent directory and no other user can read it. The write pool uses one
+connection and the WAL read pool is capped at four, so concurrent readers cannot
+open unlimited connections or retain unbounded WAL snapshots.
 
 Remote PostgreSQL must name one host explicitly and use
 `sslmode=verify-full` or `sslmode=verify-ca`. Multi-host DSNs and remote
-plaintext connections are refused.
+plaintext connections are refused. The connection-pool maximum defaults to 10.
+Set `HIKYO_PG_POOL_MAX` to a positive 32-bit integer for larger hardware, or put
+`pool_max_conns=N` in the PostgreSQL DSN. The environment variable takes
+precedence when both are present. Hikyo logs the effective pool maximum once at
+startup for either datastore.
 
 ## Authentication cost controls
 

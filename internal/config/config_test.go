@@ -83,6 +83,41 @@ func TestPostgresLoopbackAllowed(t *testing.T) {
 	}
 }
 
+func TestPostgresPoolMaxConfig(t *testing.T) {
+	cfg, warnings, err := Load("server", nil,
+		env("HIKYO_DB", "postgres://u:p@localhost/hikyo", "HIKYO_PG_POOL_MAX", "17"),
+		environFrom("HIKYO_DB", "postgres://u:p@localhost/hikyo", "HIKYO_PG_POOL_MAX", "17"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("configured pool maximum must be recognized, got warnings %v", warnings)
+	}
+	if cfg.Store.PostgresPoolMax != 17 {
+		t.Fatalf("PostgresPoolMax = %d, want 17", cfg.Store.PostgresPoolMax)
+	}
+}
+
+func TestPostgresPoolMaxInvalidValuesRefuse(t *testing.T) {
+	for _, value := range []string{"0", "-1", "2147483648", "many"} {
+		t.Run(value, func(t *testing.T) {
+			_, _, err := Load("server", nil,
+				env("HIKYO_DB", "postgres://u:p@localhost/hikyo", "HIKYO_PG_POOL_MAX", value), nil)
+			if err == nil || !strings.Contains(err.Error(), "HIKYO_PG_POOL_MAX") {
+				t.Fatalf("HIKYO_PG_POOL_MAX=%q error = %v, want named refusal", value, err)
+			}
+		})
+	}
+}
+
+func TestPostgresPoolMaxRefusedForSQLite(t *testing.T) {
+	_, _, err := Load("server", nil,
+		env("HIKYO_DB", "sqlite:/data/hikyo.db", "HIKYO_PG_POOL_MAX", "8"), nil)
+	if err == nil || !strings.Contains(err.Error(), "requires a PostgreSQL datastore") {
+		t.Fatalf("SQLite with HIKYO_PG_POOL_MAX error = %v, want backend mismatch refusal", err)
+	}
+}
+
 func TestPostgresRemotePlaintextRefuses(t *testing.T) {
 	for _, dsn := range []string{
 		"postgres://u:p@db.example.com/hikyo",
@@ -109,9 +144,9 @@ func TestPostgresRemoteVerifiedTLSAllowed(t *testing.T) {
 
 func TestPostgresHostParamCannotBypassTLSCheck(t *testing.T) {
 	for _, dsn := range []string{
-		"postgres:///hikyo?host=remote.example.com",          // libpq-style host param
-		"postgres://u:p@/hikyo?host=10.0.0.5&sslmode=prefer", // empty authority + host param
-		"postgres:///hikyo", // no host at all (implicit PGHOST)
+		"postgres:///hikyo?host=remote.example.com",              // libpq-style host param
+		"postgres://u:p@/hikyo?host=10.0.0.5&sslmode=prefer",     // empty authority + host param
+		"postgres:///hikyo",                                      // no host at all (implicit PGHOST)
 		"postgres://u:p@localhost/hikyo?host=remote.example.com", // conflicting hosts
 		"postgres:///hikyo?host=a,b",                             // multi-host
 	} {

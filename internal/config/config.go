@@ -29,9 +29,10 @@ const (
 
 // Datastore is the parsed, validated datastore selection.
 type Datastore struct {
-	Engine Engine
-	Path   string // sqlite file path
-	DSN    string // postgres DSN
+	Engine          Engine
+	Path            string // sqlite file path
+	DSN             string // postgres DSN
+	PostgresPoolMax int32  // HIKYO_PG_POOL_MAX override; zero uses DSN/locked default
 }
 
 type Config struct {
@@ -132,6 +133,7 @@ type Config struct {
 // knownEnv is the closed set of HIKYO_* keys this build understands.
 var knownEnv = map[string]bool{
 	"HIKYO_DB":                         true,
+	"HIKYO_PG_POOL_MAX":                true,
 	"HIKYO_LISTEN":                     true,
 	"HIKYO_OPERATIONAL_LISTEN":         true,
 	"HIKYO_TLS_CERT_FILE":              true,
@@ -393,6 +395,16 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 		cfg.Store = Datastore{Engine: EngineSQLite, Path: devSQLitePath}
 	default:
 		return nil, nil, fmt.Errorf("no datastore configured: set HIKYO_DB (sqlite:PATH or postgres://...) or pass --dev for zero-config sqlite evaluation")
+	}
+	if raw := strings.TrimSpace(getenv("HIKYO_PG_POOL_MAX")); raw != "" {
+		if cfg.Store.Engine != EnginePostgres {
+			return nil, nil, errors.New("HIKYO_PG_POOL_MAX requires a PostgreSQL datastore")
+		}
+		poolMax, err := strconv.ParseInt(raw, 10, 32)
+		if err != nil || poolMax <= 0 {
+			return nil, nil, fmt.Errorf("HIKYO_PG_POOL_MAX: %q is not a positive 32-bit integer", raw)
+		}
+		cfg.Store.PostgresPoolMax = int32(poolMax)
 	}
 	return cfg, warnings, nil
 }
