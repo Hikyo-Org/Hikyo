@@ -29,7 +29,7 @@ import {
 import { useWorkspaces } from '../api/workspace.ts';
 import { withRemote } from '../api/transport.tsx';
 import { effectiveTheme, prefersDark, useThemeChoice, type Theme } from '../app/theme.ts';
-import { needsOrg, SECTIONS, SURFACES, surfaceById, type Surface } from '../app/navigation.ts';
+import { needsOrg, sectionsFor, SURFACES, surfaceById, type Surface } from '../app/navigation.ts';
 import { notifyUpdate } from '../app/notifications.tsx';
 import {
   CHROME_IDENTITY_EVENT,
@@ -56,6 +56,13 @@ export type ProjectSidebarState = {
   readonly onSelectGroup: (groupId: string) => void;
   readonly onToggleProblems: () => void;
 };
+
+// Temporary until the sidebar model lands (Task 2 of the #567 plan).
+const SECTIONS = [
+  { title: 'Organisation', items: sectionsFor('organisation') },
+  { title: 'Instance', items: sectionsFor('instance') },
+  { title: 'Account', items: sectionsFor('account') },
+] as const;
 
 const ProjectSidebarPublisher = createContext<
   ((state: ProjectSidebarState | null) => void) | null

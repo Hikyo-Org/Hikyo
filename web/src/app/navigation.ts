@@ -16,11 +16,20 @@ export type RouteMode = 'public' | 'ceremony' | 'authenticated';
 export type ChromeMode = 'none' | 'shell';
 export type CeremonySessionPolicy = 'establish-or-reuse' | 'required';
 
+/**
+ * The four sidebar sections. `project` and `instance` are CONTEXT blocks: they
+ * render only while the route is so scoped and sit above the organisation
+ * block. `organisation` is always present once an organisation is active.
+ * `account` never renders in the desktop sidebar (the rail-foot menu and the
+ * header link are canonical); the mobile drawer lists it under "You".
+ */
+export type SectionId = 'project' | 'instance' | 'organisation' | 'account';
+
 type SurfaceBase = {
   readonly id: string;
   readonly path: string;
   readonly label: string;
-  readonly section: string | null;
+  readonly section: SectionId | null;
 };
 
 export type RouteDefinition = SurfaceBase &
@@ -124,7 +133,7 @@ export const SURFACES = defineSurfaceRegistry([
     id: 'overview',
     path: '/',
     label: 'Overview',
-    section: 'Organisation',
+    section: 'organisation',
     mode: 'authenticated',
     chrome: 'shell',
   },
@@ -132,7 +141,7 @@ export const SURFACES = defineSurfaceRegistry([
     id: 'projects',
     path: '/projects',
     label: 'Projects',
-    section: 'Organisation',
+    section: 'organisation',
     mode: 'authenticated',
     chrome: 'shell',
   },
@@ -140,7 +149,7 @@ export const SURFACES = defineSurfaceRegistry([
     id: 'remotes',
     path: '/remotes',
     label: 'Remotes',
-    section: 'Organisation',
+    section: 'organisation',
     mode: 'authenticated',
     chrome: 'shell',
   },
@@ -156,7 +165,7 @@ export const SURFACES = defineSurfaceRegistry([
     id: 'members',
     path: '/orgs/:org/members',
     label: 'Members',
-    section: 'Organisation',
+    section: 'organisation',
     mode: 'authenticated',
     chrome: 'shell',
   },
@@ -164,7 +173,7 @@ export const SURFACES = defineSurfaceRegistry([
     id: 'org-settings',
     path: '/orgs/:org/settings',
     label: 'Organisation settings',
-    section: 'Organisation',
+    section: 'organisation',
     mode: 'authenticated',
     chrome: 'shell',
   },
@@ -178,18 +187,7 @@ export const SURFACES = defineSurfaceRegistry([
     id: 'scim',
     path: '/orgs/:org/scim',
     label: 'SCIM provisioning',
-    section: 'Organisation',
-    mode: 'authenticated',
-    chrome: 'shell',
-  },
-  // Project settings addresses ONE project, exactly like the matrix, so no
-  // static sidebar entry could know which one to mean. It is reached from the
-  // project list and by deep link.
-  {
-    id: 'project-settings',
-    path: '/orgs/:org/projects/:project/settings',
-    label: 'Project settings',
-    section: null,
+    section: 'organisation',
     mode: 'authenticated',
     chrome: 'shell',
   },
@@ -203,15 +201,27 @@ export const SURFACES = defineSurfaceRegistry([
     id: 'audit',
     path: '/orgs/:org/audit',
     label: 'Audit',
-    section: 'Organisation',
+    section: 'organisation',
+    mode: 'authenticated',
+    chrome: 'shell',
+  },
+  // The instance pair (#567): every scope is a {Members, Settings} pair, and
+  // the instance is no exception. Both are operator-only; the sidebar's
+  // instance context block lists them while the route is instance-scoped and
+  // the desktop rail's cog is their entry point.
+  {
+    id: 'instance-admin',
+    path: '/instance',
+    label: 'Instance settings',
+    section: 'instance',
     mode: 'authenticated',
     chrome: 'shell',
   },
   {
-    id: 'instance-admin',
-    path: '/instance',
-    label: 'Instance administration',
-    section: 'Instance',
+    id: 'instance-members',
+    path: '/instance/members',
+    label: 'Instance members',
+    section: 'instance',
     mode: 'authenticated',
     chrome: 'shell',
   },
@@ -219,18 +229,20 @@ export const SURFACES = defineSurfaceRegistry([
     id: 'settings',
     path: '/settings',
     label: 'Account & security',
-    section: 'Account',
+    section: 'account',
     mode: 'authenticated',
     chrome: 'shell',
   },
-  // The environment matrix addresses one whole project. Like the
-  // environment-scoped value surface, its org and project are route data, so
-  // no static sidebar destination can point at it honestly.
+  // The environment matrix addresses one whole project. Project-scoped: the
+  // sidebar's project context block fills `:org` and `:project` from the
+  // route, exactly as the organisation block fills `:org`. This reverses the
+  // earlier "no static entry could know which project" reasoning — the entry
+  // is no longer static (#567).
   {
     id: 'matrix',
     path: '/orgs/:org/projects/:project/matrix',
     label: 'Environment matrix',
-    section: null,
+    section: 'project',
     mode: 'authenticated',
     chrome: 'shell',
   },
@@ -276,16 +288,28 @@ export const SURFACES = defineSurfaceRegistry([
     mode: 'authenticated',
     chrome: 'shell',
   },
-  // The machine-access surface (#67). `section: null` for the same reason
-  // `values` is: it addresses ONE project, and a static sidebar entry could not
-  // know which. It is reached from the project and by deep link. The
-  // project-scoped navigation the prototype draws around it is the shell's own
-  // ticket, not this one.
+  // The machine-access surface (#67). Project-scoped (#567): the sidebar's
+  // project context block fills `:org` and `:project` from the route, so the
+  // entry is no longer static and the earlier "could not know which project"
+  // reasoning no longer applies. It is also reached from the project and by
+  // deep link.
   {
     id: 'machine-access',
     path: '/orgs/:org/projects/:project/machine-access',
     label: 'Machine access',
-    section: null,
+    section: 'project',
+    mode: 'authenticated',
+    chrome: 'shell',
+  },
+  // Project settings addresses ONE project, exactly like the matrix, and is
+  // project-scoped for the same reason (#567): the context block fills the
+  // parameters from the route. Table order is sidebar order — matrix, machine
+  // access, project settings.
+  {
+    id: 'project-settings',
+    path: '/orgs/:org/projects/:project/settings',
+    label: 'Project settings',
+    section: 'project',
     mode: 'authenticated',
     chrome: 'shell',
   },
@@ -341,19 +365,10 @@ export const SURFACES = defineSurfaceRegistry([
 export type Surface = (typeof SURFACES)[number];
 export type SurfaceId = Surface['id'];
 
-type Section = {
-  readonly title: string;
-  readonly items: readonly Surface[];
-};
-
-/** SECTIONS is the sidebar, derived so it cannot drift from the surface list. */
-export const SECTIONS: readonly Section[] = Object.entries(
-  SURFACES.filter((s) => s.section !== null).reduce<Record<string, Surface[]>>((acc, surface) => {
-    const key = surface.section;
-    (acc[key] ??= []).push(surface);
-    return acc;
-  }, {}),
-).map(([title, items]) => ({ title, items }));
+/** sectionsFor is the sidebar, derived so it cannot drift from the surface list. */
+export function sectionsFor(section: SectionId): readonly Surface[] {
+  return SURFACES.filter((surface) => surface.section === section);
+}
 
 /** Whether a route may render before the SPA has a live session. */
 export function allowsAnonymousSession(surface: RouteDefinition): boolean {
@@ -378,6 +393,11 @@ export function allowsAnonymousSession(surface: RouteDefinition): boolean {
  */
 export function needsOrg(surface: Surface): boolean {
   return surface.path.includes(':org');
+}
+
+/** needsProject reports whether a surface's path carries a project, path-derived like needsOrg. */
+export function needsProject(surface: Surface): boolean {
+  return surface.path.includes(':project');
 }
 
 export function surfaceById(id: SurfaceId): Surface {

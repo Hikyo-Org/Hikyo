@@ -64,6 +64,7 @@ const ELEMENTS: Record<SurfaceId, ReactElement> = {
   audit: withRouteFallback(<Audit />),
   'project-settings': withRouteFallback(<ProjectSettings />),
   'instance-admin': withRouteFallback(<InstanceAdmin />),
+  'instance-members': withRouteFallback(<Members />),
   settings: withRouteFallback(<AccountSecurity />),
   // The three product surfaces are wrapped in WorkspaceScope: reached with a
   // `?remote=<name>` parameter they operate that remote over its bearer, and
