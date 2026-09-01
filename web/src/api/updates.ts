@@ -15,6 +15,33 @@ import { createWorkspaceClient } from './workspaceClient.ts';
 
 export type UpdateStatus = z.infer<typeof zUpdateStatus>;
 export type InstanceUpdateJob = z.infer<typeof zInstanceUpdateJob>;
+
+/**
+ * The three lifecycle outcomes a consumer renders differently: still working,
+ * clean success, or a terminal failure that needs operator attention.
+ * `rolled-back` and `rollback-failed` are both failures — the instance did not
+ * reach the requested version — so they collapse into `failed` and carry the
+ * diagnostic `failure_code` through. Centralizing the six-state → three-outcome
+ * mapping here keeps the enum from drifting out of the contract in the view.
+ */
+export type UpdateJobOutcome = {
+  kind: 'running' | 'succeeded' | 'failed';
+  failureCode?: string;
+};
+
+export function updateJobOutcome(job: InstanceUpdateJob): UpdateJobOutcome {
+  switch (job.state) {
+    case 'queued':
+    case 'running':
+      return { kind: 'running' };
+    case 'succeeded':
+      return { kind: 'succeeded' };
+    case 'failed':
+    case 'rolled-back':
+    case 'rollback-failed':
+      return { kind: 'failed', failureCode: job.failure_code };
+  }
+}
 export type RemoteUpdateProbe = {
   origin: string;
   status: UpdateStatus | null | undefined;

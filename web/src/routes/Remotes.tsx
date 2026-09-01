@@ -26,6 +26,8 @@ import {
 import { useOrgs } from '../api/session.ts';
 import { WorkspaceContextProvider, withRemote } from '../api/transport.tsx';
 import {
+  type InstanceUpdateJob,
+  updateJobOutcome,
   useRemoteUpdateJob,
   useRemoteUpdateStatuses,
   useRequestRemoteUpdate,
@@ -135,6 +137,8 @@ function RemoteCard({ remote }: { remote: Remote }) {
   const requestUpdate = useRequestRemoteUpdate();
   const [updateJobID, setUpdateJobID] = useState<string>();
   const updateJob = useRemoteUpdateJob(origin, updateJobID);
+  const updateOutcome =
+    updateJob.data === undefined ? undefined : updateJobOutcome(updateJob.data);
   const staleness = stalenessText(remote);
   useWorkspaceLiveness(live, () => setEnded(true));
   const handoffAction = workspaceHandoffAction(
@@ -282,11 +286,7 @@ function RemoteCard({ remote }: { remote: Remote }) {
               className="btn btn--primary"
               type="button"
               onClick={applyUpdate}
-              disabled={
-                requestUpdate.isPending ||
-                updateJob.data?.state === 'queued' ||
-                updateJob.data?.state === 'running'
-              }
+              disabled={requestUpdate.isPending || updateOutcome?.kind === 'running'}
             >
               {requestUpdate.isPending ? 'Submitting…' : `Update remote to ${update.latest_version}`}
             </button>
@@ -297,13 +297,9 @@ function RemoteCard({ remote }: { remote: Remote }) {
             </p>
           )}
           {updateJobID === undefined ? null : (
-            <p>
-              Update job <span className="mono">{updateJobID}</span>:{' '}
-              {updateJob.data?.state ?? 'queued'}
-              {updateJob.data?.phase === undefined ? '' : ` (${updateJob.data.phase})`}
-            </p>
+            <UpdateJobStatus jobID={updateJobID} job={updateJob.data} />
           )}
-          {updateJob.isError ? (
+          {updateJob.isError && updateOutcome?.kind !== 'failed' ? (
             <p className="alert" role="alert">
               The update job status could not be read. Inspect the remote instance logs before retrying.
             </p>
@@ -360,6 +356,46 @@ function RemoteCard({ remote }: { remote: Remote }) {
         </p>
       ) : null}
     </li>
+  );
+}
+
+/**
+ * Renders a terminal update-job outcome. A `failed` outcome (`failed`,
+ * `rolled-back`, or `rollback-failed`) surfaces as an `alert` region carrying
+ * the diagnostic `failure_code` — the instance did not reach the requested
+ * version and needs an operator. Everything else stays a plain status line.
+ * The `isError` alert (query could not read the job) is a separate concern the
+ * caller renders — and the caller suppresses it while this shows a `failed`
+ * outcome, since a refetch error can arrive with the last terminal `data` still
+ * cached and the two must not double up.
+ */
+export function UpdateJobStatus({
+  jobID,
+  job,
+}: {
+  jobID: string;
+  job: InstanceUpdateJob | undefined;
+}) {
+  const outcome = job === undefined ? undefined : updateJobOutcome(job);
+  if (outcome?.kind === 'failed') {
+    return (
+      <p className="alert" role="alert">
+        <span className="alert__glyph" aria-hidden="true">
+          !
+        </span>
+        <span>
+          Update job <span className="mono">{jobID}</span> {job?.state}
+          {outcome.failureCode === undefined ? '' : ` — ${outcome.failureCode}`}. Inspect the
+          remote instance logs.
+        </span>
+      </p>
+    );
+  }
+  return (
+    <p>
+      Update job <span className="mono">{jobID}</span>: {job?.state ?? 'queued'}
+      {job?.phase === undefined ? '' : ` (${job.phase})`}
+    </p>
   );
 }
 
