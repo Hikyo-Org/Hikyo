@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tan
 import type { z } from 'zod';
 
 import { parsed } from './client.ts';
+import { useTransport, type TransportOptions } from './transport.tsx';
 
 /**
  * Definitions governance is project policy, not repository integration.
@@ -31,12 +32,23 @@ export function parseDefinitionsSource(value: string): DefinitionsSource {
   return zSetDefinitionsSettingsRequest.shape.definitions_source.parse(value);
 }
 
-/** Shared query options keep the resource key and parsed response together. */
-export function definitionsSettingsQueryOptions(org: string, project: string) {
+/**
+ * Shared query options keep the resource key and parsed response together.
+ *
+ * `transport` is the workspace seam (#71): definitions settings are product
+ * data, so in a workspace this call MUST route through the remote's client, or
+ * it hits the viewing server — a leak the two-instance e2e route-guard catches.
+ * Defaults to the same-origin singleton for non-hook callers.
+ */
+export function definitionsSettingsQueryOptions(
+  org: string,
+  project: string,
+  transport: TransportOptions = {},
+) {
   return {
     queryKey: definitionsSettingsKey(org, project),
     queryFn: () =>
-      parsed(getDefinitionsSettingsOp, { path: { org, project } }),
+      parsed(getDefinitionsSettingsOp, { path: { org, project }, ...transport }),
     enabled: org !== '' && project !== '',
     retry: false,
   };
@@ -46,16 +58,19 @@ export function useDefinitionsSettings(
   org: string,
   project: string,
 ): UseQueryResult<DefinitionsSettings> {
-  return useQuery(definitionsSettingsQueryOptions(org, project));
+  const transport = useTransport();
+  return useQuery(definitionsSettingsQueryOptions(org, project, transport));
 }
 
 export function useSetDefinitionsSettings(org: string, project: string) {
   const queries = useQueryClient();
+  const transport = useTransport();
   return useMutation({
     mutationFn: (definitionsSource: DefinitionsSource) =>
       parsed(setDefinitionsSettingsOp, {
           path: { org, project },
           body: { definitions_source: definitionsSource },
+          ...transport,
         }),
     onSuccess: () =>
       queries.invalidateQueries({ queryKey: definitionsSettingsKey(org, project) }),
