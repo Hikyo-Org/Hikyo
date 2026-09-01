@@ -96,6 +96,26 @@ type Actor struct {
 	scimBinding string
 }
 
+// CallerActivity is an opaque post-response slide hint. Its authz payload is
+// deliberately hidden from transport: server code may pass it back to Auth,
+// but cannot turn it into a principal or an authorization decision.
+type CallerActivity struct {
+	resolved authz.CallerActivity
+}
+
+// TrackCallerActivity prepares a request context to receive the narrow result
+// of successful in-transaction authentication.
+func TrackCallerActivity(ctx context.Context) context.Context {
+	return authz.TrackCallerActivity(ctx)
+}
+
+// ResolvedCallerActivity returns the request's authentication result as an
+// opaque slide hint. Fabricated bearers and public handlers return no value.
+func ResolvedCallerActivity(ctx context.Context) (CallerActivity, bool) {
+	resolved, ok := authz.ResolvedCallerActivity(ctx)
+	return CallerActivity{resolved: resolved}, ok
+}
+
 // Bearer is the network path: a presented session artifact, resolved at the
 // chokepoint inside whichever transaction the operation opens.
 func Bearer(artifact string) Actor { return Actor{bearer: artifact} }

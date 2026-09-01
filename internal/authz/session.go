@@ -245,31 +245,37 @@ func (a *TxAuthorizer) AuthenticateCaller(ctx context.Context, presented string,
 	if presented == "" {
 		return Identity{}, domain.ErrUnauthenticated
 	}
+	var (
+		identity Identity
+		err      error
+	)
 	if crypto.ParseArtifact(presented, crypto.ArtifactWorkload) == nil ||
 		crypto.ParseArtifact(presented, crypto.ArtifactAutomation) == nil {
-		return a.authenticateMachine(ctx, presented, now)
+		identity, err = a.authenticateMachine(ctx, presented, now)
+	} else if _, wire := api.OperationFromContext(ctx); wire && crypto.ParseArtifact(presented, crypto.ArtifactSCIM) == nil {
+		identity, _, err = a.AuthenticateSCIMCaller(ctx, presented, now)
+	} else if crypto.ParseArtifact(presented, crypto.ArtifactInstanceConn) == nil {
+		// The instance-connection credential (#71). It is a machine artifact with
+		// its own table and its own resolution leg, and it is admitted HERE rather
+		// than in Authenticate for the same reason the service-account credentials
+		// are: it has no session row to mutate, so every account-security verb
+		// refuses it by construction.
+		//
+		// Admission is not authorization. What this credential may actually reach
+		// is decided at the chokepoint from the embedded OpenAPI declaration, which
+		// confines it to the directory-serve operation and nothing else.
+		identity, err = a.authenticateInstanceConnection(ctx, presented, now)
+	} else {
+		// The session leg, admitting the WORKSPACE artifact (#71) alongside the two
+		// same-origin ones. This is the ONLY entry point that admits it: see
+		// authenticateSession for why Authenticate must not.
+		identity, err = a.authenticateSession(ctx, presented, now,
+			crypto.ArtifactCLISession, crypto.ArtifactBrowserSession, crypto.ArtifactWorkspaceSession)
 	}
-	if _, wire := api.OperationFromContext(ctx); wire && crypto.ParseArtifact(presented, crypto.ArtifactSCIM) == nil {
-		identity, _, err := a.AuthenticateSCIMCaller(ctx, presented, now)
-		return identity, err
+	if err == nil {
+		recordCallerActivity(ctx, identity)
 	}
-	// The instance-connection credential (#71). It is a machine artifact with
-	// its own table and its own resolution leg, and it is admitted HERE rather
-	// than in Authenticate for the same reason the service-account credentials
-	// are: it has no session row to mutate, so every account-security verb
-	// refuses it by construction.
-	//
-	// Admission is not authorization. What this credential may actually reach
-	// is decided at the chokepoint from the embedded OpenAPI declaration, which
-	// confines it to the directory-serve operation and nothing else.
-	if crypto.ParseArtifact(presented, crypto.ArtifactInstanceConn) == nil {
-		return a.authenticateInstanceConnection(ctx, presented, now)
-	}
-	// The session leg, admitting the WORKSPACE artifact (#71) alongside the two
-	// same-origin ones. This is the ONLY entry point that admits it: see
-	// authenticateSession for why Authenticate must not.
-	return a.authenticateSession(ctx, presented, now,
-		crypto.ArtifactCLISession, crypto.ArtifactBrowserSession, crypto.ArtifactWorkspaceSession)
+	return identity, err
 }
 
 // AuthenticateSCIMCaller resolves a live provisioning credential without
