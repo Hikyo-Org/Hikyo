@@ -43,6 +43,10 @@ type AuthContextValue = {
   readonly state: AuthState;
   readonly identity: WhoAmI | null;
   readonly failure: Error | null;
+  // A transport/5xx/schema error from a BACKGROUND revalidation of a session
+  // that is still held. Unlike `failure` this never latches the reload wall: the
+  // last-known-good session keeps painting and a backed-off retry recovers it.
+  readonly degraded: Error | null;
   readonly captureTransition: () => SessionTransitionGuard;
   readonly acceptSession: (identity: AcceptedIdentity, guard: SessionTransitionGuard) => void;
   readonly endSession: (guard: SessionTransitionGuard) => void;
@@ -60,6 +64,7 @@ type Snapshot = {
   readonly state: AuthState;
   readonly identity: WhoAmI | null;
   readonly failure: Error | null;
+  readonly degraded: Error | null;
   readonly queries: ReturnType<typeof makeQueryClient>;
 };
 
@@ -68,6 +73,8 @@ const CHANNEL_NAME = 'hikyo-root-auth';
 const CHANNEL_MESSAGE = 'session-changed';
 const MAX_TIMEOUT_MS = 2_147_483_647;
 const FOCUS_CHECK_INTERVAL_MS = 1_000;
+const DEGRADED_RETRY_BASE_MS = 1_000;
+const DEGRADED_RETRY_MAX_MS = 30_000;
 
 /** Read root identity without putting it in a session-owned query cache. */
 async function readIdentity(): Promise<WhoAmI | null> {
@@ -79,6 +86,19 @@ async function readIdentity(): Promise<WhoAmI | null> {
     }
     throw error;
   }
+}
+
+/**
+ * Whether a held identity is provably dead regardless of the server. Only the
+ * ABSOLUTE deadline qualifies: it can never be extended, so once it passes the
+ * session is over even if we cannot reach the server to be told so. The idle
+ * deadline is deliberately excluded — a successful revalidation refreshes it, so
+ * a locally-passed idle window during an outage does not PROVE expiry and must
+ * not wall a session the server might still honour.
+ */
+function isDefinitivelyExpired(identity: WhoAmI): boolean {
+  const absolute = Date.parse(identity.session.absolute_expires_at);
+  return Number.isFinite(absolute) && Date.now() >= absolute;
 }
 
 function stateFor(identity: WhoAmI | null): AuthState {
@@ -124,6 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     state: { status: 'checking' },
     identity: null,
     failure: null,
+    degraded: null,
     queries: makeQueryClient(),
   }));
   const snapshotRef = useRef(snapshot);
@@ -131,6 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const transitionRevisionRef = useRef(0);
   const channelRef = useRef<BroadcastChannel | null>(null);
   const lastFocusCheckRef = useRef(0);
+  const degradedRetriesRef = useRef(0);
 
   const commit = useCallback((next: Snapshot) => {
     snapshotRef.current = next;
@@ -158,6 +180,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         transitionRevisionRef.current += 1;
       }
       transitionWorkspaceOwner(identity?.session.id);
+      // A successful settle is the single point that clears a degraded session
+      // and resets its retry backoff.
+      degradedRetriesRef.current = 0;
 
       if (sameSession) {
         commit({
@@ -165,6 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           state: stateFor(identity),
           identity,
           failure: null,
+          degraded: null,
         });
         void current.queries.invalidateQueries();
       } else {
@@ -174,6 +200,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           state: stateFor(identity),
           identity,
           failure: null,
+          degraded: null,
         });
       }
       if (publish) {
@@ -185,7 +212,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkSession = useCallback(
     async (mode: SessionCheckMode) => {
-      const blocking = mode !== 'refresh-and-publish';
+      const blocking = mode === 'blocking' || mode === 'blocking-and-publish';
+      const publish = mode === 'blocking-and-publish' || mode === 'refresh-and-publish';
       const request = requestRef.current + 1;
       requestRef.current = request;
       const current = snapshotRef.current;
@@ -195,20 +223,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           state:
             current.identity === null ? { status: 'checking' } : { status: 'transitioning' },
           failure: null,
+          degraded: null,
         });
       }
       try {
         const identity = await readIdentity();
         if (requestRef.current === request) {
-          settleIdentity(identity, mode !== 'blocking');
+          settleIdentity(identity, publish);
         }
       } catch (error) {
-        if (requestRef.current === request) {
-          const latest = snapshotRef.current;
+        if (requestRef.current !== request) {
+          return;
+        }
+        const latest = snapshotRef.current;
+        const problem =
+          error instanceof Error ? error : new Error('root authentication check failed');
+        if (latest.identity !== null && !isDefinitivelyExpired(latest.identity)) {
+          // A still-valid session must not be buried under the global reload
+          // wall by a transient background revalidation blip. Keep painting the
+          // last-known-good session and surface the transport error only as the
+          // non-latching `degraded` signal; the backoff effect retries it.
+          degradedRetriesRef.current += 1;
+          commit({
+            ...latest,
+            state: stateFor(latest.identity),
+            failure: null,
+            degraded: problem,
+          });
+        } else {
+          // No usable session in hand — either genuinely session-less (initial
+          // check, or a failing refresh while anonymous) or holding an identity
+          // whose ABSOLUTE deadline has passed, which is dead regardless of the
+          // server. The blocking reload wall is the correct answer; a definitively
+          // expired session must never keep painting authenticated chrome.
           commit({
             ...latest,
             state: blocking ? stateFor(latest.identity) : latest.state,
-            failure: error instanceof Error ? error : new Error('root authentication check failed'),
+            failure: problem,
+            degraded: null,
           });
         }
       }
@@ -377,8 +429,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => globalThis.removeEventListener?.('focus', onFocus);
   }, [revalidateOnFocus]);
 
+  // A degraded (still-authenticated) session recovers on its own: a background
+  // retry that backs off while the outage persists. The retry is non-blocking
+  // (never tears the tree down to a spinner) and PUBLISHES on settle, so a
+  // recovery that supersedes a racing post-mutation refresh still notifies peer
+  // tabs rather than swallowing the session change. Each fresh `degraded` error
+  // is a new reference, so this re-arms after every failed retry; a successful
+  // settle clears `degraded` and the cleanup cancels the pending timer.
+  useEffect(() => {
+    if (snapshot.degraded === null) {
+      return;
+    }
+    const attempt = Math.max(0, degradedRetriesRef.current - 1);
+    const delay = Math.min(DEGRADED_RETRY_MAX_MS, DEGRADED_RETRY_BASE_MS * 2 ** Math.min(attempt, 5));
+    const timer = setTimeout(() => void checkSession('refresh-and-publish'), delay);
+    return () => clearTimeout(timer);
+  }, [checkSession, snapshot.degraded]);
+
   useEffect(() => {
     if (snapshot.state.status !== 'authenticated' || snapshot.identity === null) {
+      return;
+    }
+    // Once a check has already failed, the recovery cadence is owned elsewhere:
+    // the degraded backoff retries a still-valid session, and the failure wall
+    // waits for a manual reload. Without this guard the expiry timer, seeing an
+    // already-past deadline, would reschedule a blocking revalidate every second
+    // through an outage — a request storm that also races the degraded backoff.
+    if (snapshot.failure !== null || snapshot.degraded !== null) {
       return;
     }
     const idle = Date.parse(snapshot.identity.session.idle_expires_at);
@@ -389,12 +466,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       : 1_000;
     const timer = setTimeout(() => void revalidate(), delay);
     return () => clearTimeout(timer);
-  }, [revalidate, snapshot.identity, snapshot.state.status]);
+  }, [revalidate, snapshot.degraded, snapshot.failure, snapshot.identity, snapshot.state.status]);
 
   const value = {
     state: snapshot.state,
     identity: snapshot.identity,
     failure: snapshot.failure,
+    degraded: snapshot.degraded,
     captureTransition,
     acceptSession,
     endSession,
