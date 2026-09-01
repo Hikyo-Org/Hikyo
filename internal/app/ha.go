@@ -99,6 +99,15 @@ func haReadinessProbe(coord *store.Coordination) func(context.Context) error {
 // coordination surface plus the per-tick maintenance closure the scheduler
 // runs on every node. Any error is a boot refusal.
 func configureHA(ctx context.Context, cfg *config.Config, log *slog.Logger, db *store.DB, sc store.Config) (*store.Coordination, func(context.Context), *haStatus, error) {
+	// Defence in depth beyond config.Load: HA is Postgres-only. sqlite is
+	// single-writer and cannot back multi-node coordination, so refuse rather
+	// than degrade even when a caller constructs the config directly.
+	if db.Engine() != store.EnginePostgres {
+		return nil, nil, nil, fmt.Errorf("ha: refusing to serve: multi-node HA requires a PostgreSQL datastore, not %s", db.Engine())
+	}
+	if cfg.NodeID == "" {
+		return nil, nil, nil, fmt.Errorf("ha: refusing to serve: multi-node HA requires a stable node id")
+	}
 	root, err := resolveRootKey(cfg, log)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("ha: resolve root key: %w", err)
