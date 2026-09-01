@@ -30,6 +30,7 @@ import {
 } from '../api/settings.ts';
 import { notifySuccess } from '../app/notifications.tsx';
 import { surfaceById } from '../app/navigation.ts';
+import { OidcProvidersPanel } from './OidcProvidersPanel.tsx';
 import { Alert, Done, JumpIndex, Panel } from './Sections.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
 
@@ -123,6 +124,7 @@ export function InstanceAdmin() {
     <JumpIndex sections={[
       { id: 'instance-orgs', label: 'Organizations' },
       { id: 'instance-settings', label: 'Settings' },
+      ...(prototypeMode ? [] : [{ id: 'instance-oidc', label: 'Identity providers' }]),
       { id: 'instance-keys', label: 'Keys & crypto' },
       { id: 'instance-connected', label: 'Instances' },
     ]} />
@@ -200,6 +202,8 @@ export function InstanceAdmin() {
     </Panel>}
 
     <CredentialPolicyPanel query={policy} onDone={ok} onFailure={report} />
+
+    {prototypeMode ? null : <OidcProvidersPanel />}
 
     {prototypeMode ? null : <Panel id="instance-retention" title="Retention health">
       {health.isPending ? <p role="status">Loading retention health…</p> : null}

@@ -1,4 +1,4 @@
-import { expect } from '@playwright/test';
+import { expect, type Browser, type Page } from '@playwright/test';
 import {
   zGrantList,
   zOrg,
@@ -22,8 +22,10 @@ import {
   establishSession,
   INSTANCE_GRANT_TARGET,
   nextTotpCode,
+  OIDC_PROVIDER,
   readSeed,
   STORAGE_STATE,
+  WEBUI_OIDC,
 } from '../fixtures/instance.ts';
 import { test } from '../fixtures/passkey.ts';
 
@@ -429,6 +431,7 @@ test.describe('instance administration', () => {
         ['#instance-grants', 'require a second factor', 'No instance-scope grants'],
         ['#instance-retention', 'requires a second factor', 'Payload pruning'],
         ['#instance-settings', 'requires a second factor', 'Maximum finite lifetime'],
+        ['#instance-oidc', 'needs a second factor', '+ add identity provider'],
       ] as const;
       for (const [selector, refusalText, forbiddenText] of panels) {
         const panel = page.locator(selector);
@@ -438,6 +441,169 @@ test.describe('instance administration', () => {
     } finally {
       await context.close();
     }
+  });
+
+  /** Open a fresh, unauthenticated /login and settle it on a known button. */
+  async function withFreshLogin(
+    browser: Browser,
+    body: (page: Page) => Promise<void>,
+  ): Promise<void> {
+    const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    try {
+      const fresh = await context.newPage();
+      await fresh.goto('/login');
+      // The fixture's own provider is always advertised — waiting on it is the
+      // settle point that makes a later "absent" assertion trustworthy.
+      await expect(
+        fresh.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` }),
+      ).toBeVisible();
+      await body(fresh);
+    } finally {
+      await context.close();
+    }
+  }
+
+  test('configures a provider, advertises it on login, then disables and deletes it', async ({
+    page,
+    browser,
+  }, testInfo) => {
+    testInfo.setTimeout(60_000);
+    try {
+    const panel = page.locator('#instance-oidc');
+    await expect(panel.getByRole('heading', { name: 'Identity providers' })).toBeVisible();
+    // The fixture's linked provider is listed alongside any this flow adds.
+    await expect(panel).toContainText(OIDC_PROVIDER.displayName);
+
+    // Configure a new provider entirely through the browser. Its issuer is the
+    // second fixture IdP, so discovery succeeds server-side at create time.
+    await panel.getByRole('button', { name: '+ add identity provider' }).click();
+    const editor = panel.locator('.oidc-editor');
+    await editor.getByLabel('Slug').fill(WEBUI_OIDC.slug);
+    await editor.getByLabel('Display name').fill(WEBUI_OIDC.displayName);
+    await editor.getByLabel('Issuer URL').fill(WEBUI_OIDC.issuer);
+    await editor.getByLabel('Client ID').fill('e2e-webui-client');
+    await editor.getByLabel('Client secret').fill('e2e-webui-secret');
+    await editor.getByLabel('Scopes').fill('openid');
+    await editor.getByRole('button', { name: 'Configure provider' }).click();
+
+    const row = panel.locator('.settings-row').filter({ hasText: WEBUI_OIDC.displayName });
+    await expect(row).toContainText('enabled');
+    await expect(
+      page.locator('.notice').filter({ hasText: 'advertised on the sign-in page' }),
+    ).toBeVisible();
+
+    // Advertised login availability, verified in a fresh unauthenticated context.
+    await withFreshLogin(browser, async (login) => {
+      await expect(
+        login.getByRole('button', { name: `Continue with ${WEBUI_OIDC.displayName}` }),
+      ).toBeVisible();
+    });
+
+    // Disable it: a reconfigure with the write-only secret re-entered and the
+    // Enabled box cleared. The secret is required even to disable.
+    await row.getByRole('button', { name: `Reconfigure ${WEBUI_OIDC.displayName}` }).click();
+    const reconfigure = panel.locator('.oidc-editor');
+    await reconfigure.getByLabel('Enabled (advertised on the sign-in page)').uncheck();
+    await expect(reconfigure.getByRole('alert')).toContainText(
+      'Local password and second-factor sign-in is unaffected',
+    );
+    await reconfigure.getByRole('button', { name: 'Save provider' }).click();
+    // The panel now shows two role=alert nodes at once (the disable-consequence
+    // note and the field refusal), so scope the assertion to the panel text.
+    await expect(panel).toContainText('entered on every save');
+    await reconfigure.getByLabel('Client secret').fill('e2e-webui-secret');
+    await reconfigure.getByRole('button', { name: 'Save provider' }).click();
+    await expect(
+      panel.locator('.settings-row').filter({ hasText: WEBUI_OIDC.displayName }),
+    ).toContainText('disabled');
+
+    // No longer advertised.
+    await withFreshLogin(browser, async (login) => {
+      await expect(
+        login.getByRole('button', { name: `Continue with ${WEBUI_OIDC.displayName}` }),
+      ).toHaveCount(0);
+    });
+
+    // Delete it, gated on the immutable slug, with the consequence stated.
+    const disabledRow = panel.locator('.settings-row').filter({ hasText: WEBUI_OIDC.displayName });
+    await disabledRow.getByRole('button', { name: `Delete ${WEBUI_OIDC.displayName}` }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toContainText('cannot be undone');
+    // Keyboard operable: Escape closes the native dialog without deleting.
+    await dialog.getByLabel('Type the provider slug to confirm').press('Escape');
+    await expect(page.getByRole('dialog')).toBeHidden();
+    await expect(
+      panel.locator('.settings-row').filter({ hasText: WEBUI_OIDC.displayName }),
+    ).toHaveCount(1);
+
+    await disabledRow.getByRole('button', { name: `Delete ${WEBUI_OIDC.displayName}` }).click();
+    const confirm = page.getByRole('dialog');
+    await confirm.getByLabel('Type the provider slug to confirm').fill(WEBUI_OIDC.slug);
+    await confirm.getByRole('button', { name: 'Delete provider' }).click();
+    await expect(
+      panel.locator('.settings-row').filter({ hasText: WEBUI_OIDC.displayName }),
+    ).toHaveCount(0);
+    } finally {
+      // Failure-safe cleanup: a mid-test failure must not leave the throwaway
+      // provider behind to collide (by slug or enabled issuer) on a later run.
+      await browserApi(page, 'DELETE', `/api/v1/instance/oidc-providers/${WEBUI_OIDC.slug}`, z.null()).catch(
+        () => undefined,
+      );
+    }
+  });
+
+  test('keeps the issuer immutable and refuses a secretless reconfigure before any request', async ({
+    page,
+  }) => {
+    const panel = page.locator('#instance-oidc');
+    let putSent = false;
+    await page.route('**/api/v1/instance/oidc-providers/**', async (route) => {
+      if (route.request().method() === 'PUT') {
+        putSent = true;
+      }
+      await route.continue();
+    });
+
+    await panel
+      .locator('.settings-row')
+      .filter({ hasText: OIDC_PROVIDER.displayName })
+      .getByRole('button', { name: `Reconfigure ${OIDC_PROVIDER.displayName}` })
+      .click();
+    const editor = panel.locator('.oidc-editor');
+    // The issuer field is disabled on reconfigure, so a changed issuer is not
+    // even expressible in the UI — the field-error path for it is unit-tested.
+    // Here the blank-secret guard refuses the save with no request reaching the
+    // server, which is the write-only-secret contract enforced client-side.
+    await expect(editor.getByLabel('Issuer URL')).toBeDisabled();
+    await editor.getByLabel('Client secret').fill('');
+    await editor.getByRole('button', { name: 'Save provider' }).click();
+    await expect(panel.getByRole('alert')).toContainText('entered on every save');
+    expect(putSent).toBe(false);
+  });
+
+  test('surfaces a stale-state conflict as a reload prompt', async ({ page }) => {
+    const panel = page.locator('#instance-oidc');
+    await page.route('**/api/v1/instance/oidc-providers/**', async (route) => {
+      if (route.request().method() !== 'PUT') {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 409,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: { code: 'conflict' } }),
+      });
+    });
+
+    await panel
+      .locator('.settings-row')
+      .filter({ hasText: OIDC_PROVIDER.displayName })
+      .getByRole('button', { name: `Reconfigure ${OIDC_PROVIDER.displayName}` })
+      .click();
+    const editor = panel.locator('.oidc-editor');
+    await editor.getByLabel('Client secret').fill('whatever-secret');
+    await editor.getByRole('button', { name: 'Save provider' }).click();
+    await expect(panel.getByRole('alert')).toContainText('changed underneath you');
   });
 
   for (const scheme of ['dark', 'light'] as const) {

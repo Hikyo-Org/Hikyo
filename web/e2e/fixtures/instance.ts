@@ -87,6 +87,24 @@ const PORT_OPERATIONAL = Number(process.env['HIKYO_E2E_PORT_OPERATIONAL'] ?? 457
 const PORT_OPERATIONAL_B = Number(process.env['HIKYO_E2E_PORT_OPERATIONAL_B'] ?? 45794);
 export const OIDC_PROVIDER = { slug: 'e2e-oidc', displayName: 'E2E Identity Provider' };
 
+/**
+ * A SECOND fake IdP on its own port, and therefore its own byte-distinct
+ * issuer, that the fixture starts but configures NO provider for (#499). The
+ * instance-admin flow drives the WebUI itself to configure a provider against
+ * it, verify it is advertised on the sign-in page, then disable and delete it.
+ *
+ * A second issuer is not optional: `oidc_providers_issuer_enabled` allows at
+ * most one ENABLED provider per (kind, issuer), so a second enabled provider on
+ * `OIDC_PROVIDER`'s issuer would collide — and the admin session is linked
+ * through that provider, so this flow must not touch it.
+ */
+const PORT_OIDC2 = Number(process.env['HIKYO_E2E_PORT_OIDC2'] ?? 45795);
+export const WEBUI_OIDC = {
+  slug: 'e2e-webui-oidc',
+  displayName: 'WebUI Identity Provider',
+  issuer: `http://127.0.0.1:${String(PORT_OIDC2)}`,
+};
+
 /** The name the viewing instance knows the serving instance by. */
 export const REMOTE_NAME = 'peer-b';
 
@@ -174,6 +192,7 @@ type Cookie = {
 let instances: Instance[] = [];
 let tlsFront: Server | null = null;
 let oidcProcess: ChildProcess | null = null;
+let oidcProcess2: ChildProcess | null = null;
 
 function run(command: string, args: string[], options: { cwd: string; env?: NodeJS.ProcessEnv }) {
   const result = spawnSync(command, args, {
@@ -189,28 +208,32 @@ function run(command: string, args: string[], options: { cwd: string; env?: Node
   return result;
 }
 
-/** Start the test-only IdP wrapper and wait for its issuer line. */
-async function startOIDCProvider(instance: Instance): Promise<string> {
-  if (await portTaken('127.0.0.1', PORT_OIDC)) {
-    throw new Error(`something is already listening on 127.0.0.1:${String(PORT_OIDC)}`);
+/** Build and start one test-only IdP on `port` and wait for its issuer line. */
+async function spawnIdP(
+  dir: string,
+  port: number,
+  redirects: readonly string[],
+): Promise<{ proc: ChildProcess; issuer: string }> {
+  if (await portTaken('127.0.0.1', port)) {
+    throw new Error(`something is already listening on 127.0.0.1:${String(port)}`);
   }
-  const binary = join(instance.dir, 'oidctest-idp');
+  const binary = join(dir, `oidctest-idp-${String(port)}`);
   run('go', ['build', '-o', binary, './internal/oidctest/cmd'], { cwd: repoRoot });
-  const callback = `${BASE_URL}/api/v1/auth/oidc/${OIDC_PROVIDER.slug}/callback`;
-  const proc = spawn(
-    binary,
-    [
-      '-listen', `127.0.0.1:${String(PORT_OIDC)}`,
-      '-redirect-uri', callback,
-      '-amr', 'mfa,otp',
-    ],
-    { cwd: repoRoot, stdio: ['ignore', 'pipe', 'pipe'] },
-  );
-  oidcProcess = proc;
+  const args = ['-listen', `127.0.0.1:${String(port)}`, '-amr', 'mfa,otp'];
+  for (const redirect of redirects) {
+    args.push('-redirect-uri', redirect);
+  }
+  const proc = spawn(binary, args, { cwd: repoRoot, stdio: ['ignore', 'pipe', 'pipe'] });
   const issuer = await new Promise<string>((resolve, reject) => {
     let stdout = '';
     let stderr = '';
-    const deadline = setTimeout(() => reject(new Error('the fake OIDC provider did not start')), 10_000);
+    const deadline = setTimeout(() => {
+      // Kill the child here: the caller assigns the process global only AFTER
+      // a successful start, so a timed-out child teardown could never reach
+      // would otherwise hold its port for every later run.
+      proc.kill('SIGKILL');
+      reject(new Error('the fake OIDC provider did not start'));
+    }, 10_000);
     proc.stderr?.on('data', (chunk: Buffer) => {
       stderr += chunk.toString();
     });
@@ -227,11 +250,35 @@ async function startOIDCProvider(instance: Instance): Promise<string> {
       reject(new Error(`the fake OIDC provider exited (${String(code)}): ${stderr}`));
     });
   });
-  const expected = `http://127.0.0.1:${String(PORT_OIDC)}`;
+  const expected = `http://127.0.0.1:${String(port)}`;
   if (issuer !== expected) {
+    proc.kill('SIGKILL');
     throw new Error(`fake OIDC issuer = ${issuer}, want ${expected}`);
   }
+  return { proc, issuer };
+}
+
+/** Start the browser-drivable IdP the fixture configures and links through. */
+async function startOIDCProvider(instance: Instance): Promise<string> {
+  const callback = `${BASE_URL}/api/v1/auth/oidc/${OIDC_PROVIDER.slug}/callback`;
+  const { proc, issuer } = await spawnIdP(instance.dir, PORT_OIDC, [callback]);
+  oidcProcess = proc;
   return issuer;
+}
+
+/**
+ * Start the second IdP the WebUI provider journey (#499) configures itself. It
+ * needs only a reachable, valid OpenID configuration for discovery to succeed
+ * at create time; no login is ever completed through it, so it registers no
+ * redirect URI.
+ */
+async function startWebuiIdP(instance: Instance): Promise<void> {
+  const { proc, issuer } = await spawnIdP(instance.dir, PORT_OIDC2, []);
+  if (issuer !== WEBUI_OIDC.issuer) {
+    proc.kill('SIGKILL');
+    throw new Error(`webui IdP issuer = ${issuer}, want ${WEBUI_OIDC.issuer}`);
+  }
+  oidcProcess2 = proc;
 }
 
 /** Link the fixture administrator through the provider's real front channel. */
@@ -1004,6 +1051,10 @@ export async function startInstance(): Promise<void> {
   const oidcIssuer = await startOIDCProvider(viewing);
   await configureAndLinkOIDC(viewing, oidcIssuer);
 
+  // A second, UNCONFIGURED IdP for the WebUI provider journey (#499): the
+  // instance-admin flow configures a provider against it through the browser.
+  await startWebuiIdP(viewing);
+
   // The shared browser session is minted LAST, and that ordering is
   // load-bearing: seeding issues break-glass grants, a grant advances the
   // principal's session generation, and every session minted before it is dead
@@ -1564,6 +1615,8 @@ export function stopInstance(): void {
   tlsFront = null;
   oidcProcess?.kill('SIGKILL');
   oidcProcess = null;
+  oidcProcess2?.kill('SIGKILL');
+  oidcProcess2 = null;
   for (const instance of instances) {
     // SIGKILL, not SIGTERM: a server still inside boot may not have installed
     // its signal handler yet, and a survivor holds the port for the NEXT run —
