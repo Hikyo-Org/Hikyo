@@ -21,9 +21,6 @@ pnpm --dir "$repo_root/docs/site" install --frozen-lockfile
 node "$repo_root/scripts/ci/check-doc-status.mjs" --check --root "$repo_root"
 "$repo_root/scripts/ci/check-doc-status_test.sh"
 pnpm --dir "$repo_root/docs/site" peers check
-if [ -n "${CI:-}" ]; then
-	pnpm --dir "$repo_root/docs/site" exec playwright install --with-deps chromium
-fi
 pnpm --dir "$repo_root/docs/site" run verify
 "$repo_root/scripts/ci/check-oss-policy_test.sh"
 "$repo_root/scripts/ci/check-docs-live_test.sh"

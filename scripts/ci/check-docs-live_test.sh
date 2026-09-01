@@ -115,6 +115,8 @@ case "$url" in
 	*cloudflare-dns.com*)
 		if [ "${FAKE_NO_MX:-0}" -eq 1 ]; then
 			printf '%s\n' '{"Status":0,"Answer":[]}'
+		elif [ "${FAKE_BAD_MX_DATA:-0}" -eq 1 ]; then
+			printf '%s\n' '{"Status":0,"Answer":[{"type":15,"data":123}]}'
 		else
 			printf '%s\n' '{"Status":0,"Answer":[{"type":15,"data":"1 aspmx.l.google.com."}]}'
 		fi
@@ -135,6 +137,13 @@ if FAKE_NO_MX=1 CURL_BIN="$fixture_dir/curl" \
 	"$repo_root/scripts/ci/check-docs-live.sh" \
 	https://hikyo.app security@developwent.io >/dev/null 2>&1; then
 	printf 'live docs fixture failed: fallback domain without MX was accepted\n' >&2
+	exit 1
+fi
+
+if FAKE_BAD_MX_DATA=1 CURL_BIN="$fixture_dir/curl" \
+	"$repo_root/scripts/ci/check-docs-live.sh" \
+	https://hikyo.app security@developwent.io >/dev/null 2>&1; then
+	printf 'live docs fixture failed: malformed numeric MX data was accepted\n' >&2
 	exit 1
 fi
 

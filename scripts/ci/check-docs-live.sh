@@ -9,8 +9,11 @@ fi
 docs_origin=${1%/}
 fallback_email=$2
 CURL_BIN=${CURL_BIN:-curl}
-JQ_BIN=${JQ_BIN:-jq}
+script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
+repo_root=$(CDPATH='' cd -- "$script_dir/../.." && pwd)
 NODE_BIN=${NODE_BIN:-node}
+JQ_BIN=${JQ_BIN:-jq}
+json_validator="$repo_root/docs/site/scripts/validate-ci-json.mjs"
 docs_cache_bust=${DOCS_CACHE_BUST:-}
 docs_attempts=${DOCS_ATTEMPTS:-1}
 docs_retry_delay_seconds=${DOCS_RETRY_DELAY_SECONDS:-10}
@@ -183,14 +186,20 @@ require_asset "$docs_stylesheet" stylesheet
 require_asset "$docs_module" module
 
 pwa_manifest=$(fetch "$docs_origin/manifest.webmanifest")
-printf '%s\n' "$pwa_manifest" | "$JQ_BIN" -e '
-  .id == "/" and
-  .start_url == "/" and
-  .scope == "/" and
-  .display == "standalone" and
-  any(.icons[]; .src == "/pwa-192x192.png" and .sizes == "192x192") and
-  any(.icons[]; .src == "/pwa-512x512.png" and .sizes == "512x512")
-' >/dev/null || {
+if [ -d "$repo_root/docs/site/node_modules/zod" ]; then
+	manifest_valid=$(printf '%s\n' "$pwa_manifest" |
+		"$NODE_BIN" "$json_validator" live-manifest >/dev/null 2>&1 && printf yes || printf no)
+else
+	manifest_valid=$(printf '%s\n' "$pwa_manifest" | "$JQ_BIN" -e '
+    .id == "/" and
+    .start_url == "/" and
+    .scope == "/" and
+    .display == "standalone" and
+    any(.icons[]; .src == "/pwa-192x192.png" and .sizes == "192x192") and
+    any(.icons[]; .src == "/pwa-512x512.png" and .sizes == "512x512")
+  ' >/dev/null 2>&1 && printf yes || printf no)
+fi
+[ "$manifest_valid" = yes ] || {
 	printf 'live docs gate: PWA manifest is incomplete or invalid\n' >&2
 	exit 1
 }
@@ -253,8 +262,15 @@ mx_response=$("$CURL_BIN" --fail --location --silent --show-error \
 	--header 'Accept: application/dns-json' \
 	"https://cloudflare-dns.com/dns-query?name=$fallback_domain&type=MX")
 
-printf '%s\n' "$mx_response" | "$JQ_BIN" -e \
-	'.Status == 0 and any(.Answer[]?; .type == 15 and (.data | length > 0))' >/dev/null || {
+if [ -d "$repo_root/docs/site/node_modules/zod" ]; then
+	mx_valid=$(printf '%s\n' "$mx_response" |
+		"$NODE_BIN" "$json_validator" dns-mx >/dev/null 2>&1 && printf yes || printf no)
+else
+	mx_valid=$(printf '%s\n' "$mx_response" | "$JQ_BIN" -e \
+		'.Status == 0 and any(.Answer[]?; .type == 15 and (.data | type == "string") and (.data | length > 0))' \
+		>/dev/null 2>&1 && printf yes || printf no)
+fi
+[ "$mx_valid" = yes ] || {
 	printf 'live docs gate: fallback domain %s has no reachable MX route\n' "$fallback_domain" >&2
 	exit 1
 }

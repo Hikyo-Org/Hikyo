@@ -8,7 +8,8 @@ fi
 
 repo_root=$1
 site_root=$2
-JQ_BIN=${JQ_BIN:-jq}
+NODE_BIN=${NODE_BIN:-node}
+json_validator="$repo_root/docs/site/scripts/validate-ci-json.mjs"
 
 require_file() {
 	[ -f "$1" ] || {
@@ -36,17 +37,8 @@ for path in manifest.webmanifest pwa-192x192.png pwa-512x512.png; do
 done
 
 require_file "$site_root/sw.js"
-"$JQ_BIN" -e '
-  .id == "/" and
-  .name == "Hikyo — fully open secrets and configuration" and
-  .short_name == "Hikyo" and
-  .start_url == "/" and
-  .scope == "/" and
-  .display == "standalone" and
-  .theme_color == "#1b2225" and
-  any(.icons[]; .src == "/pwa-192x192.png" and .sizes == "192x192" and .type == "image/png") and
-  any(.icons[]; .src == "/pwa-512x512.png" and .sizes == "512x512" and .type == "image/png")
-' "$site_root/manifest.webmanifest" >/dev/null || {
+"$NODE_BIN" "$json_validator" built-manifest \
+	"$site_root/manifest.webmanifest" >/dev/null 2>&1 || {
 	printf 'docs PWA gate: manifest is incomplete or invalid\n' >&2
 	exit 1
 }

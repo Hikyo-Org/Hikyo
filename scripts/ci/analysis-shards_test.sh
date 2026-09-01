@@ -44,6 +44,18 @@ package isolation
 import "testing"
 
 func FuzzIsolation(f *testing.F) { f.Fuzz(func(*testing.T, []byte) {}) }
+func TestAlpha(t *testing.T)      {}
+func TestBravo(t *testing.T)      {}
+func TestCharlie(t *testing.T)    {}
+func TestDelta(t *testing.T)      {}
+func TestEcho(t *testing.T)       {}
+func TestFoxtrot(t *testing.T)    {}
+func TestGolf(t *testing.T)       {}
+func TestHotel(t *testing.T)      {}
+func TestIndia(t *testing.T)      {}
+
+// Go does not discover a lowercase rune after the Test prefix.
+func Testlower(t *testing.T) {}
 EOF
 
 cat >"$fixture_dir/internal/service/service_test.go" <<'EOF'
@@ -56,8 +68,10 @@ EOF
 
 race_actual=$fixture_dir/race-actual
 fuzz_actual=$fixture_dir/fuzz-actual
+isolation_actual=$fixture_dir/isolation-actual
 : >"$race_actual"
 : >"$fuzz_actual"
+: >"$isolation_actual"
 
 shard=0
 while [ "$shard" -lt 3 ]; do
@@ -65,6 +79,8 @@ while [ "$shard" -lt 3 ]; do
 		awk -v shard="$shard" '{ print shard "\t" $0 }' >>"$race_actual"
 	"$planner" fuzz --root "$fixture_dir" --shard "$shard" --shards 3 |
 		awk -v shard="$shard" '{ print shard "\t" $0 }' >>"$fuzz_actual"
+	"$planner" isolation --root "$fixture_dir" --shard "$shard" --shards 3 |
+		awk -v shard="$shard" '{ print shard "\t" $0 }' >>"$isolation_actual"
 	shard=$((shard + 1))
 done
 
@@ -74,6 +90,10 @@ if [ -n "$(cut -f2 "$race_actual" | sort | uniq -d)" ]; then
 fi
 if [ -n "$(cut -f2- "$fuzz_actual" | sort | uniq -d)" ]; then
 	printf 'analysis shard fixture failed: fuzz target assigned more than once\n' >&2
+	exit 1
+fi
+if [ -n "$(cut -f2 "$isolation_actual" | sort | uniq -d)" ]; then
+	printf 'analysis shard fixture failed: isolation test assigned more than once\n' >&2
 	exit 1
 fi
 
@@ -96,6 +116,20 @@ example.com/shards/internal/service	FuzzService
 EOF
 cmp "$fixture_dir/fuzz-expected" "$fixture_dir/fuzz-targets"
 
+cut -f2 "$isolation_actual" | sort >"$fixture_dir/isolation-tests"
+cat >"$fixture_dir/isolation-expected" <<'EOF'
+TestAlpha
+TestBravo
+TestCharlie
+TestDelta
+TestEcho
+TestFoxtrot
+TestGolf
+TestHotel
+TestIndia
+EOF
+cmp "$fixture_dir/isolation-expected" "$fixture_dir/isolation-tests"
+
 crypto_shards=$(awk -F '\t' '$2 == "example.com/shards/internal/crypto" { print $1 }' \
 	"$fuzz_actual" | sort -u | wc -l | tr -d ' ')
 [ "$crypto_shards" -eq 1 ] || {
@@ -108,4 +142,4 @@ if "$planner" race --root "$fixture_dir" --shard 3 --shards 3 >/dev/null 2>&1; t
 	exit 1
 fi
 
-printf 'analysis shard fixture: complete, disjoint race packages and fuzz targets passed\n'
+printf 'analysis shard fixture: complete, disjoint race packages, fuzz targets, and isolation tests passed\n'
