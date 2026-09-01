@@ -11,6 +11,7 @@ describe('the route policy registry', () => {
       'remotes:authenticated:shell',
       'members:authenticated:shell',
       'org-settings:authenticated:shell',
+      'scim:authenticated:shell',
       'project-settings:authenticated:shell',
       'instance-admin:authenticated:shell',
       'settings:authenticated:shell',
