@@ -1,16 +1,13 @@
 package server
 
 import (
-	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/admission"
@@ -18,12 +15,11 @@ import (
 
 // RED-style request metrics for the operational /metrics surface (#513).
 //
-// The stance is deliberately dependency-free (no prometheus/expvar/otel): the
-// exposition is hand-formatted in the same Prometheus text format the retention
-// gauges already use, so the binary stays small and the no-egress posture is
-// unchanged. Counters are keyed by a CLOSED surface class, never a raw path or
-// an ID, so cardinality is bounded by construction — the acceptance criterion
-// this ticket exists to satisfy.
+// Metrics use the official Prometheus Go client behind a private registry. The
+// private registry deliberately excludes the default Go/process collectors;
+// counters are keyed by a CLOSED surface class, never a raw path or an ID, so
+// cardinality is bounded by construction — the acceptance criterion this
+// ticket exists to satisfy.
 
 // Metric family names. Exported so the conformance drift-guard can pin them:
 // a rename here fails that test rather than silently breaking a dashboard.
@@ -217,106 +213,97 @@ type AdmissionSnapshotter interface {
 // the API middleware (which writes) and the operational /metrics handler (which
 // reads), so both sides see the same counters.
 type Metrics struct {
-	// admission supplies the pressure gauges. Nil renders zeros.
-	admission AdmissionSnapshotter
+	registry *prometheus.Registry
 
-	inFlight atomic.Int64
-
-	mu       sync.Mutex
-	requests [numClasses][numStatusBuckets]uint64
-	// buckets holds cumulative counts per class, one entry per
-	// latencyBucketsSeconds boundary; +Inf is counts[class].
-	buckets [numClasses][]uint64
-	counts  [numClasses]uint64
-	sums    [numClasses]float64
+	inFlight  prometheus.Gauge
+	requests  [numClasses][numStatusBuckets]prometheus.Counter
+	errors    [numClasses][numStatusBuckets]prometheus.Counter
+	durations [numClasses]prometheus.Observer
 }
 
-// NewMetrics builds a collector with the histogram bucket slices sized to the
-// pinned boundaries.
+// NewMetrics builds the fixed collector set in a private pedantic registry.
+// Pre-creating every closed label combination keeps the scrape shape
+// deterministic even before traffic arrives.
 func NewMetrics(adm AdmissionSnapshotter) *Metrics {
-	m := &Metrics{admission: adm}
-	for c := range m.buckets {
-		m.buckets[c] = make([]uint64, len(latencyBucketsSeconds))
+	registry := prometheus.NewPedanticRegistry()
+	requests := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: MetricRequestsTotal,
+		Help: "Total HTTP requests by closed API surface class and status bucket.",
+	}, []string{"class", "status"})
+	errors := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: MetricRequestErrors,
+		Help: "Total HTTP error responses by closed API surface class and status bucket.",
+	}, []string{"class", "status"})
+	inFlight := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: MetricRequestsInFlight,
+		Help: "Current number of API requests in flight.",
+	})
+	durations := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    MetricRequestDuration,
+		Help:    "HTTP request duration in seconds by closed API surface class.",
+		Buckets: RequestLatencyBucketsSeconds(),
+	}, []string{"class"})
+	registry.MustRegister(requests, errors, inFlight, durations, newAdmissionCollector(adm))
+
+	m := &Metrics{registry: registry, inFlight: inFlight}
+	for c := surfaceClass(0); c < numClasses; c++ {
+		for s := statusBucket(0); s < numStatusBuckets; s++ {
+			m.requests[c][s] = requests.WithLabelValues(classNames[c], statusNames[s])
+		}
+		for _, s := range [...]statusBucket{status4xx, status5xx} {
+			m.errors[c][s] = errors.WithLabelValues(classNames[c], statusNames[s])
+		}
+		m.durations[c] = durations.WithLabelValues(classNames[c])
 	}
 	return m
 }
 
 func (m *Metrics) record(class surfaceClass, code int, d time.Duration) {
 	sb := bucketForStatus(code)
-	secs := d.Seconds()
-	m.mu.Lock()
-	m.requests[class][sb]++
-	m.counts[class]++
-	m.sums[class] += secs
-	for i, b := range latencyBucketsSeconds {
-		if secs <= b {
-			m.buckets[class][i]++
-		}
+	m.requests[class][sb].Inc()
+	switch sb {
+	case status4xx, status5xx:
+		m.errors[class][sb].Inc()
 	}
-	m.mu.Unlock()
+	m.durations[class].Observe(d.Seconds())
 }
 
-// writeInto renders the RED families and admission gauges in Prometheus text
-// exposition: one # TYPE line per family, all series of that family contiguous.
-func (m *Metrics) writeInto(w io.Writer) {
-	m.mu.Lock()
-	requests := m.requests
-	counts := m.counts
-	sums := m.sums
-	buckets := make([][]uint64, numClasses)
-	for c := range m.buckets {
-		buckets[c] = append([]uint64(nil), m.buckets[c]...)
-	}
-	m.mu.Unlock()
+type admissionCollector struct {
+	source AdmissionSnapshotter
+	descs  [5]*prometheus.Desc
+}
 
-	inflight := m.inFlight.Load()
+func newAdmissionCollector(source AdmissionSnapshotter) *admissionCollector {
+	return &admissionCollector{source: source, descs: [5]*prometheus.Desc{
+		prometheus.NewDesc(MetricAdmissionConcurrencyLimit, "Configured admission concurrency limit.", nil, nil),
+		prometheus.NewDesc(MetricAdmissionInFlight, "Current admission work in flight.", nil, nil),
+		prometheus.NewDesc(MetricAdmissionQueueDepthLimit, "Configured admission queue depth limit.", nil, nil),
+		prometheus.NewDesc(MetricAdmissionQueueWaiting, "Current requests waiting for admission.", nil, nil),
+		prometheus.NewDesc(MetricAdmissionActiveBackoffs, "Current active admission backoff buckets.", nil, nil),
+	}}
+}
+
+func (c *admissionCollector) Describe(ch chan<- *prometheus.Desc) {
+	for _, desc := range c.descs {
+		ch <- desc
+	}
+}
+
+func (c *admissionCollector) Collect(ch chan<- prometheus.Metric) {
 	var snap admission.Snapshot
-	if m.admission != nil {
-		snap = m.admission.Snapshot()
+	if c.source != nil {
+		snap = c.source.Snapshot()
 	}
-
-	fmt.Fprintf(w, "# TYPE %s counter\n", MetricRequestsTotal)
-	for c := surfaceClass(0); c < numClasses; c++ {
-		for s := statusBucket(0); s < numStatusBuckets; s++ {
-			fmt.Fprintf(w, "%s{class=%q,status=%q} %d\n",
-				MetricRequestsTotal, classNames[c], statusNames[s], requests[c][s])
-		}
+	values := [...]float64{
+		float64(snap.ConcurrencyLimit),
+		float64(snap.InFlight),
+		float64(snap.QueueDepthLimit),
+		float64(snap.Waiting),
+		float64(snap.ActiveBackoffs),
 	}
-	fmt.Fprintf(w, "# TYPE %s counter\n", MetricRequestErrors)
-	for c := surfaceClass(0); c < numClasses; c++ {
-		for _, s := range [...]statusBucket{status4xx, status5xx} {
-			fmt.Fprintf(w, "%s{class=%q,status=%q} %d\n",
-				MetricRequestErrors, classNames[c], statusNames[s], requests[c][s])
-		}
+	for i, desc := range c.descs {
+		ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, values[i])
 	}
-
-	fmt.Fprintf(w, "# TYPE %s gauge\n%s %d\n",
-		MetricRequestsInFlight, MetricRequestsInFlight, inflight)
-
-	fmt.Fprintf(w, "# TYPE %s histogram\n", MetricRequestDuration)
-	for c := surfaceClass(0); c < numClasses; c++ {
-		for i, b := range latencyBucketsSeconds {
-			fmt.Fprintf(w, "%s_bucket{class=%q,le=%q} %d\n",
-				MetricRequestDuration, classNames[c], formatFloat(b), buckets[c][i])
-		}
-		fmt.Fprintf(w, "%s_bucket{class=%q,le=\"+Inf\"} %d\n",
-			MetricRequestDuration, classNames[c], counts[c])
-		fmt.Fprintf(w, "%s_sum{class=%q} %s\n",
-			MetricRequestDuration, classNames[c], formatFloat(sums[c]))
-		fmt.Fprintf(w, "%s_count{class=%q} %d\n",
-			MetricRequestDuration, classNames[c], counts[c])
-	}
-
-	fmt.Fprintf(w, "# TYPE %s gauge\n%s %d\n",
-		MetricAdmissionConcurrencyLimit, MetricAdmissionConcurrencyLimit, snap.ConcurrencyLimit)
-	fmt.Fprintf(w, "# TYPE %s gauge\n%s %d\n",
-		MetricAdmissionInFlight, MetricAdmissionInFlight, snap.InFlight)
-	fmt.Fprintf(w, "# TYPE %s gauge\n%s %d\n",
-		MetricAdmissionQueueDepthLimit, MetricAdmissionQueueDepthLimit, snap.QueueDepthLimit)
-	fmt.Fprintf(w, "# TYPE %s gauge\n%s %d\n",
-		MetricAdmissionQueueWaiting, MetricAdmissionQueueWaiting, snap.Waiting)
-	fmt.Fprintf(w, "# TYPE %s gauge\n%s %d\n",
-		MetricAdmissionActiveBackoffs, MetricAdmissionActiveBackoffs, snap.ActiveBackoffs)
 }
 
 func formatFloat(f float64) string {

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/Hikyo-Org/hikyo/api"
 )
@@ -36,12 +37,8 @@ func TestObserveCountsRecoveredPanicAs5xx(t *testing.T) {
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", resp.StatusCode)
 	}
-	if got := m.requests[classValues][status5xx]; got != 1 {
-		t.Fatalf("values 5xx counter = %d, want 1", got)
-	}
-	// The +Inf-equivalent count and the histogram both saw the request.
-	if got := m.counts[classValues]; got != 1 {
-		t.Fatalf("values histogram count = %d, want 1", got)
+	if got := testutil.ToFloat64(m.requests[classValues][status5xx]); got != 1 {
+		t.Fatalf("values 5xx counter = %v, want 1", got)
 	}
 }
 
@@ -60,8 +57,8 @@ func TestObserveCountsPostCommitRecoveredPanicAs5xx(t *testing.T) {
 	if recorder.Code != http.StatusTeapot {
 		t.Fatalf("wire status = %d, want committed 418", recorder.Code)
 	}
-	if got := m.requests[classAuth][status5xx]; got != 1 {
-		t.Fatalf("auth 5xx counter = %d, want recovered fault counted as 1", got)
+	if got := testutil.ToFloat64(m.requests[classAuth][status5xx]); got != 1 {
+		t.Fatalf("auth 5xx counter = %v, want recovered fault counted as 1", got)
 	}
 }
 

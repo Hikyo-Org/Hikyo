@@ -50,9 +50,10 @@ routes never exist on the public router; keep the operational bind private.
 ## Operational metrics
 
 `/metrics` on the operational listener serves Prometheus text exposition
-(`text/plain; version=0.0.4`) with no external dependency and no egress. It is
-plaintext and unauthenticated by design — keep the operational bind private and
-scrape it from the host or a trusted network.
+(`text/plain; version=0.0.4`) using the official Prometheus Go client. Scraping
+requires no sidecar, external service, or egress. It is plaintext and
+unauthenticated by design — keep the operational bind private and scrape it from
+the host or a trusted network.
 
 Alongside the retention and TLS gauges it exposes RED-style request metrics
 keyed by a closed **surface class** — `auth`, `hierarchy`, `values`,

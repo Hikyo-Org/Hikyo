@@ -6,11 +6,12 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"io/fs"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
@@ -210,23 +211,23 @@ func NewOperational(ready ReadyChecker, healthService OperationalRetentionHealth
 		if metrics, ok := healthService.(TLSMetrics); ok {
 			tlsNotAfter, tlsReloadFailures = metrics.TLSMetrics()
 		}
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		w.WriteHeader(http.StatusOK)
-		_, _ = fmt.Fprintf(w, "# TYPE "+MetricLastPruneSuccess+" gauge\n"+
-			MetricLastPruneSuccess+" %d\n"+
-			"# TYPE "+MetricPruneStale+" gauge\n"+
-			MetricPruneStale+" %d\n"+
-			"# TYPE "+MetricProjectStoragePeak+" gauge\n"+
-			MetricProjectStoragePeak+" %d\n"+
-			"# TYPE "+MetricProjectStorageWarn+" gauge\n"+
-			MetricProjectStorageWarn+" %d\n"+
-			"# TYPE "+MetricTLSCertNotAfter+" gauge\n"+
-			MetricTLSCertNotAfter+" %d\n"+
-			"# TYPE "+MetricTLSReloadFailures+" counter\n"+
-			MetricTLSReloadFailures+" %d\n", last, stale, health.PeakProjectBytes, storageWarn, tlsNotAfter, tlsReloadFailures)
+		snapshot := prometheus.NewPedanticRegistry()
+		snapshot.MustRegister(
+			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricLastPruneSuccess, Help: "Unix timestamp of the last successful retention prune."}, func() float64 { return float64(last) }),
+			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricPruneStale, Help: "Whether the retention prune state is stale."}, func() float64 { return float64(stale) }),
+			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricProjectStoragePeak, Help: "Largest observed project storage usage in bytes."}, func() float64 { return float64(health.PeakProjectBytes) }),
+			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricProjectStorageWarn, Help: "Whether project storage is above its warning threshold."}, func() float64 { return float64(storageWarn) }),
+			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricTLSCertNotAfter, Help: "Unix timestamp when the active TLS certificate expires."}, func() float64 { return float64(tlsNotAfter) }),
+			prometheus.NewCounterFunc(prometheus.CounterOpts{Name: MetricTLSReloadFailures, Help: "Total failed TLS certificate reloads."}, func() float64 { return float64(tlsReloadFailures) }),
+		)
+		gatherers := prometheus.Gatherers{snapshot}
 		if metrics != nil {
-			metrics.writeInto(w)
+			gatherers = append(gatherers, metrics.registry)
 		}
+		promhttp.HandlerFor(gatherers, promhttp.HandlerOpts{
+			ErrorHandling:     promhttp.HTTPErrorOnError,
+			EnableOpenMetrics: false,
+		}).ServeHTTP(w, req)
 	})
 	return r
 }

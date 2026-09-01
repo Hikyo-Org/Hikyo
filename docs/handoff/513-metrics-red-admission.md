@@ -1,24 +1,24 @@
 # Handoff: #513 RED /metrics + admission gauges + dev access log
 
 Issue: https://github.com/Hikyo-Org/Hikyo/issues/513. Base:
-`a84fd620cedb068988b4d996a5610d12638172b1`.
+`ddca9c954377e2fce9403d9507ab7445fc5aba2a`.
 
 ## What shipped
 
-Extends the operational `/metrics` surface with dependency-free, closed-cardinality
-RED metrics, admission-pressure gauges, and a dev-only access log. The
-zero-dependency stance is preserved: everything is hand-formatted Prometheus text
-in the same style as the existing retention/TLS gauges.
+Extends the operational `/metrics` surface with closed-cardinality RED metrics,
+admission-pressure gauges, and a dev-only access log. The official Prometheus Go
+client owns metric primitives, validation, and exposition. A private pedantic
+registry excludes the default Go/process collectors and preserves Hikyo's fixed
+series budget.
 
 ## Contract
 
 - One shared `server.Metrics` collector (`internal/server/metrics.go`) is created
   in `internal/app/app.go`, set on `server.API.Metrics` (the writer, via
   middleware) and passed to `server.NewOperational` (the reader). A nil collector
-  leaves `/metrics` at its pre-#513 shape — the two exact-bytes retention tests
-  pass nil and are unchanged.
+  leaves `/metrics` at its pre-#513 family set.
 - `NewOperational` gained a third parameter `metrics *Metrics`. All non-app
-  callers (tests) pass `nil`.
+  callers explicitly choose whether the RED collector participates.
 - New middleware `API.observe` leads the public router, outside CORS, matching,
   and `recoverPanics`, so unmatched API traffic is counted as `other` and a
   recovered panic's 500 is counted as `5xx`. It reads the chi route pattern
@@ -26,6 +26,10 @@ in the same style as the existing retention/TLS gauges.
 - `admission.Limiter.Snapshot()` (`internal/admission/admission.go`) exposes
   instance-wide pressure only (no attacker-chosen keys): concurrency limit,
   in-flight, queue-depth limit, waiting, active backoffs.
+- `prometheus.NewPedanticRegistry()` owns the RED families. Every allowed label
+  child is created at construction so zero-valued series are deterministic, and
+  the operational handler combines it with request-scoped retention/TLS
+  collectors before handing exposition to `promhttp`.
 
 ## Metrics (all names/labels pinned)
 
@@ -82,8 +86,8 @@ native Codex adversarial reviews finished clean.
 - Counters cover all `/api/v1/*` traffic. Unmatched paths, unsupported methods,
   and CORS preflights are assigned to the closed `other` class.
 - Latency is a fixed-bucket histogram (Prometheus-idiomatic, closed cardinality)
-  rather than min/p50/p99 — the issue offered either; histogram was chosen to stay
-  dependency-free and deterministic.
+  rather than min/p50/p99 — the issue offered either; the official client owns
+  histogram accounting while the pinned bucket grid keeps output deterministic.
 - Docs updated: `docs/site/src/content/docs/docs/configuration.mdx` (new
   Operational metrics section) and `self-hosting.mdx` (scrape note).
 

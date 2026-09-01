@@ -377,23 +377,26 @@ func TestMetricsExposeRetentionPrunerHealthWithoutLabels(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", resp.StatusCode, body)
 	}
-	if got := resp.Header.Get("Content-Type"); got != "text/plain; version=0.0.4" {
+	if got := resp.Header.Get("Content-Type"); !strings.HasPrefix(got, "text/plain; version=0.0.4") {
 		t.Fatalf("content type = %q", got)
 	}
-	want := "# TYPE hikyo_last_prune_success_timestamp_seconds gauge\n" +
-		"hikyo_last_prune_success_timestamp_seconds 1800000000\n" +
-		"# TYPE hikyo_prune_stale gauge\n" +
-		"hikyo_prune_stale 1\n" +
-		"# TYPE hikyo_project_storage_peak_bytes gauge\n" +
-		"hikyo_project_storage_peak_bytes 1500000000\n" +
-		"# TYPE hikyo_project_storage_warn gauge\n" +
-		"hikyo_project_storage_warn 1\n" +
-		"# TYPE hikyo_tls_cert_not_after_timestamp_seconds gauge\n" +
-		"hikyo_tls_cert_not_after_timestamp_seconds 0\n" +
-		"# TYPE hikyo_tls_reload_failures_total counter\n" +
-		"hikyo_tls_reload_failures_total 0\n"
-	if string(body) != want {
-		t.Fatalf("metrics = %q, want %q", body, want)
+	for _, want := range []string{
+		"# TYPE hikyo_last_prune_success_timestamp_seconds gauge\n",
+		"hikyo_last_prune_success_timestamp_seconds 1.8e+09\n",
+		"# TYPE hikyo_prune_stale gauge\n",
+		"hikyo_prune_stale 1\n",
+		"# TYPE hikyo_project_storage_peak_bytes gauge\n",
+		"hikyo_project_storage_peak_bytes 1.5e+09\n",
+		"# TYPE hikyo_project_storage_warn gauge\n",
+		"hikyo_project_storage_warn 1\n",
+		"# TYPE hikyo_tls_cert_not_after_timestamp_seconds gauge\n",
+		"hikyo_tls_cert_not_after_timestamp_seconds 0\n",
+		"# TYPE hikyo_tls_reload_failures_total counter\n",
+		"hikyo_tls_reload_failures_total 0\n",
+	} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("metrics missing %q: %s", want, body)
+		}
 	}
 	if strings.Contains(string(body), "{") {
 		t.Fatal("retention metrics carry labels")
