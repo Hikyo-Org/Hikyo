@@ -53,9 +53,16 @@ were updated accordingly.
 
 ## Registry / CI wiring
 
-- Flow `key-detail` (`web/e2e/registry.ts`) with spec
-  `web/e2e/flows/key-detail.spec.ts`; the spec joins CI group 3
-  (`.github/workflows/ci.yml`) — a flow in no group never runs.
+- Flow `key-detail` (`web/e2e/registry.ts`) rides **`flows/matrix.spec.ts`**, not
+  a standalone spec. Why: the merge gate loads `ci.yml` from the base branch
+  (`ci-control.yml` is `pull_request_target`), so the per-group spec lists a
+  Playwright leg runs are the base branch's. A spec a PR *adds* to a group never
+  executes on that PR, so its pinned claims would be forever unmet and
+  `web-closure` would fail. A new surface's flow must therefore live in a spec
+  file already in a group on `main`; the file's *content* comes from the PR
+  checkout, so the surface's journey + pinned set run today. The key-detail
+  tests are a self-contained `test.describe` appended to `matrix.spec.ts`
+  (dedicated per-viewport config key, created/deleted via the fixture bearer).
 - Prototype dev server (`web/prototype/mock-api.ts`) gained `GET`/`PATCH`
   `/keys/{id}` so the surface works under `--mode prototype`.
 
