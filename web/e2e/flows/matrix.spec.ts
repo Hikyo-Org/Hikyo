@@ -597,13 +597,10 @@ test.describe('environment matrix declaration', () => {
     await modal.getByLabel('Key name').fill('FEATURE_ENABLED');
     await modal.getByLabel('Type').selectOption('boolean');
     await modal.getByLabel('First value (optional)').fill('true');
-    // Required everywhere, including environments created later — the symbolic
-    // mode, not "tick every box". Scope to the Required axis: the Forbidden axis
-    // renders the same radio.
-    await modal
-      .getByRole('group', { name: 'Required in' })
-      .getByRole('radio', { name: 'all (current & future)' })
-      .check();
+    // Presence stays at the default `none`: declaring `required_in` an
+    // environment that has no value yet is a server veto (required + absent),
+    // which the modal surfaces recoverably — its own test below. This journey
+    // proves the declaration + first-value draft path succeeds end to end.
 
     await modal.getByRole('button', { name: 'Declare' }).click();
 
@@ -633,5 +630,31 @@ test.describe('environment matrix declaration', () => {
 
     await expect(modal.getByRole('alert')).toContainText('Enter a base-10 integer.');
     await expect(modal).toBeVisible();
+  });
+
+  test('surfaces a required-presence veto recoverably and keeps the form open', async ({
+    passkeyPage: page,
+  }) => {
+    await page.goto(MATRIX_PATH);
+    await page.getByRole('button', { name: '+ New key' }).click();
+    const modal = page.getByRole('dialog');
+    await expect(modal).toBeVisible();
+
+    await modal.getByLabel('Group').fill('features');
+    await modal.getByLabel('Key name').fill('REQUIRED_EVERYWHERE');
+    await modal.getByLabel('Type').selectOption('string');
+    // Symbolic all — required in every environment, current and future — on a
+    // key with no values yet: the server vetoes (required + absent). The block
+    // is a phase-1 failure, so the intact form stays open for the operator to
+    // relax the rule or add values.
+    await modal
+      .getByRole('group', { name: 'Required in' })
+      .getByRole('radio', { name: 'all (current & future)' })
+      .check();
+    await modal.getByRole('button', { name: 'Declare' }).click();
+
+    await expect(modal.getByRole('alert')).toContainText('required_in');
+    await expect(modal).toBeVisible();
+    await expect(modal.getByLabel('Key name')).toHaveValue('REQUIRED_EVERYWHERE');
   });
 });
