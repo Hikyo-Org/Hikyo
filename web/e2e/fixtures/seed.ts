@@ -371,6 +371,11 @@ export async function seedTenant(
     // — so granting them to the fixture principal disturbs no other flow.
     'rotate-dek',
     'reencrypt',
+    // The audit surface's own authority (#502). `audit-read` is a standalone
+    // capability — no role template expands into it — so the trail is
+    // unreadable without its own grant. Instance scope reaches every org's
+    // trail by the same downward inheritance the rest of this list relies on.
+    'audit-read',
   ]) {
     runAdminGrant(['--principal', principal, '--capability', capability]);
   }

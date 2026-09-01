@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { zScimBinding, zScimBindingList, zServiceAccountList } from '@hikyo/zod';
 import { z } from 'zod';
@@ -796,6 +798,123 @@ test.describe('scim provisioning', () => {
             ],
             hairlines: [panel],
             density: [[administer, rowDensity]],
+          });
+        } finally {
+          await page.emulateMedia({ colorScheme: null });
+        }
+      });
+    }
+  }
+});
+
+/**
+ * Flow: audit trail query and export (registry surface `audit`, #502).
+ *
+ * It rides this file for the same reason `scim` does: the merge gate loads
+ * `ci.yml` from the base branch, so a spec a PR adds to a group never runs on
+ * that PR. members.spec.ts is already in group 1 and is the org-scoped sibling,
+ * so the surface's pinned set runs from PR-checked-out content today. The
+ * bootstrap administrator holds `audit-read` (seeded break-glass at instance
+ * scope, inheriting down to this org), so the org trail is readable.
+ */
+const AUDIT_PATH = `/orgs/${seed.org}/audit`;
+
+test.describe('audit trail', () => {
+  test.use({ storageState: STORAGE_STATE });
+
+  test('pages the org trail, inspects an event and exports it', async ({ page }) => {
+    await page.goto(AUDIT_PATH);
+    await expect(page.getByRole('heading', { name: 'Audit', level: 1 })).toBeVisible();
+
+    // The setup wrote many events (org creation, the break-glass grants, the
+    // seeded project/keys/values), so the first page is not empty.
+    const rows = page.locator('.audit__row');
+    await expect(rows.first()).toBeVisible();
+
+    // Inspecting an event opens the detail with its payload; no value material
+    // is ever in the trail, so the payload is metadata only.
+    await rows.first().click();
+    const detail = page.getByRole('complementary', { name: 'Event detail' });
+    await expect(detail).toBeVisible();
+    await expect(detail.getByRole('heading', { level: 3, name: 'Payload' })).toBeVisible();
+
+    // A filter that cannot match anything is an explicit empty state, never a
+    // silent blank. `operation` is a free string, so an unknown one is not a
+    // 400 — it simply matches nothing (contract: unknown type returns empty).
+    await page.getByLabel('Operation').fill('nonexistent.operation.e2e');
+    await page.getByRole('button', { name: 'Apply filter' }).click();
+    await expect(page.locator('.audit__row')).toHaveCount(0);
+    await expect(page.locator('.audit__empty')).toBeVisible();
+
+    // Clear, then export the current filter. The download is a same-origin GET
+    // under the session cookie; the browser streams JSONL to disk.
+    await page.getByRole('button', { name: 'Clear' }).click();
+    await expect(page.locator('.audit__row').first()).toBeVisible();
+    const download = page.waitForEvent('download');
+    await page.getByRole('link', { name: 'Export JSONL' }).click();
+    const file = await download;
+    expect(file.suggestedFilename()).toMatch(/\.jsonl$/);
+    const path = await file.path();
+    const body = readFileSync(path, 'utf8').trim();
+    expect(body.length).toBeGreaterThan(0);
+    // Every line is a JSON object carrying the immutable envelope fields.
+    for (const line of body.split('\n')) {
+      const event = z
+        .object({ seq: z.number(), id: z.string(), type: z.string(), outcome: z.string() })
+        .parse(JSON.parse(line));
+      expect(event.id).not.toBe('');
+    }
+  });
+
+  test('refuses a malformed filter at the boundary', async ({ page }) => {
+    // A well-formed but empty request succeeds; the malformed-filter path is a
+    // format the contract rejects before tenant resolution. An out-of-enum
+    // outcome cannot be typed through the select, so drive the query directly:
+    // the server answers 400, never a partial page.
+    const response = await page.request.get(
+      `${BASE_URL}/api/v1/orgs/${seed.org}/audit?outcome=not-an-outcome`,
+    );
+    expect(response.status()).toBe(400);
+  });
+
+  for (const scheme of ['dark', 'light'] as const) {
+    for (const surface of surfacesForFlow('audit')) {
+      test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({
+        page,
+      }, testInfo) => {
+        await page.emulateMedia({ colorScheme: scheme });
+        try {
+          await page.goto(AUDIT_PATH);
+          await expect(page.locator('.audit__row').first()).toBeVisible();
+
+          const heading = page.getByRole('heading', { name: 'Audit', level: 1 });
+          const panel = page.locator('.panel').first();
+          const op = page.locator('.audit__row-op').first();
+          const badge = page.locator('.chip').first();
+          const apply = page.getByRole('button', { name: 'Apply filter' });
+          const rowDensity = testInfo.project.name === 'mobile' ? '--touch' : '--row';
+
+          await expectPinnedAssertionSet(page, {
+            flow: 'audit',
+            surface: surface.id,
+            theme: scheme,
+            text: [heading, op],
+            radii: [
+              [panel, 'container'],
+              [apply, 'control'],
+              [badge, 'badge'],
+            ],
+            fonts: [
+              [heading, 'ui'],
+              [op, 'mono'],
+            ],
+            colours: [
+              [heading, 'color', '--tx'],
+              [panel, 'backgroundColor', '--bg-panel'],
+              [panel, 'borderTopColor', '--panel-line'],
+            ],
+            hairlines: [panel],
+            density: [[apply, rowDensity]],
           });
         } finally {
           await page.emulateMedia({ colorScheme: null });

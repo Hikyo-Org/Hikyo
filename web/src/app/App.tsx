@@ -29,6 +29,7 @@ const Values = lazy(() => loadWorkspaceRoutes().then((routes) => ({ default: rou
 const WorkspaceScope = lazy(() => loadWorkspaceRoutes().then((routes) => ({ default: routes.WorkspaceScope })));
 
 const AccountSecurity = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.AccountSecurity })));
+const Audit = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.Audit })));
 const InstanceAdmin = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.InstanceAdmin })));
 const MachineAccess = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.MachineAccess })));
 const Members = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.Members })));
@@ -60,6 +61,7 @@ const ELEMENTS: Record<SurfaceId, ReactElement> = {
   members: withRouteFallback(<Members />),
   'org-settings': withRouteFallback(<OrgSettings />),
   scim: withRouteFallback(<ScimProvisioning />),
+  audit: withRouteFallback(<Audit />),
   'project-settings': withRouteFallback(<ProjectSettings />),
   'instance-admin': withRouteFallback(<InstanceAdmin />),
   settings: withRouteFallback(<AccountSecurity />),

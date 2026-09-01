@@ -49,6 +49,13 @@ export const FLOWS: readonly Flow[] = [
   // the org-scoped `manage-members` sibling surface — so the pinned set runs
   // from PR-checked-out spec content today.
   { id: 'scim', spec: 'flows/members.spec.ts', surfaces: ['scim'] },
+  // Audit trail (#502) is a new SURFACE, so S3 closure demands a flow, but it
+  // cannot get its own spec FILE for the same reason scim cannot: the merge
+  // gate loads `ci.yml` from the base branch, so a spec a PR adds to a group
+  // never runs on that PR and its pinned claims would never execute. It rides
+  // `members.spec.ts` — already in group 1 and the org-scoped sibling surface —
+  // so the pinned set runs from PR-checked-out content today.
+  { id: 'audit', spec: 'flows/members.spec.ts', surfaces: ['audit'] },
   {
     id: 'chrome-settings',
     spec: 'flows/settings.spec.ts',
