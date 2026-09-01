@@ -8,16 +8,17 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 )
 
-// recoverPanics is the OUTERMOST leg of the API stack, so a panic anywhere
-// below it — contract validation included — becomes the uniform `internal`
-// refusal instead of a dropped connection, and the panic value and stack land
-// in the slog pipeline rather than the std logger net/http recovers into.
+// recoverPanics is the outermost error-contract leg, immediately inside the
+// observational middleware. A panic anywhere below it — contract validation
+// included — becomes the uniform `internal` refusal instead of a dropped
+// connection, and the panic value and stack land in the slog pipeline rather
+// than the std logger net/http recovers into.
 //
 // The service layer panics on state-reachable invariant violations (double
 // classification, an unknown fetch-result variant), so this leg is part of the
 // error contract, not a programmer-error net. The security-header and CORS
 // middlewares are router-level (server.go), one layer up, so a recovered answer
-// still carries them — the recovery writer is the inner one.
+// still carries them — the response tracker is the inner one.
 //
 // When a handler has already committed the response before panicking — a fault
 // mid-advisory-stream, say — the status is gone and a second WriteHeader would
@@ -25,11 +26,14 @@ import (
 // writer is left alone and the log alone carries the failure.
 func (a *API) recoverPanics(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rec := &recoveryWriter{ResponseWriter: w}
+		rec := newResponseWriter(w)
 		defer func() {
 			p := recover()
 			if p == nil {
 				return
+			}
+			if marker, ok := w.(interface{ markRecoveredPanic() }); ok {
+				marker.markRecoveredPanic()
 			}
 			// Mirror a.fault: the wire carries nothing derived from the cause,
 			// the process log carries everything. The contract operation is not
@@ -50,30 +54,4 @@ func (a *API) recoverPanics(next http.Handler) http.Handler {
 		}()
 		next.ServeHTTP(rec, r)
 	})
-}
-
-// recoveryWriter tracks whether the response was committed, so a panic after a
-// partial write cannot graft a second status onto the stream. Flush forwards so
-// the advisory stream (revisions.go) stays a stream; without it every event
-// would sit in a buffer until the response ended, which for a stream is never.
-type recoveryWriter struct {
-	http.ResponseWriter
-	wroteHeader bool
-}
-
-func (w *recoveryWriter) WriteHeader(status int) {
-	w.wroteHeader = true
-	w.ResponseWriter.WriteHeader(status)
-}
-
-func (w *recoveryWriter) Write(b []byte) (int, error) {
-	// A bare Write is an implicit 200 (net/http), and counts as committed.
-	w.wroteHeader = true
-	return w.ResponseWriter.Write(b)
-}
-
-func (w *recoveryWriter) Flush() {
-	if f, ok := w.ResponseWriter.(http.Flusher); ok {
-		f.Flush()
-	}
 }

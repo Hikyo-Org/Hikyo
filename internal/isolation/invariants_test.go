@@ -41,7 +41,7 @@ func TestInvariant01ClassificationTotality(t *testing.T) {
 	// their union.
 	routers := []http.Handler{
 		server.NewPublic(nil, &server.API{}, nil, server.PublicOptions{}),
-		server.NewOperational(nil, nil),
+		server.NewOperational(nil, nil, nil),
 	}
 	for _, handler := range routers {
 		router, ok := handler.(chi.Routes)

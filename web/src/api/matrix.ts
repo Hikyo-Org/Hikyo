@@ -102,10 +102,15 @@ type MatrixEnvironmentSettings = z.infer<typeof zEnvironmentSettings>;
 type MatrixValueList = z.infer<typeof zValueList>;
 type MatrixPendingDraftList = z.infer<typeof zPendingDraftList>;
 
-export type MatrixQueryStatus = 'pending' | 'error' | 'stale' | 'ready';
+export type MatrixQueryStatus = 'pending' | 'forbidden' | 'error' | 'stale' | 'ready';
 
 export type MatrixQueryState<T> =
   | { readonly status: 'pending'; readonly data?: undefined }
+  // A per-environment 403: the caller may not read this column. Distinct from
+  // 'error' because a denial never heals on retry, so the surface must say so
+  // rather than offering a reload. Fail-closed — it carries no data even when a
+  // stale copy is cached, because a revoked column must blank, not linger.
+  | { readonly status: 'forbidden'; readonly data?: undefined }
   | { readonly status: 'error'; readonly data?: undefined }
   | { readonly status: 'stale'; readonly data: T }
   | { readonly status: 'ready'; readonly data: T };
@@ -114,6 +119,7 @@ type MatrixQueryResult<T> = {
   readonly data: T | undefined;
   readonly isPending: boolean;
   readonly isError: boolean;
+  readonly error: unknown;
 };
 
 export type MatrixEnvironmentQuery<T> = {
@@ -216,6 +222,12 @@ function matrixRowReadiness(
   if (states.some((state) => state.status === 'pending')) {
     return 'pending';
   }
+  // Forbidden outranks error: both degrade the row, but a denial is the more
+  // specific fact and carries its own message, so a row that is part-forbidden,
+  // part-error reads as forbidden.
+  if (states.some((state) => state.status === 'forbidden')) {
+    return 'forbidden';
+  }
   if (states.some((state) => state.status === 'error')) {
     return 'error';
   }
@@ -230,6 +242,12 @@ function matrixQueryState<T>(query: MatrixQueryResult<T>): MatrixQueryState<T> {
     return { status: 'pending' };
   }
   if (query.isError) {
+    // A 403 is a permission denial, not a transient failure: retrying never
+    // resolves it, so it maps to 'forbidden' even when a stale copy is cached
+    // (fail-closed — a revoked column blanks rather than lingering as 'stale').
+    if (query.error instanceof ApiError && query.error.status === 403) {
+      return { status: 'forbidden' };
+    }
     return query.data === undefined
       ? { status: 'error' }
       : { status: 'stale', data: query.data };
@@ -265,6 +283,7 @@ export function bindMatrixEnvironmentQueries<T>(
         data: query.data?.value,
         isPending: query.isPending,
         isError: query.isError,
+        error: query.error,
       }),
     };
   });

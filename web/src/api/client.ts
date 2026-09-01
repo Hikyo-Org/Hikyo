@@ -98,6 +98,21 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * TransportError is the one failure that is NOT a refusal: no HTTP response ever
+ * came back. A dropped connection, DNS failure, or a fetch that rejected all
+ * land here. It exists so `transportRefusalText` can tell "the server could not
+ * be reached" apart from "the server answered something this client cannot
+ * understand" — the conflation #452 exists to end. Everything the client cannot
+ * trust that is NOT this class is a contract violation.
+ */
+export class TransportError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TransportError';
+  }
+}
+
 const MAX_RETRY_AFTER_MS = 30_000;
 
 function retryAfterMilliseconds(response: Response): number | undefined {
@@ -114,7 +129,7 @@ function retryAfterMilliseconds(response: Response): number | undefined {
 
 function requireResponse(result: { response?: Response | undefined }): Response {
   if (result.response === undefined) {
-    throw new Error('SDK call completed without an HTTP response');
+    throw new TransportError('SDK call completed without an HTTP response');
   }
   return result.response;
 }
@@ -213,4 +228,56 @@ export async function ok<TData extends TDataShape>(
       `expected a bodyless ${operation.successStatuses.join(' or ')}, got ${response.status}: parse this response instead of discarding it`,
     );
   }
+}
+
+/**
+ * The domain tier — the statuses whose message every feature voices for itself.
+ * `transportRefusalText` returns `null` for these so a feature's own `switch`
+ * keeps saying the deliberately-different thing its subsystem needs (an auth
+ * 401 is not a disclosure 401). Everything outside this set is generic, so the
+ * feature can delegate it here and stop re-typing the same drifting sentence.
+ */
+const DOMAIN_STATUSES = new Set([401, 403, 404, 409]);
+
+/**
+ * transportRefusalText is the shared voice of the GENERIC error tier (#452).
+ *
+ * It answers the four cases every feature was hand-rolling with drifting
+ * wording, and — the reason it exists — keeps two of them apart that the old
+ * catch-all fallback fused: "the server could not be reached" (a
+ * `TransportError`: your network, retry) is now a different sentence from "the
+ * server answered something this client cannot understand" (a contract
+ * violation: a bug worth reporting). It returns `null` for a domain `ApiError`
+ * (401/403/404/409), the feature's own to describe.
+ *
+ * Note the fall-through: a `TransportError` is the ONLY non-refusal treated as
+ * transport. A Zod parse failure, an unbound-status `Error`, or any other junk
+ * the client cannot trust is a contract violation by default — fail loud, not
+ * "check your network" for a server that broke the contract. Classifying by an
+ * owned class rather than `instanceof ZodError` also sidesteps the cross-copy
+ * `instanceof` hazard a bundled third-party error would carry.
+ */
+export function transportRefusalText(error: unknown): string | null {
+  if (error instanceof ApiError) {
+    if (error.status === 429) {
+      return 'Too many requests right now. Wait a moment and try again.';
+    }
+    if (DOMAIN_STATUSES.has(error.status)) {
+      return null;
+    }
+    return `The request could not be completed (server error ${error.status}). Try again shortly.`;
+  }
+  if (error instanceof Error && error.name === 'NotAllowedError') {
+    // A dismissed or timed-out WebAuthn prompt never sent anything, so the
+    // reassurance is honest here in a way it would not be for a transport drop.
+    return 'The passkey prompt was dismissed or timed out. Nothing was sent.';
+  }
+  if (error instanceof TransportError) {
+    // No effect claim: a fetch can reject after the request reached the server,
+    // so "nothing was sent" would be a lie in the mid-flight case.
+    return typeof navigator !== 'undefined' && navigator.onLine === false
+      ? 'You appear to be offline. The server could not be reached — check your connection and try again.'
+      : 'The server could not be reached. Try again shortly.';
+  }
+  return 'The server answered something this client cannot understand. This is likely a bug worth reporting.';
 }

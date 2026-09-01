@@ -215,6 +215,93 @@ describe('environment creation', () => {
   });
 });
 
+describe('project crypto maintenance', () => {
+  it('rotates the project DEK after confirmation, then drains re-encryption across runs', async () => {
+    let reencryptCalls = 0;
+    const fetchMock = vi.fn((...args: Parameters<typeof fetch>) => {
+      const input = args[0];
+      const request = input instanceof Request ? input : new Request(input);
+      const path = new URL(request.url, 'http://localhost').pathname;
+      if (request.method === 'GET' && path === '/api/v1/auth/whoami') {
+        return Promise.resolve(new Response(null, { status: 401 }));
+      }
+      if (request.method === 'POST' && path === '/api/v1/instance/rotate-dek') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ scope: 'project', key_version: 2 }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+      if (
+        request.method === 'POST' &&
+        path === '/api/v1/orgs/org_1/projects/project_1/reencrypt'
+      ) {
+        reencryptCalls += 1;
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ scope: 'project', rows_moved: reencryptCalls === 1 ? 3 : 0 }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      const json = settingsResponse(request.method, path, 'db');
+      return Promise.resolve(
+        new Response(JSON.stringify(json), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const view = await renderForm(
+      <AuthProvider>
+        <MemoryRouter initialEntries={['/orgs/org_1/projects/project_1/settings']}>
+          <Routes>
+            <Route path="/orgs/:org/projects/:project/settings" element={<ProjectSettings />} />
+          </Routes>
+        </MemoryRouter>
+      </AuthProvider>,
+    );
+
+    try {
+      await settleTask();
+
+      await act(async () => button(view.container, 'Rotate the project DEK').click());
+      const dialog = view.container.ownerDocument.querySelector('dialog.ceremony');
+      expect(dialog?.textContent).toContain('incomplete until');
+      await act(async () => button(view.container, 'Rotate the DEK').click());
+      await settleTask();
+
+      const rotate = fetchMock.mock.calls
+        .map(([input]) => (input instanceof Request ? input : new Request(input)))
+        .find(
+          (r) => r.method === 'POST' && new URL(r.url).pathname === '/api/v1/instance/rotate-dek',
+        );
+      if (rotate === undefined) throw new Error('the rotate-dek request is missing');
+      expect(await rotate.json()).toEqual({ scope: 'project', org: 'org_1', project: 'project_1' });
+      expect(view.container.textContent).toContain('version 2');
+
+      await act(async () => button(view.container, 'Re-encrypt the project').click());
+      await settleTask();
+
+      const reencrypts = fetchMock.mock.calls
+        .map(([input]) => (input instanceof Request ? input : new Request(input)))
+        .filter(
+          (r) =>
+            r.method === 'POST' &&
+            new URL(r.url).pathname === '/api/v1/orgs/org_1/projects/project_1/reencrypt',
+        );
+      expect(reencrypts).toHaveLength(2);
+      expect(view.container.textContent).toContain('moved 3 ciphertext rows');
+      expect(view.container.textContent).toContain('2 runs');
+    } finally {
+      await view.unmount();
+    }
+  });
+});
+
 function settingsResponse(
   method: string,
   path: string,

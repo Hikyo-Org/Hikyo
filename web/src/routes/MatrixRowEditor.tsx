@@ -41,6 +41,10 @@ type EditorRow = {
   readonly environmentId: string;
   readonly environment: Environment;
   readonly protected: boolean;
+  // #451: this column's value/signal reads failed or were denied. It is excluded
+  // from bulk edit and copy destinations — the caller cannot read it, so writing
+  // to it blind would be a silent guess.
+  readonly degraded: boolean;
   readonly cell: ValueCell | undefined;
   readonly signal: MatrixSignalCell | undefined;
   readonly draftPreview: string | undefined;
@@ -114,7 +118,29 @@ export function MatrixRowEditor({
   const workspace = useWorkspaceContext();
   const sourceSet = sourceRow.cell?.set === true;
   const disclosure = useCellDisclosure(refData, keyRecord, sourceRow);
-  const visibleRows = editAll ? rows : [sourceRow];
+  // Degraded columns (#451) are never editable here: bulk edit and fill-all
+  // target only the columns whose reads succeeded.
+  const editableRows = rows.filter((row) => !row.degraded);
+  const visibleRows = editAll ? editableRows : [sourceRow];
+  const degradedEnvironmentIds = rows.flatMap((row) => (row.degraded ? [row.environmentId] : []));
+  const degradedSignature = degradedEnvironmentIds.join('/');
+  // A copy destination or a queued bulk edit chosen before its column degraded
+  // would otherwise linger in `destinations`/`edits` and reach the copy or apply
+  // call for a column we can no longer read. Prune both when a column degrades so
+  // the selectable set and every pending change stay in sync (#451).
+  useEffect(() => {
+    const degraded = new Set(degradedSignature === '' ? [] : degradedSignature.split('/'));
+    setDestinations((current) => {
+      const pruned = current.filter((id) => !degraded.has(id));
+      return pruned.length === current.length ? current : pruned;
+    });
+    setEdits((current) => {
+      if (![...current.keys()].some((id) => degraded.has(id))) {
+        return current;
+      }
+      return new Map([...current].filter(([id]) => !degraded.has(id)));
+    });
+  }, [degradedSignature]);
   const protectedConfirmationRequired = copyRequiresProtectedConfirmation(
     destinations,
     protectedEnvironmentIds,
@@ -139,8 +165,11 @@ export function MatrixRowEditor({
     }
   }
 
+  // Derived from editableRows, not rows: a change is only ever applied to a
+  // column whose reads succeed, even if a stale edit for a since-degraded column
+  // has not yet been pruned from `edits` (#451).
   const changes = matrixDraftChanges(
-    rows.map((row) => row.environmentId),
+    editableRows.map((row) => row.environmentId),
     edits,
   );
 
@@ -230,7 +259,7 @@ export function MatrixRowEditor({
                 disabled={fillAll === '' || busy || applying}
                 onClick={() => {
                   setEdits(new Map<string, MatrixDraftEdit>(
-                    rows.map((row) => [row.environmentId, { op: 'set', value: fillAll }]),
+                    editableRows.map((row) => [row.environmentId, { op: 'set', value: fillAll }]),
                   ));
                 }}
               >
@@ -405,7 +434,7 @@ export function MatrixRowEditor({
             <fieldset className="matrix-editor__copy">
               <legend>Copy independent published value to</legend>
               {rows
-                .filter((row) => row.environmentId !== environmentId)
+                .filter((row) => row.environmentId !== environmentId && !row.degraded)
                 .map((row) => (
                   <label key={row.environmentId}>
                     <input

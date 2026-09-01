@@ -25,12 +25,10 @@ import (
 // removals after a deprecation window this promise does not offer. Severity
 // is oasdiff's opinion; the allowlist is Hikyo's policy.
 //
-// State of this gate today: NO FREEZE TAG EXISTS, so there is no immutable
-// base to diff against and the gate cannot bind the live contract yet. It is
-// therefore FIXTURE-PROVEN NOW AND FREEZE-ARMED LATER — the fixtures below
-// exercise every rule against synthetic base/revised pairs, so the machinery
-// is known to work on the day the tag is cut rather than being written that
-// day.
+// The freeze-guard CI job is armed against the v1.0.0 tag. Until that tag
+// exists it reports a documented dormant success; after the tag is cut it
+// loads api/openapi.yaml from that immutable commit and applies this gate to
+// every proposed revision.
 
 // PermittedChanges is the fail-closed allowlist: the oasdiff change ids that
 // count as permitted additions under the version promise.

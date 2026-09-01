@@ -5,7 +5,13 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, expect, test, vi } from 'vitest';
 
 import { forgetWorkspace, rememberWorkspace } from './workspace.ts';
-import { useRemoteUpdateJob, useServerVersion } from './updates.ts';
+import {
+  type InstanceUpdateJob,
+  jobReadErrorVisible,
+  updateJobOutcome,
+  useRemoteUpdateJob,
+  useServerVersion,
+} from './updates.ts';
 
 const origin = 'https://remote.example';
 
@@ -16,6 +22,51 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   document.body.replaceChildren();
+});
+
+function job(overrides: Partial<InstanceUpdateJob>): InstanceUpdateJob {
+  return {
+    id: 'job_1',
+    backend: 'flux',
+    version: '1.4.0',
+    state: 'queued',
+    phase: 'queued',
+    requested_at: '2026-01-01T00:00:00Z',
+    ...overrides,
+  };
+}
+
+test('updateJobOutcome collapses the six job states into three outcomes', () => {
+  expect(updateJobOutcome(job({ state: 'queued' })).kind).toBe('running');
+  expect(updateJobOutcome(job({ state: 'running' })).kind).toBe('running');
+  expect(updateJobOutcome(job({ state: 'succeeded' })).kind).toBe('succeeded');
+  expect(updateJobOutcome(job({ state: 'failed' })).kind).toBe('failed');
+  expect(updateJobOutcome(job({ state: 'rolled-back' })).kind).toBe('failed');
+  expect(updateJobOutcome(job({ state: 'rollback-failed' })).kind).toBe('failed');
+});
+
+test('updateJobOutcome passes failure_code through on a terminal failure', () => {
+  expect(updateJobOutcome(job({ state: 'rollback-failed', failure_code: 'health_probe' }))).toEqual(
+    { kind: 'failed', failureCode: 'health_probe' },
+  );
+  // A failure without a code carries no failureCode rather than an empty string.
+  expect(updateJobOutcome(job({ state: 'failed' })).failureCode).toBeUndefined();
+  // Success and in-flight outcomes never carry a code.
+  expect(updateJobOutcome(job({ state: 'succeeded', failure_code: 'ignored' }))).toEqual({
+    kind: 'succeeded',
+  });
+});
+
+test('jobReadErrorVisible suppresses the read-error alert behind a terminal failure', () => {
+  // No error → never shown, whatever is cached.
+  expect(jobReadErrorVisible(false, undefined)).toBe(false);
+  expect(jobReadErrorVisible(false, job({ state: 'failed' }))).toBe(false);
+  // Error with no cached job, or a non-failure cached job → shown.
+  expect(jobReadErrorVisible(true, undefined)).toBe(true);
+  expect(jobReadErrorVisible(true, job({ state: 'succeeded' }))).toBe(true);
+  // Error while a terminal-failure read is still cached → suppressed; the
+  // failure alert already covers it, so the two must not double up.
+  expect(jobReadErrorVisible(true, job({ state: 'rollback-failed' }))).toBe(false);
 });
 
 test('server version reads server_version from the contract meta endpoint', async () => {

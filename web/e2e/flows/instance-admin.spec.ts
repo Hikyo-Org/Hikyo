@@ -45,9 +45,12 @@ import { test } from '../fixtures/passkey.ts';
  *  - the instance grant listing shows origins, so a break-glass grant is
  *    distinguishable from an ordinary one after an incident. The fixture's own
  *    seeding grants are break-glass, which is what makes this assertable;
- *  - the SystemProof local set is stated as absent rather than drawn as
- *    disabled controls, and the one key operation that does have a network
- *    surface warns before it runs.
+ *  - the genuinely host-only SystemProof set (init, migrate, restore
+ *    reconciliation, break-glass, host-file custody, startup-only key material)
+ *    is stated as absent rather than drawn as disabled controls, while every
+ *    remotely operable rotation and re-encryption job (#503) warns before it
+ *    runs and the two content-invisible ones (DEK rotation, re-encryption) run
+ *    for real, resuming across a reload.
  */
 
 const seed = readSeed();
@@ -125,11 +128,13 @@ test.describe('instance administration', () => {
     page,
   }) => {
     const keys = page.locator('#instance-keys');
-    // The local-host-authority set is named as absent, not drawn as disabled
-    // buttons: they have no network surface at all, by ADR.
+    // The genuinely host-only set is named as absent, not drawn as disabled
+    // buttons: init, migrate, restore reconciliation and break-glass have no
+    // network surface at all, by ADR.
     await expect(keys).toContainText('local host authority');
     await expect(keys).toContainText('CLI-at-the-box, not CLI-over-network');
-    await expect(keys.getByRole('button', { name: /rotate/i })).toHaveCount(1);
+    await expect(keys).toContainText('init');
+    await expect(keys).toContainText('break-glass');
 
     await keys.getByRole('button', { name: 'Rotate the change-token key' }).click();
     const dialog = page.getByRole('dialog');
@@ -138,6 +143,62 @@ test.describe('instance administration', () => {
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(page.getByRole('dialog')).toBeHidden();
     await expect(keys.getByRole('button', { name: 'Rotate the change-token key' })).toBeFocused();
+  });
+
+  test('names the consequences of the master-key and root-key jobs before running', async ({
+    page,
+  }) => {
+    const keys = page.locator('#instance-keys');
+
+    await keys.getByRole('button', { name: 'Rotate the master key' }).click();
+    let dialog = page.getByRole('dialog');
+    await expect(dialog).toContainText('re-wrapped under it');
+    await expect(dialog).toContainText('finalize the root rotation first');
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+
+    // The root-key rotation is a three-phase job; prepare names the host step
+    // and the crash-safety fact before anything is sealed.
+    await keys.getByRole('button', { name: 'Prepare' }).click();
+    dialog = page.getByRole('dialog');
+    await expect(dialog).toContainText('No key material crosses the wire');
+    await expect(dialog).toContainText('install the new root at the primary source');
+    await expect(dialog).toContainText('bootable under either root');
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+  });
+
+  test('rotates the instance DEK and re-encrypts, resuming across a reload', async ({ page }) => {
+    const keys = page.locator('#instance-keys');
+
+    // Rotate the instance DEK for real. It appends a version and is
+    // content-invisible: no other flow's plaintext moves. This leaves the
+    // instance's credential ciphertext PENDING re-encryption onto the new
+    // version — an incomplete rotation.
+    await keys.getByRole('button', { name: 'Rotate the instance DEK' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toContainText('incomplete until');
+    await dialog.getByRole('button', { name: 'Rotate the DEK' }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+    await expect(page.locator('.notice')).toContainText('The instance DEK was rotated');
+
+    // Reload BEFORE any re-encryption: the pending walk now lives only in the
+    // server's cursor, with no client state to carry it. A fresh page must be
+    // able to pick it up and drive it to a clean, complete end — the real
+    // interrupted-then-resumed recovery, not a re-run of an already-finished job.
+    await page.reload();
+    await expect(
+      page.getByRole('heading', { name: 'Instance administration', level: 1 }),
+    ).toBeVisible();
+    await keys.getByRole('button', { name: 'Re-encrypt the instance' }).click();
+    await expect(page.locator('.notice')).toContainText('Instance re-encryption complete');
+
+    // Idempotent: everything now sits on the active version, so a further run
+    // moves nothing and says so.
+    await keys.getByRole('button', { name: 'Re-encrypt the instance' }).click();
+    await expect(page.locator('.notice')).toContainText(
+      'nothing to move; all ciphertext is already on the active DEK version',
+    );
   });
 
   test('reads and saves the machine-credential ceiling', async ({ page }) => {

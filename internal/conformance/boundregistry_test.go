@@ -101,6 +101,8 @@ var Registry = []Bound{
 	// §4 admission / §10 runtime.
 	bound("admission-queue-depth", "Admission queue depth", "ops-spec §4 / inv.8", "admission.ErrOverloaded", "admission.TestQueueDepth", StatusEnforced,
 		goTest("internal/admission", "TestQueueDepthIsBounded")),
+	bound("metrics-cardinality-budget", "Metrics static cardinality", "ops-spec §10 / inv.3", "registered series ≤ 1,000 with closed non-identity labels", "conformance.TestMetricRegistryStaysWithinCardinalityBudget", StatusByConstruction,
+		goTest("internal/conformance", "TestMetricRegistryStaysWithinCardinalityBudget")),
 	bound("api-response-cap", "API response cap", "ops-spec §10", "response ≤ 5 MiB / paged", "server contract tests", StatusEnforced,
 		goTest("internal/isolation", "TestAuditExportDoesNotTruncateAboveThePageCap")),
 	bound("audit-page-size", "Audit page size", "ops-spec §10 / §2", "clamp to store.AuditMaxPageSize", "store.TestAuditPageSizeIsClampedToTheCap", StatusClamp,

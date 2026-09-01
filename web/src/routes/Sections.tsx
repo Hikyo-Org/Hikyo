@@ -1,5 +1,7 @@
 import { useId, useState, type ReactNode } from 'react';
 
+import { useModalDialog } from './useModalDialog.ts';
+
 /**
  * The sectioned-surface parts every chrome settings surface is built from
  * (#60, locked prototype app-chrome iteration 15).
@@ -157,6 +159,64 @@ export function TypedNameConfirm({
         {action}
       </button>
     </div>
+  );
+}
+
+/**
+ * ConsequencesDialog is the impact ceremony a destructive, remotely operable
+ * operation passes through before it commits (#503): it names the exact
+ * operation and its irreversible consequences, keeps its danger button INSIDE
+ * the dialog (never on an always-rendered surface, which trips the forced-colors
+ * contrast contract), and shows the busy state and any refusal inline.
+ *
+ * Reauthentication is bound at the session level — a 403 surfaces the step-up
+ * banner — so the dialog itself carries only consequence and confirmation.
+ */
+export function ConsequencesDialog({
+  titleId,
+  title,
+  confirmLabel,
+  busyLabel,
+  busy,
+  failure,
+  onCancel,
+  onConfirm,
+  children,
+}: {
+  titleId: string;
+  title: string;
+  confirmLabel: string;
+  busyLabel: string;
+  busy: boolean;
+  failure: string | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+  children: ReactNode;
+}) {
+  const dialog = useModalDialog();
+  return (
+    <dialog
+      className="ceremony"
+      ref={dialog}
+      aria-labelledby={titleId}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onCancel();
+      }}
+    >
+      <h2 id={titleId}>{title}</h2>
+      <div className="ceremony__lede">{children}</div>
+      {busy ? <p role="status">{busyLabel}</p> : null}
+      {failure === null ? null : <Alert>{failure}</Alert>}
+      <div className="ceremony__actions">
+        <button type="button" className="btn" onClick={onCancel} disabled={busy}>
+          Cancel
+        </button>
+        <button type="button" className="btn btn--danger" onClick={onConfirm} disabled={busy}>
+          {confirmLabel}
+        </button>
+      </div>
+    </dialog>
   );
 }
 

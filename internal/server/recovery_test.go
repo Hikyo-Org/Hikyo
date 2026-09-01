@@ -103,7 +103,7 @@ func TestRecoveryKeepsTheAdvisoryStreamAStream(t *testing.T) {
 	stream := eventStream{ctx: ctx, events: make(chan service.AdvisoryEvent), retry: advisoryRetryBase}
 	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// The visitor refuses a non-flushing writer outright; running it behind
-		// the full stack proves recoveryWriter satisfies and forwards Flusher.
+		// the full stack proves responseWriter satisfies and forwards Flusher.
 		if err := stream.VisitWatchProjectEventsResponse(w); err != nil {
 			t.Error(err)
 		}
