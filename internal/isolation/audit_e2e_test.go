@@ -151,7 +151,7 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(page) == 0 {
+		if len(page.Events) == 0 {
 			t.Fatal("org A trail is empty — prior subtests wrote events")
 		}
 		if n := countTenant("type = 'audit.query' AND actor_id = 'usr_alice' AND payload LIKE '%row_count%'"); n != 1 {
@@ -172,7 +172,7 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// Asserting the ROWS, not just the absence of an error: an instance
 		// page that silently returns nothing (a mis-bound paging parameter)
 		// would otherwise pass every other assertion here.
-		if len(page) == 0 {
+		if len(page.Events) == 0 {
 			t.Fatal("instance trail page is empty — prior subtests wrote instance events")
 		}
 		if n := countInstance("type = 'audit.query' AND actor_id = 'usr_root'"); n != 1 {
@@ -792,13 +792,13 @@ func TestPostgresAuditExportCommitOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	var seqs []int64
-	for _, ev := range interactive {
+	for _, ev := range interactive.Events {
 		if ev.ID == "evt_gap_low" || ev.ID == "evt_gap_high" {
 			seqs = append(seqs, ev.Seq)
 		}
 	}
 	if len(seqs) != 2 || seqs[0] != lowSeq || seqs[1] != highSeq {
-		t.Fatalf("interactive query honored export-only cursor/order: %+v", interactive)
+		t.Fatalf("interactive query honored export-only cursor/order: %+v", interactive.Events)
 	}
 	if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE commit_seq IS NULL"); n != 0 {
 		t.Fatalf("committed tenant audit rows without commit order = %d", n)

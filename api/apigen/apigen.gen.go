@@ -1930,6 +1930,36 @@ func (e WorkspaceHandoffStepUpPurpose) Valid() bool {
 	}
 }
 
+// Defines values for AuditOutcome.
+const (
+	AuditOutcomeDenied       AuditOutcome = "denied"
+	AuditOutcomeDisconnected AuditOutcome = "disconnected"
+	AuditOutcomeFailure      AuditOutcome = "failure"
+	AuditOutcomeIntent       AuditOutcome = "intent"
+	AuditOutcomeSuccess      AuditOutcome = "success"
+	AuditOutcomeUnknown      AuditOutcome = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the AuditOutcome enum.
+func (e AuditOutcome) Valid() bool {
+	switch e {
+	case AuditOutcomeDenied:
+		return true
+	case AuditOutcomeDisconnected:
+		return true
+	case AuditOutcomeFailure:
+		return true
+	case AuditOutcomeIntent:
+		return true
+	case AuditOutcomeSuccess:
+		return true
+	case AuditOutcomeUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DeliveryProjection.
 const (
 	ConfigOnly DeliveryProjection = "config-only"
@@ -1948,6 +1978,66 @@ func (e DeliveryProjection) Valid() bool {
 	}
 }
 
+// Defines values for QueryOrgAuditParamsOutcome.
+const (
+	QueryOrgAuditParamsOutcomeDenied       QueryOrgAuditParamsOutcome = "denied"
+	QueryOrgAuditParamsOutcomeDisconnected QueryOrgAuditParamsOutcome = "disconnected"
+	QueryOrgAuditParamsOutcomeFailure      QueryOrgAuditParamsOutcome = "failure"
+	QueryOrgAuditParamsOutcomeIntent       QueryOrgAuditParamsOutcome = "intent"
+	QueryOrgAuditParamsOutcomeSuccess      QueryOrgAuditParamsOutcome = "success"
+	QueryOrgAuditParamsOutcomeUnknown      QueryOrgAuditParamsOutcome = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the QueryOrgAuditParamsOutcome enum.
+func (e QueryOrgAuditParamsOutcome) Valid() bool {
+	switch e {
+	case QueryOrgAuditParamsOutcomeDenied:
+		return true
+	case QueryOrgAuditParamsOutcomeDisconnected:
+		return true
+	case QueryOrgAuditParamsOutcomeFailure:
+		return true
+	case QueryOrgAuditParamsOutcomeIntent:
+		return true
+	case QueryOrgAuditParamsOutcomeSuccess:
+		return true
+	case QueryOrgAuditParamsOutcomeUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ExportOrgAuditParamsOutcome.
+const (
+	ExportOrgAuditParamsOutcomeDenied       ExportOrgAuditParamsOutcome = "denied"
+	ExportOrgAuditParamsOutcomeDisconnected ExportOrgAuditParamsOutcome = "disconnected"
+	ExportOrgAuditParamsOutcomeFailure      ExportOrgAuditParamsOutcome = "failure"
+	ExportOrgAuditParamsOutcomeIntent       ExportOrgAuditParamsOutcome = "intent"
+	ExportOrgAuditParamsOutcomeSuccess      ExportOrgAuditParamsOutcome = "success"
+	ExportOrgAuditParamsOutcomeUnknown      ExportOrgAuditParamsOutcome = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the ExportOrgAuditParamsOutcome enum.
+func (e ExportOrgAuditParamsOutcome) Valid() bool {
+	switch e {
+	case ExportOrgAuditParamsOutcomeDenied:
+		return true
+	case ExportOrgAuditParamsOutcomeDisconnected:
+		return true
+	case ExportOrgAuditParamsOutcomeFailure:
+		return true
+	case ExportOrgAuditParamsOutcomeIntent:
+		return true
+	case ExportOrgAuditParamsOutcomeSuccess:
+		return true
+	case ExportOrgAuditParamsOutcomeUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ShowAdapterTargetParamsFormat.
 const (
 	Detail   ShowAdapterTargetParamsFormat = "detail"
@@ -1960,6 +2050,126 @@ func (e ShowAdapterTargetParamsFormat) Valid() bool {
 	case Detail:
 		return true
 	case Workflow:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for QueryProjectAuditParamsOutcome.
+const (
+	QueryProjectAuditParamsOutcomeDenied       QueryProjectAuditParamsOutcome = "denied"
+	QueryProjectAuditParamsOutcomeDisconnected QueryProjectAuditParamsOutcome = "disconnected"
+	QueryProjectAuditParamsOutcomeFailure      QueryProjectAuditParamsOutcome = "failure"
+	QueryProjectAuditParamsOutcomeIntent       QueryProjectAuditParamsOutcome = "intent"
+	QueryProjectAuditParamsOutcomeSuccess      QueryProjectAuditParamsOutcome = "success"
+	QueryProjectAuditParamsOutcomeUnknown      QueryProjectAuditParamsOutcome = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the QueryProjectAuditParamsOutcome enum.
+func (e QueryProjectAuditParamsOutcome) Valid() bool {
+	switch e {
+	case QueryProjectAuditParamsOutcomeDenied:
+		return true
+	case QueryProjectAuditParamsOutcomeDisconnected:
+		return true
+	case QueryProjectAuditParamsOutcomeFailure:
+		return true
+	case QueryProjectAuditParamsOutcomeIntent:
+		return true
+	case QueryProjectAuditParamsOutcomeSuccess:
+		return true
+	case QueryProjectAuditParamsOutcomeUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ExportProjectAuditParamsOutcome.
+const (
+	ExportProjectAuditParamsOutcomeDenied       ExportProjectAuditParamsOutcome = "denied"
+	ExportProjectAuditParamsOutcomeDisconnected ExportProjectAuditParamsOutcome = "disconnected"
+	ExportProjectAuditParamsOutcomeFailure      ExportProjectAuditParamsOutcome = "failure"
+	ExportProjectAuditParamsOutcomeIntent       ExportProjectAuditParamsOutcome = "intent"
+	ExportProjectAuditParamsOutcomeSuccess      ExportProjectAuditParamsOutcome = "success"
+	ExportProjectAuditParamsOutcomeUnknown      ExportProjectAuditParamsOutcome = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the ExportProjectAuditParamsOutcome enum.
+func (e ExportProjectAuditParamsOutcome) Valid() bool {
+	switch e {
+	case ExportProjectAuditParamsOutcomeDenied:
+		return true
+	case ExportProjectAuditParamsOutcomeDisconnected:
+		return true
+	case ExportProjectAuditParamsOutcomeFailure:
+		return true
+	case ExportProjectAuditParamsOutcomeIntent:
+		return true
+	case ExportProjectAuditParamsOutcomeSuccess:
+		return true
+	case ExportProjectAuditParamsOutcomeUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for QueryEnvAuditParamsOutcome.
+const (
+	QueryEnvAuditParamsOutcomeDenied       QueryEnvAuditParamsOutcome = "denied"
+	QueryEnvAuditParamsOutcomeDisconnected QueryEnvAuditParamsOutcome = "disconnected"
+	QueryEnvAuditParamsOutcomeFailure      QueryEnvAuditParamsOutcome = "failure"
+	QueryEnvAuditParamsOutcomeIntent       QueryEnvAuditParamsOutcome = "intent"
+	QueryEnvAuditParamsOutcomeSuccess      QueryEnvAuditParamsOutcome = "success"
+	QueryEnvAuditParamsOutcomeUnknown      QueryEnvAuditParamsOutcome = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the QueryEnvAuditParamsOutcome enum.
+func (e QueryEnvAuditParamsOutcome) Valid() bool {
+	switch e {
+	case QueryEnvAuditParamsOutcomeDenied:
+		return true
+	case QueryEnvAuditParamsOutcomeDisconnected:
+		return true
+	case QueryEnvAuditParamsOutcomeFailure:
+		return true
+	case QueryEnvAuditParamsOutcomeIntent:
+		return true
+	case QueryEnvAuditParamsOutcomeSuccess:
+		return true
+	case QueryEnvAuditParamsOutcomeUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ExportEnvAuditParamsOutcome.
+const (
+	ExportEnvAuditParamsOutcomeDenied       ExportEnvAuditParamsOutcome = "denied"
+	ExportEnvAuditParamsOutcomeDisconnected ExportEnvAuditParamsOutcome = "disconnected"
+	ExportEnvAuditParamsOutcomeFailure      ExportEnvAuditParamsOutcome = "failure"
+	ExportEnvAuditParamsOutcomeIntent       ExportEnvAuditParamsOutcome = "intent"
+	ExportEnvAuditParamsOutcomeSuccess      ExportEnvAuditParamsOutcome = "success"
+	ExportEnvAuditParamsOutcomeUnknown      ExportEnvAuditParamsOutcome = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the ExportEnvAuditParamsOutcome enum.
+func (e ExportEnvAuditParamsOutcome) Valid() bool {
+	switch e {
+	case ExportEnvAuditParamsOutcomeDenied:
+		return true
+	case ExportEnvAuditParamsOutcomeDisconnected:
+		return true
+	case ExportEnvAuditParamsOutcomeFailure:
+		return true
+	case ExportEnvAuditParamsOutcomeIntent:
+		return true
+	case ExportEnvAuditParamsOutcomeSuccess:
+		return true
+	case ExportEnvAuditParamsOutcomeUnknown:
 		return true
 	default:
 		return false
@@ -2376,6 +2586,66 @@ type Assurance struct {
 
 	// Provider The configured provider slug, present only for OIDC sessions.
 	Provider *string `json:"provider,omitempty"`
+}
+
+// AuditEvent One stored trail event, exactly as the JSONL export emits it. No value
+// material is ever written to the trail, so none appears here. Consumers
+// MUST tolerate members they do not recognise: the closed registry adds
+// event types and payload fields over time, and a client that fails on an
+// additive field would break on every forward-compatible server.
+type AuditEvent struct {
+	ActorClass        string  `json:"actor_class"`
+	ActorCredentialId *string `json:"actor_credential_id,omitempty"`
+	ActorId           *string `json:"actor_id,omitempty"`
+	AuthorityId       *string `json:"authority_id,omitempty"`
+	CorrelationId     *string `json:"correlation_id,omitempty"`
+	EnvId             *string `json:"env_id,omitempty"`
+	Id                string  `json:"id"`
+	ObjectId          *string `json:"object_id,omitempty"`
+	ObjectType        *string `json:"object_type,omitempty"`
+
+	// OccurredAsserted Whether occurred_at was asserted by a client rather than the server clock.
+	OccurredAsserted bool      `json:"occurred_asserted"`
+	OccurredAt       time.Time `json:"occurred_at"`
+	OrgId            *string   `json:"org_id,omitempty"`
+	Origin           string    `json:"origin"`
+	Outcome          string    `json:"outcome"`
+
+	// Payload The event's schema-versioned payload, verbatim. Its members vary by
+	// event type and grow additively; render unknown members rather than
+	// failing on them.
+	Payload       map[string]interface{} `json:"payload"`
+	ProjectId     *string                `json:"project_id,omitempty"`
+	RecordedAt    time.Time              `json:"recorded_at"`
+	SchemaVersion int                    `json:"schema_version"`
+	ScopeClass    string                 `json:"scope_class"`
+
+	// Seq Immutable public allocation order and event position.
+	Seq      int64   `json:"seq"`
+	SourceIp *string `json:"source_ip,omitempty"`
+
+	// Type The event type from the closed audit registry.
+	Type      string  `json:"type"`
+	UserAgent *string `json:"user_agent,omitempty"`
+}
+
+// AuditPage defines model for AuditPage.
+type AuditPage struct {
+	// Count Number of matched events returned (may be fewer than the rows scanned).
+	Count int `json:"count"`
+
+	// Exhausted True when this page reached the end of the trail (fewer rows scanned
+	// than the limit). While false, more pages remain even if `items` is
+	// empty for a sparse filter.
+	Exhausted bool `json:"exhausted"`
+
+	// Items The events on this page that matched the filter, in seq order.
+	Items []AuditEvent `json:"items"`
+
+	// NextAfterSeq The seq of the last row SCANNED. Pass it as `after_seq` to resume;
+	// it advances over scanned rows, not just matched ones, so a filtered
+	// page never re-reads or skips.
+	NextAfterSeq int64 `json:"next_after_seq"`
 }
 
 // AuthMethod OPEN enum — `oidc:<issuer>` and `saml:<entityID>` values are
@@ -6433,6 +6703,36 @@ type AdapterID = ID
 // AdapterTargetID A prefixed UUIDv7, e.g. `org_0198…`.
 type AdapterTargetID = ID
 
+// AuditActor defines model for AuditActor.
+type AuditActor = string
+
+// AuditAfterSeq defines model for AuditAfterSeq.
+type AuditAfterSeq = int64
+
+// AuditCorrelationID defines model for AuditCorrelationID.
+type AuditCorrelationID = string
+
+// AuditFrom defines model for AuditFrom.
+type AuditFrom = time.Time
+
+// AuditLimit defines model for AuditLimit.
+type AuditLimit = int
+
+// AuditObjectID defines model for AuditObjectID.
+type AuditObjectID = string
+
+// AuditObjectType defines model for AuditObjectType.
+type AuditObjectType = string
+
+// AuditOperation defines model for AuditOperation.
+type AuditOperation = string
+
+// AuditOutcome defines model for AuditOutcome.
+type AuditOutcome string
+
+// AuditTo defines model for AuditTo.
+type AuditTo = time.Time
+
 // ConnectionID A prefixed UUIDv7, e.g. `org_0198…`.
 type ConnectionID = ID
 
@@ -6591,6 +6891,78 @@ type RevokeInstanceGrantParams struct {
 	Capability GrantCapability `form:"capability" json:"capability"`
 }
 
+// QueryOrgAuditParams defines parameters for QueryOrgAudit.
+type QueryOrgAuditParams struct {
+	// From Inclusive lower time bound (recorded-at). Absent means the epoch.
+	From *AuditFrom `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Inclusive upper time bound (recorded-at). Absent means unbounded.
+	To *AuditTo `form:"to,omitempty" json:"to,omitempty"`
+
+	// AfterSeq Resume cursor: return events whose seq is strictly greater. Pass the
+	// previous page's `next_after_seq` to page forward.
+	AfterSeq *AuditAfterSeq `form:"after_seq,omitempty" json:"after_seq,omitempty"`
+
+	// Limit Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
+	// be fewer when a filter is set.
+	Limit *AuditLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Actor Match only events whose acting principal has this id.
+	Actor *AuditActor `form:"actor,omitempty" json:"actor,omitempty"`
+
+	// Operation Match only events of this type (the operation), e.g. `value.set`. An
+	// unknown type is not an error; it simply matches nothing.
+	Operation *AuditOperation `form:"operation,omitempty" json:"operation,omitempty"`
+
+	// Outcome Match only events with this outcome.
+	Outcome *QueryOrgAuditParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
+
+	// ObjectType Match only events acting on this object type.
+	ObjectType *AuditObjectType `form:"object_type,omitempty" json:"object_type,omitempty"`
+
+	// ObjectId Match only events acting on this object id.
+	ObjectId *AuditObjectID `form:"object_id,omitempty" json:"object_id,omitempty"`
+
+	// CorrelationId Match only events sharing this correlation id — the link between an
+	// act's INTENT and OUTCOME events.
+	CorrelationId *AuditCorrelationID `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+}
+
+// QueryOrgAuditParamsOutcome defines parameters for QueryOrgAudit.
+type QueryOrgAuditParamsOutcome string
+
+// ExportOrgAuditParams defines parameters for ExportOrgAudit.
+type ExportOrgAuditParams struct {
+	// From Inclusive lower time bound (recorded-at). Absent means the epoch.
+	From *AuditFrom `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Inclusive upper time bound (recorded-at). Absent means unbounded.
+	To *AuditTo `form:"to,omitempty" json:"to,omitempty"`
+
+	// Actor Match only events whose acting principal has this id.
+	Actor *AuditActor `form:"actor,omitempty" json:"actor,omitempty"`
+
+	// Operation Match only events of this type (the operation), e.g. `value.set`. An
+	// unknown type is not an error; it simply matches nothing.
+	Operation *AuditOperation `form:"operation,omitempty" json:"operation,omitempty"`
+
+	// Outcome Match only events with this outcome.
+	Outcome *ExportOrgAuditParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
+
+	// ObjectType Match only events acting on this object type.
+	ObjectType *AuditObjectType `form:"object_type,omitempty" json:"object_type,omitempty"`
+
+	// ObjectId Match only events acting on this object id.
+	ObjectId *AuditObjectID `form:"object_id,omitempty" json:"object_id,omitempty"`
+
+	// CorrelationId Match only events sharing this correlation id — the link between an
+	// act's INTENT and OUTCOME events.
+	CorrelationId *AuditCorrelationID `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+}
+
+// ExportOrgAuditParamsOutcome defines parameters for ExportOrgAudit.
+type ExportOrgAuditParamsOutcome string
+
 // RevokeOrgGrantParams defines parameters for RevokeOrgGrant.
 type RevokeOrgGrantParams struct {
 	// Principal The principal whose grant is being revoked.
@@ -6618,6 +6990,78 @@ type DeleteAdapterParams struct {
 	KeepRemote *bool `form:"keep_remote,omitempty" json:"keep_remote,omitempty"`
 }
 
+// QueryProjectAuditParams defines parameters for QueryProjectAudit.
+type QueryProjectAuditParams struct {
+	// From Inclusive lower time bound (recorded-at). Absent means the epoch.
+	From *AuditFrom `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Inclusive upper time bound (recorded-at). Absent means unbounded.
+	To *AuditTo `form:"to,omitempty" json:"to,omitempty"`
+
+	// AfterSeq Resume cursor: return events whose seq is strictly greater. Pass the
+	// previous page's `next_after_seq` to page forward.
+	AfterSeq *AuditAfterSeq `form:"after_seq,omitempty" json:"after_seq,omitempty"`
+
+	// Limit Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
+	// be fewer when a filter is set.
+	Limit *AuditLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Actor Match only events whose acting principal has this id.
+	Actor *AuditActor `form:"actor,omitempty" json:"actor,omitempty"`
+
+	// Operation Match only events of this type (the operation), e.g. `value.set`. An
+	// unknown type is not an error; it simply matches nothing.
+	Operation *AuditOperation `form:"operation,omitempty" json:"operation,omitempty"`
+
+	// Outcome Match only events with this outcome.
+	Outcome *QueryProjectAuditParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
+
+	// ObjectType Match only events acting on this object type.
+	ObjectType *AuditObjectType `form:"object_type,omitempty" json:"object_type,omitempty"`
+
+	// ObjectId Match only events acting on this object id.
+	ObjectId *AuditObjectID `form:"object_id,omitempty" json:"object_id,omitempty"`
+
+	// CorrelationId Match only events sharing this correlation id — the link between an
+	// act's INTENT and OUTCOME events.
+	CorrelationId *AuditCorrelationID `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+}
+
+// QueryProjectAuditParamsOutcome defines parameters for QueryProjectAudit.
+type QueryProjectAuditParamsOutcome string
+
+// ExportProjectAuditParams defines parameters for ExportProjectAudit.
+type ExportProjectAuditParams struct {
+	// From Inclusive lower time bound (recorded-at). Absent means the epoch.
+	From *AuditFrom `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Inclusive upper time bound (recorded-at). Absent means unbounded.
+	To *AuditTo `form:"to,omitempty" json:"to,omitempty"`
+
+	// Actor Match only events whose acting principal has this id.
+	Actor *AuditActor `form:"actor,omitempty" json:"actor,omitempty"`
+
+	// Operation Match only events of this type (the operation), e.g. `value.set`. An
+	// unknown type is not an error; it simply matches nothing.
+	Operation *AuditOperation `form:"operation,omitempty" json:"operation,omitempty"`
+
+	// Outcome Match only events with this outcome.
+	Outcome *ExportProjectAuditParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
+
+	// ObjectType Match only events acting on this object type.
+	ObjectType *AuditObjectType `form:"object_type,omitempty" json:"object_type,omitempty"`
+
+	// ObjectId Match only events acting on this object id.
+	ObjectId *AuditObjectID `form:"object_id,omitempty" json:"object_id,omitempty"`
+
+	// CorrelationId Match only events sharing this correlation id — the link between an
+	// act's INTENT and OUTCOME events.
+	CorrelationId *AuditCorrelationID `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+}
+
+// ExportProjectAuditParamsOutcome defines parameters for ExportProjectAudit.
+type ExportProjectAuditParamsOutcome string
+
 // ExportDefinitionsParams defines parameters for ExportDefinitions.
 type ExportDefinitionsParams struct {
 	Portable *bool `form:"portable,omitempty" json:"portable,omitempty"`
@@ -6634,6 +7078,78 @@ type CreateDefinitionsPlanParams struct {
 	// blanket ignore-all input.
 	Acknowledge *DefinitionsAcknowledgements `form:"acknowledge,omitempty" json:"acknowledge,omitempty"`
 }
+
+// QueryEnvAuditParams defines parameters for QueryEnvAudit.
+type QueryEnvAuditParams struct {
+	// From Inclusive lower time bound (recorded-at). Absent means the epoch.
+	From *AuditFrom `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Inclusive upper time bound (recorded-at). Absent means unbounded.
+	To *AuditTo `form:"to,omitempty" json:"to,omitempty"`
+
+	// AfterSeq Resume cursor: return events whose seq is strictly greater. Pass the
+	// previous page's `next_after_seq` to page forward.
+	AfterSeq *AuditAfterSeq `form:"after_seq,omitempty" json:"after_seq,omitempty"`
+
+	// Limit Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
+	// be fewer when a filter is set.
+	Limit *AuditLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Actor Match only events whose acting principal has this id.
+	Actor *AuditActor `form:"actor,omitempty" json:"actor,omitempty"`
+
+	// Operation Match only events of this type (the operation), e.g. `value.set`. An
+	// unknown type is not an error; it simply matches nothing.
+	Operation *AuditOperation `form:"operation,omitempty" json:"operation,omitempty"`
+
+	// Outcome Match only events with this outcome.
+	Outcome *QueryEnvAuditParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
+
+	// ObjectType Match only events acting on this object type.
+	ObjectType *AuditObjectType `form:"object_type,omitempty" json:"object_type,omitempty"`
+
+	// ObjectId Match only events acting on this object id.
+	ObjectId *AuditObjectID `form:"object_id,omitempty" json:"object_id,omitempty"`
+
+	// CorrelationId Match only events sharing this correlation id — the link between an
+	// act's INTENT and OUTCOME events.
+	CorrelationId *AuditCorrelationID `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+}
+
+// QueryEnvAuditParamsOutcome defines parameters for QueryEnvAudit.
+type QueryEnvAuditParamsOutcome string
+
+// ExportEnvAuditParams defines parameters for ExportEnvAudit.
+type ExportEnvAuditParams struct {
+	// From Inclusive lower time bound (recorded-at). Absent means the epoch.
+	From *AuditFrom `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Inclusive upper time bound (recorded-at). Absent means unbounded.
+	To *AuditTo `form:"to,omitempty" json:"to,omitempty"`
+
+	// Actor Match only events whose acting principal has this id.
+	Actor *AuditActor `form:"actor,omitempty" json:"actor,omitempty"`
+
+	// Operation Match only events of this type (the operation), e.g. `value.set`. An
+	// unknown type is not an error; it simply matches nothing.
+	Operation *AuditOperation `form:"operation,omitempty" json:"operation,omitempty"`
+
+	// Outcome Match only events with this outcome.
+	Outcome *ExportEnvAuditParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
+
+	// ObjectType Match only events acting on this object type.
+	ObjectType *AuditObjectType `form:"object_type,omitempty" json:"object_type,omitempty"`
+
+	// ObjectId Match only events acting on this object id.
+	ObjectId *AuditObjectID `form:"object_id,omitempty" json:"object_id,omitempty"`
+
+	// CorrelationId Match only events sharing this correlation id — the link between an
+	// act's INTENT and OUTCOME events.
+	CorrelationId *AuditCorrelationID `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+}
+
+// ExportEnvAuditParamsOutcome defines parameters for ExportEnvAudit.
+type ExportEnvAuditParamsOutcome string
 
 // FetchDeliveryParams defines parameters for FetchDelivery.
 type FetchDeliveryParams struct {
@@ -7597,6 +8113,12 @@ type ServerInterface interface {
 	// RenameOrg Rename an organisation.
 	// (PATCH /api/v1/orgs/{org})
 	RenameOrg(w http.ResponseWriter, r *http.Request, org OrgID)
+	// QueryOrgAudit One bounded page of the organization's audit trail.
+	// (GET /api/v1/orgs/{org}/audit)
+	QueryOrgAudit(w http.ResponseWriter, r *http.Request, org OrgID, params QueryOrgAuditParams)
+	// ExportOrgAudit Stream the organization's audit trail as JSONL.
+	// (GET /api/v1/orgs/{org}/audit/export)
+	ExportOrgAudit(w http.ResponseWriter, r *http.Request, org OrgID, params ExportOrgAuditParams)
 	// RevokeOrgGrant Revoke one capability at organisation scope.
 	// (DELETE /api/v1/orgs/{org}/grants)
 	RevokeOrgGrant(w http.ResponseWriter, r *http.Request, org OrgID, params RevokeOrgGrantParams)
@@ -7681,6 +8203,12 @@ type ServerInterface interface {
 	// AddAdapterTarget Add a tested target and atomically reassign adapter authority.
 	// (POST /api/v1/orgs/{org}/projects/{project}/adapters/{adapter}/targets)
 	AddAdapterTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, adapter AdapterID)
+	// QueryProjectAudit One bounded page of the project's audit trail.
+	// (GET /api/v1/orgs/{org}/projects/{project}/audit)
+	QueryProjectAudit(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, params QueryProjectAuditParams)
+	// ExportProjectAudit Stream the project's audit trail as JSONL.
+	// (GET /api/v1/orgs/{org}/projects/{project}/audit/export)
+	ExportProjectAudit(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, params ExportProjectAuditParams)
 	// CheckDefinitions Compare a definitions bundle with current project state.
 	// (POST /api/v1/orgs/{org}/projects/{project}/definitions/check)
 	CheckDefinitions(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
@@ -7723,6 +8251,12 @@ type ServerInterface interface {
 	// RenameEnvironment Rename an environment.
 	// (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment})
 	RenameEnvironment(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// QueryEnvAudit One bounded page of the environment's audit trail.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit)
+	QueryEnvAudit(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params QueryEnvAuditParams)
+	// ExportEnvAudit Stream the environment's audit trail as JSONL.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit/export)
+	ExportEnvAudit(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params ExportEnvAuditParams)
 	// FetchDelivery Fetch the authorized projection, conditionally.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery)
 	FetchDelivery(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params FetchDeliveryParams)
@@ -8608,6 +9142,18 @@ func (_ Unimplemented) RenameOrg(w http.ResponseWriter, r *http.Request, org Org
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// QueryOrgAudit One bounded page of the organization's audit trail.
+// (GET /api/v1/orgs/{org}/audit)
+func (_ Unimplemented) QueryOrgAudit(w http.ResponseWriter, r *http.Request, org OrgID, params QueryOrgAuditParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ExportOrgAudit Stream the organization's audit trail as JSONL.
+// (GET /api/v1/orgs/{org}/audit/export)
+func (_ Unimplemented) ExportOrgAudit(w http.ResponseWriter, r *http.Request, org OrgID, params ExportOrgAuditParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // RevokeOrgGrant Revoke one capability at organisation scope.
 // (DELETE /api/v1/orgs/{org}/grants)
 func (_ Unimplemented) RevokeOrgGrant(w http.ResponseWriter, r *http.Request, org OrgID, params RevokeOrgGrantParams) {
@@ -8776,6 +9322,18 @@ func (_ Unimplemented) AddAdapterTarget(w http.ResponseWriter, r *http.Request, 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// QueryProjectAudit One bounded page of the project's audit trail.
+// (GET /api/v1/orgs/{org}/projects/{project}/audit)
+func (_ Unimplemented) QueryProjectAudit(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, params QueryProjectAuditParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ExportProjectAudit Stream the project's audit trail as JSONL.
+// (GET /api/v1/orgs/{org}/projects/{project}/audit/export)
+func (_ Unimplemented) ExportProjectAudit(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, params ExportProjectAuditParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // CheckDefinitions Compare a definitions bundle with current project state.
 // (POST /api/v1/orgs/{org}/projects/{project}/definitions/check)
 func (_ Unimplemented) CheckDefinitions(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
@@ -8857,6 +9415,18 @@ func (_ Unimplemented) GetEnvironment(w http.ResponseWriter, r *http.Request, or
 // RenameEnvironment Rename an environment.
 // (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment})
 func (_ Unimplemented) RenameEnvironment(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// QueryEnvAudit One bounded page of the environment's audit trail.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit)
+func (_ Unimplemented) QueryEnvAudit(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params QueryEnvAuditParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ExportEnvAudit Stream the environment's audit trail as JSONL.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit/export)
+func (_ Unimplemented) ExportEnvAudit(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params ExportEnvAuditParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -11290,6 +11860,298 @@ func (siw *ServerInterfaceWrapper) RenameOrg(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// QueryOrgAudit operation middleware
+func (siw *ServerInterfaceWrapper) QueryOrgAudit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params QueryOrgAuditParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "after_seq" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "after_seq", r.URL.Query(), &params.AfterSeq, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "after_seq"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "after_seq", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "actor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "actor", r.URL.Query(), &params.Actor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "actor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "actor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "operation" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "operation", r.URL.Query(), &params.Operation, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "operation"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "operation", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "outcome" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "outcome", r.URL.Query(), &params.Outcome, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcome"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcome", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "object_type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "object_type", r.URL.Query(), &params.ObjectType, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "object_type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_type", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "object_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "object_id", r.URL.Query(), &params.ObjectId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "object_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "correlation_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "correlation_id", r.URL.Query(), &params.CorrelationId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "correlation_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "correlation_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.QueryOrgAudit(w, r, org, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExportOrgAudit operation middleware
+func (siw *ServerInterfaceWrapper) ExportOrgAudit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ExportOrgAuditParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "actor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "actor", r.URL.Query(), &params.Actor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "actor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "actor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "operation" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "operation", r.URL.Query(), &params.Operation, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "operation"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "operation", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "outcome" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "outcome", r.URL.Query(), &params.Outcome, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcome"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcome", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "object_type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "object_type", r.URL.Query(), &params.ObjectType, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "object_type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_type", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "object_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "object_id", r.URL.Query(), &params.ObjectId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "object_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "correlation_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "correlation_id", r.URL.Query(), &params.CorrelationId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "correlation_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "correlation_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExportOrgAudit(w, r, org, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RevokeOrgGrant operation middleware
 func (siw *ServerInterfaceWrapper) RevokeOrgGrant(w http.ResponseWriter, r *http.Request) {
 
@@ -12446,6 +13308,316 @@ func (siw *ServerInterfaceWrapper) AddAdapterTarget(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// QueryProjectAudit operation middleware
+func (siw *ServerInterfaceWrapper) QueryProjectAudit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params QueryProjectAuditParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "after_seq" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "after_seq", r.URL.Query(), &params.AfterSeq, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "after_seq"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "after_seq", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "actor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "actor", r.URL.Query(), &params.Actor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "actor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "actor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "operation" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "operation", r.URL.Query(), &params.Operation, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "operation"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "operation", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "outcome" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "outcome", r.URL.Query(), &params.Outcome, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcome"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcome", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "object_type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "object_type", r.URL.Query(), &params.ObjectType, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "object_type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_type", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "object_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "object_id", r.URL.Query(), &params.ObjectId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "object_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "correlation_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "correlation_id", r.URL.Query(), &params.CorrelationId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "correlation_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "correlation_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.QueryProjectAudit(w, r, org, project, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExportProjectAudit operation middleware
+func (siw *ServerInterfaceWrapper) ExportProjectAudit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ExportProjectAuditParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "actor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "actor", r.URL.Query(), &params.Actor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "actor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "actor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "operation" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "operation", r.URL.Query(), &params.Operation, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "operation"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "operation", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "outcome" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "outcome", r.URL.Query(), &params.Outcome, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcome"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcome", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "object_type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "object_type", r.URL.Query(), &params.ObjectType, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "object_type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_type", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "object_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "object_id", r.URL.Query(), &params.ObjectId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "object_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "correlation_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "correlation_id", r.URL.Query(), &params.CorrelationId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "correlation_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "correlation_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExportProjectAudit(w, r, org, project, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CheckDefinitions operation middleware
 func (siw *ServerInterfaceWrapper) CheckDefinitions(w http.ResponseWriter, r *http.Request) {
 
@@ -13004,6 +14176,334 @@ func (siw *ServerInterfaceWrapper) RenameEnvironment(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RenameEnvironment(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// QueryEnvAudit operation middleware
+func (siw *ServerInterfaceWrapper) QueryEnvAudit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params QueryEnvAuditParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "after_seq" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "after_seq", r.URL.Query(), &params.AfterSeq, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "after_seq"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "after_seq", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "actor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "actor", r.URL.Query(), &params.Actor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "actor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "actor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "operation" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "operation", r.URL.Query(), &params.Operation, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "operation"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "operation", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "outcome" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "outcome", r.URL.Query(), &params.Outcome, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcome"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcome", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "object_type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "object_type", r.URL.Query(), &params.ObjectType, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "object_type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_type", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "object_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "object_id", r.URL.Query(), &params.ObjectId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "object_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "correlation_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "correlation_id", r.URL.Query(), &params.CorrelationId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "correlation_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "correlation_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.QueryEnvAudit(w, r, org, project, environment, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExportEnvAudit operation middleware
+func (siw *ServerInterfaceWrapper) ExportEnvAudit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ExportEnvAuditParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "actor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "actor", r.URL.Query(), &params.Actor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "actor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "actor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "operation" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "operation", r.URL.Query(), &params.Operation, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "operation"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "operation", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "outcome" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "outcome", r.URL.Query(), &params.Outcome, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcome"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcome", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "object_type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "object_type", r.URL.Query(), &params.ObjectType, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "object_type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_type", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "object_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "object_id", r.URL.Query(), &params.ObjectId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "object_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "correlation_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "correlation_id", r.URL.Query(), &params.CorrelationId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "correlation_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "correlation_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExportEnvAudit(w, r, org, project, environment, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -18128,6 +19628,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/events", wrapper.WatchProjectEvents)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/audit", wrapper.QueryOrgAudit)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/audit/export", wrapper.ExportOrgAudit)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/audit", wrapper.QueryProjectAudit)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/audit/export", wrapper.ExportProjectAudit)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit", wrapper.QueryEnvAudit)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit/export", wrapper.ExportEnvAudit)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/instance/rotate-token-key", wrapper.RotateTokenKey)
@@ -27240,6 +28758,223 @@ func (response RenameOrg500JSONResponse) VisitRenameOrgResponse(w http.ResponseW
 	return err
 }
 
+type QueryOrgAuditRequestObject struct {
+	Org    OrgID `json:"org"`
+	Params QueryOrgAuditParams
+}
+
+type QueryOrgAuditResponseObject interface {
+	VisitQueryOrgAuditResponse(w http.ResponseWriter) error
+}
+
+type QueryOrgAudit200JSONResponse AuditPage
+
+func (response QueryOrgAudit200JSONResponse) VisitQueryOrgAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryOrgAudit400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response QueryOrgAudit400JSONResponse) VisitQueryOrgAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryOrgAudit401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response QueryOrgAudit401JSONResponse) VisitQueryOrgAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryOrgAudit404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response QueryOrgAudit404JSONResponse) VisitQueryOrgAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryOrgAudit429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response QueryOrgAudit429JSONResponse) VisitQueryOrgAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryOrgAudit500JSONResponse struct{ InternalJSONResponse }
+
+func (response QueryOrgAudit500JSONResponse) VisitQueryOrgAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportOrgAuditRequestObject struct {
+	Org    OrgID `json:"org"`
+	Params ExportOrgAuditParams
+}
+
+type ExportOrgAuditResponseObject interface {
+	VisitExportOrgAuditResponse(w http.ResponseWriter) error
+}
+
+type ExportOrgAudit200ApplicationxNdjsonResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response ExportOrgAudit200ApplicationxNdjsonResponse) VisitExportOrgAuditResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		// If w doesn't support flushing, fall back to io.Copy.
+		_, err := io.Copy(w, response.Body)
+		return err
+	}
+	// text/event-stream messages are typically small; use a
+	// modest buffer and flush after each chunk so clients see
+	// events immediately instead of waiting on OS buffering.
+	buf := make([]byte, 4096)
+	for {
+		n, err := response.Body.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				return writeErr
+			}
+			flusher.Flush()
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+type ExportOrgAudit400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ExportOrgAudit400JSONResponse) VisitExportOrgAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportOrgAudit401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ExportOrgAudit401JSONResponse) VisitExportOrgAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportOrgAudit404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ExportOrgAudit404JSONResponse) VisitExportOrgAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportOrgAudit429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ExportOrgAudit429JSONResponse) VisitExportOrgAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportOrgAudit500JSONResponse struct{ InternalJSONResponse }
+
+func (response ExportOrgAudit500JSONResponse) VisitExportOrgAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RevokeOrgGrantRequestObject struct {
 	Org    OrgID `json:"org"`
 	Params RevokeOrgGrantParams
@@ -29796,6 +31531,225 @@ func (response AddAdapterTarget500JSONResponse) VisitAddAdapterTargetResponse(w 
 	return err
 }
 
+type QueryProjectAuditRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+	Params  QueryProjectAuditParams
+}
+
+type QueryProjectAuditResponseObject interface {
+	VisitQueryProjectAuditResponse(w http.ResponseWriter) error
+}
+
+type QueryProjectAudit200JSONResponse AuditPage
+
+func (response QueryProjectAudit200JSONResponse) VisitQueryProjectAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryProjectAudit400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response QueryProjectAudit400JSONResponse) VisitQueryProjectAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryProjectAudit401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response QueryProjectAudit401JSONResponse) VisitQueryProjectAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryProjectAudit404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response QueryProjectAudit404JSONResponse) VisitQueryProjectAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryProjectAudit429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response QueryProjectAudit429JSONResponse) VisitQueryProjectAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryProjectAudit500JSONResponse struct{ InternalJSONResponse }
+
+func (response QueryProjectAudit500JSONResponse) VisitQueryProjectAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportProjectAuditRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+	Params  ExportProjectAuditParams
+}
+
+type ExportProjectAuditResponseObject interface {
+	VisitExportProjectAuditResponse(w http.ResponseWriter) error
+}
+
+type ExportProjectAudit200ApplicationxNdjsonResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response ExportProjectAudit200ApplicationxNdjsonResponse) VisitExportProjectAuditResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		// If w doesn't support flushing, fall back to io.Copy.
+		_, err := io.Copy(w, response.Body)
+		return err
+	}
+	// text/event-stream messages are typically small; use a
+	// modest buffer and flush after each chunk so clients see
+	// events immediately instead of waiting on OS buffering.
+	buf := make([]byte, 4096)
+	for {
+		n, err := response.Body.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				return writeErr
+			}
+			flusher.Flush()
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+type ExportProjectAudit400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ExportProjectAudit400JSONResponse) VisitExportProjectAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportProjectAudit401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ExportProjectAudit401JSONResponse) VisitExportProjectAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportProjectAudit404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ExportProjectAudit404JSONResponse) VisitExportProjectAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportProjectAudit429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ExportProjectAudit429JSONResponse) VisitExportProjectAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportProjectAudit500JSONResponse struct{ InternalJSONResponse }
+
+func (response ExportProjectAudit500JSONResponse) VisitExportProjectAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CheckDefinitionsRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -31110,6 +33064,227 @@ func (response RenameEnvironment429JSONResponse) VisitRenameEnvironmentResponse(
 type RenameEnvironment500JSONResponse struct{ InternalJSONResponse }
 
 func (response RenameEnvironment500JSONResponse) VisitRenameEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryEnvAuditRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Params      QueryEnvAuditParams
+}
+
+type QueryEnvAuditResponseObject interface {
+	VisitQueryEnvAuditResponse(w http.ResponseWriter) error
+}
+
+type QueryEnvAudit200JSONResponse AuditPage
+
+func (response QueryEnvAudit200JSONResponse) VisitQueryEnvAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryEnvAudit400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response QueryEnvAudit400JSONResponse) VisitQueryEnvAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryEnvAudit401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response QueryEnvAudit401JSONResponse) VisitQueryEnvAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryEnvAudit404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response QueryEnvAudit404JSONResponse) VisitQueryEnvAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryEnvAudit429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response QueryEnvAudit429JSONResponse) VisitQueryEnvAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryEnvAudit500JSONResponse struct{ InternalJSONResponse }
+
+func (response QueryEnvAudit500JSONResponse) VisitQueryEnvAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportEnvAuditRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Params      ExportEnvAuditParams
+}
+
+type ExportEnvAuditResponseObject interface {
+	VisitExportEnvAuditResponse(w http.ResponseWriter) error
+}
+
+type ExportEnvAudit200ApplicationxNdjsonResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response ExportEnvAudit200ApplicationxNdjsonResponse) VisitExportEnvAuditResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		// If w doesn't support flushing, fall back to io.Copy.
+		_, err := io.Copy(w, response.Body)
+		return err
+	}
+	// text/event-stream messages are typically small; use a
+	// modest buffer and flush after each chunk so clients see
+	// events immediately instead of waiting on OS buffering.
+	buf := make([]byte, 4096)
+	for {
+		n, err := response.Body.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				return writeErr
+			}
+			flusher.Flush()
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+type ExportEnvAudit400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ExportEnvAudit400JSONResponse) VisitExportEnvAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportEnvAudit401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ExportEnvAudit401JSONResponse) VisitExportEnvAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportEnvAudit404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ExportEnvAudit404JSONResponse) VisitExportEnvAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportEnvAudit429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ExportEnvAudit429JSONResponse) VisitExportEnvAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportEnvAudit500JSONResponse struct{ InternalJSONResponse }
+
+func (response ExportEnvAudit500JSONResponse) VisitExportEnvAuditResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -41288,6 +43463,12 @@ type StrictServerInterface interface {
 	// RenameOrg Rename an organisation.
 	// (PATCH /api/v1/orgs/{org})
 	RenameOrg(ctx context.Context, request RenameOrgRequestObject) (RenameOrgResponseObject, error)
+	// QueryOrgAudit One bounded page of the organization's audit trail.
+	// (GET /api/v1/orgs/{org}/audit)
+	QueryOrgAudit(ctx context.Context, request QueryOrgAuditRequestObject) (QueryOrgAuditResponseObject, error)
+	// ExportOrgAudit Stream the organization's audit trail as JSONL.
+	// (GET /api/v1/orgs/{org}/audit/export)
+	ExportOrgAudit(ctx context.Context, request ExportOrgAuditRequestObject) (ExportOrgAuditResponseObject, error)
 	// RevokeOrgGrant Revoke one capability at organisation scope.
 	// (DELETE /api/v1/orgs/{org}/grants)
 	RevokeOrgGrant(ctx context.Context, request RevokeOrgGrantRequestObject) (RevokeOrgGrantResponseObject, error)
@@ -41372,6 +43553,12 @@ type StrictServerInterface interface {
 	// AddAdapterTarget Add a tested target and atomically reassign adapter authority.
 	// (POST /api/v1/orgs/{org}/projects/{project}/adapters/{adapter}/targets)
 	AddAdapterTarget(ctx context.Context, request AddAdapterTargetRequestObject) (AddAdapterTargetResponseObject, error)
+	// QueryProjectAudit One bounded page of the project's audit trail.
+	// (GET /api/v1/orgs/{org}/projects/{project}/audit)
+	QueryProjectAudit(ctx context.Context, request QueryProjectAuditRequestObject) (QueryProjectAuditResponseObject, error)
+	// ExportProjectAudit Stream the project's audit trail as JSONL.
+	// (GET /api/v1/orgs/{org}/projects/{project}/audit/export)
+	ExportProjectAudit(ctx context.Context, request ExportProjectAuditRequestObject) (ExportProjectAuditResponseObject, error)
 	// CheckDefinitions Compare a definitions bundle with current project state.
 	// (POST /api/v1/orgs/{org}/projects/{project}/definitions/check)
 	CheckDefinitions(ctx context.Context, request CheckDefinitionsRequestObject) (CheckDefinitionsResponseObject, error)
@@ -41414,6 +43601,12 @@ type StrictServerInterface interface {
 	// RenameEnvironment Rename an environment.
 	// (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment})
 	RenameEnvironment(ctx context.Context, request RenameEnvironmentRequestObject) (RenameEnvironmentResponseObject, error)
+	// QueryEnvAudit One bounded page of the environment's audit trail.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit)
+	QueryEnvAudit(ctx context.Context, request QueryEnvAuditRequestObject) (QueryEnvAuditResponseObject, error)
+	// ExportEnvAudit Stream the environment's audit trail as JSONL.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit/export)
+	ExportEnvAudit(ctx context.Context, request ExportEnvAuditRequestObject) (ExportEnvAuditResponseObject, error)
 	// FetchDelivery Fetch the authorized projection, conditionally.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery)
 	FetchDelivery(ctx context.Context, request FetchDeliveryRequestObject) (FetchDeliveryResponseObject, error)
@@ -44455,6 +46648,60 @@ func (sh *strictHandler) RenameOrg(w http.ResponseWriter, r *http.Request, org O
 	}
 }
 
+// QueryOrgAudit operation middleware
+func (sh *strictHandler) QueryOrgAudit(w http.ResponseWriter, r *http.Request, org OrgID, params QueryOrgAuditParams) {
+	var request QueryOrgAuditRequestObject
+
+	request.Org = org
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.QueryOrgAudit(ctx, request.(QueryOrgAuditRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "QueryOrgAudit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(QueryOrgAuditResponseObject); ok {
+		if err := validResponse.VisitQueryOrgAuditResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExportOrgAudit operation middleware
+func (sh *strictHandler) ExportOrgAudit(w http.ResponseWriter, r *http.Request, org OrgID, params ExportOrgAuditParams) {
+	var request ExportOrgAuditRequestObject
+
+	request.Org = org
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportOrgAudit(ctx, request.(ExportOrgAuditRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportOrgAudit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExportOrgAuditResponseObject); ok {
+		if err := validResponse.VisitExportOrgAuditResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // RevokeOrgGrant operation middleware
 func (sh *strictHandler) RevokeOrgGrant(w http.ResponseWriter, r *http.Request, org OrgID, params RevokeOrgGrantParams) {
 	var request RevokeOrgGrantRequestObject
@@ -45303,6 +47550,62 @@ func (sh *strictHandler) AddAdapterTarget(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// QueryProjectAudit operation middleware
+func (sh *strictHandler) QueryProjectAudit(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, params QueryProjectAuditParams) {
+	var request QueryProjectAuditRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.QueryProjectAudit(ctx, request.(QueryProjectAuditRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "QueryProjectAudit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(QueryProjectAuditResponseObject); ok {
+		if err := validResponse.VisitQueryProjectAuditResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExportProjectAudit operation middleware
+func (sh *strictHandler) ExportProjectAudit(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, params ExportProjectAuditParams) {
+	var request ExportProjectAuditRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportProjectAudit(ctx, request.(ExportProjectAuditRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportProjectAudit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExportProjectAuditResponseObject); ok {
+		if err := validResponse.VisitExportProjectAuditResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // CheckDefinitions operation middleware
 func (sh *strictHandler) CheckDefinitions(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
 	var request CheckDefinitionsRequestObject
@@ -45737,6 +48040,64 @@ func (sh *strictHandler) RenameEnvironment(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RenameEnvironmentResponseObject); ok {
 		if err := validResponse.VisitRenameEnvironmentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// QueryEnvAudit operation middleware
+func (sh *strictHandler) QueryEnvAudit(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params QueryEnvAuditParams) {
+	var request QueryEnvAuditRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.QueryEnvAudit(ctx, request.(QueryEnvAuditRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "QueryEnvAudit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(QueryEnvAuditResponseObject); ok {
+		if err := validResponse.VisitQueryEnvAuditResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExportEnvAudit operation middleware
+func (sh *strictHandler) ExportEnvAudit(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params ExportEnvAuditParams) {
+	var request ExportEnvAuditRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportEnvAudit(ctx, request.(ExportEnvAuditRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportEnvAudit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExportEnvAuditResponseObject); ok {
+		if err := validResponse.VisitExportEnvAuditResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

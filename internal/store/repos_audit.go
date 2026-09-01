@@ -33,13 +33,49 @@ import (
 // AfterSeq is the public allocation-order lower bound; Limit is the page size
 // and must be positive (the caller's bound — ops spec owns defaults). Export
 // mode adds an internal commit-order cursor without changing AfterSeq.
+//
+// The time range, AfterSeq lower bound and chain scope are enforced by the
+// store's SQL (chain-confined, analyzer-2-provable). The equality fields below
+// are applied by Matches AFTER the authorized page read — a projection on rows
+// the proof already admitted, never a SQL predicate: analyzer 2 (tenant
+// isolation, invariant 8) accepts only `col OP param` conjuncts, so an optional
+// equality predicate has no provable SQL shape. An empty field is unset.
 type AuditFilter struct {
 	From           time.Time
 	To             time.Time
 	AfterSeq       int64
 	Limit          int
+	Actor          string         // actor_id (the acting principal)
+	Type           string         // event type (the operation)
+	Outcome        string         // outcome
+	ObjectType     string         // object type (a supported resource identifier)
+	ObjectID       string         // object id (a supported resource identifier)
+	CorrelationID  string         // links INTENT and OUTCOME of one act
 	Order          AuditPageOrder // service-controlled page mode; excluded from Normalized
 	AfterCommitSeq AuditCommitSeq // service-controlled export cursor; excluded from Normalized
+}
+
+// Matches reports whether a scanned row satisfies the filter's equality fields.
+// It is pure and engine-independent by construction, so browser and CLI queries
+// over the same filter select the same events regardless of storage engine. The
+// time range, cursor and scope are already applied by the SQL that produced e.
+func (f AuditFilter) Matches(e AuditEvent) bool {
+	switch {
+	case f.Actor != "" && e.Actor.ID != f.Actor:
+		return false
+	case f.Type != "" && string(e.Type) != f.Type:
+		return false
+	case f.Outcome != "" && string(e.Outcome) != f.Outcome:
+		return false
+	case f.ObjectType != "" && e.Object.Type != f.ObjectType:
+		return false
+	case f.ObjectID != "" && e.Object.ID != f.ObjectID:
+		return false
+	case f.CorrelationID != "" && e.CorrelationID != f.CorrelationID:
+		return false
+	default:
+		return true
+	}
 }
 
 // AuditPageOrder names the storage order for an audit page.
@@ -96,6 +132,24 @@ func (f AuditFilter) Normalized() audit.Payload {
 	}
 	if f.AfterSeq > 0 {
 		p["filter_after_seq"] = f.AfterSeq
+	}
+	if f.Actor != "" {
+		p["filter_actor"] = f.Actor
+	}
+	if f.Type != "" {
+		p["filter_type"] = f.Type
+	}
+	if f.Outcome != "" {
+		p["filter_outcome"] = f.Outcome
+	}
+	if f.ObjectType != "" {
+		p["filter_object_type"] = f.ObjectType
+	}
+	if f.ObjectID != "" {
+		p["filter_object_id"] = f.ObjectID
+	}
+	if f.CorrelationID != "" {
+		p["filter_correlation_id"] = f.CorrelationID
 	}
 	return p
 }

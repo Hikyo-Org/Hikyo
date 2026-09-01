@@ -2720,6 +2720,47 @@ export const zSessionList = z.object({
 });
 
 /**
+ * One stored trail event, exactly as the JSONL export emits it. No value
+ * material is ever written to the trail, so none appears here. Consumers
+ * MUST tolerate members they do not recognise: the closed registry adds
+ * event types and payload fields over time, and a client that fails on an
+ * additive field would break on every forward-compatible server.
+ *
+ */
+export const zAuditEvent = z.object({
+    seq: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    id: z.string(),
+    type: z.string(),
+    schema_version: z.int(),
+    occurred_at: z.iso.datetime(),
+    occurred_asserted: z.boolean(),
+    recorded_at: z.iso.datetime(),
+    actor_id: z.string().optional(),
+    actor_class: z.string(),
+    actor_credential_id: z.string().optional(),
+    authority_id: z.string().optional(),
+    scope_class: z.string(),
+    org_id: z.string().optional(),
+    project_id: z.string().optional(),
+    env_id: z.string().optional(),
+    object_type: z.string().optional(),
+    object_id: z.string().optional(),
+    outcome: z.string(),
+    correlation_id: z.string().optional(),
+    source_ip: z.string().optional(),
+    user_agent: z.string().optional(),
+    origin: z.string(),
+    payload: z.record(z.string(), z.unknown())
+});
+
+export const zAuditPage = z.object({
+    items: z.array(zAuditEvent),
+    count: z.int().gte(0),
+    next_after_seq: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    exhausted: z.boolean()
+});
+
+/**
  * Organisation identifier.
  */
 export const zOrgId = zId;
@@ -2952,6 +2993,71 @@ export const zSessionId = zId;
  * Durable updater-helper job identifier.
  */
 export const zInstanceUpdateJobId = zId;
+
+/**
+ * Inclusive lower time bound (recorded-at). Absent means the epoch.
+ */
+export const zAuditFrom = z.iso.datetime();
+
+/**
+ * Inclusive upper time bound (recorded-at). Absent means unbounded.
+ */
+export const zAuditTo = z.iso.datetime();
+
+/**
+ * Resume cursor: return events whose seq is strictly greater. Pass the
+ * previous page's `next_after_seq` to page forward.
+ *
+ */
+export const zAuditAfterSeq = z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' });
+
+/**
+ * Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
+ * be fewer when a filter is set.
+ *
+ */
+export const zAuditLimit = z.int().gte(1).lte(1000).default(100);
+
+/**
+ * Match only events whose acting principal has this id.
+ */
+export const zAuditActor = z.string().max(64);
+
+/**
+ * Match only events of this type (the operation), e.g. `value.set`. An
+ * unknown type is not an error; it simply matches nothing.
+ *
+ */
+export const zAuditOperation = z.string().max(128);
+
+/**
+ * Match only events with this outcome.
+ */
+export const zAuditOutcome = z.enum([
+    'intent',
+    'success',
+    'denied',
+    'failure',
+    'unknown',
+    'disconnected'
+]);
+
+/**
+ * Match only events acting on this object type.
+ */
+export const zAuditObjectType = z.string().max(64);
+
+/**
+ * Match only events acting on this object id.
+ */
+export const zAuditObjectId = z.string().max(64);
+
+/**
+ * Match only events sharing this correlation id — the link between an
+ * act's INTENT and OUTCOME events.
+ *
+ */
+export const zAuditCorrelationId = z.string().max(64);
 
 /**
  * Instance metadata.
@@ -5063,6 +5169,180 @@ export const zWatchProjectEventsPath = z.object({
  * An event stream.
  */
 export const zWatchProjectEventsResponse = z.string();
+
+export const zQueryOrgAuditPath = z.object({
+    org: zId
+});
+
+export const zQueryOrgAuditQuery = z.object({
+    from: z.iso.datetime().optional(),
+    to: z.iso.datetime().optional(),
+    after_seq: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    limit: z.int().gte(1).lte(1000).optional().default(100),
+    actor: z.string().max(64).optional(),
+    operation: z.string().max(128).optional(),
+    outcome: z.enum([
+        'intent',
+        'success',
+        'denied',
+        'failure',
+        'unknown',
+        'disconnected'
+    ]).optional(),
+    object_type: z.string().max(64).optional(),
+    object_id: z.string().max(64).optional(),
+    correlation_id: z.string().max(64).optional()
+});
+
+/**
+ * One page of trail events.
+ */
+export const zQueryOrgAuditResponse = zAuditPage;
+
+export const zExportOrgAuditPath = z.object({
+    org: zId
+});
+
+export const zExportOrgAuditQuery = z.object({
+    from: z.iso.datetime().optional(),
+    to: z.iso.datetime().optional(),
+    actor: z.string().max(64).optional(),
+    operation: z.string().max(128).optional(),
+    outcome: z.enum([
+        'intent',
+        'success',
+        'denied',
+        'failure',
+        'unknown',
+        'disconnected'
+    ]).optional(),
+    object_type: z.string().max(64).optional(),
+    object_id: z.string().max(64).optional(),
+    correlation_id: z.string().max(64).optional()
+});
+
+/**
+ * The trail as a JSONL byte stream.
+ */
+export const zExportOrgAuditResponse = z.string();
+
+export const zQueryProjectAuditPath = z.object({
+    org: zId,
+    project: zId
+});
+
+export const zQueryProjectAuditQuery = z.object({
+    from: z.iso.datetime().optional(),
+    to: z.iso.datetime().optional(),
+    after_seq: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    limit: z.int().gte(1).lte(1000).optional().default(100),
+    actor: z.string().max(64).optional(),
+    operation: z.string().max(128).optional(),
+    outcome: z.enum([
+        'intent',
+        'success',
+        'denied',
+        'failure',
+        'unknown',
+        'disconnected'
+    ]).optional(),
+    object_type: z.string().max(64).optional(),
+    object_id: z.string().max(64).optional(),
+    correlation_id: z.string().max(64).optional()
+});
+
+/**
+ * One page of trail events.
+ */
+export const zQueryProjectAuditResponse = zAuditPage;
+
+export const zExportProjectAuditPath = z.object({
+    org: zId,
+    project: zId
+});
+
+export const zExportProjectAuditQuery = z.object({
+    from: z.iso.datetime().optional(),
+    to: z.iso.datetime().optional(),
+    actor: z.string().max(64).optional(),
+    operation: z.string().max(128).optional(),
+    outcome: z.enum([
+        'intent',
+        'success',
+        'denied',
+        'failure',
+        'unknown',
+        'disconnected'
+    ]).optional(),
+    object_type: z.string().max(64).optional(),
+    object_id: z.string().max(64).optional(),
+    correlation_id: z.string().max(64).optional()
+});
+
+/**
+ * The trail as a JSONL byte stream.
+ */
+export const zExportProjectAuditResponse = z.string();
+
+export const zQueryEnvAuditPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+export const zQueryEnvAuditQuery = z.object({
+    from: z.iso.datetime().optional(),
+    to: z.iso.datetime().optional(),
+    after_seq: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    limit: z.int().gte(1).lte(1000).optional().default(100),
+    actor: z.string().max(64).optional(),
+    operation: z.string().max(128).optional(),
+    outcome: z.enum([
+        'intent',
+        'success',
+        'denied',
+        'failure',
+        'unknown',
+        'disconnected'
+    ]).optional(),
+    object_type: z.string().max(64).optional(),
+    object_id: z.string().max(64).optional(),
+    correlation_id: z.string().max(64).optional()
+});
+
+/**
+ * One page of trail events.
+ */
+export const zQueryEnvAuditResponse = zAuditPage;
+
+export const zExportEnvAuditPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+export const zExportEnvAuditQuery = z.object({
+    from: z.iso.datetime().optional(),
+    to: z.iso.datetime().optional(),
+    actor: z.string().max(64).optional(),
+    operation: z.string().max(128).optional(),
+    outcome: z.enum([
+        'intent',
+        'success',
+        'denied',
+        'failure',
+        'unknown',
+        'disconnected'
+    ]).optional(),
+    object_type: z.string().max(64).optional(),
+    object_id: z.string().max(64).optional(),
+    correlation_id: z.string().max(64).optional()
+});
+
+/**
+ * The trail as a JSONL byte stream.
+ */
+export const zExportEnvAuditResponse = z.string();
 
 /**
  * The rotation.
