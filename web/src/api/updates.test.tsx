@@ -7,6 +7,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { forgetWorkspace, rememberWorkspace } from './workspace.ts';
 import {
   type InstanceUpdateJob,
+  jobReadErrorVisible,
   updateJobOutcome,
   useRemoteUpdateJob,
   useServerVersion,
@@ -54,6 +55,18 @@ test('updateJobOutcome passes failure_code through on a terminal failure', () =>
   expect(updateJobOutcome(job({ state: 'succeeded', failure_code: 'ignored' }))).toEqual({
     kind: 'succeeded',
   });
+});
+
+test('jobReadErrorVisible suppresses the read-error alert behind a terminal failure', () => {
+  // No error → never shown, whatever is cached.
+  expect(jobReadErrorVisible(false, undefined)).toBe(false);
+  expect(jobReadErrorVisible(false, job({ state: 'failed' }))).toBe(false);
+  // Error with no cached job, or a non-failure cached job → shown.
+  expect(jobReadErrorVisible(true, undefined)).toBe(true);
+  expect(jobReadErrorVisible(true, job({ state: 'succeeded' }))).toBe(true);
+  // Error while a terminal-failure read is still cached → suppressed; the
+  // failure alert already covers it, so the two must not double up.
+  expect(jobReadErrorVisible(true, job({ state: 'rollback-failed' }))).toBe(false);
 });
 
 test('server version reads server_version from the contract meta endpoint', async () => {

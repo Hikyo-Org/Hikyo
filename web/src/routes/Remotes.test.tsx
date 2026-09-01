@@ -91,7 +91,7 @@ describe('UpdateJobStatus', () => {
     const rendered = await renderForm(
       <UpdateJobStatus
         jobID="job_9"
-        job={updateJob({ state: 'rollback-failed', failure_code: 'health_probe' })}
+        job={updateJob({ state: 'rollback-failed', phase: 'rollback', failure_code: 'health_probe' })}
       />,
     );
     cleanups.push(rendered.unmount);
@@ -100,6 +100,7 @@ describe('UpdateJobStatus', () => {
     expect(alert).not.toBeNull();
     expect(alert?.textContent).toContain('job_9');
     expect(alert?.textContent).toContain('rollback-failed');
+    expect(alert?.textContent).toContain('(rollback)');
     expect(alert?.textContent).toContain('health_probe');
   });
 

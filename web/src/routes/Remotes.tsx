@@ -27,6 +27,7 @@ import { useOrgs } from '../api/session.ts';
 import { WorkspaceContextProvider, withRemote } from '../api/transport.tsx';
 import {
   type InstanceUpdateJob,
+  jobReadErrorVisible,
   updateJobOutcome,
   useRemoteUpdateJob,
   useRemoteUpdateStatuses,
@@ -274,7 +275,7 @@ function RemoteCard({ remote }: { remote: Remote }) {
       ) : null}
 
       {live !== undefined && update?.available === true ? (
-        <div className="remote__update" role="status">
+        <div className="remote__update">
           <p>
             Hikyo <span className="mono">{update.latest_version}</span> is available on the{' '}
             {update.channel} channel.
@@ -299,7 +300,7 @@ function RemoteCard({ remote }: { remote: Remote }) {
           {updateJobID === undefined ? null : (
             <UpdateJobStatus jobID={updateJobID} job={updateJob.data} />
           )}
-          {updateJob.isError && updateOutcome?.kind !== 'failed' ? (
+          {jobReadErrorVisible(updateJob.isError, updateJob.data) ? (
             <p className="alert" role="alert">
               The update job status could not be read. Inspect the remote instance logs before retrying.
             </p>
@@ -385,6 +386,7 @@ export function UpdateJobStatus({
         </span>
         <span>
           Update job <span className="mono">{jobID}</span> {job?.state}
+          {job?.phase === undefined ? '' : ` (${job.phase})`}
           {outcome.failureCode === undefined ? '' : ` — ${outcome.failureCode}`}. Inspect the
           remote instance logs.
         </span>
@@ -392,7 +394,7 @@ export function UpdateJobStatus({
     );
   }
   return (
-    <p>
+    <p role="status">
       Update job <span className="mono">{jobID}</span>: {job?.state ?? 'queued'}
       {job?.phase === undefined ? '' : ` (${job.phase})`}
     </p>

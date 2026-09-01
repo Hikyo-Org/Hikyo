@@ -42,6 +42,18 @@ export function updateJobOutcome(job: InstanceUpdateJob): UpdateJobOutcome {
       return { kind: 'failed', failureCode: job.failure_code };
   }
 }
+
+/**
+ * Whether to show the "job status could not be read" alert. A refetch error can
+ * land while the last successful read — a terminal `failed` job — is still
+ * cached; in that case the failure alert already tells the operator the job is
+ * broken, so the read-error alert is suppressed to avoid a double-up. It shows
+ * only when there is a live read error and no terminal-failure outcome to
+ * supersede it.
+ */
+export function jobReadErrorVisible(isError: boolean, job: InstanceUpdateJob | undefined): boolean {
+  return isError && (job === undefined || updateJobOutcome(job).kind !== 'failed');
+}
 export type RemoteUpdateProbe = {
   origin: string;
   status: UpdateStatus | null | undefined;
