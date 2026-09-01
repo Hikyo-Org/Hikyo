@@ -172,14 +172,31 @@ func (s *Scheduler) runHA(ctx context.Context) {
 	// to be claimable by another node, so continuing would be split brain.
 	var expiresAt time.Time
 	termCancel := func() {}
+	// termDone tracks the CURRENT or still-DRAINING leadership term. It is only
+	// cleared once the term goroutine has actually exited, so a new term is
+	// never started while the previous one is still winding down (no overlap).
 	var termDone chan struct{}
 	defer func() { termCancel() }()
 	dropLeadership := func() {
 		termCancel()
 		termCancel = func() {}
-		termDone = nil
 		if s.leader.Swap(false) {
 			s.logger().Warn("scheduler lost leadership", "node", s.NodeID)
+		}
+	}
+	// termDraining reports whether a prior term goroutine has not yet exited,
+	// clearing termDone the moment it has. A new lease claim is refused while a
+	// term is draining.
+	termDraining := func() bool {
+		if termDone == nil {
+			return false
+		}
+		select {
+		case <-termDone:
+			termDone = nil
+			return false
+		default:
+			return true
 		}
 	}
 
@@ -188,17 +205,21 @@ func (s *Scheduler) runHA(ctx context.Context) {
 		case <-ctx.Done():
 			// Cancel the running term and WAIT for it to finish before releasing
 			// the lease, so we never hand the lease to a standby while our own
-			// singleton job is still committing.
+			// singleton job is still committing. If the term will not stop, do
+			// NOT release: let the lease expire so a standby only takes over
+			// after the TTL, never while our job is still running.
 			done := termDone
 			dropLeadership()
+			joined := done == nil
 			if done != nil {
 				select {
 				case <-done:
+					joined = true
 				case <-time.After(2 * time.Second):
-					s.logger().Warn("scheduler term did not stop before release", "node", s.NodeID)
+					s.logger().Warn("scheduler term did not stop; leaving lease to expire rather than releasing", "node", s.NodeID)
 				}
 			}
-			if fence != 0 {
+			if fence != 0 && joined {
 				releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 				if err := s.Lease.ReleaseLease(releaseCtx, schedulerLeaseName, s.NodeID, fence); err != nil {
 					s.logger().Warn("scheduler lease release failed", "node", s.NodeID, "err", err)
@@ -242,7 +263,9 @@ func (s *Scheduler) runHA(ctx context.Context) {
 					expiresAt = expires
 				}
 			}
-			if !s.leader.Load() {
+			// Do not claim while the previous term is still draining: a new
+			// runLoop must never overlap the cancelled one.
+			if !s.leader.Load() && !termDraining() {
 				claimCtx, cancel := context.WithTimeout(ctx, s.heartbeat())
 				gotFence, held, err := s.Lease.ClaimLease(claimCtx, schedulerLeaseName, s.NodeID, now, expires)
 				cancel()

@@ -108,44 +108,58 @@ func runCoordinationInvariants(t *testing.T, db *store.DB) {
 	})
 
 	t.Run("account_backoff", func(t *testing.T) {
-		if _, _, ok, err := c.AccountFailureState(ctx, "acct"); err != nil || ok {
+		// Timestamps are datastore-clock (Postgres now()), so assert on
+		// behaviour and monotonicity rather than exact injected instants.
+		if _, _, _, ok, err := c.AccountFailureState(ctx, "acct"); err != nil || ok {
 			t.Fatalf("fresh state: ok=%v err=%v (want none)", ok, err)
 		}
-		t1 := base.Add(time.Second)
-		f, err := c.RecordAccountFailure(ctx, "acct", t1)
+		// Stamp with the datastore clock so the sqlite leg (which uses the passed
+		// time) agrees with the dbNow the state read reports.
+		recNow, err := c.Now(ctx)
+		if err != nil {
+			t.Fatalf("now: %v", err)
+		}
+		f, err := c.RecordAccountFailure(ctx, "acct", recNow)
 		if err != nil || f != 1 {
 			t.Fatalf("failure 1 = %d err=%v", f, err)
 		}
-		t2 := base.Add(2 * time.Second)
-		if f, err := c.RecordAccountFailure(ctx, "acct", t2); err != nil || f != 2 {
+		_, last1, _, _, _ := c.AccountFailureState(ctx, "acct")
+		if f, err := c.RecordAccountFailure(ctx, "acct", recNow); err != nil || f != 2 {
 			t.Fatalf("failure 2 = %d err=%v", f, err)
 		}
-		failures, last, ok, err := c.AccountFailureState(ctx, "acct")
-		if err != nil || !ok || failures != 2 || !last.Equal(t2) {
-			t.Fatalf("state = (%d, %v) ok=%v err=%v, want (2, %v)", failures, last, ok, err, t2)
+		failures, last2, dbNow, ok, err := c.AccountFailureState(ctx, "acct")
+		if err != nil || !ok || failures != 2 {
+			t.Fatalf("state = (%d) ok=%v err=%v, want failures 2", failures, ok, err)
 		}
-		// A stale-window prune never sweeps a fresh failure.
-		if err := c.PruneAccountBackoff(ctx, base.Add(-time.Hour)); err != nil {
+		if last2.Before(last1) {
+			t.Fatalf("last-failure moved backwards: %v -> %v", last1, last2)
+		}
+		if last2.IsZero() || dbNow.IsZero() {
+			t.Fatal("last-failure or dbNow unset")
+		}
+		// A cutoff before the failure never sweeps a fresh row.
+		if err := c.PruneAccountBackoff(ctx, dbNow.Add(-time.Hour)); err != nil {
 			t.Fatalf("prune fresh: %v", err)
 		}
-		if _, _, ok, _ := c.AccountFailureState(ctx, "acct"); !ok {
+		if _, _, _, ok, _ := c.AccountFailureState(ctx, "acct"); !ok {
 			t.Fatal("fresh account row was pruned")
 		}
-		if err := c.ClearAccount(ctx, "acct"); err != nil {
-			t.Fatalf("clear: %v", err)
-		}
-		if _, _, ok, err := c.AccountFailureState(ctx, "acct"); err != nil || ok {
-			t.Fatalf("after clear: ok=%v err=%v (want none)", ok, err)
-		}
-		// PruneAccountBackoff sweeps an old failure row.
-		if _, err := c.RecordAccountFailure(ctx, "stale", base.Add(-2*time.Hour)); err != nil {
-			t.Fatalf("record stale: %v", err)
-		}
-		if err := c.PruneAccountBackoff(ctx, base.Add(-time.Hour)); err != nil {
+		// A cutoff after the failure sweeps it.
+		if err := c.PruneAccountBackoff(ctx, dbNow.Add(time.Hour)); err != nil {
 			t.Fatalf("prune stale: %v", err)
 		}
-		if _, _, ok, _ := c.AccountFailureState(ctx, "stale"); ok {
-			t.Fatal("stale account row survived prune")
+		if _, _, _, ok, _ := c.AccountFailureState(ctx, "acct"); ok {
+			t.Fatal("old account row survived prune")
+		}
+		// Clear removes the row on success.
+		if _, err := c.RecordAccountFailure(ctx, "acct2", recNow); err != nil {
+			t.Fatalf("record acct2: %v", err)
+		}
+		if err := c.ClearAccount(ctx, "acct2"); err != nil {
+			t.Fatalf("clear: %v", err)
+		}
+		if _, _, _, ok, err := c.AccountFailureState(ctx, "acct2"); err != nil || ok {
+			t.Fatalf("after clear: ok=%v err=%v (want none)", ok, err)
 		}
 	})
 

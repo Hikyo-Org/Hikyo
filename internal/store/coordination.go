@@ -438,56 +438,59 @@ func (c *Coordination) BumpWindow(ctx context.Context, bucket, subject string, w
 	return count, nil
 }
 
-// AccountFailureState reports an account subject's consecutive-failure count
-// and the instant of its most recent failure. The delay deadline is a pure,
-// deterministic function of these two values (computed in the admission
-// package), so there is no separately written deadline that could be left
-// stale or overwritten by a shorter one. ok is false when no failures are
-// recorded.
-func (c *Coordination) AccountFailureState(ctx context.Context, subject string) (failures int64, lastFailure time.Time, ok bool, err error) {
+// AccountFailureState reports an account subject's consecutive-failure count,
+// the instant of its most recent failure, and the datastore's current time.
+// The delay deadline is a pure function of failures and lastFailure (computed
+// in the admission package) and is compared against dbNow, so both the stamp
+// and the comparison use one clock: no separately stored deadline to go stale,
+// and no per-node clock skew in the remaining-delay calculation. ok is false
+// when no failures are recorded.
+func (c *Coordination) AccountFailureState(ctx context.Context, subject string) (failures int64, lastFailure, dbNow time.Time, ok bool, err error) {
 	switch c.db.engine {
 	case EnginePostgres:
 		var until sql.NullTime
 		e := c.db.pool.QueryRow(ctx,
-			`SELECT failures, until_at FROM admission_counters WHERE bucket = $1 AND subject = $2 AND window_start = $3`,
-			AccountBucket, subject, accountWindow).Scan(&failures, &until)
+			`SELECT failures, until_at, now() FROM admission_counters WHERE bucket = $1 AND subject = $2 AND window_start = $3`,
+			AccountBucket, subject, accountWindow).Scan(&failures, &until, &dbNow)
 		if isNoRows(e) {
-			return 0, time.Time{}, false, nil
+			return 0, time.Time{}, time.Time{}, false, nil
 		}
 		if e != nil {
-			return 0, time.Time{}, false, fmt.Errorf("store: account failure state %s: %w", subject, e)
+			return 0, time.Time{}, time.Time{}, false, fmt.Errorf("store: account failure state %s: %w", subject, e)
 		}
 		if until.Valid {
 			lastFailure = until.Time.UTC()
 		}
-		return failures, lastFailure, true, nil
+		return failures, lastFailure, dbNow.UTC(), true, nil
 	case EngineSQLite:
 		var until sql.NullString
 		e := c.db.sqRead.QueryRowContext(ctx,
 			`SELECT failures, until_at FROM admission_counters WHERE bucket = ? AND subject = ? AND window_start = ?`,
 			AccountBucket, subject, sqliteTime(accountWindow)).Scan(&failures, &until)
 		if isNoRows(e) {
-			return 0, time.Time{}, false, nil
+			return 0, time.Time{}, time.Time{}, false, nil
 		}
 		if e != nil {
-			return 0, time.Time{}, false, fmt.Errorf("store: account failure state %s: %w", subject, e)
+			return 0, time.Time{}, time.Time{}, false, fmt.Errorf("store: account failure state %s: %w", subject, e)
 		}
 		if until.Valid && until.String != "" {
 			lastFailure, _ = time.Parse(adapterTimeFormat, until.String)
 			lastFailure = lastFailure.UTC()
 		}
-		return failures, lastFailure, true, nil
+		// sqlite is single-node, so the process clock is the datastore clock.
+		return failures, lastFailure, time.Now().UTC(), true, nil
 	default:
-		return 0, time.Time{}, false, fmt.Errorf("store: coordination account failure state on unknown engine %q", c.db.engine)
+		return 0, time.Time{}, time.Time{}, false, fmt.Errorf("store: coordination account failure state on unknown engine %q", c.db.engine)
 	}
 }
 
 // RecordAccountFailure atomically increments the consecutive-failure count for
-// an account subject and stamps the failure instant, in one statement. Storing
-// the last-failure time (not a precomputed deadline) is what keeps the backoff
-// monotonic and race-free: the deadline is derived from failures and this time,
-// so a concurrent record can never leave the row admitting again or shorten a
-// stronger deadline. now must be datastore time.
+// an account subject and advances the failure instant, in one statement. The
+// timestamp is datastore time and moves MONOTONICALLY (GREATEST/max), so a
+// slow request that commits after a newer one cannot move it backwards, and no
+// concurrent record can leave the row admitting again. On sqlite (single node)
+// now is the process clock; on Postgres the SQL uses now() and the argument is
+// ignored, so multi-node timestamps come from one clock.
 func (c *Coordination) RecordAccountFailure(ctx context.Context, subject string, now time.Time) (int64, error) {
 	var failures int64
 	var err error
@@ -495,17 +498,19 @@ func (c *Coordination) RecordAccountFailure(ctx context.Context, subject string,
 	case EnginePostgres:
 		err = c.db.pool.QueryRow(ctx,
 			`INSERT INTO admission_counters (bucket, subject, window_start, failures, until_at)
-			 VALUES ($1, $2, $3, 1, $4)
+			 VALUES ($1, $2, $3, 1, now())
 			 ON CONFLICT (bucket, subject, window_start) DO UPDATE
-			   SET failures = admission_counters.failures + 1, until_at = $4
+			   SET failures = admission_counters.failures + 1,
+			       until_at = GREATEST(admission_counters.until_at, now())
 			 RETURNING failures`,
-			AccountBucket, subject, accountWindow, now).Scan(&failures)
+			AccountBucket, subject, accountWindow).Scan(&failures)
 	case EngineSQLite:
 		err = c.db.sqWrite.QueryRowContext(ctx,
 			`INSERT INTO admission_counters (bucket, subject, window_start, failures, until_at)
 			 VALUES (?, ?, ?, 1, ?)
 			 ON CONFLICT (bucket, subject, window_start) DO UPDATE
-			   SET failures = admission_counters.failures + 1, until_at = ?
+			   SET failures = admission_counters.failures + 1,
+			       until_at = max(admission_counters.until_at, ?)
 			 RETURNING failures`,
 			AccountBucket, subject, sqliteTime(accountWindow), sqliteTime(now), sqliteTime(now)).Scan(&failures)
 	default:

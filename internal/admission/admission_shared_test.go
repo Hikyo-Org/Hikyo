@@ -37,17 +37,20 @@ func (f *fakeShared) BumpWindow(_ context.Context, bucket, subject string, windo
 	return f.windows[k], nil
 }
 
-func (f *fakeShared) AccountFailureState(_ context.Context, subject string) (int64, time.Time, bool, error) {
+func (f *fakeShared) AccountFailureState(_ context.Context, subject string) (int64, time.Time, time.Time, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.err != nil {
-		return 0, time.Time{}, false, f.err
+		return 0, time.Time{}, time.Time{}, false, f.err
 	}
 	n, ok := f.failures[subject]
 	if !ok {
-		return 0, time.Time{}, false, nil
+		return 0, time.Time{}, time.Time{}, false, nil
 	}
-	return n, f.lastFailure[subject], true, nil
+	// dbNow is the last-failure instant, so a just-recorded failure reads back
+	// as a live full-length backoff (the datastore clock in the real store).
+	last := f.lastFailure[subject]
+	return n, last, last, true, nil
 }
 
 func (f *fakeShared) RecordAccountFailure(_ context.Context, subject string, now time.Time) (int64, error) {

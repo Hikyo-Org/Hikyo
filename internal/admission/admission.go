@@ -119,10 +119,11 @@ type Config struct {
 // sliding window is a write per attempt).
 type SharedStore interface {
 	BumpWindow(ctx context.Context, bucket, subject string, window time.Time) (int64, error)
-	// AccountFailureState returns the consecutive-failure count and the last
-	// failure instant. The delay deadline is derived from these, never stored
-	// separately, so it cannot be left stale or overwritten by a shorter one.
-	AccountFailureState(ctx context.Context, subject string) (failures int64, lastFailure time.Time, ok bool, err error)
+	// AccountFailureState returns the consecutive-failure count, the last
+	// failure instant, and the datastore's current time. The delay deadline is
+	// derived from the first two and compared against the third, so it cannot
+	// be left stale, overwritten, or misjudged by per-node clock skew.
+	AccountFailureState(ctx context.Context, subject string) (failures int64, lastFailure, dbNow time.Time, ok bool, err error)
 	// RecordAccountFailure atomically increments the count and stamps the
 	// failure instant in one statement.
 	RecordAccountFailure(ctx context.Context, subject string, now time.Time) (failures int64, err error)
@@ -501,7 +502,7 @@ func backoffDelay(failures int64) time.Duration {
 func (l *Limiter) sharedAccountDelay(presented string) time.Duration {
 	ctx, cancel := context.WithTimeout(context.Background(), sharedTimeout)
 	defer cancel()
-	failures, lastFailure, ok, err := l.shared.AccountFailureState(ctx, sharedAccountSubject(presented))
+	failures, lastFailure, dbNow, ok, err := l.shared.AccountFailureState(ctx, sharedAccountSubject(presented))
 	if err != nil {
 		l.logger().Error("admission: shared account backoff unreachable, holding off", "err", err)
 		return RetryAfter
@@ -509,8 +510,10 @@ func (l *Limiter) sharedAccountDelay(presented string) time.Duration {
 	if !ok {
 		return 0
 	}
+	// Compare against datastore time (not this node's clock), so a fast reader
+	// cannot admit early: the stamp and the comparison share one clock.
 	deadline := lastFailure.Add(backoffDelay(failures))
-	if d := deadline.Sub(l.now()); d > 0 {
+	if d := deadline.Sub(dbNow); d > 0 {
 		return d
 	}
 	return 0
