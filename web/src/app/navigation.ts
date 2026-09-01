@@ -220,6 +220,22 @@ export const SURFACES = defineSurfaceRegistry([
     mode: 'authenticated',
     chrome: 'shell',
   },
+  // The catalogue declaration detail (#491). It is the matrix WITH one key's
+  // full declaration open, exactly as `history` is the matrix with its drawer
+  // open, so the path nests under the matrix and the element is the same
+  // component reading the key id as route data. `section: null` for the
+  // matrix's own reason: it addresses one key of one project, reached by
+  // clicking the key name and by deep link, never a static sidebar entry that
+  // could not know which key to mean. The key is addressed by its immutable
+  // id, never its mutable name — a rename must not break a bookmarked link.
+  {
+    id: 'key-detail',
+    path: '/orgs/:org/projects/:project/matrix/keys/:key',
+    label: 'Key declaration',
+    section: null,
+    mode: 'authenticated',
+    chrome: 'shell',
+  },
   // The reveal / copy / write-only-edit surface (#58). `section: null` because
   // it is not a navigation destination: it addresses one environment of one
   // project, so it is reached from the matrix and by deep link, never from a

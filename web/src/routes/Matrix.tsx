@@ -28,6 +28,7 @@ import {
   type ValueCell,
 } from '../api/values.ts';
 import { HistoryDrawer } from './HistoryDrawer.tsx';
+import { KeyDeclarationDetail } from './KeyDeclarationDetail.tsx';
 import type { HistoryCurrentCell } from './history-state.ts';
 import {
   MatrixPublishSheet,
@@ -82,7 +83,10 @@ type DisplayRow =
  * cross-environment comparison survive here. Lineage is one gesture away in
  * the cell modal as the API's actor, timestamp, and revision facts.
  */
-export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) {
+export function Matrix({
+  historyOpen = false,
+  keyDetailOpen = false,
+}: { historyOpen?: boolean; keyDetailOpen?: boolean } = {}) {
   const params = useParams();
   // Inside a workspace, every link to another of the workspace's own surfaces
   // must carry the `?remote=` marker or it silently drops back to this
@@ -92,6 +96,15 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
   const historyLink = (input: Parameters<typeof historyHref>[0]) =>
     withRemote(historyHref(input), remote);
   const ref: MatrixRef = { org: params['org'] ?? '', project: params['project'] ?? '' };
+  // The catalogue detail is addressed by the key's immutable id (#491): a
+  // rename must not break a bookmarked link. `remote` rides along for the same
+  // workspace reason `historyLink` carries it.
+  const keyDetailLink = (keyId: string) =>
+    withRemote(generatePath(surfaceById('key-detail').path, { ...ref, key: keyId }), remote);
+  // The key the detail surface is open on, read from the route only when this
+  // component is mounted as the key-detail element. `undefined` at every other
+  // matrix mount, so the panel never appears there.
+  const keyDetailId = keyDetailOpen ? params['key'] ?? '' : undefined;
   const matrix = useMatrixProject(ref);
   const stage = useStageMatrixValue(ref);
   const clear = useClearMatrixValue(ref);
@@ -131,6 +144,7 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
   // ARRIVES, and a ref object mutating does not re-run anything.
   const [matrixHead, setMatrixHead] = useState<HTMLTableSectionElement | null>(null);
   const historyOpener = useRef<HTMLAnchorElement>(null);
+  const keyDetailOpener = useRef<HTMLAnchorElement>(null);
 
   /**
    * The group rows stick UNDER the column header, so they need its height.
@@ -346,7 +360,6 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
   const visibleEnvironments = environments.filter((environment) =>
     visibleEnvironmentIds.includes(environment.id),
   );
-  const firstVisibleEnvironment = visibleEnvironments[0];
   const pendingByEnvironment = useMemo(() => {
     const pending = new Map<string, readonly MatrixPendingEntry[]>();
     for (const row of environmentRows) {
@@ -535,7 +548,7 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
     <section
       className="matrix"
       aria-labelledby="matrix-title"
-      inert={historyOpen && mobileLayout}
+      inert={(historyOpen || keyDetailOpen) && mobileLayout}
     >
       {/* env-matrix 31 trims the head to the essentials: the legend is a `?`
           icon and drafts surface as a pill only once there is something to
@@ -814,21 +827,19 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
                         ref={rowVirtualizer.measureElement}
                       >
                         <th scope="row" title={key.name}>
-                          {/* The key NAME opens its history (revision-history it-1/6:
-                              "a key name click opens the same drawer filtered to
-                              that key"); any CELL opens the row editor. env-matrix 31
-                              wires nothing to the name, so the history lock is the only
-                              one that speaks. */}
+                          {/* The key NAME opens its declaration detail (#491):
+                              the routable, reload-safe catalogue surface that
+                              inspects every declaration field and hosts the
+                              shared editor foundation. Per-key revision history
+                              stays one gesture deeper, from inside the detail.
+                              Any CELL still opens the row editor. */}
                           <Link
                             className="matrix__key mono"
-                            aria-label={`History of ${key.name}`}
-                            to={historyLink({
-                              ...ref,
-                              ...(firstVisibleEnvironment === undefined
-                                ? {}
-                                : { env: firstVisibleEnvironment.id }),
-                              keyId: key.id,
-                            })}
+                            aria-label={`Declaration of ${key.name}`}
+                            to={keyDetailLink(key.id)}
+                            onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+                              keyDetailOpener.current = event.currentTarget;
+                            }}
                           >
                             {key.classification === 'secret' ? <span aria-hidden="true">🔒 </span> : null}
                             {key.name}
@@ -1090,6 +1101,15 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
           openerRef={historyOpener}
         />
       ) : null}
+
+      {keyDetailId === undefined ? null : (
+        <KeyDeclarationDetail
+          refData={ref}
+          keyId={keyDetailId}
+          environments={environments}
+          openerRef={keyDetailOpener}
+        />
+      )}
     </>
   );
 }

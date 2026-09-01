@@ -16,6 +16,7 @@ describe('the route policy registry', () => {
       'settings:authenticated:shell',
       'matrix:authenticated:shell',
       'history:authenticated:shell',
+      'key-detail:authenticated:shell',
       'values:authenticated:shell',
       'machine-access:authenticated:shell',
       'cli-reauth:ceremony:none',

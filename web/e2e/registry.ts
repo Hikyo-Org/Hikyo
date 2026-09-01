@@ -60,6 +60,7 @@ export const FLOWS: readonly Flow[] = [
   // more than one flow, and the run log holds each flow's claim independently.
   { id: 'scanning', spec: 'flows/scanning.spec.ts', surfaces: ['matrix'] },
   { id: 'history', spec: 'flows/history.spec.ts', surfaces: ['history'] },
+  { id: 'key-detail', spec: 'flows/key-detail.spec.ts', surfaces: ['key-detail'] },
   {
     id: 'machine-access',
     spec: 'flows/machine-access.spec.ts',

@@ -620,7 +620,7 @@ jobs:
           - group: 2
             specs: e2e/flows/settings.spec.ts e2e/flows/history.spec.ts e2e/flows/workspace.spec.ts e2e/flows/matrix.spec.ts
           - group: 3
-            specs: e2e/flows/shell.spec.ts e2e/flows/instance-admin.spec.ts e2e/flows/machine-access.spec.ts e2e/flows/account.spec.ts
+            specs: e2e/flows/shell.spec.ts e2e/flows/instance-admin.spec.ts e2e/flows/machine-access.spec.ts e2e/flows/account.spec.ts e2e/flows/key-detail.spec.ts
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

@@ -3,6 +3,7 @@ import {
   copyValuesOp,
   createKeyOp,
   getEnvironmentSignalsOp,
+  getKeyOp,
   listKeyGroupsOp,
   listKeysOp,
   listPendingDraftsOp,
@@ -10,6 +11,7 @@ import {
   publishPendingChangesOp,
   reclassifyKeyOp,
   setValueOp,
+  updateKeyMetadataOp,
 } from '@hikyo/operations';
 import {
   zEnvironmentList,
@@ -35,6 +37,7 @@ import { callerSafeRefusal } from './history.ts';
 import {
   invalidateAfterCopy,
   matrixGroupsKey,
+  matrixKeyKey,
   matrixKeysKey,
   pendingDraftsKey,
   pendingMatrixKey,
@@ -726,6 +729,96 @@ export function useReclassifyKey(ref: MatrixRef) {
         }),
     onSuccess: () => queries.invalidateQueries({ queryKey: matrixKeysKey(ref) }),
   });
+}
+
+/** One key declaration, as the catalogue detail surface (#491) reads it. */
+export type MatrixKey = MatrixKeyList['items'][number];
+
+/**
+ * useKey loads ONE key's full declaration by its immutable id — the catalogue
+ * detail surface's own fetch (#491), not a slice of the matrix list. A first-
+ * class query gives the surface its own loading, 404 (deleted key) and 403
+ * (authorization) states rather than inferring "missing" from a list that has
+ * finished loading, which a deep link cannot tell apart from "not yet loaded".
+ */
+export function useKey(ref: MatrixRef, key: string) {
+  const transport = useTransport();
+  return useQuery({
+    queryKey: matrixKeyKey(ref, key),
+    queryFn: () => parsed(getKeyOp, { path: { ...ref, key }, ...transport }),
+    enabled: ref.org !== '' && ref.project !== '' && key !== '',
+    retry: false,
+  });
+}
+
+/**
+ * useUpdateKeyMetadata edits a key's organisational and documentation fields
+ * (folder, description, deprecation) — the smallest complete write of the
+ * shared declaration editor foundation (#491). It carries `acknowledgements`
+ * so a Surface-2 scanning block on a free-text field can be deliberately
+ * overridden once the caller owns the finding. Both the single-key detail and
+ * the project key list are invalidated so the matrix reflects the edit.
+ */
+export function useUpdateKeyMetadata(ref: MatrixRef, key: string) {
+  const queries = useQueryClient();
+  const transport = useTransport();
+  return useMutation({
+    mutationFn: (input: {
+      readonly folderPath?: string;
+      readonly description?: string;
+      readonly deprecated?: boolean;
+      readonly deprecationNote?: string;
+      readonly acknowledgements?: readonly string[];
+    }) =>
+      parsed(updateKeyMetadataOp, {
+          path: { ...ref, key },
+          body: {
+            ...(input.folderPath === undefined ? {} : { folder_path: input.folderPath }),
+            ...(input.description === undefined ? {} : { description: input.description }),
+            ...(input.deprecated === undefined ? {} : { deprecated: input.deprecated }),
+            ...(input.deprecationNote === undefined
+              ? {}
+              : { deprecation_note: input.deprecationNote }),
+            ...(input.acknowledgements === undefined || input.acknowledgements.length === 0
+              ? {}
+              : { acknowledgements: [...input.acknowledgements] }),
+          },
+          ...transport,
+        }),
+    onSuccess: () =>
+      Promise.all([
+        queries.invalidateQueries({ queryKey: matrixKeyKey(ref, key) }),
+        queries.invalidateQueries({ queryKey: matrixKeysKey(ref) }),
+        queries.invalidateQueries({ queryKey: matrixGroupsKey(ref) }),
+      ]),
+  });
+}
+
+/**
+ * keyMetadataRefusalText renders a metadata-edit refusal in the caller's own
+ * words. A caller-safe server detail (a Surface-2 declaration block names its
+ * rule id and locator, never the matched text) is shown verbatim; the uniform
+ * 403/404/409 refusals fall back to fixed sentences so a bare status is never
+ * the whole message.
+ */
+export function keyMetadataRefusalText(error: Error): string {
+  if (error instanceof ApiError) {
+    const detailed = callerSafeRefusal(error, 'Refused');
+    if (detailed !== null) {
+      return detailed;
+    }
+    if (error.status === 403) {
+      return 'You do not have permission to edit this key in this project.';
+    }
+    if (error.status === 404) {
+      return 'This key no longer exists. Return to the matrix and reopen it.';
+    }
+    if (error.status === 409) {
+      return 'The server refused this edit; reload the key and retry.';
+    }
+    return `The server could not save this key (error ${String(error.status)}).`;
+  }
+  return 'The server could not save this key.';
 }
 
 export function useClearMatrixValue(ref: MatrixRef) {
