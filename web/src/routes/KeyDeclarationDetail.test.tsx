@@ -180,9 +180,8 @@ describe('KeyDeclarationDetail', () => {
     const view = await render();
     const description = view.container.querySelector<HTMLTextAreaElement>('textarea');
     if (description === null) throw new Error('editor textarea missing');
-    await act(async () => {
-      description.dispatchEvent(new Event('input', { bubbles: true }));
-    });
+    // A real change, so the form is dirty and the save is enabled.
+    await act(async () => setTextarea(description, 'A new description'));
     const save = [...view.container.querySelectorAll('button')].find((b) =>
       b.textContent?.includes('Save declaration'),
     );
@@ -194,7 +193,7 @@ describe('KeyDeclarationDetail', () => {
     await view.unmount();
   });
 
-  it('sends only touched metadata fields on save', async () => {
+  it('sends only the changed field on save', async () => {
     mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
     mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' } });
     mocks.mutate.mockImplementation(
@@ -211,12 +210,67 @@ describe('KeyDeclarationDetail', () => {
     if (save === undefined) throw new Error('save button missing');
     await act(async () => save.click());
 
-    expect(mocks.mutate).toHaveBeenCalledWith(
-      expect.objectContaining({ folderPath: 'database', description: record.description }),
-      expect.anything(),
-    );
+    // Only the touched field travels — the untouched description is not written
+    // back, so a concurrent edit to it is not clobbered.
+    expect(mocks.mutate).toHaveBeenCalledWith({ folderPath: 'database' }, expect.anything());
     expect(textOf(view.container)).toContain('Saved.');
 
     await view.unmount();
   });
+
+  it('keeps the save disabled until a field changes', async () => {
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' } });
+
+    const view = await render();
+    const save = [...view.container.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('Save declaration'),
+    );
+    expect(save?.disabled).toBe(true);
+
+    await view.unmount();
+  });
+
+  it('fails closed: no editor while the source is unresolved', async () => {
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
+    // Settings query still pending: definitions_source is unknown.
+    mocks.definitions.mockReturnValue({ data: undefined, isSuccess: false, isError: false });
+
+    const view = await render();
+    // No live edit action may appear before the project is confirmed db-managed.
+    expect(
+      [...view.container.querySelectorAll('button')].some((b) =>
+        b.textContent?.includes('Save declaration'),
+      ),
+    ).toBe(false);
+    expect(textOf(view.container)).toContain('Editing unavailable');
+
+    await view.unmount();
+  });
+
+  it('renders explicit allow_empty=false and the full JSON schema', async () => {
+    const jsonKey: MatrixKey = {
+      ...record,
+      declaration: {
+        rule: { type: 'json', allow_empty: false, json_schema: '{"type":"object"}' },
+      },
+    };
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: jsonKey });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' } });
+
+    const view = await render();
+    const text = textOf(view.container);
+    expect(text).toContain('empty not allowed');
+    expect(text).toContain('{"type":"object"}');
+
+    await view.unmount();
+  });
 });
+
+/** Write a controlled textarea's value the way React's onChange observes. */
+function setTextarea(textarea: HTMLTextAreaElement, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+  if (setter === undefined) throw new Error('HTMLTextAreaElement exposes no value setter');
+  setter.call(textarea, value);
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+}

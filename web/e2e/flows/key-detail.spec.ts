@@ -112,6 +112,14 @@ test.describe('catalogue declaration detail', () => {
     await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
   });
 
+  const surfaces = surfacesForFlow('key-detail');
+  if (surfaces.length !== 1 || surfaces[0] === undefined) {
+    throw new Error(
+      `the key-detail flow must claim exactly one surface, got ${String(surfaces.length)}`,
+    );
+  }
+  const keyDetailSurface = surfaces[0];
+
   for (const scheme of SCHEMES) {
     test(`meets the pinned assertion set on Key declaration (${scheme})`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: scheme });
@@ -127,7 +135,7 @@ test.describe('catalogue declaration detail', () => {
 
       await expectPinnedAssertionSet(page, {
         flow: 'key-detail',
-        surface: surfacesForFlow('key-detail')[0]?.id ?? 'key-detail',
+        surface: keyDetailSurface.id,
         theme: scheme,
         text: [heading, factName, factValue],
         radii: [

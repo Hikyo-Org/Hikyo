@@ -63,13 +63,21 @@ export function KeyDeclarationDetail({
 
   useEffect(() => {
     // Snapshot the opener at MOUNT and return focus to it on unmount — the
-    // matrix stays behind this panel, and close must return focus to the key
-    // name that opened it. The matrix key list is the fallback when that row
-    // has since re-rendered away.
+    // matrix stays behind this panel, and closing to it must return focus to
+    // the key name that opened it. The matrix key list is the fallback when
+    // that row has since re-rendered away.
     const opener = openerRef.current;
     heading.current?.focus();
     return () => {
       requestAnimationFrame(() => {
+        // Do not steal focus from a surface that replaced this one: navigating
+        // to the revision-history drawer unmounts this panel while the drawer
+        // focuses its own heading. Only restore focus when it was left nowhere
+        // (returned to the matrix), never on top of the next surface.
+        const active = document.activeElement;
+        if (active !== null && active !== document.body) {
+          return;
+        }
         if (opener?.isConnected === true) {
           opener.focus();
           return;
@@ -79,7 +87,12 @@ export function KeyDeclarationDetail({
     };
   }, [openerRef, keyId]);
 
-  const gitManaged = definitions.data?.definitions_source === 'git';
+  // Editing is available ONLY once the source is confirmed `db`. An unresolved
+  // or failed settings query must fail closed — never show a live edit action
+  // on a project that might be Git-managed (where declarations are read-only).
+  const source = definitions.data?.definitions_source;
+  const editable = source === 'db';
+  const gitManaged = source === 'git';
 
   return (
     <aside
@@ -113,7 +126,10 @@ export function KeyDeclarationDetail({
           keyId={keyId}
           record={key.data}
           environments={environments}
+          editable={editable}
           gitManaged={gitManaged}
+          sourceResolved={definitions.isSuccess}
+          sourceFailed={definitions.isError}
           gitProvenance={definitions.data?.last_apply}
           historyPath={historyPath}
         />
@@ -151,7 +167,10 @@ function KeyDeclarationBody({
   keyId,
   record,
   environments,
+  editable,
   gitManaged,
+  sourceResolved,
+  sourceFailed,
   gitProvenance,
   historyPath,
 }: {
@@ -159,7 +178,10 @@ function KeyDeclarationBody({
   keyId: string;
   record: MatrixKey;
   environments: readonly Environment[];
+  editable: boolean;
   gitManaged: boolean;
+  sourceResolved: boolean;
+  sourceFailed: boolean;
   gitProvenance:
     | { commit?: string; ref?: string; actor?: string; applied_by: string }
     | undefined;
@@ -231,7 +253,9 @@ function KeyDeclarationBody({
         </Link>
       </p>
 
-      {gitManaged ? (
+      {editable ? (
+        <MetadataEditor refData={refData} keyId={keyId} record={record} />
+      ) : gitManaged ? (
         <section className="key-detail__section" aria-labelledby="key-detail-git">
           <h3 id="key-detail-git">Declarations are read-only</h3>
           <Alert>{GIT_DEFINITIONS_NOTICE}</Alert>
@@ -245,7 +269,24 @@ function KeyDeclarationBody({
           )}
         </section>
       ) : (
-        <MetadataEditor refData={refData} keyId={keyId} record={record} />
+        // Source not yet confirmed: fail closed — no edit action until we know
+        // this is a database-managed project. Pending is quiet; a failed
+        // settings read says so, because "why can't I edit" must be answerable.
+        <section className="key-detail__section" aria-labelledby="key-detail-source">
+          <h3 id="key-detail-source">Editing unavailable</h3>
+          {sourceFailed ? (
+            <Alert>
+              The project’s definitions source could not be read, so declaration editing is
+              unavailable. Reload to try again.
+            </Alert>
+          ) : (
+            <p className="key-detail__state" role="status">
+              {sourceResolved
+                ? 'Declaration editing is unavailable for this project.'
+                : 'Checking whether declarations can be edited…'}
+            </p>
+          )}
+        </section>
       )}
     </div>
   );
@@ -314,17 +355,28 @@ function RuleLine({ rule }: { rule: NonNullable<MatrixKey['declaration']['rule']
   if (rule.min_length !== undefined) parts.push(`min length ${String(rule.min_length)}`);
   if (rule.max_length !== undefined) parts.push(`max length ${String(rule.max_length)}`);
   if (rule.pattern !== undefined) parts.push(`pattern ${rule.pattern}`);
-  if (rule.allow_empty === true) parts.push('empty allowed');
+  // Both explicit states are shown: `allow_empty: false` is a real constraint,
+  // and dropping it renders identically to a rule that never declared it.
+  if (rule.allow_empty !== undefined) {
+    parts.push(rule.allow_empty ? 'empty allowed' : 'empty not allowed');
+  }
   if (rule.min !== undefined) parts.push(`min ${String(rule.min)}`);
   if (rule.max !== undefined) parts.push(`max ${String(rule.max)}`);
   if (rule.members !== undefined) parts.push(`one of ${rule.members.join(', ')}`);
   if (rule.schemes !== undefined) parts.push(`schemes ${rule.schemes.join(', ')}`);
-  if (rule.json_schema !== undefined) parts.push('JSON schema');
   return (
-    <p className="key-detail__rule">
-      <span className="mono">{rule.type}</span>
-      {parts.length === 0 ? '' : ` · ${parts.join(' · ')}`}
-    </p>
+    <>
+      <p className="key-detail__rule">
+        <span className="mono">{rule.type}</span>
+        {parts.length === 0 ? '' : ` · ${parts.join(' · ')}`}
+      </p>
+      {rule.json_schema === undefined ? null : (
+        // The full schema, not the word "schema": two keys with different JSON
+        // schemas must not render identically. React escapes the text; the key
+        // record carries no value, so this is declaration shape, never a secret.
+        <pre className="key-detail__json-schema mono">{rule.json_schema}</pre>
+      )}
+    </>
   );
 }
 
@@ -357,11 +409,22 @@ function MetadataEditor({
     setDescription(record.description);
   }, [record.folder_path, record.description]);
 
+  // Send only the fields that actually changed. updateKeyMetadata is a partial
+  // update, and writing an untouched field back would clobber a value another
+  // editor changed between this form's load and its submit.
+  const folderChanged = folderPath !== record.folder_path;
+  const descriptionChanged = description !== record.description;
+  const dirty = folderChanged || descriptionChanged;
+
   const submit = () => {
+    if (!dirty) return;
     setRefusal(null);
     setDone(false);
     update.mutate(
-      { folderPath, description },
+      {
+        ...(folderChanged ? { folderPath } : {}),
+        ...(descriptionChanged ? { description } : {}),
+      },
       {
         onSuccess: () => setDone(true),
         onError: (error) => setRefusal(keyMetadataRefusalText(error)),
@@ -407,7 +470,7 @@ function MetadataEditor({
       {refusal === null ? null : <Alert>{refusal}</Alert>}
       {done ? <Done>Saved.</Done> : null}
 
-      <button type="submit" className="btn btn--primary" disabled={update.isPending}>
+      <button type="submit" className="btn btn--primary" disabled={update.isPending || !dirty}>
         {update.isPending ? 'Saving…' : 'Save declaration'}
       </button>
     </form>
