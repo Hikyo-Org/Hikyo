@@ -31,6 +31,7 @@ import {
   type ValueCell,
 } from '../api/values.ts';
 import { HistoryDrawer } from './HistoryDrawer.tsx';
+import { CatalogueManageDialog } from './CatalogueManageDialog.tsx';
 import { KeyDeclarationDetail } from './KeyDeclarationDetail.tsx';
 import type { HistoryCurrentCell } from './history-state.ts';
 import {
@@ -141,6 +142,8 @@ export function Matrix({
   // import is not git-gated (only declaration is), so it stays available on a
   // git-managed project — the wizard itself skips new keys there.
   const [importOpen, setImportOpen] = useState(false);
+  // #493: the folder & key-group lifecycle dialog.
+  const [manageOpen, setManageOpen] = useState(false);
   // Surface-2 scanner block (#183): the redacted findings a refused write
   // carried, plus the override that retries it with their acknowledgements.
   const [scanBlock, setScanBlock] = useState<{
@@ -802,6 +805,11 @@ export function Matrix({
             Import
           </button>
         ) : null}
+        {/* #493: folder & key-group lifecycle. Project-scoped organisation in its
+            own dialog, reachable here and from the empty state. */}
+        <button type="button" className="btn matrix__manage" onClick={() => setManageOpen(true)}>
+          Folders &amp; groups
+        </button>
         {/* env-matrix 31 / #492: the header's primary declare action. Git-managed
             projects disable it and say why — value actions still work. */}
         {environments.length > 0 && !gitManaged ? (
@@ -909,6 +917,9 @@ export function Matrix({
                     }}
                   >
                     Declare first key
+                  </button>
+                  <button type="button" className="btn" onClick={() => setManageOpen(true)}>
+                    Folders &amp; groups
                   </button>
                 </div>
               )}
@@ -1274,6 +1285,10 @@ export function Matrix({
           gitManaged={gitManaged}
           onClose={() => setImportOpen(false)}
         />
+      )}
+
+      {!manageOpen ? null : (
+        <CatalogueManageDialog refData={ref} onClose={() => setManageOpen(false)} />
       )}
 
       {scanBlock === null ? null : (
