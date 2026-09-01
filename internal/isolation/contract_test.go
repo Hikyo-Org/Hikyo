@@ -115,7 +115,7 @@ func TestContractFormulasMatchTheOperationRegistry(t *testing.T) {
 		for _, atom := range formula {
 			want = append(want, string(atom.Cap)+"@"+levelNames[atom.At])
 		}
-		got := append([]string(nil), op.Formula...)
+		got := op.Formula()
 		sort.Strings(got)
 		sort.Strings(want)
 		if strings.Join(got, ",") != strings.Join(want, ",") {
@@ -151,7 +151,8 @@ func TestContractSecuredOperationsTakeAnArtifact(t *testing.T) {
 		// eligibility under, say, `manage-identities` fails here rather than
 		// advertising an authority no machine can ever hold. That is the property
 		// the old blanket refusal was standing in for.
-		for _, artifact := range op.Artifacts {
+		artifacts := op.Artifacts()
+		for _, artifact := range artifacts {
 			if artifact != "machine-credential" {
 				continue
 			}
@@ -161,10 +162,10 @@ func TestContractSecuredOperationsTakeAnArtifact(t *testing.T) {
 			}
 			if !machineSatisfiable(authz.Operation(op.AuthzOp)) {
 				t.Errorf("%s declares machine-credential eligibility, but no machine class may hold its formula %v",
-					id, op.Formula)
+					id, op.Formula())
 			}
 		}
-		if op.Secured && len(op.Artifacts) == 1 && op.Artifacts[0] == "none" {
+		if op.Secured && len(artifacts) == 1 && artifacts[0] == "none" {
 			t.Errorf("%s: secured but eligible for no artifact", id)
 		}
 	}
@@ -262,10 +263,10 @@ func TestTenantRoutesDeclareForbiddenOnlyForMFA(t *testing.T) {
 		switch {
 		case wanted && !declared:
 			t.Errorf("%s is tenant-class with an MFA-mandatory post-grant refusal (formula %v) but declares no 403 — the refusal it can return is undeclared",
-				id, op.Formula)
+				id, op.Formula())
 		case !wanted && declared:
 			t.Errorf("%s (formula %v) is tenant-class with no post-grant refusal but declares a 403 — grant refusal there is the uniform 404, so the status is unreachable or a leak",
-				id, op.Formula)
+				id, op.Formula())
 		}
 	}
 }

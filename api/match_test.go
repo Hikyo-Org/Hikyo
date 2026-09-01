@@ -89,9 +89,10 @@ func TestMatchRequestResolvesTheContractRouteExactlyOnce(t *testing.T) {
 	}
 }
 
-// TestMatchedOperationIsACopyOfTheImmutableRow pins that a caller holding a
-// match cannot edit the artifact allowlist the next request is admitted by.
-func TestMatchedOperationIsACopyOfTheImmutableRow(t *testing.T) {
+// TestMatchedOperationCarriesTheResolvedRow pins that matching and validation
+// carry one operation row through the request rather than re-reading the
+// registry. Operation is shared and read-only by contract (#514).
+func TestMatchedOperationCarriesTheResolvedRow(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, PathPrefix+"/orgs",
 		strings.NewReader(`{"name":"acme"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -100,29 +101,32 @@ func TestMatchedOperationIsACopyOfTheImmutableRow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("createOrg did not resolve through the embedded contract: %v", err)
 	}
-	mutated := match.Operation()
-	mutated.Artifacts[0] = "forged"
-
-	fresh := match.Operation()
-	if fresh.Artifacts[0] == "forged" {
-		t.Fatal("editing a matched operation changed the row a later consumer reads")
+	matched := match.Operation()
+	returnedArtifacts := matched.Artifacts()
+	returnedArtifacts[0] = "forged"
+	if matched.AdmitsArtifact("forged") {
+		t.Fatal("editing the artifact accessor result changed the shared registry row")
+	}
+	returnedFormula := matched.Formula()
+	returnedFormula[0] = "forged@instance"
+	if match.Operation().Formula()[0] == "forged@instance" {
+		t.Fatal("editing the formula accessor result changed the shared registry row")
 	}
 	validated, err := match.Validate()
 	if err != nil {
 		t.Fatalf("a contract-conforming request was refused: %v", err)
 	}
-	validatedCopy := validated.Operation()
-	validatedCopy.Artifacts[0] = "forged"
 	ctx := validated.Request().Context()
-	originalRegistryRow := operations[fresh.ID]
-	changedRegistryRow := cloneOperation(originalRegistryRow)
-	changedRegistryRow.Artifacts[0] = "registry-forged"
-	operations[fresh.ID] = changedRegistryRow
-	t.Cleanup(func() { operations[fresh.ID] = originalRegistryRow })
+	originalRegistryRow := operations[matched.ID]
+	changedRegistryRow := originalRegistryRow
+	changedRegistryRow.artifacts = append([]string(nil), originalRegistryRow.artifacts...)
+	changedRegistryRow.artifacts[0] = "registry-forged"
+	operations[matched.ID] = changedRegistryRow
+	t.Cleanup(func() { operations[matched.ID] = originalRegistryRow })
 	if attached, ok := OperationFromContext(ctx); !ok ||
-		attached.Artifacts[0] == "forged" {
-		t.Fatal("editing a returned operation changed the validated row attached to context")
-	} else if attached.Artifacts[0] == "registry-forged" {
+		attached.ID != matched.ID {
+		t.Fatal("validated request lost the matched operation")
+	} else if attached.artifacts[0] == "registry-forged" {
 		t.Fatal("context re-read the registry instead of carrying the validated row")
 	}
 }

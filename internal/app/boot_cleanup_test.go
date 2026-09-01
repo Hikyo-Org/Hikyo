@@ -127,6 +127,27 @@ func TestBootResourceOwnershipOnFailure(t *testing.T) {
 	})
 }
 
+func TestBootWarmsOpenAPIBeforeListening(t *testing.T) {
+	resources := defaultBootResources()
+	warmed := false
+	resources.warmOpenAPI = func() error {
+		warmed = true
+		return nil
+	}
+	injected := errors.New("stop after OpenAPI warmup")
+	resources.listen = func(string, string) (net.Listener, error) {
+		if !warmed {
+			t.Fatal("listener opened before the OpenAPI document was warm")
+		}
+		return nil, injected
+	}
+
+	_, err := boot(t.Context(), devConfig(t), testLogger(), resources)
+	if !errors.Is(err, injected) {
+		t.Fatalf("boot error = %v, want injected listener error", err)
+	}
+}
+
 func TestBootSuccessTransfersResourceOwnershipToServer(t *testing.T) {
 	record := &bootResourceRecord{}
 	srv, err := boot(t.Context(), devConfig(t), testLogger(), recordingBootResources(record))

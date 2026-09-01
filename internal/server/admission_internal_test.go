@@ -48,7 +48,7 @@ func TestAdmissionAttachesTheMatchedOperation(t *testing.T) {
 	if operation.ID != "createOrg" {
 		t.Fatalf("operation id = %q, want createOrg", operation.ID)
 	}
-	if len(operation.Artifacts) == 0 {
+	if len(operation.Artifacts()) == 0 {
 		t.Fatal("the attached operation carries no artifact allowlist")
 	}
 }

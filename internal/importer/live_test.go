@@ -557,12 +557,17 @@ users:
 }
 
 func TestK8sLiveExecPluginCannotOutrunConnectorDeadline(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("Kubernetes API reached before the hung exec plugin timed out")
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(server.Close)
 	kubeconfig := filepath.Join(t.TempDir(), "config")
-	config := `apiVersion: v1
+	config := fmt.Sprintf(`apiVersion: v1
 kind: Config
 clusters:
 - name: fixture-cluster
-  cluster: {server: "https://127.0.0.1:1", insecure-skip-tls-verify: true}
+  cluster: {server: %q, insecure-skip-tls-verify: true}
 contexts:
 - name: fixture-context
   context: {cluster: fixture-cluster, user: exec-user}
@@ -575,7 +580,7 @@ users:
       interactiveMode: Never
       command: /bin/sh
       args: [-c, "sleep 1"]
-`
+`, server.URL)
 	if err := os.WriteFile(kubeconfig, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}

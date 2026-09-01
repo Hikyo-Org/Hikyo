@@ -25,8 +25,9 @@ func TestOperationForDerivesArtifactEligibilityFromEmbeddedContract(t *testing.T
 	if op.ID != "listValues" {
 		t.Fatalf("operation id = %q, want listValues", op.ID)
 	}
-	if len(op.Artifacts) != 1 || op.Artifacts[0] != "human-session" {
-		t.Fatalf("artifact eligibility = %v, want [human-session]", op.Artifacts)
+	artifacts := op.Artifacts()
+	if len(artifacts) != 1 || artifacts[0] != "human-session" {
+		t.Fatalf("artifact eligibility = %v, want [human-session]", artifacts)
 	}
 }
 

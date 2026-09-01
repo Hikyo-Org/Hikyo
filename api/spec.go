@@ -151,23 +151,34 @@ func load() {
 	}
 }
 
+// Warm parses and validates the embedded contract. Server boot calls it before
+// opening a listener so no request pays the one-time document load cost.
+func Warm() error {
+	loadOnce.Do(load)
+	return loadErr
+}
+
 // Doc returns the parsed contract. It fails loudly rather than serving
 // unvalidated traffic: an unparseable embedded document is a build defect.
 func Doc() (*openapi3.T, error) {
-	loadOnce.Do(load)
-	return doc, loadErr
+	if err := Warm(); err != nil {
+		return nil, err
+	}
+	return doc, nil
 }
 
-// Operation is one row of the contract registry, derived from the document
-// rather than restated in Go — one source, no drift.
+// Operation is one immutable row of the contract registry, derived from the
+// document rather than restated in Go — one source, no drift. Request
+// accessors share rows without cloning (#514); slice fields stay private so a
+// consumer cannot mutate authorization policy process-wide.
 type Operation struct {
 	ID          string
 	Method      string
 	Path        string
 	Class       string
 	AuthzOp     string
-	Formula     []string
-	Artifacts   []string
+	formula     []string
+	artifacts   []string
 	MinRevision int
 	// Secured reports whether the operation inherits the document's session
 	// security requirement. An operation that clears it with `security: []`
@@ -187,7 +198,7 @@ const (
 // AdmitsArtifact reports whether the operation's OpenAPI declaration admits
 // the authenticated artifact class. The declaration is a closed allowlist.
 func (o Operation) AdmitsArtifact(class string) bool {
-	for _, declared := range o.Artifacts {
+	for _, declared := range o.artifacts {
 		if declared == class {
 			return true
 		}
@@ -195,10 +206,14 @@ func (o Operation) AdmitsArtifact(class string) bool {
 	return false
 }
 
-func cloneOperation(op Operation) Operation {
-	op.Formula = append([]string(nil), op.Formula...)
-	op.Artifacts = append([]string(nil), op.Artifacts...)
-	return op
+// Formula returns a copy of the authorization formula declared for this row.
+func (o Operation) Formula() []string {
+	return append([]string(nil), o.formula...)
+}
+
+// Artifacts returns a copy of the authenticated artifact allowlist.
+func (o Operation) Artifacts() []string {
+	return append([]string(nil), o.artifacts...)
 }
 
 // AuthorizationOperationAdmitsArtifact reports whether any contract operation
@@ -231,14 +246,14 @@ func OperationFromContext(ctx context.Context) (Operation, bool) {
 	if !ok || op.ID == "" {
 		return Operation{}, false
 	}
-	return cloneOperation(op), true
+	return op, true
 }
 
 func withOperation(ctx context.Context, op Operation) context.Context {
 	if op.ID == "" {
 		return ctx
 	}
-	return context.WithValue(ctx, operationContextKey{}, cloneOperation(op))
+	return context.WithValue(ctx, operationContextKey{}, op)
 }
 
 // Operations returns every operation in the contract, keyed by operationId.
@@ -249,7 +264,7 @@ func Operations() (map[string]Operation, error) {
 	}
 	out := make(map[string]Operation, len(operations))
 	for id, op := range operations {
-		out[id] = cloneOperation(op)
+		out[id] = op
 	}
 	return out, nil
 }
@@ -275,13 +290,13 @@ func collectOperations(d *openapi3.T) (map[string]Operation, error) {
 			if row.AuthzOp, err = optionalString(op.Extensions, extOperation); err != nil {
 				return nil, fmt.Errorf("api: %s %s: %w", method, path, err)
 			}
-			if row.Formula, err = optionalStrings(op.Extensions, extFormula); err != nil {
+			if row.formula, err = optionalStrings(op.Extensions, extFormula); err != nil {
 				return nil, fmt.Errorf("api: %s %s: %w", method, path, err)
 			}
-			if row.Artifacts, err = extStrings(op.Extensions, extArtifacts); err != nil {
+			if row.artifacts, err = extStrings(op.Extensions, extArtifacts); err != nil {
 				return nil, fmt.Errorf("api: %s %s: %w", method, path, err)
 			}
-			if len(row.Artifacts) == 0 {
+			if len(row.artifacts) == 0 {
 				return nil, fmt.Errorf("api: %s %s: extension %s must declare at least one artifact class", method, path, extArtifacts)
 			}
 			if row.MinRevision, err = extInt(op.Extensions, extMinRevision); err != nil {
@@ -339,11 +354,11 @@ func resolveRequest(r *http.Request) (*resolvedRequest, error) {
 	if !ok {
 		return nil, fmt.Errorf("api: matched operation %q is absent from the contract registry", route.Operation.OperationID)
 	}
-	return &resolvedRequest{request: r, route: route, params: params, op: cloneOperation(op)}, nil
+	return &resolvedRequest{request: r, route: route, params: params, op: op}, nil
 }
 
 // MatchedRequest is one request's single resolution through the contract:
-// the route the OpenAPI router matched, its path parameters, and a cloned
+// the route the OpenAPI router matched, its path parameters, and the shared
 // immutable operation row. The mutable kin-openapi values stay attempt-local
 // and never enter a request context.
 type MatchedRequest struct {
@@ -353,7 +368,7 @@ type MatchedRequest struct {
 	op      Operation
 }
 
-// ValidatedRequest carries the original request and the cloned operation row
+// ValidatedRequest carries the original request and its shared operation row
 // proven by its validation. Its fields are private, so another package cannot
 // construct an alternate row or attach one to a different request.
 type ValidatedRequest struct {
@@ -377,9 +392,9 @@ func MatchRequest(r *http.Request) (*MatchedRequest, error) {
 	}, nil
 }
 
-// Operation returns a copy of the immutable contract row this request matched.
-// Consumers may hold and read it; editing the copy changes nothing.
-func (m *MatchedRequest) Operation() Operation { return cloneOperation(m.op) }
+// Operation returns the shared immutable contract row this request matched.
+// Consumers may hold and read it but must not mutate its slice fields.
+func (m *MatchedRequest) Operation() Operation { return m.op }
 
 // Validate checks the matched request against the contract and reports the
 // offending member on failure. The request is validated AS MATCHED: a caller
@@ -420,15 +435,15 @@ func (m *MatchedRequest) Validate() (*ValidatedRequest, error) {
 	if err := openapi3filter.ValidateRequest(m.request.Context(), input); err != nil {
 		return nil, &ValidationError{Member: offendingMember(err), Err: err}
 	}
-	return &ValidatedRequest{request: m.request, op: cloneOperation(m.op)}, nil
+	return &ValidatedRequest{request: m.request, op: m.op}, nil
 }
 
-// Operation returns a copy of the operation row proven by validation.
+// Operation returns the immutable operation row proven by validation.
 func (v *ValidatedRequest) Operation() Operation {
 	if v == nil {
 		return Operation{}
 	}
-	return cloneOperation(v.op)
+	return v.op
 }
 
 // Request returns the request that passed validation with its immutable
@@ -501,7 +516,7 @@ func OperationFor(r *http.Request) (Operation, bool) {
 	if err != nil {
 		return Operation{}, false
 	}
-	return cloneOperation(resolved.op), true
+	return resolved.op, true
 }
 
 // jsonPointerInReason recovers the offending member from a schema error.

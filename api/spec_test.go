@@ -302,6 +302,8 @@ func TestEveryOperationCarriesItsContractExtensions(t *testing.T) {
 		"scim-credential": true,
 	}
 	for id, op := range ops {
+		artifacts := op.Artifacts()
+		formula := op.Formula()
 		if !validClasses[op.Class] {
 			t.Errorf("%s: unknown probe class %q", id, op.Class)
 		}
@@ -309,10 +311,10 @@ func TestEveryOperationCarriesItsContractExtensions(t *testing.T) {
 			t.Errorf("%s: x-hikyo-min-revision %d is outside [1,%d] — an operation cannot require a revision this server does not serve",
 				id, op.MinRevision, api.Revision)
 		}
-		if len(op.Artifacts) == 0 {
+		if len(artifacts) == 0 {
 			t.Errorf("%s: empty artifact eligibility set", id)
 		}
-		for _, a := range op.Artifacts {
+		for _, a := range artifacts {
 			if !validArtifacts[a] {
 				t.Errorf("%s: unknown artifact class %q", id, a)
 			}
@@ -323,13 +325,13 @@ func TestEveryOperationCarriesItsContractExtensions(t *testing.T) {
 		// An operation that names an authz operation must state its formula,
 		// and one that names none must not: the pair is the behavioural half
 		// of the freeze promise, recorded per operation.
-		if (op.AuthzOp == "") != (len(op.Formula) == 0) {
+		if (op.AuthzOp == "") != (len(formula) == 0) {
 			t.Errorf("%s: x-hikyo-operation and x-hikyo-formula must be present together (op=%q formula=%v)",
-				id, op.AuthzOp, op.Formula)
+				id, op.AuthzOp, formula)
 		}
 		// A pre-authentication path takes no artifact, and an artifact-taking
 		// path must actually be secured — otherwise the matrix is decorative.
-		if op.Secured && len(op.Artifacts) == 1 && op.Artifacts[0] == "none" {
+		if op.Secured && len(artifacts) == 1 && artifacts[0] == "none" {
 			t.Errorf("%s: secured but declares artifact eligibility `none`", id)
 		}
 		if !op.Secured && op.AuthzOp != "" {
@@ -351,7 +353,7 @@ func TestBearerAdmittingOperationsDeclareArtifactRefusal(t *testing.T) {
 		for method, operation := range item.Operations() {
 			row := ops[operation.OperationID]
 			admitsBearer := false
-			for _, artifact := range row.Artifacts {
+			for _, artifact := range row.Artifacts() {
 				if artifact != api.ArtifactNone {
 					admitsBearer = true
 					break

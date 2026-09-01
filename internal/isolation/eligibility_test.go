@@ -31,7 +31,7 @@ func TestInstanceConnectionCredentialReachesOnlyDirectoryServe(t *testing.T) {
 	}
 	var eligible []string
 	for id, op := range ops {
-		if slices.Contains(op.Artifacts, api.ArtifactInstanceCredential) {
+		if slices.Contains(op.Artifacts(), api.ArtifactInstanceCredential) {
 			eligible = append(eligible, id)
 		}
 	}
@@ -80,7 +80,7 @@ func TestSharingTheDirectoryFormulaDoesNotWidenTheCredential(t *testing.T) {
 			if authz.Operation(contractOp.AuthzOp) != op {
 				continue
 			}
-			if slices.Contains(contractOp.Artifacts, api.ArtifactInstanceCredential) {
+			if slices.Contains(contractOp.Artifacts(), api.ArtifactInstanceCredential) {
 				t.Errorf("%s shares the instance-directory formula and became reachable by the "+
 					"instance-connection credential — eligibility must be per-artifact-per-operation, "+
 					"never derived from the formula", id)

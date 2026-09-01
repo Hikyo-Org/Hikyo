@@ -64,8 +64,9 @@ func TestSAMLContractSurfaceIsLocked(t *testing.T) {
 	}
 	for _, id := range []string{"samlStart", "samlACS"} {
 		op := ops[id]
-		if !slices.Contains(op.Artifacts, "none") || !slices.Contains(op.Artifacts, "human-session") {
-			t.Errorf("%s artifact eligibility = %v, want anonymous login plus session-bound link/reauth", id, op.Artifacts)
+		artifacts := op.Artifacts()
+		if !slices.Contains(artifacts, "none") || !slices.Contains(artifacts, "human-session") {
+			t.Errorf("%s artifact eligibility = %v, want anonymous login plus session-bound link/reauth", id, artifacts)
 		}
 	}
 	doc, err := api.Doc()

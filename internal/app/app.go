@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
@@ -209,14 +210,15 @@ type bootGuard struct {
 	log     *slog.Logger
 }
 
-// bootResources is the narrow seam for resources whose acquisition can leave
-// boot or a local-admin command with something to release. Service construction
-// and wiring stay local to their caller; tests replace only these constructors
-// and cleanup functions so they can inject failures at ownership boundaries and
-// count releases.
+// bootResources is the narrow seam for boot dependencies and resources whose
+// acquisition can leave boot or a local-admin command with something to
+// release. Service construction and wiring stay local to their caller; tests
+// replace only these functions to pin ordering, inject failures at ownership
+// boundaries, and count releases.
 type bootResources struct {
 	openDatabase       func(context.Context, store.Config) (*store.DB, error)
 	closeDatabase      func(*store.DB) error
+	warmOpenAPI        func() error
 	listen             func(string, string) (net.Listener, error)
 	closeListener      func(net.Listener) error
 	newDirectoryClient func(remotefetch.Config) (*remotefetch.Client, error)
@@ -228,7 +230,8 @@ func defaultBootResources() bootResources {
 		closeDatabase: func(db *store.DB) error {
 			return db.Close()
 		},
-		listen: net.Listen,
+		warmOpenAPI: api.Warm,
+		listen:      net.Listen,
 		closeListener: func(ln net.Listener) error {
 			return ln.Close()
 		},
@@ -378,6 +381,9 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	proxies, err := parseCIDRs(cfg.TrustedProxyCIDRs)
 	if err != nil {
 		return nil, fmt.Errorf("boot: refusing to serve: %w", err)
+	}
+	if err := resources.warmOpenAPI(); err != nil {
+		return nil, fmt.Errorf("boot: refusing to serve: OpenAPI contract: %w", err)
 	}
 
 	ln, err := resources.listen("tcp", cfg.Listen)
