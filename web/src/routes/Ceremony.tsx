@@ -1,7 +1,7 @@
 import { useRef, useState, type FormEvent } from 'react';
 
 import { useWorkspaceContext } from '../api/transport.tsx';
-import { useSessionOIDCProvider } from '../api/account.ts';
+import { useAuthMethods, useSessionOIDCProvider } from '../api/account.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import {
   ceremonyRefusalText,
@@ -15,6 +15,7 @@ import {
   WorkspaceError,
 } from '../api/workspace.ts';
 import { useModalDialog } from './useModalDialog.ts';
+import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
 import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
 
 /**
@@ -133,6 +134,7 @@ export function Ceremony({
   const auth = useAuth();
   const assurance = auth.identity?.session.assurance;
   const oidcSession = assurance?.method.startsWith('oidc:') === true;
+  const methods = useAuthMethods();
   const oidcProvider = useSessionOIDCProvider();
   const offersOIDC = request.window.totp_offered && oidcProvider !== null;
 
@@ -224,6 +226,9 @@ export function Ceremony({
 
       {workspace === null ? (
         <>
+          {oidcSession && request.window.totp_offered && methods.isError ? (
+            <ProviderDiscoveryAlert onRetry={() => void methods.refetch()} />
+          ) : null}
           {request.window.totp_offered ? null : (
             // Stated, never a disabled control. "Protected" and "the window is
             // set to 0" are different sentences and the human is owed whichever

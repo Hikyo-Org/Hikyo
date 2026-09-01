@@ -88,11 +88,12 @@ type Config struct {
 	BudgetMiB      int
 	ArgonMemoryKiB uint32
 	// PerIPPerMinute overrides the per-source-IP attempt allowance. Zero means
-	// the locked default. It exists for one caller: a test harness driving many
-	// authentications from one loopback address, which is not the traffic shape
-	// the default is sized for. The server refuses the override outside
-	// development mode, so a production instance cannot be handed a raised
-	// ceiling by an environment variable.
+	// the locked default. A value above MetaPerIPPerMinute also raises the cheap
+	// discovery allowance, so a test harness driving many complete login flows
+	// from one loopback address does not throttle its own capability checks. A
+	// smaller value never lowers the locked discovery default. The server
+	// refuses the override outside development mode, so a production instance
+	// cannot be handed a raised ceiling by an environment variable.
 	PerIPPerMinute int
 	// Now is injectable so the backoff and rate-limit curves are testable
 	// without sleeping. Nil means time.Now.
@@ -101,10 +102,11 @@ type Config struct {
 
 // Limiter is one instance's admission state.
 type Limiter struct {
-	concurrency int
-	perIP       int
-	slots       chan struct{}
-	now         func() time.Time
+	concurrency    int
+	perIP          int
+	discoveryPerIP int
+	slots          chan struct{}
+	now            func() time.Time
 
 	mu       sync.Mutex
 	waiting  int
@@ -168,9 +170,11 @@ func New(cfg Config) (*Limiter, error) {
 	if perIP <= 0 {
 		perIP = PerIPPerMinute
 	}
+	discoveryPerIP := max(MetaPerIPPerMinute, perIP)
 	l := &Limiter{
 		concurrency:     concurrency,
 		perIP:           perIP,
+		discoveryPerIP:  discoveryPerIP,
 		slots:           make(chan struct{}, concurrency),
 		now:             now,
 		ipHits:          map[string][]time.Time{},
@@ -231,7 +235,7 @@ func (l *Limiter) dequeue() {
 // expensive work, and a cheap endpoint queued behind a semaphore sized for
 // 64 MiB derivations would be throttled by a cost it does not incur.
 func (l *Limiter) AllowDiscovery(ip string) bool {
-	return l.allowIPIn(l.metaHits, ip, MetaPerIPPerMinute)
+	return l.allowIPIn(l.metaHits, ip, l.discoveryPerIP)
 }
 
 // AllowIssuerRefresh admits one OUTBOUND JWKS refresh triggered by an unknown

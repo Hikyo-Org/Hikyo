@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { useAuthMethods } from '../api/account.ts';
 import { loginFailureText, useLogin, useOIDCLogin } from '../api/session.ts';
 import { passkeysAvailable, stepUpFailureText, usePasskeyLogin } from '../api/stepup.ts';
+import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
 
 /**
  * The local password login page.
@@ -110,6 +111,9 @@ export function Login() {
               {oidc.isPending ? 'Contacting identity provider…' : `Continue with ${provider.display_name}`}
             </button>
           ))}
+        {methods.isError ? (
+          <ProviderDiscoveryAlert onRetry={() => void methods.refetch()} />
+        ) : null}
         {oidc.isError ? (
           <p className="alert" role="alert">
             <span className="alert__glyph" aria-hidden="true">!</span>

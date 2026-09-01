@@ -9,11 +9,7 @@ const mocks = vi.hoisted(() => ({
   login: { mutate: vi.fn(), isPending: false, isError: false },
   oidc: { mutate: vi.fn(), isPending: false, isError: false },
   passkey: { mutate: vi.fn(), isPending: false, isError: false },
-  passkeysAvailable: false,
-}));
-
-vi.mock('../api/account.ts', () => ({
-  useAuthMethods: () => ({
+  methods: {
     data: {
       local_login_enabled: true,
       providers: [
@@ -21,7 +17,14 @@ vi.mock('../api/account.ts', () => ({
         { kind: 'saml', slug: 'sso', display_name: 'SAML SSO' },
       ],
     },
-  }),
+    isError: false,
+    refetch: vi.fn(),
+  },
+  passkeysAvailable: false,
+}));
+
+vi.mock('../api/account.ts', () => ({
+  useAuthMethods: () => mocks.methods,
 }));
 
 vi.mock('../api/session.ts', () => ({
@@ -40,9 +43,11 @@ beforeEach(() => {
   mocks.login.mutate.mockReset();
   mocks.oidc.mutate.mockReset();
   mocks.passkey.mutate.mockReset();
+  mocks.methods.refetch.mockReset();
   mocks.login.isPending = false;
   mocks.oidc.isPending = false;
   mocks.passkey.isPending = false;
+  mocks.methods.isError = false;
   mocks.passkeysAvailable = false;
 });
 
@@ -77,6 +82,24 @@ it.each([
   for (const control of controls) {
     expect(control.disabled).toBe(true);
   }
+
+  await act(async () => root.unmount());
+});
+
+it('shows and retries an identity-provider discovery failure', async () => {
+  mocks.methods.isError = true;
+  const container = document.createElement('div');
+  const root = createRoot(container);
+
+  await act(async () => root.render(<Login />));
+
+  expect(container.textContent).toContain('Identity provider options could not be loaded.');
+  const retry = [...container.querySelectorAll('button')].find(
+    (candidate) => candidate.textContent === 'Retry identity providers',
+  );
+  expect(retry).toBeDefined();
+  await act(async () => retry?.click());
+  expect(mocks.methods.refetch).toHaveBeenCalledOnce();
 
   await act(async () => root.unmount());
 });
