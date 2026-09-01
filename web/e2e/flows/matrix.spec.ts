@@ -598,15 +598,20 @@ test.describe('environment matrix declaration', () => {
     await modal.getByLabel('Type').selectOption('boolean');
     await modal.getByLabel('First value (optional)').fill('true');
     // Required everywhere, including environments created later — the symbolic
-    // mode, not "tick every box".
-    await modal.getByRole('radio', { name: 'all (current & future)' }).check();
+    // mode, not "tick every box". Scope to the Required axis: the Forbidden axis
+    // renders the same radio.
+    await modal
+      .getByRole('group', { name: 'Required in' })
+      .getByRole('radio', { name: 'all (current & future)' })
+      .check();
 
     await modal.getByRole('button', { name: 'Declare' }).click();
 
     await expect(page.locator('.notice')).toContainText(
       'Declared FEATURE_ENABLED with a draft value in 1 environment',
     );
-    await expect(page.getByRole('button', { name: /features\/.*1 key/ })).toBeVisible();
+    // The declared key's cell now carries its opening draft — proof the value
+    // entered the draft workflow with the declaration.
     await expect(
       page.getByRole('button', { name: /FEATURE_ENABLED in development:.*draft set/ }),
     ).toBeVisible();

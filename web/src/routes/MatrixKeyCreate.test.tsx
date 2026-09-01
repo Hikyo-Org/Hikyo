@@ -19,7 +19,7 @@ const development: Environment = {
   created_at: '2026-08-23T08:00:00Z',
 };
 const production: Environment = { ...development, id: 'env_01989abc-def0-7123-8123-000000000002', name: 'production', display_order: 1 };
-const environments = [development, production] as const;
+const environments: readonly Environment[] = [development, production];
 
 afterEach(() => {
   document.body.innerHTML = '';
@@ -133,7 +133,9 @@ describe('MatrixKeyCreate', () => {
     await fillNameAndSubmit(view.container, 'LEVEL');
 
     expect(view.onCreate).not.toHaveBeenCalled();
-    expect(alertText(view.container)).toContain('debug, info, warn');
+    // The error must NOT echo the members back (a member could be sensitive).
+    expect(alertText(view.container)).toContain('declared enum members');
+    expect(alertText(view.container)).not.toContain('debug, info, warn');
 
     // A member value passes and rides through as the rule's members.
     await act(async () => set(byLabel(view.container, 'matrix-create-value'), 'info'));
@@ -165,6 +167,19 @@ describe('MatrixKeyCreate', () => {
 
     expect(view.onCreate).not.toHaveBeenCalled();
     expect(alertText(view.container)).toContain('leaves none to forbid');
+    await view.unmount();
+  });
+
+  it('refuses an integer bound that a JS number cannot hold exactly', async () => {
+    const view = await render();
+    await act(async () => set(byLabel(view.container, 'matrix-create-type'), 'integer'));
+    const [min] = [...view.container.querySelectorAll<HTMLInputElement>('.matrix-key-create__constraints input[type="number"]')];
+    // Beyond Number.MAX_SAFE_INTEGER — parseInt would round it silently.
+    await act(async () => set(min!, '9223372036854775807'));
+    await fillNameAndSubmit(view.container, 'BIG');
+
+    expect(view.onCreate).not.toHaveBeenCalled();
+    expect(alertText(view.container)).toContain('exact precision');
     await view.unmount();
   });
 

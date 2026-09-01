@@ -141,6 +141,17 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
     readonly owner: Selection;
     readonly message: string;
   } | null>(null);
+  // If the settings read confirms git-managed while the declare modal is open,
+  // withdraw it: declaration is unavailable, and the header/empty-state entry
+  // points have already vanished. The declareKey guard is the write-time
+  // backstop; this closes the surface the operator can see.
+  useEffect(() => {
+    if (gitManaged && create !== null) {
+      setCreate(null);
+      setCreateError(null);
+    }
+  }, [gitManaged, create]);
+
   const matrixScroll = useRef<HTMLDivElement>(null);
   const matrixTable = useRef<HTMLTableElement>(null);
   // A state ref, not a `useRef`: the table only exists in one of this
@@ -539,6 +550,13 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
     payload: MatrixKeyCreatePayload,
     acknowledgements: readonly string[] = [],
   ): Promise<void> => {
+    // Fail closed: if the settings read resolved to git-managed after the modal
+    // opened (the entry buttons vanish, but an open form could still submit),
+    // refuse before any write rather than trust a stale gate.
+    if (gitManaged) {
+      setCreate(null);
+      return;
+    }
     setCreateError(null);
     // Phase 1 — declaration. A failure keeps the modal open with its fields
     // intact (rethrow), because nothing was created yet.
@@ -561,7 +579,10 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
       // dialogs never stack — a blocked declaration is a review moment.
       if (error instanceof ApiError && error.findings.length > 0) {
         const findings = error.findings;
-        setCreate(null);
+        // A declaration block is a phase-1 failure: nothing was created, so the
+        // create modal STAYS OPEN behind the block dialog. Closing the block
+        // without overriding returns the operator to their intact form to edit
+        // the flagged material — never a rebuild from scratch.
         setCreateError(null);
         setScanBlock({
           title: 'Declaration blocked by secret scanning',
@@ -589,27 +610,43 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
     let stagedCount = 0;
     const failedEnvironments: string[] = [];
     const warnItems: ScanWarnItem[] = [];
+    const blocked: {
+      readonly environmentId: string;
+      readonly environmentName: string;
+      readonly findings: readonly RefusalFinding[];
+    }[] = [];
+    const normalizedValue =
+      payload.firstValue === null ? '' : normalizeMatrixDraftValue(payload.firstValue.value);
     if (payload.firstValue !== null) {
-      const firstValue = payload.firstValue;
-      for (const environmentId of firstValue.environmentIds) {
+      for (const environmentId of payload.firstValue.environmentIds) {
         const environmentName =
           environments.find((candidate) => candidate.id === environmentId)?.name ?? environmentId;
         try {
-          const normalizedValue = normalizeMatrixDraftValue(firstValue.value);
           const result = await stage.mutateAsync({
             environment: environmentId,
             key: payload.name,
             value: normalizedValue,
           });
           stagedCount += 1;
-          // Surface-1 warn (#74): a config first value that looks like a
-          // credential rides findings on the SUCCESS — bound to the canonical
-          // bytes, never re-exposed. Secret first values do not warn here.
-          for (const finding of result.findings ?? []) {
-            warnItems.push({ environmentId, environmentName, value: normalizedValue, finding });
+          // Surface-1 warn (#74) is a CONFIG-only affordance: it holds the
+          // value's canonical bytes for the keep-as-config re-stage. A secret
+          // never enters that path, so if a secret write ever returns findings
+          // we fail closed — the plaintext is not retained or shown, and the
+          // finding is left to the server's own secret handling.
+          if (payload.classification === 'config') {
+            for (const finding of result.findings ?? []) {
+              warnItems.push({ environmentId, environmentName, value: normalizedValue, finding });
+            }
           }
-        } catch {
-          failedEnvironments.push(environmentName);
+        } catch (error) {
+          // Surface-2 block (#183): findings ride the refusal. Route them to the
+          // block dialog — which shows only the redacted findings, never the
+          // value — rather than the vague "could not be staged" line.
+          if (error instanceof ApiError && error.findings.length > 0) {
+            blocked.push({ environmentId, environmentName, findings: error.findings });
+          } else {
+            failedEnvironments.push(environmentName);
+          }
         }
       }
     }
@@ -617,12 +654,51 @@ export function Matrix({ historyOpen = false }: { historyOpen?: boolean } = {}) 
       stagedCount === 0
         ? ''
         : ` with a draft value in ${String(stagedCount)} environment${stagedCount === 1 ? '' : 's'}`;
-    setNotice(
+    const failedNote =
       failedEnvironments.length === 0
-        ? `Declared ${payload.name}${staged}.`
-        : `Declared ${payload.name}${staged}. Its opening value could not be staged in ${failedEnvironments.join(', ')} — set it from the cell.`,
-    );
-    if (warnItems.length > 0) {
+        ? ''
+        : ` Its opening value could not be staged in ${failedEnvironments.join(', ')} — set it from the cell.`;
+    const blockedNote =
+      blocked.length === 0
+        ? ''
+        : ` Its opening value was blocked by secret scanning in ${blocked.map((entry) => entry.environmentName).join(', ')} — review below.`;
+    setNotice(`Declared ${payload.name}${staged}.${failedNote}${blockedNote}`);
+    // A Surface-2 block takes the dialog; a Surface-1 warn (which needs a
+    // succeeded save) only shows when nothing was blocked, so the two modals
+    // never stack. The warned value is still reachable from its cell.
+    if (blocked.length > 0) {
+      const allFindings = blocked.flatMap((entry) => entry.findings);
+      const overridable = allFindings.every((finding) => finding.acknowledgement !== undefined);
+      setScanBlock({
+        title: 'Opening value blocked by secret scanning',
+        intro: `${payload.name} was declared, but its opening value looks like it carries secret material.`,
+        findings: allFindings,
+        onOverride: overridable
+          ? async () => {
+              const stillFailed: string[] = [];
+              for (const entry of blocked) {
+                try {
+                  await stage.mutateAsync({
+                    environment: entry.environmentId,
+                    key: payload.name,
+                    value: normalizedValue,
+                    acknowledgements: entry.findings
+                      .map((finding) => finding.acknowledgement)
+                      .filter((token): token is string => token !== undefined),
+                  });
+                } catch {
+                  stillFailed.push(entry.environmentName);
+                }
+              }
+              setNotice(
+                stillFailed.length === 0
+                  ? `Staged the opening value for ${payload.name} after review.`
+                  : `Some opening values for ${payload.name} still could not be staged: ${stillFailed.join(', ')}.`,
+              );
+            }
+          : null,
+      });
+    } else if (warnItems.length > 0) {
       setWarn({ keyId: created.id, keyName: payload.name, items: warnItems });
     }
   };

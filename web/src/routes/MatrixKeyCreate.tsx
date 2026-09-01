@@ -34,9 +34,17 @@ const TYPE_OPTIONS: readonly { readonly type: CreateKeyType; readonly label: str
   { type: 'json', label: 'json' },
 ];
 
-// Contract caps (zKeyRule): an enum carries at most 64 members, each ≤512.
+// Contract caps (zKeyRule): reject anything the server would refuse up front so
+// the operator fixes it in the form, not after a round-trip.
 const MAX_ENUM_MEMBERS = 64;
 const MAX_MEMBER_LENGTH = 512;
+const MAX_PATTERN_LENGTH = 512;
+const MAX_SCHEMES = 32;
+const MAX_JSON_SCHEMA_LENGTH = 16384;
+const INT64_MIN = -9223372036854775808n;
+const INT64_MAX = 9223372036854775807n;
+const SAFE_MIN = BigInt(Number.MIN_SAFE_INTEGER);
+const SAFE_MAX = BigInt(Number.MAX_SAFE_INTEGER);
 
 /**
  * Declare-key modal (env-matrix 31 / #492). A group is a folder: a name that is
@@ -622,21 +630,30 @@ function buildRule(
       if (minLength !== undefined && maxLength !== undefined && minLength > maxLength) {
         return { error: 'Min length cannot exceed max length.' };
       }
+      const pattern = inputs.pattern.trim();
+      if (pattern.length > MAX_PATTERN_LENGTH) {
+        return { error: `A pattern is at most ${String(MAX_PATTERN_LENGTH)} characters.` };
+      }
       return {
         rule: {
           type: 'string',
           ...(minLength === undefined ? {} : { minLength }),
           ...(maxLength === undefined ? {} : { maxLength }),
-          ...(inputs.pattern.trim() === '' ? {} : { pattern: inputs.pattern.trim() }),
+          ...(pattern === '' ? {} : { pattern }),
           ...(inputs.allowEmpty ? { allowEmpty: true } : {}),
         },
       };
     }
     case 'integer': {
-      const min = parseOptionalSignedInt(inputs.min);
-      const max = parseOptionalSignedInt(inputs.max);
+      const min = parseInt64(inputs.min);
+      const max = parseInt64(inputs.max);
       if (min === 'invalid' || max === 'invalid') {
-        return { error: 'Minimum and maximum must be whole numbers.' };
+        return { error: 'Minimum and maximum must be whole numbers within the int64 range.' };
+      }
+      if (min === 'unsafe' || max === 'unsafe') {
+        return {
+          error: 'Minimum and maximum must stay within ±9,007,199,254,740,991 to keep exact precision.',
+        };
       }
       if (min !== undefined && max !== undefined && min > max) {
         return { error: 'Minimum cannot exceed maximum.' };
@@ -673,12 +690,24 @@ function buildRule(
         .split(',')
         .map((scheme) => scheme.trim().toLowerCase())
         .filter((scheme) => scheme !== '');
+      if (new Set(list).size !== list.length) {
+        return { error: 'URL schemes must be distinct.' };
+      }
+      if (list.length > MAX_SCHEMES) {
+        return { error: `At most ${String(MAX_SCHEMES)} URL schemes.` };
+      }
+      if (list.some((scheme) => !/^[a-z][a-z0-9+.-]*$/.test(scheme))) {
+        return { error: 'A URL scheme starts with a letter, then letters, digits, +, . or -.' };
+      }
       return {
         rule: { type: 'url', ...(list.length === 0 ? {} : { schemes: list }) },
       };
     }
     case 'json': {
       const trimmed = inputs.jsonSchema.trim();
+      if (trimmed.length > MAX_JSON_SCHEMA_LENGTH) {
+        return { error: `A JSON Schema is at most ${String(MAX_JSON_SCHEMA_LENGTH)} characters.` };
+      }
       if (trimmed !== '') {
         try {
           JSON.parse(trimmed);
@@ -700,11 +729,20 @@ function parseOptionalInt(raw: string): number | undefined | 'invalid' {
   return Number.parseInt(trimmed, 10);
 }
 
-function parseOptionalSignedInt(raw: string): number | undefined | 'invalid' {
+/**
+ * Parses a signed integer bound, rejecting values outside int64 (the contract's
+ * range) and — separately — values a JS number cannot hold exactly, because the
+ * request carries a `number` and `Number.parseInt` would silently round a value
+ * past 2^53. Better to refuse than to transmit a different number than typed.
+ */
+function parseInt64(raw: string): number | undefined | 'invalid' | 'unsafe' {
   const trimmed = raw.trim();
   if (trimmed === '') return undefined;
   if (!/^-?[0-9]+$/.test(trimmed)) return 'invalid';
-  return Number.parseInt(trimmed, 10);
+  const big = BigInt(trimmed);
+  if (big < INT64_MIN || big > INT64_MAX) return 'invalid';
+  if (big < SAFE_MIN || big > SAFE_MAX) return 'unsafe';
+  return Number(trimmed);
 }
 
 /**
@@ -751,9 +789,12 @@ function validateFirstValue(rule: CreateKeyRule, value: string): string | null {
         ? null
         : 'Enter a full URL, e.g. https://example.dev.';
     case 'enum':
+      // Never echo the members back: a declared member could itself be
+      // credential-shaped, and the members are already listed in the field
+      // above. Name the rule, not the values.
       return rule.members === undefined || rule.members.includes(value)
         ? null
-        : `Enter one of: ${rule.members.join(', ')}.`;
+        : 'Enter one of the declared enum members.';
     case 'json':
       try {
         JSON.parse(value);
