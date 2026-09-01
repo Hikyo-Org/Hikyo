@@ -1,10 +1,11 @@
 import { useMemo, useRef, useState } from 'react';
 
-import type { CreateKeyType } from '../api/matrix.ts';
+import type { CreateKeyPresence, CreateKeyRule, CreateKeyType } from '../api/matrix.ts';
 import type { EnvironmentList } from '../api/values.ts';
 import { useModalDialog } from './useModalDialog.ts';
 
 type Environment = EnvironmentList['items'][number];
+type PresenceMode = CreateKeyPresence['mode'];
 
 /** The first value a declared key opens with, staged after the key exists. */
 export type MatrixKeyCreateFirstValue = {
@@ -14,10 +15,12 @@ export type MatrixKeyCreateFirstValue = {
 
 export type MatrixKeyCreatePayload = {
   readonly name: string;
-  readonly type: CreateKeyType;
   readonly classification: 'config' | 'secret';
+  readonly rule: CreateKeyRule;
   readonly folderPath: string;
-  readonly requiredEnvironmentIds: readonly string[];
+  readonly description: string;
+  readonly required: CreateKeyPresence;
+  readonly forbidden: CreateKeyPresence;
   readonly firstValue: MatrixKeyCreateFirstValue | null;
 };
 
@@ -26,16 +29,24 @@ const TYPE_OPTIONS: readonly { readonly type: CreateKeyType; readonly label: str
   { type: 'string', label: 'string' },
   { type: 'integer', label: 'int' },
   { type: 'boolean', label: 'bool' },
+  { type: 'enum', label: 'enum' },
   { type: 'url', label: 'url' },
   { type: 'json', label: 'json' },
 ];
 
+// Contract caps (zKeyRule): an enum carries at most 64 members, each ≤512.
+const MAX_ENUM_MEMBERS = 64;
+const MAX_MEMBER_LENGTH = 512;
+
 /**
- * Declare-key modal (env-matrix 31). A group is a folder: a name that is not
- * yet a folder simply creates it, so there is no separate "create group" step —
- * declaring a key into a new folder is the group's first act. The type maps to
- * a single-rule declaration; the richer schema/constraints are edited later
- * from the key's own editor, exactly as the prototype defers them.
+ * Declare-key modal (env-matrix 31 / #492). A group is a folder: a name that is
+ * not yet a folder simply creates it, so there is no separate "create group"
+ * step. The declaration carries one value rule with its type-specific
+ * constraints and per-environment presence (required / forbidden, each
+ * none / all / an explicit set). `all` is offered as an explicit choice — it is
+ * SYMBOLIC and covers environments created later, so it is never inferred from
+ * "these happen to be every environment today". Richer editing (any_of unions,
+ * deprecation, key groups) lives in the key's own editor.
  */
 export function MatrixKeyCreate({
   folders,
@@ -64,13 +75,28 @@ export function MatrixKeyCreate({
   const [name, setName] = useState('');
   const [type, setType] = useState<CreateKeyType>('string');
   const [secret, setSecret] = useState(false);
+  const [description, setDescription] = useState('');
+  // Constraint fields — kept as raw strings so an in-progress edit never coerces
+  // to NaN; parsed and range-checked only at submit.
+  const [minLength, setMinLength] = useState('');
+  const [maxLength, setMaxLength] = useState('');
+  const [pattern, setPattern] = useState('');
+  const [allowEmpty, setAllowEmpty] = useState(false);
+  const [min, setMin] = useState('');
+  const [max, setMax] = useState('');
+  const [members, setMembers] = useState('');
+  const [schemes, setSchemes] = useState('https');
+  const [jsonSchema, setJsonSchema] = useState('');
   const [value, setValue] = useState('');
   const [valueEnvironmentIds, setValueEnvironmentIds] = useState<readonly string[]>(() =>
     environments
       .filter((environment) => !protectedEnvironmentIds.includes(environment.id))
       .map((environment) => environment.id),
   );
+  const [requiredMode, setRequiredMode] = useState<PresenceMode>('none');
   const [requiredEnvironmentIds, setRequiredEnvironmentIds] = useState<readonly string[]>([]);
+  const [forbiddenMode, setForbiddenMode] = useState<PresenceMode>('none');
+  const [forbiddenEnvironmentIds, setForbiddenEnvironmentIds] = useState<readonly string[]>([]);
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -97,10 +123,42 @@ export function MatrixKeyCreate({
       setError(`${normalizedName} already exists.`);
       return;
     }
+
+    const built = buildRule(type, {
+      minLength,
+      maxLength,
+      pattern,
+      allowEmpty,
+      min,
+      max,
+      members,
+      schemes,
+      jsonSchema,
+    });
+    if ('error' in built) {
+      setError(built.error);
+      return;
+    }
+    const rule = built.rule;
+
+    const required: CreateKeyPresence = {
+      mode: requiredMode,
+      environmentIds: requiredMode === 'explicit' ? requiredEnvironmentIds : [],
+    };
+    const forbidden: CreateKeyPresence = {
+      mode: forbiddenMode,
+      environmentIds: forbiddenMode === 'explicit' ? forbiddenEnvironmentIds : [],
+    };
+    const presenceError = validatePresence(required, forbidden);
+    if (presenceError !== null) {
+      setError(presenceError);
+      return;
+    }
+
     const trimmedValue = value.trim();
     let firstValue: MatrixKeyCreateFirstValue | null = null;
     if (trimmedValue !== '') {
-      const valueError = validateFirstValue(type, trimmedValue);
+      const valueError = validateFirstValue(rule, trimmedValue);
       if (valueError !== null) {
         setError(valueError);
         return;
@@ -115,10 +173,12 @@ export function MatrixKeyCreate({
     setApplying(true);
     void onCreate({
       name: normalizedName,
-      type,
       classification: secret ? 'secret' : 'config',
+      rule,
       folderPath: normalizedFolder,
-      requiredEnvironmentIds,
+      description: description.trim(),
+      required,
+      forbidden,
       firstValue,
     })
       // A declaration failure is surfaced by the parent through `mutationError`;
@@ -224,17 +284,163 @@ export function MatrixKeyCreate({
           </label>
         </div>
 
+        {type === 'string' ? (
+          <fieldset className="matrix-key-create__constraints">
+            <legend>String constraints (optional)</legend>
+            <div className="matrix-key-create__constraint-row">
+              <label>
+                <span>Min length</span>
+                <input
+                  type="number"
+                  min={0}
+                  inputMode="numeric"
+                  value={minLength}
+                  onChange={(event) => setMinLength(event.target.value)}
+                />
+              </label>
+              <label>
+                <span>Max length</span>
+                <input
+                  type="number"
+                  min={0}
+                  inputMode="numeric"
+                  value={maxLength}
+                  onChange={(event) => setMaxLength(event.target.value)}
+                />
+              </label>
+            </div>
+            <label className="matrix-key-create__field">
+              <span>Pattern (RE2, whole value)</span>
+              <input
+                className="mono"
+                autoComplete="off"
+                placeholder="^[a-z][a-z0-9-]*$"
+                value={pattern}
+                onChange={(event) => setPattern(event.target.value)}
+              />
+            </label>
+            <label className="matrix-key-create__secret">
+              <input
+                type="checkbox"
+                checked={allowEmpty}
+                onChange={(event) => setAllowEmpty(event.target.checked)}
+              />
+              <span>allow empty value</span>
+            </label>
+          </fieldset>
+        ) : null}
+
+        {type === 'integer' ? (
+          <fieldset className="matrix-key-create__constraints">
+            <legend>Integer constraints (optional)</legend>
+            <div className="matrix-key-create__constraint-row">
+              <label>
+                <span>Minimum</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={min}
+                  onChange={(event) => setMin(event.target.value)}
+                />
+              </label>
+              <label>
+                <span>Maximum</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={max}
+                  onChange={(event) => setMax(event.target.value)}
+                />
+              </label>
+            </div>
+          </fieldset>
+        ) : null}
+
+        {type === 'enum' ? (
+          <fieldset className="matrix-key-create__constraints">
+            <legend>Enum members</legend>
+            <label className="matrix-key-create__field">
+              <span>One member per line</span>
+              <textarea
+                className="mono"
+                rows={4}
+                autoComplete="off"
+                placeholder={'debug\ninfo\nwarn\nerror'}
+                value={members}
+                onChange={(event) => setMembers(event.target.value)}
+              />
+            </label>
+          </fieldset>
+        ) : null}
+
+        {type === 'url' ? (
+          <fieldset className="matrix-key-create__constraints">
+            <legend>Allowed URL schemes</legend>
+            <label className="matrix-key-create__field">
+              <span>Comma-separated (blank allows any)</span>
+              <input
+                className="mono"
+                autoComplete="off"
+                placeholder="https, http"
+                value={schemes}
+                onChange={(event) => setSchemes(event.target.value)}
+              />
+            </label>
+          </fieldset>
+        ) : null}
+
+        {type === 'json' ? (
+          <fieldset className="matrix-key-create__constraints">
+            <legend>JSON Schema (optional, 2020-12)</legend>
+            <label className="matrix-key-create__field">
+              <span>Schema document</span>
+              <textarea
+                className="mono"
+                rows={5}
+                autoComplete="off"
+                placeholder='{ "type": "object" }'
+                value={jsonSchema}
+                onChange={(event) => setJsonSchema(event.target.value)}
+              />
+            </label>
+          </fieldset>
+        ) : null}
+
+        <div className="matrix-key-create__field">
+          <label htmlFor="matrix-create-description">Description (optional)</label>
+          <textarea
+            id="matrix-create-description"
+            rows={2}
+            autoComplete="off"
+            placeholder="What this key configures"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+          />
+        </div>
+
         <div className="matrix-key-create__field">
           <label htmlFor="matrix-create-value">First value (optional)</label>
-          <textarea
-            id="matrix-create-value"
-            className="mono matrix-editor__value"
-            rows={type === 'json' ? 5 : 1}
-            autoComplete="off"
-            placeholder={type === 'json' ? 'first value (json)' : 'first value'}
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-          />
+          {secret ? (
+            <input
+              id="matrix-create-value"
+              type="password"
+              className="mono matrix-editor__value"
+              autoComplete="off"
+              placeholder="first value (hidden)"
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+            />
+          ) : (
+            <textarea
+              id="matrix-create-value"
+              className="mono matrix-editor__value"
+              rows={type === 'json' ? 5 : 1}
+              autoComplete="off"
+              placeholder={type === 'json' ? 'first value (json)' : 'first value'}
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+            />
+          )}
         </div>
 
         <fieldset className="matrix-editor__copy">
@@ -254,22 +460,29 @@ export function MatrixKeyCreate({
           ))}
         </fieldset>
 
-        <fieldset className="matrix-editor__copy">
-          <legend>Required in</legend>
-          {environments.map((environment) => (
-            <label key={environment.id}>
-              <input
-                type="checkbox"
-                checked={requiredEnvironmentIds.includes(environment.id)}
-                onChange={() => toggle(setRequiredEnvironmentIds, environment.id)}
-              />
-              <span>
-                {environment.name}
-                {protectedEnvironmentIds.includes(environment.id) ? ' · protected' : ''}
-              </span>
-            </label>
-          ))}
-        </fieldset>
+        <PresenceField
+          legend="Required in"
+          hint="Values must resolve to set in these environments."
+          idPrefix="matrix-create-required"
+          mode={requiredMode}
+          setMode={setRequiredMode}
+          environmentIds={requiredEnvironmentIds}
+          onToggle={(id) => toggle(setRequiredEnvironmentIds, id)}
+          environments={environments}
+          protectedEnvironmentIds={protectedEnvironmentIds}
+        />
+
+        <PresenceField
+          legend="Forbidden in"
+          hint="Values must stay absent in these environments."
+          idPrefix="matrix-create-forbidden"
+          mode={forbiddenMode}
+          setMode={setForbiddenMode}
+          environmentIds={forbiddenEnvironmentIds}
+          onToggle={(id) => toggle(setForbiddenEnvironmentIds, id)}
+          environments={environments}
+          protectedEnvironmentIds={protectedEnvironmentIds}
+        />
 
         {error === null ? null : (
           <p className="alert" role="alert">
@@ -301,13 +514,234 @@ export function MatrixKeyCreate({
 }
 
 /**
- * Light first-value check mirroring the prototype's declare-time validation.
- * The declaration carries no constraints yet (schemes, enum members, JSON
- * schema come later from the key editor), and the server is the authority on
- * the staged write — so this only rejects values that cannot be the type at all.
+ * One presence axis (required / forbidden). `all` is a first-class radio, not a
+ * "select every environment" — the symbolic mode covers future environments
+ * that an explicit set cannot, so the operator states it directly.
  */
-function validateFirstValue(type: CreateKeyType, value: string): string | null {
+function PresenceField({
+  legend,
+  hint,
+  idPrefix,
+  mode,
+  setMode,
+  environmentIds,
+  onToggle,
+  environments,
+  protectedEnvironmentIds,
+}: {
+  legend: string;
+  hint: string;
+  idPrefix: string;
+  mode: PresenceMode;
+  setMode: (mode: PresenceMode) => void;
+  environmentIds: readonly string[];
+  onToggle: (id: string) => void;
+  environments: readonly Environment[];
+  protectedEnvironmentIds: readonly string[];
+}) {
+  const modes: readonly { readonly value: PresenceMode; readonly label: string }[] = [
+    { value: 'none', label: 'none' },
+    { value: 'all', label: 'all (current & future)' },
+    { value: 'explicit', label: 'these environments' },
+  ];
+  return (
+    <fieldset className="matrix-key-create__presence">
+      <legend>{legend}</legend>
+      <div className="matrix-key-create__presence-modes" role="radiogroup" aria-label={legend}>
+        {modes.map((option) => (
+          <label key={option.value}>
+            <input
+              type="radio"
+              name={idPrefix}
+              value={option.value}
+              checked={mode === option.value}
+              onChange={() => setMode(option.value)}
+            />
+            <span>{option.label}</span>
+          </label>
+        ))}
+      </div>
+      {mode === 'explicit' ? (
+        <div className="matrix-editor__copy">
+          {environments.map((environment) => (
+            <label key={environment.id}>
+              <input
+                type="checkbox"
+                checked={environmentIds.includes(environment.id)}
+                onChange={() => onToggle(environment.id)}
+              />
+              <span>
+                {environment.name}
+                {protectedEnvironmentIds.includes(environment.id) ? ' · protected' : ''}
+              </span>
+            </label>
+          ))}
+        </div>
+      ) : (
+        <p className="matrix-key-create__presence-hint">{hint}</p>
+      )}
+    </fieldset>
+  );
+}
+
+type ConstraintInputs = {
+  readonly minLength: string;
+  readonly maxLength: string;
+  readonly pattern: string;
+  readonly allowEmpty: boolean;
+  readonly min: string;
+  readonly max: string;
+  readonly members: string;
+  readonly schemes: string;
+  readonly jsonSchema: string;
+};
+
+/**
+ * buildRule assembles the type's value rule from the raw inputs, applying only
+ * the constraints that type owns and rejecting shapes the server would refuse
+ * (a min above a max, an empty or oversized enum). It returns either the rule
+ * or a single caller-facing message.
+ */
+function buildRule(
+  type: CreateKeyType,
+  inputs: ConstraintInputs,
+): { readonly rule: CreateKeyRule } | { readonly error: string } {
   switch (type) {
+    case 'string': {
+      const minLength = parseOptionalInt(inputs.minLength);
+      const maxLength = parseOptionalInt(inputs.maxLength);
+      if (minLength === 'invalid' || maxLength === 'invalid') {
+        return { error: 'Length limits must be whole numbers of 0 or more.' };
+      }
+      if (
+        (minLength !== undefined && minLength < 0) ||
+        (maxLength !== undefined && maxLength < 0)
+      ) {
+        return { error: 'Length limits must be whole numbers of 0 or more.' };
+      }
+      if (minLength !== undefined && maxLength !== undefined && minLength > maxLength) {
+        return { error: 'Min length cannot exceed max length.' };
+      }
+      return {
+        rule: {
+          type: 'string',
+          ...(minLength === undefined ? {} : { minLength }),
+          ...(maxLength === undefined ? {} : { maxLength }),
+          ...(inputs.pattern.trim() === '' ? {} : { pattern: inputs.pattern.trim() }),
+          ...(inputs.allowEmpty ? { allowEmpty: true } : {}),
+        },
+      };
+    }
+    case 'integer': {
+      const min = parseOptionalSignedInt(inputs.min);
+      const max = parseOptionalSignedInt(inputs.max);
+      if (min === 'invalid' || max === 'invalid') {
+        return { error: 'Minimum and maximum must be whole numbers.' };
+      }
+      if (min !== undefined && max !== undefined && min > max) {
+        return { error: 'Minimum cannot exceed maximum.' };
+      }
+      return {
+        rule: {
+          type: 'integer',
+          ...(min === undefined ? {} : { min }),
+          ...(max === undefined ? {} : { max }),
+        },
+      };
+    }
+    case 'enum': {
+      const list = inputs.members
+        .split('\n')
+        .map((member) => member.trim())
+        .filter((member) => member !== '');
+      if (list.length === 0) {
+        return { error: 'Enter at least one enum member, one per line.' };
+      }
+      if (new Set(list).size !== list.length) {
+        return { error: 'Enum members must be distinct.' };
+      }
+      if (list.length > MAX_ENUM_MEMBERS) {
+        return { error: `An enum carries at most ${String(MAX_ENUM_MEMBERS)} members.` };
+      }
+      if (list.some((member) => member.length > MAX_MEMBER_LENGTH)) {
+        return { error: `Each enum member is at most ${String(MAX_MEMBER_LENGTH)} characters.` };
+      }
+      return { rule: { type: 'enum', members: list } };
+    }
+    case 'url': {
+      const list = inputs.schemes
+        .split(',')
+        .map((scheme) => scheme.trim().toLowerCase())
+        .filter((scheme) => scheme !== '');
+      return {
+        rule: { type: 'url', ...(list.length === 0 ? {} : { schemes: list }) },
+      };
+    }
+    case 'json': {
+      const trimmed = inputs.jsonSchema.trim();
+      if (trimmed !== '') {
+        try {
+          JSON.parse(trimmed);
+        } catch {
+          return { error: 'The JSON Schema must be valid JSON.' };
+        }
+      }
+      return { rule: { type: 'json', ...(trimmed === '' ? {} : { jsonSchema: trimmed }) } };
+    }
+    default:
+      return { rule: { type: 'boolean' } };
+  }
+}
+
+function parseOptionalInt(raw: string): number | undefined | 'invalid' {
+  const trimmed = raw.trim();
+  if (trimmed === '') return undefined;
+  if (!/^[0-9]+$/.test(trimmed)) return 'invalid';
+  return Number.parseInt(trimmed, 10);
+}
+
+function parseOptionalSignedInt(raw: string): number | undefined | 'invalid' {
+  const trimmed = raw.trim();
+  if (trimmed === '') return undefined;
+  if (!/^-?[0-9]+$/.test(trimmed)) return 'invalid';
+  return Number.parseInt(trimmed, 10);
+}
+
+/**
+ * A key cannot be both required and forbidden in the same environment, and a
+ * symbolic `all` on one axis collides with any presence on the other. Catch the
+ * guaranteed refusal here so it reads as one fixable message, not a 4xx.
+ */
+function validatePresence(required: CreateKeyPresence, forbidden: CreateKeyPresence): string | null {
+  if (required.mode === 'explicit' && required.environmentIds.length === 0) {
+    return 'Pick at least one environment where the value is required, or choose none.';
+  }
+  if (forbidden.mode === 'explicit' && forbidden.environmentIds.length === 0) {
+    return 'Pick at least one environment where the value is forbidden, or choose none.';
+  }
+  if (required.mode === 'all' && forbidden.mode !== 'none') {
+    return 'Required in all environments leaves none to forbid.';
+  }
+  if (forbidden.mode === 'all' && required.mode !== 'none') {
+    return 'Forbidden in all environments leaves none to require.';
+  }
+  if (required.mode === 'explicit' && forbidden.mode === 'explicit') {
+    const forbiddenSet = new Set(forbidden.environmentIds);
+    if (required.environmentIds.some((id) => forbiddenSet.has(id))) {
+      return 'An environment cannot be both required and forbidden.';
+    }
+  }
+  return null;
+}
+
+/**
+ * Light first-value check mirroring the prototype's declare-time validation.
+ * The server is the authority on the staged write; this only rejects values
+ * that cannot satisfy the declared rule at all — the type, and an enum's
+ * membership, which is knowable without the service.
+ */
+function validateFirstValue(rule: CreateKeyRule, value: string): string | null {
+  switch (rule.type) {
     case 'boolean':
       return value === 'true' || value === 'false' ? null : 'Enter true or false.';
     case 'integer':
@@ -316,6 +750,10 @@ function validateFirstValue(type: CreateKeyType, value: string): string | null {
       return /^[a-z][a-z0-9+.-]*:\/\//i.test(value)
         ? null
         : 'Enter a full URL, e.g. https://example.dev.';
+    case 'enum':
+      return rule.members === undefined || rule.members.includes(value)
+        ? null
+        : `Enter one of: ${rule.members.join(', ')}.`;
     case 'json':
       try {
         JSON.parse(value);
