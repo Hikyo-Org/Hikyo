@@ -758,7 +758,19 @@ var filterSchema = Schema{
 	"filter_from":      {Kind: KindString},
 	"filter_to":        {Kind: KindString},
 	"filter_after_seq": {Kind: KindInt},
-	"filter_limit":     {Kind: KindInt, Required: true},
+	// The session ceiling an interactive query pins (#502); absent on exports.
+	"filter_to_seq": {Kind: KindInt},
+	"filter_limit":  {Kind: KindInt, Required: true},
+	// The equality selectors (#502): parsed, normalized values — the acting
+	// principal, the operation (event type), the outcome, the resource, and the
+	// correlation that links an act's INTENT and OUTCOME — never a raw query
+	// string. Present only when the caller set them.
+	"filter_actor":          {Kind: KindString},
+	"filter_type":           {Kind: KindString},
+	"filter_outcome":        {Kind: KindString},
+	"filter_object_type":    {Kind: KindString},
+	"filter_object_id":      {Kind: KindString},
+	"filter_correlation_id": {Kind: KindString},
 }
 
 func merged(a, b Schema) Schema {

@@ -3761,6 +3761,13 @@ export type AuditPage = {
      */
     next_after_seq: number;
     /**
+     * The session ceiling the server pinned for this paging run (the
+     * trail's head when the first page was read). Pass it back as `to_seq`
+     * on every later page; it never changes across the run.
+     *
+     */
+    upper_seq: number;
+    /**
      * True when this page reached the end of the trail (fewer rows scanned
      * than the limit). While false, more pages remain even if `items` is
      * empty for a sparse filter.
@@ -4019,6 +4026,15 @@ export type AuditTo = string;
  *
  */
 export type AuditAfterSeq = number;
+
+/**
+ * The session ceiling. Absent on the first page (the server pins it to the
+ * trail's current head and returns it as `upper_seq`); pass that value back
+ * on every later page so paging terminates and never chases the
+ * `audit.query` events the reads themselves append.
+ *
+ */
+export type AuditToSeq = number;
 
 /**
  * Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
@@ -17829,6 +17845,14 @@ export type QueryOrgAuditData = {
          */
         after_seq?: number;
         /**
+         * The session ceiling. Absent on the first page (the server pins it to the
+         * trail's current head and returns it as `upper_seq`); pass that value back
+         * on every later page so paging terminates and never chases the
+         * `audit.query` events the reads themselves append.
+         *
+         */
+        to_seq?: number;
+        /**
          * Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
          * be fewer when a filter is set.
          *
@@ -18030,6 +18054,14 @@ export type QueryProjectAuditData = {
          *
          */
         after_seq?: number;
+        /**
+         * The session ceiling. Absent on the first page (the server pins it to the
+         * trail's current head and returns it as `upper_seq`); pass that value back
+         * on every later page so paging terminates and never chases the
+         * `audit.query` events the reads themselves append.
+         *
+         */
+        to_seq?: number;
         /**
          * Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
          * be fewer when a filter is set.
@@ -18240,6 +18272,14 @@ export type QueryEnvAuditData = {
          *
          */
         after_seq?: number;
+        /**
+         * The session ceiling. Absent on the first page (the server pins it to the
+         * trail's current head and returns it as `upper_seq`); pass that value back
+         * on every later page so paging terminates and never chases the
+         * `audit.query` events the reads themselves append.
+         *
+         */
+        to_seq?: number;
         /**
          * Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
          * be fewer when a filter is set.

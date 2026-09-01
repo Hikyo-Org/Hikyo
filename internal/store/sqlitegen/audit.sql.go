@@ -158,6 +158,70 @@ func (q *Queries) InsertTenantAuditEvent(ctx context.Context, arg InsertTenantAu
 	return err
 }
 
+const maxInstanceAudit = `-- name: MaxInstanceAudit :one
+SELECT CAST(COALESCE(MAX(seq), 0) AS INTEGER) FROM audit_instance_events
+`
+
+func (q *Queries) MaxInstanceAudit(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, maxInstanceAudit)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const maxTenantAuditEnv = `-- name: MaxTenantAuditEnv :one
+SELECT CAST(COALESCE(MAX(seq), 0) AS INTEGER) FROM audit_tenant_events
+WHERE org_id = ? AND project_id = ? AND env_id = ?
+`
+
+type MaxTenantAuditEnvParams struct {
+	OrgID     string
+	ProjectID sql.NullString
+	EnvID     sql.NullString
+}
+
+func (q *Queries) MaxTenantAuditEnv(ctx context.Context, arg MaxTenantAuditEnvParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, maxTenantAuditEnv, arg.OrgID, arg.ProjectID, arg.EnvID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const maxTenantAuditOrg = `-- name: MaxTenantAuditOrg :one
+
+SELECT CAST(COALESCE(MAX(seq), 0) AS INTEGER) FROM audit_tenant_events
+WHERE org_id = ?
+`
+
+// Session ceiling reads (#502): the interactive query pins a stable upper seq
+// bound on its first page so paging terminates across concurrent writes, and
+// so a query never chases the audit.query events its own reads append. Chain-
+// confined exactly like the page reads. The CAST pins the type for sqlc; an
+// empty trail is a 0 ceiling, not NULL.
+func (q *Queries) MaxTenantAuditOrg(ctx context.Context, orgID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, maxTenantAuditOrg, orgID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const maxTenantAuditProject = `-- name: MaxTenantAuditProject :one
+SELECT CAST(COALESCE(MAX(seq), 0) AS INTEGER) FROM audit_tenant_events
+WHERE org_id = ? AND project_id = ?
+`
+
+type MaxTenantAuditProjectParams struct {
+	OrgID     string
+	ProjectID sql.NullString
+}
+
+func (q *Queries) MaxTenantAuditProject(ctx context.Context, arg MaxTenantAuditProjectParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, maxTenantAuditProject, arg.OrgID, arg.ProjectID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const pageInstanceAudit = `-- name: PageInstanceAudit :many
 SELECT seq, id, type, schema_version, occurred_at, occurred_asserted, recorded_at,
     actor_id, actor_class, actor_credential_id, authority_id,

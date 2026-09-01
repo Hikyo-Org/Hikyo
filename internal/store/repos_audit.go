@@ -44,6 +44,7 @@ type AuditFilter struct {
 	From           time.Time
 	To             time.Time
 	AfterSeq       int64
+	ToSeq          int64 // session ceiling: interactive pages never return seq above this
 	Limit          int
 	Actor          string         // actor_id (the acting principal)
 	Type           string         // event type (the operation)
@@ -133,6 +134,9 @@ func (f AuditFilter) Normalized() audit.Payload {
 	if f.AfterSeq > 0 {
 		p["filter_after_seq"] = f.AfterSeq
 	}
+	if f.ToSeq > 0 {
+		p["filter_to_seq"] = f.ToSeq
+	}
 	if f.Actor != "" {
 		p["filter_actor"] = f.Actor
 	}
@@ -177,6 +181,13 @@ type AuditReader interface {
 	PageTenant(ctx context.Context, p authz.Proof, f AuditFilter) ([]AuditEvent, error)
 	// PageInstance returns one bounded page of the instance trail.
 	PageInstance(ctx context.Context, p authz.Proof, f AuditFilter) ([]AuditEvent, error)
+	// MaxTenantSeq returns the highest seq in the tenant trail addressed by the
+	// proof's resolved chain, or 0 when it is empty. It is the interactive
+	// query's session ceiling: pinned once and carried by the caller so paging
+	// terminates and never chases the audit.query events its own reads append.
+	MaxTenantSeq(ctx context.Context, p authz.Proof) (int64, error)
+	// MaxInstanceSeq is MaxTenantSeq for the instance trail.
+	MaxInstanceSeq(ctx context.Context, p authz.Proof) (int64, error)
 }
 
 // AuditRepo adds the two insert doors. Insertion validates against the
@@ -374,6 +385,39 @@ func (a sqliteAudit) pageTenantExport(ctx context.Context, chain domain.Scope, l
 		out = append(out, event)
 	}
 	return out, nil
+}
+
+func (a sqliteAudit) MaxTenantSeq(ctx context.Context, p authz.Proof) (int64, error) {
+	chain, err := authz.Verify(p, authz.StoreAuditTenantMaxSeq, a.tok)
+	if err != nil {
+		return 0, err
+	}
+	level, err := chain.Level()
+	if err != nil {
+		return 0, err
+	}
+	switch level {
+	case domain.LevelOrg:
+		return a.q.MaxTenantAuditOrg(ctx, string(chain.Org))
+	case domain.LevelProject:
+		return a.q.MaxTenantAuditProject(ctx, sqlitegen.MaxTenantAuditProjectParams{
+			OrgID: string(chain.Org), ProjectID: sql.NullString{String: string(chain.Project), Valid: true},
+		})
+	case domain.LevelEnv:
+		return a.q.MaxTenantAuditEnv(ctx, sqlitegen.MaxTenantAuditEnvParams{
+			OrgID: string(chain.Org), ProjectID: sql.NullString{String: string(chain.Project), Valid: true},
+			EnvID: sql.NullString{String: string(chain.Env), Valid: true},
+		})
+	default:
+		return 0, errors.New("store: tenant audit ceiling with an empty chain")
+	}
+}
+
+func (a sqliteAudit) MaxInstanceSeq(ctx context.Context, p authz.Proof) (int64, error) {
+	if _, err := authz.Verify(p, authz.StoreAuditInstanceMaxSeq, a.tok); err != nil {
+		return 0, err
+	}
+	return a.q.MaxInstanceAudit(ctx)
 }
 
 func (a sqliteAudit) pageInstanceExport(ctx context.Context, f AuditFilter, from, to time.Time) ([]AuditEvent, error) {
@@ -581,6 +625,39 @@ func (a pgAudit) pageTenantExport(ctx context.Context, chain domain.Scope, level
 		out = append(out, event)
 	}
 	return out, nil
+}
+
+func (a pgAudit) MaxTenantSeq(ctx context.Context, p authz.Proof) (int64, error) {
+	chain, err := authz.Verify(p, authz.StoreAuditTenantMaxSeq, a.tok)
+	if err != nil {
+		return 0, err
+	}
+	level, err := chain.Level()
+	if err != nil {
+		return 0, err
+	}
+	switch level {
+	case domain.LevelOrg:
+		return a.q.MaxTenantAuditOrg(ctx, string(chain.Org))
+	case domain.LevelProject:
+		return a.q.MaxTenantAuditProject(ctx, pggen.MaxTenantAuditProjectParams{
+			ChainOrgID: string(chain.Org), ChainProjectID: pgtype.Text{String: string(chain.Project), Valid: true},
+		})
+	case domain.LevelEnv:
+		return a.q.MaxTenantAuditEnv(ctx, pggen.MaxTenantAuditEnvParams{
+			ChainOrgID: string(chain.Org), ChainProjectID: pgtype.Text{String: string(chain.Project), Valid: true},
+			ChainEnvID: pgtype.Text{String: string(chain.Env), Valid: true},
+		})
+	default:
+		return 0, errors.New("store: tenant audit ceiling with an empty chain")
+	}
+}
+
+func (a pgAudit) MaxInstanceSeq(ctx context.Context, p authz.Proof) (int64, error) {
+	if _, err := authz.Verify(p, authz.StoreAuditInstanceMaxSeq, a.tok); err != nil {
+		return 0, err
+	}
+	return a.q.MaxInstanceAudit(ctx)
 }
 
 func (a pgAudit) pageInstanceExport(ctx context.Context, f AuditFilter, from, to time.Time) ([]AuditEvent, error) {

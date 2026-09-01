@@ -885,6 +885,12 @@ test.describe('audit trail', () => {
         await page.emulateMedia({ colorScheme: scheme });
         try {
           await page.goto(AUDIT_PATH);
+          // Narrow to one operation before the pinned sweep: the assertion set
+          // focuses, measures and contrast-checks EVERY interactive element, so
+          // a full unfiltered page of rows would blow the per-test budget. The
+          // break-glass grants make `grant.created` a small, always-present set.
+          await page.getByLabel('Operation').fill('grant.created');
+          await page.getByRole('button', { name: 'Apply filter' }).click();
           await expect(page.locator('.audit__row').first()).toBeVisible();
 
           const heading = page.getByRole('heading', { name: 'Audit', level: 1 });

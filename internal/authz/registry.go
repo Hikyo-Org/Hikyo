@@ -838,6 +838,8 @@ const (
 	StoreAuditClaimOfflineRecord StoreOp = "audit.ClaimOfflineRecord"
 	StoreAuditTenantPage         StoreOp = "audit.PageTenant"
 	StoreAuditInstancePage       StoreOp = "audit.PageInstance"
+	StoreAuditTenantMaxSeq       StoreOp = "audit.MaxTenantSeq"
+	StoreAuditInstanceMaxSeq     StoreOp = "audit.MaxInstanceSeq"
 
 	// SCIM provisioning (#73). One StoreOp per method on store.SCIMRepo, as
 	// invariant 6 requires: the registry is reflected against the repository
@@ -930,6 +932,7 @@ var storeOpCatalogue = map[StoreOp]bool{
 	StoreAdaptersRevokeCredential: true, StoreAdaptersTarget: true, StoreAdaptersTargetEnvironments: true, StoreAdaptersTargetKeyIDs: true,
 	StoreAdaptersTeardownAdapter: true, StoreAdaptersTeardownTarget: true, StoreAdaptersUpdateTarget: true, StoreAuditClaimOfflineRecord: true,
 	StoreAuditInstanceInsert: true, StoreAuditInstancePage: true, StoreAuditTenantInsert: true, StoreAuditTenantPage: true,
+	StoreAuditTenantMaxSeq: true, StoreAuditInstanceMaxSeq: true,
 	StoreCatalogueAdapterPins: true, StoreCatalogueCount: true, StoreCatalogueCreate: true, StoreCatalogueDelete: true,
 	StoreCatalogueGet: true, StoreCatalogueGroupClearMembers: true, StoreCatalogueGroupCount: true, StoreCatalogueGroupCreate: true,
 	StoreCatalogueGroupDelete: true, StoreCatalogueGroupGet: true, StoreCatalogueGroupList: true, StoreCatalogueGroupRename: true,
@@ -1051,6 +1054,8 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreReencryptListRemotes:                true,
 	StoreAuditTenantPage:                     true,
 	StoreAuditInstancePage:                   true,
+	StoreAuditTenantMaxSeq:                   true,
+	StoreAuditInstanceMaxSeq:                 true,
 	StoreValuesGet:                           true,
 	StoreValuesList:                          true,
 	StoreValuesEnvironmentsWithValue:         true,
@@ -2796,21 +2801,21 @@ var operationTable = map[Operation]opSpec{
 		class:    ClassTenant,
 		level:    domain.LevelOrg,
 		formula:  Formula{{Cap: domain.CapAuditRead, At: domain.LevelOrg}},
-		storeOps: map[StoreOp]bool{StoreAuditTenantPage: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreAuditTenantPage: true, StoreAuditTenantMaxSeq: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventAuditQuery},
 	},
 	OpAuditQueryProject: {
 		class:    ClassTenant,
 		level:    domain.LevelProject,
 		formula:  Formula{{Cap: domain.CapAuditRead, At: domain.LevelProject}},
-		storeOps: map[StoreOp]bool{StoreAuditTenantPage: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreAuditTenantPage: true, StoreAuditTenantMaxSeq: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventAuditQuery},
 	},
 	OpAuditQueryEnv: {
 		class:    ClassTenant,
 		level:    domain.LevelEnv,
 		formula:  Formula{{Cap: domain.CapAuditRead, At: domain.LevelEnv}},
-		storeOps: map[StoreOp]bool{StoreAuditTenantPage: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreAuditTenantPage: true, StoreAuditTenantMaxSeq: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventAuditQuery},
 	},
 	OpAuditExportOrg: {
@@ -2837,7 +2842,7 @@ var operationTable = map[Operation]opSpec{
 	OpAuditInstanceQuery: {
 		class:    ClassInstance,
 		formula:  Formula{{Cap: domain.CapAuditRead, At: domain.LevelNone}},
-		storeOps: map[StoreOp]bool{StoreAuditInstancePage: true, StoreAuditInstanceInsert: true},
+		storeOps: map[StoreOp]bool{StoreAuditInstancePage: true, StoreAuditInstanceMaxSeq: true, StoreAuditInstanceInsert: true},
 		events:   []audit.EventType{audit.EventAuditQuery},
 	},
 	OpAuditInstanceExport: {

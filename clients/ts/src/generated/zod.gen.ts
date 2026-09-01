@@ -2757,6 +2757,7 @@ export const zAuditPage = z.object({
     items: z.array(zAuditEvent),
     count: z.int().gte(0),
     next_after_seq: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    upper_seq: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     exhausted: z.boolean()
 });
 
@@ -3010,6 +3011,15 @@ export const zAuditTo = z.iso.datetime();
  *
  */
 export const zAuditAfterSeq = z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' });
+
+/**
+ * The session ceiling. Absent on the first page (the server pins it to the
+ * trail's current head and returns it as `upper_seq`); pass that value back
+ * on every later page so paging terminates and never chases the
+ * `audit.query` events the reads themselves append.
+ *
+ */
+export const zAuditToSeq = z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' });
 
 /**
  * Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
@@ -5178,6 +5188,7 @@ export const zQueryOrgAuditQuery = z.object({
     from: z.iso.datetime().optional(),
     to: z.iso.datetime().optional(),
     after_seq: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    to_seq: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
     limit: z.int().gte(1).lte(1000).optional().default(100),
     actor: z.string().max(64).optional(),
     operation: z.string().max(128).optional(),
@@ -5235,6 +5246,7 @@ export const zQueryProjectAuditQuery = z.object({
     from: z.iso.datetime().optional(),
     to: z.iso.datetime().optional(),
     after_seq: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    to_seq: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
     limit: z.int().gte(1).lte(1000).optional().default(100),
     actor: z.string().max(64).optional(),
     operation: z.string().max(128).optional(),
@@ -5294,6 +5306,7 @@ export const zQueryEnvAuditQuery = z.object({
     from: z.iso.datetime().optional(),
     to: z.iso.datetime().optional(),
     after_seq: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    to_seq: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
     limit: z.int().gte(1).lte(1000).optional().default(100),
     actor: z.string().max(64).optional(),
     operation: z.string().max(128).optional(),

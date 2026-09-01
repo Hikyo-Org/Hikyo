@@ -34,11 +34,14 @@ func (a *API) auditPrincipal(ctx context.Context) (domain.PrincipalID, error) {
 
 // auditQueryFilter builds the store filter from the paged query parameters. An
 // absent limit defaults to 100; the store clamps anything above its cap.
-func auditQueryFilter(from, to *time.Time, afterSeq *int64, limit *int, actor, operation, outcome, objectType, objectID, correlation *string) store.AuditFilter {
+func auditQueryFilter(from, to *time.Time, afterSeq, toSeq *int64, limit *int, actor, operation, outcome, objectType, objectID, correlation *string) store.AuditFilter {
 	f := auditFilterFields(from, to, actor, operation, outcome, objectType, objectID, correlation)
 	f.Limit = 100
 	if afterSeq != nil {
 		f.AfterSeq = *afterSeq
+	}
+	if toSeq != nil {
+		f.ToSeq = *toSeq
 	}
 	if limit != nil {
 		f.Limit = *limit
@@ -110,6 +113,7 @@ func wireAuditPage(page service.AuditPage) (apigen.AuditPage, error) {
 		Items:        items,
 		Count:        len(items),
 		NextAfterSeq: page.NextSeq,
+		UpperSeq:     page.UpperSeq,
 		Exhausted:    page.Exhausted,
 	}, nil
 }
@@ -156,7 +160,7 @@ func (a *API) QueryOrgAudit(ctx context.Context, req apigen.QueryOrgAuditRequest
 		return nil, err
 	}
 	p := req.Params
-	f := auditQueryFilter(p.From, p.To, p.AfterSeq, p.Limit, p.Actor, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId)
+	f := auditQueryFilter(p.From, p.To, p.AfterSeq, p.ToSeq, p.Limit, p.Actor, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId)
 	page, err := a.Audits.Query(ctx, principal, domain.Scope{Org: domain.OrgID(req.Org)}, f)
 	if err != nil {
 		return nil, err
@@ -174,7 +178,7 @@ func (a *API) QueryProjectAudit(ctx context.Context, req apigen.QueryProjectAudi
 		return nil, err
 	}
 	p := req.Params
-	f := auditQueryFilter(p.From, p.To, p.AfterSeq, p.Limit, p.Actor, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId)
+	f := auditQueryFilter(p.From, p.To, p.AfterSeq, p.ToSeq, p.Limit, p.Actor, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId)
 	page, err := a.Audits.Query(ctx, principal, projectScope(req.Org, req.Project), f)
 	if err != nil {
 		return nil, err
@@ -192,7 +196,7 @@ func (a *API) QueryEnvAudit(ctx context.Context, req apigen.QueryEnvAuditRequest
 		return nil, err
 	}
 	p := req.Params
-	f := auditQueryFilter(p.From, p.To, p.AfterSeq, p.Limit, p.Actor, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId)
+	f := auditQueryFilter(p.From, p.To, p.AfterSeq, p.ToSeq, p.Limit, p.Actor, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId)
 	page, err := a.Audits.Query(ctx, principal, envScope(req.Org, req.Project, req.Environment), f)
 	if err != nil {
 		return nil, err

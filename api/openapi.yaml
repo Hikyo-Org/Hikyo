@@ -8460,6 +8460,7 @@ paths:
         - $ref: "#/components/parameters/AuditFrom"
         - $ref: "#/components/parameters/AuditTo"
         - $ref: "#/components/parameters/AuditAfterSeq"
+        - $ref: "#/components/parameters/AuditToSeq"
         - $ref: "#/components/parameters/AuditLimit"
         - $ref: "#/components/parameters/AuditActor"
         - $ref: "#/components/parameters/AuditOperation"
@@ -8546,6 +8547,7 @@ paths:
         - $ref: "#/components/parameters/AuditFrom"
         - $ref: "#/components/parameters/AuditTo"
         - $ref: "#/components/parameters/AuditAfterSeq"
+        - $ref: "#/components/parameters/AuditToSeq"
         - $ref: "#/components/parameters/AuditLimit"
         - $ref: "#/components/parameters/AuditActor"
         - $ref: "#/components/parameters/AuditOperation"
@@ -8623,6 +8625,7 @@ paths:
         - $ref: "#/components/parameters/AuditFrom"
         - $ref: "#/components/parameters/AuditTo"
         - $ref: "#/components/parameters/AuditAfterSeq"
+        - $ref: "#/components/parameters/AuditToSeq"
         - $ref: "#/components/parameters/AuditLimit"
         - $ref: "#/components/parameters/AuditActor"
         - $ref: "#/components/parameters/AuditOperation"
@@ -9679,6 +9682,19 @@ components:
       description: |
         Resume cursor: return events whose seq is strictly greater. Pass the
         previous page's `next_after_seq` to page forward.
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+    AuditToSeq:
+      name: to_seq
+      in: query
+      required: false
+      description: |
+        The session ceiling. Absent on the first page (the server pins it to the
+        trail's current head and returns it as `upper_seq`); pass that value back
+        on every later page so paging terminates and never chases the
+        `audit.query` events the reads themselves append.
       schema:
         type: integer
         format: int64
@@ -15349,7 +15365,7 @@ components:
     AuditPage:
       type: object
       additionalProperties: false
-      required: [items, count, next_after_seq, exhausted]
+      required: [items, count, next_after_seq, upper_seq, exhausted]
       properties:
         items:
           type: array
@@ -15367,6 +15383,13 @@ components:
             The seq of the last row SCANNED. Pass it as `after_seq` to resume;
             it advances over scanned rows, not just matched ones, so a filtered
             page never re-reads or skips.
+        upper_seq:
+          type: integer
+          format: int64
+          description: |
+            The session ceiling the server pinned for this paging run (the
+            trail's head when the first page was read). Pass it back as `to_seq`
+            on every later page; it never changes across the run.
         exhausted:
           type: boolean
           description: |

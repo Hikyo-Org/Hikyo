@@ -70,6 +70,7 @@ func auditExportOp(scope domain.Scope) (authz.Operation, error) {
 type AuditPage struct {
 	Events    []store.AuditEvent
 	NextSeq   int64
+	UpperSeq  int64 // the session ceiling pinned for this paging run; echo it to resume
 	Exhausted bool
 }
 
@@ -81,25 +82,40 @@ func queryEvent(ctx context.Context, principal domain.PrincipalID, f store.Audit
 	return newAuditEvent(ctx, audit.EventAuditQuery, principal, audit.Object{}, audit.OutcomeSuccess, "", payload)
 }
 
-// filterPage applies the filter's equality fields to a scanned page and reports
-// the scan cursor and exhaustion. The equality match runs OUTSIDE the SQL (see
-// AuditFilter.Matches) but the cursor and exhaustion are computed over the
-// SCANNED rows so paging never skips or re-reads on a sparse filter.
-func filterPage(scanned []store.AuditEvent, f store.AuditFilter) AuditPage {
+// filterPage applies the filter's equality fields to a scanned page under a
+// pinned session ceiling, reporting the scan cursor and exhaustion.
+//
+// Two things run OUTSIDE the SQL: the equality match (see AuditFilter.Matches)
+// and the ceiling. The ceiling is the crux of stable paging — a query commits
+// its own audit.query event, so a cursor left to chase the trail's tail would
+// never end (and at limit 1 could not advance at all). The ceiling is the max
+// seq pinned when paging began; a row above it means a writer (this reader's
+// own event, or a concurrent one) appended after the snapshot, and the page
+// stops there. The cursor advances over SCANNED rows within the ceiling, not
+// matched ones, so a sparse filter never skips or re-reads.
+func filterPage(scanned []store.AuditEvent, f store.AuditFilter, ceiling int64) AuditPage {
 	matched := make([]store.AuditEvent, 0, len(scanned))
+	page := AuditPage{NextSeq: f.AfterSeq, UpperSeq: ceiling}
+	reachedCeiling := false
 	for _, e := range scanned {
+		if e.Seq > ceiling {
+			reachedCeiling = true
+			break
+		}
+		page.NextSeq = e.Seq
 		if f.Matches(e) {
 			matched = append(matched, e)
 		}
 	}
+	page.Events = matched
 	limit := f.Limit
 	if limit > store.AuditMaxPageSize {
 		limit = store.AuditMaxPageSize
 	}
-	page := AuditPage{Events: matched, NextSeq: f.AfterSeq, Exhausted: len(scanned) < limit}
-	if n := len(scanned); n > 0 {
-		page.NextSeq = scanned[n-1].Seq
-	}
+	// End of the run: the scan hit a row past the ceiling, the store returned a
+	// short page, or the cursor has reached the ceiling and no row remains
+	// between it and the pinned top.
+	page.Exhausted = reachedCeiling || len(scanned) < limit || page.NextSeq >= ceiling
 	return page
 }
 
@@ -122,11 +138,20 @@ func (s *Audits) Query(ctx context.Context, principal domain.PrincipalID, scope 
 		if err != nil {
 			return err
 		}
+		ceiling := f.ToSeq
+		if ceiling == 0 {
+			ceiling, err = r.Audit().MaxTenantSeq(ctx, p)
+			if err != nil {
+				return err
+			}
+		}
 		scanned, err := r.Audit().PageTenant(ctx, p, f)
 		if err != nil {
 			return err
 		}
-		page = filterPage(scanned, f)
+		page = filterPage(scanned, f, ceiling)
+		// Record the pinned ceiling in the query's own audit event.
+		f.ToSeq = ceiling
 		ev, err := queryEvent(ctx, principal, f, len(page.Events))
 		if err != nil {
 			return err
@@ -151,11 +176,19 @@ func (s *Audits) InstanceQuery(ctx context.Context, principal domain.PrincipalID
 		if err != nil {
 			return err
 		}
+		ceiling := f.ToSeq
+		if ceiling == 0 {
+			ceiling, err = r.Audit().MaxInstanceSeq(ctx, p)
+			if err != nil {
+				return err
+			}
+		}
 		scanned, err := r.Audit().PageInstance(ctx, p, f)
 		if err != nil {
 			return err
 		}
-		page = filterPage(scanned, f)
+		page = filterPage(scanned, f, ceiling)
+		f.ToSeq = ceiling
 		ev, err := queryEvent(ctx, principal, f, len(page.Events))
 		if err != nil {
 			return err

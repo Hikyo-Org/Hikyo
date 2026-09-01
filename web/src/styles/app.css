@@ -5322,6 +5322,16 @@ select {
    chip, field) inherits its colour, radius, font and density from the reused
    base classes, so the pinned assertion set holds without a second source of
    truth for the tokens. */
+/* The two audit panels take the container hairline and radius explicitly:
+   `.page--chrome .panel` supplies their fill, border colour and padding, but a
+   bare `.panel` carries no border width or radius of its own (each surface
+   states its panels' shape), so DESIGN.md's 6px container is set here. */
+.audit__filter,
+.audit__detail {
+  border: 1px solid var(--panel-line);
+  border-radius: var(--radius-container);
+}
+
 .audit__filter {
   display: flex;
   flex-direction: column;

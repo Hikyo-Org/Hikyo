@@ -2646,6 +2646,11 @@ type AuditPage struct {
 	// it advances over scanned rows, not just matched ones, so a filtered
 	// page never re-reads or skips.
 	NextAfterSeq int64 `json:"next_after_seq"`
+
+	// UpperSeq The session ceiling the server pinned for this paging run (the
+	// trail's head when the first page was read). Pass it back as `to_seq`
+	// on every later page; it never changes across the run.
+	UpperSeq int64 `json:"upper_seq"`
 }
 
 // AuthMethod OPEN enum — `oidc:<issuer>` and `saml:<entityID>` values are
@@ -6733,6 +6738,9 @@ type AuditOutcome string
 // AuditTo defines model for AuditTo.
 type AuditTo = time.Time
 
+// AuditToSeq defines model for AuditToSeq.
+type AuditToSeq = int64
+
 // ConnectionID A prefixed UUIDv7, e.g. `org_0198…`.
 type ConnectionID = ID
 
@@ -6903,6 +6911,12 @@ type QueryOrgAuditParams struct {
 	// previous page's `next_after_seq` to page forward.
 	AfterSeq *AuditAfterSeq `form:"after_seq,omitempty" json:"after_seq,omitempty"`
 
+	// ToSeq The session ceiling. Absent on the first page (the server pins it to the
+	// trail's current head and returns it as `upper_seq`); pass that value back
+	// on every later page so paging terminates and never chases the
+	// `audit.query` events the reads themselves append.
+	ToSeq *AuditToSeq `form:"to_seq,omitempty" json:"to_seq,omitempty"`
+
 	// Limit Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
 	// be fewer when a filter is set.
 	Limit *AuditLimit `form:"limit,omitempty" json:"limit,omitempty"`
@@ -7002,6 +7016,12 @@ type QueryProjectAuditParams struct {
 	// previous page's `next_after_seq` to page forward.
 	AfterSeq *AuditAfterSeq `form:"after_seq,omitempty" json:"after_seq,omitempty"`
 
+	// ToSeq The session ceiling. Absent on the first page (the server pins it to the
+	// trail's current head and returns it as `upper_seq`); pass that value back
+	// on every later page so paging terminates and never chases the
+	// `audit.query` events the reads themselves append.
+	ToSeq *AuditToSeq `form:"to_seq,omitempty" json:"to_seq,omitempty"`
+
 	// Limit Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
 	// be fewer when a filter is set.
 	Limit *AuditLimit `form:"limit,omitempty" json:"limit,omitempty"`
@@ -7090,6 +7110,12 @@ type QueryEnvAuditParams struct {
 	// AfterSeq Resume cursor: return events whose seq is strictly greater. Pass the
 	// previous page's `next_after_seq` to page forward.
 	AfterSeq *AuditAfterSeq `form:"after_seq,omitempty" json:"after_seq,omitempty"`
+
+	// ToSeq The session ceiling. Absent on the first page (the server pins it to the
+	// trail's current head and returns it as `upper_seq`); pass that value back
+	// on every later page so paging terminates and never chases the
+	// `audit.query` events the reads themselves append.
+	ToSeq *AuditToSeq `form:"to_seq,omitempty" json:"to_seq,omitempty"`
 
 	// Limit Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
 	// be fewer when a filter is set.
@@ -11917,6 +11943,19 @@ func (siw *ServerInterfaceWrapper) QueryOrgAudit(w http.ResponseWriter, r *http.
 		return
 	}
 
+	// ------------- Optional query parameter "to_seq" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to_seq", r.URL.Query(), &params.ToSeq, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to_seq"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to_seq", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -13374,6 +13413,19 @@ func (siw *ServerInterfaceWrapper) QueryProjectAudit(w http.ResponseWriter, r *h
 		return
 	}
 
+	// ------------- Optional query parameter "to_seq" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to_seq", r.URL.Query(), &params.ToSeq, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to_seq"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to_seq", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -14256,6 +14308,19 @@ func (siw *ServerInterfaceWrapper) QueryEnvAudit(w http.ResponseWriter, r *http.
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "after_seq"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "after_seq", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to_seq" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to_seq", r.URL.Query(), &params.ToSeq, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to_seq"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to_seq", Err: err})
 		}
 		return
 	}

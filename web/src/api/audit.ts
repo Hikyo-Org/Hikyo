@@ -87,11 +87,31 @@ function auditQuery(filter: AuditFilter): Record<string, string> {
   return query;
 }
 
-/** A `datetime-local` value (no zone) read as UTC, in RFC 3339. */
+/**
+ * A `datetime-local` value read in the browser's own zone and converted to UTC.
+ * The events render in that same local zone (see Audit.tsx), so the boundary the
+ * operator picks is the boundary the server compares against, not one shifted by
+ * their offset.
+ */
 export function localDatetimeToUtc(local: string): string {
-  // Appending `Z` interprets the wall-clock value the operator typed as UTC.
-  const seconds = local.length === 16 ? `${local}:00` : local;
-  return `${seconds}Z`;
+  return new Date(local).toISOString();
+}
+
+/** The trail cursor: the resume position and the pinned session ceiling. */
+type AuditCursor = { readonly after: bigint; readonly ceiling: bigint };
+
+/**
+ * safeSeq narrows an int64 seq to a JS number for a request parameter, refusing
+ * a value past 2^53 rather than silently rounding it. Seq is a monotonic row
+ * counter, so this is unreachable in practice; the guard is what makes it
+ * unreachable in principle instead of a silent skip. The response side keeps
+ * full int64 precision (zod bigint).
+ */
+function safeSeq(seq: bigint): number {
+  if (seq > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error(`audit seq ${seq} exceeds the safe integer range`);
+  }
+  return Number(seq);
 }
 
 export const auditPageKey = (org: string, filter: AuditFilter) =>
@@ -111,16 +131,24 @@ export function useAuditTrail(
 ): UseInfiniteQueryResult<InfiniteData<AuditPage>, unknown> {
   return useInfiniteQuery({
     queryKey: auditPageKey(org, filter),
-    // The cursor is the trail's int64 seq, so it is a bigint end to end; the
-    // request param is a plain number in the generated client, so it is
-    // narrowed only at the call. Seq values are far inside 2^53.
-    initialPageParam: 0n,
+    // The cursor is the trail's int64 seq (bigint end to end). The first page
+    // carries no ceiling; the server pins one and returns it as upper_seq, which
+    // every later page echoes as to_seq so paging is stable across concurrent
+    // writes. Request params are plain numbers in the generated client, so the
+    // cursor is narrowed — guarded — only at the call.
+    initialPageParam: { after: 0n, ceiling: 0n } as AuditCursor,
     queryFn: ({ pageParam }) =>
       parsed(queryOrgAuditOp, {
         path: { org },
-        query: { ...auditQuery(filter), after_seq: Number(pageParam), limit: AUDIT_PAGE_LIMIT },
+        query: {
+          ...auditQuery(filter),
+          after_seq: safeSeq(pageParam.after),
+          limit: AUDIT_PAGE_LIMIT,
+          ...(pageParam.ceiling === 0n ? {} : { to_seq: safeSeq(pageParam.ceiling) }),
+        },
       }),
-    getNextPageParam: (last) => (last.exhausted ? undefined : last.next_after_seq),
+    getNextPageParam: (last): AuditCursor | undefined =>
+      last.exhausted ? undefined : { after: last.next_after_seq, ceiling: last.upper_seq },
     retry: false,
   });
 }
