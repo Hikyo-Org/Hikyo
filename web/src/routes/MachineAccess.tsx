@@ -1128,7 +1128,7 @@ function claimText(pin: ClaimPin): string {
  * gate as Escape. Deactivating consumes the sentinel again so Back is not a
  * double-press afterwards.
  */
-function useNavigationGuard(active: boolean, onAttempt: () => void) {
+export function useNavigationGuard(active: boolean, onAttempt: () => void) {
   const attempt = useRef(onAttempt);
   attempt.current = onAttempt;
   useEffect(() => {

@@ -3105,6 +3105,7 @@ select {
 .remotes,
 .origins,
 .sessions,
+.connections,
 .remote__orgs {
   list-style: none;
   margin: 12px 0 0;
@@ -3114,25 +3115,29 @@ select {
   gap: 12px;
 }
 
-.remote {
+.remote,
+.connection {
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
   background: var(--bg);
 }
 
-.remote__head {
+.remote__head,
+.connection__head {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.remote__name {
+.remote__name,
+.connection__label {
   margin: 0;
   font-size: 16px;
 }
 
-.remote__url {
+.remote__url,
+.connection__prefix {
   margin: 4px 0 8px;
   color: var(--tx-dim);
   overflow-wrap: anywhere;
@@ -3144,18 +3149,21 @@ select {
   color: var(--tx-dim);
 }
 
-.remote__facts {
+.remote__facts,
+.connection__facts {
   display: grid;
   grid-template-columns: max-content 1fr;
   gap: 2px 12px;
   margin: 0 0 8px;
 }
 
-.remote__facts dt {
+.remote__facts dt,
+.connection__facts dt {
   color: var(--tx-dim);
 }
 
-.remote__facts dd {
+.remote__facts dd,
+.connection__facts dd {
   margin: 0;
   overflow-wrap: anywhere;
 }
@@ -3189,6 +3197,7 @@ select {
 }
 
 .remote__actions,
+.connection__actions,
 .origin,
 .session__head {
   display: flex;

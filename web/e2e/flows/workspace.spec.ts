@@ -66,6 +66,40 @@ function card(page: Page) {
   return page.locator('.remote').filter({ hasText: REMOTE_NAME });
 }
 
+/**
+ * revokeConnectionByLabel is best-effort test cleanup: it retires any live
+ * connection credential carrying `label`, from inside B's own origin so the
+ * session cookie and its synchronizer token are both present. It never throws —
+ * a failed cleanup must not mask the assertion that actually failed.
+ */
+async function revokeConnectionByLabel(page: Page, label: string): Promise<void> {
+  await page
+    .evaluate(async (wanted) => {
+      const csrf =
+        document.cookie
+          .split(';')
+          .map((part) => part.trim())
+          .find((part) => part.startsWith('__Host-hikyo-csrf='))
+          ?.slice('__Host-hikyo-csrf='.length) ?? '';
+      const listed = await fetch('/api/v1/instance/connections');
+      if (!listed.ok) return;
+      const body: unknown = await listed.json();
+      const items =
+        typeof body === 'object' && body !== null && 'items' in body
+          ? (body as { items: { id: string; label: string; revoked_at?: string }[] }).items
+          : [];
+      for (const item of items) {
+        if (item.label === wanted && item.revoked_at === undefined) {
+          await fetch(`/api/v1/instance/connections/${item.id}`, {
+            method: 'DELETE',
+            headers: { 'X-Hikyo-CSRF': csrf },
+          });
+        }
+      }
+    }, label)
+    .catch(() => undefined);
+}
+
 test.describe('multi-instance', () => {
   test.use({ storageState: STORAGE_STATE });
 
@@ -105,6 +139,97 @@ test.describe('multi-instance', () => {
     // instance's own.
     await expect(entry.getByText('Identity')).toBeVisible();
     await expect(entry).not.toContainText('not yet observed');
+  });
+
+  /**
+   * The receiving side, end to end (#498). The serving instance's operator
+   * mints a connection credential IN THE UI, a peer presents it at the one
+   * endpoint it may reach — the directory fetch — and it authenticates.
+   * Revoking it through the UI, after the consequence is stated, refuses the
+   * very next presentation.
+   *
+   * It mints its OWN uniquely-labelled credential and never touches the seeded
+   * one every sibling test depends on. The connect-and-refuse legs run through
+   * an EXPLICITLY cookie-less request context, so the credential — not an
+   * ambient session — is provably what authenticates: a no-auth control against
+   * the same endpoint is refused, and only the bearer turns that into a 200,
+   * which is exactly what a peer instance's server-side directory fetch does.
+   *
+   * A `finally` revokes the credential by label whatever happens, so a failure
+   * before the UI revoke neither leaves a live credential nor a usable one in a
+   * retained trace: a revoked value is inert.
+   */
+  test('mints a connection credential in the UI, a peer connects with it, and revocation refuses the next fetch', async ({
+    page,
+    playwright,
+  }) => {
+    await onB(page, '/remotes');
+    const section = page.locator('#connection-credentials');
+    await expect(section).toBeVisible();
+
+    const label = `e2e connection ${Date.now()}`;
+    // A context with no storage state carries no cookies — the only credential
+    // it can present is the bearer set per request.
+    const peer = await playwright.request.newContext();
+    const directory = `${BASE_URL_B}/api/v1/instance/directory`;
+    try {
+      await section.getByLabel('Label').fill(label);
+      await section.getByRole('button', { name: 'Mint credential' }).click();
+
+      const mintDialog = page.getByRole('dialog', { name: /shown exactly once/ });
+      await expect(mintDialog).toBeVisible();
+      const value = (await mintDialog.locator('.machine__token').textContent())?.trim() ?? '';
+      expect(value).not.toBe('');
+
+      // Control: without the credential the same request is refused, proving the
+      // 200 below is the bearer's doing and not an ambient cookie.
+      const anonymous = await peer.get(directory);
+      expect(anonymous.status(), 'the directory fetch is not open without a credential').toBe(401);
+
+      // A peer presents the minted value at the directory fetch — the one
+      // operation an instance-connection credential may reach — and connects.
+      const connected = await peer.get(directory, {
+        headers: { Authorization: `Bearer ${value}` },
+      });
+      expect(connected.status()).toBe(200);
+
+      // The value is display-once: confirm storage, dismiss, and it is gone from
+      // the surface — the inventory shows metadata only.
+      await mintDialog.getByLabel(/I have stored this credential/).check();
+      await mintDialog.getByRole('button', { name: 'Done' }).click();
+      await expect(mintDialog).toBeHidden();
+
+      const row = section.locator('.connection').filter({ hasText: label });
+      await expect(row.getByText('live', { exact: true })).toBeVisible();
+      // The full plaintext must be absent (its prefix_hint legitimately is not).
+      // Asserting on a boolean keeps the value out of any failure diagnostic.
+      const surfaceText = (await section.textContent()) ?? '';
+      expect(surfaceText.includes(value), 'the plaintext value is present in the inventory').toBe(
+        false,
+      );
+
+      // Revocation states the consequence before it commits (AC#4).
+      await row.getByRole('button', { name: `Revoke ${label}` }).click();
+      const revokeDialog = page.getByRole('dialog', { name: new RegExp(`Revoke ${label}`) });
+      await expect(revokeDialog).toContainText('credential rejected');
+      await expect(revokeDialog).toContainText('Active workspace sessions');
+      await expect(revokeDialog).toContainText('unaffected');
+      await revokeDialog.getByRole('button', { name: 'Revoke credential' }).click();
+      await expect(revokeDialog).toBeHidden();
+
+      await expect(row.getByText('revoked', { exact: true })).toBeVisible();
+
+      // The same presentation is now refused — revocation bit at the next fetch.
+      const refused = await peer.get(directory, {
+        headers: { Authorization: `Bearer ${value}` },
+      });
+      expect(refused.status()).toBe(401);
+    } finally {
+      // Revoke by label from within B's own origin (cookies + CSRF available),
+      // whatever state the assertions left the credential in.
+      await revokeConnectionByLabel(page, label);
+      await peer.dispose();
+    }
   });
 
   test('the popup ceremony opens a workspace, and both kill switches close it', async ({
