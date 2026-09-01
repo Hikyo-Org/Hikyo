@@ -9,20 +9,25 @@
 // write. Per-account and per-IP backoff is necessary and insufficient, so
 // both exist here.
 //
-// Deliberately in memory, not in the database. v1's locked deployment
-// envelope is a single node with no HA, so process-local state is the whole
-// instance's state; a durable throttle table would add a write per failed
-// attempt — amplifying exactly the flood it is meant to bound — to buy
-// nothing this deployment shape can use. A multi-node build must replace this
-// with shared state, which is why the constraint is written down here rather
-// than discovered later.
+// State placement follows the deployment shape. On a single node (the default)
+// the per-IP, per-account, and per-issuer counters live in process memory:
+// process-local state is the whole instance's state, and a durable throttle
+// table would add a write per failed attempt, amplifying exactly the flood it
+// is meant to bound. Under multi-node HA (#146) those counters move to a shared
+// datastore table (see SharedStore): a distributed attempt that hops between
+// nodes must still hit one installation-wide bucket, so node hopping cannot
+// bypass a limit. The concurrency semaphore is ALWAYS per node, HA or not: it
+// bounds this node's own RAM budget for in-flight Argon2id work, which is a
+// property of the node, not the installation.
 package admission
 
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -100,6 +105,38 @@ type Config struct {
 	Now func() time.Time
 }
 
+// SharedStore is the optional installation-wide backend for the windowed and
+// per-account counters under multi-node HA (#146). When set, the limiter reads
+// and writes these counters here instead of in process memory so node hopping
+// cannot bypass a limit; nil keeps the single-node in-memory path unchanged.
+// The concurrency semaphore is never delegated here: it is always per node.
+// It is satisfied by *store.Coordination.
+//
+// Windows are fixed one-minute buckets keyed by their truncated start, so at a
+// window boundary an attacker can spend up to two windows' allowance in quick
+// succession; the semaphore still bounds the actual verification work, and the
+// bound is per minute rather than a true sliding minute by design (a durable
+// sliding window is a write per attempt).
+type SharedStore interface {
+	BumpWindow(ctx context.Context, bucket, subject string, window time.Time) (int64, error)
+	AccountBackoff(ctx context.Context, subject string) (deadline time.Time, ok bool, err error)
+	RecordAccountFailure(ctx context.Context, subject string) (failures int64, err error)
+	SetAccountDeadline(ctx context.Context, subject string, deadline time.Time) error
+	ClearAccount(ctx context.Context, subject string) error
+}
+
+// Shared bucket names, matching the store's admission_counters bucket column.
+const (
+	sharedBucketIP     = "ip"
+	sharedBucketMeta   = "meta"
+	sharedBucketIssuer = "issuer"
+)
+
+// sharedTimeout bounds each coordination call so a slow datastore cannot hang
+// a pre-authentication path; a timeout is a coordination failure and fails
+// closed (the attempt is refused).
+const sharedTimeout = 2 * time.Second
+
 // Limiter is one instance's admission state.
 type Limiter struct {
 	concurrency    int
@@ -107,6 +144,12 @@ type Limiter struct {
 	discoveryPerIP int
 	slots          chan struct{}
 	now            func() time.Time
+
+	// shared, when non-nil, backs the windowed and per-account counters with
+	// installation-wide state (HA). log is used only to make a fail-closed
+	// coordination error visible; both are nil on a single node.
+	shared SharedStore
+	log    *slog.Logger
 
 	mu       sync.Mutex
 	waiting  int
@@ -190,6 +233,42 @@ func New(cfg Config) (*Limiter, error) {
 
 // Concurrency reports the derived number of simultaneous verifications.
 func (l *Limiter) Concurrency() int { return l.concurrency }
+
+// UseShared attaches an installation-wide counter backend (HA, #146). It is
+// called once during boot before the limiter serves any request, so it needs
+// no lock. After it returns, the windowed and per-account counters are shared
+// across nodes; the concurrency semaphore stays per node.
+func (l *Limiter) UseShared(s SharedStore, log *slog.Logger) {
+	l.shared = s
+	l.log = log
+}
+
+func (l *Limiter) logger() *slog.Logger {
+	if l.log == nil {
+		return slog.Default()
+	}
+	return l.log
+}
+
+// allowShared charges one hit against a fixed one-minute window in the shared
+// backend and reports whether the subject is still within its allowance. A
+// coordination error fails closed (the attempt is refused), because a
+// pre-authentication limiter that cannot reach its shared state must not admit
+// unbounded distributed work.
+func (l *Limiter) allowShared(bucket, subject string, allowance int) bool {
+	if subject == "" {
+		return true
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), sharedTimeout)
+	defer cancel()
+	window := l.now().UTC().Truncate(time.Minute)
+	count, err := l.shared.BumpWindow(ctx, bucket, subject, window)
+	if err != nil {
+		l.logger().Error("admission: shared counter unreachable, refusing", "bucket", bucket, "err", err)
+		return false
+	}
+	return count <= int64(allowance)
+}
 
 // Snapshot is a point-in-time read of the limiter's pressure, for the
 // operational /metrics surface (#513). It carries no attacker-chosen key — only
@@ -276,6 +355,9 @@ func (l *Limiter) dequeue() {
 // expensive work, and a cheap endpoint queued behind a semaphore sized for
 // 64 MiB derivations would be throttled by a cost it does not incur.
 func (l *Limiter) AllowDiscovery(ip string) bool {
+	if l.shared != nil {
+		return l.allowShared(sharedBucketMeta, ip, l.discoveryPerIP)
+	}
 	return l.allowIPIn(l.metaHits, ip, l.discoveryPerIP)
 }
 
@@ -295,10 +377,16 @@ func (l *Limiter) AllowDiscovery(ip string) bool {
 // the shape of the attack: the amplification is aimed at the ISSUER, and one
 // fabricated-`kid` stream from a thousand addresses is the same outbound flood.
 func (l *Limiter) AllowIssuerRefresh(issuer string) bool {
+	if l.shared != nil {
+		return l.allowShared(sharedBucketIssuer, issuer, IssuerRefreshPerMinute)
+	}
 	return l.allowIPIn(l.issuerRefreshes, issuer, IssuerRefreshPerMinute)
 }
 
 func (l *Limiter) allowIP(ip string) bool {
+	if l.shared != nil {
+		return l.allowShared(sharedBucketIP, ip, l.perIP)
+	}
 	return l.allowIPIn(l.ipHits, ip, l.perIP)
 }
 
@@ -375,10 +463,41 @@ func evictStale(bucket map[string][]time.Time, cutoff time.Time) {
 // unknown account gets a bucket exactly like a real one and the presence or
 // absence of a per-account bucket is not observable.
 func (l *Limiter) AccountDelay(presented string) time.Duration {
+	if l.shared != nil {
+		return l.sharedAccountDelay(presented)
+	}
 	key := bucketKey(presented)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.accountDelay(key)
+}
+
+// sharedAccountSubject is the durable, non-reversible key for an account
+// bucket: the hex of the same hash the in-memory path uses, never the raw
+// identifier.
+func sharedAccountSubject(presented string) string {
+	key := bucketKey(presented)
+	return hex.EncodeToString(key[:])
+}
+
+// sharedAccountDelay reads the shared backoff deadline. A coordination error
+// fails closed: it returns the advertised retry delay so the attempt is held
+// off rather than admitted while the shared state is unreachable.
+func (l *Limiter) sharedAccountDelay(presented string) time.Duration {
+	ctx, cancel := context.WithTimeout(context.Background(), sharedTimeout)
+	defer cancel()
+	deadline, ok, err := l.shared.AccountBackoff(ctx, sharedAccountSubject(presented))
+	if err != nil {
+		l.logger().Error("admission: shared account backoff unreachable, holding off", "err", err)
+		return RetryAfter
+	}
+	if !ok {
+		return 0
+	}
+	if d := deadline.Sub(l.now()); d > 0 {
+		return d
+	}
+	return 0
 }
 
 // accountDelay reports the current delay for key. l.mu must be held.
@@ -401,10 +520,38 @@ func (l *Limiter) accountDelay(key subjectKey) time.Duration {
 // It reports whether this failure crossed the threshold, so the caller can
 // emit the audit event the ADR requires on threshold crossing.
 func (l *Limiter) RecordFailure(presented string) (crossedThreshold bool) {
+	if l.shared != nil {
+		return l.sharedRecordFailure(presented)
+	}
 	key := bucketKey(presented)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.recordFailure(key)
+}
+
+// sharedRecordFailure advances the shared per-account curve with the same
+// threshold and delay formula as the in-memory path, storing the deadline as
+// an absolute instant so concurrent attempts on other nodes see one shared
+// backoff. A coordination error cannot advance the curve, so it reports no
+// threshold crossing.
+func (l *Limiter) sharedRecordFailure(presented string) (crossedThreshold bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), sharedTimeout)
+	defer cancel()
+	subject := sharedAccountSubject(presented)
+	failures, err := l.shared.RecordAccountFailure(ctx, subject)
+	if err != nil {
+		l.logger().Error("admission: shared account failure record unreachable", "err", err)
+		return false
+	}
+	if failures <= FailuresBeforeBackoff {
+		return false
+	}
+	delay := time.Duration(1<<min(failures-FailuresBeforeBackoff-1, 16)) * time.Second
+	delay = min(delay, MaxAccountBackoff)
+	if err := l.shared.SetAccountDeadline(ctx, subject, l.now().Add(delay)); err != nil {
+		l.logger().Error("admission: shared account deadline write unreachable", "err", err)
+	}
+	return failures == FailuresBeforeBackoff+1
 }
 
 // recordFailure advances key's backoff state. l.mu must be held.
@@ -428,6 +575,14 @@ func (l *Limiter) recordFailure(key subjectKey) (crossedThreshold bool) {
 
 // RecordSuccess resets the curve.
 func (l *Limiter) RecordSuccess(presented string) {
+	if l.shared != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), sharedTimeout)
+		defer cancel()
+		if err := l.shared.ClearAccount(ctx, sharedAccountSubject(presented)); err != nil {
+			l.logger().Error("admission: shared account reset unreachable", "err", err)
+		}
+		return
+	}
 	key := bucketKey(presented)
 	l.mu.Lock()
 	defer l.mu.Unlock()

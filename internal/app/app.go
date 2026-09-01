@@ -616,6 +616,11 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		srv.scheduler.Lease = coord
 		srv.scheduler.NodeID = cfg.NodeID
 		srv.scheduler.OnTick = onTick
+		// Share the pre-authentication counters installation-wide so node
+		// hopping cannot bypass a per-IP, per-account, or per-issuer limit. The
+		// concurrency semaphore stays per node. Wired before the listener
+		// accepts, so the limiter is not yet serving concurrently.
+		limiter.UseShared(coord, log)
 	}
 	// Ownership transfers only after the Server is complete. Nothing remains
 	// between disarm and return, so Server.Close is now the sole owner.
