@@ -171,7 +171,7 @@ export function issuerUpdateRefusalText(error: unknown): string {
       case 403:
         return 'Editing a federation issuer is instance-config work and needs a second factor. Present your authenticator code or passkey in the banner above. Nothing was changed.';
       case 404:
-        return 'That issuer is no longer here — someone may have deleted it already. Nothing was changed.';
+        return 'That issuer is absent, or not disclosed to this session — the two are the same uniform response. Nothing was changed.';
       case 429:
         return 'Too many requests right now. Wait a moment and try again.';
       default:
@@ -195,9 +195,9 @@ export function issuerDeleteRefusalText(error: unknown): string {
       case 403:
         return 'Deleting a federation issuer is instance-config work and needs a second factor. Present your authenticator code or passkey in the banner above.';
       case 404:
-        return 'That issuer is no longer here — someone may have deleted it already.';
+        return 'That issuer is absent, or not disclosed to this session — the two are the same uniform response.';
       case 409:
-        return 'This issuer still has bindings naming it — live or revoked. Revoke every one from Machine Access first; the delete stays refused until none remain, because erasing the issuer erases what those bindings trusted.';
+        return 'This issuer has bindings naming it — live or revoked — so it cannot be deleted. That binding history is append-only and never reaches zero once an issuer has been used, because erasing the issuer would erase what those bindings trusted.';
       case 429:
         return 'Too many requests right now. Wait a moment and try again.';
       default:

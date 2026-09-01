@@ -109,7 +109,10 @@ export function FederationIssuersPanel() {
         <p role="status">Federation issuers are not disclosed to this session.</p>
       ) : null}
       {issuers.isError && !secondFactor(issuers.error) && !nondisclosed(issuers.error) ? (
-        <Alert>{issuerCreateRefusalText(issuers.error)}</Alert>
+        <Alert>
+          The federation issuers could not be listed, so none are shown. This is not the same as
+          there being none.
+        </Alert>
       ) : null}
 
       {issuers.isSuccess ? (
@@ -146,9 +149,14 @@ export function FederationIssuersPanel() {
                   >
                     Edit
                   </button>
+                  {/* Neutral until the confirmation opens: the danger button
+                      is the destructive act itself, shown only after this one
+                      reveals it — the same reveal-then-danger shape every other
+                      surface uses, which also keeps the low-contrast danger
+                      treatment out of the always-rendered page. */}
                   <button
                     type="button"
-                    className="btn btn--danger"
+                    className="btn"
                     disabled={busy}
                     onClick={() => {
                       setFailure(null);
@@ -166,7 +174,7 @@ export function FederationIssuersPanel() {
                     <p>
                       {issuer.live_bindings === 0
                         ? `Delete ${issuer.issuer}? No binding names it, so nothing that authenticates depends on it.`
-                        : `${String(issuer.live_bindings)} binding${issuer.live_bindings === 1 ? '' : 's'} — live or revoked — still name ${issuer.issuer}. The delete is refused until every one is revoked from Machine Access, because erasing the issuer erases what those bindings trusted.`}
+                        : `${String(issuer.live_bindings)} binding${issuer.live_bindings === 1 ? '' : 's'} — live or revoked — name ${issuer.issuer}, so it cannot be deleted. That history is append-only: even a revoked binding still records what this issuer was trusted for, and erasing the issuer would erase what it trusted. Deletion is only ever available for an issuer that was never bound.`}
                     </p>
                     <div className="panel__actions">
                       <button
@@ -175,16 +183,18 @@ export function FederationIssuersPanel() {
                         disabled={busy}
                         onClick={() => setConfirmDelete(null)}
                       >
-                        Cancel
+                        {issuer.live_bindings === 0 ? 'Cancel' : 'Close'}
                       </button>
-                      <button
-                        type="button"
-                        className="btn btn--danger"
-                        disabled={busy}
-                        onClick={() => doDelete(issuer)}
-                      >
-                        Delete issuer
-                      </button>
+                      {issuer.live_bindings === 0 ? (
+                        <button
+                          type="button"
+                          className="btn btn--danger"
+                          disabled={busy}
+                          onClick={() => doDelete(issuer)}
+                        >
+                          Delete issuer
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                 ) : null}
@@ -339,7 +349,11 @@ function IssuerForm({
       </legend>
 
       <div className="field">
-        <label htmlFor={issuerId}>Issuer (https URL, matched byte-for-byte)</label>
+        {editing ? (
+          <span className="field__label">Issuer (https URL, matched byte-for-byte)</span>
+        ) : (
+          <label htmlFor={issuerId}>Issuer (https URL, matched byte-for-byte)</label>
+        )}
         {editing ? (
           <p className="field__hint mono">{issuer.issuer}</p>
         ) : (
@@ -360,7 +374,11 @@ function IssuerForm({
       </div>
 
       <div className="field">
-        <label htmlFor={typeId}>Platform type</label>
+        {editing ? (
+          <span className="field__label">Platform type</span>
+        ) : (
+          <label htmlFor={typeId}>Platform type</label>
+        )}
         {editing ? (
           <p className="field__hint mono">{issuer.issuer_type}</p>
         ) : (
@@ -389,7 +407,16 @@ function IssuerForm({
         <select
           id={modeId}
           value={mode}
-          onChange={(event) => setMode(event.target.value as FederationJwksMode)}
+          onChange={(event) => {
+            const next = event.target.value as FederationJwksMode;
+            setMode(next);
+            // Do not carry a JWKS document out of static mode: under discovery
+            // it is not sent (the wire schema refuses it), and holding it in
+            // form state past that point serves nothing.
+            if (next !== 'static') {
+              setStaticJwks('');
+            }
+          }}
         >
           {JWKS_MODES.map((entry) => (
             <option key={entry.id} value={entry.id}>

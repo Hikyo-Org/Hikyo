@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MachineCredential } from '../api/identities.ts';
-import { presetForBinding, seedClaims } from './MachineAccess.tsx';
+import { carriedClaims, presetForBinding, seedClaims } from './MachineAccess.tsx';
 
 /**
  * The replace form's seeding. A replacement inherits the predecessor's platform
@@ -63,5 +63,36 @@ describe('seedClaims', () => {
     const seeded = seedClaims(presetForBinding(credential), credential);
     expect(seeded['event_name']).toBe('push');
     expect(Object.values(seeded).some((value) => value === '')).toBe(true);
+  });
+});
+
+describe('carriedClaims', () => {
+  it('preserves a custom pin no preset field renders, so replacement never weakens it', () => {
+    const credential = binding([
+      { claim: 'repository_id', number_value: 42n },
+      { claim: 'repository_owner_id', number_value: 7n },
+      { claim: 'event_name', string_value: 'push' },
+      // A claim the operator added via the CLI, beyond the GitHub preset.
+      { claim: 'environment', string_value: 'production' },
+      { claim: 'ref_protected', bool_value: true },
+    ]);
+    const preset = presetForBinding(credential);
+    const carried = carriedClaims(preset, credential);
+    // The three preset claims are rendered as fields; the two extras are carried.
+    expect(carried).toEqual([
+      { claim: 'environment', string_value: 'production' },
+      { claim: 'ref_protected', bool_value: true },
+    ]);
+    // And the preset fields are NOT double-counted in the carried set.
+    for (const field of preset.claims) {
+      expect(carried.some((pin) => pin.claim === field.claim)).toBe(false);
+    }
+  });
+
+  it('carries nothing when every pin is a preset field', () => {
+    const credential = binding([
+      { claim: '/kubernetes.io/serviceaccount/uid', string_value: 'abc' },
+    ]);
+    expect(carriedClaims(presetForBinding(credential), credential)).toEqual([]);
   });
 });

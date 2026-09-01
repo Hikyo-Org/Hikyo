@@ -107,7 +107,8 @@ select {
   gap: 6px;
 }
 
-.field label {
+.field label,
+.field .field__label {
   color: var(--tx-dim);
   font-size: 13px;
 }

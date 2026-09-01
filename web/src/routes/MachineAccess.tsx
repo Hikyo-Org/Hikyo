@@ -1204,6 +1204,58 @@ export function seedClaims(
 }
 
 /**
+ * carriedClaims are the predecessor's pins that no preset field renders — a
+ * custom claim a CLI operator added beyond the platform's required set. A
+ * replacement must carry EVERY one of them verbatim: dropping a pin the form
+ * cannot show would silently weaken the successor's identity constraints, which
+ * is precisely the re-point-without-review the immutable-binding rule forbids.
+ * The form displays them read-only so the preservation is visible, not silent.
+ */
+export function carriedClaims(
+  preset: FederationPreset,
+  credential: MachineCredential,
+): FederatedClaimPin[] {
+  const rendered = new Set(preset.claims.map((field) => field.claim));
+  return (credential.required_claims ?? [])
+    .filter((pin) => !rendered.has(pin.claim))
+    .map(toRequestPin);
+}
+
+/**
+ * toRequestPin converts one READ-shape pin (whose `number_value` is a bigint)
+ * to the REQUEST shape (a plain number). The int64→number narrowing is the
+ * generated client's own boundary — the wire type is a number — so it is no
+ * lossier here than a first mint of the same claim, and a real repository id
+ * sits far below the safe-integer ceiling.
+ */
+function toRequestPin(pin: ClaimPin): FederatedClaimPin {
+  if (pin.string_value !== undefined) {
+    return { claim: pin.claim, string_value: pin.string_value };
+  }
+  if (pin.number_value !== undefined) {
+    return { claim: pin.claim, number_value: Number(pin.number_value) };
+  }
+  if (pin.bool_value !== undefined) {
+    return { claim: pin.claim, bool_value: pin.bool_value };
+  }
+  return { claim: pin.claim };
+}
+
+/** requestPinText renders a request-shape pin for the read-only preserved list. */
+function requestPinText(pin: FederatedClaimPin): string {
+  if (pin.string_value !== undefined) {
+    return pin.string_value;
+  }
+  if (pin.number_value !== undefined) {
+    return String(pin.number_value);
+  }
+  if (pin.bool_value !== undefined) {
+    return String(pin.bool_value);
+  }
+  return 'unpinned';
+}
+
+/**
  * useNavigationGuard keeps navigation from destroying what dismissal is not
  * allowed to.
  *
@@ -1534,6 +1586,9 @@ function BindingDialog({
   // pinned; a fresh binding starts on Kubernetes. The account is locked to the
   // row the replace was launched from, because a binding belongs to one.
   const seedPreset = replaces === undefined ? KUBERNETES_PRESET : presetForBinding(replaces);
+  // Predecessor pins no form field renders — carried verbatim so a replacement
+  // never silently drops an identity constraint the form could not show.
+  const carried = replaces === undefined ? [] : carriedClaims(seedPreset, replaces);
   const [account, setAccount] = useState(initial.id);
   const [preset, setPreset] = useState<FederationPreset>(seedPreset);
   const [issuer, setIssuer] = useState(replaces?.issuer ?? seedPreset.issuer);
@@ -1627,6 +1682,10 @@ function BindingDialog({
       setFailure(pins);
       return;
     }
+    // Carried pins are appended, never merged: a preset field and a carried
+    // claim can never share a name (carried is exactly the complement), so
+    // there is nothing to reconcile.
+    const allPins = [...pins, ...carried];
     setBusy(true);
     setFailure(null);
     // Same issued-vs-nothing-happened line the mint draws: once the request
@@ -1651,7 +1710,7 @@ function BindingDialog({
         issuer,
         subject,
         audience,
-        requiredClaims: pins,
+        requiredClaims: allPins,
         ...(seconds === undefined ? {} : { lifetimeSeconds: seconds }),
         ...(replaces === undefined ? {} : { replaces: replaces.id }),
       });
@@ -1815,6 +1874,22 @@ function BindingDialog({
           </div>
         ),
       )}
+
+      {carried.length > 0 ? (
+        <div className="field">
+          <span className="field__label">
+            Preserved pins, carried byte-for-byte from the binding being replaced
+          </span>
+          <dl className="kv">
+            {carried.map((pin) => (
+              <div className="kv__pair" key={pin.claim}>
+                <dt>{pin.claim}</dt>
+                <dd className="mono">{requestPinText(pin)}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ) : null}
 
       <div className="field">
         <label htmlFor="binding-lifetime">Binding lifetime</label>

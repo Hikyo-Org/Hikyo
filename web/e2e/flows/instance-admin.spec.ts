@@ -735,8 +735,9 @@ test.describe('instance administration', () => {
 
     // Configure a NEW, never-bound issuer. Discovery mode needs no JWKS
     // document, and the create runs no outbound fetch, so an unreachable host
-    // is fine here.
-    const newIssuer = 'https://e2e-federation.example.org';
+    // is fine here. The host carries the project name so the desktop and mobile
+    // runs never name the same issuer.
+    const newIssuer = `https://e2e-federation-${test.info().project.name}.example.org`;
     await federation.getByRole('button', { name: 'Configure issuer' }).click();
     const createForm = federation.locator('fieldset', {
       hasText: 'Configure a federation issuer',
@@ -759,14 +760,18 @@ test.describe('instance administration', () => {
     await editForm.getByRole('button', { name: 'Save issuer' }).click();
     await expect(federation.locator('.notice')).toContainText('Updated');
 
-    // The seeded issuer's delete FAILS CLOSED: a binding still names it.
-    await seedRow.getByRole('button', { name: 'Delete' }).click();
-    await seedRow.getByRole('button', { name: 'Delete issuer' }).click();
-    await expect(federation.getByRole('alert')).toContainText('live or revoked');
+    // The seeded issuer FAILS CLOSED: a binding names it, so the confirmation
+    // explains deletion is permanently unavailable and offers NO destructive
+    // action. A revoked binding would still count, so this can never reach zero.
+    await seedRow.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(seedRow).toContainText('cannot be deleted');
+    await expect(seedRow.getByRole('button', { name: 'Delete issuer' })).toHaveCount(0);
+    await seedRow.getByRole('button', { name: 'Close' }).click();
     await expect(federation).toContainText(seed.machine.issuer);
 
-    // The never-bound issuer deletes cleanly.
-    await newRow.getByRole('button', { name: 'Delete' }).click();
+    // The never-bound issuer deletes cleanly — the destructive action is
+    // present only because its census is zero.
+    await newRow.getByRole('button', { name: 'Delete', exact: true }).click();
     await newRow.getByRole('button', { name: 'Delete issuer' }).click();
     await expect(federation.locator('.notice')).toContainText('Deleted');
     await expect(federation.locator('li.settings-row', { hasText: newIssuer })).toHaveCount(0);

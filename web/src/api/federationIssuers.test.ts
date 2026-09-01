@@ -84,8 +84,9 @@ describe('issuer refusal mappers', () => {
     expect(text).not.toMatch(/disclosure/);
   });
 
-  it('has no duplicate case on update — the issuer string cannot move', () => {
-    expect(issuerUpdateRefusalText(new ApiError(404, 'x'))).toMatch(/no longer here/);
+  it('reads a 404 as the ambiguous absent-or-masked shape, not a bare deletion', () => {
+    expect(issuerUpdateRefusalText(new ApiError(404, 'x'))).toMatch(/not disclosed to this session/);
+    expect(issuerDeleteRefusalText(new ApiError(404, 'x'))).toMatch(/not disclosed to this session/);
   });
 
   it('names a delete 409 as the still-naming bindings, live or revoked', () => {
