@@ -1,15 +1,42 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"net"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/remotefetch"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
+
+func TestBootLogsEffectiveSQLitePoolSizes(t *testing.T) {
+	var output bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&output, nil))
+	resources := recordingBootResources(&bootResourceRecord{})
+	injected := errors.New("stop after datastore startup")
+	resources.listen = func(string, string) (net.Listener, error) { return nil, injected }
+
+	_, err := boot(t.Context(), devConfig(t), log, resources)
+	if !errors.Is(err, injected) {
+		t.Fatalf("boot error = %v, want injected listener error", err)
+	}
+	logged := output.String()
+	for _, want := range []string{
+		"msg=\"datastore connection pools configured\"",
+		"engine=sqlite",
+		"write_max_connections=1",
+		"read_max_connections=",
+	} {
+		if !strings.Contains(logged, want) {
+			t.Fatalf("startup log missing %q:\n%s", want, logged)
+		}
+	}
+}
 
 type bootResourceRecord struct {
 	database       *store.DB

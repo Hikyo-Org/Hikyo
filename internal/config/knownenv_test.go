@@ -90,8 +90,10 @@ func TestConsumedServerEnvKeysDoNotWarn(t *testing.T) {
 	pairs := []string{
 		"HIKYO_NEW_ROOT_KEY_FILE", newRootKeyFile,
 		"HIKYO_DIRECTORY_PROXY", directoryProxy,
+		"HIKYO_PG_POOL_MAX", "17",
 	}
-	cfg, warnings, err := Load("server", []string{"--dev"}, env(pairs...), environFrom(pairs...))
+	cfg, warnings, err := Load("server", nil,
+		env(append(pairs, "HIKYO_DB", "postgres://u:p@localhost/hikyo")...), environFrom(pairs...))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,5 +105,8 @@ func TestConsumedServerEnvKeysDoNotWarn(t *testing.T) {
 	}
 	if cfg.DirectoryProxy != directoryProxy {
 		t.Fatalf("DirectoryProxy = %q, want %q", cfg.DirectoryProxy, directoryProxy)
+	}
+	if cfg.Store.PostgresPoolMax != 17 {
+		t.Fatalf("PostgresPoolMax = %d, want 17", cfg.Store.PostgresPoolMax)
 	}
 }

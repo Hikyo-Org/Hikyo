@@ -62,9 +62,10 @@ func Logger(dev bool) *slog.Logger {
 
 func storeConfig(cfg *config.Config) store.Config {
 	return store.Config{
-		Engine: store.Engine(cfg.Store.Engine),
-		Path:   cfg.Store.Path,
-		DSN:    cfg.Store.DSN,
+		Engine:          store.Engine(cfg.Store.Engine),
+		Path:            cfg.Store.Path,
+		DSN:             cfg.Store.DSN,
+		PostgresPoolMax: cfg.Store.PostgresPoolMax,
 	}
 }
 
@@ -305,6 +306,7 @@ func openKeyed(ctx context.Context, cfg *config.Config, log *slog.Logger, sc sto
 		return nil, nil, err
 	}
 	guard.add(func() error { return resources.closeDatabase(db) })
+	logDatastorePoolSizes(log, db)
 
 	// LoadKeyring consumes root: it is zeroed before this returns.
 	kr, err := crypto.LoadKeyring(ctx, &keyring.Store{DB: db}, root)
@@ -318,6 +320,21 @@ func openKeyed(ctx context.Context, cfg *config.Config, log *slog.Logger, sc sto
 		log.Warn("root key rotation is UNFINISHED: the master is dual-wrapped under the old and new roots; run `hikyo rotate-root-key --verify` then `--finalize` to complete it")
 	}
 	return db, kr, nil
+}
+
+func logDatastorePoolSizes(log *slog.Logger, db *store.DB) {
+	limits := db.ConnectionPoolLimits()
+	switch db.Engine() {
+	case store.EngineSQLite:
+		log.Info("datastore connection pools configured",
+			"engine", db.Engine(),
+			"write_max_connections", limits.Primary,
+			"read_max_connections", limits.ReadOnly)
+	case store.EnginePostgres:
+		log.Info("datastore connection pool configured",
+			"engine", db.Engine(),
+			"max_connections", limits.Primary)
+	}
 }
 
 // Boot runs the fail-closed startup sequence: process hardening before any

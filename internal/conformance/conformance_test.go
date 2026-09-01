@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -135,13 +136,7 @@ func TestSQLiteActiveDomainEnforced(t *testing.T) {
 }
 
 func TestConformancePostgres(t *testing.T) {
-	dsn := os.Getenv("HIKYO_TEST_POSTGRES_DSN")
-	if dsn == "" {
-		if os.Getenv("CI") != "" {
-			t.Fatal("CI run without HIKYO_TEST_POSTGRES_DSN: the postgres conformance leg must not silently skip in CI")
-		}
-		t.Skip("HIKYO_TEST_POSTGRES_DSN not set")
-	}
+	dsn := postgresTestDSN(t)
 	cfg := store.Config{Engine: store.EnginePostgres, DSN: dsn}
 	resetPostgres(t, cfg)
 	if err := migrate.Run(t.Context(), cfg); err != nil {
@@ -154,6 +149,82 @@ func TestConformancePostgres(t *testing.T) {
 	t.Cleanup(func() { db.Close() })
 	seedAdmin(t, db)
 	runCorpus(t, db)
+}
+
+func TestPostgresPoolSizing(t *testing.T) {
+	dsn := postgresTestDSN(t)
+
+	t.Run("locked default is applied", func(t *testing.T) {
+		db, err := store.Open(t.Context(), store.Config{
+			Engine: store.EnginePostgres,
+			DSN:    postgresDSNWithPoolMax(t, dsn, ""),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+		if got := db.PG().Config().MaxConns; got != 10 {
+			t.Fatalf("default postgres pool maximum = %d, want 10", got)
+		}
+	})
+
+	t.Run("DSN parameter is honored", func(t *testing.T) {
+		db, err := store.Open(t.Context(), store.Config{
+			Engine: store.EnginePostgres,
+			DSN:    postgresDSNWithPoolMax(t, dsn, "6"),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+		if got := db.PG().Config().MaxConns; got != 6 {
+			t.Fatalf("postgres DSN pool maximum = %d, want 6", got)
+		}
+	})
+
+	t.Run("explicit config takes precedence over DSN", func(t *testing.T) {
+		const configuredMax = int32(7)
+		db, err := store.Open(t.Context(), store.Config{
+			Engine:          store.EnginePostgres,
+			DSN:             postgresDSNWithPoolMax(t, dsn, "6"),
+			PostgresPoolMax: configuredMax,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+		if got := db.PG().Config().MaxConns; got != configuredMax {
+			t.Fatalf("postgres configured pool maximum = %d, want %d", got, configuredMax)
+		}
+	})
+}
+
+func postgresTestDSN(t *testing.T) string {
+	t.Helper()
+	dsn := os.Getenv("HIKYO_TEST_POSTGRES_DSN")
+	if dsn == "" {
+		if os.Getenv("CI") != "" {
+			t.Fatal("CI run without HIKYO_TEST_POSTGRES_DSN: the postgres conformance leg must not silently skip in CI")
+		}
+		t.Skip("HIKYO_TEST_POSTGRES_DSN not set")
+	}
+	return dsn
+}
+
+func postgresDSNWithPoolMax(t *testing.T, dsn, poolMax string) string {
+	t.Helper()
+	u, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal("HIKYO_TEST_POSTGRES_DSN is not a valid URL")
+	}
+	query := u.Query()
+	if poolMax == "" {
+		query.Del("pool_max_conns")
+	} else {
+		query.Set("pool_max_conns", poolMax)
+	}
+	u.RawQuery = query.Encode()
+	return u.String()
 }
 
 // resetPostgres drops the whole public schema, as the isolation harness does
