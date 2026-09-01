@@ -568,3 +568,93 @@ test.describe('environment matrix', () => {
     }
   });
 });
+
+/**
+ * Flow: declaring a new key from the browser (#492).
+ *
+ * Runs after the edit/publish suite and as the last describe in the file, so
+ * the persistent catalogue write it makes cannot perturb an earlier
+ * assertion — the leg's other specs run before matrix.spec, and this block runs
+ * after every `environment matrix` test. It declares a config key with a value
+ * rule and presence, opens a first value, and proves the value entered the
+ * draft workflow with the declaration.
+ */
+test.describe('environment matrix declaration', () => {
+  test.describe.configure({ mode: 'serial' });
+  test.use({ storageState: STORAGE_STATE });
+
+  test('declares a key with a rule and first value, and stages that value as a draft', async ({
+    passkeyPage: page,
+  }) => {
+    await page.goto(MATRIX_PATH);
+    await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
+
+    await page.getByRole('button', { name: '+ New key' }).click();
+    const modal = page.getByRole('dialog');
+    await expect(modal).toBeVisible();
+
+    await modal.getByLabel('Group').fill('features');
+    await modal.getByLabel('Key name').fill('FEATURE_ENABLED');
+    await modal.getByLabel('Type').selectOption('boolean');
+    await modal.getByLabel('First value (optional)').fill('true');
+    // Presence stays at the default `none`: declaring `required_in` an
+    // environment that has no value yet is a server veto (required + absent),
+    // which the modal surfaces recoverably — its own test below. This journey
+    // proves the declaration + first-value draft path succeeds end to end.
+
+    await modal.getByRole('button', { name: 'Declare' }).click();
+
+    await expect(page.locator('.notice')).toContainText(
+      'Declared FEATURE_ENABLED with a draft value in 1 environment',
+    );
+    // The declared key's cell now carries its opening draft — proof the value
+    // entered the draft workflow with the declaration.
+    await expect(
+      page.getByRole('button', { name: /FEATURE_ENABLED in development:.*draft set/ }),
+    ).toBeVisible();
+  });
+
+  test('rejects a first value that cannot be the declared type before any write', async ({
+    passkeyPage: page,
+  }) => {
+    await page.goto(MATRIX_PATH);
+    await page.getByRole('button', { name: '+ New key' }).click();
+    const modal = page.getByRole('dialog');
+    await expect(modal).toBeVisible();
+
+    await modal.getByLabel('Group').fill('features');
+    await modal.getByLabel('Key name').fill('RETRY_LIMIT');
+    await modal.getByLabel('Type').selectOption('integer');
+    await modal.getByLabel('First value (optional)').fill('not-a-number');
+    await modal.getByRole('button', { name: 'Declare' }).click();
+
+    await expect(modal.getByRole('alert')).toContainText('Enter a base-10 integer.');
+    await expect(modal).toBeVisible();
+  });
+
+  test('surfaces a required-presence veto recoverably and keeps the form open', async ({
+    passkeyPage: page,
+  }) => {
+    await page.goto(MATRIX_PATH);
+    await page.getByRole('button', { name: '+ New key' }).click();
+    const modal = page.getByRole('dialog');
+    await expect(modal).toBeVisible();
+
+    await modal.getByLabel('Group').fill('features');
+    await modal.getByLabel('Key name').fill('REQUIRED_EVERYWHERE');
+    await modal.getByLabel('Type').selectOption('string');
+    // Symbolic all — required in every environment, current and future — on a
+    // key with no values yet: the server vetoes (required + absent). The block
+    // is a phase-1 failure, so the intact form stays open for the operator to
+    // relax the rule or add values.
+    await modal
+      .getByRole('group', { name: 'Required in' })
+      .getByRole('radio', { name: 'all (current & future)' })
+      .check();
+    await modal.getByRole('button', { name: 'Declare' }).click();
+
+    await expect(modal.getByRole('alert')).toContainText('required_in');
+    await expect(modal).toBeVisible();
+    await expect(modal.getByLabel('Key name')).toHaveValue('REQUIRED_EVERYWHERE');
+  });
+});

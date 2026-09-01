@@ -103,7 +103,14 @@ export function useAuthMethods(): UseQueryResult<AuthMethods> {
   return useQuery({
     queryKey: authMethodsKey,
     queryFn: () => parsed(authMethodsOp, {}),
-    retry: false,
+    // This public discovery read is invalidated when login establishes a new
+    // session. A nearby whoami can consume the shared rate-limit budget first;
+    // unlike an authorization refusal, that 429 is safe to retry once and the
+    // server tells us when its window reopens.
+    retry: (failureCount, error) =>
+      failureCount < 1 && error instanceof ApiError && error.status === 429,
+    retryDelay: (_attempt, error) =>
+      error instanceof ApiError ? (error.retryAfterMs ?? 1_000) : 1_000,
   });
 }
 

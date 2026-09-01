@@ -15,7 +15,8 @@
       "release-snapshot",
       "supply-chain-checks",
       "test",
-      "web"
+      "web",
+      "web-go"
     ],
     "api": [
       "client",
@@ -24,7 +25,7 @@
       "headline-guarantee",
       "release-snapshot",
       "test",
-      "web"
+      "web-go"
     ],
     "chart": [
       "k8s-e2e",
@@ -34,7 +35,7 @@
     ],
     "chart-kind-script": ["k8s-e2e", "lint"],
     "chart-runtime": ["k8s-e2e"],
-    "client": ["client", "release-snapshot", "web"],
+    "client": ["client", "release-snapshot", "web-go"],
     "compose": ["compose-demo"],
     "core": [
       "fuzz",
@@ -43,7 +44,7 @@
       "race",
       "release-snapshot",
       "test",
-      "web"
+      "web-go"
     ],
     "crds": [
       "generated",
@@ -64,7 +65,7 @@
       "race",
       "release-snapshot",
       "test",
-      "web"
+      "web-go"
     ],
     "image": [
       "k8s-e2e",
@@ -79,7 +80,7 @@
       "release-snapshot",
       "supply-chain-checks"
     ],
-    "web": ["release-snapshot", "web"]
+    "web": ["release-snapshot", "web", "web-go"]
   },
   "jobs": {
     "changes": {"required_gate": "always"},
@@ -91,9 +92,9 @@
     },
     "app-build": {
       "required_gate": "indirect",
-      "plan_jobs": ["web"]
+      "plan_jobs": ["web", "web-go"]
     },
-    "no-egress": {"required_gate": "planned", "plan_jobs": ["web"]},
+    "no-egress": {"required_gate": "planned", "plan_jobs": ["web-go"]},
     "release-snapshot": {
       "required_gate": "planned",
       "plan_jobs": ["release-snapshot"]
@@ -110,7 +111,7 @@
     },
     "web": {"required_gate": "planned", "plan_jobs": ["web"]},
     "web-closure": {"required_gate": "planned", "plan_jobs": ["web"]},
-    "web-go": {"required_gate": "planned", "plan_jobs": ["web"]},
+    "web-go": {"required_gate": "planned", "plan_jobs": ["web-go"]},
     "test": {"required_gate": "planned", "plan_jobs": ["test"]},
     "k8s-e2e": {
       "required_gate": "planned",
