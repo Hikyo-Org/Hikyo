@@ -114,7 +114,7 @@ func (s stubAuth) Logout(ctx context.Context, presented string) error {
 	return s.logout(ctx, presented)
 }
 
-func (s stubAuth) SlideIdleClock(context.Context, string) error { return nil }
+func (s stubAuth) SlideIdleClock(context.Context, string, service.CallerActivity) error { return nil }
 
 // Factor endpoints (#54): the transport contract for these is exercised in the
 // isolation suite end to end; the stubs here keep the interface satisfied and

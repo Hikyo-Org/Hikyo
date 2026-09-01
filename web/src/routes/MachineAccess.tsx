@@ -16,6 +16,8 @@ import {
   BINDING_LIFETIMES,
   bindingFailureText,
   CI_EVENTS,
+  createServiceAccountFailureText,
+  deleteServiceAccountFailureText,
   expiryLabel,
   FEDERATION_PRESETS,
   grantFailureText,
@@ -31,14 +33,18 @@ import {
   presetFieldId,
   pullRequestRefusal,
   scopeOf,
+  serviceAccountNameRefusal,
   setupJourney,
   useCreateBinding,
+  useCreateServiceAccount,
   useCredentials,
+  useDeleteServiceAccount,
   useGrantEnvironment,
   useKeyCatalogue,
   useProjectGrants,
   useRefreshAccount,
   useRefreshGrants,
+  useRefreshServiceAccounts,
   useRevokeCredential,
   useServiceAccounts,
   type ClaimPin,
@@ -48,6 +54,7 @@ import {
   type ProjectRef,
   type ServiceAccount,
 } from '../api/identities.ts';
+import { TypedNameConfirm } from './Sections.tsx';
 import { useMachineReveal, useSetMachineReveal } from '../api/machineReveal.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { writeClipboard } from '../app/clipboard.ts';
@@ -92,7 +99,9 @@ type Tab = 'accounts' | 'federation' | 'kubernetes';
 
 type Dialog =
   | { kind: 'binding'; account: ServiceAccount }
-  | { kind: 'grant'; account: ServiceAccount };
+  | { kind: 'grant'; account: ServiceAccount }
+  | { kind: 'create' }
+  | { kind: 'delete'; account: ServiceAccount };
 
 type MintTransitionResult = {
   readonly state: MintLifecycle;
@@ -189,6 +198,16 @@ export function MachineAccess() {
     [],
   );
 
+  // A create, delete, binding or grant dialog carries a decision scoped to ONE
+  // project and session. A boundary crossing — a route change, or a session
+  // replacement — must close any open one, or a submit after the boundary would
+  // target the new project (its form still mounted, now reading the new prop) or
+  // act under a replaced session. The mint has its own lifecycle clear above;
+  // this covers the setDialog-based dialogs.
+  useEffect(() => {
+    setDialog(null);
+  }, [project.org, project.project, liveSessionId]);
+
   const revoke = useRevokeCredential(project);
   const now = useMemo(() => new Date(), []);
 
@@ -249,6 +268,20 @@ export function MachineAccess() {
     environmentsQuery.isSuccess &&
     !credentials.isPending &&
     !credentials.isError;
+
+  /**
+   * canAdminister gates create and delete, and it is deliberately lighter than
+   * inputsReady.
+   *
+   * Create and delete are NARROWINGS — neither carries a warning that quantifies
+   * reach, so neither needs the grant, environment or credential reads that
+   * inputsReady waits on. Coupling them to that predicate would let an
+   * unreadable membership surface (a `manage-identities` admin without
+   * `manage-members`) block seeding a fresh project — exactly the inert
+   * inventory this surface exists to remove. They need only a live session and a
+   * known account listing.
+   */
+  const canAdminister = liveSessionId !== null && accountsQuery.isSuccess;
 
   const tabCount: Record<Tab, string> = {
     accounts: accountsQuery.isSuccess ? String(accounts.length) : '—',
@@ -378,6 +411,16 @@ export function MachineAccess() {
         {tab === 'accounts' ? (
           <>
             <PolicyStrip project={project} />
+            <p className="machine__actions">
+              <button
+                className="btn btn--primary"
+                type="button"
+                disabled={!canAdminister}
+                onClick={() => setDialog({ kind: 'create' })}
+              >
+                Create service account
+              </button>
+            </p>
             <table className="values__table machine__table">
               <caption className="visually-hidden">
                 The project&apos;s service accounts. Credential values are never listed: a value is
@@ -426,10 +469,12 @@ export function MachineAccess() {
                         bindings={bindings(rows)}
                         now={now}
                         ready={inputsReady}
+                        canDelete={canAdminister}
                         onMint={(rotating) => reviewMint(sa, rotating)}
                         onBind={() => setDialog({ kind: 'binding', account: sa })}
                         onGrant={() => setDialog({ kind: 'grant', account: sa })}
                         onRevoke={(credential) => doRevoke(sa, credential)}
+                        onDelete={() => setDialog({ kind: 'delete', account: sa })}
                       />
                     </ExpandableRow>
                   );
@@ -437,7 +482,10 @@ export function MachineAccess() {
               </tbody>
             </table>
             {accounts.length === 0 && !accountsQuery.isPending && !accountsQuery.isError ? (
-              <p role="status">No service accounts on this project yet.</p>
+              <p role="status">
+                No service accounts on this project yet. Create one above — a browser operator seeds
+                this inventory, no CLI required.
+              </p>
             ) : null}
             <p className="machine__footnote">
               The credential list is metadata only — prefix, kind, scope, expiry, last used. Values
@@ -552,6 +600,38 @@ export function MachineAccess() {
             setDialog(null);
             setNotice(
               `Grant result for ${environment}: ${grantOutcomeSummary([result])}`,
+            );
+          }}
+        />
+      ) : null}
+
+      {dialog?.kind === 'create' ? (
+        <CreateAccountDialog
+          project={project}
+          onClose={() => setDialog(null)}
+          onCreated={(name, kind) => {
+            setDialog(null);
+            setNotice(
+              `Created ${name} (${kind}). It is ready to mint credentials and take federated bindings — its kind is immutable from here.`,
+            );
+          }}
+        />
+      ) : null}
+
+      {dialog?.kind === 'delete' ? (
+        <DeleteAccountDialog
+          project={project}
+          account={dialog.account}
+          onClose={() => setDialog(null)}
+          onDeleted={(name) => {
+            setDialog(null);
+            // The expanded row is gone; collapse before its listing is removed
+            // so nothing tries to render a deleted account's expansion.
+            if (expanded === dialog.account.id) {
+              setExpanded(null);
+            }
+            setNotice(
+              `Deleted ${name}. Every credential it held is revoked and every grant released — atomically, and this cannot be undone.`,
             );
           }}
         />
@@ -823,10 +903,12 @@ function ExpansionBody({
   bindings,
   now,
   ready,
+  canDelete,
   onMint,
   onBind,
   onGrant,
   onRevoke,
+  onDelete,
 }: {
   account: ServiceAccount;
   scope: readonly MachineEnvScope[];
@@ -836,10 +918,18 @@ function ExpansionBody({
   now: Date;
   /** Every query this surface's warnings are computed from has succeeded. */
   ready: boolean;
+  /**
+   * Delete's lighter gate: a session and a known listing. It is separate from
+   * `ready` because deprovisioning is a narrowing that needs no scope read —
+   * requiring one would keep an operator from deleting a compromised account
+   * when the membership surface is unreadable.
+   */
+  canDelete: boolean;
   onMint: (rotating: boolean) => void;
   onBind: () => void;
   onGrant: () => void;
   onRevoke: (credential: MachineCredential) => void;
+  onDelete: () => void;
 }) {
   const journey = setupJourney(account.kind, scope, machineReveal);
   return (
@@ -917,6 +1007,14 @@ function ExpansionBody({
             </button>
             <button className="btn" type="button" disabled={!ready} onClick={onGrant}>
               {`Add environment grant to ${account.name}`}
+            </button>
+            <button
+              className="btn btn--danger"
+              type="button"
+              disabled={!canDelete}
+              onClick={onDelete}
+            >
+              {`Delete ${account.name}`}
             </button>
           </div>
         </div>
@@ -1030,7 +1128,7 @@ function claimText(pin: ClaimPin): string {
  * gate as Escape. Deactivating consumes the sentinel again so Back is not a
  * double-press afterwards.
  */
-function useNavigationGuard(active: boolean, onAttempt: () => void) {
+export function useNavigationGuard(active: boolean, onAttempt: () => void) {
   const attempt = useRef(onAttempt);
   attempt.current = onAttempt;
   useEffect(() => {
@@ -1925,6 +2023,256 @@ function GrantBody({
         </button>
       </div>
     </>
+  );
+}
+
+/**
+ * CreateAccountDialog seeds a project's machine inventory from the browser.
+ *
+ * The body is exactly the locked create contract — `{ name, kind }`. There is
+ * no description field because the contract has none, and `kind` is a form field
+ * rather than an edit because it is immutable at creation. The name is refused
+ * HERE (empty or over 64) rather than as a 400, and the trimmed name is what is
+ * sent so the length checked is the length the server sees.
+ */
+function CreateAccountDialog({
+  project,
+  onClose,
+  onCreated,
+}: {
+  project: ProjectRef;
+  onClose: () => void;
+  onCreated: (name: string, kind: ServiceAccount['kind']) => void;
+}) {
+  const dialog = useModalDialog();
+  const create = useCreateServiceAccount(project);
+  const refresh = useRefreshServiceAccounts(project);
+  const [name, setName] = useState('');
+  const [kind, setKind] = useState<ServiceAccount['kind']>('workload');
+  const [failure, setFailure] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    // Validated and sent byte-for-byte, untrimmed: what is checked is what the
+    // server stores, so the client never changes the name contract behind the
+    // operator's back.
+    const nameRefusal = serviceAccountNameRefusal(name);
+    if (nameRefusal !== null) {
+      setFailure(nameRefusal);
+      return;
+    }
+    setBusy(true);
+    setFailure(null);
+    try {
+      await create.mutateAsync({ name, kind });
+      onCreated(name, kind);
+    } catch (error) {
+      // A create that returned a lost or unparseable response may still have
+      // committed, and the inventory is the only place it would show. Refresh
+      // regardless — harmless on a clean refusal — and let the failure text draw
+      // the may-have-committed distinction.
+      refresh();
+      setFailure(createServiceAccountFailureText(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // An in-flight create is not dismissible: Escape, Back or unload here would
+  // hide a mutation that may commit.
+  useNavigationGuard(busy, () => {});
+
+  return (
+    <dialog
+      className="ceremony"
+      aria-labelledby="create-account-title"
+      ref={dialog}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) {
+          onClose();
+        }
+      }}
+    >
+      <h2 className="ceremony__title" id="create-account-title">
+        Create service account
+      </h2>
+      <p className="ceremony__lede">
+        A machine principal this project owns. Its kind is fixed at creation: a workload delivers to
+        a running process, an automation runs off-box on a schedule or in CI. A fresh account holds
+        no grants and reaches nothing until one is added.
+      </p>
+
+      <fieldset className="machine__lock" disabled={busy}>
+        <div className="field">
+          <label htmlFor="create-account-name">Name</label>
+          <input
+            id="create-account-name"
+            className="mono"
+            value={name}
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={64}
+            onChange={(event) => {
+              setName(event.target.value);
+              setFailure(null);
+            }}
+          />
+        </div>
+
+        <div className="field">
+          <label htmlFor="create-account-kind">Kind (immutable)</label>
+          <select
+            id="create-account-kind"
+            value={kind}
+            onChange={(event) => {
+              setKind(event.target.value === 'automation' ? 'automation' : 'workload');
+              setFailure(null);
+            }}
+          >
+            <option value="workload">workload — delivers to a running process</option>
+            <option value="automation">automation — runs off-box, on a schedule or in CI</option>
+          </select>
+        </div>
+      </fieldset>
+
+      {failure !== null ? (
+        <p className="alert" role="alert">
+          <span className="alert__glyph" aria-hidden="true">
+            !
+          </span>
+          <span>{failure}</span>
+        </p>
+      ) : null}
+
+      <div className="ceremony__actions">
+        <button
+          className="btn btn--primary"
+          type="button"
+          disabled={busy}
+          onClick={() => void submit()}
+        >
+          {busy ? 'Creating…' : 'Create service account'}
+        </button>
+        <button className="btn" type="button" onClick={onClose} disabled={busy}>
+          Cancel
+        </button>
+      </div>
+    </dialog>
+  );
+}
+
+/**
+ * DeleteAccountDialog deprovisions a machine principal behind a typed-name
+ * confirmation.
+ *
+ * The server delete is a CASCADE, not a dependency refusal: every credential is
+ * revoked and every grant released in one transaction, then the principal is
+ * removed. So the dialog states that truth — how many live credentials go, and
+ * that the grants go with them — rather than warning of a refusal the contract
+ * does not raise. There is deliberately NO passkey here: deprovisioning runs
+ * under the plain capability with no disclosure gate, because requiring a
+ * ceremony to kill a compromised workload would be a self-inflicted delay.
+ */
+function DeleteAccountDialog({
+  project,
+  account,
+  onClose,
+  onDeleted,
+}: {
+  project: ProjectRef;
+  account: ServiceAccount;
+  onClose: () => void;
+  onDeleted: (name: string) => void;
+}) {
+  const dialog = useModalDialog();
+  const remove = useDeleteServiceAccount(project);
+  const refreshAccounts = useRefreshServiceAccounts(project);
+  const refreshGrants = useRefreshGrants(project);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    setBusy(true);
+    setFailure(null);
+    try {
+      await remove.mutateAsync(account.id);
+      onDeleted(account.name);
+    } catch (error) {
+      // A delete that committed removed the account and released its grants, so
+      // both surfaces are re-read on the failure path — never the credential
+      // listing, which would race the account refetch into a 404 and flip the
+      // whole surface to error. The failure text says whether the delete may
+      // still have landed.
+      refreshAccounts();
+      refreshGrants();
+      setFailure(deleteServiceAccountFailureText(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // An in-flight delete is not dismissible by Escape, Back or unload.
+  useNavigationGuard(busy, () => {});
+
+  const live = account.live_credentials;
+
+  return (
+    <dialog
+      className="ceremony"
+      aria-labelledby="delete-account-title"
+      ref={dialog}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) {
+          onClose();
+        }
+      }}
+    >
+      <h2 className="ceremony__title" id="delete-account-title">
+        {`Delete service account · ${account.name}`}
+      </h2>
+      <p className="ceremony__cap" role="status">
+        <span className="alert__glyph" aria-hidden="true">
+          !
+        </span>
+        <span>
+          {`This deletes ${account.name} and everything attached to it in one act: ${String(live)} live credential${live === 1 ? '' : 's'} revoked — each stops authenticating at once — and every environment grant released. It does not cascade to anything else, and it cannot be undone.`}
+        </span>
+      </p>
+      <p className="ceremony__lede">
+        Any bearer token or federated binding this account issued authenticates nothing the moment
+        the delete lands. Distribute the replacement first if a workload still depends on it.
+      </p>
+
+      {failure !== null ? (
+        <p className="alert" role="alert">
+          <span className="alert__glyph" aria-hidden="true">
+            !
+          </span>
+          <span>{failure}</span>
+        </p>
+      ) : null}
+
+      <TypedNameConfirm
+        label="Confirm the account name to delete it"
+        expect={account.name}
+        action="Delete service account"
+        hint={
+          <>
+            Type <span className="mono">{account.name}</span> to enable deletion.
+          </>
+        }
+        busy={busy}
+        onConfirm={() => void submit()}
+      />
+
+      <div className="ceremony__actions">
+        <button className="btn" type="button" onClick={onClose} disabled={busy}>
+          Cancel
+        </button>
+      </div>
+    </dialog>
   );
 }
 

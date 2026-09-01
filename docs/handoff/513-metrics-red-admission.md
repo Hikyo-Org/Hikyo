@@ -72,7 +72,7 @@ absent by default. It emits the class, never the raw path — no path echo.
   present, and that only closed-enum labels appear (no `/api/`, no `org_`).
 - `internal/conformance/metrics_test.go`: drift pins for names/labels/buckets.
 
-Final verification: `go test -count=1 ./...` passed 4,045 tests in 69 packages;
+Final verification: `go test -count=1 ./...` passed 4,055 tests in 69 packages;
 `go vet ./...`, the focused race suite, Astro diagnostics/build, OSS policy,
 docs PWA checks, and the offline browser test all passed. Standards, spec, and
 native Codex adversarial reviews finished clean.

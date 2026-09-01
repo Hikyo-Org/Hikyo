@@ -34,9 +34,10 @@ const (
 // Config selects and locates the datastore. Exactly one of Path (sqlite) or
 // DSN (postgres) is used, per Engine.
 type Config struct {
-	Engine Engine
-	Path   string
-	DSN    string
+	Engine       Engine
+	Path         string
+	DSN          string
+	SQLiteDriver string // optional database/sql driver name for test instrumentation
 }
 
 // Org is the tenancy boundary. Creation, listing and counting are
@@ -935,7 +936,7 @@ func sqliteReadDSN(path string) string {
 func Open(ctx context.Context, cfg Config) (*DB, error) {
 	switch cfg.Engine {
 	case EngineSQLite:
-		return openSQLite(ctx, cfg.Path)
+		return openSQLite(ctx, cfg.Path, cfg.SQLiteDriver)
 	case EnginePostgres:
 		return openPostgres(ctx, cfg.DSN)
 	default:
@@ -943,16 +944,19 @@ func Open(ctx context.Context, cfg Config) (*DB, error) {
 	}
 }
 
-func openSQLite(ctx context.Context, path string) (*DB, error) {
+func openSQLite(ctx context.Context, path, driverName string) (*DB, error) {
 	if path == "" {
 		return nil, errors.New("store: sqlite path is empty")
 	}
-	write, err := sql.Open("sqlite", SQLiteDSN(path))
+	if driverName == "" {
+		driverName = "sqlite"
+	}
+	write, err := sql.Open(driverName, SQLiteDSN(path))
 	if err != nil {
 		return nil, fmt.Errorf("store: open sqlite write pool: %w", err)
 	}
 	write.SetMaxOpenConns(1)
-	read, err := sql.Open("sqlite", sqliteReadDSN(path))
+	read, err := sql.Open(driverName, sqliteReadDSN(path))
 	if err != nil {
 		write.Close()
 		return nil, fmt.Errorf("store: open sqlite read pool: %w", err)

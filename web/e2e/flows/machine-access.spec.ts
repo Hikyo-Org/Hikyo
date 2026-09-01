@@ -488,6 +488,95 @@ test.describe('machine access', () => {
     });
   }
 
+  test('a browser operator creates an account, mints, revokes, and deletes it — no CLI', async () => {
+    // The whole point of #464: a fresh project must no longer present an inert
+    // inventory that only a CLI/API seed can fill. The name is unique per run so
+    // a retry (or the second viewport project) never collides with a live
+    // sibling and reads a 409 as a broken create.
+    const name = `e2e-sa-${test.info().project.name}-${Date.now().toString(36)}`;
+
+    // CREATE. The empty-tab primary action is always present; here the tab is
+    // seeded, so the same action sits above the table.
+    await page.getByRole('button', { name: 'Create service account', exact: true }).first().click();
+    const createDialog = page.getByRole('dialog');
+    await expect(createDialog.getByRole('heading', { level: 2 })).toHaveText(
+      'Create service account',
+    );
+    await createDialog.getByLabel('Name').fill(name);
+    // Kind defaults to workload — a fresh workload's empty reach is what makes
+    // the mint below take the no-ceremony branch.
+    await createDialog.getByRole('button', { name: 'Create service account' }).click();
+    await expect(createDialog).toBeHidden();
+    await expect(
+      page.getByRole('status').filter({ hasText: `Created ${name} (workload)` }),
+    ).toBeVisible();
+
+    // It is immediately in the inventory and usable — no reload, no CLI.
+    const row = accountRow(page, name);
+    await expect(row).toBeVisible();
+    await row.click();
+    const expansion = page.locator('.machine__sub');
+
+    // MINT. A fresh account reaches no plaintext, so the mint is the
+    // no-passkey branch: the button reads "Mint credential", not "Use a passkey
+    // and mint".
+    await expansion.getByRole('button', { name: `Mint credential for ${name}` }).click();
+    const mintDialog = page.getByRole('dialog');
+    await expect(mintDialog).toContainText('reaches no plaintext');
+    await mintDialog.getByRole('button', { name: 'Mint credential' }).click();
+    await expect(mintDialog.locator('.machine__token')).toHaveText(/^hik_1_wl_/);
+    await mintDialog.getByRole('checkbox').check();
+    await mintDialog.getByRole('button', { name: 'Done' }).click();
+    await expect(mintDialog).toBeHidden();
+    await expect(expansion.locator('.cred')).toHaveCount(1);
+
+    // REVOKE. It bites at the next request, and the account survives it.
+    await expansion.getByRole('button', { name: /^Revoke hik_1_wl_/ }).click();
+    await expect(expansion.locator('.cred')).toHaveCount(0);
+    await expect(
+      page.getByRole('status').filter({ hasText: 'stops authenticating at the next request' }),
+    ).toBeVisible();
+
+    // DELETE, behind a typed-name confirmation. The dialog states the cascade —
+    // the credentials revoked and the grants released — never a refusal, because
+    // the server delete is atomic and does not refuse on dependency.
+    await expansion.getByRole('button', { name: `Delete ${name}` }).click();
+    const deleteDialog = page.getByRole('dialog');
+    await expect(deleteDialog.getByRole('heading', { level: 2 })).toHaveText(
+      `Delete service account · ${name}`,
+    );
+    await expect(deleteDialog).toContainText('cannot be undone');
+
+    // The destructive button is dead until the exact name is typed.
+    const confirm = deleteDialog.getByRole('button', { name: 'Delete service account' });
+    await expect(confirm).toBeDisabled();
+    await deleteDialog.getByLabel('Confirm the account name to delete it').fill(name);
+    await expect(confirm).toBeEnabled();
+    await confirm.click();
+    await expect(deleteDialog).toBeHidden();
+    await expect(page.getByRole('status').filter({ hasText: `Deleted ${name}` })).toBeVisible();
+
+    // And it is gone from the inventory — the surface returns to what it was.
+    await expect(accountRow(page, name)).toHaveCount(0);
+  });
+
+  test('a duplicate name is refused actionably, without a stale account', async () => {
+    // The create 409 is a name already in use among live siblings — a distinct
+    // sentence from the mint's ceiling 409, and it must leave the operator able
+    // to pick another name rather than staring at a dead form.
+    await page.getByRole('button', { name: 'Create service account', exact: true }).first().click();
+    const dialog = page.getByRole('dialog');
+    // A seeded account name is guaranteed to already be live.
+    await dialog.getByLabel('Name').fill(seed.machine.workload);
+    await dialog.getByRole('button', { name: 'Create service account' }).click();
+    await expect(dialog.getByRole('alert')).toContainText('already used');
+    // The dialog stays open and editable: editing clears the refusal.
+    await dialog.getByLabel('Name').fill(`${seed.machine.workload}-x`);
+    await expect(dialog.getByRole('alert')).toHaveCount(0);
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toBeHidden();
+  });
+
   test('meets the pinned assertion set with the display-once value on screen', async () => {
     // The mint dialog is the component this ticket exists for, and it is the
     // only place in the SPA a credential value is ever rendered. Asserting only
