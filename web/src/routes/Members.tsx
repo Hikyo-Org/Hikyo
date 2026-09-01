@@ -20,14 +20,16 @@ import {
   templatesAt,
   useApplyTemplate,
   useCreateGrants,
+  useInstanceGrants,
   useOrgGrants,
   useRevokeGrant,
   whoCan,
   type Names,
   type ScopeOption,
 } from '../api/access.ts';
+import { ApiError } from '../api/client.ts';
 import type { Grant } from '../api/identities.ts';
-import { useOrg, useOrgTopology } from '../api/settings.ts';
+import { useInstanceOrgs, useOrg, useOrgTopology } from '../api/settings.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { Alert, Done, Explain, JumpIndex, Panel } from './Sections.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
@@ -93,14 +95,25 @@ const projectGrantCapabilities = [
  * by design, because revoking an instance operator from a page with no
  * authority over one is a trap.
  */
-export function Members() {
+/**
+ * The scope a Members surface administers (#567). `org` reads the organisation
+ * from the route and the optional `?project=` projection from the query, so
+ * deep links keep working; `instance` reads no route data at all.
+ */
+export type MembersScope = { readonly kind: 'org' } | { readonly kind: 'instance' };
+
+export function Members({ scope }: { scope: MembersScope }) {
   const params = useParams();
   const [search] = useSearchParams();
-  const org = params.org === undefined ? '' : params.org;
-  const projectId = search.get('project') ?? '';
+  const instance = scope.kind === 'instance';
+  const org = instance ? '' : params.org === undefined ? '' : params.org;
+  const projectId = instance ? '' : search.get('project') ?? '';
   const orgQuery = useOrg(org);
-  const grants = useOrgGrants(org);
+  const orgGrants = useOrgGrants(org);
+  const instanceGrants = useInstanceGrants(instance);
+  const grants = instance ? instanceGrants : orgGrants;
   const topology = useOrgTopology(org);
+  const instanceOrgs = useInstanceOrgs(instance);
   const auth = useAuth();
   const revoke = useRevokeGrant();
   const feedback = useFeedback(grantFailureText);
@@ -109,13 +122,31 @@ export function Members() {
   const orgName = orgQuery.data?.name ?? org;
   const project = topology.projects.find((candidate) => candidate.id === projectId);
   const projectName = project?.name ?? projectId;
+  const scopeName = instance ? 'Instance' : projectId === '' ? orgName : projectName;
   const names = {
-    org: () => orgName,
+    org: (id: string) =>
+      instance ? instanceOrgs.data?.items.find((o) => o.id === id)?.name ?? id : orgName,
     project: (id: string) => topology.projects.find((p) => p.id === id)?.name ?? id,
     environment: (id: string) =>
       topology.projects.flatMap((p) => p.environments).find((e) => e.id === id)?.name ?? id,
   };
-  const allOptions = scopeOptions(orgQuery.data?.id ?? org, orgName, topology.projects);
+  // Instance scope has exactly one option: there is nothing narrower to prefer,
+  // and the modal's level-driven capability and template lists follow from it.
+  const instanceOption: ScopeOption = {
+    value: scopeValue({ kind: 'instance' }),
+    label: 'This instance (every organisation)',
+    scope: { kind: 'instance' },
+    level: 'instance',
+    group: 'Instance',
+    isProtected: null,
+  };
+  const allOptions = instance
+    ? [instanceOption]
+    : scopeOptions(orgQuery.data?.id ?? org, orgName, topology.projects);
+  // No topology gates an instance grant: the scope is the whole instance.
+  const topologyReady = instance ? true : topology.ready;
+  const topologyPending = instance ? false : topology.isPending;
+  const topologyError = instance ? false : topology.isError;
   const projectOptions = projectId === ''
     ? []
     : allOptions.filter((option) =>
@@ -148,6 +179,9 @@ export function Members() {
   const rows = membershipRows(visibleLines, names);
   const me = auth.identity?.principal.id ?? '';
   const compactPresentation = projectId !== '' || prototypeMode;
+  const secondFactorRefused =
+    instance && grants.error instanceof ApiError && grants.error.status === 403;
+  const nondisclosed = instance && grants.error instanceof ApiError && grants.error.status === 404;
 
   const [draft, setDraft] = useState<GrantDraft>({
     principal: '',
@@ -160,13 +194,16 @@ export function Members() {
   // The safe default is computed from the topology, so it can only settle once
   // the environments — and their protection — have actually been read.
   useEffect(() => {
-    if (modal === 'grant' && topology.ready && draft.scope === '' && grantOptions.length > 0) {
-      const safe = defaultScopeValue(grantOptions);
+    if (modal === 'grant' && topologyReady && draft.scope === '' && grantOptions.length > 0) {
+      // Instance scope has one option and nothing narrower to prefer, so it
+      // IS the safe default; everywhere else the narrowest confirmed-unprotected
+      // environment wins, or nothing does.
+      const safe = instance ? instanceOption.value : defaultScopeValue(grantOptions);
       if (safe !== '') {
         setDraft((current) => (current.scope === '' ? { ...current, scope: safe } : current));
       }
     }
-  }, [draft.scope, grantOptions, modal, topology.ready]);
+  }, [draft.scope, grantOptions, instance, instanceOption.value, modal, topologyReady]);
 
   const onRevoke = (grant: Grant) => {
     feedback.clear();
@@ -197,11 +234,7 @@ export function Members() {
 
   return (
     <div className="page page--chrome page--members">
-      <h1>
-        {projectId === ''
-          ? `Org members & grants\u00a0·\u00a0${orgName}`
-          : `Members & access\u00a0·\u00a0${projectName}`}
-      </h1>
+      <h1>{`Members\u00a0·\u00a0${scopeName}`}</h1>
       <p className="page__lede">
         One row per member per scope; each capability chip is still its own revocable grant; roles
         are templates that expand at grant time, so revoking a chip never drags a bundle with it.
@@ -214,10 +247,17 @@ export function Members() {
         ]}
       />
 
-      {grants.isError ? (
+      {secondFactorRefused ? (
+        <Alert>
+          Instance grants require a second factor. Present your authenticator code or passkey in
+          the banner above.
+        </Alert>
+      ) : nondisclosed ? (
+        <p role="status">Instance grants are not disclosed to this session.</p>
+      ) : grants.isError ? (
         <Alert>{membershipFailureText(grants.error)}</Alert>
       ) : null}
-      {orgQuery.isError ? (
+      {!instance && orgQuery.isError ? (
         <Alert>The organisation could not be read. Reload before managing its grants.</Alert>
       ) : null}
       {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
@@ -230,10 +270,18 @@ export function Members() {
         grantsPending={grants.isPending}
         grantsSucceeded={grants.isSuccess}
         projectContext={projectId !== '' || prototypeMode}
+        level={instance ? 'instance' : 'org'}
       />
 
       <Panel id="members-list" title="Members">
-        {projectId === '' ? (
+        {instance ? (
+          <p>
+            Every grant written at instance scope. These inherit downward into every organisation;
+            each origin and its subject remain visible so incident provenance is not reduced to a
+            colour.
+          </p>
+        ) : null}
+        {!instance && projectId === '' ? (
           <p className="visually-hidden">
             Every grant line scoped inside {orgName}. Instance-scope grants reach this organisation
             by inheritance and are deliberately absent: this page has no authority over an instance
@@ -245,7 +293,9 @@ export function Members() {
 
         {grants.isSuccess && rows.length === 0 ? (
           <p role="status">
-            {projectId === ''
+            {instance
+              ? 'No instance-scope grants.'
+              : projectId === ''
               ? 'No grants inside this organisation yet. Everyone reaching it does so from instance scope.'
               : 'No direct project or environment grants yet. Organisation and instance grants may still reach this project; use Who can…? to inspect inherited access.'}
           </p>
@@ -254,7 +304,7 @@ export function Members() {
         {rows.length === 0 ? null : (
           <table className="grants">
             <caption className="visually-hidden">
-              Members of {orgName}, one row per principal and scope
+              Members of {scopeName}, one row per principal and scope
             </caption>
             <thead>
               <tr>
@@ -368,15 +418,15 @@ export function Members() {
         )}
 
         <div className="panel__actions">
-          {topology.isPending ? (
+          {topologyPending ? (
             <p role="status">Loading the complete organisation topology before a new grant can open…</p>
-          ) : topology.isError ? (
+          ) : topologyError ? (
             <Alert>The organisation topology could not be read completely. Reload before granting anything.</Alert>
           ) : null}
           <button
             type="button"
             className="btn btn--primary"
-            disabled={!topology.ready}
+            disabled={!topologyReady}
             onClick={() => {
               feedback.clear();
               setDraft(freshDraft(
@@ -388,31 +438,20 @@ export function Members() {
           >
             {compactPresentation ? '+ new grant' : 'New grant'}
           </button>
-          {prototypeMode && projectId === '' ? (
-            <button
-              type="button"
-              className="btn"
-              onClick={() => feedback.ok('Member invitations are not implemented in the API yet.')}
-            >
-              ✉ invite member
-            </button>
-          ) : null}
         </div>
-        {/* Prototype mode keeps the finalized second action in place while
-            saying plainly that its delivery contract does not exist yet. */}
       </Panel>
 
       {modal === 'none' ? null : (
         <GrantModal
-          orgName={orgName}
+          orgName={scopeName}
           options={grantOptions}
           projectContext={compactPresentation}
           draft={draft}
           stage={modal}
           projects={topology.projects}
-          topologyReady={topology.ready}
-          topologyPending={topology.isPending}
-          topologyError={topology.isError}
+          topologyReady={topologyReady}
+          topologyPending={topologyPending}
+          topologyError={topologyError}
           known={[...new Set(lines.map((line) => line.principal_id))]}
           onDraft={setDraft}
           onStage={setModal}
@@ -435,6 +474,7 @@ function Inspect({
   grantsPending,
   grantsSucceeded,
   projectContext,
+  level,
 }: {
   options: readonly ScopeOption[];
   grants: readonly Grant[];
@@ -442,6 +482,7 @@ function Inspect({
   grantsPending: boolean;
   grantsSucceeded: boolean;
   projectContext: boolean;
+  level: 'org' | 'instance';
 }) {
   const capabilityId = useId();
   const scopeId = useId();
@@ -457,7 +498,7 @@ function Inspect({
     ? projectInspectorCapabilities.flatMap((id) =>
         capabilitiesAt('org').filter((atom) => atom.id === id),
       )
-    : capabilitiesAt('org');
+    : capabilitiesAt(level);
 
   return (
     <Panel id="members-inspect" title="Who can…? Answer by inspection">
@@ -889,8 +930,7 @@ function GrantModal({
             </datalist>
             <p className="field__hint">
               The principal id of a person or a service account; the list offers the ones already
-              holding something here. There is no invitation flow in this version, so an account
-              exists before it can hold a grant.
+              holding something here.
             </p>
           </>
         )}
@@ -1004,7 +1044,11 @@ function GrantModal({
             </optgroup>
           ))}
         </select>
-        {projectContext && prototypeMode ? null : (
+        {projectContext && prototypeMode ? null : chosen?.level === 'instance' ? (
+          <p className="field__hint">
+            Instance scope reaches every organisation, current and future.
+          </p>
+        ) : (
           <p className="field__hint">
             Narrowest first. A protected environment is last in its project and is never
             preselected; an organisation scope reaches every project, current and future.

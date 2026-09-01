@@ -245,7 +245,7 @@ export function ProjectSettings() {
       <Panel id="project-access" title="Access">
         <div className="settings-row">
           <div className="settings-row__copy">
-            <span className="settings-row__title">Members &amp; grants</span>
+            <span className="settings-row__title">Members</span>
             <span className="settings-row__detail">
               {prototypeMode
                 ? '7 grant lines on this project'

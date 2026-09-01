@@ -99,7 +99,7 @@ test.describe('organisation settings', () => {
     );
     await page.goto(`/orgs/${seed.org}/settings`);
     await expect(
-      page.getByRole('heading', { name: /Org settings ·/, level: 1 }),
+      page.getByRole('heading', { name: /Organisation settings ·/, level: 1 }),
     ).toBeVisible();
 
     const retention = page.locator('#org-retention');
@@ -658,7 +658,7 @@ test.describe('settings flow visual contract', () => {
           await page.goto(path);
           const heading = page.getByRole('heading', {
             name: surface.id === 'org-settings'
-              ? /^Org settings · /
+              ? /^Organisation settings · /
               : /^Project settings · /,
             level: 1,
           });

@@ -76,7 +76,7 @@ export function OrgSettings() {
 
   return (
     <div className="page page--chrome">
-      <h1>Org settings · {current?.name ?? 'organization'}</h1>
+      <h1>Organisation settings · {current?.name ?? 'organisation'}</h1>
       <p className="page__lede">
         Organization identity and lifecycle. Access lives on its own surface; the danger zone is
         deliberately last.
@@ -156,7 +156,7 @@ export function OrgSettings() {
       <Panel id="org-members" title="Members">
         <div className="settings-row">
           <div className="settings-row__copy">
-            <span className="settings-row__title">Org members &amp; grants</span>
+            <span className="settings-row__title">Members</span>
             <span className="settings-row__detail">
               {prototypeMode
                 ? '4 org-scoped grant lines'
