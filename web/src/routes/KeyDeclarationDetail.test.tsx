@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderForm, typeInto } from '../testkit/renderForm.tsx';
-import { ApiError } from '../api/client.ts';
+import { ApiError, type RefusalFinding } from '../api/client.ts';
 import { KeyDeclarationDetail } from './KeyDeclarationDetail.tsx';
 import type { MatrixKey } from '../api/matrix.ts';
 
@@ -267,6 +267,103 @@ describe('KeyDeclarationDetail', () => {
       ),
     ).toBe(false);
     expect(textOf(view.container)).toContain('could not be read');
+
+    await view.unmount();
+  });
+
+  it('routes a scanner refusal to the block dialog and overrides with the tokens', async () => {
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' }, isSuccess: true, isError: false, isRefetchError: false });
+    const finding: RefusalFinding = {
+      rule_id: 'aws-access-key',
+      surface: 'edit',
+      locator: 'key.description',
+      acknowledgement: 'ack-1',
+    };
+    let calls = 0;
+    mocks.mutate.mockImplementation(
+      (
+        _input: unknown,
+        callbacks: { onSuccess: () => void; onError: (error: Error) => void },
+      ) => {
+        calls += 1;
+        // The first write is refused with the redacted finding; the acknowledged
+        // resubmit succeeds.
+        if (calls === 1) callbacks.onError(new ApiError(400, 'blocked', undefined, undefined, [finding]));
+        else callbacks.onSuccess();
+      },
+    );
+
+    const view = await render();
+    const description = view.container.querySelector<HTMLTextAreaElement>('textarea');
+    if (description === null) throw new Error('editor textarea missing');
+    await act(async () => setTextarea(description, 'ghp_exampletoken'));
+    const save = [...view.container.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('Save declaration'),
+    );
+    if (save === undefined) throw new Error('save button missing');
+    await act(async () => save.click());
+
+    // The block dialog opened, stating the exported-as-public consequence and
+    // rendering only the redacted finding.
+    const dialog = view.container.querySelector('dialog.scan-block');
+    expect(dialog).not.toBeNull();
+    const dialogText = dialog?.textContent ?? '';
+    expect(dialogText).toContain('exported to Git and treated as public');
+    expect(dialogText).toContain('aws-access-key');
+    expect(dialogText).toContain('key.description');
+    // Never the value the operator typed.
+    expect(dialogText).not.toContain('ghp_exampletoken');
+    // No blanket ignore-all input exists (ADR §4).
+    expect(
+      [...(dialog?.querySelectorAll('button') ?? [])].some((b) => /ignore all/i.test(b.textContent ?? '')),
+    ).toBe(false);
+
+    // Overriding resubmits the SAME field with the finding's token.
+    const acknowledge = [...(dialog?.querySelectorAll('button') ?? [])].find((b) =>
+      b.textContent?.includes('Acknowledge and continue'),
+    );
+    if (acknowledge === undefined) throw new Error('override button missing');
+    await act(async () => acknowledge.click());
+
+    expect(mocks.mutate).toHaveBeenLastCalledWith(
+      { description: 'ghp_exampletoken', acknowledgements: ['ack-1'] },
+      expect.anything(),
+    );
+    expect(textOf(view.container)).toContain('Saved.');
+
+    await view.unmount();
+  });
+
+  it('offers no override in the block dialog when a finding carries no token', async () => {
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' }, isSuccess: true, isError: false, isRefetchError: false });
+    const hardBlock: RefusalFinding = { rule_id: 'high-entropy', surface: 'edit', locator: 'key.description' };
+    mocks.mutate.mockImplementation(
+      (
+        _input: unknown,
+        callbacks: { onError: (error: Error) => void },
+      ) => callbacks.onError(new ApiError(400, 'blocked', undefined, undefined, [hardBlock])),
+    );
+
+    const view = await render();
+    const description = view.container.querySelector<HTMLTextAreaElement>('textarea');
+    if (description === null) throw new Error('editor textarea missing');
+    await act(async () => setTextarea(description, 'some entropy'));
+    const save = [...view.container.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('Save declaration'),
+    );
+    if (save === undefined) throw new Error('save button missing');
+    await act(async () => save.click());
+
+    const dialog = view.container.querySelector('dialog.scan-block');
+    expect(dialog).not.toBeNull();
+    expect(dialog?.textContent ?? '').toContain('cannot be overridden');
+    expect(
+      [...(dialog?.querySelectorAll('button') ?? [])].some((b) =>
+        b.textContent?.includes('Acknowledge and continue'),
+      ),
+    ).toBe(false);
 
     await view.unmount();
   });
