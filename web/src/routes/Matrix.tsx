@@ -7,6 +7,7 @@ import { historyHref } from '../api/history.ts';
 import { useWorkspaceContext, withRemote } from '../api/transport.tsx';
 import { surfaceById } from '../app/navigation.ts';
 import {
+  assembleKeyImpact,
   matrixPublishValidation,
   matrixMutationError,
   pendingConfigPreview,
@@ -286,6 +287,31 @@ export function Matrix({
     }
     return drafts;
   }, [environmentRows]);
+
+  // The open key's cross-environment lifecycle impact (#494), assembled here
+  // from cells the matrix already holds and handed to the detail surface as
+  // value-free id lists — a config value cell can carry material the detail
+  // must never receive, so only the booleans (set / pending) cross. It stays
+  // "not ready" until the environment list and every row's values+signals have
+  // loaded, so the delete/reclassify previews never understate what an action
+  // touches (fail-closed, the surface's own idiom).
+  const keyDetailImpact = useMemo(() => {
+    if (keyDetailId === undefined || keyDetailId === '') {
+      return { setEnvironmentIds: [], pendingEnvironmentIds: [] };
+    }
+    return assembleKeyImpact(
+      environmentRows.map((row) => ({
+        environmentId: row.environmentId,
+        set: valuesByCell.get(cellID(keyDetailId, row.environmentId))?.set === true,
+        pending: signalsByCell.get(cellID(keyDetailId, row.environmentId))?.pending !== undefined,
+      })),
+    );
+  }, [environmentRows, keyDetailId, signalsByCell, valuesByCell]);
+  const keyDetailImpactReady =
+    matrix.environments.isSuccess &&
+    environmentRows.every(
+      (row) => row.values.status !== 'pending' && row.signals.status !== 'pending',
+    );
 
   const stateKeys = useMemo<readonly MatrixStateKey[]>(
     () =>
@@ -1313,6 +1339,8 @@ export function Matrix({
           refData={ref}
           keyId={keyDetailId}
           environments={environments}
+          impact={keyDetailImpact}
+          impactReady={keyDetailImpactReady}
           openerRef={keyDetailOpener}
         />
       )}

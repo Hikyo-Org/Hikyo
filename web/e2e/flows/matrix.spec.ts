@@ -723,6 +723,91 @@ test.describe('catalogue declaration detail', () => {
 });
 
 /**
+ * Flow: the browser key lifecycle — rename, reclassify, delete (#494).
+ *
+ * Rides this spec for the same merge-gate reason the detail surface does (it
+ * reuses the `key-detail` surface). One serial journey over one throwaway config
+ * key: rename it (identity survives, the heading follows the new name),
+ * reclassify config → secret through its confirm ceremony (tightening needs no
+ * reveal), then delete it behind the typed-name confirm and land back on the
+ * matrix with no route left pointing at the key. Declassification's reveal gate
+ * and its Surface-1 warnings are covered by the component tests, which can drive
+ * the refusal shapes deterministically.
+ */
+test.describe('catalogue declaration lifecycle', () => {
+  test.describe.configure({ mode: 'serial' });
+  test.use({ storageState: STORAGE_STATE });
+
+  test('renames, reclassifies, and deletes a key from the detail surface', async ({
+    page,
+  }, testInfo) => {
+    const startName = `LIFECYCLE_${testInfo.project.name.toUpperCase()}`;
+    const renamed = `${startName}_RENAMED`;
+    const token = await fixtureBearer('lifecycle fixture');
+    const created = await fixtureApiCall(
+      token,
+      'POST',
+      `/api/v1/orgs/${seed.org}/projects/${seed.project}/keys`,
+      zCreatedKey,
+      {
+        name: startName,
+        classification: 'config',
+        folder_path: 'lifecycle',
+        description: '',
+        declaration: { rule: { type: 'string' } },
+      },
+    );
+    const keyId = created.id;
+    let deleted = false;
+    try {
+      await page.goto(`/orgs/${seed.org}/projects/${seed.project}/matrix/keys/${keyId}`);
+      const panel = page.locator('.key-detail');
+      await expect(page.getByRole('heading', { name: startName, level: 2 })).toBeVisible();
+
+      // Rename: identity is the id, so the URL is unchanged and the heading
+      // follows the new name once the query is invalidated.
+      await panel.getByLabel('Name').fill(renamed);
+      await panel.getByRole('button', { name: 'Rename key' }).click();
+      await expectStatusIsTextAndAria(
+        page,
+        page.getByRole('status').filter({ hasText: 'Renamed.' }),
+      );
+      await expect(page.getByRole('heading', { name: renamed, level: 2 })).toBeVisible();
+
+      // Reclassify config → secret through the confirm ceremony. Tightening
+      // discloses nothing and needs no reveal.
+      await panel.getByRole('button', { name: 'Reclassify as secret…' }).click();
+      const dialog = page.locator('dialog.matrix-editor');
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole('button', { name: 'Reclassify as secret', exact: true }).click();
+      await expectStatusIsTextAndAria(
+        page,
+        page.getByRole('status').filter({ hasText: 'Reclassified as secret.' }),
+      );
+      await expect(panel).toContainText('🔒 secret');
+
+      // Delete behind the typed-name confirm, then land on the matrix with the
+      // key route gone.
+      await panel.getByLabel('Confirm the key name to delete it').fill(renamed);
+      await panel.getByRole('button', { name: 'Delete key' }).click();
+      await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
+      await expect(page).not.toHaveURL(new RegExp(`/matrix/keys/${keyId}$`));
+      deleted = true;
+    } finally {
+      if (!deleted) {
+        const cleanup = await fixtureBearer('lifecycle cleanup');
+        await fixtureApiCall(
+          cleanup,
+          'DELETE',
+          `/api/v1/orgs/${seed.org}/projects/${seed.project}/keys/${keyId}`,
+          z.object({}),
+        ).catch(() => undefined);
+      }
+    }
+  });
+});
+
+/**
  * Flow: declaring a new key from the browser (#492).
  *
  * Runs after the edit/publish suite and as the last describe in the file, so

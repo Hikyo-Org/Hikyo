@@ -12,6 +12,8 @@ import {
   listValuesOp,
   publishPendingChangesOp,
   reclassifyKeyOp,
+  deleteKeyOp,
+  renameKeyOp,
   setValueOp,
   updateKeyMetadataOp,
 } from '@hikyo/operations';
@@ -37,7 +39,7 @@ import {
   useAdvisoryStream,
   type AdvisoryEvent,
 } from './advisory.ts';
-import { ApiError, parsed } from './client.ts';
+import { ApiError, ok, parsed } from './client.ts';
 import { callerSafeRefusal } from './history.ts';
 import {
   invalidateAfterCopy,
@@ -864,8 +866,153 @@ export function useReclassifyKey(ref: MatrixRef) {
           body: { classification: input.classification },
           ...transport,
         }),
-    onSuccess: () => queries.invalidateQueries({ queryKey: matrixKeysKey(ref) }),
+    // Reclassification moves how every occurrence of the key is HANDLED, not
+    // just the catalogue lock: declassifying (`secret` → `config`)
+    // re-materialises the value under ordinary config read, and tightening
+    // (`config` → `secret`) drops the key's config dismissals and re-secures the
+    // cells. Both change what the value/signals/pending views must show, so the
+    // whole matrix is invalidated alongside the single-key detail and the list —
+    // the metadata-only edit's narrow key+list invalidation is not enough here.
+    onSuccess: (_result, input) =>
+      Promise.all([
+        queries.invalidateQueries({ queryKey: matrixKeyKey(ref, input.key) }),
+        queries.invalidateQueries({ queryKey: matrixKeysKey(ref) }),
+        queries.invalidateQueries({ queryKey: valuesMatrixKey(ref) }),
+        queries.invalidateQueries({ queryKey: signalsMatrixKey(ref) }),
+        queries.invalidateQueries({ queryKey: pendingMatrixKey(ref) }),
+      ]),
   });
+}
+
+/**
+ * useRenameKey renames a key by its immutable id (#494). Identity is that id, so
+ * no stored reference breaks — but the DELIVERED payload's key set changes,
+ * which is a content-affecting schema change and advances the schema revision.
+ * `acknowledgements` carries Surface-2 override tokens because the new name is
+ * exported to Git and treated as public, so the scanner can refuse it exactly as
+ * it refuses a free-text declaration field. The single-key detail, the project
+ * key list and the groups (whose membership is recorded by NAME) are all
+ * invalidated so the new name shows everywhere it appears.
+ */
+export function useRenameKey(ref: MatrixRef, key: string) {
+  const queries = useQueryClient();
+  const transport = useTransport();
+  return useMutation({
+    mutationFn: (input: { readonly name: string; readonly acknowledgements?: readonly string[] }) =>
+      parsed(renameKeyOp, {
+          path: { ...ref, key },
+          body: {
+            name: input.name,
+            ...(input.acknowledgements === undefined || input.acknowledgements.length === 0
+              ? {}
+              : { acknowledgements: [...input.acknowledgements] }),
+          },
+          ...transport,
+        }),
+    onSuccess: () =>
+      Promise.all([
+        queries.invalidateQueries({ queryKey: matrixKeyKey(ref, key) }),
+        queries.invalidateQueries({ queryKey: matrixKeysKey(ref) }),
+        queries.invalidateQueries({ queryKey: matrixGroupsKey(ref) }),
+      ]),
+  });
+}
+
+/**
+ * useDeleteKey removes a key declaration, its explicit presence rows and its
+ * group membership (#494).
+ *
+ * It deliberately does NOT invalidate the single-key detail cache, and the list
+ * invalidation is `exact` for a load-bearing reason: `matrixKeyKey` is
+ * `matrixKeysKey` plus a suffix, so a non-exact list invalidation would ALSO
+ * match the still-mounted single-key query and re-fetch the now-deleted key.
+ * That 404 would reject this `onSuccess` promise and, with it, the caller's
+ * navigate-to-matrix — leaving the surface stranded on the deleted key. `exact`
+ * refreshes only the list; the surface navigates away and the stale single-key
+ * cache is dropped on unmount (a later visit re-fetches to the recoverable
+ * deleted-key state). The key vanishes from the whole matrix, so its per-
+ * environment views are invalidated too — none of those keys is a prefix of the
+ * single-key query, so they do not cascade.
+ */
+export function useDeleteKey(ref: MatrixRef, key: string) {
+  const queries = useQueryClient();
+  const transport = useTransport();
+  return useMutation({
+    mutationFn: () => ok(deleteKeyOp, { path: { ...ref, key }, ...transport }),
+    onSuccess: () =>
+      Promise.all([
+        queries.invalidateQueries({ queryKey: matrixKeysKey(ref), exact: true }),
+        queries.invalidateQueries({ queryKey: matrixGroupsKey(ref) }),
+        queries.invalidateQueries({ queryKey: valuesMatrixKey(ref) }),
+        queries.invalidateQueries({ queryKey: signalsMatrixKey(ref) }),
+        queries.invalidateQueries({ queryKey: pendingMatrixKey(ref) }),
+      ]),
+  });
+}
+
+/** One key's cross-environment lifecycle impact: the environments whose value
+ *  the action moves (a set occurrence) or whose pending draft it disturbs. Only
+ *  environment IDs cross this boundary — never a value cell, which for a config
+ *  key can carry material the detail surface must never hold (#491). */
+export type KeyImpact = {
+  readonly setEnvironmentIds: readonly string[];
+  readonly pendingEnvironmentIds: readonly string[];
+};
+
+/** assembleKeyImpact reduces the per-environment occupancy of ONE key into the
+ *  two id lists a delete/reclassify preview shows. Pure over booleans the caller
+ *  extracts from the matrix cells, so no cell (hence no value) reaches it. */
+export function assembleKeyImpact(
+  cells: readonly {
+    readonly environmentId: string;
+    readonly set: boolean;
+    readonly pending: boolean;
+  }[],
+): KeyImpact {
+  return {
+    setEnvironmentIds: cells.filter((cell) => cell.set).map((cell) => cell.environmentId),
+    pendingEnvironmentIds: cells.filter((cell) => cell.pending).map((cell) => cell.environmentId),
+  };
+}
+
+/**
+ * keyLifecycleRefusalText renders a rename/reclassify/delete refusal in the
+ * caller's words, and — this is the security-sensitive part — WITHOUT ever
+ * turning the reveal gate into an oracle.
+ *
+ * A caller-safe server detail is quoted verbatim (a rename collision names the
+ * clashing key; a Surface-2 block names its rule id and locator). Otherwise:
+ *  - 403 on a declassification is the one place a step-up may be named, because
+ *    the server discloses the assurance requirement ONLY to a caller who already
+ *    holds the reveal grant; every other 403 is a plain permission refusal.
+ *  - 404 is the uniform missing-key sentence. For a declassification it ALSO
+ *    masks "you do not hold reveal on this key" — the gate is a one-bit oracle
+ *    the instant the UI says anything else, so this stays identical to every
+ *    other 404.
+ */
+export function keyLifecycleRefusalText(
+  error: Error,
+  action: 'rename' | 'reclassify' | 'declassify' | 'delete',
+): string {
+  if (error instanceof ApiError) {
+    const detailed = callerSafeRefusal(error, 'Refused');
+    if (detailed !== null) {
+      return detailed;
+    }
+    if (error.status === 403) {
+      return action === 'declassify'
+        ? 'Declassifying a secret needs a recent second-factor sign-in. Reauthenticate, then try again.'
+        : `You do not have permission to ${action} this key in this project.`;
+    }
+    if (error.status === 404) {
+      return 'This key no longer exists. Return to the matrix and reopen it.';
+    }
+    if (error.status === 409) {
+      return `The server refused this ${action}; reload the key and retry.`;
+    }
+    return `The server could not ${action} this key (error ${String(error.status)}).`;
+  }
+  return `The server could not ${action} this key.`;
 }
 
 /** One key declaration, as the catalogue detail surface (#491) reads it. */

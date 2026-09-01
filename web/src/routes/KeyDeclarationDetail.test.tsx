@@ -12,6 +12,10 @@ const mocks = vi.hoisted(() => ({
   key: vi.fn(),
   definitions: vi.fn(),
   mutate: vi.fn(),
+  rename: vi.fn(),
+  reclassify: vi.fn(),
+  deleteKey: vi.fn(),
+  navigate: vi.fn(),
 }));
 
 vi.mock('../api/matrix.ts', async (importActual) => {
@@ -20,6 +24,9 @@ vi.mock('../api/matrix.ts', async (importActual) => {
     ...actual,
     useKey: () => mocks.key(),
     useUpdateKeyMetadata: () => ({ mutate: mocks.mutate, isPending: false }),
+    useRenameKey: () => ({ mutate: mocks.rename, isPending: false }),
+    useReclassifyKey: () => ({ mutate: mocks.reclassify, isPending: false }),
+    useDeleteKey: () => ({ mutate: mocks.deleteKey, isPending: false }),
   };
 });
 
@@ -31,6 +38,11 @@ vi.mock('../api/definitions.ts', async (importActual) => {
 vi.mock('../api/transport.tsx', async (importActual) => {
   const actual = await importActual<typeof import('../api/transport.tsx')>();
   return { ...actual, useWorkspaceContext: () => null };
+});
+
+vi.mock('react-router', async (importActual) => {
+  const actual = await importActual<typeof import('react-router')>();
+  return { ...actual, useNavigate: () => mocks.navigate };
 });
 
 const environments = [
@@ -71,13 +83,20 @@ const record: MatrixKey = {
   created_at: '2026-08-24T08:00:00Z',
 };
 
-function render() {
+const noImpact = { setEnvironmentIds: [], pendingEnvironmentIds: [] } as const;
+
+function render(
+  impact: { setEnvironmentIds: readonly string[]; pendingEnvironmentIds: readonly string[] } = noImpact,
+  impactReady = true,
+) {
   return renderForm(
     <MemoryRouter initialEntries={['/orgs/org_a/projects/project_a/matrix/keys/key_a']}>
       <KeyDeclarationDetail
         refData={{ org: 'org_a', project: 'project_a' }}
         keyId="key_a"
         environments={environments}
+        impact={impact}
+        impactReady={impactReady}
         openerRef={{ current: null }}
       />
     </MemoryRouter>,
@@ -92,7 +111,40 @@ beforeEach(() => {
   mocks.key.mockReset();
   mocks.definitions.mockReset();
   mocks.mutate.mockReset();
+  mocks.rename.mockReset();
+  mocks.reclassify.mockReset();
+  mocks.deleteKey.mockReset();
+  mocks.navigate.mockReset();
 });
+
+/** The db-managed, editable source mode the lifecycle actions require. */
+function dbMode() {
+  mocks.definitions.mockReturnValue({
+    data: { definitions_source: 'db' },
+    isSuccess: true,
+    isError: false,
+    isRefetchError: false,
+  });
+}
+
+function buttonBy(container: HTMLElement, text: string): HTMLButtonElement {
+  const button = [...container.querySelectorAll('button')].find((candidate) =>
+    candidate.textContent?.includes(text),
+  );
+  if (button === undefined) throw new Error(`button "${text}" missing`);
+  return button;
+}
+
+/** The confirm dialog's action button, matched EXACTLY so it is never confused
+ *  with the section trigger whose label is a superset ("…config…"). */
+function dialogButton(container: HTMLElement, text: string): HTMLButtonElement {
+  const dialog = container.querySelector('dialog.matrix-editor');
+  const button = [...(dialog?.querySelectorAll('button') ?? [])].find(
+    (candidate) => candidate.textContent === text,
+  );
+  if (button === undefined) throw new Error(`dialog button "${text}" missing`);
+  return button;
+}
 
 describe('KeyDeclarationDetail', () => {
   it('renders every declaration field and, in db mode, the editor', async () => {
@@ -364,6 +416,220 @@ describe('KeyDeclarationDetail', () => {
         b.textContent?.includes('Acknowledge and continue'),
       ),
     ).toBe(false);
+
+    await view.unmount();
+  });
+
+  it('renames a key and reports it', async () => {
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
+    dbMode();
+    mocks.rename.mockImplementation((_input: unknown, cb: { onSuccess: () => void }) =>
+      cb.onSuccess(),
+    );
+
+    const view = await render();
+    const nameInput = [...view.container.querySelectorAll('input.mono')].find(
+      (input) => (input as HTMLInputElement).value === 'DATABASE_URL',
+    ) as HTMLInputElement | undefined;
+    if (nameInput === undefined) throw new Error('name input missing');
+    await act(async () => typeInto(nameInput, 'DATABASE_DSN'));
+    await act(async () => buttonBy(view.container, 'Rename key').click());
+
+    expect(mocks.rename).toHaveBeenCalledWith({ name: 'DATABASE_DSN' }, expect.anything());
+    expect(textOf(view.container)).toContain('Renamed.');
+
+    await view.unmount();
+  });
+
+  it('routes a scanner refusal on rename to the block dialog and overrides', async () => {
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
+    dbMode();
+    const finding: RefusalFinding = {
+      rule_id: 'aws-access-key',
+      surface: 'edit',
+      locator: 'key.name',
+      acknowledgement: 'ack-name',
+    };
+    let calls = 0;
+    mocks.rename.mockImplementation(
+      (_input: unknown, cb: { onSuccess: () => void; onError: (error: Error) => void }) => {
+        calls += 1;
+        if (calls === 1) cb.onError(new ApiError(400, 'blocked', undefined, undefined, [finding]));
+        else cb.onSuccess();
+      },
+    );
+
+    const view = await render();
+    const nameInput = [...view.container.querySelectorAll('input.mono')].find(
+      (input) => (input as HTMLInputElement).value === 'DATABASE_URL',
+    ) as HTMLInputElement | undefined;
+    if (nameInput === undefined) throw new Error('name input missing');
+    await act(async () => typeInto(nameInput, 'AKIAEXAMPLE'));
+    await act(async () => buttonBy(view.container, 'Rename key').click());
+
+    const dialog = view.container.querySelector('dialog.scan-block');
+    expect(dialog).not.toBeNull();
+    expect(dialog?.textContent ?? '').toContain('aws-access-key');
+    expect(dialog?.textContent ?? '').not.toContain('AKIAEXAMPLE');
+
+    const acknowledge = [...(dialog?.querySelectorAll('button') ?? [])].find((b) =>
+      b.textContent?.includes('Acknowledge and continue'),
+    );
+    if (acknowledge === undefined) throw new Error('override button missing');
+    await act(async () => acknowledge.click());
+
+    expect(mocks.rename).toHaveBeenLastCalledWith(
+      { name: 'AKIAEXAMPLE', acknowledgements: ['ack-name'] },
+      expect.anything(),
+    );
+    expect(textOf(view.container)).toContain('Renamed.');
+
+    await view.unmount();
+  });
+
+  it('declassifies through a disclosure confirm and renders the Surface-1 warnings', async () => {
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
+    dbMode();
+    mocks.reclassify.mockImplementation(
+      (input: { classification: string }, cb: { onSuccess: (key: unknown) => void }) => {
+        expect(input.classification).toBe('config');
+        cb.onSuccess({
+          ...record,
+          classification: 'config',
+          findings: [{ rule_id: 'high-entropy', surface: 'value', locator: 'production' }],
+        });
+      },
+    );
+
+    const view = await render({ setEnvironmentIds: ['env_b'], pendingEnvironmentIds: [] });
+    await act(async () => buttonBy(view.container, 'Reclassify as config…').click());
+
+    const dialog = view.container.querySelector('dialog.matrix-editor');
+    expect(dialog).not.toBeNull();
+    const dialogText = dialog?.textContent ?? '';
+    // The disclosure consequence and the second-factor requirement are stated.
+    expect(dialogText).toContain('readable under ordinary config read');
+    expect(dialogText).toContain('second-factor');
+    // The impact preview names the affected environment, never a value.
+    expect(dialogText).toContain('production');
+
+    await act(async () => dialogButton(view.container, 'Reclassify as config').click());
+
+    expect(mocks.reclassify).toHaveBeenCalledWith(
+      { key: 'key_a', classification: 'config' },
+      expect.anything(),
+    );
+    const text = textOf(view.container);
+    expect(text).toContain('Reclassified as config.');
+    // The re-materialised occurrence's warning is shown redacted.
+    expect(text).toContain('high-entropy');
+
+    await view.unmount();
+  });
+
+  it('surfaces the reauth requirement when a declassification is refused for assurance', async () => {
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
+    dbMode();
+    mocks.reclassify.mockImplementation(
+      (_input: unknown, cb: { onError: (error: Error) => void }) =>
+        cb.onError(new ApiError(403, 'forbidden')),
+    );
+
+    const view = await render();
+    await act(async () => buttonBy(view.container, 'Reclassify as config…').click());
+    await act(async () => dialogButton(view.container, 'Reclassify as config').click());
+
+    expect(textOf(view.container)).toContain('second-factor sign-in');
+
+    await view.unmount();
+  });
+
+  it('masks a missing reveal grant as a uniform not-found on declassify', async () => {
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
+    dbMode();
+    mocks.reclassify.mockImplementation(
+      (_input: unknown, cb: { onError: (error: Error) => void }) =>
+        cb.onError(new ApiError(404, 'not found')),
+    );
+
+    const view = await render();
+    await act(async () => buttonBy(view.container, 'Reclassify as config…').click());
+    await act(async () => dialogButton(view.container, 'Reclassify as config').click());
+
+    const text = textOf(view.container);
+    expect(text).toContain('no longer exists');
+    // The gate must not become an oracle: no reveal/permission wording here.
+    expect(text.toLowerCase()).not.toContain('reveal');
+    expect(text.toLowerCase()).not.toContain('permission');
+
+    await view.unmount();
+  });
+
+  it('tightens config to secret with its own consequence, no reveal', async () => {
+    const configKey: MatrixKey = { ...record, classification: 'config' };
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: configKey });
+    dbMode();
+    mocks.reclassify.mockImplementation(
+      (input: { classification: string }, cb: { onSuccess: (key: unknown) => void }) => {
+        expect(input.classification).toBe('secret');
+        cb.onSuccess({ ...configKey, classification: 'secret' });
+      },
+    );
+
+    const view = await render();
+    await act(async () => buttonBy(view.container, 'Reclassify as secret…').click());
+    const dialog = view.container.querySelector('dialog.matrix-editor');
+    expect(dialog?.textContent ?? '').toContain('dismissals are dropped');
+    // Tightening does not disclose, so it names no second-factor requirement.
+    expect((dialog?.textContent ?? '').toLowerCase()).not.toContain('second-factor');
+
+    await act(async () => dialogButton(view.container, 'Reclassify as secret').click());
+    expect(textOf(view.container)).toContain('Reclassified as secret.');
+
+    await view.unmount();
+  });
+
+  it('previews impact and deletes behind a typed confirm, then returns to the matrix', async () => {
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
+    dbMode();
+    mocks.deleteKey.mockImplementation((_input: unknown, cb: { onSuccess: () => void }) =>
+      cb.onSuccess(),
+    );
+
+    const view = await render({ setEnvironmentIds: ['env_b'], pendingEnvironmentIds: ['env_a'] });
+    const deleteSection = view.container.querySelector('.danger-zone');
+    expect(deleteSection).not.toBeNull();
+    const text = textOf(view.container);
+    // The impact names both the delivering and the drafting environment.
+    expect(text).toContain('production');
+    expect(text).toContain('development');
+
+    // The delete stays disabled until the exact name is typed.
+    const del = buttonBy(view.container, 'Delete key');
+    expect(del.disabled).toBe(true);
+    const confirmInput = deleteSection?.querySelector('input') as HTMLInputElement;
+    await act(async () => typeInto(confirmInput, 'DATABASE_URL'));
+    expect(buttonBy(view.container, 'Delete key').disabled).toBe(false);
+    await act(async () => buttonBy(view.container, 'Delete key').click());
+
+    expect(mocks.deleteKey).toHaveBeenCalledWith(undefined, expect.anything());
+    expect(mocks.navigate).toHaveBeenCalledWith(expect.stringContaining('/matrix'));
+
+    await view.unmount();
+  });
+
+  it('fails closed: delete cannot arm while the impact is still loading', async () => {
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
+    dbMode();
+
+    const view = await render(noImpact, false);
+    expect(textOf(view.container)).toContain('Checking which environments this affects');
+    // No expected name while impact is unknown, so the confirm input is disabled.
+    const deleteSection = view.container.querySelector('.danger-zone');
+    const confirmInput = deleteSection?.querySelector('input') as HTMLInputElement;
+    expect(confirmInput.disabled).toBe(true);
+    // The reclassify-as-config trigger is also disabled without a ready preview.
+    expect(buttonBy(view.container, 'Reclassify as config…').disabled).toBe(true);
 
     await view.unmount();
   });
