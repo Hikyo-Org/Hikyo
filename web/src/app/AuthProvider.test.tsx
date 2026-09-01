@@ -116,6 +116,8 @@ function Probe({
       <output data-testid="operator">
         {auth.identity === null ? '' : String(auth.identity.capabilities.instance_operator)}
       </output>
+      <output data-testid="failure">{auth.failure === null ? '' : 'failed'}</output>
+      <output data-testid="degraded">{auth.degraded === null ? '' : 'degraded'}</output>
       <output data-testid="marker">{String(queries.getQueryData(['marker']) ?? '')}</output>
       <button type="button" onClick={() => void auth.revalidate()}>
         Revalidate
@@ -343,6 +345,129 @@ describe('AuthProvider', () => {
     expect(text(container, 'state')).toContain(`authenticated:${id('ses', '01')}`);
     expect(text(container, 'operator')).toBe('true');
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('latches the reload wall when the very first check has no session to fall back on', async () => {
+    const fetchMock = vi
+      .fn<(...args: Parameters<typeof fetch>) => Promise<Response>>()
+      .mockRejectedValueOnce(new Error('server unreachable'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { container } = await renderAuth(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+    await settle();
+
+    // No identity was ever held, so the transport failure is the authoritative
+    // answer and App's reload wall is correct.
+    expect(text(container, 'failure')).toBe('failed');
+    expect(text(container, 'degraded')).toBe('');
+  });
+
+  it('keeps a still-valid session painting through a background revalidation blip and recovers', async () => {
+    const fetchMock = vi
+      .fn<(...args: Parameters<typeof fetch>) => Promise<Response>>()
+      .mockResolvedValueOnce(json(identity('00', '10')))
+      .mockRejectedValueOnce(new Error('server briefly unreachable'))
+      .mockResolvedValue(json(identity('00', '10')));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { container } = await renderAuth(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+    await settle();
+    expect(text(container, 'state')).toContain(`authenticated:${id('ses', '00')}`);
+
+    // A background revalidation rejects while the session is still valid.
+    const buttons = container.querySelectorAll('button');
+    await act(async () => buttons[0]?.click());
+    await settle();
+
+    // The session keeps painting; the error surfaces only as the non-latching
+    // degraded signal, never the global reload wall.
+    expect(text(container, 'state')).toContain(`authenticated:${id('ses', '00')}`);
+    expect(text(container, 'failure')).toBe('');
+    expect(text(container, 'degraded')).toBe('degraded');
+
+    // The next successful revalidation clears the degraded signal.
+    await act(async () => buttons[0]?.click());
+    await settle();
+    expect(text(container, 'state')).toContain(`authenticated:${id('ses', '00')}`);
+    expect(text(container, 'degraded')).toBe('');
+  });
+
+  it('recovers a degraded session on its own through the backoff retry', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi
+        .fn<(...args: Parameters<typeof fetch>) => Promise<Response>>()
+        .mockResolvedValueOnce(json(identity('00', '10')))
+        .mockRejectedValueOnce(new Error('server briefly unreachable'))
+        .mockResolvedValue(json(identity('00', '10')));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const { container } = await renderAuth(
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>,
+      );
+      await settle();
+      expect(text(container, 'state')).toContain(`authenticated:${id('ses', '00')}`);
+
+      // A background BLOCKING revalidate (a peer-tab broadcast or the expiry
+      // timer) fails, degrading the still-valid session.
+      const buttons = container.querySelectorAll('button');
+      await act(async () => buttons[0]?.click());
+      await settle();
+      expect(text(container, 'degraded')).toBe('degraded');
+      expect(text(container, 'failure')).toBe('');
+
+      // No manual revalidation: only the backoff timer fires. Advancing past its
+      // first interval must recover the session on its own — deleting the retry
+      // effect leaves `degraded` set here forever.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_100);
+      });
+      await settle();
+      expect(text(container, 'degraded')).toBe('');
+      expect(text(container, 'state')).toContain(`authenticated:${id('ses', '00')}`);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('walls a session whose absolute deadline has passed even when the server is unreachable', async () => {
+    const expired = identity('00', '10');
+    const dead = {
+      ...expired,
+      session: { ...expired.session, absolute_expires_at: '2000-01-01T00:00:00Z' },
+    };
+    const fetchMock = vi
+      .fn<(...args: Parameters<typeof fetch>) => Promise<Response>>()
+      .mockResolvedValueOnce(json(dead))
+      .mockRejectedValueOnce(new Error('server unreachable'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { container } = await renderAuth(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+    await settle();
+    expect(text(container, 'state')).toContain(`authenticated:${id('ses', '00')}`);
+
+    // The held identity is past its unextendable absolute deadline, so a failed
+    // background revalidation must NOT keep it painting as a degraded-but-valid
+    // session — it is dead regardless of the server, and the wall is correct.
+    const buttons = container.querySelectorAll('button');
+    await act(async () => buttons[0]?.click());
+    await settle();
+    expect(text(container, 'failure')).toBe('failed');
+    expect(text(container, 'degraded')).toBe('');
   });
 
   it('ignores a mutation result captured before a newer session replacement', async () => {
