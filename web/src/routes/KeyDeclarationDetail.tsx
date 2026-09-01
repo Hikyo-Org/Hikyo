@@ -1,6 +1,18 @@
-import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
+import type { KeyRule } from '@hikyo/client';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { generatePath, Link, useNavigate } from 'react-router';
 
+import {
+  catalogueRefusalText,
+  presenceImpact,
+  presenceImpactIsEmpty,
+  useKeyGroups,
+  useSetKeyGroup,
+  useUpdateKeyDeclaration,
+  type KeyDeclaration,
+  type KeyPresenceRules,
+  type PresenceMode,
+} from '../api/catalogue.ts';
 import { GIT_DEFINITIONS_NOTICE, useDefinitionsSettings } from '../api/definitions.ts';
 import { historyHref } from '../api/history.ts';
 import {
@@ -298,6 +310,13 @@ function KeyDeclarationBody({
       {editable ? (
         <>
           <MetadataEditor refData={refData} keyId={keyId} record={record} />
+          <DeclarationEditor
+            refData={refData}
+            keyId={keyId}
+            record={record}
+            environments={environments}
+          />
+          <GroupEditor refData={refData} keyId={keyId} record={record} />
           <RenameKey refData={refData} keyId={keyId} record={record} />
           <ReclassifyKey
             refData={refData}
@@ -1055,5 +1074,679 @@ function ConfirmDialog({
         </button>
       </div>
     </dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// #493 editors — value rules, presence, and group membership. They extend the
+// #491/#494 foundation, reusing its ScanBlockDialog and scanBlockFrom helper.
+// ---------------------------------------------------------------------------
+
+const RULE_TYPES = ['string', 'integer', 'boolean', 'enum', 'url', 'json'] as const;
+type RuleType = (typeof RULE_TYPES)[number];
+type ReadRule = NonNullable<MatrixKey['declaration']['rule']>;
+
+/**
+ * A JSON signature that tolerates bigint. The read model infers int64 bounds
+ * (min/max) as bigint, and a plain JSON.stringify throws on those — so a bound
+ * integer declaration would crash the panel. A tag keeps a bigint distinct from
+ * the same-digit number so the signature never conflates them.
+ */
+function stableSignature(value: unknown): string {
+  return JSON.stringify(value, (_key, entry) =>
+    typeof entry === 'bigint' ? `${entry.toString()}n` : entry,
+  );
+}
+
+/** Raised when an int64 bound cannot cross into a JS number without loss. */
+class UnsafeBoundError extends Error {}
+
+/**
+ * boundToNumber crosses the read model's bigint bound into the write model's
+ * number EXACTLY or not at all — an int64 outside the safe-integer range would
+ * round silently, so it fails loudly rather than writing a corrupted rule.
+ */
+function boundToNumber(bound: bigint): number {
+  const asNumber = Number(bound);
+  if (!Number.isSafeInteger(asNumber) || BigInt(asNumber) !== bound) {
+    throw new UnsafeBoundError(
+      "This key's integer bounds are outside the range the browser can edit safely. Edit its rules with `hikyo definitions`.",
+    );
+  }
+  return asNumber;
+}
+
+function ruleToWrite(rule: ReadRule): KeyRule {
+  return {
+    type: rule.type,
+    ...(rule.min_length === undefined ? {} : { min_length: rule.min_length }),
+    ...(rule.max_length === undefined ? {} : { max_length: rule.max_length }),
+    ...(rule.pattern === undefined ? {} : { pattern: rule.pattern }),
+    ...(rule.allow_empty === undefined ? {} : { allow_empty: rule.allow_empty }),
+    ...(rule.min === undefined ? {} : { min: boundToNumber(rule.min) }),
+    ...(rule.max === undefined ? {} : { max: boundToNumber(rule.max) }),
+    ...(rule.members === undefined ? {} : { members: [...rule.members] }),
+    ...(rule.schemes === undefined ? {} : { schemes: [...rule.schemes] }),
+    ...(rule.json_schema === undefined ? {} : { json_schema: rule.json_schema }),
+  };
+}
+
+/** The existing declaration as a writable value — used when only presence changes. */
+function declarationToWrite(declaration: MatrixKey['declaration']): KeyDeclaration {
+  if (declaration.rule !== undefined) {
+    return { rule: ruleToWrite(declaration.rule) };
+  }
+  if (declaration.any_of !== undefined) {
+    return { any_of: declaration.any_of.map(ruleToWrite) };
+  }
+  return {};
+}
+
+type RuleDraft = {
+  readonly type: RuleType;
+  readonly minLength: string;
+  readonly maxLength: string;
+  readonly pattern: string;
+  readonly allowEmpty: boolean;
+  readonly min: string;
+  readonly max: string;
+  readonly members: string;
+  readonly schemes: string;
+  readonly jsonSchema: string;
+};
+
+function ruleDraftFrom(rule: ReadRule | { type: RuleType }): RuleDraft {
+  const full = rule as Partial<ReadRule> & { type: RuleType };
+  return {
+    type: full.type,
+    minLength: full.min_length === undefined ? '' : String(full.min_length),
+    maxLength: full.max_length === undefined ? '' : String(full.max_length),
+    pattern: full.pattern ?? '',
+    allowEmpty: full.allow_empty ?? false,
+    min: full.min === undefined ? '' : String(full.min),
+    max: full.max === undefined ? '' : String(full.max),
+    members: (full.members ?? []).join('\n'),
+    schemes: (full.schemes ?? []).join(', '),
+    jsonSchema: full.json_schema ?? '',
+  };
+}
+
+/** Parse a bounded integer field, or report why it cannot. */
+function parseBound(label: string, raw: string): { value?: number; error?: string } {
+  const trimmed = raw.trim();
+  if (trimmed === '') return {};
+  if (!/^-?\d+$/.test(trimmed)) return { error: `${label} must be a whole number.` };
+  const value = Number(trimmed);
+  if (!Number.isSafeInteger(value)) {
+    return { error: `${label} is too large — keep it within ±9,007,199,254,740,991.` };
+  }
+  return { value };
+}
+
+/** Build a writable rule from the draft, or the first reason it is not valid yet. */
+function buildRule(draft: RuleDraft): { rule?: KeyRule; error?: string } {
+  const rule: KeyRule = { type: draft.type };
+  switch (draft.type) {
+    case 'string': {
+      const min = parseBound('Minimum length', draft.minLength);
+      if (min.error !== undefined) return { error: min.error };
+      const max = parseBound('Maximum length', draft.maxLength);
+      if (max.error !== undefined) return { error: max.error };
+      if (min.value !== undefined) rule.min_length = min.value;
+      if (max.value !== undefined) rule.max_length = max.value;
+      if (draft.pattern.trim() !== '') rule.pattern = draft.pattern;
+      if (draft.allowEmpty) rule.allow_empty = true;
+      break;
+    }
+    case 'integer': {
+      const min = parseBound('Minimum', draft.min);
+      if (min.error !== undefined) return { error: min.error };
+      const max = parseBound('Maximum', draft.max);
+      if (max.error !== undefined) return { error: max.error };
+      if (min.value !== undefined) rule.min = min.value;
+      if (max.value !== undefined) rule.max = max.value;
+      break;
+    }
+    case 'enum': {
+      const members = draft.members
+        .split('\n')
+        .map((member) => member.trim())
+        .filter((member) => member !== '');
+      if (members.length === 0) return { error: 'An enum needs at least one member.' };
+      rule.members = members;
+      break;
+    }
+    case 'url': {
+      const schemes = draft.schemes
+        .split(',')
+        .map((scheme) => scheme.trim())
+        .filter((scheme) => scheme !== '');
+      if (schemes.length > 0) rule.schemes = schemes;
+      break;
+    }
+    case 'json': {
+      if (draft.jsonSchema.trim() !== '') rule.json_schema = draft.jsonSchema;
+      break;
+    }
+    case 'boolean':
+      break;
+  }
+  return { rule };
+}
+
+type PresenceDraft = {
+  readonly requiredMode: PresenceMode;
+  readonly requiredIds: ReadonlySet<string>;
+  readonly forbiddenMode: PresenceMode;
+  readonly forbiddenIds: ReadonlySet<string>;
+};
+
+function presenceDraftFrom(presence: MatrixKey['presence']): PresenceDraft {
+  return {
+    requiredMode: presence.required_in.mode,
+    requiredIds: new Set(presence.required_in.environment_ids ?? []),
+    forbiddenMode: presence.forbidden_in.mode,
+    forbiddenIds: new Set(presence.forbidden_in.environment_ids ?? []),
+  };
+}
+
+function presenceRuleValue(mode: PresenceMode, ids: ReadonlySet<string>) {
+  return mode === 'explicit' ? { mode, environment_ids: [...ids] } : { mode };
+}
+
+function buildPresence(draft: PresenceDraft): KeyPresenceRules {
+  return {
+    required_in: presenceRuleValue(draft.requiredMode, draft.requiredIds),
+    forbidden_in: presenceRuleValue(draft.forbiddenMode, draft.forbiddenIds),
+  };
+}
+
+function toggleId(ids: ReadonlySet<string>, id: string): ReadonlySet<string> {
+  const next = new Set(ids);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  return next;
+}
+
+/**
+ * Toggle is a pressed-state button, not a checkbox: a native checkbox cannot
+ * meet the 44px coarse-pointer touch floor without distortion, and this panel
+ * is asserted at a phone viewport. The on-state carries a ✓ so it never depends
+ * on colour alone (DESIGN.md), and it reuses `.settings-tag`, which the touch
+ * and focus gates already cover.
+ */
+function Toggle({
+  label,
+  on,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  on: boolean;
+  disabled: boolean;
+  onChange: (on: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={`settings-tag${on ? ' settings-tag--on' : ''}`}
+      aria-pressed={on}
+      disabled={disabled}
+      onClick={() => onChange(!on)}
+    >
+      {on ? '✓ ' : ''}
+      {label}
+    </button>
+  );
+}
+
+/**
+ * DeclarationEditor edits the value rules and presence — one endpoint, one save
+ * (#493). `any_of` alternatives are shown read-only with a pointer to
+ * `hikyo definitions`; a single rule is fully editable. The before/after impact
+ * names the environments a presence change adds or drops, and the server's
+ * atomic refusal (surfaced verbatim) catches an invalid draft before commit.
+ */
+function DeclarationEditor({
+  refData,
+  keyId,
+  record,
+  environments,
+}: {
+  refData: MatrixRef;
+  keyId: string;
+  record: MatrixKey;
+  environments: readonly Environment[];
+}) {
+  const update = useUpdateKeyDeclaration(refData, keyId);
+  const isAnyOf = record.declaration.any_of !== undefined;
+  const singleRule = record.declaration.rule;
+
+  const [ruleDraft, setRuleDraft] = useState<RuleDraft>(() =>
+    singleRule === undefined ? ruleDraftFrom({ type: 'string' }) : ruleDraftFrom(singleRule),
+  );
+  const [presence, setPresence] = useState<PresenceDraft>(() => presenceDraftFrom(record.presence));
+  const [invalid, setInvalid] = useState<string | null>(null);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const [scanBlock, setScanBlock] = useState<ScanBlockState | null>(null);
+  // Whether the user has actually touched the rule draft. A declaration with no
+  // rule seeds a synthetic string draft for the form; without this flag a
+  // presence-only save would fabricate that rule the user never chose.
+  const [ruleDirty, setRuleDirty] = useState(false);
+
+  // Re-seed only when the SERVER's declaration/presence actually change (a
+  // concurrent edit), keyed on a bigint-safe content signature — an unrelated
+  // sibling save (metadata, group, rename) refetches the record but leaves
+  // these signatures untouched, so an in-progress edit here is preserved.
+  const declSignature = stableSignature(record.declaration);
+  const presSignature = stableSignature(record.presence);
+  useEffect(() => {
+    setRuleDraft(
+      record.declaration.rule === undefined
+        ? ruleDraftFrom({ type: 'string' })
+        : ruleDraftFrom(record.declaration.rule),
+    );
+    setPresence(presenceDraftFrom(record.presence));
+    setInvalid(null);
+    setRuleDirty(false);
+    // `done` is deliberately NOT reset here: the successful-save refetch changes
+    // these signatures, and clearing it would wipe the "Saved." it just set.
+    // `keyId` is a dep so navigating to ANOTHER key always re-seeds, even when
+    // the two keys' declaration/presence signatures happen to be identical —
+    // otherwise a stale dirty draft could be written into the new key.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- content signatures stand in for the objects
+  }, [keyId, declSignature, presSignature]);
+
+  const envIds = useMemo(() => environments.map((environment) => environment.id), [environments]);
+  const proposedPresence = buildPresence(presence);
+  const impact = presenceImpact(record.presence, proposedPresence, envIds);
+  const envName = (id: string): string =>
+    environments.find((environment) => environment.id === id)?.name ?? id;
+
+  const submit = (): void => {
+    setInvalid(null);
+    setRefusal(null);
+    setDone(false);
+    let declaration: KeyDeclaration;
+    try {
+      if (isAnyOf || !ruleDirty) {
+        // The rule was not touched (any_of, a rule-less declaration, or a
+        // presence-only edit): preserve the EXISTING declaration exactly rather
+        // than rebuild it from the seeded draft. This also keeps an int64 bound
+        // exact instead of re-parsing it, and never fabricates a rule.
+        declaration = declarationToWrite(record.declaration);
+      } else {
+        const result = buildRule(ruleDraft);
+        if (result.error !== undefined || result.rule === undefined) {
+          setInvalid(result.error ?? 'The rule is incomplete.');
+          return;
+        }
+        declaration = { rule: result.rule };
+      }
+    } catch (error) {
+      setInvalid(error instanceof Error ? error.message : 'This declaration cannot be edited here.');
+      return;
+    }
+    const attempt = (acknowledgements: readonly string[]): Promise<void> =>
+      new Promise((resolve, reject) => {
+        update.mutate(
+          {
+            declaration,
+            presence: proposedPresence,
+            ...(acknowledgements.length === 0 ? {} : { acknowledgements }),
+          },
+          { onSuccess: () => resolve(), onError: (error) => reject(error) },
+        );
+      });
+    void attempt([])
+      .then(() => setDone(true))
+      .catch((error: unknown) => {
+        const block = scanBlockFrom(error, (tokens) =>
+          attempt(tokens).then(() => {
+            setDone(true);
+            setScanBlock(null);
+          }),
+        );
+        if (block !== null) {
+          setScanBlock(block);
+          return;
+        }
+        setRefusal(catalogueRefusalText(error, 'update the rules'));
+      });
+  };
+
+  // Any draft change clears "Saved." so it never sits over an unsaved edit; the
+  // successful-save refetch reseeds without clearing it (the effect leaves it).
+  const editRule = (next: RuleDraft): void => {
+    setRuleDraft(next);
+    setRuleDirty(true);
+    setDone(false);
+  };
+  const editPresence = (updater: (current: PresenceDraft) => PresenceDraft): void => {
+    setPresence(updater);
+    setDone(false);
+  };
+
+  return (
+    <form
+      className="key-detail__editor"
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit();
+      }}
+    >
+      <h3>Edit value rules &amp; presence</h3>
+
+      {isAnyOf ? (
+        <p className="key-detail__rules-note">
+          This key declares alternatives (<span className="mono">any_of</span>). Edit the
+          alternatives with <span className="mono">hikyo definitions</span>; presence stays editable
+          here.
+        </p>
+      ) : (
+        <RuleFields draft={ruleDraft} disabled={update.isPending} onChange={editRule} />
+      )}
+
+      <fieldset className="key-detail__presence-editor" disabled={update.isPending}>
+        <legend>Presence</legend>
+        <PresenceControl
+          label="Required in"
+          hint="Where a value must resolve to set. `all` covers environments created later."
+          mode={presence.requiredMode}
+          ids={presence.requiredIds}
+          environments={environments}
+          onMode={(mode) => editPresence((current) => ({ ...current, requiredMode: mode }))}
+          onToggle={(id) =>
+            editPresence((current) => ({ ...current, requiredIds: toggleId(current.requiredIds, id) }))
+          }
+        />
+        <PresenceControl
+          label="Forbidden in"
+          hint="Where a value must be absent."
+          mode={presence.forbiddenMode}
+          ids={presence.forbiddenIds}
+          environments={environments}
+          onMode={(mode) => editPresence((current) => ({ ...current, forbiddenMode: mode }))}
+          onToggle={(id) =>
+            editPresence((current) => ({
+              ...current,
+              forbiddenIds: toggleId(current.forbiddenIds, id),
+            }))
+          }
+        />
+      </fieldset>
+
+      <div className="key-detail__presence-impact" aria-live="polite">
+        <p className="key-detail__presence-impact-title">Before → after</p>
+        {presenceImpactIsEmpty(impact) ? (
+          <p>Presence unchanged.</p>
+        ) : (
+          <ul className="key-detail__presence-impact-list">
+            {impact.requiredAdded.length > 0 ? (
+              <li>Newly required in: {impact.requiredAdded.map(envName).join(', ')}</li>
+            ) : null}
+            {impact.requiredRemoved.length > 0 ? (
+              <li>No longer required in: {impact.requiredRemoved.map(envName).join(', ')}</li>
+            ) : null}
+            {impact.forbiddenAdded.length > 0 ? (
+              <li>Newly forbidden in: {impact.forbiddenAdded.map(envName).join(', ')}</li>
+            ) : null}
+            {impact.forbiddenRemoved.length > 0 ? (
+              <li>No longer forbidden in: {impact.forbiddenRemoved.map(envName).join(', ')}</li>
+            ) : null}
+          </ul>
+        )}
+        <p className="key-detail__presence-impact-note">
+          The save is atomic: if a value already set in a newly-forbidden environment, or a required
+          environment left unset, would become invalid, the server refuses the whole change and
+          names it — nothing commits until it is valid.
+        </p>
+      </div>
+
+      {invalid === null ? null : <Alert>{invalid}</Alert>}
+      {refusal === null ? null : <Alert>{refusal}</Alert>}
+      {done ? <Done>Saved.</Done> : null}
+
+      <button type="submit" className="btn btn--primary" disabled={update.isPending}>
+        {update.isPending ? 'Saving…' : 'Save value rules & presence'}
+      </button>
+
+      {scanBlock === null ? null : (
+        <ScanBlockDialog
+          title="Declaration blocked by secret scanning"
+          intro={`This field is exported to Git and treated as public. Saving ${record.name}’s rules was refused because it looks like it carries secret material.`}
+          findings={scanBlock.findings}
+          onOverride={scanBlock.onOverride}
+          onClose={() => setScanBlock(null)}
+        />
+      )}
+    </form>
+  );
+}
+
+function RuleFields({
+  draft,
+  disabled,
+  onChange,
+}: {
+  draft: RuleDraft;
+  disabled: boolean;
+  onChange: (next: RuleDraft) => void;
+}) {
+  const set = <K extends keyof RuleDraft>(field: K, value: RuleDraft[K]): void =>
+    onChange({ ...draft, [field]: value });
+  return (
+    <fieldset className="key-detail__rule-editor" disabled={disabled}>
+      <legend>Value rule</legend>
+      <label className="field">
+        <span>Type</span>
+        <select
+          className="mono"
+          value={draft.type}
+          onChange={(event) => set('type', event.currentTarget.value as RuleType)}
+        >
+          {RULE_TYPES.map((type) => (
+            <option key={type} value={type}>
+              {type}
+            </option>
+          ))}
+        </select>
+      </label>
+      {draft.type === 'string' ? (
+        <>
+          <label className="field">
+            <span>Minimum length</span>
+            <input
+              inputMode="numeric"
+              value={draft.minLength}
+              onChange={(event) => set('minLength', event.currentTarget.value)}
+            />
+          </label>
+          <label className="field">
+            <span>Maximum length</span>
+            <input
+              inputMode="numeric"
+              value={draft.maxLength}
+              onChange={(event) => set('maxLength', event.currentTarget.value)}
+            />
+          </label>
+          <label className="field">
+            <span>Pattern (RE2, anchored)</span>
+            <input
+              className="mono"
+              value={draft.pattern}
+              onChange={(event) => set('pattern', event.currentTarget.value)}
+            />
+          </label>
+          <Toggle
+            label="Allow empty value"
+            on={draft.allowEmpty}
+            disabled={disabled}
+            onChange={(on) => set('allowEmpty', on)}
+          />
+        </>
+      ) : null}
+      {draft.type === 'integer' ? (
+        <>
+          <label className="field">
+            <span>Minimum</span>
+            <input
+              inputMode="numeric"
+              value={draft.min}
+              onChange={(event) => set('min', event.currentTarget.value)}
+            />
+          </label>
+          <label className="field">
+            <span>Maximum</span>
+            <input
+              inputMode="numeric"
+              value={draft.max}
+              onChange={(event) => set('max', event.currentTarget.value)}
+            />
+          </label>
+        </>
+      ) : null}
+      {draft.type === 'enum' ? (
+        <label className="field">
+          <span>Members (one per line)</span>
+          <textarea
+            className="mono"
+            rows={4}
+            value={draft.members}
+            onChange={(event) => set('members', event.currentTarget.value)}
+          />
+        </label>
+      ) : null}
+      {draft.type === 'url' ? (
+        <label className="field">
+          <span>Allowed schemes (comma-separated)</span>
+          <input
+            className="mono"
+            placeholder="https, http"
+            value={draft.schemes}
+            onChange={(event) => set('schemes', event.currentTarget.value)}
+          />
+        </label>
+      ) : null}
+      {draft.type === 'json' ? (
+        <label className="field">
+          <span>JSON Schema (2020-12)</span>
+          <textarea
+            className="mono"
+            rows={6}
+            value={draft.jsonSchema}
+            onChange={(event) => set('jsonSchema', event.currentTarget.value)}
+          />
+        </label>
+      ) : null}
+    </fieldset>
+  );
+}
+
+function PresenceControl({
+  label,
+  hint,
+  mode,
+  ids,
+  environments,
+  onMode,
+  onToggle,
+}: {
+  label: string;
+  hint: string;
+  mode: PresenceMode;
+  ids: ReadonlySet<string>;
+  environments: readonly Environment[];
+  onMode: (mode: PresenceMode) => void;
+  onToggle: (id: string) => void;
+}) {
+  return (
+    <div className="key-detail__presence-control">
+      <label className="field">
+        <span>{label}</span>
+        <select value={mode} onChange={(event) => onMode(event.currentTarget.value as PresenceMode)}>
+          <option value="none">none</option>
+          <option value="all">all</option>
+          <option value="explicit">explicit</option>
+        </select>
+      </label>
+      <p className="key-detail__hint">{hint}</p>
+      {mode === 'explicit' ? (
+        environments.length === 0 ? (
+          <p className="key-detail__state" role="status">
+            This project has no environments yet.
+          </p>
+        ) : (
+          <div className="key-detail__presence-envs">
+            {environments.map((environment) => (
+              <Toggle
+                key={environment.id}
+                label={environment.name}
+                on={ids.has(environment.id)}
+                disabled={false}
+                onChange={() => onToggle(environment.id)}
+              />
+            ))}
+          </div>
+        )
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * GroupEditor sets or clears a key's group membership (#493). Membership is
+ * coupling — a schema change — but not a scanning ingress, so a refusal stays
+ * inline. Changing the selection commits immediately.
+ */
+function GroupEditor({
+  refData,
+  keyId,
+  record,
+}: {
+  refData: MatrixRef;
+  keyId: string;
+  record: MatrixKey;
+}) {
+  const groups = useKeyGroups(refData);
+  const setGroup = useSetKeyGroup(refData, keyId);
+  const id = useId();
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  return (
+    <section className="key-detail__section" aria-labelledby={`${id}-group`}>
+      <h3 id={`${id}-group`}>Group membership</h3>
+      <label className="field">
+        <span>Key group</span>
+        <select
+          value={record.group_id}
+          disabled={setGroup.isPending || !groups.isSuccess}
+          onChange={(event) => {
+            const groupId = event.currentTarget.value;
+            setRefusal(null);
+            setDone(false);
+            setGroup.mutate(
+              { groupId },
+              {
+                onSuccess: () => setDone(true),
+                onError: (error) => setRefusal(catalogueRefusalText(error, 'change the group')),
+              },
+            );
+          }}
+        >
+          <option value="">(no group)</option>
+          {(groups.data?.items ?? []).map((group) => (
+            <option key={group.id} value={group.id}>
+              {group.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {groups.isError ? <Alert>The project’s key groups could not be read.</Alert> : null}
+      {refusal === null ? null : <Alert>{refusal}</Alert>}
+      {done ? <Done>Group updated.</Done> : null}
+    </section>
   );
 }

@@ -588,6 +588,22 @@ test.describe('environment matrix', () => {
  * other flows assert on untouched.
  */
 const zCreatedKey = z.object({ id: z.string() });
+// AWS's own documented EXAMPLE access-key id: matched by the aws-access-token
+// rule and non-live by construction (same canary the S1 scanning flow uses).
+const CANARY = 'AKIAIOSFODNN7EXAMPLE';
+const zKeyRead = z.object({
+  name: z.string(),
+  group_id: z.string(),
+  declaration: z.object({
+    rule: z
+      .object({ min_length: z.number().optional(), pattern: z.string().optional() })
+      .optional(),
+  }),
+  presence: z.object({
+    required_in: z.object({ mode: z.string() }),
+    forbidden_in: z.object({ mode: z.string() }),
+  }),
+});
 function keyDetailKeyName(projectName: string): string {
   return `CATALOGUE_${projectName.toUpperCase()}`;
 }
@@ -662,6 +678,121 @@ test.describe('catalogue declaration detail', () => {
     await expect(page.getByRole('link', { name: /revision history/i })).toBeVisible();
     await page.getByRole('link', { name: 'Close key declaration' }).click();
     await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
+  });
+
+  test('edits value rules and presence, previews impact, and blocks a scanned pattern', async ({
+    page,
+  }) => {
+    const keyPath = `/api/v1/orgs/${seed.org}/projects/${seed.project}/keys/${keyId}`;
+    const token = await fixtureBearer('rules edit');
+    await page.goto(`/orgs/${seed.org}/projects/${seed.project}/matrix/keys/${keyId}`);
+    const panel = page.locator('.key-detail');
+    await expect(panel.getByRole('heading', { name: 'Edit value rules & presence' })).toBeVisible();
+
+    // A valid rule edit commits and is durable.
+    await panel.getByLabel('Minimum length').fill('3');
+    await panel.getByRole('button', { name: 'Save value rules & presence' }).click();
+    await expect(panel.getByRole('status').filter({ hasText: 'Saved.' })).toBeVisible();
+    expect((await fixtureApiCall(token, 'GET', keyPath, zKeyRead)).declaration.rule?.min_length).toBe(3);
+
+    // Criterion 3: the before/after impact names the affected environments.
+    await panel.getByLabel('Required in').selectOption('all');
+    await expect(panel.locator('.key-detail__presence-impact')).toContainText('Newly required in');
+    await panel.getByLabel('Required in').selectOption('none');
+
+    // Commit a value-safe presence change (the key holds no values, so
+    // forbidding it everywhere is satisfiable) and verify it persisted through
+    // the API — the client preview alone would not prove the write carried it.
+    await panel.getByLabel('Forbidden in').selectOption('all');
+    await panel.getByRole('button', { name: 'Save value rules & presence' }).click();
+    await expect(panel.getByRole('status').filter({ hasText: 'Saved.' })).toBeVisible();
+    expect((await fixtureApiCall(token, 'GET', keyPath, zKeyRead)).presence.forbidden_in.mode).toBe('all');
+    await panel.getByLabel('Forbidden in').selectOption('none');
+    await panel.getByRole('button', { name: 'Save value rules & presence' }).click();
+    await expect(panel.getByRole('status').filter({ hasText: 'Saved.' })).toBeVisible();
+
+    // #183/#493: a credential-shaped pattern is blocked; overriding commits it.
+    const consoleLines: string[] = [];
+    page.on('console', (message) => consoleLines.push(message.text()));
+    page.on('pageerror', (error) => consoleLines.push(String(error)));
+    await panel.getByLabel('Pattern (RE2, anchored)').fill(CANARY);
+    await panel.getByRole('button', { name: 'Save value rules & presence' }).click();
+    const block = page.locator('dialog.scan-block');
+    await expect(block).toBeVisible();
+    await expect(block.getByText('aws-access-token')).toBeVisible();
+    // SS4: the canary reaches neither the dialog markup nor the console.
+    expect(await block.evaluate((el) => el.outerHTML)).not.toContain(CANARY);
+    expect(consoleLines.filter((line) => line.includes(CANARY))).toEqual([]);
+    await block.getByRole('button', { name: 'Acknowledge and continue' }).click();
+    await expect(block).toHaveCount(0);
+    expect((await fixtureApiCall(token, 'GET', keyPath, zKeyRead)).declaration.rule?.pattern).toBe(CANARY);
+  });
+
+  test('sets and clears the key’s group membership', async ({ page }, testInfo) => {
+    const token = await fixtureBearer('group membership');
+    const group = await fixtureApiCall(
+      token,
+      'POST',
+      `/api/v1/orgs/${seed.org}/projects/${seed.project}/key-groups`,
+      zCreatedKey,
+      { name: `catgrp-${testInfo.project.name}` },
+    );
+    const keyPath = `/api/v1/orgs/${seed.org}/projects/${seed.project}/keys/${keyId}`;
+    try {
+      await page.goto(`/orgs/${seed.org}/projects/${seed.project}/matrix/keys/${keyId}`);
+      const groupSelect = page.getByLabel('Key group');
+      await groupSelect.selectOption(group.id);
+      await expect(page.getByRole('status').filter({ hasText: 'Group updated.' })).toBeVisible();
+      expect((await fixtureApiCall(token, 'GET', keyPath, zKeyRead)).group_id).toBe(group.id);
+
+      await groupSelect.selectOption('');
+      await expect(page.getByRole('status').filter({ hasText: 'Group updated.' })).toBeVisible();
+      expect((await fixtureApiCall(token, 'GET', keyPath, zKeyRead)).group_id).toBe('');
+    } finally {
+      await fixtureApiCall(
+        token,
+        'DELETE',
+        `/api/v1/orgs/${seed.org}/projects/${seed.project}/key-groups/${group.id}`,
+        z.object({}),
+      );
+    }
+  });
+
+  test('manages folder and key-group lifecycle from the matrix', async ({ page }, testInfo) => {
+    const suffix = testInfo.project.name.toLowerCase();
+    const folderPath = `catflow-${suffix}`;
+    const groupName = `catflow ${suffix}`;
+    await page.goto(MATRIX_PATH);
+    await page.getByRole('button', { name: 'Folders & groups' }).click();
+    const dialog = page.locator('dialog.catalogue-manage');
+    await expect(dialog.getByRole('heading', { name: 'Folders & groups' })).toBeVisible();
+
+    await dialog.getByLabel('New folder path').fill(folderPath);
+    await dialog.getByRole('button', { name: 'Add folder' }).click();
+    await expect(dialog.getByText(`Folder ${folderPath} created.`)).toBeVisible();
+
+    await dialog.getByLabel('New group name').fill(groupName);
+    await dialog.getByRole('button', { name: 'Add group' }).click();
+    await expect(dialog.getByText(`Group ${groupName} created.`)).toBeVisible();
+
+    // Clean up through the same lifecycle controls; a row is addressed by its
+    // input's accessible name (its identity lives in an input value).
+    const folderInput = dialog.getByLabel(`Folder path for ${folderPath}`);
+    await folderInput.locator('xpath=ancestor::li').getByRole('button', { name: 'Delete' }).click();
+    await folderInput
+      .locator('xpath=ancestor::li')
+      .getByRole('button', { name: 'Confirm delete' })
+      .click();
+    await expect(folderInput).toHaveCount(0);
+
+    const groupInput = dialog.getByLabel(`Name for group ${groupName}`);
+    await groupInput.locator('xpath=ancestor::li').getByRole('button', { name: 'Delete' }).click();
+    await groupInput
+      .locator('xpath=ancestor::li')
+      .getByRole('button', { name: 'Confirm delete' })
+      .click();
+    await expect(groupInput).toHaveCount(0);
+    await expect(dialog).toBeVisible();
   });
 
   test('keeps a stale or missing key recoverable', async ({ page }) => {

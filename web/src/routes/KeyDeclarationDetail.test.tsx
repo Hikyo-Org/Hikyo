@@ -35,6 +35,24 @@ vi.mock('../api/definitions.ts', async (importActual) => {
   return { ...actual, useDefinitionsSettings: () => mocks.definitions() };
 });
 
+// The #493 editors (rules/presence, group) call catalogue hooks; stub them so
+// this suite exercises the foundation without live fetches (the pure helpers —
+// presenceImpact, catalogueRefusalText — stay real).
+vi.mock('../api/catalogue.ts', async (importActual) => {
+  const actual = await importActual<typeof import('../api/catalogue.ts')>();
+  return {
+    ...actual,
+    useUpdateKeyDeclaration: () => ({ mutate: vi.fn(), isPending: false }),
+    useSetKeyGroup: () => ({ mutate: vi.fn(), isPending: false }),
+    useKeyGroups: () => ({
+      data: { items: [], count: 0 },
+      isSuccess: true,
+      isError: false,
+      isPending: false,
+    }),
+  };
+});
+
 vi.mock('../api/transport.tsx', async (importActual) => {
   const actual = await importActual<typeof import('../api/transport.tsx')>();
   return { ...actual, useWorkspaceContext: () => null };
@@ -683,6 +701,23 @@ describe('KeyDeclarationDetail', () => {
     const text = textOf(view.container);
     expect(text).toContain('empty not allowed');
     expect(text).toContain('{"type":"object"}');
+
+    await view.unmount();
+  });
+
+  it('renders the #493 editor for an int64-bounded rule without crashing', async () => {
+    // The read model infers integer bounds as bigint; the DeclarationEditor's
+    // reset signature must tolerate them (a plain JSON.stringify would throw).
+    const boundedKey: MatrixKey = {
+      ...record,
+      declaration: { rule: { type: 'integer', min: 1n, max: 9_007_199_254_740_993n } },
+      presence: { required_in: { mode: 'none' }, forbidden_in: { mode: 'none' } },
+    };
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: boundedKey });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' }, isSuccess: true, isError: false, isRefetchError: false });
+
+    const view = await render();
+    expect(textOf(view.container)).toContain('Edit value rules & presence');
 
     await view.unmount();
   });

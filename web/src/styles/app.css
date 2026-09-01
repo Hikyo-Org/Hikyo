@@ -5134,3 +5134,150 @@ select {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* #493 editors: value rules, presence, impact. Extends #491/#494 key-detail. */
+.key-detail__rule-editor,
+.key-detail__presence-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--panel-line);
+  border-radius: var(--radius-container);
+}
+
+.key-detail__rule-editor legend,
+.key-detail__presence-editor legend {
+  padding: 0 4px;
+  color: var(--tx-faint);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.key-detail__presence-control {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.key-detail__presence-envs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.key-detail__hint {
+  margin: 0;
+  color: var(--tx-dim);
+  font-size: 12px;
+}
+
+.key-detail__presence-impact {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-container);
+  background: var(--bg);
+  font-size: 13px;
+  color: var(--tx-dim);
+}
+
+.key-detail__presence-impact-title {
+  margin: 0 0 6px;
+  color: var(--tx-faint);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.key-detail__presence-impact-list {
+  margin: 0 0 6px;
+  padding-left: 18px;
+  overflow-wrap: anywhere;
+}
+
+.key-detail__presence-impact-note {
+  margin: 0;
+}
+
+.settings-tag--on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* #493 folder & key-group lifecycle dialog. Reuses .matrix-editor for the
+   dialog shell, backdrop, head, and close. */
+.catalogue-manage {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.catalogue-manage__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.catalogue-manage__section h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.catalogue-manage__empty {
+  margin: 0;
+  color: var(--tx-dim);
+  font-size: 13px;
+}
+
+.catalogue-manage__list,
+.catalogue-manage__create {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.catalogue-manage__list {
+  flex-direction: column;
+}
+
+.catalogue-manage__create {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.catalogue-manage__row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.catalogue-manage__row-main {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.catalogue-manage__row-main input,
+.catalogue-manage__create input {
+  flex: 1 1 12ch;
+  min-height: var(--touch);
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg);
+  color: var(--tx);
+}
+
+.catalogue-manage__meta {
+  font-size: 12px;
+  color: var(--tx-dim);
+}
+
+.catalogue-manage__inert {
+  color: var(--tx-faint);
+}

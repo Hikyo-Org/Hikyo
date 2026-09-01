@@ -25,6 +25,8 @@ export const matrixKeyKey = (ref: MatrixRef, key: string) =>
   [...matrixKeysKey(ref), 'key', key] as const;
 export const matrixGroupsKey = (ref: MatrixRef) =>
   ['matrix-groups', ref.org, ref.project] as const;
+export const foldersKey = (ref: MatrixRef) =>
+  ['folders', ref.org, ref.project] as const;
 export const signalsMatrixKey = (ref: MatrixRef) =>
   ['matrix-signals', ref.org, ref.project] as const;
 export const signalsKey = (ref: MatrixRef, environment: string) =>
