@@ -474,15 +474,17 @@ for unwanted in 'name: HIKYO_HA' 'kind: PodDisruptionBudget'; do
 done
 # HA is refused when minAvailable exceeds the replica count (the PDB would then
 # block every voluntary disruption), and when the replica count is below two.
-for bad in '--set ha.replicaCount=2 --set ha.minAvailable=3' '--set ha.replicaCount=1'; do
+ha_config_refused() {
 	if helm template fixture "$chart" \
 		--set database.existingSecret=fixture \
 		--set rootKey.existingSecret=fixture-root-key \
 		--set externalOrigin=https://hikyo.example.com \
 		--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
-		--set ha.enabled=true $bad >/dev/null 2>&1; then
-		fail "chart accepted an invalid HA configuration: $bad"
+		--set ha.enabled=true "$@" >/dev/null 2>&1; then
+		fail "chart accepted an invalid HA configuration: $*"
 	fi
-done
+}
+ha_config_refused --set ha.replicaCount=2 --set ha.minAvailable=3
+ha_config_refused --set ha.replicaCount=1
 
 printf 'Chart check: cluster-wide, namespaced, no-rollout, hardening, HA, and refusal assertions passed\n'
