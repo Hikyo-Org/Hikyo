@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../api/client.ts';
+import { MAX_FILE_BYTES } from './import-sources.ts';
 
 const listOccurrences = vi.fn();
 const createKey = vi.fn();
@@ -119,8 +120,20 @@ async function selectFile(container: HTMLElement, content: string): Promise<void
 
 const FILE = 'EXISTING=1\nNEW=hello\n';
 
-// Walk source → classify → review → result, stopping before the final Import.
+// The wizard opens on the source picker (#496); the `.env` journey is one row.
+async function pickDotenv(container: HTMLElement): Promise<void> {
+  const source = [...container.querySelectorAll('button')].find((candidate) =>
+    candidate.textContent?.includes('.env file'),
+  );
+  if (source === undefined) {
+    throw new Error('no .env source in the picker');
+  }
+  await click(source);
+}
+
+// Walk pick → source → classify → review, stopping before the final Import.
 async function reachReview(container: HTMLElement): Promise<void> {
+  await pickDotenv(container);
   await selectFile(container, FILE);
   await click(button(container, 'Review'));
   await click(button(container, 'Review changes'));
@@ -166,6 +179,7 @@ describe('ImportWizard success', () => {
 describe('ImportWizard invalid file', () => {
   it('blocks Review while any line is invalid (all-or-nothing, matching the server)', async () => {
     const { container } = await render();
+    await pickDotenv(container);
     // `lower=1` fails the strict upper-snake grammar the Go parser refuses on.
     await selectFile(container, 'GOOD=1\nlower=2\n');
     expect(container.textContent).toContain('1 invalid line');
@@ -174,6 +188,28 @@ describe('ImportWizard invalid file', () => {
     );
     expect(button(container, 'Review').disabled).toBe(true);
     expect(listOccurrences).not.toHaveBeenCalled();
+  });
+
+  it('clears a prior valid parse when an oversized file is then selected', async () => {
+    const { container } = await render();
+    await pickDotenv(container);
+    await selectFile(container, 'GOOD=1\n');
+    expect(button(container, 'Review').disabled).toBe(false);
+
+    // Selecting an oversized file must invalidate the earlier importable parse,
+    // not merely show an error while Review stays enabled.
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]');
+    if (input === null) throw new Error('no file input');
+    const big = new File(['x'], 'big.env', { type: 'text/plain' });
+    Object.defineProperty(big, 'size', { value: MAX_FILE_BYTES + 1, configurable: true });
+    Object.defineProperty(input, 'files', { value: [big], configurable: true });
+    await act(async () => {
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await settle();
+
+    expect(container.textContent).toContain('exceeds');
+    expect(button(container, 'Review').disabled).toBe(true);
   });
 });
 
@@ -207,6 +243,7 @@ describe('ImportWizard git-managed', () => {
   it('skips new-key declaration and imports only declared keys', async () => {
     importValues.mockResolvedValue({ imported: ['EXISTING'], skipped: [] });
     const { container } = await render(true);
+    await pickDotenv(container);
     await selectFile(container, FILE);
     await click(button(container, 'Review'));
     // The git-managed block names the skipped new keys on the classify step.

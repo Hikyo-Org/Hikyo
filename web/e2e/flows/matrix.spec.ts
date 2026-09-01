@@ -918,9 +918,12 @@ test.describe('environment matrix dotenv import', () => {
     await page.goto(MATRIX_PATH);
     await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
 
-    await page.getByRole('button', { name: 'Import .env' }).click();
+    await page.getByRole('button', { name: 'Import', exact: true }).click();
     const modal = page.getByRole('dialog');
     await expect(modal).toBeVisible();
+
+    // The wizard opens on the source picker (#496); choose the .env journey.
+    await modal.getByRole('button', { name: /\.env file/ }).click();
 
     // The file is read locally; nothing is sent yet.
     await modal.getByLabel('Dotenv file').setInputFiles({
@@ -952,5 +955,60 @@ test.describe('environment matrix dotenv import', () => {
     await expect(
       page.getByRole('button', { name: /IMPORTED_FLAG in development:/ }),
     ).toBeVisible();
+  });
+});
+
+/**
+ * Flow tail: a browser file-mode connector import (#496).
+ *
+ * A local Kubernetes Secret manifest is read and parsed in the browser (the same
+ * strict mapping the Go connector uses), its one new key classified and declared,
+ * and its base64-decoded value published into the unprotected development
+ * environment through the SAME review/apply flow as the .env journey. This is the
+ * connector half of the shared UI acceptance criterion.
+ */
+test.describe('environment matrix kubernetes import', () => {
+  test.describe.configure({ mode: 'serial' });
+  test.use({ storageState: STORAGE_STATE });
+
+  test('imports a Kubernetes Secret entry into development and publishes its value', async ({
+    passkeyPage: page,
+  }) => {
+    await page.goto(MATRIX_PATH);
+    await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Import', exact: true }).click();
+    const modal = page.getByRole('dialog');
+    await expect(modal).toBeVisible();
+
+    await modal.getByRole('button', { name: /Kubernetes Secret manifest/ }).click();
+
+    // A single-Secret manifest maps its entries onto the environment root; the
+    // value is `console` (base64 `Y29uc29sZQ==`). Read locally, nothing sent yet.
+    await modal.getByLabel('Kubernetes Secret manifest').setInputFiles({
+      name: 'webapp.yaml',
+      mimeType: 'text/plain',
+      buffer: Buffer.from(
+        'apiVersion: v1\nkind: Secret\nmetadata:\n  name: webapp\ndata:\n  K8S_TOKEN: Y29uc29sZQ==\n',
+      ),
+    });
+    await expect(modal.getByText('1 value read')).toBeVisible();
+
+    await modal.getByRole('checkbox', { name: 'production' }).uncheck();
+    await modal.getByRole('button', { name: 'Review', exact: true }).click();
+
+    // Classify config so the value shows in the cell (K8s defaults to secret).
+    await modal.getByRole('checkbox', { name: 'secret' }).uncheck();
+    await modal.getByRole('button', { name: 'Review changes' }).click();
+
+    await expect(modal.getByText('1 to import, 1 new key declared')).toBeVisible();
+    await modal.getByRole('button', { name: 'Import', exact: true }).click();
+
+    await expect(modal.getByText('Declared 1 new key: K8S_TOKEN')).toBeVisible();
+    await expect(modal.getByRole('list', { name: 'Import results' })).toContainText('imported 1');
+    await modal.getByRole('button', { name: 'Done' }).click();
+    await expect(modal).toBeHidden();
+
+    await expect(page.getByRole('button', { name: /K8S_TOKEN in development:/ })).toBeVisible();
   });
 });

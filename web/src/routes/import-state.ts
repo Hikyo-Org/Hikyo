@@ -258,7 +258,9 @@ export type EnvironmentPlan = {
 };
 
 export function planEnvironment(
-  entries: readonly ParsedEntry[],
+  // Only the key is read; `.env` passes `ParsedEntry`, the connectors pass their
+  // own richer entry — both carry `key`, which is all bucketing needs.
+  entries: readonly { readonly key: string }[],
   occurrences: OccurrenceIndex,
   overwrite: ReadonlySet<string>,
 ): EnvironmentPlan {
