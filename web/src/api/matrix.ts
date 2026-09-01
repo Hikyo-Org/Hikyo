@@ -4,25 +4,29 @@ import {
   createKeyOp,
   getEnvironmentSignalsOp,
   getKeyOp,
+  importValuesOp,
   listKeyGroupsOp,
   listKeysOp,
   listPendingDraftsOp,
+  listValueOccurrencesOp,
   listValuesOp,
   publishPendingChangesOp,
   reclassifyKeyOp,
   setValueOp,
   updateKeyMetadataOp,
 } from '@hikyo/operations';
-import type { KeyPresence, KeyRule } from '@hikyo/client';
+import type { ImportPrecondition, KeyClassification, KeyPresence, KeyRule } from '@hikyo/client';
 import {
   zEnvironmentList,
   zEnvironmentSettings,
   zEnvironmentSignals,
+  zImportValuesResult,
   zKeyList,
   zPendingDraftList,
   zPublishResult,
   zScanFinding,
   zValueList,
+  zValueOccurrenceList,
 } from '@hikyo/zod';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
@@ -771,6 +775,85 @@ export function useCreateKey(ref: MatrixRef) {
   });
 }
 
+export type ValueOccurrenceList = z.infer<typeof zValueOccurrenceList>;
+export type ImportValuesResult = z.infer<typeof zImportValuesResult>;
+
+/**
+ * useListValueOccurrences is import phase 1 (`import.presence`, #495): a
+ * read-only POST that, for one environment, returns the project's definitions
+ * revision and — per candidate — whether it is declared, whether it is `set`,
+ * and a server-minted OPAQUE occurrence token. Nothing is written and no value
+ * is sent; the token is the only thing that binds this review to the phase-2
+ * write, so a candidate's intended classification/type must be its FINAL one
+ * (an undeclared candidate's token binds that intent, and phase 2 matches it
+ * only once the declaration lands).
+ */
+export function useListValueOccurrences(ref: MatrixRef) {
+  const transport = useTransport();
+  return useMutation({
+    mutationFn: (input: {
+      readonly environment: string;
+      readonly candidates: readonly {
+        readonly name: string;
+        readonly classification: KeyClassification;
+        readonly type: CreateKeyType;
+      }[];
+    }) =>
+      parsed(listValueOccurrencesOp, {
+          path: { ...ref, environment: input.environment },
+          body: {
+            candidates: input.candidates.map((candidate) => ({
+              name: candidate.name,
+              intended_classification: candidate.classification,
+              intended_type: candidate.type,
+            })),
+          },
+          ...transport,
+        }),
+  });
+}
+
+/**
+ * useImportValues is import phase 2 (`value.import`, #495): the strict,
+ * human-only batch write. It is one transaction — an undeclared key rejects the
+ * whole run by name (declare first), a `set` key is skipped unless it is in the
+ * enumerated `overwrite` list, and the `precondition` (revision + the phase-1
+ * tokens) is re-checked inside the write so a state that moved since review
+ * rejects with 409 and writes nothing. On success it republishes, so the same
+ * caches a stage+publish would invalidate are refreshed here.
+ */
+export function useImportValues(ref: MatrixRef) {
+  const queries = useQueryClient();
+  const transport = useTransport();
+  return useMutation({
+    mutationFn: (input: {
+      readonly environment: string;
+      readonly entries: readonly { readonly key: string; readonly value: string }[];
+      readonly overwrite: readonly string[];
+      readonly precondition: ImportPrecondition;
+    }) =>
+      parsed(importValuesOp, {
+          path: { ...ref, environment: input.environment },
+          body: {
+            entries: input.entries.map((entry) => ({ key: entry.key, value: entry.value })),
+            ...(input.overwrite.length === 0 ? {} : { overwrite: [...input.overwrite] }),
+            precondition: input.precondition,
+          },
+          ...transport,
+        }),
+    onSuccess: (_result, input) => {
+      const environment = { ...ref, environment: input.environment };
+      return Promise.all([
+        queries.invalidateQueries({ queryKey: valuesKey(environment) }),
+        queries.invalidateQueries({ queryKey: signalsKey(ref, input.environment) }),
+        queries.invalidateQueries({ queryKey: pendingDraftsKey(ref, input.environment) }),
+        queries.invalidateQueries({ queryKey: revisionsKey(environment) }),
+        queries.invalidateQueries({ queryKey: pinsKey(environment) }),
+      ]);
+    },
+  });
+}
+
 export function useReclassifyKey(ref: MatrixRef) {
   const queries = useQueryClient();
   const transport = useTransport();
@@ -1001,7 +1084,7 @@ export function useCopyMatrixConfig(ref: MatrixRef) {
  */
 export function matrixMutationError(
   error: Error,
-  action: 'stage' | 'clear' | 'copy' | 'publish' | 'create',
+  action: 'stage' | 'clear' | 'copy' | 'publish' | 'create' | 'import',
   restorePreviewAttached = false,
 ): string {
   if (error instanceof RestorePreviewSelectionError) {
@@ -1010,8 +1093,14 @@ export function matrixMutationError(
   if (action === 'publish' && restorePreviewAttached && error instanceof ApiError && error.status === 409) {
     return 'Publish refused: the restore preview is stale or missing — stage the restore again from the history drawer.';
   }
-  // `create` declares a key, not a value: its fallbacks read as a declaration.
-  const object = action === 'create' ? 'declare this key' : `${action} this value`;
+  // `create` declares a key and `import` writes a batch; neither reads as a
+  // single value, so both get their own object phrasing in the fallbacks.
+  const object =
+    action === 'create'
+      ? 'declare this key'
+      : action === 'import'
+        ? 'import these values'
+        : `${action} this value`;
   if (error instanceof ApiError) {
     const detailed = callerSafeRefusal(error, action === 'publish' ? 'Publish refused' : 'Refused');
     if (detailed !== null) {
@@ -1024,14 +1113,18 @@ export function matrixMutationError(
         ? 'You do not have permission to publish the selected drafts.'
         : action === 'create'
           ? 'You do not have permission to declare keys in this project.'
-          : `You do not have permission to ${action} this value.`;
+          : action === 'import'
+            ? 'You do not have permission to import values into this environment.'
+            : `You do not have permission to ${action} this value.`;
     }
     if (error.status === 409) {
       return action === 'publish'
         ? 'Publish was refused. Fix the named matrix problems, then retry.'
         : action === 'create'
           ? 'The server refused the declaration; reload the matrix and retry.'
-          : `The server refused this ${action}; reload the matrix and retry.`;
+          : action === 'import'
+            ? 'The reviewed state moved before this import ran — re-review this environment and try again.'
+            : `The server refused this ${action}; reload the matrix and retry.`;
     }
     return action === 'publish'
       ? `The server could not publish the selected drafts (error ${String(error.status)}).`

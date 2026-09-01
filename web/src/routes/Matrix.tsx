@@ -36,6 +36,7 @@ import {
   type MatrixPendingEntry,
 } from './MatrixPublishSheet.tsx';
 import { ApiError, type RefusalFinding } from '../api/client.ts';
+import { ImportWizard } from './ImportWizard.tsx';
 import { MatrixKeyCreate, type MatrixKeyCreatePayload } from './MatrixKeyCreate.tsx';
 import { MatrixRowEditor } from './MatrixRowEditor.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
@@ -134,6 +135,10 @@ export function Matrix({
   // a group header or `null` from the empty state / a new group.
   const [create, setCreate] = useState<{ readonly folder: string | null } | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+  // #495: the browser dotenv import wizard, opened from the matrix toolbar. Value
+  // import is not git-gated (only declaration is), so it stays available on a
+  // git-managed project — the wizard itself skips new keys there.
+  const [importOpen, setImportOpen] = useState(false);
   // Surface-2 scanner block (#183): the redacted findings a refused write
   // carried, plus the override that retries it with their acknowledgements.
   const [scanBlock, setScanBlock] = useState<{
@@ -762,6 +767,18 @@ export function Matrix({
             {`Δ ${String(pendingCount)} unpublished edit${pendingCount === 1 ? '' : 's'} · publish…`}
           </button>
         )}
+        {/* #495: import a .env file. Value import is not git-gated, so the entry
+            stays available on a git-managed project; the wizard skips new keys
+            there. Needs at least one environment to target. */}
+        {environments.length > 0 ? (
+          <button
+            type="button"
+            className="btn matrix__import"
+            onClick={() => setImportOpen(true)}
+          >
+            Import .env
+          </button>
+        ) : null}
         {/* env-matrix 31 / #492: the header's primary declare action. Git-managed
             projects disable it and say why — value actions still work. */}
         {environments.length > 0 && !gitManaged ? (
@@ -1221,6 +1238,18 @@ export function Matrix({
             setCreate(null);
           }}
           onCreate={declareKey}
+        />
+      )}
+
+      {!importOpen ? null : (
+        <ImportWizard
+          matrixRef={ref}
+          environments={environments.map((environment) => ({
+            id: environment.id,
+            name: environment.name,
+          }))}
+          gitManaged={gitManaged}
+          onClose={() => setImportOpen(false)}
         />
       )}
 

@@ -811,3 +811,59 @@ test.describe('environment matrix declaration', () => {
     await expect(modal.getByLabel('Key name')).toHaveValue('REQUIRED_EVERYWHERE');
   });
 });
+
+/**
+ * Flow tail: the browser dotenv import wizard (#495).
+ *
+ * A local .env file is read in the browser, its one new key is classified and
+ * typed explicitly, and — targeting only the unprotected development
+ * environment so no step-up is needed — the reviewed import declares the key
+ * and publishes its value. The result names what landed, and the value is a
+ * live (published) matrix cell, not a draft.
+ */
+test.describe('environment matrix dotenv import', () => {
+  test.describe.configure({ mode: 'serial' });
+  test.use({ storageState: STORAGE_STATE });
+
+  test('imports a new config key into development and publishes its value', async ({
+    passkeyPage: page,
+  }) => {
+    await page.goto(MATRIX_PATH);
+    await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Import .env' }).click();
+    const modal = page.getByRole('dialog');
+    await expect(modal).toBeVisible();
+
+    // The file is read locally; nothing is sent yet.
+    await modal.getByLabel('Dotenv file').setInputFiles({
+      name: 'app.env',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('IMPORTED_FLAG=true\n'),
+    });
+    await expect(modal.getByText('1 value read')).toBeVisible();
+
+    // Target only development; production is protected and would need step-up.
+    await modal.getByRole('checkbox', { name: 'production' }).uncheck();
+    await modal.getByRole('button', { name: 'Review', exact: true }).click();
+
+    // Classify the new key: config (not secret) so its value shows in the cell.
+    await modal.getByRole('checkbox', { name: 'secret' }).uncheck();
+    await expect(modal.getByText('Suggested: boolean')).toBeVisible();
+    await modal.getByLabel('Type').selectOption('boolean');
+    await modal.getByRole('button', { name: 'Review changes' }).click();
+
+    await expect(modal.getByText('1 to import, 1 new key declared')).toBeVisible();
+    await modal.getByRole('button', { name: 'Import', exact: true }).click();
+
+    await expect(modal.getByText('Declared 1 new key: IMPORTED_FLAG')).toBeVisible();
+    await expect(modal.getByRole('list', { name: 'Import results' })).toContainText('imported 1');
+    await modal.getByRole('button', { name: 'Done' }).click();
+    await expect(modal).toBeHidden();
+
+    // The imported value is a live published cell, not a draft.
+    await expect(
+      page.getByRole('button', { name: /IMPORTED_FLAG in development:/ }),
+    ).toBeVisible();
+  });
+});
