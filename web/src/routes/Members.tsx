@@ -509,7 +509,12 @@ function Inspect({
 
   return (
     <Panel id="members-inspect" title="Who can…? Answer by inspection">
-      {projectContext ? null : (
+      {projectContext ? null : level === 'instance' ? (
+        <p>
+          Answered by inspection over the instance-scope lines below. Grants inherit downward, so
+          every line here reaches every organisation, project and environment.
+        </p>
+      ) : (
         <p>
           Answered by inspection over the lines below, including the ones ABOVE the scope you pick:
           grants inherit downward, so an organisation-scoped grant answers for every environment in
@@ -576,7 +581,12 @@ function Inspect({
               <strong className="mono">{compactScopeLabel(chosen)}</strong> →{' '}
               <strong>nobody</strong>
             </>
-          ) : answer.length === 0 ? (
+          ) : answer.length === 0 && level === 'instance' ? (
+          <>
+            <strong>Nobody</strong> holds <span className="mono">{capability}</span> at instance
+            scope.
+          </>
+        ) : answer.length === 0 ? (
           <>
             <strong>Nobody</strong> holds <span className="mono">{capability}</span> on{' '}
             {chosen.label} through a grant inside this organisation. An instance-scope holder would

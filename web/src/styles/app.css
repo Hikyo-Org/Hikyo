@@ -1214,6 +1214,13 @@ select {
     display: block;
   }
 
+  /* The drawer's organisation switcher above already names the active
+     organisation; repeating it as the project block's header is noise here.
+     Desktop keeps the header because the rail shows only a monogram. */
+  .context-sidebar__org {
+    display: none;
+  }
+
   .sidebar__close {
     display: inline-flex;
     align-self: flex-end;
