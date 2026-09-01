@@ -77,10 +77,8 @@ describe('instance crypto maintenance', () => {
       expect(headings.some((h) => h?.startsWith('Connected instances'))).toBe(false);
       expect(view.container.textContent).not.toContain('decided round 3');
       expect(view.container.textContent).not.toContain('rotated 2026-06-20');
-      const members = [...view.container.querySelectorAll('a')].find(
-        (a) => a.textContent === 'Instance members',
-      );
-      expect(members?.getAttribute('href')).toBe('/instance/members');
+      const members = [...view.container.querySelectorAll('#instance-members a')];
+      expect(members.map((a) => a.getAttribute('href'))).toEqual(['/instance/members']);
     } finally {
       await view.unmount();
     }

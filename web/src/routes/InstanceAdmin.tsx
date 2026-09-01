@@ -98,11 +98,12 @@ export function InstanceAdmin() {
     <h1>Instance settings</h1>
     <p className="page__lede">
       Instance-wide policy, identity providers, federation and key custody. Every operation here is
-      the same grant-evaluated network operation the CLI verb calls. Membership and instance grants
-      live under <Link to={surfaceById('instance-members').path}>Instance members</Link>.
+      the same grant-evaluated network operation the CLI verb calls; membership and instance grants
+      have their own surface.
     </p>
     <JumpIndex sections={[
       { id: 'instance-orgs', label: 'Organisations' },
+      { id: 'instance-members', label: 'Members' },
       { id: 'instance-settings', label: 'Policy' },
       { id: 'instance-oidc', label: 'Identity providers' },
       { id: 'instance-federation', label: 'Federation' },
@@ -141,6 +142,20 @@ export function InstanceAdmin() {
         <button type="button" className="btn btn--primary" aria-label="Open create organisation form" onClick={() => setShowCreate((visible) => !visible)}>+ create organisation</button>
         <code className="instance-cli">$ hikyo org create</code>
       </div>
+    </Panel>
+
+    {/* The same entry-point panel organisation and project settings carry:
+        granting, revoking and inspection live on the members surface. */}
+    <Panel id="instance-members" title="Members">
+      <div className="settings-row">
+        <div className="settings-row__copy">
+          <span className="settings-row__title">Members</span>
+          <span className="settings-row__detail">Instance-scope grants inherit downward into every organisation</span>
+        </div>
+        <span className="settings-row__spacer" />
+        <Link className="btn" to={surfaceById('instance-members').path}>open members →</Link>
+      </div>
+      <p className="settings-note">Entry point only: granting, revoking and inspection live on the members surface.</p>
     </Panel>
 
     <CredentialPolicyPanel query={policy} onDone={ok} onFailure={report} />

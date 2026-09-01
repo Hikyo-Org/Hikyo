@@ -628,7 +628,10 @@ test.describe('instance administration', () => {
       }
       // The members pair answers the same session the same way (#567).
       await page.goto('/instance/members');
-      await expect(page.getByRole('alert')).toContainText('Instance grants require a second factor');
+      // Scoped to the page: the step-up banner above the well is an alert too.
+      await expect(page.locator('.page--members').getByRole('alert')).toContainText(
+        'Instance grants require a second factor',
+      );
       await expect(page.locator('#members-list')).not.toContainText('No instance-scope grants');
     } finally {
       await context.close();
