@@ -765,8 +765,10 @@ test.describe('catalogue declaration lifecycle', () => {
       await expect(page.getByRole('heading', { name: startName, level: 2 })).toBeVisible();
 
       // Rename: identity is the id, so the URL is unchanged and the heading
-      // follows the new name once the query is invalidated.
-      await panel.getByLabel('Name').fill(renamed);
+      // follows the new name once the query is invalidated. `exact` because
+      // getByLabel is case-insensitive substring — plain 'Name' also matches the
+      // delete surface's "Confirm the key name to delete it".
+      await panel.getByLabel('Name', { exact: true }).fill(renamed);
       await panel.getByRole('button', { name: 'Rename key' }).click();
       await expectStatusIsTextAndAria(
         page,

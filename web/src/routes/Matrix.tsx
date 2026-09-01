@@ -8,6 +8,7 @@ import { useWorkspaceContext, withRemote } from '../api/transport.tsx';
 import { surfaceById } from '../app/navigation.ts';
 import {
   assembleKeyImpact,
+  matrixImpactReady,
   matrixPublishValidation,
   matrixMutationError,
   pendingConfigPreview,
@@ -307,11 +308,7 @@ export function Matrix({
       })),
     );
   }, [environmentRows, keyDetailId, signalsByCell, valuesByCell]);
-  const keyDetailImpactReady =
-    matrix.environments.isSuccess &&
-    environmentRows.every(
-      (row) => row.values.status !== 'pending' && row.signals.status !== 'pending',
-    );
+  const keyDetailImpactReady = matrixImpactReady(matrix.environments.isSuccess, environmentRows);
 
   const stateKeys = useMemo<readonly MatrixStateKey[]>(
     () =>

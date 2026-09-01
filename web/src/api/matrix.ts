@@ -976,6 +976,25 @@ export function assembleKeyImpact(
 }
 
 /**
+ * matrixImpactReady reports whether a key's impact preview can be trusted enough
+ * to arm a destructive action. It fails CLOSED: every environment row's values
+ * AND signals must be fully `ready` — an `error` row has no data and a `stale`
+ * row may be outdated, either of which would silently drop an affected
+ * environment from the preview and understate the blast radius. The empty case
+ * (a project with no environments) is legitimately ready once the environment
+ * list itself has loaded.
+ */
+export function matrixImpactReady(
+  environmentsLoaded: boolean,
+  rows: readonly { readonly values: { readonly status: MatrixQueryStatus }; readonly signals: { readonly status: MatrixQueryStatus } }[],
+): boolean {
+  return (
+    environmentsLoaded &&
+    rows.every((row) => row.values.status === 'ready' && row.signals.status === 'ready')
+  );
+}
+
+/**
  * keyLifecycleRefusalText renders a rename/reclassify/delete refusal in the
  * caller's words, and — this is the security-sensitive part — WITHOUT ever
  * turning the reveal gate into an oracle.
@@ -995,17 +1014,23 @@ export function keyLifecycleRefusalText(
   action: 'rename' | 'reclassify' | 'declassify' | 'delete',
 ): string {
   if (error instanceof ApiError) {
-    const detailed = callerSafeRefusal(error, 'Refused');
-    if (detailed !== null) {
-      return detailed;
+    // 404 is handled FIRST and its wording is the one canonical constant: for a
+    // declassification a 404 ALSO masks "you do not hold reveal on this key",
+    // and ANY variance — a caller-safe detail smuggled onto the 404, or copy
+    // that differs from the ordinary missing-key line — is exactly the
+    // existence/permission oracle the reveal gate exists to close. So a 404
+    // never consults `callerSafeRefusal`.
+    if (error.status === 404) {
+      return KEY_GONE_REFUSAL;
     }
     if (error.status === 403) {
       return action === 'declassify'
         ? 'Declassifying a secret needs a recent second-factor sign-in. Reauthenticate, then try again.'
         : `You do not have permission to ${action} this key in this project.`;
     }
-    if (error.status === 404) {
-      return 'This key no longer exists. Return to the matrix and reopen it.';
+    const detailed = callerSafeRefusal(error, 'Refused');
+    if (detailed !== null) {
+      return detailed;
     }
     if (error.status === 409) {
       return `The server refused this ${action}; reload the key and retry.`;
@@ -1014,6 +1039,11 @@ export function keyLifecycleRefusalText(
   }
   return `The server could not ${action} this key.`;
 }
+
+/** The one missing-key sentence every key refusal shares. A single constant so
+ *  no surface can render a distinguishable 404 that would turn the reveal gate
+ *  into an existence oracle. */
+export const KEY_GONE_REFUSAL = 'This key no longer exists. Return to the matrix and reopen it.';
 
 /** One key declaration, as the catalogue detail surface (#491) reads it. */
 export type MatrixKey = MatrixKeyList['items'][number];
@@ -1087,15 +1117,17 @@ export function useUpdateKeyMetadata(ref: MatrixRef, key: string) {
  */
 export function keyMetadataRefusalText(error: Error): string {
   if (error instanceof ApiError) {
+    // 404 first and canonical, for the same anti-oracle reason as
+    // keyLifecycleRefusalText: a 404 never consults the caller-safe detail.
+    if (error.status === 404) {
+      return KEY_GONE_REFUSAL;
+    }
     const detailed = callerSafeRefusal(error, 'Refused');
     if (detailed !== null) {
       return detailed;
     }
     if (error.status === 403) {
       return 'You do not have permission to edit this key in this project.';
-    }
-    if (error.status === 404) {
-      return 'This key no longer exists. Return to the matrix and reopen it.';
     }
     if (error.status === 409) {
       return 'The server refused this edit; reload the key and retry.';

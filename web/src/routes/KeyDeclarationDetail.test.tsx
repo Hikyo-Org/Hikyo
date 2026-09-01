@@ -547,9 +547,12 @@ describe('KeyDeclarationDetail', () => {
   it('masks a missing reveal grant as a uniform not-found on declassify', async () => {
     mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
     dbMode();
+    // A 404 that even CARRIES a caller-safe detail must still render the uniform
+    // missing-key sentence — a detailed or otherwise distinguishable 404 would be
+    // the existence/reveal oracle the gate exists to close.
     mocks.reclassify.mockImplementation(
       (_input: unknown, cb: { onError: (error: Error) => void }) =>
-        cb.onError(new ApiError(404, 'not found')),
+        cb.onError(new ApiError(404, 'not found', 'key requires reveal to declassify')),
     );
 
     const view = await render();
@@ -558,7 +561,9 @@ describe('KeyDeclarationDetail', () => {
 
     const text = textOf(view.container);
     expect(text).toContain('no longer exists');
-    // The gate must not become an oracle: no reveal/permission wording here.
+    // The gate must not become an oracle: neither the server detail nor any
+    // reveal/permission wording may surface on a 404.
+    expect(text).not.toContain('requires reveal');
     expect(text.toLowerCase()).not.toContain('reveal');
     expect(text.toLowerCase()).not.toContain('permission');
 

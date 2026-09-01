@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { generatePath, Link, useNavigate } from 'react-router';
 
 import { GIT_DEFINITIONS_NOTICE, useDefinitionsSettings } from '../api/definitions.ts';
@@ -751,19 +751,26 @@ function ReclassifyKey({
   const declassify = target === 'config';
   const [confirming, setConfirming] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
+  // The success text is derived from the DIRECTION THAT RAN, captured here, not
+  // from the live `declassify`: the mutation invalidates the key, the record
+  // refetches with the new classification, and `declassify` flips — which would
+  // otherwise flip the persistent "Reclassified as …" message to the wrong verb.
+  const [doneClassification, setDoneClassification] = useState<'secret' | 'config' | null>(null);
   const [warnings, setWarnings] = useState<readonly RefusalFinding[]>([]);
 
   const run = () => {
+    // Fail closed: never submit while the impact preview is not trustworthy, even
+    // if it went unready after the dialog opened (a concurrent invalidation).
+    if (!impactReady) return;
     setRefusal(null);
-    setDone(false);
+    setDoneClassification(null);
     setWarnings([]);
     reclassify.mutate(
       { key: keyId, classification: target },
       {
         onSuccess: (key) => {
           setConfirming(false);
-          setDone(true);
+          setDoneClassification(target);
           // Only a declassification carries Surface-1 warnings, for the
           // occurrences re-materialised as config; a tightening carries none.
           setWarnings(declassify ? (key.findings ?? []) : []);
@@ -790,11 +797,11 @@ function ReclassifyKey({
       </p>
 
       {refusal === null ? null : <Alert>{refusal}</Alert>}
-      {done ? (
+      {doneClassification === null ? null : (
         <Done>
-          {declassify ? 'Reclassified as config.' : 'Reclassified as secret.'}
+          {doneClassification === 'config' ? 'Reclassified as config.' : 'Reclassified as secret.'}
         </Done>
-      ) : null}
+      )}
 
       {warnings.length === 0 ? null : (
         <div className="key-detail__section" aria-label="Declassification scanning warnings">
@@ -816,9 +823,11 @@ function ReclassifyKey({
       <button
         type="button"
         className="btn"
-        disabled={reclassify.isPending || (declassify && !impactReady)}
+        // Fail closed in BOTH directions: tightening drops the key's config
+        // dismissals, so its impact preview matters as much as a declassification's.
+        disabled={reclassify.isPending || !impactReady}
         onClick={() => {
-          setDone(false);
+          setDoneClassification(null);
           setConfirming(true);
         }}
       >
@@ -830,6 +839,10 @@ function ReclassifyKey({
           title={declassify ? 'Reclassify this secret as config?' : 'Reclassify this key as secret?'}
           confirmLabel={declassify ? 'Reclassify as config' : 'Reclassify as secret'}
           busy={reclassify.isPending}
+          // If the impact preview goes unready while the dialog is open, keep the
+          // confirm disabled — the preview shows "Checking…" and must not be
+          // actioned against a stale blast radius.
+          confirmDisabled={!impactReady}
           danger={declassify}
           onConfirm={run}
           onClose={() => setConfirming(false)}
@@ -985,6 +998,7 @@ function ConfirmDialog({
   title,
   confirmLabel,
   busy,
+  confirmDisabled = false,
   danger,
   onConfirm,
   onClose,
@@ -993,17 +1007,19 @@ function ConfirmDialog({
   title: string;
   confirmLabel: string;
   busy: boolean;
+  confirmDisabled?: boolean;
   danger: boolean;
   onConfirm: () => void;
   onClose: () => void;
   children: ReactNode;
 }) {
   const dialog = useModalDialog();
+  const titleId = useId();
   return (
-    <dialog className="matrix-editor" ref={dialog} onClose={onClose}>
+    <dialog className="matrix-editor" ref={dialog} aria-labelledby={titleId} onClose={onClose}>
       <div className="matrix-editor__head">
         <div>
-          <h2>{title}</h2>
+          <h2 id={titleId}>{title}</h2>
         </div>
         <button
           type="button"
@@ -1019,7 +1035,7 @@ function ConfirmDialog({
         <button
           type="button"
           className={danger ? 'btn btn--danger' : 'btn btn--primary'}
-          disabled={busy}
+          disabled={busy || confirmDisabled}
           onClick={onConfirm}
         >
           {busy ? 'Working…' : confirmLabel}

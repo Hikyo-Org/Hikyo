@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { ApiError } from './client.ts';
 import {
+  assembleKeyImpact,
   assembleMatrixEnvironmentRows,
   bindMatrixEnvironmentQueries,
   type MatrixEnvironmentQuery,
+  matrixImpactReady,
   matrixPublishValidation,
   matrixMutationError,
   forgetRestorePreviews,
@@ -398,5 +400,36 @@ describe('pending draft preview boundary', () => {
         count: 1,
       }),
     ).toThrow('secret pending drafts must remain unrevealed');
+  });
+});
+
+describe('key lifecycle impact boundary', () => {
+  it('reduces per-environment occupancy to value-free id lists', () => {
+    expect(
+      assembleKeyImpact([
+        { environmentId: 'env_a', set: true, pending: false },
+        { environmentId: 'env_b', set: false, pending: true },
+        { environmentId: 'env_c', set: false, pending: false },
+      ]),
+    ).toEqual({ setEnvironmentIds: ['env_a'], pendingEnvironmentIds: ['env_b'] });
+  });
+
+  it('is ready only when every row is fully ready, and fails closed otherwise', () => {
+    const ready = { values: { status: 'ready' as const }, signals: { status: 'ready' as const } };
+    // The empty project (env list loaded, no rows) is legitimately ready.
+    expect(matrixImpactReady(true, [])).toBe(true);
+    expect(matrixImpactReady(false, [])).toBe(false);
+    expect(matrixImpactReady(true, [ready, ready])).toBe(true);
+    // A row whose values errored or went stale must NOT count as ready — that is
+    // the fail-closed property that keeps a preview from understating its reach.
+    expect(
+      matrixImpactReady(true, [ready, { values: { status: 'error' }, signals: { status: 'ready' } }]),
+    ).toBe(false);
+    expect(
+      matrixImpactReady(true, [{ values: { status: 'ready' }, signals: { status: 'stale' } }]),
+    ).toBe(false);
+    expect(
+      matrixImpactReady(true, [{ values: { status: 'pending' }, signals: { status: 'ready' } }]),
+    ).toBe(false);
   });
 });
