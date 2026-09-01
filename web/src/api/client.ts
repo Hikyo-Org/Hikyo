@@ -1,7 +1,18 @@
+import type { ScanFinding } from '@hikyo/client';
 import type { BodylessOperation, BodyOperation, Options, TDataShape } from '@hikyo/operations';
 import { client } from '@hikyo/runtime';
 import { zError } from '@hikyo/zod';
 import type { z, ZodObject, ZodRawShape, ZodType } from 'zod';
+
+/**
+ * A redacted secret-scanning finding as it rides a REFUSAL body (#74, #183).
+ *
+ * The contract guarantees this shape never carries the matched text, an
+ * offset, a length, or an excerpt — only a rule id, the surface it fired on,
+ * an immutable locator, and (where an acknowledgement is possible) an opaque
+ * token. That guarantee is why the block dialog can render it verbatim.
+ */
+export type RefusalFinding = ScanFinding;
 
 /**
  * The one place the SPA talks to the server.
@@ -63,13 +74,42 @@ client.interceptors.request.use((request: Request) => {
 export class ApiError extends Error {
   readonly status: number;
   readonly detail: string | undefined;
+  readonly retryAfterMs: number | undefined;
+  /**
+   * Redacted scanner findings the refusal carried, when it was a scanner block
+   * (#183, Surface 2). Empty for every other refusal. These are the ONLY thing
+   * the block dialog renders — the contract keeps them free of matched text.
+   */
+  readonly findings: readonly RefusalFinding[];
 
-  constructor(status: number, message: string, detail?: string) {
+  constructor(
+    status: number,
+    message: string,
+    detail?: string,
+    retryAfterMs?: number,
+    findings: readonly RefusalFinding[] = [],
+  ) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.detail = detail;
+    this.retryAfterMs = retryAfterMs;
+    this.findings = findings;
   }
+}
+
+const MAX_RETRY_AFTER_MS = 30_000;
+
+function retryAfterMilliseconds(response: Response): number | undefined {
+  const value = response.headers.get('Retry-After');
+  if (value === null || !/^\d+$/.test(value)) {
+    return undefined;
+  }
+  const milliseconds = Number(value) * 1_000;
+  if (!Number.isSafeInteger(milliseconds)) {
+    return undefined;
+  }
+  return Math.min(milliseconds, MAX_RETRY_AFTER_MS);
 }
 
 function requireResponse(result: { response?: Response | undefined }): Response {
@@ -92,6 +132,8 @@ function refusal(response: Response, error: unknown): ApiError {
     response.status,
     `request failed with ${response.status}`,
     parsed.success ? parsed.data.error.detail ?? undefined : undefined,
+    retryAfterMilliseconds(response),
+    parsed.success ? parsed.data.error.findings ?? [] : [],
   );
 }
 

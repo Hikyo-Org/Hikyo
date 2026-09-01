@@ -40,14 +40,14 @@ EOF
 
 expect_plan 'docs-only' '["docs"]' \
 	'docs/site/src/content/docs/docs/getting-started.mdx' 'README.md'
-expect_plan 'web-only' '["release-snapshot","web"]' 'web/src/routes/Values.tsx'
+expect_plan 'web-only' '["release-snapshot","web","web-go"]' 'web/src/routes/Values.tsx'
 expect_plan 'core' \
-	'["fuzz","generated","headline-guarantee","race","release-snapshot","test","web"]' \
+	'["fuzz","generated","headline-guarantee","race","release-snapshot","test","web-go"]' \
 	'internal/service/values.go'
 expect_plan 'API' \
-	'["client","compose-demo","generated","headline-guarantee","release-snapshot","test","web"]' \
+	'["client","compose-demo","generated","headline-guarantee","release-snapshot","test","web-go"]' \
 	'api/openapi.yaml'
-expect_plan 'client' '["client","release-snapshot","web"]' \
+expect_plan 'client' '["client","release-snapshot","web-go"]' \
 	'clients/ts/src/generated/types.gen.ts'
 expect_plan 'release' '["lint","release-snapshot","supply-chain-checks"]' \
 	'scripts/release/check-tag.sh'
@@ -113,14 +113,14 @@ done
 expect_plan 'fallback channel' \
 	'["docs","lint","release-snapshot","supply-chain-checks"]' \
 	'release/repository/fallback-channel-test.json'
-expect_plan 'mixed docs and web' '["docs","release-snapshot","web"]' \
+expect_plan 'mixed docs and web' '["docs","release-snapshot","web","web-go"]' \
 	'docs/site/src/content/docs/docs/index.mdx' 'web/src/routes/Login.tsx'
 
 for operator_path in \
 	'internal/operator/reconciler.go' \
 	'internal/isolation/k8s_operator_e2e_test.go'; do
 	expect_plan "$operator_path" \
-		'["fuzz","generated","headline-guarantee","k8s-e2e","race","release-snapshot","test","web"]' \
+		'["fuzz","generated","headline-guarantee","k8s-e2e","race","release-snapshot","test","web-go"]' \
 		"$operator_path"
 done
 
@@ -130,8 +130,23 @@ expect_plan 'generated CRD' \
 expect_plan 'k8s e2e runner' '["k8s-e2e","lint"]' 'scripts/ci/k8s-e2e.sh'
 expect_plan 'chart kind runner' '["k8s-e2e","lint"]' 'scripts/ci/chart-kind.sh'
 expect_plan 'root-key staging runtime' \
-	'["fuzz","generated","headline-guarantee","k8s-e2e","race","release-snapshot","test","web"]' \
+	'["fuzz","generated","headline-guarantee","k8s-e2e","race","release-snapshot","test","web-go"]' \
 	'internal/crypto/rootkey_stage.go'
+
+for non_web_app_path in \
+	'internal/service/values.go' \
+	'api/openapi.yaml' \
+	'clients/ts/src/generated/types.gen.ts'; do
+	non_web_app_actual=$(printf '%s\n' "$non_web_app_path" | "$classifier" --files)
+	if ! jq -e '.web == false and .["web-go"] == true' <<EOF >/dev/null
+$non_web_app_actual
+EOF
+	then
+		printf 'changed-path classifier fixture failed: %s selected browser matrix or skipped release app checks\n' \
+			"$non_web_app_path" >&2
+		exit 1
+	fi
+done
 
 for fail_closed_input in \
 	'' \

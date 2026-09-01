@@ -2,6 +2,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { generatePath, Link, useParams } from 'react-router';
 
+import { GIT_DEFINITIONS_NOTICE, useDefinitionsSettings } from '../api/definitions.ts';
 import { historyHref } from '../api/history.ts';
 import { useWorkspaceContext, withRemote } from '../api/transport.tsx';
 import { surfaceById } from '../app/navigation.ts';
@@ -34,8 +35,10 @@ import {
   MatrixPublishSheet,
   type MatrixPendingEntry,
 } from './MatrixPublishSheet.tsx';
+import { ApiError, type RefusalFinding } from '../api/client.ts';
 import { MatrixKeyCreate, type MatrixKeyCreatePayload } from './MatrixKeyCreate.tsx';
 import { MatrixRowEditor } from './MatrixRowEditor.tsx';
+import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 import { ScanWarnDialog, type ScanWarnItem } from './ScanWarnDialog.tsx';
 import { useProjectSidebar } from './Shell.tsx';
 import {
@@ -112,6 +115,12 @@ export function Matrix({
   const copy = useCopyMatrixConfig(ref);
   const reclassify = useReclassifyKey(ref);
   const createKey = useCreateKey(ref);
+  // Git-managed projects declare keys only through `definitions apply`; the SPA
+  // keeps every value action but explains why declaration is unavailable (#492
+  // AC4). A failed/absent settings read never fabricates 'git' — declaration
+  // stays available and any real refusal surfaces at the write.
+  const definitionsSettings = useDefinitionsSettings(ref.org, ref.project);
+  const gitManaged = definitionsSettings.data?.definitions_source === 'git';
 
   const environmentRows = matrix.environmentRows;
   const environments = environmentRows.map((row) => row.environment);
@@ -125,6 +134,14 @@ export function Matrix({
   // a group header or `null` from the empty state / a new group.
   const [create, setCreate] = useState<{ readonly folder: string | null } | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+  // Surface-2 scanner block (#183): the redacted findings a refused write
+  // carried, plus the override that retries it with their acknowledgements.
+  const [scanBlock, setScanBlock] = useState<{
+    readonly title: string;
+    readonly intro: string;
+    readonly findings: readonly RefusalFinding[];
+    readonly onOverride: ((tokens: readonly string[]) => Promise<void>) | null;
+  } | null>(null);
   const [warn, setWarn] = useState<{
     readonly keyId: string;
     readonly keyName: string;
@@ -137,6 +154,17 @@ export function Matrix({
     readonly owner: Selection;
     readonly message: string;
   } | null>(null);
+  // If the settings read confirms git-managed while the declare modal is open,
+  // withdraw it: declaration is unavailable, and the header/empty-state entry
+  // points have already vanished. The declareKey guard is the write-time
+  // backstop; this closes the surface the operator can see.
+  useEffect(() => {
+    if (gitManaged && create !== null) {
+      setCreate(null);
+      setCreateError(null);
+    }
+  }, [gitManaged, create]);
+
   const matrixScroll = useRef<HTMLDivElement>(null);
   const matrixTable = useRef<HTMLTableElement>(null);
   // A state ref, not a `useRef`: the table only exists in one of this
@@ -524,6 +552,170 @@ export function Matrix({
     );
   };
 
+  /**
+   * declareKey runs the two-phase create journey (#492): the declaration, then
+   * its optional opening values. It is reused verbatim by the Surface-2 override
+   * (#183) — a blocked declaration retries through the SAME path with the
+   * findings' acknowledgement tokens, so the override cannot drift from the
+   * first attempt.
+   */
+  const declareKey = async (
+    payload: MatrixKeyCreatePayload,
+    acknowledgements: readonly string[] = [],
+  ): Promise<void> => {
+    // Fail closed: if the settings read resolved to git-managed after the modal
+    // opened (the entry buttons vanish, but an open form could still submit),
+    // refuse before any write rather than trust a stale gate.
+    if (gitManaged) {
+      setCreate(null);
+      return;
+    }
+    setCreateError(null);
+    // Phase 1 — declaration. A failure keeps the modal open with its fields
+    // intact (rethrow), because nothing was created yet.
+    let created: Awaited<ReturnType<typeof createKey.mutateAsync>>;
+    try {
+      created = await createKey.mutateAsync({
+        name: payload.name,
+        classification: payload.classification,
+        rule: payload.rule,
+        folderPath: payload.folderPath,
+        description: payload.description,
+        required: payload.required,
+        forbidden: payload.forbidden,
+        ...(acknowledgements.length === 0 ? {} : { acknowledgements }),
+      });
+    } catch (error) {
+      // Surface-2 scanner block (#183): route to the block dialog, which shows
+      // ONLY the redacted findings and offers an audited override. The value the
+      // operator typed is never passed there. The modal closes so the two
+      // dialogs never stack — a blocked declaration is a review moment.
+      if (error instanceof ApiError && error.findings.length > 0) {
+        const findings = error.findings;
+        // A declaration block is a phase-1 failure: nothing was created, so the
+        // create modal STAYS OPEN behind the block dialog. Closing the block
+        // without overriding returns the operator to their intact form to edit
+        // the flagged material — never a rebuild from scratch.
+        setCreateError(null);
+        setScanBlock({
+          title: 'Declaration blocked by secret scanning',
+          intro: `Declaring ${payload.name} was refused: it looks like it carries secret material.`,
+          findings,
+          onOverride: findings.every((finding) => finding.acknowledgement !== undefined)
+            ? (tokens) => declareKey(payload, tokens)
+            : null,
+        });
+        throw error;
+      }
+      setCreateError(
+        matrixMutationError(
+          error instanceof Error ? error : new Error('key declaration failed'),
+          'create',
+        ),
+      );
+      throw error;
+    }
+    // Phase 2 — opening values. The key now exists, so both dialogs close; a
+    // value that fails to stage is reported against the declared key rather than
+    // implying the declaration itself failed.
+    setCreate(null);
+    setScanBlock(null);
+    let stagedCount = 0;
+    const failedEnvironments: string[] = [];
+    const warnItems: ScanWarnItem[] = [];
+    const blocked: {
+      readonly environmentId: string;
+      readonly environmentName: string;
+      readonly findings: readonly RefusalFinding[];
+    }[] = [];
+    const normalizedValue =
+      payload.firstValue === null ? '' : normalizeMatrixDraftValue(payload.firstValue.value);
+    if (payload.firstValue !== null) {
+      for (const environmentId of payload.firstValue.environmentIds) {
+        const environmentName =
+          environments.find((candidate) => candidate.id === environmentId)?.name ?? environmentId;
+        try {
+          const result = await stage.mutateAsync({
+            environment: environmentId,
+            key: payload.name,
+            value: normalizedValue,
+          });
+          stagedCount += 1;
+          // Surface-1 warn (#74) is a CONFIG-only affordance: it holds the
+          // value's canonical bytes for the keep-as-config re-stage. A secret
+          // never enters that path, so if a secret write ever returns findings
+          // we fail closed — the plaintext is not retained or shown, and the
+          // finding is left to the server's own secret handling.
+          if (payload.classification === 'config') {
+            for (const finding of result.findings ?? []) {
+              warnItems.push({ environmentId, environmentName, value: normalizedValue, finding });
+            }
+          }
+        } catch (error) {
+          // Surface-2 block (#183): findings ride the refusal. Route them to the
+          // block dialog — which shows only the redacted findings, never the
+          // value — rather than the vague "could not be staged" line.
+          if (error instanceof ApiError && error.findings.length > 0) {
+            blocked.push({ environmentId, environmentName, findings: error.findings });
+          } else {
+            failedEnvironments.push(environmentName);
+          }
+        }
+      }
+    }
+    const staged =
+      stagedCount === 0
+        ? ''
+        : ` with a draft value in ${String(stagedCount)} environment${stagedCount === 1 ? '' : 's'}`;
+    const failedNote =
+      failedEnvironments.length === 0
+        ? ''
+        : ` Its opening value could not be staged in ${failedEnvironments.join(', ')} — set it from the cell.`;
+    const blockedNote =
+      blocked.length === 0
+        ? ''
+        : ` Its opening value was blocked by secret scanning in ${blocked.map((entry) => entry.environmentName).join(', ')} — review below.`;
+    setNotice(`Declared ${payload.name}${staged}.${failedNote}${blockedNote}`);
+    // A Surface-2 block takes the dialog; a Surface-1 warn (which needs a
+    // succeeded save) only shows when nothing was blocked, so the two modals
+    // never stack. The warned value is still reachable from its cell.
+    if (blocked.length > 0) {
+      const allFindings = blocked.flatMap((entry) => entry.findings);
+      const overridable = allFindings.every((finding) => finding.acknowledgement !== undefined);
+      setScanBlock({
+        title: 'Opening value blocked by secret scanning',
+        intro: `${payload.name} was declared, but its opening value looks like it carries secret material.`,
+        findings: allFindings,
+        onOverride: overridable
+          ? async () => {
+              const stillFailed: string[] = [];
+              for (const entry of blocked) {
+                try {
+                  await stage.mutateAsync({
+                    environment: entry.environmentId,
+                    key: payload.name,
+                    value: normalizedValue,
+                    acknowledgements: entry.findings
+                      .map((finding) => finding.acknowledgement)
+                      .filter((token): token is string => token !== undefined),
+                  });
+                } catch {
+                  stillFailed.push(entry.environmentName);
+                }
+              }
+              setNotice(
+                stillFailed.length === 0
+                  ? `Staged the opening value for ${payload.name} after review.`
+                  : `Some opening values for ${payload.name} still could not be staged: ${stillFailed.join(', ')}.`,
+              );
+            }
+          : null,
+      });
+    } else if (warnItems.length > 0) {
+      setWarn({ keyId: created.id, keyName: payload.name, items: warnItems });
+    }
+  };
+
   if (loading) {
     return <p role="status">Loading environment matrix…</p>;
   }
@@ -570,7 +762,28 @@ export function Matrix({
             {`Δ ${String(pendingCount)} unpublished edit${pendingCount === 1 ? '' : 's'} · publish…`}
           </button>
         )}
+        {/* env-matrix 31 / #492: the header's primary declare action. Git-managed
+            projects disable it and say why — value actions still work. */}
+        {environments.length > 0 && !gitManaged ? (
+          <button
+            type="button"
+            className="btn btn--primary matrix__new-key"
+            onClick={() => {
+              setCreateError(null);
+              setCreate({ folder: null });
+            }}
+          >
+            + New key
+          </button>
+        ) : null}
       </div>
+
+      {gitManaged ? (
+        <p className="notice" role="status">
+          <span aria-hidden="true">ℹ</span>
+          <span>{GIT_DEFINITIONS_NOTICE}</span>
+        </p>
+      ) : null}
 
       {notice === null ? null : (
         <p className="notice" role="status">
@@ -643,19 +856,27 @@ export function Matrix({
                 Declare a key once, give each environment its own explicit value — the matrix shows
                 the whole configuration surface at a glance.
               </p>
-              <div className="matrix__empty-actions">
-                <button
-                  type="button"
-                  className="btn btn--primary"
-                  onClick={() => {
-                    setCreateError(null);
-                    setCreate({ folder: null });
-                  }}
-                >
-                  Declare first key
-                </button>
-              </div>
-              <p>Or import every key from an existing file through the CLI, then apply:</p>
+              {gitManaged ? (
+                <p role="status">{GIT_DEFINITIONS_NOTICE}</p>
+              ) : (
+                <div className="matrix__empty-actions">
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    onClick={() => {
+                      setCreateError(null);
+                      setCreate({ folder: null });
+                    }}
+                  >
+                    Declare first key
+                  </button>
+                </div>
+              )}
+              <p>
+                {gitManaged
+                  ? 'Keys are declared in Git. Scaffold from an existing file, then apply:'
+                  : 'Or import every key from an existing file through the CLI, then apply:'}
+              </p>
               <pre className="matrix__cli">
                 <code>{'hikyo definitions scaffold --from .env\nhikyo definitions apply'}</code>
               </pre>
@@ -797,7 +1018,7 @@ export function Matrix({
                               {/* env-matrix 31: declare a key straight into this
                                   group. Hidden while collapsed to match the
                                   prototype — you open a group, then add to it. */}
-                              {collapsed ? null : (
+                              {collapsed || gitManaged ? null : (
                                 <button
                                   type="button"
                                   className="matrix__add-key"
@@ -999,61 +1220,17 @@ export function Matrix({
             setCreateError(null);
             setCreate(null);
           }}
-          onCreate={async (payload: MatrixKeyCreatePayload) => {
-            setCreateError(null);
-            // Phase 1 — declaration. A failure here keeps the modal open with
-            // its fields intact (rethrow), because nothing was created yet.
-            try {
-              await createKey.mutateAsync({
-                name: payload.name,
-                classification: payload.classification,
-                type: payload.type,
-                folderPath: payload.folderPath,
-                requiredEnvironmentIds: payload.requiredEnvironmentIds,
-                environmentCount: environments.length,
-              });
-            } catch (error) {
-              setCreateError(
-                matrixMutationError(
-                  error instanceof Error ? error : new Error('key declaration failed'),
-                  'create',
-                ),
-              );
-              throw error;
-            }
-            // Phase 2 — opening values. The key now exists, so the modal closes
-            // regardless; a value that fails to stage is reported against the
-            // declared key rather than implying the declaration itself failed.
-            setCreate(null);
-            let stagedCount = 0;
-            const failedEnvironments: string[] = [];
-            if (payload.firstValue !== null) {
-              for (const environmentId of payload.firstValue.environmentIds) {
-                try {
-                  await stage.mutateAsync({
-                    environment: environmentId,
-                    key: payload.name,
-                    value: normalizeMatrixDraftValue(payload.firstValue.value),
-                  });
-                  stagedCount += 1;
-                } catch {
-                  failedEnvironments.push(
-                    environments.find((candidate) => candidate.id === environmentId)?.name ??
-                      environmentId,
-                  );
-                }
-              }
-            }
-            const staged =
-              stagedCount === 0
-                ? ''
-                : ` with a draft value in ${String(stagedCount)} environment${stagedCount === 1 ? '' : 's'}`;
-            setNotice(
-              failedEnvironments.length === 0
-                ? `Declared ${payload.name}${staged}.`
-                : `Declared ${payload.name}${staged}. Its opening value could not be staged in ${failedEnvironments.join(', ')} — set it from the cell.`,
-            );
-          }}
+          onCreate={declareKey}
+        />
+      )}
+
+      {scanBlock === null ? null : (
+        <ScanBlockDialog
+          title={scanBlock.title}
+          intro={scanBlock.intro}
+          findings={scanBlock.findings}
+          onOverride={scanBlock.onOverride}
+          onClose={() => setScanBlock(null)}
         />
       )}
 

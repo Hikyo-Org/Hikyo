@@ -311,6 +311,49 @@ test.describe('app chrome', () => {
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 
+  // A still-valid session must survive a transient background revalidation
+  // outage: the server briefly going unreachable for a whoami re-read must not
+  // latch the global reload wall over the working UI (#440).
+  test('holds a still-valid session through a background revalidation outage', async ({ page }) => {
+    await page.goto('/projects');
+    const heading = page.getByRole('heading', { name: 'Projects', level: 1 });
+    const wall = page.getByText('Could not reach the server. Reload once it is back.');
+    await expect(heading).toBeVisible();
+
+    let whoamiDown = true;
+    await page.route('**/api/v1/auth/whoami', async (route) => {
+      if (whoamiDown) {
+        await route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+        return;
+      }
+      await route.continue();
+    });
+
+    // A peer-tab "session changed" broadcast forces a BLOCKING revalidate — the
+    // path that used to promote the transport error into the latching wall.
+    const failed = page.waitForResponse('**/api/v1/auth/whoami');
+    await page.evaluate(() =>
+      new BroadcastChannel('hikyo-root-auth').postMessage('session-changed'),
+    );
+    await failed;
+
+    // The last-known-good session keeps painting; no reload wall. `heading`
+    // returns only once the failed blocking check has committed back to the
+    // authenticated shell — a reverted fix latches the wall, the heading never
+    // comes back, and this visibility poll times out.
+    await expect(heading).toBeVisible();
+    await expect(wall).toHaveCount(0);
+
+    // When the server returns, the next revalidation recovers cleanly.
+    whoamiDown = false;
+    await page.evaluate(() =>
+      new BroadcastChannel('hikyo-root-auth').postMessage('session-changed'),
+    );
+    await expect(heading).toBeVisible();
+    await expect(wall).toHaveCount(0);
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
   test('fails loud when pruning health cannot be checked', async ({ page }) => {
     await page.route('**/api/v1/instance/retention-health', (route) =>
       route.fulfill({ status: 500, contentType: 'application/json', body: '{}' }),

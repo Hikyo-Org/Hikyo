@@ -13,6 +13,7 @@ import {
   setValueOp,
   updateKeyMetadataOp,
 } from '@hikyo/operations';
+import type { KeyPresence, KeyRule } from '@hikyo/client';
 import {
   zEnvironmentList,
   zEnvironmentSettings,
@@ -666,12 +667,63 @@ export function useStageMatrixValue(ref: MatrixRef) {
  */
 /**
  * useCreateKey declares a new key into the project catalogue (env-matrix 31's
- * web `+ key` / declare surface). The type maps to a single-rule declaration;
- * presence carries the required-in set as `all`/`none`/`explicit`. First values
- * are staged separately by the caller after the key exists, so a declaration
- * and its opening values ride the normal draft → publish pipeline.
+ * web `+ key` / declare surface, #492). The declaration carries one value rule
+ * with its type-specific constraints, and presence carries `required_in` and
+ * `forbidden_in` as `all`/`none`/`explicit`. First values are staged separately
+ * by the caller after the key exists, so a declaration and its opening values
+ * ride the normal draft → publish pipeline.
+ *
+ * `all` is SYMBOLIC and covers environments created later; it is a choice the
+ * operator makes, never one derived from "the explicit set happens to be every
+ * environment today" — that derivation would silently exempt a new environment
+ * from a rule written as "always" (zKeyPresence's own contract note).
  */
-export type CreateKeyType = 'string' | 'integer' | 'boolean' | 'url' | 'json';
+export type CreateKeyType = 'string' | 'integer' | 'boolean' | 'enum' | 'url' | 'json';
+
+/** One value rule with only the constraints its type owns; the caller supplies
+ * a field only when the operator set it, so the request never carries a
+ * constraint on the wrong type (which the service refuses rather than ignores). */
+export type CreateKeyRule = {
+  readonly type: CreateKeyType;
+  readonly minLength?: number;
+  readonly maxLength?: number;
+  readonly pattern?: string;
+  readonly allowEmpty?: boolean;
+  readonly min?: number;
+  readonly max?: number;
+  readonly members?: readonly string[];
+  readonly schemes?: readonly string[];
+  readonly jsonSchema?: string;
+};
+
+/** Presence for one axis: a mode plus, for `explicit`, the environment set. */
+export type CreateKeyPresence = {
+  readonly mode: 'all' | 'none' | 'explicit';
+  readonly environmentIds: readonly string[];
+};
+
+function keyRuleBody(rule: CreateKeyRule): KeyRule {
+  return {
+    type: rule.type,
+    ...(rule.minLength === undefined ? {} : { min_length: rule.minLength }),
+    ...(rule.maxLength === undefined ? {} : { max_length: rule.maxLength }),
+    ...(rule.pattern === undefined || rule.pattern === '' ? {} : { pattern: rule.pattern }),
+    ...(rule.allowEmpty === undefined ? {} : { allow_empty: rule.allowEmpty }),
+    ...(rule.min === undefined ? {} : { min: rule.min }),
+    ...(rule.max === undefined ? {} : { max: rule.max }),
+    ...(rule.members === undefined ? {} : { members: [...rule.members] }),
+    ...(rule.schemes === undefined ? {} : { schemes: [...rule.schemes] }),
+    ...(rule.jsonSchema === undefined || rule.jsonSchema === ''
+      ? {}
+      : { json_schema: rule.jsonSchema }),
+  };
+}
+
+function presenceBody(presence: CreateKeyPresence): KeyPresence {
+  return presence.mode === 'explicit'
+    ? { mode: 'explicit', environment_ids: [...presence.environmentIds] }
+    : { mode: presence.mode };
+}
 
 export function useCreateKey(ref: MatrixRef) {
   const queries = useQueryClient();
@@ -680,32 +732,34 @@ export function useCreateKey(ref: MatrixRef) {
     mutationFn: (input: {
       readonly name: string;
       readonly classification: 'config' | 'secret';
-      readonly type: CreateKeyType;
+      readonly rule: CreateKeyRule;
       readonly folderPath?: string;
-      readonly requiredEnvironmentIds: readonly string[];
-      readonly environmentCount: number;
+      readonly description?: string;
+      readonly required: CreateKeyPresence;
+      readonly forbidden: CreateKeyPresence;
+      // Surface-2 acknowledgement tokens (#183): present only when the operator
+      // overrode a scanner block; each dismisses the finding that produced it.
+      readonly acknowledgements?: readonly string[];
     }) =>
       parsed(createKeyOp, {
           path: { ...ref },
           body: {
             name: input.name,
             classification: input.classification,
-            declaration: { rule: { type: input.type } },
+            declaration: { rule: keyRuleBody(input.rule) },
             ...(input.folderPath === undefined || input.folderPath === ''
               ? {}
               : { folder_path: input.folderPath }),
+            ...(input.description === undefined || input.description === ''
+              ? {}
+              : { description: input.description }),
             presence: {
-              required_in:
-                input.requiredEnvironmentIds.length === 0
-                  ? { mode: 'none' as const }
-                  : input.requiredEnvironmentIds.length === input.environmentCount
-                    ? { mode: 'all' as const }
-                    : {
-                        mode: 'explicit' as const,
-                        environment_ids: [...input.requiredEnvironmentIds],
-                      },
-              forbidden_in: { mode: 'none' as const },
+              required_in: presenceBody(input.required),
+              forbidden_in: presenceBody(input.forbidden),
             },
+            ...(input.acknowledgements === undefined || input.acknowledgements.length === 0
+              ? {}
+              : { acknowledgements: [...input.acknowledgements] }),
           },
           ...transport,
         }),

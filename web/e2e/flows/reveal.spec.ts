@@ -571,16 +571,22 @@ test.describe('OIDC disclosure reauthentication', () => {
     await signInWithOIDC(page);
     await page.goto(VALUES_PATH);
     const secret = seed.secrets[0] ?? '';
-    await page.getByRole('button', { name: `Reveal ${secret}` }).click();
     const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible();
-    // The reauth dialog offers the OIDC option only once it too has the provider
-    // list; give that read the same generous window as sign-in rather than the
-    // 5s default, so a slow read does not read as a missing button.
     const reauth = dialog.getByRole('button', {
       name: `Re-authenticate with ${OIDC_PROVIDER.displayName}`,
     });
-    await expect(reauth).toBeVisible({ timeout: 15_000 });
+    // The reauth dialog offers the OIDC option only once its OWN read of the
+    // provider list has resolved. Like the login read (see signInWithOIDC), that
+    // read can settle before the option is ready under load, and a longer single
+    // wait then just fails slower. Reopen the dialog until the option is present
+    // — a fresh navigation refetches the list — the same reload-until-present
+    // shape sign-in uses. Nothing is revealed yet, so no progress is lost.
+    await expect(async () => {
+      await page.goto(VALUES_PATH);
+      await page.getByRole('button', { name: `Reveal ${secret}` }).click();
+      await expect(dialog).toBeVisible();
+      await expect(reauth).toBeVisible({ timeout: 5_000 });
+    }).toPass({ timeout: 30_000 });
 
     const popupOpened = page.waitForEvent('popup');
     await reauth.click();
