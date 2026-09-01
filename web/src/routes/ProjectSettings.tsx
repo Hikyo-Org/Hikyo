@@ -10,6 +10,7 @@ import {
 } from '../api/definitions.ts';
 import {
   createEnvironmentRefusalText,
+  cryptoFailureText,
   retentionSentence,
   settingsFailureText,
   settingsOperationFailure,
@@ -20,7 +21,9 @@ import {
   useOrgRetention,
   useProject,
   useProjectRetention,
+  useReencryptProject,
   useRenameProject,
+  useRotateDek,
   useSetEnvironmentSettings,
   useSetProjectRetention,
   type ProjectRetentionPolicy,
@@ -29,8 +32,9 @@ import {
 } from '../api/settings.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { ChromeIdentityControls } from './ChromeIdentityControls.tsx';
-import { Alert, Done, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
+import { Alert, ConsequencesDialog, Done, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback } from './useModalDialog.ts';
+import { useReencryptDrain } from './useReencryptDrain.ts';
 
 const prototypeMode = import.meta.env.MODE === 'prototype';
 
@@ -90,6 +94,7 @@ export function ProjectSettings() {
           { id: 'project-environments', label: 'Environments' },
           { id: 'project-policy', label: 'Policy' },
           { id: 'project-access', label: 'Access' },
+          ...(prototypeMode ? [] : [{ id: 'project-keys', label: 'Keys & crypto' }]),
           { id: 'project-danger', label: 'Danger zone' },
         ]}
       />
@@ -260,6 +265,17 @@ export function ProjectSettings() {
         </p>
       </Panel>
 
+      {prototypeMode ? null : (
+        <Panel id="project-keys" title="Keys &amp; crypto">
+          <ProjectCryptoMaintenance
+            org={org}
+            project={project}
+            disabled={current === undefined}
+            onDone={feedback.ok}
+          />
+        </Panel>
+      )}
+
       <Panel id="project-danger" title="Danger zone" danger>
         {prototypeMode ? (
           <div className="settings-row">
@@ -301,6 +317,102 @@ export function ProjectSettings() {
         />
       </Panel>
     </div>
+  );
+}
+
+/**
+ * ProjectCryptoMaintenance exposes the project-scoped half of the remotely
+ * operable cryptographic jobs (#503): rotate this project's DEK, then walk its
+ * ciphertext onto the new version. The two are paired — a DEK rotation is
+ * incomplete until the re-encryption runs — and both are the same
+ * grant-evaluated network operations the CLI verbs call.
+ */
+function ProjectCryptoMaintenance({
+  org,
+  project,
+  disabled,
+  onDone,
+}: {
+  org: string;
+  project: string;
+  disabled: boolean;
+  onDone: (text: string) => void;
+}) {
+  const dek = useRotateDek();
+  const reencrypt = useReencryptProject(org, project);
+  const titleId = useId();
+  const [confirmRotate, setConfirmRotate] = useState(false);
+  const [dialogFailure, setDialogFailure] = useState<string | null>(null);
+
+  const drain = useReencryptDrain(reencrypt, { operation: 'reencrypt-project', noun: 'Project', onDone });
+
+  return (
+    <>
+      <p className="settings-note">
+        Both jobs run over the network, guarded by capability plus session second-factor assurance;
+        no key material crosses the wire. A DEK rotation is incomplete until the re-encryption below
+        walks the project&apos;s ciphertext forward.
+      </p>
+      <div className="settings-row">
+        <div className="settings-row__copy">
+          <span className="settings-row__title">Data-encryption key (project)</span>
+          <span className="settings-row__detail">
+            Appends a new DEK version for this project. New writes seal under it immediately; existing
+            ciphertext stays readable until you re-encrypt.
+          </span>
+        </div>
+        <span className="settings-row__spacer" />
+        <code className="instance-cli">$ hikyo rotate-dek --scope project</code>
+        <button type="button" className="btn" disabled={disabled} onClick={() => { setDialogFailure(null); setConfirmRotate(true); }}>
+          Rotate the project DEK
+        </button>
+      </div>
+      <div className="settings-row">
+        <div className="settings-row__copy">
+          <span className="settings-row__title">Project re-encryption</span>
+          <span className="settings-row__detail">
+            Walks every ciphertext in this project onto the active DEK version and retires the
+            superseded ones. Chunked and resumable: safe to re-run, and complete once it moves no rows.
+          </span>
+        </div>
+        <span className="settings-row__spacer" />
+        <code className="instance-cli">$ hikyo reencrypt --project</code>
+        <button type="button" className="btn" disabled={disabled || drain.running} onClick={drain.run}>
+          {drain.running ? 'Re-encrypting…' : 'Re-encrypt the project'}
+        </button>
+      </div>
+      {drain.running ? <p role="status" className="field__hint">Re-encrypting… run {drain.runs}, {String(drain.total)} row{drain.total === 1n ? '' : 's'} moved so far. Safe to leave and resume later.</p> : null}
+      {drain.failure === null ? null : <Alert>{drain.failure}</Alert>}
+
+      {confirmRotate ? (
+        <ConsequencesDialog
+          titleId={titleId}
+          title="Rotate this project's DEK?"
+          confirmLabel="Rotate the DEK"
+          busyLabel="Rotating the project DEK…"
+          busy={dek.isPending}
+          failure={dialogFailure}
+          onCancel={() => { setDialogFailure(null); setConfirmRotate(false); }}
+          onConfirm={() => {
+            setDialogFailure(null);
+            dek.mutate({ scope: 'project', org, project }, {
+              onSuccess: (result) => {
+                onDone(`This project's DEK was rotated (version ${String(result.key_version)}). New writes seal under it; existing ciphertext stays readable until you run the project re-encryption to complete the rotation.`);
+                setConfirmRotate(false);
+              },
+              onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-dek')),
+            });
+          }}
+        >
+          <p>
+            A new DEK version is appended for this project. New writes seal under it immediately;
+            existing ciphertext stays readable under the previous version until the project
+            re-encryption walks it forward. The rotation is incomplete until you run that
+            re-encryption.
+          </p>
+        </ConsequencesDialog>
+      ) : null}
+    </>
   );
 }
 

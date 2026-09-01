@@ -15,9 +15,15 @@ import {
   listOrgsOp,
   listProjectsOp,
   renameEnvironmentOp,
+  reencryptInstanceOp,
+  reencryptProjectOp,
   renameOrgOp,
   renameProjectOp,
   reorderEnvironmentsOp,
+  rotateDekOp,
+  rotateMasterKeyOp,
+  rotateRootKeyOp,
+  rotateScanningKeyOp,
   rotateTokenKeyOp,
   setEnvironmentSettingsOp,
   setOrgRetentionOp,
@@ -685,15 +691,61 @@ export function cloneEnvironmentRefusalText(error: unknown): string {
 }
 
 /**
- * useRotateTokenKey is the one key operation with a network surface.
+ * Remotely operable cryptographic maintenance (#503).
  *
- * Root, master and DEK rotation, `init`, `migrate`, restore reconciliation and
- * break-glass are LOCAL HOST AUTHORITY by the system-proof ADR and deliberately
- * have no UI and no API — the prototype's "Keys & crypto" card says so rather
- * than showing controls that could not exist.
+ * Every rotation and re-encryption job below is a grant-evaluated network
+ * operation carrying the `human-session` artifact: it runs from the CLI *or*
+ * the WebUI, guarded by capability plus session second-factor assurance, never
+ * bound to a purpose-specific passkey ceremony. No key material crosses the
+ * wire on any of them.
+ *
+ * The genuinely host-only set — `init`, `migrate`, restore reconciliation,
+ * break-glass, host-file custody, and startup-only key material — has no
+ * network surface at all, by the system-proof ADR. The "Keys & crypto" card
+ * names that set as absent rather than drawing controls that could not exist.
  */
 export function useRotateTokenKey() {
   return useMutation({ mutationFn: () => parsed(rotateTokenKeyOp, {}) });
+}
+
+export function useRotateScanningKey() {
+  return useMutation({ mutationFn: () => parsed(rotateScanningKeyOp, {}) });
+}
+
+export function useRotateMasterKey() {
+  return useMutation({ mutationFn: () => parsed(rotateMasterKeyOp, {}) });
+}
+
+/** Run one phase of the crash-safe three-phase root-key rotation. */
+export function useRotateRootKey() {
+  return useMutation({
+    mutationFn: (phase: 'prepare' | 'verify' | 'finalize') =>
+      parsed(rotateRootKeyOp, { body: { phase } }),
+  });
+}
+
+/** Append a new DEK version for one project or the instance scope. */
+export function useRotateDek() {
+  return useMutation({
+    mutationFn: (input: { scope: 'instance' } | { scope: 'project'; org: string; project: string }) =>
+      parsed(rotateDekOp, {
+        body: input.scope === 'project'
+          ? { scope: 'project', org: input.org, project: input.project }
+          : { scope: 'instance' },
+      }),
+  });
+}
+
+/** Walk the instance credential ciphertext onto the active DEK version. Resumable — re-run until it moves no rows. */
+export function useReencryptInstance() {
+  return useMutation({ mutationFn: () => parsed(reencryptInstanceOp, {}) });
+}
+
+/** Walk a project's ciphertext onto the active DEK version. Resumable — re-run until it moves no rows. */
+export function useReencryptProject(org: string, project: string) {
+  return useMutation({
+    mutationFn: () => parsed(reencryptProjectOp, { path: { org, project } }),
+  });
 }
 
 // --- environment policy -----------------------------------------------------
@@ -854,7 +906,13 @@ export type SettingsOperation =
   | 'set-project-retention'
   | 'set-environment-settings'
   | 'set-definitions-settings'
-  | 'rotate-token-key';
+  | 'rotate-token-key'
+  | 'rotate-scanning-key'
+  | 'rotate-master-key'
+  | 'rotate-root-key'
+  | 'rotate-dek'
+  | 'reencrypt-instance'
+  | 'reencrypt-project';
 
 class SettingsOperationFailure extends Error {
   readonly operation: SettingsOperation;
@@ -874,6 +932,25 @@ export function settingsOperationFailure(
   error: unknown,
 ): Error {
   return new SettingsOperationFailure(operation, error);
+}
+
+/**
+ * Failure text for the remotely operable cryptographic-maintenance jobs (#503).
+ *
+ * These are MFA-mandatory instance and tenant operations, so a 403 carries the
+ * same reading every other instance-admin surface gives it: the session is
+ * short of second-factor assurance, not permanently forbidden. It points at the
+ * step-up banner — which the shell keeps visible above the content whenever the
+ * session is password-only — rather than claiming an authorization failure that
+ * signing in again could not fix. Every other status defers to
+ * settingsFailureText.
+ */
+export function cryptoFailureText(error: unknown, operation: SettingsOperation): string {
+  const failure = error instanceof SettingsOperationFailure ? error.reason : error;
+  if (failure instanceof ApiError && failure.status === 403) {
+    return 'This operation needs a second factor. This session does not have sufficient second-factor assurance; present your authenticator code or passkey in the banner above.';
+  }
+  return settingsFailureText(error, operation);
 }
 
 /** Map each refusal using the operation that declared the status. */
@@ -935,6 +1012,18 @@ function settingsAction(operation: SettingsOperation | undefined): string {
       return 'change this project definitions source';
     case 'rotate-token-key':
       return 'rotate the change-token key';
+    case 'rotate-scanning-key':
+      return 'rotate the secret-scanning key';
+    case 'rotate-master-key':
+      return 'rotate the master key';
+    case 'rotate-root-key':
+      return 'rotate the root key';
+    case 'rotate-dek':
+      return 'rotate the data-encryption key';
+    case 'reencrypt-instance':
+      return 're-encrypt the instance ciphertext';
+    case 'reencrypt-project':
+      return 're-encrypt this project';
     default:
       return 'perform this settings operation';
   }
@@ -958,6 +1047,10 @@ function invalidSettingsText(operation: SettingsOperation | undefined): string {
       return 'The definitions source is invalid.';
     case 'set-credential-policy':
       return 'The machine-credential policy is invalid.';
+    case 'rotate-dek':
+      return 'The DEK rotation request is invalid; a project scope needs its organisation and project.';
+    case 'rotate-root-key':
+      return 'The root-key rotation phase is invalid; run prepare, then verify, then finalize.';
     default:
       return 'The server refused this request as invalid.';
   }
@@ -988,6 +1081,18 @@ function unavailableSettingsText(operation: SettingsOperation | undefined): stri
       return 'Retention health is unavailable.';
     case 'rotate-token-key':
       return 'The change-token key rotation is unavailable.';
+    case 'rotate-scanning-key':
+      return 'The secret-scanning key rotation is unavailable.';
+    case 'rotate-master-key':
+      return 'The master-key rotation is unavailable.';
+    case 'rotate-root-key':
+      return 'The root-key rotation is unavailable.';
+    case 'rotate-dek':
+      return 'The DEK rotation is unavailable, or its project does not exist.';
+    case 'reencrypt-instance':
+      return 'Instance re-encryption is unavailable.';
+    case 'reencrypt-project':
+      return 'This project re-encryption is unavailable, or the project does not exist.';
     default:
       return 'This settings resource is unavailable or does not exist.';
   }
@@ -1007,6 +1112,10 @@ function conflictingSettingsText(operation: SettingsOperation | undefined): stri
       return 'Deletion never cascades: this project still holds environments or folders.';
     case 'set-environment-settings':
       return 'The current environment state refused this policy change. Reload before retrying.';
+    case 'rotate-master-key':
+      return 'The root key is still dual-wrapped. Finalize the root-key rotation before rotating the master key.';
+    case 'rotate-root-key':
+      return 'The root-key rotation cannot run this phase from the current state. Reload before retrying.';
     default:
       return 'The current resource state refused this settings change. Reload before retrying.';
   }

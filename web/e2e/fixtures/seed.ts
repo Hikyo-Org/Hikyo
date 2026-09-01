@@ -364,6 +364,13 @@ export async function seedTenant(
     // neither is covered by `reveal`.
     'pin',
     'reveal-history',
+    // Remote cryptographic maintenance (#503). `rotate-dek` authorizes the DEK
+    // rotations (and rides for the token/scanning rotations); `reencrypt` is the
+    // operator authority the instance and project re-encryption walks take. Both
+    // are content-invisible — they re-wrap ciphertext without touching plaintext
+    // — so granting them to the fixture principal disturbs no other flow.
+    'rotate-dek',
+    'reencrypt',
   ]) {
     runAdminGrant(['--principal', principal, '--capability', capability]);
   }
