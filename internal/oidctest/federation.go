@@ -34,15 +34,6 @@ type Shape struct {
 	DefaultAudience string
 }
 
-// RequiredClaimsJSON renders the pinned set as the binding's stored document.
-func (s Shape) RequiredClaimsJSON() (string, error) {
-	raw, err := json.Marshal(s.Pinned)
-	if err != nil {
-		return "", fmt.Errorf("oidctest: encode pinned claims: %w", err)
-	}
-	return string(raw), nil
-}
-
 // KubernetesShape is a projected ServiceAccount token, in the claim shape a real
 // cluster actually mints.
 //

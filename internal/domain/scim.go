@@ -58,16 +58,6 @@ func SCIMAttentionStates() []SCIMAttention {
 	return out
 }
 
-// IsSCIMAttention reports membership of the closed set.
-func IsSCIMAttention(s SCIMAttention) bool {
-	for _, k := range SCIMAttentionStates() {
-		if k == s {
-			return true
-		}
-	}
-	return false
-}
-
 // SCIMCause is the triggering operation recorded on a `lockout-retention`
 // origin and on the attention state it raises (§10's closed `cause` enum).
 type SCIMCause string
@@ -120,23 +110,6 @@ var systemOrigins = map[OriginKind]bool{
 
 // IsSystemOrigin reports whether the SCIM engine may write this origin kind.
 func IsSystemOrigin(k OriginKind) bool { return systemOrigins[k] }
-
-// MappableTemplates returns the templates a mapping row may target (§3): the
-// seven org/project/environment-applicable ones. `operator` is instance-scoped
-// and structurally out of an org binding's reach — a binding can cause grants
-// only inside its own org subtree (§1), so an instance-scope template has no
-// scope it could be applied at.
-func MappableTemplates() []Template {
-	out := make([]Template, 0, len(templates))
-	for t, spec := range templates {
-		if spec.applicable[LevelNone] {
-			continue
-		}
-		out = append(out, t)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	return out
-}
 
 // IsMappableTemplate reports whether a mapping row may target t.
 func IsMappableTemplate(t Template) bool {

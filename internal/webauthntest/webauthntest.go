@@ -54,10 +54,6 @@ func (d *Device) SetBackupEligible(v bool) {
 	d.opts.BackupState = v
 }
 
-// SuppressCredProps drops the credProps extension, so the server records the
-// credential as non-discoverable (fail-closed on the login capability, B13).
-func (d *Device) SuppressCredProps() { d.opts.ClientExtensionResults = nil }
-
 // SetCounter sets the authenticator sign counter the next assertion presents.
 // Enrolment records the counter as it stands at Enrol. It panics with
 // ErrNotEnrolled before enrolment.

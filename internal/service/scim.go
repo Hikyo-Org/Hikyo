@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -865,14 +864,6 @@ func lockBindingRow(ctx context.Context, r store.Repos, p authz.Proof, bindingID
 	}
 	markSCIMPhase("wire-enter:" + bindingID)
 	return func() { markSCIMPhase("wire-exit:" + bindingID) }, nil
-}
-
-// markSCIMPhaseN marks a phase WITH the count of what it did. A bare label is
-// satisfied by an implementation that reaches the line and does nothing; a
-// count is a statement about the state the phase left behind, which is what
-// §6's ordering is actually about.
-func markSCIMPhaseN(phase string, n int) {
-	markSCIMPhase(phase + "=" + strconv.Itoa(n))
 }
 
 func markSCIMPhase(phase string) {

@@ -17,6 +17,8 @@ type fakeTTY struct {
 	closeCount int
 }
 
+// Close is reached through io.WriteCloser by TerminalSession. deadcode cannot
+// resolve this test-only interface dispatch, but removing it breaks the seam.
 func (f *fakeTTY) Close() error {
 	f.closed = true
 	f.closeCount++

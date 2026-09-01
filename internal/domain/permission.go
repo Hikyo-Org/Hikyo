@@ -141,15 +141,6 @@ const (
 	ClassInstanceConn PrincipalClass = "instance-connection"
 )
 
-// ServiceAccountKinds returns the closed set of kinds a service account may
-// be created with (machine-identities ADR § The machine principal). It is a
-// STRICT SUBSET of the machine classes: the provisioning and instance
-// connections are separate principal classes created with their own bindings
-// (#73/#71), never through the service-account surface.
-func ServiceAccountKinds() []PrincipalClass {
-	return []PrincipalClass{ClassAutomation, ClassWorkload}
-}
-
 // IsServiceAccountKind reports whether c may be declared at service-account
 // creation. Kind is immutable afterwards, so this is the only gate.
 func IsServiceAccountKind(c PrincipalClass) bool {
@@ -174,11 +165,6 @@ const (
 	// it where a bearer verifier is permanently dead.
 	CredentialOIDCFederation CredentialKind = "oidc-federation"
 )
-
-// IsCredentialKind reports whether k is one of the two implemented kinds.
-func IsCredentialKind(k CredentialKind) bool {
-	return k == CredentialHikyoToken || k == CredentialOIDCFederation
-}
 
 // IssuerType is the closed set of federation issuer platforms. It is declared
 // at configuration time rather than inferred from the issuer URL, because the
@@ -233,11 +219,6 @@ const (
 	LifetimeFinite     CredentialLifetime = "finite"
 	LifetimeIndefinite CredentialLifetime = "indefinite"
 )
-
-// IsCredentialLifetime reports whether l is one of the two typed values.
-func IsCredentialLifetime(l CredentialLifetime) bool {
-	return l == LifetimeFinite || l == LifetimeIndefinite
-}
 
 // machineAllowlists is NORMATIVE, not convention (permission-model ADR § Machine
 // principals): the grant API refuses a capability outside its class's list.
@@ -366,15 +347,6 @@ const (
 var mintableOrigins = map[OriginKind]bool{
 	OriginManual:     true,
 	OriginBreakGlass: true,
-}
-
-// OriginKinds returns the closed origin enumeration, sorted.
-func OriginKinds() []OriginKind {
-	out := []OriginKind{
-		OriginManual, OriginBreakGlass, OriginSCIM, OriginStructural, OriginLockoutRetention,
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	return out
 }
 
 // IsMintableOrigin reports whether the grant API may write this origin kind.

@@ -10,8 +10,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 )
 
-func strp(s string) *string { return &s }
-
 func rev(n int64) *int64 { return &n }
 
 func stringRule() schema.Declaration {

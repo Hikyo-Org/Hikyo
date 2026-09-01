@@ -1256,11 +1256,11 @@ func (s *Workspace) elevate(
 	if err := json.Unmarshal([]byte(h.Factors), &factors); err != nil {
 		return fail("step-up-assurance-unreadable")
 	}
-	// The class is the FRESH ceremony recorded at approval, never
-	// reauthFactorClass(h.Factors): the second reads what the approving session
-	// once demonstrated, which is the inherited assurance this path exists to
-	// refuse. Empty means either no fresh ceremony was recorded or the row
-	// predates the gate (a rolling deployment can leave one) — both refuse.
+	// The class is the FRESH ceremony recorded at approval, never re-derived
+	// from h.Factors: those factors describe what the approving session once
+	// demonstrated, which is the inherited assurance this path exists to refuse.
+	// Empty means either no fresh ceremony was recorded or the row predates the
+	// gate (a rolling deployment can leave one); both refuse.
 	class := h.FactorClass
 	if class == "" {
 		return fail("step-up-no-fresh-ceremony")
@@ -1366,22 +1366,6 @@ func (s *Workspace) elevate(
 		AbsoluteExpiresAt: target.AbsoluteExpiresAt,
 		Elevated:          true, EnvironmentID: h.EnvID, WindowExpiresAt: windowExpires,
 	}, nil
-}
-
-// reauthFactorClass picks the window's factor class from an assurance record.
-// The table admits exactly three, so the strongest present wins and anything
-// else (a password-only record) yields "" — which the caller reads as "this
-// ceremony demonstrated no possession factor" rather than storing a class the
-// CHECK would refuse.
-func reauthFactorClass(factors []string) string {
-	for _, want := range []string{"webauthn", "totp", "oidc"} {
-		for _, f := range factors {
-			if f == want {
-				return want
-			}
-		}
-	}
-	return ""
 }
 
 // workspaceArtifact is the value the sessions row's `artifact` column stores,

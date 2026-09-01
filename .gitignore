@@ -39,6 +39,7 @@ hikyo-dev.db*
 .xreview/
 .DS_Store
 .playwright-cli/
+.playwright-mcp/
 
 # Release build output
 /dist/

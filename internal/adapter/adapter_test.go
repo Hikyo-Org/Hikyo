@@ -194,6 +194,8 @@ func TestModuleSeamHasExactlyFourOperations(t *testing.T) {
 	var _ Module = stubModule{}
 }
 
+// stubModule is intentional compile-time conformance coverage for Module's
+// complete method signatures; deadcode cannot observe the type assertion.
 type stubModule struct{}
 
 func (stubModule) ValidateConfig(Config) error { return nil }

@@ -311,13 +311,6 @@ func (p *IdP) Rotate() error {
 	return nil
 }
 
-// CurrentKeyID is the `kid` the next MintIDToken will carry.
-func (p *IdP) CurrentKeyID() string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.keyID
-}
-
 // SetOffline induces or lifts the outage.
 func (p *IdP) SetOffline(offline bool) {
 	p.mu.Lock()

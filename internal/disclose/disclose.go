@@ -353,9 +353,6 @@ func (s *PreparedSink) AbortOnReturn(result *error) {
 	*result = errors.Join(*result, s.Abort())
 }
 
-// Redact renders a value for a log or an error message: never the value.
-func Redact(string) string { return "[REDACTED:hikyo-artifact]" }
-
 // readLine reads one line from the terminal, one byte at a time: it is
 // line-buffered and there is no bufio wrapper to leave holding unread input the
 // caller may still want. `limit` bounds the answer so a terminal that never sends

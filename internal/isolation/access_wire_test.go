@@ -17,8 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
@@ -27,8 +25,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/authn"
-	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
-	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 	"github.com/Hikyo-Org/hikyo/internal/webauthntest"
 )
@@ -605,36 +601,6 @@ func runProjectListingDoesNotReadSiblings(t *testing.T, db *store.DB) {
 	if orgLines < before+20 {
 		t.Fatalf("the org listing saw %d rows, want at least %d — the sibling seeding did not land", orgLines, before+20)
 	}
-}
-
-// countedAuthorizeOp is countedAuthorize for an arbitrary operation.
-func countedAuthorizeOp(t *testing.T, db *store.DB, principal domain.PrincipalID, op authz.Operation, scope domain.Scope) (int, error) {
-	t.Helper()
-	ctx := t.Context()
-	count := 0
-	tok := authz.NewTxToken()
-	defer tok.Invalidate()
-
-	var r *authn.Resolver
-	if db.Engine() == store.EnginePostgres {
-		pgtx, err := db.PG().BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() { _ = pgtx.Rollback(ctx) }()
-		var dbtx pggen.DBTX = countingPGTx{tx: pgtx, n: &count}
-		r = authn.NewPG(dbtx)
-	} else {
-		sqtx, err := db.SQLiteRead().BeginTx(ctx, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() { _ = sqtx.Rollback() }()
-		var dbtx sqlitegen.DBTX = countingSqliteTx{tx: sqtx, n: &count}
-		r = authn.NewSQLite(dbtx)
-	}
-	_, err := authz.NewTxAuthorizer(r, tok).Authorize(ctx, authz.Identity{Principal: principal}, op, scope)
-	return count, err
 }
 
 // TestQueryObserverIsTestOnly pins the claim each observation seam's own doc
