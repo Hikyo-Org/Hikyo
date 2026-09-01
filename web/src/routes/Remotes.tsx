@@ -1,8 +1,9 @@
 import { QueryClientProvider, useQuery } from '@tanstack/react-query';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { generatePath, Link } from 'react-router';
 
 import { ApiError } from '../api/client.ts';
+import { isoDay } from '../api/identities.ts';
 import { useProjects } from '../api/matrix.ts';
 import {
   remoteStateText,
@@ -10,11 +11,16 @@ import {
   stalenessText,
   useAddRemote,
   useAddWorkspaceOrigin,
+  useConnections,
+  useMintConnection,
   useRemotes,
   useRemoveRemote,
   useRemoveWorkspaceOrigin,
   useRenameRemote,
+  useRevokeConnection,
   useWorkspaceOrigins,
+  type InstanceConnection,
+  type MintedConnectionValue,
   type Remote,
 } from '../api/remotes.ts';
 import { useOrgs } from '../api/session.ts';
@@ -33,8 +39,11 @@ import {
   type WorkspaceBearer,
 } from '../api/workspace.ts';
 import { createWorkspaceClient } from '../api/workspaceClient.ts';
+import { writeClipboard } from '../app/clipboard.ts';
 import { makeQueryClient } from '../app/queryClient.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { useNavigationGuard } from './MachineAccess.tsx';
+import { useModalDialog } from './useModalDialog.ts';
 import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
 
 /**
@@ -82,7 +91,8 @@ export function Remotes() {
         {remotes.isSuccess && remotes.data.items.length === 0 ? (
           <p role="status">
             No remotes yet. Add one below — you will need its URL, its certificate fingerprint and a
-            connection credential minted over there.
+            connection credential, which whoever runs that instance mints from the{' '}
+            <strong>Connection credentials</strong> section of its own Remotes page.
           </p>
         ) : null}
 
@@ -94,6 +104,7 @@ export function Remotes() {
       </section>
 
       <AddRemote />
+      <ConnectionCredentials />
       <OriginAllowlist />
     </>
   );
@@ -177,7 +188,21 @@ function RemoteCard({ remote }: { remote: Remote }) {
             !
           </span>
         )}
-        <span>{remoteStateText(remote)}</span>
+        <span>
+          {remoteStateText(remote)}
+          {/* A rejected credential is fixed on the PEER's own Connection
+              credentials section — link straight to it rather than describe
+              where it lives (AC#1). */}
+          {remote.state === 'credential-rejected' ? (
+            <>
+              {' '}
+              <a href={`${origin}/remotes#connection-credentials`} target="_blank" rel="noreferrer">
+                Manage connection credentials on {origin}
+              </a>
+              .
+            </>
+          ) : null}
+        </span>
       </p>
       {staleness === null ? null : (
         <p className="remote__stale" role="status">
@@ -326,8 +351,12 @@ function RemoteCard({ remote }: { remote: Remote }) {
       {live === undefined ? null : <WorkspacePicker origin={origin} remoteName={remote.name} />}
       {remove.isSuccess ? (
         <p role="status">
-          Removed here. That does <strong>not</strong> revoke the credential — revoke it on the
-          other instance too.
+          Removed here. That does <strong>not</strong> revoke the credential — revoke it in the
+          Connection credentials section of{' '}
+          <a href={`${origin}/remotes#connection-credentials`} target="_blank" rel="noreferrer">
+            {origin}
+          </a>{' '}
+          too.
         </p>
       ) : null}
     </li>
@@ -529,6 +558,514 @@ function OriginAllowlist() {
       </form>
     </section>
   );
+}
+
+/**
+ * The receiving-side credential surface (#498): mint, inventory and revoke the
+ * connection credentials THIS instance issues for a peer to hold.
+ *
+ * It is deliberately NOT the same thing as a directory card. A card is this
+ * instance VIEWING a peer, holding a credential minted over there. This is the
+ * SERVING side: the write-only credentials a peer presents at our own directory
+ * fetch. The two look alike — both say "credential" — so the copy names the
+ * distinction rather than trusting the layout to carry it.
+ */
+/** A minted value paired with the label the operator typed for it. */
+type Disclosed = MintedConnectionValue & { readonly label: string };
+
+export function ConnectionCredentials() {
+  const connections = useConnections();
+  const mint = useMintConnection();
+  const [disclosed, setDisclosed] = useState<Disclosed | null>(null);
+  const [revoking, setRevoking] = useState<InstanceConnection | null>(null);
+
+  const items = connections.data?.items ?? [];
+
+  return (
+    <section className="card" id="connection-credentials" aria-labelledby="connections-title">
+      <h2 id="connections-title">Connection credentials</h2>
+      <p>
+        The credentials <strong>this</strong> instance issues for another to hold. A peer presents
+        one at this instance&apos;s server-side directory fetch — it is the write-only counterpart to
+        the connection credential you paste into <strong>Add a remote</strong> over on the viewing
+        instance. It is <strong>not</strong> a directory card: a card is this instance reading a
+        peer, this is a peer reading us.
+      </p>
+
+      {connections.isError ? (
+        <p className="alert" role="alert">
+          <span className="alert__glyph" aria-hidden="true">
+            !
+          </span>
+          <span>
+            The connection credentials could not be read. It is gated on{' '}
+            <span className="mono">instance-config</span>.
+          </span>
+        </p>
+      ) : null}
+
+      {connections.isSuccess && items.length === 0 ? (
+        <p role="status">
+          None minted. A peer cannot fetch this instance&apos;s directory until you mint one here and
+          hand the value over.
+        </p>
+      ) : null}
+
+      <ul className="connections">
+        {items.map((connection) => (
+          <ConnectionRow
+            key={connection.id}
+            connection={connection}
+            onRevoke={() => setRevoking(connection)}
+          />
+        ))}
+      </ul>
+
+      <MintConnectionForm mint={mint} onMinted={setDisclosed} />
+
+      {disclosed === null ? null : (
+        <ConnectionMintDialog minted={disclosed} onClose={() => setDisclosed(null)} />
+      )}
+      {revoking === null ? null : (
+        <RevokeConnectionDialog connection={revoking} onClose={() => setRevoking(null)} />
+      )}
+    </section>
+  );
+}
+
+/** ConnectionRow is one inventory entry: bounded metadata, no plaintext. */
+function ConnectionRow({
+  connection,
+  onRevoke,
+}: {
+  connection: InstanceConnection;
+  onRevoke: () => void;
+}) {
+  const revokedAt = connection.revoked_at;
+  const revoked = revokedAt !== undefined;
+  const state = revoked ? 'revoked' : connection.live ? 'live' : 'expired';
+  return (
+    <li className="connection">
+      <div className="connection__head">
+        <h3 className="connection__label">{connection.label}</h3>
+        {/* State as text first; the badge colour is decoration on a word. */}
+        <span className="badge" data-state={state}>
+          {state}
+        </span>
+      </div>
+      <p className="mono connection__prefix">{connection.prefix_hint}…</p>
+      <dl className="connection__facts">
+        <dt>Kind</dt>
+        <dd className="mono">{connection.kind}</dd>
+        <dt>Lifetime</dt>
+        <dd>
+          {connection.lifetime === 'indefinite'
+            ? 'indefinite'
+            : connection.expires_at === undefined
+              ? 'finite'
+              : `expires ${isoDay(connection.expires_at)}`}
+        </dd>
+        <dt>Created</dt>
+        <dd>
+          {isoDay(connection.created_at)} by <span className="mono">{connection.created_by}</span>
+        </dd>
+        <dt>Last used</dt>
+        <dd>{connection.last_used_at === undefined ? 'never used' : isoDay(connection.last_used_at)}</dd>
+        {revokedAt === undefined ? null : (
+          <>
+            <dt>Revoked</dt>
+            <dd>{isoDay(revokedAt)}</dd>
+          </>
+        )}
+      </dl>
+      {revoked ? null : (
+        <div className="connection__actions">
+          <button
+            className="btn"
+            type="button"
+            aria-label={`Revoke ${connection.label}`}
+            onClick={onRevoke}
+          >
+            Revoke
+          </button>
+        </div>
+      )}
+    </li>
+  );
+}
+
+type LifetimeChoice = 'default' | 'custom' | 'indefinite';
+
+/**
+ * MintConnectionForm names lifetime as a RADIO so the both-named 400 is
+ * unreachable: the contract refuses a request that carries `lifetime_seconds`
+ * and `indefinite` at once, so the UI can only ever send one of them.
+ */
+function MintConnectionForm({
+  mint,
+  onMinted,
+}: {
+  mint: ReturnType<typeof useMintConnection>;
+  onMinted: (result: Disclosed) => void;
+}) {
+  const [label, setLabel] = useState('');
+  const [choice, setChoice] = useState<LifetimeChoice>('default');
+  const [days, setDays] = useState('30');
+
+  // The converted seconds, or null when the custom field is not a positive
+  // whole-second lifetime the contract (minimum 1) would accept. `0.0001` days
+  // rounds to zero and a huge value overflows to non-finite; both are refused
+  // here rather than sent for the server to 400.
+  const customSeconds = customLifetimeSeconds(days);
+  const customInvalid = choice === 'custom' && customSeconds === null;
+
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmed = label.trim();
+    if (trimmed === '' || mint.pending || customInvalid) {
+      return;
+    }
+    const input =
+      choice === 'indefinite'
+        ? { label: trimmed, indefinite: true }
+        : choice === 'custom' && customSeconds !== null
+          ? { label: trimmed, lifetimeSeconds: customSeconds }
+          : { label: trimmed };
+    void mint.mint(input).then(
+      (result) => {
+        onMinted({ ...result, label: trimmed });
+        setLabel('');
+        setChoice('default');
+        setDays('30');
+      },
+      () => {
+        // The failure is surfaced from mint.error; nothing to do here.
+      },
+    );
+  };
+
+  return (
+    <form className="form" onSubmit={onSubmit} noValidate>
+      <h3>Mint a credential</h3>
+      <p>
+        The label names the peer for the audit trail. It is descriptive, not enforced — this
+        instance cannot verify who holds the value.
+      </p>
+      {mint.error !== null ? (
+        <p className="alert" role="alert">
+          <span className="alert__glyph" aria-hidden="true">
+            !
+          </span>
+          <span>{mintFailureText(mint.error)}</span>
+        </p>
+      ) : null}
+      <div className="field">
+        <label htmlFor="connection-label">Label</label>
+        <input
+          id="connection-label"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          maxLength={200}
+          required
+        />
+      </div>
+      <fieldset className="field">
+        <legend>Lifetime</legend>
+        <div className="chk">
+          <input
+            id="lifetime-default"
+            type="radio"
+            name="lifetime"
+            checked={choice === 'default'}
+            onChange={() => setChoice('default')}
+          />
+          <label htmlFor="lifetime-default">Instance default</label>
+        </div>
+        <div className="chk">
+          <input
+            id="lifetime-custom"
+            type="radio"
+            name="lifetime"
+            checked={choice === 'custom'}
+            onChange={() => setChoice('custom')}
+          />
+          <label htmlFor="lifetime-custom">Expires after</label>
+          <input
+            id="lifetime-days"
+            type="number"
+            min={1}
+            value={days}
+            onChange={(e) => setDays(e.target.value)}
+            disabled={choice !== 'custom'}
+            aria-invalid={customInvalid}
+            aria-label="Lifetime in days"
+          />
+          <span>days (clamped to the instance ceiling)</span>
+        </div>
+        <div className="chk">
+          <input
+            id="lifetime-indefinite"
+            type="radio"
+            name="lifetime"
+            checked={choice === 'indefinite'}
+            onChange={() => setChoice('indefinite')}
+          />
+          <label htmlFor="lifetime-indefinite">
+            Never expires (only if this instance allows it)
+          </label>
+        </div>
+      </fieldset>
+      <button
+        className="btn btn--primary"
+        type="submit"
+        disabled={mint.pending || label.trim() === '' || customInvalid}
+      >
+        {mint.pending ? 'Minting…' : 'Mint credential'}
+      </button>
+    </form>
+  );
+}
+
+/**
+ * ConnectionMintDialog is the display-once ceremony. The value exists only in
+ * this dialog's props for as long as it is open: copy is best-effort, the
+ * stored-confirmation gates dismissal, and a navigation while unstored is
+ * routed through the same guard as Escape so the one disclosure is not lost to
+ * a Back press or a reload.
+ */
+function ConnectionMintDialog({
+  minted,
+  onClose,
+}: {
+  minted: Disclosed;
+  onClose: () => void;
+}) {
+  const confirmation = useRef<HTMLInputElement>(null);
+  const dialog = useModalDialog(confirmation);
+  const [stored, setStored] = useState(false);
+  const [heldBack, setHeldBack] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
+
+  const dismiss = () => {
+    if (!stored) {
+      setHeldBack(true);
+      return;
+    }
+    onClose();
+  };
+
+  // Back, reload and tab close must not silently lose a value nothing returns.
+  useNavigationGuard(!stored, dismiss);
+
+  return (
+    <dialog
+      className="ceremony"
+      aria-labelledby="connection-mint-title"
+      ref={dialog}
+      onCancel={(event) => {
+        event.preventDefault();
+        dismiss();
+      }}
+    >
+      <h2 className="ceremony__title" id="connection-mint-title">
+        Connection credential minted — shown exactly once
+      </h2>
+      <p className="ceremony__scope">
+        For <strong>{minted.label}</strong>. Hand this value to that peer; it goes into its{' '}
+        <strong>Add a remote</strong> form as the connection credential.
+      </p>
+      <p className="mono machine__token">{minted.value}</p>
+      {minted.clamped ? (
+        <p className="notice" role="status">
+          <span className="alert__glyph" aria-hidden="true">
+            !
+          </span>
+          <span>
+            The instance lifetime ceiling shortened this credential. It expires earlier than asked
+            for — said now rather than discovered when it dies.
+          </span>
+        </p>
+      ) : null}
+      <p className="ceremony__cap" role="status">
+        <span className="alert__glyph" aria-hidden="true">
+          !
+        </span>
+        <span>
+          This value is never retrievable again. The list shows metadata only. Store it in the
+          consuming instance now; if it is lost, revoke this credential and mint a fresh one.
+        </span>
+      </p>
+      <button
+        className="btn"
+        type="button"
+        onClick={async () => {
+          const result = await writeClipboard(minted.value);
+          setCopyStatus(
+            result === 'ok'
+              ? 'Copied. The clipboard is now the only copy outside its target instance.'
+              : 'This browser refused clipboard access, so nothing was copied.',
+          );
+        }}
+      >
+        Copy to clipboard
+      </button>
+      {copyStatus === null ? null : (
+        <p className="notice" role="status">
+          <span className="alert__glyph" aria-hidden="true">
+            ⧉
+          </span>
+          <span>{copyStatus}</span>
+        </p>
+      )}
+      <div className="field chk">
+        <input
+          id="connection-stored"
+          type="checkbox"
+          ref={confirmation}
+          checked={stored}
+          onChange={(event) => {
+            setStored(event.target.checked);
+            if (event.target.checked) {
+              setHeldBack(false);
+            }
+          }}
+        />
+        <label htmlFor="connection-stored">I have stored this credential in its target instance.</label>
+      </div>
+      {heldBack ? (
+        <p className="alert" role="alert">
+          <span className="alert__glyph" aria-hidden="true">
+            !
+          </span>
+          <span>Confirm you have stored it — there is no second look at this value.</span>
+        </p>
+      ) : null}
+      <div className="ceremony__actions">
+        <button className="btn btn--primary" type="button" onClick={dismiss}>
+          Done
+        </button>
+      </div>
+    </dialog>
+  );
+}
+
+/**
+ * RevokeConnectionDialog states the consequence before it commits (AC#4).
+ *
+ * Revocation retires the credential and its principal. It does NOT touch
+ * workspace sessions — those are governed by the origin allowlist, not this
+ * credential — so the copy says exactly what it does and does not do, and a
+ * double revoke surfaces the 409 rather than pretending a second act happened.
+ */
+function RevokeConnectionDialog({
+  connection,
+  onClose,
+}: {
+  connection: InstanceConnection;
+  onClose: () => void;
+}) {
+  const cancel = useRef<HTMLButtonElement>(null);
+  const dialog = useModalDialog(cancel);
+  const revoke = useRevokeConnection();
+
+  const run = () => {
+    revoke.mutate(connection.id, { onSuccess: onClose });
+  };
+
+  return (
+    <dialog
+      className="ceremony"
+      aria-labelledby="connection-revoke-title"
+      ref={dialog}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!revoke.isPending) {
+          onClose();
+        }
+      }}
+    >
+      <h2 className="ceremony__title" id="connection-revoke-title">
+        Revoke {connection.label}?
+      </h2>
+      <p className="ceremony__scope">
+        The credential and its principal are retired together. The peer holding it loses this
+        instance&apos;s directory fetch at its <strong>next</strong> presentation — its card over
+        there flips to <span className="mono">credential rejected</span>. Active workspace sessions
+        are <strong>unaffected</strong>: those follow the origin allowlist, not this credential.
+      </p>
+      {revoke.isError ? (
+        <p className="alert" role="alert">
+          <span className="alert__glyph" aria-hidden="true">
+            !
+          </span>
+          <span>{revokeFailureText(revoke.error)}</span>
+        </p>
+      ) : null}
+      <div className="ceremony__actions">
+        <button
+          className="btn btn--primary"
+          type="button"
+          onClick={run}
+          disabled={revoke.isPending}
+        >
+          {revoke.isPending ? 'Revoking…' : 'Revoke credential'}
+        </button>
+        <button
+          className="btn"
+          type="button"
+          ref={cancel}
+          onClick={onClose}
+          disabled={revoke.isPending}
+        >
+          Cancel
+        </button>
+      </div>
+    </dialog>
+  );
+}
+
+/**
+ * customLifetimeSeconds converts the days field to seconds, or null when the
+ * result is not a lifetime the contract accepts. The contract's floor is one
+ * second; the field's floor is one day, so this also mirrors `min={1}`. It
+ * refuses fractional-day inputs that round below a second and any value large
+ * enough to overflow a safe integer.
+ */
+function customLifetimeSeconds(days: string): number | null {
+  const parsed = Number(days);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return null;
+  }
+  const seconds = Math.round(parsed * 86_400);
+  return Number.isSafeInteger(seconds) && seconds >= 1 ? seconds : null;
+}
+
+function mintFailureText(error: unknown): string {
+  if (error instanceof ApiError) {
+    switch (error.status) {
+      case 400:
+        return 'That mint was refused: the label must be present, and a finite lifetime and “never expires” cannot both be named. “Never expires” also requires this instance to allow indefinite credentials.';
+      case 429:
+        return 'Too many attempts right now. Wait a moment and try again.';
+      default:
+        return `The credential could not be minted (server error ${error.status}).`;
+    }
+  }
+  return 'The credential could not be minted: the server could not be reached, or it answered something this client does not understand.';
+}
+
+function revokeFailureText(error: unknown): string {
+  if (error instanceof ApiError) {
+    switch (error.status) {
+      case 409:
+        return 'This credential was already revoked — nothing more to do, and no second event recorded.';
+      case 429:
+        return 'Too many attempts right now. Wait a moment and try again.';
+      default:
+        return `The credential could not be revoked (server error ${error.status}).`;
+    }
+  }
+  return 'The credential could not be revoked: the server could not be reached, or it answered something this client does not understand.';
 }
 
 /**

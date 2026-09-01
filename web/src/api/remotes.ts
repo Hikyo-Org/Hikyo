@@ -1,15 +1,21 @@
 import {
   addRemoteOp,
   addWorkspaceOriginOp,
+  listInstanceConnectionsOp,
   listMySessionsOp,
   listRemotesOp,
   listWorkspaceOriginsOp,
+  mintInstanceConnectionOp,
   removeRemoteOp,
   removeWorkspaceOriginOp,
   renameRemoteOp,
+  revokeInstanceConnectionOp,
   revokeMySessionOp,
 } from '@hikyo/operations';
 import {
+  zInstanceConnection,
+  zInstanceConnectionList,
+  zMintedInstanceConnection,
   zRemote,
   zRemoteList,
   zSessionList,
@@ -17,9 +23,10 @@ import {
   zWorkspaceOriginList,
 } from '@hikyo/zod';
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { useState } from 'react';
 import type { z } from 'zod';
 
-import { ok, parsed } from './client.ts';
+import { ok, parsed, parsedPick } from './client.ts';
 
 /**
  * The multi-instance surfaces' same-origin data (#71).
@@ -44,10 +51,25 @@ export type RemoteList = z.infer<typeof zRemoteList>;
 export type WorkspaceOrigin = z.infer<typeof zWorkspaceOrigin>;
 export type SessionList = z.infer<typeof zSessionList>;
 export type ActiveSession = SessionList['items'][number];
+export type InstanceConnection = z.infer<typeof zInstanceConnection>;
+export type InstanceConnectionList = z.infer<typeof zInstanceConnectionList>;
+/**
+ * The only fields the display-once ceremony reads back. It is a NARROW pick on
+ * purpose: parsing the whole `MintedInstanceConnection` would let a drift in an
+ * unrelated `connection` member throw away the one value nothing in the system
+ * can ever return again — the same discipline the machine-credential mint keeps
+ * (`identities.ts`). The label the operator typed is carried separately, so the
+ * dialog never needs the echoed `connection` object at all.
+ */
+export type MintedConnectionValue = Pick<
+  z.infer<typeof zMintedInstanceConnection>,
+  'value' | 'clamped'
+>;
 
 export const remotesKey = ['remotes'] as const;
 export const originsKey = ['workspace-origins'] as const;
 export const sessionsKey = ['sessions'] as const;
+export const connectionsKey = ['instance-connections'] as const;
 
 /**
  * The directory refresh cadence.
@@ -145,6 +167,100 @@ export function useRemoveWorkspaceOrigin() {
   });
 }
 
+/**
+ * The receiving side's connection credentials (#498).
+ *
+ * These are minted on THIS instance for a peer to hold and present at its
+ * server-side directory fetch — the write-only counterpart to the `credential`
+ * a `useAddRemote` entry consumes over on the viewing instance. The value is
+ * disclosed exactly once at mint and never read back: every hook here trades in
+ * metadata alone, and the plaintext lives only in the mint mutation's own
+ * result until the caller clears it.
+ */
+export function useConnections(): UseQueryResult<InstanceConnectionList> {
+  return useQuery({
+    queryKey: connectionsKey,
+    queryFn: () => parsed(listInstanceConnectionsOp, {}),
+    retry: false,
+  });
+}
+
+export type MintConnectionInput = {
+  readonly label: string;
+  readonly lifetimeSeconds?: number;
+  readonly indefinite?: boolean;
+};
+
+/**
+ * useMintConnection returns the display-once value, and does so WITHOUT a
+ * TanStack mutation on purpose: a mutation caches its `data`, and this data is
+ * an irretrievable plaintext credential that must never outlive the dialog it
+ * is handed to. So the value flows straight back to the caller and touches no
+ * query or mutation cache — the same discipline the machine-credential mint
+ * follows. `lifetime_seconds` and `indefinite` are mutually exclusive at the
+ * contract; the form makes the choice a radio so the both-named 400 is
+ * unreachable from the UI.
+ */
+export function useMintConnection() {
+  const queries = useQueryClient();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const mint = async (input: MintConnectionInput): Promise<MintedConnectionValue> => {
+    setPending(true);
+    setError(null);
+    try {
+      const minted = await parsedPick(
+        mintInstanceConnectionOp,
+        {
+          body: {
+            label: input.label,
+            ...(input.lifetimeSeconds === undefined
+              ? {}
+              : { lifetime_seconds: input.lifetimeSeconds }),
+            ...(input.indefinite === undefined ? {} : { indefinite: input.indefinite }),
+          },
+        },
+        { value: true, clamped: true },
+      );
+      // Disclose FIRST, refresh the inventory second and un-awaited: the value
+      // is irretrievable, so it must reach the guarded dialog the instant the
+      // POST returns, never after a list refetch the operator could interrupt
+      // by reloading with the credential already committed server-side.
+      void queries.invalidateQueries({ queryKey: connectionsKey });
+      return minted;
+    } catch (caught) {
+      // A mint whose response never arrived may still have COMMITTED, so the
+      // inventory is refreshed on the failure path too: a lost-but-live
+      // credential must at least become visible enough to revoke.
+      void queries.invalidateQueries({ queryKey: connectionsKey });
+      setError(caught);
+      throw caught;
+    } finally {
+      setPending(false);
+    }
+  };
+  return { mint, pending, error };
+}
+
+/**
+ * useRevokeConnection retires the credential and its principal. It bites at the
+ * peer's next directory fetch; a double revoke is a 409, surfaced rather than
+ * swallowed so the operator sees an act that did not put a second event on the
+ * trail.
+ */
+export function useRevokeConnection() {
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: (connection: string) =>
+      ok(revokeInstanceConnectionOp, { path: { connection } }),
+    // Refresh on SETTLE, not just success: a 409 means another tab already
+    // revoked it, so the inventory is stale in exactly that case — refetching
+    // flips the row to revoked and drops its Revoke action rather than leaving
+    // a credential that reads live and cannot be revoked again.
+    onSettled: () => queries.invalidateQueries({ queryKey: connectionsKey }),
+  });
+}
+
 /** useSessions is the caller's OWN active sessions, workspace ones included. */
 export function useSessions(): UseQueryResult<SessionList> {
   return useQuery({
@@ -192,7 +308,7 @@ export function remoteStateText(remote: Remote): string {
     case 'unreachable':
       return 'Unreachable';
     case 'credential-rejected':
-      return 'Credential rejected — this instance is reachable and is refusing our credential. Mint a new one there and re-add the entry.';
+      return 'Credential rejected — this instance is reachable and is refusing our credential. Mint a fresh one on the peer and re-add the entry.';
     case 'pin-mismatch':
       return 'Certificate pin mismatch — the key at that URL is not the one this entry pinned. Do not re-add until you know why.';
     case 'redirect-refused':
