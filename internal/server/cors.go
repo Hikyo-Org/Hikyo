@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"net/http"
+
+	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
 // Cross-origin access for the workspace tier (#71, multi-instance ADR §
@@ -105,12 +107,24 @@ func workspaceCORS(allowed func(context.Context, string) bool) func(http.Handler
 // workspaceOriginCheck adapts the workspace service to the middleware. Nil when
 // no workspace surface is wired, which leaves the server exactly as
 // same-origin-only as it was.
-func workspaceOriginCheck(a *API) func(context.Context, string) bool {
+func workspaceOriginCheck(a *API, externalOrigin string) func(context.Context, string) bool {
 	if a == nil || a.Workspace == nil {
 		return nil
 	}
-	return func(ctx context.Context, origin string) bool {
+	return crossOriginAllowed(externalOrigin, func(ctx context.Context, origin string) bool {
 		ok, err := a.Workspace.OriginAllowed(ctx, origin)
 		return err == nil && ok
+	})
+}
+
+func crossOriginAllowed(externalOrigin string, allowed func(context.Context, string) bool) func(context.Context, string) bool {
+	return func(ctx context.Context, origin string) bool {
+		canonicalOrigin, err := service.CanonicalOrigin(origin)
+		if err == nil && canonicalOrigin == externalOrigin {
+			// Same-origin traffic needs no CORS grant. Answering false preserves
+			// the header behavior while avoiding the allowlist read transaction.
+			return false
+		}
+		return allowed(ctx, origin)
 	}
 }

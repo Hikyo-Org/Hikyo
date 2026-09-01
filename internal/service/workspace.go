@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
@@ -52,6 +53,14 @@ var (
 // Workspace is the serving side's service.
 type Workspace struct {
 	DB *store.DB
+	// originAllowlist is a negative-only snapshot, primed before the public
+	// listener serves and updated under the same lock as allowlist writes. An
+	// empty map proves no origin can be allowed, avoiding all request-path reads.
+	// A non-empty map still uses the live datastore check so read errors keep
+	// failing closed. Nil preserves the direct datastore path for callers that
+	// construct Workspace outside app boot.
+	originAllowlistMu sync.RWMutex
+	originAllowlist   map[string]struct{}
 	// Version is this build's version string, served in the directory listing.
 	// It is injected rather than read from internal/app because app imports
 	// service; a display string is not worth an import cycle. Empty is
@@ -483,6 +492,32 @@ func (s *Workspace) ListOrigins(ctx context.Context, actor Actor) ([]OriginView,
 	return out, err
 }
 
+// PrimeOriginAllowlist loads the request-path snapshot before the public
+// listener serves. A load error is a boot refusal: silently starting with an
+// empty snapshot would turn configured cross-origin consent into a denial.
+func (s *Workspace) PrimeOriginAllowlist(ctx context.Context) error {
+	s.originAllowlistMu.Lock()
+	defer s.originAllowlistMu.Unlock()
+	if s.originAllowlist != nil {
+		return nil
+	}
+
+	var rows []authz.WorkspaceOrigin
+	if err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
+		var err error
+		rows, err = az.WorkspaceOrigins(ctx)
+		return err
+	}); err != nil {
+		return err
+	}
+	allowlist := make(map[string]struct{}, len(rows))
+	for _, row := range rows {
+		allowlist[row.Origin] = struct{}{}
+	}
+	s.originAllowlist = allowlist
+	return nil
+}
+
 // AddOrigin consents to one EXACT origin, and RETURNS the entry it wrote.
 //
 // Returning it is not a convenience: the transport's 201 body needs the
@@ -496,6 +531,8 @@ func (s *Workspace) AddOrigin(ctx context.Context, actor Actor, origin string) (
 	}
 	now := s.now()
 	var out OriginView
+	s.originAllowlistMu.Lock()
+	defer s.originAllowlistMu.Unlock()
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, err := actor.resolve(ctx, az, now)
 		if err != nil {
@@ -523,6 +560,9 @@ func (s *Workspace) AddOrigin(ctx context.Context, actor Actor, origin string) (
 	if err != nil {
 		return OriginView{}, err
 	}
+	if s.originAllowlist != nil {
+		s.originAllowlist[canonical] = struct{}{}
+	}
 	return out, nil
 }
 
@@ -538,6 +578,8 @@ func (s *Workspace) RemoveOrigin(ctx context.Context, actor Actor, origin string
 	}
 	now := s.now()
 	var killed int64
+	s.originAllowlistMu.Lock()
+	defer s.originAllowlistMu.Unlock()
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, err := actor.resolve(ctx, az, now)
 		if err != nil {
@@ -580,6 +622,9 @@ func (s *Workspace) RemoveOrigin(ctx context.Context, actor Actor, origin string
 		}
 		return r.Audit().InsertInstance(ctx, p, rev)
 	})
+	if err == nil && s.originAllowlist != nil {
+		delete(s.originAllowlist, canonical)
+	}
 	return killed, err
 }
 
@@ -592,6 +637,12 @@ func (s *Workspace) OriginAllowed(ctx context.Context, origin string) (bool, err
 	if err != nil {
 		return false, nil
 	}
+	s.originAllowlistMu.RLock()
+	if s.originAllowlist != nil && len(s.originAllowlist) == 0 {
+		s.originAllowlistMu.RUnlock()
+		return false, nil
+	}
+	s.originAllowlistMu.RUnlock()
 	var ok bool
 	err = tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
 		var e error

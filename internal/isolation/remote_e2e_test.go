@@ -111,6 +111,9 @@ func runRemoteLifecycle(t *testing.T, db *store.DB) {
 	ctx := t.Context()
 	remotes, workspace := remoteSvcs(t, db)
 	admin := service.LocalPrincipal(root)
+	if err := workspace.PrimeOriginAllowlist(ctx); err != nil {
+		t.Fatalf("prime workspace origin allowlist: %v", err)
+	}
 
 	// `root` holds instance-config from the shared fixtures; instance-directory
 	// is this ticket's own atom and has to be granted like any other.

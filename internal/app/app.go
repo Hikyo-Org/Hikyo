@@ -370,6 +370,10 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	if err := authSvc.ConfigureWebAuthnRP(); err != nil {
 		return nil, fmt.Errorf("boot: refusing to serve: webauthn relying party: %w", err)
 	}
+	workspaceSvc := &service.Workspace{DB: db, Version: Version, Reauth: authSvc}
+	if err := workspaceSvc.PrimeOriginAllowlist(ctx); err != nil {
+		return nil, fmt.Errorf("boot: refusing to serve: workspace origin allowlist: %w", err)
+	}
 
 	proxies, err := parseCIDRs(cfg.TrustedProxyCIDRs)
 	if err != nil {
@@ -520,7 +524,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		// foreign instance: with zero configured remotes it originates zero
 		// connections, which is what leaves the air-gap posture unchanged.
 		Remotes:        &service.Remotes{DB: db, Keyring: kr, Fetch: fetcher},
-		Workspace:      &service.Workspace{DB: db, Version: Version, Reauth: authSvc},
+		Workspace:      workspaceSvc,
 		Admission:      limiter,
 		Version:        Version,
 		Log:            log,
@@ -533,13 +537,16 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	// Construct the complete owner before disarming: future fallible work added
 	// to construction stays inside the guard's protection.
 	srv := &Server{
-		Addr:               ln.Addr().String(),
-		OperationalAddr:    operationalLn.Addr().String(),
-		db:                 db,
-		keyring:            kr,
-		publicLn:           publicLn,
-		operationalLn:      operationalLn,
-		publicHandler:      server.NewPublic(&service.System{DB: db, Store: sc}, api, webui.Assets(), server.PublicOptions{HSTS: cfg.TLSCertFile != "" && !config.IsLoopbackListen(cfg.Listen)}),
+		Addr:            ln.Addr().String(),
+		OperationalAddr: operationalLn.Addr().String(),
+		db:              db,
+		keyring:         kr,
+		publicLn:        publicLn,
+		operationalLn:   operationalLn,
+		publicHandler: server.NewPublic(&service.System{DB: db, Store: sc}, api, webui.Assets(), server.PublicOptions{
+			HSTS:           cfg.TLSCertFile != "" && !config.IsLoopbackListen(cfg.Listen),
+			ExternalOrigin: cfg.ExternalOrigin,
+		}),
 		operationalHandler: server.NewOperational(&service.System{DB: db, Store: sc}, operationalHealth{retention: retentionSvc, tls: tlsReloader}),
 		tlsReloader:        tlsReloader,
 		log:                log,
