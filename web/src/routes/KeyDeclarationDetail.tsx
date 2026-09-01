@@ -1330,6 +1330,10 @@ function DeclarationEditor({
   const [refusal, setRefusal] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [scanBlock, setScanBlock] = useState<ScanBlockState | null>(null);
+  // Whether the user has actually touched the rule draft. A declaration with no
+  // rule seeds a synthetic string draft for the form; without this flag a
+  // presence-only save would fabricate that rule the user never chose.
+  const [ruleDirty, setRuleDirty] = useState(false);
 
   // Re-seed only when the SERVER's declaration/presence actually change (a
   // concurrent edit), keyed on a bigint-safe content signature — an unrelated
@@ -1345,6 +1349,7 @@ function DeclarationEditor({
     );
     setPresence(presenceDraftFrom(record.presence));
     setInvalid(null);
+    setRuleDirty(false);
     // `done` is deliberately NOT reset here: the successful-save refetch changes
     // these signatures, and clearing it would wipe the "Saved." it just set.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- content signatures stand in for the objects
@@ -1362,7 +1367,11 @@ function DeclarationEditor({
     setDone(false);
     let declaration: KeyDeclaration;
     try {
-      if (isAnyOf) {
+      if (isAnyOf || !ruleDirty) {
+        // The rule was not touched (any_of, a rule-less declaration, or a
+        // presence-only edit): preserve the EXISTING declaration exactly rather
+        // than rebuild it from the seeded draft. This also keeps an int64 bound
+        // exact instead of re-parsing it, and never fabricates a rule.
         declaration = declarationToWrite(record.declaration);
       } else {
         const result = buildRule(ruleDraft);
@@ -1408,6 +1417,7 @@ function DeclarationEditor({
   // successful-save refetch reseeds without clearing it (the effect leaves it).
   const editRule = (next: RuleDraft): void => {
     setRuleDraft(next);
+    setRuleDirty(true);
     setDone(false);
   };
   const editPresence = (updater: (current: PresenceDraft) => PresenceDraft): void => {

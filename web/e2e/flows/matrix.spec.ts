@@ -599,6 +599,10 @@ const zKeyRead = z.object({
       .object({ min_length: z.number().optional(), pattern: z.string().optional() })
       .optional(),
   }),
+  presence: z.object({
+    required_in: z.object({ mode: z.string() }),
+    forbidden_in: z.object({ mode: z.string() }),
+  }),
 });
 function keyDetailKeyName(projectName: string): string {
   return `CATALOGUE_${projectName.toUpperCase()}`;
@@ -695,6 +699,17 @@ test.describe('catalogue declaration detail', () => {
     await panel.getByLabel('Required in').selectOption('all');
     await expect(panel.locator('.key-detail__presence-impact')).toContainText('Newly required in');
     await panel.getByLabel('Required in').selectOption('none');
+
+    // Commit a value-safe presence change (the key holds no values, so
+    // forbidding it everywhere is satisfiable) and verify it persisted through
+    // the API — the client preview alone would not prove the write carried it.
+    await panel.getByLabel('Forbidden in').selectOption('all');
+    await panel.getByRole('button', { name: 'Save value rules & presence' }).click();
+    await expect(panel.getByRole('status').filter({ hasText: 'Saved.' })).toBeVisible();
+    expect((await fixtureApiCall(token, 'GET', keyPath, zKeyRead)).presence.forbidden_in.mode).toBe('all');
+    await panel.getByLabel('Forbidden in').selectOption('none');
+    await panel.getByRole('button', { name: 'Save value rules & presence' }).click();
+    await expect(panel.getByRole('status').filter({ hasText: 'Saved.' })).toBeVisible();
 
     // #183/#493: a credential-shaped pattern is blocked; overriding commits it.
     const consoleLines: string[] = [];
