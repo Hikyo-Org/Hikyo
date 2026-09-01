@@ -45,7 +45,7 @@ expect_plan 'core' \
 	'["fuzz","generated","headline-guarantee","race","release-snapshot","test","web-go"]' \
 	'internal/service/values.go'
 expect_plan 'API' \
-	'["client","compose-demo","generated","headline-guarantee","release-snapshot","test","web-go"]' \
+	'["client","compose-demo","freeze-guard","generated","headline-guarantee","release-snapshot","test","web-go"]' \
 	'api/openapi.yaml'
 expect_plan 'client' '["client","release-snapshot","web-go"]' \
 	'clients/ts/src/generated/types.gen.ts'
