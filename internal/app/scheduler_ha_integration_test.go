@@ -58,8 +58,11 @@ func TestSchedulerHAThreeNodesOnePostgres(t *testing.T) {
 	})
 
 	leader := waitForSingleLeader(t, schedulers)
-	if jobRuns.Load() == 0 {
-		t.Fatal("the leader never ran its startup job")
+	// Exactly one node ran the startup catch-up: the singleton executed at most
+	// once across the cluster (Interval is an hour, so nothing else can fire).
+	time.Sleep(300 * time.Millisecond)
+	if got := jobRuns.Load(); got != 1 {
+		t.Fatalf("startup job ran %d times across the cluster, want exactly 1", got)
 	}
 	// Exactly one lease row in the datastore, owned by the elected leader.
 	owner, _, live, err := coord.LeaseHolder(context.Background(), "scheduler", time.Now().UTC())
@@ -76,6 +79,12 @@ func TestSchedulerHAThreeNodesOnePostgres(t *testing.T) {
 	newLeader := waitForSingleLeader(t, schedulers)
 	if newLeader == leader {
 		t.Fatalf("leadership did not move off the terminated node %q", leader)
+	}
+	// The new leader ran its own startup catch-up exactly once more: takeover
+	// executes the singleton one additional time, never once per surviving node.
+	time.Sleep(300 * time.Millisecond)
+	if got := jobRuns.Load(); got != 2 {
+		t.Fatalf("startup job ran %d times after failover, want exactly 2", got)
 	}
 }
 

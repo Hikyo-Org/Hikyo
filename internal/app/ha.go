@@ -98,7 +98,7 @@ func haReadinessProbe(coord *store.Coordination) func(context.Context) error {
 // failure), records this node in the live registry, and returns the
 // coordination surface plus the per-tick maintenance closure the scheduler
 // runs on every node. Any error is a boot refusal.
-func configureHA(ctx context.Context, cfg *config.Config, log *slog.Logger, db *store.DB, sc store.Config) (*store.Coordination, func(context.Context), *haStatus, error) {
+func configureHA(ctx context.Context, cfg *config.Config, log *slog.Logger, db *store.DB, sc store.Config, kr *crypto.Keyring) (*store.Coordination, func(context.Context), *haStatus, error) {
 	// Defence in depth beyond config.Load: HA is Postgres-only. sqlite is
 	// single-writer and cannot back multi-node coordination, so refuse rather
 	// than degrade even when a caller constructs the config directly.
@@ -147,8 +147,11 @@ func configureHA(ctx context.Context, cfg *config.Config, log *slog.Logger, db *
 
 	onTick := func(tickCtx context.Context) {
 		now := time.Now().UTC()
-		node.HeartbeatAt = now
-		if err := coord.UpsertNode(tickCtx, node); err != nil {
+		// Build a local copy: the boot goroutine already read `node` for the
+		// initial UpsertNode, and this closure runs on the scheduler goroutine.
+		hb := node
+		hb.HeartbeatAt = now
+		if err := coord.UpsertNode(tickCtx, hb); err != nil {
 			log.Warn("ha: node heartbeat failed", "node", cfg.NodeID, "err", err)
 		}
 		if err := coord.PruneAdmissionWindows(tickCtx, now.Add(-admissionWindowRetention)); err != nil {
@@ -156,6 +159,14 @@ func configureHA(ctx context.Context, cfg *config.Config, log *slog.Logger, db *
 		}
 		if err := coord.PruneNodes(tickCtx, now.Add(-nodeRegistryRetention)); err != nil {
 			log.Warn("ha: node registry sweep failed", "err", err)
+		}
+		// The instance DEK is a single held set, not an LRU, so it cannot be
+		// revalidated per fetch like a project DEK (ForInstance takes no
+		// context). Refresh it each tick instead, so a rotate-dek --instance on
+		// another node is picked up within one heartbeat rather than fencing
+		// this node's instance-credential writes until restart.
+		if err := kr.ReloadInstanceDEK(tickCtx); err != nil {
+			log.Warn("ha: instance DEK refresh failed", "err", err)
 		}
 		// Refresh the cached gauge values so a /metrics scrape never queries.
 		if n, err := coord.CountLiveNodes(tickCtx, now.Add(-nodeLivenessWindow)); err == nil {

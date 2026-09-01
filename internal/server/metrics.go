@@ -354,7 +354,7 @@ func newHACollector() *haCollector {
 	return &haCollector{descs: [3]*prometheus.Desc{
 		prometheus.NewDesc(MetricHAIsLeader, "1 when this node holds the scheduler lease (always 1 on a single node).", nil, nil),
 		prometheus.NewDesc(MetricHANodesSeen, "Number of live nodes in this installation (1 on a single node).", nil, nil),
-		prometheus.NewDesc(MetricHALeaseAgeSecond, "Age in seconds of the current scheduler lease (0 on a single node).", nil, nil),
+		prometheus.NewDesc(MetricHALeaseAgeSecond, "Age in seconds of the current scheduler lease as sampled on this node's last tick, up to one heartbeat stale (0 on a single node).", nil, nil),
 	}}
 }
 

@@ -613,7 +613,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		updateReconciler: updatesService,
 	}
 	if cfg.HA {
-		coord, onTick, status, err := configureHA(ctx, cfg, log, db, sc)
+		coord, onTick, status, err := configureHA(ctx, cfg, log, db, sc, kr)
 		if err != nil {
 			return nil, fmt.Errorf("boot: refusing to serve: %w", err)
 		}
