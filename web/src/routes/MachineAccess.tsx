@@ -98,7 +98,7 @@ import { useModalDialog } from './useModalDialog.ts';
 type Tab = 'accounts' | 'federation' | 'kubernetes';
 
 type Dialog =
-  | { kind: 'binding'; account: ServiceAccount }
+  | { kind: 'binding'; account: ServiceAccount; replaces?: MachineCredential }
   | { kind: 'grant'; account: ServiceAccount }
   | { kind: 'create' }
   | { kind: 'delete'; account: ServiceAccount };
@@ -474,6 +474,9 @@ export function MachineAccess() {
                         onBind={() => setDialog({ kind: 'binding', account: sa })}
                         onGrant={() => setDialog({ kind: 'grant', account: sa })}
                         onRevoke={(credential) => doRevoke(sa, credential)}
+                        onReplaceBinding={(credential) =>
+                          setDialog({ kind: 'binding', account: sa, replaces: credential })
+                        }
                         onDelete={() => setDialog({ kind: 'delete', account: sa })}
                       />
                     </ExpandableRow>
@@ -535,7 +538,16 @@ export function MachineAccess() {
               <ul className="machine__bindings">
                 {allBindings.map(({ account, credential }) => (
                   <li key={credential.id}>
-                    <BindingCard account={account} credential={credential} now={now} />
+                    <BindingCard
+                      account={account}
+                      credential={credential}
+                      now={now}
+                      ready={inputsReady}
+                      onReplace={(predecessor) =>
+                        setDialog({ kind: 'binding', account, replaces: predecessor })
+                      }
+                      onRevoke={(target) => doRevoke(account, target)}
+                    />
                   </li>
                 ))}
               </ul>
@@ -573,14 +585,15 @@ export function MachineAccess() {
           project={project}
           accounts={accounts}
           initial={dialog.account}
+          replaces={dialog.replaces}
           reachFor={(accountId) => {
             const sa = accounts.find((candidate) => candidate.id === accountId);
             return sa === undefined ? [] : postStateReach(scopeFor(sa));
           }}
           onClose={() => setDialog(null)}
-          onCreated={(subject) => {
+          onCreated={(message) => {
             setDialog(null);
-            setNotice(`Bound. The binding matches ${subject} byte-for-byte and nothing else.`);
+            setNotice(message);
           }}
         />
       ) : null}
@@ -908,6 +921,7 @@ function ExpansionBody({
   onBind,
   onGrant,
   onRevoke,
+  onReplaceBinding,
   onDelete,
 }: {
   account: ServiceAccount;
@@ -929,6 +943,7 @@ function ExpansionBody({
   onBind: () => void;
   onGrant: () => void;
   onRevoke: (credential: MachineCredential) => void;
+  onReplaceBinding: (credential: MachineCredential) => void;
   onDelete: () => void;
 }) {
   const journey = setupJourney(account.kind, scope, machineReveal);
@@ -972,7 +987,14 @@ function ExpansionBody({
               <ul className="machine__bindings">
                 {bindings.map((credential) => (
                   <li key={credential.id}>
-                    <BindingCard account={account} credential={credential} now={now} />
+                    <BindingCard
+                      account={account}
+                      credential={credential}
+                      now={now}
+                      ready={ready}
+                      onReplace={onReplaceBinding}
+                      onRevoke={onRevoke}
+                    />
                   </li>
                 ))}
               </ul>
@@ -1054,10 +1076,22 @@ function BindingCard({
   account,
   credential,
   now,
+  ready,
+  onReplace,
+  onRevoke,
 }: {
   account: ServiceAccount;
   credential: MachineCredential;
   now: Date;
+  /**
+   * Every query the replacement's warning is computed from has succeeded.
+   * Replace mints a new binding, so it carries the same post-state reach the
+   * first mint did; revoke is a narrowing and needs no such read, so it is not
+   * gated on it.
+   */
+  ready: boolean;
+  onReplace: (credential: MachineCredential) => void;
+  onRevoke: (credential: MachineCredential) => void;
 }) {
   return (
     <div className="bindrow">
@@ -1097,6 +1131,19 @@ function BindingCard({
           </span>
         </p>
       )}
+      <div className="machine__actions">
+        <button
+          className="btn"
+          type="button"
+          disabled={!ready}
+          onClick={() => onReplace(credential)}
+        >
+          {`Replace binding on ${account.name}`}
+        </button>
+        <button className="btn" type="button" onClick={() => onRevoke(credential)}>
+          {`Revoke binding on ${account.name}`}
+        </button>
+      </div>
     </div>
   );
 }
@@ -1112,6 +1159,48 @@ function claimText(pin: ClaimPin): string {
     return String(pin.bool_value);
   }
   return 'unpinned';
+}
+
+/**
+ * presetForBinding recovers the platform of a binding being replaced. The
+ * credential row carries no platform type — that lives on the issuer, not the
+ * binding — so the platform is inferred from the claims it pinned: the preset
+ * whose required claims the predecessor pins the most of. It is only ever used
+ * to choose which fields the replace form renders; the claim VALUES are seeded
+ * straight from the predecessor, so a misdetection would show a spare field,
+ * never bind the wrong identity.
+ */
+export function presetForBinding(credential: MachineCredential): FederationPreset {
+  const pinned = new Set((credential.required_claims ?? []).map((pin) => pin.claim));
+  let best = KUBERNETES_PRESET;
+  let bestScore = -1;
+  for (const candidate of FEDERATION_PRESETS) {
+    const score = candidate.claims.filter((field) => pinned.has(field.claim)).length;
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+/**
+ * seedClaims fills the replace form's claim inputs from the predecessor. The
+ * read-shape `number_value` is a bigint (an int64 repository id does not
+ * survive a float), and `claimText` stringifies it losslessly, so the seeded
+ * text round-trips back through the numeric parse on submit.
+ */
+export function seedClaims(
+  preset: FederationPreset,
+  credential: MachineCredential,
+): Record<string, string> {
+  const byClaim = new Map((credential.required_claims ?? []).map((pin) => [pin.claim, pin] as const));
+  const seeded: Record<string, string> = {};
+  for (const field of preset.claims) {
+    const pin = byClaim.get(field.claim);
+    seeded[field.claim] = pin === undefined ? '' : claimText(pin);
+  }
+  return seeded;
 }
 
 /**
@@ -1407,6 +1496,7 @@ function BindingDialog({
   project,
   accounts,
   initial,
+  replaces,
   reachFor,
   onClose,
   onCreated,
@@ -1414,6 +1504,16 @@ function BindingDialog({
   project: ProjectRef;
   accounts: readonly ServiceAccount[];
   initial: ServiceAccount;
+  /**
+   * The binding this mint supersedes, when the operator chose Replace. Bindings
+   * are IMMUTABLE, so a replacement is a fresh mint naming `replaces`: the
+   * server revokes the predecessor and inserts the successor in ONE
+   * transaction, so there is never a gap with no binding nor an overlap with
+   * two. The form pre-seeds from it and locks the target account — the
+   * predecessor belongs to exactly one — and hides the platform picker, since
+   * the platform cannot move under a replacement.
+   */
+  replaces?: MachineCredential;
   /**
    * The selected account's post-state reach. A binding is a mint (#62), so the
    * server demands the same disclosure formula the credential mint does: one
@@ -1424,17 +1524,24 @@ function BindingDialog({
    */
   reachFor: (accountId: string) => readonly MachineEnvScope[];
   onClose: () => void;
-  onCreated: (subject: string) => void;
+  onCreated: (message: string) => void;
 }) {
   const dialog = useModalDialog();
   const create = useCreateBinding(project);
   const refresh = useRefreshAccount(project);
+  const replacing = replaces !== undefined;
+  // A replacement's platform is the predecessor's, detected from the claims it
+  // pinned; a fresh binding starts on Kubernetes. The account is locked to the
+  // row the replace was launched from, because a binding belongs to one.
+  const seedPreset = replaces === undefined ? KUBERNETES_PRESET : presetForBinding(replaces);
   const [account, setAccount] = useState(initial.id);
-  const [preset, setPreset] = useState<FederationPreset>(KUBERNETES_PRESET);
-  const [issuer, setIssuer] = useState(KUBERNETES_PRESET.issuer);
-  const [subject, setSubject] = useState(KUBERNETES_PRESET.subject);
-  const [audience, setAudience] = useState('');
-  const [claims, setClaims] = useState<Record<string, string>>(() => blankClaims(KUBERNETES_PRESET));
+  const [preset, setPreset] = useState<FederationPreset>(seedPreset);
+  const [issuer, setIssuer] = useState(replaces?.issuer ?? seedPreset.issuer);
+  const [subject, setSubject] = useState(replaces?.subject ?? seedPreset.subject);
+  const [audience, setAudience] = useState(replaces?.audience ?? '');
+  const [claims, setClaims] = useState<Record<string, string>>(() =>
+    replaces === undefined ? blankClaims(KUBERNETES_PRESET) : seedClaims(seedPreset, replaces),
+  );
   const [lifetime, setLifetime] = useState('default');
   const [deliberate, setDeliberate] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -1539,15 +1646,23 @@ function BindingDialog({
       }
       const seconds = BINDING_LIFETIMES.find((entry) => entry.id === lifetime)?.seconds;
       issued = true;
-      await create.mutateAsync({
+      const result = await create.mutateAsync({
         serviceAccount: account,
         issuer,
         subject,
         audience,
         requiredClaims: pins,
         ...(seconds === undefined ? {} : { lifetimeSeconds: seconds }),
+        ...(replaces === undefined ? {} : { replaces: replaces.id }),
       });
-      onCreated(subject);
+      const clampNote = result.clamped
+        ? ' The instance ceiling shortened the requested lifetime.'
+        : '';
+      onCreated(
+        replacing
+          ? `Replaced. The predecessor was revoked and the successor inserted in one transaction — no gap, no overlap. The new binding matches ${subject} byte-for-byte.${clampNote}`
+          : `Bound. The binding matches ${subject} byte-for-byte and nothing else.${clampNote}`,
+      );
     } catch (error) {
       if (issued) {
         refresh(account);
@@ -1572,12 +1687,12 @@ function BindingDialog({
       }
     }}>
       <h2 className="ceremony__title" id="binding-title">
-        Add federated binding
+        {replacing ? 'Replace federated binding' : 'Add federated binding'}
       </h2>
       <p className="ceremony__lede">
-        A byte-exact (issuer, subject) pair naming exactly one service account. The audience is
-        mandatory and may not be the issuer&apos;s default: a token minted for another consumer must
-        not authenticate here.
+        {replacing
+          ? 'Bindings are immutable, so this replaces the predecessor: the server revokes it and inserts this successor in one transaction — no gap with no binding, no overlap with two. The fields are seeded from the predecessor; change what the replacement should carry.'
+          : 'A byte-exact (issuer, subject) pair naming exactly one service account. The audience is mandatory and may not be the issuer’s default: a token minted for another consumer must not authenticate here.'}
       </p>
 
       {/* One native latch for the whole target: an issued request is for the
@@ -1585,25 +1700,30 @@ function BindingDialog({
           otherwise the success or failure sentence describes one account while
           the operator is looking at another. */}
       <fieldset className="machine__lock" disabled={busy}>
-      <div className="machine__presets">
-        {FEDERATION_PRESETS.map((entry) => (
-          <button
-            key={entry.id}
-            className="btn"
-            type="button"
-            aria-pressed={preset.id === entry.id}
-            onClick={() => choose(entry)}
-          >
-            {entry.label}
-          </button>
-        ))}
-      </div>
+      {replacing ? null : (
+        <div className="machine__presets">
+          {FEDERATION_PRESETS.map((entry) => (
+            <button
+              key={entry.id}
+              className="btn"
+              type="button"
+              aria-pressed={preset.id === entry.id}
+              onClick={() => choose(entry)}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="field">
         <label htmlFor="binding-account">Service account</label>
         <select
           id="binding-account"
           value={account}
+          // A replacement belongs to exactly one account — the predecessor's —
+          // so the target is fixed and the selector is locked.
+          disabled={replacing}
           onChange={(event) => {
             // The acknowledgement is consent for ONE account's fetch authority.
             // A different target is a different decision, so it does not carry.
@@ -1755,7 +1875,13 @@ function BindingDialog({
 
       <div className="ceremony__actions">
         <button className="btn btn--primary" type="button" disabled={busy} onClick={() => void submit()}>
-          {busy ? 'Binding…' : 'Bind this identity'}
+          {busy
+            ? replacing
+              ? 'Replacing…'
+              : 'Binding…'
+            : replacing
+              ? 'Replace this binding'
+              : 'Bind this identity'}
         </button>
         <button className="btn" type="button" onClick={onClose} disabled={busy}>
           Cancel

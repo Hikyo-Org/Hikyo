@@ -330,6 +330,13 @@ export function useCreateBinding(p: ProjectRef) {
       audience: string;
       requiredClaims: readonly FederatedClaimPin[];
       lifetimeSeconds?: number;
+      // The predecessor this mint supersedes. Bindings are IMMUTABLE, so a
+      // change is a replacement mint naming `replaces`: the server revokes the
+      // predecessor and inserts the successor in ONE transaction, so there is
+      // never a gap with no binding nor an overlap with two. It is not a
+      // client-side revoke-then-create — that would be exactly the reviewed gap
+      // the atomic replacement exists to prevent.
+      replaces?: string;
     }) =>
       parsed(createFederatedBindingOp, {
           path: { org: p.org, project: p.project, serviceAccount: input.serviceAccount },
@@ -341,6 +348,7 @@ export function useCreateBinding(p: ProjectRef) {
             ...(input.lifetimeSeconds === undefined
               ? {}
               : { lifetime_seconds: input.lifetimeSeconds }),
+            ...(input.replaces === undefined ? {} : { replaces: input.replaces }),
           },
         }),
     onSuccess: (_result, input) => {

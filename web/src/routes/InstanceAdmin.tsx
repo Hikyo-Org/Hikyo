@@ -30,6 +30,7 @@ import {
 } from '../api/settings.ts';
 import { notifySuccess } from '../app/notifications.tsx';
 import { surfaceById } from '../app/navigation.ts';
+import { FederationIssuersPanel } from './FederationIssuersPanel.tsx';
 import { OidcProvidersPanel } from './OidcProvidersPanel.tsx';
 import { SamlProvidersPanel } from './SamlProvidersPanel.tsx';
 import { SamlSpKeysPanel } from './SamlSpKeysPanel.tsx';
@@ -127,6 +128,7 @@ export function InstanceAdmin() {
       { id: 'instance-orgs', label: 'Organizations' },
       { id: 'instance-settings', label: 'Settings' },
       ...(prototypeMode ? [] : [{ id: 'instance-oidc', label: 'Identity providers' }]),
+      ...(prototypeMode ? [] : [{ id: 'instance-federation', label: 'Federation' }]),
       { id: 'instance-keys', label: 'Keys & crypto' },
       ...(prototypeMode ? [] : [
         { id: 'instance-saml-providers', label: 'SAML providers' },
@@ -210,6 +212,8 @@ export function InstanceAdmin() {
     <CredentialPolicyPanel query={policy} onDone={ok} onFailure={report} />
 
     {prototypeMode ? null : <OidcProvidersPanel />}
+
+    {prototypeMode ? null : <FederationIssuersPanel />}
 
     {prototypeMode ? null : <Panel id="instance-retention" title="Retention health">
       {health.isPending ? <p role="status">Loading retention health…</p> : null}
