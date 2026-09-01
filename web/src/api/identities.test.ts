@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
+import { ApiError } from './client.ts';
 import {
+  createServiceAccountFailureText,
+  createServiceAccountRefusalText,
+  deleteServiceAccountFailureText,
+  deleteServiceAccountRefusalText,
   expiryLabel,
   grantWideningReach,
   lastUsedLabel,
@@ -8,6 +13,7 @@ import {
   postStateReach,
   pullRequestRefusal,
   scopeOf,
+  serviceAccountNameRefusal,
   setupJourney,
   type Grant,
   type MachineCredential,
@@ -252,5 +258,93 @@ describe('pullRequestRefusal', () => {
     // The rule is about the pinned event being one of exactly two values, not
     // about the string looking pull-request-ish.
     expect(pullRequestRefusal('pull_request_review')).toBeNull();
+  });
+});
+
+describe('serviceAccountNameRefusal', () => {
+  it('refuses an empty name, and only an empty one', () => {
+    // The server checks `name == "" || len(name) > 64` — byte-for-byte, no trim.
+    // A whitespace-only name is server-legal, so the client does not invent a
+    // stricter rule that would refuse what the server accepts.
+    expect(serviceAccountNameRefusal('')).not.toBeNull();
+    expect(serviceAccountNameRefusal('   ')).toBeNull();
+  });
+
+  it('refuses a name past the 64-BYTE ceiling, counting bytes not code units', () => {
+    expect(serviceAccountNameRefusal('a'.repeat(65))).not.toBeNull();
+    expect(serviceAccountNameRefusal('a'.repeat(64))).toBeNull();
+    // 22 three-byte characters is 66 bytes but only 22 UTF-16 units: a
+    // code-unit check would wave it through and the server would 400.
+    expect(serviceAccountNameRefusal('€'.repeat(22))).not.toBeNull();
+    expect(serviceAccountNameRefusal('€'.repeat(21))).toBeNull();
+  });
+
+  it('accepts an ordinary name', () => {
+    expect(serviceAccountNameRefusal('ci-deploy')).toBeNull();
+  });
+});
+
+describe('createServiceAccountRefusalText', () => {
+  it('names the duplicate-name / limit conflict on 409, not the credential ceiling', () => {
+    const text = createServiceAccountRefusalText(new ApiError(409, 'conflict'));
+    // The account-create 409 is a duplicate live name or a structural limit —
+    // never the "live-credential ceiling or identical binding" the mint's 409
+    // is. A wrong sentence here sends an operator to look at credentials.
+    expect(text).toContain('name');
+    expect(text).not.toContain('binding');
+  });
+
+  it('names the name constraint on 400', () => {
+    expect(createServiceAccountRefusalText(new ApiError(400, 'bad'))).toContain('64');
+  });
+
+  it('never demands disclosure or reauth on 403 — create needs neither', () => {
+    const text = createServiceAccountRefusalText(new ApiError(403, 'no'));
+    expect(text).toContain('manage-identities');
+    expect(text).not.toContain('reauth');
+    expect(text).not.toContain('disclosure');
+  });
+
+  it('names the PROJECT, not a service account, on 404', () => {
+    // A create 404 is the project (or the authorization mask), never a
+    // service account that "is no longer here".
+    const text = createServiceAccountRefusalText(new ApiError(404, 'gone'));
+    expect(text).toContain('project');
+  });
+});
+
+describe('deleteServiceAccountRefusalText', () => {
+  it('reads 404 as an already-gone account (the concurrent-deletion case)', () => {
+    expect(deleteServiceAccountRefusalText(new ApiError(404, 'gone'))).toContain('no longer here');
+  });
+
+  it('never demands disclosure or reauth — delete is plain-capability', () => {
+    const text = deleteServiceAccountRefusalText(new ApiError(403, 'no'));
+    expect(text).not.toContain('reauth');
+    expect(text).not.toContain('disclosure');
+  });
+});
+
+describe('createServiceAccountFailureText', () => {
+  it('stays plain on a pre-commit refusal', () => {
+    // 409 is decided before any commit: nothing was created, so no "may still
+    // have been created" caveat.
+    expect(createServiceAccountFailureText(new ApiError(409, 'dup'))).not.toContain('may still');
+  });
+
+  it('warns of a possible commit on an ambiguous failure', () => {
+    // A 500 or a lost/unparseable response may have committed a create.
+    expect(createServiceAccountFailureText(new ApiError(500, 'boom'))).toContain('may still');
+    expect(createServiceAccountFailureText(new Error('network'))).toContain('may still');
+  });
+});
+
+describe('deleteServiceAccountFailureText', () => {
+  it('stays plain when the account was already gone', () => {
+    expect(deleteServiceAccountFailureText(new ApiError(404, 'gone'))).not.toContain('may still');
+  });
+
+  it('warns of a possible commit on an ambiguous failure', () => {
+    expect(deleteServiceAccountFailureText(new ApiError(500, 'boom'))).toContain('may still');
   });
 });
