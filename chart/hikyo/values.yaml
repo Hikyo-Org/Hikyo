@@ -1,5 +1,29 @@
 replicaCount: 1
 
+# Multi-node application-tier high availability (#146). Requires an externally
+# highly available PostgreSQL datastore (HIKYO_DB) and the shared root key
+# (rootKey.existingSecret) every replica mounts. When enabled the server runs
+# ha.replicaCount stateless replicas behind the Service, coordinated through
+# PostgreSQL: singleton work runs under a datastore lease, admission counters
+# are shared, and because sessions are datastore-backed the Service needs no
+# session stickiness. Migrate once (a single `hikyo migrate`, or the first
+# replica) before rolling replicas; a replica whose schema lags the datastore
+# reports not-ready. HA is refused on sqlite at boot.
+ha:
+  enabled: false
+  # Number of server replicas when ha.enabled. Ignored otherwise (replicaCount
+  # governs the single-node deployment).
+  replicaCount: 3
+  # minAvailable for the PodDisruptionBudget, so a voluntary disruption (node
+  # drain, rolling upgrade) never takes the installation below this many
+  # serving replicas.
+  minAvailable: 2
+
+# Graceful shutdown budget. The server drains in-flight requests and cuts SSE
+# streams within its 5s shutdown; keep this at or above that so the kubelet does
+# not SIGKILL mid-drain.
+terminationGracePeriodSeconds: 30
+
 image:
   repository: ghcr.io/hikyo-org/hikyo
   # Release packaging replaces this value with the signed image index digest.
