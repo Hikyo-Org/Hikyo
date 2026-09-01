@@ -3,9 +3,9 @@ import { useId, useState } from 'react';
 import { ApiError } from '../api/client.ts';
 import {
   oidcProviderRefusalText,
+  putOidcProvider,
   useDeleteOidcProvider,
   useOidcProviders,
-  usePutOidcProvider,
   validateProviderDraft,
   type OidcProvider,
   type OidcProviderDraft,
@@ -215,7 +215,7 @@ function ProviderEditor({
   onFailClosed: () => void;
 }) {
   const original = target.kind === 'reconfigure' ? target.provider : null;
-  const put = usePutOidcProvider();
+  const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState<OidcProviderDraft>(
     original === null ? emptyDraft : draftFrom(original),
   );
@@ -246,35 +246,32 @@ function ProviderEditor({
     setInvalidField(null);
     const verb = original === null ? 'Configured' : 'Reconfigured';
     const describe = `${verb} ${result.input.displayName}. ${result.input.enabled ? 'It is advertised on the sign-in page.' : 'It is disabled and not advertised.'}`;
-    put.mutate(
-      { slug: result.slug, input: result.input },
-      {
-        onSuccess: () => {
-          // Drop the mutation's cached variables so the secret does not linger
-          // in mutation state after a successful save.
-          put.reset();
-          onSaved(describe);
-        },
-        onError: (error) => {
-          // The secret is write-only: never retain it after a failed save, in
-          // the field or in the mutation's cached variables.
-          setDraft((current) => ({ ...current, clientSecret: '' }));
-          put.reset();
-          onFailure(new Refusal(oidcProviderRefusalText(error, 'save-oidc-provider')));
-          // Stale (409), forbidden (403), or ended-session (401) refusals are
-          // fail-closed: close and refetch so no retry proceeds on stale state.
-          if (
-            error instanceof ApiError &&
-            (error.status === 401 || error.status === 403 || error.status === 409)
-          ) {
-            onFailClosed();
-          }
-        },
+    setBusy(true);
+    void putOidcProvider(result.slug, result.input).then(
+      () => {
+        // The parent unmounts this editor on save, dropping the draft (and its
+        // secret) from state; no local reset is needed on the success path.
+        onSaved(describe);
+      },
+      (error: unknown) => {
+        // The secret is write-only: never retain it after a failed save.
+        setDraft((current) => ({ ...current, clientSecret: '' }));
+        setBusy(false);
+        onFailure(new Refusal(oidcProviderRefusalText(error, 'save-oidc-provider')));
+        // Stale (409), forbidden (403), or ended-session (401) refusals are
+        // fail-closed: close and refetch so no retry proceeds on stale state.
+        // The server's row-version CAS is the ultimate guard — a stale write is
+        // refused there too — so this is defence in depth, not the only line.
+        if (
+          error instanceof ApiError &&
+          (error.status === 401 || error.status === 403 || error.status === 409)
+        ) {
+          onFailClosed();
+        }
       },
     );
   };
 
-  const busy = put.isPending;
   const disabling = original !== null && original.enabled && !draft.enabled;
   const invalid = (field: OidcProviderField) => (invalidField === field ? true : undefined);
 

@@ -62,24 +62,30 @@ export type OidcProviderInput = {
   readonly enabled: boolean;
 };
 
-export function usePutOidcProvider() {
-  const queries = useQueryClient();
-  return useMutation({
-    mutationFn: (variables: { slug: string; input: OidcProviderInput }) =>
-      parsed(putOidcProviderOp, {
-        path: { slug: variables.slug },
-        body: {
-          display_name: variables.input.displayName,
-          issuer: variables.input.issuer,
-          client_id: variables.input.clientId,
-          client_secret: variables.input.clientSecret,
-          scopes: variables.input.scopes,
-          jit_policy: variables.input.jitPolicy,
-          assurance_policy: variables.input.assurancePolicy,
-          enabled: variables.input.enabled,
-        },
-      }),
-    onSuccess: () => queries.invalidateQueries({ queryKey: oidcProvidersKey }),
+/**
+ * putOidcProvider is a ONE-SHOT request, deliberately NOT a cached React Query
+ * mutation: the write-only client secret rides its body, and a mutation would
+ * retain that secret in its cached `variables` after the call settled. An
+ * imperative call keeps the secret out of every cache — it lives only for the
+ * duration of the request and in the editor's own controlled field, which the
+ * editor blanks on failure. The caller refetches the provider list on success.
+ */
+export async function putOidcProvider(
+  slug: string,
+  input: OidcProviderInput,
+): Promise<OidcProvider> {
+  return parsed(putOidcProviderOp, {
+    path: { slug },
+    body: {
+      display_name: input.displayName,
+      issuer: input.issuer,
+      client_id: input.clientId,
+      client_secret: input.clientSecret,
+      scopes: input.scopes,
+      jit_policy: input.jitPolicy,
+      assurance_policy: input.assurancePolicy,
+      enabled: input.enabled,
+    },
   });
 }
 
