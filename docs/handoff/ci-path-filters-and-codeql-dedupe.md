@@ -1,6 +1,7 @@
 # CI path filters and CodeQL deduplication
 
-Status: implemented locally on `t3code/ci-path-filters-and-codeql-dedupe`.
+Status: opened as [PR #537](https://github.com/Hikyo-Org/Hikyo/pull/537) from
+`t3code/ci-path-filters-and-codeql-dedupe`.
 
 ## CI decision
 
