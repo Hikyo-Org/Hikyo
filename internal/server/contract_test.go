@@ -363,7 +363,7 @@ func TestMetricsExposeRetentionPrunerHealthWithoutLabels(t *testing.T) {
 		LastSuccess: last, Recorded: true, Stale: true,
 		PeakProjectBytes: 1_500_000_000, StorageWarn: true,
 	}}
-	srv := httptest.NewServer(server.NewOperational(stubReady{}, healthService))
+	srv := httptest.NewServer(server.NewOperational(stubReady{}, healthService, nil))
 	t.Cleanup(srv.Close)
 	resp, err := http.Get(srv.URL + "/metrics")
 	if err != nil {
@@ -401,7 +401,7 @@ func TestMetricsExposeRetentionPrunerHealthWithoutLabels(t *testing.T) {
 }
 
 func TestMetricsUseZeroWhenPruneNeverSucceeded(t *testing.T) {
-	srv := httptest.NewServer(server.NewOperational(stubReady{}, stubRetentionHealth{health: service.PruneHealth{Stale: true}}))
+	srv := httptest.NewServer(server.NewOperational(stubReady{}, stubRetentionHealth{health: service.PruneHealth{Stale: true}}, nil))
 	t.Cleanup(srv.Close)
 	resp, err := http.Get(srv.URL + "/metrics")
 	if err != nil {
@@ -971,7 +971,7 @@ func TestHealthProbesSitOutsideTheAPIStack(t *testing.T) {
 	// A liveness probe refused by the admission budget would turn a login
 	// flood into a restart loop, so the probes must not carry the API
 	// middleware at all.
-	srv := httptest.NewServer(server.NewOperational(stubReady{}, stubRetentionHealth{}))
+	srv := httptest.NewServer(server.NewOperational(stubReady{}, stubRetentionHealth{}, nil))
 	t.Cleanup(srv.Close)
 	for path, want := range map[string]int{"/healthz": http.StatusOK, "/readyz": http.StatusOK} {
 		resp, err := srv.Client().Get(srv.URL + path)

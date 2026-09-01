@@ -72,6 +72,13 @@ curl --fail http://127.0.0.1:8081/healthz
 curl --fail http://127.0.0.1:8081/readyz
 ```
 
+The same private listener serves `/metrics` in Prometheus text format —
+RED-style request counters and latency per surface class, in-flight and
+admission-pressure gauges, plus the retention and TLS gauges — with no external
+dependency. It is unauthenticated; scrape it only from the host or a trusted
+network and never expose the operational bind. See
+[metrics](/docs/configuration/#operational-metrics) for the full list.
+
 Then check the public HTTPS origin from outside the host. A local probe does
 not prove DNS, TLS, or reverse-proxy routing.
 

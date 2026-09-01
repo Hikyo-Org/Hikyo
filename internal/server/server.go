@@ -82,6 +82,12 @@ func NewPublic(ready ReadyChecker, a *API, ui fs.FS, publicOptions PublicOptions
 	// remote takes effect without a restart — belongs to the SPA writer below,
 	// which is the only response that can use it.
 	r.Use(securityHeaders(publicOptions.HSTS))
+	// Observe at router scope so unmatched API paths, unsupported methods, and
+	// CORS preflights contribute to RED totals as class=other. Route-group
+	// middleware never sees those requests because chi has not selected a route.
+	if a != nil {
+		r.Use(a.observe)
+	}
 	// Cross-origin readability for allowlisted workspace origins (#71), at the
 	// TOP of the chain rather than inside the API group, and that placement is
 	// load-bearing rather than tidy.
@@ -133,20 +139,33 @@ func NewPublic(ready ReadyChecker, a *API, ui fs.FS, publicOptions PublicOptions
 		})
 	} else {
 		r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
+			markUnmatched(w)
 			writeError(w, wirePolicyForCode(apigen.ErrorCodeNotFound), "")
 		})
 	}
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		// A method the contract does not describe on a path it does is,
 		// from outside, the same fact as a path that is not there.
+		markUnmatched(w)
 		writeError(w, wirePolicyForCode(apigen.ErrorCodeNotFound), "")
 	})
 	return r
 }
 
+func markUnmatched(w http.ResponseWriter) {
+	if marker, ok := w.(interface{ markUnmatched() }); ok {
+		marker.markUnmatched()
+	}
+}
+
 // NewOperational builds the separate plaintext operational router. It carries
 // no CORS or admission middleware and registers only local process surfaces.
-func NewOperational(ready ReadyChecker, healthService OperationalRetentionHealthService) http.Handler {
+//
+// metrics is the shared RED collector (#513). It is the SAME instance handed to
+// the API middleware, so the scrape here reads the counters that middleware
+// writes. A nil collector leaves /metrics as the retention/TLS gauges alone —
+// the pre-#513 shape.
+func NewOperational(ready ReadyChecker, healthService OperationalRetentionHealthService, metrics *Metrics) http.Handler {
 	r := chi.NewRouter()
 	r.Use(securityHeaders(false))
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -190,18 +209,21 @@ func NewOperational(ready ReadyChecker, healthService OperationalRetentionHealth
 		}
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		w.WriteHeader(http.StatusOK)
-		_, _ = fmt.Fprintf(w, "# TYPE hikyo_last_prune_success_timestamp_seconds gauge\n"+
-			"hikyo_last_prune_success_timestamp_seconds %d\n"+
-			"# TYPE hikyo_prune_stale gauge\n"+
-			"hikyo_prune_stale %d\n"+
-			"# TYPE hikyo_project_storage_peak_bytes gauge\n"+
-			"hikyo_project_storage_peak_bytes %d\n"+
-			"# TYPE hikyo_project_storage_warn gauge\n"+
-			"hikyo_project_storage_warn %d\n"+
-			"# TYPE hikyo_tls_cert_not_after_timestamp_seconds gauge\n"+
-			"hikyo_tls_cert_not_after_timestamp_seconds %d\n"+
-			"# TYPE hikyo_tls_reload_failures_total counter\n"+
-			"hikyo_tls_reload_failures_total %d\n", last, stale, health.PeakProjectBytes, storageWarn, tlsNotAfter, tlsReloadFailures)
+		_, _ = fmt.Fprintf(w, "# TYPE "+MetricLastPruneSuccess+" gauge\n"+
+			MetricLastPruneSuccess+" %d\n"+
+			"# TYPE "+MetricPruneStale+" gauge\n"+
+			MetricPruneStale+" %d\n"+
+			"# TYPE "+MetricProjectStoragePeak+" gauge\n"+
+			MetricProjectStoragePeak+" %d\n"+
+			"# TYPE "+MetricProjectStorageWarn+" gauge\n"+
+			MetricProjectStorageWarn+" %d\n"+
+			"# TYPE "+MetricTLSCertNotAfter+" gauge\n"+
+			MetricTLSCertNotAfter+" %d\n"+
+			"# TYPE "+MetricTLSReloadFailures+" counter\n"+
+			MetricTLSReloadFailures+" %d\n", last, stale, health.PeakProjectBytes, storageWarn, tlsNotAfter, tlsReloadFailures)
+		if metrics != nil {
+			metrics.writeInto(w)
+		}
 	})
 	return r
 }

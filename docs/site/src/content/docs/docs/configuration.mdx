@@ -47,6 +47,38 @@ Proxy mode requires trusted CIDRs when the plaintext public listener is not
 loopback. The list names proxies, not browser client networks. Operational
 routes never exist on the public router; keep the operational bind private.
 
+## Operational metrics
+
+`/metrics` on the operational listener serves Prometheus text exposition
+(`text/plain; version=0.0.4`) with no external dependency and no egress. It is
+plaintext and unauthenticated by design — keep the operational bind private and
+scrape it from the host or a trusted network.
+
+Alongside the retention and TLS gauges it exposes RED-style request metrics
+keyed by a closed **surface class** — `auth`, `hierarchy`, `values`,
+`revisions`, `delivery`, `scim`, `admin`, and a fail-closed `other`. There are
+no raw paths and no identifiers in any label, so cardinality is bounded no
+matter the traffic.
+
+| Metric | Type | Labels | Meaning |
+| --- | --- | --- | --- |
+| `hikyo_http_requests_total` | counter | `class`, `status` (`2xx`/`3xx`/`4xx`/`5xx`/`other`) | Requests per surface class and status bucket. A recovered panic counts as `5xx`. |
+| `hikyo_http_request_errors_total` | counter | `class`, `status` (`4xx`/`5xx`) | Client and server errors per surface class. |
+| `hikyo_http_requests_in_flight` | gauge | — | Requests currently executing in the API stack. |
+| `hikyo_http_request_duration_seconds` | histogram | `class` | Request latency; fixed buckets `0.005, 0.025, 0.1, 0.5, 1, 5` seconds plus `+Inf`. |
+| `hikyo_admission_concurrency_limit` | gauge | — | Derived Argon2id verification slots. |
+| `hikyo_admission_in_flight` | gauge | — | Verification slots currently held. |
+| `hikyo_admission_queue_depth_limit` | gauge | — | Bound on simultaneous pre-auth waiters. |
+| `hikyo_admission_queue_waiting` | gauge | — | Waiters currently queued for a slot. |
+| `hikyo_admission_active_backoffs` | gauge | — | Accounts currently past the failure-backoff threshold. |
+
+Counters cover all `/api/v1/*` traffic. Unmatched paths, unsupported methods,
+and CORS preflights use the closed `other` class.
+
+Under `--dev` the server also emits a per-request access log (method, surface
+class, status, duration) at debug level. The production handler starts at Info,
+so these Debug request lines are absent unless debug logging is enabled.
+
 Adapter egress is public-address-only by default. To approve a private Forgejo
 origin, point `HIKYO_ADAPTER_EGRESS_POLICY_FILE` at a JSON object whose keys are
 exact canonical bare HTTPS origins and whose values are CIDR lists:
