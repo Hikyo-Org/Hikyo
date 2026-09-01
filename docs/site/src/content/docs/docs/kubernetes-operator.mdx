@@ -104,6 +104,13 @@ network boundary. `externalOrigin` must be an origin only: no path, query,
 fragment, credentials, or trailing slash. HTTP requires the explicit
 `network.allowPlaintextOrigin` development escape hatch.
 
+The chart ships no Ingress, and an https `externalOrigin` makes the app emit
+`Strict-Transport-Security` itself, behind a TLS-terminating Ingress as much
+as with a native TLS Secret. Configure whatever fronts the Service to pass the
+app's response headers through; an Ingress controller that adds its own HSTS
+sends browsers two policies with different lifetimes. See
+[security response headers](/docs/configuration/#security-response-headers).
+
 The operator runs as UID/GID 65532 with `runAsNonRoot`, a read-only root
 filesystem, all capabilities dropped, `RuntimeDefault` seccomp, and privilege
 escalation disabled. Its pod holds no Hikyo credential, Hikyo root key, or

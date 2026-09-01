@@ -23,6 +23,13 @@ rootKey:
 
 # Canonical browser-visible origin. Paths, query strings, fragments, userinfo,
 # and trailing slashes are refused.
+#
+# Its scheme and browser-visible host decide HSTS: with an https origin whose
+# host is not loopback, Hikyo emits `Strict-Transport-Security: max-age=31536000` itself,
+# including behind an Ingress or other TLS-terminating proxy. Pass that header
+# through rather than adding a second one from the Ingress controller. If
+# you want includeSubDomains or preload, own the header at the proxy and strip
+# Hikyo's, because Hikyo deliberately sends neither directive.
 externalOrigin: ""
 
 tls:

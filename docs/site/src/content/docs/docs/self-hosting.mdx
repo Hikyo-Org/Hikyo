@@ -65,6 +65,19 @@ For reverse-proxy mode, omit the TLS flags, bind the public listener privately,
 set `HIKYO_TRUSTED_PROXY_CIDRS` to the exact proxy networks, and set
 `HIKYO_EXTERNAL_ORIGIN` explicitly. Do not expose that plaintext listener.
 
+Setting an `https` external origin is also what turns HSTS on: Hikyo emits
+`Strict-Transport-Security: max-age=31536000` whenever the configured public
+origin is https and its browser-visible host is not loopback, whether TLS is
+terminated natively or at a proxy whose Hikyo backend binds to loopback.
+Configure the proxy to pass that header through
+rather than adding its own. A proxy that appends a second
+`Strict-Transport-Security`, or overwrites it with a shorter `max-age`, gives
+browsers a policy nobody chose. If you want `includeSubDomains` or `preload`,
+own the header at the proxy and strip Hikyo's; Hikyo does not send those
+directives because they commit hostnames it does not serve. See
+[security response headers](/docs/configuration/#security-response-headers)
+for the full carried set.
+
 Check both probes through the private listener:
 
 ```bash
@@ -110,6 +123,8 @@ remains in the process environment.
 ## Before real secret material
 
 1. Terminate TLS natively or name exact proxy CIDRs; keep the operational listener private.
+   Set `HIKYO_EXTERNAL_ORIGIN` to the public https origin and do not double-set
+   `Strict-Transport-Security` at the proxy.
 2. Store the root key through your service manager's credential mechanism.
 3. Configure encrypted backups and perform a restore test.
 4. Create the first administrator on the server host.

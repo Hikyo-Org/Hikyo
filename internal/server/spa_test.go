@@ -12,6 +12,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
@@ -389,17 +390,53 @@ func TestSecurityBaselineOnEveryResponse(t *testing.T) {
 	}
 }
 
-func TestHSTSIsExplicitlyEnabledOnlyForNativeNonLoopbackTLS(t *testing.T) {
+// The cross-origin isolation set (#517), asserted by EXACT VALUE rather than
+// by presence. These three headers are a contract with the browser: a
+// `Cross-Origin-Opener-Policy` that drifts from `same-origin-allow-popups` to
+// `same-origin` severs the OIDC and workspace popup ceremonies, and it does so
+// silently, in a browser, weeks after the header changed. So the values are
+// pinned here, on the document, on a hashed asset and on a contract refusal;
+// the whole public surface, because the middleware is the single writer.
+func TestCrossOriginIsolationHeadersAreExactOnEveryPublicResponse(t *testing.T) {
+	srv := uiServer(t)
+	for _, path := range []string{"/", "/assets/app-deadbeef.js", "/api/v1/nope"} {
+		t.Run(path, func(t *testing.T) {
+			resp, _ := get(t, srv, http.MethodGet, path, htmlAccept)
+			for header, want := range map[string]string{
+				// same-origin-allow-popups, NOT same-origin: the shell opens the
+				// identity-provider and workspace-authorization ceremonies in
+				// popups that navigate cross-origin and then close themselves.
+				"Cross-Origin-Opener-Policy":   "same-origin-allow-popups",
+				"Cross-Origin-Resource-Policy": "same-origin",
+				"Permissions-Policy":           "camera=(), microphone=(), geolocation=()",
+			} {
+				if got := resp.Header.Get(header); got != want {
+					t.Errorf("%s = %q, want %q", header, got, want)
+				}
+			}
+		})
+	}
+}
+
+// The four deployment shapes of #517, driven through the real derivation and
+// router: the config helper decides and the middleware emits. The app package's
+// proxy integration test separately pins the boot-site wiring.
+func TestHSTSFollowsTheConfiguredExternalOriginAcrossDeploymentShapes(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		hsts bool
-		want string
+		name           string
+		externalOrigin string
+		want           string
 	}{
-		{"native non-loopback TLS", true, "max-age=31536000"},
-		{"plaintext proxy or loopback", false, ""},
+		{"native TLS", "https://hikyo.example.com", "max-age=31536000"},
+		{"proxy with an https origin", "https://hikyo.example.com", "max-age=31536000"},
+		{"proxy with a plaintext origin", "http://hikyo.example.com", ""},
+		{"loopback development instance", "https://127.0.0.1:8443", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := httptest.NewServer(server.NewPublic(nil, nil, testUI(), server.PublicOptions{HSTS: tc.hsts}))
+			srv := httptest.NewServer(server.NewPublic(nil, nil, testUI(), server.PublicOptions{
+				HSTS:           config.EmitHSTS(tc.externalOrigin),
+				ExternalOrigin: tc.externalOrigin,
+			}))
 			t.Cleanup(srv.Close)
 			resp, err := http.Get(srv.URL + "/missing")
 			if err != nil {

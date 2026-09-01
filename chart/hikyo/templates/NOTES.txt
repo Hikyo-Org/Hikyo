@@ -23,6 +23,14 @@ or the reverse proxy's exact trusted CIDRs:
     --set externalOrigin=https://hikyo.example.com \
     --set tls.existingSecret=YOUR_TLS_SECRET
 
+The chart ships no Ingress. Whatever terminates TLS in front of the Service
+must forward the app's response headers unchanged: with an https
+externalOrigin, Hikyo emits Strict-Transport-Security, Content-Security-Policy,
+Cross-Origin-Opener-Policy, Cross-Origin-Resource-Policy and Permissions-Policy
+on every response. An Ingress controller that appends its own HSTS produces two
+headers with different lifetimes; configure it to pass through, or to strip
+Hikyo's and own the value entirely.
+
 Required production values: database.existingSecret, rootKey.existingSecret,
 externalOrigin, image.digest, and one of tls.existingSecret or
 network.trustedProxyCIDRs. The read-only root filesystem makes PostgreSQL the

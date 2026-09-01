@@ -40,12 +40,58 @@ Native TLS is the default direct-deployment posture. Hikyo validates the pair at
 startup, rejects expired or mismatched files, warns within 14 days of expiry,
 polls for replacements every 10 seconds, and also reloads on `SIGHUP`. A bad
 replacement leaves the last known-good certificate live and increments
-`hikyo_tls_reload_failures_total`. HSTS is emitted only for native TLS on a
-non-loopback public listener.
+`hikyo_tls_reload_failures_total`.
 
 Proxy mode requires trusted CIDRs when the plaintext public listener is not
 loopback. The list names proxies, not browser client networks. Operational
 routes never exist on the public router; keep the operational bind private.
+
+## Security response headers
+
+Every public response carries the same set, refusals and API errors included:
+
+| Header | Value |
+| --- | --- |
+| `Content-Security-Policy` | Self-only baseline, no inline script or style, `frame-ancestors 'none'`. Served documents extend `connect-src` with the configured remote origins only. |
+| `X-Content-Type-Options` | `nosniff` |
+| `Referrer-Policy` | `no-referrer` |
+| `Cross-Origin-Opener-Policy` | `same-origin-allow-popups` |
+| `Cross-Origin-Resource-Policy` | `same-origin` |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` |
+| `Strict-Transport-Security` | `max-age=31536000`, conditional; see below. |
+
+`Cross-Origin-Opener-Policy` is `same-origin-allow-popups` rather than
+`same-origin` because the browser UI runs the identity-provider and workspace
+handoff ceremonies in popups that navigate to another origin and then close
+themselves; strict `same-origin` leaves those windows stranded open. The
+popups are opened with `noopener` and answer over a same-origin
+`BroadcastChannel`, so nothing reaches back through `window.opener` either way.
+
+`Permissions-Policy` names no WebAuthn feature on purpose:
+`publickey-credentials-get` and `publickey-credentials-create` default to
+`self`, which is what passkey sign-in and reauthentication need.
+
+### HSTS
+
+`Strict-Transport-Security: max-age=31536000` is emitted when both hold:
+
+- `HIKYO_EXTERNAL_ORIGIN` has the `https` scheme (explicitly set, or derived as
+  `https://<listen>` because a native TLS pair is configured), and
+- the external origin's browser-visible host is not loopback.
+
+The scheme of the configured public origin decides, not which process holds the
+certificate, so a reverse proxy terminating TLS in front of the plaintext
+listener emits it too, including when that internal listener binds to loopback.
+A plain-`http` external origin and any loopback external-origin host never emit
+it. A development instance must not pin `localhost` to https in the browser's
+HSTS store for every other project on the machine.
+
+If your reverse proxy already adds `Strict-Transport-Security`, do not also let
+it rewrite or append: two headers, or one with a shorter `max-age`, is a
+policy the browser resolves by rules you did not intend. Either let Hikyo emit
+it and pass the header through untouched, or strip Hikyo's at the proxy and own
+the value there, including `includeSubDomains` or `preload`, which Hikyo
+deliberately does not send because they commit hostnames it does not serve.
 
 ## Operational metrics
 
