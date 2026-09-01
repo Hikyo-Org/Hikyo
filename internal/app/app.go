@@ -522,6 +522,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		Providers:       &service.Providers{DB: db, Keyring: kr, ExternalOrigin: cfg.ExternalOrigin, Log: log},
 		SAMLProviders:   samlProviders,
 		Adapters:        adapterService,
+		Audits:          &service.Audits{DB: db, Budget: budget},
 		// ONE SCIM service behind both surfaces: the administration verbs and
 		// the identity provider's wire read the same bindings, the same mapping
 		// table and the same bounds. Two instances would let the wire clamp a

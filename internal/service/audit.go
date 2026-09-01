@@ -60,73 +60,153 @@ func auditExportOp(scope domain.Scope) (authz.Operation, error) {
 	}
 }
 
-// queryEvent builds the audit.query event: normalized filters plus the
-// materialized page's row count — one event per query, never one per row.
+// AuditFilter and AuditEvent are the store's own types, re-exported so the
+// transport layer names them through this package instead of importing the
+// datastore directly (the internal/server -> internal/store boundary; the same
+// alias seam the adapter surface uses). The store owns the shape; the handler
+// builds the filter and renders the event without reaching past the service.
+type AuditFilter = store.AuditFilter
+
+// AuditEvent is one stored trail row, re-exported for the transport.
+type AuditEvent = store.AuditEvent
+
+// AuditPage is one interactive query response. Events are the rows that
+// matched the filter's equality fields; NextSeq is the seq of the last row the
+// page SCANNED (matched or not) and is the resume cursor for the next request;
+// Exhausted is true when the scan reached the end of the trail within this
+// window (fewer rows scanned than the page limit). A sparse filter can return
+// zero Events with Exhausted false — that means "keep scanning", not "no such
+// events" — which is why the cursor tracks scanned rows, not matched ones.
+type AuditPage struct {
+	Events    []store.AuditEvent
+	NextSeq   int64
+	UpperSeq  int64 // the session ceiling pinned for this paging run; echo it to resume
+	Exhausted bool
+}
+
+// queryEvent builds the audit.query event: normalized filters plus the count of
+// rows RETURNED (matched) — one event per query, never one per row.
 func queryEvent(ctx context.Context, principal domain.PrincipalID, f store.AuditFilter, rows int) (audit.Event, error) {
 	payload := f.Normalized()
 	payload["row_count"] = rows
 	return newAuditEvent(ctx, audit.EventAuditQuery, principal, audit.Object{}, audit.OutcomeSuccess, "", payload)
 }
 
+// filterPage applies the filter's equality fields to a scanned page under a
+// pinned session ceiling, reporting the scan cursor and exhaustion.
+//
+// Two things run OUTSIDE the SQL: the equality match (see AuditFilter.Matches)
+// and the ceiling. The ceiling is the crux of stable paging — a query commits
+// its own audit.query event, so a cursor left to chase the trail's tail would
+// never end (and at limit 1 could not advance at all). The ceiling is the max
+// seq pinned when paging began; a row above it means a writer (this reader's
+// own event, or a concurrent one) appended after the snapshot, and the page
+// stops there. The cursor advances over SCANNED rows within the ceiling, not
+// matched ones, so a sparse filter never skips or re-reads.
+func filterPage(scanned []store.AuditEvent, f store.AuditFilter, ceiling int64) AuditPage {
+	matched := make([]store.AuditEvent, 0, len(scanned))
+	page := AuditPage{NextSeq: f.AfterSeq, UpperSeq: ceiling}
+	reachedCeiling := false
+	for _, e := range scanned {
+		if e.Seq > ceiling {
+			reachedCeiling = true
+			break
+		}
+		page.NextSeq = e.Seq
+		if f.Matches(e) {
+			matched = append(matched, e)
+		}
+	}
+	page.Events = matched
+	limit := f.Limit
+	if limit > store.AuditMaxPageSize {
+		limit = store.AuditMaxPageSize
+	}
+	// End of the run: the scan hit a row past the ceiling, the store returned a
+	// short page, or the cursor has reached the ceiling and no row remains
+	// between it and the pinned top.
+	page.Exhausted = reachedCeiling || len(scanned) < limit || page.NextSeq >= ceiling
+	return page
+}
+
 // Query returns one bounded page of the tenant trail addressed by scope. The
 // page is materialized, the query event inserted, and both commit in one
 // transaction — the event is durable before any byte of the response exists
 // outside it.
-func (s *Audits) Query(ctx context.Context, principal domain.PrincipalID, scope domain.Scope, f store.AuditFilter) ([]store.AuditEvent, error) {
+func (s *Audits) Query(ctx context.Context, principal domain.PrincipalID, scope domain.Scope, f store.AuditFilter) (AuditPage, error) {
 	// Commit order is export-only. Ignore internal cursor fields if a caller
 	// constructs AuditFilter directly instead of using an API decoder.
 	f.Order = store.AuditPageBySeq
 	f.AfterCommitSeq = 0
 	op, err := auditQueryOp(scope)
 	if err != nil {
-		return nil, err
+		return AuditPage{}, err
 	}
-	var page []store.AuditEvent
+	var page AuditPage
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		p, err := az.Authorize(ctx, authz.Identity{Principal: principal}, op, scope)
 		if err != nil {
 			return err
 		}
-		page, err = r.Audit().PageTenant(ctx, p, f)
+		ceiling := f.ToSeq
+		if ceiling == 0 {
+			ceiling, err = r.Audit().MaxTenantSeq(ctx, p)
+			if err != nil {
+				return err
+			}
+		}
+		scanned, err := r.Audit().PageTenant(ctx, p, f)
 		if err != nil {
 			return err
 		}
-		ev, err := queryEvent(ctx, principal, f, len(page))
+		page = filterPage(scanned, f, ceiling)
+		// Record the pinned ceiling in the query's own audit event.
+		f.ToSeq = ceiling
+		ev, err := queryEvent(ctx, principal, f, len(page.Events))
 		if err != nil {
 			return err
 		}
 		return r.Audit().InsertTenant(ctx, p, ev)
 	})
 	if err != nil {
-		return nil, err
+		return AuditPage{}, err
 	}
 	return page, nil
 }
 
 // InstanceQuery is Query for the instance trail, under an instance-scope
 // audit-read grant — grant-evaluated, never route-implied.
-func (s *Audits) InstanceQuery(ctx context.Context, principal domain.PrincipalID, f store.AuditFilter) ([]store.AuditEvent, error) {
+func (s *Audits) InstanceQuery(ctx context.Context, principal domain.PrincipalID, f store.AuditFilter) (AuditPage, error) {
 	// Commit order is export-only; interactive queries always expose seq order.
 	f.Order = store.AuditPageBySeq
 	f.AfterCommitSeq = 0
-	var page []store.AuditEvent
+	var page AuditPage
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		p, err := az.Authorize(ctx, authz.Identity{Principal: principal}, authz.OpAuditInstanceQuery, domain.Scope{})
 		if err != nil {
 			return err
 		}
-		page, err = r.Audit().PageInstance(ctx, p, f)
+		ceiling := f.ToSeq
+		if ceiling == 0 {
+			ceiling, err = r.Audit().MaxInstanceSeq(ctx, p)
+			if err != nil {
+				return err
+			}
+		}
+		scanned, err := r.Audit().PageInstance(ctx, p, f)
 		if err != nil {
 			return err
 		}
-		ev, err := queryEvent(ctx, principal, f, len(page))
+		page = filterPage(scanned, f, ceiling)
+		f.ToSeq = ceiling
+		ev, err := queryEvent(ctx, principal, f, len(page.Events))
 		if err != nil {
 			return err
 		}
 		return r.Audit().InsertInstance(ctx, p, ev)
 	})
 	if err != nil {
-		return nil, err
+		return AuditPage{}, err
 	}
 	return page, nil
 }
@@ -355,6 +435,15 @@ func (s *Audits) export(
 		// transaction after its commit, so no byte crosses the response
 		// boundary ahead of its transaction.
 		for _, e := range rows {
+			// Advance the cursor over EVERY scanned row, before the filter, so a
+			// filtered-out row is not re-read on the next page. The end-of-data
+			// test below stays on len(rows) — the SCANNED count — so a page that
+			// filters down to fewer than pageSize matches is never mistaken for
+			// the end of the trail.
+			commitCursor = e.CommitSeq
+			if !f.Matches(e) {
+				continue
+			}
 			if werr := writeLine(w, e); werr != nil {
 				if cerr := completed(audit.OutcomeDisconnected, "sink-error", streamed); cerr != nil {
 					return fmt.Errorf("service: export sink failed and its terminal event failed too: %w", fmt.Errorf("%w; %w", cerr, werr))
@@ -362,7 +451,6 @@ func (s *Audits) export(
 				return fmt.Errorf("service: export sink: %w", werr)
 			}
 			streamed++
-			commitCursor = e.CommitSeq
 		}
 		if len(rows) < pageSize {
 			if !writersSettled {

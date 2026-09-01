@@ -117,6 +117,9 @@ import {
   enrolTotpStart,
   establishCredential,
   exportDefinitions,
+  exportEnvAudit,
+  exportOrgAudit,
+  exportProjectAudit,
   exportValues,
   fetchDelivery,
   getCredentialPolicy,
@@ -195,6 +198,9 @@ import {
   publishPendingChanges,
   putOidcProvider,
   putSamlProvider,
+  queryEnvAudit,
+  queryOrgAudit,
+  queryProjectAudit,
   reauthPasskeyFinish,
   reauthPasskeyStart,
   reauthTotp,
@@ -354,6 +360,9 @@ import type {
   EnrolTotpStartData,
   EstablishCredentialData,
   ExportDefinitionsData,
+  ExportEnvAuditData,
+  ExportOrgAuditData,
+  ExportProjectAuditData,
   ExportValuesData,
   FetchDeliveryData,
   GetCredentialPolicyData,
@@ -432,6 +441,9 @@ import type {
   PublishPendingChangesData,
   PutOidcProviderData,
   PutSamlProviderData,
+  QueryEnvAuditData,
+  QueryOrgAuditData,
+  QueryProjectAuditData,
   ReauthPasskeyFinishData,
   ReauthPasskeyStartData,
   ReauthTotpData,
@@ -579,6 +591,9 @@ import {
   zEnrolTotpConfirmResponse,
   zEnrolTotpStartResponse,
   zExportDefinitionsResponse,
+  zExportEnvAuditResponse,
+  zExportOrgAuditResponse,
+  zExportProjectAuditResponse,
   zExportValuesResponse,
   zFetchDeliveryResponse,
   zGetCredentialPolicyResponse,
@@ -656,6 +671,9 @@ import {
   zPublishPendingChangesResponse,
   zPutOidcProviderResponse,
   zPutSamlProviderResponse,
+  zQueryEnvAuditResponse,
+  zQueryOrgAuditResponse,
+  zQueryProjectAuditResponse,
   zReauthPasskeyFinishResponse,
   zReauthPasskeyStartResponse,
   zReauthTotpResponse,
@@ -789,6 +807,9 @@ export const enrolPasskeyStartOp: BodyOperation<EnrolPasskeyStartData, typeof zE
 export const enrolTotpConfirmOp: BodyOperation<EnrolTotpConfirmData, typeof zEnrolTotpConfirmResponse> = /* @__PURE__ */ new GeneratedBodyOperation(enrolTotpConfirm, [200], zEnrolTotpConfirmResponse);
 export const enrolTotpStartOp: BodyOperation<EnrolTotpStartData, typeof zEnrolTotpStartResponse> = /* @__PURE__ */ new GeneratedBodyOperation(enrolTotpStart, [200], zEnrolTotpStartResponse);
 export const exportDefinitionsOp: BodyOperation<ExportDefinitionsData, typeof zExportDefinitionsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(exportDefinitions, [200], zExportDefinitionsResponse);
+export const exportEnvAuditOp: BodyOperation<ExportEnvAuditData, typeof zExportEnvAuditResponse> = /* @__PURE__ */ new GeneratedBodyOperation(exportEnvAudit, [200], zExportEnvAuditResponse);
+export const exportOrgAuditOp: BodyOperation<ExportOrgAuditData, typeof zExportOrgAuditResponse> = /* @__PURE__ */ new GeneratedBodyOperation(exportOrgAudit, [200], zExportOrgAuditResponse);
+export const exportProjectAuditOp: BodyOperation<ExportProjectAuditData, typeof zExportProjectAuditResponse> = /* @__PURE__ */ new GeneratedBodyOperation(exportProjectAudit, [200], zExportProjectAuditResponse);
 export const exportValuesOp: BodyOperation<ExportValuesData, typeof zExportValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(exportValues, [200], zExportValuesResponse);
 export const fetchDeliveryOp: BodyOperation<FetchDeliveryData, typeof zFetchDeliveryResponse> = /* @__PURE__ */ new GeneratedBodyOperation(fetchDelivery, [200], zFetchDeliveryResponse);
 export const getCredentialPolicyOp: BodyOperation<GetCredentialPolicyData, typeof zGetCredentialPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getCredentialPolicy, [200], zGetCredentialPolicyResponse);
@@ -866,6 +887,9 @@ export const planAdapterTargetOp: BodyOperation<PlanAdapterTargetData, typeof zP
 export const publishPendingChangesOp: BodyOperation<PublishPendingChangesData, typeof zPublishPendingChangesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(publishPendingChanges, [200], zPublishPendingChangesResponse);
 export const putOidcProviderOp: BodyOperation<PutOidcProviderData, typeof zPutOidcProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(putOidcProvider, [200], zPutOidcProviderResponse);
 export const putSamlProviderOp: BodyOperation<PutSamlProviderData, typeof zPutSamlProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(putSamlProvider, [200], zPutSamlProviderResponse);
+export const queryEnvAuditOp: BodyOperation<QueryEnvAuditData, typeof zQueryEnvAuditResponse> = /* @__PURE__ */ new GeneratedBodyOperation(queryEnvAudit, [200], zQueryEnvAuditResponse);
+export const queryOrgAuditOp: BodyOperation<QueryOrgAuditData, typeof zQueryOrgAuditResponse> = /* @__PURE__ */ new GeneratedBodyOperation(queryOrgAudit, [200], zQueryOrgAuditResponse);
+export const queryProjectAuditOp: BodyOperation<QueryProjectAuditData, typeof zQueryProjectAuditResponse> = /* @__PURE__ */ new GeneratedBodyOperation(queryProjectAudit, [200], zQueryProjectAuditResponse);
 export const reauthPasskeyFinishOp: BodyOperation<ReauthPasskeyFinishData, typeof zReauthPasskeyFinishResponse> = /* @__PURE__ */ new GeneratedBodyOperation(reauthPasskeyFinish, [200], zReauthPasskeyFinishResponse);
 export const reauthPasskeyStartOp: BodyOperation<ReauthPasskeyStartData, typeof zReauthPasskeyStartResponse> = /* @__PURE__ */ new GeneratedBodyOperation(reauthPasskeyStart, [200], zReauthPasskeyStartResponse);
 export const reauthTotpOp: BodyOperation<ReauthTotpData, typeof zReauthTotpResponse> = /* @__PURE__ */ new GeneratedBodyOperation(reauthTotp, [200], zReauthTotpResponse);

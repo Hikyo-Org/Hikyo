@@ -442,7 +442,16 @@ var pinnedContractSurface = map[string]bool{
 	"DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/pins/{workloadPrincipal}":    true,
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/export":                 true,
 	"GET /api/v1/orgs/{org}/projects/{project}/events":                                                    true,
-	"POST /api/v1/instance/rotate-token-key":                                                              true,
+	// Audit trail (#45): every audit route reads THIS instance's own append-only
+	// trail — the events it recorded — and streams or pages them. Nothing is
+	// fetched, relayed or forwarded on behalf of the caller.
+	"GET /api/v1/orgs/{org}/audit":                                                      true,
+	"GET /api/v1/orgs/{org}/audit/export":                                               true,
+	"GET /api/v1/orgs/{org}/projects/{project}/audit":                                   true,
+	"GET /api/v1/orgs/{org}/projects/{project}/audit/export":                            true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit":        true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit/export": true,
+	"POST /api/v1/instance/rotate-token-key":                                            true,
 	// rotate-scanning-key (#74): replaces this instance's own scanning key and
 	// drops this instance's own dismissal rows. It returns this instance's own
 	// data and never fetches, relays or forwards on the caller's behalf.

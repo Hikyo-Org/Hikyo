@@ -8430,6 +8430,259 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/orgs/{org}/audit:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+    get:
+      operationId: queryOrgAudit
+      tags: [audit]
+      summary: One bounded page of the organization's audit trail.
+      description: |
+        Reads one bounded page of the append-only trail in stable
+        commit-sequence order, oldest first. Filtering by principal,
+        operation, outcome and resource identifiers is applied to the page
+        after it is read, so a page SCANS `limit` rows and RETURNS the subset
+        that matched: `next_after_seq` is the seq of the last row scanned (the
+        resume cursor), and `exhausted` is true only when the scan reached the
+        end of the trail. A sparse filter therefore returns few or zero items
+        with `exhausted` false — that means keep paging, not "no such events".
+
+        Reading the trail is itself audited, unconditionally: each page commits
+        one `audit.query` event recording the normalized filter and the count
+        returned, durably, in the same transaction as the read. No value
+        material is ever in the trail, so none can be in this response.
+      x-hikyo-class: tenant
+      x-hikyo-operation: audit.query-org
+      x-hikyo-formula: [audit-read@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      parameters:
+        - $ref: "#/components/parameters/AuditFrom"
+        - $ref: "#/components/parameters/AuditTo"
+        - $ref: "#/components/parameters/AuditAfterSeq"
+        - $ref: "#/components/parameters/AuditToSeq"
+        - $ref: "#/components/parameters/AuditLimit"
+        - $ref: "#/components/parameters/AuditActor"
+        - $ref: "#/components/parameters/AuditOperation"
+        - $ref: "#/components/parameters/AuditOutcome"
+        - $ref: "#/components/parameters/AuditObjectType"
+        - $ref: "#/components/parameters/AuditObjectID"
+        - $ref: "#/components/parameters/AuditCorrelationID"
+      responses:
+        "200":
+          description: One page of trail events.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AuditPage"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/audit/export:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+    get:
+      operationId: exportOrgAudit
+      tags: [audit]
+      summary: Stream the organization's audit trail as JSONL.
+      description: |
+        Streams the filtered slice of the trail as newline-delimited JSON, one
+        schema-versioned event per line, in gap-free commit-sequence order up
+        to a server-fixed snapshot taken before the first byte. The stream is
+        bounded on both ends: the server reads the trail one bounded page at a
+        time under a freshly minted proof, and the client writes bytes to disk
+        as they arrive rather than accumulating the history in memory.
+
+        The export is itself an audited act: an `audit.export_started` INTENT
+        event is durable before the first byte and an `audit.export_completed`
+        OUTCOME event terminates the stream on success, page failure or client
+        disconnect. Authorization lost mid-stream stops it at the next page
+        boundary — a truncated download whose cause is durable in the trail. No
+        value material is ever in the trail, so none can be in the stream.
+      x-hikyo-class: tenant
+      x-hikyo-operation: audit.export-org
+      x-hikyo-formula: [audit-read@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      parameters:
+        - $ref: "#/components/parameters/AuditFrom"
+        - $ref: "#/components/parameters/AuditTo"
+        - $ref: "#/components/parameters/AuditActor"
+        - $ref: "#/components/parameters/AuditOperation"
+        - $ref: "#/components/parameters/AuditOutcome"
+        - $ref: "#/components/parameters/AuditObjectType"
+        - $ref: "#/components/parameters/AuditObjectID"
+        - $ref: "#/components/parameters/AuditCorrelationID"
+      responses:
+        "200":
+          description: The trail as a JSONL byte stream.
+          content:
+            application/x-ndjson:
+              schema: {type: string}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/audit:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+    get:
+      operationId: queryProjectAudit
+      tags: [audit]
+      summary: One bounded page of the project's audit trail.
+      description: |
+        The project-scoped audit page. Same shape and paging contract as
+        `queryOrgAudit`, refined to the project chain.
+      x-hikyo-class: tenant
+      x-hikyo-operation: audit.query-project
+      x-hikyo-formula: [audit-read@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      parameters:
+        - $ref: "#/components/parameters/AuditFrom"
+        - $ref: "#/components/parameters/AuditTo"
+        - $ref: "#/components/parameters/AuditAfterSeq"
+        - $ref: "#/components/parameters/AuditToSeq"
+        - $ref: "#/components/parameters/AuditLimit"
+        - $ref: "#/components/parameters/AuditActor"
+        - $ref: "#/components/parameters/AuditOperation"
+        - $ref: "#/components/parameters/AuditOutcome"
+        - $ref: "#/components/parameters/AuditObjectType"
+        - $ref: "#/components/parameters/AuditObjectID"
+        - $ref: "#/components/parameters/AuditCorrelationID"
+      responses:
+        "200":
+          description: One page of trail events.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AuditPage"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/audit/export:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+    get:
+      operationId: exportProjectAudit
+      tags: [audit]
+      summary: Stream the project's audit trail as JSONL.
+      description: |
+        The project-scoped JSONL export. Same shape and INTENT/OUTCOME
+        contract as `exportOrgAudit`, refined to the project chain.
+      x-hikyo-class: tenant
+      x-hikyo-operation: audit.export-project
+      x-hikyo-formula: [audit-read@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      parameters:
+        - $ref: "#/components/parameters/AuditFrom"
+        - $ref: "#/components/parameters/AuditTo"
+        - $ref: "#/components/parameters/AuditActor"
+        - $ref: "#/components/parameters/AuditOperation"
+        - $ref: "#/components/parameters/AuditOutcome"
+        - $ref: "#/components/parameters/AuditObjectType"
+        - $ref: "#/components/parameters/AuditObjectID"
+        - $ref: "#/components/parameters/AuditCorrelationID"
+      responses:
+        "200":
+          description: The trail as a JSONL byte stream.
+          content:
+            application/x-ndjson:
+              schema: {type: string}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    get:
+      operationId: queryEnvAudit
+      tags: [audit]
+      summary: One bounded page of the environment's audit trail.
+      description: |
+        The environment-scoped audit page. Same shape and paging contract as
+        `queryOrgAudit`, refined to the environment chain.
+      x-hikyo-class: tenant
+      x-hikyo-operation: audit.query-env
+      x-hikyo-formula: [audit-read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      parameters:
+        - $ref: "#/components/parameters/AuditFrom"
+        - $ref: "#/components/parameters/AuditTo"
+        - $ref: "#/components/parameters/AuditAfterSeq"
+        - $ref: "#/components/parameters/AuditToSeq"
+        - $ref: "#/components/parameters/AuditLimit"
+        - $ref: "#/components/parameters/AuditActor"
+        - $ref: "#/components/parameters/AuditOperation"
+        - $ref: "#/components/parameters/AuditOutcome"
+        - $ref: "#/components/parameters/AuditObjectType"
+        - $ref: "#/components/parameters/AuditObjectID"
+        - $ref: "#/components/parameters/AuditCorrelationID"
+      responses:
+        "200":
+          description: One page of trail events.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AuditPage"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit/export:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    get:
+      operationId: exportEnvAudit
+      tags: [audit]
+      summary: Stream the environment's audit trail as JSONL.
+      description: |
+        The environment-scoped JSONL export. Same shape and INTENT/OUTCOME
+        contract as `exportOrgAudit`, refined to the environment chain.
+      x-hikyo-class: tenant
+      x-hikyo-operation: audit.export-env
+      x-hikyo-formula: [audit-read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      parameters:
+        - $ref: "#/components/parameters/AuditFrom"
+        - $ref: "#/components/parameters/AuditTo"
+        - $ref: "#/components/parameters/AuditActor"
+        - $ref: "#/components/parameters/AuditOperation"
+        - $ref: "#/components/parameters/AuditOutcome"
+        - $ref: "#/components/parameters/AuditObjectType"
+        - $ref: "#/components/parameters/AuditObjectID"
+        - $ref: "#/components/parameters/AuditCorrelationID"
+      responses:
+        "200":
+          description: The trail as a JSONL byte stream.
+          content:
+            application/x-ndjson:
+              schema: {type: string}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
   /api/v1/instance/rotate-token-key:
     post:
       operationId: rotateTokenKey
@@ -9405,6 +9658,111 @@ components:
       description: Durable updater-helper job identifier.
       schema:
         $ref: "#/components/schemas/ID"
+
+    AuditFrom:
+      name: from
+      in: query
+      required: false
+      description: Inclusive lower time bound (recorded-at). Absent means the epoch.
+      schema:
+        type: string
+        format: date-time
+    AuditTo:
+      name: to
+      in: query
+      required: false
+      description: Inclusive upper time bound (recorded-at). Absent means unbounded.
+      schema:
+        type: string
+        format: date-time
+    AuditAfterSeq:
+      name: after_seq
+      in: query
+      required: false
+      description: |
+        Resume cursor: return events whose seq is strictly greater. Pass the
+        previous page's `next_after_seq` to page forward.
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+    AuditToSeq:
+      name: to_seq
+      in: query
+      required: false
+      description: |
+        The session ceiling. Absent on the first page (the server pins it to the
+        trail's current head and returns it as `upper_seq`); pass that value back
+        on every later page so paging terminates and never chases the
+        `audit.query` events the reads themselves append.
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+    AuditLimit:
+      name: limit
+      in: query
+      required: false
+      description: |
+        Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
+        be fewer when a filter is set.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 100
+    AuditActor:
+      name: actor
+      in: query
+      required: false
+      description: Match only events whose acting principal has this id.
+      schema:
+        type: string
+        maxLength: 64
+    AuditOperation:
+      name: operation
+      in: query
+      required: false
+      description: |
+        Match only events of this type (the operation), e.g. `value.set`. An
+        unknown type is not an error; it simply matches nothing.
+      schema:
+        type: string
+        maxLength: 128
+    AuditOutcome:
+      name: outcome
+      in: query
+      required: false
+      description: Match only events with this outcome.
+      schema:
+        type: string
+        enum: [intent, success, denied, failure, unknown, disconnected]
+    AuditObjectType:
+      name: object_type
+      in: query
+      required: false
+      description: Match only events acting on this object type.
+      schema:
+        type: string
+        maxLength: 64
+    AuditObjectID:
+      name: object_id
+      in: query
+      required: false
+      description: Match only events acting on this object id.
+      schema:
+        type: string
+        maxLength: 64
+    AuditCorrelationID:
+      name: correlation_id
+      in: query
+      required: false
+      description: |
+        Match only events sharing this correlation id — the link between an
+        act's INTENT and OUTCOME events.
+      schema:
+        type: string
+        maxLength: 64
 
   responses:
     BadRequest:
@@ -14934,6 +15292,110 @@ components:
         count:
           type: integer
           minimum: 0
+
+    AuditEvent:
+      type: object
+      description: |
+        One stored trail event, exactly as the JSONL export emits it. No value
+        material is ever written to the trail, so none appears here. Consumers
+        MUST tolerate members they do not recognise: the closed registry adds
+        event types and payload fields over time, and a client that fails on an
+        additive field would break on every forward-compatible server.
+      required:
+        [seq, id, type, schema_version, occurred_at, occurred_asserted, recorded_at, actor_class, scope_class, outcome, origin, payload]
+      properties:
+        seq:
+          type: integer
+          format: int64
+          description: Immutable public allocation order and event position.
+        id:
+          type: string
+        type:
+          type: string
+          description: The event type from the closed audit registry.
+        schema_version:
+          type: integer
+        occurred_at:
+          type: string
+          format: date-time
+        occurred_asserted:
+          type: boolean
+          description: Whether occurred_at was asserted by a client rather than the server clock.
+        recorded_at:
+          type: string
+          format: date-time
+        actor_id:
+          type: string
+        actor_class:
+          type: string
+        actor_credential_id:
+          type: string
+        authority_id:
+          type: string
+        scope_class:
+          type: string
+        org_id:
+          type: string
+        project_id:
+          type: string
+        env_id:
+          type: string
+        object_type:
+          type: string
+        object_id:
+          type: string
+        outcome:
+          type: string
+        correlation_id:
+          type: string
+        source_ip:
+          type: string
+        user_agent:
+          type: string
+        origin:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+          description: |
+            The event's schema-versioned payload, verbatim. Its members vary by
+            event type and grow additively; render unknown members rather than
+            failing on them.
+
+    AuditPage:
+      type: object
+      additionalProperties: false
+      required: [items, count, next_after_seq, upper_seq, exhausted]
+      properties:
+        items:
+          type: array
+          description: The events on this page that matched the filter, in seq order.
+          items:
+            $ref: "#/components/schemas/AuditEvent"
+        count:
+          type: integer
+          minimum: 0
+          description: Number of matched events returned (may be fewer than the rows scanned).
+        next_after_seq:
+          type: integer
+          format: int64
+          description: |
+            The seq of the last row SCANNED. Pass it as `after_seq` to resume;
+            it advances over scanned rows, not just matched ones, so a filtered
+            page never re-reads or skips.
+        upper_seq:
+          type: integer
+          format: int64
+          description: |
+            The session ceiling the server pinned for this paging run (the
+            trail's head when the first page was read). Pass it back as `to_seq`
+            on every later page; it never changes across the run.
+        exhausted:
+          type: boolean
+          description: |
+            True when this page reached the end of the trail (fewer rows scanned
+            than the limit). While false, more pages remain even if `items` is
+            empty for a sparse filter.
 
 
 security:

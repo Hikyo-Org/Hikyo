@@ -193,6 +193,20 @@ export const SURFACES = defineSurfaceRegistry([
     mode: 'authenticated',
     chrome: 'shell',
   },
+  // Audit trail (#502). Org-scoped like members and scim: an org proof reads
+  // the WHOLE org trail (project and environment events included), so the org
+  // is route data filled by the rail's active circle, and the within-org
+  // filters — principal, operation, outcome, resource — are query controls, not
+  // separate surfaces. It sits in the Organisation section because that is the
+  // scope its capability (`audit-read@org`) addresses.
+  {
+    id: 'audit',
+    path: '/orgs/:org/audit',
+    label: 'Audit',
+    section: 'Organisation',
+    mode: 'authenticated',
+    chrome: 'shell',
+  },
   {
     id: 'instance-admin',
     path: '/instance',

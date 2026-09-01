@@ -162,6 +162,9 @@ type API struct {
 	Providers       ProviderService
 	SAMLProviders   SAMLProviderService
 	Adapters        *service.Adapters
+	// Audits is the trail read/export surface. Concrete like Adapters: it is
+	// principal-keyed and the handler resolves the session before calling it.
+	Audits *service.Audits
 	// SCIM is the provisioning ADMINISTRATION surface (human sessions,
 	// `manage-members` at org scope); SCIMWire is the identity provider's own
 	// protocol path (a provisioning credential, `scim-provision`). They are two

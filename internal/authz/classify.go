@@ -647,6 +647,17 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	// The stream authorizes twice: once at connect over the project, and once
 	// per event over the environment the event names.
 	"http:GET /api/v1/orgs/{org}/projects/{project}/events": {Class: ClassTenant, Ops: []Operation{OpAdvisoryWatch, OpAdvisoryEvent}},
+	// The audit trail read surface (#45). Query and export at each addressed
+	// depth; the depth is in the path, so one operation per route. Reading is
+	// itself audited: the query op commits its own audit.query, the export op
+	// its INTENT/OUTCOME pair. All tenant-class: an audit surface the caller may
+	// not read answers exactly like a scope that is not there.
+	"http:GET /api/v1/orgs/{org}/audit":                                                      {Class: ClassTenant, Ops: []Operation{OpAuditQueryOrg}, Events: []audit.EventType{audit.EventAuditQuery}},
+	"http:GET /api/v1/orgs/{org}/audit/export":                                               {Class: ClassTenant, Ops: []Operation{OpAuditExportOrg}, Events: []audit.EventType{audit.EventAuditExportStarted, audit.EventAuditExportCompleted}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/audit":                                   {Class: ClassTenant, Ops: []Operation{OpAuditQueryProject}, Events: []audit.EventType{audit.EventAuditQuery}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/audit/export":                            {Class: ClassTenant, Ops: []Operation{OpAuditExportProject}, Events: []audit.EventType{audit.EventAuditExportStarted, audit.EventAuditExportCompleted}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit":        {Class: ClassTenant, Ops: []Operation{OpAuditQueryEnv}, Events: []audit.EventType{audit.EventAuditQuery}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit/export": {Class: ClassTenant, Ops: []Operation{OpAuditExportEnv}, Events: []audit.EventType{audit.EventAuditExportStarted, audit.EventAuditExportCompleted}},
 	// The root token key belongs to the instance, so there is no tenant object
 	// whose nonexistence a refusal could mimic. The same holds for every DEK: a
 	// DEK belongs to the instance's crypto hierarchy, not a tenant.

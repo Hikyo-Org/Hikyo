@@ -13,6 +13,7 @@ describe('the route policy registry', () => {
       'org-settings:authenticated:shell',
       'scim:authenticated:shell',
       'project-settings:authenticated:shell',
+      'audit:authenticated:shell',
       'instance-admin:authenticated:shell',
       'settings:authenticated:shell',
       'matrix:authenticated:shell',

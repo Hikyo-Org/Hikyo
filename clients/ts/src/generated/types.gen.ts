@@ -3694,6 +3694,89 @@ export type SessionList = {
 };
 
 /**
+ * One stored trail event, exactly as the JSONL export emits it. No value
+ * material is ever written to the trail, so none appears here. Consumers
+ * MUST tolerate members they do not recognise: the closed registry adds
+ * event types and payload fields over time, and a client that fails on an
+ * additive field would break on every forward-compatible server.
+ *
+ */
+export type AuditEvent = {
+    /**
+     * Immutable public allocation order and event position.
+     */
+    seq: number;
+    id: string;
+    /**
+     * The event type from the closed audit registry.
+     */
+    type: string;
+    schema_version: number;
+    occurred_at: string;
+    /**
+     * Whether occurred_at was asserted by a client rather than the server clock.
+     */
+    occurred_asserted: boolean;
+    recorded_at: string;
+    actor_id?: string;
+    actor_class: string;
+    actor_credential_id?: string;
+    authority_id?: string;
+    scope_class: string;
+    org_id?: string;
+    project_id?: string;
+    env_id?: string;
+    object_type?: string;
+    object_id?: string;
+    outcome: string;
+    correlation_id?: string;
+    source_ip?: string;
+    user_agent?: string;
+    origin: string;
+    /**
+     * The event's schema-versioned payload, verbatim. Its members vary by
+     * event type and grow additively; render unknown members rather than
+     * failing on them.
+     *
+     */
+    payload: {
+        [key: string]: unknown;
+    };
+};
+
+export type AuditPage = {
+    /**
+     * The events on this page that matched the filter, in seq order.
+     */
+    items: Array<AuditEvent>;
+    /**
+     * Number of matched events returned (may be fewer than the rows scanned).
+     */
+    count: number;
+    /**
+     * The seq of the last row SCANNED. Pass it as `after_seq` to resume;
+     * it advances over scanned rows, not just matched ones, so a filtered
+     * page never re-reads or skips.
+     *
+     */
+    next_after_seq: number;
+    /**
+     * The session ceiling the server pinned for this paging run (the
+     * trail's head when the first page was read). Pass it back as `to_seq`
+     * on every later page; it never changes across the run.
+     *
+     */
+    upper_seq: number;
+    /**
+     * True when this page reached the end of the trail (fewer rows scanned
+     * than the limit). While false, more pages remain even if `items` is
+     * empty for a sparse filter.
+     *
+     */
+    exhausted: boolean;
+};
+
+/**
  * Organisation identifier.
  */
 export type OrgId = Id;
@@ -3926,6 +4009,73 @@ export type SessionId = Id;
  * Durable updater-helper job identifier.
  */
 export type InstanceUpdateJobId = Id;
+
+/**
+ * Inclusive lower time bound (recorded-at). Absent means the epoch.
+ */
+export type AuditFrom = string;
+
+/**
+ * Inclusive upper time bound (recorded-at). Absent means unbounded.
+ */
+export type AuditTo = string;
+
+/**
+ * Resume cursor: return events whose seq is strictly greater. Pass the
+ * previous page's `next_after_seq` to page forward.
+ *
+ */
+export type AuditAfterSeq = number;
+
+/**
+ * The session ceiling. Absent on the first page (the server pins it to the
+ * trail's current head and returns it as `upper_seq`); pass that value back
+ * on every later page so paging terminates and never chases the
+ * `audit.query` events the reads themselves append.
+ *
+ */
+export type AuditToSeq = number;
+
+/**
+ * Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
+ * be fewer when a filter is set.
+ *
+ */
+export type AuditLimit = number;
+
+/**
+ * Match only events whose acting principal has this id.
+ */
+export type AuditActor = string;
+
+/**
+ * Match only events of this type (the operation), e.g. `value.set`. An
+ * unknown type is not an error; it simply matches nothing.
+ *
+ */
+export type AuditOperation = string;
+
+/**
+ * Match only events with this outcome.
+ */
+export type AuditOutcome = 'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected';
+
+/**
+ * Match only events acting on this object type.
+ */
+export type AuditObjectType = string;
+
+/**
+ * Match only events acting on this object id.
+ */
+export type AuditObjectId = string;
+
+/**
+ * Match only events sharing this correlation id — the link between an
+ * act's INTENT and OUTCOME events.
+ *
+ */
+export type AuditCorrelationId = string;
 
 export type GetMetaData = {
     body?: never;
@@ -17670,6 +17820,648 @@ export type WatchProjectEventsResponses = {
 };
 
 export type WatchProjectEventsResponse = WatchProjectEventsResponses[keyof WatchProjectEventsResponses];
+
+export type QueryOrgAuditData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+    };
+    query?: {
+        /**
+         * Inclusive lower time bound (recorded-at). Absent means the epoch.
+         */
+        from?: string;
+        /**
+         * Inclusive upper time bound (recorded-at). Absent means unbounded.
+         */
+        to?: string;
+        /**
+         * Resume cursor: return events whose seq is strictly greater. Pass the
+         * previous page's `next_after_seq` to page forward.
+         *
+         */
+        after_seq?: number;
+        /**
+         * The session ceiling. Absent on the first page (the server pins it to the
+         * trail's current head and returns it as `upper_seq`); pass that value back
+         * on every later page so paging terminates and never chases the
+         * `audit.query` events the reads themselves append.
+         *
+         */
+        to_seq?: number;
+        /**
+         * Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
+         * be fewer when a filter is set.
+         *
+         */
+        limit?: number;
+        /**
+         * Match only events whose acting principal has this id.
+         */
+        actor?: string;
+        /**
+         * Match only events of this type (the operation), e.g. `value.set`. An
+         * unknown type is not an error; it simply matches nothing.
+         *
+         */
+        operation?: string;
+        /**
+         * Match only events with this outcome.
+         */
+        outcome?: 'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected';
+        /**
+         * Match only events acting on this object type.
+         */
+        object_type?: string;
+        /**
+         * Match only events acting on this object id.
+         */
+        object_id?: string;
+        /**
+         * Match only events sharing this correlation id — the link between an
+         * act's INTENT and OUTCOME events.
+         *
+         */
+        correlation_id?: string;
+    };
+    url: '/api/v1/orgs/{org}/audit';
+};
+
+export type QueryOrgAuditErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type QueryOrgAuditError = QueryOrgAuditErrors[keyof QueryOrgAuditErrors];
+
+export type QueryOrgAuditResponses = {
+    /**
+     * One page of trail events.
+     */
+    200: AuditPage;
+};
+
+export type QueryOrgAuditResponse = QueryOrgAuditResponses[keyof QueryOrgAuditResponses];
+
+export type ExportOrgAuditData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+    };
+    query?: {
+        /**
+         * Inclusive lower time bound (recorded-at). Absent means the epoch.
+         */
+        from?: string;
+        /**
+         * Inclusive upper time bound (recorded-at). Absent means unbounded.
+         */
+        to?: string;
+        /**
+         * Match only events whose acting principal has this id.
+         */
+        actor?: string;
+        /**
+         * Match only events of this type (the operation), e.g. `value.set`. An
+         * unknown type is not an error; it simply matches nothing.
+         *
+         */
+        operation?: string;
+        /**
+         * Match only events with this outcome.
+         */
+        outcome?: 'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected';
+        /**
+         * Match only events acting on this object type.
+         */
+        object_type?: string;
+        /**
+         * Match only events acting on this object id.
+         */
+        object_id?: string;
+        /**
+         * Match only events sharing this correlation id — the link between an
+         * act's INTENT and OUTCOME events.
+         *
+         */
+        correlation_id?: string;
+    };
+    url: '/api/v1/orgs/{org}/audit/export';
+};
+
+export type ExportOrgAuditErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type ExportOrgAuditError = ExportOrgAuditErrors[keyof ExportOrgAuditErrors];
+
+export type ExportOrgAuditResponses = {
+    /**
+     * The trail as a JSONL byte stream.
+     */
+    200: string;
+};
+
+export type ExportOrgAuditResponse = ExportOrgAuditResponses[keyof ExportOrgAuditResponses];
+
+export type QueryProjectAuditData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+    };
+    query?: {
+        /**
+         * Inclusive lower time bound (recorded-at). Absent means the epoch.
+         */
+        from?: string;
+        /**
+         * Inclusive upper time bound (recorded-at). Absent means unbounded.
+         */
+        to?: string;
+        /**
+         * Resume cursor: return events whose seq is strictly greater. Pass the
+         * previous page's `next_after_seq` to page forward.
+         *
+         */
+        after_seq?: number;
+        /**
+         * The session ceiling. Absent on the first page (the server pins it to the
+         * trail's current head and returns it as `upper_seq`); pass that value back
+         * on every later page so paging terminates and never chases the
+         * `audit.query` events the reads themselves append.
+         *
+         */
+        to_seq?: number;
+        /**
+         * Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
+         * be fewer when a filter is set.
+         *
+         */
+        limit?: number;
+        /**
+         * Match only events whose acting principal has this id.
+         */
+        actor?: string;
+        /**
+         * Match only events of this type (the operation), e.g. `value.set`. An
+         * unknown type is not an error; it simply matches nothing.
+         *
+         */
+        operation?: string;
+        /**
+         * Match only events with this outcome.
+         */
+        outcome?: 'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected';
+        /**
+         * Match only events acting on this object type.
+         */
+        object_type?: string;
+        /**
+         * Match only events acting on this object id.
+         */
+        object_id?: string;
+        /**
+         * Match only events sharing this correlation id — the link between an
+         * act's INTENT and OUTCOME events.
+         *
+         */
+        correlation_id?: string;
+    };
+    url: '/api/v1/orgs/{org}/projects/{project}/audit';
+};
+
+export type QueryProjectAuditErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type QueryProjectAuditError = QueryProjectAuditErrors[keyof QueryProjectAuditErrors];
+
+export type QueryProjectAuditResponses = {
+    /**
+     * One page of trail events.
+     */
+    200: AuditPage;
+};
+
+export type QueryProjectAuditResponse = QueryProjectAuditResponses[keyof QueryProjectAuditResponses];
+
+export type ExportProjectAuditData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+    };
+    query?: {
+        /**
+         * Inclusive lower time bound (recorded-at). Absent means the epoch.
+         */
+        from?: string;
+        /**
+         * Inclusive upper time bound (recorded-at). Absent means unbounded.
+         */
+        to?: string;
+        /**
+         * Match only events whose acting principal has this id.
+         */
+        actor?: string;
+        /**
+         * Match only events of this type (the operation), e.g. `value.set`. An
+         * unknown type is not an error; it simply matches nothing.
+         *
+         */
+        operation?: string;
+        /**
+         * Match only events with this outcome.
+         */
+        outcome?: 'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected';
+        /**
+         * Match only events acting on this object type.
+         */
+        object_type?: string;
+        /**
+         * Match only events acting on this object id.
+         */
+        object_id?: string;
+        /**
+         * Match only events sharing this correlation id — the link between an
+         * act's INTENT and OUTCOME events.
+         *
+         */
+        correlation_id?: string;
+    };
+    url: '/api/v1/orgs/{org}/projects/{project}/audit/export';
+};
+
+export type ExportProjectAuditErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type ExportProjectAuditError = ExportProjectAuditErrors[keyof ExportProjectAuditErrors];
+
+export type ExportProjectAuditResponses = {
+    /**
+     * The trail as a JSONL byte stream.
+     */
+    200: string;
+};
+
+export type ExportProjectAuditResponse = ExportProjectAuditResponses[keyof ExportProjectAuditResponses];
+
+export type QueryEnvAuditData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: {
+        /**
+         * Inclusive lower time bound (recorded-at). Absent means the epoch.
+         */
+        from?: string;
+        /**
+         * Inclusive upper time bound (recorded-at). Absent means unbounded.
+         */
+        to?: string;
+        /**
+         * Resume cursor: return events whose seq is strictly greater. Pass the
+         * previous page's `next_after_seq` to page forward.
+         *
+         */
+        after_seq?: number;
+        /**
+         * The session ceiling. Absent on the first page (the server pins it to the
+         * trail's current head and returns it as `upper_seq`); pass that value back
+         * on every later page so paging terminates and never chases the
+         * `audit.query` events the reads themselves append.
+         *
+         */
+        to_seq?: number;
+        /**
+         * Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
+         * be fewer when a filter is set.
+         *
+         */
+        limit?: number;
+        /**
+         * Match only events whose acting principal has this id.
+         */
+        actor?: string;
+        /**
+         * Match only events of this type (the operation), e.g. `value.set`. An
+         * unknown type is not an error; it simply matches nothing.
+         *
+         */
+        operation?: string;
+        /**
+         * Match only events with this outcome.
+         */
+        outcome?: 'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected';
+        /**
+         * Match only events acting on this object type.
+         */
+        object_type?: string;
+        /**
+         * Match only events acting on this object id.
+         */
+        object_id?: string;
+        /**
+         * Match only events sharing this correlation id — the link between an
+         * act's INTENT and OUTCOME events.
+         *
+         */
+        correlation_id?: string;
+    };
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit';
+};
+
+export type QueryEnvAuditErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type QueryEnvAuditError = QueryEnvAuditErrors[keyof QueryEnvAuditErrors];
+
+export type QueryEnvAuditResponses = {
+    /**
+     * One page of trail events.
+     */
+    200: AuditPage;
+};
+
+export type QueryEnvAuditResponse = QueryEnvAuditResponses[keyof QueryEnvAuditResponses];
+
+export type ExportEnvAuditData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: {
+        /**
+         * Inclusive lower time bound (recorded-at). Absent means the epoch.
+         */
+        from?: string;
+        /**
+         * Inclusive upper time bound (recorded-at). Absent means unbounded.
+         */
+        to?: string;
+        /**
+         * Match only events whose acting principal has this id.
+         */
+        actor?: string;
+        /**
+         * Match only events of this type (the operation), e.g. `value.set`. An
+         * unknown type is not an error; it simply matches nothing.
+         *
+         */
+        operation?: string;
+        /**
+         * Match only events with this outcome.
+         */
+        outcome?: 'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected';
+        /**
+         * Match only events acting on this object type.
+         */
+        object_type?: string;
+        /**
+         * Match only events acting on this object id.
+         */
+        object_id?: string;
+        /**
+         * Match only events sharing this correlation id — the link between an
+         * act's INTENT and OUTCOME events.
+         *
+         */
+        correlation_id?: string;
+    };
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit/export';
+};
+
+export type ExportEnvAuditErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type ExportEnvAuditError = ExportEnvAuditErrors[keyof ExportEnvAuditErrors];
+
+export type ExportEnvAuditResponses = {
+    /**
+     * The trail as a JSONL byte stream.
+     */
+    200: string;
+};
+
+export type ExportEnvAuditResponse = ExportEnvAuditResponses[keyof ExportEnvAuditResponses];
 
 export type RotateTokenKeyData = {
     body?: never;

@@ -119,3 +119,24 @@ FROM audit_instance_events
 WHERE seq > sqlc.arg(after_seq) AND seq > sqlc.arg(after_commit_seq)
     AND recorded_at >= sqlc.arg(from_time) AND recorded_at <= sqlc.arg(to_time)
 ORDER BY seq LIMIT sqlc.arg(page_limit);
+
+-- Session ceiling reads (#502): the interactive query pins a stable upper seq
+-- bound on its first page so paging terminates across concurrent writes, and
+-- so a query never chases the audit.query events its own reads append. Chain-
+-- confined exactly like the page reads. The CAST pins the type for sqlc; an
+-- empty trail is a 0 ceiling, not NULL.
+
+-- name: MaxTenantAuditOrg :one
+SELECT CAST(COALESCE(MAX(seq), 0) AS INTEGER) FROM audit_tenant_events
+WHERE org_id = ?;
+
+-- name: MaxTenantAuditProject :one
+SELECT CAST(COALESCE(MAX(seq), 0) AS INTEGER) FROM audit_tenant_events
+WHERE org_id = ? AND project_id = ?;
+
+-- name: MaxTenantAuditEnv :one
+SELECT CAST(COALESCE(MAX(seq), 0) AS INTEGER) FROM audit_tenant_events
+WHERE org_id = ? AND project_id = ? AND env_id = ?;
+
+-- name: MaxInstanceAudit :one
+SELECT CAST(COALESCE(MAX(seq), 0) AS INTEGER) FROM audit_instance_events;
