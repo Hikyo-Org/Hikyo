@@ -41,6 +41,14 @@ export const FLOWS: readonly Flow[] = [
   // navigation, and a surface with six panels of its own earns its own flow.
   { id: 'shell', spec: 'flows/shell.spec.ts', surfaces: ['overview', 'projects'] },
   { id: 'members', spec: 'flows/members.spec.ts', surfaces: ['members'] },
+  // SCIM provisioning administration (#501) is a new SURFACE, so the S3 closure
+  // demands a flow, but it cannot get its own spec FILE for the key-detail
+  // reason below: the merge gate loads `ci.yml` from the base branch, so a spec
+  // a PR adds to a group never runs on that PR and its pinned claims would
+  // never execute. It rides `members.spec.ts` — already in group 1 on main, and
+  // the org-scoped `manage-members` sibling surface — so the pinned set runs
+  // from PR-checked-out spec content today.
+  { id: 'scim', spec: 'flows/members.spec.ts', surfaces: ['scim'] },
   {
     id: 'chrome-settings',
     spec: 'flows/settings.spec.ts',

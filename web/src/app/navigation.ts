@@ -168,6 +168,20 @@ export const SURFACES = defineSurfaceRegistry([
     mode: 'authenticated',
     chrome: 'shell',
   },
+  // SCIM provisioning administration (#501, #73). Org-scoped for the same
+  // reason members is: `manage-members@org` addresses ONE organisation, so the
+  // org is route data and the rail's active circle fills it. The binding under
+  // administration is a `?binding=` query parameter — an id, never a secret —
+  // so a reload and a shared link resolve the same binding, exactly as the
+  // matrix's per-key filter does.
+  {
+    id: 'scim',
+    path: '/orgs/:org/scim',
+    label: 'SCIM provisioning',
+    section: 'Organisation',
+    mode: 'authenticated',
+    chrome: 'shell',
+  },
   // Project settings addresses ONE project, exactly like the matrix, so no
   // static sidebar entry could know which one to mean. It is reached from the
   // project list and by deep link.

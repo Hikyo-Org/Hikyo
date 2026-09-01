@@ -1,13 +1,16 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
-import { zServiceAccountList } from '@hikyo/zod';
+import { zScimBinding, zScimBindingList, zServiceAccountList } from '@hikyo/zod';
 import { z } from 'zod';
 
 import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
 import { browserApi } from '../fixtures/api.ts';
 import {
+  BASE_URL,
+  nextTotpCode,
   readSeed,
   STORAGE_STATE,
 } from '../fixtures/instance.ts';
+import { surfacesForFlow } from '../registry.ts';
 
 /**
  * Flow: members & grants (registry surface `members`) — mvp-boundary S3's
@@ -592,5 +595,212 @@ test.describe('members and grants', () => {
         await page.emulateMedia({ colorScheme: null });
       }
     });
+  }
+});
+
+/**
+ * Flow: SCIM provisioning administration (registry surface `scim`, #501).
+ *
+ * It rides this file because the merge gate loads `ci.yml` from the base branch
+ * and a spec a PR adds to a group never runs on that PR — members.spec.ts is
+ * already in group 1 and is the org-scoped `manage-members` sibling, so the
+ * surface's pinned set runs from PR-checked-out content today (see
+ * e2e/registry.ts). The session is the shared administrator's: `manage-members`
+ * is MFA-mandatory and this session is stepped up, and minting additionally
+ * reauthenticates with a fresh TOTP proof.
+ */
+const SCIM_PATH = `/orgs/${seed.org}/scim`;
+const SCIM_MEDIA = 'application/scim+json';
+const SCHEMA_GROUP = 'urn:ietf:params:scim:schemas:core:2.0:Group';
+const SCHEMA_USER = 'urn:ietf:params:scim:schemas:core:2.0:User';
+const SCHEMA_PATCHOP = 'urn:ietf:params:scim:api:messages:2.0:PatchOp';
+const SCIM_PROVIDER_SLUG = 'e2e-oidc';
+
+/** Create the binding once if absent; the pinned-set tests reuse it. */
+async function ensureScimBinding(page: Page): Promise<string> {
+  const list = await browserApi(
+    page,
+    'GET',
+    `/api/v1/orgs/${seed.org}/scim-bindings`,
+    zScimBindingList,
+  );
+  const existing = list.items.find((binding) => binding.provider_slug === SCIM_PROVIDER_SLUG);
+  if (existing !== undefined) {
+    return existing.id;
+  }
+  const created = await browserApi(page, 'POST', `/api/v1/orgs/${seed.org}/scim-bindings`, zScimBinding, {
+    provider_kind: 'oidc',
+    provider_slug: SCIM_PROVIDER_SLUG,
+    subject_source: 'externalId',
+  });
+  return created.id;
+}
+
+test.describe('scim provisioning', () => {
+  test.use({ storageState: STORAGE_STATE });
+
+  test('administers a binding, credential, mapping and directory end to end', async ({ page }) => {
+    await page.goto(SCIM_PATH);
+    await expect(page.getByRole('heading', { name: 'SCIM provisioning', level: 1 })).toBeVisible();
+
+    // Bind the fixture's OIDC provider. Subject source defaults to externalId.
+    await page.getByLabel('Provider slug').fill(SCIM_PROVIDER_SLUG);
+    await page.getByRole('button', { name: 'Create binding' }).click();
+    await expect(page.getByText(new RegExp(`Bound ${SCIM_PROVIDER_SLUG}`))).toBeVisible();
+
+    // Administer it — the binding id lands in the query string as route data.
+    const card = page.locator('.scim-binding', { hasText: SCIM_PROVIDER_SLUG });
+    await card.getByRole('button', { name: 'Administer' }).click();
+    await expect(page.getByRole('heading', { name: 'Provisioning credentials' })).toBeVisible();
+    const bindingId = new URL(page.url()).searchParams.get('binding') ?? '';
+    expect(bindingId).not.toBe('');
+
+    // Mint a credential with a fresh reauthentication proof, and capture the
+    // display-once token from the dialog. The token is read here (it is in the
+    // dialog by design) and used as the wire bearer below.
+    await page.getByLabel('Reauthentication proof').fill(await nextTotpCode());
+    await page.getByRole('button', { name: 'Mint credential' }).click();
+    const mintDialog = page.getByRole('dialog', { name: /shown exactly once/ });
+    await expect(mintDialog).toBeVisible();
+    const token = ((await mintDialog.locator('.machine__token').textContent()) ?? '').trim();
+    expect(token).not.toBe('');
+    await mintDialog.getByLabel(/configured this credential/).check();
+    await mintDialog.getByRole('button', { name: 'Done' }).click();
+    await expect(mintDialog).toBeHidden();
+
+    // The token never reaches a URL or durable browser storage. Assert on a
+    // boolean, never the raw token: a `not.toContain(token)` failure prints the
+    // expected substring into the CI log, leaking the credential.
+    expect(page.url().includes(token)).toBe(false);
+    const tokenInStorage = await page.evaluate((secret) => {
+      const scan = (store: Storage) =>
+        Object.keys(store).some((key) => key.includes(secret) || (store.getItem(key) ?? '').includes(secret));
+      return scan(localStorage) || scan(sessionStorage);
+    }, token);
+    expect(tokenInStorage).toBe(false);
+
+    // The identity provider's own wire, with that credential: provision a group
+    // and a user the way a connector does.
+    const wire = (method: string, path: string, body?: unknown) =>
+      fetch(`${BASE_URL}/api/v1/orgs/${seed.org}/scim/v2/${bindingId}${path}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(body === undefined ? {} : { 'Content-Type': SCIM_MEDIA }),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+
+    const groupResponse = await wire('POST', '/Groups', {
+      schemas: [SCHEMA_GROUP],
+      displayName: 'E2E Engineers',
+    });
+    expect(groupResponse.status).toBe(201);
+    const group = z.object({ id: z.string() }).parse(await groupResponse.json());
+    expect(group.id).not.toBe('');
+
+    const userResponse = await wire('POST', '/Users', {
+      schemas: [SCHEMA_USER],
+      userName: 'e2e-scim@idp.test',
+      externalId: 'e2e-scim-sub',
+      active: true,
+    });
+    expect(userResponse.status).toBe(201);
+    const user = z.object({ id: z.string() }).parse(await userResponse.json());
+
+    // Put the user IN the group so the mapping below actually grants someone —
+    // otherwise the "members affected" count is zero and the assertions pass
+    // vacuously.
+    const patchResponse = await wire('PATCH', `/Groups/${group.id}`, {
+      schemas: [SCHEMA_PATCHOP],
+      Operations: [{ op: 'add', path: 'members', value: [{ value: user.id }] }],
+    });
+    expect(patchResponse.status).toBe(200);
+
+    // A reload re-reads the directory the wire just populated; the binding stays
+    // selected because it is in the URL.
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Directory' })).toBeVisible();
+    await expect(page.locator('.scim-directory-group', { hasText: 'E2E Engineers' })).toBeVisible();
+    await expect(
+      page.locator('.scim-directory-user', { hasText: 'e2e-scim@idp.test' }),
+    ).toBeVisible();
+
+    // Map the provisioned group to a template at organisation scope — the widest
+    // reach — so the server's consequence language is returned and rendered. The
+    // one member is granted immediately, so the applied count is nonzero.
+    await page.getByLabel('Provisioned group').selectOption(group.id);
+    await page.getByLabel('Template').selectOption('viewer');
+    await page.getByRole('button', { name: 'Add mapping' }).click();
+    await expect(page.getByText(/Applied to 1 member/)).toBeVisible();
+    await expect(page.getByText(/[1-9]\d* grants created/)).toBeVisible();
+    await expect(page.locator('.scim-warnings')).toBeVisible();
+    const mappingRow = page.locator('.scim-mapping', { hasText: 'E2E Engineers' });
+    await expect(mappingRow).toBeVisible();
+
+    // Delete the mapping — it releases every origin it held. The row goes, and
+    // the release count is reported ABOVE the list so it outlives the row.
+    await mappingRow.getByRole('button', { name: /Delete mapping/ }).click();
+    await expect(page.locator('.scim-mapping', { hasText: 'E2E Engineers' })).toHaveCount(0);
+    await expect(page.getByText(/Deleted\. [1-9]\d* origins released/)).toBeVisible();
+
+    // Revoke the credential; it bites at the wire's very next request.
+    const credentialRow = page.locator('.scim-credential').first();
+    await credentialRow.getByRole('button', { name: /Revoke credential/ }).click();
+    await expect(credentialRow.locator('.badge', { hasText: 'revoked' })).toBeVisible();
+    const afterRevoke = await wire('GET', '/ServiceProviderConfig');
+    expect(afterRevoke.status).toBe(401);
+
+    // Delete the binding through its typed-name gate; the teardown runs and the
+    // card is gone.
+    await card.getByLabel('Confirm by typing the provider slug').fill(SCIM_PROVIDER_SLUG);
+    await card.getByRole('button', { name: 'Delete binding' }).click();
+    await expect(page.locator('.scim-binding', { hasText: SCIM_PROVIDER_SLUG })).toHaveCount(0);
+  });
+
+  for (const scheme of ['dark', 'light'] as const) {
+    for (const surface of surfacesForFlow('scim')) {
+      test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({
+        page,
+      }, testInfo) => {
+        await page.emulateMedia({ colorScheme: scheme });
+        try {
+          const bindingId = await ensureScimBinding(page);
+          await page.goto(`${SCIM_PATH}?binding=${bindingId}`);
+
+          const heading = page.getByRole('heading', { name: 'SCIM provisioning', level: 1 });
+          const panel = page.locator('.panel').first();
+          const slug = page.locator('.scim-binding__slug .mono').first();
+          const badge = page.locator('.scim-binding .badge').first();
+          const administer = page.getByRole('button', { name: 'Administering' }).first();
+          const rowDensity = testInfo.project.name === 'mobile' ? '--touch' : '--row';
+
+          await expectPinnedAssertionSet(page, {
+            flow: 'scim',
+            surface: surface.id,
+            theme: scheme,
+            text: [heading, slug],
+            radii: [
+              [panel, 'container'],
+              [administer, 'control'],
+              [badge, 'badge'],
+            ],
+            fonts: [
+              [heading, 'ui'],
+              [slug, 'mono'],
+            ],
+            colours: [
+              [heading, 'color', '--tx'],
+              [panel, 'backgroundColor', '--bg-panel'],
+              [panel, 'borderTopColor', '--panel-line'],
+            ],
+            hairlines: [panel],
+            density: [[administer, rowDensity]],
+          });
+        } finally {
+          await page.emulateMedia({ colorScheme: null });
+        }
+      });
+    }
   }
 });

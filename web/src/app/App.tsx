@@ -14,6 +14,7 @@ import { NotFound, Overview } from '../routes/Placeholder.tsx';
 import { ProjectSettings } from '../routes/ProjectSettings.tsx';
 import { Projects } from '../routes/Projects.tsx';
 import { Remotes } from '../routes/Remotes.tsx';
+import { ScimProvisioning } from '../routes/ScimProvisioning.tsx';
 import { Shell } from '../routes/Shell.tsx';
 import { Values } from '../routes/Values.tsx';
 import { WorkspaceApprove } from '../routes/WorkspaceApprove.tsx';
@@ -45,6 +46,7 @@ const ELEMENTS: Record<SurfaceId, ReactElement> = {
   remotes: <Remotes />,
   members: <Members />,
   'org-settings': <OrgSettings />,
+  scim: <ScimProvisioning />,
   'project-settings': <ProjectSettings />,
   'instance-admin': <InstanceAdmin />,
   settings: <AccountSecurity />,
