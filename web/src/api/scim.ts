@@ -118,7 +118,10 @@ export function useCreateScimBinding(org: string) {
           subject_source: input.subjectSource,
         },
       }),
-    onSuccess: () => queries.invalidateQueries({ queryKey: scimBindingsKey(org) }),
+    // Refresh on SETTLE: a create whose response was lost may still have
+    // committed, and a concurrent-create 409 means a row now exists this list
+    // does not show — both leave the inventory stale on the failure path too.
+    onSettled: () => queries.invalidateQueries({ queryKey: scimBindingsKey(org) }),
   });
 }
 
@@ -405,8 +408,13 @@ export function scimMintFailureText(error: unknown): string {
       case 409:
         return error.detail ?? 'Refused: reload to see the binding’s current credentials, then retry.';
       default:
-        return `The mint failed (${error.status}). No credential was issued; try again shortly.`;
+        // A 5xx may have committed the mint before the response was lost, so
+        // this must NOT claim nothing was issued — that would strand a live,
+        // unrevoked credential. Say the outcome is unknown and point at the
+        // list, where a stray credential shows up revocable.
+        return `The mint failed (${error.status}); whether a credential was issued is unknown. Reload the list — if a new credential appears, revoke it.`;
     }
   }
-  return 'The mint could not be completed: the server could not be reached, or it answered something this client does not understand. No credential was issued.';
+  // Same honesty for a lost/garbled response: the request may have committed.
+  return 'The mint could not be completed: the server could not be reached, or it answered something this client does not understand. Whether a credential was issued is unknown — reload the list, and revoke any credential you did not intend.';
 }

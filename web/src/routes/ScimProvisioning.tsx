@@ -115,11 +115,17 @@ export function ScimProvisioning() {
       </Panel>
 
       {active === null ? null : (
-        <>
+        // Keyed by binding id so switching the administered binding REMOUNTS
+        // these sections: an in-flight mint or an open display-once dialog can
+        // never carry one binding's token into another binding's panel. A mint
+        // still committing when the operator switches loses the dialog, but the
+        // credentials list was already invalidated, so the new credential shows
+        // as revocable metadata rather than a wrong-panel disclosure.
+        <div key={active.id}>
           <MappingsSection org={org} binding={active} />
           <CredentialsSection org={org} binding={active} />
           <DirectorySection org={org} binding={active} />
-        </>
+        </div>
       )}
     </div>
   );
@@ -388,6 +394,10 @@ function MappingsSection({ org, binding }: { org: string; binding: ScimBinding }
   const mappings = useScimMappings(org, binding.id);
   const groups = useScimDirectoryGroups(org, binding.id);
   const rows = mappings.data?.items ?? [];
+  // The delete outcome lives HERE, not in the row: deleting releases the row on
+  // the settled refetch, and feedback stored inside it would vanish with it, so
+  // the consequence a delete reports has to outlive the row it describes.
+  const [deleteOutcome, setDeleteOutcome] = useState<string | null>(null);
   const groupNames = useMemo(() => {
     const map = new Map<string, string>();
     for (const group of groups.data?.items ?? []) {
@@ -405,6 +415,7 @@ function MappingsSection({ org, binding }: { org: string; binding: ScimBinding }
       </p>
 
       {mappings.isError ? <Alert>{scimReadFailureText(mappings.error)}</Alert> : null}
+      {deleteOutcome === null ? null : <Done>{deleteOutcome}</Done>}
 
       {mappings.isSuccess && rows.length === 0 ? (
         <p role="status">No mappings yet. Map a provisioned group to a template below.</p>
@@ -418,6 +429,9 @@ function MappingsSection({ org, binding }: { org: string; binding: ScimBinding }
             binding={binding.id}
             row={row}
             groupName={groupNames.get(row.group_id) ?? row.group_id}
+            onDeleted={(released) =>
+              setDeleteOutcome(`Deleted. ${String(released)} origins released.`)
+            }
           />
         ))}
       </ul>
@@ -461,11 +475,13 @@ function MappingRow({
   binding,
   row,
   groupName,
+  onDeleted,
 }: {
   org: string;
   binding: string;
   row: ScimMapping;
   groupName: string;
+  onDeleted: (originsReleased: number) => void;
 }) {
   const update = useUpdateScimMapping(org, binding);
   const remove = useDeleteScimMapping(org, binding);
@@ -502,10 +518,9 @@ function MappingRow({
     remove.mutate(
       { group: row.group_id, ...scopeOfMapping(row) },
       {
-        onSuccess: (next) => {
-          setResult(next);
-          feedback.ok(`Deleted. ${String(next.origins_released)} origins released.`);
-        },
+        // Report UP: this row is about to be removed by the settled refetch, so
+        // its own feedback would disappear with it.
+        onSuccess: (next) => onDeleted(next.origins_released),
         onError: (caught) => feedback.report(caught),
       },
     );

@@ -613,6 +613,7 @@ const SCIM_PATH = `/orgs/${seed.org}/scim`;
 const SCIM_MEDIA = 'application/scim+json';
 const SCHEMA_GROUP = 'urn:ietf:params:scim:schemas:core:2.0:Group';
 const SCHEMA_USER = 'urn:ietf:params:scim:schemas:core:2.0:User';
+const SCHEMA_PATCHOP = 'urn:ietf:params:scim:api:messages:2.0:PatchOp';
 const SCIM_PROVIDER_SLUG = 'e2e-oidc';
 
 /** Create the binding once if absent; the pinned-set tests reuse it. */
@@ -667,12 +668,16 @@ test.describe('scim provisioning', () => {
     await mintDialog.getByRole('button', { name: 'Done' }).click();
     await expect(mintDialog).toBeHidden();
 
-    // The token never reaches a URL or durable browser storage.
-    expect(page.url()).not.toContain(token);
-    const stored = await page.evaluate(() =>
-      JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }),
-    );
-    expect(stored).not.toContain(token);
+    // The token never reaches a URL or durable browser storage. Assert on a
+    // boolean, never the raw token: a `not.toContain(token)` failure prints the
+    // expected substring into the CI log, leaking the credential.
+    expect(page.url().includes(token)).toBe(false);
+    const tokenInStorage = await page.evaluate((secret) => {
+      const scan = (store: Storage) =>
+        Object.keys(store).some((key) => key.includes(secret) || (store.getItem(key) ?? '').includes(secret));
+      return scan(localStorage) || scan(sessionStorage);
+    }, token);
+    expect(tokenInStorage).toBe(false);
 
     // The identity provider's own wire, with that credential: provision a group
     // and a user the way a connector does.
@@ -701,6 +706,16 @@ test.describe('scim provisioning', () => {
       active: true,
     });
     expect(userResponse.status).toBe(201);
+    const user = z.object({ id: z.string() }).parse(await userResponse.json());
+
+    // Put the user IN the group so the mapping below actually grants someone —
+    // otherwise the "members affected" count is zero and the assertions pass
+    // vacuously.
+    const patchResponse = await wire('PATCH', `/Groups/${group.id}`, {
+      schemas: [SCHEMA_PATCHOP],
+      Operations: [{ op: 'add', path: 'members', value: [{ value: user.id }] }],
+    });
+    expect(patchResponse.status).toBe(200);
 
     // A reload re-reads the directory the wire just populated; the binding stays
     // selected because it is in the URL.
@@ -712,18 +727,22 @@ test.describe('scim provisioning', () => {
     ).toBeVisible();
 
     // Map the provisioned group to a template at organisation scope — the widest
-    // reach — so the server's consequence language is returned and rendered.
+    // reach — so the server's consequence language is returned and rendered. The
+    // one member is granted immediately, so the applied count is nonzero.
     await page.getByLabel('Provisioned group').selectOption(group.id);
     await page.getByLabel('Template').selectOption('viewer');
     await page.getByRole('button', { name: 'Add mapping' }).click();
-    await expect(page.getByText(/Applied to .* member/)).toBeVisible();
+    await expect(page.getByText(/Applied to 1 member/)).toBeVisible();
+    await expect(page.getByText(/[1-9]\d* grants created/)).toBeVisible();
     await expect(page.locator('.scim-warnings')).toBeVisible();
     const mappingRow = page.locator('.scim-mapping', { hasText: 'E2E Engineers' });
     await expect(mappingRow).toBeVisible();
 
-    // Delete the mapping — it releases every origin it held and the row goes.
+    // Delete the mapping — it releases every origin it held. The row goes, and
+    // the release count is reported ABOVE the list so it outlives the row.
     await mappingRow.getByRole('button', { name: /Delete mapping/ }).click();
     await expect(page.locator('.scim-mapping', { hasText: 'E2E Engineers' })).toHaveCount(0);
+    await expect(page.getByText(/Deleted\. [1-9]\d* origins released/)).toBeVisible();
 
     // Revoke the credential; it bites at the wire's very next request.
     const credentialRow = page.locator('.scim-credential').first();

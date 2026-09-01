@@ -43,8 +43,15 @@ describe('scimMintFailureText', () => {
     );
   });
 
-  it('routes 403 to the second-factor answer and 500 to no-credential-issued', () => {
+  it('routes 403 to the second-factor answer', () => {
     expect(scimMintFailureText(err(403))).toMatch(/second factor/i);
-    expect(scimMintFailureText(err(500))).toMatch(/no credential was issued/i);
+  });
+
+  it('calls a 5xx or lost-response outcome unknown, not "no credential issued"', () => {
+    // A 5xx may have committed before the response was lost, so claiming
+    // nothing issued would strand a live credential.
+    expect(scimMintFailureText(err(500))).toMatch(/unknown/i);
+    expect(scimMintFailureText(err(500))).not.toMatch(/no credential was issued/i);
+    expect(scimMintFailureText(new Error('network'))).toMatch(/unknown/i);
   });
 });
