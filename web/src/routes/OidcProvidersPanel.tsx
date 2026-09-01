@@ -72,6 +72,14 @@ export function OidcProvidersPanel() {
   );
   const [editor, setEditor] = useState<EditorTarget | null>(null);
   const [deleting, setDeleting] = useState<OidcProvider | null>(null);
+  // Set while a post-conflict refetch is in flight. The provider PUT is a
+  // full replace by slug with no client row-version, so the server's CAS only
+  // guards a write racing inside its own transaction — it cannot stop an admin
+  // acting on STALE displayed data. So after a fail-closed refusal we latch the
+  // action controls shut until the list has refetched: without it, a stale
+  // editor could reopen during the refresh and silently overwrite a concurrent
+  // admin's change (for example re-enabling a provider they just disabled).
+  const [refreshingAfterConflict, setRefreshingAfterConflict] = useState(false);
 
   const openCreate = () => {
     feedback.clear();
@@ -131,6 +139,7 @@ export function OidcProvidersPanel() {
                 type="button"
                 className="btn"
                 aria-label={`Reconfigure ${provider.display_name}`}
+                disabled={refreshingAfterConflict}
                 onClick={() => openReconfigure(provider)}
               >
                 Reconfigure
@@ -139,6 +148,7 @@ export function OidcProvidersPanel() {
                 type="button"
                 className="btn btn--danger"
                 aria-label={`Delete ${provider.display_name}`}
+                disabled={refreshingAfterConflict}
                 onClick={() => {
                   feedback.clear();
                   setDeleting(provider);
@@ -150,9 +160,18 @@ export function OidcProvidersPanel() {
           ))
         : null}
 
+      {refreshingAfterConflict ? (
+        <p role="status">Refreshing the provider list after a conflicting change…</p>
+      ) : null}
+
       {providers.isSuccess && editor === null ? (
         <div className="panel__actions">
-          <button type="button" className="btn btn--primary" onClick={openCreate}>
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={refreshingAfterConflict}
+            onClick={openCreate}
+          >
             + add identity provider
           </button>
           <code className="instance-cli">$ hikyo oidc-provider put</code>
@@ -175,9 +194,11 @@ export function OidcProvidersPanel() {
           onFailure={(refusal) => feedback.report(refusal)}
           onFailClosed={() => {
             // A stale, forbidden, or ended-session refusal: close the editor and
-            // refetch so any retry starts from fresh state, not the stale draft.
+            // refetch, latching the action controls until fresh data lands so no
+            // retry proceeds against the stale list in the meantime.
             setEditor(null);
-            void providers.refetch();
+            setRefreshingAfterConflict(true);
+            void providers.refetch().finally(() => setRefreshingAfterConflict(false));
           }}
         />
       ) : null}
