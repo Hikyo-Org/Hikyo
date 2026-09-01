@@ -547,6 +547,7 @@ test.describe('instance administration', () => {
         ['#instance-oidc', 'needs a second factor', '+ add identity provider'],
         ['#instance-saml-providers', 'needs a second factor', 'No SAML providers are configured'],
         ['#instance-saml-sp-keys', 'needs a second factor', 'signs every AuthnRequest'],
+        ['#instance-federation', 'needs a second factor', 'Configure issuer'],
       ] as const;
       for (const [selector, refusalText, forbiddenText] of panels) {
         const panel = page.locator(selector);
@@ -719,6 +720,61 @@ test.describe('instance administration', () => {
     await editor.getByLabel('Client secret').fill('whatever-secret');
     await editor.getByRole('button', { name: 'Save provider' }).click();
     await expect(panel.getByRole('alert')).toContainText('changed underneath you');
+  });
+
+  test('configures, edits and deletes a federation issuer, and fails closed while one is bound', async ({
+    page,
+  }) => {
+    const federation = page.locator('#instance-federation');
+
+    // The seeded issuer is listed with the census that fails a delete closed:
+    // web-api is bound to it, so at least one binding names it.
+    await expect(federation).toContainText(seed.machine.issuer);
+    const seedRow = federation.locator('li.settings-row', { hasText: seed.machine.issuer });
+    await expect(seedRow).toContainText('binding');
+
+    // Configure a NEW, never-bound issuer. Discovery mode needs no JWKS
+    // document, and the create runs no outbound fetch, so an unreachable host
+    // is fine here. The host carries the project name so the desktop and mobile
+    // runs never name the same issuer.
+    const newIssuer = `https://e2e-federation-${test.info().project.name}.example.org`;
+    await federation.getByRole('button', { name: 'Configure issuer' }).click();
+    const createForm = federation.locator('fieldset', {
+      hasText: 'Configure a federation issuer',
+    });
+    await createForm.getByLabel('Issuer (https URL, matched byte-for-byte)').fill(newIssuer);
+    await createForm.getByLabel('Platform type').selectOption('github-actions');
+    await createForm.getByLabel('Refused audiences, one per line').fill('example-owner');
+    await createForm.getByRole('button', { name: 'Configure issuer' }).click();
+
+    await expect(federation.locator('.notice')).toContainText('Configured');
+    const newRow = federation.locator('li.settings-row', { hasText: newIssuer });
+    await expect(newRow).toContainText('no bindings name it');
+
+    // Edit the mutable half: the issuer string and platform type are shown
+    // read-only, and only the refused audiences move.
+    await newRow.getByRole('button', { name: 'Edit' }).click();
+    const editForm = federation.locator('fieldset', { hasText: `Edit ${newIssuer}` });
+    await expect(editForm.getByRole('textbox', { name: 'Issuer' })).toHaveCount(0);
+    await editForm.getByLabel('Refused audiences, one per line').fill('example-owner\nsecond-owner');
+    await editForm.getByRole('button', { name: 'Save issuer' }).click();
+    await expect(federation.locator('.notice')).toContainText('Updated');
+
+    // The seeded issuer FAILS CLOSED: a binding names it, so the confirmation
+    // explains deletion is permanently unavailable and offers NO destructive
+    // action. A revoked binding would still count, so this can never reach zero.
+    await seedRow.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(seedRow).toContainText('cannot be deleted');
+    await expect(seedRow.getByRole('button', { name: 'Delete issuer' })).toHaveCount(0);
+    await seedRow.getByRole('button', { name: 'Close' }).click();
+    await expect(federation).toContainText(seed.machine.issuer);
+
+    // The never-bound issuer deletes cleanly — the destructive action is
+    // present only because its census is zero.
+    await newRow.getByRole('button', { name: 'Delete', exact: true }).click();
+    await newRow.getByRole('button', { name: 'Delete issuer' }).click();
+    await expect(federation.locator('.notice')).toContainText('Deleted');
+    await expect(federation.locator('li.settings-row', { hasText: newIssuer })).toHaveCount(0);
   });
 
   for (const scheme of ['dark', 'light'] as const) {

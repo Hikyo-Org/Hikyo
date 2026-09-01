@@ -442,6 +442,58 @@ test.describe('machine access', () => {
     await expect(dialog).toBeHidden();
   });
 
+  test('replaces a binding atomically, then revokes it', async () => {
+    // A binding is matched globally on (issuer, subject), so a subject unique to
+    // this Playwright project keeps the desktop and mobile runs from colliding
+    // on the same identity. The test revokes what it minted at the end.
+    const subject = `system:serviceaccount:hikyo-system:e2e-replace-${test.info().project.name}`;
+    const account = seed.machine.mintable;
+
+    await page.getByRole('tab', { name: 'Federation' }).click();
+    await page.getByRole('button', { name: 'New binding' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+
+    // Bind on the mintable account — it has no grants, so the replacement's
+    // post-state reach is empty and no reauthentication ceremony runs. The
+    // Kubernetes preset fills the configured issuer and the required UID pin.
+    await dialog.getByLabel('Service account').selectOption({ label: account });
+    await expect(dialog.getByLabel('Issuer')).toHaveValue(seed.machine.issuer);
+    await dialog.getByLabel('Subject, matched byte-for-byte').fill(subject);
+    await dialog.getByLabel(/ServiceAccount UID/).fill('e2e-replace-uid');
+    await dialog.getByLabel('Audience').fill(seed.machine.audience);
+    await dialog.getByRole('button', { name: 'Bind this identity' }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page.locator('.notice').filter({ hasText: 'Bound' })).toBeVisible();
+
+    const card = page.locator('.bindrow', { hasText: subject });
+    await expect(card).toBeVisible();
+
+    // Replace: the dialog is retitled, the account is LOCKED to the
+    // predecessor's, and the fields are seeded from it. The server revokes the
+    // predecessor and inserts the successor in one transaction.
+    await card.getByRole('button', { name: `Replace binding on ${account}` }).click();
+    const replace = page.getByRole('dialog');
+    await expect(
+      replace.getByRole('heading', { name: 'Replace federated binding' }),
+    ).toBeVisible();
+    await expect(replace.getByLabel('Service account')).toBeDisabled();
+    await expect(replace.getByLabel('Issuer')).toHaveValue(seed.machine.issuer);
+    await expect(replace.getByLabel('Subject, matched byte-for-byte')).toHaveValue(subject);
+    await replace.getByLabel('Binding lifetime').selectOption('90d');
+    await replace.getByRole('button', { name: 'Replace this binding' }).click();
+    await expect(replace).toBeHidden();
+    await expect(page.locator('.notice').filter({ hasText: 'Replaced' })).toBeVisible();
+
+    // Exactly one live binding carries the subject now — the predecessor was
+    // revoked, so it is gone from the list. Revoke the successor to leave the
+    // seed inventory as it was.
+    const successor = page.locator('.bindrow', { hasText: subject });
+    await expect(successor).toHaveCount(1);
+    await successor.getByRole('button', { name: `Revoke binding on ${account}` }).click();
+    await expect(page.locator('.bindrow', { hasText: subject })).toHaveCount(0);
+  });
+
   for (const scheme of ['dark', 'light'] as const) {
     test(`meets the pinned assertion set on the inventory (${scheme})`, async () => {
       await page.emulateMedia({ colorScheme: scheme });
