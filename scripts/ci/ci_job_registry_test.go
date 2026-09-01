@@ -86,7 +86,7 @@ func TestCIJobRegistryRejectsWorkflowDrift(t *testing.T) {
     if: ${{ fromJSON(needs.changes.outputs.plan).test }}
     runs-on: ubuntu-latest
   ci-required:
-    if: always()
+    if: always() && !cancelled()
     needs: [changes, test]
     runs-on: ubuntu-latest
 `)
@@ -129,7 +129,7 @@ func TestCIJobRegistryRejectsWorkflowDrift(t *testing.T) {
 			},
 			workflow: baseWorkflow,
 		},
-		"aggregate without always": {
+		"aggregate without cancellation guard": {
 			workflow: []byte(`jobs:
   changes:
     runs-on: ubuntu-latest
@@ -138,6 +138,7 @@ func TestCIJobRegistryRejectsWorkflowDrift(t *testing.T) {
     if: ${{ fromJSON(needs.changes.outputs.plan).test }}
     runs-on: ubuntu-latest
   ci-required:
+    if: always()
     needs: [changes, test]
     runs-on: ubuntu-latest
 `),
@@ -220,7 +221,7 @@ func validateRegistry(gotRegistry registry, workflowData []byte) error {
 			if len(rule.PlanJobs) != 0 {
 				return fmt.Errorf("job %q gate %q cannot name plan jobs", job, rule.RequiredGate)
 			}
-			if condition != "always()" {
+			if condition != "always() && !cancelled()" {
 				return fmt.Errorf("aggregate job %q has condition %q", job, condition)
 			}
 		case "planned":
@@ -271,7 +272,7 @@ func validateRegistry(gotRegistry registry, workflowData []byte) error {
 	}
 
 	const shardMatrix = "${{ fromJSON(needs.analysis_shards.outputs.shards) }}"
-	for _, job := range []string{"race_shard", "fuzz_shard"} {
+	for _, job := range []string{"isolation_shard", "race_shard", "fuzz_shard"} {
 		if _, registered := gotRegistry.Jobs[job]; !registered {
 			continue
 		}

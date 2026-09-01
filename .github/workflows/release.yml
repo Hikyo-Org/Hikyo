@@ -18,7 +18,29 @@ env:
   GOFLAGS: -mod=readonly
 
 jobs:
+  docs:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    container:
+      # Exact @playwright/test release from docs/site/package.json.
+      image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version-file: .nvmrc
+      - name: Assert O4-O6 docs and governance release gates
+        env:
+          POSTHOG_REQUIRED: true
+          PUBLIC_POSTHOG_HOST: ${{ vars.PUBLIC_POSTHOG_HOST }}
+          PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ vars.PUBLIC_POSTHOG_PROJECT_TOKEN }}
+        run: ./scripts/ci/verify-docs.sh
+
   build-unsigned-draft:
+    needs: docs
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -100,13 +122,8 @@ jobs:
           go test ./...
           ./scripts/release/test-fixtures.sh
 
-      - name: Assert O4-O6 docs and governance release gates
-        env:
-          POSTHOG_REQUIRED: true
-          PUBLIC_POSTHOG_HOST: ${{ vars.PUBLIC_POSTHOG_HOST }}
-          PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ vars.PUBLIC_POSTHOG_PROJECT_TOKEN }}
+      - name: Assert fallback channel and live docs release gates
         run: |
-          ./scripts/ci/verify-docs.sh
           ./scripts/ci/check-fallback-channel-test.sh \
             release/repository/fallback-channel-test.json \
             security@developwent.io

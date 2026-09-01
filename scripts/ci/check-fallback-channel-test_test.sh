@@ -21,7 +21,8 @@ HIKYO_FALLBACK_TEST_NOW=2026-08-09T00:00:00Z \
 	"$repo_root/scripts/ci/check-fallback-channel-test.sh" \
 	"$fixture_dir/passed.json" security@developwent.io
 
-jq '.status = "pending"' "$fixture_dir/passed.json" >"$fixture_dir/pending.json"
+sed 's/"status": "passed"/"status": "pending"/' \
+	"$fixture_dir/passed.json" >"$fixture_dir/pending.json"
 if HIKYO_FALLBACK_TEST_NOW=2026-08-10T00:00:00Z \
 	"$repo_root/scripts/ci/check-fallback-channel-test.sh" \
 	"$fixture_dir/pending.json" security@developwent.io >/dev/null 2>&1; then
@@ -29,7 +30,9 @@ if HIKYO_FALLBACK_TEST_NOW=2026-08-10T00:00:00Z \
 	exit 1
 fi
 
-jq '.sent_at = "2026-04-01T10:00:00Z" | .received_at = "2026-04-01T10:05:00Z"' \
+sed \
+	-e 's/2026-08-01T10:00:00Z/2026-04-01T10:00:00Z/' \
+	-e 's/2026-08-01T10:05:00Z/2026-04-01T10:05:00Z/' \
 	"$fixture_dir/passed.json" >"$fixture_dir/stale.json"
 if HIKYO_FALLBACK_TEST_NOW=2026-08-09T00:00:00Z \
 	"$repo_root/scripts/ci/check-fallback-channel-test.sh" \
@@ -38,7 +41,7 @@ if HIKYO_FALLBACK_TEST_NOW=2026-08-09T00:00:00Z \
 	exit 1
 fi
 
-jq '.received_at = "2026-08-09T10:01:00Z"' \
+sed 's/2026-08-01T10:05:00Z/2026-08-09T10:01:00Z/' \
 	"$fixture_dir/passed.json" >"$fixture_dir/late.json"
 if HIKYO_FALLBACK_TEST_NOW=2026-08-10T00:00:00Z \
 	"$repo_root/scripts/ci/check-fallback-channel-test.sh" \

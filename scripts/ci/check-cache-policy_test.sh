@@ -21,6 +21,16 @@ require_line() {
 		fail "missing $expected in $(basename "$file")"
 }
 
+workflow_job_block() {
+	file=$1
+	job=$2
+	awk -v header="  $job:" '
+		$0 == header { found = 1 }
+		found && $0 != header && $0 ~ /^  [A-Za-z0-9_-]+:/ { exit }
+		found { print }
+	' "$file"
+}
+
 set --
 for candidate in "$workflows_dir"/*.yml "$workflows_dir"/*.yaml; do
 	[ -f "$candidate" ] || continue
@@ -91,6 +101,32 @@ grep -F 'key: go-release-snapshot-v2-' "$workflow" |
 	grep -F "hashFiles('go.mod', 'go.sum', '.goreleaser.yaml')" >/dev/null ||
 	fail 'release-snapshot cache does not include GoReleaser configuration'
 require_line "$repo_root/.github/workflows/race-isolation.yml" 'name: Restore race Go cache'
+
+# Browser jobs run inside the exact Playwright image matching both lockfiles.
+# No live apt mirror belongs on the critical path.
+web_playwright=$(jq -r '.devDependencies["@playwright/test"]' "$repo_root/web/package.json")
+docs_playwright=$(jq -r '.devDependencies["@playwright/test"]' "$repo_root/docs/site/package.json")
+[ "$web_playwright" = "$docs_playwright" ] ||
+	fail 'web and docs Playwright versions differ'
+playwright_image="mcr.microsoft.com/playwright:v${web_playwright}-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e"
+ci_docs_block=$(workflow_job_block "$workflow" docs)
+ci_web_block=$(workflow_job_block "$workflow" web)
+pages_docs_block=$(workflow_job_block "$repo_root/.github/workflows/docs.yml" build)
+release_docs_block=$(workflow_job_block "$repo_root/.github/workflows/release.yml" docs)
+for block in "$ci_docs_block" "$pages_docs_block" "$release_docs_block"; do
+	printf '%s\n' "$block" | grep -F "image: $playwright_image" >/dev/null ||
+		fail 'a verify-docs job does not own the exact digest-pinned Playwright image'
+	printf '%s\n' "$block" | grep -F 'run: ./scripts/ci/verify-docs.sh' >/dev/null ||
+		fail 'expected verify-docs invocation is outside its pinned-image job'
+done
+printf '%s\n' "$ci_web_block" | grep -F "image: $playwright_image" >/dev/null ||
+	fail 'web browser job does not own the exact digest-pinned Playwright image'
+printf '%s\n' "$release_docs_block" | grep -F 'contents: read' >/dev/null ||
+	fail 'release docs validation inherited workflow write permissions'
+if grep -F 'playwright install-deps' "$@" >/dev/null ||
+	grep -F 'playwright install --with-deps' "$repo_root/scripts/ci/verify-docs.sh" >/dev/null; then
+	fail 'live Playwright OS dependency installation remains on the CI path'
+fi
 
 # Every cache writer must be trusted-main-only and must skip an upload after an
 # exact hit. This covers Go, module, and Playwright writers alike.

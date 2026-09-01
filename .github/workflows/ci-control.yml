@@ -26,7 +26,9 @@ jobs:
   # Permanent required context. This job and its success criteria are loaded
   # from the base branch, so a PR cannot redefine its own merge gate.
   ci-required:
-    if: always()
+    # Ordinary validation failures still reach this gate. A superseded run
+    # skips it so workflow concurrency releases the next PR head immediately.
+    if: always() && !cancelled()
     needs: validation
     runs-on: ubuntu-latest
     steps:

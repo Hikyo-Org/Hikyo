@@ -125,7 +125,12 @@
     },
     "analysis_shards": {
       "required_gate": "indirect",
-      "plan_jobs": ["race", "fuzz"]
+      "plan_jobs": ["test", "race", "fuzz"]
+    },
+    "test_core": {"required_gate": "indirect", "plan_jobs": ["test"]},
+    "isolation_shard": {
+      "required_gate": "indirect",
+      "plan_jobs": ["test"]
     },
     "race_shard": {"required_gate": "indirect", "plan_jobs": ["race"]},
     "race": {"required_gate": "planned", "plan_jobs": ["race"]},

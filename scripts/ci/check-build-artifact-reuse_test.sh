@@ -25,13 +25,17 @@ require_line() {
 app_block=$(sed -n '/^  app-build:/,/^  no-egress:/p' "$workflow")
 no_egress_block=$(sed -n '/^  no-egress:/,/^  release-snapshot:/p' "$workflow")
 release_block=$(sed -n '/^  release-snapshot:/,/^  generated:/p' "$workflow")
-web_block=$(sed -n '/^  web:/,/^  test:/p' "$workflow")
+web_block=$(sed -n '/^  web:/,/^  web-closure:/p' "$workflow")
 
 [ -n "$app_block" ] || fail 'app-build job is missing'
 printf '%s\n' "$app_block" | grep -F 'run: ./scripts/ci/build-spa.sh --verify' >/dev/null ||
 	fail 'app-build does not verify and build the SPA through the shared script'
 printf '%s\n' "$app_block" | grep -F 'go build -tags ui -o ci-artifacts/hikyo-ui ./cmd/hikyo' >/dev/null ||
 	fail 'app-build does not produce the release-shaped CI binary'
+printf '%s\n' "$app_block" | grep -F 'go build -o ci-artifacts/oidctest-idp ./internal/oidctest/cmd' >/dev/null ||
+	fail 'app-build does not produce the browser IdP helper'
+printf '%s\n' "$app_block" | grep -F 'ci-artifacts/oidctest-idp' >/dev/null ||
+	fail 'app-build does not upload the browser IdP helper'
 printf '%s\n' "$app_block" | grep -Fx '          name: hikyo-app-${{ github.run_id }}' >/dev/null ||
 	fail 'app-build artifact is not scoped to this workflow run'
 if printf '%s\n' "$app_block" | grep -F 'github.run_attempt' >/dev/null; then
@@ -70,6 +74,17 @@ printf '%s\n' "$web_block" | grep -F 'actions/download-artifact@3e5f45b2cfb91720
 	fail 'web does not use the repository-pinned download-artifact action'
 printf '%s\n' "$web_block" | grep -F 'run: chmod +x ci-artifacts/hikyo-ui' >/dev/null ||
 	fail 'web does not restore execute permission after artifact download'
+printf '%s\n' "$web_block" | grep -F 'chmod +x ci-artifacts/hikyo-ui ci-artifacts/oidctest-idp' >/dev/null ||
+	fail 'web does not restore both artifact executable modes'
+printf '%s\n' "$web_block" | grep -F 'HIKYO_E2E_OIDC_BINARY: ${{ github.workspace }}/ci-artifacts/oidctest-idp' >/dev/null ||
+	fail 'web does not pass the prebuilt IdP helper to the browser harness'
+if printf '%s\n' "$web_block" | grep -E 'actions/setup-go|go build|\.cache/go-build|~/go/pkg/mod' >/dev/null; then
+	fail 'a browser shard still provisions Go or compiles a helper'
+fi
+printf '%s\n' "$web_block" | grep -F 'group: [1, 2, 3, 4]' >/dev/null ||
+	fail 'browser matrix is not split across four groups'
+printf '%s\n' "$web_block" | grep -F 'specs: e2e/flows/matrix.spec.ts' >/dev/null ||
+	fail 'heavy matrix flow does not have its own browser group'
 
 if printf '%s\n' "$web_block" |
 	grep -E 'pnpm run (typecheck|test|build)|pnpm build' >/dev/null; then
@@ -114,6 +129,7 @@ upload_line=$(grep -nF 'name: Upload unsigned development snapshot' "$workflow" 
 [ -n "$validate_line" ] && [ "$validate_line" -lt "$upload_line" ] ||
 	fail 'development snapshot is uploaded before non-mutating manifest validation'
 require_line "$fixture" "process.env.HIKYO_E2E_BINARY"
+require_line "$fixture" "process.env.HIKYO_E2E_OIDC_BINARY"
 
 if grep -Eq 'gh release|action-gh-release' "$workflow"; then
 	fail 'ordinary CI publishes a GitHub Release and bypasses the signing ceremony'

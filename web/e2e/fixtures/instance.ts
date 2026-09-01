@@ -217,8 +217,15 @@ async function spawnIdP(
   if (await portTaken('127.0.0.1', port)) {
     throw new Error(`something is already listening on 127.0.0.1:${String(port)}`);
   }
-  const binary = join(dir, `oidctest-idp-${String(port)}`);
-  run('go', ['build', '-o', binary, './internal/oidctest/cmd'], { cwd: repoRoot });
+  const prebuiltBinary = process.env.HIKYO_E2E_OIDC_BINARY;
+  const binary = prebuiltBinary ?? join(dir, `oidctest-idp-${String(port)}`);
+  if (prebuiltBinary !== undefined) {
+    if (!existsSync(prebuiltBinary)) {
+      throw new Error(`HIKYO_E2E_OIDC_BINARY does not exist: ${prebuiltBinary}`);
+    }
+  } else {
+    run('go', ['build', '-o', binary, './internal/oidctest/cmd'], { cwd: repoRoot });
+  }
   const args = ['-listen', `127.0.0.1:${String(port)}`, '-amr', 'mfa,otp'];
   for (const redirect of redirects) {
     args.push('-redirect-uri', redirect);

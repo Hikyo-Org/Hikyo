@@ -29,6 +29,12 @@ require_line "$workflow" "git show \"\$BASE_SHA:scripts/ci/check-required-jobs.s
 require_line "$workflow" "CI_JOB_REGISTRY=\"\$trusted_registry\" \"\$trusted_checker\" --supports-plan-v2"
 require_line "$workflow" "CI_JOB_REGISTRY=\"\$trusted_registry\" \"\$trusted_checker\" \"\$GITHUB_EVENT_NAME\" \"\$NEEDS_JSON\" \"\$PLAN_JSON\""
 require_line "$workflow" "git show \"\$BASE_SHA:scripts/ci/analysis-shards-go/main.go\" >\"\$trusted_planner\""
+# shellcheck disable=SC2016
+require_line "$workflow" 'isolation_shard=$(go run "$trusted_planner" isolation --root .'
+# shellcheck disable=SC2016
+require_line "$workflow" 'ISOLATION_SHARD_RESULT: ${{ needs.isolation_shard.result }}'
+# shellcheck disable=SC2016
+require_line "$workflow" 'go list ./... | grep -Fvx "$isolation_package" >"$packages"'
 require_line "$workflow" 'name: Upload shard fuzz reproducers'
 require_line "$workflow" 'name: Download shard fuzz reproducers'
 require_line "$workflow" 'name: Upload minimized fuzz reproducers'
@@ -59,6 +65,23 @@ if ! grep -F 'pull_request_target:' "$controller" >/dev/null ||
 	printf 'trusted CI scripts fixture failed: base-controlled entrypoint is missing\n' >&2
 	exit 1
 fi
+
+# Superseded PR runs must release workflow concurrency immediately. Aggregate
+# gates still run after ordinary failures, but cancellation must skip them.
+workflow_gate=$(sed -n '/^  ci-required:/,$p' "$workflow")
+controller_gate=$(sed -n '/^  ci-required:/,$p' "$controller")
+for gate in "$workflow_gate" "$controller_gate"; do
+	if ! printf '%s\n' "$gate" |
+		grep -Fx '    if: always() && !cancelled()' >/dev/null; then
+		printf 'trusted CI scripts fixture failed: aggregate gate survives cancellation\n' >&2
+		exit 1
+	fi
+done
+# Shard fan-in jobs aggregate ordinary failures too, so cancellation must skip
+# them without weakening their path-plan condition.
+for plan_job in test race fuzz; do
+	require_line "$workflow" "if: \${{ always() && !cancelled() && fromJSON(needs.changes.outputs.plan).$plan_job }}"
+done
 
 # The untrusted validation graph (ci.yml, ci-control.yml) holds NO issue/PR write
 # anywhere: executing attacker-influenced PR code must never reach a write token.

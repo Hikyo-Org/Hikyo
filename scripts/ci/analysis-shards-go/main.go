@@ -37,6 +37,10 @@ type fuzzTarget struct {
 	relativeDir string
 }
 
+type isolationTest struct {
+	name string
+}
+
 type options struct {
 	root       string
 	shard      int
@@ -71,8 +75,8 @@ func main() {
 }
 
 func run(args []string, output io.Writer) error {
-	if len(args) == 0 || (args[0] != "race" && args[0] != "fuzz") {
-		return errors.New("usage: analysis-shards race|fuzz --root DIR --shard N --shards N")
+	if len(args) == 0 || (args[0] != "race" && args[0] != "fuzz" && args[0] != "isolation") {
+		return errors.New("usage: analysis-shards race|fuzz|isolation --root DIR --shard N --shards N")
 	}
 	kind := args[0]
 	flags := flag.NewFlagSet(kind, flag.ContinueOnError)
@@ -103,6 +107,8 @@ func run(args []string, output io.Writer) error {
 		return writeRaceShard(output, packages, opts)
 	case "fuzz":
 		return writeFuzzShard(output, packages, opts)
+	case "isolation":
+		return writeIsolationShard(output, packages, opts)
 	default:
 		panic("unreachable analysis kind")
 	}
@@ -192,6 +198,65 @@ func writeFuzzShard(output io.Writer, packages []packageInfo, opts options) erro
 	return nil
 }
 
+func writeIsolationShard(output io.Writer, packages []packageInfo, opts options) error {
+	tests, err := discoverIsolationTests(packages)
+	if err != nil {
+		return err
+	}
+	if len(tests) == 0 {
+		return errors.New("no Test* target discovered in internal/isolation")
+	}
+	for _, test := range tests {
+		if shardFor("isolation", test.name, opts.shardCount) != opts.shard {
+			continue
+		}
+		if _, err := fmt.Fprintln(output, test.name); err != nil {
+			return fmt.Errorf("write isolation shard: %w", err)
+		}
+	}
+	return nil
+}
+
+func discoverIsolationTests(packages []packageInfo) ([]isolationTest, error) {
+	var isolationPackage *packageInfo
+	for index := range packages {
+		if packages[index].relativePath == "internal/isolation" {
+			isolationPackage = &packages[index]
+			break
+		}
+	}
+	if isolationPackage == nil {
+		return nil, errors.New("internal/isolation package was not found")
+	}
+
+	tests := make([]isolationTest, 0)
+	seen := make(map[string]string)
+	files := append(append([]string(nil), isolationPackage.TestGoFiles...), isolationPackage.XTestGoFiles...)
+	sort.Strings(files)
+	for _, name := range files {
+		path := filepath.Join(isolationPackage.Dir, name)
+		parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
+		if err != nil {
+			return nil, fmt.Errorf("parse %s: %w", path, err)
+		}
+		for _, declaration := range parsed.Decls {
+			function, ok := declaration.(*ast.FuncDecl)
+			if !ok || function.Recv != nil || !isTestName(function.Name.Name) {
+				continue
+			}
+			if previous, exists := seen[function.Name.Name]; exists {
+				return nil, fmt.Errorf("duplicate isolation test %s in %s and %s", function.Name.Name, previous, path)
+			}
+			seen[function.Name.Name] = path
+			tests = append(tests, isolationTest{name: function.Name.Name})
+		}
+	}
+	sort.Slice(tests, func(i, j int) bool {
+		return tests[i].name < tests[j].name
+	})
+	return tests, nil
+}
+
 func discoverFuzzTargets(packages []packageInfo) ([]fuzzTarget, error) {
 	targets := make([]fuzzTarget, 0)
 	seen := make(map[string]string)
@@ -232,10 +297,18 @@ func discoverFuzzTargets(packages []packageInfo) ([]fuzzTarget, error) {
 }
 
 func isFuzzName(name string) bool {
-	if !strings.HasPrefix(name, "Fuzz") || len(name) == len("Fuzz") {
+	return isGoTargetName(name, "Fuzz")
+}
+
+func isTestName(name string) bool {
+	return name != "TestMain" && isGoTargetName(name, "Test")
+}
+
+func isGoTargetName(name, prefix string) bool {
+	if !strings.HasPrefix(name, prefix) || len(name) == len(prefix) {
 		return false
 	}
-	first, _ := utf8.DecodeRuneInString(name[len("Fuzz"):])
+	first, _ := utf8.DecodeRuneInString(name[len(prefix):])
 	return !unicode.IsLower(first)
 }
 
