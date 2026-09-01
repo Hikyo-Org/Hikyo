@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"io/fs"
+	"mime"
 	"net/http"
 	"net/url"
 	"path"
@@ -249,6 +250,75 @@ func quality(params string) float64 {
 	return 1
 }
 
+// contentCodingQuality returns the client's quality for one content coding.
+// An absent header means the legacy identity representation; an explicit
+// coding wins over a wildcard, as required by RFC 9110 §12.5.3.
+func contentCodingQuality(header, coding string) float64 {
+	wildcard := -1.0
+	for part := range strings.SplitSeq(header, ",") {
+		name, params, _ := strings.Cut(strings.TrimSpace(part), ";")
+		switch {
+		case strings.EqualFold(strings.TrimSpace(name), coding):
+			return quality(params)
+		case strings.TrimSpace(name) == "*":
+			wildcard = quality(params)
+		}
+	}
+	if wildcard >= 0 {
+		return wildcard
+	}
+	return 0
+}
+
+// precompressedRepresentation selects an existing sidecar. Brotli wins equal
+// client preference because it generally produces the smaller transfer; a
+// higher q-value always wins. The final bool says whether the resource has any
+// alternate representation and therefore needs Vary even when identity wins.
+func precompressedRepresentation(ui fs.FS, name, acceptEncoding string) (string, string, bool) {
+	type candidate struct {
+		coding string
+		suffix string
+		q      float64
+		exists bool
+	}
+	candidates := []candidate{
+		{coding: "br", suffix: ".br", q: contentCodingQuality(acceptEncoding, "br")},
+		{coding: "gzip", suffix: ".gz", q: contentCodingQuality(acceptEncoding, "gzip")},
+	}
+	varies := false
+	for i := range candidates {
+		info, err := fs.Stat(ui, name+candidates[i].suffix)
+		candidates[i].exists = err == nil && !info.IsDir()
+		varies = varies || candidates[i].exists
+	}
+	best := -1
+	for i, candidate := range candidates {
+		if !candidate.exists || candidate.q <= 0 {
+			continue
+		}
+		if best == -1 || candidate.q > candidates[best].q {
+			best = i
+		}
+	}
+	if best == -1 {
+		return name, "", varies
+	}
+	return name + candidates[best].suffix, candidates[best].coding, varies
+}
+
+func addVary(h http.Header, field string) {
+	for value := range strings.SplitSeq(h.Get("Vary"), ",") {
+		if strings.EqualFold(strings.TrimSpace(value), field) {
+			return
+		}
+	}
+	if current := h.Get("Vary"); current != "" {
+		h.Set("Vary", current+", "+field)
+		return
+	}
+	h.Set("Vary", field)
+}
+
 // serveAsset answers from the hashed-asset directory. Nothing here falls back:
 // the caller has already established that the path is under the reserved
 // asset prefix, and a name that is not in the build is a build error.
@@ -272,7 +342,17 @@ func serveAsset(ui fs.FS, w http.ResponseWriter, r *http.Request) {
 	// Every name under the asset directory carries a content hash, so the bytes
 	// behind a URL never change and the browser never needs to ask again.
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	http.ServeFileFS(w, r, ui, name)
+	representation, encoding, varies := precompressedRepresentation(ui, name, r.Header.Get("Accept-Encoding"))
+	if varies {
+		addVary(w.Header(), "Accept-Encoding")
+	}
+	if encoding != "" {
+		w.Header().Set("Content-Encoding", encoding)
+		if contentType := mime.TypeByExtension(path.Ext(name)); contentType != "" {
+			w.Header().Set("Content-Type", contentType)
+		}
+	}
+	http.ServeFileFS(w, r, ui, representation)
 }
 
 // serveSPA is the not-found leg once assets exist: an HTML navigation to a
@@ -316,7 +396,8 @@ func serveSPA(ui fs.FS, remoteOrigins func(context.Context) []string, w http.Res
 		writeError(w, wirePolicyForCode(apigen.ErrorCodeNotFound), "")
 		return
 	}
-	body, err := fs.ReadFile(ui, indexPath)
+	representation, encoding, varies := precompressedRepresentation(ui, indexPath, r.Header.Get("Accept-Encoding"))
+	body, err := fs.ReadFile(ui, representation)
 	if err != nil {
 		// An asset tree without a document is a broken build, not a route.
 		writeError(w, wirePolicyForCode(apigen.ErrorCodeNotFound), "")
@@ -331,6 +412,12 @@ func serveSPA(ui fs.FS, remoteOrigins func(context.Context) []string, w http.Res
 		w.Header().Set("Content-Security-Policy", policyWithRemotes(remoteOrigins(r.Context())))
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if varies {
+		addVary(w.Header(), "Accept-Encoding")
+	}
+	if encoding != "" {
+		w.Header().Set("Content-Encoding", encoding)
+	}
 	// The document names the hashed assets, so it is the one file that must
 	// never be served from cache without revalidation — a stale index points at
 	// bundles a deploy has already removed.

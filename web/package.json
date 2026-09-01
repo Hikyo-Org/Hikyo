@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "vite",
     "prototype": "vite --mode prototype",
-    "build": "vite build",
+    "build": "vite build && node scripts/precompress.mjs ../internal/webui/dist",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "e2e": "pnpm run build && playwright test --project=desktop && playwright test --project=mobile",
