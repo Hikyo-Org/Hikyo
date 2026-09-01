@@ -70,6 +70,14 @@ decision, not a density drift; fold it into a class if that panel is next touche
 - `settings.spec.ts`: `Organisation settings ·`.
 - `web/e2e/registry.ts`: the instance-admin flow claims `instance-members`.
 
+## Screens (prototype mode, 2026-09-01)
+
+- `567-screens/567-desktop-org.png` — org route: organisation block only, rail cog + account foot.
+- `567-screens/567-desktop-project.png` — project route: project context block (matrix + groups, machine access, members, settings) stacked above the organisation block.
+- `567-screens/567-desktop-instance-members.png` — `/instance/members`: instance context block above the organisation block; Who-can + Members panels; breadcrumb `hikyo / Instance / members`.
+- `567-screens/567-desktop-instance-settings.png` — `/instance` as Instance settings with the Members entry-point panel.
+- `567-screens/567-mobile-drawer-project.png` — mobile drawer on a project route: switcher, project block, organisation block (Projects / Instance / You sections follow below the fold).
+
 ## Seam for #568
 
 Both Members scopes render `panel__actions` with `New grant`; the Invite button
