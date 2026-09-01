@@ -130,7 +130,7 @@ test.describe('secret scanning warn dialog', () => {
 
         const heading = page.getByRole('heading', { name: 'Environment matrix', level: 1 });
         const sidebar = page.locator('.sidebar');
-        const groupRow = page.locator('.project-sidebar__group').first();
+        const groupRow = page.locator('.context-sidebar__group').first();
         const chooser = page.locator('.matrix__environment-picker summary');
         const key = page.locator('.matrix__key').first();
         const cell = page.locator('.matrix-cell').first();

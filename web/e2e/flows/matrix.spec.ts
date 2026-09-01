@@ -61,7 +61,7 @@ test.describe('environment matrix', () => {
     await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
     await withProjectNavigation(page, async (projectNavigation) => {
       await expect(
-        page.locator('.project-sidebar').getByRole('heading', { name: 'payments' }),
+        page.locator('.context-sidebar').getByRole('heading', { name: 'payments' }),
       ).toBeVisible();
       await expect(
         projectNavigation.getByRole('link', { name: 'Environment matrix', exact: true }),
@@ -388,7 +388,7 @@ test.describe('environment matrix', () => {
 
         const heading = page.getByRole('heading', { name: 'Environment matrix', level: 1 });
         const sidebar = page.locator('.sidebar');
-        const groupRow = page.locator('.project-sidebar__group').first();
+        const groupRow = page.locator('.context-sidebar__group').first();
         const chooser = page.locator('.matrix__environment-picker summary');
         const key = page.locator('.matrix__key').first();
         const cell = page.locator('.matrix-cell').first();
@@ -477,7 +477,10 @@ test.describe('environment matrix', () => {
     if (await menu.isVisible()) {
       await menu.click();
     }
-    await page.getByRole('link', { name: 'Members & access', exact: true }).click();
+    await page
+      .getByRole('navigation', { name: 'Project' })
+      .getByRole('link', { name: 'Members', exact: true })
+      .click();
     await expect(page).toHaveURL(/\/members/);
     await expect
       .poll(() => eventsFailedCount, { timeout: 10_000 })

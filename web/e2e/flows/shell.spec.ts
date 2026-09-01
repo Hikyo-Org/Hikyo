@@ -65,20 +65,41 @@ test.describe('app chrome', () => {
     await expect(sidebar).toHaveCSS('width', '218px');
     await expect(header).toHaveCSS('height', '61px');
     await expect(header.getByText('Signed in as')).toBeVisible();
-    await expect(rail.getByRole('link', { name: 'Instance administration' })).toBeVisible();
+    await expect(rail.getByRole('link', { name: 'Instance settings' })).toBeVisible();
 
     const projectNav = sidebar.getByRole('navigation', { name: 'Project' });
     const matrixLink = projectNav.getByRole('link', { name: 'Environment matrix' });
     await expect(matrixLink).toHaveCSS('min-height', '38px');
     await expect(matrixLink).toHaveCSS('font-size', '13px');
-    await expect(sidebar.locator('.project-sidebar__org-avatar')).toHaveCSS('width', '28px');
-    await expect(sidebar.locator('.project-sidebar__org small')).toHaveText(
+    await expect(sidebar.locator('.context-sidebar__org-avatar')).toHaveCSS('width', '28px');
+    await expect(sidebar.locator('.context-sidebar__org small')).toHaveText(
       'Organisation member',
     );
-    await expect(sidebar.locator('.project-sidebar__group').first()).toHaveCSS('height', '38px');
-    await expect(sidebar.getByRole('heading', { name: 'Organization' })).toBeVisible();
+    await expect(sidebar.locator('.context-sidebar__group').first()).toHaveCSS('height', '38px');
+    await expect(sidebar.getByRole('heading', { name: 'Organisation' })).toBeVisible();
     await expect(projectNav.getByRole('link', { name: 'Version history' })).toHaveCount(0);
-    await expect(projectNav.getByRole('link', { name: 'Machine access' })).toHaveCount(0);
+    await expect(projectNav.getByRole('link', { name: 'Machine access' })).toBeVisible();
+    await expect(projectNav.getByRole('link', { name: 'Members' })).toBeVisible();
+    // The organisation block is never hidden: every destination stays
+    // reachable in project mode (#567).
+    await expect(sidebar.getByRole('link', { name: 'Audit' })).toBeVisible();
+    // Account and instance live in the rail on desktop, not in the sidebar.
+    await expect(sidebar.getByRole('link', { name: 'Account & security' })).toHaveCount(0);
+    await expect(sidebar.getByRole('link', { name: 'Instance settings' })).toHaveCount(0);
+  });
+
+  test('stacks the instance context above the organisation block on instance routes', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name === 'mobile', 'desktop sidebar composition');
+    await page.goto('/instance/members');
+    const sidebar = page.getByRole('navigation', { name: 'Sections', exact: true });
+    const instanceNav = sidebar.getByRole('navigation', { name: 'Instance' });
+    await expect(instanceNav.getByRole('link', { name: 'Instance members' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await expect(instanceNav.getByRole('link', { name: 'Instance settings' })).toBeVisible();
+    await expect(sidebar.getByRole('heading', { name: 'Organisation' })).toBeVisible();
+    await expect(page.getByLabel('Breadcrumb')).toContainText('Instance');
   });
 
   test('keeps every chrome destination in the fixed mobile drawer', async ({ page }, testInfo) => {
@@ -94,7 +115,8 @@ test.describe('app chrome', () => {
     await expect(drawer.locator('.sidebar__mobile-organisations button')).not.toHaveCount(0);
     await expect(drawer.locator('.sidebar__mobile-projects button')).not.toHaveCount(0);
     await expect(drawer.getByRole('link', { name: 'Account & security' })).toBeVisible();
-    await expect(drawer.getByRole('link', { name: 'Instance administration' })).toBeVisible();
+    await expect(drawer.getByRole('link', { name: 'Instance settings' })).toBeVisible();
+    await expect(drawer.getByRole('link', { name: 'Instance members' })).toBeVisible();
     await expect(drawer.locator(':focus')).toBeVisible();
 
     await page.keyboard.press('Shift+Tab');
@@ -301,8 +323,8 @@ test.describe('app chrome', () => {
       testInfo.project.name === 'mobile'
         ? page
             .getByRole('navigation', { name: 'Sections', exact: true })
-            .getByRole('link', { name: 'Instance administration' })
-        : page.locator('.rail__action[aria-label="Instance administration"]');
+            .getByRole('link', { name: 'Instance settings' })
+        : page.locator('.rail__action[aria-label="Instance settings"]');
     await expect(instanceAdmin).toHaveCount(0);
     expect(retentionCalled).toBe(false);
     // whoami is re-read on load, focus and hydrate, so drop the async override

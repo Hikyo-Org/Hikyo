@@ -29,7 +29,7 @@ import {
 import { useWorkspaces } from '../api/workspace.ts';
 import { withRemote } from '../api/transport.tsx';
 import { effectiveTheme, prefersDark, useThemeChoice, type Theme } from '../app/theme.ts';
-import { needsOrg, sectionsFor, SURFACES, surfaceById, type Surface } from '../app/navigation.ts';
+import { needsOrg, SURFACES, surfaceById, type Surface } from '../app/navigation.ts';
 import { notifyUpdate } from '../app/notifications.tsx';
 import {
   CHROME_IDENTITY_EVENT,
@@ -39,6 +39,7 @@ import {
   chromeRailIdentityStyle,
   readChromeIdentity,
 } from './chrome-identity.ts';
+import { isLinkActive, sidebarModel, type SidebarBlock, type SidebarLink } from './sidebar-model.ts';
 import { StepUpBanner } from './StepUpBanner.tsx';
 
 export type ProjectSidebarGroup = {
@@ -56,13 +57,6 @@ export type ProjectSidebarState = {
   readonly onSelectGroup: (groupId: string) => void;
   readonly onToggleProblems: () => void;
 };
-
-// Temporary until the sidebar model lands (Task 2 of the #567 plan).
-const SECTIONS = [
-  { title: 'Organisation', items: sectionsFor('organisation') },
-  { title: 'Instance', items: sectionsFor('instance') },
-  { title: 'Account', items: sectionsFor('account') },
-] as const;
 
 const ProjectSidebarPublisher = createContext<
   ((state: ProjectSidebarState | null) => void) | null
@@ -297,12 +291,24 @@ export function Shell({ session }: { session: WhoAmI }) {
 
   const crumbs = useMemo(() => {
     const result = ['hikyo'];
+    if (here?.surface.section === 'instance') {
+      result.push('Instance', chromeCrumbLabel(here.surface));
+      return result;
+    }
     if (activeOrgId !== '') result.push(activeOrgName);
     if (routeProjectId !== '') result.push(activeProjectName);
     if (routeProjectId === '') result.push(chromeCrumbLabel(here?.surface));
     return result;
   }, [activeOrgId, activeOrgName, activeProjectName, here?.surface, routeProjectId]);
   const onSidebarNavigate = navOpen ? dismissNavigation : () => setNavOpen(false);
+  const model = sidebarModel({
+    surface: here?.surface,
+    activeOrgId,
+    routeProjectId,
+    activeProjectId,
+    remote,
+    isInstanceOperator,
+  });
 
   return (
     <div className="chrome" data-nav={navOpen ? 'open' : 'closed'}>
@@ -369,8 +375,8 @@ export function Shell({ session }: { session: WhoAmI }) {
           <NavLink
             className="rail__action"
             to={surfaceById('instance-admin').path}
-            aria-label="Instance administration"
-            title="Instance administration"
+            aria-label={surfaceById('instance-admin').label}
+            title={surfaceById('instance-admin').label}
           >
             <span aria-hidden="true">⚙</span>
           </NavLink>
@@ -398,7 +404,7 @@ export function Shell({ session }: { session: WhoAmI }) {
             className="sidebar__section sidebar__mobile-only sidebar__mobile-organisations"
             aria-labelledby="mobile-organisations-title"
           >
-            <h2 id="mobile-organisations-title">Organizations</h2>
+            <h2 id="mobile-organisations-title">Organisations</h2>
             <ul className="sidebar__items">
               {items.map((org) => {
                 const identity = readChromeIdentity('org', org.id, isPrototype);
@@ -449,57 +455,30 @@ export function Shell({ session }: { session: WhoAmI }) {
             <span>Your organisations could not be loaded. Reload to try again.</span>
           </p>
         ) : null}
-        {/* The PROJECT panel replaces the section list only while the route is
-            actually project-scoped. Keying it on `activeProjectId` instead
-            looked equivalent and was not: that value falls back to the org's
-            first project so the rail always has a tile to mark, so it is never
-            empty once an organisation has a project — and Overview, Projects
-            and the rest of the section list became unreachable everywhere. */}
-        {routeProjectId !== '' ? (
-          <>
-            <ProjectNavigation
-              org={activeOrgId}
-              orgName={activeOrgName}
-              project={activeProjectId}
-              projectName={activeProjectName}
-              orgRole={activeOrgRole}
-              remote={remote}
-              state={projectSidebar}
-              onNavigate={onSidebarNavigate}
-            />
-          </>
-        ) : SECTIONS.map((section) => {
-          // An org-scoped destination needs an organisation to point at. With
-          // none active the entry is absent rather than dead: a link that
-          // resolves to `/orgs//members` is a 404 dressed as navigation.
-          const entries = section.items.filter(
-            (item) =>
-              (!needsOrg(item) || activeOrgId !== '') &&
-              (item.id !== 'instance-admin' || showInstanceAdministration),
-          );
-          if (entries.length === 0) {
-            return null;
-          }
-          return (
-            <div className="sidebar__section" key={section.title}>
-              <h2>{section.title}</h2>
-              <ul className="sidebar__items">
-                {entries.map((item) => (
-                  <li key={item.path}>
-                    <NavLink
-                      className="sidebar__link"
-                      to={needsOrg(item) ? generatePath(item.path, { org: activeOrgId }) : item.path}
-                      end={item.path === '/'}
-                      onClick={navOpen ? dismissNavigation : undefined}
-                    >
-                      {item.label}
-                    </NavLink>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          );
-        })}
+        {/* The context block (project or instance) stacks ABOVE the organisation
+            block, which is never hidden: every destination stays reachable in
+            every mode, and both blocks render from the same table (#567). The
+            project block keys on `routeProjectId`, not `activeProjectId`: the
+            latter falls back to the org's first project so the rail always has
+            a tile to mark, and keying on it made the org block vanish
+            everywhere. */}
+        {model.context?.kind === 'project' ? (
+          <ProjectContext
+            org={activeOrgId}
+            orgName={activeOrgName}
+            projectName={activeProjectName}
+            orgRole={activeOrgRole}
+            links={model.context.links}
+            state={projectSidebar}
+            onNavigate={onSidebarNavigate}
+          />
+        ) : null}
+        {model.context?.kind === 'instance' ? (
+          <InstanceContext links={model.context.links} onNavigate={onSidebarNavigate} />
+        ) : null}
+        {model.organisation === null ? null : (
+          <SidebarSection block={model.organisation} onNavigate={onSidebarNavigate} />
+        )}
         {activeOrgId === '' ? null : (
           <section
             className="sidebar__section sidebar__mobile-only sidebar__mobile-projects"
@@ -532,17 +511,12 @@ export function Shell({ session }: { session: WhoAmI }) {
             </ul>
           </section>
         )}
-        {/* Only when the section list above did NOT render. On a project route
-            the sidebar is the project's, so the drawer would otherwise lose the
-            account and instance destinations the rail carries on desktop; on
-            every other route the section list already has them, and rendering
-            both puts the same link in the drawer twice. */}
-        {routeProjectId === '' ? null : (
-          <MobileAccountNavigation
-            onNavigate={dismissNavigation}
-            showInstanceAdministration={showInstanceAdministration}
-          />
+        {/* Mobile only: the destinations the desktop rail carries (instance
+            cog, account menu). Derived from the same table as everything above. */}
+        {model.instance === null ? null : (
+          <SidebarSection block={model.instance} mobileOnly onNavigate={dismissNavigation} />
         )}
+        <SidebarSection block={model.account} mobileOnly onNavigate={dismissNavigation} />
         <SidebarVersion version={serverVersion.data} />
       </nav>
 
@@ -671,97 +645,132 @@ export function Shell({ session }: { session: WhoAmI }) {
   );
 }
 
-function ProjectNavigation({
+function SidebarLinkItem({ link, onNavigate }: { link: SidebarLink; onNavigate: () => void }) {
+  const location = useLocation();
+  if (link.disabledReason !== null) {
+    return (
+      <span
+        className="sidebar__link sidebar__link--disabled"
+        aria-disabled="true"
+        title={link.disabledReason}
+      >
+        {`${link.label} · local only`}
+      </span>
+    );
+  }
+  // Members and its `?project=` projection share a pathname, so NavLink's own
+  // matching would mark both; the model decides which one is current.
+  if (link.id === 'members' || link.id === 'project-members') {
+    return (
+      <Link
+        className="sidebar__link"
+        to={link.to}
+        aria-current={isLinkActive(link, location.pathname, location.search) ? 'page' : undefined}
+        onClick={onNavigate}
+      >
+        {link.label}
+      </Link>
+    );
+  }
+  return (
+    <NavLink className="sidebar__link" to={link.to} end={link.end} onClick={onNavigate}>
+      {link.label}
+    </NavLink>
+  );
+}
+
+function SidebarSection({
+  block,
+  mobileOnly = false,
+  onNavigate,
+}: {
+  block: SidebarBlock;
+  mobileOnly?: boolean;
+  onNavigate: () => void;
+}) {
+  const id = `sidebar-${block.kind}-title`;
+  return (
+    <section
+      className={`sidebar__section${mobileOnly ? ' sidebar__mobile-only' : ''} sidebar__section--${block.kind}`}
+      aria-labelledby={id}
+    >
+      <h2 id={id}>{block.title}</h2>
+      <ul className="sidebar__items">
+        {block.links.map((link) => (
+          <li key={link.id}>
+            <SidebarLinkItem link={link} onNavigate={onNavigate} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function InstanceContext({
+  links,
+  onNavigate,
+}: {
+  links: readonly SidebarLink[];
+  onNavigate: () => void;
+}) {
+  return (
+    <section className="context-sidebar" aria-labelledby="context-sidebar-title">
+      <h2 id="context-sidebar-title">Instance</h2>
+      <nav aria-label="Instance">
+        {links.map((link) => (
+          <SidebarLinkItem key={link.id} link={link} onNavigate={onNavigate} />
+        ))}
+      </nav>
+    </section>
+  );
+}
+
+function ProjectContext({
   org,
   orgName,
-  project,
   projectName,
   orgRole,
-  remote,
+  links,
   state,
   onNavigate,
 }: {
   org: string;
   orgName: string;
-  project: string;
   projectName: string;
   orgRole: string;
-  remote: string;
+  links: readonly SidebarLink[];
   state: ProjectSidebarState | null;
   onNavigate: () => void;
 }) {
   const orgIdentity = readChromeIdentity('org', org, import.meta.env.MODE === 'prototype');
-  const location = useLocation();
-  const projectPath = (id: 'matrix' | 'project-settings') => {
-    const path = generatePath(surfaceById(id).path, { org, project });
-    return id === 'matrix' ? withRemote(path, remote) : path;
-  };
-  const orgPath = (id: 'members' | 'org-settings') => {
-    const surface = surfaceById(id);
-    return generatePath(surface.path, { org });
-  };
-  const projectMembersPath = `${orgPath('members')}?project=${encodeURIComponent(project)}`;
-  const selectedMembersProject = new URLSearchParams(location.search).get('project');
-  const projectMembersActive =
-    location.pathname === orgPath('members') &&
-    selectedMembersProject === project;
-  const orgMembersActive =
-    location.pathname === orgPath('members') &&
-    selectedMembersProject === null;
-  const localOnlyDestination = (label: string, id: 'project-settings' | 'members') =>
-    remote === '' ? (
-      id === 'members' ? (
-        <Link
-          className="sidebar__link"
-          to={projectMembersPath}
-          aria-current={projectMembersActive ? 'page' : undefined}
-          onClick={onNavigate}
-        >
-          {label}
-        </Link>
-      ) : (
-        <NavLink className="sidebar__link" to={projectPath(id)} onClick={onNavigate}>
-          {label}
-        </NavLink>
-      )
-    ) : (
-      <span
-        className="sidebar__link sidebar__link--disabled"
-        aria-disabled="true"
-        title={`${label} is not available for remote workspaces yet`}
-      >
-        {`${label} · local only`}
-      </span>
-    );
+  const matrix = links.find((link) => link.id === 'matrix');
+  const rest = links.filter((link) => link.id !== 'matrix');
   return (
-    <>
-      <section className="project-sidebar" aria-labelledby="project-sidebar-title">
-        <div className="project-sidebar__org">
-          <span
-            className="avatar project-sidebar__org-avatar"
-            style={chromeIdentityStyle(orgIdentity)}
-          >
-            {chromeIdentityMark(orgIdentity, orgName)}
-          </span>
-          <span>
-            <strong>{orgName}</strong>
-            <small>{orgRole}</small>
-          </span>
-        </div>
-        <h2 id="project-sidebar-title">
-          <span>Project · </span>
-          {projectName}
-        </h2>
-        <nav aria-label="Project">
-          <NavLink className="sidebar__link" to={projectPath('matrix')} end onClick={onNavigate}>
-            Environment matrix
-          </NavLink>
-          {state === null ? null : (
-            <div className="project-sidebar__groups">
+    <section className="context-sidebar" aria-labelledby="context-sidebar-title">
+      <div className="context-sidebar__org">
+        <span
+          className="avatar context-sidebar__org-avatar"
+          style={chromeIdentityStyle(orgIdentity)}
+        >
+          {chromeIdentityMark(orgIdentity, orgName)}
+        </span>
+        <span>
+          <strong>{orgName}</strong>
+          <small>{orgRole}</small>
+        </span>
+      </div>
+      <h2 id="context-sidebar-title">
+        <span>Project · </span>
+        {projectName}
+      </h2>
+      <nav aria-label="Project">
+        {matrix === undefined ? null : <SidebarLinkItem link={matrix} onNavigate={onNavigate} />}
+        {state === null ? null : (
+            <div className="context-sidebar__groups">
               {state.groups.map((group) => (
                 <button
                   type="button"
-                  className="matrix__group-link project-sidebar__group"
+                  className="matrix__group-link context-sidebar__group"
                   key={group.id}
                   disabled={group.hidden}
                   title={group.hidden ? 'hidden by the problems filter' : undefined}
@@ -776,7 +785,7 @@ function ProjectNavigation({
                       into the sidebar, and the flow reads groups by it. */}
                   <span className="mono">{`${group.name}/`}</span>
                   {group.problemCount === 0 ? (
-                    <span className="project-sidebar__group-count">{String(group.keyCount)}</span>
+                    <span className="context-sidebar__group-count">{String(group.keyCount)}</span>
                   ) : (
                     <span className="matrix__count count">{String(group.problemCount)}</span>
                   )}
@@ -784,7 +793,7 @@ function ProjectNavigation({
               ))}
               <button
                 type="button"
-                className="matrix__group-link project-sidebar__group"
+                className="matrix__group-link context-sidebar__group"
                 aria-pressed={state.problemsActive}
                 title={state.problemsActive ? 'back to all keys' : 'show only keys with problems'}
                 onClick={() => {
@@ -800,69 +809,10 @@ function ProjectNavigation({
               </button>
             </div>
           )}
-          {localOnlyDestination('Members & access', 'members')}
-          {localOnlyDestination('Project settings', 'project-settings')}
-        </nav>
-      </section>
-      <section className="sidebar__section project-sidebar__organisation">
-        <h2>Organization</h2>
-        <ul className="sidebar__items">
-          <li>
-            <Link
-              className="sidebar__link"
-              to={orgPath('members')}
-              aria-current={orgMembersActive ? 'page' : undefined}
-              onClick={onNavigate}
-            >
-              Org members &amp; grants
-            </Link>
-          </li>
-          <li>
-            <NavLink className="sidebar__link" to={orgPath('org-settings')} onClick={onNavigate}>
-              Org settings
-            </NavLink>
-          </li>
-        </ul>
-      </section>
-    </>
-  );
-}
-
-function MobileAccountNavigation({
-  onNavigate,
-  showInstanceAdministration,
-}: {
-  onNavigate: () => void;
-  showInstanceAdministration: boolean;
-}) {
-  return (
-    <section
-      className="sidebar__section sidebar__mobile-only sidebar__mobile-account"
-      aria-labelledby="mobile-account-title"
-    >
-      <h2 id="mobile-account-title">You</h2>
-      <ul className="sidebar__items">
-        <li>
-          <NavLink
-            className="sidebar__link"
-            to={surfaceById('settings').path}
-            onClick={onNavigate}
-          >
-            Account &amp; security
-          </NavLink>
-        </li>
-        {showInstanceAdministration ? (
-          <li>
-            <NavLink
-              className="sidebar__link"
-              to={surfaceById('instance-admin').path}
-              onClick={onNavigate}
-            >
-              Instance administration
-            </NavLink>
-          </li>
-        ) : null}
-      </ul>
+        {rest.map((link) => (
+          <SidebarLinkItem key={link.id} link={link} onNavigate={onNavigate} />
+        ))}
+      </nav>
     </section>
   );
 }
@@ -1162,13 +1112,13 @@ function matchedSurface(
 export function chromeCrumbLabel(surface: Surface | undefined): string {
   switch (surface?.id) {
     case 'members':
-      return 'org members';
+    case 'instance-members':
+      return 'members';
     case 'org-settings':
-      return 'org settings';
+    case 'instance-admin':
+      return 'settings';
     case 'settings':
       return 'account';
-    case 'instance-admin':
-      return 'instance';
     default:
       return surface?.label ?? 'Not found';
   }
