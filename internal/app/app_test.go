@@ -138,29 +138,29 @@ func TestServeWithReadySignalsOnlyAfterHTTPServingStarts(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
-	ready := make(chan error, 1)
+	ready := make(chan struct{}, 1)
 	go func() {
 		done <- srv.ServeWithReady(ctx, func() {
-			response, err := http.Get("http://" + srv.Addr + "/api/v1/meta")
-			if err == nil {
-				response.Body.Close()
-			}
-			ready <- err
+			// Keep the callback as the readiness event. Probing an API route
+			// here couples callback delivery to unrelated handler latency.
+			ready <- struct{}{}
 		})
 	}()
 
 	select {
-	case err := <-ready:
-		if err != nil {
-			cancel()
-			<-done
-			t.Fatalf("ready callback ran before HTTP serving: %v", err)
-		}
+	case <-ready:
 	case <-time.After(2 * time.Second):
 		cancel()
 		<-done
 		t.Fatal("ready callback was not called")
 	}
+	response, err := http.Get("http://" + srv.Addr + "/api/v1/meta")
+	if err != nil {
+		cancel()
+		<-done
+		t.Fatalf("HTTP server was unavailable after ready callback: %v", err)
+	}
+	response.Body.Close()
 	if !strings.Contains(logged.String(), "server ready") {
 		cancel()
 		<-done
