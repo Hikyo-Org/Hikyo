@@ -60,6 +60,16 @@ func auditExportOp(scope domain.Scope) (authz.Operation, error) {
 	}
 }
 
+// AuditFilter and AuditEvent are the store's own types, re-exported so the
+// transport layer names them through this package instead of importing the
+// datastore directly (the internal/server -> internal/store boundary; the same
+// alias seam the adapter surface uses). The store owns the shape; the handler
+// builds the filter and renders the event without reaching past the service.
+type AuditFilter = store.AuditFilter
+
+// AuditEvent is one stored trail row, re-exported for the transport.
+type AuditEvent = store.AuditEvent
+
 // AuditPage is one interactive query response. Events are the rows that
 // matched the filter's equality fields; NextSeq is the seq of the last row the
 // page SCANNED (matched or not) and is the resume cursor for the next request;

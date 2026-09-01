@@ -11,7 +11,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
-	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
 // auditExportPageSize bounds each page the export reads from the store. It is
@@ -34,7 +33,7 @@ func (a *API) auditPrincipal(ctx context.Context) (domain.PrincipalID, error) {
 
 // auditQueryFilter builds the store filter from the paged query parameters. An
 // absent limit defaults to 100; the store clamps anything above its cap.
-func auditQueryFilter(from, to *time.Time, afterSeq, toSeq *int64, limit *int, actor, operation, outcome, objectType, objectID, correlation *string) store.AuditFilter {
+func auditQueryFilter(from, to *time.Time, afterSeq, toSeq *int64, limit *int, actor, operation, outcome, objectType, objectID, correlation *string) service.AuditFilter {
 	f := auditFilterFields(from, to, actor, operation, outcome, objectType, objectID, correlation)
 	f.Limit = 100
 	if afterSeq != nil {
@@ -51,8 +50,8 @@ func auditQueryFilter(from, to *time.Time, afterSeq, toSeq *int64, limit *int, a
 
 // auditFilterFields sets the equality and time-range fields shared by query and
 // export. The store applies the equality fields after the authorized page read.
-func auditFilterFields(from, to *time.Time, actor, operation, outcome, objectType, objectID, correlation *string) store.AuditFilter {
-	var f store.AuditFilter
+func auditFilterFields(from, to *time.Time, actor, operation, outcome, objectType, objectID, correlation *string) service.AuditFilter {
+	var f service.AuditFilter
 	if from != nil {
 		f.From = *from
 	}
@@ -118,7 +117,7 @@ func wireAuditPage(page service.AuditPage) (apigen.AuditPage, error) {
 	}, nil
 }
 
-func wireAuditEvent(e store.AuditEvent) (apigen.AuditEvent, error) {
+func wireAuditEvent(e service.AuditEvent) (apigen.AuditEvent, error) {
 	payload := map[string]interface{}{}
 	if e.RawPayload != "" {
 		if err := json.Unmarshal([]byte(e.RawPayload), &payload); err != nil {
