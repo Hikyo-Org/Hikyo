@@ -4,6 +4,7 @@ import { generatePath, Link, useNavigate } from 'react-router';
 import { GIT_DEFINITIONS_NOTICE, useDefinitionsSettings } from '../api/definitions.ts';
 import { historyHref } from '../api/history.ts';
 import {
+  KEY_GONE_REFUSAL,
   keyLifecycleRefusalText,
   keyMetadataRefusalText,
   useDeleteKey,
@@ -175,11 +176,13 @@ export function KeyDeclarationDetail({
  * A load failure that stays recoverable: a deleted or renamed-away key (404) is
  * a stale link, not a dead end, so it names the state and offers the way back;
  * a refusal (403) quotes the server; anything else is reported with its status.
+ * The 404 uses the ONE canonical missing-key sentence every key 404 shares — a
+ * surface that worded it differently would be a distinguishable existence signal.
  */
 function KeyLoadError({ error, matrixPath }: { error: Error; matrixPath: string }) {
   const message =
     error instanceof ApiError && error.status === 404
-      ? 'This key no longer exists — it may have been deleted or renamed. Its link is stale.'
+      ? KEY_GONE_REFUSAL
       : error instanceof ApiError && error.status === 403
         ? 'You are not permitted to view this key.'
         : error instanceof ApiError
@@ -509,8 +512,11 @@ function MetadataEditor({
       .catch((error: unknown) => {
         // A scanner block carries findings; route them to the block dialog,
         // which shows ONLY the redacted rule id + locator and offers an audited
-        // override. Any other refusal stays inline in its own words.
-        if (error instanceof ApiError && error.findings.length > 0) {
+        // override. Any other refusal stays inline in its own words. A 404 is
+        // canonicalized to the uniform missing-key sentence BEFORE findings are
+        // considered — a 404 that carried findings must never render details, or
+        // it becomes the existence oracle the reveal gate closes.
+        if (error instanceof ApiError && error.status !== 404 && error.findings.length > 0) {
           const findings = error.findings;
           setScanBlock({
             findings,
@@ -597,7 +603,11 @@ function scanBlockFrom(
   error: unknown,
   resubmit: (tokens: readonly string[]) => Promise<void>,
 ): ScanBlockState | null {
-  if (!(error instanceof ApiError) || error.findings.length === 0) {
+  // A 404 is canonicalized to the uniform missing-key refusal by the caller and
+  // must NEVER open a findings dialog, even if one somehow rode a 404 — that
+  // would leak existence through the reveal mask. Only a genuine scan refusal
+  // (which carries findings on a non-404) becomes a block.
+  if (!(error instanceof ApiError) || error.status === 404 || error.findings.length === 0) {
     return null;
   }
   const findings = error.findings;

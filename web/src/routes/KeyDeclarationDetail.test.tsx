@@ -420,6 +420,36 @@ describe('KeyDeclarationDetail', () => {
     await view.unmount();
   });
 
+  it('never opens the scan block on a 404, even one carrying findings (no oracle)', async () => {
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
+    dbMode();
+    const finding: RefusalFinding = {
+      rule_id: 'aws-access-key',
+      surface: 'edit',
+      locator: 'key.description',
+      acknowledgement: 'ack-x',
+    };
+    // A 404 must be canonicalized BEFORE findings are considered: a 404 carrying
+    // findings must render the uniform sentence, never the block dialog.
+    mocks.mutate.mockImplementation(
+      (_input: unknown, cb: { onError: (error: Error) => void }) =>
+        cb.onError(new ApiError(404, 'not found', undefined, undefined, [finding])),
+    );
+
+    const view = await render();
+    const description = view.container.querySelector<HTMLTextAreaElement>('textarea');
+    if (description === null) throw new Error('editor textarea missing');
+    await act(async () => setTextarea(description, 'changed'));
+    await act(async () => buttonBy(view.container, 'Save declaration').click());
+
+    expect(view.container.querySelector('dialog.scan-block')).toBeNull();
+    const text = textOf(view.container);
+    expect(text).toContain('no longer exists');
+    expect(text).not.toContain('aws-access-key');
+
+    await view.unmount();
+  });
+
   it('renames a key and reports it', async () => {
     mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
     dbMode();
