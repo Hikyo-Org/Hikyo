@@ -187,6 +187,8 @@ jobs:
         run: ./scripts/ci/check-dco_test.sh
       - name: Required-jobs fixture
         run: ./scripts/ci/check-required-jobs_test.sh
+      - name: API freeze guard fixture
+        run: ./scripts/ci/check-api-freeze_test.sh
       - name: Changed-path classifier fixture
         run: ./scripts/ci/classify-changed-paths_test.sh
       - name: CI job registry and workflow bijection fixture
@@ -488,6 +490,31 @@ jobs:
         with:
           path: ~/.cache/go-build
           key: ${{ steps.generated-go-cache.outputs.cache-primary-key }}
+
+  # Dormant until the first stable release tag exists. After v1.0.0, every
+  # OpenAPI revision is checked against that immutable contract baseline.
+  freeze-guard:
+    needs: changes
+    if: ${{ fromJSON(needs.changes.outputs.plan)['freeze-guard'] }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Restore shared Go module cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/go/pkg/mod
+          key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+          restore-keys: go-mod-v2-${{ runner.os }}-
+      - name: Enforce frozen API surface
+        run: ./scripts/ci/check-api-freeze.sh
 
   # The TypeScript half of the contract chain. It is a separate job because it
   # needs a different toolchain, and because a Go-only change must not be able
@@ -1432,6 +1459,7 @@ jobs:
       - compose-demo
       - dco
       - docs
+      - freeze-guard
       - fuzz
       - generated
       - headline-guarantee

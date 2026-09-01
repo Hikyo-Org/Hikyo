@@ -6,6 +6,7 @@
       "client",
       "compose-demo",
       "docs",
+      "freeze-guard",
       "fuzz",
       "generated",
       "headline-guarantee",
@@ -21,6 +22,7 @@
     "api": [
       "client",
       "compose-demo",
+      "freeze-guard",
       "generated",
       "headline-guarantee",
       "release-snapshot",
@@ -105,6 +107,10 @@
     },
     "client": {"required_gate": "planned", "plan_jobs": ["client"]},
     "docs": {"required_gate": "planned", "plan_jobs": ["docs"]},
+    "freeze-guard": {
+      "required_gate": "planned",
+      "plan_jobs": ["freeze-guard"]
+    },
     "compose-demo": {
       "required_gate": "planned",
       "plan_jobs": ["compose-demo"]
