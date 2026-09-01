@@ -31,6 +31,8 @@ import {
 import { notifySuccess } from '../app/notifications.tsx';
 import { surfaceById } from '../app/navigation.ts';
 import { OidcProvidersPanel } from './OidcProvidersPanel.tsx';
+import { SamlProvidersPanel } from './SamlProvidersPanel.tsx';
+import { SamlSpKeysPanel } from './SamlSpKeysPanel.tsx';
 import { Alert, Done, JumpIndex, Panel } from './Sections.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
 
@@ -126,6 +128,10 @@ export function InstanceAdmin() {
       { id: 'instance-settings', label: 'Settings' },
       ...(prototypeMode ? [] : [{ id: 'instance-oidc', label: 'Identity providers' }]),
       { id: 'instance-keys', label: 'Keys & crypto' },
+      ...(prototypeMode ? [] : [
+        { id: 'instance-saml-providers', label: 'SAML providers' },
+        { id: 'instance-saml-sp-keys', label: 'SP signing keys' },
+      ]),
       { id: 'instance-connected', label: 'Instances' },
     ]} />
     {failure !== null ? <Alert>{failure}</Alert> : null}
@@ -228,6 +234,8 @@ export function InstanceAdmin() {
         <p className="field__hint">Root-key rotation, master-key rotation, re-encryption, <span className="mono">init</span>, <span className="mono">migrate</span>, restore reconciliation and break-glass are local host authority. They are deliberately absent from every network surface — CLI-at-the-box, not CLI-over-network.</p>
       </>}
     </Panel>
+    {prototypeMode ? null : <SamlProvidersPanel />}
+    {prototypeMode ? null : <SamlSpKeysPanel />}
     <Panel id="instance-connected" title="Connected instances · exploration" question>
       {prototypeMode ? <>
         <div className="settings-row"><div className="settings-row__copy"><span className="settings-row__title">this instance</span><span className="settings-row__detail">hikyo.example.com · v1.0</span></div><span className="settings-row__spacer" /><span className="settings-tag">main</span></div>

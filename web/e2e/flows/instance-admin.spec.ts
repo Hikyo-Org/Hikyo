@@ -1,9 +1,11 @@
 import { expect, type Browser, type Page } from '@playwright/test';
 import {
+  zAuthMethods,
   zGrantList,
   zOrg,
   zOrgList,
   zSamlProviderMutationResult,
+  zSamlSpKeyList,
   zScimBinding,
   zScimMappingResult,
   zScimMintResult,
@@ -411,6 +413,117 @@ test.describe('instance administration', () => {
       await expect(page.getByLabel('Name')).toHaveValue(name);
   });
 
+  test('configures a SAML provider, refreshes its metadata, rotates and retires SP keys, and gates login availability', async ({
+    page,
+    browser,
+  }, testInfo) => {
+    testInfo.setTimeout(90_000);
+    const slug = `saml-admin-${testInfo.project.name}`;
+    const entityId = `https://idp.example/${slug}`;
+    const providersPanel = page.locator('#instance-saml-providers');
+    const spPanel = page.locator('#instance-saml-sp-keys');
+
+    // A fresh, unauthenticated context asks the public auth-methods endpoint
+    // whether the provider is advertised for sign-in. Enabling a provider makes
+    // it appear; deleting it makes it vanish — that is the login-availability
+    // property this journey exists to hold.
+    const advertised = async (): Promise<boolean> => {
+      const anon = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+      try {
+        const response = await anon.request.get(`${BASE_URL}/api/v1/auth/methods`);
+        expect(response.ok(), await response.text()).toBe(true);
+        const methods = zAuthMethods.parse(await response.json());
+        return methods.providers.some((provider) => provider.slug === slug && provider.kind === 'saml');
+      } finally {
+        await anon.close();
+      }
+    };
+
+    // Defensive: a prior failed run can leave an overlap-retiring SP key that
+    // would 409 the rotate. Retire any before starting so the rotate is clean.
+    for (const key of (await browserApi(page, 'GET', '/api/v1/instance/saml-sp-keys', zSamlSpKeyList)).keys) {
+      if (key.state === 'retiring') {
+        await browserApi(page, 'DELETE', `/api/v1/instance/saml-sp-keys/${key.fingerprint}`, z.null());
+      }
+    }
+
+    try {
+      // Create through the diff-and-confirm ceremony.
+      await providersPanel.getByRole('button', { name: 'Configure a new SAML provider' }).click();
+      await providersPanel.getByLabel('Slug (immutable; addresses this provider)').fill(slug);
+      await providersPanel.getByLabel('Display name').fill(slug);
+      await providersPanel
+        .getByLabel('IdP entityID (byte-exact; immutable after create)')
+        .fill(entityId);
+      await providersPanel.getByLabel('Metadata XML').fill(samlMetadata(slug));
+      await providersPanel.getByRole('button', { name: 'Preview and configure' }).click();
+      await expect(providersPanel.getByText('changes trust state')).toBeVisible();
+      await providersPanel.getByRole('button', { name: 'Confirm trust and configure provider' }).click();
+      await expect(providersPanel.getByText(`Configured SAML provider ${slug}`)).toBeVisible();
+
+      const providerRow = providersPanel.locator(`[data-saml-provider="${slug}"]`);
+      await expect(providerRow).toContainText('enabled');
+      expect(await advertised()).toBe(true);
+
+      // Replace the pinned metadata through the same ceremony. A fresh
+      // self-signed certificate makes this a real trust change.
+      await providerRow.getByRole('button', { name: 'Refresh metadata' }).click();
+      await providerRow.getByLabel('Replacement metadata XML').fill(samlMetadata(slug));
+      await providerRow.getByRole('button', { name: 'Preview metadata change' }).click();
+      await expect(providerRow.getByText('changes trust state')).toBeVisible();
+      await providerRow
+        .getByRole('button', { name: 'Confirm and apply the trust change' })
+        .click();
+      await expect(providersPanel.getByText(`Refreshed the metadata for ${slug}`)).toBeVisible();
+
+      // Rotate the SP signing key: the old active key becomes retiring, a new
+      // one is published.
+      await spPanel.getByRole('button', { name: 'Rotate the active signing key' }).click();
+      await expect(spPanel.getByText('Rotated the SP signing key')).toBeVisible();
+
+      // Ordinary retirement erases the overlap-retiring key.
+      const retiringRow = spPanel.locator('[data-sp-key]').filter({ hasText: 'retiring' });
+      await expect(retiringRow).toHaveCount(1);
+      const retiringFingerprint = await retiringRow.getAttribute('data-sp-key');
+      expect(retiringFingerprint).not.toBeNull();
+      await retiringRow.getByRole('button', { name: 'Retire', exact: true }).click();
+      await retiringRow
+        .getByLabel('Type the fingerprint to erase this retiring key')
+        .fill(retiringFingerprint ?? '');
+      await retiringRow.getByRole('button', { name: 'Retire key' }).click();
+      await expect(spPanel.getByText('is erased and gone from SP metadata')).toBeVisible();
+      await expect(spPanel.locator('[data-sp-key]').filter({ hasText: 'retiring' })).toHaveCount(0);
+
+      // Compromise retirement erases and replaces the active key with no overlap.
+      const activeRow = spPanel.locator('[data-sp-key]').filter({ hasText: 'active' });
+      await expect(activeRow).toHaveCount(1);
+      const compromisedFingerprint = await activeRow.getAttribute('data-sp-key');
+      expect(compromisedFingerprint).not.toBeNull();
+      await activeRow.getByRole('button', { name: 'Compromise-retire' }).click();
+      await activeRow
+        .getByLabel('Type the fingerprint to erase and replace the compromised key')
+        .fill(compromisedFingerprint ?? '');
+      await activeRow.getByRole('button', { name: 'Compromise-retire key' }).click();
+      await expect(spPanel.getByText('minted a replacement')).toBeVisible();
+      // Exactly one active key remains and it is a new one.
+      const keysAfter = await browserApi(page, 'GET', '/api/v1/instance/saml-sp-keys', zSamlSpKeyList);
+      expect(keysAfter.keys.filter((key) => key.state === 'active')).toHaveLength(1);
+      expect(keysAfter.keys.some((key) => key.fingerprint === compromisedFingerprint)).toBe(false);
+
+      // Remove the provider through its typed-name danger gate.
+      await providerRow.getByRole('button', { name: 'Remove', exact: true }).click();
+      await providerRow.getByLabel(`Type ${slug} to remove this provider`).fill(slug);
+      await providerRow.getByRole('button', { name: 'Remove provider' }).click();
+      await expect(providersPanel.getByText(`Removed SAML provider ${slug}`)).toBeVisible();
+      expect(await advertised()).toBe(false);
+    } finally {
+      // The provider is gone on the happy path; sweep it if the run failed midway.
+      await browserApi(page, 'DELETE', `/api/v1/instance/saml-providers/${slug}`, z.null()).catch(
+        () => undefined,
+      );
+    }
+  });
+
   test('answers a password-only session with the second-factor state, not an empty list', async ({
     browser,
   }) => {
@@ -432,6 +545,8 @@ test.describe('instance administration', () => {
         ['#instance-retention', 'requires a second factor', 'Payload pruning'],
         ['#instance-settings', 'requires a second factor', 'Maximum finite lifetime'],
         ['#instance-oidc', 'needs a second factor', '+ add identity provider'],
+        ['#instance-saml-providers', 'needs a second factor', 'No SAML providers are configured'],
+        ['#instance-saml-sp-keys', 'needs a second factor', 'signs every AuthnRequest'],
       ] as const;
       for (const [selector, refusalText, forbiddenText] of panels) {
         const panel = page.locator(selector);
