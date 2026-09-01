@@ -474,17 +474,94 @@ func parseTrustedProxyCIDRs(raw string) ([]string, error) {
 	return cidrs, nil
 }
 
+// EmitHSTS reports whether responses should carry Strict-Transport-Security.
+//
+// The gate is the CONFIGURED PUBLIC ORIGIN'S SCHEME, not the presence of a
+// native certificate (#517). HSTS is a statement about how the browser reached
+// this instance, and a reverse proxy terminating TLS in front of a plaintext
+// listener is https to the browser in exactly the way native TLS is. The old
+// certificate-presence gate silently withheld the header from every
+// proxy deployment, which is the majority shape. The origin is operator
+// configuration validated at load time, never a request header, so it cannot
+// be talked into the header by a client.
+//
+// Loopback still never promises: `Strict-Transport-Security` is stored per
+// browser-visible HOST, so pinning `localhost` to https would break every other
+// plaintext development server on the machine for one year. The bind address
+// cannot answer that question: a supported same-host proxy uses a loopback bind
+// for a non-loopback public origin.
+func EmitHSTS(externalOrigin string) bool {
+	origin, err := url.Parse(externalOrigin)
+	return err == nil && origin.Scheme == "https" && origin.Host != "" && !isLoopbackHost(origin.Hostname())
+}
+
 // IsLoopbackListen reports whether a configured TCP listen address is local-only.
 func IsLoopbackListen(listen string) bool {
 	host, _, err := net.SplitHostPort(listen)
 	if err != nil {
 		return false
 	}
-	if host == "localhost" {
+	return isLoopbackHost(host)
+}
+
+func isLoopbackHost(host string) bool {
+	host = strings.TrimRight(strings.ToLower(host), ".")
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
 		return true
 	}
 	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	if ip != nil {
+		return ip.IsLoopback()
+	}
+	ipv4, ok := browserIPv4(host)
+	return ok && byte(ipv4>>24) == 127
+}
+
+// browserIPv4 parses the legacy one-to-four-part IPv4 spellings accepted by
+// the URL Standard. Browsers canonicalize values such as 127.1, 2130706433,
+// and 0x7f000001 to 127.0.0.1 before applying HSTS; net.ParseIP deliberately
+// accepts only canonical literals, so relying on it alone would pin loopback.
+func browserIPv4(host string) (uint32, bool) {
+	parts := strings.Split(host, ".")
+	if len(parts) == 0 || len(parts) > 4 {
+		return 0, false
+	}
+
+	numbers := make([]uint64, len(parts))
+	for i, part := range parts {
+		base := 10
+		digits := part
+		switch {
+		case strings.HasPrefix(part, "0x"):
+			base, digits = 16, part[2:]
+		case len(part) > 1 && part[0] == '0':
+			base, digits = 8, part[1:]
+		}
+		if digits == "" {
+			return 0, false
+		}
+		n, err := strconv.ParseUint(digits, base, 32)
+		if err != nil {
+			return 0, false
+		}
+		numbers[i] = n
+	}
+
+	for _, n := range numbers[:len(numbers)-1] {
+		if n > 255 {
+			return 0, false
+		}
+	}
+	lastLimit := uint64(1) << (8 * (5 - len(numbers)))
+	if numbers[len(numbers)-1] >= lastLimit {
+		return 0, false
+	}
+
+	value := numbers[len(numbers)-1]
+	for i, n := range numbers[:len(numbers)-1] {
+		value += n << (8 * (3 - i))
+	}
+	return uint32(value), true
 }
 
 func parseDatastore(raw string) (Datastore, error) {

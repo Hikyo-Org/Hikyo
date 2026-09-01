@@ -109,9 +109,9 @@ func TestPostgresRemoteVerifiedTLSAllowed(t *testing.T) {
 
 func TestPostgresHostParamCannotBypassTLSCheck(t *testing.T) {
 	for _, dsn := range []string{
-		"postgres:///hikyo?host=remote.example.com",          // libpq-style host param
-		"postgres://u:p@/hikyo?host=10.0.0.5&sslmode=prefer", // empty authority + host param
-		"postgres:///hikyo", // no host at all (implicit PGHOST)
+		"postgres:///hikyo?host=remote.example.com",              // libpq-style host param
+		"postgres://u:p@/hikyo?host=10.0.0.5&sslmode=prefer",     // empty authority + host param
+		"postgres:///hikyo",                                      // no host at all (implicit PGHOST)
 		"postgres://u:p@localhost/hikyo?host=remote.example.com", // conflicting hosts
 		"postgres:///hikyo?host=a,b",                             // multi-host
 	} {
@@ -484,5 +484,85 @@ func TestReauthWindowDefaultsZeroInProductionAndFifteenMinutesInDev(t *testing.T
 	}
 	if _, _, err := Load("server", nil, env("HIKYO_DB", "sqlite:/data/hikyo.db", "HIKYO_REAUTH_WINDOW_SECONDS", "90000"), nil); err == nil {
 		t.Fatal("a window above 24h must refuse")
+	}
+}
+
+// HSTS is a promise about the PUBLIC origin, not about which process holds the
+// certificate: a reverse proxy terminating TLS in front of a plaintext
+// listener is exactly as https to the browser as native TLS is. The four
+// deployment shapes below are the whole matrix. The browser-visible scheme
+// and host decide, not the internal bind. A development instance must not pin
+// `localhost` to https in the browser's HSTS store for every other project on
+// the machine, while a same-host proxy may safely bind Hikyo to loopback.
+func TestHSTSFollowsTheExternalOriginSchemeNotTheCertificate(t *testing.T) {
+	certPairs := []string{"HIKYO_TLS_CERT_FILE", "tls.crt", "HIKYO_TLS_KEY_FILE", "tls.key"}
+	proxyPairs := []string{"HIKYO_TRUSTED_PROXY_CIDRS", "10.42.0.0/16"}
+	for _, tc := range []struct {
+		name   string
+		listen string
+		pairs  []string
+		want   bool
+	}{
+		{
+			name:   "native TLS on a public listener",
+			listen: "0.0.0.0:8443",
+			pairs:  certPairs,
+			want:   true,
+		},
+		{
+			name:   "reverse proxy in front of an https origin",
+			listen: "127.0.0.1:8080",
+			pairs:  append(append([]string{}, proxyPairs...), "HIKYO_EXTERNAL_ORIGIN", "https://hikyo.example.com"),
+			want:   true,
+		},
+		{
+			name:   "reverse proxy in front of a plaintext origin",
+			listen: "0.0.0.0:8080",
+			pairs:  append(append([]string{}, proxyPairs...), "HIKYO_EXTERNAL_ORIGIN", "http://hikyo.example.com"),
+			want:   false,
+		},
+		{
+			name:   "loopback public origin on a wildcard listener",
+			listen: "0.0.0.0:8443",
+			pairs:  append(append([]string{}, proxyPairs...), "HIKYO_EXTERNAL_ORIGIN", "https://localhost"),
+			want:   false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, _, err := Load("server", []string{"--dev", "--listen", tc.listen}, env(tc.pairs...), environFrom(tc.pairs...))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := EmitHSTS(cfg.ExternalOrigin); got != tc.want {
+				t.Fatalf("EmitHSTS(%q) = %t, want %t", cfg.ExternalOrigin, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestHSTSRejectsEquivalentLoopbackHostnames(t *testing.T) {
+	for _, origin := range []string{
+		"https://LOCALHOST",
+		"https://localhost.",
+		"https://LOCALHOST.:8443",
+		"https://app.localhost",
+		"https://127.0.0.1.",
+		"https://127.1",
+		"https://127.0.1",
+		"https://2130706433",
+		"https://0x7f000001",
+		"https://017700000001",
+	} {
+		t.Run(origin, func(t *testing.T) {
+			if EmitHSTS(origin) {
+				t.Fatalf("EmitHSTS(%q) = true, want false for loopback", origin)
+			}
+		})
+	}
+}
+
+func TestHSTSAcceptsLegacyNonLoopbackIPv4Hostname(t *testing.T) {
+	if !EmitHSTS("https://126.1") {
+		t.Fatal("EmitHSTS(https://126.1) = false, want true for browser-canonicalized 126.0.0.1")
 	}
 }

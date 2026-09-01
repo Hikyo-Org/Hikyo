@@ -92,6 +92,28 @@ func TestDevBootSeparatesPublicAndOperationalRoutes(t *testing.T) {
 	}
 }
 
+func TestProxyHTTPSOriginEmitsHSTSOnLoopbackBackend(t *testing.T) {
+	cfg := devConfig(t)
+	cfg.ExternalOrigin = "https://hikyo.example.com"
+	srv, err := Boot(t.Context(), cfg, testLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- srv.Serve(ctx) }()
+	t.Cleanup(func() { cancel(); <-done })
+
+	resp, err := http.Get("http://" + srv.Addr + "/api/v1/meta")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if got := resp.Header.Get("Strict-Transport-Security"); got != "max-age=31536000" {
+		t.Fatalf("proxy HTTPS origin HSTS = %q, want max-age=31536000", got)
+	}
+}
+
 func TestServeCancellationStopsBothListeners(t *testing.T) {
 	srv, err := Boot(t.Context(), devConfig(t), testLogger())
 	if err != nil {

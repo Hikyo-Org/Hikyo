@@ -46,6 +46,42 @@ const contentSecurityPolicy = "default-src 'self'; " +
 	"connect-src 'self'; base-uri 'none'; object-src 'none'; form-action 'self'; " +
 	"frame-ancestors 'none'"
 
+// crossOriginOpenerPolicy isolates this instance's browsing-context group from
+// the windows it opens, with the ONE exception the shell actually needs.
+//
+// `same-origin-allow-popups`, not `same-origin`, and the difference is a
+// working product (#517). The shell runs two ceremonies through popups that
+// navigate CROSS-ORIGIN and then close themselves: the identity provider's
+// authorization window returning to /oidc/done, and the workspace handoff's
+// authorization window on the REMOTE instance returning to this origin's
+// callback page. Under `same-origin` the browser severs those popups into a
+// fresh browsing-context group, and a popup that is no longer script-closable
+// stays open forever on a page that says "you can close this window".
+//
+// The isolation that matters is kept either way: this document cannot be
+// reached through `window.opener` by anything cross-origin, and the return
+// path never used `opener` in the first place. The popups are opened with
+// `noopener` and hand back over a same-origin `BroadcastChannel`.
+const crossOriginOpenerPolicy = "same-origin-allow-popups"
+
+// crossOriginResourcePolicy refuses to be embedded as a subresource by another
+// origin. It governs `no-cors` loads only: an <img>, a <script>, or a media
+// element. It costs the workspace tier nothing: a browser reading a remote
+// instance's API does so with a CORS-mode fetch, which this header does not
+// gate (that is workspaceCORS's job, and it stays a closed allowlist).
+const crossOriginResourcePolicy = "same-origin"
+
+// permissionsPolicy denies the powerful features this application never uses.
+// Deliberately SHORT: every named feature is one an operator would have to
+// audit, and a long list of denials for features the browser does not grant
+// without a prompt anyway buys nothing.
+//
+// WebAuthn is NOT named, and that is load-bearing: `publickey-credentials-get`
+// and `publickey-credentials-create` default to `self`, which is precisely
+// what the passkey ceremonies need, and naming them at all risks writing an
+// allowlist that a future edit narrows to `()`.
+const permissionsPolicy = "camera=(), microphone=(), geolocation=()"
+
 // connectSrcSelf is the token the remote origins extend (#71). It is spelled
 // once so the extension below cannot drift from the baseline above.
 const connectSrcSelf = "connect-src 'self'"
@@ -184,6 +220,9 @@ func securityHeaders(hsts bool) func(http.Handler) http.Handler {
 			h.Set("Content-Security-Policy", contentSecurityPolicy)
 			h.Set("X-Content-Type-Options", "nosniff")
 			h.Set("Referrer-Policy", "no-referrer")
+			h.Set("Cross-Origin-Opener-Policy", crossOriginOpenerPolicy)
+			h.Set("Cross-Origin-Resource-Policy", crossOriginResourcePolicy)
+			h.Set("Permissions-Policy", permissionsPolicy)
 			if hsts {
 				h.Set("Strict-Transport-Security", "max-age=31536000")
 			}
