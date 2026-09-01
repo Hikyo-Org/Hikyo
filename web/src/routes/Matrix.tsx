@@ -776,7 +776,7 @@ export function Matrix({
             className="btn matrix__import"
             onClick={() => setImportOpen(true)}
           >
-            Import .env
+            Import
           </button>
         ) : null}
         {/* env-matrix 31 / #492: the header's primary declare action. Git-managed

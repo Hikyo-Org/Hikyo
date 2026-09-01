@@ -20,6 +20,7 @@ import {
   type ParseResult,
   type PrimitiveType,
 } from './import-state.ts';
+import { MAX_FILE_BYTES, parseSource, type FileConnector } from './import-sources.ts';
 import { useModalDialog } from './useModalDialog.ts';
 
 type WizardEnvironment = { readonly id: string; readonly name: string };
@@ -29,7 +30,52 @@ type WizardEnvironment = { readonly id: string; readonly name: string };
  * `enum`, and every one is a legal `CreateKeyType` for the declare call. */
 const TYPE_CHOICES: readonly PrimitiveType[] = ['string', 'integer', 'boolean', 'url', 'json'];
 
-type Step = 'source' | 'classify' | 'review' | 'result';
+type Step = 'pick' | 'source' | 'classify' | 'review' | 'result';
+
+/**
+ * The import journeys the picker offers (#496). File-mode Kubernetes, Infisical,
+ * Vault and OpenBao complete in the browser through the shared review/apply flow
+ * below; `.env` is the #495 journey. SOPS (its only mode needs decryption keys)
+ * and every live mode (ambient kubeconfig / Vault client conventions) cannot run
+ * in the browser without the import-paths ADR's rejected server-side importer or
+ * credential prompt, so they are selectable but routed to the CLI with guidance.
+ */
+type Journey =
+  | { readonly kind: 'dotenv' }
+  | { readonly kind: 'file'; readonly connector: FileConnector }
+  | { readonly kind: 'cli'; readonly source: CliSource };
+
+type CliSource = 'sops' | 'k8s-live' | 'vault-live';
+
+type JourneyOption = {
+  readonly id: string;
+  readonly label: string;
+  readonly hint: string;
+  readonly journey: Journey;
+};
+
+/** The picker rows, in offer order. Vault and OpenBao share one JSONL parser, so
+ * one browser row covers both; each connector the ADR ships is selectable. */
+const JOURNEYS: readonly JourneyOption[] = [
+  { id: 'dotenv', label: '.env file', hint: 'KEY=value pairs', journey: { kind: 'dotenv' } },
+  { id: 'k8s', label: 'Kubernetes Secret manifest', hint: 'YAML/JSON export', journey: { kind: 'file', connector: 'k8s' } },
+  { id: 'infisical', label: 'Infisical export', hint: 'infisical export --format=json', journey: { kind: 'file', connector: 'infisical' } },
+  { id: 'vault', label: 'Vault / OpenBao capture', hint: 'JSON Lines capture', journey: { kind: 'file', connector: 'vault' } },
+  { id: 'sops', label: 'SOPS file', hint: 'Decrypts with your keyring — CLI', journey: { kind: 'cli', source: 'sops' } },
+  { id: 'k8s-live', label: 'Kubernetes (live)', hint: 'kubeconfig — CLI', journey: { kind: 'cli', source: 'k8s-live' } },
+  { id: 'vault-live', label: 'Vault / OpenBao (live)', hint: 'client conventions — CLI', journey: { kind: 'cli', source: 'vault-live' } },
+];
+
+/** A source-agnostic entry the shared classify/review/apply flow works on: the
+ * canonical KEY, the folder it declares under, its source name (for the rename
+ * surface) and the exact value phase 2 writes. `.env` and every connector
+ * normalize onto this shape. */
+type WorkingEntry = {
+  readonly key: string;
+  readonly sourceName: string;
+  readonly value: string;
+  readonly folderPath: string;
+};
 
 /** A new key's operator-chosen declaration, gathered in the classify step. */
 type Declaration = { readonly classification: KeyClassification; readonly type: PrimitiveType };
@@ -44,16 +90,43 @@ type EnvironmentOutcome = {
   readonly error: string | null;
 };
 
+const CLI_GUIDANCE: Record<CliSource, { readonly title: string; readonly body: string; readonly command: string }> = {
+  sops: {
+    title: 'Import a SOPS file with the CLI',
+    body:
+      'SOPS import decrypts with your ambient keyring (age, GPG, KMS). Decryption keys cannot be handled in the ' +
+      'browser, so run it on a machine with your keyring:',
+    command: 'hikyo import --from sops --file <file> --project <project> --environment <environment>',
+  },
+  'k8s-live': {
+    title: 'Import from a live cluster with the CLI',
+    body:
+      'A live Kubernetes read uses your ambient kubeconfig, which the browser cannot present. Run it where your ' +
+      'kubeconfig lives, or capture a manifest and import the file here:',
+    command:
+      'hikyo import --from k8s --live --namespace <ns> [--name <secret>] --project <project> --environment <environment>',
+  },
+  'vault-live': {
+    title: 'Import from a live Vault/OpenBao with the CLI',
+    body:
+      'A live Vault/OpenBao read uses your ambient client configuration and token, which the browser cannot ' +
+      'present. Run it where your client is configured, or capture a JSONL file and import it here:',
+    command:
+      'hikyo import --from vault --live --mount <mount> [--path <prefix>] --project <project> --environment <environment>',
+  },
+};
+
 /**
- * Browser dotenv import wizard (#495).
+ * Browser import wizard (#495 `.env`; #496 file-mode connectors).
  *
- * A local .env file is read into memory, parsed with the strict grammar
- * (`import-state`), and reviewed BEFORE any plaintext leaves the browser: no
- * value rides a request until the operator starts the reviewed phase-2 write.
- * New keys are classified explicitly (secret by default) and typed only on an
- * accepted suggestion, then declared through the shared create path; values are
- * written per environment through `value.import`, which republishes and refuses
- * a moved state by name. Nothing here is retained in durable browser storage.
+ * A local file is read into memory, parsed on this device (`import-state` for
+ * `.env`, `import-sources` for the connectors), and reviewed BEFORE any
+ * plaintext leaves the browser: no value rides a request until the operator
+ * starts the reviewed phase-2 write. New keys are classified explicitly (secret
+ * by default) and typed only on an accepted suggestion, then declared through
+ * the shared create path (carrying each connector's folder); values are written
+ * per environment through `value.import`, which republishes and refuses a moved
+ * state by name. Nothing here is retained in durable browser storage.
  */
 export function ImportWizard({
   matrixRef,
@@ -82,9 +155,14 @@ export function ImportWizard({
   const createKey = useCreateKey(matrixRef);
   const importValues = useImportValues(matrixRef);
 
-  const [step, setStep] = useState<Step>('source');
+  const [step, setStep] = useState<Step>('pick');
+  const [journey, setJourney] = useState<Journey | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  // `.env` carries its own parse (with per-line errors); the connectors carry a
+  // normalized entry set plus what they renamed and skipped, or one refusal.
   const [parse, setParse] = useState<ParseResult | null>(null);
+  const [source, setSource] = useState<ConnectorSource | null>(null);
+  const [envSlug, setEnvSlug] = useState('');
   const [selected, setSelected] = useState<ReadonlySet<string>>(
     () => new Set(environments.map((environment) => environment.id)),
   );
@@ -100,7 +178,30 @@ export function ImportWizard({
   const [error, setError] = useState<string | null>(null);
 
   const busy = occurrences.isPending || createKey.isPending || importValues.isPending;
-  const entries = parse?.entries ?? [];
+
+  // The one shape everything downstream reads. `.env` folders onto the root and
+  // is its own source name; the connectors carry their mapped folder and rename.
+  const entries: readonly WorkingEntry[] = useMemo(() => {
+    if (journey?.kind === 'dotenv') {
+      return (parse?.entries ?? []).map((entry) => ({
+        key: entry.key,
+        sourceName: entry.key,
+        value: entry.value,
+        folderPath: '',
+      }));
+    }
+    return source?.entries ?? [];
+  }, [journey, parse, source]);
+
+  const renames = source?.renames ?? [];
+  const sourceSkipped = source?.skipped ?? [];
+  const folderByKey = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const entry of entries) {
+      map.set(entry.key, entry.folderPath);
+    }
+    return map;
+  }, [entries]);
 
   // A key is new when the project does not declare it; read from any environment
   // (declaration is project-scoped). Empty until phase 1a has run.
@@ -143,6 +244,13 @@ export function ImportWizard({
   const trimSettled = trimOffenders.every((entry) => trimAcks.has(entry.key));
 
   const selectedEnvironments = environments.filter((environment) => selected.has(environment.id));
+
+  const resetChoices = () => {
+    setPresence(new Map());
+    setDeclarations(new Map());
+    setOverwrite(new Map());
+    setTrimAcks(new Set());
+  };
 
   const beginReview = async () => {
     setError(null);
@@ -194,7 +302,7 @@ export function ImportWizard({
     setError(null);
     // Declare new keys first (skipped entirely on a git-managed project). A
     // declaration failure drops that key from the import rather than failing the
-    // whole batch by name at phase 2.
+    // whole batch by name at phase 2. Each new key carries its connector folder.
     const declared: string[] = [];
     const declareFailures: string[] = [];
     if (!gitManaged) {
@@ -205,6 +313,7 @@ export function ImportWizard({
             name,
             classification: declaration.classification,
             rule: { type: declaration.type },
+            folderPath: folderByKey.get(name) ?? '',
             required: { mode: 'none', environmentIds: [] },
             forbidden: { mode: 'none', environmentIds: [] },
           });
@@ -307,6 +416,24 @@ export function ImportWizard({
     return next;
   };
 
+  const chooseJourney = (chosen: Journey) => {
+    setError(null);
+    // Switching journeys invalidates any file read still in flight from the
+    // previous one, so its late-resolving contents cannot land under the new
+    // journey (the same guard `renderFileSource`/dotenv reads use per selection).
+    readSeq.current += 1;
+    parseVersion.current += 1;
+    setJourney(chosen);
+    setFileName(null);
+    setParse(null);
+    setSource(null);
+    setEnvSlug('');
+    resetChoices();
+    setStep('source');
+  };
+
+  const heading = journeyHeading(journey);
+
   return (
     <dialog
       ref={dialog}
@@ -322,7 +449,7 @@ export function ImportWizard({
         <div className="matrix-editor__head">
           <div>
             <p className="matrix-editor__eyebrow">Import</p>
-            <h2>Import a .env file</h2>
+            <h2>{heading}</h2>
             <p>Reviewed on this device; values are sent only when you start the import.</p>
           </div>
           <button
@@ -335,13 +462,15 @@ export function ImportWizard({
           </button>
         </div>
 
-        <p className="notice" role="note">
-          <span aria-hidden="true">⚠</span>
-          <span>
-            The file is read in this browser and reviewed here. Its values are sent only when you
-            start the import, and are never stored by this page.
-          </span>
-        </p>
+        {step !== 'pick' && journey?.kind !== 'cli' ? (
+          <p className="notice" role="note">
+            <span aria-hidden="true">⚠</span>
+            <span>
+              The file is read in this browser and reviewed here. Its values are sent only when you
+              start the import, and are never stored by this page.
+            </span>
+          </p>
+        ) : null}
 
         {error === null ? null : (
           <p className="alert" role="alert">
@@ -350,25 +479,101 @@ export function ImportWizard({
           </p>
         )}
 
-        {step === 'source'
-          ? renderSource()
-          : step === 'classify'
-            ? renderClassify()
-            : step === 'review'
-              ? renderReview()
-              : renderResult()}
+        {step === 'pick'
+          ? renderPick()
+          : step === 'source'
+            ? renderSource()
+            : step === 'classify'
+              ? renderClassify()
+              : step === 'review'
+                ? renderReview()
+                : renderResult()}
       </form>
     </dialog>
   );
 
+  function renderPick() {
+    return (
+      <>
+        <fieldset>
+          <legend>Choose a source</legend>
+          <ul className="import-wizard__sources" aria-label="Import sources">
+            {JOURNEYS.map((option) => (
+              <li key={option.id}>
+                <button
+                  type="button"
+                  className="btn import-wizard__source"
+                  onClick={() => chooseJourney(option.journey)}
+                >
+                  <span className="import-wizard__source-label">{option.label}</span>
+                  <span className="import-wizard__source-hint">{option.hint}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </fieldset>
+        <footer className="matrix-editor__actions">
+          <button type="button" className="btn" onClick={onClose}>
+            Cancel
+          </button>
+        </footer>
+      </>
+    );
+  }
+
   function renderSource() {
+    if (journey?.kind === 'cli') {
+      return renderCliGuidance(journey.source);
+    }
+    if (journey?.kind === 'dotenv') {
+      return renderDotenvSource();
+    }
+    if (journey?.kind === 'file') {
+      return renderFileSource(journey.connector);
+    }
+    return null;
+  }
+
+  function renderCliGuidance(cliSource: CliSource) {
+    const guidance = CLI_GUIDANCE[cliSource];
+    return (
+      <>
+        <fieldset>
+          <legend>{guidance.title}</legend>
+          <p className="import-wizard__summary">{guidance.body}</p>
+          <pre className="import-wizard__command" aria-label="CLI command">
+            <code>{guidance.command}</code>
+          </pre>
+        </fieldset>
+        <footer className="matrix-editor__actions">
+          <button type="button" className="btn" onClick={() => setStep('pick')}>
+            Back
+          </button>
+          <button type="button" className="btn btn--primary" onClick={onClose}>
+            Close
+          </button>
+        </footer>
+      </>
+    );
+  }
+
+  function commitReset() {
+    // A new file is a fresh review: drop every choice made against the previous
+    // one so a stale overwrite or trim ack can never apply to a value the
+    // operator has not seen.
+    resetChoices();
+    setStep('source');
+  }
+
+  function renderDotenvSource() {
     const parseErrors = parse?.errors ?? [];
+    const dotenvEntries = parse?.entries ?? [];
     // The server parses the whole file strictly and refuses it entirely on any
     // bad line; phase 2 only ever sees parsed entries, so the browser must
     // enforce that same all-or-nothing gate here rather than partially import a
     // file the Go parser would reject.
     const canContinue =
-      entries.length > 0 && parseErrors.length === 0 && selected.size > 0 && !busy;
+      dotenvEntries.length > 0 && parseErrors.length === 0 && selected.size > 0 && !busy;
     return (
       <>
         <fieldset>
@@ -384,6 +589,19 @@ export function ImportWizard({
               }
               readSeq.current += 1;
               const read = readSeq.current;
+              // Refuse an oversized selection by size before reading it in, and
+              // CLEAR the prior parse so a still-valid earlier file cannot be
+              // imported while this oversized one is selected (bump parseVersion
+              // to invalidate any in-flight review, matching the connector path).
+              if (file.size > MAX_FILE_BYTES) {
+                parseVersion.current += 1;
+                setFileName(file.name);
+                setParse(null);
+                resetChoices();
+                setStep('source');
+                setError(`the file exceeds the ${String(MAX_FILE_BYTES)}-byte per-file cap`);
+                return;
+              }
               const text = await file.text();
               // A newer selection started while this file was being read: its
               // result wins, so drop this stale one entirely.
@@ -395,19 +613,13 @@ export function ImportWizard({
               parseVersion.current += 1;
               setFileName(file.name);
               setParse(parseDotenv(text));
-              // A new file is a fresh review: drop every choice made against the
-              // previous one so a stale overwrite or trim ack can never apply to
-              // a value the operator has not seen.
-              setPresence(new Map());
-              setDeclarations(new Map());
-              setOverwrite(new Map());
-              setTrimAcks(new Set());
-              setStep('source');
+              setSource(null);
+              commitReset();
             }}
           />
           {parse === null ? null : (
             <p className="import-wizard__summary" role="status">
-              {`${fileName ?? 'file'}: ${String(entries.length)} value${entries.length === 1 ? '' : 's'} read` +
+              {`${fileName ?? 'file'}: ${String(dotenvEntries.length)} value${dotenvEntries.length === 1 ? '' : 's'} read` +
                 (parseErrors.length === 0
                   ? ''
                   : `, ${String(parseErrors.length)} invalid line${parseErrors.length === 1 ? '' : 's'} skipped`)}
@@ -430,24 +642,10 @@ export function ImportWizard({
             </>
           )}
         </fieldset>
-
-        <fieldset>
-          <legend>Target environments</legend>
-          {environments.map((environment) => (
-            <label key={environment.id} className="import-wizard__env">
-              <input
-                type="checkbox"
-                checked={selected.has(environment.id)}
-                onChange={() => setSelected((current) => toggle(current, environment.id))}
-              />
-              {environment.name}
-            </label>
-          ))}
-        </fieldset>
-
+        {renderTargets()}
         <footer className="matrix-editor__actions">
-          <button type="button" className="btn" onClick={onClose}>
-            Cancel
+          <button type="button" className="btn" onClick={() => setStep('pick')}>
+            Back
           </button>
           <button
             type="button"
@@ -459,6 +657,125 @@ export function ImportWizard({
           </button>
         </footer>
       </>
+    );
+  }
+
+  function renderFileSource(connector: FileConnector) {
+    const needsSlug = connector === 'infisical';
+    const refusal = source?.refusal ?? null;
+    const canContinue =
+      source !== null && source.refusal === null && source.entries.length > 0 && selected.size > 0 && !busy;
+    const readFile = async (file: File, slug: string) => {
+      readSeq.current += 1;
+      const read = readSeq.current;
+      // Refuse an oversized selection by size BEFORE reading it into memory, so a
+      // multi-gigabyte file cannot exhaust the tab before the connector's own
+      // per-file cap would fire (which only runs after `file.text()`).
+      if (file.size > MAX_FILE_BYTES) {
+        parseVersion.current += 1;
+        setFileName(file.name);
+        setParse(null);
+        setSource({
+          entries: [],
+          renames: [],
+          skipped: [],
+          refusal: `the file exceeds the ${String(MAX_FILE_BYTES)}-byte per-file cap`,
+        });
+        commitReset();
+        return;
+      }
+      const text = await file.text();
+      if (read !== readSeq.current) {
+        return;
+      }
+      parseVersion.current += 1;
+      setFileName(file.name);
+      setParse(null);
+      setSource(toConnectorSource(parseSource(connector, text, { envSlug: slug })));
+      commitReset();
+    };
+    return (
+      <>
+        <fieldset>
+          <legend>{FILE_HINTS[connector].legend}</legend>
+          {needsSlug ? (
+            <label className="import-wizard__slug">
+              Source environment slug
+              <input
+                type="text"
+                aria-label="Source environment slug"
+                value={envSlug}
+                placeholder="prod"
+                onChange={(event) => setEnvSlug(event.target.value)}
+              />
+            </label>
+          ) : null}
+          <input
+            type="file"
+            aria-label={FILE_HINTS[connector].inputLabel}
+            accept={FILE_HINTS[connector].accept}
+            disabled={needsSlug && envSlug.trim() === ''}
+            onChange={async (event) => {
+              const file = event.target.files?.[0] ?? null;
+              if (file === null) {
+                return;
+              }
+              await readFile(file, envSlug.trim());
+            }}
+          />
+          {needsSlug && envSlug.trim() === '' ? (
+            <p className="import-wizard__summary" role="status">
+              Name the source environment slug before choosing the export.
+            </p>
+          ) : null}
+          {source === null ? null : refusal !== null ? (
+            <p className="alert" role="alert">
+              <span className="alert__glyph" aria-hidden="true">!</span>
+              <span>{refusal}</span>
+            </p>
+          ) : (
+            <p className="import-wizard__summary" role="status">
+              {`${fileName ?? 'file'}: ${String(source.entries.length)} value${source.entries.length === 1 ? '' : 's'} read` +
+                (source.renames.length === 0
+                  ? ''
+                  : `, ${String(source.renames.length)} renamed`) +
+                (source.skipped.length === 0 ? '' : `, ${String(source.skipped.length)} skipped`)}
+            </p>
+          )}
+        </fieldset>
+        {renderTargets()}
+        <footer className="matrix-editor__actions">
+          <button type="button" className="btn" onClick={() => setStep('pick')}>
+            Back
+          </button>
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={!canContinue}
+            onClick={beginReview}
+          >
+            {busy ? 'Reading…' : 'Review'}
+          </button>
+        </footer>
+      </>
+    );
+  }
+
+  function renderTargets() {
+    return (
+      <fieldset>
+        <legend>Target environments</legend>
+        {environments.map((environment) => (
+          <label key={environment.id} className="import-wizard__env">
+            <input
+              type="checkbox"
+              checked={selected.has(environment.id)}
+              onChange={() => setSelected((current) => toggle(current, environment.id))}
+            />
+            {environment.name}
+          </label>
+        ))}
+      </fieldset>
     );
   }
 
@@ -475,6 +792,17 @@ export function ImportWizard({
           </p>
         ) : null}
 
+        {renames.length === 0 ? null : (
+          <fieldset>
+            <legend>Renamed to the canonical grammar</legend>
+            <ul className="import-wizard__renames" aria-label="Renamed keys">
+              {renames.map((rename) => (
+                <li key={rename.from}>{`${rename.from} → ${rename.to}`}</li>
+              ))}
+            </ul>
+          </fieldset>
+        )}
+
         {newKeys.length === 0 ? (
           <p className="import-wizard__summary" role="status">
             Every key is already declared — no classification needed.
@@ -487,13 +815,17 @@ export function ImportWizard({
                 .filter((entry) => entry.key === name)
                 .map((entry) => entry.value);
               const suggestion = suggestType(values);
+              const folder = folderByKey.get(name) ?? '';
               const declaration = declarations.get(name) ?? {
                 classification: 'secret' as const,
                 type: 'string' as const,
               };
               return (
                 <div key={name} className="import-wizard__key">
-                  <span className="import-wizard__key-name">{name}</span>
+                  <span className="import-wizard__key-name">
+                    {name}
+                    {folder === '' ? null : <span className="import-wizard__key-folder">{` · ${folder}`}</span>}
+                  </span>
                   <label className="import-wizard__secret">
                     <input
                       type="checkbox"
@@ -556,6 +888,13 @@ export function ImportWizard({
     const anySendable = importableEntries.length > 0;
     return (
       <>
+        {sourceSkipped.length === 0 ? null : (
+          <p className="import-wizard__summary" role="status">
+            {`${String(sourceSkipped.length)} entr${sourceSkipped.length === 1 ? 'y' : 'ies'} skipped at the source ` +
+              `(personal overrides or deleted): ${sourceSkipped.join(', ')}`}
+          </p>
+        )}
+
         {trimOffenders.length === 0 ? null : (
           <fieldset>
             <legend>Values with surrounding whitespace</legend>
@@ -674,6 +1013,51 @@ export function ImportWizard({
       </>
     );
   }
+}
+
+/** The connector parse, held in wizard state: either the mapped entries (with
+ * their renames and skips) or a single content-free refusal. */
+type ConnectorSource = {
+  readonly entries: readonly WorkingEntry[];
+  readonly renames: readonly { readonly from: string; readonly to: string }[];
+  readonly skipped: readonly string[];
+  readonly refusal: string | null;
+};
+
+function toConnectorSource(result: ReturnType<typeof parseSource>): ConnectorSource {
+  if (!result.ok) {
+    return { entries: [], renames: [], skipped: [], refusal: result.reason };
+  }
+  return {
+    entries: result.entries.map((entry) => ({
+      key: entry.key,
+      sourceName: entry.sourceName,
+      value: entry.value,
+      folderPath: entry.folderPath,
+    })),
+    renames: result.renames,
+    skipped: result.skipped,
+    refusal: null,
+  };
+}
+
+const FILE_HINTS: Record<FileConnector, { legend: string; inputLabel: string; accept: string }> = {
+  k8s: { legend: 'Kubernetes Secret manifest', inputLabel: 'Kubernetes Secret manifest', accept: '.yaml,.yml,.json,text/plain' },
+  infisical: { legend: 'Infisical export', inputLabel: 'Infisical export', accept: '.json,application/json' },
+  vault: { legend: 'Vault / OpenBao JSON Lines capture', inputLabel: 'Vault capture', accept: '.jsonl,.json,text/plain' },
+};
+
+function journeyHeading(journey: Journey | null): string {
+  if (journey === null) {
+    return 'Import into this project';
+  }
+  if (journey.kind === 'dotenv') {
+    return 'Import a .env file';
+  }
+  if (journey.kind === 'file') {
+    return `Import ${FILE_HINTS[journey.connector].legend}`;
+  }
+  return CLI_GUIDANCE[journey.source].title;
 }
 
 function parseType(value: string): PrimitiveType {
