@@ -22,10 +22,16 @@ import { ApiError, parsed } from '../api/client.ts';
 import type { Grant } from '../api/identities.ts';
 import { retentionBanner } from '../api/retention.ts';
 import {
+  cryptoFailureText,
   settingsFailureText,
   settingsOperationFailure,
   useCreateOrg,
   useInstanceOrgs,
+  useReencryptInstance,
+  useRotateDek,
+  useRotateMasterKey,
+  useRotateRootKey,
+  useRotateScanningKey,
   useRotateTokenKey,
 } from '../api/settings.ts';
 import { notifySuccess } from '../app/notifications.tsx';
@@ -34,8 +40,9 @@ import { FederationIssuersPanel } from './FederationIssuersPanel.tsx';
 import { OidcProvidersPanel } from './OidcProvidersPanel.tsx';
 import { SamlProvidersPanel } from './SamlProvidersPanel.tsx';
 import { SamlSpKeysPanel } from './SamlSpKeysPanel.tsx';
-import { Alert, Done, JumpIndex, Panel } from './Sections.tsx';
-import { useFeedback, useModalDialog } from './useModalDialog.ts';
+import { Alert, ConsequencesDialog, Done, JumpIndex, Panel } from './Sections.tsx';
+import { useFeedback } from './useModalDialog.ts';
+import { useReencryptDrain } from './useReencryptDrain.ts';
 
 const prototypeMode = import.meta.env.MODE === 'prototype';
 
@@ -87,7 +94,6 @@ export function InstanceAdmin() {
   const createGrants = useCreateGrants();
   const applyTemplate = useApplyTemplate();
   const revokeGrant = useRevokeGrant();
-  const rotate = useRotateTokenKey();
   const nameId = useId();
   const principalId = useId();
   const { failure, done, report, ok } = useFeedback(instanceFailureText);
@@ -100,8 +106,6 @@ export function InstanceAdmin() {
     notifySuccess(message);
     ok(message);
   });
-  const [confirmRotate, setConfirmRotate] = useState(false);
-  const rotationFeedback = useFeedback((error) => settingsFailureText(error, 'rotate-token-key'));
   const [grantPrincipal, setGrantPrincipal] = useState('');
   const [grantTemplate, setGrantTemplate] = useState('');
   const [selectedCapabilities, setSelectedCapabilities] = useState<readonly string[]>([]);
@@ -229,14 +233,10 @@ export function InstanceAdmin() {
     <Panel id="instance-keys" title="Keys &amp; crypto">
       {prototypeMode ? <>
         <div className="settings-row"><div className="settings-row__copy"><span className="settings-row__title">Master key</span><span className="settings-row__detail">rotated 2026-06-20 · all tier-3 keys wrapped current</span></div><span className="settings-row__spacer" /><code>$ hikyo rotate-master-key</code><button type="button" className="btn">rotate</button></div>
-        <div className="settings-row"><div className="settings-row__copy"><span className="settings-row__title">Change-token key</span><span className="settings-row__detail">warned operation: every client cursor invalidates, next fetch is full, no restart wave</span></div><span className="settings-row__spacer" /><code>$ hikyo rotate-token-key</code><button type="button" className="btn" onClick={() => setConfirmRotate(true)}>rotate</button></div>
+        <div className="settings-row"><div className="settings-row__copy"><span className="settings-row__title">Change-token key</span><span className="settings-row__detail">warned operation: every client cursor invalidates, next fetch is full, no restart wave</span></div><span className="settings-row__spacer" /><code>$ hikyo rotate-token-key</code><button type="button" className="btn">rotate</button></div>
         <div className="settings-row"><div className="settings-row__copy"><span className="settings-row__title">Re-encryption</span><span className="settings-row__detail">background, resumable, per-row</span></div><span className="settings-row__spacer" /><span>idle</span></div>
         <p className="settings-note">Root-key rotation, <code>init</code>, <code>migrate</code>, restore reconciliation and break-glass are local host authority (SystemProof, #23/#25): deliberately absent from every network surface, UI and API alike. That set is the one parity exception, and it is CLI-at-the-box, not CLI-over-network.</p>
-      </> : <>
-        <p><strong>Change-token key.</strong> Rotating it invalidates every client cursor: the next fetch from every workload is a full fetch. There is no restart wave or downtime.</p>
-        <div className="panel__actions"><button type="button" className="btn" onClick={() => setConfirmRotate(true)}>Rotate the change-token key</button></div>
-        <p className="field__hint">Root-key rotation, master-key rotation, re-encryption, <span className="mono">init</span>, <span className="mono">migrate</span>, restore reconciliation and break-glass are local host authority. They are deliberately absent from every network surface — CLI-at-the-box, not CLI-over-network.</p>
-      </>}
+      </> : <CryptoMaintenance onDone={ok} onFailure={report} />}
     </Panel>
     {prototypeMode ? null : <SamlProvidersPanel />}
     {prototypeMode ? null : <SamlSpKeysPanel />}
@@ -249,10 +249,6 @@ export function InstanceAdmin() {
       </> : <p role="status">Connected-instance discovery is not available yet.</p>}
       <p className="settings-note"><strong>Open question, own wayfinder ticket:</strong> Portainer-style: one MAIN instance connects to and manages others. Undecided: what “manage” means (proxy the API? sync orgs? just deep-link?), the credential model (#17 federation? per-instance context pins from #25?), tenant-isolation and threat-model consequences, and whether it is v1 at all (→ MVP boundary). This card exists to react to, not a decision.</p>
     </Panel>
-    {confirmRotate ? <RotateDialog busy={rotate.isPending} failure={rotationFeedback.failure} onCancel={() => { rotationFeedback.clear(); setConfirmRotate(false); }} onConfirm={() => {
-      rotationFeedback.clear();
-      rotate.mutate(undefined, { onSuccess: () => { ok('The change-token key was rotated. Every client cursor is invalid; the next fetch from each workload is a full one.'); setConfirmRotate(false); }, onError: rotationFeedback.report });
-    }} /> : null}
   </div>;
 }
 
@@ -314,12 +310,133 @@ function CredentialPolicyPanel({ query, onDone, onFailure }: { query: ReturnType
   </Panel>;
 }
 
-function RotateDialog({ busy, failure, onCancel, onConfirm }: { busy: boolean; failure: string | null; onCancel: () => void; onConfirm: () => void }) {
-  const dialog = useModalDialog();
-  return <dialog className="ceremony" ref={dialog} aria-labelledby="rotate-title" onCancel={(event) => { event.preventDefault(); if (!busy) onCancel(); }}>
-    <h2 id="rotate-title">Rotate the change-token key?</h2>
-    <p className="ceremony__lede">Every conditional-fetch cursor in circulation stops matching. The next fetch from every workload is a full one, and nothing restarts. This cannot be undone by rotating back.</p>
-    {busy ? <p role="status">Rotating the key…</p> : null}{failure === null ? null : <Alert>{failure}</Alert>}
-    <div className="ceremony__actions"><button type="button" className="btn" onClick={onCancel} disabled={busy}>Cancel</button><button type="button" className="btn btn--danger" onClick={onConfirm} disabled={busy}>Rotate the key</button></div>
-  </dialog>;
+type CryptoCeremony =
+  | 'token'
+  | 'scanning'
+  | 'master'
+  | 'dek-instance'
+  | 'root-prepare'
+  | 'root-verify'
+  | 'root-finalize';
+
+/**
+ * CryptoMaintenance exposes every remotely operable rotation and re-encryption
+ * job (#503). Each is the same grant-evaluated network operation the CLI verb
+ * calls; the host-only set (`init`, `migrate`, restore reconciliation,
+ * break-glass, host-file custody, startup-only key material) stays absent.
+ */
+function CryptoMaintenance({ onDone, onFailure }: { onDone: (message: string) => void; onFailure: (error: unknown) => void }) {
+  const token = useRotateTokenKey();
+  const scanning = useRotateScanningKey();
+  const master = useRotateMasterKey();
+  const dek = useRotateDek();
+  const reencrypt = useReencryptInstance();
+  const root = useRotateRootKey();
+  const titleId = useId();
+  const [ceremony, setCeremony] = useState<CryptoCeremony | null>(null);
+  const [dialogFailure, setDialogFailure] = useState<string | null>(null);
+  const open = (which: CryptoCeremony) => { setDialogFailure(null); setCeremony(which); };
+  const close = () => { setDialogFailure(null); setCeremony(null); };
+
+  const drain = useReencryptDrain(reencrypt, { operation: 'reencrypt-instance', noun: 'Instance', onDone });
+
+  const busy = token.isPending || scanning.isPending || master.isPending || dek.isPending || root.isPending;
+
+  return <div className="crypto-maintenance">
+    <div className="settings-row">
+      <div className="settings-row__copy"><span className="settings-row__title">Change-token key</span><span className="settings-row__detail">Rotating it invalidates every client cursor: the next fetch from every workload is a full one. No restart wave, no downtime.</span></div>
+      <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo rotate-token-key</code>
+      <button type="button" className="btn" onClick={() => open('token')}>Rotate the change-token key</button>
+    </div>
+
+    <div className="settings-row">
+      <div className="settings-row__copy"><span className="settings-row__title">Secret-scanning key</span><span className="settings-row__detail">Rotating it drops every scan dismissal in the same transaction; suppressed warns re-fire, because their fingerprints are no longer recomputable.</span></div>
+      <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo rotate-scanning-key</code>
+      <button type="button" className="btn" onClick={() => open('scanning')}>Rotate the scanning key</button>
+    </div>
+
+    <div className="settings-row">
+      <div className="settings-row__copy"><span className="settings-row__title">Master key</span><span className="settings-row__detail">Re-wraps every tier-3 key (all DEKs and the root token key) under a new master, then retires the old one. Refused while the root key is dual-wrapped — finalize the root rotation first.</span></div>
+      <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo rotate-master-key</code>
+      <button type="button" className="btn" onClick={() => open('master')}>Rotate the master key</button>
+    </div>
+
+    <div className="settings-row">
+      <div className="settings-row__copy"><span className="settings-row__title">Data-encryption key (instance)</span><span className="settings-row__detail">Appends a new instance DEK version. New writes seal under it immediately; existing ciphertext stays readable until you re-encrypt. A rotation is incomplete without the re-encryption below.</span></div>
+      <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo rotate-dek --scope instance</code>
+      <button type="button" className="btn" onClick={() => open('dek-instance')}>Rotate the instance DEK</button>
+    </div>
+
+    <div className="settings-row">
+      <div className="settings-row__copy"><span className="settings-row__title">Instance re-encryption</span><span className="settings-row__detail">Walks every instance credential ciphertext onto the active DEK version and retires the superseded ones — the completion of an instance DEK rotation. Chunked and resumable: safe to re-run, and complete once it moves no rows.</span></div>
+      <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo reencrypt</code>
+      <button type="button" className="btn" disabled={drain.running} onClick={drain.run}>{drain.running ? 'Re-encrypting…' : 'Re-encrypt the instance'}</button>
+    </div>
+    {drain.running ? <p role="status" className="field__hint">Re-encrypting… run {drain.runs}, {String(drain.total)} row{drain.total === 1n ? '' : 's'} moved so far. Safe to leave and resume later.</p> : null}
+    {drain.failure === null ? null : <Alert>{drain.failure}</Alert>}
+
+    <div className="settings-row">
+      <div className="settings-row__copy">
+        <span className="settings-row__title">Root-key rotation</span>
+        <span className="settings-row__detail">Three crash-safe phases over a dual-wrapped master. No key material crosses the wire. Between <strong>prepare</strong> and <strong>verify</strong> you install the new root at the primary source on the host. The instance stays bootable under either root and warns on every start until <strong>finalize</strong>. Run the phases in order — the server refuses one run out of turn.</span>
+      </div>
+      <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo rotate-root-key</code>
+      <div className="crypto-phases">
+        <button type="button" className="btn" onClick={() => open('root-prepare')}>Prepare</button>
+        <button type="button" className="btn" onClick={() => open('root-verify')}>Verify</button>
+        <button type="button" className="btn" onClick={() => open('root-finalize')}>Finalize</button>
+      </div>
+    </div>
+
+    <p className="field__hint"><span className="mono">init</span>, <span className="mono">migrate</span>, restore reconciliation, break-glass, host-file custody and startup-only key material are local host authority. They are deliberately absent from every network surface — CLI-at-the-box, not CLI-over-network.</p>
+
+    {ceremony === 'token' ? <ConsequencesDialog titleId={titleId} title="Rotate the change-token key?" confirmLabel="Rotate the key" busyLabel="Rotating the change-token key…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
+      setDialogFailure(null);
+      token.mutate(undefined, { onSuccess: (result) => { onDone(`The change-token key was rotated (version ${String(result.token_key_version)}). Every client cursor is invalid; the next fetch from each workload is a full one.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-token-key')) });
+    }}>
+      <p>Every conditional-fetch cursor in circulation stops matching. The next fetch from every workload is a full one, and nothing restarts. This cannot be undone by rotating back.</p>
+    </ConsequencesDialog> : null}
+
+    {ceremony === 'scanning' ? <ConsequencesDialog titleId={titleId} title="Rotate the secret-scanning key?" confirmLabel="Rotate the key" busyLabel="Rotating the scanning key…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
+      setDialogFailure(null);
+      scanning.mutate(undefined, { onSuccess: (result) => { onDone(`The secret-scanning key was rotated (version ${String(result.scanning_key_version)}). ${String(result.dismissals_dropped)} dismissal${result.dismissals_dropped === 1n ? ' was' : 's were'} dropped; their warns will re-fire.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-scanning-key')) });
+    }}>
+      <p>Every stored scan fingerprint becomes unrecomputable under the new key, so every dismissal is dropped in the same transaction and the warns they suppressed will fire again. This cannot be undone.</p>
+    </ConsequencesDialog> : null}
+
+    {ceremony === 'master' ? <ConsequencesDialog titleId={titleId} title="Rotate the master key?" confirmLabel="Rotate the key" busyLabel="Rotating the master key…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
+      setDialogFailure(null);
+      master.mutate(undefined, { onSuccess: (result) => { onDone(`The master key was rotated (version ${String(result.key_version)}). Every tier-3 key is now wrapped under it.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-master-key')) });
+    }}>
+      <p>A new master key is generated, every tier-3 key is re-wrapped under it, and the old master is retired after a zero-reference check. This is refused while the root key is dual-wrapped — finalize the root rotation first.</p>
+    </ConsequencesDialog> : null}
+
+    {ceremony === 'dek-instance' ? <ConsequencesDialog titleId={titleId} title="Rotate the instance DEK?" confirmLabel="Rotate the DEK" busyLabel="Rotating the instance DEK…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
+      setDialogFailure(null);
+      dek.mutate({ scope: 'instance' }, { onSuccess: (result) => { onDone(`The instance DEK was rotated (version ${String(result.key_version)}). New writes seal under it; existing ciphertext stays readable until you run the instance re-encryption to complete the rotation.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-dek')) });
+    }}>
+      <p>A new instance DEK version is appended. New writes seal under it immediately; existing ciphertext stays readable under the previous version until the instance re-encryption walks it forward. The rotation is incomplete until you run that re-encryption.</p>
+    </ConsequencesDialog> : null}
+
+    {ceremony === 'root-prepare' ? <ConsequencesDialog titleId={titleId} title="Prepare the root-key rotation?" confirmLabel="Prepare" busyLabel="Preparing the root-key rotation…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
+      setDialogFailure(null);
+      root.mutate('prepare', { onSuccess: (result) => { onDone(`Root-key rotation prepared (epoch ${String(result.root_key_epoch)}). Install the new root at the primary source on the host, then run verify. The instance stays bootable under either root and warns on every start until finalize.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-root-key')) });
+    }}>
+      <p>Prepare reads the new root from the server-side source and seals a second master wrapper. No key material crosses the wire. After this you must install the new root at the primary source on the host, then run verify. The instance stays bootable under either root until you finalize.</p>
+    </ConsequencesDialog> : null}
+
+    {ceremony === 'root-verify' ? <ConsequencesDialog titleId={titleId} title="Verify the root-key rotation?" confirmLabel="Verify" busyLabel="Verifying the root-key rotation…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
+      setDialogFailure(null);
+      root.mutate('verify', { onSuccess: (result) => { onDone(`Root-key rotation verified (epoch ${String(result.root_key_epoch)}). The primary source now unwraps the new root. Run finalize to retire the old wrapper.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-root-key')) });
+    }}>
+      <p>Verify re-reads the primary source and confirms it now unwraps the new wrapper you sealed in prepare. Run this only after installing the new root at the primary source on the host. If it has not been installed yet, this phase is refused.</p>
+    </ConsequencesDialog> : null}
+
+    {ceremony === 'root-finalize' ? <ConsequencesDialog titleId={titleId} title="Finalize the root-key rotation?" confirmLabel="Finalize" busyLabel="Finalizing the root-key rotation…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
+      setDialogFailure(null);
+      root.mutate('finalize', { onSuccess: (result) => { onDone(`Root-key rotation finalized (epoch ${String(result.root_key_epoch)}). The old wrapper is retired and the startup warning clears.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-root-key')) });
+    }}>
+      <p>Finalize retires the old master wrapper, leaving the instance wrapped under the new root only. The startup warning clears. Run this only after verify has succeeded.</p>
+    </ConsequencesDialog> : null}
+  </div>;
 }

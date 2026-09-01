@@ -311,6 +311,34 @@ test.describe('project settings', () => {
     await expect(page).toHaveURL(before);
   });
 
+  test('rotates the project DEK and re-encrypts, resuming across a reload', async () => {
+    // The project-scoped half of remote cryptographic maintenance (#503),
+    // against the real server. Both jobs are content-invisible: they re-wrap
+    // this project's ciphertext without touching its plaintext.
+    await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
+    const keys = page.locator('#project-keys');
+
+    await keys.getByRole('button', { name: 'Rotate the project DEK' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toContainText('incomplete until');
+    await dialog.getByRole('button', { name: 'Rotate the DEK' }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+    await expect(page.locator('.notice')).toContainText("This project's DEK was rotated");
+
+    // Reload BEFORE re-encrypting: the pending walk lives only in the server's
+    // cursor now. A fresh page with no client state must resume it to a clean
+    // complete end — the interrupted-then-resumed recovery.
+    await page.reload();
+    await keys.getByRole('button', { name: 'Re-encrypt the project' }).click();
+    await expect(page.locator('.notice')).toContainText('Project re-encryption complete');
+
+    // Idempotent: a further run moves nothing.
+    await keys.getByRole('button', { name: 'Re-encrypt the project' }).click();
+    await expect(page.locator('.notice')).toContainText(
+      'nothing to move; all ciphertext is already on the active DEK version',
+    );
+  });
+
   test('protects an environment through the compact policy controls', async () => {
     const settingsPath = `${base()}/environments/${drillEnv}/settings`;
     const original = await browserApi(page, 'GET', settingsPath, zEnvironmentSettings);
