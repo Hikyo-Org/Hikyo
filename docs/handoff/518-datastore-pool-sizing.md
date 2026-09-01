@@ -1,4 +1,4 @@
-# Issue #518 — datastore pool sizing
+# Issue #518 - datastore pool sizing
 
 **State: implemented.** Hikyo no longer inherits unbounded SQLite reader
 connections or pgx's host-dependent default pool size.
