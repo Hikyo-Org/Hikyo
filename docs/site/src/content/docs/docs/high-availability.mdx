@@ -1,0 +1,130 @@
+---
+title: Multi-node high availability
+description: Run one Hikyo instance across several server nodes with automatic failover.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/high-availability.mdx
+---
+
+Multi-node HA lets one logical Hikyo instance run across several server nodes
+behind a single endpoint, so ordinary traffic survives the loss of a node and
+leader-only work still runs exactly once. It is application-tier HA, not
+cross-region disaster recovery: backups and restore remain the job of
+[backup and restore](./backup-and-restore).
+
+HA is opt-in and Postgres-only. A single-node deployment (the default) is
+unchanged.
+
+## What HA requires
+
+- **An externally highly available PostgreSQL datastore.** Hikyo coordinates
+  through Postgres; it does not replicate the database itself. Running Postgres
+  in an HA topology (a managed service, or Patroni, or similar) is the
+  operator's responsibility, exactly as for a single node. SQLite is
+  single-writer and is refused under HA at boot.
+- **Stable, unique node identities.** Each node sets `HIKYO_NODE_ID`. The Helm
+  chart derives it from the pod name.
+- **One shared root-key authority.** Every node mounts the same root key
+  (`rootKey.existingSecret`). A development auto-generated root key is per-node
+  and is refused under HA. A node whose root-key fingerprint disagrees with the
+  installation refuses to serve.
+
+Any of these missing or inconsistent is a boot refusal, never a silent
+single-node fallback.
+
+## Topology
+
+```
+              one endpoint (Service or load balancer)
+                              |
+        +---------------------+---------------------+
+        |                     |                     |
+     node A                node B                node C
+        \                     |                     /
+         +----- highly available PostgreSQL --------+
+```
+
+Sessions, CSRF tokens, and every authentication ceremony are stored in
+Postgres, so **the load balancer needs no session stickiness**: any node can
+serve any request. Point the load balancer's health check at `/readyz` on the
+operational port. A node whose lease datastore is unreachable, or whose schema
+lags the database, reports not-ready and is taken out of rotation.
+
+Enable it in the chart:
+
+```yaml
+ha:
+  enabled: true
+  replicaCount: 3
+  minAvailable: 2
+```
+
+## Coordination and failover
+
+One node holds a fenced datastore lease and runs the singleton background work
+(retention sweeps, scheduled backups). The lease is renewed on a heartbeat; a
+node that cannot renew within the lease TTL drops leadership and cancels its
+in-flight singleton jobs, so a stale leader cannot keep running after losing
+authority. Another node then acquires the lease and continues.
+
+- Lease TTL: 30 seconds. Heartbeat: 10 seconds.
+- **Declared RTO for singleton work** = lease TTL + the load balancer probe
+  period. Ordinary API, CLI, and browser traffic is served by every node and
+  is not interrupted by a leader change; only the singleton work pauses for the
+  RTO.
+
+Installation-wide security state is shared across nodes: pre-authentication
+rate limits (per source IP, per account, per issuer) live in the datastore, so
+hopping between nodes cannot bypass a limit or a backoff. The per-node
+concurrency limit on password verification stays local to each node, because it
+bounds that node's own memory.
+
+Node clocks must be reasonably synchronised (NTP). Lease acquisition compares
+the acquiring node's clock against the recorded expiry, so clock skew larger
+than the heartbeat is a split-brain risk.
+
+## Rolling upgrades
+
+Schema changes must land once, before the new binary serves:
+
+1. Apply migrations once, with a single `hikyo migrate`, or let the first
+   upgraded replica apply them (concurrent migrators serialize under a database
+   session lock, so this is safe).
+2. Roll the replicas to the new image. A replica whose binary is older than the
+   database schema reports not-ready and stays out of rotation, so mixed
+   versions never serve incompatible schemas.
+
+Never roll replicas before the migration lands.
+
+## Node replacement and capacity
+
+- **Replacing a node**: start a replacement with the same shared root key and a
+  fresh `HIKYO_NODE_ID`. It registers itself; the old node's registry row is
+  swept after it stops heartbeating. No manual datastore surgery is needed.
+- **Capacity floor**: each node must meet the same per-node resource floor as a
+  single-node deployment (see [self-hosting](./self-hosting)). HA adds
+  availability, not per-node headroom: size each replica as you would a single
+  node, and keep at least `minAvailable` replicas schedulable.
+
+## Root-key rotation under HA
+
+Rotating the root key changes the fingerprint every node checks. Because a
+mixed-fingerprint state is refused, rotate with a full stop: stop all replicas,
+rotate the root key, then start them again on the new key. Do not perform a
+rolling root-key rotation.
+
+## Observability
+
+`/metrics` exposes three label-free gauges:
+
+- `hikyo_ha_is_leader` (1 on the node holding the scheduler lease),
+- `hikyo_ha_nodes_seen` (live nodes in the installation),
+- `hikyo_ha_lease_age_seconds` (age of the current lease, sampled per tick).
+
+## Known bounds
+
+- Cross-node change advisories fall back to revision polling; a change made on
+  one node is visible on another within the poll interval rather than instantly.
+- Pre-authentication rate windows are fixed one-minute buckets, so an attacker
+  can spend up to two windows' allowance across a boundary. The concurrency
+  limit still bounds the actual verification work.
+- After a `rotate-dek --instance`, a node picks up the new instance key within
+  one heartbeat.

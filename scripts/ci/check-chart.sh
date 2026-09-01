@@ -443,4 +443,48 @@ if helm template fixture "$chart" \
 	fail 'chart accepted a TokenRequest grant for an unwatched namespace'
 fi
 
-printf 'Chart check: cluster-wide, namespaced, no-rollout, hardening, and refusal assertions passed\n'
+# Multi-node HA mode (#146): the replica count, HA env (node id from the pod
+# name), PodDisruptionBudget, graceful shutdown, and topology spread all appear.
+ha_render=$(helm template fixture "$chart" \
+	--set database.existingSecret=fixture \
+	--set rootKey.existingSecret=fixture-root-key \
+	--set externalOrigin=https://hikyo.example.com \
+	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
+	--set ha.enabled=true 2>/dev/null)
+for want in \
+	'replicas: 3' \
+	'name: HIKYO_HA' \
+	'fieldPath: metadata.name' \
+	'kind: PodDisruptionBudget' \
+	'minAvailable: 2' \
+	'terminationGracePeriodSeconds: 30' \
+	'topologySpreadConstraints'; do
+	printf '%s\n' "$ha_render" | grep -qF "$want" || fail "HA render missing: $want"
+done
+# The single-node render carries none of the HA machinery.
+default_render=$(helm template fixture "$chart" \
+	--set database.existingSecret=fixture \
+	--set rootKey.existingSecret=fixture-root-key \
+	--set externalOrigin=https://hikyo.example.com \
+	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' 2>/dev/null)
+for unwanted in 'name: HIKYO_HA' 'kind: PodDisruptionBudget'; do
+	if printf '%s\n' "$default_render" | grep -qF "$unwanted"; then
+		fail "single-node render leaked HA machinery: $unwanted"
+	fi
+done
+# HA is refused when minAvailable exceeds the replica count (the PDB would then
+# block every voluntary disruption), and when the replica count is below two.
+ha_config_refused() {
+	if helm template fixture "$chart" \
+		--set database.existingSecret=fixture \
+		--set rootKey.existingSecret=fixture-root-key \
+		--set externalOrigin=https://hikyo.example.com \
+		--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
+		--set ha.enabled=true "$@" >/dev/null 2>&1; then
+		fail "chart accepted an invalid HA configuration: $*"
+	fi
+}
+ha_config_refused --set ha.replicaCount=2 --set ha.minAvailable=3
+ha_config_refused --set ha.replicaCount=1
+
+printf 'Chart check: cluster-wide, namespaced, no-rollout, hardening, HA, and refusal assertions passed\n'

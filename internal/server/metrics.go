@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -41,6 +42,14 @@ const (
 	MetricAdmissionQueueDepthLimit  = "hikyo_admission_queue_depth_limit"
 	MetricAdmissionQueueWaiting     = "hikyo_admission_queue_waiting"
 	MetricAdmissionActiveBackoffs   = "hikyo_admission_active_backoffs"
+
+	// Multi-node HA gauges (#146). Label-free, so their cardinality is one each
+	// regardless of cluster size (the ops-spec bounded-cardinality posture: no
+	// per-node labels). On a single node they report the trivial values: this
+	// node is the leader, one node is seen, and the lease age is zero.
+	MetricHAIsLeader       = "hikyo_ha_is_leader"
+	MetricHANodesSeen      = "hikyo_ha_nodes_seen"
+	MetricHALeaseAgeSecond = "hikyo_ha_lease_age_seconds"
 
 	// MetricSeriesBudget is the ops-spec ceiling for every registered series.
 	MetricSeriesBudget = 1000
@@ -142,6 +151,9 @@ func RegisteredMetricFamilies() []MetricFamily {
 		{Name: MetricAdmissionQueueDepthLimit, MaxSeries: 1},
 		{Name: MetricAdmissionQueueWaiting, MaxSeries: 1},
 		{Name: MetricAdmissionActiveBackoffs, MaxSeries: 1},
+		{Name: MetricHAIsLeader, MaxSeries: 1},
+		{Name: MetricHANodesSeen, MaxSeries: 1},
+		{Name: MetricHALeaseAgeSecond, MaxSeries: 1},
 	}
 }
 
@@ -209,6 +221,23 @@ type AdmissionSnapshotter interface {
 	Snapshot() admission.Snapshot
 }
 
+// HAStats is a point-in-time read of multi-node HA state for the label-free
+// gauges. Enabled is false on a single node, where the collector emits the
+// trivial values (leader, one node, zero lease age).
+type HAStats struct {
+	Enabled         bool
+	IsLeader        bool
+	NodesSeen       int
+	LeaseAgeSeconds float64
+}
+
+// HASnapshotter is the HA-state source the gauges read at scrape time. A nil
+// source renders the single-node defaults, so the exposition shape is
+// deterministic whether or not HA is wired.
+type HASnapshotter interface {
+	HASnapshot() HAStats
+}
+
 // Metrics is the instance-wide RED collector. One instance is shared between
 // the API middleware (which writes) and the operational /metrics handler (which
 // reads), so both sides see the same counters.
@@ -219,7 +248,13 @@ type Metrics struct {
 	requests  [numClasses][numStatusBuckets]prometheus.Counter
 	errors    [numClasses][numStatusBuckets]prometheus.Counter
 	durations [numClasses]prometheus.Observer
+	ha        *haCollector
 }
+
+// SetHASource attaches the multi-node HA gauge source. It is called once
+// during boot before the operational listener serves, so the collector's
+// source pointer is set before any scrape reads it.
+func (m *Metrics) SetHASource(source HASnapshotter) { m.ha.source.Store(&source) }
 
 // NewMetrics builds the fixed collector set in a private pedantic registry.
 // Pre-creating every closed label combination keeps the scrape shape
@@ -243,9 +278,10 @@ func NewMetrics(adm AdmissionSnapshotter) *Metrics {
 		Help:    "HTTP request duration in seconds by closed API surface class.",
 		Buckets: RequestLatencyBucketsSeconds(),
 	}, []string{"class"})
-	registry.MustRegister(requests, errors, inFlight, durations, newAdmissionCollector(adm))
+	ha := newHACollector()
+	registry.MustRegister(requests, errors, inFlight, durations, newAdmissionCollector(adm), ha)
 
-	m := &Metrics{registry: registry, inFlight: inFlight}
+	m := &Metrics{registry: registry, inFlight: inFlight, ha: ha}
 	for c := surfaceClass(0); c < numClasses; c++ {
 		for s := statusBucket(0); s < numStatusBuckets; s++ {
 			m.requests[c][s] = requests.WithLabelValues(classNames[c], statusNames[s])
@@ -301,6 +337,47 @@ func (c *admissionCollector) Collect(ch chan<- prometheus.Metric) {
 		float64(snap.Waiting),
 		float64(snap.ActiveBackoffs),
 	}
+	for i, desc := range c.descs {
+		ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, values[i])
+	}
+}
+
+// haCollector emits the three label-free multi-node HA gauges. Its source is
+// an atomic pointer so boot can attach it after registration without a data
+// race against a concurrent scrape.
+type haCollector struct {
+	source atomic.Pointer[HASnapshotter]
+	descs  [3]*prometheus.Desc
+}
+
+func newHACollector() *haCollector {
+	return &haCollector{descs: [3]*prometheus.Desc{
+		prometheus.NewDesc(MetricHAIsLeader, "1 when this node holds the scheduler lease (always 1 on a single node).", nil, nil),
+		prometheus.NewDesc(MetricHANodesSeen, "Number of live nodes in this installation (1 on a single node).", nil, nil),
+		prometheus.NewDesc(MetricHALeaseAgeSecond, "Age in seconds of the current scheduler lease as sampled on this node's last tick, up to one heartbeat stale (0 on a single node).", nil, nil),
+	}}
+}
+
+func (c *haCollector) Describe(ch chan<- *prometheus.Desc) {
+	for _, desc := range c.descs {
+		ch <- desc
+	}
+}
+
+func (c *haCollector) Collect(ch chan<- prometheus.Metric) {
+	stats := HAStats{Enabled: false}
+	if p := c.source.Load(); p != nil && *p != nil {
+		stats = (*p).HASnapshot()
+	}
+	leader, nodes, age := 1.0, 1.0, 0.0
+	if stats.Enabled {
+		if !stats.IsLeader {
+			leader = 0
+		}
+		nodes = float64(stats.NodesSeen)
+		age = stats.LeaseAgeSeconds
+	}
+	values := [...]float64{leader, nodes, age}
 	for i, desc := range c.descs {
 		ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, values[i])
 	}

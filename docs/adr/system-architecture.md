@@ -22,6 +22,8 @@ Granularity note: this is the wayfinding-level architecture ADR. It fixes the st
 
 ## Component set — modular monolith, one multicall binary
 
+> **Amended 2026-09-01 ([#146](https://github.com/Hikyo-Org/Hikyo/issues/146) reopened per the [oss-mechanics](./oss-mechanics.md) governance procedure; operative):** the "single node, no HA in v1" envelope below is promoted for the server. Application-tier HA is an opt-in mode (`HIKYO_HA=true`) and does not change the modular-monolith decision: it stays one process per node, coordinated through the shared PostgreSQL datastore rather than any new component. HA requires Postgres plus stable unique node identities (`HIKYO_NODE_ID`) plus one shared root-key authority; SQLite stays single-node and refuses HA at boot. The operator's own leader election (a second replica that is failover, not split-brained) is unchanged and separate from server HA. Because sessions and every ceremony are datastore-backed, the load balancer fronting N server replicas needs no session stickiness; singleton work runs under a fenced datastore lease so it executes at most once. See [ops-spec.md](./ops-spec.md) § 13 and [#146](https://github.com/Hikyo-Org/Hikyo/issues/146) for the full mechanics.
+
 **Confirmed: modular monolith.** No microservices; no concrete need was found in any locked ADR, and the deployment envelope (1–3 orgs, ≤25 users, ≤10k entries, single node, no HA in v1 — #3) argues the opposite. The system is **one Go multicall binary** exposing subcommands:
 
 - `hikyo server` — the control plane: API, embedded web UI, SSE, scheduler, adapter outbox, migrations-at-boot. **The only mode that loads the keyring.**

@@ -30,6 +30,9 @@ func TestMetricRegistryIsPinned(t *testing.T) {
 		{Name: "hikyo_admission_queue_depth_limit", MaxSeries: 1},
 		{Name: "hikyo_admission_queue_waiting", MaxSeries: 1},
 		{Name: "hikyo_admission_active_backoffs", MaxSeries: 1},
+		{Name: "hikyo_ha_is_leader", MaxSeries: 1},
+		{Name: "hikyo_ha_nodes_seen", MaxSeries: 1},
+		{Name: "hikyo_ha_lease_age_seconds", MaxSeries: 1},
 	}
 	if got := server.RegisteredMetricFamilies(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("metric registry drifted\n got: %#v\nwant: %#v", got, want)

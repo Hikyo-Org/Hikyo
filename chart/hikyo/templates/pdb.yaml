@@ -1,0 +1,14 @@
+{{- if .Values.ha.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "hikyo.fullname" . }}
+  labels:
+    {{- include "hikyo.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.ha.minAvailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "hikyo.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}

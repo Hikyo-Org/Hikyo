@@ -11,7 +11,11 @@
 // internal/store/keyring implements.
 package crypto
 
-import "errors"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+)
 
 // KeySize is the size of every key in the hierarchy: 256-bit, per the
 // encryption-model ADR.
@@ -59,4 +63,14 @@ func Zero(b []byte) {
 	for i := range b {
 		b[i] = 0
 	}
+}
+
+// RootKeyFingerprint is a stable, non-reversible identifier for a root key,
+// used by multi-node HA (#146) to name a mixed-root-key misconfiguration in a
+// refusal rather than surfacing it only as an opaque keyring unwrap failure.
+// It is a domain-separated SHA-256 over the key, so it reveals nothing about
+// the key material and never collides with another envelope digest.
+func RootKeyFingerprint(root []byte) string {
+	sum := sha256.Sum256(append([]byte("hikyo-root-key-fingerprint\x00"), root...))
+	return hex.EncodeToString(sum[:])
 }

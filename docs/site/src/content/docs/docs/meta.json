@@ -28,6 +28,7 @@
     "---Operations---",
     "self-hosting",
     "configuration",
+    "high-availability",
     "backup-and-restore",
     "upgrades",
     "troubleshooting",

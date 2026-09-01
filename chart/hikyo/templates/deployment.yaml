@@ -10,7 +10,7 @@ metadata:
   labels:
     {{- include "hikyo.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ if .Values.ha.enabled }}{{ .Values.ha.replicaCount }}{{ else }}{{ .Values.replicaCount }}{{ end }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "hikyo.name" . }}
@@ -21,6 +21,17 @@ spec:
         app.kubernetes.io/name: {{ include "hikyo.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- if .Values.ha.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ include "hikyo.name" . }}
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      {{- end }}
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
@@ -84,6 +95,14 @@ spec:
                 secretKeyRef:
                   name: {{ required "database.existingSecret is required" .Values.database.existingSecret }}
                   key: HIKYO_DB
+            {{- if .Values.ha.enabled }}
+            - name: HIKYO_HA
+              value: "true"
+            - name: HIKYO_NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            {{- end }}
             - name: HIKYO_UPDATE_CHANNEL
               value: {{ .Values.updates.channel | quote }}
             - name: HIKYO_EXTERNAL_ORIGIN
