@@ -6,11 +6,12 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"io/fs"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
@@ -85,6 +86,12 @@ func NewPublic(ready ReadyChecker, a *API, ui fs.FS, publicOptions PublicOptions
 	// remote takes effect without a restart — belongs to the SPA writer below,
 	// which is the only response that can use it.
 	r.Use(securityHeaders(publicOptions.HSTS))
+	// Observe at router scope so unmatched API paths, unsupported methods, and
+	// CORS preflights contribute to RED totals as class=other. Route-group
+	// middleware never sees those requests because chi has not selected a route.
+	if a != nil {
+		r.Use(a.observe)
+	}
 	// Cross-origin readability for allowlisted workspace origins (#71), at the
 	// TOP of the chain rather than inside the API group, and that placement is
 	// load-bearing rather than tidy.
@@ -136,20 +143,33 @@ func NewPublic(ready ReadyChecker, a *API, ui fs.FS, publicOptions PublicOptions
 		})
 	} else {
 		r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
+			markUnmatched(w)
 			writeError(w, wirePolicyForCode(apigen.ErrorCodeNotFound), "")
 		})
 	}
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		// A method the contract does not describe on a path it does is,
 		// from outside, the same fact as a path that is not there.
+		markUnmatched(w)
 		writeError(w, wirePolicyForCode(apigen.ErrorCodeNotFound), "")
 	})
 	return r
 }
 
+func markUnmatched(w http.ResponseWriter) {
+	if marker, ok := w.(interface{ markUnmatched() }); ok {
+		marker.markUnmatched()
+	}
+}
+
 // NewOperational builds the separate plaintext operational router. It carries
 // no CORS or admission middleware and registers only local process surfaces.
-func NewOperational(ready ReadyChecker, healthService OperationalRetentionHealthService) http.Handler {
+//
+// metrics is the shared RED collector (#513). It is the SAME instance handed to
+// the API middleware, so the scrape here reads the counters that middleware
+// writes. A nil collector leaves /metrics as the retention/TLS gauges alone —
+// the pre-#513 shape.
+func NewOperational(ready ReadyChecker, healthService OperationalRetentionHealthService, metrics *Metrics) http.Handler {
 	r := chi.NewRouter()
 	r.Use(securityHeaders(false))
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -191,20 +211,23 @@ func NewOperational(ready ReadyChecker, healthService OperationalRetentionHealth
 		if metrics, ok := healthService.(TLSMetrics); ok {
 			tlsNotAfter, tlsReloadFailures = metrics.TLSMetrics()
 		}
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		w.WriteHeader(http.StatusOK)
-		_, _ = fmt.Fprintf(w, "# TYPE hikyo_last_prune_success_timestamp_seconds gauge\n"+
-			"hikyo_last_prune_success_timestamp_seconds %d\n"+
-			"# TYPE hikyo_prune_stale gauge\n"+
-			"hikyo_prune_stale %d\n"+
-			"# TYPE hikyo_project_storage_peak_bytes gauge\n"+
-			"hikyo_project_storage_peak_bytes %d\n"+
-			"# TYPE hikyo_project_storage_warn gauge\n"+
-			"hikyo_project_storage_warn %d\n"+
-			"# TYPE hikyo_tls_cert_not_after_timestamp_seconds gauge\n"+
-			"hikyo_tls_cert_not_after_timestamp_seconds %d\n"+
-			"# TYPE hikyo_tls_reload_failures_total counter\n"+
-			"hikyo_tls_reload_failures_total %d\n", last, stale, health.PeakProjectBytes, storageWarn, tlsNotAfter, tlsReloadFailures)
+		snapshot := prometheus.NewPedanticRegistry()
+		snapshot.MustRegister(
+			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricLastPruneSuccess, Help: "Unix timestamp of the last successful retention prune."}, func() float64 { return float64(last) }),
+			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricPruneStale, Help: "Whether the retention prune state is stale."}, func() float64 { return float64(stale) }),
+			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricProjectStoragePeak, Help: "Largest observed project storage usage in bytes."}, func() float64 { return float64(health.PeakProjectBytes) }),
+			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricProjectStorageWarn, Help: "Whether project storage is above its warning threshold."}, func() float64 { return float64(storageWarn) }),
+			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricTLSCertNotAfter, Help: "Unix timestamp when the active TLS certificate expires."}, func() float64 { return float64(tlsNotAfter) }),
+			prometheus.NewCounterFunc(prometheus.CounterOpts{Name: MetricTLSReloadFailures, Help: "Total failed TLS certificate reloads."}, func() float64 { return float64(tlsReloadFailures) }),
+		)
+		gatherers := prometheus.Gatherers{snapshot}
+		if metrics != nil {
+			gatherers = append(gatherers, metrics.registry)
+		}
+		promhttp.HandlerFor(gatherers, promhttp.HandlerOpts{
+			ErrorHandling:     promhttp.HTTPErrorOnError,
+			EnableOpenMetrics: false,
+		}).ServeHTTP(w, req)
 	})
 	return r
 }

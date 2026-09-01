@@ -179,8 +179,13 @@ type API struct {
 	// ceiling, so it is charged here. Nil means unlimited, which is only for
 	// tests.
 	Admission *admission.Limiter
-	Version   string
-	Log       *slog.Logger
+	// Metrics is the shared RED collector (#513). The same instance is handed to
+	// NewOperational so the /metrics reader and this middleware's writer see one
+	// set of counters. Nil disables collection (tests), leaving the access log
+	// and handler behaviour unchanged.
+	Metrics *Metrics
+	Version string
+	Log     *slog.Logger
 	// TrustedProxies are the CIDRs whose forwarded headers are believed.
 	// Empty means none: proxy trust is explicit configuration, never
 	// inferred, because an unauthenticated header is not evidence.
@@ -490,9 +495,11 @@ func (a *API) GetOrg(ctx context.Context, req apigen.GetOrgRequestObject) (apige
 // Middleware
 // ---------------------------------------------------------------------------
 
-// Middleware returns the API stack, outermost first. recoverPanics leads it so
-// an invariant panic anywhere below becomes the uniform internal refusal — see
-// internal/server/recovery.go.
+// Middleware returns the matched-route API stack, outermost first.
+// recoverPanics leads the error-contract legs so an invariant panic below
+// becomes the uniform refusal. RED observation lives at public-router scope so
+// it also sees unmatched API paths, unsupported methods, and CORS preflights —
+// see internal/server/server.go and metrics.go.
 func (a *API) Middleware() []func(http.Handler) http.Handler {
 	return []func(http.Handler) http.Handler{
 		a.recoverPanics,

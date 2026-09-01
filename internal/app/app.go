@@ -464,6 +464,10 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	definitionsService := &service.Definitions{DB: db, Keyring: kr, Advisory: advisory, Budget: budget, Scan: ruleset}
 
 	updatesService := &service.Updates{DB: db, Source: updateSource, Version: Version, Channel: updatecheck.Channel(cfg.UpdateChannel), Control: updateControl, Log: log}
+	// One RED collector shared by the API middleware (writer) and the
+	// operational /metrics handler (reader) (#513). The limiter supplies its
+	// admission-pressure gauges at scrape time.
+	metrics := server.NewMetrics(limiter)
 	api := &server.API{
 		Auth:     authSvc,
 		SAMLAuth: authSvc,
@@ -532,6 +536,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		Remotes:        &service.Remotes{DB: db, Keyring: kr, Fetch: fetcher},
 		Workspace:      workspaceSvc,
 		Admission:      limiter,
+		Metrics:        metrics,
 		Version:        Version,
 		Log:            log,
 		TrustedProxies: proxies,
@@ -553,7 +558,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 			HSTS:           cfg.TLSCertFile != "" && !config.IsLoopbackListen(cfg.Listen),
 			ExternalOrigin: cfg.ExternalOrigin,
 		}),
-		operationalHandler: server.NewOperational(&service.System{DB: db, Store: sc}, operationalHealth{retention: retentionSvc, tls: tlsReloader}),
+		operationalHandler: server.NewOperational(&service.System{DB: db, Store: sc}, operationalHealth{retention: retentionSvc, tls: tlsReloader}, metrics),
 		tlsReloader:        tlsReloader,
 		log:                log,
 		scheduler: &Scheduler{Log: log, Jobs: []ScheduledJob{{

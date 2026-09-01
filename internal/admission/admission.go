@@ -191,6 +191,47 @@ func New(cfg Config) (*Limiter, error) {
 // Concurrency reports the derived number of simultaneous verifications.
 func (l *Limiter) Concurrency() int { return l.concurrency }
 
+// Snapshot is a point-in-time read of the limiter's pressure, for the
+// operational /metrics surface (#513). It carries no attacker-chosen key — only
+// instance-wide counts — so exposing it leaks nothing the semaphore sizing does
+// not already advertise.
+type Snapshot struct {
+	// ConcurrencyLimit is the derived semaphore size (total verification slots).
+	ConcurrencyLimit int
+	// InFlight is how many of those slots are currently held.
+	InFlight int
+	// QueueDepthLimit is the fixed bound on simultaneous waiters.
+	QueueDepthLimit int
+	// Waiting is how many callers are currently queued for a slot.
+	Waiting int
+	// ActiveBackoffs is how many per-account buckets carry a live delay right
+	// now — the count of accounts currently past the failure threshold.
+	ActiveBackoffs int
+}
+
+// Snapshot is a race-free observational read. Slot acquisition/release uses the
+// channel rather than mu, so InFlight and Waiting may describe adjacent instants
+// while a caller crosses that boundary; gauges are pressure signals, not an
+// accounting invariant. len(l.slots) is the FREE-slot count.
+func (l *Limiter) Snapshot() Snapshot {
+	now := l.now()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	active := 0
+	for _, state := range l.accounts {
+		if state.until.After(now) {
+			active++
+		}
+	}
+	return Snapshot{
+		ConcurrencyLimit: l.concurrency,
+		InFlight:         l.concurrency - len(l.slots),
+		QueueDepthLimit:  QueueDepth,
+		Waiting:          l.waiting,
+		ActiveBackoffs:   active,
+	}
+}
+
 // Enter admits one pre-authentication attempt from sourceIP. The returned
 // release must be called when the expensive work is done.
 //
