@@ -459,7 +459,8 @@ test.describe('members and grants', () => {
         if (await menu.isVisible()) {
           await menu.click();
         }
-        await expect(view.page.getByRole('link', { name: 'Members' })).toHaveAttribute(
+        // `exact`: the operator's drawer also lists "Instance members" (#567).
+        await expect(view.page.getByRole('link', { name: 'Members', exact: true })).toHaveAttribute(
           'href',
           `/orgs/${seed.orgB}/members`,
         );

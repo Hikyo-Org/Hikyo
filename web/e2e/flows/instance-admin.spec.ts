@@ -425,7 +425,7 @@ test.describe('instance administration', () => {
       await dialog.getByLabel('Principal').fill(principal);
       await expect(dialog.getByLabel('Scope')).toHaveValue('instance');
       await dialog.getByRole('radio', { name: 'Apply a role template' }).check();
-      await dialog.getByLabel('Role template').selectOption('operator');
+      await dialog.getByLabel('Role template', { exact: true }).selectOption('operator');
       await dialog.getByRole('button', { name: 'Grant', exact: true }).click();
       await expect(page.locator('.notice').filter({ hasText: 'Applied operator to' })).toContainText(
         principal,
