@@ -216,6 +216,15 @@ type AdapterTargetKey struct {
 	KeyID         string
 }
 
+type AdmissionCounter struct {
+	Bucket      string
+	Subject     string
+	WindowStart pgtype.Timestamptz
+	Hits        int64
+	Failures    int64
+	UntilAt     pgtype.Timestamptz
+}
+
 type AuditInstanceEvent struct {
 	Seq               int64
 	ID                string
@@ -397,6 +406,15 @@ type GrantOrigin struct {
 	Kind      string
 	Subject   string
 	CreatedAt pgtype.Timestamptz
+}
+
+type HaNode struct {
+	NodeID             string
+	BinaryVersion      string
+	SchemaVersion      int64
+	RootKeyFingerprint string
+	StartedAt          pgtype.Timestamptz
+	HeartbeatAt        pgtype.Timestamptz
 }
 
 type InstanceConnection struct {
@@ -889,6 +907,14 @@ type Session struct {
 	SamlProviderID    pgtype.Text
 	RequestingOrigin  pgtype.Text
 	HandoffID         pgtype.Text
+}
+
+type SingletonLease struct {
+	Name       string
+	Owner      string
+	FenceToken int64
+	AcquiredAt pgtype.Timestamptz
+	ExpiresAt  pgtype.Timestamptz
 }
 
 type Snapshot struct {
