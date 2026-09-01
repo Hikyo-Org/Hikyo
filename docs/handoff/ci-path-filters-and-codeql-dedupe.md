@@ -53,3 +53,19 @@ actions or configuration that disables managed setup.
 - trusted-controller, artifact-reuse, cache-policy, and nightly-release
   fixtures: passed
 - live GitHub state: managed `CodeQL` active; both legacy workflows disabled
+
+## Exact-head CI follow-up
+
+Trusted run `33486637847` passed every non-browser job and five of six browser
+legs at `07f94e02`. Desktop group 1 exposed an existing OIDC reauthentication
+race: its post-login `/api/v1/auth/methods` refetch received `429` with
+`Retry-After: 5`, and `retry: false` left the ceremony permanently
+passkey-only. The captured response had already returned the configured
+provider before login, and `whoami` confirmed the OIDC session, ruling out
+fixture setup and identity propagation.
+
+The public auth-method discovery query now retries only a `429`, once, after
+the server's bounded numeric `Retry-After`; authorization refusals and all
+global query defaults remain non-retrying. The regression test forces the
+first discovery read to return `429`, and the original desktop OIDC flow passed
+three consecutive focused runs after the fix.
