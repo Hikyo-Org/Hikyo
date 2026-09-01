@@ -12,6 +12,8 @@ import {
   listValuesOp,
   publishPendingChangesOp,
   reclassifyKeyOp,
+  deleteKeyOp,
+  renameKeyOp,
   setValueOp,
   updateKeyMetadataOp,
 } from '@hikyo/operations';
@@ -37,7 +39,7 @@ import {
   useAdvisoryStream,
   type AdvisoryEvent,
 } from './advisory.ts';
-import { ApiError, parsed } from './client.ts';
+import { ApiError, ok, parsed } from './client.ts';
 import { callerSafeRefusal } from './history.ts';
 import {
   invalidateAfterCopy,
@@ -864,9 +866,184 @@ export function useReclassifyKey(ref: MatrixRef) {
           body: { classification: input.classification },
           ...transport,
         }),
-    onSuccess: () => queries.invalidateQueries({ queryKey: matrixKeysKey(ref) }),
+    // Reclassification moves how every occurrence of the key is HANDLED, not
+    // just the catalogue lock: declassifying (`secret` → `config`)
+    // re-materialises the value under ordinary config read, and tightening
+    // (`config` → `secret`) drops the key's config dismissals and re-secures the
+    // cells. Both change what the value/signals/pending views must show, so the
+    // whole matrix is invalidated alongside the single-key detail and the list —
+    // the metadata-only edit's narrow key+list invalidation is not enough here.
+    onSuccess: (_result, input) =>
+      Promise.all([
+        queries.invalidateQueries({ queryKey: matrixKeyKey(ref, input.key) }),
+        queries.invalidateQueries({ queryKey: matrixKeysKey(ref) }),
+        queries.invalidateQueries({ queryKey: valuesMatrixKey(ref) }),
+        queries.invalidateQueries({ queryKey: signalsMatrixKey(ref) }),
+        queries.invalidateQueries({ queryKey: pendingMatrixKey(ref) }),
+      ]),
   });
 }
+
+/**
+ * useRenameKey renames a key by its immutable id (#494). Identity is that id, so
+ * no stored reference breaks — but the DELIVERED payload's key set changes,
+ * which is a content-affecting schema change and advances the schema revision.
+ * `acknowledgements` carries Surface-2 override tokens because the new name is
+ * exported to Git and treated as public, so the scanner can refuse it exactly as
+ * it refuses a free-text declaration field. The single-key detail, the project
+ * key list and the groups (whose membership is recorded by NAME) are all
+ * invalidated so the new name shows everywhere it appears.
+ */
+export function useRenameKey(ref: MatrixRef, key: string) {
+  const queries = useQueryClient();
+  const transport = useTransport();
+  return useMutation({
+    mutationFn: (input: { readonly name: string; readonly acknowledgements?: readonly string[] }) =>
+      parsed(renameKeyOp, {
+          path: { ...ref, key },
+          body: {
+            name: input.name,
+            ...(input.acknowledgements === undefined || input.acknowledgements.length === 0
+              ? {}
+              : { acknowledgements: [...input.acknowledgements] }),
+          },
+          ...transport,
+        }),
+    onSuccess: () =>
+      Promise.all([
+        queries.invalidateQueries({ queryKey: matrixKeyKey(ref, key) }),
+        queries.invalidateQueries({ queryKey: matrixKeysKey(ref) }),
+        queries.invalidateQueries({ queryKey: matrixGroupsKey(ref) }),
+      ]),
+  });
+}
+
+/**
+ * useDeleteKey removes a key declaration, its explicit presence rows and its
+ * group membership (#494).
+ *
+ * It deliberately does NOT invalidate the single-key detail cache, and the list
+ * invalidation is `exact` for a load-bearing reason: `matrixKeyKey` is
+ * `matrixKeysKey` plus a suffix, so a non-exact list invalidation would ALSO
+ * match the still-mounted single-key query and re-fetch the now-deleted key.
+ * That 404 would reject this `onSuccess` promise and, with it, the caller's
+ * navigate-to-matrix — leaving the surface stranded on the deleted key. `exact`
+ * refreshes only the list; the surface navigates away and the stale single-key
+ * cache is dropped on unmount (a later visit re-fetches to the recoverable
+ * deleted-key state). The key vanishes from the whole matrix, so its per-
+ * environment views are invalidated too — none of those keys is a prefix of the
+ * single-key query, so they do not cascade.
+ */
+export function useDeleteKey(ref: MatrixRef, key: string) {
+  const queries = useQueryClient();
+  const transport = useTransport();
+  return useMutation({
+    mutationFn: () => ok(deleteKeyOp, { path: { ...ref, key }, ...transport }),
+    onSuccess: () =>
+      Promise.all([
+        queries.invalidateQueries({ queryKey: matrixKeysKey(ref), exact: true }),
+        queries.invalidateQueries({ queryKey: matrixGroupsKey(ref) }),
+        queries.invalidateQueries({ queryKey: valuesMatrixKey(ref) }),
+        queries.invalidateQueries({ queryKey: signalsMatrixKey(ref) }),
+        queries.invalidateQueries({ queryKey: pendingMatrixKey(ref) }),
+      ]),
+  });
+}
+
+/** One key's cross-environment lifecycle impact: the environments whose value
+ *  the action moves (a set occurrence) or whose pending draft it disturbs. Only
+ *  environment IDs cross this boundary — never a value cell, which for a config
+ *  key can carry material the detail surface must never hold (#491). */
+export type KeyImpact = {
+  readonly setEnvironmentIds: readonly string[];
+  readonly pendingEnvironmentIds: readonly string[];
+};
+
+/** assembleKeyImpact reduces the per-environment occupancy of ONE key into the
+ *  two id lists a delete/reclassify preview shows. Pure over booleans the caller
+ *  extracts from the matrix cells, so no cell (hence no value) reaches it. */
+export function assembleKeyImpact(
+  cells: readonly {
+    readonly environmentId: string;
+    readonly set: boolean;
+    readonly pending: boolean;
+  }[],
+): KeyImpact {
+  return {
+    setEnvironmentIds: cells.filter((cell) => cell.set).map((cell) => cell.environmentId),
+    pendingEnvironmentIds: cells.filter((cell) => cell.pending).map((cell) => cell.environmentId),
+  };
+}
+
+/**
+ * matrixImpactReady reports whether a key's impact preview can be trusted enough
+ * to arm a destructive action. It fails CLOSED: every environment row's values
+ * AND signals must be fully `ready` — an `error` row has no data and a `stale`
+ * row may be outdated, either of which would silently drop an affected
+ * environment from the preview and understate the blast radius. The empty case
+ * (a project with no environments) is legitimately ready once the environment
+ * list itself has loaded.
+ */
+export function matrixImpactReady(
+  environmentsLoaded: boolean,
+  rows: readonly { readonly values: { readonly status: MatrixQueryStatus }; readonly signals: { readonly status: MatrixQueryStatus } }[],
+): boolean {
+  return (
+    environmentsLoaded &&
+    rows.every((row) => row.values.status === 'ready' && row.signals.status === 'ready')
+  );
+}
+
+/**
+ * keyLifecycleRefusalText renders a rename/reclassify/delete refusal in the
+ * caller's words, and — this is the security-sensitive part — WITHOUT ever
+ * turning the reveal gate into an oracle.
+ *
+ * A caller-safe server detail is quoted verbatim (a rename collision names the
+ * clashing key; a Surface-2 block names its rule id and locator). Otherwise:
+ *  - 403 on a declassification is the one place a step-up may be named, because
+ *    the server discloses the assurance requirement ONLY to a caller who already
+ *    holds the reveal grant; every other 403 is a plain permission refusal.
+ *  - 404 is the uniform missing-key sentence. For a declassification it ALSO
+ *    masks "you do not hold reveal on this key" — the gate is a one-bit oracle
+ *    the instant the UI says anything else, so this stays identical to every
+ *    other 404.
+ */
+export function keyLifecycleRefusalText(
+  error: Error,
+  action: 'rename' | 'reclassify' | 'declassify' | 'delete',
+): string {
+  if (error instanceof ApiError) {
+    // 404 is handled FIRST and its wording is the one canonical constant: for a
+    // declassification a 404 ALSO masks "you do not hold reveal on this key",
+    // and ANY variance — a caller-safe detail smuggled onto the 404, or copy
+    // that differs from the ordinary missing-key line — is exactly the
+    // existence/permission oracle the reveal gate exists to close. So a 404
+    // never consults `callerSafeRefusal`.
+    if (error.status === 404) {
+      return KEY_GONE_REFUSAL;
+    }
+    if (error.status === 403) {
+      return action === 'declassify'
+        ? 'Declassifying a secret needs a recent second-factor sign-in. Reauthenticate, then try again.'
+        : `You do not have permission to ${action} this key in this project.`;
+    }
+    const detailed = callerSafeRefusal(error, 'Refused');
+    if (detailed !== null) {
+      return detailed;
+    }
+    if (error.status === 409) {
+      return `The server refused this ${action}; reload the key and retry.`;
+    }
+    return `The server could not ${action} this key (error ${String(error.status)}).`;
+  }
+  return `The server could not ${action} this key.`;
+}
+
+/** The one missing-key sentence every key refusal shares. A single constant so
+ *  no surface can render a distinguishable 404 that would turn the reveal gate
+ *  into an existence oracle. */
+export const KEY_GONE_REFUSAL = 'This key no longer exists. Return to the matrix and reopen it.';
 
 /** One key declaration, as the catalogue detail surface (#491) reads it. */
 export type MatrixKey = MatrixKeyList['items'][number];
@@ -940,15 +1117,17 @@ export function useUpdateKeyMetadata(ref: MatrixRef, key: string) {
  */
 export function keyMetadataRefusalText(error: Error): string {
   if (error instanceof ApiError) {
+    // 404 first and canonical, for the same anti-oracle reason as
+    // keyLifecycleRefusalText: a 404 never consults the caller-safe detail.
+    if (error.status === 404) {
+      return KEY_GONE_REFUSAL;
+    }
     const detailed = callerSafeRefusal(error, 'Refused');
     if (detailed !== null) {
       return detailed;
     }
     if (error.status === 403) {
       return 'You do not have permission to edit this key in this project.';
-    }
-    if (error.status === 404) {
-      return 'This key no longer exists. Return to the matrix and reopen it.';
     }
     if (error.status === 409) {
       return 'The server refused this edit; reload the key and retry.';

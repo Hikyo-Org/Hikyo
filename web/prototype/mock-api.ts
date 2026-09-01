@@ -15,6 +15,8 @@ import {
   zSetDefinitionsSettingsRequest,
   zSetProjectRetentionRequest,
   zSetValueRequest,
+  zReclassifyKeyRequest,
+  zRenameKeyRequest,
   zUpdateKeyMetadataRequest,
 } from '../../clients/ts/src/generated/zod.gen.ts';
 import type { Key } from '../../clients/ts/src/generated/types.gen.ts';
@@ -1214,7 +1216,7 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
   // an edit here shows through on the matrix and survives a prototype reload —
   // the same in-memory persistence the create handler above relies on.
   const keyDetailMatch = new RegExp(`^${projectRoot}/keys/([^/]+)$`).exec(path);
-  if (keyDetailMatch !== null && (method === 'GET' || method === 'PATCH')) {
+  if (keyDetailMatch !== null && (method === 'GET' || method === 'PATCH' || method === 'DELETE')) {
     const reference = keyDetailMatch[1];
     const key = reference === undefined ? undefined : keyByReference(reference);
     if (key === undefined) {
@@ -1223,6 +1225,14 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
     }
     if (method === 'GET') {
       send(response, 200, key);
+      return true;
+    }
+    if (method === 'DELETE') {
+      // #494: remove the key from the same in-memory catalogue the list serves,
+      // so the matrix reflects the deletion (and a re-open 404s) after nav back.
+      const index = keys.indexOf(key);
+      if (index !== -1) keys.splice(index, 1);
+      send(response, 204);
       return true;
     }
     return body(request).then((raw) => {
@@ -1235,6 +1245,40 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
       if (input.deprecated !== undefined) key.deprecated = input.deprecated;
       if (input.deprecation_note !== undefined) key.deprecation_note = input.deprecation_note;
       if (input.classification !== undefined) key.classification = input.classification;
+      send(response, 200, key);
+      return true;
+    });
+  }
+
+  // #494: rename and reclassify are dedicated sub-resources, mutating the same
+  // in-memory catalogue. Reclassify carries no reveal ceremony in the prototype
+  // (there is no session assurance to check here); a real declassification's
+  // Surface-1 warnings are exercised by the component tests, not the mock.
+  const keyNameMatch = new RegExp(`^${projectRoot}/keys/([^/]+)/name$`).exec(path);
+  if (keyNameMatch !== null && method === 'PUT') {
+    const key = keyNameMatch[1] === undefined ? undefined : keyByReference(keyNameMatch[1]);
+    if (key === undefined) {
+      send(response, 404, { error: { code: 'not_found' } });
+      return true;
+    }
+    return body(request).then((raw) => {
+      const input = zRenameKeyRequest.parse(JSON.parse(raw));
+      key.name = input.name;
+      send(response, 200, key);
+      return true;
+    });
+  }
+  const keyClassificationMatch = new RegExp(`^${projectRoot}/keys/([^/]+)/classification$`).exec(path);
+  if (keyClassificationMatch !== null && method === 'PUT') {
+    const key =
+      keyClassificationMatch[1] === undefined ? undefined : keyByReference(keyClassificationMatch[1]);
+    if (key === undefined) {
+      send(response, 404, { error: { code: 'not_found' } });
+      return true;
+    }
+    return body(request).then((raw) => {
+      const input = zReclassifyKeyRequest.parse(JSON.parse(raw));
+      key.classification = input.classification;
       send(response, 200, key);
       return true;
     });

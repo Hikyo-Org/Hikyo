@@ -1,12 +1,18 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { generatePath, Link, useNavigate } from 'react-router';
 
 import { GIT_DEFINITIONS_NOTICE, useDefinitionsSettings } from '../api/definitions.ts';
 import { historyHref } from '../api/history.ts';
 import {
+  KEY_GONE_REFUSAL,
+  keyLifecycleRefusalText,
   keyMetadataRefusalText,
+  useDeleteKey,
   useKey,
+  useReclassifyKey,
+  useRenameKey,
   useUpdateKeyMetadata,
+  type KeyImpact,
   type MatrixKey,
   type MatrixRef,
 } from '../api/matrix.ts';
@@ -15,7 +21,8 @@ import { useWorkspaceContext, withRemote } from '../api/transport.tsx';
 import type { EnvironmentList } from '../api/values.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
-import { Alert, Done } from './Sections.tsx';
+import { Alert, Done, TypedNameConfirm } from './Sections.tsx';
+import { useModalDialog } from './useModalDialog.ts';
 
 type Environment = EnvironmentList['items'][number];
 
@@ -42,11 +49,23 @@ export function KeyDeclarationDetail({
   refData,
   keyId,
   environments,
+  impact,
+  impactReady,
   openerRef,
 }: {
   refData: MatrixRef;
   keyId: string;
   environments: readonly Environment[];
+  /**
+   * This key's cross-environment occupancy, assembled by the matrix from the
+   * cells it already holds (#494). It is value-free by construction — only the
+   * ids of the environments a lifecycle action would disturb — and drives the
+   * delete/reclassify impact previews. `impactReady` is false while the matrix
+   * rows are still loading, and the destructive actions stay disabled until it
+   * is true so a preview never understates what an action affects (fail-closed).
+   */
+  impact: KeyImpact;
+  impactReady: boolean;
   openerRef: RefObject<HTMLAnchorElement | null>;
 }) {
   const navigate = useNavigate();
@@ -138,12 +157,15 @@ export function KeyDeclarationDetail({
           keyId={keyId}
           record={key.data}
           environments={environments}
+          impact={impact}
+          impactReady={impactReady}
           editable={editable}
           gitManaged={gitManaged}
           sourceResolved={definitions.isSuccess}
           sourceFailed={sourceUntrusted}
           gitProvenance={definitions.data?.last_apply}
           historyPath={historyPath}
+          matrixPath={matrixPath}
         />
       )}
     </aside>
@@ -154,11 +176,13 @@ export function KeyDeclarationDetail({
  * A load failure that stays recoverable: a deleted or renamed-away key (404) is
  * a stale link, not a dead end, so it names the state and offers the way back;
  * a refusal (403) quotes the server; anything else is reported with its status.
+ * The 404 uses the ONE canonical missing-key sentence every key 404 shares — a
+ * surface that worded it differently would be a distinguishable existence signal.
  */
 function KeyLoadError({ error, matrixPath }: { error: Error; matrixPath: string }) {
   const message =
     error instanceof ApiError && error.status === 404
-      ? 'This key no longer exists — it may have been deleted or renamed. Its link is stale.'
+      ? KEY_GONE_REFUSAL
       : error instanceof ApiError && error.status === 403
         ? 'You are not permitted to view this key.'
         : error instanceof ApiError
@@ -179,17 +203,22 @@ function KeyDeclarationBody({
   keyId,
   record,
   environments,
+  impact,
+  impactReady,
   editable,
   gitManaged,
   sourceResolved,
   sourceFailed,
   gitProvenance,
   historyPath,
+  matrixPath,
 }: {
   refData: MatrixRef;
   keyId: string;
   record: MatrixKey;
   environments: readonly Environment[];
+  impact: KeyImpact;
+  impactReady: boolean;
   editable: boolean;
   gitManaged: boolean;
   sourceResolved: boolean;
@@ -198,6 +227,7 @@ function KeyDeclarationBody({
     | { commit?: string; ref?: string; actor?: string; applied_by: string }
     | undefined;
   historyPath: string;
+  matrixPath: string;
 }) {
   const environmentName = (id: string) =>
     environments.find((environment) => environment.id === id)?.name ?? id;
@@ -266,7 +296,27 @@ function KeyDeclarationBody({
       </p>
 
       {editable ? (
-        <MetadataEditor refData={refData} keyId={keyId} record={record} />
+        <>
+          <MetadataEditor refData={refData} keyId={keyId} record={record} />
+          <RenameKey refData={refData} keyId={keyId} record={record} />
+          <ReclassifyKey
+            refData={refData}
+            keyId={keyId}
+            record={record}
+            impact={impact}
+            impactReady={impactReady}
+            environmentName={environmentName}
+          />
+          <DeleteKey
+            refData={refData}
+            keyId={keyId}
+            record={record}
+            impact={impact}
+            impactReady={impactReady}
+            environmentName={environmentName}
+            matrixPath={matrixPath}
+          />
+        </>
       ) : gitManaged ? (
         <section className="key-detail__section" aria-labelledby="key-detail-git">
           <h3 id="key-detail-git">Declarations are read-only</h3>
@@ -462,8 +512,11 @@ function MetadataEditor({
       .catch((error: unknown) => {
         // A scanner block carries findings; route them to the block dialog,
         // which shows ONLY the redacted rule id + locator and offers an audited
-        // override. Any other refusal stays inline in its own words.
-        if (error instanceof ApiError && error.findings.length > 0) {
+        // override. Any other refusal stays inline in its own words. A 404 is
+        // canonicalized to the uniform missing-key sentence BEFORE findings are
+        // considered — a 404 that carried findings must never render details, or
+        // it becomes the existence oracle the reveal gate closes.
+        if (error instanceof ApiError && error.status !== 404 && error.findings.length > 0) {
           const findings = error.findings;
           setScanBlock({
             findings,
@@ -533,5 +586,474 @@ function MetadataEditor({
         />
       )}
     </form>
+  );
+}
+
+type ScanBlockState = {
+  readonly findings: readonly RefusalFinding[];
+  readonly onOverride: ((tokens: readonly string[]) => Promise<void>) | null;
+};
+
+/** scanBlockFrom turns a scanner-refused write into the block dialog's state:
+ *  the redacted findings, and an override only when every finding carries a
+ *  token. `resubmit` re-runs the SAME content with those tokens (each token is
+ *  bound to the content that produced it). Returns null for any non-scanner
+ *  refusal, which the caller shows inline instead. */
+function scanBlockFrom(
+  error: unknown,
+  resubmit: (tokens: readonly string[]) => Promise<void>,
+): ScanBlockState | null {
+  // A 404 is canonicalized to the uniform missing-key refusal by the caller and
+  // must NEVER open a findings dialog, even if one somehow rode a 404 — that
+  // would leak existence through the reveal mask. Only a genuine scan refusal
+  // (which carries findings on a non-404) becomes a block.
+  if (!(error instanceof ApiError) || error.status === 404 || error.findings.length === 0) {
+    return null;
+  }
+  const findings = error.findings;
+  return {
+    findings,
+    onOverride: findings.every((finding) => finding.acknowledgement !== undefined)
+      ? (tokens) => resubmit(tokens)
+      : null,
+  };
+}
+
+/**
+ * RenameKey changes the key's name. Identity is the immutable id, so nothing
+ * that references the key breaks — but the delivered payload's key set changes,
+ * an advertised schema change. The new name is exported to Git and treated as
+ * public, so the same Surface-2 scanning block the metadata editor carries
+ * attaches here: a refused rename renders the redacted finding and offers the
+ * audited override. A collision or any other refusal stays inline in the
+ * server's own caller-safe words.
+ */
+function RenameKey({
+  refData,
+  keyId,
+  record,
+}: {
+  refData: MatrixRef;
+  keyId: string;
+  record: MatrixKey;
+}) {
+  const rename = useRenameKey(refData, keyId);
+  const [name, setName] = useState(record.name);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const [scanBlock, setScanBlock] = useState<ScanBlockState | null>(null);
+
+  // Reload the field when the record's name changes underneath (a concurrent
+  // rename, or this rename's own success invalidating the query) so the form
+  // never re-submits a name that is already applied.
+  useEffect(() => {
+    setName(record.name);
+  }, [record.name]);
+
+  const dirty = name !== record.name && name !== '';
+
+  const submit = () => {
+    if (!dirty) return;
+    setRefusal(null);
+    setDone(false);
+    const attempt = (acknowledgements: readonly string[]): Promise<void> =>
+      new Promise((resolve, reject) => {
+        rename.mutate(
+          { name, ...(acknowledgements.length === 0 ? {} : { acknowledgements }) },
+          { onSuccess: () => resolve(), onError: (error) => reject(error) },
+        );
+      });
+    void attempt([])
+      .then(() => setDone(true))
+      .catch((error: unknown) => {
+        const block = scanBlockFrom(error, (tokens) =>
+          attempt(tokens).then(() => {
+            setDone(true);
+            setScanBlock(null);
+          }),
+        );
+        if (block !== null) {
+          setScanBlock(block);
+          return;
+        }
+        setRefusal(
+          keyLifecycleRefusalText(error instanceof Error ? error : new Error('rename failed'), 'rename'),
+        );
+      });
+  };
+
+  return (
+    <form
+      className="key-detail__editor"
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit();
+      }}
+    >
+      <h3>Rename key</h3>
+      <p className="key-detail__public-note">
+        The name is part of the delivered payload and is exported to Git — treat it as public. The
+        key’s identity does not change, so nothing that references it breaks.
+      </p>
+      <label className="field">
+        <span>Name</span>
+        <input
+          className="mono"
+          value={name}
+          disabled={rename.isPending}
+          onChange={(event) => setName(event.target.value)}
+        />
+      </label>
+
+      {refusal === null ? null : <Alert>{refusal}</Alert>}
+      {done ? <Done>Renamed.</Done> : null}
+
+      <button type="submit" className="btn btn--primary" disabled={rename.isPending || !dirty}>
+        {rename.isPending ? 'Renaming…' : 'Rename key'}
+      </button>
+
+      {scanBlock === null ? null : (
+        <ScanBlockDialog
+          title="Rename blocked by secret scanning"
+          intro={`The name is exported to Git and treated as public. Renaming ${record.name} was refused because the new name looks like it carries secret material.`}
+          findings={scanBlock.findings}
+          onOverride={scanBlock.onOverride}
+          onClose={() => setScanBlock(null)}
+        />
+      )}
+    </form>
+  );
+}
+
+/**
+ * ReclassifyKey runs the reclassification ceremony in the one direction that is
+ * available — a `secret` key can only become `config`, a `config` key only
+ * `secret` — and renders that direction's distinct consequences before
+ * committing.
+ *
+ * Tightening (`config` → `secret`) re-secures every occurrence and drops the
+ * key's config-scanning dismissals. Declassifying (`secret` → `config`) is a
+ * disclosure: the value becomes readable under ordinary config read, so the
+ * server requires a recent second factor. The UI cannot pre-check that — the
+ * server is the source of truth — so it states the requirement, attempts the
+ * ceremony, and on refusal surfaces the reauth need (403) or the uniform
+ * missing-key sentence (404, which also masks a missing reveal grant). On a
+ * successful declassification the response's Surface-1 warnings for the
+ * re-materialised occurrences are rendered redacted (rule id + locator).
+ */
+function ReclassifyKey({
+  refData,
+  keyId,
+  record,
+  impact,
+  impactReady,
+  environmentName,
+}: {
+  refData: MatrixRef;
+  keyId: string;
+  record: MatrixKey;
+  impact: KeyImpact;
+  impactReady: boolean;
+  environmentName: (id: string) => string;
+}) {
+  const reclassify = useReclassifyKey(refData);
+  const target: 'secret' | 'config' = record.classification === 'secret' ? 'config' : 'secret';
+  const declassify = target === 'config';
+  const [confirming, setConfirming] = useState(false);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  // The success text is derived from the DIRECTION THAT RAN, captured here, not
+  // from the live `declassify`: the mutation invalidates the key, the record
+  // refetches with the new classification, and `declassify` flips — which would
+  // otherwise flip the persistent "Reclassified as …" message to the wrong verb.
+  const [doneClassification, setDoneClassification] = useState<'secret' | 'config' | null>(null);
+  const [warnings, setWarnings] = useState<readonly RefusalFinding[]>([]);
+
+  const run = () => {
+    // Fail closed: never submit while the impact preview is not trustworthy, even
+    // if it went unready after the dialog opened (a concurrent invalidation).
+    if (!impactReady) return;
+    setRefusal(null);
+    setDoneClassification(null);
+    setWarnings([]);
+    reclassify.mutate(
+      { key: keyId, classification: target },
+      {
+        onSuccess: (key) => {
+          setConfirming(false);
+          setDoneClassification(target);
+          // Only a declassification carries Surface-1 warnings, for the
+          // occurrences re-materialised as config; a tightening carries none.
+          setWarnings(declassify ? (key.findings ?? []) : []);
+        },
+        onError: (error: unknown) => {
+          setConfirming(false);
+          setRefusal(
+            keyLifecycleRefusalText(
+              error instanceof Error ? error : new Error('reclassify failed'),
+              declassify ? 'declassify' : 'reclassify',
+            ),
+          );
+        },
+      },
+    );
+  };
+
+  return (
+    <section className="key-detail__section" aria-labelledby="key-detail-reclassify">
+      <h3 id="key-detail-reclassify">Reclassify</h3>
+      <p>
+        This key is classified{' '}
+        <strong>{record.classification === 'secret' ? '🔒 secret' : 'config'}</strong>.
+      </p>
+
+      {refusal === null ? null : <Alert>{refusal}</Alert>}
+      {doneClassification === null ? null : (
+        <Done>
+          {doneClassification === 'config' ? 'Reclassified as config.' : 'Reclassified as secret.'}
+        </Done>
+      )}
+
+      {warnings.length === 0 ? null : (
+        <div className="key-detail__section" aria-label="Declassification scanning warnings">
+          <p className="key-detail__public-note">
+            Now readable as config, these occurrences look like they carry secret material. Review
+            them — nothing is blocked.
+          </p>
+          <ul className="key-detail__findings">
+            {warnings.map((finding, index) => (
+              <li key={`${finding.rule_id}:${finding.locator}:${String(index)}`}>
+                <span className="mono">{finding.rule_id}</span> at{' '}
+                <span className="mono">{finding.locator}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <button
+        type="button"
+        className="btn"
+        // Fail closed in BOTH directions: tightening drops the key's config
+        // dismissals, so its impact preview matters as much as a declassification's.
+        disabled={reclassify.isPending || !impactReady}
+        onClick={() => {
+          setDoneClassification(null);
+          setConfirming(true);
+        }}
+      >
+        {declassify ? 'Reclassify as config…' : 'Reclassify as secret…'}
+      </button>
+
+      {confirming ? (
+        <ConfirmDialog
+          title={declassify ? 'Reclassify this secret as config?' : 'Reclassify this key as secret?'}
+          confirmLabel={declassify ? 'Reclassify as config' : 'Reclassify as secret'}
+          busy={reclassify.isPending}
+          // If the impact preview goes unready while the dialog is open, keep the
+          // confirm disabled — the preview shows "Checking…" and must not be
+          // actioned against a stale blast radius.
+          confirmDisabled={!impactReady}
+          danger={declassify}
+          onConfirm={run}
+          onClose={() => setConfirming(false)}
+        >
+          {declassify ? (
+            <>
+              <p>
+                The value becomes readable under ordinary config read in every environment that
+                holds it. This is a disclosure and cannot be undone by re-securing the key later —
+                anything already served as config has been served.
+              </p>
+              <p>
+                It requires a recent second-factor sign-in; if you have not reauthenticated lately
+                you will be asked to before it can proceed.
+              </p>
+            </>
+          ) : (
+            <p>
+              Every occurrence is re-secured and handled as a secret, and the key’s existing
+              config-scanning dismissals are dropped — a value that looks secret will warn again.
+            </p>
+          )}
+          <ImpactPreview
+            impact={impact}
+            impactReady={impactReady}
+            environmentName={environmentName}
+          />
+        </ConfirmDialog>
+      ) : null}
+    </section>
+  );
+}
+
+/**
+ * DeleteKey removes the declaration, its explicit presence rows and its group
+ * membership. It previews exactly which environments the deletion disturbs
+ * (a delivered value, or an unpublished draft) and gates the act behind typing
+ * the key's name — the same danger-zone confirm the project and org deletions
+ * use — WITHOUT ever revealing a value. On success it returns to the matrix, so
+ * no route is left pointing at the deleted key.
+ */
+function DeleteKey({
+  refData,
+  keyId,
+  record,
+  impact,
+  impactReady,
+  environmentName,
+  matrixPath,
+}: {
+  refData: MatrixRef;
+  keyId: string;
+  record: MatrixKey;
+  impact: KeyImpact;
+  impactReady: boolean;
+  environmentName: (id: string) => string;
+  matrixPath: string;
+}) {
+  const navigate = useNavigate();
+  const remove = useDeleteKey(refData, keyId);
+  const [refusal, setRefusal] = useState<string | null>(null);
+
+  const confirmDelete = () => {
+    setRefusal(null);
+    remove.mutate(undefined, {
+      // Navigate FIRST so the useKey observer unmounts before anything could
+      // re-fetch the now-deleted key: the AC's "no stale key route" is exactly
+      // this ordering. The hook's own onSuccess refreshes the matrix lists.
+      onSuccess: () => {
+        void navigate(matrixPath);
+      },
+      onError: (error: unknown) => {
+        setRefusal(
+          keyLifecycleRefusalText(error instanceof Error ? error : new Error('delete failed'), 'delete'),
+        );
+      },
+    });
+  };
+
+  return (
+    <section className="key-detail__section" aria-labelledby="key-detail-delete">
+      <h3 id="key-detail-delete">Delete key</h3>
+      <p>
+        Removes the declaration, its presence rules and its group membership across the whole
+        project. No value is shown, and this cannot be undone.
+      </p>
+      <ImpactPreview impact={impact} impactReady={impactReady} environmentName={environmentName} />
+
+      {refusal === null ? null : <Alert>{refusal}</Alert>}
+
+      <TypedNameConfirm
+        label="Confirm the key name to delete it"
+        // Fail closed: no typed target until the impact is loaded, so a delete
+        // cannot be armed while the preview still understates what it affects.
+        expect={impactReady ? record.name : null}
+        action="Delete key"
+        hint={
+          <>
+            Type <span className="mono">{record.name}</span> to enable deletion.
+          </>
+        }
+        busy={remove.isPending}
+        onConfirm={confirmDelete}
+      />
+    </section>
+  );
+}
+
+/** ImpactPreview lists the environments a lifecycle action disturbs — a
+ *  delivered value or an unpublished draft — by name, never by value. Until the
+ *  matrix rows load it says so, and the caller keeps the action disabled. */
+function ImpactPreview({
+  impact,
+  impactReady,
+  environmentName,
+}: {
+  impact: KeyImpact;
+  impactReady: boolean;
+  environmentName: (id: string) => string;
+}) {
+  if (!impactReady) {
+    return (
+      <p className="key-detail__state" role="status">
+        Checking which environments this affects…
+      </p>
+    );
+  }
+  const set = impact.setEnvironmentIds;
+  const pending = impact.pendingEnvironmentIds;
+  return (
+    <ul className="key-detail__impact">
+      <li>
+        {set.length === 0
+          ? 'No environment currently delivers a value for this key.'
+          : `Delivers a value in ${String(set.length)} ${set.length === 1 ? 'environment' : 'environments'}: ${set.map(environmentName).join(', ')}.`}
+      </li>
+      {pending.length === 0 ? null : (
+        <li>
+          {`Unpublished drafts touch ${String(pending.length)} ${pending.length === 1 ? 'environment' : 'environments'}: ${pending.map(environmentName).join(', ')}.`}
+        </li>
+      )}
+    </ul>
+  );
+}
+
+/**
+ * ConfirmDialog is the native-`<dialog>` confirm the reclassification ceremony
+ * opens. Native so the platform gives the focus trap, the inert backdrop and
+ * Escape — and so the aside's Escape guard (which only collapses the panel when
+ * no dialog owns the top layer) generalises to it without a per-dialog change.
+ */
+function ConfirmDialog({
+  title,
+  confirmLabel,
+  busy,
+  confirmDisabled = false,
+  danger,
+  onConfirm,
+  onClose,
+  children,
+}: {
+  title: string;
+  confirmLabel: string;
+  busy: boolean;
+  confirmDisabled?: boolean;
+  danger: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const dialog = useModalDialog();
+  const titleId = useId();
+  return (
+    <dialog className="matrix-editor" ref={dialog} aria-labelledby={titleId} onClose={onClose}>
+      <div className="matrix-editor__head">
+        <div>
+          <h2 id={titleId}>{title}</h2>
+        </div>
+        <button
+          type="button"
+          className="btn matrix-editor__close"
+          aria-label="Close"
+          onClick={onClose}
+        >
+          ✕
+        </button>
+      </div>
+      {children}
+      <div className="matrix-editor__actions">
+        <button
+          type="button"
+          className={danger ? 'btn btn--danger' : 'btn btn--primary'}
+          disabled={busy || confirmDisabled}
+          onClick={onConfirm}
+        >
+          {busy ? 'Working…' : confirmLabel}
+        </button>
+        <button type="button" className="btn" disabled={busy} onClick={onClose}>
+          Cancel
+        </button>
+      </div>
+    </dialog>
   );
 }
