@@ -1641,6 +1641,23 @@ select {
   margin-left: auto;
 }
 
+/* #451: a column whose reads failed or were denied. A word in the header, same
+   as the protected marker — the state is legible read aloud and without colour.
+   Uses the ordinary muted text token so it passes contrast on any surface. */
+.matrix__degraded {
+  display: block;
+  color: var(--tx-dim);
+  font-family: var(--font-ui);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.matrix__cell--degraded {
+  text-align: center;
+  color: var(--tx-faint);
+}
+
 .matrix__key-heading {
   display: flex;
   align-items: center;

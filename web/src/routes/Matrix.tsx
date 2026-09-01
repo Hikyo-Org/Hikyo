@@ -61,6 +61,12 @@ import {
 
 type MatrixKey = MatrixKeyList['items'][number];
 type Environment = EnvironmentList['items'][number];
+
+/** A catalogue query that failed with a 403 — the caller may not read the whole
+ *  project, so the grid renders a permission page rather than "reload" (#451). */
+function isForbidden(query: { readonly isError: boolean; readonly error: unknown }): boolean {
+  return query.isError && query.error instanceof ApiError && query.error.status === 403;
+}
 type Selection = { readonly keyId: string; readonly environmentId?: string };
 
 type DisplayGroup = {
@@ -128,6 +134,32 @@ export function Matrix({
 
   const environmentRows = matrix.environmentRows;
   const environments = environmentRows.map((row) => row.environment);
+  // Per-environment degradation (#451): a column whose reads failed or were
+  // denied. The catalogue loaded, so the grid renders; these columns show a
+  // header banner and non-interactive cells instead of blanking the whole grid.
+  // Declared here (above the problems memo) because they must be excluded from
+  // every derivation that reads per-cell values — an absent value in a column we
+  // cannot read is not "unset", so it must not fabricate a required-value problem.
+  const degradedByEnvironment = useMemo<ReadonlyMap<string, 'forbidden' | 'error'>>(() => {
+    const degraded = new Map<string, 'forbidden' | 'error'>();
+    for (const row of environmentRows) {
+      if (row.readiness === 'forbidden') {
+        degraded.set(row.environmentId, 'forbidden');
+      } else if (row.readiness === 'error') {
+        degraded.set(row.environmentId, 'error');
+      }
+    }
+    return degraded;
+  }, [environmentRows]);
+  // The environments whose per-cell state can be trusted. A degraded column's
+  // reads failed or were denied, so it must be excluded from every derivation
+  // that reads a value/signal/settings cell — problem detection, publish
+  // selection, and the history drawer's "current state" all fabricate a wrong
+  // answer (a false "absent", a lost protected marker) if they consume it (#451).
+  const readableEnvironments = useMemo(
+    () => environments.filter((environment) => !degradedByEnvironment.has(environment.id)),
+    [degradedByEnvironment, environments],
+  );
   const keys = matrix.keys.data?.items ?? [];
   const keyGroups = matrix.groups.data?.items ?? [];
   const [visibleEnvironmentIds, setVisibleEnvironmentIds] = useState<readonly string[]>([]);
@@ -259,6 +291,17 @@ export function Matrix({
     setMutationError(null);
   }, [ref.org, ref.project, environmentSignature]);
 
+  // #451: the row editor opens from a cell, and a degraded cell is not
+  // interactive — but a column can degrade WHILE its editor is open (a refetch
+  // turns the read into a 403/error). Close it rather than leave a writable
+  // editor addressed to a column whose reads no longer succeed.
+  useEffect(() => {
+    if (selection?.environmentId !== undefined && degradedByEnvironment.has(selection.environmentId)) {
+      setSelection(null);
+      setMutationError(null);
+    }
+  }, [degradedByEnvironment, selection]);
+
   const valuesByCell = useMemo(() => {
     const cells = new Map<string, ValueCell>();
     for (const row of environmentRows) {
@@ -323,12 +366,16 @@ export function Matrix({
       })),
     [keys],
   );
+  // #451: a degraded column has no trustworthy value data, so it is excluded from
+  // problem detection entirely. Including it would read every key as unset and
+  // fabricate a "required value missing" problem for a column we simply cannot
+  // read — inflating the sidebar counts, group badges and the problems filter.
   const problems = useMemo(
     () =>
       computeMatrixProblems({
         keys: stateKeys,
-        environmentIds: environments.map((environment) => environment.id),
-        values: environments.flatMap((environment) =>
+        environmentIds: readableEnvironments.map((environment) => environment.id),
+        values: readableEnvironments.flatMap((environment) =>
           keys.map((key) => ({
             keyId: key.id,
             environmentId: environment.id,
@@ -338,7 +385,7 @@ export function Matrix({
         ),
         validationErrors,
       }),
-    [environments, keys, signalsByCell, stateKeys, validationErrors, valuesByCell],
+    [keys, readableEnvironments, signalsByCell, stateKeys, validationErrors, valuesByCell],
   );
   const problemCounts = useMemo(() => groupProblemCounts(problems), [problems]);
   const problemsByCell = useMemo(() => indexMatrixProblems(problems), [problems]);
@@ -422,6 +469,13 @@ export function Matrix({
   const pendingByEnvironment = useMemo(() => {
     const pending = new Map<string, readonly MatrixPendingEntry[]>();
     for (const row of environmentRows) {
+      // #451: a degraded column is not publishable — even if its signals read
+      // succeeded, another family (values/settings) failed, so its protected
+      // marker and ceremony cannot be trusted. Offer no drafts to publish.
+      if (degradedByEnvironment.has(row.environmentId)) {
+        pending.set(row.environmentId, []);
+        continue;
+      }
       const rows: MatrixPendingEntry[] = [];
       for (const signal of row.signals.data?.cells ?? []) {
         if (signal.pending !== undefined) {
@@ -438,7 +492,7 @@ export function Matrix({
       pending.set(row.environmentId, rows);
     }
     return pending;
-  }, [draftsByVersion, environmentRows]);
+  }, [degradedByEnvironment, draftsByVersion, environmentRows]);
   const pendingCount = [...pendingByEnvironment.values()].reduce(
     (total, entries) => total + entries.length,
     0,
@@ -453,8 +507,13 @@ export function Matrix({
     }
     return revisions;
   }, [environmentRows]);
+  // #451: a degraded column is never offered for publish (see pendingByEnvironment),
+  // so it must not appear here either — a settings-unreadable column must not be
+  // presented as "not protected", which would drop its confirmation ceremony.
   const protectedEnvironmentIds = environmentRows.flatMap((row) =>
-    row.settings.data?.protected === true ? [row.environmentId] : [],
+    !degradedByEnvironment.has(row.environmentId) && row.settings.data?.protected === true
+      ? [row.environmentId]
+      : [],
   );
   const pendingCountByEnvironment = useMemo<ReadonlyMap<string, number>>(
     () =>
@@ -469,19 +528,26 @@ export function Matrix({
   const pendingByOthersByEnvironment = useMemo<ReadonlyMap<string, number>>(() => {
     const counts = new Map<string, number>();
     for (const row of environmentRows) {
+      // #451: a degraded column's signal counts are not trustworthy — omit it.
+      if (degradedByEnvironment.has(row.environmentId)) {
+        continue;
+      }
       counts.set(
         row.environmentId,
         (row.signals.data?.cells ?? []).filter((cell) => cell.pending_by_others).length,
       );
     }
     return counts;
-  }, [environmentRows]);
+  }, [degradedByEnvironment, environmentRows]);
   // The history drawer needs the CURRENT cell state to enumerate the ceremony
   // unit a restore will need: the comparison opens current secret plaintext only
   // where a set secret is being replaced.
   const cellsByEnvironment = useMemo<ReadonlyMap<string, readonly HistoryCurrentCell[]>>(() => {
     const cells = new Map<string, readonly HistoryCurrentCell[]>();
-    for (const environment of environments) {
+    // #451: a degraded column has no readable values, so it is omitted rather
+    // than reported as all-absent — a fabricated "absent" would understate the
+    // secret-replacement comparison a restore needs.
+    for (const environment of readableEnvironments) {
       cells.set(
         environment.id,
         keys.map((key) => ({
@@ -492,26 +558,37 @@ export function Matrix({
       );
     }
     return cells;
-  }, [environments, keys, valuesByCell]);
+  }, [keys, readableEnvironments, valuesByCell]);
   const currentValuesByEnvironment = useMemo<
     ReadonlyMap<string, readonly ValueCell[]>
   >(() => {
     const values = new Map<string, readonly ValueCell[]>();
     for (const row of environmentRows) {
+      // #451: omit a degraded column entirely rather than defaulting its
+      // unreadable values to an empty (all-absent) list.
+      if (degradedByEnvironment.has(row.environmentId)) {
+        continue;
+      }
       values.set(row.environmentId, row.values.data?.items ?? []);
     }
     return values;
-  }, [environmentRows]);
+  }, [degradedByEnvironment, environmentRows]);
   const loading =
     matrix.environments.isPending ||
     matrix.keys.isPending ||
     matrix.groups.isPending ||
     environmentRows.some((row) => row.readiness === 'pending');
+  // The whole-grid gate is the project CATALOGUE only (environments/keys/groups).
+  // A single environment column failing no longer blanks the grid — that column
+  // degrades in place (#451), so its 'error'/'forbidden' readiness is handled per
+  // column below, not here.
+  const catalogueForbidden =
+    isForbidden(matrix.environments) || isForbidden(matrix.keys) || isForbidden(matrix.groups);
   const loadError =
-    (matrix.environments.isError && matrix.environments.data === undefined) ||
-    (matrix.keys.isError && matrix.keys.data === undefined) ||
-    (matrix.groups.isError && matrix.groups.data === undefined) ||
-    environmentRows.some((row) => row.readiness === 'error');
+    !catalogueForbidden &&
+    ((matrix.environments.isError && matrix.environments.data === undefined) ||
+      (matrix.keys.isError && matrix.keys.data === undefined) ||
+      (matrix.groups.isError && matrix.groups.data === undefined));
   const backgroundRefreshError =
     (matrix.environments.isError && matrix.environments.data !== undefined) ||
     (matrix.keys.isError && matrix.keys.data !== undefined) ||
@@ -537,6 +614,13 @@ export function Matrix({
     ]);
 
   const publishSelected = (selectedEnvironmentIds: readonly string[]) => {
+    // #451: defence in depth — a degraded environment is already excluded from
+    // pendingByEnvironment, so it cannot reach here with drafts, but reject it
+    // explicitly rather than address a publish at a column we cannot read.
+    const degradedSelection = selectedEnvironmentIds.find((id) => degradedByEnvironment.has(id));
+    if (degradedSelection !== undefined) {
+      throw new Error(`cannot publish the degraded environment ${degradedSelection}`);
+    }
     const addressedEnvironment = selectedEnvironmentIds[0];
     if (addressedEnvironment === undefined) {
       throw new Error('publish action has no selected environment');
@@ -749,6 +833,14 @@ export function Matrix({
 
   if (loading) {
     return <p role="status">Loading environment matrix…</p>;
+  }
+  if (catalogueForbidden) {
+    return (
+      <p className="alert" role="alert">
+        <span className="alert__glyph" aria-hidden="true">!</span>
+        <span>You do not have permission to view this project's environment matrix.</span>
+      </p>
+    );
   }
   if (loadError) {
     return (
@@ -985,6 +1077,7 @@ export function Matrix({
                     </th>
                     {visibleEnvironments.map((environment) => {
                       const revision = revisionsByEnvironment.get(environment.id);
+                      const degraded = degradedByEnvironment.get(environment.id);
                       return (
                         <th scope="col" key={environment.id}>
                           <span>{environment.name}</span>
@@ -994,7 +1087,17 @@ export function Matrix({
                           {protectedEnvironmentIds.includes(environment.id) ? (
                             <span className="matrix__protected">PROTECTED</span>
                           ) : null}
-                          {revision === undefined ? null : (
+                          {/* #451: this column's reads failed or were denied. Name
+                              which — a denial and a load failure need different
+                              words — instead of blanking the whole grid. */}
+                          {degraded === undefined ? null : (
+                            <span className="matrix__degraded" role="status">
+                              {degraded === 'forbidden'
+                                ? 'No access to this environment'
+                                : 'Values could not be loaded'}
+                            </span>
+                          )}
+                          {degraded !== undefined || revision === undefined ? null : (
                             <Link
                               className="btn matrix__history-link"
                               data-history-environment={environment.id}
@@ -1120,6 +1223,17 @@ export function Matrix({
                         </th>
                         {visibleEnvironments.map((environment) => {
                           const id = cellID(key.id, environment.id);
+                          // #451: a degraded column has no trustworthy cell data —
+                          // render a non-interactive placeholder, not an editable
+                          // cell that would open the row editor on a column the
+                          // caller cannot read.
+                          if (degradedByEnvironment.has(environment.id)) {
+                            return (
+                              <td key={environment.id} className="matrix__cell--degraded">
+                                <span aria-hidden="true">—</span>
+                              </td>
+                            );
+                          }
                           return (
                             <td key={environment.id}>
                               <MatrixCell
@@ -1164,6 +1278,10 @@ export function Matrix({
               environmentId: row.environmentId,
               environment: row.environment,
               protected: row.settings.data?.protected === true,
+              // #451: a degraded column's value/signal reads failed or were
+              // denied, so the editor must not offer it as a copy destination
+              // or a bulk-edit target.
+              degraded: degradedByEnvironment.has(row.environmentId),
               cell: valuesByCell.get(cellID(selectedKey.id, row.environmentId)),
               signal,
               draftPreview: pendingConfigPreview(signal, draftsByVersion),
@@ -1179,6 +1297,17 @@ export function Matrix({
           }}
           onApply={async (changes) => {
             setMutationError(null);
+            // #451: preflight — never apply a change to a column that degraded
+            // after it was queued. Reject the whole batch before any mutation so
+            // a since-denied environment is never written blind.
+            const degradedChange = changes.find((change) =>
+              degradedByEnvironment.has(change.environmentId),
+            );
+            if (degradedChange !== undefined) {
+              throw new Error(
+                `cannot apply a change to the degraded environment ${degradedChange.environmentId}`,
+              );
+            }
             let normalizedCount = 0;
             const warnItems: ScanWarnItem[] = [];
             for (const change of changes) {
@@ -1278,10 +1407,14 @@ export function Matrix({
       {!importOpen ? null : (
         <ImportWizard
           matrixRef={ref}
-          environments={environments.map((environment) => ({
-            id: environment.id,
-            name: environment.name,
-          }))}
+          // #451: a degraded column cannot be an import target — its reads are
+          // denied or failed, so it never appears in the selectable set.
+          environments={environments
+            .filter((environment) => !degradedByEnvironment.has(environment.id))
+            .map((environment) => ({
+              id: environment.id,
+              name: environment.name,
+            }))}
           gitManaged={gitManaged}
           onClose={() => setImportOpen(false)}
         />
@@ -1334,7 +1467,9 @@ export function Matrix({
       {historyOpen ? (
         <HistoryDrawer
           refData={ref}
-          environments={environments}
+          // #451: a degraded column is not selectable for history — its current
+          // state is unreadable, so it never enters the drawer's environment set.
+          environments={readableEnvironments}
           keys={keys}
           currentRevisions={revisionsByEnvironment}
           protectedEnvironmentIds={protectedEnvironmentIds}

@@ -42,6 +42,7 @@ const rows: MatrixRowEditorProps['rows'] = [{
   environmentId,
   environment,
   protected: false,
+  degraded: false,
   cell: {
     key_id: keyRecord.id,
     name: keyRecord.name,
@@ -135,6 +136,78 @@ async function renderEditor() {
     unmount: async () => act(async () => root.unmount()),
   };
 }
+
+describe('MatrixRowEditor degraded columns (#451)', () => {
+  const degradedRows: MatrixRowEditorProps['rows'] = [
+    rows[0]!,
+    {
+      environmentId: 'env_01989abc-def0-7123-8123-1234567890ff',
+      environment: { ...environment, id: 'env_01989abc-def0-7123-8123-1234567890ff', name: 'production' },
+      protected: false,
+      degraded: true,
+      cell: undefined,
+      signal: undefined,
+      draftPreview: undefined,
+      problems: [],
+    },
+  ];
+
+  async function renderWith(rowsInput: MatrixRowEditorProps['rows']) {
+    const onApply = vi
+      .fn<(changes: readonly MatrixEditorChange[]) => Promise<void>>()
+      .mockResolvedValue(undefined);
+    const onCopy = vi.fn();
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      const queries = new QueryClient({ defaultOptions: { queries: { enabled: false } } });
+      root.render(
+        <QueryClientProvider client={queries}>
+          <MemoryRouter>
+            <MatrixRowEditor
+              refData={{ org: 'org-a', project: 'project-a' }}
+              keyRecord={keyRecord}
+              environmentId={environmentId}
+              rows={rowsInput}
+              busy={false}
+              mutationError={null}
+              onClose={vi.fn()}
+              onApply={onApply}
+              onCopy={onCopy}
+            />
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+    });
+    return { container, onApply, onCopy, unmount: async () => act(async () => root.unmount()) };
+  }
+
+  it('excludes a degraded column from bulk edit and copy destinations', async () => {
+    const view = await renderWith(degradedRows);
+
+    const editAll = [...view.container.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Edit all environments',
+    );
+    if (editAll === undefined) throw new Error('edit-all toggle missing');
+    await act(async () => editAll.click());
+
+    // Only the readable source column is editable — the degraded column is not.
+    expect(view.container.querySelectorAll('textarea')).toHaveLength(1);
+    expect(view.container.textContent).not.toContain('production');
+
+    const copyToggle = [...view.container.querySelectorAll('button')].find((button) =>
+      button.textContent?.startsWith('Copy'),
+    );
+    if (copyToggle !== undefined) {
+      await act(async () => copyToggle.click());
+      // The degraded column is not offered as a copy destination.
+      expect(view.container.textContent).not.toContain('production');
+    }
+
+    await view.unmount();
+  });
+});
 
 function typeInto(textarea: HTMLTextAreaElement, value: string): void {
   const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;

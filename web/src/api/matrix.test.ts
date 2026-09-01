@@ -41,8 +41,8 @@ const environmentProd = {
   display_order: 1,
 };
 
-function query<T>(data: T | undefined, isPending = false, isError = false) {
-  return { data, isPending, isError };
+function query<T>(data: T | undefined, isPending = false, isError = false, error: unknown = undefined) {
+  return { data, isPending, isError, error };
 }
 
 function environmentQuery<T>(
@@ -264,6 +264,43 @@ describe('environment-keyed matrix rows', () => {
     expect(error).toEqual({ status: 'error' });
     expect(stale).toEqual({ status: 'stale', data: devValues });
     expect(ready).toEqual({ status: 'ready', data: prodValues });
+  });
+
+  it('maps a 403 to forbidden, a non-403 to error, and forbids even a cached column', () => {
+    const [forbidden, forbiddenCached, otherError] = bindMatrixEnvironmentQueries(
+      'values',
+      [environmentDev, { ...environmentDev, id: 'env_cached' }, { ...environmentDev, id: 'env_500' }],
+      [
+        query(undefined, false, true, new ApiError(403, 'forbidden')),
+        // A revoked column blanks (fail-closed): a cached copy does not soften a
+        // 403 into 'stale'.
+        query({ environmentId: 'env_cached', value: devValues }, false, true, new ApiError(403, 'forbidden')),
+        query(undefined, false, true, new ApiError(500, 'boom')),
+      ],
+    ).map((entry) => entry.query);
+
+    expect(forbidden).toEqual({ status: 'forbidden' });
+    expect(forbiddenCached).toEqual({ status: 'forbidden' });
+    expect(otherError).toEqual({ status: 'error' });
+  });
+
+  it('ranks a mixed row as forbidden when one column is denied and another errors', () => {
+    const [row] = assembleMatrixEnvironmentRows([environmentDev], {
+      values: [{ environmentId: envDev, query: { status: 'forbidden' } }],
+      signals: [{ environmentId: envDev, query: { status: 'error' } }],
+      settings: [environmentQuery(envDev, devSettings)],
+      pendingDrafts: [environmentQuery(envDev, drafts)],
+    });
+    expect(row?.readiness).toBe('forbidden');
+
+    const [loadingRow] = assembleMatrixEnvironmentRows([environmentDev], {
+      values: [{ environmentId: envDev, query: { status: 'forbidden' } }],
+      signals: [environmentQuery<typeof devSignals>(envDev, undefined, true)],
+      settings: [environmentQuery(envDev, devSettings)],
+      pendingDrafts: [environmentQuery(envDev, drafts)],
+    });
+    // Pending still outranks forbidden — the column may yet resolve.
+    expect(loadingRow?.readiness).toBe('pending');
   });
 
   it('derives one row readiness with loading precedence and includes stale pending drafts', () => {
