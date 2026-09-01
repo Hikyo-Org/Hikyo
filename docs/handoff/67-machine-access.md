@@ -235,6 +235,74 @@ check. Neither was touched — `e2e/global-teardown.ts` is #56's locked harness.
 | Environment grant | `createEnvGrant` |
 | Grant warning's newly-reachable key set | `listValues` for the chosen environment (presence only — the surface never asks for plaintext) |
 
+## #464 — Create and delete service accounts (browser parity)
+
+Full server-capability parity was approved (2026-08-24), so the locked surface
+grew the two acts that let a browser-only operator seed and deprovision its own
+inventory — a fresh project no longer presents an inert list that only a
+CLI/API seed can fill.
+
+- **Create** — a primary `Create service account` action, above the table and
+  the one thing the empty state points at. The dialog collects **name and kind**
+  and posts the locked `createServiceAccount` body verbatim.
+- **Delete** — a per-account `btn--danger` in the row's action column, behind
+  the shared `TypedNameConfirm` gate (the same danger-zone control the project
+  and key deletes use): the destructive button stays dead until the exact
+  account name is typed.
+
+### Two contract decisions worth stating
+
+1. **Create collects name + kind, not name + description.** The ticket text said
+   "name and description", but the locked `CreateServiceAccountRequest` is
+   exactly `{ name, kind }` — there is no description field anywhere in the
+   contract, the store, or the audit payload. Adding one would be a
+   server + OpenAPI + migration change the handoff explicitly forbids
+   ("preserve the locked API… using generated operations"), so the form asks for
+   the field the contract actually has. `kind` (workload | automation) is
+   **immutable at creation**, so it is a select, never an edit.
+2. **Delete is an atomic cascade, not a dependency refusal.** The ticket asked
+   the dialog to "explain server refusal while credentials or bindings still
+   depend on the account", but `DeleteServiceAccount` (service layer, #15's
+   atomic revocation) **revokes every credential and releases every grant in one
+   transaction, then removes the principal** — and the delete contract declares
+   no 409. There is no dependency refusal to honour. So the dialog states that
+   **truth**: it names how many live credentials go and that the grants go with
+   them, immediate and non-recoverable, rather than warning of a refusal the
+   server never raises. A 404 (concurrent deletion) still maps to *"that service
+   account is no longer here."*
+
+### The gates, and why they differ from the mint's
+
+- **No passkey on delete.** Deprovisioning runs under the plain capability with
+  no disclosure gate and no reauthentication — the service comment is explicit
+  that requiring `reveal` to kill a compromised workload would be a
+  self-inflicted incident-response delay. The mint's ceremony loop is **not**
+  copied here; the typed name is the only gate.
+- **Create/delete gate on `canAdminister`, not `inputsReady`.** Both are
+  narrowings that carry no reach-quantifying warning, so neither needs the grant,
+  environment or credential reads `inputsReady` waits on. Coupling them to that
+  predicate would let a `manage-identities` admin who lacks `manage-members`
+  (an unreadable scope column) be unable to seed a fresh project — the exact
+  inert inventory #464 removes. They need only a live session and a known
+  listing.
+- **Commit-aware, like every other write here.** A create or delete that was
+  issued and then failed refreshes the inventory (and, for delete, the grant
+  column) and reports the act *may still have landed*. The delete's success and
+  failure paths **remove** the dead account's credential query rather than
+  invalidate it — an invalidate would race the account refetch into a 404 and
+  flip the whole surface to error.
+
+### Refusal vocabulary
+
+`createServiceAccountRefusalText` is a **separate** mapper from
+`identityRefusalText`: the shared 409 ("the live-credential ceiling, or an
+identical binding") is the *mint's* conflict. A create 409 is a **duplicate live
+name or a structural limit**, and a create 400 is the name constraint (1–64
+chars) — a wrong sentence here would send an operator to look at credentials for
+a name collision. The name is also refused client-side
+(`serviceAccountNameRefusal`: empty-after-trim or over 64) so a duplicate/blank
+name is a form refusal, not a bare 400, and editing the field clears it.
+
 ## The e2e fixture
 
 `seedTenant` now also creates, **inside the stepped-up TOTP session** (because

@@ -1,6 +1,8 @@
 import {
   createEnvGrantOp,
   createFederatedBindingOp,
+  createServiceAccountOp,
+  deleteServiceAccountOp,
   listKeysOp,
   listMachineCredentialsOp,
   listProjectGrantsOp,
@@ -195,6 +197,22 @@ export function useRefreshAccount(p: ProjectRef): (serviceAccount: string) => vo
 }
 
 /**
+ * useRefreshServiceAccounts re-reads the account listing.
+ *
+ * It exists for the create and delete failure paths: an issued mutation whose
+ * response never arrived may still have COMMITTED, and a committed create or
+ * delete must show in the inventory even when the dialog reports a failure. It
+ * deliberately does not touch any credential listing — invalidating a deleted
+ * account's rows would race the account refetch into a 404.
+ */
+export function useRefreshServiceAccounts(p: ProjectRef): () => void {
+  const queries = useQueryClient();
+  return () => {
+    void queries.invalidateQueries({ queryKey: accountsKey(p) });
+  };
+}
+
+/**
  * useRefreshGrants re-reads the scope surface, for the same reason
  * useRefreshAccount exists: a grant whose response never arrived may still
  * have COMMITTED, and a committed widening must show in the scope column even
@@ -230,6 +248,75 @@ export function useRevokeCredential(p: ProjectRef) {
       void queries.invalidateQueries({ queryKey: accountsKey(p) });
     },
   });
+}
+
+/**
+ * useCreateServiceAccount seeds a project's machine inventory from the browser.
+ *
+ * The body is exactly `{ name, kind }` — the locked create contract has no
+ * description, and `kind` (workload | automation) is immutable at creation, so
+ * it is a form field, never an edit. It invalidates the account listing on
+ * success; failure is handled at the call site, where a create that was issued
+ * but whose response was lost may still have committed.
+ */
+export function useCreateServiceAccount(p: ProjectRef) {
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { name: string; kind: ServiceAccount['kind'] }) =>
+      parsed(createServiceAccountOp, {
+          path: { org: p.org, project: p.project },
+          body: { name: input.name, kind: input.kind },
+        }),
+    onSuccess: () => {
+      void queries.invalidateQueries({ queryKey: accountsKey(p) });
+    },
+  });
+}
+
+/**
+ * useDeleteServiceAccount deprovisions a machine principal. The server deletes
+ * atomically — every credential revoked and every grant released in ONE
+ * transaction (#15) — so this is a cascade, never a dependency refusal.
+ *
+ * The deleted account's credential listing is REMOVED, not invalidated: a
+ * refetch of a now-absent account 404s, which would flip the surface's
+ * credential state to error and hold back every other act behind an alert. The
+ * account listing is invalidated (its rows and live counts moved) and the grant
+ * listing too (the released grants are gone from the scope column).
+ */
+export function useDeleteServiceAccount(p: ProjectRef) {
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: (serviceAccount: string) =>
+      ok(deleteServiceAccountOp, {
+          path: { org: p.org, project: p.project, serviceAccount },
+        }),
+    onSuccess: (_void, serviceAccount) => {
+      // ORDER IS LOAD-BEARING. Drop the account from the cached inventory FIRST,
+      // so the credentials `useQueries` stops observing it in the same render;
+      // only then remove its now-unobserved credential query. Removing the query
+      // before the account leaves the list would let the still-present account
+      // re-create and refetch it, and the delete's own 404 would flip the whole
+      // surface into credential-error state.
+      queries.setQueryData(accountsKey(p), dropServiceAccount(serviceAccount));
+      queries.removeQueries({ queryKey: credentialsKey(p, serviceAccount) });
+      void queries.invalidateQueries({ queryKey: accountsKey(p) });
+      void queries.invalidateQueries({ queryKey: projectGrantsKey(p) });
+    },
+  });
+}
+
+/** dropServiceAccount removes one account from a cached listing, count and all. */
+function dropServiceAccount(id: string) {
+  return (
+    current: z.infer<typeof zServiceAccountList> | undefined,
+  ): z.infer<typeof zServiceAccountList> | undefined => {
+    if (current === undefined) {
+      return current;
+    }
+    const items = current.items.filter((sa) => sa.id !== id);
+    return { ...current, items, count: items.length };
+  };
 }
 
 /** useCreateBinding mints a federated `(issuer, subject)` binding. */
@@ -624,6 +711,116 @@ export function pullRequestRefusal(eventName: string): string | null {
     `third-party code, so binding it hands every pull-request author this service ` +
     `account's fetch authority.`
   );
+}
+
+/**
+ * serviceAccountNameRefusal is the create form's client-side name gate, refused
+ * HERE rather than as a 400 so an operator meets it as a form.
+ *
+ * It mirrors the server's `name == "" || len(name) > 64` (ErrServiceAccountName)
+ * BYTE-FOR-BYTE: the name is sent untrimmed, so what is validated is what the
+ * server stores, and the limit is 64 BYTES — Go's `len` on a UTF-8 string, not
+ * 64 UTF-16 code units, so 22 three-byte characters already exceed it. Trimming
+ * would silently change the contract: " prod " sent as "prod" could collide
+ * with a different, byte-distinct account the server would have accepted.
+ */
+export function serviceAccountNameRefusal(name: string): string | null {
+  if (name === '') {
+    return 'A service account needs a name. Nothing was created.';
+  }
+  if (new TextEncoder().encode(name).length > 64) {
+    return 'The name is too long: 64 bytes at most. Nothing was created.';
+  }
+  return null;
+}
+
+/**
+ * createServiceAccountRefusalText names a create refusal in the create verb's
+ * OWN vocabulary — every status, never delegating to `identityRefusalText`.
+ *
+ * The shared mapper is wrong here in three places: its 409 is the MINT's
+ * conflict ("the live-credential ceiling, or an identical binding") rather than
+ * a duplicate name; its 403 demands a disclosure capability and reauthentication
+ * that a create never needs (create is `manage-identities`, no disclosure); and
+ * its 404 says "that service account is no longer here" when a create 404 is the
+ * PROJECT (or the authorization mask). Each wrong sentence sends the operator to
+ * the wrong place.
+ */
+export function createServiceAccountRefusalText(error: unknown): string {
+  if (error instanceof ApiError) {
+    switch (error.status) {
+      case 400:
+        return 'The server refused that name: it must be 1–64 bytes. Nothing was created.';
+      case 401:
+        return 'The session could not be authenticated. Reload and sign in before creating a service account.';
+      case 403:
+        return 'Creating a service account needs manage-identities on this project. Nothing was created.';
+      case 404:
+        return 'This project is no longer here, or you may not administer its identities. Nothing was created.';
+      case 409:
+        return 'That name is already used by a live service account here, or this project has reached a service-account limit. Choose another name. Nothing was created.';
+      case 429:
+        return 'Too many requests right now. Wait a moment and try again.';
+      default:
+        return `The service account could not be created (server error ${String(error.status)}).`;
+    }
+  }
+  return 'The service account could not be created.';
+}
+
+/**
+ * deleteServiceAccountRefusalText names a delete refusal in the delete verb's
+ * own vocabulary. It deliberately says nothing about disclosure capabilities or
+ * reauthentication — deprovisioning runs under the plain capability with no
+ * disclosure gate — so the shared 403 sentence would directly contradict the
+ * contract. A 404 is the concurrent-deletion case: already gone.
+ */
+export function deleteServiceAccountRefusalText(error: unknown): string {
+  if (error instanceof ApiError) {
+    switch (error.status) {
+      case 401:
+        return 'The session could not be authenticated. Reload and sign in before deleting a service account.';
+      case 403:
+        return 'Deleting a service account needs manage-identities on this project.';
+      case 404:
+        return 'That service account is no longer here — someone may have deleted it already.';
+      case 429:
+        return 'Too many requests right now. Wait a moment and try again.';
+      default:
+        return `The service account could not be deleted (server error ${String(error.status)}).`;
+    }
+  }
+  return 'The service account could not be deleted.';
+}
+
+/**
+ * createServiceAccountFailureText adds the issued-but-unconfirmed honesty: a
+ * create whose response was lost, or returned a 500 or an unparseable body, may
+ * still have COMMITTED — and a blind retry then reads the duplicate-name 409 as
+ * a fresh failure. The refusals DECIDED before any commit (a malformed name,
+ * authorization, a duplicate/limit, the budget) carry no such ambiguity, so
+ * they stay the plain sentence.
+ */
+export function createServiceAccountFailureText(error: unknown): string {
+  const base = createServiceAccountRefusalText(error);
+  if (error instanceof ApiError && [400, 401, 403, 404, 409, 429].includes(error.status)) {
+    return base;
+  }
+  return `${base} A service account may still have been created — check the inventory before retrying, since a retry can be refused as a duplicate name.`;
+}
+
+/**
+ * deleteServiceAccountFailureText is the same honesty for a delete: a lost
+ * response may still have removed the account and released its grants. The
+ * pre-commit refusals (401/403/429, and 404 which means it was already gone)
+ * stay plain.
+ */
+export function deleteServiceAccountFailureText(error: unknown): string {
+  const base = deleteServiceAccountRefusalText(error);
+  if (error instanceof ApiError && [401, 403, 404, 429].includes(error.status)) {
+    return base;
+  }
+  return `${base} The account may still have been deleted — check the inventory before retrying.`;
 }
 
 /**
