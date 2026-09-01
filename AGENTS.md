@@ -2,6 +2,8 @@
 
 Conventions for automated agents (and humans) working in this repository.
 
+Do NOT use em-dash (—)
+
 ## Commits must be DCO signed-off
 
 Every commit on a pull request **must** carry a Developer Certificate of Origin
