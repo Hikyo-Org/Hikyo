@@ -2,8 +2,9 @@
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import type { InstanceUpdateJob } from '../api/updates.ts';
 import { renderForm, settleTask, typeInto } from '../testkit/renderForm.tsx';
-import { AddRemote } from './Remotes.tsx';
+import { AddRemote, UpdateJobStatus } from './Remotes.tsx';
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -72,6 +73,48 @@ async function submit(container: HTMLElement): Promise<void> {
   });
   await settleTask();
 }
+
+describe('UpdateJobStatus', () => {
+  function updateJob(overrides: Partial<InstanceUpdateJob>): InstanceUpdateJob {
+    return {
+      id: 'job_1',
+      backend: 'flux',
+      version: '1.4.0',
+      state: 'queued',
+      phase: 'queued',
+      requested_at: '2026-01-01T00:00:00Z',
+      ...overrides,
+    };
+  }
+
+  it('renders a rollback-failed job as an alert carrying the failure code', async () => {
+    const rendered = await renderForm(
+      <UpdateJobStatus
+        jobID="job_9"
+        job={updateJob({ state: 'rollback-failed', phase: 'rollback', failure_code: 'health_probe' })}
+      />,
+    );
+    cleanups.push(rendered.unmount);
+
+    const alert = rendered.container.querySelector('[role="alert"]');
+    expect(alert).not.toBeNull();
+    expect(alert?.textContent).toContain('job_9');
+    expect(alert?.textContent).toContain('rollback-failed');
+    expect(alert?.textContent).toContain('(rollback)');
+    expect(alert?.textContent).toContain('health_probe');
+  });
+
+  it('renders a succeeded job as a plain status line, not an alert', async () => {
+    const rendered = await renderForm(
+      <UpdateJobStatus jobID="job_9" job={updateJob({ state: 'succeeded', phase: 'complete' })} />,
+    );
+    cleanups.push(rendered.unmount);
+
+    expect(rendered.container.querySelector('[role="alert"]')).toBeNull();
+    expect(rendered.container.textContent).toContain('succeeded');
+    expect(rendered.container.textContent).toContain('(complete)');
+  });
+});
 
 describe('AddRemote', () => {
   it('blocks an existing origin before starting the mutation', async () => {
