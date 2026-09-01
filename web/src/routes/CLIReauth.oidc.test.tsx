@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   load: vi.fn(),
   providerAvailable: true,
   provider: { kind: 'oidc', slug: 'strict', display_name: 'Corporate IdP' },
+  methods: { isError: false, refetch: vi.fn() },
 }));
 
 vi.mock('../api/cliReauth.ts', () => ({
@@ -22,6 +23,7 @@ vi.mock('../api/cliReauth.ts', () => ({
 vi.mock('../api/account.ts', () => ({
   useTotpStatus: () => ({ isSuccess: false }),
   useSessionOIDCProvider: () => (mocks.providerAvailable ? mocks.provider : null),
+  useAuthMethods: () => mocks.methods,
 }));
 
 vi.mock('../app/AuthProvider.tsx', () => ({
@@ -78,7 +80,9 @@ async function renderTransaction(environments: Array<{
 
 beforeEach(() => {
   mocks.load.mockReset();
+  mocks.methods.refetch.mockReset();
   mocks.providerAvailable = true;
+  mocks.methods.isError = false;
 });
 
 describe('CLI OIDC disclosure handoff', () => {
@@ -114,6 +118,23 @@ describe('CLI OIDC disclosure handoff', () => {
 
     expect(view.container.textContent).not.toContain('Re-authenticate with');
     expect(view.container.textContent).toContain('Authorize CLI');
+    await view.unmount();
+  });
+
+  it('shows and retries provider discovery failure for a sliding-window handoff', async () => {
+    mocks.providerAvailable = false;
+    mocks.methods.isError = true;
+    const view = await renderTransaction([
+      { environment_id: 'production', effective_window_seconds: 300, requires_webauthn: false },
+    ]);
+
+    expect(view.container.textContent).toContain('Identity provider options could not be loaded.');
+    const retry = [...view.container.querySelectorAll('button')].find(
+      (candidate) => candidate.textContent === 'Retry identity providers',
+    );
+    expect(retry).toBeDefined();
+    await act(async () => retry?.click());
+    expect(mocks.methods.refetch).toHaveBeenCalledOnce();
     await view.unmount();
   });
 });

@@ -211,6 +211,24 @@ func TestServiceBudgetCanOnlyBeDisabledByExplicitDevConfig(t *testing.T) {
 	}
 }
 
+func TestDevAdmissionOverrideCoversDiscoveryTraffic(t *testing.T) {
+	const override = 500
+	cfg := devConfig(t)
+	cfg.DevAdmissionPerIPPerMinute = override
+	_, limiter, err := AuthComponents(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for request := range override {
+		if !limiter.AllowDiscovery("127.0.0.1") {
+			t.Fatalf("discovery request %d was refused despite the development override", request+1)
+		}
+	}
+	if limiter.AllowDiscovery("127.0.0.1") {
+		t.Fatal("discovery request beyond the development override was admitted")
+	}
+}
+
 func TestPendingMigrationsWithAutoMigrateOffRefusesToServe(t *testing.T) {
 	cfg := devConfig(t)
 	cfg.AutoMigrate = false

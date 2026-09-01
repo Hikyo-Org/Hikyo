@@ -152,6 +152,25 @@ func TestPerIPSlidingWindow(t *testing.T) {
 	rel()
 }
 
+func TestDiscoveryAllowanceUsesItsLockedFloor(t *testing.T) {
+	l, err := New(Config{
+		BudgetMiB:      DefaultBudgetMiB,
+		ArgonMemoryKiB: 64 * 1024,
+		PerIPPerMinute: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for request := range MetaPerIPPerMinute {
+		if !l.AllowDiscovery("203.0.113.7") {
+			t.Fatalf("discovery request %d refused inside the locked allowance", request+1)
+		}
+	}
+	if l.AllowDiscovery("203.0.113.7") {
+		t.Fatal("discovery allowance was not enforced")
+	}
+}
+
 func TestPerAccountBackoffTransitions(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	l, err := New(Config{BudgetMiB: DefaultBudgetMiB, ArgonMemoryKiB: 64 * 1024, Now: fixedClock(&now)})

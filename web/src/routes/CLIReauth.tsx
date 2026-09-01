@@ -6,7 +6,7 @@ import {
   cliReauthCallbackURL,
   loadCLIReauthTransaction,
 } from '../api/cliReauth.ts';
-import { useSessionOIDCProvider, useTotpStatus } from '../api/account.ts';
+import { useAuthMethods, useSessionOIDCProvider, useTotpStatus } from '../api/account.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import {
   runAdapterPasskeyCeremony,
@@ -16,6 +16,7 @@ import {
   runTOTPCeremony,
 } from '../api/values.ts';
 import { Login } from './Login.tsx';
+import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
 
 /** Browser half of the CLI's state + PKCE reauthentication handoff. */
 export function CLIReauth() {
@@ -25,6 +26,7 @@ export function CLIReauth() {
   );
   const [totp, setTOTP] = useState('');
   const totpStatus = useTotpStatus();
+  const methods = useAuthMethods();
   const oidcProvider = useSessionOIDCProvider();
   const transaction = useQuery({
     queryKey: ['cli-reauth', state] as const,
@@ -103,6 +105,11 @@ export function CLIReauth() {
   const offersTOTP = disclosure && slidingEnvironments.length > 0 && hasTotp;
   const offersOIDC =
     disclosure && slidingEnvironments.length > 0 && oidcProvider !== null;
+  const methodsFailed =
+    disclosure &&
+    slidingEnvironments.length > 0 &&
+    auth.identity?.session.assurance.method.startsWith('oidc:') === true &&
+    methods.isError;
 
   return (
     <main className="login">
@@ -134,6 +141,9 @@ export function CLIReauth() {
                 </>
               )}
             </p>
+            {methodsFailed ? (
+              <ProviderDiscoveryAlert onRetry={() => void methods.refetch()} />
+            ) : null}
             {transaction.data.purpose !== 'adapter' ? (
               <ul className="mono">
                 {transaction.data.key_ids.map((keyId) => (

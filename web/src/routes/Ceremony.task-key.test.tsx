@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   },
   providerAvailable: false,
   provider: { kind: 'oidc', slug: 'strict', display_name: 'Corporate IdP' },
+  methods: { isError: false, refetch: vi.fn() },
 }));
 
 vi.mock('../api/values.ts', async (importActual) => {
@@ -34,6 +35,7 @@ vi.mock('../app/AuthProvider.tsx', () => ({
 
 vi.mock('../api/account.ts', () => ({
   useSessionOIDCProvider: () => (mocks.providerAvailable ? mocks.provider : null),
+  useAuthMethods: () => mocks.methods,
 }));
 
 vi.mock('../api/transport.tsx', () => ({
@@ -87,8 +89,10 @@ beforeEach(() => {
   mocks.runPasskeyCeremony.mockReset();
   mocks.runOIDCCeremony.mockReset();
   mocks.refreshSession.mockReset();
+  mocks.methods.refetch.mockReset();
   mocks.identity = null;
   mocks.providerAvailable = false;
+  mocks.methods.isError = false;
 });
 
 describe('Ceremony task identity', () => {
@@ -185,6 +189,38 @@ describe('Ceremony task identity', () => {
 
     expect(container.textContent).not.toContain('Re-authenticate with');
     expect(container.textContent).toContain('Use a passkey');
+    await act(async () => root.unmount());
+  });
+
+  it('shows and retries provider discovery failure during a reusable-window ceremony', async () => {
+    mocks.identity = { session: { assurance: { method: 'oidc:strict', provider: 'strict' } } };
+    mocks.methods.isError = true;
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () =>
+      root.render(
+        <Ceremony
+          request={{
+            ...ceremonyRequest('production'),
+            window: {
+              protected: false,
+              effective_window_seconds: 300,
+              live: false,
+              single_decision: false,
+              can_reveal: false,
+              totp_offered: true,
+            },
+          }}
+          onAuthorised={vi.fn()}
+          onCancel={vi.fn()}
+        />,
+      ),
+    );
+
+    expect(container.textContent).toContain('Identity provider options could not be loaded.');
+    await act(async () => button(container, 'Retry identity providers').click());
+    expect(mocks.methods.refetch).toHaveBeenCalledOnce();
     await act(async () => root.unmount());
   });
 
