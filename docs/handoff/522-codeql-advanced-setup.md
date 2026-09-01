@@ -1,5 +1,8 @@
 # CodeQL: default setup → advanced setup (PR #522)
 
+> Superseded on 2026-09-01: Hikyo returned to GitHub-managed default setup.
+> See `docs/handoff/ci-path-filters-and-codeql-dedupe.md`.
+
 ## Root cause
 
 GitHub's default CodeQL setup installs its own Go toolchain (currently
