@@ -25,7 +25,7 @@ export function Projects() {
       {activeOrgId === '' ? (
         <p role="status" className="hint-wrap">
           None of your grants names an organisation yet. An instance administrator creates one
-          under Instance administration and grants access there (Instance grants, with your
+          under Instance settings and grants access under Instance members (with your
           principal ID from Account &amp; security), or from a terminal with{' '}
           <code>hikyo access grant template</code>. A grant on your own account ends the current
           session.

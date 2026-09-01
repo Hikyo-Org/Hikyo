@@ -134,11 +134,11 @@ export function InstanceAdmin() {
           <div className="field settings-row__spacer"><label htmlFor={nameId}>New organisation name</label><input id={nameId} value={name} onChange={(event) => setName(event.target.value)} /></div>
           <button type="button" className="btn btn--primary" aria-label="Create organisation" disabled={create.isPending || name.trim() === ''} onClick={() => create.mutate({ name: name.trim() }, {
             onError: (error) => report(settingsOperationFailure('create-org', error)),
-          })}>Create organization</button>
+          })}>Create organisation</button>
         </div>
       ) : null}
       <div className="instance-create-row">
-        <button type="button" className="btn btn--primary" aria-label="Open create organisation form" onClick={() => setShowCreate((visible) => !visible)}>+ create organization</button>
+        <button type="button" className="btn btn--primary" aria-label="Open create organisation form" onClick={() => setShowCreate((visible) => !visible)}>+ create organisation</button>
         <code className="instance-cli">$ hikyo org create</code>
       </div>
     </Panel>

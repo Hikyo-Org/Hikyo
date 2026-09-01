@@ -63,3 +63,4 @@ State vocabulary (always paired with a glyph or text, never color-only):
 - Cells: plain monospaced value/state text; borders only name problems or active draft state.
 - Centred cell modal: one selected key/environment first, with provenance, schema, edit, copy, clear, reveal, and history actions. Multi-environment editing is explicit secondary disclosure.
 - Group headers: collapsible; collapsed state shows comma-separated key names.
+- Sidebar: one table (`web/src/app/navigation.ts`) renders desktop and mobile; a context block (project or instance) stacks above the organisation block, which is never hidden; instance and account destinations live in the rail on desktop and in the drawer on mobile. Every scope is a {Members, Settings} pair with the same page anatomy (h1 · lede · jump index · panels).

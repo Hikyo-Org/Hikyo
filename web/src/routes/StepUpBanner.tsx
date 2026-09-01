@@ -59,7 +59,7 @@ export function StepUpBanner({ session }: { session: WhoAmI }) {
           This session is password-only
         </h2>
         <p className="stepup__lede">
-          Instance administration, grants and secret disclosure need a second factor presented in
+          Instance settings, grants and secret disclosure need a second factor presented in
           this session. Present it here; nothing else about the session changes.
         </p>
       </div>
