@@ -9,6 +9,17 @@ the authority the code cites ships with the code; `docs/adr/` on `main` is the
 canonical copy from that date. The frozen UI prototypes the ui-spec refers to
 stay on that branch (`prototype/`), as do the research notes' images.
 
+**The sanctioned store→transport alias seam.** `internal/service` exposes a
+small set of Go aliases to store-owned types: `AdapterTarget`,
+`AdapterConflictEntry`, `AdapterConflictArtifact`, `AdapterRecord`, and
+`AdapterMove` in `adapters.go`, plus `RetentionConsequence` in `pins.go`. These
+types are intentionally shared with transport mapping instead of restated as
+service-owned views. The system-architecture ADR owns the import direction,
+and `internal/boundary/boundary_test.go` mechanically forbids handlers from
+importing `internal/store`; transport therefore cannot reach the datastore
+directly. Piloting service-owned views remains a separate decision
+([#516](https://github.com/Hikyo-Org/Hikyo/issues/516) option b).
+
 Read every ADR **through its amendment banners**: the banner text wins over
 the body below it. A change that contradicts a locked ADR reopens the ADR
 (amendment banner, cross-model review) rather than diverging silently — the

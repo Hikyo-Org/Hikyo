@@ -55,10 +55,29 @@ type AdapterView struct {
 	TargetConflicts map[string][]store.AdapterConflictArtifact
 }
 
+// AdapterTarget intentionally shares a store-owned type with transport mapping.
+// This sanctioned seam follows the system-architecture ADR; boundary_test.go
+// enforces that handlers never import internal/store directly.
 type AdapterTarget = store.AdapterTarget
+
+// AdapterConflictEntry intentionally shares a store-owned type with transport mapping.
+// This sanctioned seam follows the system-architecture ADR; boundary_test.go
+// enforces that handlers never import internal/store directly.
 type AdapterConflictEntry = store.AdapterConflictEntry
+
+// AdapterConflictArtifact intentionally shares a store-owned type with transport mapping.
+// This sanctioned seam follows the system-architecture ADR; boundary_test.go
+// enforces that handlers never import internal/store directly.
 type AdapterConflictArtifact = store.AdapterConflictArtifact
+
+// AdapterRecord intentionally shares a store-owned type with transport mapping.
+// This sanctioned seam follows the system-architecture ADR; boundary_test.go
+// enforces that handlers never import internal/store directly.
 type AdapterRecord = store.AdapterRecord
+
+// AdapterMove intentionally shares a store-owned type with transport mapping.
+// This sanctioned seam follows the system-architecture ADR; boundary_test.go
+// enforces that handlers never import internal/store directly.
 type AdapterMove = store.AdapterMove
 
 type AdapterTargetInput struct {

@@ -71,6 +71,9 @@ type SetPinResult struct {
 	Pin    PinView
 }
 
+// RetentionConsequence intentionally shares a store-owned type with transport mapping.
+// This sanctioned seam follows the system-architecture ADR; boundary_test.go
+// enforces that handlers never import internal/store directly.
 type RetentionConsequence = store.RetentionConsequence
 
 const (
