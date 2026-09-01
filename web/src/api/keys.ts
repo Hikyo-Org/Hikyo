@@ -21,6 +21,8 @@ export const projectRetentionKey = (ref: MatrixRef) =>
   ['project-retention', ref.org, ref.project] as const;
 export const matrixKeysKey = (ref: MatrixRef) =>
   ['matrix-keys', ref.org, ref.project] as const;
+export const matrixKeyKey = (ref: MatrixRef, key: string) =>
+  [...matrixKeysKey(ref), 'key', key] as const;
 export const matrixGroupsKey = (ref: MatrixRef) =>
   ['matrix-groups', ref.org, ref.project] as const;
 export const signalsMatrixKey = (ref: MatrixRef) =>

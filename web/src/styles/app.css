@@ -3593,6 +3593,143 @@ select {
   justify-content: flex-start;
 }
 
+/* --- Key declaration detail (#491) --------------------------------------- */
+
+/* The catalogue detail is a routed panel layered over the matrix, exactly like
+   the revision-history drawer: a fixed right-hand panel on a desktop, the full
+   surface on a phone. It reuses the panel's palette and hairline so it reads as
+   the same overlay family. */
+.key-detail {
+  position: fixed;
+  inset: 0 0 0 auto;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(640px, 100%);
+  padding: 16px;
+  border-left: 1px solid var(--line);
+  background: var(--bg-panel);
+  color: var(--tx);
+  overflow-y: auto;
+}
+
+.key-detail__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.key-detail__head h2 {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 17px;
+}
+
+.key-detail__close {
+  margin-left: auto;
+}
+
+.key-detail__state {
+  margin: 0;
+  color: var(--tx-dim);
+}
+
+.key-detail__body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.key-detail__facts {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.key-detail__fact {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 12px;
+}
+
+.key-detail__fact dt {
+  color: var(--tx-dim);
+  font-size: 13px;
+}
+
+.key-detail__fact dd {
+  margin: 0;
+  color: var(--tx);
+  overflow-wrap: anywhere;
+}
+
+.key-detail__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.key-detail__section h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.key-detail__rule,
+.key-detail__rules-note,
+.key-detail__presence,
+.key-detail__provenance,
+.key-detail__public-note {
+  margin: 0;
+  color: var(--tx-dim);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.key-detail__presence-label {
+  color: var(--tx-dim);
+  font-weight: 500;
+}
+
+.key-detail__rules,
+.key-detail__findings {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--tx-dim);
+  font-size: 13px;
+}
+
+.key-detail__editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.key-detail__editor h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.key-detail__editor textarea {
+  min-height: 88px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg);
+  color: var(--tx);
+  font: inherit;
+  resize: vertical;
+}
+
+.key-detail__editor textarea:focus-visible {
+  border-color: var(--accent);
+}
+
 .btn--danger {
   border-color: var(--danger);
   background: color-mix(in oklch, var(--bg-raise), var(--danger) 16%);

@@ -60,6 +60,15 @@ export const FLOWS: readonly Flow[] = [
   // more than one flow, and the run log holds each flow's claim independently.
   { id: 'scanning', spec: 'flows/scanning.spec.ts', surfaces: ['matrix'] },
   { id: 'history', spec: 'flows/history.spec.ts', surfaces: ['history'] },
+  // The catalogue declaration detail (#491) rides the matrix spec. It is a new
+  // SURFACE, so the S3 closure demands a flow, but it cannot get its own spec
+  // FILE: the merge gate loads `ci.yml` from the base branch
+  // (`ci-control.yml` is `pull_request_target`), so the per-group spec lists a
+  // leg runs are the base branch's, and a spec a PR adds to a group never runs
+  // on that PR — its pinned claims would then never execute and web-closure
+  // would fail forever. Riding a file already in a group (matrix, group 2)
+  // lets the surface's pinned set run from PR-checked-out spec content today.
+  { id: 'key-detail', spec: 'flows/matrix.spec.ts', surfaces: ['key-detail'] },
   {
     id: 'machine-access',
     spec: 'flows/machine-access.spec.ts',

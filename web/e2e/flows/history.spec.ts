@@ -365,10 +365,13 @@ test.describe('revision history', () => {
   });
 
   test('filters the timeline to one key, by click and by URL', async ({ page }) => {
-    // Entry 1: the matrix KEY NAME opens the drawer filtered to that key
-    // (revision-history it-1/6 — the name is history; any cell is the editor).
+    // Entry 1: the matrix KEY NAME now opens that key's DECLARATION DETAIL
+    // (#491, superseding the older name→history); per-key history is one gesture
+    // deeper, from the detail's own "revision history" link. Any cell is still
+    // the editor.
     await page.goto(MATRIX_PATH);
-    await page.getByRole('link', { name: `History of ${seed.history.configKey}` }).click();
+    await page.getByRole('link', { name: `Declaration of ${seed.history.configKey}` }).click();
+    await page.getByRole('link', { name: /revision history/i }).click();
     const drawer = page.getByRole('complementary', { name: 'Revision history' });
     await expect(drawer.locator('.history__filter')).toContainText(
       `filter active: history of ${seed.history.configKey}`,

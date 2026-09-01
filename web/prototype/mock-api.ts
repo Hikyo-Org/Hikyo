@@ -15,7 +15,9 @@ import {
   zSetDefinitionsSettingsRequest,
   zSetProjectRetentionRequest,
   zSetValueRequest,
+  zUpdateKeyMetadataRequest,
 } from '../../clients/ts/src/generated/zod.gen.ts';
+import type { Key } from '../../clients/ts/src/generated/types.gen.ts';
 import { expandTemplate, type Level } from '../src/api/access-templates.ts';
 import type { Plugin } from 'vite';
 
@@ -91,7 +93,7 @@ const environmentItems = Object.entries(ids.environments).map(([name, id], displ
   created_at: fixtureTime,
 }));
 
-const keys = keySeeds.map(([id, name, classification, groupId, description]) => ({
+const keys: Key[] = keySeeds.map(([id, name, classification, groupId, description]) => ({
   id,
   org_id: ids.org,
   project_id: ids.project,
@@ -1205,6 +1207,37 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
     const items = scenario === 'empty' ? [] : groups;
     send(response, 200, { items, count: items.length });
     return true;
+  }
+
+  // The catalogue declaration detail (#491): one key's full declaration, and
+  // its metadata edit. The store is the same `keys` array the list serves, so
+  // an edit here shows through on the matrix and survives a prototype reload —
+  // the same in-memory persistence the create handler above relies on.
+  const keyDetailMatch = new RegExp(`^${projectRoot}/keys/([^/]+)$`).exec(path);
+  if (keyDetailMatch !== null && (method === 'GET' || method === 'PATCH')) {
+    const reference = keyDetailMatch[1];
+    const key = reference === undefined ? undefined : keyByReference(reference);
+    if (key === undefined) {
+      send(response, 404, { error: { code: 'not_found' } });
+      return true;
+    }
+    if (method === 'GET') {
+      send(response, 200, key);
+      return true;
+    }
+    return body(request).then((raw) => {
+      const input = zUpdateKeyMetadataRequest.parse(JSON.parse(raw));
+      if (input.folder_path !== undefined) {
+        key.folder_path = input.folder_path;
+        key.group_id = input.folder_path;
+      }
+      if (input.description !== undefined) key.description = input.description;
+      if (input.deprecated !== undefined) key.deprecated = input.deprecated;
+      if (input.deprecation_note !== undefined) key.deprecation_note = input.deprecation_note;
+      if (input.classification !== undefined) key.classification = input.classification;
+      send(response, 200, key);
+      return true;
+    });
   }
 
   const environmentMatch = new RegExp(`^${projectRoot}/environments/([^/]+)/(values|signals|settings|pending)$`).exec(path);

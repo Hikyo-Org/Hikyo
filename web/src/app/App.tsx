@@ -64,6 +64,14 @@ const ELEMENTS: Record<SurfaceId, ReactElement> = {
       <Matrix historyOpen />
     </WorkspaceScope>
   ),
+  // The catalogue declaration detail is the matrix with one key's declaration
+  // open — same component, same workspace wrapper as `history`, so a `?remote`
+  // deep link resolves the key against the workspace's instance, not this one.
+  'key-detail': (
+    <WorkspaceScope>
+      <Matrix keyDetailOpen />
+    </WorkspaceScope>
+  ),
   values: (
     <WorkspaceScope>
       <Values />
