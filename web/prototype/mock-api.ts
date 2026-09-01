@@ -11,6 +11,7 @@ import {
   zPublishRequest,
   zRenameRequest,
   zRetentionPolicy,
+  zRotateRootKeyRequest,
   zSetCredentialPolicyRequest,
   zSetDefinitionsSettingsRequest,
   zSetProjectRetentionRequest,
@@ -594,6 +595,14 @@ export function prototypeReadFixture(
   if (path === '/api/v1/instance/credential-policy') {
     return { status: 200, body: prototypeCredentialPolicy };
   }
+  // The provider, federation and SP-key panels render unguarded in prototype
+  // mode (#567); the prototype has none configured, and says so.
+  if (path === '/api/v1/instance/oidc-providers') return { status: 200, body: { providers: [] } };
+  if (path === '/api/v1/instance/saml-providers') return { status: 200, body: { providers: [] } };
+  if (path === '/api/v1/instance/saml-sp-keys') return { status: 200, body: { keys: [] } };
+  if (path === '/api/v1/instance/federation-issuers') {
+    return { status: 200, body: { items: [], count: 0 } };
+  }
 
   const extraProjectRead = new RegExp(
     `^/api/v1/orgs/${ids.org}/projects/([^/]+)$`,
@@ -884,6 +893,32 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
   if (path === '/api/v1/instance/rotate-token-key' && method === 'POST') {
     send(response, 200, { token_key_version: 2 });
     return true;
+  }
+  // The remaining crypto jobs (#503), stubbed the way rotate-token-key is:
+  // the prototype has no ciphertext to move, so every rotation reports the
+  // next version and every re-encryption moves nothing.
+  if (path === '/api/v1/instance/rotate-scanning-key' && method === 'POST') {
+    send(response, 200, { scanning_key_version: 2, dismissals_dropped: 0 });
+    return true;
+  }
+  if (path === '/api/v1/instance/rotate-master-key' && method === 'POST') {
+    send(response, 200, { key_version: 2 });
+    return true;
+  }
+  if (path === '/api/v1/instance/rotate-dek' && method === 'POST') {
+    send(response, 200, { scope: 'instance', key_version: 2 });
+    return true;
+  }
+  if (path === '/api/v1/instance/reencrypt' && method === 'POST') {
+    send(response, 200, { scope: 'instance', rows_moved: 0 });
+    return true;
+  }
+  if (path === '/api/v1/instance/rotate-root-key' && method === 'POST') {
+    return body(request).then((raw) => {
+      const input = zRotateRootKeyRequest.parse(JSON.parse(raw));
+      send(response, 200, { phase: input.phase, root_key_epoch: 2 });
+      return true;
+    });
   }
 
   const removePasskey = /^\/api\/v1\/auth\/webauthn\/credentials\/([^/]+)$/.exec(path);

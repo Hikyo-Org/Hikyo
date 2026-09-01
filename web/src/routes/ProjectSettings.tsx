@@ -116,7 +116,7 @@ export function ProjectSettings() {
         />
       </Panel>
 
-      <Panel id="project-metadata" title="Metadata">
+      <Panel id="project-metadata" title="Metadata" tight>
         <div className="settings-grid">
         <div className="field">
           <label htmlFor={nameId}>Name</label>

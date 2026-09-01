@@ -67,6 +67,25 @@ function dialog(container: HTMLElement): HTMLElement {
 }
 
 describe('instance crypto maintenance', () => {
+  it('is titled Instance settings and carries no grants panel or prototype fiction', async () => {
+    const view = await mountInstanceAdmin(() => null);
+    await settleTask();
+    try {
+      expect(view.container.querySelector('h1')?.textContent).toBe('Instance settings');
+      const headings = [...view.container.querySelectorAll('h2')].map((h) => h.textContent);
+      expect(headings).not.toContain('Instance grants');
+      expect(headings.some((h) => h?.startsWith('Connected instances'))).toBe(false);
+      expect(view.container.textContent).not.toContain('decided round 3');
+      expect(view.container.textContent).not.toContain('rotated 2026-06-20');
+      const members = [...view.container.querySelectorAll('a')].find(
+        (a) => a.textContent === 'Instance members',
+      );
+      expect(members?.getAttribute('href')).toBe('/instance/members');
+    } finally {
+      await view.unmount();
+    }
+  });
+
   it('rotates the instance DEK only after the consequences dialog is confirmed', async () => {
     const fetchMock = vi.fn();
     const view = mountInstanceAdmin((request, path) => {

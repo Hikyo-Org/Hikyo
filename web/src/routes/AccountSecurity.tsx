@@ -206,7 +206,7 @@ export function AccountSecurity() {
       {done !== null ? <Done>{done}</Done> : null}
       {failure !== null ? <Alert>{failure}</Alert> : null}
 
-      <Panel id="account-profile" title="Profile">
+      <Panel id="account-profile" title="Profile" tight>
         <div className="settings-grid">
           <div className="field field--readonly">
             <label htmlFor="account-display-name">
@@ -272,7 +272,7 @@ export function AccountSecurity() {
           </div>
         )) : null}
 
-        <div className="settings-row">
+        <div className="settings-row settings-row--compact">
           <div className="settings-row__copy">
             <span className="settings-row__title">Authenticator app</span>
             <span className="settings-row__detail">TOTP · single-use per step</span>
@@ -304,7 +304,7 @@ export function AccountSecurity() {
           <Alert>Your authenticator state could not be read. Reload to try again.</Alert>
         ) : null}
 
-        <div className="settings-row">
+        <div className="settings-row settings-row--compact">
           <div className="settings-row__copy">
             <span className="settings-row__title">Password</span>
             <span className="settings-row__detail">signs you in, never authorises security changes</span>
@@ -315,7 +315,7 @@ export function AccountSecurity() {
           </button>
         </div>
 
-        <div className="settings-row">
+        <div className="settings-row settings-row--compact">
           <div className="settings-row__copy">
             <span className="settings-row__title">Add passkey</span>
             <span className="settings-row__detail">

@@ -92,7 +92,7 @@ test.describe('instance administration', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/instance');
     await expect(
-      page.getByRole('heading', { name: 'Instance administration', level: 1 }),
+      page.getByRole('heading', { name: 'Instance settings', level: 1 }),
     ).toBeVisible();
   });
 
@@ -189,7 +189,7 @@ test.describe('instance administration', () => {
     // interrupted-then-resumed recovery, not a re-run of an already-finished job.
     await page.reload();
     await expect(
-      page.getByRole('heading', { name: 'Instance administration', level: 1 }),
+      page.getByRole('heading', { name: 'Instance settings', level: 1 }),
     ).toBeVisible();
     await keys.getByRole('button', { name: 'Re-encrypt the instance' }).click();
     await expect(page.locator('.notice')).toContainText('Instance re-encryption complete');
@@ -860,26 +860,27 @@ test.describe('instance administration', () => {
       await page.emulateMedia({ colorScheme: scheme });
       try {
         const heading = page.getByRole('heading', {
-          name: 'Instance administration',
+          name: 'Instance settings',
           level: 1,
         });
         const well = page.locator('.panel').first();
         const create = page.getByRole('button', { name: 'Open create organisation form' });
-        const badge = page.locator('.badge').first();
+        const tag = page.locator('.settings-tag').first();
+        const cli = page.locator('.instance-cli').first();
 
         await expectPinnedAssertionSet(page, {
           flow: 'instance-admin',
           surface: 'instance-admin',
           theme: scheme,
-          text: [heading, page.locator('.factor__meta').first(), page.locator('.page__lede')],
+          text: [heading, page.locator('.settings-row__detail').first(), page.locator('.page__lede')],
           radii: [
             [well, 'container'],
             [create, 'control'],
-            [badge, 'badge'],
+            [tag, 'badge'],
           ],
           fonts: [
             [heading, 'ui'],
-            [page.locator('.factor__meta').first(), 'mono'],
+            [cli, 'mono'],
           ],
           colours: [
             [heading, 'color', '--tx'],
@@ -888,6 +889,53 @@ test.describe('instance administration', () => {
           ],
           hairlines: [well],
           density: [],
+        });
+      } finally {
+        await page.emulateMedia({ colorScheme: null });
+      }
+    });
+  }
+
+  // The instance members surface (#567) rides this spec: the closure demands a
+  // pinned run per theme, and both themes are half the palette each.
+  for (const scheme of ['dark', 'light'] as const) {
+    test(`meets the pinned assertion set on instance members (${scheme})`, async ({
+      page,
+    }, testInfo) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      try {
+        await page.goto('/instance/members');
+        const rowDensity = testInfo.project.name === 'mobile' ? '--touch' : '--row';
+        const heading = page.getByRole('heading', { name: 'Members · Instance', level: 1 });
+        const well = page.locator('.panel').first();
+        const jump = page.getByRole('link', { name: 'Who can…?' });
+        const chip = page.locator('.chip').first();
+        const newGrant = page.getByRole('button', { name: 'New grant' });
+
+        await expectPinnedAssertionSet(page, {
+          flow: 'instance-admin',
+          surface: 'instance-members',
+          theme: scheme,
+          text: [heading, page.locator('.inspect__answer'), page.locator('.capability__name').first()],
+          radii: [
+            [well, 'container'],
+            [newGrant, 'control'],
+            [chip, 'badge'],
+          ],
+          fonts: [
+            [heading, 'ui'],
+            [page.locator('.capability__name').first(), 'mono'],
+          ],
+          colours: [
+            [heading, 'color', '--tx'],
+            [well, 'backgroundColor', '--bg-panel'],
+            [well, 'borderTopColor', '--panel-line'],
+          ],
+          hairlines: [well],
+          density: [
+            [newGrant, rowDensity],
+            [jump, rowDensity],
+          ],
         });
       } finally {
         await page.emulateMedia({ colorScheme: null });
