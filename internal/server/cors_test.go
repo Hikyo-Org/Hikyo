@@ -11,6 +11,16 @@ import (
 // The two rules that make the allowlist mean something at the transport, and
 // the one that makes the CSP a closed list rather than an escape hatch.
 
+type countingWorkspaceOriginCheck struct {
+	WorkspaceService
+	consults int
+}
+
+func (c *countingWorkspaceOriginCheck) OriginAllowed(context.Context, string) (bool, error) {
+	c.consults++
+	return false, nil
+}
+
 func corsHandler(allowed ...string) http.Handler {
 	set := map[string]bool{}
 	for _, o := range allowed {
@@ -21,6 +31,30 @@ func corsHandler(allowed ...string) http.Handler {
 	})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
+}
+
+func TestCORSSameOriginMutationSkipsAllowlistConsult(t *testing.T) {
+	const externalOrigin = "https://hikyo.example"
+	workspace := &countingWorkspaceOriginCheck{}
+	h := NewPublic(nil, &API{Workspace: workspace}, nil, PublicOptions{ExternalOrigin: externalOrigin})
+
+	req := httptest.NewRequest(http.MethodPost, "/same-origin-mutation", nil)
+	req.Header.Set("Origin", "https://HIKYO.example/")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if workspace.consults != 0 {
+		t.Fatalf("same-origin mutation performed %d allowlist consults, want 0", workspace.consults)
+	}
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want downstream status %d", rec.Code, http.StatusNotFound)
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("Allow-Origin = %q for a same-origin request, want no CORS grant", got)
+	}
+	if !strings.Contains(rec.Header().Get("Vary"), "Origin") {
+		t.Fatal("Vary: Origin is missing on the same-origin branch")
+	}
 }
 
 func TestCORSEchoesExactlyOneAllowlistedOriginAndNeverCredentials(t *testing.T) {
