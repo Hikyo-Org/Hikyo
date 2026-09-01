@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import type { RefusalFinding } from '../api/client.ts';
+import { ApiError, type RefusalFinding } from '../api/client.ts';
 import { useModalDialog } from './useModalDialog.ts';
 
 /**
@@ -8,8 +8,8 @@ import { useModalDialog } from './useModalDialog.ts';
  *
  * Unlike the Surface-1 warn, the write was REFUSED: the scanner matched
  * credential-shaped material on a write that must not carry it. The dialog
- * renders only the redacted findings the refusal carried — a rule id, the
- * surface it fired on, and an immutable locator — NEVER the matched text, and
+ * renders only the redacted findings the refusal carried — a rule id and an
+ * immutable locator (secret-scanning ADR §4) — NEVER the matched text, and
  * never the value the operator supplied (which is not in the refusal and is not
  * passed here). That is the whole non-leak guarantee.
  *
@@ -51,7 +51,18 @@ export function ScanBlockDialog({
     setError(null);
     void onOverride(tokens)
       .then(() => onClose())
-      .catch(() => setError('The override was refused. Reload and review the findings again.'))
+      // A rejected override carries the server's OWN caller-safe reason — a
+      // content-bound token the field's content outran is rejected by name
+      // (stale / version-skew / surplus / expired), never as matched text. Show
+      // that named refusal verbatim; only a refusal that carried no safe detail
+      // falls back to the generic line.
+      .catch((error: unknown) => {
+        setError(
+          error instanceof ApiError && error.detail !== undefined && error.detail !== ''
+            ? error.detail
+            : 'The override was refused. Reload and review the findings again.',
+        );
+      })
       .finally(() => setBusy(false));
   };
 
@@ -76,7 +87,6 @@ export function ScanBlockDialog({
         {findings.map((finding, index) => (
           <li className="scan-block__finding" key={`${finding.rule_id} ${finding.locator} ${String(index)}`}>
             <span className="mono scan-block__rule">{finding.rule_id}</span>
-            <span className="scan-block__surface">{finding.surface}</span>
             <span className="mono scan-block__locator">{finding.locator}</span>
           </li>
         ))}

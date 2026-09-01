@@ -10,10 +10,11 @@ import {
   type MatrixKey,
   type MatrixRef,
 } from '../api/matrix.ts';
-import { ApiError } from '../api/client.ts';
+import { ApiError, type RefusalFinding } from '../api/client.ts';
 import { useWorkspaceContext, withRemote } from '../api/transport.tsx';
 import type { EnvironmentList } from '../api/values.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 import { Alert, Done } from './Sections.tsx';
 
 type Environment = EnvironmentList['items'][number];
@@ -105,7 +106,12 @@ export function KeyDeclarationDetail({
       className="key-detail"
       aria-label="Key declaration"
       onKeyDown={(event) => {
-        if (event.key === 'Escape') {
+        // Escape closes the panel back to the matrix — but NOT while a modal
+        // dialog owns the top layer. The Surface-2 scanning block (#183) is a
+        // native <dialog>; its Escape is the dialog's own dismiss and must not
+        // also collapse the surface behind it. The keydown still bubbles here,
+        // so guard on an open dialog rather than let both fire.
+        if (event.key === 'Escape' && document.querySelector('dialog[open]') === null) {
           event.preventDefault();
           void navigate(matrixPath);
         }
@@ -406,6 +412,13 @@ function MetadataEditor({
   const [description, setDescription] = useState(record.description);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  // The Surface-2 scanning block (#183): a refused write carries redacted
+  // findings, never the flagged material. `findings` drives the dialog; the
+  // value the operator typed is never passed there.
+  const [scanBlock, setScanBlock] = useState<{
+    readonly findings: readonly RefusalFinding[];
+    readonly onOverride: ((tokens: readonly string[]) => Promise<void>) | null;
+  } | null>(null);
 
   // Reload the fields when the underlying record changes (a concurrent edit
   // invalidated the query) so the form never silently overwrites fresh data
@@ -426,16 +439,46 @@ function MetadataEditor({
     if (!dirty) return;
     setRefusal(null);
     setDone(false);
-    update.mutate(
-      {
-        ...(folderChanged ? { folderPath } : {}),
-        ...(descriptionChanged ? { description } : {}),
-      },
-      {
-        onSuccess: () => setDone(true),
-        onError: (error) => setRefusal(keyMetadataRefusalText(error)),
-      },
-    );
+    // Snapshot the changed fields ONCE: a Surface-2 override must resubmit the
+    // exact same content, because each acknowledgement token is bound to it.
+    // Changing a field between the block and the override invalidates the token,
+    // which the server then rejects by name.
+    const changed = {
+      ...(folderChanged ? { folderPath } : {}),
+      ...(descriptionChanged ? { description } : {}),
+    };
+    // The mutation is callback-shaped; wrap one attempt as a promise so the
+    // block dialog's override can await the resubmit and surface the server's
+    // named refusal on rejection.
+    const attempt = (acknowledgements: readonly string[]): Promise<void> =>
+      new Promise((resolve, reject) => {
+        update.mutate(
+          { ...changed, ...(acknowledgements.length === 0 ? {} : { acknowledgements }) },
+          { onSuccess: () => resolve(), onError: (error) => reject(error) },
+        );
+      });
+    void attempt([])
+      .then(() => setDone(true))
+      .catch((error: unknown) => {
+        // A scanner block carries findings; route them to the block dialog,
+        // which shows ONLY the redacted rule id + locator and offers an audited
+        // override. Any other refusal stays inline in its own words.
+        if (error instanceof ApiError && error.findings.length > 0) {
+          const findings = error.findings;
+          setScanBlock({
+            findings,
+            onOverride: findings.every((finding) => finding.acknowledgement !== undefined)
+              ? (tokens) =>
+                  attempt(tokens).then(() => {
+                    setDone(true);
+                    setScanBlock(null);
+                  })
+              : null,
+          });
+          return;
+        }
+        setRefusal(keyMetadataRefusalText(error instanceof Error ? error : new Error('save failed')));
+      });
   };
 
   return (
@@ -479,6 +522,16 @@ function MetadataEditor({
       <button type="submit" className="btn btn--primary" disabled={update.isPending || !dirty}>
         {update.isPending ? 'Saving…' : 'Save declaration'}
       </button>
+
+      {scanBlock === null ? null : (
+        <ScanBlockDialog
+          title="Declaration blocked by secret scanning"
+          intro={`This field is exported to Git and treated as public. Saving ${record.name}’s declaration was refused because it looks like it carries secret material.`}
+          findings={scanBlock.findings}
+          onOverride={scanBlock.onOverride}
+          onClose={() => setScanBlock(null)}
+        />
+      )}
     </form>
   );
 }

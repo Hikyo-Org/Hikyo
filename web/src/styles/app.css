@@ -2454,7 +2454,6 @@ select {
   color: var(--tx);
 }
 
-.scan-block__surface,
 .scan-block__locator {
   font-size: 12px;
   color: var(--tx-dim);

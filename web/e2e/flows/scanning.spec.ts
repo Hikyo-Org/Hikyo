@@ -166,6 +166,97 @@ test.describe('secret scanning warn dialog', () => {
   }
 });
 
+/**
+ * Flow: secret-scanning Surface-2 BLOCK dialog on the catalogue declaration
+ * editor (#183, SS3 [UI]; secret-scanning ADR §4).
+ *
+ * Unlike the Surface-1 warn, a declaration free-text field is exported to Git
+ * and treated as public, so a credential-shaped value in it is REFUSED before
+ * any state persists. The block dialog states that consequence, renders only the
+ * redacted finding (rule id + locator, never the matched text), and offers one
+ * content-bound acknowledgement per finding through a single audited override —
+ * no blanket ignore-all. The planted canary reaches neither the dialog DOM nor
+ * the browser console. The named stale/skew/surplus refusals are proven at the
+ * unit layer (ScanBlockDialog, KeyDeclarationDetail) and server-side in Go; the
+ * modal freezes content at submit, so they are not reachable through this UI.
+ */
+test.describe('secret scanning block dialog', () => {
+  test.describe.configure({ mode: 'serial' });
+  test.use({ storageState: STORAGE_STATE });
+
+  test('blocks a public declaration field, acknowledges, and resubmits (SS3 [UI])', async ({
+    page,
+  }, testInfo) => {
+    const keyName = `SCANBLOCK_${testInfo.project.name.toUpperCase()}`;
+
+    const consoleLines: string[] = [];
+    page.on('console', (message) => consoleLines.push(message.text()));
+    page.on('pageerror', (error) => consoleLines.push(String(error)));
+
+    await page.goto(MATRIX_PATH);
+    await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
+
+    const created = await browserApi(
+      page,
+      'POST',
+      `/api/v1/orgs/${seed.org}/projects/${seed.project}/keys`,
+      zCreatedKey,
+      { name: keyName, classification: 'config', description: '', declaration: { rule: { type: 'string' } } },
+    );
+    try {
+      // The declaration detail is routable and reload-safe — address it directly.
+      await page.goto(`/orgs/${seed.org}/projects/${seed.project}/matrix/keys/${created.id}`);
+      const panel = page.locator('.key-detail');
+      await expect(panel.getByRole('heading', { name: keyName, level: 2 })).toBeVisible();
+
+      const block = page.locator('dialog.scan-block');
+
+      // --- SS3: a credential-shaped description is refused, and the block dialog
+      // states the exported-as-public consequence --------------------------------
+      await panel.getByLabel('Description').fill(CANARY);
+      await panel.getByRole('button', { name: 'Save declaration' }).click();
+
+      await expect(
+        block.getByRole('heading', { name: 'Declaration blocked by secret scanning' }),
+      ).toBeVisible();
+      await expect(block).toContainText('exported to Git and treated as public');
+      // The finding names its rule; the override is offered once.
+      await expect(block.getByText('aws-access-token')).toBeVisible();
+      await expect(block.getByRole('button', { name: 'Acknowledge and continue' })).toBeVisible();
+      // No blanket ignore-all input exists on the dialog (ADR §4).
+      await expect(block.getByRole('button', { name: /ignore all/i })).toHaveCount(0);
+
+      // --- SS4 [UI]: the canary is nowhere in the dialog, nowhere in the console -
+      await expect(block).not.toContainText(CANARY);
+      expect(consoleLines.filter((line) => line.includes(CANARY))).toEqual([]);
+
+      // --- keyboard: Escape closes the block without submitting ------------------
+      await page.keyboard.press('Escape');
+      await expect(block).toHaveCount(0);
+
+      // --- SS3: the single audited override acknowledges the finding and the
+      // resubmit succeeds --------------------------------------------------------
+      await panel.getByRole('button', { name: 'Save declaration' }).click();
+      await expect(block).toBeVisible();
+      await block.getByRole('button', { name: 'Acknowledge and continue' }).click();
+      await expect(block).toHaveCount(0);
+      await expect(page.getByRole('status').filter({ hasText: 'Saved.' })).toBeVisible();
+
+      // The acknowledged description now stands recorded; the canary is the
+      // operator's own input, exactly as the warn test carves out.
+      await page.reload();
+      await expect(page.getByLabel('Description')).toHaveValue(CANARY);
+    } finally {
+      await browserApi(
+        page,
+        'DELETE',
+        `/api/v1/orgs/${seed.org}/projects/${seed.project}/keys/${created.id}`,
+        z.null(),
+      );
+    }
+  });
+});
+
 /** plantValue opens the row editor, stages one development value, and saves. */
 async function plantValue(
   page: import('@playwright/test').Page,

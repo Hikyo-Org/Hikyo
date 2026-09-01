@@ -19,13 +19,13 @@ import (
 //  3. a qualified Playwright fixture whose exact file no longer defines the
 //     named static test title.
 //
-// The three residual legs the ADR's §9 table names but this PR does not close
-// carry a Blocked reason instead of a fixture, and are counted apart so "the
-// matrix is complete" never silently means "except for these": the two
-// definitions-ingress legs wait on #70's plan/apply verbs, and the Surface-2
-// block dialog waits on a declaration-editing surface the SPA does not have
-// (docs/handoff/60-chrome-surfaces.md). A deferred clause is NOT COVERED — it
-// does not point at a tripwire asserting the behaviour is absent.
+// A residual leg the ADR's §9 table names but a PR does not yet close carries a
+// Blocked reason instead of a fixture, and is counted apart so "the matrix is
+// complete" never silently means "except for these"; a deferred clause is NOT
+// COVERED — it does not point at a tripwire asserting the behaviour is absent.
+// Every §9 leg is now closed: the definitions-ingress legs bind #70's plan/apply
+// verbs, and the Surface-2 block dialog binds the catalogue declaration editor
+// (#183, #491) — so the blocked set is empty.
 //
 // Go fixtures live across packages (internal/scanning, .../gen, internal/crypto,
 // internal/conformance, internal/service, internal/cli, and this package).
@@ -139,7 +139,7 @@ var scanningCriteria = map[string]scanClause{
 	"SS3.apply": {Text: "[E2E] same-version `definitions apply` adds no second scan; ruleset-skewed apply re-scans and refuses, then commits on acknowledgement",
 		Fixtures: []fixtureref.FixtureRef{goHelperFixture("internal/isolation", "runScanningDefinitionsApplySkew")}},
 	"SS3.ui": {Text: "[UI] block dialog stating the exported-as-public consequence",
-		Blocked: "no SPA declaration-editing surface (docs/handoff/60-chrome-surfaces.md); block presentation ships CLI/API and the dialog lands with that surface"},
+		Fixtures: []fixtureref.FixtureRef{playwrightFixture("e2e/flows/scanning.spec.ts", "blocks a public declaration field, acknowledges, and resubmits (SS3 [UI])")}},
 
 	// --- SS4: non-disclosure invariants (ADR §2, §4, §5, §6) -----------------
 	"SS4.a": {Text: "planted-canary sweep: the credential appears in no real HTTP response body (value warn + declaration block), CLI table/JSON/stderr, audit export stream, or import output — and neither does any match offset/length/excerpt, proven on the closed redacted key set (redacted DTO by construction)",
@@ -196,12 +196,12 @@ func TestScanningCriteriaMatrixIsComplete(t *testing.T) {
 		t.Errorf("scanning criteria name invalid fixtures: %v", err)
 	}
 
-	// The blocked set is pinned: the residual leg named in the ADR §9 table that
-	// this PR does not close (only SS3.ui — no SPA declaration-editing surface).
-	// #74 SS3's plan/apply legs are now proven (definitions plan/apply exist and
-	// scan). A clause that becomes provable must lose its Blocked marker rather
-	// than keep it as cover; a new deferral must move this pin deliberately.
-	const blockedClauses = 1
+	// The blocked set is pinned empty: every ADR §9 leg is now proven. SS3's
+	// plan/apply legs bind #70's verbs, and SS3.ui binds the catalogue
+	// declaration editor's block dialog (#183, #491). A clause that becomes
+	// provable must lose its Blocked marker rather than keep it as cover; a new
+	// deferral must move this pin deliberately.
+	const blockedClauses = 0
 	if blocked != blockedClauses {
 		t.Errorf("%d clauses are declared not-covered, pinned at %d — a clause was blocked or unblocked without updating the pin", blocked, blockedClauses)
 	}
