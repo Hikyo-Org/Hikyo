@@ -4988,3 +4988,88 @@ select {
     min-height: var(--touch);
   }
 }
+
+/* #495 dotenv import wizard. Reuses the .matrix-editor dialog shell; these rules
+   only lay out the wizard's own review lists and per-key controls. */
+.import-wizard fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+}
+
+.import-wizard legend {
+  padding: 0 6px;
+  color: var(--tx-dim);
+  font-size: 12px;
+}
+
+.import-wizard__summary {
+  margin: 0;
+  color: var(--tx-dim);
+  font-size: 13px;
+}
+
+.import-wizard__invalid {
+  margin: 0;
+  padding-inline-start: 18px;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.import-wizard__env,
+.import-wizard__secret {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--touch);
+}
+
+.import-wizard__key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding-block: 4px;
+}
+
+.import-wizard__key-name {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.import-wizard__key label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.import-wizard__suggestion {
+  color: var(--tx-dim);
+  font-size: 12px;
+}
+
+.import-wizard__collisions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.import-wizard__results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.import-wizard__error {
+  color: var(--danger);
+}
