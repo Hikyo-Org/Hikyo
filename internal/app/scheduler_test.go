@@ -31,6 +31,8 @@ func (f *fakeLease) set(fn func(*fakeLease)) {
 	fn(f)
 }
 
+func (f *fakeLease) Now(context.Context) (time.Time, error) { return time.Now().UTC(), nil }
+
 func (f *fakeLease) ClaimLease(_ context.Context, _, _ string, _, _ time.Time) (int64, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -42,7 +44,7 @@ func (f *fakeLease) ClaimLease(_ context.Context, _, _ string, _, _ time.Time) (
 	return f.fence, true, nil
 }
 
-func (f *fakeLease) RenewLease(ctx context.Context, _, _ string, _ int64, _ time.Time) (bool, error) {
+func (f *fakeLease) RenewLease(ctx context.Context, _, _ string, _ int64, _, _ time.Time) (bool, error) {
 	f.mu.Lock()
 	blocks, err, held := f.renewBlocks, f.renewErr, f.renewHeld
 	f.renews++

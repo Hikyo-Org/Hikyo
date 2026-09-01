@@ -104,10 +104,39 @@ operative artifact and live in this PR.
   exactly-once singleton, stale-fence write affects zero rows) end to end
   against the real datastore.
 
+## Cross-model review (Codex R1) fixes
+
+- **Fence preserved on release**: `ReleaseLease` marks the row expired instead
+  of deleting it, so `fence_token` never resets to 1 (a delete/reinsert would
+  let a delayed same-owner process match an old token).
+- **Datastore clock**: all lease-time comparisons read `Coordination.Now`
+  (Postgres `now()`), so per-node clock skew is not a takeover/split-brain
+  vector. `RenewLease` now requires `expires_at > now` (a paused holder cannot
+  revive an expired term), and `runHA` drops locally expired leadership before
+  attempting anything.
+- **Atomic account backoff**: one upsert increments the failure count and
+  stamps the failure instant; the delay deadline is derived from
+  (failures, last_failure), never separately stored, so a coordination hiccup
+  cannot leave the row admitting again or overwrite a stronger deadline. Idle
+  account rows are pruned (`PruneAccountBackoff`), so unknown usernames cannot
+  accumulate permanent rows.
+- **Mixed-root check is atomic**: `RegisterNodeChecked` does the foreign-
+  fingerprint check and the node upsert under one Postgres advisory lock
+  (classid 87), so two nodes starting at once with different roots cannot both
+  slip past.
+- **Job fencing (finding 2, partial)**: on graceful shutdown the loop cancels
+  the leadership term and JOINS it before releasing the lease, so it never
+  hands the lease to a standby while its own singleton job is committing. The
+  current singletons (retention sweep, reencrypt sweep) are idempotent and
+  context-aware; genuinely non-idempotent shared job writes still need per-job
+  `fence_token` columns, which arrive with #145's backup state (documented, not
+  regressed).
+
 ## Gotchas for the next context
 
-- Advisory-lock classids 84-86 are taken; the lease/counters do not use a
-  classid (they are ordinary tables).
+- Advisory-lock classids 84-86 were taken; `RegisterNodeChecked` now uses 87
+  (namespace 1464159830). The lease and counters are ordinary tables (no
+  classid); only the mixed-root check serializes under the advisory lock.
 - The Postgres DSN env var is `HIKYO_TEST_POSTGRES_DSN`; a sqlite-only run is
   blind to the pg-only lease/counter/fence paths.
 - `internal/conformance/metrics_test.go` pins the metric family registry; a new

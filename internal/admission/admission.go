@@ -119,9 +119,13 @@ type Config struct {
 // sliding window is a write per attempt).
 type SharedStore interface {
 	BumpWindow(ctx context.Context, bucket, subject string, window time.Time) (int64, error)
-	AccountBackoff(ctx context.Context, subject string) (deadline time.Time, ok bool, err error)
-	RecordAccountFailure(ctx context.Context, subject string) (failures int64, err error)
-	SetAccountDeadline(ctx context.Context, subject string, deadline time.Time) error
+	// AccountFailureState returns the consecutive-failure count and the last
+	// failure instant. The delay deadline is derived from these, never stored
+	// separately, so it cannot be left stale or overwritten by a shorter one.
+	AccountFailureState(ctx context.Context, subject string) (failures int64, lastFailure time.Time, ok bool, err error)
+	// RecordAccountFailure atomically increments the count and stamps the
+	// failure instant in one statement.
+	RecordAccountFailure(ctx context.Context, subject string, now time.Time) (failures int64, err error)
 	ClearAccount(ctx context.Context, subject string) error
 }
 
@@ -480,13 +484,24 @@ func sharedAccountSubject(presented string) string {
 	return hex.EncodeToString(key[:])
 }
 
-// sharedAccountDelay reads the shared backoff deadline. A coordination error
-// fails closed: it returns the advertised retry delay so the attempt is held
-// off rather than admitted while the shared state is unreachable.
+// backoffDelay is the per-account delay curve, shared by the in-memory and
+// shared paths so both compute the same deadline from a failure count.
+func backoffDelay(failures int64) time.Duration {
+	if failures <= FailuresBeforeBackoff {
+		return 0
+	}
+	d := time.Duration(1<<min(failures-FailuresBeforeBackoff-1, 16)) * time.Second
+	return min(d, MaxAccountBackoff)
+}
+
+// sharedAccountDelay derives the backoff deadline from the shared failure count
+// and last-failure instant (never a separately stored deadline). A coordination
+// error fails closed: it returns the advertised retry delay so the attempt is
+// held off rather than admitted while the shared state is unreachable.
 func (l *Limiter) sharedAccountDelay(presented string) time.Duration {
 	ctx, cancel := context.WithTimeout(context.Background(), sharedTimeout)
 	defer cancel()
-	deadline, ok, err := l.shared.AccountBackoff(ctx, sharedAccountSubject(presented))
+	failures, lastFailure, ok, err := l.shared.AccountFailureState(ctx, sharedAccountSubject(presented))
 	if err != nil {
 		l.logger().Error("admission: shared account backoff unreachable, holding off", "err", err)
 		return RetryAfter
@@ -494,6 +509,7 @@ func (l *Limiter) sharedAccountDelay(presented string) time.Duration {
 	if !ok {
 		return 0
 	}
+	deadline := lastFailure.Add(backoffDelay(failures))
 	if d := deadline.Sub(l.now()); d > 0 {
 		return d
 	}
@@ -537,19 +553,10 @@ func (l *Limiter) RecordFailure(presented string) (crossedThreshold bool) {
 func (l *Limiter) sharedRecordFailure(presented string) (crossedThreshold bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), sharedTimeout)
 	defer cancel()
-	subject := sharedAccountSubject(presented)
-	failures, err := l.shared.RecordAccountFailure(ctx, subject)
+	failures, err := l.shared.RecordAccountFailure(ctx, sharedAccountSubject(presented), l.now())
 	if err != nil {
 		l.logger().Error("admission: shared account failure record unreachable", "err", err)
 		return false
-	}
-	if failures <= FailuresBeforeBackoff {
-		return false
-	}
-	delay := time.Duration(1<<min(failures-FailuresBeforeBackoff-1, 16)) * time.Second
-	delay = min(delay, MaxAccountBackoff)
-	if err := l.shared.SetAccountDeadline(ctx, subject, l.now().Add(delay)); err != nil {
-		l.logger().Error("admission: shared account deadline write unreachable", "err", err)
 	}
 	return failures == FailuresBeforeBackoff+1
 }

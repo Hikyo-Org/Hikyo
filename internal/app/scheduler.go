@@ -28,8 +28,12 @@ const (
 // satisfied by *store.Coordination; the scheduler depends on the interface so
 // the app layer never needs a datastore-typed field.
 type LeaseManager interface {
+	// Now is the datastore clock. All lease-time comparisons read time from
+	// here so every node shares one clock, removing per-node skew as a
+	// split-brain vector.
+	Now(ctx context.Context) (time.Time, error)
 	ClaimLease(ctx context.Context, name, owner string, now, expires time.Time) (fence int64, held bool, err error)
-	RenewLease(ctx context.Context, name, owner string, fence int64, expires time.Time) (held bool, err error)
+	RenewLease(ctx context.Context, name, owner string, fence int64, now, expires time.Time) (held bool, err error)
 	ReleaseLease(ctx context.Context, name, owner string, fence int64) error
 }
 
@@ -168,10 +172,12 @@ func (s *Scheduler) runHA(ctx context.Context) {
 	// to be claimable by another node, so continuing would be split brain.
 	var expiresAt time.Time
 	termCancel := func() {}
+	var termDone chan struct{}
 	defer func() { termCancel() }()
 	dropLeadership := func() {
 		termCancel()
 		termCancel = func() {}
+		termDone = nil
 		if s.leader.Swap(false) {
 			s.logger().Warn("scheduler lost leadership", "node", s.NodeID)
 		}
@@ -180,7 +186,18 @@ func (s *Scheduler) runHA(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			// Cancel the running term and WAIT for it to finish before releasing
+			// the lease, so we never hand the lease to a standby while our own
+			// singleton job is still committing.
+			done := termDone
 			dropLeadership()
+			if done != nil {
+				select {
+				case <-done:
+				case <-time.After(2 * time.Second):
+					s.logger().Warn("scheduler term did not stop before release", "node", s.NodeID)
+				}
+			}
 			if fence != 0 {
 				releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 				if err := s.Lease.ReleaseLease(releaseCtx, schedulerLeaseName, s.NodeID, fence); err != nil {
@@ -190,15 +207,30 @@ func (s *Scheduler) runHA(ctx context.Context) {
 			}
 			return
 		case <-ticker.C:
-			now := s.now()
+			// Read time from the datastore so every node compares against one
+			// clock. If it is unreachable, a leader has lost coordination and
+			// must fail closed.
+			nowCtx, cancelNow := context.WithTimeout(ctx, s.heartbeat())
+			now, err := s.Lease.Now(nowCtx)
+			cancelNow()
+			if err != nil {
+				s.logger().Error("scheduler datastore clock unreachable", "node", s.NodeID, "err", err)
+				if s.leader.Load() {
+					dropLeadership()
+				}
+				continue
+			}
+			// Fail-closed FIRST: a leader past its last good lease deadline has
+			// lost coordination; drop before attempting anything, so a paused
+			// holder cannot revive an expired term.
+			if s.leader.Load() && !now.Before(expiresAt) {
+				s.logger().Error("scheduler lease expired without renewal; dropping leadership", "node", s.NodeID)
+				dropLeadership()
+			}
 			expires := now.Add(s.leaseTTL())
-			// Renew first, before any maintenance work, so a slow OnTick can
-			// never delay lease health. Every lease call is deadline-bounded by
-			// the heartbeat: a datastore that blocks past one heartbeat is a
-			// lost renewal, not an indefinite hang that outlives the TTL.
 			if s.leader.Load() {
 				renewCtx, cancel := context.WithTimeout(ctx, s.heartbeat())
-				held, err := s.Lease.RenewLease(renewCtx, schedulerLeaseName, s.NodeID, fence, expires)
+				held, err := s.Lease.RenewLease(renewCtx, schedulerLeaseName, s.NodeID, fence, now, expires)
 				cancel()
 				switch {
 				case err != nil:
@@ -209,13 +241,6 @@ func (s *Scheduler) runHA(ctx context.Context) {
 				default:
 					expiresAt = expires
 				}
-			}
-			// Fail-closed safety net: if we still believe we are leader but the
-			// last good lease has expired locally, drop regardless of what any
-			// in-flight renewal returned.
-			if s.leader.Load() && !now.Before(expiresAt) {
-				s.logger().Error("scheduler lease expired without renewal; dropping leadership", "node", s.NodeID)
-				dropLeadership()
 			}
 			if !s.leader.Load() {
 				claimCtx, cancel := context.WithTimeout(ctx, s.heartbeat())
@@ -231,7 +256,9 @@ func (s *Scheduler) runHA(ctx context.Context) {
 					s.logger().Info("scheduler acquired leadership", "node", s.NodeID, "fence", fence)
 					termCtx, cancel := context.WithCancel(ctx)
 					termCancel = cancel
-					go s.runLoop(termCtx)
+					termDone = make(chan struct{})
+					done := termDone
+					go func() { defer close(done); s.runLoop(termCtx) }()
 				}
 			}
 			if s.OnTick != nil {

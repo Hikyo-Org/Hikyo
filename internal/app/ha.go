@@ -52,6 +52,11 @@ const nodeLivenessWindow = 3 * defaultHeartbeat
 // decommissioned nodes are pruned.
 const nodeRegistryRetention = 24 * time.Hour
 
+// accountBackoffRetention is how long an idle account-backoff row survives.
+// Well past the maximum backoff, so a live backoff is never swept and unknown
+// usernames cannot accumulate permanent rows.
+const accountBackoffRetention = time.Hour
+
 // readyChecker is the operational readiness probe: the base datastore-and-schema
 // check, plus an optional HA lease-datastore probe attached at boot when HA is
 // enabled. The probe pointer is atomic so it can be set after construction
@@ -121,24 +126,23 @@ func configureHA(ctx context.Context, cfg *config.Config, log *slog.Logger, db *
 	}
 
 	coord := db.Coordination()
-	foreign, err := coord.ForeignRootKeyFingerprints(ctx, cfg.NodeID, fingerprint, time.Now().UTC().Add(-nodeLivenessWindow))
+	now, err := coord.Now(ctx)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("ha: read node registry: %w", err)
+		return nil, nil, nil, fmt.Errorf("ha: datastore clock: %w", err)
 	}
-	if len(foreign) > 0 {
-		return nil, nil, nil, fmt.Errorf("ha: refusing to serve: another live node registered a different root-key fingerprint; this installation's nodes must share one root-key authority (mixed root keys)")
-	}
-
 	node := store.HANode{
 		NodeID:             cfg.NodeID,
 		BinaryVersion:      Version,
 		SchemaVersion:      schemaVersion,
 		RootKeyFingerprint: fingerprint,
-		StartedAt:          time.Now().UTC(),
-		HeartbeatAt:        time.Now().UTC(),
+		StartedAt:          now,
+		HeartbeatAt:        now,
 	}
-	if err := coord.UpsertNode(ctx, node); err != nil {
-		return nil, nil, nil, fmt.Errorf("ha: register node: %w", err)
+	// Atomic check-and-register under a datastore lock: a mixed-root-key
+	// installation is refused before this node serves, and two nodes starting
+	// at once cannot both slip past the check.
+	if err := coord.RegisterNodeChecked(ctx, node, now.Add(-nodeLivenessWindow)); err != nil {
+		return nil, nil, nil, fmt.Errorf("ha: refusing to serve: %w", err)
 	}
 	log.Info("multi-node HA enabled", "node", cfg.NodeID, "schema_version", schemaVersion, "binary_version", Version)
 
@@ -146,9 +150,15 @@ func configureHA(ctx context.Context, cfg *config.Config, log *slog.Logger, db *
 	status.nodesSeen.Store(1)
 
 	onTick := func(tickCtx context.Context) {
-		now := time.Now().UTC()
+		// Use datastore time so every node's heartbeat and liveness windows
+		// share one clock (no per-node skew in nodes_seen or the sweeps).
+		now, err := coord.Now(tickCtx)
+		if err != nil {
+			log.Warn("ha: datastore clock unreachable on tick", "err", err)
+			return
+		}
 		// Build a local copy: the boot goroutine already read `node` for the
-		// initial UpsertNode, and this closure runs on the scheduler goroutine.
+		// initial register, and this closure runs on the scheduler goroutine.
 		hb := node
 		hb.HeartbeatAt = now
 		if err := coord.UpsertNode(tickCtx, hb); err != nil {
@@ -156,6 +166,9 @@ func configureHA(ctx context.Context, cfg *config.Config, log *slog.Logger, db *
 		}
 		if err := coord.PruneAdmissionWindows(tickCtx, now.Add(-admissionWindowRetention)); err != nil {
 			log.Warn("ha: admission window sweep failed", "err", err)
+		}
+		if err := coord.PruneAccountBackoff(tickCtx, now.Add(-accountBackoffRetention)); err != nil {
+			log.Warn("ha: account backoff sweep failed", "err", err)
 		}
 		if err := coord.PruneNodes(tickCtx, now.Add(-nodeRegistryRetention)); err != nil {
 			log.Warn("ha: node registry sweep failed", "err", err)

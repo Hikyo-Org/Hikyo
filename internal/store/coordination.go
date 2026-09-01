@@ -39,6 +39,11 @@ func isNoRows(err error) bool {
 	return errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows)
 }
 
+// ErrMixedRootKey reports that another live node registered a different
+// root-key fingerprint: the installation's nodes must share one root-key
+// authority. RegisterNodeChecked returns it and boot refuses to serve.
+var ErrMixedRootKey = errors.New("store: another live node registered a different root-key fingerprint (mixed root keys)")
+
 // sqliteTime renders an instant in the fixed-width canonical form the sqlite
 // schema stores, so lexicographic comparison in SQL matches time comparison.
 func sqliteTime(t time.Time) string { return t.UTC().Format(adapterTimeFormat) }
@@ -88,18 +93,22 @@ func (c *Coordination) ClaimLease(ctx context.Context, name, owner string, now, 
 	return fence, true, nil
 }
 
-// RenewLease extends the lease deadline only while owner still holds it at the
-// given fence. A takeover changes owner and increments fence, so a stale
-// holder's renewal matches zero rows and held is false: that is the fenced
-// write the HA design turns on.
-func (c *Coordination) RenewLease(ctx context.Context, name, owner string, fence int64, expires time.Time) (held bool, err error) {
+// RenewLease extends the lease deadline only while owner still holds a STILL
+// LIVE lease at the given fence. The expires_at > now predicate is essential: a
+// paused holder that wakes after its lease lapsed must not be able to revive an
+// expired term under its old fence just because no one has claimed yet. A
+// takeover changes owner and increments fence, so a stale holder's renewal
+// matches zero rows and held is false: that is the fenced write the HA design
+// turns on. now must be datastore time (the scheduler reads it via Now) so the
+// comparison is not subject to per-node clock skew.
+func (c *Coordination) RenewLease(ctx context.Context, name, owner string, fence int64, now, expires time.Time) (held bool, err error) {
 	var affected int64
 	switch c.db.engine {
 	case EnginePostgres:
 		tag, e := c.db.pool.Exec(ctx,
 			`UPDATE singleton_leases SET expires_at = $1
-			 WHERE name = $2 AND owner = $3 AND fence_token = $4`,
-			expires, name, owner, fence)
+			 WHERE name = $2 AND owner = $3 AND fence_token = $4 AND expires_at > $5`,
+			expires, name, owner, fence, now)
 		if e != nil {
 			return false, fmt.Errorf("store: renew lease %q: %w", name, e)
 		}
@@ -107,8 +116,8 @@ func (c *Coordination) RenewLease(ctx context.Context, name, owner string, fence
 	case EngineSQLite:
 		res, e := c.db.sqWrite.ExecContext(ctx,
 			`UPDATE singleton_leases SET expires_at = ?
-			 WHERE name = ? AND owner = ? AND fence_token = ?`,
-			sqliteTime(expires), name, owner, fence)
+			 WHERE name = ? AND owner = ? AND fence_token = ? AND expires_at > ?`,
+			sqliteTime(expires), name, owner, fence, sqliteTime(now))
 		if e != nil {
 			return false, fmt.Errorf("store: renew lease %q: %w", name, e)
 		}
@@ -119,20 +128,23 @@ func (c *Coordination) RenewLease(ctx context.Context, name, owner string, fence
 	return affected == 1, nil
 }
 
-// ReleaseLease drops the lease on graceful shutdown so a standby can take over
-// immediately rather than waiting out the TTL. It only releases the row the
-// caller still holds at its fence.
+// ReleaseLease relinquishes the lease on graceful shutdown so a standby can
+// take over immediately rather than waiting out the TTL. It marks the row
+// expired rather than deleting it, so the monotonic fence_token is PRESERVED: a
+// deleted-and-reinserted row would reset the token to 1 and let a delayed
+// same-owner process match an old token. It only releases the row the caller
+// still holds at its fence.
 func (c *Coordination) ReleaseLease(ctx context.Context, name, owner string, fence int64) error {
 	var err error
 	switch c.db.engine {
 	case EnginePostgres:
 		_, err = c.db.pool.Exec(ctx,
-			`DELETE FROM singleton_leases WHERE name = $1 AND owner = $2 AND fence_token = $3`,
-			name, owner, fence)
+			`UPDATE singleton_leases SET expires_at = $1 WHERE name = $2 AND owner = $3 AND fence_token = $4`,
+			accountWindow, name, owner, fence)
 	case EngineSQLite:
 		_, err = c.db.sqWrite.ExecContext(ctx,
-			`DELETE FROM singleton_leases WHERE name = ? AND owner = ? AND fence_token = ?`,
-			name, owner, fence)
+			`UPDATE singleton_leases SET expires_at = ? WHERE name = ? AND owner = ? AND fence_token = ?`,
+			sqliteTime(accountWindow), name, owner, fence)
 	default:
 		return fmt.Errorf("store: coordination lease release on unknown engine %q", c.db.engine)
 	}
@@ -140,6 +152,25 @@ func (c *Coordination) ReleaseLease(ctx context.Context, name, owner string, fen
 		return fmt.Errorf("store: release lease %q: %w", name, err)
 	}
 	return nil
+}
+
+// Now returns the datastore's clock. HA lease decisions read time from here so
+// every node compares against one clock, removing per-node skew as a
+// split-brain vector. On sqlite (single node, never HA) the process clock is
+// authoritative.
+func (c *Coordination) Now(ctx context.Context) (time.Time, error) {
+	switch c.db.engine {
+	case EnginePostgres:
+		var now time.Time
+		if err := c.db.pool.QueryRow(ctx, `SELECT now()`).Scan(&now); err != nil {
+			return time.Time{}, fmt.Errorf("store: datastore clock: %w", err)
+		}
+		return now.UTC(), nil
+	case EngineSQLite:
+		return time.Now().UTC(), nil
+	default:
+		return time.Time{}, fmt.Errorf("store: datastore clock on unknown engine %q", c.db.engine)
+	}
 }
 
 // LeaseHolder reports the current owner of a lease and whether the lease is
@@ -221,6 +252,70 @@ func (c *Coordination) UpsertNode(ctx context.Context, n HANode) error {
 		return fmt.Errorf("store: upsert node %q: %w", n.NodeID, err)
 	}
 	return nil
+}
+
+// coordinationAdvisoryClass is the advisory-lock namespace shared across the
+// datastore; classID 87 is this ticket's (84-86 are the audit-export locks).
+const (
+	coordinationAdvisoryNamespace = 1464159830
+	haRegisterAdvisoryClass       = 87
+)
+
+// RegisterNodeChecked atomically refuses a mixed-root-key installation and
+// registers this node. The foreign-fingerprint check and the node upsert run
+// under one Postgres advisory lock so two nodes starting simultaneously with
+// different roots (as can happen mid root-key rotation, when a dual-wrapped
+// master unwraps under either root) cannot both observe no foreign row and both
+// proceed. On sqlite there is a single node and no race, so it is a plain
+// upsert. since bounds which peers count as live.
+func (c *Coordination) RegisterNodeChecked(ctx context.Context, n HANode, since time.Time) error {
+	switch c.db.engine {
+	case EnginePostgres:
+		tx, err := c.db.pool.Begin(ctx)
+		if err != nil {
+			return fmt.Errorf("store: register node: begin: %w", err)
+		}
+		defer tx.Rollback(ctx)
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, $2)`, coordinationAdvisoryNamespace, haRegisterAdvisoryClass); err != nil {
+			return fmt.Errorf("store: register node: lock: %w", err)
+		}
+		var foreign int
+		if err := tx.QueryRow(ctx,
+			`SELECT COUNT(*) FROM ha_nodes
+			 WHERE node_id <> $1 AND root_key_fingerprint <> $2 AND heartbeat_at >= $3`,
+			n.NodeID, n.RootKeyFingerprint, since).Scan(&foreign); err != nil {
+			return fmt.Errorf("store: register node: check: %w", err)
+		}
+		if foreign > 0 {
+			return ErrMixedRootKey
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO ha_nodes (node_id, binary_version, schema_version, root_key_fingerprint, started_at, heartbeat_at)
+			 VALUES ($1, $2, $3, $4, $5, $6)
+			 ON CONFLICT (node_id) DO UPDATE
+			   SET binary_version = EXCLUDED.binary_version,
+			       schema_version = EXCLUDED.schema_version,
+			       root_key_fingerprint = EXCLUDED.root_key_fingerprint,
+			       heartbeat_at = EXCLUDED.heartbeat_at`,
+			n.NodeID, n.BinaryVersion, n.SchemaVersion, n.RootKeyFingerprint, n.StartedAt, n.HeartbeatAt); err != nil {
+			return fmt.Errorf("store: register node: upsert: %w", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("store: register node: commit: %w", err)
+		}
+		return nil
+	case EngineSQLite:
+		foreign, err := c.ForeignRootKeyFingerprints(ctx, n.NodeID, n.RootKeyFingerprint, since)
+		if err != nil {
+			return err
+		}
+		if len(foreign) > 0 {
+			return ErrMixedRootKey
+		}
+		return c.UpsertNode(ctx, n)
+	default:
+		return fmt.Errorf("store: register node on unknown engine %q", c.db.engine)
+	}
 }
 
 // CountLiveNodes counts nodes whose heartbeat is at or after since.
@@ -343,70 +438,76 @@ func (c *Coordination) BumpWindow(ctx context.Context, bucket, subject string, w
 	return count, nil
 }
 
-// AccountBackoff reports the current delay deadline for an account subject and
-// whether one is recorded. A live deadline in the future blocks the attempt.
-func (c *Coordination) AccountBackoff(ctx context.Context, subject string) (deadline time.Time, ok bool, err error) {
+// AccountFailureState reports an account subject's consecutive-failure count
+// and the instant of its most recent failure. The delay deadline is a pure,
+// deterministic function of these two values (computed in the admission
+// package), so there is no separately written deadline that could be left
+// stale or overwritten by a shorter one. ok is false when no failures are
+// recorded.
+func (c *Coordination) AccountFailureState(ctx context.Context, subject string) (failures int64, lastFailure time.Time, ok bool, err error) {
 	switch c.db.engine {
 	case EnginePostgres:
 		var until sql.NullTime
 		e := c.db.pool.QueryRow(ctx,
-			`SELECT until_at FROM admission_counters WHERE bucket = $1 AND subject = $2 AND window_start = $3`,
-			AccountBucket, subject, accountWindow).Scan(&until)
+			`SELECT failures, until_at FROM admission_counters WHERE bucket = $1 AND subject = $2 AND window_start = $3`,
+			AccountBucket, subject, accountWindow).Scan(&failures, &until)
 		if isNoRows(e) {
-			return time.Time{}, false, nil
+			return 0, time.Time{}, false, nil
 		}
 		if e != nil {
-			return time.Time{}, false, fmt.Errorf("store: account backoff %s: %w", subject, e)
+			return 0, time.Time{}, false, fmt.Errorf("store: account failure state %s: %w", subject, e)
 		}
-		if !until.Valid {
-			return time.Time{}, false, nil
+		if until.Valid {
+			lastFailure = until.Time.UTC()
 		}
-		return until.Time.UTC(), true, nil
+		return failures, lastFailure, true, nil
 	case EngineSQLite:
 		var until sql.NullString
 		e := c.db.sqRead.QueryRowContext(ctx,
-			`SELECT until_at FROM admission_counters WHERE bucket = ? AND subject = ? AND window_start = ?`,
-			AccountBucket, subject, sqliteTime(accountWindow)).Scan(&until)
+			`SELECT failures, until_at FROM admission_counters WHERE bucket = ? AND subject = ? AND window_start = ?`,
+			AccountBucket, subject, sqliteTime(accountWindow)).Scan(&failures, &until)
 		if isNoRows(e) {
-			return time.Time{}, false, nil
+			return 0, time.Time{}, false, nil
 		}
 		if e != nil {
-			return time.Time{}, false, fmt.Errorf("store: account backoff %s: %w", subject, e)
+			return 0, time.Time{}, false, fmt.Errorf("store: account failure state %s: %w", subject, e)
 		}
-		if !until.Valid || until.String == "" {
-			return time.Time{}, false, nil
+		if until.Valid && until.String != "" {
+			lastFailure, _ = time.Parse(adapterTimeFormat, until.String)
+			lastFailure = lastFailure.UTC()
 		}
-		t, _ := time.Parse(adapterTimeFormat, until.String)
-		return t.UTC(), true, nil
+		return failures, lastFailure, true, nil
 	default:
-		return time.Time{}, false, fmt.Errorf("store: coordination account backoff on unknown engine %q", c.db.engine)
+		return 0, time.Time{}, false, fmt.Errorf("store: coordination account failure state on unknown engine %q", c.db.engine)
 	}
 }
 
-// RecordAccountFailure increments the consecutive-failure count for an account
-// subject and returns the new count. The caller computes the delay deadline
-// from the count (the backoff curve lives in the admission package) and writes
-// it with SetAccountDeadline.
-func (c *Coordination) RecordAccountFailure(ctx context.Context, subject string) (int64, error) {
+// RecordAccountFailure atomically increments the consecutive-failure count for
+// an account subject and stamps the failure instant, in one statement. Storing
+// the last-failure time (not a precomputed deadline) is what keeps the backoff
+// monotonic and race-free: the deadline is derived from failures and this time,
+// so a concurrent record can never leave the row admitting again or shorten a
+// stronger deadline. now must be datastore time.
+func (c *Coordination) RecordAccountFailure(ctx context.Context, subject string, now time.Time) (int64, error) {
 	var failures int64
 	var err error
 	switch c.db.engine {
 	case EnginePostgres:
 		err = c.db.pool.QueryRow(ctx,
-			`INSERT INTO admission_counters (bucket, subject, window_start, failures)
-			 VALUES ($1, $2, $3, 1)
+			`INSERT INTO admission_counters (bucket, subject, window_start, failures, until_at)
+			 VALUES ($1, $2, $3, 1, $4)
 			 ON CONFLICT (bucket, subject, window_start) DO UPDATE
-			   SET failures = admission_counters.failures + 1
+			   SET failures = admission_counters.failures + 1, until_at = $4
 			 RETURNING failures`,
-			AccountBucket, subject, accountWindow).Scan(&failures)
+			AccountBucket, subject, accountWindow, now).Scan(&failures)
 	case EngineSQLite:
 		err = c.db.sqWrite.QueryRowContext(ctx,
-			`INSERT INTO admission_counters (bucket, subject, window_start, failures)
-			 VALUES (?, ?, ?, 1)
+			`INSERT INTO admission_counters (bucket, subject, window_start, failures, until_at)
+			 VALUES (?, ?, ?, 1, ?)
 			 ON CONFLICT (bucket, subject, window_start) DO UPDATE
-			   SET failures = admission_counters.failures + 1
+			   SET failures = admission_counters.failures + 1, until_at = ?
 			 RETURNING failures`,
-			AccountBucket, subject, sqliteTime(accountWindow)).Scan(&failures)
+			AccountBucket, subject, sqliteTime(accountWindow), sqliteTime(now), sqliteTime(now)).Scan(&failures)
 	default:
 		return 0, fmt.Errorf("store: coordination record failure on unknown engine %q", c.db.engine)
 	}
@@ -416,23 +517,25 @@ func (c *Coordination) RecordAccountFailure(ctx context.Context, subject string)
 	return failures, nil
 }
 
-// SetAccountDeadline writes the current delay deadline for an account subject.
-func (c *Coordination) SetAccountDeadline(ctx context.Context, subject string, deadline time.Time) error {
+// PruneAccountBackoff drops account rows whose last failure fell before cutoff,
+// so unique unknown usernames cannot accumulate permanent rows. The cutoff is
+// well past the maximum backoff, so a live backoff is never swept.
+func (c *Coordination) PruneAccountBackoff(ctx context.Context, cutoff time.Time) error {
 	var err error
 	switch c.db.engine {
 	case EnginePostgres:
 		_, err = c.db.pool.Exec(ctx,
-			`UPDATE admission_counters SET until_at = $1 WHERE bucket = $2 AND subject = $3 AND window_start = $4`,
-			deadline, AccountBucket, subject, accountWindow)
+			`DELETE FROM admission_counters WHERE bucket = $1 AND (until_at IS NULL OR until_at < $2)`,
+			AccountBucket, cutoff)
 	case EngineSQLite:
 		_, err = c.db.sqWrite.ExecContext(ctx,
-			`UPDATE admission_counters SET until_at = ? WHERE bucket = ? AND subject = ? AND window_start = ?`,
-			sqliteTime(deadline), AccountBucket, subject, sqliteTime(accountWindow))
+			`DELETE FROM admission_counters WHERE bucket = ? AND (until_at IS NULL OR until_at < ?)`,
+			AccountBucket, sqliteTime(cutoff))
 	default:
-		return fmt.Errorf("store: coordination set deadline on unknown engine %q", c.db.engine)
+		return fmt.Errorf("store: coordination account prune on unknown engine %q", c.db.engine)
 	}
 	if err != nil {
-		return fmt.Errorf("store: set account deadline %s: %w", subject, err)
+		return fmt.Errorf("store: prune account backoff: %w", err)
 	}
 	return nil
 }

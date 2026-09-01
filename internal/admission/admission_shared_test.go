@@ -13,15 +13,15 @@ import (
 // fakeShared is an in-memory SharedStore for the HA admission tests: two
 // limiters pointed at one fakeShared model two nodes hitting one datastore.
 type fakeShared struct {
-	mu        sync.Mutex
-	windows   map[string]int64
-	failures  map[string]int64
-	deadlines map[string]time.Time
-	err       error
+	mu          sync.Mutex
+	windows     map[string]int64
+	failures    map[string]int64
+	lastFailure map[string]time.Time
+	err         error
 }
 
 func newFakeShared() *fakeShared {
-	return &fakeShared{windows: map[string]int64{}, failures: map[string]int64{}, deadlines: map[string]time.Time{}}
+	return &fakeShared{windows: map[string]int64{}, failures: map[string]int64{}, lastFailure: map[string]time.Time{}}
 }
 
 func (f *fakeShared) setErr(err error) { f.mu.Lock(); f.err = err; f.mu.Unlock() }
@@ -37,34 +37,28 @@ func (f *fakeShared) BumpWindow(_ context.Context, bucket, subject string, windo
 	return f.windows[k], nil
 }
 
-func (f *fakeShared) AccountBackoff(_ context.Context, subject string) (time.Time, bool, error) {
+func (f *fakeShared) AccountFailureState(_ context.Context, subject string) (int64, time.Time, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.err != nil {
-		return time.Time{}, false, f.err
+		return 0, time.Time{}, false, f.err
 	}
-	d, ok := f.deadlines[subject]
-	return d, ok, nil
+	n, ok := f.failures[subject]
+	if !ok {
+		return 0, time.Time{}, false, nil
+	}
+	return n, f.lastFailure[subject], true, nil
 }
 
-func (f *fakeShared) RecordAccountFailure(_ context.Context, subject string) (int64, error) {
+func (f *fakeShared) RecordAccountFailure(_ context.Context, subject string, now time.Time) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.err != nil {
 		return 0, f.err
 	}
 	f.failures[subject]++
+	f.lastFailure[subject] = now
 	return f.failures[subject], nil
-}
-
-func (f *fakeShared) SetAccountDeadline(_ context.Context, subject string, deadline time.Time) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.err != nil {
-		return f.err
-	}
-	f.deadlines[subject] = deadline
-	return nil
 }
 
 func (f *fakeShared) ClearAccount(_ context.Context, subject string) error {
@@ -74,7 +68,7 @@ func (f *fakeShared) ClearAccount(_ context.Context, subject string) error {
 		return f.err
 	}
 	delete(f.failures, subject)
-	delete(f.deadlines, subject)
+	delete(f.lastFailure, subject)
 	return nil
 }
 

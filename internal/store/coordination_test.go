@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -51,9 +52,13 @@ func runCoordinationInvariants(t *testing.T, db *store.DB) {
 		if _, held, err := c.ClaimLease(ctx, "scheduler", "node-b", base.Add(5*time.Second), base.Add(35*time.Second)); err != nil || held {
 			t.Fatalf("B claim while live: held=%v err=%v (want held=false)", held, err)
 		}
-		// A renews within its term.
-		if ok, err := c.RenewLease(ctx, "scheduler", "node-a", fenceA, base.Add(40*time.Second)); err != nil || !ok {
+		// A renews within its term (now < expiry, still live).
+		if ok, err := c.RenewLease(ctx, "scheduler", "node-a", fenceA, base.Add(10*time.Second), base.Add(40*time.Second)); err != nil || !ok {
 			t.Fatalf("A renew: ok=%v err=%v", ok, err)
+		}
+		// A renewal past the lease deadline cannot revive an expired term.
+		if ok, err := c.RenewLease(ctx, "scheduler", "node-a", fenceA, base.Add(45*time.Second), base.Add(75*time.Second)); err != nil || ok {
+			t.Fatalf("expired-term renew: ok=%v err=%v (want ok=false)", ok, err)
 		}
 		// After the (renewed) lease expires, B takes over with a higher fence.
 		fenceB, held, err := c.ClaimLease(ctx, "scheduler", "node-b", base.Add(41*time.Second), base.Add(71*time.Second))
@@ -64,7 +69,7 @@ func runCoordinationInvariants(t *testing.T, db *store.DB) {
 			t.Fatalf("takeover fence = %d, want > %d", fenceB, fenceA)
 		}
 		// The stale leader's fenced write now affects zero rows: A no longer holds.
-		if ok, err := c.RenewLease(ctx, "scheduler", "node-a", fenceA, base.Add(90*time.Second)); err != nil || ok {
+		if ok, err := c.RenewLease(ctx, "scheduler", "node-a", fenceA, base.Add(50*time.Second), base.Add(90*time.Second)); err != nil || ok {
 			t.Fatalf("stale A renew: ok=%v err=%v (want ok=false)", ok, err)
 		}
 		// LeaseHolder reports B live.
@@ -72,12 +77,17 @@ func runCoordinationInvariants(t *testing.T, db *store.DB) {
 		if err != nil || owner != "node-b" || !live {
 			t.Fatalf("holder = %q live=%v err=%v, want node-b live", owner, live, err)
 		}
-		// Release lets a fresh claim succeed immediately, even before expiry.
+		// Release preserves the monotonic fence: a fresh claim increments past
+		// the released fence rather than resetting to 1.
 		if err := c.ReleaseLease(ctx, "scheduler", "node-b", fenceB); err != nil {
 			t.Fatalf("release: %v", err)
 		}
-		if _, held, err := c.ClaimLease(ctx, "scheduler", "node-c", base.Add(51*time.Second), base.Add(81*time.Second)); err != nil || !held {
+		fenceC, held, err := c.ClaimLease(ctx, "scheduler", "node-c", base.Add(51*time.Second), base.Add(81*time.Second))
+		if err != nil || !held {
 			t.Fatalf("claim after release: held=%v err=%v", held, err)
+		}
+		if fenceC <= fenceB {
+			t.Fatalf("post-release fence = %d, want > %d (monotonic across release)", fenceC, fenceB)
 		}
 	})
 
@@ -98,29 +108,50 @@ func runCoordinationInvariants(t *testing.T, db *store.DB) {
 	})
 
 	t.Run("account_backoff", func(t *testing.T) {
-		if _, ok, err := c.AccountBackoff(ctx, "acct"); err != nil || ok {
-			t.Fatalf("fresh backoff: ok=%v err=%v (want none)", ok, err)
+		if _, _, ok, err := c.AccountFailureState(ctx, "acct"); err != nil || ok {
+			t.Fatalf("fresh state: ok=%v err=%v (want none)", ok, err)
 		}
-		f, err := c.RecordAccountFailure(ctx, "acct")
+		t1 := base.Add(time.Second)
+		f, err := c.RecordAccountFailure(ctx, "acct", t1)
 		if err != nil || f != 1 {
 			t.Fatalf("failure 1 = %d err=%v", f, err)
 		}
-		if f, err := c.RecordAccountFailure(ctx, "acct"); err != nil || f != 2 {
+		t2 := base.Add(2 * time.Second)
+		if f, err := c.RecordAccountFailure(ctx, "acct", t2); err != nil || f != 2 {
 			t.Fatalf("failure 2 = %d err=%v", f, err)
 		}
-		deadline := base.Add(2 * time.Second)
-		if err := c.SetAccountDeadline(ctx, "acct", deadline); err != nil {
-			t.Fatalf("set deadline: %v", err)
+		failures, last, ok, err := c.AccountFailureState(ctx, "acct")
+		if err != nil || !ok || failures != 2 || !last.Equal(t2) {
+			t.Fatalf("state = (%d, %v) ok=%v err=%v, want (2, %v)", failures, last, ok, err, t2)
 		}
-		got, ok, err := c.AccountBackoff(ctx, "acct")
-		if err != nil || !ok || !got.Equal(deadline) {
-			t.Fatalf("backoff = %v ok=%v err=%v, want %v", got, ok, err, deadline)
+		// A stale-window prune never sweeps a fresh failure.
+		if err := c.PruneAccountBackoff(ctx, base.Add(-time.Hour)); err != nil {
+			t.Fatalf("prune fresh: %v", err)
+		}
+		if _, _, ok, _ := c.AccountFailureState(ctx, "acct"); !ok {
+			t.Fatal("fresh account row was pruned")
 		}
 		if err := c.ClearAccount(ctx, "acct"); err != nil {
 			t.Fatalf("clear: %v", err)
 		}
-		if _, ok, err := c.AccountBackoff(ctx, "acct"); err != nil || ok {
+		if _, _, ok, err := c.AccountFailureState(ctx, "acct"); err != nil || ok {
 			t.Fatalf("after clear: ok=%v err=%v (want none)", ok, err)
+		}
+		// PruneAccountBackoff sweeps an old failure row.
+		if _, err := c.RecordAccountFailure(ctx, "stale", base.Add(-2*time.Hour)); err != nil {
+			t.Fatalf("record stale: %v", err)
+		}
+		if err := c.PruneAccountBackoff(ctx, base.Add(-time.Hour)); err != nil {
+			t.Fatalf("prune stale: %v", err)
+		}
+		if _, _, ok, _ := c.AccountFailureState(ctx, "stale"); ok {
+			t.Fatal("stale account row survived prune")
+		}
+	})
+
+	t.Run("datastore_clock", func(t *testing.T) {
+		if _, err := c.Now(ctx); err != nil {
+			t.Fatalf("datastore now: %v", err)
 		}
 	})
 
@@ -159,6 +190,28 @@ func runCoordinationInvariants(t *testing.T, db *store.DB) {
 		}
 		if n, err := c.CountLiveNodes(ctx, now.Add(-time.Hour)); err != nil || n != 0 {
 			t.Fatalf("live nodes after prune = %d err=%v, want 0", n, err)
+		}
+	})
+
+	t.Run("register_node_checked_refuses_mixed_root", func(t *testing.T) {
+		now := base.Add(time.Hour) // fresh window; earlier subtest pruned ha_nodes
+		live := now.Add(-time.Second)
+		seed := store.HANode{NodeID: "reg-a", BinaryVersion: "test", SchemaVersion: 36, RootKeyFingerprint: "fp-a", StartedAt: now, HeartbeatAt: now}
+		if err := c.RegisterNodeChecked(ctx, seed, live); err != nil {
+			t.Fatalf("first register: %v", err)
+		}
+		// A second node with a different fingerprint is refused.
+		mixed := store.HANode{NodeID: "reg-b", BinaryVersion: "test", SchemaVersion: 36, RootKeyFingerprint: "fp-b", StartedAt: now, HeartbeatAt: now}
+		if err := c.RegisterNodeChecked(ctx, mixed, live); !errors.Is(err, store.ErrMixedRootKey) {
+			t.Fatalf("mixed-root register err = %v, want ErrMixedRootKey", err)
+		}
+		// A node sharing the fingerprint registers.
+		matching := store.HANode{NodeID: "reg-c", BinaryVersion: "test", SchemaVersion: 36, RootKeyFingerprint: "fp-a", StartedAt: now, HeartbeatAt: now}
+		if err := c.RegisterNodeChecked(ctx, matching, live); err != nil {
+			t.Fatalf("matching register: %v", err)
+		}
+		if err := c.PruneNodes(ctx, now.Add(time.Hour)); err != nil {
+			t.Fatalf("cleanup prune: %v", err)
 		}
 	})
 }
