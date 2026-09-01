@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderForm, typeInto } from '../testkit/renderForm.tsx';
 import { ApiError, type RefusalFinding } from '../api/client.ts';
 import { KeyDeclarationDetail } from './KeyDeclarationDetail.tsx';
-import type { MatrixKey } from '../api/matrix.ts';
+import { KEY_GONE_REFUSAL, type MatrixKey } from '../api/matrix.ts';
 
 const mocks = vi.hoisted(() => ({
   key: vi.fn(),
@@ -211,7 +211,7 @@ describe('KeyDeclarationDetail', () => {
     const view = await render();
     const text = textOf(view.container);
 
-    expect(text).toContain('no longer exists');
+    expect(text).toContain(KEY_GONE_REFUSAL);
     expect(
       [...view.container.querySelectorAll('a')].some((a) => a.textContent?.includes('Back to the matrix')),
     ).toBe(true);
@@ -444,7 +444,7 @@ describe('KeyDeclarationDetail', () => {
 
     expect(view.container.querySelector('dialog.scan-block')).toBeNull();
     const text = textOf(view.container);
-    expect(text).toContain('no longer exists');
+    expect(text).toContain(KEY_GONE_REFUSAL);
     expect(text).not.toContain('aws-access-key');
 
     await view.unmount();
@@ -590,7 +590,7 @@ describe('KeyDeclarationDetail', () => {
     await act(async () => dialogButton(view.container, 'Reclassify as config').click());
 
     const text = textOf(view.container);
-    expect(text).toContain('no longer exists');
+    expect(text).toContain(KEY_GONE_REFUSAL);
     // The gate must not become an oracle: neither the server detail nor any
     // reveal/permission wording may surface on a 404.
     expect(text).not.toContain('requires reveal');
