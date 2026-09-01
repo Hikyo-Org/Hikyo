@@ -6,7 +6,6 @@ import { isLinkActive, sidebarModel, type SidebarLink } from './sidebar-model.ts
 const base = {
   activeOrgId: 'org_1',
   routeProjectId: '',
-  activeProjectId: 'prj_1',
   remote: '',
   isInstanceOperator: true,
 };

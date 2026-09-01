@@ -97,7 +97,11 @@ test.describe('app chrome', () => {
       'aria-current',
       'page',
     );
-    await expect(instanceNav.getByRole('link', { name: 'Instance settings' })).toBeVisible();
+    // Exact matching: the settings link must not light up under its sibling.
+    await expect(instanceNav.getByRole('link', { name: 'Instance settings' })).not.toHaveAttribute(
+      'aria-current',
+      'page',
+    );
     await expect(sidebar.getByRole('heading', { name: 'Organisation' })).toBeVisible();
     await expect(page.getByLabel('Breadcrumb')).toContainText('Instance');
   });

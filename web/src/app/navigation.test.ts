@@ -7,6 +7,7 @@ import {
   routeRegistryViolations,
   sectionsFor,
   SURFACES,
+  type SectionId,
 } from './navigation.ts';
 
 describe('the route policy registry', () => {
@@ -61,9 +62,8 @@ describe('the route policy registry', () => {
 
   it('puts every shell surface with a section in exactly one section', () => {
     const sectioned = SURFACES.filter((s) => s.section !== null).map((s) => s.id);
-    const listed = (['project', 'instance', 'organisation', 'account'] as const).flatMap((k) =>
-      sectionsFor(k).map((s) => s.id),
-    );
+    const kinds: readonly SectionId[] = ['project', 'instance', 'organisation', 'account'];
+    const listed = kinds.flatMap((k) => sectionsFor(k).map((s) => s.id));
     expect([...listed].sort()).toEqual([...sectioned].sort());
     expect(new Set(listed).size).toBe(listed.length);
   });

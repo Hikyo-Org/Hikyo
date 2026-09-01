@@ -304,8 +304,8 @@ export function Shell({ session }: { session: WhoAmI }) {
   const model = sidebarModel({
     surface: here?.surface,
     activeOrgId,
-    routeProjectId,
-    activeProjectId,
+    // The route's project, resolved to its id where the listing knows it.
+    routeProjectId: routeProjectId === '' ? '' : activeProjectId,
     remote,
     isInstanceOperator,
   });
@@ -672,8 +672,10 @@ function SidebarLinkItem({ link, onNavigate }: { link: SidebarLink; onNavigate: 
       </Link>
     );
   }
+  // Always exact: `/instance` must not light up under `/instance/members`,
+  // and `/` must not light up under everything.
   return (
-    <NavLink className="sidebar__link" to={link.to} end={link.end} onClick={onNavigate}>
+    <NavLink className="sidebar__link" to={link.to} end onClick={onNavigate}>
       {link.label}
     </NavLink>
   );

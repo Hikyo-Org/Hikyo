@@ -8,8 +8,6 @@ export type SidebarLink = {
   readonly id: string;
   readonly label: string;
   readonly to: string;
-  /** NavLink `end`: only the root path needs exact matching. */
-  readonly end: boolean;
   /** Non-null renders the row as a disabled span carrying this title. */
   readonly disabledReason: string | null;
 };
@@ -34,7 +32,7 @@ export type SidebarModel = {
 const localOnly = (label: string) => `${label} is not available for remote workspaces yet`;
 
 function link(surface: Surface, to: string, disabledReason: string | null = null): SidebarLink {
-  return { id: surface.id, label: surface.label, to, end: surface.path === '/', disabledReason };
+  return { id: surface.id, label: surface.label, to, disabledReason };
 }
 
 /**
@@ -46,13 +44,17 @@ function link(surface: Surface, to: string, disabledReason: string | null = null
 export function sidebarModel(input: {
   readonly surface: Surface | undefined;
   readonly activeOrgId: string;
+  /**
+   * The project the ROUTE addresses, resolved to its id, or '' on any route
+   * that names no project. Never the rail's fallback: that value is never
+   * empty once an organisation has a project, and keying the context block on
+   * it would hide the organisation list everywhere.
+   */
   readonly routeProjectId: string;
-  readonly activeProjectId: string;
   readonly remote: string;
   readonly isInstanceOperator: boolean;
 }): SidebarModel {
-  const { surface, activeOrgId, routeProjectId, activeProjectId, remote, isInstanceOperator } =
-    input;
+  const { surface, activeOrgId, routeProjectId, remote, isInstanceOperator } = input;
 
   // An org-scoped destination needs an organisation to point at. With none
   // active the entry is absent rather than dead: a link that resolves to
@@ -83,9 +85,9 @@ export function sidebarModel(input: {
 
   let context: SidebarBlock | null = null;
   if (routeProjectId !== '' && activeOrgId !== '') {
-    const params = { org: activeOrgId, project: activeProjectId };
+    const params = { org: activeOrgId, project: routeProjectId };
     const membersSurface = surfaceById('members');
-    const membersPath = `${generatePath(membersSurface.path, { org: activeOrgId })}?project=${encodeURIComponent(activeProjectId)}`;
+    const membersPath = `${generatePath(membersSurface.path, { org: activeOrgId })}?project=${encodeURIComponent(routeProjectId)}`;
     const projectLinks = sectionsFor('project').map((item) => {
       const path = generatePath(item.path, params);
       if (item.id === 'matrix') return link(item, withRemote(path, remote));
@@ -97,7 +99,6 @@ export function sidebarModel(input: {
       id: 'project-members',
       label: membersSurface.label,
       to: membersPath,
-      end: false,
       disabledReason: remote === '' ? null : localOnly(membersSurface.label),
     };
     const settingsIndex = projectLinks.findIndex((l) => l.id === 'project-settings');

@@ -153,14 +153,18 @@ export function Members({ scope }: { scope: MembersScope }) {
         (option.scope.kind === 'project' || option.scope.kind === 'environment') &&
         option.scope.project === projectId,
       );
-  const inspectOptions = projectId === ''
+  const inspectOptions = instance
+    ? allOptions
+    : projectId === ''
     ? prototypeMode
       ? prototypeProjectOptions(allOptions, names, ['production', 'staging', 'project', 'org'])
       : allOptions
     : prototypeMode
       ? prototypeProjectOptions(projectOptions, names, ['production', 'staging', 'project'])
       : projectOptions;
-  const grantOptions = projectId === ''
+  const grantOptions = instance
+    ? allOptions
+    : projectId === ''
     ? allOptions
     : prototypeMode
       ? prototypeProjectOptions(
@@ -178,7 +182,9 @@ export function Members({ scope }: { scope: MembersScope }) {
       });
   const rows = membershipRows(visibleLines, names);
   const me = auth.identity?.principal.id ?? '';
-  const compactPresentation = projectId !== '' || prototypeMode;
+  // The prototype's compact project presentation never applies at instance
+  // scope: there is no project to be compact about.
+  const compactPresentation = projectId !== '' || (prototypeMode && !instance);
   const secondFactorRefused =
     instance && grants.error instanceof ApiError && grants.error.status === 403;
   const nondisclosed = instance && grants.error instanceof ApiError && grants.error.status === 404;
@@ -269,7 +275,7 @@ export function Members({ scope }: { scope: MembersScope }) {
         names={names}
         grantsPending={grants.isPending}
         grantsSucceeded={grants.isSuccess}
-        projectContext={projectId !== '' || prototypeMode}
+        projectContext={compactPresentation}
         level={instance ? 'instance' : 'org'}
       />
 
