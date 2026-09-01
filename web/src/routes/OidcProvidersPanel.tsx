@@ -10,7 +10,6 @@ import {
   type OidcProvider,
   type OidcProviderDraft,
   type OidcProviderField,
-  type OidcProviderInput,
 } from '../api/oidcProviders.ts';
 import { Alert, Done, Panel, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
@@ -68,7 +67,6 @@ type EditorTarget =
 
 export function OidcProvidersPanel() {
   const providers = useOidcProviders();
-  const put = usePutOidcProvider();
   const feedback = useFeedback((error) =>
     error instanceof Refusal ? error.message : oidcProviderRefusalText(error, 'save-oidc-provider'),
   );
@@ -161,30 +159,26 @@ export function OidcProvidersPanel() {
         </div>
       ) : null}
 
-      {editor !== null ? (
+      {editor !== null && providers.isSuccess ? (
         <ProviderEditor
           target={editor}
-          busy={put.isPending}
+          existing={providers.data.providers}
           onCancel={() => {
             feedback.clear();
             setEditor(null);
           }}
-          onSubmit={(slug, input, describe) => {
-            feedback.clear();
-            put.mutate(
-              { slug, input },
-              {
-                onSuccess: () => {
-                  setEditor(null);
-                  void providers.refetch();
-                  feedback.ok(describe);
-                },
-                onError: (error) =>
-                  feedback.report(new Refusal(oidcProviderRefusalText(error, 'save-oidc-provider'))),
-              },
-            );
+          onSaved={(describe) => {
+            setEditor(null);
+            void providers.refetch();
+            feedback.ok(describe);
           }}
-          onFieldError={(message) => feedback.report(new Refusal(message))}
+          onFailure={(refusal) => feedback.report(refusal)}
+          onFailClosed={() => {
+            // A stale, forbidden, or ended-session refusal: close the editor and
+            // refetch so any retry starts from fresh state, not the stale draft.
+            setEditor(null);
+            void providers.refetch();
+          }}
         />
       ) : null}
 
@@ -207,18 +201,21 @@ export function OidcProvidersPanel() {
 
 function ProviderEditor({
   target,
-  busy,
+  existing,
   onCancel,
-  onSubmit,
-  onFieldError,
+  onSaved,
+  onFailure,
+  onFailClosed,
 }: {
   target: EditorTarget;
-  busy: boolean;
+  existing: readonly OidcProvider[];
   onCancel: () => void;
-  onSubmit: (slug: string, input: OidcProviderInput, describe: string) => void;
-  onFieldError: (message: string) => void;
+  onSaved: (describe: string) => void;
+  onFailure: (refusal: Refusal) => void;
+  onFailClosed: () => void;
 }) {
   const original = target.kind === 'reconfigure' ? target.provider : null;
+  const put = usePutOidcProvider();
   const [draft, setDraft] = useState<OidcProviderDraft>(
     original === null ? emptyDraft : draftFrom(original),
   );
@@ -240,21 +237,44 @@ function ProviderEditor({
   };
 
   const submit = () => {
-    const result = validateProviderDraft(draft, original);
+    const result = validateProviderDraft(draft, original, existing);
     if (!result.ok) {
       setInvalidField(result.field);
-      onFieldError(result.message);
+      onFailure(new Refusal(result.message));
       return;
     }
     setInvalidField(null);
     const verb = original === null ? 'Configured' : 'Reconfigured';
-    onSubmit(
-      result.slug,
-      result.input,
-      `${verb} ${result.input.displayName}. ${result.input.enabled ? 'It is advertised on the sign-in page.' : 'It is disabled and not advertised.'}`,
+    const describe = `${verb} ${result.input.displayName}. ${result.input.enabled ? 'It is advertised on the sign-in page.' : 'It is disabled and not advertised.'}`;
+    put.mutate(
+      { slug: result.slug, input: result.input },
+      {
+        onSuccess: () => {
+          // Drop the mutation's cached variables so the secret does not linger
+          // in mutation state after a successful save.
+          put.reset();
+          onSaved(describe);
+        },
+        onError: (error) => {
+          // The secret is write-only: never retain it after a failed save, in
+          // the field or in the mutation's cached variables.
+          setDraft((current) => ({ ...current, clientSecret: '' }));
+          put.reset();
+          onFailure(new Refusal(oidcProviderRefusalText(error, 'save-oidc-provider')));
+          // Stale (409), forbidden (403), or ended-session (401) refusals are
+          // fail-closed: close and refetch so no retry proceeds on stale state.
+          if (
+            error instanceof ApiError &&
+            (error.status === 401 || error.status === 403 || error.status === 409)
+          ) {
+            onFailClosed();
+          }
+        },
+      },
     );
   };
 
+  const busy = put.isPending;
   const disabling = original !== null && original.enabled && !draft.enabled;
   const invalid = (field: OidcProviderField) => (invalidField === field ? true : undefined);
 

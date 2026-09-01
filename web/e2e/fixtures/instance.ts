@@ -227,7 +227,13 @@ async function spawnIdP(
   const issuer = await new Promise<string>((resolve, reject) => {
     let stdout = '';
     let stderr = '';
-    const deadline = setTimeout(() => reject(new Error('the fake OIDC provider did not start')), 10_000);
+    const deadline = setTimeout(() => {
+      // Kill the child here: the caller assigns the process global only AFTER
+      // a successful start, so a timed-out child teardown could never reach
+      // would otherwise hold its port for every later run.
+      proc.kill('SIGKILL');
+      reject(new Error('the fake OIDC provider did not start'));
+    }, 10_000);
     proc.stderr?.on('data', (chunk: Buffer) => {
       stderr += chunk.toString();
     });

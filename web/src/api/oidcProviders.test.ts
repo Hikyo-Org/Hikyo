@@ -73,7 +73,7 @@ describe('validatePolicyJson', () => {
 
 describe('validateProviderDraft', () => {
   it('binds a valid create draft to a wire input', () => {
-    const result = validateProviderDraft(goodDraft, null);
+    const result = validateProviderDraft(goodDraft, null, []);
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.slug).toBe('acme');
@@ -84,18 +84,18 @@ describe('validateProviderDraft', () => {
 
   it('requires the write-only secret on every save, including a disable', () => {
     const disabling = { ...goodDraft, clientSecret: '', enabled: false };
-    const result = validateProviderDraft(disabling, provider);
+    const result = validateProviderDraft(disabling, provider, [provider]);
     expect(result).toMatchObject({ ok: false, field: 'client_secret' });
   });
 
   it('refuses a changed issuer on reconfigure as a field error, before the wire', () => {
     const moved = { ...goodDraft, issuer: 'https://other.example' };
-    const result = validateProviderDraft(moved, provider);
+    const result = validateProviderDraft(moved, provider, [provider]);
     expect(result).toMatchObject({ ok: false, field: 'issuer' });
   });
 
   it('keeps the immutable slug of the reconfigured provider, ignoring the draft slug', () => {
-    const result = validateProviderDraft({ ...goodDraft, slug: 'ignored' }, provider);
+    const result = validateProviderDraft({ ...goodDraft, slug: 'ignored' }, provider, [provider]);
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.slug).toBe('acme');
@@ -103,12 +103,32 @@ describe('validateProviderDraft', () => {
   });
 
   it('validates the slug only on create', () => {
-    expect(validateProviderDraft({ ...goodDraft, slug: 'Bad Slug' }, null)).toMatchObject({
+    expect(validateProviderDraft({ ...goodDraft, slug: 'Bad Slug' }, null, [])).toMatchObject({
       ok: false,
       field: 'slug',
     });
     // A reconfigure never sends the slug, so an odd draft slug is irrelevant.
-    expect(validateProviderDraft({ ...goodDraft, slug: 'Bad Slug' }, provider).ok).toBe(true);
+    expect(validateProviderDraft({ ...goodDraft, slug: 'Bad Slug' }, provider, [provider]).ok).toBe(
+      true,
+    );
+  });
+
+  it('refuses a second enabled provider on an issuer another enabled one already uses', () => {
+    const other: OidcProvider = { ...provider, slug: 'other', display_name: 'Other' };
+    // A new enabled provider on the same issuer as an existing enabled one.
+    const created = validateProviderDraft(
+      { ...goodDraft, slug: 'new-one' },
+      null,
+      [other],
+    );
+    expect(created).toMatchObject({ ok: false, field: 'issuer' });
+
+    // A disabled twin does not collide, and neither does reconfiguring self.
+    const disabledTwin: OidcProvider = { ...other, enabled: false };
+    expect(validateProviderDraft({ ...goodDraft, slug: 'new-one' }, null, [disabledTwin]).ok).toBe(
+      true,
+    );
+    expect(validateProviderDraft(goodDraft, provider, [provider]).ok).toBe(true);
   });
 });
 

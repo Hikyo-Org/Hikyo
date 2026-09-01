@@ -181,10 +181,17 @@ export type OidcProviderDraft = {
  * offending field. `original` is the provider being reconfigured, or null for a
  * create: on a reconfigure the issuer is immutable (A3), so a changed issuer is
  * the one field error the server would otherwise answer as an unattributed 400.
+ *
+ * `existing` is the currently-loaded provider list. It lets the editor refuse an
+ * enabled-issuer collision here, with a named field, rather than let it reach
+ * the database's `oidc_providers_issuer_enabled` unique index — a raw
+ * constraint the server does not translate, so it would otherwise surface as an
+ * opaque 500.
  */
 export function validateProviderDraft(
   draft: OidcProviderDraft,
   original: OidcProvider | null,
+  existing: readonly OidcProvider[],
 ): OidcProviderValidated {
   if (original === null) {
     const slug = validateSlug(draft.slug);
@@ -219,6 +226,20 @@ export function validateProviderDraft(
   }
   if (draft.scopes.trim() === '') {
     return { ok: false, field: 'scopes', message: 'At least one scope is required (for example openid).' };
+  }
+  if (draft.enabled) {
+    const keepSlug = original === null ? draft.slug : original.slug;
+    const clash = existing.find(
+      (candidate) =>
+        candidate.enabled && candidate.issuer === draft.issuer && candidate.slug !== keepSlug,
+    );
+    if (clash !== undefined) {
+      return {
+        ok: false,
+        field: 'issuer',
+        message: `Another enabled provider (${clash.display_name}) already uses this issuer. At most one enabled provider is allowed per issuer — disable or delete it first.`,
+      };
+    }
   }
   const jit = validatePolicyJson(draft.jitPolicy, 'The JIT policy');
   if (!jit.ok) {

@@ -468,6 +468,7 @@ test.describe('instance administration', () => {
     browser,
   }, testInfo) => {
     testInfo.setTimeout(60_000);
+    try {
     const panel = page.locator('#instance-oidc');
     await expect(panel.getByRole('heading', { name: 'Identity providers' })).toBeVisible();
     // The fixture's linked provider is listed alongside any this flow adds.
@@ -542,9 +543,16 @@ test.describe('instance administration', () => {
     await expect(
       panel.locator('.settings-row').filter({ hasText: WEBUI_OIDC.displayName }),
     ).toHaveCount(0);
+    } finally {
+      // Failure-safe cleanup: a mid-test failure must not leave the throwaway
+      // provider behind to collide (by slug or enabled issuer) on a later run.
+      await browserApi(page, 'DELETE', `/api/v1/instance/oidc-providers/${WEBUI_OIDC.slug}`, z.null()).catch(
+        () => undefined,
+      );
+    }
   });
 
-  test('refuses a changed issuer on reconfigure as a field error, before any request', async ({
+  test('keeps the issuer immutable and refuses a secretless reconfigure before any request', async ({
     page,
   }) => {
     const panel = page.locator('#instance-oidc');
@@ -562,14 +570,15 @@ test.describe('instance administration', () => {
       .getByRole('button', { name: `Reconfigure ${OIDC_PROVIDER.displayName}` })
       .click();
     const editor = panel.locator('.oidc-editor');
-    // The issuer field is disabled on reconfigure, so its immutability is
-    // visible; the validator refuses a mismatch regardless. Drive the guard by
-    // clearing the secret, which is refused as a field error with no request.
+    // The issuer field is disabled on reconfigure, so a changed issuer is not
+    // even expressible in the UI — the field-error path for it is unit-tested.
+    // Here the blank-secret guard refuses the save with no request reaching the
+    // server, which is the write-only-secret contract enforced client-side.
+    await expect(editor.getByLabel('Issuer URL')).toBeDisabled();
     await editor.getByLabel('Client secret').fill('');
     await editor.getByRole('button', { name: 'Save provider' }).click();
     await expect(panel.getByRole('alert')).toContainText('entered on every save');
     expect(putSent).toBe(false);
-    await expect(editor.getByLabel('Issuer URL')).toBeDisabled();
   });
 
   test('surfaces a stale-state conflict as a reload prompt', async ({ page }) => {
