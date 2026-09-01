@@ -87,11 +87,17 @@ export function KeyDeclarationDetail({
     };
   }, [openerRef, keyId]);
 
-  // Editing is available ONLY once the source is confirmed `db`. An unresolved
-  // or failed settings query must fail closed — never show a live edit action
-  // on a project that might be Git-managed (where declarations are read-only).
+  // Editing is available ONLY once the source is confirmed `db` by a read that
+  // is CURRENT. This fails closed on both the initial unresolved/errored state
+  // (no data) AND a failed refetch that left stale data behind — react-query
+  // keeps a prior success's data through a refetch error, so `isError` alone
+  // stays false there; `isRefetchError` is what catches it. A stale `db` value
+  // must not keep a live Save on a project whose source may since have become
+  // Git-managed (where declarations are read-only). The Git read-only notice is
+  // always safe to show, so it need not be as strict.
   const source = definitions.data?.definitions_source;
-  const editable = source === 'db';
+  const sourceUntrusted = definitions.isError || definitions.isRefetchError;
+  const editable = definitions.isSuccess && !sourceUntrusted && source === 'db';
   const gitManaged = source === 'git';
 
   return (
@@ -129,7 +135,7 @@ export function KeyDeclarationDetail({
           editable={editable}
           gitManaged={gitManaged}
           sourceResolved={definitions.isSuccess}
-          sourceFailed={definitions.isError}
+          sourceFailed={sourceUntrusted}
           gitProvenance={definitions.data?.last_apply}
           historyPath={historyPath}
         />

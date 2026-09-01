@@ -97,7 +97,7 @@ beforeEach(() => {
 describe('KeyDeclarationDetail', () => {
   it('renders every declaration field and, in db mode, the editor', async () => {
     mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
-    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' } });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' }, isSuccess: true, isError: false, isRefetchError: false });
 
     const view = await render();
     const text = textOf(view.container);
@@ -154,7 +154,7 @@ describe('KeyDeclarationDetail', () => {
       isError: true,
       error: new ApiError(404, 'not found'),
     });
-    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' } });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' }, isSuccess: true, isError: false, isRefetchError: false });
 
     const view = await render();
     const text = textOf(view.container);
@@ -169,7 +169,7 @@ describe('KeyDeclarationDetail', () => {
 
   it('surfaces a refusal from a rejected metadata edit', async () => {
     mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
-    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' } });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' }, isSuccess: true, isError: false, isRefetchError: false });
     mocks.mutate.mockImplementation(
       (
         _input: unknown,
@@ -195,7 +195,7 @@ describe('KeyDeclarationDetail', () => {
 
   it('sends only the changed field on save', async () => {
     mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
-    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' } });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' }, isSuccess: true, isError: false, isRefetchError: false });
     mocks.mutate.mockImplementation(
       (_input: unknown, callbacks: { onSuccess: () => void }) => callbacks.onSuccess(),
     );
@@ -220,7 +220,7 @@ describe('KeyDeclarationDetail', () => {
 
   it('keeps the save disabled until a field changes', async () => {
     mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
-    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' } });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' }, isSuccess: true, isError: false, isRefetchError: false });
 
     const view = await render();
     const save = [...view.container.querySelectorAll('button')].find((b) =>
@@ -248,6 +248,29 @@ describe('KeyDeclarationDetail', () => {
     await view.unmount();
   });
 
+  it('fails closed when a refetch errored over stale db data', async () => {
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
+    // react-query keeps the prior success's data through a refetch error, so
+    // `isError` stays false while `isRefetchError` is true — the editor must
+    // still not appear on a source we can no longer trust as current.
+    mocks.definitions.mockReturnValue({
+      data: { definitions_source: 'db' },
+      isSuccess: true,
+      isError: false,
+      isRefetchError: true,
+    });
+
+    const view = await render();
+    expect(
+      [...view.container.querySelectorAll('button')].some((b) =>
+        b.textContent?.includes('Save declaration'),
+      ),
+    ).toBe(false);
+    expect(textOf(view.container)).toContain('could not be read');
+
+    await view.unmount();
+  });
+
   it('renders explicit allow_empty=false and the full JSON schema', async () => {
     const jsonKey: MatrixKey = {
       ...record,
@@ -256,7 +279,7 @@ describe('KeyDeclarationDetail', () => {
       },
     };
     mocks.key.mockReturnValue({ isPending: false, isError: false, data: jsonKey });
-    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' } });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' }, isSuccess: true, isError: false, isRefetchError: false });
 
     const view = await render();
     const text = textOf(view.container);
