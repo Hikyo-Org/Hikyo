@@ -29,7 +29,7 @@ import {
 } from '../api/access.ts';
 import { ApiError } from '../api/client.ts';
 import type { Grant } from '../api/identities.ts';
-import { useInstanceOrgs, useOrg, useOrgTopology } from '../api/settings.ts';
+import { useOrg, useOrgTopology } from '../api/settings.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { Alert, Done, Explain, JumpIndex, Panel } from './Sections.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
@@ -113,7 +113,6 @@ export function Members({ scope }: { scope: MembersScope }) {
   const instanceGrants = useInstanceGrants(instance);
   const grants = instance ? instanceGrants : orgGrants;
   const topology = useOrgTopology(org);
-  const instanceOrgs = useInstanceOrgs(instance);
   const auth = useAuth();
   const revoke = useRevokeGrant();
   const feedback = useFeedback(grantFailureText);
@@ -123,9 +122,11 @@ export function Members({ scope }: { scope: MembersScope }) {
   const project = topology.projects.find((candidate) => candidate.id === projectId);
   const projectName = project?.name ?? projectId;
   const scopeName = instance ? 'Instance' : projectId === '' ? orgName : projectName;
+  // Instance-scope lines never name an organisation (`listInstanceGrants`
+  // returns instance rows only), so no MFA-mandatory org directory read is
+  // provoked here; the org name is the addressed org's.
   const names = {
-    org: (id: string) =>
-      instance ? instanceOrgs.data?.items.find((o) => o.id === id)?.name ?? id : orgName,
+    org: () => orgName,
     project: (id: string) => topology.projects.find((p) => p.id === id)?.name ?? id,
     environment: (id: string) =>
       topology.projects.flatMap((p) => p.environments).find((e) => e.id === id)?.name ?? id,

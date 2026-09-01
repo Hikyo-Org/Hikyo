@@ -648,7 +648,6 @@ select {
 }
 
 .sidebar > .sidebar__section + .sidebar__section,
-.sidebar__mobile-account,
 .sidebar__mobile-projects {
   margin-top: 30px;
 }
