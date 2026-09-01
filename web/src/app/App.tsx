@@ -1,25 +1,8 @@
-import type { ReactElement } from 'react';
+import { lazy, Suspense, type ReactElement } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
 
-import { AccountSecurity } from '../routes/AccountSecurity.tsx';
-import { CLIReauth } from '../routes/CLIReauth.tsx';
-import { InstanceAdmin } from '../routes/InstanceAdmin.tsx';
-import { Login } from '../routes/Login.tsx';
-import { OIDCDone } from '../routes/OIDCDone.tsx';
-import { MachineAccess } from '../routes/MachineAccess.tsx';
-import { Matrix } from '../routes/Matrix.tsx';
-import { Members } from '../routes/Members.tsx';
-import { OrgSettings } from '../routes/OrgSettings.tsx';
 import { NotFound, Overview } from '../routes/Placeholder.tsx';
-import { ProjectSettings } from '../routes/ProjectSettings.tsx';
-import { Projects } from '../routes/Projects.tsx';
-import { Remotes } from '../routes/Remotes.tsx';
-import { ScimProvisioning } from '../routes/ScimProvisioning.tsx';
 import { Shell } from '../routes/Shell.tsx';
-import { Values } from '../routes/Values.tsx';
-import { WorkspaceApprove } from '../routes/WorkspaceApprove.tsx';
-import { WorkspaceCallback } from '../routes/WorkspaceCallback.tsx';
-import { WorkspaceScope } from '../routes/WorkspaceScope.tsx';
 import {
   allowsAnonymousSession,
   SURFACES,
@@ -28,6 +11,36 @@ import {
 } from './navigation.ts';
 import { ToastViewport } from './notifications.tsx';
 import { useAuth } from './AuthProvider.tsx';
+
+const loadAuthRoutes = () => import('./route-groups/auth.ts');
+const loadWorkspaceRoutes = () => import('./route-groups/workspace.ts');
+const loadSettingsRoutes = () => import('./route-groups/settings.ts');
+
+const Login = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.Login })));
+const CLIReauth = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.CLIReauth })));
+const OIDCDone = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.OIDCDone })));
+const WorkspaceApprove = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.WorkspaceApprove })));
+const WorkspaceCallback = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.WorkspaceCallback })));
+
+const Matrix = lazy(() => loadWorkspaceRoutes().then((routes) => ({ default: routes.Matrix })));
+const Projects = lazy(() => loadWorkspaceRoutes().then((routes) => ({ default: routes.Projects })));
+const Remotes = lazy(() => loadWorkspaceRoutes().then((routes) => ({ default: routes.Remotes })));
+const Values = lazy(() => loadWorkspaceRoutes().then((routes) => ({ default: routes.Values })));
+const WorkspaceScope = lazy(() => loadWorkspaceRoutes().then((routes) => ({ default: routes.WorkspaceScope })));
+
+const AccountSecurity = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.AccountSecurity })));
+const InstanceAdmin = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.InstanceAdmin })));
+const MachineAccess = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.MachineAccess })));
+const Members = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.Members })));
+const OrgSettings = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.OrgSettings })));
+const ProjectSettings = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.ProjectSettings })));
+const ScimProvisioning = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.ScimProvisioning })));
+
+const withRouteFallback = (element: ReactElement) => (
+  <Suspense fallback={<p className="login" role="status">Loading…</p>}>
+    {element}
+  </Suspense>
+);
 
 /**
  * ELEMENTS is what each locked surface renders.
@@ -40,20 +53,20 @@ import { useAuth } from './AuthProvider.tsx';
  * S3 gate needs to stay true rather than merely be true today.
  */
 const ELEMENTS: Record<SurfaceId, ReactElement> = {
-  login: <Login />,
+  login: withRouteFallback(<Login />),
   overview: <Overview />,
-  projects: <Projects />,
-  remotes: <Remotes />,
-  members: <Members />,
-  'org-settings': <OrgSettings />,
-  scim: <ScimProvisioning />,
-  'project-settings': <ProjectSettings />,
-  'instance-admin': <InstanceAdmin />,
-  settings: <AccountSecurity />,
+  projects: withRouteFallback(<Projects />),
+  remotes: withRouteFallback(<Remotes />),
+  members: withRouteFallback(<Members />),
+  'org-settings': withRouteFallback(<OrgSettings />),
+  scim: withRouteFallback(<ScimProvisioning />),
+  'project-settings': withRouteFallback(<ProjectSettings />),
+  'instance-admin': withRouteFallback(<InstanceAdmin />),
+  settings: withRouteFallback(<AccountSecurity />),
   // The three product surfaces are wrapped in WorkspaceScope: reached with a
   // `?remote=<name>` parameter they operate that remote over its bearer, and
   // without one they render exactly as before against this instance (#71).
-  matrix: (
+  matrix: withRouteFallback(
     <WorkspaceScope>
       <Matrix />
     </WorkspaceScope>
@@ -61,7 +74,7 @@ const ELEMENTS: Record<SurfaceId, ReactElement> = {
   // The same surface with its history drawer open. The route table is the only
   // place that knows the path, so the element reads the state as a prop rather
   // than sniffing the location.
-  history: (
+  history: withRouteFallback(
     <WorkspaceScope>
       <Matrix historyOpen />
     </WorkspaceScope>
@@ -69,21 +82,21 @@ const ELEMENTS: Record<SurfaceId, ReactElement> = {
   // The catalogue declaration detail is the matrix with one key's declaration
   // open — same component, same workspace wrapper as `history`, so a `?remote`
   // deep link resolves the key against the workspace's instance, not this one.
-  'key-detail': (
+  'key-detail': withRouteFallback(
     <WorkspaceScope>
       <Matrix keyDetailOpen />
     </WorkspaceScope>
   ),
-  values: (
+  values: withRouteFallback(
     <WorkspaceScope>
       <Values />
     </WorkspaceScope>
   ),
-  'machine-access': <MachineAccess />,
-  'cli-reauth': <CLIReauth />,
-  'workspace-approve': <WorkspaceApprove />,
-  'workspace-callback': <WorkspaceCallback />,
-  'oidc-done': <OIDCDone />,
+  'machine-access': withRouteFallback(<MachineAccess />),
+  'cli-reauth': withRouteFallback(<CLIReauth />),
+  'workspace-approve': withRouteFallback(<WorkspaceApprove />),
+  'workspace-callback': withRouteFallback(<WorkspaceCallback />),
+  'oidc-done': withRouteFallback(<OIDCDone />),
 };
 
 /**

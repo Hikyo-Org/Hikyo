@@ -30,14 +30,47 @@ const indexHTML = `<!doctype html><html><head><link rel="stylesheet" href="/asse
 
 func testUI() fstest.MapFS {
 	return fstest.MapFS{
-		"index.html":               {Data: []byte(indexHTML)},
-		"assets/app-deadbeef.js":   {Data: []byte("export const a = 1;\n")},
-		"assets/app-deadbeef.css":  {Data: []byte(":root{--bg:#000}\n")},
-		"assets/font-cafe.woff2":   {Data: []byte("woff2")},
-		"favicon.svg":              {Data: []byte("<svg/>")},
-		"nested/deep/thing.txt":    {Data: []byte("not an asset")},
-		"assets/sub/nested-aa.map": {Data: []byte("{}")},
+		"index.html":                {Data: []byte(indexHTML)},
+		"index.html.br":             {Data: []byte("brotli index")},
+		"index.html.gz":             {Data: []byte("gzip index")},
+		"assets/app-deadbeef.js":    {Data: []byte("export const a = 1;\n")},
+		"assets/app-deadbeef.js.br": {Data: []byte("brotli javascript")},
+		"assets/app-deadbeef.js.gz": {Data: []byte("gzip javascript")},
+		"assets/app-deadbeef.css":   {Data: []byte(":root{--bg:#000}\n")},
+		"assets/font-cafe.woff2":    {Data: []byte("woff2")},
+		"favicon.svg":               {Data: []byte("<svg/>")},
+		"nested/deep/thing.txt":     {Data: []byte("not an asset")},
+		"assets/sub/nested-aa.map":  {Data: []byte("{}")},
 	}
+}
+
+func getEncoded(t *testing.T, srv *httptest.Server, method, requestPath, accept, encoding string) (*http.Response, string) {
+	t.Helper()
+	req, err := http.NewRequest(method, srv.URL+requestPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accept != "" {
+		req.Header.Set("Accept", accept)
+	}
+	if encoding != "" {
+		req.Header.Set("Accept-Encoding", encoding)
+	} else {
+		req.Header.Set("Accept-Encoding", "identity")
+	}
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { resp.Body.Close() })
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp, string(body)
 }
 
 func uiServer(t *testing.T) *httptest.Server {
@@ -69,6 +102,9 @@ func doRequest(t *testing.T, srv *httptest.Server, method, path, accept, body st
 	if accept != "" {
 		req.Header.Set("Accept", accept)
 	}
+	// Go's transport otherwise adds gzip implicitly and transparently decodes
+	// it. Most tests exercise identity bytes; negotiation cases use getEncoded.
+	req.Header.Set("Accept-Encoding", "identity")
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -139,6 +175,64 @@ func TestHashedAssetsAreImmutable(t *testing.T) {
 				t.Fatalf("Cache-Control = %q, want immutable", cc)
 			}
 		})
+	}
+}
+
+func TestHashedAssetsPreferAvailablePrecompressedRepresentations(t *testing.T) {
+	srv := uiServer(t)
+	for _, tc := range []struct {
+		name           string
+		acceptEncoding string
+		wantEncoding   string
+		wantBody       string
+	}{
+		{"brotli preferred on equal quality", "gzip, br", "br", "brotli javascript"},
+		{"gzip accepted", "gzip", "gzip", "gzip javascript"},
+		{"quality values honored", "br;q=0.4, gzip;q=0.8", "gzip", "gzip javascript"},
+		{"disabled coding skipped", "br;q=0, gzip", "gzip", "gzip javascript"},
+		{"legacy client gets identity", "", "", "export const a = 1;\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, body := getEncoded(t, srv, http.MethodGet, "/assets/app-deadbeef.js", "", tc.acceptEncoding)
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("status = %d, want 200", resp.StatusCode)
+			}
+			if got := resp.Header.Get("Content-Encoding"); got != tc.wantEncoding {
+				t.Fatalf("Content-Encoding = %q, want %q", got, tc.wantEncoding)
+			}
+			if got := resp.Header.Get("Vary"); !strings.Contains(got, "Accept-Encoding") {
+				t.Fatalf("Vary = %q, want Accept-Encoding", got)
+			}
+			if got := resp.Header.Get("Cache-Control"); !strings.Contains(got, "immutable") {
+				t.Fatalf("Cache-Control = %q, want immutable", got)
+			}
+			if got := resp.Header.Get("Content-Type"); !strings.Contains(got, "javascript") {
+				t.Fatalf("Content-Type = %q, want JavaScript", got)
+			}
+			if body != tc.wantBody {
+				t.Fatalf("body = %q, want %q", body, tc.wantBody)
+			}
+		})
+	}
+}
+
+func TestIndexPrefersPrecompressedRepresentationWithoutChangingRevalidation(t *testing.T) {
+	srv := uiServer(t)
+	resp, body := getEncoded(t, srv, http.MethodGet, "/login", htmlAccept, "br, gzip")
+	if got := resp.Header.Get("Content-Encoding"); got != "br" {
+		t.Fatalf("Content-Encoding = %q, want br", got)
+	}
+	if got := resp.Header.Get("Vary"); !strings.Contains(got, "Accept-Encoding") {
+		t.Fatalf("Vary = %q, want Accept-Encoding", got)
+	}
+	if got := resp.Header.Get("Cache-Control"); got != "no-cache" {
+		t.Fatalf("Cache-Control = %q, want no-cache", got)
+	}
+	if got := resp.Header.Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
+		t.Fatalf("Content-Type = %q, want text/html", got)
+	}
+	if body != "brotli index" {
+		t.Fatalf("body = %q, want precompressed index", body)
 	}
 }
 
