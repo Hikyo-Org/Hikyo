@@ -195,6 +195,8 @@ jobs:
         run: ./scripts/ci/check-chart_test.sh
       - name: Trusted CI scripts fixture
         run: ./scripts/ci/check-trusted-ci-scripts_test.sh
+      - name: CodeQL default-setup fixture
+        run: ./scripts/ci/check-codeql-default-setup_test.sh
       - name: Build artifact reuse fixture
         run: ./scripts/ci/check-build-artifact-reuse_test.sh
       - name: Cache policy fixture
@@ -216,13 +218,17 @@ jobs:
       - name: Pinned installer fixture
         run: ./scripts/release/render-installer_test.sh
 
-  # Build the release-shaped app once for both browser shards. Release snapshot
-  # stays parallel because waiting for this native build before its six-target
-  # GoReleaser build would lengthen the critical path. This run-scoped artifact
-  # is internal build plumbing, not a release.
+  # Build the release-shaped app once for browser legs plus ui-tagged/no-egress
+  # checks. Go/API/client changes select these app checks without selecting the
+  # browser matrix. Release snapshot stays parallel because waiting for this
+  # native build before its six-target GoReleaser build would lengthen the
+  # critical path. This run-scoped artifact is internal build plumbing, not a
+  # release.
   app-build:
     needs: changes
-    if: ${{ fromJSON(needs.changes.outputs.plan).web }}
+    if: >-
+      ${{ fromJSON(needs.changes.outputs.plan).web ||
+      fromJSON(needs.changes.outputs.plan)['web-go'] }}
     runs-on: ubuntu-latest
     # On the critical path that web / web-go / no-egress all need; cap it so a
     # hung Go build or artifact transfer cannot stall the gate at the default 360.
@@ -300,12 +306,12 @@ jobs:
           path: ~/.local/share/pnpm/store
           key: ${{ steps.pnpm-store.outputs.cache-primary-key }}
 
-  # Probe the exact release-shaped binary already built for browser validation.
+  # Probe the exact release-shaped binary already built for app validation.
   # Keeping this in the same run removes the standalone workflow's duplicate
   # cold compile while preserving exact-head, read-only pull-request execution.
   no-egress:
     needs: [changes, app-build]
-    if: ${{ fromJSON(needs.changes.outputs.plan).web }}
+    if: ${{ fromJSON(needs.changes.outputs.plan)['web-go'] }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -795,11 +801,12 @@ jobs:
   # release-shaped binary's govulncheck pass and the ui-tagged server/webui
   # tests. Split into its own job so it runs CONCURRENTLY with the two browser
   # legs instead of serially inside each of them — both legs paid it before, and
-  # neither is browser work. Keyed on the same `web` plan (see the job registry),
-  # so it is planned and required exactly when the browser legs are.
+  # neither is browser work. Keep it on its own `web-go` plan so Go/API/client
+  # changes still validate the release-shaped app while skipping browser legs;
+  # web changes select both plans.
   web-go:
     needs: [changes, app-build]
-    if: ${{ fromJSON(needs.changes.outputs.plan).web }}
+    if: ${{ fromJSON(needs.changes.outputs.plan)['web-go'] }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

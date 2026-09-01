@@ -104,6 +104,21 @@ describe('parsed', () => {
     } satisfies Partial<ApiError>);
   });
 
+  it('preserves a bounded numeric Retry-After for rate-limit recovery', async () => {
+    stubFetch(
+      new Response(JSON.stringify({ error: { code: 'rate_limited', message: 'slow down' } }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json', 'Retry-After': '5' },
+      }),
+    );
+
+    await expect(parsed(getMetaOp, transport)).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 429,
+      retryAfterMs: 5_000,
+    } satisfies Partial<ApiError>);
+  });
+
   it('drops malformed error bodies instead of treating prose as safe detail', async () => {
     stubFetch(jsonResponse({ detail: 'not the contract error shape' }, 400));
 

@@ -63,13 +63,29 @@ client.interceptors.request.use((request: Request) => {
 export class ApiError extends Error {
   readonly status: number;
   readonly detail: string | undefined;
+  readonly retryAfterMs: number | undefined;
 
-  constructor(status: number, message: string, detail?: string) {
+  constructor(status: number, message: string, detail?: string, retryAfterMs?: number) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.detail = detail;
+    this.retryAfterMs = retryAfterMs;
   }
+}
+
+const MAX_RETRY_AFTER_MS = 30_000;
+
+function retryAfterMilliseconds(response: Response): number | undefined {
+  const value = response.headers.get('Retry-After');
+  if (value === null || !/^\d+$/.test(value)) {
+    return undefined;
+  }
+  const milliseconds = Number(value) * 1_000;
+  if (!Number.isSafeInteger(milliseconds)) {
+    return undefined;
+  }
+  return Math.min(milliseconds, MAX_RETRY_AFTER_MS);
 }
 
 function requireResponse(result: { response?: Response | undefined }): Response {
@@ -92,6 +108,7 @@ function refusal(response: Response, error: unknown): ApiError {
     response.status,
     `request failed with ${response.status}`,
     parsed.success ? parsed.data.error.detail ?? undefined : undefined,
+    retryAfterMilliseconds(response),
   );
 }
 

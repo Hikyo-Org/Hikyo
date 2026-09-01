@@ -44,7 +44,8 @@ all_plan='{
 	"release-snapshot":true,
 	"supply-chain-checks":true,
 	"test":true,
-	"web":true
+	"web":true,
+	"web-go":true
 }'
 
 all_success='{
@@ -87,8 +88,16 @@ docs_success=$(printf '%s' "$all_success" | jq '
 	.["web-go"].result = "skipped"
 ')
 
+app_plan=$(printf '%s' "$all_plan" | jq 'map_values(false) | .["web-go"] = true')
+app_success=$(printf '%s' "$docs_success" | jq '
+	.docs.result = "skipped" |
+	.["no-egress"].result = "success" |
+	.["web-go"].result = "success"
+')
+
 expect_accept 'successful full pull request' pull_request "$all_success" "$all_plan"
 expect_accept 'successful docs-only pull request' pull_request "$docs_success" "$docs_plan"
+expect_accept 'successful non-web app pull request' pull_request "$app_success" "$app_plan"
 expect_accept 'successful base-controlled pull request' pull_request_target \
 	"$all_success" "$all_plan"
 for result in failure cancelled skipped; do
@@ -111,6 +120,8 @@ expect_reject 'unselected web job unexpectedly ran' pull_request \
 	"$(printf '%s' "$docs_success" | jq '.web.result = "success"')" "$docs_plan"
 expect_reject 'unselected web job failed instead of skipping' pull_request \
 	"$(printf '%s' "$docs_success" | jq '.web.result = "failure"')" "$docs_plan"
+expect_reject 'non-web app pull request ran browser matrix' pull_request \
+	"$(printf '%s' "$app_success" | jq '.web.result = "success"')" "$app_plan"
 expect_reject 'main push used a selective plan' push \
 	"$(printf '%s' "$docs_success" | jq '.dco.result = "skipped"')" "$docs_plan"
 expect_reject 'classifier failed' pull_request \
