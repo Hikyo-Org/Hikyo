@@ -243,17 +243,39 @@ func (c *Coordination) CountLiveNodes(ctx context.Context, since time.Time) (int
 	return count, nil
 }
 
+// PruneNodes drops registry rows whose heartbeat fell before cutoff, so a
+// decommissioned node does not linger in nodes_seen or the fingerprint check.
+func (c *Coordination) PruneNodes(ctx context.Context, cutoff time.Time) error {
+	var err error
+	switch c.db.engine {
+	case EnginePostgres:
+		_, err = c.db.pool.Exec(ctx, `DELETE FROM ha_nodes WHERE heartbeat_at < $1`, cutoff)
+	case EngineSQLite:
+		_, err = c.db.sqWrite.ExecContext(ctx, `DELETE FROM ha_nodes WHERE heartbeat_at < ?`, sqliteTime(cutoff))
+	default:
+		return fmt.Errorf("store: coordination node prune on unknown engine %q", c.db.engine)
+	}
+	if err != nil {
+		return fmt.Errorf("store: prune nodes: %w", err)
+	}
+	return nil
+}
+
 // ForeignRootKeyFingerprints returns the distinct root-key fingerprints
-// recorded by any OTHER node that differ from the caller's. A non-empty result
-// is a mixed-root-key misconfiguration: the caller refuses to serve rather
-// than join an installation whose key authority it does not share.
-func (c *Coordination) ForeignRootKeyFingerprints(ctx context.Context, nodeID, fingerprint string) ([]string, error) {
+// recorded by any other LIVE node (heartbeat at or after since) that differ
+// from the caller's. A non-empty result is a mixed-root-key misconfiguration:
+// the caller refuses to serve rather than join an installation whose key
+// authority it does not share. The liveness filter is essential: a
+// decommissioned node's stale row must not veto forever, and a root-key
+// rotation (stop-all, rotate, start-all) must not be refused by the outgoing
+// nodes' rows.
+func (c *Coordination) ForeignRootKeyFingerprints(ctx context.Context, nodeID, fingerprint string, since time.Time) ([]string, error) {
 	var others []string
 	switch c.db.engine {
 	case EnginePostgres:
 		r, err := c.db.pool.Query(ctx,
 			`SELECT DISTINCT root_key_fingerprint FROM ha_nodes
-			 WHERE node_id <> $1 AND root_key_fingerprint <> $2`, nodeID, fingerprint)
+			 WHERE node_id <> $1 AND root_key_fingerprint <> $2 AND heartbeat_at >= $3`, nodeID, fingerprint, since)
 		if err != nil {
 			return nil, fmt.Errorf("store: foreign root fingerprints: %w", err)
 		}
@@ -269,7 +291,7 @@ func (c *Coordination) ForeignRootKeyFingerprints(ctx context.Context, nodeID, f
 	case EngineSQLite:
 		r, err := c.db.sqRead.QueryContext(ctx,
 			`SELECT DISTINCT root_key_fingerprint FROM ha_nodes
-			 WHERE node_id <> ? AND root_key_fingerprint <> ?`, nodeID, fingerprint)
+			 WHERE node_id <> ? AND root_key_fingerprint <> ? AND heartbeat_at >= ?`, nodeID, fingerprint, sqliteTime(since))
 		if err != nil {
 			return nil, fmt.Errorf("store: foreign root fingerprints: %w", err)
 		}

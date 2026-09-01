@@ -161,6 +161,12 @@ func (s *Scheduler) runHA(ctx context.Context) {
 	defer ticker.Stop()
 
 	var fence int64
+	// expiresAt is the deadline of the last SUCCESSFULLY acquired or renewed
+	// lease. A leader that reaches this instant without a fresh renewal has
+	// lost coordination (datastore loss, partition, a blocked query) and must
+	// stop, even if no renew has yet returned an error: the DB lease is about
+	// to be claimable by another node, so continuing would be split brain.
+	var expiresAt time.Time
 	termCancel := func() {}
 	defer func() { termCancel() }()
 	dropLeadership := func() {
@@ -184,38 +190,55 @@ func (s *Scheduler) runHA(ctx context.Context) {
 			}
 			return
 		case <-ticker.C:
-			if s.OnTick != nil {
-				s.OnTick(ctx)
-			}
 			now := s.now()
 			expires := now.Add(s.leaseTTL())
+			// Renew first, before any maintenance work, so a slow OnTick can
+			// never delay lease health. Every lease call is deadline-bounded by
+			// the heartbeat: a datastore that blocks past one heartbeat is a
+			// lost renewal, not an indefinite hang that outlives the TTL.
 			if s.leader.Load() {
-				held, err := s.Lease.RenewLease(ctx, schedulerLeaseName, s.NodeID, fence, expires)
-				if err != nil {
+				renewCtx, cancel := context.WithTimeout(ctx, s.heartbeat())
+				held, err := s.Lease.RenewLease(renewCtx, schedulerLeaseName, s.NodeID, fence, expires)
+				cancel()
+				switch {
+				case err != nil:
 					s.logger().Error("scheduler lease renew failed; dropping leadership", "node", s.NodeID, "err", err)
 					dropLeadership()
-					continue
-				}
-				if !held {
+				case !held:
 					dropLeadership()
-					continue
+				default:
+					expiresAt = expires
 				}
-				continue
 			}
-			gotFence, held, err := s.Lease.ClaimLease(ctx, schedulerLeaseName, s.NodeID, now, expires)
-			if err != nil {
-				s.logger().Error("scheduler lease claim failed", "node", s.NodeID, "err", err)
-				continue
+			// Fail-closed safety net: if we still believe we are leader but the
+			// last good lease has expired locally, drop regardless of what any
+			// in-flight renewal returned.
+			if s.leader.Load() && !now.Before(expiresAt) {
+				s.logger().Error("scheduler lease expired without renewal; dropping leadership", "node", s.NodeID)
+				dropLeadership()
 			}
-			if !held {
-				continue
+			if !s.leader.Load() {
+				claimCtx, cancel := context.WithTimeout(ctx, s.heartbeat())
+				gotFence, held, err := s.Lease.ClaimLease(claimCtx, schedulerLeaseName, s.NodeID, now, expires)
+				cancel()
+				switch {
+				case err != nil:
+					s.logger().Error("scheduler lease claim failed", "node", s.NodeID, "err", err)
+				case held:
+					fence = gotFence
+					expiresAt = expires
+					s.leader.Store(true)
+					s.logger().Info("scheduler acquired leadership", "node", s.NodeID, "fence", fence)
+					termCtx, cancel := context.WithCancel(ctx)
+					termCancel = cancel
+					go s.runLoop(termCtx)
+				}
 			}
-			fence = gotFence
-			s.leader.Store(true)
-			s.logger().Info("scheduler acquired leadership", "node", s.NodeID, "fence", fence)
-			termCtx, cancel := context.WithCancel(ctx)
-			termCancel = cancel
-			go s.runLoop(termCtx)
+			if s.OnTick != nil {
+				tickCtx, cancel := context.WithTimeout(ctx, s.heartbeat())
+				s.OnTick(tickCtx)
+				cancel()
+			}
 		}
 	}
 }

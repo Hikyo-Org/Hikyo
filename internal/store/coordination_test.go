@@ -134,19 +134,31 @@ func runCoordinationInvariants(t *testing.T, db *store.DB) {
 		}
 		mustUpsert("node-a", "fp-shared")
 		mustUpsert("node-b", "fp-shared")
+		live := now.Add(-time.Second)
 		// A node sharing the fingerprint sees no foreign fingerprints.
-		if fps, err := c.ForeignRootKeyFingerprints(ctx, "node-b", "fp-shared"); err != nil || len(fps) != 0 {
+		if fps, err := c.ForeignRootKeyFingerprints(ctx, "node-b", "fp-shared", live); err != nil || len(fps) != 0 {
 			t.Fatalf("foreign for matching = %v err=%v, want none", fps, err)
 		}
 		// A node with a different fingerprint sees the installation's fingerprint.
-		if fps, err := c.ForeignRootKeyFingerprints(ctx, "node-c", "fp-different"); err != nil || len(fps) == 0 {
+		if fps, err := c.ForeignRootKeyFingerprints(ctx, "node-c", "fp-different", live); err != nil || len(fps) == 0 {
 			t.Fatalf("foreign for mismatch = %v err=%v, want non-empty", fps, err)
 		}
-		if n, err := c.CountLiveNodes(ctx, now.Add(-time.Second)); err != nil || n != 2 {
+		// A stale peer (heartbeat before the liveness cutoff) no longer vetoes.
+		if fps, err := c.ForeignRootKeyFingerprints(ctx, "node-c", "fp-different", now.Add(time.Minute)); err != nil || len(fps) != 0 {
+			t.Fatalf("foreign with stale peers = %v err=%v, want none", fps, err)
+		}
+		if n, err := c.CountLiveNodes(ctx, live); err != nil || n != 2 {
 			t.Fatalf("live nodes = %d err=%v, want 2", n, err)
 		}
 		if n, err := c.CountLiveNodes(ctx, now.Add(time.Minute)); err != nil || n != 0 {
 			t.Fatalf("live nodes after cutoff = %d err=%v, want 0", n, err)
+		}
+		// PruneNodes drops rows heartbeat before the cutoff.
+		if err := c.PruneNodes(ctx, now.Add(time.Minute)); err != nil {
+			t.Fatalf("prune nodes: %v", err)
+		}
+		if n, err := c.CountLiveNodes(ctx, now.Add(-time.Hour)); err != nil || n != 0 {
+			t.Fatalf("live nodes after prune = %d err=%v, want 0", n, err)
 		}
 	})
 }

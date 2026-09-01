@@ -17,6 +17,16 @@ import (
 // one-minute rate windows plus clock skew between nodes.
 const admissionWindowRetention = 2 * time.Minute
 
+// nodeLivenessWindow is how recently a node must have heartbeat to count as a
+// live peer for the mixed-root-key check. Three heartbeats of slack tolerates
+// one missed beat without treating a live peer as gone.
+const nodeLivenessWindow = 3 * defaultHeartbeat
+
+// nodeRegistryRetention is how long a silent node's registry row survives the
+// per-tick sweep. Well beyond any rolling restart, so only genuinely
+// decommissioned nodes are pruned.
+const nodeRegistryRetention = 24 * time.Hour
+
 // configureHA prepares this node to join a multi-node installation (#146). It
 // resolves the shared root key's fingerprint, refuses to serve when another
 // node has registered a different fingerprint (a mixed-root-key
@@ -38,12 +48,12 @@ func configureHA(ctx context.Context, cfg *config.Config, log *slog.Logger, db *
 	}
 
 	coord := db.Coordination()
-	foreign, err := coord.ForeignRootKeyFingerprints(ctx, cfg.NodeID, fingerprint)
+	foreign, err := coord.ForeignRootKeyFingerprints(ctx, cfg.NodeID, fingerprint, time.Now().UTC().Add(-nodeLivenessWindow))
 	if err != nil {
 		return nil, nil, fmt.Errorf("ha: read node registry: %w", err)
 	}
 	if len(foreign) > 0 {
-		return nil, nil, fmt.Errorf("ha: refusing to serve: another node registered a different root-key fingerprint — this installation's nodes must share one root-key authority (mixed root keys)")
+		return nil, nil, fmt.Errorf("ha: refusing to serve: another live node registered a different root-key fingerprint; this installation's nodes must share one root-key authority (mixed root keys)")
 	}
 
 	node := store.HANode{
@@ -67,6 +77,9 @@ func configureHA(ctx context.Context, cfg *config.Config, log *slog.Logger, db *
 		}
 		if err := coord.PruneAdmissionWindows(tickCtx, now.Add(-admissionWindowRetention)); err != nil {
 			log.Warn("ha: admission window sweep failed", "err", err)
+		}
+		if err := coord.PruneNodes(tickCtx, now.Add(-nodeRegistryRetention)); err != nil {
+			log.Warn("ha: node registry sweep failed", "err", err)
 		}
 	}
 	return coord, onTick, nil

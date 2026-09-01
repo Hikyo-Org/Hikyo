@@ -437,7 +437,7 @@ func loadHAConfig(cfg *Config, getenv func(string) string) error {
 	nodeID := strings.TrimSpace(getenv("HIKYO_NODE_ID"))
 	if raw == "" {
 		if nodeID != "" {
-			return fmt.Errorf("HIKYO_NODE_ID is set but HIKYO_HA is not: node identity only applies to multi-node HA — set HIKYO_HA=true or remove HIKYO_NODE_ID")
+			return fmt.Errorf("HIKYO_NODE_ID is set but HIKYO_HA is not: node identity only applies to multi-node HA: set HIKYO_HA=true or remove HIKYO_NODE_ID")
 		}
 		return nil
 	}
@@ -452,13 +452,13 @@ func loadHAConfig(cfg *Config, getenv func(string) string) error {
 		return nil
 	}
 	if cfg.Store.Engine != EnginePostgres {
-		return fmt.Errorf("HIKYO_HA requires a PostgreSQL datastore: sqlite is single-writer and cannot back multi-node HA — set HIKYO_DB to a postgres:// DSN or disable HIKYO_HA")
+		return fmt.Errorf("HIKYO_HA requires a PostgreSQL datastore: sqlite is single-writer and cannot back multi-node HA; set HIKYO_DB to a postgres:// DSN or disable HIKYO_HA")
 	}
 	if nodeID == "" {
 		return fmt.Errorf("HIKYO_HA requires HIKYO_NODE_ID: each node needs a stable unique identity (the chart sets it from the pod name)")
 	}
 	if cfg.RootKeyFile == "" && !cfg.RootKeyFromEnv {
-		return fmt.Errorf("HIKYO_HA requires an explicit shared root-key authority: set --root-key-file or HIKYO_ROOT_KEY — a development auto-generated root key is per-node and would split the installation")
+		return fmt.Errorf("HIKYO_HA requires an explicit shared root-key authority: set --root-key-file or HIKYO_ROOT_KEY; a development auto-generated root key is per-node and would split the installation")
 	}
 	cfg.HA = true
 	cfg.NodeID = nodeID
