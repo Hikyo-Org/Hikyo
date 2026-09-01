@@ -563,6 +563,10 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	log.Info("boot complete", "version", Version, "engine", sc.Engine, "external_origin", cfg.ExternalOrigin,
 		"addr", ln.Addr().String(), "operational_addr", operationalLn.Addr().String(), "dev", cfg.Dev, "update_channel", cfg.UpdateChannel,
 		"argon2_memory_kib", cfg.Argon2MemoryKiB, "auth_concurrency", limiter.Concurrency())
+	// The operational readiness check is the datastore-and-schema probe, plus
+	// an optional HA lease-datastore probe attached below when HA is enabled so
+	// /readyz fails closed if the lease table becomes unreachable.
+	readyChk := &readyChecker{base: &service.System{DB: db, Store: sc}}
 	// Construct the complete owner before disarming: future fallible work added
 	// to construction stays inside the guard's protection.
 	srv := &Server{
@@ -576,7 +580,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 			HSTS:           config.EmitHSTS(cfg.ExternalOrigin),
 			ExternalOrigin: cfg.ExternalOrigin,
 		}),
-		operationalHandler: server.NewOperational(&service.System{DB: db, Store: sc}, operationalHealth{retention: retentionSvc, tls: tlsReloader}, metrics),
+		operationalHandler: server.NewOperational(readyChk, operationalHealth{retention: retentionSvc, tls: tlsReloader}, metrics),
 		tlsReloader:        tlsReloader,
 		log:                log,
 		scheduler: &Scheduler{Log: log, Jobs: []ScheduledJob{{
@@ -609,13 +613,20 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		updateReconciler: updatesService,
 	}
 	if cfg.HA {
-		coord, onTick, err := configureHA(ctx, cfg, log, db, sc)
+		coord, onTick, status, err := configureHA(ctx, cfg, log, db, sc)
 		if err != nil {
 			return nil, fmt.Errorf("boot: refusing to serve: %w", err)
 		}
 		srv.scheduler.Lease = coord
 		srv.scheduler.NodeID = cfg.NodeID
 		srv.scheduler.OnTick = onTick
+		status.leader = srv.scheduler.IsLeader
+		metrics.SetHASource(status)
+		readyChk.setHAProbe(haReadinessProbe(coord))
+		// Revalidate cached project DEKs per fetch so a rotate-dek on another
+		// node cannot leave this node fencing every write or missing records at
+		// the new version.
+		kr.SetHAFreshness(true)
 		// Share the pre-authentication counters installation-wide so node
 		// hopping cannot bypass a per-IP, per-account, or per-issuer limit. The
 		// concurrency semaphore stays per node. Wired before the listener

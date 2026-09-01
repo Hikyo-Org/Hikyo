@@ -99,6 +99,9 @@ func TestMetricsExposeREDCountersAndAdmissionGauges(t *testing.T) {
 		"# TYPE " + server.MetricAdmissionQueueDepthLimit + " gauge",
 		"# TYPE " + server.MetricAdmissionQueueWaiting + " gauge",
 		"# TYPE " + server.MetricAdmissionActiveBackoffs + " gauge",
+		"# TYPE " + server.MetricHAIsLeader + " gauge",
+		"# TYPE " + server.MetricHANodesSeen + " gauge",
+		"# TYPE " + server.MetricHALeaseAgeSecond + " gauge",
 	} {
 		mustContain(t, body, family)
 	}
@@ -120,6 +123,19 @@ func TestMetricsExposeREDCountersAndAdmissionGauges(t *testing.T) {
 	mustContain(t, body, server.MetricAdmissionQueueDepthLimit+" 16")
 	mustContain(t, body, server.MetricAdmissionQueueWaiting+" 3")
 	mustContain(t, body, server.MetricAdmissionActiveBackoffs+" 1")
+
+	// HA gauges render the single-node defaults when no HA source is wired, and
+	// carry no per-node label (bounded cardinality: one series each).
+	mustContain(t, body, server.MetricHAIsLeader+" 1")
+	mustContain(t, body, server.MetricHANodesSeen+" 1")
+	mustContain(t, body, server.MetricHALeaseAgeSecond+" 0")
+	for _, line := range strings.Split(body, "\n") {
+		for _, name := range []string{server.MetricHAIsLeader, server.MetricHANodesSeen, server.MetricHALeaseAgeSecond} {
+			if strings.HasPrefix(line, name) && strings.Contains(line, "{") {
+				t.Fatalf("HA gauge %q carries a label (unbounded cardinality): %q", name, line)
+			}
+		}
+	}
 
 	// No high-cardinality label: no raw path, no ID shape ever reaches a label.
 	if strings.Contains(body, "/api/") || strings.Contains(body, "org_") {

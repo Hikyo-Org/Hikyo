@@ -311,7 +311,21 @@ type Keyring struct {
 	// rotation. Boot warns on it every start until finalize (encryption-model
 	// ADR § Rotation). Initialized at load and cleared after finalize.
 	rootRotationPending atomic.Bool
+
+	// haFreshness makes the project-DEK cache revalidate a hit against the
+	// store's active version before reuse (#146). Off by default: on a single
+	// node this process is the only writer, so a cached set is authoritative
+	// and no revalidation read is needed. Under multi-node HA a rotate-dek on
+	// another node advances the active version, and a stale cache would fence
+	// every write on this node and miss records at the new version, so the
+	// cache is revalidated per fetch. HA is Postgres-only, so this never adds a
+	// read to the sqlite path.
+	haFreshness atomic.Bool
 }
+
+// SetHAFreshness turns per-fetch project-DEK cache revalidation on. Boot calls
+// it once under HA before serving. See the haFreshness field.
+func (k *Keyring) SetHAFreshness(on bool) { k.haFreshness.Store(on) }
 
 // RootRotationPending reports whether this instance booted with a root rotation
 // half-done (the master dual-wrapped under two roots). Boot warns on it every
@@ -651,8 +665,36 @@ func (k *Keyring) ForProject(ctx context.Context, orgID, projectID string) (*Pro
 
 func (k *Keyring) projectDEKSet(ctx context.Context, orgID, projectID string) (*versionSet, error) {
 	scope := dekScope(orgID, projectID)
+
+	// Fast path: a cache hit. On a single node the cache is authoritative. Under
+	// HA, revalidate the hit's active version against the store before trusting
+	// it, without holding k.mu across the datastore read.
+	k.mu.Lock()
+	if el, ok := k.deks[scope]; ok {
+		k.lru.MoveToFront(el)
+		set := el.Value.(*dekEntry).set
+		k.mu.Unlock()
+		if !k.haFreshness.Load() {
+			return set, nil
+		}
+		active, err := k.ks.ActiveTier3(ctx, PurposeProject, orgID, projectID)
+		switch {
+		case err == nil && active.Version == set.active:
+			return set, nil
+		case err != nil && !errors.Is(err, ErrNoKey):
+			return nil, fmt.Errorf("crypto: revalidate project key: %w", err)
+		default:
+			// The active version advanced on another node (or the scope's key
+			// vanished under us): drop the stale entry and rebuild it below.
+			k.evictProjectDEK(orgID, projectID)
+		}
+	} else {
+		k.mu.Unlock()
+	}
+
 	k.mu.Lock()
 	defer k.mu.Unlock()
+	// Another caller may have rebuilt this scope while we were unlocked.
 	if el, ok := k.deks[scope]; ok {
 		k.lru.MoveToFront(el)
 		return el.Value.(*dekEntry).set, nil
