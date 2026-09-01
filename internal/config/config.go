@@ -128,6 +128,18 @@ type Config struct {
 	// UpdaterSocket is the optional Unix socket of the separately privileged
 	// local updater helper. Empty keeps update checks notification-only.
 	UpdaterSocket string
+
+	// HA enables multi-node application-tier high availability (#146): the
+	// scheduler runs singleton work under a fenced datastore lease, admission
+	// counters are shared across nodes, and this node registers in the live
+	// node table. It requires PostgreSQL, a stable unique NodeID, and an
+	// explicitly configured shared root-key authority. It is refused on sqlite
+	// and refused when no root-key source is configured, at boot rather than
+	// as a degraded single-node fallback.
+	HA bool
+	// NodeID is this node's stable unique identity under HA (HIKYO_NODE_ID; the
+	// chart sets it from the pod name). Empty outside HA.
+	NodeID string
 }
 
 // knownEnv is the closed set of HIKYO_* keys this build understands.
@@ -153,6 +165,8 @@ var knownEnv = map[string]bool{
 	"HIKYO_REAUTH_WINDOW_SECONDS":      true,
 	"HIKYO_UPDATE_CHANNEL":             true,
 	"HIKYO_UPDATER_SOCKET":             true,
+	"HIKYO_HA":                         true,
+	"HIKYO_NODE_ID":                    true,
 
 	// Development-only. Named so the deployment it does not belong in is
 	// obvious at a glance, and refused at boot outside --dev regardless.
@@ -406,7 +420,49 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 		}
 		cfg.Store.PostgresPoolMax = int32(poolMax)
 	}
+	if subcommand == "server" {
+		if err := loadHAConfig(cfg, getenv); err != nil {
+			return nil, nil, err
+		}
+	}
 	return cfg, warnings, nil
+}
+
+// loadHAConfig parses and validates the multi-node HA switch. Every
+// misconfiguration is a boot refusal, never a silent single-node fallback:
+// HA requires PostgreSQL, a stable unique node identity, and an explicitly
+// configured shared root-key authority.
+func loadHAConfig(cfg *Config, getenv func(string) string) error {
+	raw := strings.TrimSpace(getenv("HIKYO_HA"))
+	nodeID := strings.TrimSpace(getenv("HIKYO_NODE_ID"))
+	if raw == "" {
+		if nodeID != "" {
+			return fmt.Errorf("HIKYO_NODE_ID is set but HIKYO_HA is not: node identity only applies to multi-node HA — set HIKYO_HA=true or remove HIKYO_NODE_ID")
+		}
+		return nil
+	}
+	ha, err := strconv.ParseBool(raw)
+	if err != nil {
+		return fmt.Errorf("HIKYO_HA: %q is not a boolean", raw)
+	}
+	if !ha {
+		if nodeID != "" {
+			return fmt.Errorf("HIKYO_NODE_ID is set but HIKYO_HA is false: set HIKYO_HA=true or remove HIKYO_NODE_ID")
+		}
+		return nil
+	}
+	if cfg.Store.Engine != EnginePostgres {
+		return fmt.Errorf("HIKYO_HA requires a PostgreSQL datastore: sqlite is single-writer and cannot back multi-node HA — set HIKYO_DB to a postgres:// DSN or disable HIKYO_HA")
+	}
+	if nodeID == "" {
+		return fmt.Errorf("HIKYO_HA requires HIKYO_NODE_ID: each node needs a stable unique identity (the chart sets it from the pod name)")
+	}
+	if cfg.RootKeyFile == "" && !cfg.RootKeyFromEnv {
+		return fmt.Errorf("HIKYO_HA requires an explicit shared root-key authority: set --root-key-file or HIKYO_ROOT_KEY — a development auto-generated root key is per-node and would split the installation")
+	}
+	cfg.HA = true
+	cfg.NodeID = nodeID
+	return nil
 }
 
 func loadAdapterEgressPolicy(path string) (map[string][]netip.Prefix, error) {

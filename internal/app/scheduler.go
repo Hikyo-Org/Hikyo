@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"log/slog"
+	"sync/atomic"
 	"time"
 )
 
@@ -10,7 +11,27 @@ const (
 	defaultSchedulerInterval = time.Hour
 	defaultJobDeadline       = 10 * time.Minute
 	pruneStaleAfter          = 24 * time.Hour
+
+	// schedulerLeaseName is the singleton_leases row the scheduler competes
+	// for under HA. Every singleton job runs only on the node holding it.
+	schedulerLeaseName = "scheduler"
+	// defaultLeaseTTL and defaultHeartbeat are the HA lease timings the ops
+	// spec amendment declares (RTO = lease TTL + probe period). The heartbeat
+	// renews well within the TTL so a healthy leader never lapses; a leader
+	// that cannot renew within the TTL loses the lease and its in-flight jobs
+	// are cancelled (fail closed).
+	defaultLeaseTTL  = 30 * time.Second
+	defaultHeartbeat = 10 * time.Second
 )
+
+// LeaseManager is the fenced singleton lease the scheduler uses under HA. It is
+// satisfied by *store.Coordination; the scheduler depends on the interface so
+// the app layer never needs a datastore-typed field.
+type LeaseManager interface {
+	ClaimLease(ctx context.Context, name, owner string, now, expires time.Time) (fence int64, held bool, err error)
+	RenewLease(ctx context.Context, name, owner string, fence int64, expires time.Time) (held bool, err error)
+	ReleaseLease(ctx context.Context, name, owner string, fence int64) error
+}
 
 // ScheduledJob is one bounded background operation. LastSuccess reads the
 // job's persisted health marker; nil means the job has no staleness contract.
@@ -29,6 +50,24 @@ type Scheduler struct {
 	Deadline time.Duration
 	Log      *slog.Logger
 	Now      func() time.Time
+
+	// Lease, NodeID, LeaseTTL, and Heartbeat drive HA leadership. When Lease
+	// is nil the scheduler is single-node and always runs its jobs (v1
+	// behaviour, unchanged). When set, jobs run only while this node holds the
+	// scheduler lease, so every singleton executes at most once across the
+	// cluster and a stale leader that loses the lease has its in-flight jobs
+	// cancelled.
+	Lease     LeaseManager
+	NodeID    string
+	LeaseTTL  time.Duration
+	Heartbeat time.Duration
+
+	// OnTick runs on every heartbeat on every node, leader or not. HA uses it
+	// to refresh this node's registry heartbeat (so nodes_seen stays accurate
+	// on standbys) and to sweep expired admission windows. Nil is a no-op.
+	OnTick func(context.Context)
+
+	leader atomic.Bool
 }
 
 func (s *Scheduler) interval() time.Duration {
@@ -59,8 +98,46 @@ func (s *Scheduler) logger() *slog.Logger {
 	return s.Log
 }
 
-// Run blocks until cancellation. The first pass is the startup catch-up run.
+func (s *Scheduler) leaseTTL() time.Duration {
+	if s.LeaseTTL <= 0 {
+		return defaultLeaseTTL
+	}
+	return s.LeaseTTL
+}
+
+func (s *Scheduler) heartbeat() time.Duration {
+	if s.Heartbeat <= 0 {
+		return defaultHeartbeat
+	}
+	return s.Heartbeat
+}
+
+// IsLeader reports whether this node currently holds the scheduler lease. A
+// single-node scheduler is always the leader. Health and /metrics read it for
+// the hikyo_ha_is_leader gauge.
+func (s *Scheduler) IsLeader() bool {
+	if s.Lease == nil {
+		return true
+	}
+	return s.leader.Load()
+}
+
+// Run blocks until cancellation. Without a lease it is the single-node loop:
+// a startup catch-up run then the interval tick. With a lease it runs the HA
+// leadership loop instead.
 func (s *Scheduler) Run(ctx context.Context) {
+	if s.Lease == nil {
+		s.leader.Store(true)
+		s.runLoop(ctx)
+		return
+	}
+	s.runHA(ctx)
+}
+
+// runLoop is the single-node schedule: startup catch-up then interval ticks.
+// Under HA it is the body of one leadership term, cancelled when the lease is
+// lost.
+func (s *Scheduler) runLoop(ctx context.Context) {
 	s.runOnce(ctx, "startup")
 	ticker := time.NewTicker(s.interval())
 	defer ticker.Stop()
@@ -70,6 +147,75 @@ func (s *Scheduler) Run(ctx context.Context) {
 			return
 		case <-ticker.C:
 			s.runOnce(ctx, "hourly")
+		}
+	}
+}
+
+// runHA competes for the scheduler lease and runs a leadership term only while
+// this node holds it. The lease is claimed when unheld or expired and renewed
+// on every heartbeat; a renewal that fails (another node took over, or the
+// datastore is unreachable) drops leadership and cancels the running term, so
+// a stale leader cannot keep executing singleton work.
+func (s *Scheduler) runHA(ctx context.Context) {
+	ticker := time.NewTicker(s.heartbeat())
+	defer ticker.Stop()
+
+	var fence int64
+	termCancel := func() {}
+	defer func() { termCancel() }()
+	dropLeadership := func() {
+		termCancel()
+		termCancel = func() {}
+		if s.leader.Swap(false) {
+			s.logger().Warn("scheduler lost leadership", "node", s.NodeID)
+		}
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			dropLeadership()
+			if fence != 0 {
+				releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+				if err := s.Lease.ReleaseLease(releaseCtx, schedulerLeaseName, s.NodeID, fence); err != nil {
+					s.logger().Warn("scheduler lease release failed", "node", s.NodeID, "err", err)
+				}
+				cancel()
+			}
+			return
+		case <-ticker.C:
+			if s.OnTick != nil {
+				s.OnTick(ctx)
+			}
+			now := s.now()
+			expires := now.Add(s.leaseTTL())
+			if s.leader.Load() {
+				held, err := s.Lease.RenewLease(ctx, schedulerLeaseName, s.NodeID, fence, expires)
+				if err != nil {
+					s.logger().Error("scheduler lease renew failed; dropping leadership", "node", s.NodeID, "err", err)
+					dropLeadership()
+					continue
+				}
+				if !held {
+					dropLeadership()
+					continue
+				}
+				continue
+			}
+			gotFence, held, err := s.Lease.ClaimLease(ctx, schedulerLeaseName, s.NodeID, now, expires)
+			if err != nil {
+				s.logger().Error("scheduler lease claim failed", "node", s.NodeID, "err", err)
+				continue
+			}
+			if !held {
+				continue
+			}
+			fence = gotFence
+			s.leader.Store(true)
+			s.logger().Info("scheduler acquired leadership", "node", s.NodeID, "fence", fence)
+			termCtx, cancel := context.WithCancel(ctx)
+			termCancel = cancel
+			go s.runLoop(termCtx)
 		}
 	}
 }

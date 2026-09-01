@@ -608,6 +608,15 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		adapterWorker:    adapterWorker,
 		updateReconciler: updatesService,
 	}
+	if cfg.HA {
+		coord, onTick, err := configureHA(ctx, cfg, log, db, sc)
+		if err != nil {
+			return nil, fmt.Errorf("boot: refusing to serve: %w", err)
+		}
+		srv.scheduler.Lease = coord
+		srv.scheduler.NodeID = cfg.NodeID
+		srv.scheduler.OnTick = onTick
+	}
 	// Ownership transfers only after the Server is complete. Nothing remains
 	// between disarm and return, so Server.Close is now the sole owner.
 	guard.disarm()
