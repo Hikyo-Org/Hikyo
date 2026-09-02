@@ -103,6 +103,7 @@ func TestDisclosurePreparationFailureMakesNoRequest(t *testing.T) {
 	}{
 		{"service-account mint", []string{"sa", "credential", "mint", "--sa", "sa_1"}},
 		{"account reset", []string{"account", "reset-credential", "usr_1"}},
+		{"member invite", []string{"access", "member", "invite", "dana", "--org", "org_a"}},
 		{"TOTP enrolment", []string{"account", "factor", "enrol-totp"}},
 		{"recovery codes", []string{"account", "recovery-codes", "regenerate"}},
 		{"recovery begin", []string{"account", "recovery", "begin", "--as", "alice"}},
@@ -236,6 +237,16 @@ func TestResetCredentialPositionalGrammar(t *testing.T) {
 		{
 			name: "trailing positional is refused",
 			args: []string{"account", "reset-credential", "--output-file", output, "usr_1", "stray", "--instance", server.URL},
+			want: cli.ExitUsage,
+		},
+		{
+			name: "invite username may follow flags",
+			args: []string{"access", "member", "invite", "--output-file", output, "--org", "org_a", "dana", "--instance", server.URL},
+			want: cli.ExitRefused,
+		},
+		{
+			name: "invite refuses a project address",
+			args: []string{"access", "member", "invite", "--output-file", output, "--org", "org_a", "--project", "prj_a", "dana", "--instance", server.URL},
 			want: cli.ExitUsage,
 		},
 	} {
