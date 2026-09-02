@@ -1,5 +1,10 @@
 import { expect, type Locator, type Page } from '@playwright/test';
-import { zEnvironmentList } from '@hikyo/zod';
+import {
+  zApprovalPolicy,
+  zApprovalRequestSummary,
+  zEnvironmentList,
+  zPendingChange,
+} from '@hikyo/zod';
 import { z } from 'zod';
 
 import {
@@ -1145,4 +1150,95 @@ test.describe('environment matrix kubernetes import', () => {
 
     await expect(page.getByRole('button', { name: /K8S_TOKEN in development:/ })).toBeVisible();
   });
+});
+
+/**
+ * Change approvals (#151). Rides this spec because a new spec file's pinned
+ * claims never run on the PR (the merge gate loads ci.yml from the base). This
+ * exercises the BROWSER PROPOSAL half of the [UI] criterion — a covered publish
+ * stages a request rather than publishing — and the surface's pinned assertion
+ * set. Vote/merge/bypass are exercised end to end at the service layer on both
+ * engines (internal/isolation/approvals_e2e_test.go); the in-browser vote
+ * ceremony is a documented follow-up (see the PR/handoff).
+ */
+test.describe('change approvals', () => {
+  test.use({ storageState: STORAGE_STATE });
+
+  const CA_PATH = `/orgs/${seed.org}/projects/${seed.project}/change-approvals`;
+  const projectBase = `/api/v1/orgs/${seed.org}/projects/${seed.project}`;
+
+  // ensurePolicy binds a min-1, self-approvable policy to dev, tolerating the
+  // UNIQUE conflict when a prior test in the same instance already created it.
+  const ensurePolicy = async (label: string) => {
+    const token = await fixtureBearer(label);
+    try {
+      await fixtureApiCall(token, 'POST', `${projectBase}/approval-policies`, zApprovalPolicy, {
+        environment_id: seed.dev,
+        min_approvals: 1,
+        allow_self_approval: true,
+        request_ttl_seconds: 3600,
+        enabled: true,
+        approvers: [{ kind: 'principal', subject_id: seed.principal }],
+      });
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes('409')) {
+        throw error;
+      }
+    }
+  };
+
+  test('a covered publish stages a request the review queue shows', async ({ page }) => {
+    await ensurePolicy('approvals policy');
+    const token = await fixtureBearer('approvals propose');
+    const staged = await fixtureApiCall(
+      token,
+      'PUT',
+      `${projectBase}/environments/${seed.dev}/values/${seed.config}`,
+      zPendingChange,
+      { value: 'change-approvals-e2e' },
+    );
+    const summary = await fixtureApiCall(
+      token,
+      'POST',
+      `${projectBase}/environments/${seed.dev}/publish`,
+      zApprovalRequestSummary,
+      { version_ids: [staged.version_id] },
+    );
+    expect(summary.state).toBe('open');
+
+    await page.goto(CA_PATH);
+    await expect(page.getByRole('heading', { name: 'Change approvals', level: 1 })).toBeVisible();
+    await page.locator('#ca-review-env').selectOption(seed.dev);
+    await expect(page.getByText(summary.id)).toBeVisible();
+    await expect(page.getByText(/open . 0\/1 approvals/)).toBeVisible();
+  });
+
+  for (const scheme of SCHEMES) {
+    for (const surface of surfacesForFlow('change-approvals')) {
+      test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({
+        page,
+      }) => {
+        await ensurePolicy('approvals pinned');
+        await page.emulateMedia({ colorScheme: scheme });
+        try {
+          await page.goto(CA_PATH);
+          const heading = page.getByRole('heading', { name: 'Change approvals', level: 1 });
+          const newPolicy = page.getByRole('button', { name: 'New policy' });
+          await expectPinnedAssertionSet(page, {
+            flow: 'change-approvals',
+            surface: surface.id,
+            theme: scheme,
+            text: [heading],
+            radii: [[newPolicy, 'control']],
+            fonts: [[heading, 'ui']],
+            colours: [[heading, 'color', '--tx']],
+            hairlines: [],
+            density: [],
+          });
+        } finally {
+          await page.emulateMedia({ colorScheme: null });
+        }
+      });
+    }
+  }
 });

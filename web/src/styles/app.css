@@ -5570,3 +5570,28 @@ select {
   gap: 8px;
   align-items: center;
 }
+
+/* Form controls in the approvals surface meet the touch floor the pinned set
+   asserts on mobile; the design system's bare `select`/`textarea` carry only
+   typography, so the surface sizes them like `.field input`. */
+.change-approvals select,
+.change-approvals input:not([type='checkbox']),
+.change-approvals textarea {
+  min-height: var(--touch);
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg-raise);
+  color: var(--tx);
+}
+
+.change-approvals textarea {
+  padding: 8px 12px;
+}
+
+.change-approvals label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--touch);
+}
