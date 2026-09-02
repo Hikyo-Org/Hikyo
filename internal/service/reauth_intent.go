@@ -31,6 +31,8 @@ const (
 	intentCopy
 	intentPublish
 	intentMint
+	intentApprove
+	intentBypass
 	intentAdapterConfigure
 	intentAdapterCredentialSet
 	intentAdapterAdopt
@@ -66,6 +68,8 @@ var reauthIntentDescriptors = [...]reauthIntentDescriptor{
 	{variant: intentCopy, purpose: PurposeCopy, operation: authz.OpValueCopySource},
 	{variant: intentPublish, purpose: PurposePublish, operation: authz.OpValueCopyDestination},
 	{variant: intentMint, purpose: PurposeMint, operation: authz.OpCredentialMint},
+	{variant: intentApprove, purpose: PurposeApprove, operation: authz.OpApprovalVote},
+	{variant: intentBypass, purpose: PurposeBypass, operation: authz.OpApprovalBypass},
 	{variant: intentAdapterConfigure, purpose: PurposeAdapter, operation: authz.OpAdapterConfigure, adapter: true},
 	{variant: intentAdapterCredentialSet, purpose: PurposeAdapter, operation: authz.OpAdapterCredentialSet, adapter: true},
 	{variant: intentAdapterAdopt, purpose: PurposeAdapter, operation: authz.OpAdapterAdopt, adapter: true},
@@ -117,6 +121,18 @@ func NewPublishReauthIntent(environmentID string, keyIDs []string) (ReauthIntent
 
 func NewMintReauthIntent(environmentID string, keyIDs []string) (ReauthIntent, error) {
 	return NewDisclosureReauthIntent(PurposeMint, []string{environmentID}, keyIDs)
+}
+
+// NewApproveReauthIntent binds an approver's vote to the request's environment
+// and exact key set (#151).
+func NewApproveReauthIntent(environmentID string, keyIDs []string) (ReauthIntent, error) {
+	return NewDisclosureReauthIntent(PurposeApprove, []string{environmentID}, keyIDs)
+}
+
+// NewBypassReauthIntent binds an emergency bypass to the request's environment
+// and exact key set (#151).
+func NewBypassReauthIntent(environmentID string, keyIDs []string) (ReauthIntent, error) {
+	return NewDisclosureReauthIntent(PurposeBypass, []string{environmentID}, keyIDs)
 }
 
 // NewDisclosureReauthIntent parses the wire purpose at the transport boundary.

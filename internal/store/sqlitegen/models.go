@@ -225,6 +225,71 @@ type AdmissionCounter struct {
 	UntilAt     sql.NullString
 }
 
+type ApprovalPolicy struct {
+	ID                string
+	OrgID             string
+	ProjectID         string
+	EnvironmentID     string
+	MinApprovals      int64
+	AllowSelfApproval int64
+	RequestTtlSeconds int64
+	Enabled           int64
+	Version           int64
+	CreatedBy         string
+	CreatedAt         string
+	UpdatedAt         string
+}
+
+type ApprovalPolicyApprover struct {
+	ID             string
+	OrgID          string
+	ProjectID      string
+	PolicyID       string
+	Kind           string
+	SubjectID      string
+	ScopeBindingID string
+}
+
+type ApprovalPolicyBypasser struct {
+	ID          string
+	OrgID       string
+	ProjectID   string
+	PolicyID    string
+	PrincipalID string
+}
+
+type ApprovalRequest struct {
+	ID                   string
+	OrgID                string
+	ProjectID            string
+	EnvironmentID        string
+	PolicyID             string
+	PolicyVersion        int64
+	RequesterPrincipalID string
+	VersionIds           string
+	ClosedVersionIds     string
+	KeyIds               string
+	PreviewTokenDigest   string
+	BaseRevision         int64
+	Purpose              string
+	State                string
+	InvalidatedCause     string
+	CreatedAt            string
+	ExpiresAt            string
+	ResolvedAt           sql.NullString
+}
+
+type ApprovalVote struct {
+	ID            string
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	RequestID     string
+	PrincipalID   string
+	Decision      string
+	CreatedAt     string
+}
+
 type AuditInstanceEvent struct {
 	Seq               int64
 	ID                string

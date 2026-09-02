@@ -225,6 +225,71 @@ type AdmissionCounter struct {
 	UntilAt     pgtype.Timestamptz
 }
 
+type ApprovalPolicy struct {
+	ID                string
+	OrgID             string
+	ProjectID         string
+	EnvironmentID     string
+	MinApprovals      int32
+	AllowSelfApproval bool
+	RequestTtlSeconds int32
+	Enabled           bool
+	Version           int64
+	CreatedBy         string
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
+type ApprovalPolicyApprover struct {
+	ID             string
+	OrgID          string
+	ProjectID      string
+	PolicyID       string
+	Kind           string
+	SubjectID      string
+	ScopeBindingID string
+}
+
+type ApprovalPolicyBypasser struct {
+	ID          string
+	OrgID       string
+	ProjectID   string
+	PolicyID    string
+	PrincipalID string
+}
+
+type ApprovalRequest struct {
+	ID                   string
+	OrgID                string
+	ProjectID            string
+	EnvironmentID        string
+	PolicyID             string
+	PolicyVersion        int64
+	RequesterPrincipalID string
+	VersionIds           string
+	ClosedVersionIds     string
+	KeyIds               string
+	PreviewTokenDigest   string
+	BaseRevision         int64
+	Purpose              string
+	State                string
+	InvalidatedCause     string
+	CreatedAt            pgtype.Timestamptz
+	ExpiresAt            pgtype.Timestamptz
+	ResolvedAt           pgtype.Timestamptz
+}
+
+type ApprovalVote struct {
+	ID            string
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	RequestID     string
+	PrincipalID   string
+	Decision      string
+	CreatedAt     pgtype.Timestamptz
+}
+
 type AuditInstanceEvent struct {
 	Seq               int64
 	ID                string

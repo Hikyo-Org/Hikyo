@@ -307,13 +307,25 @@ const (
 	// PurposeMint: consent to mint a machine credential is not consent to
 	// adopt and overwrite a provider-side name.
 	PurposeAdapter ReauthPurpose = "adapter"
+	// PurposeApprove is an approver's vote on a change-approval request (#151):
+	// the authenticator signs "I approve this exact change set in this
+	// environment", bound to the request's key set. It cannot reuse any
+	// disclosure purpose — an assertion given to reveal production is not
+	// consent to approve a change to it.
+	PurposeApprove ReauthPurpose = "approve"
+	// PurposeBypass is the emergency-bypass decision (#151): a named bypasser
+	// signs "I am committing this change WITHOUT the required approval", the
+	// single most consequential action the engine allows, so it is its own
+	// purpose and additionally carries a reason.
+	PurposeBypass ReauthPurpose = "bypass"
 )
 
 // Valid reports membership of the closed set. An unknown purpose is refused
 // rather than defaulted: a binding nobody can name is a binding nobody checks.
 func (p ReauthPurpose) Valid() bool {
 	switch p {
-	case PurposeReveal, PurposeCopy, PurposePublish, PurposeMint, PurposeAdapter:
+	case PurposeReveal, PurposeCopy, PurposePublish, PurposeMint, PurposeAdapter,
+		PurposeApprove, PurposeBypass:
 		return true
 	}
 	return false

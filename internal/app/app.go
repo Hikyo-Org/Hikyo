@@ -451,6 +451,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		return nil, fmt.Errorf("boot: outbound directory client: %w", err)
 	}
 	retentionSvc := &service.Retention{DB: db}
+	approvalsSvc := &service.Approvals{DB: db, Auth: authSvc, Keyring: kr}
 	updateHTTP, err := updatecheck.NewHTTPClient(3 * time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("boot: update release client: %w", err)
@@ -590,6 +591,12 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 				return err
 			},
 			LastSuccess: retentionSvc.LastPruneSuccess,
+		}, {
+			// Secret-change approvals (#151): resolve requests past their expiry
+			// across all tenants, fail closed, and emit a per-request expiry
+			// event. Idempotent and cross-tenant, like payload_gc beside it.
+			Name: "approval_expiry_sweep",
+			Run:  approvalsSvc.ExpireDue,
 		}, {
 			// Read-only operator nudge (#75/#187, scheduler option A): warn when a
 			// scope still carries a retiring DEK version so an operator runs

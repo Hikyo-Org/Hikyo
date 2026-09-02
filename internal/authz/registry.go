@@ -217,6 +217,19 @@ const (
 	OpPinList       Operation = "pin.list"
 	OpPinRelease    Operation = "pin.release"
 
+	// Secret-change approvals (#151). Policy administration is project-scoped
+	// (project-settings). Reading and voting are environment-scoped (publish@env:
+	// only a principal who could publish here may see or vote on the review
+	// queue). OpApprovalVote and OpApprovalBypass are the operations the two new
+	// reauthentication purposes bind to; the merge/bypass DECISION rides the
+	// ordinary OpValuePublish chokepoint with an added live conjunct, never a
+	// second publish path.
+	OpApprovalPolicyWrite Operation = "approval.policy-write"
+	OpApprovalPolicyRead  Operation = "approval.policy-read"
+	OpApprovalRequestRead Operation = "approval.request-read"
+	OpApprovalVote        Operation = "approval.vote"
+	OpApprovalBypass      Operation = "approval.bypass"
+
 	// The advisory channel's two checks: one at connect, over the project, and
 	// one PER EVENT over the environment the event names.
 	OpAdvisoryWatch Operation = "advisory.watch"
@@ -807,6 +820,33 @@ const (
 	StoreScanningDismissalsDeleteByKey     StoreOp = "scanningdismissals.DeleteByKey"
 	StoreScanningDismissalsDeleteByProject StoreOp = "scanningdismissals.DeleteByProject"
 	StoreScanningDismissalsDeleteAll       StoreOp = "scanningdismissals.DeleteAll"
+
+	// Secret-change approvals (#151). The policy-bound review-and-merge engine's
+	// store doors. Policy CRUD and its child approver/bypasser sets are
+	// project-scoped; requests and votes are environment-scoped. The two
+	// expiry-sweep doors are cross-tenant and ride scheduler authority.
+	StoreApprovalPolicyInsert        StoreOp = "approvals.InsertPolicy"
+	StoreApprovalPolicyGet           StoreOp = "approvals.GetPolicy"
+	StoreApprovalPolicyCovering      StoreOp = "approvals.CoveringPolicy"
+	StoreApprovalPolicyList          StoreOp = "approvals.ListPolicies"
+	StoreApprovalPolicyUpdate        StoreOp = "approvals.UpdatePolicy"
+	StoreApprovalPolicyDelete        StoreOp = "approvals.DeletePolicy"
+	StoreApprovalApproverInsert      StoreOp = "approvals.InsertApprover"
+	StoreApprovalApproverList        StoreOp = "approvals.ListApprovers"
+	StoreApprovalApproverClear       StoreOp = "approvals.ClearApprovers"
+	StoreApprovalBypasserInsert      StoreOp = "approvals.InsertBypasser"
+	StoreApprovalBypasserList        StoreOp = "approvals.ListBypassers"
+	StoreApprovalBypasserClear       StoreOp = "approvals.ClearBypassers"
+	StoreApprovalBypasserGet         StoreOp = "approvals.IsBypasser"
+	StoreApprovalRequestInsert       StoreOp = "approvals.InsertRequest"
+	StoreApprovalRequestGet          StoreOp = "approvals.GetRequest"
+	StoreApprovalRequestList         StoreOp = "approvals.ListRequests"
+	StoreApprovalRequestUpdateState  StoreOp = "approvals.UpdateRequestState"
+	StoreApprovalRequestSelectExpiry StoreOp = "approvals.SelectExpired"
+	StoreApprovalRequestMarkExpired  StoreOp = "approvals.MarkExpired"
+	StoreApprovalVoteInsert          StoreOp = "approvals.InsertVote"
+	StoreApprovalVoteGet             StoreOp = "approvals.GetVote"
+	StoreApprovalVoteList            StoreOp = "approvals.ListVotes"
 
 	// Audit trails (#45). INSERT and SELECT only — the append-only invariant
 	// lives at the query layer; these are the only store doors to it. The
@@ -2358,6 +2398,22 @@ var operationTable = map[Operation]opSpec{
 			// project already at the 4 GiB high-water.
 			StoreValuesPayloadBytesForProject:    true,
 			StoreSnapshotsPayloadBytesForProject: true,
+			// Secret-change approvals (#151): the covering-policy lookup that
+			// gates the publish, request creation when a policy covers the env
+			// but no completed approval is presented, and the merge / bypass
+			// resolution when one is. All ride THIS chokepoint so approval is
+			// never a second mutation path. The SCIM reads re-resolve a
+			// group-approver's live eligibility at merge time.
+			StoreApprovalPolicyCovering:     true,
+			StoreApprovalPolicyGet:          true,
+			StoreApprovalRequestInsert:      true,
+			StoreApprovalRequestGet:         true,
+			StoreApprovalRequestUpdateState: true,
+			StoreApprovalVoteList:           true,
+			StoreApprovalApproverList:       true,
+			StoreApprovalBypasserGet:        true,
+			StoreSCIMUserByAccount:          true,
+			StoreSCIMMembershipsForUser:     true,
 		},
 		events: []audit.EventType{
 			audit.EventRevisionPublished,
@@ -2373,8 +2429,116 @@ var operationTable = map[Operation]opSpec{
 			// authority the reclassification's fan-out already exercises — not the
 			// project-scoped reclassify proof.
 			audit.EventScanningFindingWarned,
+			// Secret-change approvals (#151): a publish into a policy-covered
+			// environment either creates a request, merges an approved one,
+			// invalidates a stale one, or is an emergency bypass. Every one of
+			// those outcomes is recorded from this chokepoint.
+			audit.EventApprovalRequested,
+			audit.EventApprovalMerged,
+			audit.EventApprovalInvalidated,
+			audit.EventApprovalBypassed,
 		},
 	},
+
+	// SECRET-CHANGE APPROVALS (#151).
+	//
+	// The engine adds NO new authorization scope and NO new disclosure path.
+	// Policy administration is `project-settings`; a request read and a vote are
+	// gated by `publish@env` (only a principal who could publish here may see or
+	// act on the review queue). The merge and the emergency bypass DECISIONS are
+	// not operations here at all: they ride the ordinary OpValuePublish
+	// chokepoint with an added live conjunct (approvalGate), exactly as
+	// machineRevealWithdrawn adds a conjunct to reveal. OpApprovalVote and
+	// OpApprovalBypass exist as the operations the two new reauthentication
+	// purposes bind to and as the carriers for their audit events.
+	OpApprovalPolicyWrite: {
+		class: ClassTenant,
+		level: domain.LevelProject,
+		formula: Formula{
+			{Cap: domain.CapProjectSettings, At: domain.LevelProject},
+		},
+		storeOps: map[StoreOp]bool{
+			StoreApprovalPolicyInsert: true, StoreApprovalPolicyGet: true,
+			StoreApprovalPolicyList: true, StoreApprovalPolicyUpdate: true,
+			StoreApprovalPolicyDelete:   true,
+			StoreApprovalApproverInsert: true, StoreApprovalApproverList: true,
+			StoreApprovalApproverClear:  true,
+			StoreApprovalBypasserInsert: true, StoreApprovalBypasserList: true,
+			StoreApprovalBypasserClear: true,
+			StoreAuditTenantInsert:     true,
+		},
+		// A policy change bumps its version; every active request pinned to the
+		// old version fails closed and is invalidated the next time it is voted
+		// on or merged (the invalidated event is emitted there, under the
+		// env-scoped proof those paths carry). The project-scoped policy proof
+		// deliberately does not reach into env-scoped request rows.
+		events: []audit.EventType{
+			audit.EventApprovalPolicyChanged,
+		},
+	},
+	OpApprovalPolicyRead: {
+		class: ClassTenant,
+		level: domain.LevelProject,
+		formula: Formula{
+			{Cap: domain.CapProjectSettings, At: domain.LevelProject},
+		},
+		storeOps: map[StoreOp]bool{
+			StoreApprovalPolicyGet: true, StoreApprovalPolicyList: true,
+			StoreApprovalApproverList: true, StoreApprovalBypasserList: true,
+		},
+	},
+	OpApprovalRequestRead: {
+		class: ClassTenant,
+		level: domain.LevelEnv,
+		formula: Formula{
+			{Cap: domain.CapPublish, At: domain.LevelEnv},
+		},
+		storeOps: map[StoreOp]bool{
+			StoreApprovalRequestGet: true, StoreApprovalRequestList: true,
+			StoreApprovalVoteList: true, StoreApprovalPolicyGet: true,
+			StoreApprovalPolicyCovering: true, StoreApprovalApproverList: true,
+			StoreApprovalBypasserList: true,
+		},
+	},
+	OpApprovalVote: {
+		class: ClassTenant,
+		level: domain.LevelEnv,
+		formula: Formula{
+			{Cap: domain.CapPublish, At: domain.LevelEnv},
+		},
+		storeOps: map[StoreOp]bool{
+			StoreApprovalRequestGet: true, StoreApprovalRequestUpdateState: true,
+			StoreApprovalVoteGet: true, StoreApprovalVoteInsert: true,
+			StoreApprovalVoteList: true, StoreApprovalPolicyGet: true,
+			StoreApprovalApproverList: true,
+			// Live eligibility for a SCIM-group approver: the voter's account,
+			// their provisioned user in the binding, and its group memberships.
+			StoreSCIMUserByAccount: true, StoreSCIMMembershipsForUser: true,
+			StoreAuditTenantInsert: true,
+		},
+		// A vote on a request whose policy version has moved (or whose selection
+		// no longer matches) invalidates it and fails closed, emitting the
+		// invalidated event from this env-scoped proof.
+		events: []audit.EventType{audit.EventApprovalVoted, audit.EventApprovalInvalidated},
+	},
+	// OpApprovalBypass is the reauthentication purpose + audit carrier for the
+	// emergency bypass. The publish itself authorizes OpValuePublish; the bypass
+	// conjunct checks named-bypasser membership and consumes a PurposeBypass
+	// ceremony. It is registered with the same publish formula so the reauth
+	// binding resolves, and its events are emitted from the publish bypass path.
+	OpApprovalBypass: {
+		class: ClassTenant,
+		level: domain.LevelEnv,
+		formula: Formula{
+			{Cap: domain.CapPublish, At: domain.LevelEnv},
+		},
+		storeOps: map[StoreOp]bool{
+			StoreApprovalBypasserGet: true, StoreApprovalRequestGet: true,
+			StoreApprovalRequestUpdateState: true, StoreAuditTenantInsert: true,
+		},
+		events: []audit.EventType{audit.EventApprovalBypassed},
+	},
+
 	// The export triple. `read` alone exports `config` plaintext and `secret`
 	// write-presence; the reveal legs are evaluated only where the material
 	// they govern is actually present.
@@ -3876,6 +4040,11 @@ var systemSites = map[SystemSite]map[StoreOp]bool{
 		StoreAuditInstanceInsert: true,
 		// The hourly GC also prunes expired, unapplied definitions plans (#70).
 		StoreDefinitionsPlanPrune: true,
+		// The hourly GC sweeps expired change-approval requests (#151): the
+		// installation-wide read and the per-request fail-closed mark, plus the
+		// tenant-trail expiry event emitted per request under scoped authority.
+		StoreApprovalRequestSelectExpiry: true,
+		StoreApprovalRequestMarkExpired:  true,
 		// The unauthenticated /metrics scrape rides scheduler authority to read
 		// the same operational storage high-water the audited health read serves
 		// (#185): a shared door, like the retention health read beside it.
@@ -3889,6 +4058,8 @@ var systemSiteEvents = map[SystemSite][]audit.EventType{
 		audit.EventRetentionPayloadGC,
 		audit.EventRetentionPruneRun,
 		audit.EventUpdateOutcome,
+		// Expired change-approval requests swept by the hourly GC (#151).
+		audit.EventApprovalExpired,
 	},
 }
 

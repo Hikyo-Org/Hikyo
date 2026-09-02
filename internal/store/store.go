@@ -427,6 +427,11 @@ type Repos interface {
 	ScanningDismissals() ScanningDismissalRepo
 	// Reencrypt is the instance-credential reencrypt surface (#75/#187).
 	Reencrypt() ReencryptRepo
+	// Approvals is the policy-bound secret-change approval engine (#151). It is
+	// on the WRITE bundle only: the coverage lookup that admits a publish runs
+	// inside the publish transaction, and every read runs beside its own
+	// lifecycle event, so a read-only twin would have no caller.
+	Approvals() ApprovalRepo
 }
 
 // ScanningDismissalRepo is the proof-bound dismissal-row surface (#74,

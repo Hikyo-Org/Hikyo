@@ -234,6 +234,20 @@ const (
 	// authority — the one authorization path not evaluated against a grant.
 	EventBreakGlassGrant EventType = "recovery.break_glass_grant"
 
+	// approval.* — the secret-change approval engine (#151). All tenant-trail,
+	// all SECURITY retention: who may commit a change to a sensitive scope, and
+	// under whose review, is exactly the evidence a compliance audit starts
+	// from. None carries any value plaintext, length or digest — only the
+	// change set's identity and the review outcome. approval.bypassed is the
+	// high-signal one (the emergency path), carrying the operator's reason.
+	EventApprovalPolicyChanged EventType = "approval.policy_changed"
+	EventApprovalRequested     EventType = "approval.requested"
+	EventApprovalVoted         EventType = "approval.voted"
+	EventApprovalMerged        EventType = "approval.merged"
+	EventApprovalInvalidated   EventType = "approval.invalidated"
+	EventApprovalExpired       EventType = "approval.expired"
+	EventApprovalBypassed      EventType = "approval.bypassed"
+
 	// backup.* / restore.* — the operator lifecycle (#76, encryption-model ADR
 	// § Propagations "export and restore are auditable events"; ops spec § 11).
 	// All four are instance-trail, local host authority, and all four are
@@ -1795,6 +1809,91 @@ var registry = map[EventType]TypeSpec{
 			"scope":            {Kind: KindString, Required: true},
 			"authority":        {Kind: KindString, Required: true}, // local-host
 			"grant_created":    {Kind: KindBool, Required: true},
+		},
+	},
+
+	// Secret-change approvals (#151). Tenant trail, SECURITY retention. The
+	// object of every one is the environment or the request; the payload names
+	// the change set's identity and the review outcome, never a value.
+	EventApprovalPolicyChanged: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"action":         {Kind: KindString, Required: true, Enum: []string{"created", "updated", "disabled", "deleted"}},
+			"environment":    {Kind: KindString, Required: true}, // "" = all environments in the project
+			"min_approvals":  {Kind: KindInt, Required: true, NonNegative: true},
+			"self_approval":  {Kind: KindBool, Required: true},
+			"enabled":        {Kind: KindBool, Required: true},
+			"approver_count": {Kind: KindInt, Required: true, NonNegative: true},
+			"bypasser_count": {Kind: KindInt, Required: true, NonNegative: true},
+		},
+	},
+	EventApprovalRequested: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"policy_id":      {Kind: KindString, Required: true},
+			"policy_version": {Kind: KindInt, Required: true, NonNegative: true},
+			"change_count":   {Kind: KindInt, Required: true, NonNegative: true},
+			"base_revision":  {Kind: KindInt, Required: true, NonNegative: true},
+			"preview_digest": {Kind: KindString, Required: true, Digest: true},
+		},
+	},
+	EventApprovalVoted: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"decision":      {Kind: KindString, Required: true, Enum: []string{"approve", "reject"}},
+			"self_approval": {Kind: KindBool, Required: true},
+		},
+	},
+	EventApprovalMerged: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"revision":       {Kind: KindInt, Required: true, NonNegative: true},
+			"approvals":      {Kind: KindInt, Required: true, NonNegative: true},
+			"preview_digest": {Kind: KindString, Required: true, Digest: true},
+		},
+	},
+	EventApprovalInvalidated: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"cause": {Kind: KindString, Required: true, Enum: []string{"policy_changed", "draft_edited", "env_advanced", "approver_removed"}},
+		},
+	},
+	EventApprovalExpired: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"policy_id":  {Kind: KindString, Required: true},
+			"expired_at": {Kind: KindString, Required: true},
+		},
+	},
+	// The high-signal emergency path. Its reason is caller free text, sanitized
+	// and bounded like every other free-text field; it never carries a value.
+	EventApprovalBypassed: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"reason":         {Kind: KindFreeText, Required: true, MaxBytes: 512},
+			"revision":       {Kind: KindInt, Required: true, NonNegative: true},
+			"preview_digest": {Kind: KindString, Required: true, Digest: true},
 		},
 	},
 	// Backup and restore (#76). Instance trail only: every one of these runs

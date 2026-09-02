@@ -129,6 +129,20 @@ type PublishResult struct {
 	Published    []string
 	ClosedIn     []string
 	Environments []PublishedEnvironment
+	// CreatedApprovalRequest is set, and every other field empty, when the
+	// publish addressed a policy-covered environment with no approval presented:
+	// a request was staged instead of a revision published (#151). The transport
+	// answers 202 with the request rather than a publish result.
+	CreatedApprovalRequest *ApprovalRequestSummary
+}
+
+// ApprovalRequestSummary is the created-request summary a gated publish returns.
+type ApprovalRequestSummary struct {
+	ID            string
+	EnvironmentID string
+	PolicyID      string
+	State         string
+	ExpiresAt     time.Time
 }
 
 // PublishRequest carries the reviewed selection and the protected-environment
@@ -137,6 +151,20 @@ type PublishRequest struct {
 	VersionIDs                     []string
 	PreviewToken                   string
 	ConfirmedProtectedEnvironments []string
+	// Secret-change approvals (#151). When a policy covers the addressed
+	// environment, a bare publish is refused: the caller either creates a
+	// request (both fields empty), merges an approved one (ApprovalRequestID
+	// set), or emergency-bypasses one (ApprovalRequestID + Bypass set). Ignored
+	// where no policy covers the environment. Purpose is the requester's
+	// free-text reason, recorded on the created request.
+	ApprovalRequestID string
+	Bypass            *ApprovalBypass
+	Purpose           string
+}
+
+// ApprovalBypass carries an emergency bypasser's mandatory reason (#151).
+type ApprovalBypass struct {
+	Reason string
 }
 
 // ImpactPreview is the reveal-safe before/after plan shown before a restore is
@@ -285,6 +313,20 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 			return err
 		}
 
+		// Secret-change approvals (#151): a merge or bypass names an existing
+		// request and publishes EXACTLY its stored selection, not a
+		// caller-supplied one. Load it here, before version resolution, so the
+		// change set materialized is the reviewed change set.
+		var loadedApproval *store.ApprovalRequest
+		if request.ApprovalRequestID != "" {
+			req, err := r.Approvals().GetRequest(ctx, p, request.ApprovalRequestID)
+			if err != nil {
+				return err
+			}
+			loadedApproval = &req
+			versionIDs = req.VersionIDs
+		}
+
 		selected, byID, err := resolveVersions(ctx, r, p, caller.Principal, versionIDs)
 		if err != nil {
 			return err
@@ -333,6 +375,23 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 			envs = append(envs, envID)
 		}
 		sort.Strings(envs)
+
+		// Secret-change approvals (#151): the live conjunct. Where a policy
+		// covers the addressed environment this either stages a request (and
+		// returns before any materialize), validates a merge, or admits a
+		// bypass. A gated publish addresses one environment.
+		approval, err := approvalGate(ctx, r, az, s.Auth, s.Keyring, caller, scope, request, loadedApproval, selection, closed, proofs, now)
+		if err != nil {
+			return err
+		}
+		if approval.created != nil {
+			out = PublishResult{CreatedApprovalRequest: &ApprovalRequestSummary{
+				ID: approval.created.ID, EnvironmentID: approval.created.EnvironmentID,
+				PolicyID: approval.created.PolicyID, State: string(approval.created.State),
+				ExpiresAt: approval.created.ExpiresAt,
+			}}
+			return nil
+		}
 
 		restoreSelected := false
 		for _, applies := range selection {
@@ -444,6 +503,21 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 			}
 			out.Environments = append(out.Environments, published)
 		}
+		// Secret-change approvals (#151): a merge or bypass flips its request to
+		// its terminal state and emits its event now that the revision has
+		// materialized in this same transaction.
+		if approval.resolveID != "" {
+			var revision int64
+			for _, env := range out.Environments {
+				if env.EnvironmentID == approval.coveredEnv {
+					revision = env.Revision
+				}
+			}
+			if err := resolveApprovalAfterPublish(ctx, r, proofs[approval.coveredEnv], caller.Principal, approval, revision, now); err != nil {
+				return err
+			}
+		}
+
 		out.ClosedIn = closed
 		slices.Sort(out.Published)
 		return nil
