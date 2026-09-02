@@ -29,6 +29,7 @@ type GrantService interface {
 	Revoke(ctx context.Context, actor service.Actor, spec service.GrantSpec) error
 	List(ctx context.Context, actor service.Actor, scope domain.Scope) ([]service.Membership, error)
 	ApplyTemplate(ctx context.Context, actor service.Actor, template domain.Template, principal domain.PrincipalID, scope domain.Scope) ([]service.GrantResult, error)
+	InviteMember(ctx context.Context, actor service.Actor, spec service.InviteSpec) (service.InvitationResult, error)
 }
 
 // SettingsService is the `project-settings` surface.
@@ -467,4 +468,52 @@ func (a *API) SetMachineReveal(ctx context.Context, req apigen.SetMachineRevealR
 		return nil, err
 	}
 	return apigen.SetMachineReveal200JSONResponse{Enabled: got.Enabled}, nil
+}
+
+// ---------------------------------------------------------------------------
+// Member invitation (#568)
+// ---------------------------------------------------------------------------
+
+// InviteOrgMember is the human-auth ADR's account-creation path at
+// organisation scope. The authority is delivered in the HTTP response to the
+// inviter, who hands it to the invitee out of band — the same delivery
+// credential-reset uses. Every refusal goes through the one uniform writer:
+// a taken username is the store's conflict, an unauthorized caller the
+// tenant class's uniform 403/404.
+func (a *API) InviteOrgMember(ctx context.Context, req apigen.InviteOrgMemberRequestObject) (apigen.InviteOrgMemberResponseObject, error) {
+	res, err := a.Grants.InviteMember(ctx, service.Bearer(bearer(ctx)), inviteSpec(domain.Scope{Org: domain.OrgID(req.Org)}, req.Body))
+	if err != nil {
+		return nil, err
+	}
+	return apigen.InviteOrgMember201JSONResponse(wireInvitation(res)), nil
+}
+
+// InviteInstanceMember is the instance-scope form: the same transaction under
+// `manage-members` held at instance scope.
+func (a *API) InviteInstanceMember(ctx context.Context, req apigen.InviteInstanceMemberRequestObject) (apigen.InviteInstanceMemberResponseObject, error) {
+	res, err := a.Grants.InviteMember(ctx, service.Bearer(bearer(ctx)), inviteSpec(domain.Scope{}, req.Body))
+	if err != nil {
+		return nil, err
+	}
+	return apigen.InviteInstanceMember201JSONResponse(wireInvitation(res)), nil
+}
+
+func inviteSpec(scope domain.Scope, body *apigen.InviteMemberRequest) service.InviteSpec {
+	spec := service.InviteSpec{Scope: scope, Username: body.Username, Delivery: "response"}
+	if body.DisplayName != nil {
+		spec.DisplayName = *body.DisplayName
+	}
+	if body.Template != nil {
+		spec.Template = domain.Template(*body.Template)
+	}
+	return spec
+}
+
+func wireInvitation(res service.InvitationResult) apigen.InvitationResult {
+	return apigen.InvitationResult{
+		PrincipalId: string(res.PrincipalID),
+		AccountId:   res.AccountID,
+		Authority:   res.Authority,
+		ExpiresAt:   res.ExpiresAt,
+	}
 }
