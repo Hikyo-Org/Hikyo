@@ -553,6 +553,13 @@ export const zRecoveryBeginResult = z.object({
     expires_at: zTimestamp
 });
 
+export const zInvitationResult = z.object({
+    principal_id: zId,
+    account_id: zId,
+    authority: z.string(),
+    expires_at: zTimestamp
+});
+
 export const zCredentialResetResult = z.object({
     authority: z.string(),
     expires_at: zTimestamp
@@ -1296,6 +1303,12 @@ export const zRoleTemplate = z.enum([
     'admin',
     'operator'
 ]);
+
+export const zInviteMemberRequest = z.object({
+    username: z.string().min(1).max(128),
+    display_name: z.string().max(256).optional(),
+    template: zRoleTemplate.optional()
+});
 
 export const zCreateGrantRequest = z.object({
     principal: zId,
@@ -3484,6 +3497,13 @@ export const zApplyInstanceTemplateBody = zApplyTemplateRequest;
  */
 export const zApplyInstanceTemplateResponse = zGrantResultList;
 
+export const zInviteInstanceMemberBody = zInviteMemberRequest;
+
+/**
+ * The invited principal and its single-use authority.
+ */
+export const zInviteInstanceMemberResponse = zInvitationResult;
+
 export const zRevokeOrgGrantPath = z.object({
     org: zId
 });
@@ -3528,6 +3548,17 @@ export const zApplyOrgTemplatePath = z.object({
  * The grants the expansion produced.
  */
 export const zApplyOrgTemplateResponse = zGrantResultList;
+
+export const zInviteOrgMemberBody = zInviteMemberRequest;
+
+export const zInviteOrgMemberPath = z.object({
+    org: zId
+});
+
+/**
+ * The invited principal and its single-use authority.
+ */
+export const zInviteOrgMemberResponse = zInvitationResult;
 
 export const zRevokeProjectGrantPath = z.object({
     org: zId,

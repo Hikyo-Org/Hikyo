@@ -4167,6 +4167,37 @@ type InstanceUpdateRequest struct {
 	Version string `json:"version"`
 }
 
+// InvitationResult defines model for InvitationResult.
+type InvitationResult struct {
+	// AccountId A prefixed UUIDv7, e.g. `org_0198…`.
+	AccountId ID `json:"account_id"`
+
+	// Authority The single-use credential-establishment authority for the new
+	// account, returned once. It creates no session and may only ever
+	// establish a password; hand it to the invitee out of band.
+	Authority string `json:"authority"`
+
+	// ExpiresAt RFC 3339 UTC, microsecond precision.
+	ExpiresAt Timestamp `json:"expires_at"`
+
+	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
+	PrincipalId ID `json:"principal_id"`
+}
+
+// InviteMemberRequest defines model for InviteMemberRequest.
+type InviteMemberRequest struct {
+	// DisplayName Defaults to the username.
+	DisplayName *string `json:"display_name,omitempty"`
+
+	// Template Optional initial grants, expanded at the invitation's scope in the
+	// same transaction. Absent means the account can sign in and see
+	// nothing until someone grants it something.
+	Template *RoleTemplate `json:"template,omitempty"`
+
+	// Username The invitee's local login handle; globally unique.
+	Username string `json:"username"`
+}
+
 // IssuerType The federation issuer's platform. It is DECLARED rather than inferred
 // from the issuer URL, because the per-platform binding rules differ — a
 // Forgejo or GitHub Actions binding MUST pin `event_name`, a Kubernetes one
@@ -7423,6 +7454,9 @@ type CreateInstanceGrantJSONRequestBody = CreateGrantRequest
 // ApplyInstanceTemplateJSONRequestBody defines body for ApplyInstanceTemplate for application/json ContentType.
 type ApplyInstanceTemplateJSONRequestBody = ApplyTemplateRequest
 
+// InviteInstanceMemberJSONRequestBody defines body for InviteInstanceMember for application/json ContentType.
+type InviteInstanceMemberJSONRequestBody = InviteMemberRequest
+
 // PutOidcProviderJSONRequestBody defines body for PutOidcProvider for application/json ContentType.
 type PutOidcProviderJSONRequestBody = OidcProviderInput
 
@@ -7467,6 +7501,9 @@ type CreateOrgGrantJSONRequestBody = CreateGrantRequest
 
 // ApplyOrgTemplateJSONRequestBody defines body for ApplyOrgTemplate for application/json ContentType.
 type ApplyOrgTemplateJSONRequestBody = ApplyTemplateRequest
+
+// InviteOrgMemberJSONRequestBody defines body for InviteOrgMember for application/json ContentType.
+type InviteOrgMemberJSONRequestBody = InviteMemberRequest
 
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = CreateProjectRequest
@@ -8016,6 +8053,9 @@ type ServerInterface interface {
 	// ApplyInstanceTemplate Apply a role template at instance scope.
 	// (POST /api/v1/instance/grants/template)
 	ApplyInstanceTemplate(w http.ResponseWriter, r *http.Request)
+	// InviteInstanceMember Invite a human at instance scope with a local credential.
+	// (POST /api/v1/instance/invitations)
+	InviteInstanceMember(w http.ResponseWriter, r *http.Request)
 	// ListOidcProviders List configured OIDC providers.
 	// (GET /api/v1/instance/oidc-providers)
 	ListOidcProviders(w http.ResponseWriter, r *http.Request)
@@ -8157,6 +8197,9 @@ type ServerInterface interface {
 	// ApplyOrgTemplate Apply a role template at organisation scope.
 	// (POST /api/v1/orgs/{org}/grants/template)
 	ApplyOrgTemplate(w http.ResponseWriter, r *http.Request, org OrgID)
+	// InviteOrgMember Invite a human into this organisation with a local credential.
+	// (POST /api/v1/orgs/{org}/invitations)
+	InviteOrgMember(w http.ResponseWriter, r *http.Request, org OrgID)
 	// ListProjects List the organisation's projects.
 	// (GET /api/v1/orgs/{org}/projects)
 	ListProjects(w http.ResponseWriter, r *http.Request, org OrgID)
@@ -8922,6 +8965,12 @@ func (_ Unimplemented) ApplyInstanceTemplate(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// InviteInstanceMember Invite a human at instance scope with a local credential.
+// (POST /api/v1/instance/invitations)
+func (_ Unimplemented) InviteInstanceMember(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListOidcProviders List configured OIDC providers.
 // (GET /api/v1/instance/oidc-providers)
 func (_ Unimplemented) ListOidcProviders(w http.ResponseWriter, r *http.Request) {
@@ -9201,6 +9250,12 @@ func (_ Unimplemented) CreateOrgGrant(w http.ResponseWriter, r *http.Request, or
 // ApplyOrgTemplate Apply a role template at organisation scope.
 // (POST /api/v1/orgs/{org}/grants/template)
 func (_ Unimplemented) ApplyOrgTemplate(w http.ResponseWriter, r *http.Request, org OrgID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// InviteOrgMember Invite a human into this organisation with a local credential.
+// (POST /api/v1/orgs/{org}/invitations)
+func (_ Unimplemented) InviteOrgMember(w http.ResponseWriter, r *http.Request, org OrgID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -11096,6 +11151,20 @@ func (siw *ServerInterfaceWrapper) ApplyInstanceTemplate(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// InviteInstanceMember operation middleware
+func (siw *ServerInterfaceWrapper) InviteInstanceMember(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.InviteInstanceMember(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListOidcProviders operation middleware
 func (siw *ServerInterfaceWrapper) ListOidcProviders(w http.ResponseWriter, r *http.Request) {
 
@@ -12315,6 +12384,32 @@ func (siw *ServerInterfaceWrapper) ApplyOrgTemplate(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ApplyOrgTemplate(w, r, org)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// InviteOrgMember operation middleware
+func (siw *ServerInterfaceWrapper) InviteOrgMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.InviteOrgMember(w, r, org)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -19197,6 +19292,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/instance/grants/template", wrapper.ApplyInstanceTemplate)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/invitations", wrapper.InviteInstanceMember)
+	})
+	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/grants", wrapper.RevokeOrgGrant)
 	})
 	r.Group(func(r chi.Router) {
@@ -19207,6 +19305,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/grants/template", wrapper.ApplyOrgTemplate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/invitations", wrapper.InviteOrgMember)
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/grants", wrapper.RevokeProjectGrant)
@@ -24834,6 +24935,127 @@ func (response ApplyInstanceTemplate500JSONResponse) VisitApplyInstanceTemplateR
 	return err
 }
 
+type InviteInstanceMemberRequestObject struct {
+	Body *InviteInstanceMemberJSONRequestBody
+}
+
+type InviteInstanceMemberResponseObject interface {
+	VisitInviteInstanceMemberResponse(w http.ResponseWriter) error
+}
+
+type InviteInstanceMember201JSONResponse InvitationResult
+
+func (response InviteInstanceMember201JSONResponse) VisitInviteInstanceMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteInstanceMember400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response InviteInstanceMember400JSONResponse) VisitInviteInstanceMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteInstanceMember401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response InviteInstanceMember401JSONResponse) VisitInviteInstanceMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteInstanceMember403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response InviteInstanceMember403JSONResponse) VisitInviteInstanceMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteInstanceMember404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response InviteInstanceMember404JSONResponse) VisitInviteInstanceMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteInstanceMember409JSONResponse struct{ ConflictJSONResponse }
+
+func (response InviteInstanceMember409JSONResponse) VisitInviteInstanceMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteInstanceMember429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response InviteInstanceMember429JSONResponse) VisitInviteInstanceMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteInstanceMember500JSONResponse struct{ InternalJSONResponse }
+
+func (response InviteInstanceMember500JSONResponse) VisitInviteInstanceMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListOidcProvidersRequestObject struct {
 }
 
@@ -29454,6 +29676,128 @@ func (response ApplyOrgTemplate429JSONResponse) VisitApplyOrgTemplateResponse(w 
 type ApplyOrgTemplate500JSONResponse struct{ InternalJSONResponse }
 
 func (response ApplyOrgTemplate500JSONResponse) VisitApplyOrgTemplateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMemberRequestObject struct {
+	Org  OrgID `json:"org"`
+	Body *InviteOrgMemberJSONRequestBody
+}
+
+type InviteOrgMemberResponseObject interface {
+	VisitInviteOrgMemberResponse(w http.ResponseWriter) error
+}
+
+type InviteOrgMember201JSONResponse InvitationResult
+
+func (response InviteOrgMember201JSONResponse) VisitInviteOrgMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMember400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response InviteOrgMember400JSONResponse) VisitInviteOrgMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMember401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response InviteOrgMember401JSONResponse) VisitInviteOrgMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMember403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response InviteOrgMember403JSONResponse) VisitInviteOrgMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMember404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response InviteOrgMember404JSONResponse) VisitInviteOrgMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMember409JSONResponse struct{ ConflictJSONResponse }
+
+func (response InviteOrgMember409JSONResponse) VisitInviteOrgMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMember429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response InviteOrgMember429JSONResponse) VisitInviteOrgMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMember500JSONResponse struct{ InternalJSONResponse }
+
+func (response InviteOrgMember500JSONResponse) VisitInviteOrgMemberResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -43405,6 +43749,9 @@ type StrictServerInterface interface {
 	// ApplyInstanceTemplate Apply a role template at instance scope.
 	// (POST /api/v1/instance/grants/template)
 	ApplyInstanceTemplate(ctx context.Context, request ApplyInstanceTemplateRequestObject) (ApplyInstanceTemplateResponseObject, error)
+	// InviteInstanceMember Invite a human at instance scope with a local credential.
+	// (POST /api/v1/instance/invitations)
+	InviteInstanceMember(ctx context.Context, request InviteInstanceMemberRequestObject) (InviteInstanceMemberResponseObject, error)
 	// ListOidcProviders List configured OIDC providers.
 	// (GET /api/v1/instance/oidc-providers)
 	ListOidcProviders(ctx context.Context, request ListOidcProvidersRequestObject) (ListOidcProvidersResponseObject, error)
@@ -43546,6 +43893,9 @@ type StrictServerInterface interface {
 	// ApplyOrgTemplate Apply a role template at organisation scope.
 	// (POST /api/v1/orgs/{org}/grants/template)
 	ApplyOrgTemplate(ctx context.Context, request ApplyOrgTemplateRequestObject) (ApplyOrgTemplateResponseObject, error)
+	// InviteOrgMember Invite a human into this organisation with a local credential.
+	// (POST /api/v1/orgs/{org}/invitations)
+	InviteOrgMember(ctx context.Context, request InviteOrgMemberRequestObject) (InviteOrgMemberResponseObject, error)
 	// ListProjects List the organisation's projects.
 	// (GET /api/v1/orgs/{org}/projects)
 	ListProjects(ctx context.Context, request ListProjectsRequestObject) (ListProjectsResponseObject, error)
@@ -45602,6 +45952,37 @@ func (sh *strictHandler) ApplyInstanceTemplate(w http.ResponseWriter, r *http.Re
 	}
 }
 
+// InviteInstanceMember operation middleware
+func (sh *strictHandler) InviteInstanceMember(w http.ResponseWriter, r *http.Request) {
+	var request InviteInstanceMemberRequestObject
+
+	var body InviteInstanceMemberJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.InviteInstanceMember(ctx, request.(InviteInstanceMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "InviteInstanceMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(InviteInstanceMemberResponseObject); ok {
+		if err := validResponse.VisitInviteInstanceMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListOidcProviders operation middleware
 func (sh *strictHandler) ListOidcProviders(w http.ResponseWriter, r *http.Request) {
 	var request ListOidcProvidersRequestObject
@@ -46879,6 +47260,39 @@ func (sh *strictHandler) ApplyOrgTemplate(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ApplyOrgTemplateResponseObject); ok {
 		if err := validResponse.VisitApplyOrgTemplateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// InviteOrgMember operation middleware
+func (sh *strictHandler) InviteOrgMember(w http.ResponseWriter, r *http.Request, org OrgID) {
+	var request InviteOrgMemberRequestObject
+
+	request.Org = org
+
+	var body InviteOrgMemberJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.InviteOrgMember(ctx, request.(InviteOrgMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "InviteOrgMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(InviteOrgMemberResponseObject); ok {
+		if err := validResponse.VisitInviteOrgMemberResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
