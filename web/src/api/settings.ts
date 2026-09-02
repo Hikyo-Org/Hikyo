@@ -394,10 +394,11 @@ export function useOrgTopology(org: string): {
  * factor". The navigation rail asks a different question entirely
  * (`listMyOrgs`, #56) and needs no factor at all.
  */
-export function useInstanceOrgs(): UseQueryResult<OrgList> {
+export function useInstanceOrgs(enabled = true): UseQueryResult<OrgList> {
   return useQuery({
     queryKey: orgsListKey,
     queryFn: () => parsed(listOrgsOp, {}),
+    enabled,
     retry: false,
   });
 }

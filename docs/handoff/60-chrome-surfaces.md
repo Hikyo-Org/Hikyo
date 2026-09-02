@@ -352,3 +352,5 @@ HIKYO_E2E_PORT=45830 HIKYO_E2E_PORT_B=45831 HIKYO_E2E_PORT_TLS=45832 \
 Unfiltered matters: the run-log closure gate in global teardown only fires when
 the run is not filtered by `--grep`, and it is what proves each claimed surface
 was actually asserted rather than merely declared.
+
+> **Superseded in part (2026-09-01, #567):** the sidebar is now rendered from one table with a stacked context block, instance grants moved to `/instance/members`, and `/instance` is "Instance settings". See [567-chrome-settings-unification.md](./567-chrome-settings-unification.md).

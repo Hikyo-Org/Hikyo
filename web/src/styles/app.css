@@ -648,16 +648,17 @@ select {
 }
 
 .sidebar > .sidebar__section + .sidebar__section,
-.sidebar__mobile-account,
 .sidebar__mobile-projects {
   margin-top: 30px;
 }
 
-.project-sidebar__organisation {
+/* The organisation block sits flush at the top of the sidebar, and 30px below
+   a context block (project or instance) when one is stacked above it. */
+.sidebar > .sidebar__section--organisation {
   margin-top: 0;
 }
 
-.sidebar__section.project-sidebar__organisation h2 {
+.context-sidebar + .sidebar__section--organisation h2 {
   padding-top: 30px;
 }
 
@@ -722,7 +723,7 @@ select {
    rule on the container plus a second accent line inside the row draws two
    lines where the design has one. */
 .sidebar__link,
-.project-sidebar .project-sidebar__group {
+.context-sidebar .context-sidebar__group {
   /* All four sides, because these rows are <a> and <button> alike and a button
      brings its own border. Setting only `border-left` left the switcher rows
      resetting it back to zero from their own `border: 0`. */
@@ -791,13 +792,13 @@ select {
   opacity: 0.62;
 }
 
-.project-sidebar {
+.context-sidebar {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-.project-sidebar__org {
+.context-sidebar__org {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -805,31 +806,31 @@ select {
   min-width: 0;
 }
 
-.project-sidebar__org > span:last-child {
+.context-sidebar__org > span:last-child {
   display: flex;
   flex-direction: column;
   min-width: 0;
   line-height: 1.2;
 }
 
-.project-sidebar__org strong,
-.project-sidebar__org small {
+.context-sidebar__org strong,
+.context-sidebar__org small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.project-sidebar__org strong {
+.context-sidebar__org strong {
   font-size: 14px;
 }
 
-.project-sidebar__org small {
+.context-sidebar__org small {
   color: var(--tx-faint);
   font-family: var(--font-mono);
   font-size: 10px;
 }
 
-.project-sidebar__org-avatar.avatar {
+.context-sidebar__org-avatar.avatar {
   width: 28px;
   height: 28px;
   flex: none;
@@ -839,7 +840,7 @@ select {
   cursor: default;
 }
 
-.project-sidebar > h2 {
+.context-sidebar > h2 {
   margin: 0;
   overflow: hidden;
   padding: 16px 16px 6px;
@@ -853,18 +854,18 @@ select {
   white-space: nowrap;
 }
 
-.project-sidebar > nav {
+.context-sidebar > nav {
   display: flex;
   flex-direction: column;
   width: calc(100% - 19px);
   margin-left: 19px;
 }
 
-.project-sidebar > nav > .sidebar__link {
+.context-sidebar > nav > .sidebar__link {
   padding-left: 13px;
 }
 
-.project-sidebar__groups {
+.context-sidebar__groups {
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -872,7 +873,7 @@ select {
   padding: 0;
 }
 
-.project-sidebar .project-sidebar__group {
+.context-sidebar .context-sidebar__group {
   min-height: 38px;
   padding: 9px 13px 9px 28px;
   border-radius: 0;
@@ -880,13 +881,13 @@ select {
   line-height: 20px;
 }
 
-.project-sidebar__group-count {
+.context-sidebar__group-count {
   color: var(--tx-faint);
   font-family: var(--font-mono);
   font-size: 10.5px;
 }
 
-.project-sidebar .matrix__count {
+.context-sidebar .matrix__count {
   padding: 2px 8px;
   font-size: 10px;
   font-weight: 600;
@@ -1213,6 +1214,13 @@ select {
     display: block;
   }
 
+  /* The drawer's organisation switcher above already names the active
+     organisation; repeating it as the project block's header is noise here.
+     Desktop keeps the header because the rail shows only a monogram. */
+  .context-sidebar__org {
+    display: none;
+  }
+
   .sidebar__close {
     display: inline-flex;
     align-self: flex-end;
@@ -1270,7 +1278,7 @@ select {
   }
 
   .sidebar__link,
-  .project-sidebar__group {
+  .context-sidebar__group {
     min-height: var(--touch);
     padding-top: 12px;
     padding-bottom: 12px;
@@ -4243,38 +4251,16 @@ select {
   font-size: 12px;
 }
 
-.page--chrome #instance-orgs {
-  order: 1;
-}
-
-.page--chrome #instance-settings {
-  order: 2;
-}
-
-.page--chrome #instance-keys {
-  order: 3;
-}
-
-.page--chrome #instance-connected {
-  order: 4;
-}
-
-.page--chrome #instance-grants {
-  order: 5;
-}
-
-.page--chrome #instance-retention {
-  order: 6;
-}
-
-.page--chrome #instance-orgs .settings-row__title {
-  color: var(--tx);
-  text-decoration: none;
-}
-
-.page--chrome #instance-orgs > .settings-row {
+/* Shared panel modifiers (#567). Per-id overrides let pages drift; a modifier
+   names the intent once and every surface opts in by class. */
+.page--chrome .settings-row--compact {
   padding-top: 7px;
   padding-bottom: 7px;
+}
+
+.page--chrome .settings-row__title--link {
+  color: var(--tx);
+  text-decoration: none;
 }
 
 .page--chrome .account-factor-status {
@@ -4282,17 +4268,8 @@ select {
   background: transparent;
 }
 
-.page--chrome #account-profile {
+.page--chrome .panel--tight {
   gap: 8px;
-}
-
-.page--chrome #account-factors > .settings-row {
-  padding-top: 8px;
-  padding-bottom: 8px;
-}
-
-.page--chrome #project-metadata {
-  gap: 7px;
 }
 
 .page--chrome .btn {
@@ -4870,12 +4847,6 @@ select {
   border: 1px solid var(--danger);
   border-radius: var(--radius-container);
   background: color-mix(in oklch, var(--bg), var(--danger) 8%);
-}
-
-.origin-chips {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 6px;
 }
 
 .projects__actions {

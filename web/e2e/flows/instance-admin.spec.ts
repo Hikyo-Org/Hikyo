@@ -92,7 +92,7 @@ test.describe('instance administration', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/instance');
     await expect(
-      page.getByRole('heading', { name: 'Instance administration', level: 1 }),
+      page.getByRole('heading', { name: 'Instance settings', level: 1 }),
     ).toBeVisible();
   });
 
@@ -107,7 +107,8 @@ test.describe('instance administration', () => {
   });
 
   test('shows instance grants with the origin that holds them', async ({ page }) => {
-    const grants = page.locator('#instance-grants');
+    await page.goto('/instance/members');
+    const grants = page.locator('#members-list');
     // The seeding grants are written by the host-local `admin grant` verb, so
     // they carry the break-glass origin — the one distinction the membership
     // surface exists to preserve.
@@ -188,7 +189,7 @@ test.describe('instance administration', () => {
     // interrupted-then-resumed recovery, not a re-run of an already-finished job.
     await page.reload();
     await expect(
-      page.getByRole('heading', { name: 'Instance administration', level: 1 }),
+      page.getByRole('heading', { name: 'Instance settings', level: 1 }),
     ).toBeVisible();
     await keys.getByRole('button', { name: 'Re-encrypt the instance' }).click();
     await expect(page.locator('.notice')).toContainText('Instance re-encryption complete');
@@ -276,14 +277,21 @@ test.describe('instance administration', () => {
   });
 
   test('creates and revokes an instance grant with visible provenance', async ({ page }) => {
-    const grants = page.locator('#instance-grants');
-    await grants.getByLabel('Principal ID').fill(INSTANCE_GRANT_TARGET);
-    await grants.getByRole('checkbox', { name: /^read —/ }).check();
-    await grants.getByRole('button', { name: 'Create instance grant' }).click();
-    const row = grants.locator('li.factor').filter({ hasText: INSTANCE_GRANT_TARGET }).filter({ hasText: 'read' });
+    await page.goto('/instance/members');
+    await page.getByRole('button', { name: 'New grant' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Principal').fill(INSTANCE_GRANT_TARGET);
+    await expect(dialog.getByLabel('Scope')).toHaveValue('instance');
+    await dialog.getByRole('checkbox', { name: 'read', exact: true }).check();
+    await dialog.getByRole('button', { name: 'Grant', exact: true }).click();
+    const granted = page.locator('.notice').filter({ hasText: `Grant results for ${INSTANCE_GRANT_TARGET}` });
+    await expectStatusIsTextAndAria(page, granted);
+    const row = page.getByRole('row').filter({ hasText: INSTANCE_GRANT_TARGET });
     await expect(row).toContainText(`manual: ${seed.principal}`);
-    await row.getByRole('button', { name: 'Revoke' }).click();
-    const revoked = page.locator('.notice').filter({ hasText: 'refreshed list confirms it is absent' });
+    await row
+      .getByRole('button', { name: `Revoke read on instance · everything for ${INSTANCE_GRANT_TARGET}` })
+      .click();
+    const revoked = page.locator('.notice').filter({ hasText: 'Revoked read' });
     await expectStatusIsTextAndAria(page, revoked);
     await expect(row).toHaveCount(0);
   });
@@ -411,11 +419,15 @@ test.describe('instance administration', () => {
     }
     const principal = seededGrant.principal_id;
     try {
-      const grants = page.locator('#instance-grants');
-      await grants.getByLabel('Principal ID').fill(principal);
-      await grants.getByLabel('Role-template shortcut').selectOption('operator');
-      await grants.getByRole('button', { name: 'Create instance grant' }).click();
-      await expect(page.locator('.notice').filter({ hasText: 'instance grant line' })).toContainText(
+      await page.goto('/instance/members');
+      await page.getByRole('button', { name: 'New grant' }).click();
+      const dialog = page.getByRole('dialog');
+      await dialog.getByLabel('Principal').fill(principal);
+      await expect(dialog.getByLabel('Scope')).toHaveValue('instance');
+      await dialog.getByRole('radio', { name: 'Apply a role template' }).check();
+      await dialog.getByLabel('Role template', { exact: true }).selectOption('operator');
+      await dialog.getByRole('button', { name: 'Grant', exact: true }).click();
+      await expect(page.locator('.notice').filter({ hasText: 'Applied operator to' })).toContainText(
         principal,
       );
       const listed = await browserApi(page, 'GET', '/api/v1/instance/grants', zGrantList);
@@ -469,7 +481,7 @@ test.describe('instance administration', () => {
       await establishSession(page);
       await page.goto(`/orgs/${created.id}/settings`);
       await expect(
-        page.getByRole('heading', { name: `Org settings · ${name}`, level: 1 }),
+        page.getByRole('heading', { name: `Organisation settings · ${name}`, level: 1 }),
       ).toBeVisible();
       await expect(page.getByLabel('Name')).toHaveValue(name);
   });
@@ -602,7 +614,6 @@ test.describe('instance administration', () => {
 
       const panels = [
         ['#instance-orgs', 'needs a second factor', 'organisations on this instance'],
-        ['#instance-grants', 'require a second factor', 'No instance-scope grants'],
         ['#instance-retention', 'requires a second factor', 'Payload pruning'],
         ['#instance-settings', 'requires a second factor', 'Maximum finite lifetime'],
         ['#instance-oidc', 'needs a second factor', '+ add identity provider'],
@@ -615,6 +626,13 @@ test.describe('instance administration', () => {
         await expect(panel.getByRole('alert')).toContainText(refusalText);
         await expect(panel).not.toContainText(forbiddenText);
       }
+      // The members pair answers the same session the same way (#567).
+      await page.goto('/instance/members');
+      // Scoped to the page: the step-up banner above the well is an alert too.
+      await expect(page.locator('.page--members').getByRole('alert')).toContainText(
+        'Instance grants require a second factor',
+      );
+      await expect(page.locator('#members-list')).not.toContainText('No instance-scope grants');
     } finally {
       await context.close();
     }
@@ -845,26 +863,27 @@ test.describe('instance administration', () => {
       await page.emulateMedia({ colorScheme: scheme });
       try {
         const heading = page.getByRole('heading', {
-          name: 'Instance administration',
+          name: 'Instance settings',
           level: 1,
         });
         const well = page.locator('.panel').first();
         const create = page.getByRole('button', { name: 'Open create organisation form' });
-        const badge = page.locator('.badge').first();
+        const tag = page.locator('.settings-tag').first();
+        const cli = page.locator('.instance-cli').first();
 
         await expectPinnedAssertionSet(page, {
           flow: 'instance-admin',
           surface: 'instance-admin',
           theme: scheme,
-          text: [heading, page.locator('.factor__meta').first(), page.locator('.page__lede')],
+          text: [heading, page.locator('.settings-row__detail').first(), page.locator('.page__lede')],
           radii: [
             [well, 'container'],
             [create, 'control'],
-            [badge, 'badge'],
+            [tag, 'badge'],
           ],
           fonts: [
             [heading, 'ui'],
-            [page.locator('.factor__meta').first(), 'mono'],
+            [cli, 'mono'],
           ],
           colours: [
             [heading, 'color', '--tx'],
@@ -873,6 +892,53 @@ test.describe('instance administration', () => {
           ],
           hairlines: [well],
           density: [],
+        });
+      } finally {
+        await page.emulateMedia({ colorScheme: null });
+      }
+    });
+  }
+
+  // The instance members surface (#567) rides this spec: the closure demands a
+  // pinned run per theme, and both themes are half the palette each.
+  for (const scheme of ['dark', 'light'] as const) {
+    test(`meets the pinned assertion set on instance members (${scheme})`, async ({
+      page,
+    }, testInfo) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      try {
+        await page.goto('/instance/members');
+        const rowDensity = testInfo.project.name === 'mobile' ? '--touch' : '--row';
+        const heading = page.getByRole('heading', { name: 'Members · Instance', level: 1 });
+        const well = page.locator('.panel').first();
+        const jump = page.getByRole('link', { name: 'Who can…?' });
+        const chip = page.locator('.chip').first();
+        const newGrant = page.getByRole('button', { name: 'New grant' });
+
+        await expectPinnedAssertionSet(page, {
+          flow: 'instance-admin',
+          surface: 'instance-members',
+          theme: scheme,
+          text: [heading, page.locator('.inspect__answer'), page.locator('.capability__name').first()],
+          radii: [
+            [well, 'container'],
+            [newGrant, 'control'],
+            [chip, 'badge'],
+          ],
+          fonts: [
+            [heading, 'ui'],
+            [page.locator('.capability__name').first(), 'mono'],
+          ],
+          colours: [
+            [heading, 'color', '--tx'],
+            [well, 'backgroundColor', '--bg-panel'],
+            [well, 'borderTopColor', '--panel-line'],
+          ],
+          hairlines: [well],
+          density: [
+            [newGrant, rowDensity],
+            [jump, rowDensity],
+          ],
         });
       } finally {
         await page.emulateMedia({ colorScheme: null });

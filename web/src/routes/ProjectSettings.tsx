@@ -116,7 +116,7 @@ export function ProjectSettings() {
         />
       </Panel>
 
-      <Panel id="project-metadata" title="Metadata">
+      <Panel id="project-metadata" title="Metadata" tight>
         <div className="settings-grid">
         <div className="field">
           <label htmlFor={nameId}>Name</label>
@@ -245,7 +245,7 @@ export function ProjectSettings() {
       <Panel id="project-access" title="Access">
         <div className="settings-row">
           <div className="settings-row__copy">
-            <span className="settings-row__title">Members &amp; grants</span>
+            <span className="settings-row__title">Members</span>
             <span className="settings-row__detail">
               {prototypeMode
                 ? '7 grant lines on this project'

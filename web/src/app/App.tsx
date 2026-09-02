@@ -58,12 +58,16 @@ const ELEMENTS: Record<SurfaceId, ReactElement> = {
   overview: <Overview />,
   projects: withRouteFallback(<Projects />),
   remotes: withRouteFallback(<Remotes />),
-  members: withRouteFallback(<Members />),
+  // Keyed per scope: the two Members routes are siblings under the same
+  // Outlet, and React would otherwise carry an open grant dialog and its draft
+  // from one scope into the other.
+  members: withRouteFallback(<Members key="members-org" scope={{ kind: 'org' }} />),
   'org-settings': withRouteFallback(<OrgSettings />),
   scim: withRouteFallback(<ScimProvisioning />),
   audit: withRouteFallback(<Audit />),
   'project-settings': withRouteFallback(<ProjectSettings />),
   'instance-admin': withRouteFallback(<InstanceAdmin />),
+  'instance-members': withRouteFallback(<Members key="members-instance" scope={{ kind: 'instance' }} />),
   settings: withRouteFallback(<AccountSecurity />),
   // The three product surfaces are wrapped in WorkspaceScope: reached with a
   // `?remote=<name>` parameter they operate that remote over its bearer, and

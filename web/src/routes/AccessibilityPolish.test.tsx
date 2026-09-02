@@ -179,7 +179,7 @@ function atRoute(path: string, pattern: string, node: ReactNode) {
 }
 
 async function renderMembers() {
-  return renderForm(atRoute('/orgs/org_acme/members', '/orgs/:org/members', <Members />));
+  return renderForm(atRoute('/orgs/org_acme/members', '/orgs/:org/members', <Members scope={{ kind: 'org' }} />));
 }
 
 async function renderOrgSettings() {

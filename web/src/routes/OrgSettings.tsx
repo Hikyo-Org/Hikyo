@@ -76,9 +76,9 @@ export function OrgSettings() {
 
   return (
     <div className="page page--chrome">
-      <h1>Org settings · {current?.name ?? 'organization'}</h1>
+      <h1>Organisation settings · {current?.name ?? 'organisation'}</h1>
       <p className="page__lede">
-        Organization identity and lifecycle. Access lives on its own surface; the danger zone is
+        Organisation identity and lifecycle. Access lives on its own surface; the danger zone is
         deliberately last.
       </p>
 
@@ -103,7 +103,7 @@ export function OrgSettings() {
       <Panel id="org-identity" title="Identity">
         <ChromeIdentityControls
           identityId={current?.id ?? org}
-          name={current?.name ?? 'organization'}
+          name={current?.name ?? 'organisation'}
           kind="org"
         >
           <div className="field identity-name">
@@ -156,7 +156,7 @@ export function OrgSettings() {
       <Panel id="org-members" title="Members">
         <div className="settings-row">
           <div className="settings-row__copy">
-            <span className="settings-row__title">Org members &amp; grants</span>
+            <span className="settings-row__title">Members</span>
             <span className="settings-row__detail">
               {prototypeMode
                 ? '4 org-scoped grant lines'
@@ -185,7 +185,7 @@ export function OrgSettings() {
             <span className="settings-row__spacer" />
             <input
               className="settings-input settings-input--compact mono"
-              aria-label="Organization slug"
+              aria-label="Organisation slug"
               defaultValue={org}
             />
             <button type="button" className="btn" onClick={() => feedback.ok('Slug renamed (demo).')}>

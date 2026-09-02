@@ -43,11 +43,14 @@ export function Panel({
   title,
   danger = false,
   question = false,
+  tight = false,
   children,
 }: {
   id: string;
   title: string;
   danger?: boolean;
+  /** Tighter row gap for dense read-mostly panels (profile, metadata). */
+  tight?: boolean;
   /**
    * A panel that poses an open question rather than presenting a decision.
    * It is drawn with a dashed boundary and no fill so it never reads as one of
@@ -57,8 +60,9 @@ export function Panel({
   children: ReactNode;
 }) {
   const variant = danger ? ' panel--danger' : question ? ' panel--question' : '';
+  const density = tight ? ' panel--tight' : '';
   return (
-    <section className={`card panel${variant}`} id={id} tabIndex={-1}>
+    <section className={`card panel${variant}${density}`} id={id} tabIndex={-1}>
       <h2>{title}</h2>
       {children}
     </section>

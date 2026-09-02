@@ -115,8 +115,11 @@
       "kind": "capability",
       "title": "Administration UI",
       "status": "implemented",
-      "implemented": "Members, organisation/project settings, account security, instance administration, and browser step-up",
-      "evidence": [{ "label": "#60 handoff", "path": "docs/handoff/60-chrome-surfaces.md" }]
+      "implemented": "Members at organisation, project and instance scope, organisation/project/instance settings, account security, and browser step-up",
+      "evidence": [
+        { "label": "#60 handoff", "path": "docs/handoff/60-chrome-surfaces.md" },
+        { "label": "#567 handoff", "path": "docs/handoff/567-chrome-settings-unification.md" }
+      ]
     },
     {
       "id": "CAP-IMPORTS-ONBOARDING",

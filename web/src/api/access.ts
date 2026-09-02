@@ -515,10 +515,11 @@ export function useOrgGrants(org: string): UseQueryResult<GrantList> {
   });
 }
 
-export function useInstanceGrants(): UseQueryResult<GrantList> {
+export function useInstanceGrants(enabled = true): UseQueryResult<GrantList> {
   return useQuery({
     queryKey: instanceGrantsKey,
     queryFn: () => parsed(listInstanceGrantsOp, {}),
+    enabled,
     retry: false,
   });
 }

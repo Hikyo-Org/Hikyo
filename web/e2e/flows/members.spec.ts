@@ -126,15 +126,15 @@ test.describe('members and grants', () => {
     const menu = page.getByRole('button', { name: 'Menu' });
     if (await menu.isVisible()) await menu.click();
     const projectNav = page.getByRole('navigation', { name: 'Project' });
-    await projectNav.getByRole('link', { name: 'Members & access' }).click();
+    await projectNav.getByRole('link', { name: 'Members' }).click();
 
     await expect(page).toHaveURL(PROJECT_PATH);
     if (await menu.isVisible()) await menu.click();
     await expect(page.getByRole('heading', { name: 'Project · payments' })).toBeVisible();
     await expect(
-      page.getByRole('heading', { name: 'Members & access · payments', level: 1 }),
+      page.getByRole('heading', { name: 'Members · payments', level: 1 }),
     ).toBeVisible();
-    await expect(projectNav.getByRole('link', { name: 'Members & access' })).toHaveAttribute(
+    await expect(projectNav.getByRole('link', { name: 'Members' })).toHaveAttribute(
       'aria-current',
       'page',
     );
@@ -445,7 +445,7 @@ test.describe('members and grants', () => {
           await menu.click();
         }
         const rail = view.page.getByRole('navigation', { name: 'Organisations' });
-        const mobileOrganizations = view.page.getByRole('region', { name: 'Organizations' });
+        const mobileOrganizations = view.page.getByRole('region', { name: 'Organisations' });
         const orgButton = (name: string) => mobile
           ? mobileOrganizations.getByRole('button').filter({ hasText: name })
           : rail.getByRole('button', { name: `Organisation ${name}` });
@@ -459,7 +459,8 @@ test.describe('members and grants', () => {
         if (await menu.isVisible()) {
           await menu.click();
         }
-        await expect(view.page.getByRole('link', { name: 'Members' })).toHaveAttribute(
+        // `exact`: the operator's drawer also lists "Instance members" (#567).
+        await expect(view.page.getByRole('link', { name: 'Members', exact: true })).toHaveAttribute(
           'href',
           `/orgs/${seed.orgB}/members`,
         );

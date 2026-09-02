@@ -62,10 +62,14 @@ export const FLOWS: readonly Flow[] = [
     surfaces: ['org-settings', 'project-settings'],
   },
   { id: 'account', spec: 'flows/account.spec.ts', surfaces: ['settings'] },
+  // Instance members (#567) is a new SURFACE, so the S3 closure demands a flow,
+  // but it cannot get its own spec FILE (the merge gate loads `ci.yml` from the
+  // base branch); it rides `instance-admin.spec.ts` — already in group 3 and
+  // the operator sibling surface.
   {
     id: 'instance-admin',
     spec: 'flows/instance-admin.spec.ts',
-    surfaces: ['instance-admin'],
+    surfaces: ['instance-admin', 'instance-members'],
   },
   { id: 'reveal', spec: 'flows/reveal.spec.ts', surfaces: ['values'] },
   { id: 'matrix', spec: 'flows/matrix.spec.ts', surfaces: ['matrix'] },
