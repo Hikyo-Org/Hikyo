@@ -1,7 +1,12 @@
+import { readFileSync } from 'node:fs';
+
 import { expect, type Page } from '@playwright/test';
+import { zEnvironment, zOrg, zProject, zServiceAccount } from '@hikyo/zod';
+import { z } from 'zod';
 
 import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
 import {
+  BASE_URL,
   establishSession,
   nextTotpCode,
   readSeed,
@@ -701,6 +706,7 @@ test.describe('machine access', () => {
  */
 const ADAPTERS_PATH = `/orgs/${seed.org}/projects/${seed.project}/adapters`;
 const ADAPTER_ORIGIN = 'https://forgejo-e2e.example';
+const ADAPTER_ORIGIN_MOVED = 'https://forgejo-e2e-moved.example';
 /** The one key the flow ticks; the seed always creates at least one secret. */
 const ADAPTER_KEY = seed.secrets[0] ?? '';
 
@@ -711,11 +717,17 @@ async function authoriseAdapterCeremony(page: Page): Promise<void> {
   // TOTP step file is touched (desktop and mobile run in parallel projects).
   const dialog = page.getByRole('dialog', { name: 'Confirm it is you' });
   await expect(dialog).toBeVisible();
+  // The dialog reads each environment's policy first and only then decides
+  // between a code field and a passkey decision; Authorise stays disabled
+  // until it has. Deciding before that would type nothing into a field that
+  // does not exist yet, and the required field would then block the submit.
+  const authorise = dialog.getByRole('button', { name: 'Authorise' });
+  await expect(authorise).toBeEnabled();
   const code = dialog.getByLabel('Authenticator code');
   if (await code.isVisible().catch(() => false)) {
     await code.fill(await nextTotpCode());
   }
-  await dialog.getByRole('button', { name: 'Authorise' }).click();
+  await authorise.click();
   await expect(dialog).toBeHidden();
 }
 
@@ -840,4 +852,594 @@ test.describe('deployment adapters', () => {
       });
     }
   }
+
+  // The adapter lifecycle the registry attributed to #504: probe and plan a
+  // target without a value or a write; replace the write-only credential;
+  // move the origin as a durable scrub-before-switch job, exercising BOTH
+  // exits of an attention-required move (cancel reconverges the old route,
+  // resume with a working credential completes the switch); revoke custody;
+  // and tear the adapter down behind the same retain-or-prune decision a
+  // single target takes. The --dev fake provider refuses the literal
+  // credential `revoked`, which is what makes the attention path deterministic.
+  test('probes, plans, replaces the credential, moves the origin both ways, revokes, and deletes', async () => {
+    const panel = page.getByRole('region', { name: `Adapter ${ADAPTER_ORIGIN}` });
+    await expect(panel).toBeVisible();
+
+    // A target again: the first test removed its target, and a move spans
+    // every target the adapter has. A route is durable identity even after
+    // removal (the (adapter, destination, environment) row stays unique across
+    // tombstones), so this is a different repository; a fresh prefix keeps the
+    // retained names of the first test out of the way, so the plan below is a
+    // clean create.
+    await panel.getByRole('button', { name: 'Add target' }).click();
+    const form = page.getByRole('form', { name: 'Add target' });
+    await form.getByRole('combobox', { name: 'Environment', exact: true }).selectOption(seed.prod);
+    await form.getByRole('textbox', { name: 'Owner', exact: true }).fill('acme');
+    await form.getByRole('textbox', { name: 'Repository', exact: true }).fill('app-lifecycle');
+    await form.getByLabel('Name prefix').fill('LC_');
+    await form.getByRole('checkbox', { name: ADAPTER_KEY, exact: true }).check();
+    await form.getByRole('button', { name: 'Save' }).click();
+    await authoriseAdapterCeremony(page);
+    await expect(page.locator('.adapters__done')).toContainText('Target added');
+    await panel.locator('.adapters__target').first().click();
+    const detail = page.getByRole('complementary', { name: 'Target detail' });
+    await expect(detail).toBeVisible();
+
+    // PROBE: identity and expiry, no ceremony, no value.
+    await detail.getByRole('button', { name: 'Test connection' }).click();
+    const connection = detail.locator('dl[aria-label="Connection"]');
+    await expect(connection).toBeVisible();
+    await expect(connection).toContainText('dev-fake');
+    await expect(connection).toContainText('never');
+
+    // PLAN: the value-blind name plan names the prefixed create and nothing else.
+    await detail.getByRole('button', { name: 'Plan' }).click();
+    const planned = detail.getByRole('list', { name: 'Planned changes' });
+    await expect(planned).toContainText(`create secret LC_${ADAPTER_KEY}`);
+    await expect(page.getByText('e2e-provider-token')).toHaveCount(0);
+
+    // REPLACE the credential behind the credential-set ceremony. It is
+    // write-only: the form empties and the panel still says only "set".
+    await panel.getByRole('button', { name: 'Replace credential' }).click();
+    const credentialForm = page.getByRole('form', { name: 'Replace credential' });
+    await credentialForm.getByLabel('Credential').fill('e2e-provider-token-2');
+    await credentialForm.getByRole('button', { name: 'Replace' }).click();
+    await authoriseAdapterCeremony(page);
+    await expect(page.locator('.adapters__done')).toContainText('Credential replaced');
+    await expect(panel.getByText('credential set')).toBeVisible();
+    await expect(page.getByText('e2e-provider-token-2')).toHaveCount(0);
+
+    // MOVE, exit one: the new origin's credential is refused, the move needs
+    // attention, and cancel reconverges the old route. The move id is carried
+    // in the URL (an id, never a secret) so the follow-up survives a reload.
+    const startMove = async (credential: string) => {
+      await panel.getByRole('button', { name: 'Change origin' }).click();
+      const moveForm = page.getByRole('form', { name: 'Change origin' });
+      await moveForm.getByLabel('New origin').fill(ADAPTER_ORIGIN_MOVED);
+      await moveForm.getByLabel('New credential').fill(credential);
+      await moveForm.getByRole('button', { name: 'Start move' }).click();
+      await authoriseAdapterCeremony(page);
+      await expect(page.locator('.adapters__done')).toContainText('Origin move started');
+      await expect(page).toHaveURL(/[?&]move=/);
+    };
+    await startMove('revoked');
+    const move = page.getByRole('complementary', { name: 'Route move' });
+    await expect(move).toBeVisible();
+    await expect(move.locator('.adapters__move-state')).toHaveText(/attention required/, { timeout: 30_000 });
+    await expect(move).toContainText('Resume with a working credential, or cancel');
+    await page.reload();
+    await expect(move.locator('.adapters__move-state')).toHaveText(/attention required/);
+    await move.getByRole('button', { name: 'Cancel move' }).click();
+    await authoriseAdapterCeremony(page);
+    await expect(page.locator('.adapters__done')).toContainText('Move canceled');
+    await expect(move.locator('.adapters__move-state')).toHaveText(/canceled/, { timeout: 30_000 });
+    await move.getByRole('button', { name: 'Close' }).click();
+    await expect(panel).toBeVisible();
+
+    // MOVE, exit two: attention again, then resume with a working credential
+    // completes the switch and the adapter answers to the new origin.
+    await startMove('revoked');
+    await expect(move.locator('.adapters__move-state')).toHaveText(/attention required/, { timeout: 30_000 });
+    await move.getByRole('button', { name: 'Resume with a new credential' }).click();
+    const resumeForm = page.getByRole('form', { name: 'Resume move' });
+    await expect(resumeForm.getByLabel('New origin')).toHaveValue(ADAPTER_ORIGIN_MOVED);
+    await resumeForm.getByLabel('New credential').fill('e2e-provider-token-3');
+    await resumeForm.getByRole('button', { name: 'Resume move' }).click();
+    await authoriseAdapterCeremony(page);
+    await expect(page.locator('.adapters__done')).toContainText('Move resumed');
+    await expect(move.locator('.adapters__move-state')).toHaveText(/completed/, { timeout: 30_000 });
+    await move.getByRole('button', { name: 'Close' }).click();
+    const moved = page.getByRole('region', { name: `Adapter ${ADAPTER_ORIGIN_MOVED}` });
+    await expect(moved).toBeVisible();
+    await expect(page.getByRole('region', { name: `Adapter ${ADAPTER_ORIGIN}` })).toHaveCount(0);
+    await expect(page.getByText('e2e-provider-token-3')).toHaveCount(0);
+
+    // REVOKE custody: the consequence is stated first; afterwards the panel
+    // says "absent" and the revoke action is gone until a credential is set.
+    await moved.getByRole('button', { name: 'Revoke credential' }).click();
+    const revoke = page.getByRole('dialog', { name: /Revoke credential for/ });
+    await expect(revoke).toContainText('remote scrub may then be impossible');
+    await revoke.getByRole('button', { name: 'Revoke credential' }).click();
+    await expect(page.locator('.adapters__done')).toContainText('Credential revoked');
+    await expect(moved.getByText('credential absent')).toBeVisible();
+    await expect(moved.getByRole('button', { name: 'Revoke credential' })).toBeDisabled();
+
+    // DELETE behind the explicit decision; retain lists the orphaned names.
+    await moved.getByRole('button', { name: 'Delete adapter' }).click();
+    const remove = page.getByRole('dialog', { name: /Delete adapter/ });
+    await expect(remove.getByRole('button', { name: 'Delete adapter' })).toBeDisabled();
+    await remove.getByRole('radio', { name: /Retain/ }).check();
+    await remove.getByRole('button', { name: 'Delete adapter' }).click();
+    await expect(page.locator('.adapters__done')).toContainText(`LC_${ADAPTER_KEY}`);
+    await expect(page.getByRole('region', { name: /^Adapter / })).toHaveCount(0);
+  });
+});
+
+/**
+ * Project audit (#572, registry surface `project-audit`): the project's own
+ * trail behind `audit-read@project`, with the environment as a filter. The
+ * export is a same-origin GET under the session cookie, one literal route per
+ * scope, so the parity registry can see all three export operations reached.
+ */
+test.describe('project audit', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page: Page;
+  const AUDIT_PATH = `/orgs/${seed.org}/projects/${seed.project}/audit`;
+
+  test.beforeEach(async ({ passkeyPage }) => {
+    page = passkeyPage;
+    await page.context().clearCookies();
+    await page.goto(AUDIT_PATH);
+    await establishSession(page);
+    await page.goto(AUDIT_PATH);
+    await expect(page.getByRole('heading', { name: 'Project audit', level: 1 })).toBeVisible();
+  });
+
+  test('reads the project trail, narrows it to one environment, and exports each scope', async () => {
+    const rows = page.locator('.audit__row');
+    await expect(rows.first()).toBeVisible();
+    const exportLink = page.getByRole('link', { name: 'Export JSONL' });
+    await expect(exportLink).toHaveAttribute(
+      'href',
+      `/api/v1/orgs/${seed.org}/projects/${seed.project}/audit/export`,
+    );
+
+    // The environment picker narrows the trail to that environment's slice and
+    // the export follows it; the seeded value publishes make it non-empty.
+    await page.getByLabel('Environment').selectOption(seed.dev);
+    await page.getByRole('button', { name: 'Apply filter' }).click();
+    await expect(rows.first()).toBeVisible();
+    await expect(exportLink).toHaveAttribute(
+      'href',
+      `/api/v1/orgs/${seed.org}/projects/${seed.project}/environments/${seed.dev}/audit/export`,
+    );
+    await rows.first().click();
+    const detail = page.getByRole('complementary', { name: 'Event detail' });
+    await expect(detail).toContainText(seed.dev);
+
+    const download = page.waitForEvent('download');
+    await exportLink.click();
+    const file = await download;
+    expect(file.suggestedFilename()).toMatch(/\.jsonl$/);
+    const body = readFileSync(await file.path(), 'utf8').trim();
+    expect(body.length).toBeGreaterThan(0);
+    for (const line of body.split('\n')) {
+      const event = z.object({ seq: z.number(), env_id: z.string().optional() }).parse(JSON.parse(line));
+      expect(event.env_id).toBe(seed.dev);
+    }
+
+    // Clear restores the whole project and the project export route.
+    await page.getByRole('button', { name: 'Clear' }).click();
+    await expect(page.getByLabel('Environment')).toHaveValue('');
+    await expect(exportLink).toHaveAttribute(
+      'href',
+      `/api/v1/orgs/${seed.org}/projects/${seed.project}/audit/export`,
+    );
+  });
+
+  for (const scheme of COLOR_SCHEMES) {
+    for (const surface of surfacesForFlow('project-audit')) {
+      test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({}, testInfo) => {
+        await page.emulateMedia({ colorScheme: scheme });
+        try {
+          // Narrow before the sweep, as the org audit flow does: the pinned set
+          // focuses and measures every interactive element on the page.
+          await page.getByLabel('Operation').fill('grant.created');
+          await page.getByRole('button', { name: 'Apply filter' }).click();
+          await expect(page.locator('.audit__row').first()).toBeVisible();
+
+          const heading = page.getByRole('heading', { name: 'Project audit', level: 1 });
+          const panel = page.locator('.panel').first();
+          const op = page.locator('.audit__row-op').first();
+          const badge = page.locator('.chip').first();
+          const apply = page.getByRole('button', { name: 'Apply filter' });
+          const rowDensity = testInfo.project.name === 'mobile' ? '--touch' : '--row';
+
+          await expectPinnedAssertionSet(page, {
+            flow: 'project-audit',
+            surface: surface.id,
+            theme: scheme,
+            text: [heading, op],
+            radii: [
+              [panel, 'container'],
+              [apply, 'control'],
+              [badge, 'badge'],
+            ],
+            fonts: [
+              [heading, 'ui'],
+              [op, 'mono'],
+            ],
+            colours: [
+              [heading, 'color', '--tx'],
+              [panel, 'backgroundColor', '--bg-panel'],
+              [panel, 'borderTopColor', '--panel-line'],
+            ],
+            hairlines: [panel],
+            density: [[apply, rowDensity]],
+          });
+        } finally {
+          await page.emulateMedia({ colorScheme: null });
+        }
+      });
+    }
+  }
+});
+
+/**
+ * Browser-only lifecycle acceptance (#504).
+ *
+ * One operator, one browser, no CLI: from an installation that holds nothing
+ * but the bootstrap administrator (`hikyo admin create` is host-local
+ * authority, the one accepted exception at the start of the journey) to a
+ * Kubernetes-ready delivery. Every Hikyo-side prerequisite the operator
+ * needs (`kubernetes-operator.mdx` § The five-step journey) is done from the
+ * SPA, and the delivery wire is then exercised the way the operator's
+ * controller does it — a bearer fetch of the environment projection — so the
+ * proof is the delivered projection, not a screen that says "configured".
+ *
+ * The journey, in order: organisation, project, environments, declared config
+ * and secret with first values, publish, a human invitation, a workload
+ * service account with a display-once credential and its read grant, the
+ * per-project machine-reveal opt-in, the reveal grant, the delivery fetch, a
+ * CI adapter target converging to Healthy, the audit trail, and two supported
+ * recoveries: rotating a leaked machine credential (the old one is refused at
+ * the next fetch) and rolling a bad publish back through the history drawer.
+ */
+const zDelivered = z.object({
+  current: z.boolean(),
+  keys: z.array(
+    z.object({
+      name: z.string(),
+      classification: z.string(),
+      value: z.string().optional(),
+    }),
+  ),
+});
+
+/** captureCreated resolves the id of the row a POST to `pathname` created. */
+async function captureCreated<T>(
+  page: Page,
+  pathname: string,
+  schema: z.ZodType<T>,
+  act: () => Promise<void>,
+): Promise<T> {
+  const response = page.waitForResponse(
+    (candidate) =>
+      candidate.request().method() === 'POST' &&
+      new URL(candidate.url()).pathname === pathname &&
+      candidate.status() === 201,
+  );
+  await act();
+  return schema.parse(await (await response).json());
+}
+
+/** authoriseIfAsked answers a purpose-bound ceremony when one opens, with the passkey. */
+async function authoriseIfAsked(page: Page): Promise<void> {
+  const passkey = page.getByRole('button', { name: 'Use a passkey' });
+  const authorise = page.getByRole('button', { name: 'Authorise' });
+  await expect
+    .poll(async () => (await passkey.isVisible()) || (await authorise.isVisible()) || (await page.getByRole('dialog').count()) === 0, {
+      timeout: 5_000,
+    })
+    .toBe(true);
+  if (await passkey.isVisible()) {
+    await passkey.click();
+  } else if (await authorise.isVisible()) {
+    const code = page.getByLabel('Authenticator code');
+    if (await code.isVisible().catch(() => false)) {
+      await code.fill(await nextTotpCode());
+    }
+    await authorise.click();
+  }
+}
+
+test.describe('browser-only lifecycle', () => {
+  test('takes an empty organisation to Kubernetes-ready delivery without the CLI', async ({
+    passkeyPage: page,
+    playwright,
+  }, testInfo) => {
+    test.setTimeout(420_000);
+    const tag = `${testInfo.project.name}-${Date.now().toString(36)}`;
+    const orgName = `Lifecycle ${tag}`;
+    const peer = await playwright.request.newContext();
+    try {
+      // 1. ORGANISATION, from instance administration. Creation grants the
+      // creator organisation admin and ends the session; sign in again.
+      await page.context().clearCookies();
+      await page.goto('/login');
+      await establishSession(page);
+      await page.goto('/instance');
+      await expect(page.getByRole('heading', { name: 'Instance settings', level: 1 })).toBeVisible();
+      await page.getByRole('button', { name: 'Open create organisation form' }).click();
+      await page.getByLabel('New organisation name').fill(orgName);
+      const org = await captureCreated(page, '/api/v1/orgs', zOrg, async () => {
+        await page.getByRole('button', { name: 'Create organisation', exact: true }).click();
+      });
+      await expect(page.getByRole('heading', { name: 'Sign in to Hikyo', level: 1 })).toBeVisible();
+      await establishSession(page);
+
+      // 2. PROJECT. The Projects page is unscoped: it creates under the rail's
+      // active organisation, so choose the new one there (the desktop rail's
+      // avatar, or the phone drawer's switcher) and read the choice back from
+      // the breadcrumb before creating anything.
+      await page.goto('/projects');
+      const railChoice = page.getByRole('button', { name: `Organisation ${orgName}`, exact: true });
+      const menu = page.getByRole('button', { name: 'Menu' });
+      await expect
+        .poll(async () => (await railChoice.isVisible()) || (await menu.isVisible()))
+        .toBe(true);
+      if (await railChoice.isVisible()) {
+        await railChoice.click();
+      } else {
+        await menu.click();
+        await page.getByRole('button', { name: orgName }).click();
+      }
+      await expect(page.getByLabel('Breadcrumb')).toContainText(orgName);
+      const projectName = `payments-${tag}`;
+      await page.getByLabel('Project name').fill(projectName);
+      const project = await captureCreated(page, `/api/v1/orgs/${org.id}/projects`, zProject, async () => {
+        await page.getByRole('button', { name: 'Create project' }).click();
+      });
+      await expect(page.getByRole('status').filter({ hasText: `Project ${projectName} created` })).toBeVisible();
+
+      // 3. ENVIRONMENTS, from project settings.
+      const base = `/orgs/${org.id}/projects/${project.id}`;
+      const api = `/api/v1/orgs/${org.id}/projects/${project.id}`;
+      await page.goto(`${base}/settings`);
+      const environments: Record<string, string> = {};
+      for (const name of ['development', 'production']) {
+        await page.getByLabel('New environment name').fill(name);
+        const created = await captureCreated(page, `${api}/environments`, zEnvironment, async () => {
+          await page.getByRole('button', { name: 'Create', exact: true }).click();
+        });
+        environments[name] = created.id;
+        await expect(page.getByLabel('New environment name')).toHaveValue('');
+      }
+      const dev = environments['development'] ?? '';
+      expect(dev).not.toBe('');
+
+      // 4. DECLARE a config key and a secret key, each with a first value in
+      // development, then PUBLISH the two drafts. Development is unprotected,
+      // so the publish is plain: no ceremony, no confirmation.
+      await page.goto(`${base}/matrix`);
+      await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
+      const declare = async (name: string, value: string, secret: boolean) => {
+        await page.getByRole('button', { name: '+ New key' }).click();
+        const modal = page.getByRole('dialog');
+        await modal.getByLabel('Group').fill('app');
+        await modal.getByLabel('Key name').fill(name);
+        if (secret) {
+          await modal.getByRole('checkbox', { name: /secret/ }).check();
+        }
+        await modal.getByLabel('First value (optional)').fill(value);
+        const targets = modal.getByRole('group', { name: 'Set that value in' });
+        const development = targets.getByRole('checkbox', { name: 'development' });
+        if (!(await development.isChecked())) {
+          await development.check();
+        }
+        const production = targets.getByRole('checkbox', { name: 'production' });
+        if (await production.isChecked()) {
+          await production.uncheck();
+        }
+        await modal.getByRole('button', { name: 'Declare' }).click();
+        await expect(page.locator('.notice')).toContainText(`Declared ${name} with a draft value in 1 environment`);
+      };
+      await declare('LOG_LEVEL', 'info', false);
+      const secretValue = `hunter2-${tag}`;
+      await declare('DB_PASSWORD', secretValue, true);
+      await page.getByRole('button', { name: /unpublished edit/ }).click();
+      const publishSheet = page.getByRole('region', { name: 'Publish drafts' });
+      await expect(publishSheet).toContainText('LOG_LEVEL');
+      // The secret's plaintext never reaches the sheet, the notice, or the DOM.
+      await expect(page.getByText(secretValue)).toHaveCount(0);
+      await publishSheet.getByRole('button', { name: /Publish selected/ }).click();
+      await authoriseIfAsked(page);
+      await expect(page.locator('.notice')).toContainText('Published atomically: development');
+      await expect(page.getByText(secretValue)).toHaveCount(0);
+
+      // 5. HUMAN ACCESS: invite a member with a template. The display-once
+      // authority is shown in the dialog and nowhere else.
+      await page.goto(`/orgs/${org.id}/members`);
+      await page.getByRole('button', { name: 'Invite' }).click();
+      const invite = page.getByRole('dialog');
+      await invite.getByLabel('Username').fill(`lc-viewer-${tag}`);
+      await invite.getByLabel('Role template').selectOption('viewer');
+      await invite.getByRole('button', { name: 'Invite', exact: true }).click();
+      await expect(invite.getByRole('heading', { level: 2 })).toContainText('Invitation for');
+      const authority = (await invite.getByTestId('issued-authority').textContent()) ?? '';
+      expect(authority.length).toBeGreaterThan(16);
+      await invite.getByRole('button', { name: 'Close' }).click();
+      await expect(page.getByRole('dialog')).toBeHidden();
+      expect(((await page.locator('main').textContent()) ?? '').includes(authority), 'the invitation authority outlived its dialog').toBe(false);
+
+      // 6. WORKLOAD ACCESS: service account, display-once credential, read
+      // grant on development. Minting first keeps the mint on the no-plaintext
+      // branch; the grant then re-scopes that one live credential, and says so.
+      await page.goto(`${base}/machine-access`);
+      await page.getByRole('button', { name: 'Create service account', exact: true }).first().click();
+      const createDialog = page.getByRole('dialog');
+      const accountName = `k8s-payments-${tag}`;
+      await createDialog.getByLabel('Name').fill(accountName);
+      const account = await captureCreated(page, `${api}/service-accounts`, zServiceAccount, async () => {
+        await createDialog.getByRole('button', { name: 'Create service account' }).click();
+      });
+      await expect(createDialog).toBeHidden();
+      const row = accountRow(page, accountName);
+      await row.click();
+      const expansion = page.locator('.machine__sub');
+      const mint = async (): Promise<string> => {
+        await expansion.getByRole('button', { name: `Mint credential for ${accountName}` }).click();
+        const dialog = page.getByRole('dialog');
+        await dialog.getByRole('button', { name: /Mint credential|Use a passkey and mint/ }).click();
+        await expect(dialog.locator('.machine__token')).toHaveText(/^hik_1_wl_/);
+        const token = (await dialog.locator('.machine__token').textContent())?.trim() ?? '';
+        await dialog.getByRole('checkbox').check();
+        await dialog.getByRole('button', { name: 'Done' }).click();
+        await expect(dialog).toBeHidden();
+        return token;
+      };
+      const firstToken = await mint();
+      await expansion.getByRole('button', { name: `Add environment grant to ${accountName}` }).click();
+      const grant = page.getByRole('dialog');
+      await expect(grant).toContainText('1 live credential');
+      await grant.locator('#grant-environment').selectOption(dev);
+      await grant.getByRole('button', { name: 'Grant read' }).click();
+      await authoriseIfAsked(page);
+      await expect(page.getByRole('status').filter({ hasText: /Grant result for development/ })).toBeVisible();
+
+      const delivery = `${BASE_URL}${api}/environments/${dev}/delivery`;
+      const fetchAs = async (token: string) =>
+        peer.get(delivery, { headers: { Authorization: `Bearer ${token}` } });
+      // Control: the wire is closed without a credential.
+      expect((await peer.get(delivery)).status()).toBe(401);
+      // Read alone delivers configuration plaintext and secret PRESENCE only.
+      const presence = await fetchAs(firstToken);
+      expect(presence.status()).toBe(200);
+      const presenceBody = zDelivered.parse(await presence.json());
+      expect(presenceBody.keys.find((key) => key.name === 'LOG_LEVEL')?.value).toBe('info');
+      expect(presenceBody.keys.find((key) => key.name === 'DB_PASSWORD')?.value).toBeUndefined();
+
+      // 7. SECRET DELIVERY needs the per-project opt-in AND a reveal grant on
+      // the workload (the opt-in alone grants nothing; the dialog says so).
+      await page.getByRole('button', { name: /Enable the opt-in/ }).click();
+      const optIn = page.getByRole('dialog', { name: 'Enable machine secret delivery' });
+      await expect(optIn).toContainText('Nothing is granted by this act alone');
+      await optIn.getByRole('checkbox').check();
+      await optIn.getByRole('button', { name: 'Enable the opt-in' }).click();
+      await authoriseIfAsked(page);
+      await expect(page.getByText('Machine secret delivery (per-project opt-in): on')).toBeVisible();
+
+      await page.goto(`/orgs/${org.id}/members`);
+      await page.getByRole('button', { name: 'New grant' }).click();
+      const reveal = page.getByRole('dialog');
+      await reveal.getByLabel('Principal').fill(account.principal_id);
+      await reveal.getByRole('checkbox', { name: 'reveal', exact: true }).check();
+      await reveal.getByLabel('Scope').selectOption(`env:${project.id}:${dev}`);
+      await reveal.getByRole('button', { name: 'Grant', exact: true }).click();
+      await authoriseIfAsked(page);
+      await expect(page.locator('.notice').filter({ hasText: 'Grant results' })).toContainText('Created: reveal');
+
+      // The controller's fetch now carries the secret: a Kubernetes-ready
+      // projection, obtained with a credential minted in the browser.
+      const full = await fetchAs(firstToken);
+      expect(full.status()).toBe(200);
+      const fullBody = zDelivered.parse(await full.json());
+      expect(fullBody.keys.find((key) => key.name === 'DB_PASSWORD')?.value).toBe(secretValue);
+
+      // 8. CI DELIVERY through an adapter target on development, converging
+      // to Healthy against the --dev fake provider; health is read in place.
+      await page.goto(`${base}/adapters`);
+      await page.getByRole('button', { name: 'Add adapter' }).click();
+      const adapterForm = page.getByRole('region', { name: 'New adapter' });
+      const origin = `https://forgejo-lifecycle-${tag}.example`;
+      await adapterForm.getByLabel('Origin').fill(origin);
+      await adapterForm.getByLabel('Credential').fill('lifecycle-provider-token');
+      await adapterForm.getByRole('combobox', { name: 'Environment', exact: true }).selectOption(dev);
+      await adapterForm.getByRole('textbox', { name: 'Owner', exact: true }).fill('acme');
+      await adapterForm.getByRole('textbox', { name: 'Repository', exact: true }).fill('payments');
+      await adapterForm.getByRole('checkbox', { name: 'DB_PASSWORD', exact: true }).check();
+      await adapterForm.getByRole('button', { name: 'Save' }).click();
+      await authoriseAdapterCeremony(page);
+      await expect(page.locator('.adapters__done')).toContainText('Adapter created');
+      const panel = page.getByRole('region', { name: `Adapter ${origin}` });
+      await panel.locator('.adapters__target').first().click();
+      const detail = page.getByRole('complementary', { name: 'Target detail' });
+      await expect(detail.locator('.adapters__health')).toHaveText(/Healthy|Never synced|Converging/);
+      if (!/Healthy/.test((await detail.locator('.adapters__health').textContent()) ?? '')) {
+        await detail.getByRole('button', { name: 'Resync' }).click();
+        await authoriseAdapterCeremony(page);
+      }
+      await expect(detail.locator('.adapters__health')).toHaveText(/Healthy/, { timeout: 30_000 });
+      await expect(page.getByText(secretValue)).toHaveCount(0);
+
+      // 9. AUDIT: the organisation's trail is readable and names the publish.
+      await page.goto(`/orgs/${org.id}/audit`);
+      await expect(page.locator('.audit__row').first()).toBeVisible();
+      await page.getByLabel('Operation').fill('revision.published');
+      await page.getByRole('button', { name: 'Apply filter' }).click();
+      await expect(page.locator('.audit__row').first()).toBeVisible();
+      await expect(page.getByText(secretValue)).toHaveCount(0);
+
+      // 10. RECOVERY, credential leak: revoke and re-mint. The old value is
+      // refused at the very next fetch; the new one delivers.
+      await page.goto(`${base}/machine-access`);
+      await accountRow(page, accountName).click();
+      await expansion.getByRole('button', { name: /^Revoke hik_1_wl_/ }).click();
+      await expect(expansion.locator('.cred')).toHaveCount(0);
+      expect((await fetchAs(firstToken)).status()).toBe(401);
+      const secondToken = await mint();
+      expect(secondToken).not.toBe(firstToken);
+      expect((await fetchAs(secondToken)).status()).toBe(200);
+
+      // 11. RECOVERY, bad publish: change LOG_LEVEL, publish, then restore the
+      // earlier revision from the history drawer and publish the restore.
+      await page.goto(`${base}/matrix`);
+      await page.getByRole('button', { name: /^LOG_LEVEL in development:/ }).click();
+      const editor = page.getByRole('dialog');
+      await editor.getByLabel('development value').fill('debug');
+      await editor.getByRole('button', { name: 'Save 1 draft' }).click();
+      await page.getByRole('button', { name: /unpublished edit/ }).click();
+      await page.getByRole('region', { name: 'Publish drafts' }).getByRole('button', { name: /Publish selected/ }).click();
+      await authoriseIfAsked(page);
+      await expect(page.locator('.notice')).toContainText('Published atomically: development');
+      expect(zDelivered.parse(await (await fetchAs(secondToken)).json()).keys.find((key) => key.name === 'LOG_LEVEL')?.value).toBe('debug');
+
+      await page.goto(`${base}/matrix/history?env=${dev}`);
+      const drawer = page.getByRole('complementary', { name: 'Revision history' });
+      await expect(drawer).toBeVisible();
+      const revisions = await drawer.locator('[data-history-revision]').evaluateAll((nodes) =>
+        nodes.map((node) => Number(node.getAttribute('data-history-revision'))),
+      );
+      // The earliest revision that changed LOG_LEVEL is the one that set it to
+      // `info`; an environment may open with an empty revision before it.
+      const restoreKey = drawer.getByRole('button', { name: 'Restore LOG_LEVEL…' });
+      for (const revision of [...revisions].sort((a, b) => a - b)) {
+        const back = page.locator('#history-detail-back');
+        if (await back.isVisible()) {
+          await back.click();
+        }
+        await drawer.locator(`[data-history-revision="${String(revision)}"]`).click();
+        await expect(page.locator('#history-detail-title')).toContainText(`r${String(revision)}`);
+        if ((await restoreKey.count()) > 0) {
+          break;
+        }
+      }
+      // One key from the changed-key row: a config-only restore opens no
+      // secret plaintext, so it takes no ceremony and stages an ordinary draft.
+      await restoreKey.click();
+      const restore = page.getByRole('dialog');
+      await restore.getByRole('button', { name: /^Stage the restore from r/ }).click();
+      await expect(restore.locator('.history__impact')).toContainText('debug → info');
+      await restore.locator('#history-restore-back').click();
+      await expect(page.getByRole('button', { name: /LOG_LEVEL in development:.*draft set/ })).toBeVisible();
+      await page.getByRole('button', { name: /unpublished edit/ }).click();
+      await page.getByRole('region', { name: 'Publish drafts' }).getByRole('button', { name: /Publish selected/ }).click();
+      await expect(page.locator('.notice')).toContainText('Published atomically: development');
+      expect(zDelivered.parse(await (await fetchAs(secondToken)).json()).keys.find((key) => key.name === 'LOG_LEVEL')?.value).toBe('info');
+      await expect(page.getByText(secretValue)).toHaveCount(0);
+    } finally {
+      await peer.dispose();
+    }
+  });
 });

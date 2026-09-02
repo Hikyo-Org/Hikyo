@@ -341,6 +341,19 @@ export const SURFACES = defineSurfaceRegistry([
   // project-scoped for the same reason (#567): the context block fills the
   // parameters from the route. Table order is sidebar order — matrix, machine
   // access, deployment adapters, project settings.
+  // Project audit (#572). The org trail (`audit`) is the whole organisation
+  // behind `audit-read@org`; this is the project's own slice behind
+  // `audit-read@project`, so a project-level holder reads it without an org
+  // grant. An environment is a filter on this page, not a surface of its own:
+  // an environment trail is a slice of its project's, and the holder picks.
+  {
+    id: 'project-audit',
+    path: '/orgs/:org/projects/:project/audit',
+    label: 'Project audit',
+    section: 'project',
+    mode: 'authenticated',
+    chrome: 'shell',
+  },
   {
     id: 'project-settings',
     path: '/orgs/:org/projects/:project/settings',

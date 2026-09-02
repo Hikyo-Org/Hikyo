@@ -528,7 +528,7 @@ export function useInstanceGrants(enabled = true): UseQueryResult<GrantList> {
 }
 
 type GrantInput = { readonly principal: string; readonly capability: string };
-type GrantOutcomeView = Pick<GrantResult, 'capability' | 'outcome'>;
+export type GrantOutcomeView = Pick<GrantResult, 'capability' | 'outcome'>;
 
 function createOne(scope: ScopeRef, input: GrantInput) {
   const body = { principal: input.principal, capability: input.capability };

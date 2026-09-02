@@ -1,4 +1,4 @@
-import { queryOrgAuditOp } from '@hikyo/operations';
+import { queryEnvAuditOp, queryOrgAuditOp, queryProjectAuditOp } from '@hikyo/operations';
 import { zAuditPage } from '@hikyo/zod';
 import { useInfiniteQuery, type UseInfiniteQueryResult, type InfiniteData } from '@tanstack/react-query';
 import type { z } from 'zod';
@@ -7,6 +7,37 @@ import { parsed } from './client.ts';
 
 export type AuditPage = z.infer<typeof zAuditPage>;
 export type AuditEvent = AuditPage['items'][number];
+
+/**
+ * AuditScope names the trail being read (#572). The org trail holds every
+ * event; the project and environment trails are the SERVER's scoped slices,
+ * each behind its own `audit-read` proof at that scope, so a project-level
+ * holder reads the project trail without an org-level grant. Environment is
+ * only meaningful under a project.
+ */
+export type AuditScope = {
+  readonly org: string;
+  readonly project?: string;
+  readonly environment?: string;
+};
+
+/**
+ * exportPath is the scope's export route, spelled as one literal per route so
+ * the parity registry's path evidence (api/parity.yaml `reach: path`) can see
+ * each of the three operations reached from this module.
+ */
+function exportPath(scope: AuditScope): string {
+  const org = encodeURIComponent(scope.org);
+  if (scope.project === undefined || scope.project === '') {
+    return `/api/v1/orgs/${org}/audit/export`;
+  }
+  const project = encodeURIComponent(scope.project);
+  if (scope.environment === undefined || scope.environment === '') {
+    return `/api/v1/orgs/${org}/projects/${project}/audit/export`;
+  }
+  const environment = encodeURIComponent(scope.environment);
+  return `/api/v1/orgs/${org}/projects/${project}/environments/${environment}/audit/export`;
+}
 
 /**
  * The audit outcomes, in the closed order the contract's enum declares them.
@@ -114,8 +145,22 @@ function safeSeq(seq: bigint): number {
   return Number(seq);
 }
 
-export const auditPageKey = (org: string, filter: AuditFilter) =>
-  ['audit', org, filter] as const;
+export const auditPageKey = (scope: AuditScope, filter: AuditFilter) =>
+  ['audit', scope.org, scope.project ?? '', scope.environment ?? '', filter] as const;
+
+/** queryScoped calls the one operation the scope addresses; the three share a response contract. */
+function queryScoped(scope: AuditScope, query: Record<string, string | number>): Promise<AuditPage> {
+  if (scope.project === undefined || scope.project === '') {
+    return parsed(queryOrgAuditOp, { path: { org: scope.org }, query });
+  }
+  if (scope.environment === undefined || scope.environment === '') {
+    return parsed(queryProjectAuditOp, { path: { org: scope.org, project: scope.project }, query });
+  }
+  return parsed(queryEnvAuditOp, {
+    path: { org: scope.org, project: scope.project, environment: scope.environment },
+    query,
+  });
+}
 
 /**
  * useAuditTrail pages the org trail. Each page SCANS up to the limit and RETURNS
@@ -126,11 +171,11 @@ export const auditPageKey = (org: string, filter: AuditFilter) =>
  * reads writes its own audit.query event.
  */
 export function useAuditTrail(
-  org: string,
+  scope: AuditScope,
   filter: AuditFilter,
 ): UseInfiniteQueryResult<InfiniteData<AuditPage>, unknown> {
   return useInfiniteQuery({
-    queryKey: auditPageKey(org, filter),
+    queryKey: auditPageKey(scope, filter),
     // The cursor is the trail's int64 seq (bigint end to end). The first page
     // carries no ceiling; the server pins one and returns it as upper_seq, which
     // every later page echoes as to_seq so paging is stable across concurrent
@@ -138,14 +183,11 @@ export function useAuditTrail(
     // cursor is narrowed — guarded — only at the call.
     initialPageParam: { after: 0n, ceiling: 0n } as AuditCursor,
     queryFn: ({ pageParam }) =>
-      parsed(queryOrgAuditOp, {
-        path: { org },
-        query: {
-          ...auditQuery(filter),
-          after_seq: safeSeq(pageParam.after),
-          limit: AUDIT_PAGE_LIMIT,
-          ...(pageParam.ceiling === 0n ? {} : { to_seq: safeSeq(pageParam.ceiling) }),
-        },
+      queryScoped(scope, {
+        ...auditQuery(filter),
+        after_seq: safeSeq(pageParam.after),
+        limit: AUDIT_PAGE_LIMIT,
+        ...(pageParam.ceiling === 0n ? {} : { to_seq: safeSeq(pageParam.ceiling) }),
       }),
     getNextPageParam: (last): AuditCursor | undefined =>
       last.exhausted ? undefined : { after: last.next_after_seq, ceiling: last.upper_seq },
@@ -159,9 +201,9 @@ export function useAuditTrail(
  * cookie — nothing is buffered in the SPA and no token rides the URL. Paging
  * fields are omitted: the export streams the whole filtered slice.
  */
-export function auditExportUrl(org: string, filter: AuditFilter): string {
+export function auditExportUrl(scope: AuditScope, filter: AuditFilter): string {
   const params = new URLSearchParams(auditQuery(filter));
   const query = params.toString();
-  const base = `/api/v1/orgs/${encodeURIComponent(org)}/audit/export`;
+  const base = exportPath(scope);
   return query === '' ? base : `${base}?${query}`;
 }

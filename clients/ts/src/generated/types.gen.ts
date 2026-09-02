@@ -361,7 +361,7 @@ export type AdapterTargetDetail = {
 export type AdapterChange = {
     surface: 'secret' | 'variable';
     effective_name: string;
-    disposition: 'create' | 'update' | 'delete' | 'conflict' | 'refused';
+    disposition: 'create' | 'update' | 'delete' | 'conflict' | 'refused' | 'unknown-until-sync';
     reason?: string;
 };
 

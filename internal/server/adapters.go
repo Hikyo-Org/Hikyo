@@ -398,7 +398,7 @@ func (a *API) PlanAdapterTarget(ctx context.Context, req apigen.PlanAdapterTarge
 	if err != nil {
 		return nil, err
 	}
-	out := apigen.AdapterPlan{ArtifactId: apigen.ID(plan.ArtifactID), Changes: []apigen.AdapterChange{}, Warnings: append([]string(nil), plan.Plan.Warnings...)}
+	out := apigen.AdapterPlan{ArtifactId: apigen.ID(plan.ArtifactID), Changes: []apigen.AdapterChange{}, Warnings: append([]string{}, plan.Plan.Warnings...)}
 	for _, change := range plan.Plan.Changes {
 		row := apigen.AdapterChange{Surface: apigen.AdapterChangeSurface(change.Surface), EffectiveName: change.EffectiveName, Disposition: apigen.AdapterChangeDisposition(change.Disposition)}
 		out.Changes = append(out.Changes, row)

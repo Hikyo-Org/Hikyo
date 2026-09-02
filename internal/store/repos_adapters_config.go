@@ -82,7 +82,7 @@ func (r sqliteAdapters) Get(ctx context.Context, p authz.Proof, adapterID string
 	if err != nil {
 		return AdapterRecord{}, err
 	}
-	return scanAdapterRecord(r.db.QueryRowContext(ctx, `SELECT `+adapterRecordColumns+` FROM adapters WHERE id=? AND org_id=? AND project_id=? AND state='active'`, adapterID, chain.Org, chain.Project))
+	return scanAdapterRecord(r.db.QueryRowContext(ctx, `SELECT `+adapterRecordColumns+` FROM adapters WHERE id=? AND org_id=? AND project_id=? AND state<>'tombstoned'`, adapterID, chain.Org, chain.Project))
 }
 
 func (r pgAdapters) Get(ctx context.Context, p authz.Proof, adapterID string) (AdapterRecord, error) {
@@ -90,7 +90,7 @@ func (r pgAdapters) Get(ctx context.Context, p authz.Proof, adapterID string) (A
 	if err != nil {
 		return AdapterRecord{}, err
 	}
-	return scanAdapterRecord(r.db.QueryRow(ctx, `SELECT `+adapterRecordColumns+` FROM adapters WHERE id=$1 AND org_id=$2 AND project_id=$3 AND state='active'`, adapterID, chain.Org, chain.Project))
+	return scanAdapterRecord(r.db.QueryRow(ctx, `SELECT `+adapterRecordColumns+` FROM adapters WHERE id=$1 AND org_id=$2 AND project_id=$3 AND state<>'tombstoned'`, adapterID, chain.Org, chain.Project))
 }
 
 func (r sqliteAdapters) Configuration(ctx context.Context, p authz.Proof, adapterID string) (AdapterRecord, []byte, error) {
@@ -162,7 +162,7 @@ func (r sqliteAdapters) List(ctx context.Context, p authz.Proof) ([]AdapterRecor
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT `+adapterRecordColumns+` FROM adapters WHERE org_id=? AND project_id=? AND state='active' ORDER BY id`, chain.Org, chain.Project)
+	rows, err := r.db.QueryContext(ctx, `SELECT `+adapterRecordColumns+` FROM adapters WHERE org_id=? AND project_id=? AND state<>'tombstoned' ORDER BY id`, chain.Org, chain.Project)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +175,7 @@ func (r pgAdapters) List(ctx context.Context, p authz.Proof) ([]AdapterRecord, e
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.db.Query(ctx, `SELECT `+adapterRecordColumns+` FROM adapters WHERE org_id=$1 AND project_id=$2 AND state='active' ORDER BY id`, chain.Org, chain.Project)
+	rows, err := r.db.Query(ctx, `SELECT `+adapterRecordColumns+` FROM adapters WHERE org_id=$1 AND project_id=$2 AND state<>'tombstoned' ORDER BY id`, chain.Org, chain.Project)
 	if err != nil {
 		return nil, err
 	}

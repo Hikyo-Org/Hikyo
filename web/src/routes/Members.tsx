@@ -21,17 +21,34 @@ import {
   scopeValue,
   templatesAt,
   useApplyTemplate,
+  GrantPartialFailure,
   useCreateGrants,
   useInstanceGrants,
   useOrgGrants,
   useRevokeGrant,
   whoCan,
+  type GrantOutcomeView,
   type IssuedAuthority,
   type Names,
   type ScopeOption,
 } from '../api/access.ts';
 import { ApiError } from '../api/client.ts';
 import type { Grant } from '../api/identities.ts';
+import { runPasskeyCeremony } from '../api/values.ts';
+
+/**
+ * wideningEnvironment reads the environment a reauth-required grant refusal
+ * names, or null when the refusal is anything else. The detail is the
+ * server's own caller-safe carrier (`… then retry (env_…)`), the same token the
+ * CLI's inline ceremony keys on; nothing is inferred from a status alone.
+ */
+function wideningEnvironment(error: unknown): string | null {
+  if (!(error instanceof ApiError) || error.status !== 409 || error.detail === undefined) {
+    return null;
+  }
+  const match = /reauthenticate over the environments this operation makes reachable, then retry \((env_[^)]+)\)/.exec(error.detail);
+  return match?.[1] ?? null;
+}
 import { useOrg, useOrgTopology } from '../api/settings.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { InviteDialog, IssuedAuthorityDialog } from './InviteDialog.tsx';
@@ -914,19 +931,52 @@ function GrantModal({
       );
       return;
     }
-    create.mutate(
-      { scope, principal, capabilities: draft.capabilities },
-      {
-        onSuccess: (done) =>
+    void (async () => {
+      // A grant that newly lets a MACHINE principal decrypt an environment is a
+      // widening: the server refuses it until this session has reauthenticated
+      // over exactly that environment (grants.go checkMachineWidening), naming
+      // the environment in the refusal. Answer each named environment with the
+      // mint-purpose passkey ceremony the machine-access page uses, then retry
+      // the capabilities that have not landed yet; completed lines stay live.
+      // Bounded by the environments a grant can reach, never by wall-clock.
+      let pending: readonly string[] = draft.capabilities;
+      const done: GrantOutcomeView[] = [];
+      for (let attempt = 0; attempt < 64; attempt += 1) {
+        try {
+          done.push(...(await create.mutateAsync({ scope, principal, capabilities: pending })));
           onDone(
             `Grant results for ${principal} on ${chosen.label}: ${grantOutcomeSummary(done)} Each grant line remains independently revocable.`,
-          ),
-        onError: (error) => {
-          onStage('grant');
-          setFailure(grantFailureText(error));
-        },
-      },
-    );
+          );
+          return;
+        } catch (error) {
+          const partial = error instanceof GrantPartialFailure ? error : null;
+          const cause = partial === null ? error : partial.cause;
+          const widened = wideningEnvironment(cause);
+          if (widened === null) {
+            onStage('grant');
+            setFailure(grantFailureText(error));
+            return;
+          }
+          if (partial !== null) {
+            done.push(...partial.completed);
+            pending = pending.slice(partial.completed.length);
+          }
+          try {
+            await runPasskeyCeremony({ operation: 'mint', environmentId: widened, keyIds: [] });
+          } catch (ceremonyError) {
+            onStage('grant');
+            setFailure(
+              done.length === 0
+                ? grantFailureText(error)
+                : `Completed ${String(done.length)} of ${String(draft.capabilities.length)} (live and listed below). ${grantOutcomeSummary(done)} ${pending[0] ?? ''} was refused: ${grantFailureText(ceremonyError)}`,
+            );
+            return;
+          }
+        }
+      }
+      onStage('grant');
+      setFailure('The grant kept asking for another reauthentication; reload and try again.');
+    })();
   };
 
   if (stage === 'blast') {

@@ -3,6 +3,7 @@ import {
   localLoginOp,
   logoutOp,
   oidcStartOp,
+  beginRecoveryOp,
   establishCredentialOp,
 } from '@hikyo/operations';
 import { zLoginResult, zMyOrgList } from '@hikyo/zod';
@@ -137,6 +138,28 @@ export function establishCredential(authority: string, password: string): Promis
  * unknown or malformed authority is one sentence, so the page cannot be used
  * to tell which.
  */
+/**
+ * beginRecovery spends one recovery code for a display-once establishment
+ * authority (#571). Public and sessionless like establishment: the holder has
+ * lost their second factor, so the answer creates no session. The authority
+ * is handed straight to the establish form and never leaves component state.
+ */
+export async function beginRecovery(username: string, code: string): Promise<string> {
+  const result = await parsed(beginRecoveryOp, { body: { username, code } });
+  return result.authority;
+}
+
+/**
+ * recoveryFailureText keeps the server's oracle closed: an unknown user, a
+ * stale batch, a stale epoch and a wrong code are one `401` and one sentence.
+ */
+export function recoveryFailureText(error: unknown): string {
+  if (error instanceof ApiError && (error.status === 400 || error.status === 401)) {
+    return 'The recovery code was not accepted for that username.';
+  }
+  return transportRefusalText(error) ?? 'Recovery could not begin, or the answer did not match the contract.';
+}
+
 export function establishFailureText(error: unknown): string {
   if (error instanceof ApiError && (error.status === 400 || error.status === 401)) {
     return 'The authority was not accepted. It may have expired or already been used.';

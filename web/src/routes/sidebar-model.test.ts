@@ -50,6 +50,7 @@ describe('sidebarModel', () => {
       ['Machine access', '/orgs/org_1/projects/prj_1/machine-access'],
       ['Change approvals', '/orgs/org_1/projects/prj_1/change-approvals'],
       ['Deployment adapters', '/orgs/org_1/projects/prj_1/adapters'],
+      ['Project audit', '/orgs/org_1/projects/prj_1/audit'],
       ['Members', '/orgs/org_1/members?project=prj_1'],
       ['Project settings', '/orgs/org_1/projects/prj_1/settings'],
     ]);

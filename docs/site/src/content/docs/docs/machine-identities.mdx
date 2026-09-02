@@ -18,6 +18,10 @@ hikyo access grant add \
 
 Record the returned stable ID. List its grants before minting a credential.
 
+In the browser, Machine access offers the same acts: *Create service account*,
+*Add environment grant*, *Mint credential*, *Revoke*, and *Delete*
+([Operate Hikyo from the browser](/docs/browser-operations/#the-lifecycle)).
+
 `--principal` takes the service account's **principal** ID (`mch_...`, the
 `principal_id` field of `hikyo sa list -o json`), not its `sa_...` row ID.
 
