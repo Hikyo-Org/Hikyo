@@ -51,6 +51,14 @@ const (
 	MetricHANodesSeen      = "hikyo_ha_nodes_seen"
 	MetricHALeaseAgeSecond = "hikyo_ha_lease_age_seconds"
 
+	// Disaster-recovery gauges (#145, ops-spec section 11). Label-free like
+	// every other operator gauge: one series each, no archive name, no path.
+	MetricLastBackupExportSuccess = "hikyo_last_backup_export_success_timestamp_seconds"
+	MetricBackupRPOExceeded       = "hikyo_backup_rpo_exceeded"
+	MetricLastBackupPruneSuccess  = "hikyo_last_backup_prune_success_timestamp_seconds"
+	MetricLastRestoreDrill        = "hikyo_last_restore_drill_timestamp_seconds"
+	MetricRestoreDrillOK          = "hikyo_restore_drill_ok"
+
 	// MetricSeriesBudget is the ops-spec ceiling for every registered series.
 	MetricSeriesBudget = 1000
 )
@@ -154,6 +162,11 @@ func RegisteredMetricFamilies() []MetricFamily {
 		{Name: MetricHAIsLeader, MaxSeries: 1},
 		{Name: MetricHANodesSeen, MaxSeries: 1},
 		{Name: MetricHALeaseAgeSecond, MaxSeries: 1},
+		{Name: MetricLastBackupExportSuccess, MaxSeries: 1},
+		{Name: MetricBackupRPOExceeded, MaxSeries: 1},
+		{Name: MetricLastBackupPruneSuccess, MaxSeries: 1},
+		{Name: MetricLastRestoreDrill, MaxSeries: 1},
+		{Name: MetricRestoreDrillOK, MaxSeries: 1},
 	}
 }
 

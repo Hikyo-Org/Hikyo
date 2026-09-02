@@ -755,6 +755,20 @@ const (
 	StoreRetentionLastSuccess    StoreOp = "retention.LastPruneSuccess"
 	StoreRetentionSetLastSuccess StoreOp = "retention.SetLastPruneSuccess"
 
+	// Disaster-recovery health row (#145, ops-spec section 11). Instance
+	// operational state, no tenant chain: the scheduler's export and prune
+	// jobs write it, the restore drill writes its verdict, and the audited
+	// health read plus the /metrics scrape read it.
+	StoreBackupStateGet              StoreOp = "backupstate.Get"
+	StoreBackupStateSetExportSuccess StoreOp = "backupstate.SetExportSuccess"
+	StoreBackupStateSetExportFailure StoreOp = "backupstate.SetExportFailure"
+	StoreBackupStateSetPruneSuccess  StoreOp = "backupstate.SetPruneSuccess"
+	StoreBackupStateSetDrill         StoreOp = "backupstate.SetDrill"
+	// The restore drill's decrypt proof reads ONE stored secret cell,
+	// ciphertext only, across the instance (#145). Opening it needs the
+	// keyring the drill is handed separately; the read alone discloses nothing.
+	StoreValuesSampleSecretEntry StoreOp = "values.SampleSecretEntry"
+
 	// Per-project storage high-water (#185, ops-spec section 8 / section 141).
 	// The two project-scoped byte sums are read at publish to refuse a project
 	// already at the 4 GiB high-water; the two instance-scoped by-project sums
@@ -990,7 +1004,9 @@ var storeOpCatalogue = map[StoreOp]bool{
 	StoreSnapshotsReencrypt: true, StoreSnapshotsSecretValueOccurrenceIDs: true, StoreValuesClear: true, StoreValuesClearEnvironment: true,
 	StoreValuesClearKey: true, StoreValuesCountEnvironment: true, StoreValuesEnvironmentsWithValue: true, StoreValuesGet: true,
 	StoreValuesInstancePayloadByProject: true, StoreValuesList: true, StoreValuesListForReencrypt: true, StoreValuesPayloadBytesForProject: true,
-	StoreValuesPut: true, StoreValuesReencrypt: true,
+	StoreValuesPut: true, StoreValuesReencrypt: true, StoreValuesSampleSecretEntry: true,
+	StoreBackupStateGet: true, StoreBackupStateSetExportSuccess: true, StoreBackupStateSetExportFailure: true,
+	StoreBackupStateSetPruneSuccess: true, StoreBackupStateSetDrill: true,
 }
 
 var readOnlyStoreOps = map[StoreOp]bool{
@@ -1072,6 +1088,8 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreSnapshotsPayloadBytesForProject:     true,
 	StoreValuesInstancePayloadByProject:      true,
 	StoreSnapshotsInstancePayloadByProject:   true,
+	StoreValuesSampleSecretEntry:             true,
+	StoreBackupStateGet:                      true,
 	StoreSnapshotsLatest:                     true,
 	StoreSnapshotsAtRevision:                 true,
 	StoreSnapshotsList:                       true,
@@ -3114,6 +3132,9 @@ var operationTable = map[Operation]opSpec{
 			// also reports the instance's peak stored project, for the 1 GiB warn.
 			StoreValuesInstancePayloadByProject:    true,
 			StoreSnapshotsInstancePayloadByProject: true,
+			// Disaster-recovery health (#145): the same operator read reports
+			// the latest export, the RPO verdict and the latest restore drill.
+			StoreBackupStateGet: true,
 		},
 		events: []audit.EventType{audit.EventRetentionHealthRead},
 	},
@@ -3908,6 +3929,21 @@ var systemSites = map[SystemSite]map[StoreOp]bool{
 		// (#185): a shared door, like the retention health read beside it.
 		StoreValuesInstancePayloadByProject:    true,
 		StoreSnapshotsInstancePayloadByProject: true,
+		// Disaster-recovery program (#145). The scheduled export and prune
+		// jobs write the DR health row under scheduler authority; the
+		// unauthenticated /metrics scrape reads it through the same shared
+		// door as the storage high-water (#185), and the audited health read
+		// reaches it via retention.health-read. The restore drill is a
+		// host-local operator verb of the same class as `restore run`; it
+		// rides scheduler authority for its DR-row write and for the ONE
+		// ciphertext sample it decrypts under the separately supplied root
+		// key, rather than minting a new system site (tenant-isolation ADR).
+		StoreBackupStateGet:              true,
+		StoreBackupStateSetExportSuccess: true,
+		StoreBackupStateSetExportFailure: true,
+		StoreBackupStateSetPruneSuccess:  true,
+		StoreBackupStateSetDrill:         true,
+		StoreValuesSampleSecretEntry:     true,
 	},
 }
 
@@ -3916,6 +3952,9 @@ var systemSiteEvents = map[SystemSite][]audit.EventType{
 		audit.EventRetentionPayloadGC,
 		audit.EventRetentionPruneRun,
 		audit.EventUpdateOutcome,
+		// The scheduled export's loud failure (#145): the scheduler is the
+		// only emitter, so it is registered here rather than on an operation.
+		audit.EventBackupExportFailed,
 	},
 }
 

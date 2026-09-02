@@ -268,6 +268,15 @@ const (
 	// to leave a per-principal record, and a single "reconciliation completed"
 	// event would be exactly the bulk accept the surface refuses to offer.
 	EventRestorePrincipalReconciled EventType = "restore.principal_reconciled"
+	// EventBackupExportFailed is the scheduled export's loud failure (#145):
+	// a configured policy that was not honoured, on the instance trail so
+	// it survives the morning after. The reason is a bounded class, never a
+	// path that could carry a secret.
+	EventBackupExportFailed EventType = "backup.export_failed"
+	// EventRestoreDrillCompleted records one isolated restore drill (#145):
+	// archive identity, versions, elapsed time and the RTO verdict. Never
+	// key material, never the decrypted sample.
+	EventRestoreDrillCompleted EventType = "restore.drill_completed"
 	// settings.key_* — the key catalogue's lifecycle (#49). The catalogue IS
 	// the project's schema, so these are schema events; they are named
 	// `settings.*` like the rest of the definitions surface because an
@@ -1883,6 +1892,46 @@ var registry = map[EventType]TypeSpec{
 			"restore_epoch":      {Kind: KindInt, Required: true},
 			"pending_principals": {Kind: KindInt, Required: true},
 			"authority":          {Kind: KindString, Required: true}, // local-host
+		},
+	},
+	EventBackupExportFailed: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeFailure: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			// Why the export ran: `scheduled`.
+			"trigger": {Kind: KindString, Required: true},
+			// A bounded failure class (`destination`, `datastore`, `container`,
+			// `deadline`, `canceled`, `internal`), never the error text: an
+			// error string can quote a path, and a path can name a mount an
+			// operator considers private.
+			"error_class": {Kind: KindString, Required: true},
+		},
+	},
+	EventRestoreDrillCompleted: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true, OutcomeFailure: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			// The archive by base name and manifest digest; never its contents.
+			"archive":         {Kind: KindString, Required: true},
+			"archive_digest":  {Kind: KindString, Required: true},
+			"engine":          {Kind: KindString, Required: true},
+			"schema_version":  {Kind: KindInt, Required: true},
+			"binary_version":  {Kind: KindString, Required: true},
+			"elapsed_ms":      {Kind: KindInt, Required: true},
+			"rto_target_ms":   {Kind: KindInt, Required: true},
+			"rto_met":         {Kind: KindBool, Required: true},
+			"values_readable": {Kind: KindBool, Required: true},
+			// The single principal the drill reconciled, and whether a fresh
+			// machine credential was minted and revoked in the scratch instance.
+			"reconciled_principal": {Kind: KindString, Required: true},
+			"credential_minted":    {Kind: KindBool, Required: true},
+			// Which step failed, empty on success.
+			"failed_step": {Kind: KindString, Required: true},
+			"authority":   {Kind: KindString, Required: true}, // local-host
 		},
 	},
 

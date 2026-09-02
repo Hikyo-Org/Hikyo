@@ -21,6 +21,9 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -32,11 +35,13 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
 	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
@@ -84,6 +89,11 @@ func RestoreUsage(w io.Writer) {
                     (--identity-file PATH | --passphrase-file PATH)
   hikyo restore status
   hikyo restore reconcile --principal ID
+  hikyo restore drill --from ARCHIVE
+                      (--identity-file PATH | --passphrase-file PATH)
+                      --root-key-file PATH --principal ID --project ORG/PROJECT
+                      (--target-sqlite PATH | --target-postgres-dsn-file PATH)
+                      [--cleanup] [-o json]
 
 run refuses anything that is not a complete archive for THIS engine, and it
 refuses it BEFORE touching the target: the container is decrypted in full and
@@ -103,6 +113,15 @@ exactly ONE principal and there is no form of it that takes a set: a restore
 rewinds the authorization state, so it can resurrect a since-revoked role or a
 removed member, and each identity is an informed decision. status lists who is
 still waiting.
+
+drill rehearses the WHOLE recovery against an EMPTY scratch target and never
+touches the live datastore except to record the result. It restores the
+archive, boots the restored data with the separately supplied root key, proves
+one stored secret decrypts, reconciles one approved human, mints then revokes a
+machine credential, and records the archive identity, versions, elapsed time
+and RTO verdict on the live instance's trail. The root key and backup identity
+are read from files, used for the drill's duration only, and never persisted or
+logged. The scratch target is left for inspection unless --cleanup.
 `)
 }
 
@@ -261,6 +280,8 @@ func RunRestore(ctx context.Context, cfg *config.Config, log *slog.Logger, args 
 		return runRestoreStatus(ctx, cfg, stderr)
 	case "reconcile":
 		return runRestoreReconcile(ctx, cfg, log, args, stderr)
+	case "drill":
+		return runRestoreDrill(ctx, cfg, log, args, stderr)
 	default:
 		RestoreUsage(stderr)
 		return fmt.Errorf("hikyo restore: unknown subcommand %q", args[0])
@@ -509,6 +530,346 @@ func runRestoreReconcile(ctx context.Context, cfg *config.Config, log *slog.Logg
 	fmt.Fprintf(stderr, "reconciled %s\n", *principal)
 	printPending(stderr, status)
 	return nil
+}
+
+// runRestoreDrill is the operator-verifiable disaster-recovery drill (#145,
+// ops spec section 11). It runs host-local with the live config, like
+// `restore reconcile`, but every restore-and-boot step happens against a
+// SEPARATE scratch target: the live instance sees only the recorded verdict.
+//
+// Custody separation is literal here. The backup identity opens the container;
+// the root key, read from its own file, boots the restored data and opens one
+// secret. Both are used for the drill's duration and neither is persisted or
+// logged: the root key bytes are zeroed after the keyring consumes them, and
+// the audit payload has no field that could carry either.
+func runRestoreDrill(ctx context.Context, cfg *config.Config, log *slog.Logger, args []string, stderr io.Writer) error {
+	fs := flag.NewFlagSet("restore drill", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	from := fs.String("from", "", "the age-encrypted archive to rehearse")
+	identityFile := fs.String("identity-file", "", "file holding the backup age identity")
+	passphraseFile := fs.String("passphrase-file", "", "file holding the container passphrase")
+	rootKeyFile := fs.String("root-key-file", "", "file holding the original root key (drill duration only, never persisted)")
+	principal := fs.String("principal", "", "the single human principal to reconcile in the scratch instance")
+	project := fs.String("project", "", "ORG/PROJECT the drill mints a throwaway credential in")
+	targetSQLite := fs.String("target-sqlite", "", "empty scratch sqlite path to restore into")
+	targetPostgresDSNFile := fs.String("target-postgres-dsn-file", "", "file holding an empty scratch postgres DSN")
+	cleanup := fs.Bool("cleanup", false, "remove the scratch target after the drill instead of leaving it for inspection")
+	format := fs.String("o", "", "output format: json for a machine-readable report")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	switch {
+	case *from == "":
+		return errors.New("--from ARCHIVE is required")
+	case *rootKeyFile == "":
+		return errors.New("--root-key-file is required: the drill boots the restored data under the original root key")
+	case *principal == "":
+		return errors.New("--principal is required: the drill reconciles exactly one approved human")
+	case *project == "":
+		return errors.New("--project ORG/PROJECT is required: the drill mints a throwaway credential there")
+	case (*targetSQLite == "") == (*targetPostgresDSNFile == ""):
+		return errors.New("choose exactly one scratch target: --target-sqlite or --target-postgres-dsn-file")
+	}
+	org, prj, ok := strings.Cut(*project, "/")
+	if !ok || org == "" || prj == "" {
+		return errors.New("--project must be ORG/PROJECT (two ids separated by a slash)")
+	}
+	scratch, err := drillTargetConfig(*targetSQLite, *targetPostgresDSNFile)
+	if err != nil {
+		return err
+	}
+	// The RTO clock covers the WHOLE recovery an operator performs: fetching
+	// the identity and root key, hashing the archive, restoring, booting and
+	// verifying. Start it before any of that so the recorded elapsed is honest.
+	start := time.Now()
+	unlock, err := restoreUnlock(*identityFile, *passphraseFile)
+	if err != nil {
+		return err
+	}
+	rootKey, err := crypto.ReadRootKey(*rootKeyFile, "")
+	if err != nil {
+		return err
+	}
+	// The keyring load below consumes and zeroes the copy it is handed, so a
+	// second copy is kept here and wiped on every exit: the root key never
+	// outlives the drill.
+	defer crypto.Zero(rootKey)
+
+	digest, err := fileDigest(*from)
+	if err != nil {
+		return err
+	}
+
+	report := service.DrillReport{
+		Archive: filepath.Base(*from), ArchiveDigest: digest,
+		BinaryVersion: Version, RTOTarget: cfg.BackupRTOTarget,
+		Principal: *principal,
+	}
+	scope := domain.Scope{Org: domain.OrgID(org), Project: domain.ProjectID(prj)}
+
+	manifest, drillErr := runDrillSteps(ctx, scratch, *from, unlock, rootKey, domain.PrincipalID(*principal), scope, &report)
+	report.Engine = manifest.Engine
+	report.SchemaVersion = manifest.SchemaVersion
+	report.Elapsed = time.Since(start)
+	// Every functional step passed but the recovery blew the RTO budget: name
+	// the failure so the record and the terminal do not say `failed at ""`.
+	if drillErr == nil && !report.OK() && report.FailedStep == "" {
+		report.FailedStep = "rto"
+	}
+
+	if *cleanup {
+		switch scratch.Engine {
+		case store.EngineSQLite:
+			if err := removeDrillSQLite(scratch.Path); err != nil {
+				log.Warn("drill scratch target could not be removed", "err", err)
+			}
+		case store.EnginePostgres:
+			// Dropping a database is a DB-admin act, not a proof-bound store
+			// operation, so it is deliberately left to the operator who owns the
+			// scratch DSN rather than issued through a raw driver handle here.
+			log.Info("drill scratch postgres database left in place; drop it to reclaim space", "note", "host-local operator task")
+		}
+	}
+
+	// Record the verdict on the LIVE instance regardless of outcome: a failed
+	// drill the operator can see beats a silent one. A hard error before a
+	// manifest existed (an unreadable archive) has nothing to record and is
+	// returned as-is.
+	if manifest.Engine != "" {
+		live, err := store.Open(ctx, storeConfig(cfg))
+		if err != nil {
+			return errors.Join(drillErr, err)
+		}
+		recErr := (&service.Backup{DB: live}).RecordDrill(ctx, report)
+		live.Close()
+		if recErr != nil {
+			return errors.Join(drillErr, fmt.Errorf("the drill ran but its record could not be written: %w", recErr))
+		}
+	}
+
+	if err := printDrillReport(stderr, *format, report); err != nil {
+		return err
+	}
+	if drillErr != nil {
+		return drillErr
+	}
+	if !report.OK() {
+		return fmt.Errorf("restore drill failed at %q", report.FailedStep)
+	}
+	log.Info("restore drill passed", "archive", report.Archive, "engine", report.Engine,
+		"elapsed", report.Elapsed, "rto_target", report.RTOTarget)
+	return nil
+}
+
+// runDrillSteps performs the restore-and-verify sequence against the scratch
+// target and fills report.FailedStep on the first step that does not pass. It
+// returns the manifest as soon as it is known so the caller can record engine
+// and schema even for a failed drill.
+func runDrillSteps(ctx context.Context, scratch store.Config, from string,
+	unlock backup.Unlock, rootKey []byte, principal domain.PrincipalID, scope domain.Scope, report *service.DrillReport,
+) (store.Manifest, error) {
+	work, err := os.MkdirTemp("", "hikyo-drill-")
+	if err != nil {
+		report.FailedStep = "staging"
+		return store.Manifest{}, fmt.Errorf("drill staging directory: %w", err)
+	}
+	defer os.RemoveAll(work)
+	plain, err := decryptArchive(from, filepath.Join(work, "archive.tar"), unlock)
+	if err != nil {
+		report.FailedStep = "decrypt"
+		return store.Manifest{}, err
+	}
+	defer plain.Close()
+	manifest, err := store.ReadManifest(plain)
+	if err != nil {
+		report.FailedStep = "manifest"
+		return store.Manifest{}, err
+	}
+	if err := checkRestorable(ctx, scratch, manifest); err != nil {
+		report.FailedStep = "preflight"
+		return manifest, err
+	}
+	if _, err := plain.Seek(0, io.SeekStart); err != nil {
+		report.FailedStep = "restore"
+		return manifest, fmt.Errorf("rewind archive: %w", err)
+	}
+	now := time.Now()
+	switch scratch.Engine {
+	case store.EngineSQLite:
+		if _, err := tx.RestoreSQLite(ctx, plain, scratch.Path, service.CompleteRestore(now, manifest)); err != nil {
+			report.FailedStep = "restore"
+			return manifest, err
+		}
+	case store.EnginePostgres:
+		if err := migrate.RunUpTo(ctx, scratch, manifest.SchemaVersion); err != nil {
+			report.FailedStep = "restore"
+			return manifest, err
+		}
+		db, err := store.Open(ctx, scratch)
+		if err != nil {
+			report.FailedStep = "restore"
+			return manifest, err
+		}
+		_, err = tx.RestorePostgres(ctx, db, plain, service.CompleteRestore(now, manifest))
+		db.Close()
+		if err != nil {
+			report.FailedStep = "restore"
+			return manifest, err
+		}
+	}
+	if err := migrate.Run(ctx, scratch); err != nil {
+		report.FailedStep = "restore"
+		return manifest, fmt.Errorf("drill roll-forward migration failed: %w", err)
+	}
+
+	scratchDB, err := store.Open(ctx, scratch)
+	if err != nil {
+		report.FailedStep = "restore"
+		return manifest, err
+	}
+	defer scratchDB.Close()
+
+	// Boot the restored data under the escrowed root key. A copy is handed to
+	// LoadKeyring (which zeroes it); the caller keeps and wipes the original.
+	kr, err := crypto.LoadKeyring(ctx, &keyring.Store{DB: scratchDB}, append([]byte(nil), rootKey...))
+	if err != nil {
+		report.FailedStep = "boot"
+		return manifest, fmt.Errorf("the restored data did not boot under the supplied root key: %w", err)
+	}
+
+	backupSvc := &service.Backup{DB: scratchDB}
+	readable, err := backupSvc.ProveValuesReadable(ctx, kr)
+	report.ValuesReadable = readable
+	if err != nil {
+		report.FailedStep = "prove-values"
+		return manifest, err
+	}
+
+	// Reconcile the one approved human, then mint and immediately revoke a
+	// throwaway credential in the named project to prove the recovered
+	// instance can issue new machine identity. Both use the reconciled
+	// principal's own authority.
+	if _, err := (&service.Restore{DB: scratchDB}).Reconcile(ctx, principal); err != nil {
+		report.FailedStep = "reconcile"
+		return manifest, err
+	}
+	minted, err := drillMintAndRevoke(ctx, scratchDB, kr, principal, scope)
+	report.Minted = minted
+	if err != nil {
+		report.FailedStep = "mint-credential"
+		return manifest, err
+	}
+	return manifest, nil
+}
+
+// drillMintAndRevoke creates a throwaway workload service account in the
+// scratch instance, mints one credential and revokes it at once, proving the
+// recovered instance issues new machine identity. A fresh workload SA reaches
+// no plaintext, so the mint's disclosure conjunct is vacuous and needs no
+// reauthentication window - which a host-local operator verb has no way to
+// open anyway.
+func drillMintAndRevoke(ctx context.Context, db *store.DB, kr *crypto.Keyring, principal domain.PrincipalID, scope domain.Scope) (bool, error) {
+	ids := &service.Identities{DB: db, Auth: &service.Auth{DB: db, Keyring: kr}}
+	actor := service.LocalPrincipal(principal)
+	sa, err := ids.CreateServiceAccount(ctx, actor, scope, "drill-verification", domain.ClassWorkload)
+	if err != nil {
+		return false, fmt.Errorf("create drill service account: %w", err)
+	}
+	if _, err := ids.MintCredential(ctx, actor, scope, sa.ID, service.MintRequest{}); err != nil {
+		return false, fmt.Errorf("mint drill credential: %w", err)
+	}
+	// The credential proved issuance; it must not outlive the drill. Deleting
+	// the service account atomically revokes its one credential (cascade). A
+	// revoke failure is reported as NOT minted-and-revoked: a usable credential
+	// left behind is a failed drill, not a passed one, and the returned error
+	// keeps the scratch target around (no --cleanup on failure) for cleanup.
+	if err := ids.DeleteServiceAccount(ctx, actor, scope, sa.ID); err != nil {
+		return false, fmt.Errorf("revoke drill credential: %w", err)
+	}
+	return true, nil
+}
+
+func drillTargetConfig(sqlitePath, postgresDSNFile string) (store.Config, error) {
+	if sqlitePath != "" {
+		return store.Config{Engine: store.EngineSQLite, Path: sqlitePath}, nil
+	}
+	dsn, err := readSecretFile(postgresDSNFile)
+	if err != nil {
+		return store.Config{}, err
+	}
+	return store.Config{Engine: store.EnginePostgres, DSN: dsn}, nil
+}
+
+// removeDrillSQLite deletes the sqlite scratch instance after a --cleanup
+// drill. Postgres scratch cleanup is the operator's DB-admin task: dropping a
+// database is not a proof-bound store operation and must not reach for a raw
+// driver handle from the app layer.
+func removeDrillSQLite(path string) error {
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		if err := os.Remove(path + suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
+}
+
+// fileDigest is the archive's content digest for the drill record: it names
+// exactly which bytes were rehearsed, without copying the archive anywhere.
+func fileDigest(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("open archive %s: %w", path, err)
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", fmt.Errorf("digest archive %s: %w", path, err)
+	}
+	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func printDrillReport(w io.Writer, format string, r service.DrillReport) error {
+	if format == "json" {
+		return writeDrillJSON(w, r)
+	}
+	verdict := "PASSED"
+	if !r.OK() {
+		verdict = "FAILED at " + r.FailedStep
+	}
+	fmt.Fprintf(w, "restore drill %s\n", verdict)
+	fmt.Fprintf(w, "  archive:        %s (%s)\n", r.Archive, r.ArchiveDigest)
+	fmt.Fprintf(w, "  engine/schema:  %s / %d\n", r.Engine, r.SchemaVersion)
+	fmt.Fprintf(w, "  binary:         %s\n", r.BinaryVersion)
+	fmt.Fprintf(w, "  elapsed:        %s (RTO target %s, %s)\n", r.Elapsed.Round(time.Millisecond), r.RTOTarget, rtoVerdict(r))
+	fmt.Fprintf(w, "  values read:    %t\n", r.ValuesReadable)
+	fmt.Fprintf(w, "  principal:      %s reconciled\n", r.Principal)
+	fmt.Fprintf(w, "  credential:     minted and revoked = %t\n", r.Minted)
+	return nil
+}
+
+func rtoVerdict(r service.DrillReport) string {
+	if r.Elapsed <= r.RTOTarget {
+		return "met"
+	}
+	return "EXCEEDED"
+}
+
+func writeDrillJSON(w io.Writer, r service.DrillReport) error {
+	return json.NewEncoder(w).Encode(map[string]any{
+		"archive":         r.Archive,
+		"archive_digest":  r.ArchiveDigest,
+		"engine":          string(r.Engine),
+		"schema_version":  r.SchemaVersion,
+		"binary_version":  r.BinaryVersion,
+		"elapsed_ms":      r.Elapsed.Milliseconds(),
+		"rto_target_ms":   r.RTOTarget.Milliseconds(),
+		"rto_met":         r.Elapsed <= r.RTOTarget,
+		"values_readable": r.ValuesReadable,
+		"principal":       r.Principal,
+		"credential":      r.Minted,
+		"ok":              r.OK(),
+		"failed_step":     r.FailedStep,
+	})
 }
 
 // Status is service.Status, aliased so the printer's signature does not drag

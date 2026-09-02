@@ -749,7 +749,7 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	// `restore` writes the reconstruction and one event per principal the
 	// operator reconciles afterwards.
 	"cli:backup":  {Class: ClassSystem, Events: []audit.EventType{audit.EventBackupExported, audit.EventBackupExportSkipped}},
-	"cli:restore": {Class: ClassSystem, Events: []audit.EventType{audit.EventRestoreCompleted, audit.EventRestorePrincipalReconciled}},
+	"cli:restore": {Class: ClassSystem, Events: []audit.EventType{audit.EventRestoreCompleted, audit.EventRestorePrincipalReconciled, audit.EventRestoreDrillCompleted}},
 
 	// Local product-information commands print build metadata — no principal,
 	// no server, no store; the pre-auth contract is trivially total.

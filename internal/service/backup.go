@@ -54,6 +54,11 @@ type Backup struct {
 	DB      *store.DB
 	Options backup.Options
 	Now     func() time.Time
+	// removeFile deletes one pruned archive. Nil means os.Remove; it exists as
+	// a seam so a test can prove the prune loop stops on the first failed
+	// unlink without needing an unwritable directory (which fails every
+	// unlink and cannot distinguish stop-on-first from delete-all-fail).
+	removeFile func(string) error
 }
 
 func (s *Backup) now() time.Time {
@@ -190,7 +195,8 @@ func (s *Backup) writeArchive(ctx context.Context, f *os.File, work string) (Exp
 // belongs in the new one.
 func (s *Backup) RecordExport(ctx context.Context, trigger ExportTrigger, r ExportResult) error {
 	mode, count := s.recipientPolicy()
-	return tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+	now := s.now()
+	return tx.Write(ctx, s.DB, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
 		e, err := domainEvent(ctx, audit.EventBackupExported, "",
 			audit.Object{Type: "backup", ID: filepath.Base(r.Path)}, audit.Payload{
 				"trigger":         string(trigger),
@@ -204,7 +210,18 @@ func (s *Backup) RecordExport(ctx context.Context, trigger ExportTrigger, r Expo
 		if err != nil {
 			return err
 		}
-		return az.RecordAuthEvent(ctx, e)
+		if err := az.RecordAuthEvent(ctx, e); err != nil {
+			return err
+		}
+		// Every published archive is a recovery point, whoever asked for
+		// it: the DR health row (#145) advances on manual and pre-migration
+		// exports exactly as on scheduled ones, so the RPO verdict reflects
+		// the newest artifact that actually exists.
+		proof, err := authz.SystemAuthority(authz.SiteScheduler, az.Token())
+		if err != nil {
+			return err
+		}
+		return repos.BackupState().SetExportSuccess(ctx, proof, now, filepath.Base(r.Path), r.Bytes)
 	})
 }
 

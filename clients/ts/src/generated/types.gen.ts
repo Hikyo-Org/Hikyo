@@ -2390,6 +2390,42 @@ export type RetentionHealth = {
      * True once peak_project_bytes reaches the 1 GiB warn threshold, well before the 4 GiB publish refusal.
      */
     storage_warn: boolean;
+    backup: BackupHealth;
+};
+
+/**
+ * Disaster-recovery health: the latest successful export, its age against the configured recovery point objective, the latest failure, and the latest restore drill. Names archives and versions only; never a recipient, an identity or a key.
+ */
+export type BackupHealth = {
+    /**
+     * True when an export policy (recipients + destination) is configured and the in-process schedule runs.
+     */
+    scheduled: boolean;
+    last_success_at: string | null;
+    /**
+     * Age of the newest successful export; 0 when there has never been one.
+     */
+    artifact_age_seconds: number;
+    /**
+     * The configured recovery point objective; 0 when nothing is scheduled.
+     */
+    rpo_seconds: number;
+    /**
+     * True when exports are scheduled and no successful export is younger than the RPO.
+     */
+    rpo_exceeded: boolean;
+    last_failure_at: string | null;
+    /**
+     * Bounded operator-facing text of the latest export failure; empty when none.
+     */
+    last_failure_reason: string;
+    last_prune_at: string | null;
+    last_drill_at: string | null;
+    last_drill_ok: boolean;
+    /**
+     * True when no successful restore drill is younger than 90 days.
+     */
+    drill_stale: boolean;
 };
 
 export type ProjectRetentionPolicy = {

@@ -54,6 +54,7 @@ func (s sqliteReadRepos) Pending() PendingReader          { return s.r.Pending()
 func (s sqliteReadRepos) Snapshots() SnapshotReader       { return s.r.Snapshots() }
 func (s sqliteReadRepos) Pins() RevisionPinReader         { return s.r.Pins() }
 func (s sqliteReadRepos) Retention() RetentionReader      { return s.r.Retention() }
+func (s sqliteReadRepos) BackupState() BackupStateReader  { return s.r.BackupState() }
 func (s sqliteReadRepos) Projects() ProjectReader         { return s.r.Projects() }
 func (s sqliteReadRepos) Environments() EnvironmentReader { return s.r.Environments() }
 func (s sqliteReadRepos) Folders() FolderReader           { return s.r.Folders() }
@@ -72,6 +73,7 @@ func (p pgReadRepos) Pending() PendingReader          { return p.r.Pending() }
 func (p pgReadRepos) Snapshots() SnapshotReader       { return p.r.Snapshots() }
 func (p pgReadRepos) Pins() RevisionPinReader         { return p.r.Pins() }
 func (p pgReadRepos) Retention() RetentionReader      { return p.r.Retention() }
+func (p pgReadRepos) BackupState() BackupStateReader  { return p.r.BackupState() }
 func (p pgReadRepos) Projects() ProjectReader         { return p.r.Projects() }
 func (p pgReadRepos) Environments() EnvironmentReader { return p.r.Environments() }
 func (p pgReadRepos) Folders() FolderReader           { return p.r.Folders() }
@@ -220,6 +222,10 @@ func (r sqliteRepos) Pins() RevisionPinRepo {
 
 func (r sqliteRepos) Retention() RetentionRepo {
 	return sqliteRetention{q: sqlitegen.New(r.db), tok: r.tok}
+}
+
+func (r sqliteRepos) BackupState() BackupStateRepo {
+	return sqliteBackupState{q: sqlitegen.New(r.db), tok: r.tok}
 }
 
 type sqliteOrgs struct {
@@ -889,6 +895,7 @@ func (r pgRepos) Pending() PendingRepo          { return pgPending{q: pggen.New(
 func (r pgRepos) Snapshots() SnapshotRepo       { return pgSnapshots{q: pggen.New(r.db), tok: r.tok} }
 func (r pgRepos) Pins() RevisionPinRepo         { return pgPins{q: pggen.New(r.db), tok: r.tok} }
 func (r pgRepos) Retention() RetentionRepo      { return pgRetention{q: pggen.New(r.db), tok: r.tok} }
+func (r pgRepos) BackupState() BackupStateRepo  { return pgBackupState{q: pggen.New(r.db), tok: r.tok} }
 
 type pgOrgs struct {
 	q   *pggen.Queries

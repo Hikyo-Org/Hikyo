@@ -451,7 +451,33 @@ func (a *API) GetRetentionHealth(ctx context.Context, _ apigen.GetRetentionHealt
 		StaleAfterSeconds: apigen.RetentionHealthStaleAfterSeconds(service.PruneStaleAfter / time.Second),
 		PeakProjectBytes:  int(health.PeakProjectBytes),
 		StorageWarn:       health.StorageWarn,
+		Backup:            wireBackupHealth(health.Backup),
 	}, nil
+}
+
+// wireBackupHealth projects the DR verdicts (#145). Zero times become null
+// rather than the epoch, so "never" is a structured fact on the wire.
+func wireBackupHealth(b service.BackupHealth) apigen.BackupHealth {
+	optional := func(t time.Time) *time.Time {
+		if t.IsZero() {
+			return nil
+		}
+		at := t
+		return &at
+	}
+	return apigen.BackupHealth{
+		Scheduled:          b.Scheduled,
+		LastSuccessAt:      optional(b.LastSuccessAt),
+		ArtifactAgeSeconds: int(b.ArtifactAge / time.Second),
+		RpoSeconds:         int(b.RPO / time.Second),
+		RpoExceeded:        b.RPOExceeded,
+		LastFailureAt:      optional(b.LastFailureAt),
+		LastFailureReason:  b.LastFailureReason,
+		LastPruneAt:        optional(b.LastPruneAt),
+		LastDrillAt:        optional(b.LastDrillAt),
+		LastDrillOk:        b.LastDrillOK,
+		DrillStale:         b.DrillStale,
+	}
 }
 
 func (a *API) GetMachineReveal(ctx context.Context, req apigen.GetMachineRevealRequestObject) (apigen.GetMachineRevealResponseObject, error) {

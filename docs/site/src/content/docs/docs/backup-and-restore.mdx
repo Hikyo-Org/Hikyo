@@ -40,6 +40,77 @@ complete. A configured export that fails blocks the migration.
 No configured policy causes a loud, durable skip but does not block migration.
 There are no down migrations, so the only downgrade path is restore.
 
+## 2b. Schedule automatic exports
+
+A complete export policy (recipients plus a destination) also enables an
+in-process daily export and a retention prune. Both run on the same scheduler
+as payload GC: once on startup catch-up and then hourly, doing work only when
+it is due.
+
+```text
+HIKYO_BACKUP_INTERVAL=24h       # minimum 1h; export runs at most this often
+HIKYO_BACKUP_RPO=26h            # at least the interval; health fails past it
+HIKYO_BACKUP_RETAIN_COUNT=7     # always keep this many newest archives
+HIKYO_BACKUP_RETAIN_DAYS=180    # maximum 180; no unlimited option exists
+HIKYO_BACKUP_RTO_TARGET=30m     # the restore drill's pass/fail clock
+```
+
+A scheduled export that fails is loud and durable: it records a
+`backup.export_failed` event on the instance trail and updates the health row,
+and it never falls back to an unencrypted archive. The recovery point objective
+is a target gated on monitored success, not a promise: if no successful export
+is younger than `HIKYO_BACKUP_RPO`, health reports the breach and `hikyo doctor`
+returns an error.
+
+The retention prune deletes complete `hikyo-<engine>-<timestamp>.age` archives
+for this engine, never `.partial` staging files and never files it did not
+recognize. It always keeps the newest `HIKYO_BACKUP_RETAIN_COUNT` regardless of
+age, deletes the rest older than `HIKYO_BACKUP_RETAIN_DAYS` oldest-first, and
+never removes the newest successful export recorded in the health row (so a
+wall-clock rollback cannot make it a deletion candidate).
+
+**`HIKYO_BACKUP_DIR` must belong to one instance.** Archive names carry no
+instance identity, so two instances of the same engine sharing a directory
+would prune each other's archives. Give each instance its own directory (its
+own subdirectory of a shared mount is fine).
+
+## Off-host storage
+
+Hikyo never reaches a remote object store itself: `HIKYO_BACKUP_DIR` is a local
+path. Make it a mount the operator manages (NFS, SMB, an `rclone`/`s3fs`
+FUSE mount) so the archives land in a different failure domain from the
+instance. The 180-day retention bound only governs copies this instance's
+pruner manages; any copy your tooling makes outside `HIKYO_BACKUP_DIR` extends
+the erasure window and is your responsibility to age out.
+
+Under multi-node HA the scheduled jobs run only on the lease holder, so
+`HIKYO_BACKUP_DIR` must be a mount every node shares: otherwise a failover
+moves where archives land and the pruner on the new leader manages a different
+directory than the one the health row describes.
+
+## Custody separation
+
+Two secrets, two stores, two failure domains. The backup identity decrypts the
+archive container; the root key decrypts the values inside it. Export reads
+neither. Keep the age identity and the root key in separate custody stores; two
+files in one password manager is one failure domain wearing two names.
+
+## Alerting
+
+The operational `/metrics` endpoint exposes label-free gauges to alert on:
+
+- `hikyo_last_backup_export_success_timestamp_seconds` (0 when never)
+- `hikyo_backup_rpo_exceeded` (1 when the RPO is breached)
+- `hikyo_last_backup_prune_success_timestamp_seconds`
+- `hikyo_last_restore_drill_timestamp_seconds`
+- `hikyo_restore_drill_ok`
+
+`hikyo doctor` folds the same state into a `backup-rpo` finding (error when
+exceeded) and a `restore-drill` finding (warning when the last successful drill
+is over 90 days old or has never run), so a cron-driven `doctor` check fails
+loudly. `/healthz` stays liveness-only on purpose: a stale backup is not a
+reason to restart the process.
+
 ## 3. Run a manual export
 
 ```bash
@@ -85,15 +156,47 @@ Reconcile one human principal at a time after confirming it should regain its
 restored grants. Re-mint and redistribute machine bearer credentials; they are
 never reactivated.
 
-## Restore drill definition
+## 6. Recurring restore drill
 
-A successful drill proves all of these:
+Run a drill quarterly (the ops spec's cadence; `doctor` warns past 90 days).
+The drill rehearses the whole recovery against an empty scratch target and
+never touches the live datastore except to record the result. It is a
+host-only operator verb, like `restore run`.
 
-1. Off-host archive and backup identity are available.
-2. The archive restores into an empty target.
-3. The original root key boots the restored data.
-4. One approved principal can be reconciled.
-5. A new machine credential reaches a test workload.
+```bash
+hikyo restore drill \
+  --from /var/backups/hikyo/<archive> \
+  --identity-file /secure-custody/hikyo-backup-identity \
+  --root-key-file /secure-custody/hikyo-root-key \
+  --principal <human-principal-id> \
+  --project <org-id>/<project-id> \
+  --target-sqlite /tmp/hikyo-drill.db \
+  --cleanup -o json
+```
 
-Record the binary version, archive, elapsed time, and evidence. An export job
-alone is not a recovery test.
+For a passphrase-encrypted archive, pass `--passphrase-file PATH` instead of
+`--identity-file` (they are mutually exclusive, as for `restore run`). For a
+PostgreSQL scratch target, pass `--target-postgres-dsn-file PATH` (a file
+holding an empty database's DSN) instead of `--target-sqlite`; `--cleanup`
+removes a sqlite scratch file but leaves a PostgreSQL scratch database for you
+to drop, since dropping a database is a DB-admin task, not something the server
+does through a datastore handle.
+
+A passing drill proves all of these, in order:
+
+1. The archive decrypts and restores into an empty target.
+2. The original root key, supplied separately, boots the restored data.
+3. One stored secret decrypts through the key hierarchy.
+4. One approved human principal is reconciled.
+5. A machine credential is minted, then revoked.
+6. The whole sequence finished within `HIKYO_BACKUP_RTO_TARGET`.
+
+The drill records the archive identity and digest, binary and schema versions,
+elapsed time and RTO verdict on the live instance's audit trail and health row.
+The root key and backup identity are read from files, used for the drill's
+duration only, and never persisted or logged. The scratch target is left for
+inspection unless `--cleanup`.
+
+Include the root-key escrow unwrap proof in the quarterly runbook: the drill's
+`--root-key-file` IS that proof when the file is fetched fresh from escrow. An
+export job alone is not a recovery test.
