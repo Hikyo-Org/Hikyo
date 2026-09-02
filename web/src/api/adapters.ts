@@ -48,18 +48,28 @@ export type ProjectEnvironment = z.infer<typeof zEnvironmentList>['items'][numbe
 export type ProjectKey = z.infer<typeof zKeyList>['items'][number];
 
 export type ProjectRef = { readonly org: string; readonly project: string };
+type AdaptersKey = readonly ['adapters', string, string];
+type AdapterTargetKey = readonly ['adapter-target', string, string, string];
+type EnvironmentsKey = readonly ['environments', string, string];
+type KeysKey = readonly ['adapter-keys', string, string];
 
 // Query keys are addressed by (org, project): the adapters list is a project
 // aggregate, and a target detail keys on its own id beneath it so a mutation
 // on one target invalidates exactly its detail and the list that renders it.
-export const adaptersKey = (ref: ProjectRef) => ['adapters', ref.org, ref.project] as const;
-export const adapterTargetKey = (ref: ProjectRef, target: string) =>
-  ['adapter-target', ref.org, ref.project, target] as const;
+export const adaptersKey = (ref: ProjectRef): AdaptersKey => ['adapters', ref.org, ref.project];
+export const adapterTargetKey = (ref: ProjectRef, target: string): AdapterTargetKey => [
+  'adapter-target',
+  ref.org,
+  ref.project,
+  target,
+];
+const environmentsKey = (ref: ProjectRef): EnvironmentsKey => ['environments', ref.org, ref.project];
+const keysKey = (ref: ProjectRef): KeysKey => ['adapter-keys', ref.org, ref.project];
 
 /** The project's environments, for the target form and for naming targets. */
 export function useProjectEnvironments(ref: ProjectRef): UseQueryResult<z.infer<typeof zEnvironmentList>> {
   return useQuery({
-    queryKey: ['environments', ref.org, ref.project] as const,
+    queryKey: environmentsKey(ref),
     queryFn: () => parsed(listEnvironmentsOp, { path: ref }),
     retry: false,
   });
@@ -68,7 +78,7 @@ export function useProjectEnvironments(ref: ProjectRef): UseQueryResult<z.infer<
 /** The project's key catalogue, for the explicit key subset picker. */
 export function useProjectKeys(ref: ProjectRef): UseQueryResult<z.infer<typeof zKeyList>> {
   return useQuery({
-    queryKey: ['adapter-keys', ref.org, ref.project] as const,
+    queryKey: keysKey(ref),
     queryFn: () => parsed(listKeysOp, { path: ref }),
     retry: false,
   });
@@ -315,7 +325,7 @@ export function useAdoptAdapterNames(ref: ProjectRef) {
 }
 
 /** adapterRefusalText renders a refusal the way the surface speaks. */
-export function adapterRefusalText(error: unknown): string {
+export function adapterRefusalText<Failure>(error: Failure): string {
   if (error instanceof ApiError) {
     if (error.status === 401) {
       return 'Your session no longer authorises this; sign in again.';

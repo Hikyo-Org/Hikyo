@@ -101,7 +101,8 @@ jobs:
           tar -xJf "$archive" -C "$RUNNER_TEMP"
           shellcheck_dir="$RUNNER_TEMP/shellcheck-$SHELLCHECK_VERSION"
           "$shellcheck_dir/shellcheck" \
-            scripts/lib/*.sh scripts/ci/*.sh scripts/release/*.sh scripts/compose-demo.sh install/install.sh.in
+            .githooks/* scripts/git/*.sh scripts/lib/*.sh scripts/ci/*.sh \
+            scripts/release/*.sh scripts/compose-demo.sh install/install.sh.in
           echo "$shellcheck_dir" >>"$GITHUB_PATH"
       - name: Actionlint
         run: ./scripts/ci/run-go-tool.sh actionlint

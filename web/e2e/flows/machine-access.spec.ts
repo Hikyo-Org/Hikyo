@@ -9,6 +9,8 @@ import {
 import { test } from '../fixtures/passkey.ts';
 import { surfacesForFlow } from '../registry.ts';
 
+const COLOR_SCHEMES: readonly ['dark', 'light'] = ['dark', 'light'];
+
 /**
  * Flow: machine access (registry surface `machine-access`) — mvp-boundary S3's
  * "all three tabs + row expansion + display-once mint", against the locked
@@ -506,7 +508,7 @@ test.describe('machine access', () => {
     await expect(page.locator('.bindrow', { hasText: subject })).toHaveCount(0);
   });
 
-  for (const scheme of ['dark', 'light'] as const) {
+  for (const scheme of COLOR_SCHEMES) {
     test(`meets the pinned assertion set on the inventory (${scheme})`, async () => {
       await page.emulateMedia({ colorScheme: scheme });
       try {
@@ -796,7 +798,7 @@ test.describe('deployment adapters', () => {
     await expect(panel.locator('.adapters__target')).toHaveCount(0);
   });
 
-  for (const scheme of ['dark', 'light'] as const) {
+  for (const scheme of COLOR_SCHEMES) {
     for (const surface of surfacesForFlow('adapters')) {
       test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({}, testInfo) => {
         await page.emulateMedia({ colorScheme: scheme });

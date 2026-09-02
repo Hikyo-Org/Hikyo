@@ -56,17 +56,17 @@ type CeremonyAsk = {
   readonly operation: AdapterOperation;
   readonly environmentIds: readonly string[];
   readonly resolve: () => void;
-  readonly reject: (error: unknown) => void;
+  readonly reject: () => void;
 };
 
 function when(value: string | null | undefined): string {
-  if (value === null || value === undefined) return '—';
+  if (value === null || value === undefined) return 'Not available';
   const at = new Date(value);
   return Number.isNaN(at.getTime()) ? value : at.toLocaleString();
 }
 
 function revision(value: bigint | null | undefined): string {
-  return value === null || value === undefined ? '—' : `rev ${String(value)}`;
+  return value === null || value === undefined ? 'Not available' : `rev ${String(value)}`;
 }
 
 function destinationText(target: AdapterTarget): string {
@@ -83,12 +83,16 @@ function environmentSet(adapter: Adapter, extra?: string): string[] {
   return [...ids].sort();
 }
 
+function projectRef(org: string | undefined, project: string | undefined): ProjectRef {
+  if (org === undefined || project === undefined || org === '' || project === '') {
+    throw new Error('The adapters route requires an organisation and project.');
+  }
+  return { org, project };
+}
+
 export function Adapters() {
   const params = useParams();
-  const ref: ProjectRef = useMemo(
-    () => ({ org: params.org ?? '', project: params.project ?? '' }),
-    [params.org, params.project],
-  );
+  const ref = useMemo(() => projectRef(params.org, params.project), [params.org, params.project]);
   const [search, setSearch] = useSearchParams();
   const selected = search.get('target') ?? '';
   const adapters = useAdapters(ref);
@@ -644,7 +648,7 @@ function TargetDetail({
   const environmentsOfAdapter = environmentSet(adapter);
   const busy = pause.isPending || resume.isPending || resync.isPending || remove.isPending || update.isPending || adopt.isPending;
 
-  const act = async (label: string, run: () => Promise<unknown>) => {
+  const act = async <Result,>(label: string, run: () => Promise<Result>) => {
     try {
       await run();
       feedback.ok(label);
@@ -677,7 +681,7 @@ function TargetDetail({
             <dt>Destination</dt>
             <dd className="mono">{destinationText(target)}</dd>
             <dt>Prefix</dt>
-            <dd className="mono">{target.name_prefix === '' ? '—' : target.name_prefix}</dd>
+            <dd className="mono">{target.name_prefix === '' ? 'none' : target.name_prefix}</dd>
             <dt>Last successful</dt>
             <dd>{revision(target.converged_revision)}</dd>
             <dt>Last attempted</dt>
@@ -687,10 +691,10 @@ function TargetDetail({
             </dd>
             <dt>Last error</dt>
             <dd className="adapters__error">
-              {target.last_error_class === '' ? '—' : errorClassText(target.last_error_class)}
+              {target.last_error_class === '' ? 'none' : errorClassText(target.last_error_class)}
             </dd>
             <dt>Retry</dt>
-            <dd>{target.retry_at === null ? '—' : when(target.retry_at)}</dd>
+            <dd>{target.retry_at === null ? 'none' : when(target.retry_at)}</dd>
             <dt>Paused</dt>
             <dd>{target.paused_at === null ? 'no' : `since ${when(target.paused_at)}`}</dd>
             <dt>Attention</dt>
@@ -1029,7 +1033,7 @@ function AdapterCeremony({
   }, [ask, refData]);
 
   const cancel = () => {
-    ask.reject(new Error('the reauthentication was cancelled'));
+    ask.reject();
     onDone();
   };
 

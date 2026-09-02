@@ -37,6 +37,14 @@ but it is not a substitute for this signature.
 
 - Keep `commit.gpgsign=true` and commit normally with `git commit -s`. Never
   override or disable the configured signing behavior.
+- Install the repository's fail-closed pre-push hook once in each clone:
+
+  ```sh
+  scripts/git/install-hooks.sh
+  ```
+
+  The hook checks every commit between `origin/main` and each branch being
+  pushed. Keep the hook installed; do not bypass it with `--no-verify`.
 - After a reboot, restart, or GPG-agent timeout, GPG may be installed and
   configured but still locked. Before the first commit, verify non-interactive
   signing works:
