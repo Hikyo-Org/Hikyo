@@ -40,10 +40,11 @@
       "kind": "capability",
       "title": "Human identity and access",
       "status": "implemented",
-      "implemented": "OIDC, WebAuthn, TOTP, recovery, sessions, grants, role templates, and protected environments",
+      "implemented": "OIDC, WebAuthn, TOTP, recovery, sessions, grants, role templates, protected environments, and member invitation at org and instance scope from API, CLI and WebUI with browser credential establishment",
       "evidence": [
         { "label": "#54 handoff", "path": "docs/handoff/54-human-auth-full.md" },
-        { "label": "#55 handoff", "path": "docs/handoff/55-permission-model.md" }
+        { "label": "#55 handoff", "path": "docs/handoff/55-permission-model.md" },
+        { "label": "#568 handoff", "path": "docs/handoff/568-member-invitation.md" }
       ]
     },
     {

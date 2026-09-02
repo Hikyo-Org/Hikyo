@@ -48,7 +48,7 @@ remain immutable evidence.
 | [`CAP-RUNTIME-STORAGE`](./docs/status/README.md#cap-runtime-storage) Runtime and storage | Single multicall binary, SQLite and PostgreSQL stores, migrations, and CI |
 | [`CAP-SECURITY-FOUNDATIONS`](./docs/status/README.md#cap-security-foundations) Security foundations | Envelope encryption, authorization chokepoint, append-only audit trails, and gap-free PostgreSQL audit export |
 | [`CAP-CORE-API-CLI`](./docs/status/README.md#cap-core-api-cli) Core API and CLI | Bootstrap administration, local login, hierarchy CRUD, key declarations, validation, encrypted values, copy, clone, and bulk apply |
-| [`CAP-HUMAN-ACCESS`](./docs/status/README.md#cap-human-access) Human identity and access | OIDC, WebAuthn, TOTP, recovery, sessions, grants, role templates, and protected environments |
+| [`CAP-HUMAN-ACCESS`](./docs/status/README.md#cap-human-access) Human identity and access | OIDC, WebAuthn, TOTP, recovery, sessions, grants, role templates, protected environments, and member invitation at org and instance scope from API, CLI and WebUI with browser credential establishment |
 | [`CAP-MATRIX-DISCLOSURE`](./docs/status/README.md#cap-matrix-disclosure) Matrix and disclosure UI | Embedded app shell, environment matrix, row editor, problems filter, reveal/copy ceremonies, and protected publish flows |
 | [`CAP-MACHINE-ACCESS`](./docs/status/README.md#cap-machine-access) Machine access | Service accounts, display-once credentials, OIDC workload federation, and machine-access UI |
 | [`CAP-MULTI-INSTANCE`](./docs/status/README.md#cap-multi-instance) Multi-instance workspaces | Directory-tier remotes and browser-direct workspace sessions |
