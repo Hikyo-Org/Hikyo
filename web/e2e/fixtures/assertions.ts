@@ -645,6 +645,14 @@ export async function expectPinnedAssertionSet(page: Page, surface: PinnedSurfac
     theme: surface.theme,
   });
 
+  // Theme emulation changes colour tokens immediately while controls normally
+  // transition their backgrounds for 180 ms. A fast axe scan can otherwise
+  // sample dark text against the still-light intermediate fill and report a
+  // contrast failure that disappears at steady state. Reduced motion is the
+  // product's existing zero-duration path, so use it for deterministic pixel
+  // and accessibility assertions instead of sleeping past the transition.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+
   await expectNoSeriousAxeViolations(page);
 
   const interactive = await interactiveElements(page);
