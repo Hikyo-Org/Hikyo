@@ -337,10 +337,26 @@ export const SURFACES = defineSurfaceRegistry([
     mode: 'authenticated',
     chrome: 'shell',
   },
+  // Project- and environment-scoped audit (#572). The org page (`audit`) reads
+  // the WHOLE org trail, so a project-only holder of `audit-read` cannot reach
+  // their trail from the browser through it. This page addresses ONE project,
+  // project-scoped like the matrix: the context block fills `:org`/`:project`
+  // from the route. Environment scope is a `?environment=<id>` filter on this
+  // same page, not a second surface: a reload and a shared link resolve the
+  // same environment, exactly as the matrix's per-key filter does. It sits
+  // beside project settings, the scope its capability addresses.
+  {
+    id: 'project-audit',
+    path: '/orgs/:org/projects/:project/audit',
+    label: 'Project audit',
+    section: 'project',
+    mode: 'authenticated',
+    chrome: 'shell',
+  },
   // Project settings addresses ONE project, exactly like the matrix, and is
   // project-scoped for the same reason (#567): the context block fills the
   // parameters from the route. Table order is sidebar order — matrix, machine
-  // access, deployment adapters, project settings.
+  // access, deployment adapters, project audit, project settings.
   {
     id: 'project-settings',
     path: '/orgs/:org/projects/:project/settings',

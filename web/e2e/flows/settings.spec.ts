@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { expect, type Page } from '@playwright/test';
 import {
   zDefinitionsSettings,
@@ -14,6 +16,7 @@ import { z } from 'zod';
 import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
 import { BrowserApiError, browserApi } from '../fixtures/api.ts';
 import {
+  BASE_URL,
   establishSession,
   readSeed,
   STORAGE_STATE,
@@ -643,6 +646,224 @@ test.describe('project settings', () => {
     await expect(refusal).toBeVisible();
   });
 
+});
+
+/**
+ * Flow: project- and environment-scoped audit (registry surface `project-audit`,
+ * #572). It rides this file for the reason the registry spells out: the merge
+ * gate loads `ci.yml` from the base branch, so a spec a PR adds to a group never
+ * runs on that PR. settings.spec.ts is already in group 2 and is the
+ * project-scoped sibling surface, so the surface's pinned set runs from
+ * PR-checked-out content today. The bootstrap administrator holds `audit-read`
+ * (seeded break-glass at instance scope, inheriting down to this project), so
+ * the project and environment trails are readable.
+ */
+const PROJECT_AUDIT_PATH = `/orgs/${seed.org}/projects/${seed.project}/audit`;
+const PROJECT_AUDIT_SURFACES = surfacesForFlow('project-audit');
+
+test.describe('project audit trail', () => {
+  test.use({ storageState: STORAGE_STATE });
+
+  test('reads the project trail, scopes to an environment, and exports both', async ({ page }) => {
+    await page.goto(PROJECT_AUDIT_PATH);
+    await expect(page.getByRole('heading', { name: 'Audit', level: 1 })).toBeVisible();
+    await expect(page.getByText('Every recorded event in this project')).toBeVisible();
+
+    // The seed created this project's keys and published values, so the trail
+    // is not empty. A project-scoped holder reaches it without an org proof.
+    await expect(page.locator('.audit__row').first()).toBeVisible();
+
+    // The project export is a same-origin GET under the session cookie; the
+    // browser streams JSONL to disk.
+    const projectDownload = page.waitForEvent('download');
+    await page.getByRole('link', { name: 'Export JSONL' }).click();
+    const projectFile = await projectDownload;
+    expect(projectFile.suggestedFilename()).toMatch(/\.jsonl$/);
+    expect(readFileSync(await projectFile.path(), 'utf8').trim().length).toBeGreaterThan(0);
+
+    // Narrowing to an environment switches to the environment operations and
+    // carries the id in the URL, so a reload resolves the same environment.
+    await page.getByLabel('Environment').selectOption(seed.dev);
+    await expect(page).toHaveURL(new RegExp(`environment=${seed.dev}`));
+    await expect(page.getByText('Every recorded event in this environment')).toBeVisible();
+    await expect(page.locator('.audit__row').first()).toBeVisible();
+
+    // The export link now points at the environment operation's path.
+    const exportLink = page.getByRole('link', { name: 'Export JSONL' });
+    await expect(exportLink).toHaveAttribute(
+      'href',
+      `/api/v1/orgs/${seed.org}/projects/${seed.project}/environments/${seed.dev}/audit/export`,
+    );
+    const envDownload = page.waitForEvent('download');
+    await exportLink.click();
+    const envFile = await envDownload;
+    expect(envFile.suggestedFilename()).toMatch(/\.jsonl$/);
+  });
+
+  test('renders the scoped forbidden state instead of a blank table on 403', async ({ page }) => {
+    // A project holder who may NOT read this trail must see the refusal, never
+    // an empty table read as "no events".
+    const auditRead = new RegExp(
+      `/api/v1/orgs/${seed.org}/projects/${seed.project}/audit(\\?|$)`,
+    );
+    await page.route(auditRead, (route) =>
+      route.fulfill({
+        status: 403,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: { code: 'forbidden', message: 'forbidden' } }),
+      }),
+    );
+    try {
+      await page.goto(PROJECT_AUDIT_PATH);
+      await expect(page.locator('.audit__empty[role="alert"]')).toContainText(
+        'This trail is not available, or you may not read it.',
+      );
+      await expect(page.locator('.audit__row')).toHaveCount(0);
+    } finally {
+      await page.unroute(auditRead);
+    }
+  });
+
+  test('keeps the trail and the scope escape when the environment list cannot be read', async ({
+    page,
+  }) => {
+    // The picker's list load is independent of the trail: a holder who cannot
+    // read the environment list still reads the project trail, and the picker
+    // stays usable so a deep link that pinned an environment is not a trap.
+    const envList = new RegExp(
+      `/api/v1/orgs/${seed.org}/projects/${seed.project}/environments(\\?|$)`,
+    );
+    await page.route(envList, (route) =>
+      route.fulfill({
+        status: 403,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: { code: 'forbidden', message: 'forbidden' } }),
+      }),
+    );
+    try {
+      // Land already pinned to an environment: the list read fails, but the
+      // trail must still load and the "All environments" escape must remain.
+      await page.goto(`${PROJECT_AUDIT_PATH}?environment=${seed.dev}`);
+      const picker = page.getByLabel('Environment');
+      await expect(picker).toBeEnabled();
+      await expect(page.getByText('The environment list could not be read')).toBeVisible();
+      await expect(page.locator('.audit__row').first()).toBeVisible();
+
+      // Switching back to the project trail is reachable, so the deep link is
+      // recoverable rather than a dead end.
+      await picker.selectOption('');
+      await expect(page).not.toHaveURL(/environment=/);
+      await expect(page.getByText('Every recorded event in this project')).toBeVisible();
+      await expect(page.locator('.audit__row').first()).toBeVisible();
+    } finally {
+      await page.unroute(envList);
+    }
+  });
+
+  test('resets the open detail and filter when the project changes under the same surface', async ({
+    page,
+  }) => {
+    // `audit` and `project-audit` share one keyed element, so a sidebar hop
+    // between two projects reuses the component. An event or a filter from one
+    // project's trail must not carry into another's.
+    await page.goto(PROJECT_AUDIT_PATH);
+    await page.getByLabel('Operation').fill('settings.key_created');
+    await page.getByRole('button', { name: 'Apply filter' }).click();
+    await page.locator('.audit__row').first().click();
+    await expect(page.getByRole('complementary', { name: 'Event detail' })).toBeVisible();
+
+    // Client-side navigation to a DIFFERENT project's audit under the SAME
+    // keyed element (not a reload, which would remount and reset trivially):
+    // the component is reused, so the reset must come from the effect.
+    await page.evaluate((path) => {
+      history.pushState(null, '', path);
+      dispatchEvent(new PopStateEvent('popstate'));
+    }, `/orgs/${seed.org}/projects/${seed.history.project}/audit`);
+    await expect(page).toHaveURL(new RegExp(`${seed.history.project}/audit$`));
+    await expect(page.getByRole('complementary', { name: 'Event detail' })).toBeHidden();
+    await expect(page.getByLabel('Operation')).toHaveValue('');
+  });
+
+  test('closes the open detail when the environment scope changes by URL', async ({ page }) => {
+    // An environment scope switch can arrive by URL (a sidebar link clearing
+    // ?environment, or the back button), bypassing the picker's own path, so
+    // the open detail must still close: it belongs to the prior scope's trail.
+    await page.goto(`${PROJECT_AUDIT_PATH}?environment=${seed.dev}`);
+    await expect(page.getByText('Every recorded event in this environment')).toBeVisible();
+    await page.locator('.audit__row').first().click();
+    await expect(page.getByRole('complementary', { name: 'Event detail' })).toBeVisible();
+
+    // Clear ?environment by client-side navigation, not the picker: the reused
+    // component must still drop the detail from the environment trail.
+    await page.evaluate((path) => {
+      history.pushState(null, '', path);
+      dispatchEvent(new PopStateEvent('popstate'));
+    }, PROJECT_AUDIT_PATH);
+    await expect(page.getByText('Every recorded event in this project')).toBeVisible();
+    await expect(page.getByRole('complementary', { name: 'Event detail' })).toBeHidden();
+  });
+
+  test('refuses a malformed filter at the project boundary', async ({ page }) => {
+    const response = await page.request.get(
+      `${BASE_URL}/api/v1/orgs/${seed.org}/projects/${seed.project}/audit?outcome=not-an-outcome`,
+    );
+    expect(response.status()).toBe(400);
+  });
+
+  for (const scheme of ['dark', 'light'] as const) {
+    for (const surface of PROJECT_AUDIT_SURFACES) {
+      test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({
+        page,
+      }, testInfo) => {
+        await page.emulateMedia({ colorScheme: scheme });
+        try {
+          await page.goto(PROJECT_AUDIT_PATH);
+          // Narrow before the sweep: the pinned set focuses, measures and
+          // contrast-checks EVERY interactive element, so a full page of rows
+          // would blow the per-test budget. `settings.key_created` is a small,
+          // always-present set: the seed created this project's keys (the audit
+          // event type, not the authz operation `key.create`).
+          await page.getByLabel('Operation').fill('settings.key_created');
+          await page.getByRole('button', { name: 'Apply filter' }).click();
+          await expect(page.locator('.audit__row').first()).toBeVisible();
+
+          const heading = page.getByRole('heading', { name: 'Audit', level: 1 });
+          // The project page carries a scope panel before the filter, so target
+          // the filter panel by name rather than "first panel".
+          const panel = page.locator('.audit__filter');
+          const op = page.locator('.audit__row-op').first();
+          const badge = page.locator('.chip').first();
+          const apply = page.getByRole('button', { name: 'Apply filter' });
+          const rowDensity = testInfo.project.name === 'mobile' ? '--touch' : '--row';
+
+          await expectPinnedAssertionSet(page, {
+            flow: 'project-audit',
+            surface: surface.id,
+            theme: scheme,
+            text: [heading, op],
+            radii: [
+              [panel, 'container'],
+              [apply, 'control'],
+              [badge, 'badge'],
+            ],
+            fonts: [
+              [heading, 'ui'],
+              [op, 'mono'],
+            ],
+            colours: [
+              [heading, 'color', '--tx'],
+              [panel, 'backgroundColor', '--bg-panel'],
+              [panel, 'borderTopColor', '--panel-line'],
+            ],
+            hairlines: [panel],
+            density: [[apply, rowDensity]],
+          });
+        } finally {
+          await page.emulateMedia({ colorScheme: null });
+        }
+      });
+    }
+  }
 });
 
 test.describe('settings flow visual contract', () => {

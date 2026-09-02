@@ -70,7 +70,11 @@ const ELEMENTS: Record<SurfaceId, ReactElement> = {
   members: withRouteFallback(<Members key="members-org" scope={{ kind: 'org' }} />),
   'org-settings': withRouteFallback(<OrgSettings />),
   scim: withRouteFallback(<ScimProvisioning />),
-  audit: withRouteFallback(<Audit />),
+  // Keyed per scope like Members: `audit` and `project-audit` are siblings
+  // under the same Outlet, and React would otherwise carry an open detail, a
+  // draft filter and the environment picker from one scope into the other.
+  audit: withRouteFallback(<Audit key="audit-org" scope="org" />),
+  'project-audit': withRouteFallback(<Audit key="audit-project" scope="project" />),
   'project-settings': withRouteFallback(<ProjectSettings />),
   'change-approvals': withRouteFallback(<ChangeApprovals />),
   'instance-admin': withRouteFallback(<InstanceAdmin />),

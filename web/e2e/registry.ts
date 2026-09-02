@@ -78,6 +78,13 @@ export const FLOWS: readonly Flow[] = [
     spec: 'flows/instance-admin.spec.ts',
     surfaces: ['instance-admin', 'instance-members'],
   },
+  // Project- and environment-scoped audit (#572) is a new SURFACE, so S3
+  // closure demands a flow, but it cannot get its own spec FILE (the merge gate
+  // loads `ci.yml` from the base branch, so a spec a PR adds to a group never
+  // runs on that PR). It rides `settings.spec.ts`, already in group 2 and the
+  // project-scoped sibling surface, so the pinned set runs from PR-checked-out
+  // content today.
+  { id: 'project-audit', spec: 'flows/settings.spec.ts', surfaces: ['project-audit'] },
   { id: 'reveal', spec: 'flows/reveal.spec.ts', surfaces: ['values'] },
   { id: 'matrix', spec: 'flows/matrix.spec.ts', surfaces: ['matrix'] },
   // Secret-scanning warn dialog (#74, SS2/SS4 [UI]) rides the matrix editing

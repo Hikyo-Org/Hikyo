@@ -345,10 +345,12 @@ operations:
   queryOrgAudit:               {webui: audit}
   # A plain same-origin download link; the browser streams the JSONL itself.
   exportOrgAudit:              {webui: audit, reach: path}
-  queryProjectAudit:           {issue: 572}
-  exportProjectAudit:          {issue: 572}
-  queryEnvAudit:               {issue: 572}
-  exportEnvAudit:              {issue: 572}
+  queryProjectAudit:           {webui: project-audit}
+  exportProjectAudit:          {webui: project-audit, reach: path}
+  queryEnvAudit:               {webui: project-audit}
+  # Environment scope is a filter on the project-audit page; both env operations
+  # are reached from it (the picker switches the query and the export link).
+  exportEnvAudit:              {webui: project-audit, reach: path}
 
   # instance
   rotateTokenKey:              {webui: instance-admin}

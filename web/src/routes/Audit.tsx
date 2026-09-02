@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react';
-import { useParams } from 'react-router';
+import { useEffect, useState, type FormEvent } from 'react';
+import { useParams, useSearchParams } from 'react-router';
 
 import {
   AUDIT_OUTCOMES,
@@ -8,8 +8,10 @@ import {
   useAuditTrail,
   type AuditEvent,
   type AuditFilter,
+  type AuditScope,
 } from '../api/audit.ts';
 import { ApiError } from '../api/client.ts';
+import { useEnvironments } from '../api/settings.ts';
 
 /** A stored UTC timestamp rendered in the operator's locale, or the raw value. */
 function when(value: string): string {
@@ -32,13 +34,58 @@ function refusalText(error: unknown): string {
   return 'The trail could not be read.';
 }
 
-export function Audit() {
+/**
+ * Audit renders one trail, org- or project-scoped (#572). The org page reads
+ * the whole org trail; the project page reads one project's, and an environment
+ * filter narrows it to one environment through the environment operations. The
+ * two are the SAME component with a `scope` prop rather than a copy, so the
+ * filter bar, paging, refusal handling and JSONL export are written once.
+ */
+export function Audit({ scope }: { readonly scope: 'org' | 'project' }) {
   const params = useParams();
   const org = params.org ?? '';
+  const project = params.project ?? '';
+  const [search, setSearch] = useSearchParams();
   const [draft, setDraft] = useState<AuditFilter>(emptyAuditFilter);
   const [applied, setApplied] = useState<AuditFilter>(emptyAuditFilter);
   const [selected, setSelected] = useState<AuditEvent | null>(null);
-  const trail = useAuditTrail(org, applied);
+
+  // The environment picker is a filter on the project page, carried in the URL
+  // (`?environment=<id>`) so a reload and a shared link resolve the same
+  // environment, and so a sidebar hop to another project cannot leave a stale
+  // environment id from the first behind. Its list load is INDEPENDENT of the
+  // trail: a project-only holder of `audit-read` may not read the environment
+  // list, and that must never blank the trail.
+  const isProject = scope === 'project';
+  const environments = useEnvironments(org, isProject ? project : '');
+  const environment = isProject ? search.get('environment') ?? '' : '';
+  const envItems = environments.data?.items ?? [];
+
+  // A scope switch changes :org/:project or ?environment without remounting
+  // this component: the element's key is fixed, so React reuses the instance.
+  // Close the open detail on ANY scope change, tenant or environment, because
+  // the selected event belongs to the trail that was showing — and the switch
+  // can arrive by URL (a sidebar link clearing ?environment, the back button)
+  // and so bypass the picker's own reset.
+  useEffect(() => {
+    setSelected(null);
+  }, [org, project, environment]);
+
+  // A tenant change also clears the filter, so one project's query does not
+  // silently narrow another's. An environment switch within a project keeps
+  // the filter: it is a refinement of the same project's view.
+  useEffect(() => {
+    setDraft(emptyAuditFilter);
+    setApplied(emptyAuditFilter);
+  }, [org, project]);
+
+  const auditScope: AuditScope = !isProject
+    ? { kind: 'org', org }
+    : environment === ''
+      ? { kind: 'project', org, project }
+      : { kind: 'env', org, project, environment };
+
+  const trail = useAuditTrail(auditScope, applied);
 
   const events = trail.data?.pages.flatMap((page) => page.items) ?? [];
   const scannedEnd = trail.hasNextPage !== true;
@@ -58,13 +105,57 @@ export function Audit() {
     setDraft((current) => ({ ...current, [key]: value }));
   }
 
+  function selectEnvironment(next: string) {
+    // The detail is closed by the scope-change effect above, so it is not
+    // cleared here: one source of truth for "scope changed, drop the detail".
+    const params = new URLSearchParams(search);
+    if (next === '') {
+      params.delete('environment');
+    } else {
+      params.set('environment', next);
+    }
+    setSearch(params, { replace: true });
+  }
+
+  const lede = !isProject
+    ? 'Every recorded event in this organisation, oldest first. Reading the trail is itself audited.'
+    : environment === ''
+      ? 'Every recorded event in this project, oldest first. Reading the trail is itself audited.'
+      : 'Every recorded event in this environment, oldest first. Reading the trail is itself audited.';
+
   return (
     <div className="page page--chrome page--audit">
       <h1>Audit</h1>
-      <p className="page__lede">
-        Every recorded event in this organisation, oldest first. Reading the trail is itself
-        audited.
-      </p>
+      <p className="page__lede">{lede}</p>
+
+      {isProject ? (
+        <div className="audit__scope panel">
+          <label className="field">
+            <span className="field__label">Environment</span>
+            {/* Never disabled: "All environments" is the only way back to the
+                project trail, so it must stay reachable even when the list read
+                fails while an environment is selected. When the list cannot be
+                read, the active environment still gets an option (by id) so the
+                current scope is honestly represented and can be switched away. */}
+            <select value={environment} onChange={(event) => selectEnvironment(event.target.value)}>
+              <option value="">All environments in this project</option>
+              {environment !== '' && !envItems.some((env) => env.id === environment) ? (
+                <option value={environment}>{environment}</option>
+              ) : null}
+              {envItems.map((env) => (
+                <option key={env.id} value={env.id}>
+                  {env.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {environments.isError ? (
+            <p className="audit__scope-note alert" role="alert">
+              The environment list could not be read.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       <form className="audit__filter panel" onSubmit={onSubmit} aria-label="Filter the audit trail">
         <div className="audit__filter-grid">
@@ -148,7 +239,7 @@ export function Audit() {
           {/* A plain same-origin GET: the browser streams the JSONL to disk under
               the session cookie, so the SPA never holds the trail in memory and no
               token rides the URL. */}
-          <a className="btn" href={auditExportUrl(org, applied)} download>
+          <a className="btn" href={auditExportUrl(auditScope, applied)} download>
             Export JSONL
           </a>
         </div>

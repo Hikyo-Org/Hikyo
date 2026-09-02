@@ -5309,10 +5309,26 @@ select {
    `.page--chrome .panel` supplies their fill, border colour and padding, but a
    bare `.panel` carries no border width or radius of its own (each surface
    states its panels' shape), so DESIGN.md's 6px container is set here. */
+.audit__scope,
 .audit__filter,
 .audit__detail {
   border: 1px solid var(--panel-line);
   border-radius: var(--radius-container);
+}
+
+/* The project page's environment picker (#572): a compact scope panel above
+   the filter. Layout only; it reuses `.field` and the panel base for its
+   tokens, so it holds the pinned assertion set without a second token source. */
+.audit__scope {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.audit__scope-note {
+  margin: 0;
 }
 
 .audit__filter {
