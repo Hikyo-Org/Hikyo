@@ -38,6 +38,19 @@ const adapterRecordColumns = `id,provider,origin,CASE WHEN credential_ciphertext
 
 type adapterStoredTime struct{ value string }
 
+// Time returns the stored instant, or nil for an absent one.
+func (t adapterStoredTime) Time() (*time.Time, error) {
+	if t.value == "" {
+		return nil, nil
+	}
+	parsed, err := time.Parse(timeFormat, t.value)
+	if err != nil {
+		return nil, fmt.Errorf("store: malformed adapter timestamp %q: %w", t.value, err)
+	}
+	parsed = parsed.UTC()
+	return &parsed, nil
+}
+
 func (t *adapterStoredTime) Scan(src any) error {
 	switch value := src.(type) {
 	case nil:
@@ -188,14 +201,22 @@ func collectAdapterTargets(rows adapterTargetRows) ([]AdapterTarget, error) {
 	return out, rows.Err()
 }
 
-const adapterTargetColumns = `t.id,t.adapter_id,t.environment_id,a.provider,a.origin,t.destination_kind,t.destination_owner,t.destination_name,t.destination_environment,t.destination_id,t.repository_id,t.visibility,t.selected_repository_ids,t.name_prefix,t.generation,t.state,t.sync_status,t.converged_revision,t.failure_names,t.warnings,a.authority_principal_id`
+const adapterTargetColumns = `t.id,t.adapter_id,t.environment_id,a.provider,a.origin,t.destination_kind,t.destination_owner,t.destination_name,t.destination_environment,t.destination_id,t.repository_id,t.visibility,t.selected_repository_ids,t.name_prefix,t.generation,t.state,t.sync_status,t.converged_revision,t.failure_names,t.warnings,a.authority_principal_id,t.paused_at,t.last_attempted_revision,t.last_attempted_at,t.last_error_class,t.drift_attention,COALESCE(j.state,''),j.next_attempt_at,COALESCE(j.attempt_count,0)`
+
+// adapterTargetFrom is the FROM clause every adapterTargetColumns read uses:
+// the owning adapter for provider/origin/authority, and the target's active
+// outbox job for the pending-versus-running signal and the retry time. The
+// job join is outer: a target between jobs has none. Postgres callers that
+// lock must name the target (`FOR UPDATE OF t`); an outer-joined row cannot
+// be locked.
+const adapterTargetFrom = ` FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id LEFT JOIN adapter_outbox j ON j.id=t.active_job_id AND j.org_id=t.org_id AND j.project_id=t.project_id AND j.environment_id=t.environment_id`
 
 func (r sqliteAdapters) ListTargets(ctx context.Context, p authz.Proof, adapterID string) ([]AdapterTarget, error) {
 	chain, err := authz.Verify(p, authz.StoreAdaptersListTargets, r.tok)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT `+adapterTargetColumns+` FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.adapter_id=? AND t.org_id=? AND t.project_id=? AND t.state='active' ORDER BY t.id`, adapterID, chain.Org, chain.Project)
+	rows, err := r.db.QueryContext(ctx, `SELECT `+adapterTargetColumns+adapterTargetFrom+` WHERE t.adapter_id=? AND t.org_id=? AND t.project_id=? AND t.state='active' ORDER BY t.id`, adapterID, chain.Org, chain.Project)
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +229,7 @@ func (r pgAdapters) ListTargets(ctx context.Context, p authz.Proof, adapterID st
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.db.Query(ctx, `SELECT `+adapterTargetColumns+` FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.adapter_id=$1 AND t.org_id=$2 AND t.project_id=$3 AND t.state='active' ORDER BY t.id`, adapterID, chain.Org, chain.Project)
+	rows, err := r.db.Query(ctx, `SELECT `+adapterTargetColumns+adapterTargetFrom+` WHERE t.adapter_id=$1 AND t.org_id=$2 AND t.project_id=$3 AND t.state='active' ORDER BY t.id`, adapterID, chain.Org, chain.Project)
 	if err != nil {
 		return nil, err
 	}
@@ -256,6 +277,33 @@ func (r pgAdapters) TargetKeyIDs(ctx context.Context, p authz.Proof, targetID st
 	}
 	defer rows.Close()
 	return collectStrings(rows)
+}
+
+// TargetKeys is the target's explicit subset by name and classification. It
+// reads the catalogue, not the published snapshot, so a member key that has
+// no published value yet is still echoed as a member.
+func (r adapterQueries) TargetKeys(ctx context.Context, p authz.Proof, targetID string) ([]AdapterTargetKey, error) {
+	chain, err := authz.Verify(p, authz.StoreAdaptersTargetKeys, r.tok)
+	if err != nil {
+		return nil, err
+	}
+	query := r.db.SQL(
+		`SELECT k.id,k.name,k.classification FROM adapter_target_keys tk JOIN keys k ON k.id=tk.key_id AND k.org_id=tk.org_id AND k.project_id=tk.project_id WHERE tk.target_id=? AND tk.org_id=? AND tk.project_id=? ORDER BY k.name`,
+		`SELECT k.id,k.name,k.classification FROM adapter_target_keys tk JOIN keys k ON k.id=tk.key_id AND k.org_id=tk.org_id AND k.project_id=tk.project_id WHERE tk.target_id=$1 AND tk.org_id=$2 AND tk.project_id=$3 ORDER BY k.name`)
+	rows, err := r.db.Query(ctx, query, targetID, chain.Org, chain.Project)
+	if err != nil {
+		return nil, err
+	}
+	defer closeAdapterRows(rows)
+	out := []AdapterTargetKey{}
+	for rows.Next() {
+		var key AdapterTargetKey
+		if err := rows.Scan(&key.ID, &key.Name, &key.Classification); err != nil {
+			return nil, err
+		}
+		out = append(out, key)
+	}
+	return out, rows.Err()
 }
 
 func validateTargetMutation(m AdapterTargetMutation) error {
@@ -730,8 +778,8 @@ func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 		return AdapterTargetUpdateResult{}, err
 	}
 	lookup := db.SQL(
-		`SELECT `+adapterTargetColumns+` FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=? AND t.org_id=? AND t.project_id=? AND t.state='active'`,
-		`SELECT `+adapterTargetColumns+` FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=$1 AND t.org_id=$2 AND t.project_id=$3 AND t.state='active' FOR UPDATE`)
+		`SELECT `+adapterTargetColumns+adapterTargetFrom+` WHERE t.id=? AND t.org_id=? AND t.project_id=? AND t.state='active'`,
+		`SELECT `+adapterTargetColumns+adapterTargetFrom+` WHERE t.id=$1 AND t.org_id=$2 AND t.project_id=$3 AND t.state='active' FOR UPDATE OF t`)
 	rows, err := db.Query(ctx, lookup, m.Target.ID, chain.Org, chain.Project)
 	if err != nil {
 		return AdapterTargetUpdateResult{}, err

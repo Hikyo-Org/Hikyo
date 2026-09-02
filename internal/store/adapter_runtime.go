@@ -405,19 +405,24 @@ func (r *AdapterRuntime) tryEnqueue(ctx context.Context, job adapter.Job, now ti
 func (r *AdapterRuntime) ClaimDue(ctx context.Context, worker string, now, leaseUntil time.Time) (adapter.Job, bool, error) {
 	var out adapter.Job
 	err := r.transaction(ctx, func(tx adapterDBTX) error {
+		// A paused target's jobs stay queued and are never claimed (#157):
+		// pause is a claim-time gate, so configuration and adoption may keep
+		// queueing goals that the next resume will run.
 		selectQuery := tx.SQL(
 			`SELECT j.id,j.org_id,j.project_id,j.environment_id,j.target_id,j.kind,COALESCE(j.route_move_id,''),j.authority_principal_id,j.generation,j.attempt_count,j.created_at
              FROM adapter_outbox j
+             JOIN adapter_targets t ON t.id=j.target_id AND t.org_id=j.org_id AND t.project_id=j.project_id AND t.environment_id=j.environment_id AND t.paused_at IS NULL
              WHERE ((j.state='queued' AND j.next_attempt_at<=?) OR (j.state='running' AND j.lease_expires_at<=?))
                AND (SELECT COUNT(*) FROM adapter_outbox x WHERE x.org_id=j.org_id AND x.state='running' AND x.lease_expires_at>?) < 4
                AND NOT EXISTS (SELECT 1 FROM adapter_outbox x WHERE x.target_id=j.target_id AND x.id<>j.id AND x.state='running' AND x.lease_expires_at>?)
              ORDER BY j.next_attempt_at,j.id LIMIT 1`,
 			`SELECT j.id,j.org_id,j.project_id,j.environment_id,j.target_id,j.kind,COALESCE(j.route_move_id,''),j.authority_principal_id,j.generation,j.attempt_count,j.created_at
              FROM adapter_outbox j
+             JOIN adapter_targets t ON t.id=j.target_id AND t.org_id=j.org_id AND t.project_id=j.project_id AND t.environment_id=j.environment_id AND t.paused_at IS NULL
              WHERE ((j.state='queued' AND j.next_attempt_at<=$1) OR (j.state='running' AND j.lease_expires_at<=$2))
                AND (SELECT COUNT(*) FROM adapter_outbox x WHERE x.org_id=j.org_id AND x.state='running' AND x.lease_expires_at>$3) < 4
                AND NOT EXISTS (SELECT 1 FROM adapter_outbox x WHERE x.target_id=j.target_id AND x.id<>j.id AND x.state='running' AND x.lease_expires_at>$4)
-             ORDER BY j.next_attempt_at,j.id FOR UPDATE SKIP LOCKED LIMIT 1`)
+             ORDER BY j.next_attempt_at,j.id FOR UPDATE OF j SKIP LOCKED LIMIT 1`)
 		nowArg := tx.Stamp(now)
 		row := tx.QueryRow(ctx, selectQuery, nowArg, nowArg, nowArg, nowArg)
 		var kind string
@@ -442,13 +447,77 @@ func (r *AdapterRuntime) ClaimDue(ctx context.Context, worker string, now, lease
 		update := tx.SQL(
 			`UPDATE adapter_outbox SET state='running',attempt_count=?,lease_owner=?,lease_expires_at=? WHERE id=?`,
 			`UPDATE adapter_outbox SET state='running',attempt_count=$1,lease_owner=$2,lease_expires_at=$3 WHERE id=$4`)
-		_, err := tx.Exec(ctx, update, out.Attempt, worker, tx.Stamp(leaseUntil), out.ID)
-		return err
+		if _, err := tx.Exec(ctx, update, out.Attempt, worker, tx.Stamp(leaseUntil), out.ID); err != nil {
+			return err
+		}
+		return r.closeIndeterminateEffects(ctx, tx, out, now)
 	})
 	if errors.Is(err, ErrNotFound) {
 		return adapter.Job{}, false, nil
 	}
 	return out, err == nil, err
+}
+
+// closeIndeterminateEffects settles the crash window (#157). An effect whose
+// INTENT was written but whose OUTCOME never landed belongs to an attempt that
+// died between the two: the process crashed, or the lease lapsed mid-request.
+// At the moment a target's next attempt is claimed, every such effect on that
+// target is closed as OUTCOME unknown, correlated to the job that opened it,
+// so INTENT and OUTCOME always pair in the trail. The ledger row stays
+// dispatched (presumed written); the retry converges it. An effect whose
+// provider-write lease is still live is left alone: a stalled node may still
+// hold that request on the wire, and its Finish will close it.
+func (r *AdapterRuntime) closeIndeterminateEffects(ctx context.Context, tx adapterDBTX, claimed adapter.Job, now time.Time) error {
+	stamp := tx.Stamp(now)
+	query := tx.SQL(
+		`SELECT e.id,e.job_id,e.surface,e.effective_name,e.disposition,o.authority_principal_id FROM adapter_effects e JOIN adapter_outbox o ON o.id=e.job_id AND o.org_id=e.org_id AND o.project_id=e.project_id AND o.environment_id=e.environment_id WHERE e.target_id=? AND e.org_id=? AND e.project_id=? AND e.environment_id=? AND e.outcome IS NULL AND NOT EXISTS (SELECT 1 FROM adapter_targets t WHERE t.id=e.target_id AND t.org_id=e.org_id AND t.project_id=e.project_id AND t.environment_id=e.environment_id AND t.provider_lease_effect_id=e.id AND t.provider_lease_expires_at>?) ORDER BY e.created_at,e.id`,
+		`SELECT e.id,e.job_id,e.surface,e.effective_name,e.disposition,o.authority_principal_id FROM adapter_effects e JOIN adapter_outbox o ON o.id=e.job_id AND o.org_id=e.org_id AND o.project_id=e.project_id AND o.environment_id=e.environment_id WHERE e.target_id=$1 AND e.org_id=$2 AND e.project_id=$3 AND e.environment_id=$4 AND e.outcome IS NULL AND NOT EXISTS (SELECT 1 FROM adapter_targets t WHERE t.id=e.target_id AND t.org_id=e.org_id AND t.project_id=e.project_id AND t.environment_id=e.environment_id AND t.provider_lease_effect_id=e.id AND t.provider_lease_expires_at>$5) ORDER BY e.created_at,e.id`)
+	rows, err := tx.Query(ctx, query, claimed.TargetID, claimed.OrgID, claimed.ProjectID, claimed.EnvironmentID, stamp)
+	if err != nil {
+		return err
+	}
+	type dangling struct{ id, jobID, surface, name, disposition, authority string }
+	var open []dangling
+	for rows.Next() {
+		var row dangling
+		if err := rows.Scan(&row.id, &row.jobID, &row.surface, &row.name, &row.disposition, &row.authority); err != nil {
+			_ = closeAdapterRows(rows)
+			return err
+		}
+		open = append(open, row)
+	}
+	if err := rows.Err(); err != nil {
+		_ = closeAdapterRows(rows)
+		return err
+	}
+	if err := closeAdapterRows(rows); err != nil {
+		return err
+	}
+	for _, effect := range open {
+		outcomeID := newAdapterID("aud")
+		opener := adapter.Job{ID: effect.jobID, OrgID: claimed.OrgID, ProjectID: claimed.ProjectID, EnvironmentID: claimed.EnvironmentID, TargetID: claimed.TargetID, AuthorityPrincipal: effect.authority}
+		payload, _ := json.Marshal(map[string]any{"surface": effect.surface, "effective_name": effect.name, "disposition": effect.disposition, "finding": "crash_window"})
+		if err := r.insertAdapterJobAuditWithID(ctx, tx, opener, outcomeID, "adapter.push_outcome", string(adapter.OutcomeUnknown), now, payload); err != nil {
+			return err
+		}
+		update := tx.SQL(
+			`UPDATE adapter_effects SET outcome_audit_id=?,outcome='unknown',finished_at=? WHERE id=? AND outcome IS NULL`,
+			`UPDATE adapter_effects SET outcome_audit_id=$1,outcome='unknown',finished_at=$2 WHERE id=$3 AND outcome IS NULL`)
+		rowsAffected, err := tx.Exec(ctx, update, outcomeID, stamp, effect.id)
+		if err != nil {
+			return err
+		}
+		if rowsAffected != 1 {
+			return errors.New("store: indeterminate adapter effect was not closed exactly once")
+		}
+		release := tx.SQL(
+			`UPDATE adapter_targets SET provider_lease_job_id=NULL,provider_lease_effect_id=NULL,provider_lease_expires_at=NULL WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND provider_lease_effect_id=?`,
+			`UPDATE adapter_targets SET provider_lease_job_id=NULL,provider_lease_effect_id=NULL,provider_lease_expires_at=NULL WHERE id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4 AND provider_lease_effect_id=$5`)
+		if _, err := tx.Exec(ctx, release, claimed.TargetID, claimed.OrgID, claimed.ProjectID, claimed.EnvironmentID, effect.id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type adapterJournal struct {
@@ -757,7 +826,13 @@ func (j *adapterJournal) insertConflict(ctx context.Context, tx adapterDBTX, eff
 	if rows != 1 {
 		return adapter.ErrSuperseded
 	}
-	return nil
+	// An unowned name in the way is drift only an operator can settle, by
+	// adopting it or renaming the key; the flag clears on the next success.
+	attention := tx.SQL(
+		`UPDATE adapter_targets SET drift_attention=1 WHERE id=? AND org_id=? AND project_id=? AND environment_id=?`,
+		`UPDATE adapter_targets SET drift_attention=TRUE WHERE id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4`)
+	_, err = tx.Exec(ctx, attention, j.job.TargetID, j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID)
+	return err
 }
 
 func (j *adapterJournal) insertAudit(ctx context.Context, tx adapterDBTX, id, typ, outcome string, at time.Time, payload []byte) error {
@@ -777,11 +852,11 @@ func (r *AdapterRuntime) insertAdapterJobAuditWithID(ctx context.Context, tx ada
 	return err
 }
 
-func (r *AdapterRuntime) Retry(ctx context.Context, job adapter.Job, due time.Time, failed []adapter.Change, warnings []string, _ error) error {
-	return r.finishJob(ctx, job, "queued", due, time.Time{}, "failed", 0, failed, warnings, nil)
+func (r *AdapterRuntime) Retry(ctx context.Context, job adapter.Job, due time.Time, revision int64, failed []adapter.Change, warnings []string, cause error) error {
+	return r.finishJob(ctx, job, "queued", due, time.Time{}, "failed", revision, failed, warnings, cause)
 }
-func (r *AdapterRuntime) Fail(ctx context.Context, job adapter.Job, at time.Time, cause error) error {
-	return r.finishJob(ctx, job, "failed", time.Time{}, at, "failed", 0, nil, nil, cause)
+func (r *AdapterRuntime) Fail(ctx context.Context, job adapter.Job, revision int64, at time.Time, cause error) error {
+	return r.finishJob(ctx, job, "failed", time.Time{}, at, "failed", revision, nil, nil, cause)
 }
 func (r *AdapterRuntime) Succeed(ctx context.Context, job adapter.Job, revision int64, warnings []string, at time.Time) error {
 	return r.finishJob(ctx, job, "succeeded", time.Time{}, at, "converged", revision, nil, warnings, nil)
@@ -1165,14 +1240,41 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 		if err != nil {
 			return err
 		}
+		// Health columns (#157): every attempt stamps what it attempted; a
+		// success clears the error class and the attention flag, a failure
+		// records its bounded class and raises attention when the class says
+		// only an operator can settle it.
+		var errorClass any
+		attention := "0"
+		if targetStatus != "converged" {
+			class := adapter.ClassifyError(terminalErr)
+			if class != "" {
+				errorClass = string(class)
+			}
+			attention = "drift_attention"
+			if class.NeedsAttention() {
+				attention = "1"
+			}
+		}
+		attemptedAt := finished
+		if attemptedAt.IsZero() {
+			attemptedAt = time.Now().UTC()
+		}
 		query := tx.SQL(
-			`UPDATE adapter_targets SET sync_status=?,converged_revision=CASE WHEN ?>0 THEN ? ELSE converged_revision END,failure_names=?,warnings=?,active_job_id=`+activeJob+` WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND generation=? AND provider_lease_job_id IS NULL`,
-			`UPDATE adapter_targets SET sync_status=$1,converged_revision=CASE WHEN $2>0 THEN $3 ELSE converged_revision END,failure_names=$4,warnings=$5,active_job_id=`+activeJob+` WHERE id=$6 AND org_id=$7 AND project_id=$8 AND environment_id=$9 AND generation=$10 AND provider_lease_job_id IS NULL`)
+			`UPDATE adapter_targets SET sync_status=?,converged_revision=CASE WHEN ?>0 THEN ? ELSE converged_revision END,failure_names=?,warnings=?,last_attempted_revision=CASE WHEN ?>0 THEN ? ELSE last_attempted_revision END,last_attempted_at=?,last_error_class=?,drift_attention=`+attention+`,active_job_id=`+activeJob+` WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND generation=? AND provider_lease_job_id IS NULL`,
+			`UPDATE adapter_targets SET sync_status=$1,converged_revision=CASE WHEN $2>0 THEN $3 ELSE converged_revision END,failure_names=$4,warnings=$5,last_attempted_revision=CASE WHEN $6>0 THEN $7 ELSE last_attempted_revision END,last_attempted_at=$8,last_error_class=$9,drift_attention=`+attentionPG(attention)+`,active_job_id=`+activeJob+` WHERE id=$10 AND org_id=$11 AND project_id=$12 AND environment_id=$13 AND generation=$14 AND provider_lease_job_id IS NULL`)
 		var rev any
 		if revision > 0 {
 			rev = revision
 		}
-		rows, err := tx.Exec(ctx, query, targetStatus, revision, rev, string(failureJSON), string(warningJSON), job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID, job.Generation)
+		// converged_revision moves only on success; last_attempted_revision
+		// moves on every attempt that got as far as loading a revision.
+		var convergedRevision int64
+		var convergedRev any
+		if targetStatus == "converged" {
+			convergedRevision, convergedRev = revision, rev
+		}
+		rows, err := tx.Exec(ctx, query, targetStatus, convergedRevision, convergedRev, string(failureJSON), string(warningJSON), revision, rev, tx.Stamp(attemptedAt), errorClass, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID, job.Generation)
 		if err != nil {
 			return err
 		}
@@ -1197,6 +1299,19 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 		}
 		return nil
 	})
+}
+
+// attentionPG renders the drift_attention assignment for Postgres, whose
+// column is BOOLEAN where sqlite's is INTEGER.
+func attentionPG(sqlite string) string {
+	switch sqlite {
+	case "0":
+		return "FALSE"
+	case "1":
+		return "TRUE"
+	default:
+		return sqlite
+	}
 }
 
 func (r *AdapterRuntime) finishRouteMoveScrub(ctx context.Context, tx adapterDBTX, job adapter.Job, finished time.Time, orphaned []string) error {
@@ -1234,6 +1349,13 @@ func (r *AdapterRuntime) finishRouteMoveScrub(ctx context.Context, tx adapterDBT
 		}
 		if rows != 1 {
 			return adapter.ErrSuperseded
+		}
+		// Names left behind on the old route are the operator's to clean up.
+		attention := tx.SQL(
+			`UPDATE adapter_targets SET drift_attention=1 WHERE id=? AND org_id=? AND project_id=? AND environment_id=?`,
+			`UPDATE adapter_targets SET drift_attention=TRUE WHERE id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4`)
+		if _, err := tx.Exec(ctx, attention, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID); err != nil {
+			return err
 		}
 	}
 	if moveKind == "origin" {

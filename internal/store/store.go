@@ -599,6 +599,62 @@ type AdapterTarget struct {
 	FailureNames           []string
 	Warnings               []string
 	AuthorityPrincipalID   string
+	// Multi-target control and health (#157). PausedAt is non-nil while an
+	// operator has paused the target. LastAttempted* record the most recent
+	// converge attempt whether or not it succeeded; LastErrorClass is the
+	// bounded cause of the last failed attempt and empty after a success.
+	// DriftAttention is set when the destination disagrees with the ledger in
+	// a way only an operator can settle, and cleared by the next success.
+	PausedAt              *time.Time
+	LastAttemptedRevision *int64
+	LastAttemptedAt       *time.Time
+	LastErrorClass        adapter.ErrorClass
+	DriftAttention        bool
+	// ActiveJobState is the outbox state of the target's active job ('' when
+	// none); RetryAt is that job's next attempt when it is queued for a retry.
+	ActiveJobState string
+	RetryAt        *time.Time
+	// Keys is the resolved explicit key subset by name, filled by the service
+	// for every response that echoes membership.
+	Keys []AdapterTargetKey
+}
+
+// Health derives the closed operator-facing status from the stored outcome,
+// the pause flag, and the active job state.
+func (t AdapterTarget) Health() adapter.TargetHealth {
+	return adapter.DeriveHealth(t.SyncStatus, t.PausedAt != nil, t.ConvergedRevision != nil, t.ActiveJobState)
+}
+
+// AdapterTargetKey is one member of a target's explicit key subset.
+type AdapterTargetKey struct {
+	ID             string
+	Name           string
+	Classification string
+}
+
+// AdapterPauseResult reports a pause: the job it superseded (if any) and the
+// generation the target now carries, which fences any worker still running.
+type AdapterPauseResult struct {
+	TargetID             string
+	SupersededJobID      string
+	Generation           int64
+	AuthorityPrincipalID string
+	AlreadyPaused        bool
+}
+
+// AdapterResumeResult is the converge a resume enqueued and the published
+// revision it will converge to (0 when the environment has never published).
+type AdapterResumeResult struct {
+	Enqueue  AdapterEnqueueResult
+	Revision int64
+}
+
+// AdapterHealthCounts are the instance-wide, label-free operator gauges.
+type AdapterHealthCounts struct {
+	TargetsFailed    int64
+	TargetsPaused    int64
+	TargetsAttention int64
+	JobsQueued       int64
 }
 
 type AdapterRecord struct {
@@ -750,7 +806,11 @@ type AdapterReader interface {
 	List(ctx context.Context, p authz.Proof) ([]AdapterRecord, error)
 	ListTargets(ctx context.Context, p authz.Proof, adapterID string) ([]AdapterTarget, error)
 	TargetKeyIDs(ctx context.Context, p authz.Proof, targetID string) ([]string, error)
+	TargetKeys(ctx context.Context, p authz.Proof, targetID string) ([]AdapterTargetKey, error)
 	Target(ctx context.Context, p authz.Proof, targetID string) (AdapterTarget, error)
+	// HealthCounts is the instance-wide operator read behind the adapter
+	// gauges and `hikyo doctor`; it carries no tenant chain.
+	HealthCounts(ctx context.Context, p authz.Proof) (AdapterHealthCounts, error)
 	Mapping(ctx context.Context, p authz.Proof, targetID string) ([]adapter.ManifestEntry, error)
 	PlanMaterial(ctx context.Context, p authz.Proof, targetID string) (AdapterPlanMaterial, error)
 	TargetEnvironments(ctx context.Context, p authz.Proof, targetID string) ([]string, error)
@@ -787,6 +847,13 @@ type AdapterRepo interface {
 	ReplaceCredential(ctx context.Context, p authz.Proof, mutation AdapterCredentialMutation) (AdapterCredentialResult, error)
 	RevokeCredential(ctx context.Context, p authz.Proof, adapterID string, at time.Time) (AdapterCredentialResult, error)
 	EnqueueManual(ctx context.Context, p authz.Proof, targetID, authorityPrincipalID string, at time.Time) (AdapterEnqueueResult, error)
+	// PauseTarget stops every push for the target without touching its
+	// ledger: it supersedes the active job, bumps the generation so a running
+	// worker is fenced at its next Gate, and marks paused_at. Idempotent.
+	PauseTarget(ctx context.Context, p authz.Proof, targetID string, at time.Time) (AdapterPauseResult, error)
+	// ResumeTarget clears paused_at and enqueues one converge under the given
+	// authority, reporting the published revision that converge will reach.
+	ResumeTarget(ctx context.Context, p authz.Proof, targetID, authorityPrincipalID string, at time.Time) (AdapterResumeResult, error)
 	// ListAdaptersForReencrypt / ReencryptAdapter and the route-move pair are
 	// the reencrypt walk's page + in-place re-seal of adapter credential
 	// ciphertext (project-wide, keyset by id). Both credential columns are
