@@ -472,7 +472,7 @@ test.describe('revision history', () => {
       await page.locator('#history-restore-publish').click();
       const publishBody = zPublishRequest.parse((await publishRequest).postDataJSON());
       expect(publishBody.preview_token).toBe(rollback.preview.token);
-      expect([...publishBody.version_ids].sort()).toEqual([...restoredVersions].sort());
+      expect([...(publishBody.version_ids ?? [])].sort()).toEqual([...restoredVersions].sort());
       await expect(drawer.locator('.notice')).toContainText('Published the restore');
   });
 
@@ -513,7 +513,7 @@ test.describe('revision history', () => {
     await publishSheet.getByRole('button', { name: /Publish selected/ }).click();
     const publishBody = zPublishRequest.parse((await publishRequest).postDataJSON());
     expect(publishBody.preview_token).toBe(rollback.preview.token);
-    expect([...publishBody.version_ids].sort()).toEqual(
+    expect([...(publishBody.version_ids ?? [])].sort()).toEqual(
       rollback.changes.map((change) => change.version_id).sort(),
     );
     await expect(page.locator('.notice')).toContainText('Published atomically: development');
@@ -589,7 +589,7 @@ test.describe('revision history', () => {
     await restagedSheet.locator('#history-restore-publish').click();
     const body = zPublishRequest.parse((await publishRequest).postDataJSON());
     expect(body.preview_token).toBe(rollback.preview.token);
-    expect([...body.version_ids].sort()).toEqual(
+    expect([...(body.version_ids ?? [])].sort()).toEqual(
       rollback.changes.map((change) => change.version_id).sort(),
     );
     expect(publishRequests, 'publish-alone action must call publish exactly once').toBe(1);

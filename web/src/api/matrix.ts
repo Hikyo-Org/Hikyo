@@ -21,6 +21,7 @@ import type { ImportPrecondition, KeyClassification, KeyPresence, KeyRule } from
 import {
   zEnvironmentList,
   zEnvironmentSettings,
+  zApprovalRequestSummary,
   zEnvironmentSignals,
   zImportValuesResult,
   zKeyList,
@@ -39,6 +40,7 @@ import {
   useAdvisoryStream,
   type AdvisoryEvent,
 } from './advisory.ts';
+import { approvalRequestsKey } from './approvals.ts';
 import { ApiError, ok, parsed } from './client.ts';
 import { callerSafeRefusal } from './history.ts';
 import {
@@ -1188,7 +1190,7 @@ export function usePublishMatrix(ref: MatrixRef) {
         );
       }
       const previewToken = preview?.token;
-      let result: z.infer<typeof zPublishResult>;
+      let result: z.infer<typeof zPublishResult> | z.infer<typeof zApprovalRequestSummary>;
       try {
         result = await parsed(publishPendingChangesOp, {
             path: { ...ref, environment: input.addressedEnvironment },
@@ -1203,6 +1205,12 @@ export function usePublishMatrix(ref: MatrixRef) {
           previewAttachedErrors.add(error);
         }
         throw error;
+      }
+      // Secret-change approvals (#151): a covered environment with no approval
+      // presented answers 202 with a staged request, not a publish result. The
+      // caller renders that as "submitted for review"; no revision moved.
+      if (!('environments' in result)) {
+        return result;
       }
       const publishedEnvironmentIds = new Set(
         result.environments.map((environment) => environment.environment_id),
@@ -1219,6 +1227,17 @@ export function usePublishMatrix(ref: MatrixRef) {
     },
     onSuccess: (result, input) => {
       forgetRestorePreviews(ref, input.versionIds);
+      // A staged approval request (202): no revision moved, so invalidate the
+      // review queue for its environment and the shared value/pending reads.
+      if (!('environments' in result)) {
+        return Promise.all([
+          queries.invalidateQueries({ queryKey: valuesMatrixKey(ref) }),
+          queries.invalidateQueries({ queryKey: pendingMatrixKey(ref) }),
+          queries.invalidateQueries({
+            queryKey: approvalRequestsKey(ref, result.environment_id),
+          }),
+        ]);
+      }
       return Promise.all([
         queries.invalidateQueries({ queryKey: valuesMatrixKey(ref) }),
         queries.invalidateQueries({ queryKey: signalsMatrixKey(ref) }),

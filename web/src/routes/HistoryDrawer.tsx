@@ -408,13 +408,22 @@ export function HistoryDrawer({
         },
         {
           onSuccess: (published) => {
+            setSheet(null);
+            // Secret-change approvals (#151): a covered environment stages the
+            // restore for review rather than publishing it.
+            if (!('environments' in published)) {
+              setOutcome(
+                `Submitted the restore from r${String(revision)} for approval in ${environment.name}. ` +
+                  'Track it under Change approvals.',
+              );
+              return;
+            }
             const target = published.environments.find(
               (entry) => entry.environment_id === environment.id,
             );
             if (target === undefined) {
               throw new Error(`restore publish returned no revision for ${environment.id}`);
             }
-            setSheet(null);
             setOutcome(
               `Published the restore from r${String(revision)} as ${environment.name} r${String(target.revision)}.`,
             );

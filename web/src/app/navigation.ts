@@ -301,6 +301,17 @@ export const SURFACES = defineSurfaceRegistry([
     mode: 'authenticated',
     chrome: 'shell',
   },
+  // Change approvals (#151). Project-scoped: the policy administration is a
+  // project act, and the review queue reads the project's environments. It sits
+  // in the project block beside machine access and settings.
+  {
+    id: 'change-approvals',
+    path: '/orgs/:org/projects/:project/change-approvals',
+    label: 'Change approvals',
+    section: 'project',
+    mode: 'authenticated',
+    chrome: 'shell',
+  },
   // Project settings addresses ONE project, exactly like the matrix, and is
   // project-scoped for the same reason (#567): the context block fills the
   // parameters from the route. Table order is sidebar order — matrix, machine

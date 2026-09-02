@@ -30,6 +30,7 @@ const WorkspaceScope = lazy(() => loadWorkspaceRoutes().then((routes) => ({ defa
 
 const AccountSecurity = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.AccountSecurity })));
 const Audit = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.Audit })));
+const ChangeApprovals = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.ChangeApprovals })));
 const InstanceAdmin = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.InstanceAdmin })));
 const MachineAccess = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.MachineAccess })));
 const Members = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.Members })));
@@ -66,6 +67,7 @@ const ELEMENTS: Record<SurfaceId, ReactElement> = {
   scim: withRouteFallback(<ScimProvisioning />),
   audit: withRouteFallback(<Audit />),
   'project-settings': withRouteFallback(<ProjectSettings />),
+  'change-approvals': withRouteFallback(<ChangeApprovals />),
   'instance-admin': withRouteFallback(<InstanceAdmin />),
   'instance-members': withRouteFallback(<Members key="members-instance" scope={{ kind: 'instance' }} />),
   settings: withRouteFallback(<AccountSecurity />),

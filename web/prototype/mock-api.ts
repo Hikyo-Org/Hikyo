@@ -1431,7 +1431,7 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
   if (publishMatch !== null && method === 'POST') {
     return body(request).then((raw) => {
       const input = zPublishRequest.parse(JSON.parse(raw));
-      const selected = [...drafts.values()].filter((draft) => input.version_ids.includes(draft.versionId));
+      const selected = [...drafts.values()].filter((draft) => (input.version_ids ?? []).includes(draft.versionId));
       for (const draft of selected) {
         const key = keyByReference(draft.keyId);
         if (key === undefined) throw new Error(`prototype publish names unknown key ${draft.keyId}`);

@@ -1,5 +1,6 @@
 export { AccountSecurity } from '../../routes/AccountSecurity.tsx';
 export { Audit } from '../../routes/Audit.tsx';
+export { ChangeApprovals } from '../../routes/ChangeApprovals.tsx';
 export { InstanceAdmin } from '../../routes/InstanceAdmin.tsx';
 export { MachineAccess } from '../../routes/MachineAccess.tsx';
 export { Members } from '../../routes/Members.tsx';

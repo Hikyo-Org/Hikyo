@@ -29,6 +29,7 @@ describe('the route policy registry', () => {
       'key-detail:authenticated:shell',
       'values:authenticated:shell',
       'machine-access:authenticated:shell',
+      'change-approvals:authenticated:shell',
       'project-settings:authenticated:shell',
       'cli-reauth:ceremony:none',
       'workspace-approve:ceremony:none',
@@ -51,6 +52,7 @@ describe('the route policy registry', () => {
     expect(sectionsFor('project').map((s) => s.id)).toEqual([
       'matrix',
       'machine-access',
+      'change-approvals',
       'project-settings',
     ]);
     expect(sectionsFor('instance').map((s) => s.label)).toEqual([
