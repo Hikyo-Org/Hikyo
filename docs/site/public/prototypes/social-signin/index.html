@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Social sign-in &amp; open registration — iterations</title>
+<style>
+  :root{
+    --bg:oklch(0.19 0.012 220);--bg2:oklch(0.225 0.014 220);--line:oklch(0.34 0.016 220);
+    --tx:oklch(0.93 0.008 200);--tx-dim:oklch(0.76 0.01 210);--tx-faint:oklch(0.71 0.012 215);
+    --accent:oklch(0.82 0.09 195);--on-accent:oklch(0.2 0.02 220);--mono:ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--tx);font-family:system-ui,sans-serif;
+    min-height:100vh;padding:clamp(24px,6vw,64px) clamp(18px,6vw,64px)}
+  .back{font-size:12.5px;color:var(--tx-faint);text-decoration:none}
+  .back:hover{color:var(--accent)}
+  h1{font-size:clamp(22px,4vw,30px);font-weight:700;letter-spacing:-0.01em;margin:10px 0 4px}
+  h1 span{color:var(--accent)}
+  .q{font-size:13.5px;color:var(--tx-dim);max-width:60ch;line-height:1.6;margin-bottom:32px}
+  ul{list-style:none;display:grid;gap:10px;max-width:760px}
+  li a{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;text-decoration:none;color:inherit;
+    padding:16px 18px;border:1px solid var(--line);border-radius:10px;background:var(--bg2);transition:border-color .15s}
+  li a:hover{border-color:var(--accent)}
+  li a:hover .name{color:var(--accent)}
+  .num{font-family:var(--mono);font-size:13px;color:var(--tx-faint);min-width:22px}
+  .name{font-size:15.5px;font-weight:600}
+  .latest{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--on-accent);
+    background:var(--accent);border-radius:999px;padding:2px 9px}
+  .desc{flex-basis:100%;font-size:12.5px;color:var(--tx-dim);line-height:1.5;margin-top:2px}
+  footer{margin-top:34px;font-family:var(--mono);font-size:11px;color:var(--tx-faint);line-height:1.8}
+  footer a{color:var(--tx-dim)}
+</style>
+</head>
+<body>
+  <a class="back" href="../">‹ all prototypes</a>
+  <h1>social sign-in <span>&amp;</span> open registration</h1>
+  <p class="q">How do the login and sign-up surfaces look and behave with Google, Microsoft Entra (one row per tenant) and GitHub beside local credentials, under an open-registration policy — plus the ceremonies and settings surfaces the resolved tickets hand over: invitation claim through a provider, the "Open registration" panel per scope, linked identities and credential adding for social-only accounts. Wayfinder ticket #587, against #579 #580 #582 #584 #585 #586 #588 #598.</p>
+  <ul>
+    <li><a href="1/">
+      <span class="num">1</span><span class="name">Baseline — three entry structures</span><span class="latest">LATEST</span>
+      <span class="desc">a two doors (login as today + provider buttons; sign-up its own page with a confirmation step) · b one door (Sign in / Create account intent control on one card, confirmation copy inline) · c staged (pick a method, then its form; the sign-up door lists only policy-admitted methods), via the bottom picker. Shared across variants: check-your-mail, fragment-driven verification with the fresh-org name field and loud collision, the establish page as the claim surface with one refusal sentence, step-up refusals for single-factor sessions, the Open registration panel and editor at org and instance scope (allowlist claim, requirement line, landing, cap n/m, inactive-with-cause, write-time 400 naming a row without the email scope), Account &amp; security with the establish branch ("Verify with …", five-minute window), set-or-change password, kind-agnostic link/unlink, instance mailer line + test send, org list by origin, org rename. Four open questions for Alex are in the file header.</span>
+    </a></li>
+  </ul>
+  <footer>every change is a new numbered iteration — published ones never mutate · <a href="/prototypes/">all prototypes</a></footer>
+</body>
+</html>
