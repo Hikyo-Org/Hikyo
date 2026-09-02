@@ -257,3 +257,26 @@ are part of the stable surface:
   current.
 - `target: <resolved> [origin <o>, artifact machine-credential]` — the
   disclosure echo, as every other verb prints it.
+
+## 7. Secret-change approvals ([mvp-boundary.md](../adr/mvp-boundary.md) declared amendment 3, #151)
+
+Policy administration is project-scoped (`project-settings`); the review queue
+is environment-scoped. Merge and bypass are NOT their own mutation: they call
+the ordinary `values publish` path with the request id, so the reviewed change
+set is what commits.
+
+### Verbs and flags
+
+- `approval policy list` — the project's policies.
+- `approval policy create --min-approvals N --ttl SECONDS [--covers ENV] [--allow-self-approval] [--disabled] [--approver principal:<id>] [--approver group:<groupId>:<bindingId>] [--bypasser <principalId>]` — `--covers` empty means every environment in the project. `--approver` and `--bypasser` are repeatable.
+- `approval policy update <policy> …same flags…` — replaces fields and member sets; bumps the version, invalidating requests pinned to the old one.
+- `approval policy delete <policy>`.
+- `approval request list` — the addressed environment's requests.
+- `approval request approve <request>` / `approval request reject <request>` — cast one vote; consumes a purpose-bound reauthentication ceremony.
+- `approval request merge <request>` — publish the reviewed change set (requester only).
+- `approval request bypass <request> --reason R` — emergency-bypass the quorum (named bypasser only, requester-owned drafts, current reauthentication).
+
+Creating a request is not a verb: publishing into a policy-covered environment
+(`values publish`) with no completed approval answers `202` and stages the
+request. All approval verbs are human-session only; a machine credential cannot
+administer, vote, merge or bypass.

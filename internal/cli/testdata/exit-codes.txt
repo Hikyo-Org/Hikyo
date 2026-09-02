@@ -56,6 +56,18 @@ hikyo key delete key_x typo --instance unknown-ref -> 2 usage
 hikyo revision rollback 12 typo --instance unknown-ref -> 2 usage
 hikyo revision rollback twelve --instance unknown-ref -> 2 usage
 hikyo pin release wld_x typo --instance unknown-ref -> 2 usage
+hikyo approval -> 2 usage
+hikyo approval warp -> 2 usage
+hikyo approval policy -> 2 usage
+hikyo approval policy warp -> 2 usage
+hikyo approval request -> 2 usage
+hikyo approval request warp -> 2 usage
+hikyo approval policy update --instance unknown-ref -> 2 usage
+hikyo approval policy delete --instance unknown-ref -> 2 usage
+hikyo approval policy create --approver nobody --instance unknown-ref -> 2 usage
+hikyo approval request approve --instance unknown-ref -> 2 usage
+hikyo approval request bypass req_x --instance unknown-ref -> 2 usage
+hikyo approval policy list stray --instance unknown-ref -> 2 usage
 hikyo key group list stray --instance unknown-ref -> 2 usage
 hikyo key list --instance unknown-ref --org org_x --project prj_x -> 4 refused
 hikyo import -> 2 usage

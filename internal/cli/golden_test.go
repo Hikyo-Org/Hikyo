@@ -173,6 +173,21 @@ func TestExitCodeMatrix(t *testing.T) {
 		{"extra positional on revision rollback", []string{"revision", "rollback", "12", "typo", "--instance", "unknown-ref"}, cli.ExitUsage},
 		{"malformed revision rollback", []string{"revision", "rollback", "twelve", "--instance", "unknown-ref"}, cli.ExitUsage},
 		{"extra positional on pin release", []string{"pin", "release", "wld_x", "typo", "--instance", "unknown-ref"}, cli.ExitUsage},
+		// Secret-change approvals (#151). Same syntax-before-authentication
+		// ordering: every case names an unestablished instance, so an answer of 4
+		// instead of 2 would mean validation moved after resolution.
+		{"approval without a subverb", []string{"approval"}, cli.ExitUsage},
+		{"unknown approval subverb", []string{"approval", "warp"}, cli.ExitUsage},
+		{"approval policy without a subverb", []string{"approval", "policy"}, cli.ExitUsage},
+		{"unknown approval policy subverb", []string{"approval", "policy", "warp"}, cli.ExitUsage},
+		{"approval request without a subverb", []string{"approval", "request"}, cli.ExitUsage},
+		{"unknown approval request subverb", []string{"approval", "request", "warp"}, cli.ExitUsage},
+		{"approval policy update without a policy", []string{"approval", "policy", "update", "--instance", "unknown-ref"}, cli.ExitUsage},
+		{"approval policy delete without a policy", []string{"approval", "policy", "delete", "--instance", "unknown-ref"}, cli.ExitUsage},
+		{"approval policy create with a bad approver", []string{"approval", "policy", "create", "--approver", "nobody", "--instance", "unknown-ref"}, cli.ExitUsage},
+		{"approval request approve without a request", []string{"approval", "request", "approve", "--instance", "unknown-ref"}, cli.ExitUsage},
+		{"approval request bypass without a reason", []string{"approval", "request", "bypass", "req_x", "--instance", "unknown-ref"}, cli.ExitUsage},
+		{"stray positional on approval policy list", []string{"approval", "policy", "list", "stray", "--instance", "unknown-ref"}, cli.ExitUsage},
 		{"stray positional on key group list", []string{"key", "group", "list", "stray", "--instance", "unknown-ref"}, cli.ExitUsage},
 		{"key list with no session", []string{"key", "list", "--instance", "unknown-ref", "--org", "org_x", "--project", "prj_x"}, cli.ExitRefused},
 		// The import path (#68). Its usage boundary is pinned like every other
