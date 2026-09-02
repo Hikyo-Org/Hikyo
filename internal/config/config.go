@@ -61,6 +61,12 @@ type Config struct {
 	// private address is usable only for the origin whose entry contains it.
 	AdapterEgressPolicy map[string][]netip.Prefix
 
+	// DynamicEgressPolicy is the dynamic-secret (#147) equivalent, keyed by an
+	// exact postgres:// origin. A self-hosted PostgreSQL target is normally on a
+	// private address, so without an entry the default-deny public-egress rule
+	// refuses it; this is the explicit operator allow-list that permits it.
+	DynamicEgressPolicy map[string][]netip.Prefix
+
 	// ExternalOrigin is the instance's public origin (scheme + host), used to
 	// build per-provider OIDC redirect URIs (A1). Never derived from a request
 	// header. Defaults to http://<Listen> when unset.
@@ -178,6 +184,7 @@ var knownEnv = map[string]bool{
 	"HIKYO_BACKUP_RETAIN_DAYS":         true,
 	"HIKYO_BACKUP_RTO_TARGET":          true,
 	"HIKYO_ADAPTER_EGRESS_POLICY_FILE": true,
+	"HIKYO_DYNAMIC_EGRESS_POLICY_FILE": true,
 	"HIKYO_REAUTH_WINDOW_SECONDS":      true,
 	"HIKYO_UPDATE_CHANNEL":             true,
 	"HIKYO_UPDATER_SOCKET":             true,
@@ -390,6 +397,11 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 			return nil, nil, err
 		}
 		cfg.AdapterEgressPolicy = policy
+		dynamicPolicy, err := loadDynamicEgressPolicy(getenv("HIKYO_DYNAMIC_EGRESS_POLICY_FILE"))
+		if err != nil {
+			return nil, nil, err
+		}
+		cfg.DynamicEgressPolicy = dynamicPolicy
 	}
 	if cfg.ExternalOrigin == "" {
 		cfg.ExternalOrigin = getenv("HIKYO_EXTERNAL_ORIGIN")
@@ -503,6 +515,44 @@ func loadAdapterEgressPolicy(path string) (map[string][]netip.Prefix, error) {
 			prefix, err := netip.ParsePrefix(rawCIDR)
 			if err != nil {
 				return nil, fmt.Errorf("HIKYO_ADAPTER_EGRESS_POLICY_FILE: origin %q has invalid CIDR %q", origin, rawCIDR)
+			}
+			out[origin] = append(out[origin], prefix.Masked())
+		}
+	}
+	return out, nil
+}
+
+// loadDynamicEgressPolicy resolves the dynamic-secret egress allow-list. Keys
+// are exact postgres:// origins (scheme + user + host[:port] + database, no
+// password, no query/fragment); values are the private CIDRs a lease mint may
+// dial for that origin. It fails loud on a malformed entry rather than silently
+// dropping it.
+func loadDynamicEgressPolicy(path string) (map[string][]netip.Prefix, error) {
+	if strings.TrimSpace(path) == "" {
+		return nil, nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("HIKYO_DYNAMIC_EGRESS_POLICY_FILE: read policy: %w", err)
+	}
+	var encoded map[string][]string
+	if err := json.Unmarshal(raw, &encoded); err != nil {
+		return nil, fmt.Errorf("HIKYO_DYNAMIC_EGRESS_POLICY_FILE: invalid JSON: %w", err)
+	}
+	out := make(map[string][]netip.Prefix, len(encoded))
+	for origin, cidrs := range encoded {
+		u, err := url.Parse(origin)
+		if err != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") || u.Host == "" ||
+			u.User == nil || u.User.Username() == "" || u.RawQuery != "" || u.Fragment != "" || strings.Trim(u.Path, "/") == "" {
+			return nil, fmt.Errorf("HIKYO_DYNAMIC_EGRESS_POLICY_FILE: origin %q is not an exact postgres:// origin (user@host[:port]/db, no password/query)", origin)
+		}
+		if _, hasPassword := u.User.Password(); hasPassword {
+			return nil, fmt.Errorf("HIKYO_DYNAMIC_EGRESS_POLICY_FILE: origin %q must not embed a password", origin)
+		}
+		for _, rawCIDR := range cidrs {
+			prefix, err := netip.ParsePrefix(rawCIDR)
+			if err != nil {
+				return nil, fmt.Errorf("HIKYO_DYNAMIC_EGRESS_POLICY_FILE: origin %q has invalid CIDR %q", origin, rawCIDR)
 			}
 			out[origin] = append(out[origin], prefix.Masked())
 		}

@@ -1683,6 +1683,22 @@ func (q *Queries) InvalidateRestoredAdapterCredentials(ctx context.Context) erro
 	return err
 }
 
+const invalidateRestoredDynamicProviderCredentials = `-- name: InvalidateRestoredDynamicProviderCredentials :exec
+UPDATE dynamic_providers SET admin_credential_ciphertext = NULL, credential_set_at = NULL
+`
+
+// Restored dynamic-secret provider admin credentials are never trusted for the
+// same reason as adapter PATs (#147): the sealed credential authenticates to an
+// external engine that has no local epoch, so a restore must destroy custody
+// and require operator re-entry. Live leases are deliberately left alone: their
+// roles carry the engine's own VALID UNTIL, and re-probing them here could drop
+// a credential a workload restored alongside is still using.
+// hikyo:authn-resolution
+func (q *Queries) InvalidateRestoredDynamicProviderCredentials(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, invalidateRestoredDynamicProviderCredentials)
+	return err
+}
+
 const listExternalIdentitiesForAccount = `-- name: ListExternalIdentitiesForAccount :many
 SELECT id, account_id, kind, issuer, subject, provider_id, credential_epoch, created_at
 FROM external_identities WHERE account_id = $1 ORDER BY created_at

@@ -75,12 +75,13 @@ test.describe('machine access', () => {
     await expect(page.getByRole('heading', { name: 'Machine access', level: 1 })).toBeVisible();
   });
 
-  test('the inventory has three tabs, and every one of them says what it holds', async () => {
+  test('the inventory has four tabs, and every one of them says what it holds', async () => {
     const tabs = page.getByRole('tab');
-    await expect(tabs).toHaveCount(3);
+    await expect(tabs).toHaveCount(4);
     await expect(tabs.nth(0)).toHaveText(/Service accounts \(3\)/);
     await expect(tabs.nth(1)).toHaveText(/Federation \(1\)/);
     await expect(tabs.nth(2)).toHaveText(/Kubernetes targets \(0\)/);
+    await expect(tabs.nth(3)).toHaveText(/Leases \(0\)/);
 
     // The policy strip: the per-project opt-in is stated, not offered as a
     // control whose only outcome would be a refusal.
@@ -112,6 +113,15 @@ test.describe('machine access', () => {
     const empty = page.getByRole('status').filter({ hasText: 'No delivery targets are reported' });
     await expect(empty).toContainText('never that everything is healthy');
     await expectStatusIsTextAndAria(page, empty);
+
+    // The Leases tab is status-only and empty on a fresh project; it never shows
+    // a secret and points mint/lifecycle at the CLI.
+    await page.getByRole('tab', { name: 'Leases' }).click();
+    const leasesEmpty = page
+      .getByRole('status')
+      .filter({ hasText: 'No dynamic-secret leases on this project yet' });
+    await expect(leasesEmpty).toBeVisible();
+    await expectStatusIsTextAndAria(page, leasesEmpty);
   });
 
   test('expanding a row shows credentials, bindings, targets and the journey below', async () => {

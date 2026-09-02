@@ -20,6 +20,7 @@
     "machine-identities",
     "account-security",
     "deployment-adapters",
+    "dynamic-secrets",
     "compose",
     "kubernetes-operator",
     "---Identity providers---",

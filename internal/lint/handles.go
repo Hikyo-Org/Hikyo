@@ -37,6 +37,12 @@ var handleUsers = map[string]bool{
 	Module + "/internal/isolation":        true, // probe fixtures + instrumentation
 	Module + "/internal/conformance_test": true,
 	Module + "/internal/isolation_test":   true,
+	// The dynamic-secret PostgreSQL provider (#147) is an OUTBOUND client to an
+	// external engine the operator configured, not a handle on Hikyo's own
+	// datastore. Like the forgejo adapter's net/http client it lives outside the
+	// chokepoint by design: it never touches the Hikyo tables, only mints roles
+	// at the target. Its own reflection test pins that it speaks no arbitrary SQL.
+	Module + "/internal/dynamic/postgres": true,
 }
 
 // driverTypes are the concrete engine handles. Naming one at all — in a

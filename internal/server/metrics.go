@@ -59,6 +59,12 @@ const (
 	MetricLastRestoreDrill        = "hikyo_last_restore_drill_timestamp_seconds"
 	MetricRestoreDrillOK          = "hikyo_restore_drill_ok"
 
+	// Dynamic-secret gauges (#147). Label-free, cardinality one each. active is
+	// the count of currently usable leases; effectsUnknown is the count of lease
+	// transitions stuck in an uncertain state awaiting reconcile.
+	MetricDynamicLeasesActive   = "hikyo_dynamic_leases_active"
+	MetricDynamicEffectsUnknown = "hikyo_dynamic_effects_unknown"
+
 	// MetricSeriesBudget is the ops-spec ceiling for every registered series.
 	MetricSeriesBudget = 1000
 )
@@ -167,6 +173,8 @@ func RegisteredMetricFamilies() []MetricFamily {
 		{Name: MetricLastBackupPruneSuccess, MaxSeries: 1},
 		{Name: MetricLastRestoreDrill, MaxSeries: 1},
 		{Name: MetricRestoreDrillOK, MaxSeries: 1},
+		{Name: MetricDynamicLeasesActive, MaxSeries: 1},
+		{Name: MetricDynamicEffectsUnknown, MaxSeries: 1},
 	}
 }
 
@@ -262,6 +270,7 @@ type Metrics struct {
 	errors    [numClasses][numStatusBuckets]prometheus.Counter
 	durations [numClasses]prometheus.Observer
 	ha        *haCollector
+	dyn       *dynamicCollector
 }
 
 // SetHASource attaches the multi-node HA gauge source. It is called once
@@ -292,9 +301,10 @@ func NewMetrics(adm AdmissionSnapshotter) *Metrics {
 		Buckets: RequestLatencyBucketsSeconds(),
 	}, []string{"class"})
 	ha := newHACollector()
-	registry.MustRegister(requests, errors, inFlight, durations, newAdmissionCollector(adm), ha)
+	dyn := newDynamicCollector()
+	registry.MustRegister(requests, errors, inFlight, durations, newAdmissionCollector(adm), ha, dyn)
 
-	m := &Metrics{registry: registry, inFlight: inFlight, ha: ha}
+	m := &Metrics{registry: registry, inFlight: inFlight, ha: ha, dyn: dyn}
 	for c := surfaceClass(0); c < numClasses; c++ {
 		for s := statusBucket(0); s < numStatusBuckets; s++ {
 			m.requests[c][s] = requests.WithLabelValues(classNames[c], statusNames[s])
@@ -391,6 +401,46 @@ func (c *haCollector) Collect(ch chan<- prometheus.Metric) {
 		age = stats.LeaseAgeSeconds
 	}
 	values := [...]float64{leader, nodes, age}
+	for i, desc := range c.descs {
+		ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, values[i])
+	}
+}
+
+// DynamicSnapshotter is the dynamic-secret gauge source, read at scrape time. A
+// nil source (or an error inside it) renders zeros, so the exposition shape
+// stays deterministic on a datastore hiccup.
+type DynamicSnapshotter interface {
+	DynamicSnapshot() (activeLeases, unknownEffects int64)
+}
+
+// SetDynamicSource attaches the dynamic-secret gauge source once at boot.
+func (m *Metrics) SetDynamicSource(source DynamicSnapshotter) { m.dyn.source.Store(&source) }
+
+type dynamicCollector struct {
+	source atomic.Pointer[DynamicSnapshotter]
+	descs  [2]*prometheus.Desc
+}
+
+func newDynamicCollector() *dynamicCollector {
+	return &dynamicCollector{descs: [2]*prometheus.Desc{
+		prometheus.NewDesc(MetricDynamicLeasesActive, "Number of currently usable dynamic-secret leases.", nil, nil),
+		prometheus.NewDesc(MetricDynamicEffectsUnknown, "Number of dynamic-secret lease transitions in an uncertain state awaiting reconcile.", nil, nil),
+	}}
+}
+
+func (c *dynamicCollector) Describe(ch chan<- *prometheus.Desc) {
+	for _, desc := range c.descs {
+		ch <- desc
+	}
+}
+
+func (c *dynamicCollector) Collect(ch chan<- prometheus.Metric) {
+	active, unknown := 0.0, 0.0
+	if p := c.source.Load(); p != nil && *p != nil {
+		a, u := (*p).DynamicSnapshot()
+		active, unknown = float64(a), float64(u)
+	}
+	values := [...]float64{active, unknown}
 	for i, desc := range c.descs {
 		ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, values[i])
 	}

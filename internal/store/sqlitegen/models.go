@@ -360,6 +360,57 @@ type DefinitionsPlan struct {
 	ScanSnapshot       string
 }
 
+type DynamicEffect struct {
+	ID             string
+	OrgID          string
+	ProjectID      string
+	EnvironmentID  string
+	LeaseID        string
+	Kind           string
+	IntentAuditID  string
+	OutcomeAuditID sql.NullString
+	Outcome        sql.NullString
+	CreatedAt      string
+	FinishedAt     sql.NullString
+}
+
+type DynamicLease struct {
+	ID               string
+	OrgID            string
+	ProjectID        string
+	EnvironmentID    string
+	ProviderID       string
+	PrincipalID      string
+	PrincipalClass   string
+	ProviderHandle   string
+	State            string
+	IssuedAt         sql.NullString
+	ExpiresAt        sql.NullString
+	MaxTtlSeconds    int64
+	LastTransitionAt string
+	LeaseOwner       sql.NullString
+	LeaseExpiresAt   sql.NullString
+	LeaseClaimToken  int64
+	AttemptCount     int64
+	NextAttemptAt    string
+	CreatedAt        string
+}
+
+type DynamicProvider struct {
+	ID                        string
+	OrgID                     string
+	ProjectID                 string
+	Kind                      string
+	Origin                    string
+	TlsMode                   string
+	GrantRole                 string
+	AdminCredentialCiphertext []byte
+	CredentialSetAt           sql.NullString
+	AuthorityPrincipalID      string
+	State                     string
+	CreatedAt                 string
+}
+
 type Environment struct {
 	ID                  string
 	OrgID               string

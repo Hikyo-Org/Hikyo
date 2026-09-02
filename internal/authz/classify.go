@@ -701,6 +701,20 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"http:PATCH /api/v1/orgs/{org}/projects/{project}/adapter-moves/{move}":              {Class: ClassTenant, Ops: []Operation{OpAdapterConfigure}},
 	"http:DELETE /api/v1/orgs/{org}/projects/{project}/adapter-moves/{move}":             {Class: ClassTenant, Ops: []Operation{OpAdapterConfigure}},
 
+	// Dynamic secrets (#147).
+	"http:GET /api/v1/orgs/{org}/projects/{project}/dynamic-providers":                                 {Class: ClassTenant, Ops: []Operation{OpDynamicProviderInspect}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/dynamic-providers":                                {Class: ClassTenant, Ops: []Operation{OpDynamicProviderConfigure}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}":                      {Class: ClassTenant, Ops: []Operation{OpDynamicProviderInspect}},
+	"http:DELETE /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}":                   {Class: ClassTenant, Ops: []Operation{OpDynamicProviderDelete}},
+	"http:PUT /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential":           {Class: ClassTenant, Ops: []Operation{OpDynamicProviderCredentialSet}},
+	"http:DELETE /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential":        {Class: ClassTenant, Ops: []Operation{OpDynamicProviderCredentialRevoke}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases":                 {Class: ClassTenant, Ops: []Operation{OpLeaseInspect}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases":                {Class: ClassTenant, Ops: []Operation{OpLeaseMint}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}":         {Class: ClassTenant, Ops: []Operation{OpLeaseInspect}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/renew":  {Class: ClassTenant, Ops: []Operation{OpLeaseRenew}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/revoke": {Class: ClassTenant, Ops: []Operation{OpLeaseRevoke}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/settle": {Class: ClassTenant, Ops: []Operation{OpLeaseSettle}},
+
 	"http:GET /api/v1/orgs/{org}/projects/{project}/key-groups":            {Class: ClassTenant, Ops: []Operation{OpKeyGroupList}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/key-groups":           {Class: ClassTenant, Ops: []Operation{OpKeyGroupCreate}},
 	"http:GET /api/v1/orgs/{org}/projects/{project}/key-groups/{group}":    {Class: ClassTenant, Ops: []Operation{OpKeyGroupGet}},
@@ -832,6 +846,11 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	// `adapter` reaches only project-owned adapter and target routes. Dynamic
 	// affected-environment checks happen behind those tenant routes.
 	"cli:adapter": {Class: ClassTenant},
+
+	// Dynamic secrets (#147): both verbs are client transport for the
+	// tenant-scoped provider and lease routes and nothing wider.
+	"cli:dynamic-provider": {Class: ClassTenant},
+	"cli:lease":            {Class: ClassTenant},
 
 	// The Compose delivery verbs (#63). `run` and `compose` both reach the
 	// tenant-scoped delivery routes (GET .../delivery and its offline-records

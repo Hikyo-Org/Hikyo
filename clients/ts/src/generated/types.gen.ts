@@ -147,6 +147,119 @@ export type AdapterList = {
     items: Array<Adapter>;
 };
 
+export type DynamicProviderKind = 'postgres';
+
+export type DynamicProviderState = 'active' | 'tombstoned';
+
+/**
+ * minting/renewing/revoking are in-flight; active is a usable credential;
+ * revoked/expired/failed are terminal; unknown is an ambiguous provider
+ * outcome awaiting reconcile and is NEVER reported as success.
+ *
+ */
+export type DynamicLeaseState = 'minting' | 'active' | 'renewing' | 'revoking' | 'revoked' | 'expired' | 'unknown' | 'failed';
+
+export type CreateDynamicProviderRequest = {
+    kind: DynamicProviderKind;
+    /**
+     * PostgreSQL origin as host:port/dbname.
+     */
+    origin: string;
+    /**
+     * Only verify-full is accepted; a weaker mode is refused.
+     */
+    tls_mode?: 'verify-full';
+    /**
+     * Parent role every minted lease role inherits (IN ROLE).
+     */
+    grant_role: string;
+    /**
+     * Write-only admin credential. Never returned.
+     */
+    credential: string;
+};
+
+export type SetDynamicProviderCredentialRequest = {
+    credential: string;
+};
+
+export type DynamicProvider = {
+    id: Id;
+    kind: DynamicProviderKind;
+    origin: string;
+    tls_mode: 'verify-full';
+    grant_role: string;
+    credential_present: boolean;
+    credential_set_at?: string | null;
+    authority_principal_id: Id;
+    state: DynamicProviderState;
+    created_at: Timestamp;
+};
+
+export type DynamicProviderList = {
+    items: Array<DynamicProvider>;
+};
+
+export type DynamicProviderDeletion = {
+    provider_id: Id;
+    /**
+     * Leases queued for revocation as part of the delete.
+     */
+    revoked_lease_ids: Array<Id>;
+};
+
+export type DynamicLease = {
+    id: Id;
+    provider_id: Id;
+    environment_id: Id;
+    principal_id: Id;
+    principal_class: string;
+    /**
+     * The provider-side role name. Public metadata; not a secret.
+     */
+    provider_handle: string;
+    state: DynamicLeaseState;
+    issued_at?: string | null;
+    expires_at?: string | null;
+    max_ttl_seconds: number;
+    last_transition_at: Timestamp;
+    created_at: Timestamp;
+};
+
+export type DynamicLeaseList = {
+    items: Array<DynamicLease>;
+};
+
+export type MintLeaseRequest = {
+    provider_id: Id;
+    /**
+     * Requested maximum lifetime; the provider clamps to its own ceiling.
+     */
+    max_ttl_seconds: number;
+};
+
+export type RenewLeaseRequest = {
+    /**
+     * Optional new ceiling; renewal never extends past the lease's max TTL.
+     */
+    max_ttl_seconds?: number | null;
+};
+
+export type MintLeaseResult = {
+    lease: DynamicLease;
+    /**
+     * The minted role name; also the lease's provider_handle.
+     */
+    username: string;
+    /**
+     * The credential secret, returned EXACTLY ONCE to exactly one caller.
+     * No other route in this contract returns it.
+     *
+     */
+    password: string;
+    expires_at?: string | null;
+};
+
 export type AdapterConflictEntry = {
     surface: 'secret' | 'variable';
     effective_name: string;
@@ -3861,6 +3974,10 @@ export type EnvironmentId = Id;
 export type AdapterId = Id;
 
 export type AdapterTargetId = Id;
+
+export type DynamicProviderId = Id;
+
+export type LeaseId = Id;
 
 /**
  * Folder identifier.
@@ -20288,3 +20405,703 @@ export type AdoptAdapterTargetNamesResponses = {
 };
 
 export type AdoptAdapterTargetNamesResponse = AdoptAdapterTargetNamesResponses[keyof AdoptAdapterTargetNamesResponses];
+
+export type ListDynamicProvidersData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/dynamic-providers';
+};
+
+export type ListDynamicProvidersErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type ListDynamicProvidersError = ListDynamicProvidersErrors[keyof ListDynamicProvidersErrors];
+
+export type ListDynamicProvidersResponses = {
+    /**
+     * Provider list.
+     */
+    200: DynamicProviderList;
+};
+
+export type ListDynamicProvidersResponse = ListDynamicProvidersResponses[keyof ListDynamicProvidersResponses];
+
+export type CreateDynamicProviderData = {
+    body: CreateDynamicProviderRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/dynamic-providers';
+};
+
+export type CreateDynamicProviderErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type CreateDynamicProviderError = CreateDynamicProviderErrors[keyof CreateDynamicProviderErrors];
+
+export type CreateDynamicProviderResponses = {
+    /**
+     * Provider configured and reachable.
+     */
+    201: DynamicProvider;
+};
+
+export type CreateDynamicProviderResponse = CreateDynamicProviderResponses[keyof CreateDynamicProviderResponses];
+
+export type DeleteDynamicProviderData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        provider: Id;
+    };
+    query?: {
+        /**
+         * Revoke every live lease of this provider before deleting it.
+         */
+        revoke_all?: boolean;
+    };
+    url: '/api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}';
+};
+
+export type DeleteDynamicProviderErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type DeleteDynamicProviderError = DeleteDynamicProviderErrors[keyof DeleteDynamicProviderErrors];
+
+export type DeleteDynamicProviderResponses = {
+    /**
+     * Provider deleted; any leases queued for revocation.
+     */
+    200: DynamicProviderDeletion;
+};
+
+export type DeleteDynamicProviderResponse = DeleteDynamicProviderResponses[keyof DeleteDynamicProviderResponses];
+
+export type ShowDynamicProviderData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        provider: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}';
+};
+
+export type ShowDynamicProviderErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type ShowDynamicProviderError = ShowDynamicProviderErrors[keyof ShowDynamicProviderErrors];
+
+export type ShowDynamicProviderResponses = {
+    /**
+     * Provider.
+     */
+    200: DynamicProvider;
+};
+
+export type ShowDynamicProviderResponse = ShowDynamicProviderResponses[keyof ShowDynamicProviderResponses];
+
+export type RevokeDynamicProviderCredentialData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        provider: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential';
+};
+
+export type RevokeDynamicProviderCredentialErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type RevokeDynamicProviderCredentialError = RevokeDynamicProviderCredentialErrors[keyof RevokeDynamicProviderCredentialErrors];
+
+export type RevokeDynamicProviderCredentialResponses = {
+    /**
+     * Credential revoked.
+     */
+    204: void;
+};
+
+export type RevokeDynamicProviderCredentialResponse = RevokeDynamicProviderCredentialResponses[keyof RevokeDynamicProviderCredentialResponses];
+
+export type SetDynamicProviderCredentialData = {
+    body: SetDynamicProviderCredentialRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        provider: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential';
+};
+
+export type SetDynamicProviderCredentialErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type SetDynamicProviderCredentialError = SetDynamicProviderCredentialErrors[keyof SetDynamicProviderCredentialErrors];
+
+export type SetDynamicProviderCredentialResponses = {
+    /**
+     * Credential replaced.
+     */
+    204: void;
+};
+
+export type SetDynamicProviderCredentialResponse = SetDynamicProviderCredentialResponses[keyof SetDynamicProviderCredentialResponses];
+
+export type ListLeasesData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases';
+};
+
+export type ListLeasesErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type ListLeasesError = ListLeasesErrors[keyof ListLeasesErrors];
+
+export type ListLeasesResponses = {
+    /**
+     * Lease list.
+     */
+    200: DynamicLeaseList;
+};
+
+export type ListLeasesResponse = ListLeasesResponses[keyof ListLeasesResponses];
+
+export type MintLeaseData = {
+    body: MintLeaseRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases';
+};
+
+export type MintLeaseErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type MintLeaseError = MintLeaseErrors[keyof MintLeaseErrors];
+
+export type MintLeaseResponses = {
+    /**
+     * The lease and its display-once secret.
+     */
+    200: MintLeaseResult;
+};
+
+export type MintLeaseResponse = MintLeaseResponses[keyof MintLeaseResponses];
+
+export type ShowLeaseData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        lease: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}';
+};
+
+export type ShowLeaseErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type ShowLeaseError = ShowLeaseErrors[keyof ShowLeaseErrors];
+
+export type ShowLeaseResponses = {
+    /**
+     * Lease.
+     */
+    200: DynamicLease;
+};
+
+export type ShowLeaseResponse = ShowLeaseResponses[keyof ShowLeaseResponses];
+
+export type RenewLeaseData = {
+    body?: RenewLeaseRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        lease: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/renew';
+};
+
+export type RenewLeaseErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type RenewLeaseError = RenewLeaseErrors[keyof RenewLeaseErrors];
+
+export type RenewLeaseResponses = {
+    /**
+     * Lease after renewal.
+     */
+    200: DynamicLease;
+};
+
+export type RenewLeaseResponse = RenewLeaseResponses[keyof RenewLeaseResponses];
+
+export type RevokeLeaseData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        lease: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/revoke';
+};
+
+export type RevokeLeaseErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type RevokeLeaseError = RevokeLeaseErrors[keyof RevokeLeaseErrors];
+
+export type RevokeLeaseResponses = {
+    /**
+     * Lease after revocation was queued.
+     */
+    200: DynamicLease;
+};
+
+export type RevokeLeaseResponse = RevokeLeaseResponses[keyof RevokeLeaseResponses];
+
+export type SettleLeaseData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        lease: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/settle';
+};
+
+export type SettleLeaseErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type SettleLeaseError = SettleLeaseErrors[keyof SettleLeaseErrors];
+
+export type SettleLeaseResponses = {
+    /**
+     * Lease after settlement.
+     */
+    200: DynamicLease;
+};
+
+export type SettleLeaseResponse = SettleLeaseResponses[keyof SettleLeaseResponses];

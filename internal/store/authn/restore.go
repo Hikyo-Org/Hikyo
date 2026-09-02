@@ -160,6 +160,22 @@ func (r *Resolver) InvalidateRestoredAdapterCredentials(ctx context.Context) err
 	return nil
 }
 
+// InvalidateRestoredDynamicProviderCredentials destroys custody of every
+// restored dynamic-secret provider admin credential, for the same reason as
+// adapter PATs: it authenticates to an external engine with no local epoch.
+func (r *Resolver) InvalidateRestoredDynamicProviderCredentials(ctx context.Context) error {
+	if r.sq != nil {
+		if err := r.sq.InvalidateRestoredDynamicProviderCredentials(ctx); err != nil {
+			return fmt.Errorf("authn: invalidate restored dynamic provider credentials: %w", err)
+		}
+		return nil
+	}
+	if err := r.pg.InvalidateRestoredDynamicProviderCredentials(ctx); err != nil {
+		return fmt.Errorf("authn: invalidate restored dynamic provider credentials: %w", err)
+	}
+	return nil
+}
+
 // maxSaneEpoch bounds the epoch a restore will accept from restored state.
 // The stamps are archive data — attacker-writable — and an int64 stamp at
 // MaxInt64 would wrap the +1 to MinInt64, an epoch value an attacker can also

@@ -104,12 +104,16 @@ var authRuleRows = []authRuleRow{
 		"adapter target add", "adapter target list", "adapter target show", "adapter target remove",
 		"adapter adopt", "adapter plan", "adapter sync", "adapter test",
 		"definitions export",
+		"dynamic-provider create", "dynamic-provider list", "dynamic-provider show", "dynamic-provider delete",
+		"dynamic-provider credential set", "dynamic-provider credential revoke",
+		"lease settle",
 	)},
 	{Kinds: humanOrMachine, Operations: authOperations(
 		"definitions check", "definitions plan", "definitions apply",
 		"key create", "key rename", "key declare", "key reclassify", "key update", "key set-group", "key delete",
 		"key group create", "key group rename", "key group delete",
 		"values export", "run",
+		"lease mint", "lease list", "lease show", "lease renew", "lease revoke",
 	)},
 	{Kinds: machineOnly, Operations: authOperations(
 		"compose render", "compose sync", "compose doctor",
