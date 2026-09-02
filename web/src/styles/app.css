@@ -5478,3 +5478,234 @@ select {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Deployment adapters (#157): one sidebar surface listing every adapter and
+   its targets with a text-and-glyph health chip, a detail aside with the
+   attempt facts and the control verbs, and the retain-or-prune dialog. Dark
+   default, tokens only, 44px targets on touch.
+   ------------------------------------------------------------------------ */
+.adapters__panes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (min-width: 960px) {
+  .adapters__panes--split {
+    grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr);
+  }
+}
+
+.adapters__adapter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.adapters__adapter-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 12px;
+}
+
+.adapters__adapter-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--tx-dim);
+}
+
+.adapters__origin {
+  font-size: 13px;
+  color: var(--tx-dim);
+}
+
+.adapters__targets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.adapters__target {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg-raise);
+  color: var(--tx);
+}
+
+.adapters__target[aria-pressed='true'] {
+  border-color: var(--accent);
+}
+
+.adapters__target-route {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.adapters__target-env {
+  font-weight: 700;
+}
+
+.adapters__target-dest {
+  color: var(--tx-dim);
+  overflow-wrap: anywhere;
+}
+
+/* The chip carries its state as text; the colour is an echo, never the
+   only signal, so every state reads under a monochrome or assistive read. */
+.adapters__health {
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.adapters__health-glyph {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tx-dim);
+}
+
+.adapters__health--converged .adapters__health-glyph {
+  background: var(--ok, var(--accent));
+}
+
+.adapters__health--pending .adapters__health-glyph,
+.adapters__health--converging .adapters__health-glyph {
+  background: var(--accent);
+}
+
+.adapters__health--degraded .adapters__health-glyph,
+.adapters__health--failed .adapters__health-glyph {
+  background: var(--danger);
+}
+
+.adapters__health--paused .adapters__health-glyph {
+  background: var(--warn, var(--tx-dim));
+}
+
+.adapters__health--degraded,
+.adapters__health--failed {
+  border-color: color-mix(in oklch, var(--danger) 45%, var(--line));
+}
+
+.adapters__attention {
+  border-color: color-mix(in oklch, var(--danger) 45%, var(--line));
+}
+
+.adapters__facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 16px;
+  margin: 0;
+}
+
+.adapters__facts dt {
+  color: var(--tx-dim);
+  font-size: 13px;
+}
+
+.adapters__facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.adapters__keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.adapters__conflicts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.adapters__conflict {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.adapters__workflow {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg-raise);
+  font-size: 13px;
+  overflow-x: auto;
+}
+
+.adapters__form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+@media (min-width: 720px) {
+  .adapters__form--two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.adapters__form .field textarea {
+  width: 100%;
+  min-height: 72px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg-raise);
+  color: var(--tx);
+  font: inherit;
+}
+
+.adapters__decision {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.adapters__decision label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 44px;
+}
+
+.adapters__empty {
+  margin: 0;
+  color: var(--tx-dim);
+}
+
+@media (pointer: coarse), (max-width: 719px) {
+  .adapters__target {
+    min-height: 48px;
+  }
+}

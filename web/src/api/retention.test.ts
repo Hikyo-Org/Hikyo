@@ -30,6 +30,10 @@ function health(over: Partial<RetentionHealth>): RetentionHealth {
       last_drill_ok: false,
       drill_stale: true,
     },
+    adapter_targets_failed: 0,
+    adapter_targets_paused: 0,
+    adapter_targets_attention: 0,
+    adapter_jobs_queued: 0,
     ...over,
   };
 }

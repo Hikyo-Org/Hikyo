@@ -35,6 +35,7 @@ const AccountSecurity = lazy(() => loadSettingsRoutes().then((routes) => ({ defa
 const Audit = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.Audit })));
 const InstanceAdmin = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.InstanceAdmin })));
 const MachineAccess = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.MachineAccess })));
+const Adapters = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.Adapters })));
 const Members = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.Members })));
 const OrgSettings = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.OrgSettings })));
 const ProjectSettings = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.ProjectSettings })));
@@ -103,6 +104,7 @@ const ELEMENTS: Record<SurfaceId, ReactElement> = {
     </WorkspaceScope>
   ),
   'machine-access': withRouteFallback(<MachineAccess />),
+  adapters: withRouteFallback(<Adapters />),
   'cli-reauth': withRouteFallback(<CLIReauth />),
   'workspace-approve': withRouteFallback(<WorkspaceApprove />),
   'workspace-callback': withRouteFallback(<WorkspaceCallback />),

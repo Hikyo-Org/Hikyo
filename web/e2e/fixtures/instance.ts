@@ -652,6 +652,12 @@ async function startInstanceAt(
         // behavior has its own conformance/unit coverage; this harness validates
         // UI behavior. The server refuses this switch unless --dev is active.
         HIKYO_DEV_SERVICE_BUDGETS_DISABLED: 'true',
+        // The deployment-adapters flow (#157) needs a provider to push to, and
+        // adapter egress requires HTTPS with certificate validation to a public
+        // address: nothing inside this harness can be that. The in-process fake
+        // keeps every other part of the path real (ceremony, outbox, ledger,
+        // audit) and is refused outside --dev.
+        HIKYO_DEV_ADAPTER_FAKE_PROVIDER: 'true',
       },
     },
   );
