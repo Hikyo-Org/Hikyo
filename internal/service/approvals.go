@@ -125,6 +125,25 @@ type ApprovalRequestView struct {
 	Votes            []ApprovalVoteView
 }
 
+// approvalGatedTrigger reports whether a republish trigger is an out-of-band
+// value change that must be refused when a policy covers the destination. The
+// draft publishes ("values"/"restore") already ran the approval gate; the
+// structural fan-outs ("declare", "environment-create", "schema") are not value
+// changes a policy governs.
+func approvalGatedTrigger(trigger string) bool {
+	switch trigger {
+	case "import", copyOpCopy, copyOpBulkApply, copyOpClone:
+		return true
+	}
+	return false
+}
+
+// isActiveRequest reports whether a request is still open or approved (not yet
+// resolved to a terminal state).
+func isActiveRequest(state store.ApprovalRequestState) bool {
+	return state == store.ApprovalStateOpen || state == store.ApprovalStateApproved
+}
+
 // approvalPreviewDigest is the pinned identity of a change set: the SHA-256 hex
 // of the publish preview token. Storing the digest rather than the token keeps
 // the request row free of the token's key material.
@@ -421,7 +440,7 @@ func (s *Approvals) Vote(ctx context.Context, actor Actor, scope domain.Scope, r
 				return err
 			}
 		} else {
-			approvals, err := countEligibleApprovals(ctx, r, az, p, approvers, req, policy)
+			approvals, err := countEligibleApprovals(ctx, r, az, p, scope, approvers, req, policy)
 			if err != nil {
 				return err
 			}
@@ -667,7 +686,7 @@ func approverEligible(ctx context.Context, r store.Repos, az *authz.TxAuthorizer
 // self-approval. Recomputed live so an approver removed after voting no longer
 // counts (a rejection would have already resolved the request).
 func countEligibleApprovals(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof,
-	approvers []store.ApprovalApprover, req store.ApprovalRequest, policy store.ApprovalPolicy) (int, error) {
+	scope domain.Scope, approvers []store.ApprovalApprover, req store.ApprovalRequest, policy store.ApprovalPolicy) (int, error) {
 	votes, err := r.Approvals().ListVotes(ctx, p, req.ID)
 	if err != nil {
 		return 0, err
@@ -684,7 +703,17 @@ func countEligibleApprovals(ctx context.Context, r store.Repos, az *authz.TxAuth
 		if err != nil {
 			return 0, err
 		}
-		if eligible {
+		if !eligible {
+			continue
+		}
+		// Re-authorize the participant at execution time (AC): a voter whose
+		// publish authority was revoked after voting no longer counts, exactly
+		// as an approver removed from the set does not.
+		holds, err := az.CallerHolds(ctx, authz.Identity{Principal: domain.PrincipalID(v.PrincipalID)}, authz.OpApprovalVote, scope)
+		if err != nil {
+			return 0, err
+		}
+		if holds {
 			count++
 		}
 	}
@@ -817,6 +846,21 @@ func approvalGate(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, au
 		}
 	}
 	if coveredEnv == "" {
+		// No policy covers the addressed environment. A bare publish proceeds;
+		// but a merge or bypass that named a request whose policy has since been
+		// deleted or disabled must NOT fall through to a normal publish — that
+		// would commit the reviewed change with no live policy behind it. Fail
+		// closed by invalidating the request.
+		if loadedReq != nil && isActiveRequest(loadedReq.State) {
+			gp, ok := proofs[loadedReq.EnvironmentID]
+			if !ok {
+				return approvalOutcome{}, fmt.Errorf("%w: the request environment is not in this publish", domain.ErrConflict)
+			}
+			if err := commitInvalidation(ctx, r, gp, caller.Principal, *loadedReq, "policy_changed", now); err != nil {
+				return approvalOutcome{}, err
+			}
+			return approvalOutcome{gated: true, coveredEnv: loadedReq.EnvironmentID, refusal: staleRefusal("policy_changed")}, nil
+		}
 		return approvalOutcome{}, nil
 	}
 	if len(selection) > 1 {
@@ -834,7 +878,7 @@ func approvalGate(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, au
 	case request.Bypass != nil:
 		return approvalBypassGate(ctx, r, az, auth, p, caller, policy, loadedReq, request, coveredEnv, keyIDs, digest, now)
 	case request.ApprovalRequestID != "":
-		return approvalMergeGate(ctx, r, az, p, caller, policy, loadedReq, coveredEnv, digest, now)
+		return approvalMergeGate(ctx, r, az, p, scope, caller, policy, loadedReq, coveredEnv, digest, now)
 	default:
 		return approvalCreateGate(ctx, r, p, keyring, caller, policy, request, coveredEnv, keyIDs, digest, selection, closed, now)
 	}
@@ -889,7 +933,7 @@ func approvalCreateGate(ctx context.Context, r store.Repos, p authz.Proof, _ *cr
 	return approvalOutcome{gated: true, created: &stored, coveredEnv: coveredEnv}, nil
 }
 
-func approvalMergeGate(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof, caller authz.Identity,
+func approvalMergeGate(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof, scope domain.Scope, caller authz.Identity,
 	policy store.ApprovalPolicy, req *store.ApprovalRequest, coveredEnv, digest string, now time.Time) (approvalOutcome, error) {
 	if req == nil {
 		return approvalOutcome{}, fmt.Errorf("%w: no approval request was loaded to merge", domain.ErrInvalid)
@@ -925,7 +969,7 @@ func approvalMergeGate(ctx context.Context, r store.Repos, az *authz.TxAuthorize
 	if err != nil {
 		return approvalOutcome{}, err
 	}
-	approvals, err := countEligibleApprovals(ctx, r, az, p, approvers, *req, policy)
+	approvals, err := countEligibleApprovals(ctx, r, az, p, scope, approvers, *req, policy)
 	if err != nil {
 		return approvalOutcome{}, err
 	}

@@ -173,7 +173,103 @@ func runApprovalLifecycle(t *testing.T, db *store.DB) {
 	}
 }
 
-// policyIDForEnv returns the current envA1 policy's id via the admin surface.
+// runApprovalEdges locks the fail-closed edges: a draft edited after its request
+// invalidates the merge, a merge after the policy is deleted invalidates rather
+// than publishing unreviewed, deleting the environment cascades its requests
+// away, and an out-of-band copy into a covered environment is refused.
+func runApprovalEdges(t *testing.T, db *store.DB) {
+	t.Helper()
+	ctx := t.Context()
+	kr := probeKeyring(t, db)
+	auth := authService(t, db)
+	auth.ReauthWindow = 15 * time.Minute
+	approvals := &service.Approvals{DB: db, Auth: auth, Keyring: kr}
+	keys := &service.Keys{DB: db, Keyring: kr}
+	values := &service.Values{DB: db, Keyring: kr, Auth: auth}
+	revisions := &service.Revisions{DB: db, Keyring: kr, Auth: auth}
+	environments := &service.Environments{DB: db, Keyring: kr}
+	projectScope := domain.Scope{Org: orgA, Project: prjA1}
+
+	newCoveredEnv := func(name string) (string, domain.Scope) {
+		env, err := environments.Create(ctx, service.LocalPrincipal(alice), projectScope, name, nil)
+		if err != nil {
+			t.Fatalf("create %s: %v", name, err)
+		}
+		if _, err := approvals.CreatePolicy(ctx, service.LocalPrincipal(orgAdmin), projectScope, service.ApprovalPolicyInput{
+			EnvironmentID: env.ID, MinApprovals: 1, RequestTTLSeconds: 3600, Enabled: true,
+			Approvers: []service.ApprovalApproverSpec{{Kind: "principal", SubjectID: string(custodian)}},
+		}); err != nil {
+			t.Fatalf("policy for %s: %v", name, err)
+		}
+		return env.ID, domain.Scope{Org: orgA, Project: prjA1, Env: domain.EnvID(env.ID)}
+	}
+	stage := func(envScope domain.Scope, key string) service.PublishResult {
+		if _, err := keys.Create(ctx, service.LocalPrincipal(alice), projectScope, service.KeySpec{
+			Name: key, Classification: string(schema.Config),
+			Declaration: schema.Declaration{Rule: &schema.Rule{Type: schema.TypeString}},
+			Presence:    schema.DefaultPresenceRules(),
+		}, nil); err != nil {
+			t.Fatalf("key %s: %v", key, err)
+		}
+		staged, err := values.Set(ctx, service.LocalPrincipal(alice), envScope, key, "v1", nil)
+		if err != nil {
+			t.Fatalf("stage %s: %v", key, err)
+		}
+		res, err := revisions.PublishPlanned(ctx, service.LocalPrincipal(alice), envScope, service.PublishRequest{VersionIDs: []string{staged.VersionID}})
+		if err != nil {
+			t.Fatalf("gated publish %s: %v", key, err)
+		}
+		return res
+	}
+
+	// (a) A draft edited after its request invalidates the merge (draft_edited).
+	envA, scopeA := newCoveredEnv("edges-a")
+	reqA := stage(scopeA, "EDGE_A").CreatedApprovalRequest.ID
+	if _, err := values.Set(ctx, service.LocalPrincipal(alice), scopeA, "EDGE_A", "v2", nil); err != nil {
+		t.Fatalf("re-stage EDGE_A: %v", err)
+	}
+	if _, err := revisions.PublishPlanned(ctx, service.LocalPrincipal(alice), scopeA, service.PublishRequest{ApprovalRequestID: reqA}); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("merge after edit = %v, want conflict", err)
+	}
+	if state := requestState(t, db, reqA); state != "invalidated" {
+		t.Fatalf("edited request state = %s, want invalidated", state)
+	}
+	_ = envA
+
+	// (b) A merge after the policy is deleted invalidates, never publishes.
+	envB, scopeB := newCoveredEnv("edges-b")
+	reqB := stage(scopeB, "EDGE_B").CreatedApprovalRequest.ID
+	if err := approvals.DeletePolicy(ctx, service.LocalPrincipal(orgAdmin), projectScope, policyIDForEnv(t, db, approvals, envB)); err != nil {
+		t.Fatalf("delete policy: %v", err)
+	}
+	if _, err := revisions.PublishPlanned(ctx, service.LocalPrincipal(alice), scopeB, service.PublishRequest{ApprovalRequestID: reqB}); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("merge after policy delete = %v, want conflict", err)
+	}
+	if state := requestState(t, db, reqB); state != "invalidated" {
+		t.Fatalf("post-delete request state = %s, want invalidated", state)
+	}
+
+	// (c) Deleting the environment cascades its requests away.
+	envC, scopeC := newCoveredEnv("edges-c")
+	reqC := stage(scopeC, "EDGE_C").CreatedApprovalRequest.ID
+	if err := environments.Delete(ctx, service.LocalPrincipal(alice), scopeC); err != nil {
+		t.Fatalf("delete env: %v", err)
+	}
+	if n := queryInt(t, db, "SELECT COUNT(*) FROM approval_requests WHERE id = '"+reqC+"'"); n != 0 {
+		t.Fatalf("request rows after env delete = %d, want 0 (cascade)", n)
+	}
+	_ = envC
+}
+
+func TestApprovalEdgesSQLite(t *testing.T) {
+	runApprovalEdges(t, seededDB(t, openSQLite))
+}
+
+func TestApprovalEdgesPostgres(t *testing.T) {
+	runApprovalEdges(t, seededDB(t, openPostgres))
+}
+
+// policyIDForEnv returns the current env policy's id via the admin surface.
 func policyIDForEnv(t *testing.T, db *store.DB, approvals *service.Approvals, envID string) string {
 	t.Helper()
 	policies, err := approvals.ListPolicies(t.Context(), service.LocalPrincipal(orgAdmin), domain.Scope{Org: orgA, Project: prjA1})

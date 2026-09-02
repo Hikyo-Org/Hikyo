@@ -31,7 +31,7 @@ CREATE TABLE approval_policies (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     UNIQUE (org_id, project_id, environment_id),
-    FOREIGN KEY (org_id, project_id) REFERENCES projects (org_id, id)
+    FOREIGN KEY (org_id, project_id) REFERENCES projects (org_id, id) ON DELETE CASCADE
 );
 
 CREATE INDEX approval_policies_project ON approval_policies (org_id, project_id);
@@ -106,7 +106,7 @@ CREATE TABLE approval_requests (
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     resolved_at TEXT,
-    FOREIGN KEY (org_id, project_id, environment_id) REFERENCES environments (org_id, project_id, id)
+    FOREIGN KEY (org_id, project_id, environment_id) REFERENCES environments (org_id, project_id, id) ON DELETE CASCADE
 );
 
 CREATE INDEX approval_requests_env ON approval_requests (org_id, project_id, environment_id, state);

@@ -333,6 +333,18 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 
 		selected, byID, err := resolveVersions(ctx, r, p, caller.Principal, versionIDs)
 		if err != nil {
+			// Secret-change approvals (#151): a merge whose pinned drafts were
+			// edited (superseded) or discarded after the request cannot commit
+			// the reviewed change set. Invalidate the request (draft_edited) and
+			// surface the refusal after commit, rather than returning the raw
+			// stale-pending error against a request that stays open forever.
+			if loadedApproval != nil && isActiveRequest(loadedApproval.State) && errors.Is(err, ErrStalePending) {
+				if cErr := commitInvalidation(ctx, r, p, caller.Principal, *loadedApproval, "draft_edited", now); cErr != nil {
+					return cErr
+				}
+				publishRefusal = staleRefusal("draft_edited")
+				return nil
+			}
 			return err
 		}
 
@@ -364,6 +376,13 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 		}
 		selection, closed, err := selectVersions(ctx, r, p, caller.Principal, selected, byID, groupIndex)
 		if err != nil {
+			if loadedApproval != nil && isActiveRequest(loadedApproval.State) && errors.Is(err, ErrStalePending) {
+				if cErr := commitInvalidation(ctx, r, p, caller.Principal, *loadedApproval, "draft_edited", now); cErr != nil {
+					return cErr
+				}
+				publishRefusal = staleRefusal("draft_edited")
+				return nil
+			}
 			return err
 		}
 		for envID := range selection {
@@ -786,6 +805,22 @@ func republish(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, calle
 	p, err := az.Authorize(ctx, caller, authz.OpValuePublish, scope)
 	if err != nil {
 		return PublishedEnvironment{}, err
+	}
+	// Secret-change approvals (#151): the out-of-band value-change paths (copy,
+	// bulk-apply, clone-onto-an-existing-env, import) write cells and publish
+	// directly, sidestepping the draft→publish gate. Where a policy covers the
+	// destination they are refused with ErrApprovalRequired: a covered
+	// environment's changes must go through the reviewed draft flow. The
+	// structural fan-outs (schema `declare`, `environment-create`, and the
+	// draft `values`/`restore` publishes that already ran the gate) are exempt.
+	if approvalGatedTrigger(trigger) {
+		_, covered, err := r.Approvals().CoveringPolicy(ctx, p, string(scope.Env))
+		if err != nil {
+			return PublishedEnvironment{}, err
+		}
+		if covered {
+			return PublishedEnvironment{}, ErrApprovalRequired
+		}
 	}
 	groupIndex, err := groups.snapshot(ctx, r.Catalogue(), p)
 	if err != nil {
