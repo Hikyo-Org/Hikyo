@@ -185,6 +185,8 @@ jobs:
         run: ./scripts/ci/check-release-binary-reuse_test.sh
       - name: DCO fixture
         run: ./scripts/ci/check-dco_test.sh
+      - name: Commit signature fixture
+        run: ./scripts/ci/check-commit-signatures_test.sh
       - name: Required-jobs fixture
         run: ./scripts/ci/check-required-jobs_test.sh
       - name: API freeze guard fixture
