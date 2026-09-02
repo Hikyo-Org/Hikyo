@@ -238,4 +238,9 @@ type ApprovalRepo interface {
 	// their queries are annotated instance-scoped and content-pinned.
 	SelectExpired(ctx context.Context, p authz.Proof, now time.Time) ([]ExpiredApprovalRequest, error)
 	MarkExpired(ctx context.Context, p authz.Proof, id string, now time.Time) (bool, error)
+
+	// OperationalCounts returns the installation-wide count of active requests
+	// (awaiting review) and expired requests, for the label-free /metrics
+	// gauges. Cross-tenant; runs under scheduler authority.
+	OperationalCounts(ctx context.Context, p authz.Proof) (active, expired int64, err error)
 }

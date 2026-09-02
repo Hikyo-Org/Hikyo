@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
@@ -371,9 +373,28 @@ func runValues(ctx context.Context, ios IO, args []string) (returnErr error) {
 		if confirmedProtectedEnvironments != "" {
 			body.ConfirmedProtectedEnvironments = publishProtectedIDs(confirmedProtectedEnvironments)
 		}
-		if err := client.Do(ctx, http.MethodPost, base+"/publish",
-			body, &result); err != nil {
+		// Secret-change approvals (#151): publishing a policy-covered environment
+		// with no approval answers 202 with a staged request, not a publish
+		// result. Branch on the status so the operator learns their change is
+		// awaiting review instead of seeing an empty publish.
+		status, payload, err := client.DoStatus(ctx, http.MethodPost, base+"/publish", body)
+		if err != nil {
 			return err
+		}
+		if status == http.StatusAccepted {
+			var staged apigen.ApprovalRequestSummary
+			if err := json.Unmarshal(payload, &staged); err != nil {
+				return failf(ExitInternal, "the server's response did not match the contract: %v", err)
+			}
+			return Render(ios.Stdout, f, Table{
+				Columns: []string{"REQUEST", "ENVIRONMENT", "STATE", "EXPIRES"},
+				Rows: [][]string{{staged.Id, staged.EnvironmentId, string(staged.State),
+					staged.ExpiresAt.UTC().Format(time.RFC3339)}},
+				JSON: staged,
+			})
+		}
+		if err := json.Unmarshal(payload, &result); err != nil {
+			return failf(ExitInternal, "the server's response did not match the contract: %v", err)
 		}
 		return Render(ios.Stdout, f, publishTable(result))
 

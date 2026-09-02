@@ -514,6 +514,21 @@ func (s *Approvals) ExpireDue(ctx context.Context) error {
 	return err
 }
 
+// OperationalCounts returns the installation-wide active/expired request counts
+// for the label-free /metrics gauges, read under scheduler authority. Best
+// effort: a scrape reads it and reports zeros on error rather than failing.
+func (s *Approvals) OperationalCounts(ctx context.Context) (active, expired int64, err error) {
+	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		p, pErr := authz.SystemAuthority(authz.SiteScheduler, az.Token())
+		if pErr != nil {
+			return pErr
+		}
+		active, expired, pErr = r.Approvals().OperationalCounts(ctx, p)
+		return pErr
+	})
+	return active, expired, err
+}
+
 // --- shared helpers, also used by the publish gate ---
 
 func validatePolicyInput(input ApprovalPolicyInput) error {

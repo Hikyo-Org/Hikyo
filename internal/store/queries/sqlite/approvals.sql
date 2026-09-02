@@ -155,3 +155,13 @@ SELECT id, org_id, project_id, environment_id, request_id, principal_id, decisio
 FROM approval_votes
 WHERE org_id = ? AND project_id = ? AND environment_id = ? AND request_id = ?
 ORDER BY created_at, id;
+
+-- Operational metrics (#151). Installation-wide counts read at /metrics scrape
+-- under scheduler authority; cross-tenant by definition, annotated and pinned.
+-- hikyo:instance-scoped
+-- name: CountActiveApprovalRequests :one
+SELECT COUNT(*) FROM approval_requests WHERE resolved_at IS NULL;
+
+-- hikyo:instance-scoped
+-- name: CountExpiredApprovalRequests :one
+SELECT COUNT(*) FROM approval_requests WHERE state = 'expired';

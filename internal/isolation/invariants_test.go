@@ -354,6 +354,7 @@ func TestInvariant11SystemProofEnumeration(t *testing.T) {
 		// widening, pinned here rather than hidden behind a side effect.
 		authz.StoreApprovalRequestSelectExpiry: true,
 		authz.StoreApprovalRequestMarkExpired:  true,
+		authz.StoreApprovalRequestCounts:       true,
 	}
 	for site, ops := range sites {
 		if !want[site] {

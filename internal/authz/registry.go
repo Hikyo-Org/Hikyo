@@ -844,6 +844,7 @@ const (
 	StoreApprovalRequestUpdateState  StoreOp = "approvals.UpdateRequestState"
 	StoreApprovalRequestSelectExpiry StoreOp = "approvals.SelectExpired"
 	StoreApprovalRequestMarkExpired  StoreOp = "approvals.MarkExpired"
+	StoreApprovalRequestCounts       StoreOp = "approvals.OperationalCounts"
 	StoreApprovalVoteInsert          StoreOp = "approvals.InsertVote"
 	StoreApprovalVoteGet             StoreOp = "approvals.GetVote"
 	StoreApprovalVoteList            StoreOp = "approvals.ListVotes"
@@ -1033,7 +1034,7 @@ var storeOpCatalogue = map[StoreOp]bool{
 	StoreApprovalBypasserGet: true, StoreApprovalRequestInsert: true, StoreApprovalRequestGet: true,
 	StoreApprovalRequestList: true, StoreApprovalRequestUpdateState: true, StoreApprovalRequestSelectExpiry: true,
 	StoreApprovalRequestMarkExpired: true, StoreApprovalVoteInsert: true, StoreApprovalVoteGet: true,
-	StoreApprovalVoteList: true,
+	StoreApprovalVoteList: true, StoreApprovalRequestCounts: true,
 }
 
 var readOnlyStoreOps = map[StoreOp]bool{
@@ -1135,6 +1136,7 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreApprovalRequestList:         true,
 	StoreApprovalVoteList:            true,
 	StoreApprovalRequestSelectExpiry: true,
+	StoreApprovalRequestCounts:       true,
 }
 
 // bootKeyringOps is boot's closed operation set. The tenant-isolation ADR
@@ -4072,6 +4074,7 @@ var systemSites = map[SystemSite]map[StoreOp]bool{
 		// tenant-trail expiry event emitted per request under scoped authority.
 		StoreApprovalRequestSelectExpiry: true,
 		StoreApprovalRequestMarkExpired:  true,
+		StoreApprovalRequestCounts:       true,
 		// The unauthenticated /metrics scrape rides scheduler authority to read
 		// the same operational storage high-water the audited health read serves
 		// (#185): a shared door, like the retention health read beside it.

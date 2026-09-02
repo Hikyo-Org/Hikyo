@@ -192,3 +192,13 @@ FROM approval_votes
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
   AND environment_id = sqlc.arg(chain_env_id) AND request_id = sqlc.arg(request_id)
 ORDER BY created_at, id;
+
+-- Operational metrics (#151). Installation-wide counts read at /metrics scrape
+-- under scheduler authority; cross-tenant by definition, annotated and pinned.
+-- hikyo:instance-scoped
+-- name: CountActiveApprovalRequests :one
+SELECT COUNT(*) FROM approval_requests WHERE resolved_at IS NULL;
+
+-- hikyo:instance-scoped
+-- name: CountExpiredApprovalRequests :one
+SELECT COUNT(*) FROM approval_requests WHERE state = 'expired';

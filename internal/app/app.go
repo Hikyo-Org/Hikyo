@@ -486,6 +486,10 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	// operational /metrics handler (reader) (#513). The limiter supplies its
 	// admission-pressure gauges at scrape time.
 	metrics := server.NewMetrics(limiter)
+	// Secret-change approvals (#151): the two label-free approval gauges read
+	// their counts at scrape time under scheduler authority (#151, mirroring the
+	// storage high-water gauge's shared-door read).
+	metrics.SetApprovalSource(approvalMetricsSource{svc: approvalsSvc})
 	api := &server.API{
 		Auth:     authSvc,
 		SAMLAuth: authSvc,
@@ -837,4 +841,21 @@ func (s *Server) ReloadTLS() error {
 // Close releases resources for a booted server that never served.
 func (s *Server) Close() error {
 	return errors.Join(s.publicLn.Close(), s.operationalLn.Close(), s.db.Close())
+}
+
+// approvalMetricsSource adapts the change-approval service to the metrics
+// collector's synchronous ApprovalSnapshot contract (#151): a bounded read that
+// reports zeros on any error rather than failing the scrape.
+type approvalMetricsSource struct {
+	svc *service.Approvals
+}
+
+func (s approvalMetricsSource) ApprovalSnapshot() server.ApprovalStats {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	active, expired, err := s.svc.OperationalCounts(ctx)
+	if err != nil {
+		return server.ApprovalStats{}
+	}
+	return server.ApprovalStats{Open: float64(active), Expired: float64(expired)}
 }

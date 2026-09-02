@@ -1009,3 +1009,33 @@ func (r pgApprovals) MarkExpired(ctx context.Context, p authz.Proof, id string, 
 	})
 	return n > 0, err
 }
+
+func (r sqliteApprovals) OperationalCounts(ctx context.Context, p authz.Proof) (int64, int64, error) {
+	if _, err := authz.Verify(p, authz.StoreApprovalRequestCounts, r.tok); err != nil {
+		return 0, 0, err
+	}
+	active, err := r.q.CountActiveApprovalRequests(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	expired, err := r.q.CountExpiredApprovalRequests(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	return active, expired, nil
+}
+
+func (r pgApprovals) OperationalCounts(ctx context.Context, p authz.Proof) (int64, int64, error) {
+	if _, err := authz.Verify(p, authz.StoreApprovalRequestCounts, r.tok); err != nil {
+		return 0, 0, err
+	}
+	active, err := r.q.CountActiveApprovalRequests(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	expired, err := r.q.CountExpiredApprovalRequests(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	return active, expired, nil
+}

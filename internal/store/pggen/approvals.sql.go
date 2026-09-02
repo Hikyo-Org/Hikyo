@@ -11,6 +11,32 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countActiveApprovalRequests = `-- name: CountActiveApprovalRequests :one
+SELECT COUNT(*) FROM approval_requests WHERE resolved_at IS NULL
+`
+
+// Operational metrics (#151). Installation-wide counts read at /metrics scrape
+// under scheduler authority; cross-tenant by definition, annotated and pinned.
+// hikyo:instance-scoped
+func (q *Queries) CountActiveApprovalRequests(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveApprovalRequests)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countExpiredApprovalRequests = `-- name: CountExpiredApprovalRequests :one
+SELECT COUNT(*) FROM approval_requests WHERE state = 'expired'
+`
+
+// hikyo:instance-scoped
+func (q *Queries) CountExpiredApprovalRequests(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countExpiredApprovalRequests)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteApprovalPolicy = `-- name: DeleteApprovalPolicy :execrows
 DELETE FROM approval_policies
 WHERE org_id = $1 AND project_id = $2
