@@ -241,6 +241,7 @@ const (
 	// change set's identity and the review outcome. approval.bypassed is the
 	// high-signal one (the emergency path), carrying the operator's reason.
 	EventApprovalPolicyChanged EventType = "approval.policy_changed"
+	EventApprovalPolicyRead    EventType = "approval.policy_read"
 	EventApprovalRequested     EventType = "approval.requested"
 	EventApprovalVoted         EventType = "approval.voted"
 	EventApprovalMerged        EventType = "approval.merged"
@@ -1828,6 +1829,18 @@ var registry = map[EventType]TypeSpec{
 			"enabled":        {Kind: KindBool, Required: true},
 			"approver_count": {Kind: KindInt, Required: true, NonNegative: true},
 			"bypasser_count": {Kind: KindInt, Required: true, NonNegative: true},
+		},
+	},
+	// The admin inspect of the project's policies. project-settings is not a
+	// read capability, so the inspect emits a listing event (OpCredentialList's
+	// pattern) rather than being audited-none.
+	EventApprovalPolicyRead: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"policy_count": {Kind: KindInt, Required: true, NonNegative: true},
 		},
 	},
 	EventApprovalRequested: {

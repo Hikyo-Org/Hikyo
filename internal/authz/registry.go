@@ -1026,6 +1026,14 @@ var storeOpCatalogue = map[StoreOp]bool{
 	StoreValuesClearKey: true, StoreValuesCountEnvironment: true, StoreValuesEnvironmentsWithValue: true, StoreValuesGet: true,
 	StoreValuesInstancePayloadByProject: true, StoreValuesList: true, StoreValuesListForReencrypt: true, StoreValuesPayloadBytesForProject: true,
 	StoreValuesPut: true, StoreValuesReencrypt: true,
+	StoreApprovalPolicyInsert: true, StoreApprovalPolicyGet: true, StoreApprovalPolicyCovering: true,
+	StoreApprovalPolicyList: true, StoreApprovalPolicyUpdate: true, StoreApprovalPolicyDelete: true,
+	StoreApprovalApproverInsert: true, StoreApprovalApproverList: true, StoreApprovalApproverClear: true,
+	StoreApprovalBypasserInsert: true, StoreApprovalBypasserList: true, StoreApprovalBypasserClear: true,
+	StoreApprovalBypasserGet: true, StoreApprovalRequestInsert: true, StoreApprovalRequestGet: true,
+	StoreApprovalRequestList: true, StoreApprovalRequestUpdateState: true, StoreApprovalRequestSelectExpiry: true,
+	StoreApprovalRequestMarkExpired: true, StoreApprovalVoteInsert: true, StoreApprovalVoteGet: true,
+	StoreApprovalVoteList: true,
 }
 
 var readOnlyStoreOps = map[StoreOp]bool{
@@ -1115,6 +1123,18 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreSnapshotsChanges:                    true,
 	StorePinsGetForWorkload:                  true,
 	StorePinsList:                            true,
+	// Secret-change approvals (#151): the read-only doors, licensed on the
+	// audited-none request-read operation and the scheduler expiry read.
+	StoreApprovalPolicyGet:           true,
+	StoreApprovalPolicyList:          true,
+	StoreApprovalPolicyCovering:      true,
+	StoreApprovalApproverList:        true,
+	StoreApprovalBypasserList:        true,
+	StoreApprovalBypasserGet:         true,
+	StoreApprovalRequestGet:          true,
+	StoreApprovalRequestList:         true,
+	StoreApprovalVoteList:            true,
+	StoreApprovalRequestSelectExpiry: true,
 }
 
 // bootKeyringOps is boot's closed operation set. The tenant-isolation ADR
@@ -2485,14 +2505,21 @@ var operationTable = map[Operation]opSpec{
 		storeOps: map[StoreOp]bool{
 			StoreApprovalPolicyGet: true, StoreApprovalPolicyList: true,
 			StoreApprovalApproverList: true, StoreApprovalBypasserList: true,
+			StoreAuditTenantInsert: true,
 		},
+		// project-settings is not a read capability, so this inspect cannot be
+		// audited-none; it emits a listing event like OpCredentialList does.
+		events: []audit.EventType{audit.EventApprovalPolicyRead},
 	},
+	// Reading the review queue for an environment is gated by read@env -- anyone
+	// who may see the environment may see whether a change to it is under review
+	// and who has signed off; the queue carries no value plaintext. A pure read
+	// under a read conjunction, so audited-none like every other such read.
 	OpApprovalRequestRead: {
-		class: ClassTenant,
-		level: domain.LevelEnv,
-		formula: Formula{
-			{Cap: domain.CapPublish, At: domain.LevelEnv},
-		},
+		class:       ClassTenant,
+		level:       domain.LevelEnv,
+		formula:     Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		auditedNone: true,
 		storeOps: map[StoreOp]bool{
 			StoreApprovalRequestGet: true, StoreApprovalRequestList: true,
 			StoreApprovalVoteList: true, StoreApprovalPolicyGet: true,

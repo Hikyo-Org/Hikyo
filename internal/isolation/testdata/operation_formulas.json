@@ -101,6 +101,46 @@
     ]
   },
   {
+    "operation": "approval.bypass",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "publish@environment"
+    ]
+  },
+  {
+    "operation": "approval.policy-read",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "project-settings@project"
+    ]
+  },
+  {
+    "operation": "approval.policy-write",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "project-settings@project"
+    ]
+  },
+  {
+    "operation": "approval.request-read",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ]
+  },
+  {
+    "operation": "approval.vote",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "publish@environment"
+    ]
+  },
+  {
     "operation": "audit.export-env",
     "class": "tenant",
     "level": "environment",

@@ -154,27 +154,20 @@ func (r sqliteApprovals) CoveringPolicy(ctx context.Context, p authz.Proof, envI
 	if err != nil {
 		return ApprovalPolicy{}, false, err
 	}
-	exact, err := r.q.GetApprovalPolicyForEnvironment(ctx, sqlitegen.GetApprovalPolicyForEnvironmentParams{
-		OrgID: string(chain.Org), ProjectID: string(chain.Project), EnvironmentID: envID,
-	})
-	if err == nil {
-		policy, cErr := policyFromSqlite(exact)
+	for _, env := range []string{envID, ""} {
+		row, err := r.q.GetApprovalPolicyForEnvironment(ctx, sqlitegen.GetApprovalPolicyForEnvironmentParams{
+			OrgID: string(chain.Org), ProjectID: string(chain.Project), EnvironmentID: env, Enabled: 1,
+		})
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return ApprovalPolicy{}, false, err
+		}
+		policy, cErr := policyFromSqlite(row)
 		return policy, cErr == nil, cErr
 	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return ApprovalPolicy{}, false, err
-	}
-	wide, err := r.q.GetApprovalPolicyProjectWide(ctx, sqlitegen.GetApprovalPolicyProjectWideParams{
-		OrgID: string(chain.Org), ProjectID: string(chain.Project),
-	})
-	if errors.Is(err, sql.ErrNoRows) {
-		return ApprovalPolicy{}, false, nil
-	}
-	if err != nil {
-		return ApprovalPolicy{}, false, err
-	}
-	policy, cErr := policyFromSqlite(wide)
-	return policy, cErr == nil, cErr
+	return ApprovalPolicy{}, false, nil
 }
 
 func (r sqliteApprovals) ListPolicies(ctx context.Context, p authz.Proof) ([]ApprovalPolicy, error) {
@@ -638,25 +631,19 @@ func (r pgApprovals) CoveringPolicy(ctx context.Context, p authz.Proof, envID st
 	if err != nil {
 		return ApprovalPolicy{}, false, err
 	}
-	exact, err := r.q.GetApprovalPolicyForEnvironment(ctx, pggen.GetApprovalPolicyForEnvironmentParams{
-		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), EnvironmentID: envID,
-	})
-	if err == nil {
-		return policyFromPg(exact), true, nil
+	for _, env := range []string{envID, ""} {
+		row, err := r.q.GetApprovalPolicyForEnvironment(ctx, pggen.GetApprovalPolicyForEnvironmentParams{
+			ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), EnvironmentID: env, Enabled: true,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return ApprovalPolicy{}, false, err
+		}
+		return policyFromPg(row), true, nil
 	}
-	if !errors.Is(err, pgx.ErrNoRows) {
-		return ApprovalPolicy{}, false, err
-	}
-	wide, err := r.q.GetApprovalPolicyProjectWide(ctx, pggen.GetApprovalPolicyProjectWideParams{
-		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project),
-	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return ApprovalPolicy{}, false, nil
-	}
-	if err != nil {
-		return ApprovalPolicy{}, false, err
-	}
-	return policyFromPg(wide), true, nil
+	return ApprovalPolicy{}, false, nil
 }
 
 func (r pgApprovals) ListPolicies(ctx context.Context, p authz.Proof) ([]ApprovalPolicy, error) {

@@ -260,7 +260,9 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 	if scope.Env == "" {
 		return PublishResult{}, fmt.Errorf("%w: a publish addresses an environment", domain.ErrInvalid)
 	}
-	if len(versionIDs) == 0 {
+	// A merge or bypass names an approval request, not a selection: the reviewed
+	// version ids are loaded from the request inside the transaction (#151).
+	if len(versionIDs) == 0 && request.ApprovalRequestID == "" {
 		return PublishResult{}, fmt.Errorf("%w: a publish names the pending changes it commits", domain.ErrInvalid)
 	}
 	if dup, ok := firstDuplicate(versionIDs); ok {
@@ -281,8 +283,10 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 
 	var out PublishResult
 	var rateCharged bool
+	var publishRefusal error
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		out = PublishResult{}
+		publishRefusal = nil
 		// The clock is read INSIDE the transaction: the sealer preflight can
 		// take real time, and a credential expiring during it must be refused
 		// by the authentication this publish actually rides.
@@ -383,6 +387,13 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 		approval, err := approvalGate(ctx, r, az, s.Auth, s.Keyring, caller, scope, request, loadedApproval, selection, closed, proofs, now)
 		if err != nil {
 			return err
+		}
+		if approval.refusal != nil {
+			// The gate committed an invalidation; commit the transaction so it
+			// persists, then surface the refusal after the tx returns.
+			publishRefusal = approval.refusal
+			out = PublishResult{}
+			return nil
 		}
 		if approval.created != nil {
 			out = PublishResult{CreatedApprovalRequest: &ApprovalRequestSummary{
@@ -524,6 +535,9 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 	})
 	if err != nil {
 		return PublishResult{}, err
+	}
+	if publishRefusal != nil {
+		return PublishResult{}, publishRefusal
 	}
 	// Post-commit, never inside: no external effect may escape before commit,
 	// and an advisory about a publish that rolled back would be a claim clients

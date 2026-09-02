@@ -274,7 +274,12 @@ func (s *Approvals) ListPolicies(ctx context.Context, actor Actor, scope domain.
 			}
 			out = append(out, view)
 		}
-		return nil
+		ev, err := domainEvent(ctx, audit.EventApprovalPolicyRead, caller.Principal,
+			audit.Object{Type: "project", ID: string(scope.Project)}, audit.Payload{"policy_count": len(policies)})
+		if err != nil {
+			return err
+		}
+		return r.Audit().InsertTenant(ctx, p, ev)
 	})
 	return out, err
 }
@@ -319,7 +324,9 @@ func (s *Approvals) Vote(ctx context.Context, actor Actor, scope domain.Scope, r
 	}
 	now := s.now()
 	var view ApprovalRequestView
+	var refusal error
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		refusal = nil
 		caller, err := actor.resolve(ctx, az, now)
 		if err != nil {
 			return err
@@ -341,14 +348,23 @@ func (s *Approvals) Vote(ctx context.Context, actor Actor, scope domain.Scope, r
 		}
 		policy, err := r.Approvals().GetPolicy(ctx, p, req.PolicyID)
 		if err != nil {
-			// A deleted policy cannot be voted under: fail closed.
+			// A deleted policy cannot be voted under: fail closed. Commit the
+			// invalidation and surface the refusal after the transaction.
 			if errors.Is(err, domain.ErrNotFound) {
-				return invalidateRequest(ctx, r, p, caller.Principal, req, "policy_changed")
+				if err := commitInvalidation(ctx, r, p, caller.Principal, req, "policy_changed", now); err != nil {
+					return err
+				}
+				refusal = staleRefusal("policy_changed")
+				return nil
 			}
 			return err
 		}
 		if policy.Version != req.PolicyVersion {
-			return invalidateRequest(ctx, r, p, caller.Principal, req, "policy_changed")
+			if err := commitInvalidation(ctx, r, p, caller.Principal, req, "policy_changed", now); err != nil {
+				return err
+			}
+			refusal = staleRefusal("policy_changed")
+			return nil
 		}
 		approvers, err := r.Approvals().ListApprovers(ctx, p, req.PolicyID)
 		if err != nil {
@@ -422,6 +438,12 @@ func (s *Approvals) Vote(ctx context.Context, actor Actor, scope domain.Scope, r
 		view, err = requestViewWithVotes(ctx, r, p, fresh)
 		return err
 	})
+	if err != nil {
+		return ApprovalRequestView{}, err
+	}
+	if refusal != nil {
+		return ApprovalRequestView{}, refusal
+	}
 	return view, err
 }
 
@@ -570,12 +592,14 @@ func recordVote(ctx context.Context, r store.Repos, p authz.Proof, principal dom
 	return r.Audit().InsertTenant(ctx, p, ev)
 }
 
-// invalidateRequest resolves a request as invalidated with a cause and emits
+// commitInvalidation resolves a request as invalidated with a cause and emits
 // the event. Used at vote and merge time when the pinned change set no longer
-// matches (policy moved, drafts edited, environment advanced).
-func invalidateRequest(ctx context.Context, r store.Repos, p authz.Proof, principal domain.PrincipalID,
-	req store.ApprovalRequest, cause string) error {
-	now := time.Now().UTC()
+// matches (policy moved, drafts edited, environment advanced). It returns nil
+// on success: the invalidation must COMMIT even though the operation refuses,
+// so the caller commits this write and then surfaces staleRefusal AFTER the
+// transaction, rather than returning an error here that would roll it back.
+func commitInvalidation(ctx context.Context, r store.Repos, p authz.Proof, principal domain.PrincipalID,
+	req store.ApprovalRequest, cause string, now time.Time) error {
 	if _, err := r.Approvals().UpdateRequestState(ctx, p, req.ID, store.ApprovalStateInvalidated, cause, &now); err != nil {
 		return err
 	}
@@ -584,9 +608,13 @@ func invalidateRequest(ctx context.Context, r store.Repos, p authz.Proof, princi
 	if err != nil {
 		return err
 	}
-	if err := r.Audit().InsertTenant(ctx, p, ev); err != nil {
-		return err
-	}
+	return r.Audit().InsertTenant(ctx, p, ev)
+}
+
+// staleRefusal is the caller-facing error for an invalidated request. It is
+// returned after the invalidation has committed, never from inside the writing
+// transaction (that would roll the invalidation back).
+func staleRefusal(cause string) error {
 	return fmt.Errorf("%w: the request was invalidated (%s)", domain.ErrConflict, cause)
 }
 
@@ -757,6 +785,10 @@ type approvalOutcome struct {
 	previewDigest string
 	coveredEnv    string
 	approvals     int
+	// refusal is set when a merge or bypass found the request stale and
+	// committed its invalidation: PublishPlanned commits the transaction (so
+	// the invalidation persists) and then returns this error.
+	refusal error
 }
 
 // approvalGate is the live conjunct the permission-model amendment adds to
@@ -877,10 +909,17 @@ func approvalMergeGate(ctx context.Context, r store.Repos, az *authz.TxAuthorize
 		return approvalOutcome{}, fmt.Errorf("%w: only the proposer may merge their reviewed change", domain.ErrUnauthorized)
 	}
 	if policy.Version != req.PolicyVersion {
-		return approvalOutcome{}, invalidateRequest(ctx, r, p, caller.Principal, *req, "policy_changed")
+		if err := commitInvalidation(ctx, r, p, caller.Principal, *req, "policy_changed", now); err != nil {
+			return approvalOutcome{}, err
+		}
+		return approvalOutcome{gated: true, coveredEnv: coveredEnv, refusal: staleRefusal("policy_changed")}, nil
 	}
 	if !constantTimeEqual(digest, req.PreviewTokenDigest) {
-		return approvalOutcome{}, invalidateRequest(ctx, r, p, caller.Principal, *req, driftCause(ctx, r, p, *req))
+		cause := driftCause(ctx, r, p, *req)
+		if err := commitInvalidation(ctx, r, p, caller.Principal, *req, cause, now); err != nil {
+			return approvalOutcome{}, err
+		}
+		return approvalOutcome{gated: true, coveredEnv: coveredEnv, refusal: staleRefusal(cause)}, nil
 	}
 	approvers, err := r.Approvals().ListApprovers(ctx, p, req.PolicyID)
 	if err != nil {
@@ -920,10 +959,17 @@ func approvalBypassGate(ctx context.Context, r store.Repos, az *authz.TxAuthoriz
 		return approvalOutcome{}, fmt.Errorf("%w: only the proposer may commit their own change set", domain.ErrUnauthorized)
 	}
 	if policy.Version != req.PolicyVersion {
-		return approvalOutcome{}, invalidateRequest(ctx, r, p, caller.Principal, *req, "policy_changed")
+		if err := commitInvalidation(ctx, r, p, caller.Principal, *req, "policy_changed", now); err != nil {
+			return approvalOutcome{}, err
+		}
+		return approvalOutcome{gated: true, coveredEnv: coveredEnv, refusal: staleRefusal("policy_changed")}, nil
 	}
 	if !constantTimeEqual(digest, req.PreviewTokenDigest) {
-		return approvalOutcome{}, invalidateRequest(ctx, r, p, caller.Principal, *req, driftCause(ctx, r, p, *req))
+		cause := driftCause(ctx, r, p, *req)
+		if err := commitInvalidation(ctx, r, p, caller.Principal, *req, cause, now); err != nil {
+			return approvalOutcome{}, err
+		}
+		return approvalOutcome{gated: true, coveredEnv: coveredEnv, refusal: staleRefusal(cause)}, nil
 	}
 	isBypasser, err := r.Approvals().IsBypasser(ctx, p, policy.ID, string(caller.Principal))
 	if err != nil {

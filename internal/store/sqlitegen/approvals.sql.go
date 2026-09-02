@@ -130,54 +130,28 @@ const getApprovalPolicyForEnvironment = `-- name: GetApprovalPolicyForEnvironmen
 SELECT id, org_id, project_id, environment_id, min_approvals, allow_self_approval,
     request_ttl_seconds, enabled, version, created_by, created_at, updated_at
 FROM approval_policies
-WHERE org_id = ? AND project_id = ? AND environment_id = ? AND enabled = 1
+WHERE org_id = ? AND project_id = ? AND environment_id = ? AND enabled = ?
 `
 
 type GetApprovalPolicyForEnvironmentParams struct {
 	OrgID         string
 	ProjectID     string
 	EnvironmentID string
+	Enabled       int64
 }
 
-// GetApprovalPolicyForEnvironment is the exact-environment coverage lookup: an
-// enabled policy narrowed to this environment. Concrete match beats the
-// project-wide default, so the service tries this first.
+// GetApprovalPolicyForEnvironment is the coverage lookup. The service calls it
+// with the concrete environment first, then with ” for the project-wide
+// default: a concrete-environment policy beats the project-wide one. `enabled`
+// is a bound parameter (always the true value) so the predicate analyzer sees a
+// column-OP-param shape rather than a literal.
 func (q *Queries) GetApprovalPolicyForEnvironment(ctx context.Context, arg GetApprovalPolicyForEnvironmentParams) (ApprovalPolicy, error) {
-	row := q.db.QueryRowContext(ctx, getApprovalPolicyForEnvironment, arg.OrgID, arg.ProjectID, arg.EnvironmentID)
-	var i ApprovalPolicy
-	err := row.Scan(
-		&i.ID,
-		&i.OrgID,
-		&i.ProjectID,
-		&i.EnvironmentID,
-		&i.MinApprovals,
-		&i.AllowSelfApproval,
-		&i.RequestTtlSeconds,
-		&i.Enabled,
-		&i.Version,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
+	row := q.db.QueryRowContext(ctx, getApprovalPolicyForEnvironment,
+		arg.OrgID,
+		arg.ProjectID,
+		arg.EnvironmentID,
+		arg.Enabled,
 	)
-	return i, err
-}
-
-const getApprovalPolicyProjectWide = `-- name: GetApprovalPolicyProjectWide :one
-SELECT id, org_id, project_id, environment_id, min_approvals, allow_self_approval,
-    request_ttl_seconds, enabled, version, created_by, created_at, updated_at
-FROM approval_policies
-WHERE org_id = ? AND project_id = ? AND environment_id = '' AND enabled = 1
-`
-
-type GetApprovalPolicyProjectWideParams struct {
-	OrgID     string
-	ProjectID string
-}
-
-// GetApprovalPolicyProjectWide is the project-wide coverage lookup
-// (environment_id = ”), consulted only when no exact-environment policy exists.
-func (q *Queries) GetApprovalPolicyProjectWide(ctx context.Context, arg GetApprovalPolicyProjectWideParams) (ApprovalPolicy, error) {
-	row := q.db.QueryRowContext(ctx, getApprovalPolicyProjectWide, arg.OrgID, arg.ProjectID)
 	var i ApprovalPolicy
 	err := row.Scan(
 		&i.ID,

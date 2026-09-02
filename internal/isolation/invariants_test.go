@@ -349,6 +349,11 @@ func TestInvariant11SystemProofEnumeration(t *testing.T) {
 		// byte sums under scheduler authority (#185): a reviewed widening, pinned.
 		authz.StoreValuesInstancePayloadByProject:    true,
 		authz.StoreSnapshotsInstancePayloadByProject: true,
+		// The hourly change-approval expiry sweep (#151): the installation-wide
+		// read of due requests and the fail-closed per-request mark. A reviewed
+		// widening, pinned here rather than hidden behind a side effect.
+		authz.StoreApprovalRequestSelectExpiry: true,
+		authz.StoreApprovalRequestMarkExpired:  true,
 	}
 	for site, ops := range sites {
 		if !want[site] {

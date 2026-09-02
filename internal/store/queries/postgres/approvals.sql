@@ -26,24 +26,17 @@ FROM approval_policies
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
   AND id = sqlc.arg(id);
 
--- GetApprovalPolicyForEnvironment is the exact-environment coverage lookup: an
--- enabled policy narrowed to this environment. Concrete match beats the
--- project-wide default, so the service tries this first.
+-- GetApprovalPolicyForEnvironment is the coverage lookup. The service calls it
+-- with the concrete environment first, then with '' for the project-wide
+-- default: a concrete-environment policy beats the project-wide one. `enabled`
+-- is a bound parameter (always the true value) so the predicate analyzer sees a
+-- column-OP-param shape rather than a literal.
 -- name: GetApprovalPolicyForEnvironment :one
 SELECT id, org_id, project_id, environment_id, min_approvals, allow_self_approval,
     request_ttl_seconds, enabled, version, created_by, created_at, updated_at
 FROM approval_policies
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
-  AND environment_id = sqlc.arg(environment_id) AND enabled = true;
-
--- GetApprovalPolicyProjectWide is the project-wide coverage lookup
--- (environment_id = ''), consulted only when no exact-environment policy exists.
--- name: GetApprovalPolicyProjectWide :one
-SELECT id, org_id, project_id, environment_id, min_approvals, allow_self_approval,
-    request_ttl_seconds, enabled, version, created_by, created_at, updated_at
-FROM approval_policies
-WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
-  AND environment_id = '' AND enabled = true;
+  AND environment_id = sqlc.arg(environment_id) AND enabled = sqlc.arg(enabled);
 
 -- name: ListApprovalPolicies :many
 SELECT id, org_id, project_id, environment_id, min_approvals, allow_self_approval,
