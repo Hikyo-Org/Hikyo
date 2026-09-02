@@ -337,7 +337,8 @@ func (s *Approvals) ListRequests(ctx context.Context, actor Actor, scope domain.
 // currently-eligible approver, refuses self-approval unless the policy permits
 // it, is idempotent on a repeated identical decision and a 409 on a conflicting
 // one, and consumes a purpose-bound reauthentication ceremony first.
-func (s *Approvals) Vote(ctx context.Context, actor Actor, scope domain.Scope, requestID string, decision store.ApprovalVoteDecision) (ApprovalRequestView, error) {
+func (s *Approvals) Vote(ctx context.Context, actor Actor, scope domain.Scope, requestID, decisionRaw string) (ApprovalRequestView, error) {
+	decision := store.ApprovalVoteDecision(decisionRaw)
 	if decision != store.ApprovalDecisionApprove && decision != store.ApprovalDecisionReject {
 		return ApprovalRequestView{}, fmt.Errorf("%w: a vote is approve or reject", domain.ErrInvalid)
 	}

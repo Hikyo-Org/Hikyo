@@ -2535,6 +2535,11 @@ var operationTable = map[Operation]opSpec{
 		formula: Formula{
 			{Cap: domain.CapPublish, At: domain.LevelEnv},
 		},
+		// A caller who holds publish@env but is not a currently-eligible
+		// approver, or is the requester under a no-self-approval policy, is
+		// refused AFTER the grant check with ErrUnauthorized (403). That is a
+		// post-grant refusal, so the 403 the contract declares is reachable.
+		postGrantForbidden: true,
 		storeOps: map[StoreOp]bool{
 			StoreApprovalRequestGet: true, StoreApprovalRequestUpdateState: true,
 			StoreApprovalVoteGet: true, StoreApprovalVoteInsert: true,

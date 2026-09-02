@@ -131,6 +131,11 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpRevisionList, authz.OpRevisionShow, authz.OpRevisionSignals,
 		authz.OpRevisionRestore, authz.OpRevisionRestoreHistory, authz.OpRevisionRestoreCurrent,
 		authz.OpPinSet, authz.OpPinSetHistory, authz.OpPinList, authz.OpPinRelease,
+		// secret-change approvals (#151): policy admin, review-queue reads, and
+		// voting are cheap single-row acts; merge/bypass ride OpValuePublish's
+		// own §179 budget, so no approval op takes a separate expensive slot.
+		authz.OpApprovalPolicyWrite, authz.OpApprovalPolicyRead, authz.OpApprovalRequestRead,
+		authz.OpApprovalVote, authz.OpApprovalBypass,
 		// grants
 		authz.OpGrantCreateEnv, authz.OpGrantCreateProject, authz.OpGrantCreateOrg, authz.OpGrantCreateInstance,
 		authz.OpGrantListProject, authz.OpGrantListOrg, authz.OpGrantListInstance,

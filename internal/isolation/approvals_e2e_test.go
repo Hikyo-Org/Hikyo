@@ -96,19 +96,19 @@ func runApprovalLifecycle(t *testing.T, db *store.DB) {
 	}
 
 	// The requester cannot vote (not an approver, and self-approval is off).
-	if _, err := approvals.Vote(ctx, service.LocalPrincipal(alice), envScope, req1, store.ApprovalDecisionApprove); !errors.Is(err, domain.ErrUnauthorized) {
+	if _, err := approvals.Vote(ctx, service.LocalPrincipal(alice), envScope, req1, "approve"); !errors.Is(err, domain.ErrUnauthorized) {
 		t.Fatalf("self/ineligible vote = %v, want unauthorized", err)
 	}
 
 	// 4. The approver approves; a repeated identical vote is idempotent.
-	if _, err := approvals.Vote(ctx, service.LocalPrincipal(custodian), envScope, req1, store.ApprovalDecisionApprove); err != nil {
+	if _, err := approvals.Vote(ctx, service.LocalPrincipal(custodian), envScope, req1, "approve"); err != nil {
 		t.Fatalf("approve vote: %v", err)
 	}
-	if _, err := approvals.Vote(ctx, service.LocalPrincipal(custodian), envScope, req1, store.ApprovalDecisionApprove); err != nil {
+	if _, err := approvals.Vote(ctx, service.LocalPrincipal(custodian), envScope, req1, "approve"); err != nil {
 		t.Fatalf("idempotent repeat vote: %v", err)
 	}
 	// A conflicting second decision is refused.
-	if _, err := approvals.Vote(ctx, service.LocalPrincipal(custodian), envScope, req1, store.ApprovalDecisionReject); !errors.Is(err, domain.ErrConflict) {
+	if _, err := approvals.Vote(ctx, service.LocalPrincipal(custodian), envScope, req1, "reject"); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("conflicting vote = %v, want conflict", err)
 	}
 
@@ -130,7 +130,7 @@ func runApprovalLifecycle(t *testing.T, db *store.DB) {
 	}); err != nil {
 		t.Fatalf("update policy: %v", err)
 	}
-	if _, err := approvals.Vote(ctx, service.LocalPrincipal(custodian), envScope, req2, store.ApprovalDecisionApprove); !errors.Is(err, domain.ErrConflict) {
+	if _, err := approvals.Vote(ctx, service.LocalPrincipal(custodian), envScope, req2, "approve"); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("vote on a policy-moved request = %v, want conflict (invalidated)", err)
 	}
 	if state := requestState(t, db, req2); state != "invalidated" {

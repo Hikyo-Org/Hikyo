@@ -6,7 +6,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
-	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
 // The change-approval transport (#151). Like every other file here it
@@ -21,7 +20,7 @@ type ApprovalService interface {
 	UpdatePolicy(ctx context.Context, actor service.Actor, scope domain.Scope, id string, input service.ApprovalPolicyInput) (service.ApprovalPolicyView, error)
 	DeletePolicy(ctx context.Context, actor service.Actor, scope domain.Scope, id string) error
 	ListRequests(ctx context.Context, actor service.Actor, scope domain.Scope) ([]service.ApprovalRequestView, error)
-	Vote(ctx context.Context, actor service.Actor, scope domain.Scope, requestID string, decision store.ApprovalVoteDecision) (service.ApprovalRequestView, error)
+	Vote(ctx context.Context, actor service.Actor, scope domain.Scope, requestID string, decision string) (service.ApprovalRequestView, error)
 }
 
 func policyInput(body apigen.ApprovalPolicyInput) service.ApprovalPolicyInput {
@@ -143,7 +142,7 @@ func (a *API) ListApprovalRequests(ctx context.Context, req apigen.ListApprovalR
 
 func (a *API) VoteApprovalRequest(ctx context.Context, req apigen.VoteApprovalRequestRequestObject) (apigen.VoteApprovalRequestResponseObject, error) {
 	view, err := a.Approvals.Vote(ctx, service.Bearer(bearer(ctx)), envScope(req.Org, req.Project, req.Environment),
-		string(req.ApprovalRequest), store.ApprovalVoteDecision(req.Body.Decision))
+		string(req.ApprovalRequest), string(req.Body.Decision))
 	if err != nil {
 		return nil, err
 	}

@@ -138,7 +138,8 @@
     "level": "environment",
     "formula": [
       "publish@environment"
-    ]
+    ],
+    "post_grant_forbidden": true
   },
   {
     "operation": "audit.export-env",

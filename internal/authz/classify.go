@@ -800,6 +800,7 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	// snapshot's values is `values export`.
 	"cli:revision": {Class: ClassTenant},
 	"cli:pin":      {Class: ClassTenant},
+	"cli:approval": {Class: ClassTenant},
 	// `rotate-token-key` reaches one instance-scoped route: the root token key
 	// belongs to the instance, so there is no tenant object whose nonexistence
 	// a refusal could mimic. `rotate-dek` reaches the DEK rotation route on the
