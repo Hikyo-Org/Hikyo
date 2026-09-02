@@ -97,3 +97,33 @@ object, `adapter_targets` is the target.
 (both engines), sqlc and oapi-codegen diff-clean, `pnpm --dir clients/ts
 verify`, `web` typecheck + vitest, Playwright machine-access spec (desktop and
 mobile), `pnpm --dir docs/site run check`.
+
+## Cross-model review (Codex gpt-5.6-sol, high effort, R1-R3)
+
+R1 raised five findings; R2 resolved four and accepted two dispositions; the
+final R3 verdict is SOUND with one human-disposition residual.
+
+Fixed during review: browser adoption reauthenticates over the adapter's whole
+environment set (matches the server's `TargetEnvironments`, which spans every
+non-tombstoned sibling target); the crash-window effect settlement binds the
+full tenant chain; exclude-only key selection fails loud; the drift_attention
+raise is one helper; the pause route declares 403; `StoreAdaptersHealthCounts`
+is a reviewed scheduler shared-door.
+
+Accepted dispositions: narrowing a key set under the prior authority without
+reveal/reauth is the locked #15 + deployment-adapter design; a crash-window
+`unknown` does not raise `drift_attention` because the dispatched row is
+presumed-written and the next converge self-heals; the adapters surface is
+project-local like machine-access (not workspace-scoped, `?remote` ignored),
+and its sidebar link is disabled for remote workspaces.
+
+Residual (R3, for human disposition): an HTTP request Hikyo times out at 15s
+(client `Timeout`, strictly < the 2-minute provider-write lease) may still be
+processed server-side by the provider after Hikyo gives up, so a write can land
+remotely after `PauseTarget` returns. This is the deployment-adapter ADR's
+already-accepted non-transactional-provider residual: pause deliberately does
+NOT release the ledger, so the row stays `dispatched`/`owned` (presumed
+written) and a late landing remains consistent with the record; the next
+converge reconciles idempotently. Eliminating it would need a provider-side
+conditional write (a provider feature, not an Hikyo choice). No code change;
+recorded so the acceptance is explicit rather than silent.
