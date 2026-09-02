@@ -390,13 +390,13 @@ operations:
   # dynamic secrets (#147 shipped API+CLI+read-only status; management WebUI #595)
   listLeases:                  {webui: machine-access}
   showLease:                   {webui: machine-access, via: [listLeases]}
-  listDynamicProviders:        {issue: 595}
-  createDynamicProvider:       {issue: 595}
-  showDynamicProvider:         {issue: 595}
-  deleteDynamicProvider:       {issue: 595}
-  setDynamicProviderCredential: {issue: 595}
-  revokeDynamicProviderCredential: {issue: 595}
-  mintLease:                   {issue: 595}
-  renewLease:                  {issue: 595}
-  revokeLease:                 {issue: 595}
-  settleLease:                 {issue: 595}
+  listDynamicProviders:        {webui: machine-access}
+  createDynamicProvider:       {webui: machine-access}
+  showDynamicProvider:         {webui: machine-access, via: [listDynamicProviders]}
+  deleteDynamicProvider:       {webui: machine-access}
+  setDynamicProviderCredential: {webui: machine-access}
+  revokeDynamicProviderCredential: {webui: machine-access}
+  mintLease:                   {webui: machine-access}
+  renewLease:                  {webui: machine-access}
+  revokeLease:                 {webui: machine-access}
+  settleLease:                 {webui: machine-access}

@@ -84,13 +84,14 @@ test.describe('machine access', () => {
     await expect(page.getByRole('heading', { name: 'Machine access', level: 1 })).toBeVisible();
   });
 
-  test('the inventory has four tabs, and every one of them says what it holds', async () => {
+  test('the inventory has five tabs, and every one of them says what it holds', async () => {
     const tabs = page.getByRole('tab');
-    await expect(tabs).toHaveCount(4);
+    await expect(tabs).toHaveCount(5);
     await expect(tabs.nth(0)).toHaveText(/Service accounts \(3\)/);
     await expect(tabs.nth(1)).toHaveText(/Federation \(1\)/);
     await expect(tabs.nth(2)).toHaveText(/Kubernetes targets \(0\)/);
-    await expect(tabs.nth(3)).toHaveText(/Leases \(0\)/);
+    await expect(tabs.nth(3)).toHaveText(/Providers \(0\)/);
+    await expect(tabs.nth(4)).toHaveText(/Leases \(0\)/);
 
     // The policy strip: the per-project opt-in is stated, not offered as a
     // control whose only outcome would be a refusal.
@@ -123,14 +124,55 @@ test.describe('machine access', () => {
     await expect(empty).toContainText('never that everything is healthy');
     await expectStatusIsTextAndAria(page, empty);
 
+    // The Providers tab is empty on a fresh project and says so.
+    await page.getByRole('tab', { name: 'Providers' }).click();
+    const providersEmpty = page
+      .getByRole('status')
+      .filter({ hasText: 'No dynamic-secret providers on this project yet' });
+    await expect(providersEmpty).toBeVisible();
+    await expectStatusIsTextAndAria(page, providersEmpty);
+    // Configuring a provider is offered, since a live session admits it.
+    await expect(page.getByRole('button', { name: 'Configure provider' })).toBeEnabled();
+
     // The Leases tab is status-only and empty on a fresh project; it never shows
-    // a secret and points mint/lifecycle at the CLI.
+    // a secret. With no provider yet, minting is held back and says why.
     await page.getByRole('tab', { name: 'Leases' }).click();
     const leasesEmpty = page
       .getByRole('status')
       .filter({ hasText: 'No dynamic-secret leases on this project yet' });
     await expect(leasesEmpty).toBeVisible();
     await expectStatusIsTextAndAria(page, leasesEmpty);
+    await expect(page.getByRole('button', { name: 'Mint lease' })).toBeDisabled();
+    await expect(
+      page.getByText('Configure a provider with a credential first', { exact: false }),
+    ).toBeVisible();
+  });
+
+  test('configuring a provider validates its inputs before it dials anything', async () => {
+    await page.getByRole('tab', { name: 'Providers' }).click();
+    await page.getByRole('button', { name: 'Configure provider' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(
+      dialog.getByRole('heading', { name: 'Configure dynamic-secret provider' }),
+    ).toBeVisible();
+
+    // Submitting with empty fields is refused CLIENT-side: no origin is dialled
+    // until the inputs are complete, so the operator meets a form refusal, not a
+    // probe failure.
+    await dialog.getByRole('button', { name: 'Configure provider' }).click();
+    await expect(
+      dialog.getByRole('alert').filter({ hasText: 'are all required' }),
+    ).toBeVisible();
+
+    // The admin credential is a write-only password field — never rendered back.
+    await expect(dialog.getByLabel('Admin credential (write-only)')).toHaveAttribute(
+      'type',
+      'password',
+    );
+
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toBeHidden();
   });
 
   test('expanding a row shows credentials, bindings, targets and the journey below', async () => {
