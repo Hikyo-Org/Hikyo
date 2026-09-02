@@ -69,6 +69,15 @@ GitHub's own headers drive runtime pacing (the ADR's decision tree); these value
 
 Pi-4 fit: one serial pacer per credential at ≥ 1 s spacing bounds adapter CPU to negligible; memory rides the existing outbox depth and response-cap rows; no new resource class.
 
+## Member invitation ([human-auth.md](../adr/human-auth.md) account-creation path, #568)
+
+| Entry | Default | Scope |
+|---|---|---|
+| Invitation authority lifetime | the credential-reset lifetime (`service.ResetLifetime`) | fixed |
+| Invitation authority use | single use; refused after consumption or expiry with the uniform `establishCredential` 401 | fixed |
+| Username collision | `409 conflict`; the transaction leaves no principal, account or grant behind | fixed |
+| Delivery | out of band (HTTP response to the inviter, or the CLI print triad); no email channel | fixed |
+
 ## Key-name bound (grammar restated in [domain-model.md](./domain-model.md))
 
 | Entry | Default | Scope |

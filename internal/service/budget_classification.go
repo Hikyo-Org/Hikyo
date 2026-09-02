@@ -170,6 +170,10 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpAdapterTest, authz.OpAdapterCredentialSet, authz.OpAdapterCredentialRevoke,
 		// templates
 		authz.OpTemplateApplyEnv, authz.OpTemplateApplyProject, authz.OpTemplateApplyOrg, authz.OpTemplateApplyInstance,
+		// member invitation (#568): one account row, one template expansion, one
+		// authority mint; frequency governed by the §10 authenticated-API budget
+		// exactly as the template and credential-reset operations beside it.
+		authz.OpMemberInviteOrg, authz.OpMemberInviteInstance,
 		// instance operational reads
 		authz.OpRetentionHealthRead, authz.OpUpdateStatusRead, authz.OpUpdateRequest, authz.OpUpdateJobRead,
 	)

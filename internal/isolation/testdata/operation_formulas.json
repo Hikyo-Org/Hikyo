@@ -781,6 +781,22 @@
     ]
   },
   {
+    "operation": "member.invite-instance",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "manage-members@instance"
+    ]
+  },
+  {
+    "operation": "member.invite-org",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "manage-members@org"
+    ]
+  },
+  {
     "operation": "oidc-provider.delete",
     "class": "instance",
     "level": "instance",

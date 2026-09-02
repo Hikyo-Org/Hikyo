@@ -296,6 +296,64 @@ test.describe('instance administration', () => {
     await expect(row).toHaveCount(0);
   });
 
+  // Member invitation at instance scope (#568): how a second operator comes
+  // to exist without host access. The invitee's lines are revoked afterwards;
+  // the account itself stays (there is no account deletion), under a unique
+  // name.
+  test('invites an operator at instance scope and refuses the same username twice', async ({
+    page,
+  }, testInfo) => {
+    const username = `operator-${testInfo.project.name}-${Date.now()}`;
+    await page.goto('/instance/members');
+    await page.getByRole('button', { name: 'Invite' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('heading', { level: 2 })).toHaveText('Invite a member to Instance');
+    // Instance scope admits exactly one template.
+    await expect(dialog.getByLabel('Role template').locator('option')).toHaveText([
+      'No initial grants',
+      'operator',
+    ]);
+    await dialog.getByLabel('Username').fill(username);
+    await dialog.getByLabel('Display name (optional)').fill('Second Operator');
+    await dialog.getByLabel('Role template').selectOption('operator');
+    await dialog.getByRole('button', { name: 'Invite', exact: true }).click();
+    const principal = (await dialog.getByTestId('issued-principal').textContent()) ?? '';
+    expect(principal).toMatch(/^(prn|usr)_/);
+    await expect(dialog.getByTestId('issued-authority')).not.toBeEmpty();
+    try {
+      await dialog.getByRole('button', { name: 'Close' }).click();
+      await expect(page.getByRole('dialog')).toBeHidden();
+      await expectStatusIsTextAndAria(
+        page,
+        page.locator('.notice').filter({ hasText: `Invited ${username} at Instance as operator` }),
+      );
+      // Every expanded line is the inviter's, at instance scope.
+      const row = page.getByRole('row').filter({ hasText: principal });
+      await expect(row).toContainText('manage-members');
+      await expect(row).toContainText(`manual: ${seed.principal}`);
+      const listed = await browserApi(page, 'GET', '/api/v1/instance/grants', zGrantList);
+      expect(listed.items.filter((grant) => grant.principal_id === principal).length).toBeGreaterThan(1);
+
+      // The same username again is a conflict, said inline, with the form kept.
+      await page.getByRole('button', { name: 'Invite' }).click();
+      const again = page.getByRole('dialog');
+      await again.getByLabel('Username').fill(username);
+      await again.getByRole('button', { name: 'Invite', exact: true }).click();
+      const refusal = again.getByRole('alert');
+      await expectStatusIsTextAndAria(page, refusal);
+      await expect(refusal).toContainText('already taken');
+      await expect(again.getByLabel('Username')).toHaveValue(username);
+      await again.getByRole('button', { name: 'Cancel' }).click();
+      await expect(page.getByRole('dialog')).toBeHidden();
+    } finally {
+      const listed = await browserApi(page, 'GET', '/api/v1/instance/grants', zGrantList);
+      for (const grant of listed.items.filter((item) => item.principal_id === principal)) {
+        const query = `principal=${encodeURIComponent(principal)}&capability=${encodeURIComponent(grant.capability)}`;
+        await browserApi(page, 'DELETE', `/api/v1/instance/grants?${query}`, z.null());
+      }
+    }
+  });
+
   test('applies the instance role template through the UI and revokes every created line', async ({
     page,
   }, testInfo) => {

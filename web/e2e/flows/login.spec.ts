@@ -81,6 +81,50 @@ async function expectOIDCDoneSurface(page: Page, theme: 'dark' | 'light') {
   });
 }
 
+async function expectEstablishSurface(page: Page, theme: 'dark' | 'light') {
+  await page.emulateMedia({ colorScheme: theme });
+  await page.goto('/establish');
+
+  const card = page.locator('.login__card');
+  const submit = page.getByRole('button', { name: 'Establish credential' });
+  const authority = page.getByLabel('Setup authority');
+  const password = page.getByLabel('New password');
+  const repeat = page.getByLabel('Repeat the password');
+  const heading = page.getByRole('heading', { name: 'Establish your credential' });
+  const lede = page.getByText('Paste the setup authority you were handed');
+
+  await expectBoundaryContrast(page, authority);
+  await expectBoundaryContrast(page, password);
+
+  await expectPinnedAssertionSet(page, {
+    flow: 'login',
+    surface: 'establish-credential',
+    theme,
+    text: [heading, lede],
+    radii: [
+      [card, 'container'],
+      [submit, 'control'],
+      [authority, 'control'],
+      [password, 'control'],
+      [repeat, 'control'],
+    ],
+    fonts: [
+      [heading, 'ui'],
+      [lede, 'ui'],
+    ],
+    colours: [
+      [heading, 'color', '--tx'],
+      [lede, 'color', '--tx-dim'],
+      [card, 'backgroundColor', '--bg-raise'],
+      [card, 'borderTopColor', '--line'],
+      [submit, 'backgroundColor', '--accent'],
+      [submit, 'color', '--on-accent'],
+    ],
+    hairlines: [card, authority],
+    density: [[submit, '--touch']],
+  });
+}
+
 /**
  * Flow: login (registry surface `login`).
  *
@@ -209,6 +253,63 @@ test.describe('login', () => {
   for (const scheme of ['dark', 'light'] as const) {
     test(`meets the pinned assertion set (${scheme})`, async ({ page }) => {
       await expectLoginSurface(page, scheme);
+    });
+  }
+
+  // Credential establishment (#568, registry surface `establish-credential`):
+  // the public page where an invitation or reset authority becomes a password.
+  // The happy path — a real invitation claimed here and signed in with — is
+  // the members flow's; this flow owns the page's own contract.
+  test('reaches the establish page from the login card', async ({ page }) => {
+    await page.goto('/login');
+    await page.getByRole('link', { name: 'Have a setup authority? Establish your credential' }).click();
+    await expect(page).toHaveURL(/\/establish$/);
+    await expect(page.getByRole('heading', { name: 'Establish your credential' })).toBeVisible();
+    await page.getByRole('link', { name: 'Back to sign in' }).click();
+    await expect(page).toHaveURL(/\/login$/);
+  });
+
+  test('refuses mismatched passwords locally, before any request', async ({ page }) => {
+    let requests = 0;
+    const establishPath = '**/api/v1/auth/credential/establish';
+    const count = async (route: Route) => {
+      requests += 1;
+      await route.continue();
+    };
+    await page.route(establishPath, count);
+    try {
+      await page.goto('/establish');
+      await page.getByLabel('Setup authority').fill('hik_cea_not_a_real_authority_value');
+      await page.getByLabel('New password').fill('a first password long enough');
+      await page.getByLabel('Repeat the password').fill('a first password long enough, but not this');
+      await page.getByRole('button', { name: 'Establish credential' }).click();
+      const alert = page.locator('.login__card').getByRole('alert');
+      await expectStatusIsTextAndAria(page, alert);
+      await expect(alert).toContainText('differ');
+      expect(requests).toBe(0);
+    } finally {
+      await page.unroute(establishPath, count);
+    }
+  });
+
+  test('answers an unknown authority uniformly', async ({ page }) => {
+    await page.goto('/establish');
+    await page.getByLabel('Setup authority').fill('hik_cea_not_a_real_authority_value');
+    await page.getByLabel('New password').fill('a first password long enough');
+    await page.getByLabel('Repeat the password').fill('a first password long enough');
+    await page.getByRole('button', { name: 'Establish credential' }).click();
+    const alert = page.locator('.login__card').getByRole('alert');
+    await expectStatusIsTextAndAria(page, alert);
+    // Unknown, expired and spent are one sentence: the server closes that
+    // oracle and the page must not reopen it.
+    await expect(alert).toContainText('was not accepted');
+    await expect(alert).not.toContainText(/unknown|no such|does not exist|spent/i);
+    expect(await page.context().cookies()).toEqual([]);
+  });
+
+  for (const scheme of ['dark', 'light'] as const) {
+    test(`establish page meets the pinned assertion set (${scheme})`, async ({ page }) => {
+      await expectEstablishSurface(page, scheme);
     });
   }
 

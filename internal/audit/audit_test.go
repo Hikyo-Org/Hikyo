@@ -390,7 +390,7 @@ func TestValidateRefusesValuesOutsideClosedTaxonomies(t *testing.T) {
 			[]string{"single-factor", "multi-factor"}},
 		{"authority issuer", EventAuthAuthorityMinted, OutcomeSuccess, TrailInstance, domain.Scope{}, "issued_by",
 			Payload{"authority_id": "cea_a", "account_id": "acc_a", "issued_by": "bootstrap", "delivery": "terminal"},
-			[]string{"bootstrap", "credential-reset", "break-glass", "recovery"}},
+			[]string{"bootstrap", "credential-reset", "break-glass", "recovery", "invitation"}},
 		{"authority delivery", EventAuthAuthorityMinted, OutcomeSuccess, TrailInstance, domain.Scope{}, "delivery",
 			Payload{"authority_id": "cea_a", "account_id": "acc_a", "issued_by": "bootstrap", "delivery": "stdout"},
 			[]string{"file", "terminal", "stdout", "response"}},

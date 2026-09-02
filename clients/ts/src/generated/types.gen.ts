@@ -632,6 +632,37 @@ export type RecoveryBeginResult = {
     expires_at: Timestamp;
 };
 
+export type InviteMemberRequest = {
+    /**
+     * The invitee's local login handle; globally unique.
+     */
+    username: string;
+    /**
+     * Defaults to the username.
+     */
+    display_name?: string;
+    /**
+     * Optional initial grants, expanded at the invitation's scope in the
+     * same transaction. Absent means the account can sign in and see
+     * nothing until someone grants it something.
+     *
+     */
+    template?: RoleTemplate;
+};
+
+export type InvitationResult = {
+    principal_id: Id;
+    account_id: Id;
+    /**
+     * The single-use credential-establishment authority for the new
+     * account, returned once. It creates no session and may only ever
+     * establish a password; hand it to the invitee out of band.
+     *
+     */
+    authority: string;
+    expires_at: Timestamp;
+};
+
 export type CredentialResetResult = {
     /**
      * The single-use credential-establishment authority for the target,
@@ -6818,6 +6849,83 @@ export type ApplyInstanceTemplateResponses = {
 
 export type ApplyInstanceTemplateResponse = ApplyInstanceTemplateResponses[keyof ApplyInstanceTemplateResponses];
 
+export type InviteInstanceMemberData = {
+    body: InviteMemberRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/instance/invitations';
+};
+
+export type InviteInstanceMemberErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type InviteInstanceMemberError = InviteInstanceMemberErrors[keyof InviteInstanceMemberErrors];
+
+export type InviteInstanceMemberResponses = {
+    /**
+     * The invited principal and its single-use authority.
+     */
+    201: InvitationResult;
+};
+
+export type InviteInstanceMemberResponse = InviteInstanceMemberResponses[keyof InviteInstanceMemberResponses];
+
 export type RevokeOrgGrantData = {
     body?: never;
     path: {
@@ -7120,6 +7228,88 @@ export type ApplyOrgTemplateResponses = {
 };
 
 export type ApplyOrgTemplateResponse = ApplyOrgTemplateResponses[keyof ApplyOrgTemplateResponses];
+
+export type InviteOrgMemberData = {
+    body: InviteMemberRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/invitations';
+};
+
+export type InviteOrgMemberErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type InviteOrgMemberError = InviteOrgMemberErrors[keyof InviteOrgMemberErrors];
+
+export type InviteOrgMemberResponses = {
+    /**
+     * The invited principal and its single-use authority.
+     */
+    201: InvitationResult;
+};
+
+export type InviteOrgMemberResponse = InviteOrgMemberResponses[keyof InviteOrgMemberResponses];
 
 export type RevokeProjectGrantData = {
     body?: never;

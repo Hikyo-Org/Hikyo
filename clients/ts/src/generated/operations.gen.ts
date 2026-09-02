@@ -149,6 +149,8 @@ import {
   getUpdateStatus,
   getValue,
   importValues,
+  inviteInstanceMember,
+  inviteOrgMember,
   linkIdentity,
   listAdapters,
   listAdapterTargets,
@@ -392,6 +394,8 @@ import type {
   GetUpdateStatusData,
   GetValueData,
   ImportValuesData,
+  InviteInstanceMemberData,
+  InviteOrgMemberData,
   LinkIdentityData,
   ListAdaptersData,
   ListAdapterTargetsData,
@@ -623,6 +627,8 @@ import {
   zGetUpdateStatusResponse,
   zGetValueResponse,
   zImportValuesResponse,
+  zInviteInstanceMemberResponse,
+  zInviteOrgMemberResponse,
   zLinkIdentityResponse,
   zListAdaptersResponse,
   zListAdapterTargetsResponse,
@@ -839,6 +845,8 @@ export const getTotpStatusOp: BodyOperation<GetTotpStatusData, typeof zGetTotpSt
 export const getUpdateStatusOp: BodyOperation<GetUpdateStatusData, typeof zGetUpdateStatusResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getUpdateStatus, [200], zGetUpdateStatusResponse);
 export const getValueOp: BodyOperation<GetValueData, typeof zGetValueResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getValue, [200], zGetValueResponse);
 export const importValuesOp: BodyOperation<ImportValuesData, typeof zImportValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(importValues, [200], zImportValuesResponse);
+export const inviteInstanceMemberOp: BodyOperation<InviteInstanceMemberData, typeof zInviteInstanceMemberResponse> = /* @__PURE__ */ new GeneratedBodyOperation(inviteInstanceMember, [201], zInviteInstanceMemberResponse);
+export const inviteOrgMemberOp: BodyOperation<InviteOrgMemberData, typeof zInviteOrgMemberResponse> = /* @__PURE__ */ new GeneratedBodyOperation(inviteOrgMember, [201], zInviteOrgMemberResponse);
 export const linkIdentityOp: BodyOperation<LinkIdentityData, typeof zLinkIdentityResponse> = /* @__PURE__ */ new GeneratedBodyOperation(linkIdentity, [200], zLinkIdentityResponse);
 export const listAdaptersOp: BodyOperation<ListAdaptersData, typeof zListAdaptersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listAdapters, [200], zListAdaptersResponse);
 export const listAdapterTargetsOp: BodyOperation<ListAdapterTargetsData, typeof zListAdapterTargetsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listAdapterTargets, [200], zListAdapterTargetsResponse);

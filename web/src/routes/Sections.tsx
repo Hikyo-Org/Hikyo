@@ -1,5 +1,6 @@
 import { useId, useState, type ReactNode } from 'react';
 
+import { writeClipboard } from '../app/clipboard.ts';
 import { useModalDialog } from './useModalDialog.ts';
 
 /**
@@ -244,5 +245,44 @@ export function Explain({ label, text }: { label: string; text: string }) {
       </summary>
       <p className="explain__text">{text}</p>
     </details>
+  );
+}
+
+/**
+ * DisplayOnceCopy is the one copy control for a value the server will never
+ * show again (recovery codes, an authenticator seed, an invitation or reset
+ * authority). The outcome is text with a glyph, never colour alone, and a
+ * refused clipboard says so instead of pretending.
+ */
+export function DisplayOnceCopy({ value, success }: { value: string; success: string }) {
+  const [status, setStatus] = useState<string | null>(null);
+
+  return (
+    <>
+      <div className="panel__actions">
+        <button
+          type="button"
+          className="btn"
+          onClick={async () => {
+            const result = await writeClipboard(value);
+            setStatus(
+              result === 'ok'
+                ? success
+                : 'This browser refused clipboard access, so nothing was copied.',
+            );
+          }}
+        >
+          Copy
+        </button>
+      </div>
+      {status === null ? null : (
+        <p className="notice" role="status">
+          <span className="alert__glyph" aria-hidden="true">
+            ⧉
+          </span>
+          <span>{status}</span>
+        </p>
+      )}
+    </>
   );
 }

@@ -14,6 +14,7 @@ describe('the route policy registry', () => {
   it('gives every current route one explicit access and chrome policy', () => {
     expect(SURFACES.map((surface) => `${surface.id}:${surface.mode}:${surface.chrome}`)).toEqual([
       'login:public:none',
+      'establish-credential:public:none',
       'overview:authenticated:shell',
       'projects:authenticated:shell',
       'remotes:authenticated:shell',
@@ -83,6 +84,7 @@ describe('the route policy registry', () => {
   it('makes only public and session-establishing ceremony routes anonymous-reachable', () => {
     expect(SURFACES.filter(allowsAnonymousSession).map((surface) => surface.id)).toEqual([
       'login',
+      'establish-credential',
       'cli-reauth',
       'workspace-approve',
       'workspace-callback',

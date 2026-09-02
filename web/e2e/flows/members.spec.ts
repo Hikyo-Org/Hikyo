@@ -417,6 +417,100 @@ test.describe('members and grants', () => {
     }
   });
 
+  // Member invitation (#568): the human-auth ADR's account-creation path,
+  // end to end — invite with a template, claim the display-once authority on
+  // the public establish page, sign in as the invitee, then reset the
+  // invitee's credential from the row action and claim that one too.
+  test('invites a member who establishes a credential and signs in, then resets it', async ({
+    browser,
+    page,
+  }, testInfo) => {
+    testInfo.setTimeout(90_000);
+    const username = `invitee-${testInfo.project.name}-${Date.now()}`;
+    const firstPassword = 'a first password long enough';
+    const secondPassword = 'a second password long enough';
+
+    await page.getByRole('button', { name: 'Invite' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('heading', { level: 2 })).toContainText('Invite a member to');
+    await dialog.getByLabel('Username').fill(username);
+    await dialog.getByLabel('Role template').selectOption('viewer');
+    await dialog.getByRole('button', { name: 'Invite', exact: true }).click();
+
+    // Display-once: the authority and the principal id are in the dialog and
+    // nowhere else.
+    await expect(dialog.getByRole('heading', { level: 2 })).toContainText(`Invitation for ${username}`);
+    const authority = (await dialog.getByTestId('issued-authority').textContent()) ?? '';
+    const principal = (await dialog.getByTestId('issued-principal').textContent()) ?? '';
+    expect(authority.length).toBeGreaterThan(16);
+    expect(principal).toMatch(/^(prn|usr)_/);
+    await expect(dialog).toContainText(`--as ${username}`);
+    await expect(dialog.getByRole('link', { name: 'Open the establish page' })).toHaveAttribute(
+      'href',
+      '/establish',
+    );
+    await dialog.getByRole('button', { name: 'Close' }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+    const invited = page.locator('.notice').filter({ hasText: `Invited ${username}` });
+    await expectStatusIsTextAndAria(page, invited);
+    // The refetched listing carries the invitee's ONE viewer line, granted by
+    // the inviter, at organisation scope.
+    const row = page.getByRole('row').filter({ hasText: principal });
+    await expect(row).toContainText('read');
+    await expect(row).toContainText(`manual: ${seed.principal}`);
+
+    const fresh = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    try {
+      const invitee = await fresh.newPage();
+      const establish = async (value: string, password: string) => {
+        await invitee.goto('/establish');
+        await invitee.getByLabel('Setup authority').fill(value);
+        await invitee.getByLabel('New password').fill(password);
+        await invitee.getByLabel('Repeat the password').fill(password);
+        await invitee.getByRole('button', { name: 'Establish credential' }).click();
+      };
+      const signIn = async (password: string) => {
+        await invitee.getByRole('link', { name: 'Sign in' }).click();
+        await expect(invitee).toHaveURL(/\/login$/);
+        await invitee.getByLabel('Username').fill(username);
+        await invitee.getByLabel('Password').fill(password);
+        await invitee.getByRole('button', { name: 'Sign in' }).click();
+        await expect(invitee.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
+      };
+
+      await establish(authority, firstPassword);
+      await expect(invitee.getByRole('heading', { name: 'Credential established' })).toBeVisible();
+      await signIn(firstPassword);
+
+      // Single use: the same authority is refused uniformly the second time.
+      await invitee.context().clearCookies();
+      await establish(authority, secondPassword);
+      const alert = invitee.locator('.login__card').getByRole('alert');
+      await expect(alert).toContainText('was not accepted');
+
+      // Reset from the row action: display-once again, and the invitee's first
+      // password is dead once the new one is established.
+      await page.getByRole('button', { name: `Reset credential for ${principal}` }).click();
+      const reset = page.getByRole('dialog');
+      await expect(reset.getByRole('heading', { level: 2 })).toContainText('Credential reset for');
+      const resetAuthority = (await reset.getByTestId('issued-authority').textContent()) ?? '';
+      expect(resetAuthority.length).toBeGreaterThan(16);
+      expect(resetAuthority).not.toBe(authority);
+      await reset.getByRole('button', { name: 'Close' }).click();
+      await expect(page.getByRole('dialog')).toBeHidden();
+      await expectStatusIsTextAndAria(
+        page,
+        page.locator('.notice').filter({ hasText: 'Reset the credential for' }),
+      );
+
+      await establish(resetAuthority, secondPassword);
+      await expect(invitee.getByRole('heading', { name: 'Credential established' })).toBeVisible();
+      await signIn(secondPassword);
+    } finally {
+      await fresh.close();
+    }
+  });
+
   test('renders membership and organisation server failures honestly', async ({ page }) => {
     await page.route(
       (url) => url.pathname === `/api/v1/orgs/${seed.org}/grants`,
@@ -532,6 +626,45 @@ test.describe('members and grants', () => {
             [jump, rowDensity],
           ],
         });
+      } finally {
+        await page.emulateMedia({ colorScheme: null });
+      }
+    });
+  }
+
+  for (const scheme of ['dark', 'light'] as const) {
+    test(`meets the pinned assertion set on the invite dialog (${scheme})`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      try {
+        const opener = page.getByRole('button', { name: 'Invite' });
+        await opener.click();
+        const dialog = page.getByRole('dialog');
+        await expect(dialog).toBeVisible();
+
+        await expectPinnedAssertionSet(page, {
+          flow: 'members',
+          surface: 'members',
+          theme: scheme,
+          text: [
+            dialog.getByRole('heading', { level: 2 }),
+            dialog.locator('.field__hint').first(),
+          ],
+          radii: [
+            [dialog, 'container'],
+            [dialog.getByRole('button', { name: 'Cancel' }), 'control'],
+            [dialog.getByLabel('Username'), 'control'],
+          ],
+          fonts: [[dialog.getByRole('heading', { level: 2 }), 'ui']],
+          colours: [[dialog, 'backgroundColor', '--bg-panel']],
+          hairlines: [dialog, dialog.getByLabel('Username')],
+          density: [[dialog.getByRole('button', { name: 'Cancel' }), '--touch']],
+        });
+
+        // Escape is a cancel, not a zombie: the dialog is gone and focus is
+        // back on what opened it.
+        await page.keyboard.press('Escape');
+        await expect(page.getByRole('dialog')).toBeHidden();
+        await expect(opener).toBeFocused();
       } finally {
         await page.emulateMedia({ colorScheme: null });
       }

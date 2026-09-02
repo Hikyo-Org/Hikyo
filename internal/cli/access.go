@@ -9,9 +9,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/disclose"
 )
 
 // The access verbs (#55): `hikyo access grant list|add|remove|template` and
@@ -27,11 +29,13 @@ import (
 //     template, and the acceptance criteria require one. It joins the grant
 //     noun because a template IS grants: the expansion happens at grant time
 //     and nothing stores the template name.
-//   - `member invite` is NOT implemented. No spec fixes the claim flow,
-//     the delivery channel or the expiry, and inventing them here would lock
-//     three decisions nobody has made. The seam stays named
-//     (service.ErrNoInvitationPath); the handoff carries it as an explicit
-//     disposition item quoting the ADR line.
+//   - `member invite` (#568) is the human-auth ADR's local-credential
+//     invitation: create the account, expand an optional template at that
+//     scope, mint the credential-establishment authority and deliver it
+//     display-once under the print triad — the same delivery `account
+//     reset-credential` uses. Org or instance scope only: a project has no
+//     accounts of its own. (The OIDC-claim seam, service.ErrNoInvitationPath,
+//     is a different decision and stays named.)
 //
 // Scope is addressed the ordinary way — `--org`/`--project`/`--env` through the
 // same per-dimension precedence every other verb uses — and the DEEPEST
@@ -246,9 +250,12 @@ func runAccessGrant(ctx context.Context, ios IO, args []string) error {
 // to fail in — authority removed, not authority retained — and the command
 // reports how far it got.
 func runAccessMember(ctx context.Context, ios IO, args []string) error {
-	sub, rest, err := subverb("access member", args, "list", "remove")
+	sub, rest, err := subverb("access member", args, "list", "invite", "remove")
 	if err != nil {
 		return err
+	}
+	if sub == "invite" {
+		return runAccessMemberInvite(ctx, ios, rest)
 	}
 	var format, principal string
 	var instanceScope bool
@@ -320,6 +327,79 @@ func runAccessMember(ctx context.Context, ios IO, args []string) error {
 	if revoked == 0 {
 		return failf(ExitNotFound, "no grants for %s at %s", principal, scope.label)
 	}
+	return nil
+}
+
+// runAccessMemberInvite is `hikyo access member invite <username>` (#568): the
+// human-auth ADR's account-creation path, delivered display-once exactly like
+// `account reset-credential`. The sink is prepared BEFORE the request so a
+// refused destination never leaves an unrecoverable authority behind.
+func runAccessMemberInvite(ctx context.Context, ios IO, args []string) (returnErr error) {
+	var displayName, template, outputFile string
+	var dangerous, instanceScope bool
+	st, flags, err := parseCommon("access member invite", ios, args, func(fs *flag.FlagSet) {
+		fs.BoolVar(&instanceScope, "instance-scope", false, "address instance scope rather than an org")
+		fs.StringVar(&displayName, "display-name", "", "display name (defaults to the username)")
+		fs.StringVar(&template, "template", "", "role template to expand at this scope (optional)")
+		fs.StringVar(&outputFile, "output-file", "", "write the authority to a file this command creates (0600)")
+		fs.BoolVar(&dangerous, "dangerously-print", false, "print the authority to stdout")
+	})
+	if err != nil {
+		return err
+	}
+	if len(flags.positionals) != 1 {
+		return failf(ExitUsage, "usage: hikyo access member invite <username> [--display-name NAME] [--template T] [--org O | --instance-scope] [--output-file PATH | --dangerously-print]")
+	}
+	username := flags.positionals[0]
+	deliver := disclose.Options{OutputFile: outputFile, DangerouslyPrint: dangerous, Stdout: ios.Stdout}
+	sink, err := ios.prepareDisclosure(deliver)
+	if err != nil {
+		return failf(ExitRefused, "the invitation authority has nowhere to go: %v", err)
+	}
+	defer sink.AbortOnReturn(&returnErr)
+	resolved, err := Resolve(st, ios.Env, flags.Flags, ios.Workdir)
+	if err != nil {
+		return err
+	}
+	scope, err := resolveAccessScope(resolved, flags, instanceScope, "access member invite")
+	if err != nil {
+		return err
+	}
+	// Membership is an organisation or instance fact: a project has no
+	// accounts of its own, so a deeper address is a usage error, never a
+	// silently widened invitation.
+	if strings.Contains(scope.path, "/projects/") {
+		return failf(ExitUsage,
+			"hikyo access member invite addresses an organisation (--org) or the instance (--instance-scope): a project has no accounts of its own")
+	}
+	client, _, _, err := authenticatedResolvedTarget(st, ios, flags, resolved)
+	if err != nil {
+		return err
+	}
+	body := apigen.InviteMemberRequest{Username: username}
+	if displayName != "" {
+		body.DisplayName = &displayName
+	}
+	if template != "" {
+		tmpl := apigen.RoleTemplate(template)
+		body.Template = &tmpl
+	}
+	var result apigen.InvitationResult
+	path := strings.TrimSuffix(scope.path, "/grants") + "/invitations"
+	if err := client.Do(ctx, http.MethodPost, path, body, &result); err != nil {
+		return err
+	}
+	if _, err := sink.WriteOnce(
+		fmt.Sprintf("credential-establishment authority for %s (single-use, expires %s)",
+			username, result.ExpiresAt.UTC().Format(time.RFC3339)),
+		result.Authority); err != nil {
+		return failf(ExitRefused, "disclosing the invitation authority: %v", err)
+	}
+	fmt.Fprintf(ios.Stderr,
+		"invited %s (principal %s) at %s; hand the authority above to them out of band.\n"+
+			"They establish their credential with:  hikyo account establish-credential --instance %s --as %s\n"+
+			"or in the browser at %s/establish\n",
+		username, result.PrincipalId, scope.label, client.Entry.Origin, username, client.Entry.Origin)
 	return nil
 }
 

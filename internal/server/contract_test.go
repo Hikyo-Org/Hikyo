@@ -1506,6 +1506,10 @@ func (s stubGrants) ApplyTemplate(context.Context, service.Actor, domain.Templat
 	return nil, s.outcome()
 }
 
+func (s stubGrants) InviteMember(context.Context, service.Actor, service.InviteSpec) (service.InvitationResult, error) {
+	return service.InvitationResult{}, s.outcome()
+}
+
 type stubSettings struct{ stubHierarchy }
 
 func (s stubSettings) GetEnvironment(context.Context, service.Actor, domain.Scope) (service.EnvironmentSettings, error) {
@@ -1597,6 +1601,7 @@ func hierarchyRoutes() []struct {
 	rename := apigen.RenameRequest{Name: "renamed"}
 	grantBody := apigen.CreateGrantRequest{Principal: testPrincipalID, Capability: "read"}
 	templateBody := apigen.ApplyTemplateRequest{Principal: testPrincipalID, Template: apigen.Viewer}
+	inviteBody := apigen.InviteMemberRequest{Username: "dana"}
 	scimBase := base + "/scim-bindings"
 	scimBinding := scimBase + "/" + testBindingID
 	mappingBody := apigen.ScimMappingRequest{GroupId: testSCIMGroupID, Template: "viewer"}
@@ -1636,6 +1641,9 @@ func hierarchyRoutes() []struct {
 		{http.MethodPost, base + "/grants", grantBody},
 		{http.MethodDelete, base + "/grants?principal=" + testPrincipalID + "&capability=read", nil},
 		{http.MethodPost, base + "/grants/template", templateBody},
+		// Member invitation (#568): a refused invitation is the uniform 404,
+		// never a 409 that would confirm the username or the organisation.
+		{http.MethodPost, base + "/invitations", inviteBody},
 		{http.MethodGet, project + "/grants", nil},
 		{http.MethodPost, project + "/grants", grantBody},
 		{http.MethodDelete, project + "/grants?principal=" + testPrincipalID + "&capability=read", nil},

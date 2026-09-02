@@ -319,6 +319,8 @@ var pinnedContractSurface = map[string]bool{
 	"PUT /api/v1/orgs/{org}/projects/{project}/retention":                                      true,
 	"PUT /api/v1/orgs/{org}/retention":                                                         true,
 	"POST /api/v1/accounts/{principal}/credential-reset":                                       true,
+	"POST /api/v1/instance/invitations":                                                        true,
+	"POST /api/v1/orgs/{org}/invitations":                                                      true,
 	"POST /api/v1/auth/credential/establish":                                                   true,
 	"POST /api/v1/auth/identities/link":                                                        true,
 	"POST /api/v1/auth/local/login":                                                            true,
