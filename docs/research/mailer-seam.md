@@ -84,7 +84,7 @@ Verified through GitHub's API on 2026-09-02:
 | Latest release | **v0.8.1**, published **2026-07-09** (GitHub releases API); last commit on `main` 2026-07-19 |
 | Previous releases | v0.8.0 "Native NTLM and DKIM support" (2026-07-04); v0.7.3 (2026-05-12) |
 | License | MIT |
-| `go.mod` | `go 1.25.0`; requires only `golang.org/x/crypto v0.54.0` and `golang.org/x/text v0.40.0` (Hikyo already has `x/crypto v0.55.0` direct and `x/text v0.41.0` indirect) |
+| `go.mod` at tag v0.8.1 | `go 1.25.0`; requires only `golang.org/x/crypto v0.54.0` and `golang.org/x/text v0.40.0` (identical on `main`; Hikyo already has `x/crypto v0.55.0` direct and `x/text v0.41.0` indirect) |
 | SMTP implementation | its own `smtp` package, *"originally forked from Go's standard library `net/smtp` package and has since been extended"*; the module does not import `net/smtp` |
 | Security response | v0.7.1 fixed **CVE-2025-59937**: *"insufficient address encoding when passing mail addresses to the SMTP client, which could lead to possible wrong address routing or even to ESMTP parameter smuggling"* |
 | Go support policy | from v0.7.0, aligned with the official Go release policy (actively maintained versions only) |
@@ -95,7 +95,7 @@ Defaults and options relevant to the seam (package docs and `client.go`):
 - `NewClient` builds `tls.Config{ServerName: host, MinVersion: DefaultTLSMinVersion}` with `DefaultTLSMinVersion = tls.VersionTLS12`. `WithTLSConfig` replaces it (custom CA bundle for a private relay).
 - `WithSSL()` / `WithSSLPort(fallback bool)` for implicit TLS on 465; `DefaultPort = 25`, `DefaultPortSSL = 465`, `DefaultPortTLS = 587`.
 - `WithDialContextFunc(fn)` *"overrides the default DialContext function used by the Client when establishing a connection"* — i.e. the whole dialer is replaceable, so `netpolicy.PublicDialer.DialContext` can be injected unchanged (§7.5).
-- `WithSMTPAuth` with PLAIN, LOGIN, CRAM-MD5, NTLM, SCRAM-SHA-1/256 (+PLUS), XOAUTH2, and auto-discovery. `smtp.PlainAuth(identity, username, password, host, allowUnenc bool)`: with `allowUnenc == false` the `Start` method returns `ErrUnencrypted` when `!server.TLS && !isLocalhost(server.Name)` — the stdlib rule, kept.
+- `WithSMTPAuth` with PLAIN, LOGIN, CRAM-MD5, NTLM, SCRAM-SHA-1/256 (+PLUS), XOAUTH2, and auto-discovery. `smtp.PlainAuth(identity, username, password, host, allowUnenc bool)` and `smtp.LoginAuth(username, password, host, allowUnenc bool)` carry the same guard: with `allowUnenc == false` their `Start` methods return `ErrUnencrypted` when `!server.TLS && !isLocalhost(server.Name)` — the stdlib rule, kept, and extended to LOGIN which the stdlib does not implement.
 - `DefaultTimeout = 15 * time.Second`, applied per connection; `DialAndSendWithContext(ctx, msgs...)` for caller-owned deadlines.
 - `Msg.SetBodyTextTemplate` / `SetBodyHTMLTemplate` take `text/template` / `html/template` values; `AddAlternativeString` builds `multipart/alternative` with a **real** text part rather than a stripped HTML derivative.
 - Native DKIM signing since v0.8.0 (imports `internal/dkim`; RSA/ECDSA/Ed25519 via `crypto/*`). Unneeded on the authenticated-submission path (§2.2) but present.
@@ -224,7 +224,7 @@ Facts that bear on Hikyo:
 
 ### 6.3 The TLS gap between production policy and a loopback sink
 
-Production policy (§7.5) is TLS-mandatory with hostname verification. A capture sink on loopback either (a) presents a certificate — Mailpit `--smtp-tls-cert`, or go-smtp `ListenAndServeTLS`/STARTTLS with a generated cert — and Hikyo is pointed at it through a **CA-file knob** the production config needs anyway for private relays; or (b) Hikyo carries a **dev-only cleartext allowance** for loopback (`cfg.Dev` gates eight other dev-only behaviours today, e.g. `HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE`), which is the stdlib's own precedent (`PlainAuth` sends credentials to localhost without TLS). Option (a) exercises the shipped path end to end and needs no policy branch in production code; option (b) is less setup. Research lean: (a); the choice is #584's, and #587's prototype should assume whichever it picks.
+Production policy (§7.5) is TLS-mandatory with hostname verification. A capture sink on loopback either (a) presents a certificate — Mailpit `--smtp-tls-cert`, or go-smtp `ListenAndServeTLS`/STARTTLS with a generated cert — and Hikyo is pointed at it through a **CA-file knob** the production config needs anyway for private relays; or (b) Hikyo carries a **dev-only cleartext allowance** for loopback (`cfg.Dev` already gates several dev-only behaviours, e.g. `HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE`), which is the stdlib's own precedent (`PlainAuth` sends credentials to localhost without TLS). Option (a) exercises the shipped path end to end and needs no policy branch in production code; option (b) is less setup. Research lean: (a); the choice is #584's, and #587's prototype should assume whichever it picks.
 
 ### 6.4 Unit tests without any network
 
@@ -368,7 +368,8 @@ Go standard library
 - Imports tab (only `x/crypto`, `x/text` beyond the module and stdlib). https://pkg.go.dev/github.com/wneessen/go-mail?tab=imports
 - `client.go` on `main`: TLSMandatory enforcement error text, default `tls.Config`, `WithDialContextFunc` semantics, timeout application. https://raw.githubusercontent.com/wneessen/go-mail/main/client.go
 - `smtp/auth_plain.go` on `main`: `PlainAuth(identity, username, password, host, allowUnenc bool)`; `ErrUnencrypted` when `!allowUnencryptedAuth && !server.TLS && !isLocalhost(server.Name)`. https://raw.githubusercontent.com/wneessen/go-mail/main/smtp/auth_plain.go
-- `go.mod` on `main` (`go 1.25.0`; `x/crypto v0.54.0`, `x/text v0.40.0`). https://github.com/wneessen/go-mail/blob/main/go.mod
+- `smtp/auth_login.go` on `main`: `LoginAuth(username, password, host, allowUnenc bool)`; the same `ErrUnencrypted` guard in `Start()`. https://raw.githubusercontent.com/wneessen/go-mail/main/smtp/auth_login.go
+- `go.mod` at tag v0.8.1 (`go 1.25.0`; `x/crypto v0.54.0`, `x/text v0.40.0`), fetched via `GET /repos/wneessen/go-mail/contents/go.mod?ref=v0.8.1`; identical on `main`. https://github.com/wneessen/go-mail/blob/v0.8.1/go.mod
 - Releases: v0.8.1 (2026-07-09), v0.8.0 (2026-07-04), v0.7.3 (2026-05-12); v0.7.1 CVE-2025-59937 note; v0.7.0 Go support policy. Dates verified via `GET /repos/wneessen/go-mail/releases/latest` and `/commits?per_page=1` on 2026-09-02. https://github.com/wneessen/go-mail/releases
 - Project site `go-mail.dev` redirects (301) to the repository wiki; neither names adopters or production users. https://github.com/wneessen/go-mail/wiki
 
@@ -416,5 +417,5 @@ Hikyo (this repository, `origin/main` at `ec90c724` on 2026-09-02)
 - `internal/service/oidc.go` (`providerSecretAAD`, `sealSecret` under `Keyring.ForInstance()`); `internal/store/authn/oidc.go` (`ClientSecret []byte` sealed record).
 - `internal/oidctest/` and `web/e2e/fixtures/instance.ts` (in-repo protocol test double built on demand); `.github/workflows/ci.yml` (release-shaped app for browser legs, `postgres:18` service container, `no-egress` job); `scripts/ci/no-egress.sh`.
 - `go.mod` (`go 1.27.0`; `golang.org/x/crypto v0.55.0` direct; `golang.org/x/text v0.41.0` indirect; `aws-sdk-go-v2` indirect via `sops`; no mail library).
-- `web/src` (`rg -i 'i18n|useTranslation|locale'` → only `toLocaleString`/`toLocaleDateString`).
+- `web/src` (`rg -c 'i18n|useTranslation'` → zero hits; `locale` matches only `toLocaleString`/`toLocaleDateString`).
 - Issues: [#579](https://github.com/Hikyo-Org/Hikyo/issues/579) resolution (decisions 4–6, 9–11), [#568](https://github.com/Hikyo-Org/Hikyo/issues/568) (display-once invite), [#584](https://github.com/Hikyo-Org/Hikyo/issues/584), [#587](https://github.com/Hikyo-Org/Hikyo/issues/587), [#589](https://github.com/Hikyo-Org/Hikyo/issues/589).
