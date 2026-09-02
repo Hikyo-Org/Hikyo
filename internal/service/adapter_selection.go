@@ -51,6 +51,12 @@ func resolveKeySelection(catalogue []store.CatalogueKey, explicit []string, sele
 	default:
 		return nil, fmt.Errorf("%w: key classification must be secret or config", domain.ErrInvalid)
 	}
+	// Exclude narrows the pattern/classification sweep; on its own it selects
+	// nothing, so an exclude with no include and no classification is a silent
+	// no-op. Refuse it loud rather than quietly keep the whole explicit set.
+	if len(selection.Exclude) != 0 && len(selection.Include) == 0 && selection.Classification == "" {
+		return nil, fmt.Errorf("%w: exclude patterns need an include pattern or a classification to narrow", domain.ErrInvalid)
+	}
 	chosen := make(map[string]struct{}, len(explicit)+len(selection.Names))
 	for _, id := range explicit {
 		chosen[id] = struct{}{}

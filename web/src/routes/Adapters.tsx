@@ -823,7 +823,11 @@ function TargetDetail({
                   busy={adopt.isPending}
                   onAdopt={(entries) =>
                     void act('Adopted. A converge is queued.', async () => {
-                      await ceremonyFor('adapter.adopt', [target.environment_id]);
+                      // Adoption reauthenticates over every environment the
+                      // adapter serves, not just this target's: the server
+                      // demands the whole set (TargetEnvironments spans every
+                      // non-tombstoned sibling target), so establish it here.
+                      await ceremonyFor('adapter.adopt', environmentsOfAdapter);
                       await adopt.mutateAsync({ target: target.id, artifact, entries, targetGeneration: target.generation });
                       setTicked(new Set());
                     })

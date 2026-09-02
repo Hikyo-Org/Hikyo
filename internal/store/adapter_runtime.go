@@ -501,9 +501,9 @@ func (r *AdapterRuntime) closeIndeterminateEffects(ctx context.Context, tx adapt
 			return err
 		}
 		update := tx.SQL(
-			`UPDATE adapter_effects SET outcome_audit_id=?,outcome='unknown',finished_at=? WHERE id=? AND outcome IS NULL`,
-			`UPDATE adapter_effects SET outcome_audit_id=$1,outcome='unknown',finished_at=$2 WHERE id=$3 AND outcome IS NULL`)
-		rowsAffected, err := tx.Exec(ctx, update, outcomeID, stamp, effect.id)
+			`UPDATE adapter_effects SET outcome_audit_id=?,outcome='unknown',finished_at=? WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND target_id=? AND outcome IS NULL`,
+			`UPDATE adapter_effects SET outcome_audit_id=$1,outcome='unknown',finished_at=$2 WHERE id=$3 AND org_id=$4 AND project_id=$5 AND environment_id=$6 AND target_id=$7 AND outcome IS NULL`)
+		rowsAffected, err := tx.Exec(ctx, update, outcomeID, stamp, effect.id, claimed.OrgID, claimed.ProjectID, claimed.EnvironmentID, claimed.TargetID)
 		if err != nil {
 			return err
 		}
@@ -828,11 +828,7 @@ func (j *adapterJournal) insertConflict(ctx context.Context, tx adapterDBTX, eff
 	}
 	// An unowned name in the way is drift only an operator can settle, by
 	// adopting it or renaming the key; the flag clears on the next success.
-	attention := tx.SQL(
-		`UPDATE adapter_targets SET drift_attention=1 WHERE id=? AND org_id=? AND project_id=? AND environment_id=?`,
-		`UPDATE adapter_targets SET drift_attention=TRUE WHERE id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4`)
-	_, err = tx.Exec(ctx, attention, j.job.TargetID, j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID)
-	return err
+	return raiseDriftAttention(ctx, tx, adapterJobScope(j.job), j.job.TargetID, j.job.EnvironmentID)
 }
 
 func (j *adapterJournal) insertAudit(ctx context.Context, tx adapterDBTX, id, typ, outcome string, at time.Time, payload []byte) error {
@@ -1256,6 +1252,11 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 				attention = "1"
 			}
 		}
+		// last_attempted_at is stamped at settlement. A terminal outcome
+		// carries its own `finished`; the retry path settles with a zero
+		// `finished` (its argument is the future due-time), so the attempt's
+		// completion instant is now. This is the settlement clock the whole
+		// runtime uses, not a fallback for a missing value.
 		attemptedAt := finished
 		if attemptedAt.IsZero() {
 			attemptedAt = time.Now().UTC()
@@ -1299,6 +1300,18 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 		}
 		return nil
 	})
+}
+
+// raiseDriftAttention flags a target as needing operator action (#157): an
+// unowned name in the way, or names orphaned by a route move. One helper so
+// the dual-dialect UPDATE lives in a single place. It is cleared only by the
+// next successful converge (finishJob).
+func raiseDriftAttention(ctx context.Context, tx adapterDBTX, chain domain.Scope, targetID, environmentID string) error {
+	query := tx.SQL(
+		`UPDATE adapter_targets SET drift_attention=1 WHERE id=? AND org_id=? AND project_id=? AND environment_id=?`,
+		`UPDATE adapter_targets SET drift_attention=TRUE WHERE id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4`)
+	_, err := tx.Exec(ctx, query, targetID, string(chain.Org), string(chain.Project), environmentID)
+	return err
 }
 
 // attentionPG renders the drift_attention assignment for Postgres, whose
@@ -1351,10 +1364,7 @@ func (r *AdapterRuntime) finishRouteMoveScrub(ctx context.Context, tx adapterDBT
 			return adapter.ErrSuperseded
 		}
 		// Names left behind on the old route are the operator's to clean up.
-		attention := tx.SQL(
-			`UPDATE adapter_targets SET drift_attention=1 WHERE id=? AND org_id=? AND project_id=? AND environment_id=?`,
-			`UPDATE adapter_targets SET drift_attention=TRUE WHERE id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4`)
-		if _, err := tx.Exec(ctx, attention, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID); err != nil {
+		if err := raiseDriftAttention(ctx, tx, adapterJobScope(job), job.TargetID, job.EnvironmentID); err != nil {
 			return err
 		}
 	}

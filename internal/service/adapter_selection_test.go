@@ -59,6 +59,7 @@ func TestResolveKeySelectionRefusesLoudly(t *testing.T) {
 		{name: "bad classification", selection: AdapterKeySelection{Classification: "public"}, want: "classification must be secret or config"},
 		{name: "nothing matched", selection: AdapterKeySelection{Include: []string{"NOPE_*"}}, want: "resolved to no keys"},
 		{name: "everything excluded", selection: AdapterKeySelection{Include: []string{"DB_*"}, Exclude: []string{"DB_*"}}, want: "resolved to no keys"},
+		{name: "exclude with no include or classification", selection: AdapterKeySelection{Names: []string{"DB_URL"}, Exclude: []string{"DB_*"}}, want: "exclude patterns need an include"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

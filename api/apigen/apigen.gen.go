@@ -32265,6 +32265,20 @@ func (response PauseAdapterTarget401JSONResponse) VisitPauseAdapterTargetRespons
 	return err
 }
 
+type PauseAdapterTarget403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PauseAdapterTarget403JSONResponse) VisitPauseAdapterTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PauseAdapterTarget404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response PauseAdapterTarget404JSONResponse) VisitPauseAdapterTargetResponse(w http.ResponseWriter) error {
