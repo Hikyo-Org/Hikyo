@@ -170,6 +170,11 @@ kubectl --namespace payments label secret hikyo-payments-credential \
 The bootstrap Secret must be in the same namespace as the `HikyoSecret`. Its
 data key is `hikyo-token` and both designation labels are required.
 
+The same three Hikyo-side steps are available in the browser: Machine access →
+*Create service account*, *Add environment grant*, and *Mint credential*
+(shown exactly once). See
+[Operate Hikyo from the browser](/docs/browser-operations/#the-lifecycle).
+
 ### ServiceAccount federation
 
 Federation avoids a stored bearer credential. Designate the same-namespace
@@ -255,8 +260,10 @@ that omits secret keys; it is not a client-side filter. `creationPolicy` is
    `project-settings` and `reveal` act at project scope; second factor
    required). The Machine access page offers the same toggle.
 5. Grant `reveal` to the workload principal on the environment:
-   `hikyo access grant add --principal <mch_...> --capability reveal --env <env-id>`.
-   The grant runs the widening ceremony over the environments it reaches.
+   `hikyo access grant add --principal <mch_...> --capability reveal --env <env-id>`,
+   or Members → *New grant* in the browser with the service account's
+   principal id. The grant runs the widening ceremony over the environments it
+   reaches.
 
 Until steps 4–5 are done, a workload principal delivers config values and
 secret presence only, and a `HikyoSecret` mapping that names any secret key is

@@ -11030,7 +11030,7 @@ components:
       properties:
         surface: {type: string, enum: [secret, variable]}
         effective_name: {type: string}
-        disposition: {type: string, enum: [create, update, delete, conflict, refused]}
+        disposition: {type: string, enum: [create, update, delete, conflict, refused, unknown-until-sync]}
         reason: {type: string}
 
     AdapterPlan:

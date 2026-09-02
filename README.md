@@ -48,19 +48,20 @@ remain immutable evidence.
 | [`CAP-RUNTIME-STORAGE`](./docs/status/README.md#cap-runtime-storage) Runtime and storage | Single multicall binary, SQLite and PostgreSQL stores, migrations, and CI |
 | [`CAP-SECURITY-FOUNDATIONS`](./docs/status/README.md#cap-security-foundations) Security foundations | Envelope encryption, authorization chokepoint, append-only audit trails, and gap-free PostgreSQL audit export |
 | [`CAP-CORE-API-CLI`](./docs/status/README.md#cap-core-api-cli) Core API and CLI | Bootstrap administration, local login, hierarchy CRUD, key declarations, validation, encrypted values, copy, clone, and bulk apply |
-| [`CAP-HUMAN-ACCESS`](./docs/status/README.md#cap-human-access) Human identity and access | OIDC, WebAuthn, TOTP, recovery, sessions, grants, role templates, protected environments, and member invitation at org and instance scope from API, CLI and WebUI with browser credential establishment |
-| [`CAP-MATRIX-DISCLOSURE`](./docs/status/README.md#cap-matrix-disclosure) Matrix and disclosure UI | Embedded app shell, environment matrix, row editor, problems filter, reveal/copy ceremonies, and protected publish flows |
-| [`CAP-MACHINE-ACCESS`](./docs/status/README.md#cap-machine-access) Machine access | Service accounts, display-once credentials, OIDC workload federation, and machine-access UI |
+| [`CAP-HUMAN-ACCESS`](./docs/status/README.md#cap-human-access) Human identity and access | OIDC, WebAuthn, TOTP, recovery, sessions, grants, role templates, protected environments, and member invitation at org and instance scope from API, CLI and WebUI with browser credential establishment and recovery-code sign-in |
+| [`CAP-MATRIX-DISCLOSURE`](./docs/status/README.md#cap-matrix-disclosure) Matrix and disclosure UI | Embedded app shell, environment matrix, row editor, problems filter, reveal/copy ceremonies, protected publish flows, key declaration from the matrix, catalogue declaration detail and editing, and key rename/reclassify/delete |
+| [`CAP-MACHINE-ACCESS`](./docs/status/README.md#cap-machine-access) Machine access | Service accounts with browser create/delete, display-once credentials, OIDC workload federation with browser issuer and binding administration, receiving-side connection credentials, and machine-access UI |
 | [`CAP-MULTI-INSTANCE`](./docs/status/README.md#cap-multi-instance) Multi-instance workspaces | Directory-tier remotes and browser-direct workspace sessions |
 | [`CAP-ENTERPRISE-IDENTITY`](./docs/status/README.md#cap-enterprise-identity) Enterprise identity protocols | SAML service-provider support and SCIM provisioning, fully open-source |
 | [`CAP-BACKUP-RESTORE`](./docs/status/README.md#cap-backup-restore) Backup and restore | Encrypted export/restore plus the cross-engine recovery drill |
 | [`CAP-REVISION-LIFECYCLE`](./docs/status/README.md#cap-revision-lifecycle) Revision lifecycle | Drafts, snapshots, selective publish, rollback, durable pins, retention, GC, and history restore/pin lifecycle |
-| [`CAP-ADMINISTRATION-UI`](./docs/status/README.md#cap-administration-ui) Administration UI | Members at organisation, project and instance scope, organisation/project/instance settings, account security, and browser step-up |
-| [`CAP-IMPORTS-ONBOARDING`](./docs/status/README.md#cap-imports-onboarding) Imports and onboarding | Kubernetes, SOPS, and Infisical file imports; live Kubernetes and Vault/OpenBao connectors; import wizard; dotenv scaffolding |
-| [`CAP-DELIVERY`](./docs/status/README.md#cap-delivery) Delivery | Compose delivery and `hikyo run`, Kubernetes operator/CRDs, Forgejo and GitHub Actions adapters, and machine-reveal opt-in |
+| [`CAP-ADMINISTRATION-UI`](./docs/status/README.md#cap-administration-ui) Administration UI | Members at organisation, project and instance scope, organisation/project/instance settings, account security, browser step-up, OIDC/SAML/SCIM provider administration, organisation, project and environment audit query and export, and remote cryptographic maintenance |
+| [`CAP-IMPORTS-ONBOARDING`](./docs/status/README.md#cap-imports-onboarding) Imports and onboarding | Kubernetes, SOPS, and Infisical file imports; live Kubernetes and Vault/OpenBao connectors; import wizard; dotenv scaffolding; browser imports of .env, Kubernetes, Infisical, and Vault/OpenBao sources |
+| [`CAP-DELIVERY`](./docs/status/README.md#cap-delivery) Delivery | Compose delivery and `hikyo run`, Kubernetes operator/CRDs, Forgejo and GitHub Actions adapters with multi-target synchronization and a browser-operated adapter lifecycle, and machine-reveal opt-in |
 | [`CAP-KEY-ROTATION`](./docs/status/README.md#cap-key-rotation) Key rotation | Root, master, DEK, token, and scanning-key rotation plus resumable re-encryption |
 | [`CAP-SECRET-SCANNING`](./docs/status/README.md#cap-secret-scanning) Secret scanning | Surface-1 warnings and Surface-2 blocks on every CLI/API value ingress |
 | [`CAP-SUPPLY-CHAIN-SITE`](./docs/status/README.md#cap-supply-chain-site) Supply chain and project site | Signed release pipeline, SBOMs, documentation/governance site, matching icons, and offline-capable PWA |
+| [`CAP-BROWSER-SCANNING`](./docs/status/README.md#cap-browser-scanning) Secret scanning in the browser | Surface-1 warn dialog on matrix editing and the Surface-2 block dialog on the declaration editor |
 
 ### Partially implemented
 
@@ -68,7 +69,7 @@ remain immutable evidence.
 | --- | --- | --- |
 | [`CAP-PRODUCTION-OPS`](./docs/status/README.md#cap-production-ops) Production operations | All registered operational bounds, doctor, upgrade path, no-egress posture, and pinned operator resource limits | Record an arm64 cgroup run proving operator reconciliation within the 128 MiB limit under load |
 | [`CAP-PUBLIC-RELEASE`](./docs/status/README.md#cap-public-release) Public release and distribution | Cosign trust, SBOM generation, GoReleaser/Helm packaging, and installer verification | Run full acceptance, freeze API/CLI, and publish 1.0 under [#79](https://github.com/Hikyo-Org/Hikyo/issues/79) |
-| [`CAP-BROWSER-SCANNING`](./docs/status/README.md#cap-browser-scanning) Secret scanning in the browser | CLI/API Surface-1 warnings and Surface-2 blocks | SPA block dialog after declaration editing lands under [#183](https://github.com/Hikyo-Org/Hikyo/issues/183) |
+| [`CAP-WEBUI-PARITY`](./docs/status/README.md#cap-webui-parity) WebUI parity | Executable parity registry over every public operation with closed exception classes, browser-only lifecycle acceptance from an empty organisation to Kubernetes-ready delivery, recovery-code sign-in, project and environment audit, and browser administration of identity providers, adapters, and remote crypto | Dynamic-secret provider and lease management under [#595](https://github.com/Hikyo-Org/Hikyo/issues/595) |
 
 </details>
 <!-- implementation-status:end -->

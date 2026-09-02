@@ -1,15 +1,24 @@
 import {
   addAdapterTargetOp,
   adoptAdapterTargetNamesOp,
+  cancelAdapterMoveOp,
   createAdapterOp,
+  deleteAdapterOp,
   listAdaptersOp,
   listEnvironmentsOp,
   listKeysOp,
   pauseAdapterTargetOp,
+  planAdapterTargetOp,
   removeAdapterTargetOp,
+  resumeAdapterMoveOp,
   resumeAdapterTargetOp,
+  revokeAdapterCredentialOp,
+  setAdapterCredentialOp,
+  showAdapterMoveOp,
   showAdapterTargetOp,
   syncAdapterTargetOp,
+  testAdapterTargetOp,
+  updateAdapterOriginOp,
   updateAdapterTargetOp,
 } from '@hikyo/operations';
 import type {
@@ -20,7 +29,10 @@ import type {
 import {
   zAdapter,
   zAdapterConflictArtifact,
+  zAdapterConnection,
   zAdapterList,
+  zAdapterMove,
+  zAdapterPlan,
   zAdapterResume,
   zAdapterTarget,
   zAdapterTargetDetail,
@@ -31,7 +43,7 @@ import {
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
-import { ApiError, parsed } from './client.ts';
+import { ApiError, ok, parsed } from './client.ts';
 
 export type Adapter = z.infer<typeof zAdapter>;
 export type AdapterList = z.infer<typeof zAdapterList>;
@@ -43,6 +55,9 @@ export type { AdapterKeySelection, AdapterTargetInput };
 export type AdapterConflictArtifact = z.infer<typeof zAdapterConflictArtifact>;
 export type AdapterTeardown = z.infer<typeof zAdapterTeardown>;
 export type AdapterResume = z.infer<typeof zAdapterResume>;
+export type AdapterMove = z.infer<typeof zAdapterMove>;
+export type AdapterPlan = z.infer<typeof zAdapterPlan>;
+export type AdapterConnection = z.infer<typeof zAdapterConnection>;
 export type AdapterHealth = AdapterTarget['sync_status'];
 export type ProjectEnvironment = z.infer<typeof zEnvironmentList>['items'][number];
 export type ProjectKey = z.infer<typeof zKeyList>['items'][number];
@@ -50,6 +65,7 @@ export type ProjectKey = z.infer<typeof zKeyList>['items'][number];
 export type ProjectRef = { readonly org: string; readonly project: string };
 type AdaptersKey = readonly ['adapters', string, string];
 type AdapterTargetKey = readonly ['adapter-target', string, string, string];
+type AdapterMoveKey = readonly ['adapter-move', string, string, string];
 type EnvironmentsKey = readonly ['environments', string, string];
 type KeysKey = readonly ['adapter-keys', string, string];
 
@@ -63,12 +79,22 @@ export const adapterTargetKey = (ref: ProjectRef, target: string): AdapterTarget
   ref.project,
   target,
 ];
+export const adapterMoveKey = (ref: ProjectRef, move: string): AdapterMoveKey => [
+  'adapter-move',
+  ref.org,
+  ref.project,
+  move,
+];
 const environmentsKey = (ref: ProjectRef): EnvironmentsKey => ['environments', ref.org, ref.project];
 const keysKey = (ref: ProjectRef): KeysKey => ['adapter-keys', ref.org, ref.project];
 
 /** The project's environments, for the target form and for naming targets. */
-export function useProjectEnvironments(ref: ProjectRef): UseQueryResult<z.infer<typeof zEnvironmentList>> {
+export function useProjectEnvironments(
+  ref: ProjectRef,
+  enabled = true,
+): UseQueryResult<z.infer<typeof zEnvironmentList>> {
   return useQuery({
+    enabled,
     queryKey: environmentsKey(ref),
     queryFn: () => parsed(listEnvironmentsOp, { path: ref }),
     retry: false,
@@ -322,6 +348,169 @@ export function useAdoptAdapterNames(ref: ProjectRef) {
       }),
     onSettled: (_data, _error, input) => invalidate(input.target),
   });
+}
+
+/** A move still has work in flight while it scrubs or activates. */
+export function moveInFlight(state: AdapterMove['state']): boolean {
+  return state === 'scrubbing' || state === 'activating';
+}
+
+/**
+ * useAdapterMove polls a durable route move while it is in flight and stops
+ * once it settles: the server's own state machine decides when the poll ends,
+ * not a client timer. Credentials are never represented in the response.
+ */
+export function useAdapterMove(ref: ProjectRef, move: string): UseQueryResult<AdapterMove> {
+  return useQuery({
+    queryKey: adapterMoveKey(ref, move),
+    queryFn: () => parsed(showAdapterMoveOp, { path: { ...ref, move } }),
+    enabled: move !== '',
+    refetchInterval: (query) =>
+      query.state.data !== undefined && moveInFlight(query.state.data.state) ? 2_000 : false,
+  });
+}
+
+export type MoveAdapterOriginInput = {
+  readonly adapter: string;
+  readonly origin: string;
+  /** Write-only. Held in component state only for the request. */
+  readonly credential: string;
+  readonly keepRemote: boolean;
+};
+
+/**
+ * useMoveAdapterOrigin starts the scrub-before-switch origin move. It answers
+ * 202 with the move, whose id is the only handle on its progress: the
+ * adapter itself reports `moving` and nothing more.
+ */
+export function useMoveAdapterOrigin(ref: ProjectRef) {
+  const invalidate = useInvalidateAdapters(ref);
+  return useMutation({
+    mutationFn: (input: MoveAdapterOriginInput) =>
+      parsed(updateAdapterOriginOp, {
+        path: { ...ref, adapter: input.adapter },
+        body: { origin: input.origin, credential: input.credential, keep_remote: input.keepRemote },
+      }),
+    onSettled: () => invalidate(),
+  });
+}
+
+export type ResumeAdapterMoveInput = {
+  readonly move: string;
+  readonly origin: string;
+  /** Write-only replacement for the pending origin credential. */
+  readonly credential: string;
+};
+
+/** useResumeAdapterMove replaces an attention-required pending origin route and reactivates it. */
+export function useResumeAdapterMove(ref: ProjectRef) {
+  const invalidate = useInvalidateAdapters(ref);
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ResumeAdapterMoveInput) =>
+      parsed(resumeAdapterMoveOp, {
+        path: { ...ref, move: input.move },
+        body: { origin: input.origin, credential: input.credential },
+      }),
+    onSettled: (_data, _error, input) => {
+      invalidate();
+      void queries.invalidateQueries({ queryKey: adapterMoveKey(ref, input.move) });
+    },
+  });
+}
+
+/** useCancelAdapterMove abandons an attention-required move and reconverges the old route. */
+export function useCancelAdapterMove(ref: ProjectRef) {
+  const invalidate = useInvalidateAdapters(ref);
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: (move: string) => parsed(cancelAdapterMoveOp, { path: { ...ref, move } }),
+    onSettled: (_data, _error, move) => {
+      invalidate();
+      void queries.invalidateQueries({ queryKey: adapterMoveKey(ref, move) });
+    },
+  });
+}
+
+/** useSetAdapterCredential replaces the write-only provider credential; nothing is enqueued. */
+export function useSetAdapterCredential(ref: ProjectRef) {
+  const invalidate = useInvalidateAdapters(ref);
+  return useMutation({
+    mutationFn: (input: { readonly adapter: string; readonly credential: string }) =>
+      ok(setAdapterCredentialOp, {
+        path: { ...ref, adapter: input.adapter },
+        body: { credential: input.credential },
+      }),
+    onSettled: () => invalidate(),
+  });
+}
+
+/**
+ * useRevokeAdapterCredential destroys outbound custody. It needs no ceremony:
+ * it narrows what Hikyo can do at the destination, and a later scrub may then
+ * be impossible, which the surface states before the act.
+ */
+export function useRevokeAdapterCredential(ref: ProjectRef) {
+  const invalidate = useInvalidateAdapters(ref);
+  return useMutation({
+    mutationFn: (adapter: string) => ok(revokeAdapterCredentialOp, { path: { ...ref, adapter } }),
+    onSettled: () => invalidate(),
+  });
+}
+
+export type DeleteAdapterInput = {
+  readonly adapter: string;
+  /** The explicit retain-or-prune decision over every target; no default. */
+  readonly decision: 'prune' | 'retain';
+};
+
+/** useDeleteAdapter tombstones the adapter and every target under it. */
+export function useDeleteAdapter(ref: ProjectRef) {
+  const invalidate = useInvalidateAdapters(ref);
+  return useMutation({
+    mutationFn: (input: DeleteAdapterInput) =>
+      parsed(deleteAdapterOp, {
+        path: { ...ref, adapter: input.adapter },
+        query: { keep_remote: input.decision === 'retain' },
+      }),
+    onSettled: () => invalidate(),
+  });
+}
+
+/**
+ * usePlanAdapterTarget computes the value-blind name plan. A plan that finds
+ * unowned names in the way records a conflict artifact on the target, so the
+ * detail is invalidated to show it for adoption.
+ */
+export function usePlanAdapterTarget(ref: ProjectRef) {
+  const invalidate = useInvalidateAdapters(ref);
+  return useMutation({
+    mutationFn: (target: string) => parsed(planAdapterTargetOp, { path: { ...ref, target } }),
+    onSettled: (_data, _error, target) => invalidate(target),
+  });
+}
+
+/** useTestAdapterTarget probes provider version and destination identity; no values, no writes. */
+export function useTestAdapterTarget(ref: ProjectRef) {
+  return useMutation({
+    mutationFn: (target: string) => parsed(testAdapterTargetOp, { path: { ...ref, target } }),
+  });
+}
+
+/** moveStateText is the one sentence each move state means to an operator. */
+export function moveStateText(state: AdapterMove['state']): string {
+  switch (state) {
+    case 'scrubbing':
+      return 'Scrubbing the old route. Owned names are being removed before the switch.';
+    case 'activating':
+      return 'Activating the new route. The first converge is running.';
+    case 'attention_required':
+      return 'Activation was refused at the new origin. Resume with a working credential, or cancel to reconverge the old route.';
+    case 'completed':
+      return 'Completed. The adapter now serves the new origin.';
+    case 'canceled':
+      return 'Canceled. The old route was reconverged and nothing pending remains.';
+  }
 }
 
 /** adapterRefusalText renders a refusal the way the surface speaks. */

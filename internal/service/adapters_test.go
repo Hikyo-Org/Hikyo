@@ -2199,3 +2199,139 @@ func TestCompleteRestoreClearsRestoredAdapterCredential(t *testing.T) {
 		t.Fatalf("restored adapter credential survived: credential=%v set_at=%v", credential, setAt)
 	}
 }
+
+func TestAdapterOriginMoveCredentialFailureRequiresAttentionAndCancelReconvergesOldRoute(t *testing.T) {
+	db := adapterServiceDB(t)
+	for _, statement := range []string{
+		`INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('gr_origin_cancel_reveal_two','usr_adapter','reveal','org_adapter','prj_adapter','env_two','2026-08-17T00:00:00Z')`,
+		`INSERT INTO keys (id,org_id,project_id,name,folder_path,classification,description,deprecated,deprecation_note,declaration,required_mode,forbidden_mode,created_at) VALUES ('key_origin_move','org_adapter','prj_adapter','API_TOKEN','','secret','',0,'','optional','none','none','2026-08-17T00:00:00Z')`,
+		`INSERT INTO adapter_target_keys (org_id,project_id,environment_id,target_id,adapter_id,key_id) VALUES ('org_adapter','prj_adapter','env_one','tgt_one','adp_1','key_origin_move')`,
+		`INSERT INTO adapter_target_keys (org_id,project_id,environment_id,target_id,adapter_id,key_id) VALUES ('org_adapter','prj_adapter','env_two','tgt_two','adp_1','key_origin_move')`,
+		`INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_id,surface,effective_name,normalized_name,state,updated_at) VALUES ('led_origin_one','org_adapter','prj_adapter','env_one','tgt_one','https://git.example',42,'secret','ONE_API_TOKEN','ONE_API_TOKEN','owned','2026-08-17T00:00:00Z')`,
+		`INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_id,surface,effective_name,normalized_name,state,updated_at) VALUES ('led_origin_two','org_adapter','prj_adapter','env_two','tgt_two','https://git.example',42,'secret','TWO_API_TOKEN','TWO_API_TOKEN','owned','2026-08-17T00:00:00Z')`,
+	} {
+		if _, err := db.SQLiteWrite().ExecContext(t.Context(), statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	root, err := crypto.GenerateRootKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealer, err := kr.ForProject(t.Context(), "org_adapter", "prj_adapter")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldCredential, err := sealer.SealField(adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), []byte("old-token"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapters SET credential_ciphertext=?,credential_set_at='2026-08-17T00:00:00Z' WHERE id='adp_1'`, oldCredential); err != nil {
+		t.Fatal(err)
+	}
+	svc := &Adapters{DB: db, Keyring: kr, ModuleFactory: providerBlindTestModuleFactory(func(origin, credential string) (adapter.Module, func(), error) {
+		if origin != "https://git.next.example" || credential != "new-token" {
+			t.Fatalf("pending factory=%q/%q", origin, credential)
+		}
+		return fakeAdapterConfigureModule{gates: new(int)}, nil, nil
+	})}
+	move, err := svc.MoveOrigin(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, "adp_1", "https://git.next.example", []byte("new-token"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if move.MoveID == "" || len(move.Targets) != 2 {
+		t.Fatalf("MoveOrigin() = %+v", move)
+	}
+	var state, origin, pendingOrigin, moveState string
+	var currentCredential, pendingCredential []byte
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT state,origin,credential_ciphertext FROM adapters WHERE id='adp_1'`).Scan(&state, &origin, &currentCredential); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT state,pending_origin,pending_credential_ciphertext FROM adapter_route_moves WHERE id=?`, move.MoveID).Scan(&moveState, &pendingOrigin, &pendingCredential); err != nil {
+		t.Fatal(err)
+	}
+	if state != "moving" || origin != "https://git.example" || !slices.Equal(currentCredential, oldCredential) || moveState != "scrubbing" || pendingOrigin != "https://git.next.example" || len(pendingCredential) == 0 || string(pendingCredential) == "new-token" {
+		t.Fatalf("origin move adapter=%q/%q old=%v move=%q/%q pending=%v", state, origin, slices.Equal(currentCredential, oldCredential), moveState, pendingOrigin, pendingCredential)
+	}
+	var scrubJobs int
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM adapter_outbox WHERE route_move_id=? AND kind='scrub' AND state='queued'`, move.MoveID).Scan(&scrubJobs); err != nil {
+		t.Fatal(err)
+	}
+	if scrubJobs != 2 {
+		t.Fatalf("origin scrub jobs=%d", scrubJobs)
+	}
+	runtime := store.NewAdapterRuntime(db, func(context.Context, adapter.Job, adapter.Effect) error { return nil })
+	now := time.Now().UTC().Add(time.Second)
+	first, ok, err := runtime.ClaimDue(t.Context(), "worker_origin_one", now, now.Add(adapter.LeaseTime))
+	if err != nil || !ok || first.RouteMoveID != move.MoveID || first.Kind != adapter.Scrub {
+		t.Fatalf("ClaimDue(first) = %+v, %v, %v", first, ok, err)
+	}
+	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapter_ledger SET state='released' WHERE target_id=?`, first.TargetID); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Succeed(t.Context(), first, 0, nil, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	var activationJobs int
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT state FROM adapter_route_moves WHERE id=?`, move.MoveID).Scan(&moveState); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM adapter_outbox WHERE route_move_id=? AND kind='activate' AND state='queued'`, move.MoveID).Scan(&activationJobs); err != nil {
+		t.Fatal(err)
+	}
+	if moveState != "scrubbing" || activationJobs != 0 {
+		t.Fatalf("barrier opened early: state=%q activations=%d", moveState, activationJobs)
+	}
+	second, ok, err := runtime.ClaimDue(t.Context(), "worker_origin_two", now.Add(2*time.Second), now.Add(adapter.LeaseTime))
+	if err != nil || !ok || second.RouteMoveID != move.MoveID || second.Kind != adapter.Scrub || second.TargetID == first.TargetID {
+		t.Fatalf("ClaimDue(second) = %+v, %v, %v", second, ok, err)
+	}
+	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapter_ledger SET state='released' WHERE target_id=?`, second.TargetID); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Succeed(t.Context(), second, 0, nil, now.Add(3*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT state FROM adapter_route_moves WHERE id=?`, move.MoveID).Scan(&moveState); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM adapter_outbox WHERE route_move_id=? AND kind='activate' AND state='queued'`, move.MoveID).Scan(&activationJobs); err != nil {
+		t.Fatal(err)
+	}
+	if moveState != "activating" || activationJobs != 2 {
+		t.Fatalf("barrier did not open: state=%q activations=%d", moveState, activationJobs)
+	}
+	// The pending credential is refused at the new origin: attention required,
+	// and the browser's Cancel move must reconverge the old route (#504).
+	firstActivation, ok, err := runtime.ClaimDue(t.Context(), "worker_origin_activate_one", now.Add(4*time.Second), now.Add(adapter.LeaseTime))
+	if err != nil || !ok || firstActivation.RouteMoveID != move.MoveID || firstActivation.Kind != adapter.Activate {
+		t.Fatalf("ClaimDue(first activation) = %+v, %v, %v", firstActivation, ok, err)
+	}
+	if err := runtime.Fail(t.Context(), firstActivation, 0, now.Add(5*time.Second), adapter.ErrProviderAuth); err != nil {
+		t.Fatal(err)
+	}
+	status, err := svc.Move(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, move.MoveID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != "attention_required" {
+		t.Fatalf("attention status = %+v", status)
+	}
+	canceled, err := svc.CancelMove(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, move.MoveID)
+	if err != nil {
+		t.Fatalf("CancelMove() after a refused origin activation: %v", err)
+	}
+	if canceled.State != "canceled" {
+		t.Fatalf("canceled status = %+v", canceled)
+	}
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT state,origin FROM adapters WHERE id='adp_1'`).Scan(&state, &origin); err != nil {
+		t.Fatal(err)
+	}
+	if state != "active" || origin != "https://git.example" {
+		t.Fatalf("old route not restored: %q %q", state, origin)
+	}
+}

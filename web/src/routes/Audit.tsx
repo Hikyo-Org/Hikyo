@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useParams } from 'react-router';
 
+import { useProjectEnvironments } from '../api/adapters.ts';
 import {
   AUDIT_OUTCOMES,
   auditExportUrl,
@@ -8,6 +9,7 @@ import {
   useAuditTrail,
   type AuditEvent,
   type AuditFilter,
+  type AuditScope,
 } from '../api/audit.ts';
 import { ApiError } from '../api/client.ts';
 
@@ -32,21 +34,43 @@ function refusalText(error: unknown): string {
   return 'The trail could not be read.';
 }
 
+/**
+ * Audit serves two registry surfaces: the org trail (`audit`, #502) and the
+ * project trail (`project-audit`, #572). The project route carries `:project`;
+ * the environment is a filter on that page, because an environment trail is a
+ * slice of its project's and a holder who can read one can pick which. The
+ * scope is state alongside the filter so a picked environment survives the
+ * same apply/clear discipline as every other control.
+ */
 export function Audit() {
   const params = useParams();
   const org = params.org ?? '';
+  const project = params.project ?? '';
+  // Keyed by scope so a client-side move between organisations or projects
+  // remounts the page: a picked environment or an applied filter belongs to
+  // the scope it was picked in and must not follow the route to another.
+  return <AuditTrail key={`${org}/${project}`} org={org} project={project} />;
+}
+
+function AuditTrail({ org, project }: { readonly org: string; readonly project: string }) {
   const [draft, setDraft] = useState<AuditFilter>(emptyAuditFilter);
   const [applied, setApplied] = useState<AuditFilter>(emptyAuditFilter);
+  const [environmentDraft, setEnvironmentDraft] = useState('');
+  const [environment, setEnvironment] = useState('');
   const [selected, setSelected] = useState<AuditEvent | null>(null);
-  const trail = useAuditTrail(org, applied);
+  const scope: AuditScope = project === '' ? { org } : { org, project, environment };
+  const trail = useAuditTrail(scope, applied);
+  const environments = useProjectEnvironments({ org, project }, project !== '');
 
   const events = trail.data?.pages.flatMap((page) => page.items) ?? [];
   const scannedEnd = trail.hasNextPage !== true;
 
-  function apply(next: AuditFilter) {
+  function apply(next: AuditFilter, nextEnvironment = environmentDraft) {
     setSelected(null);
     setDraft(next);
     setApplied(next);
+    setEnvironmentDraft(nextEnvironment);
+    setEnvironment(nextEnvironment);
   }
 
   function onSubmit(event: FormEvent) {
@@ -60,14 +84,31 @@ export function Audit() {
 
   return (
     <div className="page page--chrome page--audit">
-      <h1>Audit</h1>
+      <h1>{project === '' ? 'Audit' : 'Project audit'}</h1>
       <p className="page__lede">
-        Every recorded event in this organisation, oldest first. Reading the trail is itself
-        audited.
+        {project === ''
+          ? 'Every recorded event in this organisation, oldest first. Reading the trail is itself audited.'
+          : 'Every recorded event in this project, oldest first, or one environment of it. Reading the trail is itself audited.'}
       </p>
 
       <form className="audit__filter panel" onSubmit={onSubmit} aria-label="Filter the audit trail">
         <div className="audit__filter-grid">
+          {project === '' ? null : (
+            <label className="field">
+              <span className="field__label">Environment</span>
+              <select
+                value={environmentDraft}
+                onChange={(event) => setEnvironmentDraft(event.target.value)}
+              >
+                <option value="">Whole project</option>
+                {(environments.data?.items ?? []).map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="field">
             <span className="field__label">From</span>
             <input
@@ -141,14 +182,14 @@ export function Audit() {
           <button
             type="button"
             className="btn btn--quiet"
-            onClick={() => apply(emptyAuditFilter)}
+            onClick={() => apply(emptyAuditFilter, '')}
           >
             Clear
           </button>
           {/* A plain same-origin GET: the browser streams the JSONL to disk under
               the session cookie, so the SPA never holds the trail in memory and no
               token rides the URL. */}
-          <a className="btn" href={auditExportUrl(org, applied)} download>
+          <a className="btn" href={auditExportUrl(scope, applied)} download>
             Export JSONL
           </a>
         </div>

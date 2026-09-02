@@ -96,7 +96,8 @@ test.describe('app chrome', () => {
     await expect(projectNav.getByRole('link', { name: 'Members' })).toBeVisible();
     // The organisation block is never hidden: every destination stays
     // reachable in project mode (#567).
-    await expect(sidebar.getByRole('link', { name: 'Audit' })).toBeVisible();
+    // Exact: the project block's `Project audit` (#572) also contains the word.
+    await expect(sidebar.getByRole('link', { name: 'Audit', exact: true })).toBeVisible();
     // Account and instance live in the rail on desktop, not in the sidebar.
     await expect(sidebar.getByRole('link', { name: 'Account & security' })).toHaveCount(0);
     await expect(sidebar.getByRole('link', { name: 'Instance settings' })).toHaveCount(0);

@@ -63,11 +63,12 @@ func (e AdapterState) Valid() bool {
 
 // Defines values for AdapterChangeDisposition.
 const (
-	AdapterChangeDispositionConflict AdapterChangeDisposition = "conflict"
-	AdapterChangeDispositionCreate   AdapterChangeDisposition = "create"
-	AdapterChangeDispositionDelete   AdapterChangeDisposition = "delete"
-	AdapterChangeDispositionRefused  AdapterChangeDisposition = "refused"
-	AdapterChangeDispositionUpdate   AdapterChangeDisposition = "update"
+	AdapterChangeDispositionConflict         AdapterChangeDisposition = "conflict"
+	AdapterChangeDispositionCreate           AdapterChangeDisposition = "create"
+	AdapterChangeDispositionDelete           AdapterChangeDisposition = "delete"
+	AdapterChangeDispositionRefused          AdapterChangeDisposition = "refused"
+	AdapterChangeDispositionUnknownUntilSync AdapterChangeDisposition = "unknown-until-sync"
+	AdapterChangeDispositionUpdate           AdapterChangeDisposition = "update"
 )
 
 // Valid indicates whether the value is a known member of the AdapterChangeDisposition enum.
@@ -80,6 +81,8 @@ func (e AdapterChangeDisposition) Valid() bool {
 	case AdapterChangeDispositionDelete:
 		return true
 	case AdapterChangeDispositionRefused:
+		return true
+	case AdapterChangeDispositionUnknownUntilSync:
 		return true
 	case AdapterChangeDispositionUpdate:
 		return true

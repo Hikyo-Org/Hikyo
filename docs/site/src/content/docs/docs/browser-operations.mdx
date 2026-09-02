@@ -1,0 +1,111 @@
+---
+title: Operate Hikyo from the browser
+description: Take a fresh organisation to Kubernetes-ready delivery from the embedded web UI, without the CLI.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/browser-operations.mdx
+---
+
+Hikyo's server-mediated capabilities are reachable from both the CLI and the
+embedded web UI, with one tracked exception listed at the end of this page
+(dynamic-secret provider and lease management). Neither surface is the
+"advanced" one. This page follows the browser path end to end, from a fresh
+organisation on an installation whose only human is the bootstrap
+administrator to a workload receiving secrets in Kubernetes, and then lists
+exactly what stays outside the browser and why.
+
+The same journey is executable: the Playwright flow `browser-only lifecycle`
+in `web/e2e/flows/machine-access.spec.ts` runs it against a real instance on
+every change, on a desktop and a phone viewport, from a fresh organisation on
+the suite's shared instance.
+
+## Before you start
+
+Two acts are host-local by contract and happen on the server host, not in a
+browser: creating the first administrator
+([Getting started](/docs/getting-started/#3-create-the-first-administrator))
+and running migrations or a restore. After that, sign in at the instance
+origin. Organisation creation and instance administration need a second factor,
+so enrol one under **Account & security** first
+([Account security](/docs/account-security/)). A human who has lost that factor
+recovers from the sign-in page: *Lost your second factor? Recover with a code*
+spends one recovery code for a new password.
+
+## The lifecycle
+
+1. **Organisation.** Instance administration → *Create organisation*. Creation
+   grants you organisation admin and ends the session; sign in again.
+2. **Project.** Projects → *New project*. The active organisation is the one
+   selected in the rail, or the one a deep link named.
+3. **Environments.** Project settings → *New environment*. Protection, retention
+   and the Git-governed definitions mode live on the same page.
+4. **Keys and values.** Environment matrix → *New key* declares a config or
+   secret key with an optional first value per environment. Cells stage drafts;
+   *Publish drafts* publishes the selected environments atomically. A protected
+   environment asks for its confirmation and a purpose-bound ceremony.
+5. **Human access.** Members → *Invite* issues a display-once setup authority
+   with a role template; *New grant* adds capability lines to any principal.
+6. **Workload access.** Machine access → *Create service account*, *Mint
+   credential* (shown exactly once), *Add environment grant* for `read`.
+7. **Secret delivery.** Machine access → *Enable the opt-in* for machine secret
+   delivery, then Members → *New grant* of `reveal` to the service account's
+   principal on the environment. Until both are done, a workload receives
+   configuration values and secret presence only.
+8. **Kubernetes.** Store the minted credential in the designated bootstrap
+   Secret and create the `HikyoSecret`
+   ([Kubernetes operator](/docs/kubernetes-operator/#credentials-and-designation)).
+   Reconciliation is the controller's work; every Hikyo-side prerequisite above
+   is browser-operable.
+9. **CI delivery.** Deployment adapters → *Add adapter* with a write-only
+   provider credential and a first target. The target's health, last attempt,
+   failed names and conflict artifacts are read in place; *Plan* previews the
+   name changes without reading a value and *Test connection* probes the
+   provider without writing.
+10. **Inspect.** Audit (organisation sidebar) queries and exports the trail.
+    Deployment adapters shows per-target health. Overview shows the pruner and
+    storage high-water state.
+11. **Recover.** Revoke a leaked machine credential from the account row and
+    mint a new one; the old value is refused at the next fetch. Roll a bad
+    publish back from the history drawer (*Restore*), which stages ordinary
+    drafts you publish like any other.
+
+## Low-frequency administration
+
+Frequency orders delivery; it never excuses a missing surface. These
+surfaces exist in the browser even though most installations touch them
+rarely:
+
+| Surface | Where | What it administers |
+| --- | --- | --- |
+| Identity providers | Instance administration | OIDC providers, SAML providers and SP keys, federation issuers |
+| Provisioning | Organisation → SCIM | Bindings, mappings, provisioning credentials, directory views |
+| Remotes | Organisation → Remotes | Directory-tier remotes, connection credentials, workspace sessions |
+| Adapters | Project → Deployment adapters | Create, targets, pause/resume/resync, plan, test, credential custody, origin moves, deletion |
+| Audit | Organisation → Audit, Project → Project audit | Query, inspect and export the organisation trail, or a project's trail narrowed to one environment |
+| Remote crypto | Instance administration, Project settings | DEK/master/root/token/scanning-key rotation and resumable re-encryption |
+
+## What stays outside the browser
+
+The exemption list is closed and machine-checked: `api/parity.yaml` in the
+repository maps every public operation to a browser surface, one of the
+classes below, or an open issue, and CI fails when an operation is added
+without a disposition or an issue is closed without its surface.
+
+| Class | Examples | Why |
+| --- | --- | --- |
+| Host-local authority | `hikyo admin create`, `migrate`, restore reconcile, break-glass | No HTTP endpoint exists; the act needs the host and the root key |
+| Client-local delivery | `hikyo run`, `render`, the Compose and Kubernetes delivery fetch | Acts on the box the credential lives on and admits no human session |
+| Kubernetes reconciliation | `HikyoSecret` converge | The operator speaks only the delivery wire |
+| Identity-protocol endpoints | OIDC callback, SAML ACS, the SCIM wire, the CLI's own reauthentication legs | Protocol-shaped and client-specific by nature |
+
+One domain capability is tracked as open browser work and remains CLI/API
+only until its issue closes:
+[dynamic-secret provider and lease management](https://github.com/Hikyo-Org/Hikyo/issues/595).
+The Leases tab on Machine access is read-only until then.
+
+## Parity is by outcome, not by form
+
+Browser, CLI and API parity is judged by the user outcome. A browser form
+does not mirror every CLI flag: the matrix edits cells one by one where the
+CLI applies a batch; the adapter list embeds each adapter's targets where the
+CLI has `adapter show`. What must hold is that the same person can reach the
+same end state from either surface, under the same authorization, refusal,
+redaction and audit rules.

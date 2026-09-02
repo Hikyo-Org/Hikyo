@@ -347,7 +347,8 @@ export const zAdapterChange = z.object({
         'update',
         'delete',
         'conflict',
-        'refused'
+        'refused',
+        'unknown-until-sync'
     ]),
     reason: z.string().optional()
 });

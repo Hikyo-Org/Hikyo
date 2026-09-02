@@ -75,7 +75,7 @@ operations:
   getTotpStatus:               {webui: settings}
   removeTotp:                  {webui: settings}
   regenerateRecoveryCodes:     {webui: settings}
-  beginRecovery:               {issue: 571}
+  beginRecovery:               {webui: establish-credential}
 
   # orgs
   listOrgs:                    {webui: overview}
@@ -345,10 +345,10 @@ operations:
   queryOrgAudit:               {webui: audit}
   # A plain same-origin download link; the browser streams the JSONL itself.
   exportOrgAudit:              {webui: audit, reach: path}
-  queryProjectAudit:           {issue: 572}
-  exportProjectAudit:          {issue: 572}
-  queryEnvAudit:               {issue: 572}
-  exportEnvAudit:              {issue: 572}
+  queryProjectAudit:           {webui: project-audit}
+  exportProjectAudit:          {webui: project-audit, reach: path}
+  queryEnvAudit:               {webui: project-audit}
+  exportEnvAudit:              {webui: project-audit, reach: path}
 
   # instance
   rotateTokenKey:              {webui: instance-admin}
@@ -359,27 +359,32 @@ operations:
   reencryptProject:            {webui: instance-admin}
   rotateScanningKey:           {webui: instance-admin}
 
-  # adapters
+  # adapters (#157 shipped create/target control; #504 closed the adapter
+  # lifecycle: origin move with its durable follow-up, credential custody,
+  # teardown, plan and probe)
   listAdapters:                {webui: adapters}
   createAdapter:               {webui: adapters}
-  showAdapter:                 {issue: 504}
-  updateAdapterOrigin:         {issue: 504}
-  deleteAdapter:               {issue: 504}
-  showAdapterMove:             {issue: 504}
-  resumeAdapterMove:           {issue: 504}
-  cancelAdapterMove:           {issue: 504}
-  setAdapterCredential:        {issue: 504}
-  revokeAdapterCredential:     {issue: 504}
-  listAdapterTargets:          {issue: 504}
+  # The list embeds every adapter with its targets (Adapter.targets), so one
+  # adapter's detail and its nested target list are the same rows the panel
+  # already renders: equivalent outcome, not a second read.
+  showAdapter:                 {webui: adapters, via: [listAdapters]}
+  updateAdapterOrigin:         {webui: adapters}
+  deleteAdapter:               {webui: adapters}
+  showAdapterMove:             {webui: adapters}
+  resumeAdapterMove:           {webui: adapters}
+  cancelAdapterMove:           {webui: adapters}
+  setAdapterCredential:        {webui: adapters}
+  revokeAdapterCredential:     {webui: adapters}
+  listAdapterTargets:          {webui: adapters, via: [listAdapters]}
   addAdapterTarget:            {webui: adapters}
   showAdapterTarget:           {webui: adapters}
   updateAdapterTarget:         {webui: adapters}
   removeAdapterTarget:         {webui: adapters}
-  planAdapterTarget:           {issue: 504}
+  planAdapterTarget:           {webui: adapters}
   syncAdapterTarget:           {webui: adapters}
   pauseAdapterTarget:          {webui: adapters}
   resumeAdapterTarget:         {webui: adapters}
-  testAdapterTarget:           {issue: 504}
+  testAdapterTarget:           {webui: adapters}
   adoptAdapterTargetNames:     {webui: adapters}
 
   # dynamic secrets (#147 shipped API+CLI+read-only status; management WebUI #595)

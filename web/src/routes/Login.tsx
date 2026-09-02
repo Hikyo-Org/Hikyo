@@ -127,6 +127,9 @@ export function Login() {
         <Link className="btn" to={surfaceById('establish-credential').path}>
           Have a setup authority? Establish your credential
         </Link>
+        <Link className="btn" to={`${surfaceById('establish-credential').path}?mode=recover`}>
+          Lost your second factor? Recover with a code
+        </Link>
       </form>
     </main>
   );

@@ -68,6 +68,12 @@ hikyo account recovery begin \
 The CLI prompts for one recovery code and returns a single-use credential
 authority. It does not create a session.
 
+In the browser, the sign-in page's *Lost your second factor? Recover with a
+code* entry takes the username and one code, then hands the authority straight
+into the establish form so you choose a new password in the same visit. A
+wrong code, a used batch and an unknown username are one sentence: the page is
+not an oracle.
+
 Establish the replacement password from the controlling terminal:
 
 ```bash

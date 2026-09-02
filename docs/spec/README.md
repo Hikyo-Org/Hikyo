@@ -30,7 +30,7 @@ This is the build-ready specification set for Hikyo 1.0: a fully open-source, se
 | Deployment modules | [adr/deployment-adapter.md](../adr/deployment-adapter.md) (seam + Forgejo) · [adr/github-adapter.md](../adr/github-adapter.md) |
 | Import & migration | [adr/import-paths.md](../adr/import-paths.md) |
 | API & CLI spec | [adr/api-cli-surface.md](../adr/api-cli-surface.md) (skeleton) + [api-cli-spellings.md](./api-cli-spellings.md) (deferred spellings, discharged) |
-| WebUI parity registry | [api/parity.yaml](../../api/parity.yaml): one disposition per operation (surface, closed exception, or open issue), executable via `go test ./api` and `scripts/ci/check-parity-issues.sh` |
+| WebUI parity registry | [api/parity.yaml](../../api/parity.yaml): one disposition per operation (surface, closed exception, or open issue), executable via `go test ./api` and `scripts/ci/check-parity-issues.sh`; browser-only lifecycle acceptance in `web/e2e/flows/machine-access.spec.ts` (`browser-only lifecycle`), user-facing in [browser-operations.mdx](../site/src/content/docs/docs/browser-operations.mdx) |
 | Multi-instance | [adr/multi-instance.md](../adr/multi-instance.md) |
 | Deployment & operations | [adr/ops-spec.md](../adr/ops-spec.md) + [ops-catalogue.md](./ops-catalogue.md) (deferred values, discharged) |
 | MVP scope & acceptance criteria | [adr/mvp-boundary.md](../adr/mvp-boundary.md) §1–§2, §6 + [self-hoster-checklist.md](./self-hoster-checklist.md) (passed) |

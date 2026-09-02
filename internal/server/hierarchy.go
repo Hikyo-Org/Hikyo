@@ -110,13 +110,21 @@ func (a *API) writeSCIMRequestError(w http.ResponseWriter, r *http.Request, refu
 // from the first; the contract already has the authoritative one.
 func (a *API) writeHandlerError(w http.ResponseWriter, r *http.Request, err error) {
 	policy := wireErrorFor(err)
+	op, ok := api.OperationFromContext(r.Context())
+	name := op.ID
+	if !ok {
+		name = "unrouted request"
+	}
 	if policy.code == apigen.ErrorCodeInternal {
-		op, ok := api.OperationFromContext(r.Context())
-		name := op.ID
-		if !ok {
-			name = "unrouted request"
-		}
 		a.fault(r.Context(), name, err)
+	} else if a.Log != nil {
+		// A refusal is the system working, so it is not a fault; but under
+		// --dev the debug level is where an operator reading the access log
+		// learns WHICH conflict a uniform 409 was. Only bounded, typed fields:
+		// the operation id, the wire code, and the caller-safe detail that the
+		// wire already carries (or "" when the refusal carries none). Never the
+		// error chain: a service or provider error may quote request material.
+		a.Log.DebugContext(r.Context(), "refusal", "operation", name, "code", string(policy.code), "detail", safeDetailOf(err))
 	}
 	// A service refusal may carry a caller-safe detail (the clone abort names
 	// the stranded keys; a duplicate-item refusal names the duplicate; the

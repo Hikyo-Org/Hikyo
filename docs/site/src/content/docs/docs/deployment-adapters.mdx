@@ -122,7 +122,10 @@ origin plus write-only credential or its complete pending target route, then
 resumes activation. DELETEing that move atomically cancels it, restores the old
 route, and queues old-route reconvergence. The CLI requires the move id through
 `--move` for either recovery path, so pending and live credential replacement
-cannot be confused.
+cannot be confused. The browser starts an origin move from the adapter panel
+(*Change origin*), carries the move id in the page URL, polls the move in a
+*Route move* pane until the server settles it, and offers exactly the two exits
+of an attention-required move: *Resume with a new credential* and *Cancel move*.
 Target environments are immutable: cross-environment movement is remove plus
 add, so authority and custody are never silently rebound.
 
@@ -206,7 +209,16 @@ newest wins, a second request supersedes the first, and neither bypasses
 adoption nor prunes beyond the ledger.
 
 **Removal** keeps the explicit retain-or-prune decision described above. The
-browser offers the same choice in a dialog with neither option preselected.
+browser offers the same choice in a dialog with neither option preselected, for
+one target (*Remove*) and for the whole adapter (*Delete adapter*).
+
+**Credential custody and probes.** The adapter panel replaces the write-only
+credential (*Replace credential*, behind the credential-set ceremony) and
+destroys custody (*Revoke credential*, stating that a later remote scrub may
+then be impossible). The target detail runs *Plan* (names and dispositions
+only) and *Test connection* (provider version, destination identity and
+credential expiry; no value, no write), the browser forms of `adapter plan`
+and `adapter test`.
 
 **Operators.** `hikyo doctor` reports the instance-wide counts of targets that
 need attention, failed targets, paused targets, and queued jobs, and the same
