@@ -404,6 +404,7 @@ type Repos interface {
 	Snapshots() SnapshotRepo
 	Pins() RevisionPinRepo
 	Retention() RetentionRepo
+	BackupState() BackupStateRepo
 	Projects() ProjectRepo
 	Environments() EnvironmentRepo
 	Folders() FolderRepo
@@ -465,6 +466,7 @@ type ReadRepos interface {
 	Snapshots() SnapshotReader
 	Pins() RevisionPinReader
 	Retention() RetentionReader
+	BackupState() BackupStateReader
 	Projects() ProjectReader
 	Environments() EnvironmentReader
 	Folders() FolderReader

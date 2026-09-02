@@ -362,6 +362,10 @@ func TestMetricsExposeRetentionPrunerHealthWithoutLabels(t *testing.T) {
 	healthService := stubRetentionHealth{health: service.PruneHealth{
 		LastSuccess: last, Recorded: true, Stale: true,
 		PeakProjectBytes: 1_500_000_000, StorageWarn: true,
+		Backup: service.BackupHealth{
+			Scheduled: true, LastSuccessAt: last.Add(-time.Hour), RPOExceeded: true,
+			LastPruneAt: last.Add(-2 * time.Hour), LastDrillAt: last.Add(-3 * time.Hour), LastDrillOK: true,
+		},
 	}}
 	srv := httptest.NewServer(server.NewOperational(stubReady{}, healthService, nil))
 	t.Cleanup(srv.Close)
@@ -383,6 +387,13 @@ func TestMetricsExposeRetentionPrunerHealthWithoutLabels(t *testing.T) {
 	for _, want := range []string{
 		"# TYPE hikyo_last_prune_success_timestamp_seconds gauge\n",
 		"hikyo_last_prune_success_timestamp_seconds 1.8e+09\n",
+		// Disaster-recovery gauges (#145): label-free, one series each.
+		"# TYPE hikyo_last_backup_export_success_timestamp_seconds gauge\n",
+		"hikyo_last_backup_export_success_timestamp_seconds 1.7999964e+09\n",
+		"hikyo_backup_rpo_exceeded 1\n",
+		"hikyo_last_backup_prune_success_timestamp_seconds 1.7999928e+09\n",
+		"hikyo_last_restore_drill_timestamp_seconds 1.7999892e+09\n",
+		"hikyo_restore_drill_ok 1\n",
 		"# TYPE hikyo_prune_stale gauge\n",
 		"hikyo_prune_stale 1\n",
 		"# TYPE hikyo_project_storage_peak_bytes gauge\n",
@@ -414,6 +425,11 @@ func TestMetricsUseZeroWhenPruneNeverSucceeded(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "hikyo_last_backup_export_success_timestamp_seconds 0\n") ||
+		!strings.Contains(string(body), "hikyo_backup_rpo_exceeded 0\n") ||
+		!strings.Contains(string(body), "hikyo_last_restore_drill_timestamp_seconds 0\n") {
+		t.Fatalf("never-exported instance reports non-zero DR gauges:\n%s", body)
 	}
 	if !strings.Contains(string(body), "hikyo_last_prune_success_timestamp_seconds 0\n") || !strings.Contains(string(body), "hikyo_prune_stale 1\n") {
 		t.Fatalf("never-recorded metrics = %q", body)

@@ -33,6 +33,12 @@ func TestMetricRegistryIsPinned(t *testing.T) {
 		{Name: "hikyo_ha_is_leader", MaxSeries: 1},
 		{Name: "hikyo_ha_nodes_seen", MaxSeries: 1},
 		{Name: "hikyo_ha_lease_age_seconds", MaxSeries: 1},
+		// Disaster-recovery gauges (#145): label-free, one series each.
+		{Name: "hikyo_last_backup_export_success_timestamp_seconds", MaxSeries: 1},
+		{Name: "hikyo_backup_rpo_exceeded", MaxSeries: 1},
+		{Name: "hikyo_last_backup_prune_success_timestamp_seconds", MaxSeries: 1},
+		{Name: "hikyo_last_restore_drill_timestamp_seconds", MaxSeries: 1},
+		{Name: "hikyo_restore_drill_ok", MaxSeries: 1},
 	}
 	if got := server.RegisteredMetricFamilies(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("metric registry drifted\n got: %#v\nwant: %#v", got, want)

@@ -98,6 +98,17 @@ type Config struct {
 	// skip exists to prevent.
 	BackupRecipients []string
 	BackupDir        string
+	// Disaster-recovery schedule (#145, ops spec section 11). Scheduling is
+	// enabled exactly when recipients and a destination are configured
+	// (BackupScheduled); the knobs below then bound it. Each has a default
+	// and a range, and a value outside the range is a startup error rather
+	// than a clamp: a retention of 400 days silently becoming 180 is the
+	// kind of quiet correction the ops spec forbids.
+	BackupInterval    time.Duration // HIKYO_BACKUP_INTERVAL, default 24h, minimum 1h
+	BackupRPO         time.Duration // HIKYO_BACKUP_RPO, default 26h, at least the interval
+	BackupRetainCount int           // HIKYO_BACKUP_RETAIN_COUNT, default 7, minimum 1
+	BackupRetainDays  int           // HIKYO_BACKUP_RETAIN_DAYS, default 180, maximum 180
+	BackupRTOTarget   time.Duration // HIKYO_BACKUP_RTO_TARGET, default 30m; the drill's verdict line
 
 	// DevAdmissionPerIPPerMinute raises the per-source-IP pre-auth allowance.
 	// Zero means the locked default.
@@ -161,6 +172,11 @@ var knownEnv = map[string]bool{
 	"HIKYO_ADMISSION_BUDGET_MIB":       true,
 	"HIKYO_BACKUP_RECIPIENTS":          true,
 	"HIKYO_BACKUP_DIR":                 true,
+	"HIKYO_BACKUP_INTERVAL":            true,
+	"HIKYO_BACKUP_RPO":                 true,
+	"HIKYO_BACKUP_RETAIN_COUNT":        true,
+	"HIKYO_BACKUP_RETAIN_DAYS":         true,
+	"HIKYO_BACKUP_RTO_TARGET":          true,
 	"HIKYO_ADAPTER_EGRESS_POLICY_FILE": true,
 	"HIKYO_REAUTH_WINDOW_SECONDS":      true,
 	"HIKYO_UPDATE_CHANNEL":             true,
@@ -508,7 +524,95 @@ func loadBackupPolicy(cfg *Config, getenv func(string) string) error {
 	if len(cfg.BackupRecipients) > 0 && cfg.BackupDir == "" {
 		return errors.New("HIKYO_BACKUP_RECIPIENTS is set but HIKYO_BACKUP_DIR is not: an export policy with no destination writes nothing")
 	}
+	return loadBackupSchedule(cfg, getenv)
+}
+
+// Backup schedule bounds (#145). The retention ceiling is ops-spec section 2:
+// 180 days, no unlimited option, because the key hierarchy travels in every
+// archive and an immortal backup is an immortal ciphertext archive.
+const (
+	DefaultBackupInterval    = 24 * time.Hour
+	MinBackupInterval        = time.Hour
+	DefaultBackupRPO         = 26 * time.Hour
+	DefaultBackupRetainCount = 7
+	// MaxBackupRetainCount is a loud sanity ceiling: a retain count is a small
+	// operational number, and bounding it keeps the uint-to-int conversion
+	// below safe on every platform.
+	MaxBackupRetainCount    = 100_000
+	DefaultBackupRetainDays = 180
+	MaxBackupRetainDays     = 180
+	DefaultBackupRTOTarget  = 30 * time.Minute
+)
+
+// BackupScheduled reports whether the in-process export schedule runs: it
+// does exactly when an export policy is complete. There is no separate
+// enable switch, so an instance with a policy cannot have its schedule
+// quietly turned off by one more variable.
+func (c *Config) BackupScheduled() bool {
+	return len(c.BackupRecipients) > 0 && c.BackupDir != ""
+}
+
+// loadBackupSchedule resolves the DR schedule knobs. A schedule knob set on
+// an instance with no export policy is refused: it would describe a
+// schedule that never runs, and the operator who set it believes otherwise.
+func loadBackupSchedule(cfg *Config, getenv func(string) string) error {
+	var err error
+	if cfg.BackupInterval, err = durationEnv(getenv, "HIKYO_BACKUP_INTERVAL", DefaultBackupInterval); err != nil {
+		return err
+	}
+	if cfg.BackupInterval < MinBackupInterval {
+		return fmt.Errorf("HIKYO_BACKUP_INTERVAL: %s is below the %s minimum", cfg.BackupInterval, MinBackupInterval)
+	}
+	if cfg.BackupRPO, err = durationEnv(getenv, "HIKYO_BACKUP_RPO", DefaultBackupRPO); err != nil {
+		return err
+	}
+	if cfg.BackupRPO < cfg.BackupInterval {
+		return fmt.Errorf("HIKYO_BACKUP_RPO: %s is shorter than the %s export interval, so every export would already be late", cfg.BackupRPO, cfg.BackupInterval)
+	}
+	retainCount, err := uintEnv(getenv, "HIKYO_BACKUP_RETAIN_COUNT", DefaultBackupRetainCount)
+	if err != nil {
+		return err
+	}
+	if retainCount < 1 || retainCount > MaxBackupRetainCount {
+		return fmt.Errorf("HIKYO_BACKUP_RETAIN_COUNT: %d is outside 1..%d", retainCount, MaxBackupRetainCount)
+	}
+	cfg.BackupRetainCount = int(retainCount)
+	retainDays, err := uintEnv(getenv, "HIKYO_BACKUP_RETAIN_DAYS", DefaultBackupRetainDays)
+	if err != nil {
+		return err
+	}
+	if retainDays < 1 || retainDays > MaxBackupRetainDays {
+		return fmt.Errorf("HIKYO_BACKUP_RETAIN_DAYS: %d is outside 1..%d (ops spec: backup retention is bounded, no unlimited option exists)", retainDays, MaxBackupRetainDays)
+	}
+	cfg.BackupRetainDays = int(retainDays)
+	if cfg.BackupRTOTarget, err = durationEnv(getenv, "HIKYO_BACKUP_RTO_TARGET", DefaultBackupRTOTarget); err != nil {
+		return err
+	}
+	if cfg.BackupRTOTarget <= 0 {
+		return errors.New("HIKYO_BACKUP_RTO_TARGET: must be a positive duration")
+	}
+	if !cfg.BackupScheduled() {
+		for _, key := range []string{"HIKYO_BACKUP_INTERVAL", "HIKYO_BACKUP_RPO", "HIKYO_BACKUP_RETAIN_COUNT", "HIKYO_BACKUP_RETAIN_DAYS"} {
+			if strings.TrimSpace(getenv(key)) != "" {
+				return fmt.Errorf("%s is set but no export policy is configured: set HIKYO_BACKUP_RECIPIENTS and HIKYO_BACKUP_DIR, or remove it", key)
+			}
+		}
+	}
 	return nil
+}
+
+// durationEnv parses a Go duration tunable ("24h", "90m"), failing loudly on
+// a malformed value for the same reason uintEnv does.
+func durationEnv(getenv func(string) string, key string, fallback time.Duration) (time.Duration, error) {
+	raw := strings.TrimSpace(getenv(key))
+	if raw == "" {
+		return fallback, nil
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %q is not a duration (for example 24h or 90m)", key, raw)
+	}
+	return d, nil
 }
 
 // uintEnv parses an unsigned tunable, failing loudly rather than falling back

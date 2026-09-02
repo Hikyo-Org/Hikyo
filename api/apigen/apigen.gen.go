@@ -2672,6 +2672,32 @@ type AuthMethods struct {
 	Providers         []AuthMethodProvider `json:"providers"`
 }
 
+// BackupHealth Disaster-recovery health: the latest successful export, its age against the configured recovery point objective, the latest failure, and the latest restore drill. Names archives and versions only; never a recipient, an identity or a key.
+type BackupHealth struct {
+	// ArtifactAgeSeconds Age of the newest successful export; 0 when there has never been one.
+	ArtifactAgeSeconds int `json:"artifact_age_seconds"`
+
+	// DrillStale True when no successful restore drill is younger than 90 days.
+	DrillStale    bool       `json:"drill_stale"`
+	LastDrillAt   *time.Time `json:"last_drill_at"`
+	LastDrillOk   bool       `json:"last_drill_ok"`
+	LastFailureAt *time.Time `json:"last_failure_at"`
+
+	// LastFailureReason Bounded operator-facing text of the latest export failure; empty when none.
+	LastFailureReason string     `json:"last_failure_reason"`
+	LastPruneAt       *time.Time `json:"last_prune_at"`
+	LastSuccessAt     *time.Time `json:"last_success_at"`
+
+	// RpoExceeded True when exports are scheduled and no successful export is younger than the RPO.
+	RpoExceeded bool `json:"rpo_exceeded"`
+
+	// RpoSeconds The configured recovery point objective; 0 when nothing is scheduled.
+	RpoSeconds int `json:"rpo_seconds"`
+
+	// Scheduled True when an export policy (recipients + destination) is configured and the in-process schedule runs.
+	Scheduled bool `json:"scheduled"`
+}
+
 // CLIReauthApproveRequest defines model for CLIReauthApproveRequest.
 type CLIReauthApproveRequest struct {
 	State string `json:"state"`
@@ -5267,7 +5293,9 @@ type RetentionConsequence string
 
 // RetentionHealth defines model for RetentionHealth.
 type RetentionHealth struct {
-	LastPruneSuccess *time.Time `json:"last_prune_success"`
+	// Backup Disaster-recovery health: the latest successful export, its age against the configured recovery point objective, the latest failure, and the latest restore drill. Names archives and versions only; never a recipient, an identity or a key.
+	Backup           BackupHealth `json:"backup"`
+	LastPruneSuccess *time.Time   `json:"last_prune_success"`
 
 	// PeakProjectBytes Largest per-project stored payload across the instance, in bytes (ciphertext of value cells plus published snapshot entries). The per-project storage high-water surface.
 	PeakProjectBytes  int                              `json:"peak_project_bytes"`

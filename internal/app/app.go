@@ -24,6 +24,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/oidcfed"
 	"github.com/Hikyo-Org/hikyo/internal/remotefetch"
@@ -450,7 +451,8 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	if err != nil {
 		return nil, fmt.Errorf("boot: outbound directory client: %w", err)
 	}
-	retentionSvc := &service.Retention{DB: db}
+	retentionSvc := &service.Retention{DB: db, Backup: backupPolicy(cfg)}
+	backupSvc := &service.Backup{DB: db, Options: backup.Options{Recipients: cfg.BackupRecipients}}
 	updateHTTP, err := updatecheck.NewHTTPClient(3 * time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("boot: update release client: %w", err)
@@ -611,6 +613,9 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		}}},
 		adapterWorker:    adapterWorker,
 		updateReconciler: updatesService,
+	}
+	if cfg.BackupScheduled() {
+		srv.scheduler.Jobs = append(srv.scheduler.Jobs, backupJobs(cfg, log, backupSvc)...)
 	}
 	if cfg.HA {
 		coord, onTick, status, err := configureHA(ctx, cfg, log, db, sc, kr)

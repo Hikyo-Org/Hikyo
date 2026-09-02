@@ -1395,12 +1395,30 @@ export const zRetentionPolicy = z.object({
     last_revisions: z.int().gte(1).nullish()
 });
 
+/**
+ * Disaster-recovery health: the latest successful export, its age against the configured recovery point objective, the latest failure, and the latest restore drill. Names archives and versions only; never a recipient, an identity or a key.
+ */
+export const zBackupHealth = z.object({
+    scheduled: z.boolean(),
+    last_success_at: z.iso.datetime().nullable(),
+    artifact_age_seconds: z.int(),
+    rpo_seconds: z.int(),
+    rpo_exceeded: z.boolean(),
+    last_failure_at: z.iso.datetime().nullable(),
+    last_failure_reason: z.string(),
+    last_prune_at: z.iso.datetime().nullable(),
+    last_drill_at: z.iso.datetime().nullable(),
+    last_drill_ok: z.boolean(),
+    drill_stale: z.boolean()
+});
+
 export const zRetentionHealth = z.object({
     last_prune_success: z.iso.datetime().nullable(),
     stale: z.boolean(),
     stale_after_seconds: z.literal(86400),
     peak_project_bytes: z.int(),
-    storage_warn: z.boolean()
+    storage_warn: z.boolean(),
+    backup: zBackupHealth
 });
 
 export const zProjectRetentionPolicy = z.object({

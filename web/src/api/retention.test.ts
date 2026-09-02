@@ -17,6 +17,19 @@ function health(over: Partial<RetentionHealth>): RetentionHealth {
     stale_after_seconds: 86400,
     peak_project_bytes: 0,
     storage_warn: false,
+    backup: {
+      scheduled: true,
+      last_success_at: '2026-08-15T09:00:00Z',
+      artifact_age_seconds: 3600,
+      rpo_seconds: 93600,
+      rpo_exceeded: false,
+      last_failure_at: null,
+      last_failure_reason: '',
+      last_prune_at: null,
+      last_drill_at: null,
+      last_drill_ok: false,
+      drill_stale: true,
+    },
     ...over,
   };
 }

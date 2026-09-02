@@ -102,6 +102,11 @@ func TestMetricsExposeREDCountersAndAdmissionGauges(t *testing.T) {
 		"# TYPE " + server.MetricHAIsLeader + " gauge",
 		"# TYPE " + server.MetricHANodesSeen + " gauge",
 		"# TYPE " + server.MetricHALeaseAgeSecond + " gauge",
+		"# TYPE " + server.MetricLastBackupExportSuccess + " gauge",
+		"# TYPE " + server.MetricBackupRPOExceeded + " gauge",
+		"# TYPE " + server.MetricLastBackupPruneSuccess + " gauge",
+		"# TYPE " + server.MetricLastRestoreDrill + " gauge",
+		"# TYPE " + server.MetricRestoreDrillOK + " gauge",
 	} {
 		mustContain(t, body, family)
 	}

@@ -104,3 +104,18 @@ WHERE org_id = ? AND project_id = ?;
 SELECT org_id, project_id, CAST(COALESCE(SUM(LENGTH(ciphertext)), 0) AS INTEGER) AS bytes
 FROM value_entries
 GROUP BY org_id, project_id;
+
+-- SampleSecretValueEntry returns ONE stored `secret` cell across the whole
+-- instance, ciphertext only, for the restore drill's decrypt proof (#145):
+-- the drill opens it under the separately supplied root key to prove restored
+-- values are readable. Cross-tenant by definition and deterministic by id, so
+-- it is annotated instance-scoped and content-pinned. Opening the ciphertext
+-- still needs the keyring; this read alone discloses nothing.
+-- hikyo:instance-scoped
+-- name: SampleSecretValueEntry :one
+SELECT v.id, v.org_id, v.project_id, v.environment_id, v.key_id, v.ciphertext, v.updated_at, v.updated_by
+FROM value_entries v
+JOIN keys k ON k.org_id = v.org_id AND k.project_id = v.project_id AND k.id = v.key_id
+WHERE k.classification = 'secret'
+ORDER BY v.id
+LIMIT 1;

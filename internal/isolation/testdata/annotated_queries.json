@@ -463,6 +463,12 @@
   },
   {
     "engine": "postgres",
+    "name": "GetBackupState",
+    "annotation": "instance-scoped",
+    "hash": "395c7af353cd00c8b9b4a605ead624e230a83c8105ffa89dddb703d5a139300d"
+  },
+  {
+    "engine": "postgres",
     "name": "GetConfirmedTOTPForAccount",
     "annotation": "authn-resolution",
     "hash": "6eb2543b0a7e61b448bd13a4b6971c4d883785bb1c54802419f95a9c6a71c158"
@@ -1327,9 +1333,39 @@
   },
   {
     "engine": "postgres",
+    "name": "SampleSecretValueEntry",
+    "annotation": "instance-scoped",
+    "hash": "8188209f082c079d8c067bbf1a85d4616b35007b5a0837a174cbe84875046319"
+  },
+  {
+    "engine": "postgres",
     "name": "SealedRemoteCredential",
     "annotation": "instance-scoped",
     "hash": "c00d7dfa31f8e1f2595882928efd88712ac74f9fd69969e61155ec829341a071"
+  },
+  {
+    "engine": "postgres",
+    "name": "SetBackupDrill",
+    "annotation": "instance-scoped",
+    "hash": "933052e7aa4342a97a2eecc9a181cbb2d9745c0f99020079fbbbd508840fd755"
+  },
+  {
+    "engine": "postgres",
+    "name": "SetBackupExportFailure",
+    "annotation": "instance-scoped",
+    "hash": "6164ceef017ea69bf97e66e6bdff4ddb87b4d7f2fc72ee6890e9a69a39053ecc"
+  },
+  {
+    "engine": "postgres",
+    "name": "SetBackupExportSuccess",
+    "annotation": "instance-scoped",
+    "hash": "a090e091bd2d84d59b0b58f14377383e591b7af394ff22e715ffb3ff20213913"
+  },
+  {
+    "engine": "postgres",
+    "name": "SetBackupPruneSuccess",
+    "annotation": "instance-scoped",
+    "hash": "9cc9d067b04600261e143304c7aa62906be8b13c6e41c1d3e7ab74cc6d7a6c36"
   },
   {
     "engine": "postgres",
@@ -1918,6 +1954,12 @@
     "name": "GetActiveSAMLSPKey",
     "annotation": "authn-resolution",
     "hash": "6a41f8fc6cea1daad9205204f49249707cf46b0ed744db50fc2d071d58ac6f2a"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetBackupState",
+    "annotation": "instance-scoped",
+    "hash": "395c7af353cd00c8b9b4a605ead624e230a83c8105ffa89dddb703d5a139300d"
   },
   {
     "engine": "sqlite",
@@ -2785,9 +2827,39 @@
   },
   {
     "engine": "sqlite",
+    "name": "SampleSecretValueEntry",
+    "annotation": "instance-scoped",
+    "hash": "8188209f082c079d8c067bbf1a85d4616b35007b5a0837a174cbe84875046319"
+  },
+  {
+    "engine": "sqlite",
     "name": "SealedRemoteCredential",
     "annotation": "instance-scoped",
     "hash": "b9bde21fc56d19bfaab7e96f2085e673e995967a221cce6da73a3f1793b9375b"
+  },
+  {
+    "engine": "sqlite",
+    "name": "SetBackupDrill",
+    "annotation": "instance-scoped",
+    "hash": "438276536a9e1ea1a9021b1b0a9ff75cfbb5e452aba8b76d4f37844946440858"
+  },
+  {
+    "engine": "sqlite",
+    "name": "SetBackupExportFailure",
+    "annotation": "instance-scoped",
+    "hash": "6602be1ee83c7cd1f7fbffd279684ec33ce0701a372f1632e227242ce4e7c00e"
+  },
+  {
+    "engine": "sqlite",
+    "name": "SetBackupExportSuccess",
+    "annotation": "instance-scoped",
+    "hash": "aa31b196a8da33f9185b7fcbdfe6e7c41d65466139edc7c6fef59aa507013bbc"
+  },
+  {
+    "engine": "sqlite",
+    "name": "SetBackupPruneSuccess",
+    "annotation": "instance-scoped",
+    "hash": "a52cf0ba47236577997157be22b2d9dc7197548b797c000795baf64e2956c950"
   },
   {
     "engine": "sqlite",

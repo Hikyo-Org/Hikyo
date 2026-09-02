@@ -221,7 +221,11 @@ func runRetentionCLIStartupSweep(t *testing.T, engine store.Engine) {
 		t.Errorf("collected revision refusal does not name revision and policy: %s", revisionErr)
 	}
 	doctor, _ := runCLI(cli.ExitOK, "doctor", "-o", "json")
-	if !strings.Contains(doctor, `"status": "ok"`) || !strings.Contains(doctor, `"code": "retention-prune"`) || !strings.Contains(doctor, `"severity": "ok"`) {
+	// The retention-prune finding is fresh. Asserted by its own message rather
+	// than by the overall status, because the disaster-recovery findings (#145)
+	// legitimately warn on this backup-less, never-drilled instance and would
+	// otherwise make "status: ok" unreachable for reasons unrelated to pruning.
+	if !strings.Contains(doctor, `"code": "retention-prune"`) || !strings.Contains(doctor, `"message": "last_prune_success is 0s old"`) {
 		t.Errorf("doctor did not report fresh prune health: %s", doctor)
 	}
 	staleAt := time.Now().UTC().Add(-25 * time.Hour).Format(time.RFC3339Nano)

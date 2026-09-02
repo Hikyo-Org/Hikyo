@@ -78,6 +78,29 @@ Pi-4 fit: one serial pacer per credential at ≥ 1 s spacing bounds adapter CPU 
 | Username collision | `409 conflict`; the transaction leaves no principal, account or grant behind | fixed |
 | Delivery | out of band (HTTP response to the inviter, or the CLI print triad); no email channel | fixed |
 
+## Backup and disaster recovery ([ops-spec.md](../adr/ops-spec.md) section 11 delegation, #145)
+
+Scheduling is enabled exactly when an export policy is configured
+(`HIKYO_BACKUP_RECIPIENTS` + `HIKYO_BACKUP_DIR`). Each knob has a default and a
+range; a value outside the range is a startup error, never a silent clamp. The
+retention ceiling is ops-spec section 2 (180 days, no unlimited option, because
+the key hierarchy travels in every archive). "off-host destination" is a
+mounted directory the operator manages, not a native object-store client
+(ops-spec section 2: Hikyo cannot reach off-box files).
+
+| Entry | Default | Scope |
+|---|---|---|
+| `HIKYO_BACKUP_INTERVAL` (export cadence) | 24h (minimum 1h) | env (startup) |
+| `HIKYO_BACKUP_RPO` (monitored recovery point target) | 26h (at least the interval) | env (startup) |
+| `HIKYO_BACKUP_RETAIN_COUNT` (newest archives always kept) | 7 (minimum 1) | env (startup) |
+| `HIKYO_BACKUP_RETAIN_DAYS` (age bound) | 180 (maximum 180, fixed ceiling) | env (startup) |
+| `HIKYO_BACKUP_RTO_TARGET` (restore-drill verdict clock) | 30m | env (startup) |
+| Restore-drill staleness warning | 90 days | fixed |
+
+Pi-4 fit: the two scheduled jobs ride the existing hourly scheduler and its
+10-minute per-job deadline; an export is one age-encrypted snapshot and a prune
+is a directory listing, so neither adds a resource class.
+
 ## Key-name bound (grammar restated in [domain-model.md](./domain-model.md))
 
 | Entry | Default | Scope |

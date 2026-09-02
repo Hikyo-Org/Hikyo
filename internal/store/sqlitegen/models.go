@@ -281,6 +281,22 @@ type AuthInstanceState struct {
 	ReactivatedAt   sql.NullString
 }
 
+type BackupState struct {
+	ID                     int64
+	LastSuccessAt          sql.NullString
+	LastArtifactName       string
+	LastArtifactBytes      int64
+	LastFailureAt          sql.NullString
+	LastFailureReason      string
+	LastPruneAt            sql.NullString
+	LastDrillAt            sql.NullString
+	LastDrillOk            int64
+	LastDrillArchive       string
+	LastDrillElapsedMs     int64
+	LastDrillBinaryVersion string
+	LastDrillSchemaVersion int64
+}
+
 type CliReauthHandoff struct {
 	ID              string
 	StateVerifier   []byte

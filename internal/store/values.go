@@ -74,6 +74,12 @@ type ValueReader interface {
 	// (doctor warn, metric). Cross-tenant by definition, so its query is
 	// instance-scoped; the proof licenses the read, not a tenant chain.
 	InstancePayloadByProject(ctx context.Context, p authz.Proof) ([]ProjectPayloadBytes, error)
+	// SampleSecretEntry returns one stored `secret` cell across the whole
+	// instance, ciphertext only, for the restore drill's decrypt proof (#145).
+	// Cross-tenant by definition, so its query is instance-scoped; the proof
+	// licenses the read, not a tenant chain. ErrNotFound when no secret is
+	// stored anywhere.
+	SampleSecretEntry(ctx context.Context, p authz.Proof) (ValueEntry, error)
 }
 
 // ProjectPayloadBytes is one project's stored ciphertext-byte total, from the
