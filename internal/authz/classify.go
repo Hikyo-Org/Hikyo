@@ -432,6 +432,9 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"http:POST /api/v1/orgs/{org}/grants":          {Class: ClassTenant, Ops: []Operation{OpGrantCreateOrg}},
 	"http:DELETE /api/v1/orgs/{org}/grants":        {Class: ClassTenant, Ops: []Operation{OpGrantRevokeOrg}},
 	"http:POST /api/v1/orgs/{org}/grants/template": {Class: ClassTenant, Ops: []Operation{OpTemplateApplyOrg}},
+	// Member invitation (#568): one route per depth, like grant.create.
+	"http:POST /api/v1/orgs/{org}/invitations": {Class: ClassTenant, Ops: []Operation{OpMemberInviteOrg}},
+	"http:POST /api/v1/instance/invitations":   {Class: ClassInstance, Ops: []Operation{OpMemberInviteInstance}},
 
 	// Machine identities (#61). Tenant-class at project depth: an identity
 	// surface a caller may not administer answers exactly like a project

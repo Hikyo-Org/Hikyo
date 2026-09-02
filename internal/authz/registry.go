@@ -331,6 +331,11 @@ const (
 	OpGrantCreateProject  Operation = "grant.create-project"
 	OpGrantCreateEnv      Operation = "grant.create-env"
 	OpGrantCreateInstance Operation = "grant.create-instance"
+	// Member invitation (#568): account creation under manage-members, the
+	// human-auth ADR's named path. Two operations because the formula differs
+	// per depth exactly as grant.create does; each route names one.
+	OpMemberInviteOrg      Operation = "member.invite-org"
+	OpMemberInviteInstance Operation = "member.invite-instance"
 
 	OpGrantRevokeOrg      Operation = "grant.revoke-org"
 	OpGrantRevokeProject  Operation = "grant.revoke-project"
@@ -3014,6 +3019,30 @@ var operationTable = map[Operation]opSpec{
 		// INSTANCE-scope `manage-members` grant cures every org at once.
 		events: append([]audit.EventType{
 			audit.EventGrantTemplateApplied, audit.EventGrantCreated, audit.EventGrantModified,
+		}, grantCureEvents...),
+	},
+
+	// Member invitation (#568). The optional template rides the SAME writer
+	// the template operations use, so its events — and §2.4's cure — must be
+	// reachable from these operations too: each is a superset of the template
+	// operation at its depth plus the invitation record itself.
+	OpMemberInviteOrg: {
+		class:    ClassTenant,
+		level:    domain.LevelOrg,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelOrg}},
+		storeOps: withCure(map[StoreOp]bool{StoreAuditTenantInsert: true}),
+		events: append([]audit.EventType{
+			audit.EventMemberInvited, audit.EventGrantTemplateApplied,
+			audit.EventGrantCreated, audit.EventGrantModified,
+		}, grantCureEvents...),
+	},
+	OpMemberInviteInstance: {
+		class:    ClassInstance,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true},
+		events: append([]audit.EventType{
+			audit.EventMemberInvited, audit.EventGrantTemplateApplied,
+			audit.EventGrantCreated, audit.EventGrantModified,
 		}, grantCureEvents...),
 	},
 

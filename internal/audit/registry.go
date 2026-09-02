@@ -207,6 +207,13 @@ const (
 	// under `manage-members`, not an object read. Access retention class —
 	// read volume, not grant history.
 	EventGrantMembershipRead EventType = "grant.membership_read"
+	// member.invited records an invitation (#568): a human principal and its
+	// account came to exist under a `manage-members` holder's authority, with
+	// the optional template named. The minted authority is its own instance
+	// event (auth.credential_authority_minted, issued_by=invitation); this one
+	// lives on the scope's trail so an org administrator can answer "who
+	// invited whom" without instance access.
+	EventMemberInvited EventType = "member.invited"
 
 	// settings.reauthentication_window_changed and
 	// settings.protected_flag_changed are the `project-settings` security
@@ -901,7 +908,7 @@ var registry = map[EventType]TypeSpec{
 		Schema: Schema{
 			"authority_id": {Kind: KindString, Required: true},
 			"account_id":   {Kind: KindString, Required: true},
-			"issued_by":    {Kind: KindString, Required: true, Enum: []string{"bootstrap", "credential-reset", "break-glass", "recovery"}},
+			"issued_by":    {Kind: KindString, Required: true, Enum: []string{"bootstrap", "credential-reset", "break-glass", "recovery", "invitation"}},
 			"delivery":     {Kind: KindString, Required: true, Enum: []string{"file", "terminal", "stdout", "response"}},
 		},
 	},
@@ -1612,6 +1619,22 @@ var registry = map[EventType]TypeSpec{
 			"origins_remaining": {Kind: KindInt, Required: true},
 			"sessions_revoked":  {Kind: KindBool, Required: true},
 		}),
+	},
+	EventMemberInvited: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true, TrailInstance: true},
+		Schema: Schema{
+			"principal_id":   {Kind: KindString, Required: true},
+			"account_id":     {Kind: KindString, Required: true},
+			"username":       {Kind: KindFreeText, Required: true},
+			"scope":          {Kind: KindString, Required: true},
+			"template":       {Kind: KindString},
+			"grants_created": {Kind: KindInt, Required: true},
+			"authority_id":   {Kind: KindString, Required: true},
+			"delivery":       {Kind: KindString, Required: true, Enum: []string{"file", "terminal", "stdout", "response"}},
+		},
 	},
 	EventGrantTemplateApplied: {
 		SchemaVersion: 1,
