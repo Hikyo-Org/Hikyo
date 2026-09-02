@@ -60,7 +60,7 @@ operations:
   getMeta:                     {webui: overview}
 
   # auth
-  establishCredential:         {issue: 568}
+  establishCredential:         {webui: establish-credential}
   localLogin:                  {webui: login}
   logout:                      {webui: overview}
   whoami:                      {webui: overview}
@@ -116,6 +116,8 @@ operations:
   createOrgGrant:              {webui: members}
   revokeOrgGrant:              {webui: members}
   applyOrgTemplate:            {webui: members}
+  inviteInstanceMember:        {webui: instance-members}
+  inviteOrgMember:             {webui: members}
   listProjectGrants:           {webui: machine-access}
   createProjectGrant:          {webui: members}
   revokeProjectGrant:          {webui: members}
@@ -191,7 +193,7 @@ operations:
   unlinkIdentity:              {webui: settings}
 
   # accounts
-  resetCredential:             {issue: 568}
+  resetCredential:             {webui: members}
 
   # auth
   enrolPasskeyStart:           {webui: settings}
