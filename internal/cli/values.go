@@ -363,7 +363,8 @@ func runValues(ctx context.Context, ios IO, args []string) (returnErr error) {
 		}
 		base := project + "/environments/" + url.PathEscape(environment)
 		var result apigen.PublishResult
-		body := apigen.PublishRequest{VersionIds: splitList(versions)}
+		versionIDs := splitList(versions)
+		body := apigen.PublishRequest{VersionIds: &versionIDs}
 		if previewToken != "" {
 			body.PreviewToken = &previewToken
 		}

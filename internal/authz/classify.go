@@ -658,6 +658,15 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"http:GET /api/v1/orgs/{org}/projects/{project}/audit/export":                            {Class: ClassTenant, Ops: []Operation{OpAuditExportProject}, Events: []audit.EventType{audit.EventAuditExportStarted, audit.EventAuditExportCompleted}},
 	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit":        {Class: ClassTenant, Ops: []Operation{OpAuditQueryEnv}, Events: []audit.EventType{audit.EventAuditQuery}},
 	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit/export": {Class: ClassTenant, Ops: []Operation{OpAuditExportEnv}, Events: []audit.EventType{audit.EventAuditExportStarted, audit.EventAuditExportCompleted}},
+	// Secret-change approvals (#151). Policy administration is project-scoped;
+	// the review queue is a read@env audited-none; voting is publish@env. The
+	// merge/bypass decision rides the publish route, not these.
+	"http:GET /api/v1/orgs/{org}/projects/{project}/approval-policies":                                                    {Class: ClassTenant, Ops: []Operation{OpApprovalPolicyRead}, Events: []audit.EventType{audit.EventApprovalPolicyRead}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/approval-policies":                                                   {Class: ClassTenant, Ops: []Operation{OpApprovalPolicyWrite}, Events: []audit.EventType{audit.EventApprovalPolicyChanged}},
+	"http:PUT /api/v1/orgs/{org}/projects/{project}/approval-policies/{policy}":                                           {Class: ClassTenant, Ops: []Operation{OpApprovalPolicyWrite}, Events: []audit.EventType{audit.EventApprovalPolicyChanged}},
+	"http:DELETE /api/v1/orgs/{org}/projects/{project}/approval-policies/{policy}":                                        {Class: ClassTenant, Ops: []Operation{OpApprovalPolicyWrite}, Events: []audit.EventType{audit.EventApprovalPolicyChanged}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests":                         {Class: ClassTenant, Ops: []Operation{OpApprovalRequestRead}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/vote": {Class: ClassTenant, Ops: []Operation{OpApprovalVote}, Events: []audit.EventType{audit.EventApprovalVoted, audit.EventApprovalInvalidated}},
 	// The root token key belongs to the instance, so there is no tenant object
 	// whose nonexistence a refusal could mimic. The same holds for every DEK: a
 	// DEK belongs to the instance's crypto hierarchy, not a tenant.

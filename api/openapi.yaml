@@ -102,6 +102,12 @@ tags:
       deleted `masked` state appears nowhere in this contract. Plaintext of a
       `secret` key flows only through the reveal-gated shapes, each of which
       emits one audit event per disclosed key.
+  - name: approvals
+    description: |
+      Secret-change approvals (#151). Policy-bound, multi-person review-and-merge
+      for secret and configuration changes in sensitive scopes. An approval
+      authorises one exact reviewed change set and is never a second mutation
+      path: merge and emergency bypass ride the ordinary publish endpoint.
 paths:
   /api/v1/meta:
     get:
@@ -7994,10 +8000,248 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PublishResult"
+        "202":
+          description: |
+            Secret-change approvals (#151): the environment is covered by an
+            approval policy and no completed approval was presented, so a
+            request was staged for review instead of a revision published.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalRequestSummary"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/approval-policies:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+    get:
+      operationId: listApprovalPolicies
+      tags: [approvals]
+      summary: The project's change-approval policies.
+      description: |
+        Secret-change approvals (#151). The scoped policies governing publishes
+        in this project: their approvers (users and SCIM groups), quorum,
+        self-approval behaviour, request expiry and emergency bypassers. Reading
+        the set is an administrative act and is itself audited.
+      x-hikyo-class: tenant
+      x-hikyo-operation: approval.policy-read
+      x-hikyo-formula: [project-settings@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "200":
+          description: The project's approval policies.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalPolicyList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      operationId: createApprovalPolicy
+      tags: [approvals]
+      summary: Create a change-approval policy.
+      description: |
+        Bind an approval policy to the project or one of its environments
+        (`environment_id` empty means every environment). Staging stays
+        unrestricted; a covered PUBLISH then requires the policy's completed
+        approval state.
+      x-hikyo-class: tenant
+      x-hikyo-operation: approval.policy-write
+      x-hikyo-formula: [project-settings@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovalPolicyInput"
+      responses:
+        "200":
+          description: The created policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalPolicy"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/approval-policies/{policy}:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - name: policy
+        in: path
+        required: true
+        schema: {$ref: "#/components/schemas/ID"}
+    put:
+      operationId: updateApprovalPolicy
+      tags: [approvals]
+      summary: Update a change-approval policy.
+      description: |
+        Replace the policy's fields and member sets. The version increments, so
+        every open request pinned to the previous version fails closed the next
+        time it is voted on or merged. Disabling is `enabled: false`.
+      x-hikyo-class: tenant
+      x-hikyo-operation: approval.policy-write
+      x-hikyo-formula: [project-settings@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovalPolicyInput"
+      responses:
+        "200":
+          description: The updated policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalPolicy"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    delete:
+      operationId: deleteApprovalPolicy
+      tags: [approvals]
+      summary: Delete a change-approval policy.
+      description: |
+        Remove the policy and its member sets. Open requests pinned to it fail
+        closed at merge; the audit trail of resolved requests is retained.
+      x-hikyo-class: tenant
+      x-hikyo-operation: approval.policy-write
+      x-hikyo-formula: [project-settings@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "204":
+          description: The policy was deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    get:
+      operationId: listApprovalRequests
+      tags: [approvals]
+      summary: The environment's change-approval requests.
+      description: |
+        The review queue for one environment: each request's pinned change set
+        size, purpose, state, quorum progress and votes. No value plaintext is
+        carried. Gated by `read` on the environment.
+      x-hikyo-class: tenant
+      x-hikyo-operation: approval.request-read
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "200":
+          description: The environment's approval requests.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalRequestList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/vote:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - name: approvalRequest
+        in: path
+        required: true
+        schema: {$ref: "#/components/schemas/ID"}
+    post:
+      operationId: voteApprovalRequest
+      tags: [approvals]
+      summary: Approve or reject a change-approval request.
+      description: |
+        An eligible approver casts one decision. A repeated identical decision
+        is idempotent; a conflicting one is refused. A reject resolves the
+        request; approvals accumulate toward the policy's quorum. The requester
+        cannot approve their own request unless the policy permits it. The vote
+        consumes a purpose-bound reauthentication ceremony.
+      x-hikyo-class: tenant
+      x-hikyo-operation: approval.vote
+      x-hikyo-formula: [publish@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovalVoteRequest"
+      responses:
+        "200":
+          description: The request after the vote.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalRequest"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -11238,7 +11482,6 @@ components:
         count: {type: integer, minimum: 0}
     PublishRequest:
       type: object
-      required: [version_ids]
       additionalProperties: false
       properties:
         version_ids:
@@ -11249,7 +11492,9 @@ components:
             The pending-change version ids to commit. Naming an id the caller
             does not own, or one that has been superseded or already published,
             is refused loud rather than resolved to whatever the owner typed
-            since.
+            since. Required for an ordinary publish; omitted when merging or
+            bypassing an approval request (whose reviewed selection is used
+            instead).
           items:
             $ref: "#/components/schemas/ID"
         preview_token:
@@ -11261,6 +11506,174 @@ components:
           uniqueItems: true
           items: {$ref: "#/components/schemas/ID"}
           description: Exact protected-environment set reviewed by a machine principal; humans must use the bound ceremony.
+        approval_request_id:
+          $ref: "#/components/schemas/ID"
+          description: |
+            Secret-change approvals (#151). Merge or bypass this approval
+            request instead of publishing a caller-named selection: the
+            request's reviewed version ids are used, and the request must be
+            approved (quorum from currently-eligible approvers) unless `bypass`
+            is set. Only the requester may merge their own reviewed change.
+        bypass:
+          $ref: "#/components/schemas/ApprovalBypass"
+        purpose:
+          type: string
+          maxLength: 1024
+          description: |
+            Free-text reason recorded on the request when a covered publish
+            stages one. Ignored where no policy covers the environment.
+    ApprovalBypass:
+      type: object
+      required: [reason]
+      additionalProperties: false
+      description: |
+        Emergency bypass of a covered environment's approval quorum (#151). A
+        named bypasser force-merges an existing request with a mandatory reason,
+        under a current reauthentication ceremony; emits a dedicated high-signal
+        audit event and never mutates the policy.
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 512
+          description: Why the quorum was bypassed. Recorded in the audit trail.
+    ApprovalApprover:
+      type: object
+      required: [kind, subject_id]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          enum: [principal, scim_group]
+        subject_id:
+          $ref: "#/components/schemas/ID"
+          description: A principal id, or a SCIM group id when kind is scim_group.
+        binding_id:
+          $ref: "#/components/schemas/ID"
+          description: The SCIM binding a group approver's members are resolved through.
+    ApprovalPolicyInput:
+      type: object
+      required: [min_approvals, request_ttl_seconds, enabled]
+      additionalProperties: false
+      properties:
+        environment_id:
+          type: string
+          maxLength: 64
+          description: The environment this policy covers; empty means every environment in the project.
+        min_approvals:
+          type: integer
+          format: int32
+          minimum: 1
+        allow_self_approval:
+          type: boolean
+        request_ttl_seconds:
+          type: integer
+          format: int32
+          minimum: 1
+        enabled:
+          type: boolean
+        approvers:
+          type: array
+          items: {$ref: "#/components/schemas/ApprovalApprover"}
+        bypassers:
+          type: array
+          uniqueItems: true
+          items: {$ref: "#/components/schemas/ID"}
+    ApprovalPolicy:
+      type: object
+      required: [id, environment_id, min_approvals, allow_self_approval, request_ttl_seconds, enabled, version, approvers, bypassers, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        environment_id:
+          type: string
+          maxLength: 64
+        min_approvals: {type: integer, format: int32}
+        allow_self_approval: {type: boolean}
+        request_ttl_seconds: {type: integer, format: int32}
+        enabled: {type: boolean}
+        version: {type: integer, format: int64}
+        approvers:
+          type: array
+          items: {$ref: "#/components/schemas/ApprovalApprover"}
+        bypassers:
+          type: array
+          items: {$ref: "#/components/schemas/ID"}
+        created_at: {$ref: "#/components/schemas/Timestamp"}
+        updated_at: {$ref: "#/components/schemas/Timestamp"}
+    ApprovalPolicyList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/ApprovalPolicy"}
+    ApprovalVote:
+      type: object
+      required: [principal_id, decision, created_at]
+      additionalProperties: false
+      properties:
+        principal_id: {$ref: "#/components/schemas/ID"}
+        decision:
+          type: string
+          enum: [approve, reject]
+        created_at: {$ref: "#/components/schemas/Timestamp"}
+    ApprovalRequest:
+      type: object
+      required: [id, environment_id, policy_id, policy_version, requester, change_count, base_revision, purpose, state, invalidated_cause, min_approvals, approvals, votes, created_at, expires_at]
+      additionalProperties: false
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        environment_id: {$ref: "#/components/schemas/ID"}
+        policy_id: {$ref: "#/components/schemas/ID"}
+        policy_version: {type: integer, format: int64}
+        requester: {$ref: "#/components/schemas/ID"}
+        change_count: {type: integer, format: int32}
+        base_revision: {type: integer, format: int64}
+        purpose: {type: string}
+        state:
+          type: string
+          enum: [open, approved, merged, rejected, expired, invalidated, bypassed]
+        invalidated_cause:
+          type: string
+          enum: ["", policy_changed, draft_edited, env_advanced, approver_removed]
+        min_approvals: {type: integer, format: int32}
+        approvals: {type: integer, format: int32}
+        votes:
+          type: array
+          items: {$ref: "#/components/schemas/ApprovalVote"}
+        created_at: {$ref: "#/components/schemas/Timestamp"}
+        expires_at: {$ref: "#/components/schemas/Timestamp"}
+        resolved_at: {$ref: "#/components/schemas/Timestamp"}
+    ApprovalRequestList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/ApprovalRequest"}
+    ApprovalRequestSummary:
+      type: object
+      required: [id, environment_id, policy_id, state, expires_at]
+      additionalProperties: false
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        environment_id: {$ref: "#/components/schemas/ID"}
+        policy_id: {$ref: "#/components/schemas/ID"}
+        state:
+          type: string
+          enum: [open, approved, merged, rejected, expired, invalidated, bypassed]
+        expires_at: {$ref: "#/components/schemas/Timestamp"}
+    ApprovalVoteRequest:
+      type: object
+      required: [decision]
+      additionalProperties: false
+      properties:
+        decision:
+          type: string
+          enum: [approve, reject]
     PublishResult:
       type: object
       required: [published, closed_in, environments]

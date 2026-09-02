@@ -745,10 +745,121 @@ export const zRevisionPinList = z.object({
     count: z.int().gte(0)
 });
 
+/**
+ * Emergency bypass of a covered environment's approval quorum (#151). A
+ * named bypasser force-merges an existing request with a mandatory reason,
+ * under a current reauthentication ceremony; emits a dedicated high-signal
+ * audit event and never mutates the policy.
+ *
+ */
+export const zApprovalBypass = z.object({
+    reason: z.string().min(1).max(512)
+});
+
 export const zPublishRequest = z.object({
-    version_ids: z.array(zId).min(1),
+    version_ids: z.array(zId).min(1).optional(),
     preview_token: z.string().min(1).optional(),
-    confirmed_protected_environments: z.array(zId).optional()
+    confirmed_protected_environments: z.array(zId).optional(),
+    approval_request_id: zId.optional(),
+    bypass: zApprovalBypass.optional(),
+    purpose: z.string().max(1024).optional()
+});
+
+export const zApprovalApprover = z.object({
+    kind: z.enum(['principal', 'scim_group']),
+    subject_id: zId,
+    binding_id: zId.optional()
+});
+
+export const zApprovalPolicyInput = z.object({
+    environment_id: z.string().max(64).optional(),
+    min_approvals: z.int().gte(1).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    allow_self_approval: z.boolean().optional(),
+    request_ttl_seconds: z.int().gte(1).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    enabled: z.boolean(),
+    approvers: z.array(zApprovalApprover).optional(),
+    bypassers: z.array(zId).optional()
+});
+
+export const zApprovalPolicy = z.object({
+    id: zId,
+    environment_id: z.string().max(64),
+    min_approvals: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    allow_self_approval: z.boolean(),
+    request_ttl_seconds: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    enabled: z.boolean(),
+    version: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    approvers: z.array(zApprovalApprover),
+    bypassers: z.array(zId),
+    created_at: zTimestamp,
+    updated_at: zTimestamp
+});
+
+export const zApprovalPolicyList = z.object({
+    items: z.array(zApprovalPolicy)
+});
+
+export const zApprovalVote = z.object({
+    principal_id: zId,
+    decision: z.enum(['approve', 'reject']),
+    created_at: zTimestamp
+});
+
+export const zApprovalRequest = z.object({
+    id: zId,
+    environment_id: zId,
+    policy_id: zId,
+    policy_version: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    requester: zId,
+    change_count: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    base_revision: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    purpose: z.string(),
+    state: z.enum([
+        'open',
+        'approved',
+        'merged',
+        'rejected',
+        'expired',
+        'invalidated',
+        'bypassed'
+    ]),
+    invalidated_cause: z.enum([
+        '',
+        'policy_changed',
+        'draft_edited',
+        'env_advanced',
+        'approver_removed'
+    ]),
+    min_approvals: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    approvals: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    votes: z.array(zApprovalVote),
+    created_at: zTimestamp,
+    expires_at: zTimestamp,
+    resolved_at: zTimestamp.optional()
+});
+
+export const zApprovalRequestList = z.object({
+    items: z.array(zApprovalRequest)
+});
+
+export const zApprovalRequestSummary = z.object({
+    id: zId,
+    environment_id: zId,
+    policy_id: zId,
+    state: z.enum([
+        'open',
+        'approved',
+        'merged',
+        'rejected',
+        'expired',
+        'invalidated',
+        'bypassed'
+    ]),
+    expires_at: zTimestamp
+});
+
+export const zApprovalVoteRequest = z.object({
+    decision: z.enum(['approve', 'reject'])
 });
 
 export const zExportValuesRequest = z.object({
@@ -5057,10 +5168,81 @@ export const zPublishPendingChangesPath = z.object({
     environment: zId
 });
 
+export const zPublishPendingChangesResponse = z.union([
+    zPublishResult,
+    zApprovalRequestSummary
+]);
+
+export const zListApprovalPoliciesPath = z.object({
+    org: zId,
+    project: zId
+});
+
 /**
- * What committed, and which environments advanced.
+ * The project's approval policies.
  */
-export const zPublishPendingChangesResponse = zPublishResult;
+export const zListApprovalPoliciesResponse = zApprovalPolicyList;
+
+export const zCreateApprovalPolicyBody = zApprovalPolicyInput;
+
+export const zCreateApprovalPolicyPath = z.object({
+    org: zId,
+    project: zId
+});
+
+/**
+ * The created policy.
+ */
+export const zCreateApprovalPolicyResponse = zApprovalPolicy;
+
+export const zDeleteApprovalPolicyPath = z.object({
+    org: zId,
+    project: zId,
+    policy: zId
+});
+
+/**
+ * The policy was deleted.
+ */
+export const zDeleteApprovalPolicyResponse = z.void();
+
+export const zUpdateApprovalPolicyBody = zApprovalPolicyInput;
+
+export const zUpdateApprovalPolicyPath = z.object({
+    org: zId,
+    project: zId,
+    policy: zId
+});
+
+/**
+ * The updated policy.
+ */
+export const zUpdateApprovalPolicyResponse = zApprovalPolicy;
+
+export const zListApprovalRequestsPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * The environment's approval requests.
+ */
+export const zListApprovalRequestsResponse = zApprovalRequestList;
+
+export const zVoteApprovalRequestBody = zApprovalVoteRequest;
+
+export const zVoteApprovalRequestPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    approvalRequest: zId
+});
+
+/**
+ * The request after the vote.
+ */
+export const zVoteApprovalRequestResponse = zApprovalRequest;
 
 export const zGetEnvironmentSignalsPath = z.object({
     org: zId,

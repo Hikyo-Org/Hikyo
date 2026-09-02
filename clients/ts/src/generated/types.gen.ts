@@ -1001,10 +1001,12 @@ export type PublishRequest = {
      * The pending-change version ids to commit. Naming an id the caller
      * does not own, or one that has been superseded or already published,
      * is refused loud rather than resolved to whatever the owner typed
-     * since.
+     * since. Required for an ordinary publish; omitted when merging or
+     * bypassing an approval request (whose reviewed selection is used
+     * instead).
      *
      */
-    version_ids: Array<Id>;
+    version_ids?: Array<Id>;
     /**
      * Required when any selected or closure-added draft came from rollback.
      */
@@ -1013,6 +1015,120 @@ export type PublishRequest = {
      * Exact protected-environment set reviewed by a machine principal; humans must use the bound ceremony.
      */
     confirmed_protected_environments?: Array<Id>;
+    /**
+     * Secret-change approvals (#151). Merge or bypass this approval
+     * request instead of publishing a caller-named selection: the
+     * request's reviewed version ids are used, and the request must be
+     * approved (quorum from currently-eligible approvers) unless `bypass`
+     * is set. Only the requester may merge their own reviewed change.
+     *
+     */
+    approval_request_id?: Id;
+    bypass?: ApprovalBypass;
+    /**
+     * Free-text reason recorded on the request when a covered publish
+     * stages one. Ignored where no policy covers the environment.
+     *
+     */
+    purpose?: string;
+};
+
+/**
+ * Emergency bypass of a covered environment's approval quorum (#151). A
+ * named bypasser force-merges an existing request with a mandatory reason,
+ * under a current reauthentication ceremony; emits a dedicated high-signal
+ * audit event and never mutates the policy.
+ *
+ */
+export type ApprovalBypass = {
+    /**
+     * Why the quorum was bypassed. Recorded in the audit trail.
+     */
+    reason: string;
+};
+
+export type ApprovalApprover = {
+    kind: 'principal' | 'scim_group';
+    /**
+     * A principal id, or a SCIM group id when kind is scim_group.
+     */
+    subject_id: Id;
+    /**
+     * The SCIM binding a group approver's members are resolved through.
+     */
+    binding_id?: Id;
+};
+
+export type ApprovalPolicyInput = {
+    /**
+     * The environment this policy covers; empty means every environment in the project.
+     */
+    environment_id?: string;
+    min_approvals: number;
+    allow_self_approval?: boolean;
+    request_ttl_seconds: number;
+    enabled: boolean;
+    approvers?: Array<ApprovalApprover>;
+    bypassers?: Array<Id>;
+};
+
+export type ApprovalPolicy = {
+    id: Id;
+    environment_id: string;
+    min_approvals: number;
+    allow_self_approval: boolean;
+    request_ttl_seconds: number;
+    enabled: boolean;
+    version: number;
+    approvers: Array<ApprovalApprover>;
+    bypassers: Array<Id>;
+    created_at: Timestamp;
+    updated_at: Timestamp;
+};
+
+export type ApprovalPolicyList = {
+    items: Array<ApprovalPolicy>;
+};
+
+export type ApprovalVote = {
+    principal_id: Id;
+    decision: 'approve' | 'reject';
+    created_at: Timestamp;
+};
+
+export type ApprovalRequest = {
+    id: Id;
+    environment_id: Id;
+    policy_id: Id;
+    policy_version: number;
+    requester: Id;
+    change_count: number;
+    base_revision: number;
+    purpose: string;
+    state: 'open' | 'approved' | 'merged' | 'rejected' | 'expired' | 'invalidated' | 'bypassed';
+    invalidated_cause: '' | 'policy_changed' | 'draft_edited' | 'env_advanced' | 'approver_removed';
+    min_approvals: number;
+    approvals: number;
+    votes: Array<ApprovalVote>;
+    created_at: Timestamp;
+    expires_at: Timestamp;
+    resolved_at?: Timestamp;
+};
+
+export type ApprovalRequestList = {
+    items: Array<ApprovalRequest>;
+};
+
+export type ApprovalRequestSummary = {
+    id: Id;
+    environment_id: Id;
+    policy_id: Id;
+    state: 'open' | 'approved' | 'merged' | 'rejected' | 'expired' | 'invalidated' | 'bypassed';
+    expires_at: Timestamp;
+};
+
+export type ApprovalVoteRequest = {
+    decision: 'approve' | 'reject';
 };
 
 export type PublishResult = {
@@ -17171,9 +17287,410 @@ export type PublishPendingChangesResponses = {
      * What committed, and which environments advanced.
      */
     200: PublishResult;
+    /**
+     * Secret-change approvals (#151): the environment is covered by an
+     * approval policy and no completed approval was presented, so a
+     * request was staged for review instead of a revision published.
+     *
+     */
+    202: ApprovalRequestSummary;
 };
 
 export type PublishPendingChangesResponse = PublishPendingChangesResponses[keyof PublishPendingChangesResponses];
+
+export type ListApprovalPoliciesData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/approval-policies';
+};
+
+export type ListApprovalPoliciesErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type ListApprovalPoliciesError = ListApprovalPoliciesErrors[keyof ListApprovalPoliciesErrors];
+
+export type ListApprovalPoliciesResponses = {
+    /**
+     * The project's approval policies.
+     */
+    200: ApprovalPolicyList;
+};
+
+export type ListApprovalPoliciesResponse = ListApprovalPoliciesResponses[keyof ListApprovalPoliciesResponses];
+
+export type CreateApprovalPolicyData = {
+    body: ApprovalPolicyInput;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/approval-policies';
+};
+
+export type CreateApprovalPolicyErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type CreateApprovalPolicyError = CreateApprovalPolicyErrors[keyof CreateApprovalPolicyErrors];
+
+export type CreateApprovalPolicyResponses = {
+    /**
+     * The created policy.
+     */
+    200: ApprovalPolicy;
+};
+
+export type CreateApprovalPolicyResponse = CreateApprovalPolicyResponses[keyof CreateApprovalPolicyResponses];
+
+export type DeleteApprovalPolicyData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        policy: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/approval-policies/{policy}';
+};
+
+export type DeleteApprovalPolicyErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type DeleteApprovalPolicyError = DeleteApprovalPolicyErrors[keyof DeleteApprovalPolicyErrors];
+
+export type DeleteApprovalPolicyResponses = {
+    /**
+     * The policy was deleted.
+     */
+    204: void;
+};
+
+export type DeleteApprovalPolicyResponse = DeleteApprovalPolicyResponses[keyof DeleteApprovalPolicyResponses];
+
+export type UpdateApprovalPolicyData = {
+    body: ApprovalPolicyInput;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        policy: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/approval-policies/{policy}';
+};
+
+export type UpdateApprovalPolicyErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type UpdateApprovalPolicyError = UpdateApprovalPolicyErrors[keyof UpdateApprovalPolicyErrors];
+
+export type UpdateApprovalPolicyResponses = {
+    /**
+     * The updated policy.
+     */
+    200: ApprovalPolicy;
+};
+
+export type UpdateApprovalPolicyResponse = UpdateApprovalPolicyResponses[keyof UpdateApprovalPolicyResponses];
+
+export type ListApprovalRequestsData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests';
+};
+
+export type ListApprovalRequestsErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type ListApprovalRequestsError = ListApprovalRequestsErrors[keyof ListApprovalRequestsErrors];
+
+export type ListApprovalRequestsResponses = {
+    /**
+     * The environment's approval requests.
+     */
+    200: ApprovalRequestList;
+};
+
+export type ListApprovalRequestsResponse = ListApprovalRequestsResponses[keyof ListApprovalRequestsResponses];
+
+export type VoteApprovalRequestData = {
+    body: ApprovalVoteRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        approvalRequest: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/vote';
+};
+
+export type VoteApprovalRequestErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type VoteApprovalRequestError = VoteApprovalRequestErrors[keyof VoteApprovalRequestErrors];
+
+export type VoteApprovalRequestResponses = {
+    /**
+     * The request after the vote.
+     */
+    200: ApprovalRequest;
+};
+
+export type VoteApprovalRequestResponse = VoteApprovalRequestResponses[keyof VoteApprovalRequestResponses];
 
 export type GetEnvironmentSignalsData = {
     body?: never;

@@ -79,6 +79,7 @@ import {
   compromiseRetireSamlSpKey,
   copyValues,
   createAdapter,
+  createApprovalPolicy,
   createDefinitionsPlan,
   createEnvGrant,
   createEnvironment,
@@ -98,6 +99,7 @@ import {
   createServiceAccount,
   declareValues,
   deleteAdapter,
+  deleteApprovalPolicy,
   deleteEnvironment,
   deleteFederationIssuer,
   deleteFolder,
@@ -152,6 +154,8 @@ import {
   linkIdentity,
   listAdapters,
   listAdapterTargets,
+  listApprovalPolicies,
+  listApprovalRequests,
   listEnvironments,
   listFederationIssuers,
   listFolders,
@@ -294,10 +298,12 @@ import {
   unlinkIdentity,
   updateAdapterOrigin,
   updateAdapterTarget,
+  updateApprovalPolicy,
   updateFederationIssuer,
   updateKeyDeclaration,
   updateKeyMetadata,
   updateScimMapping,
+  voteApprovalRequest,
   watchProjectEvents,
   whoami,
 } from './sdk.gen.ts';
@@ -322,6 +328,7 @@ import type {
   CompromiseRetireSamlSpKeyData,
   CopyValuesData,
   CreateAdapterData,
+  CreateApprovalPolicyData,
   CreateDefinitionsPlanData,
   CreateEnvGrantData,
   CreateEnvironmentData,
@@ -341,6 +348,7 @@ import type {
   CreateServiceAccountData,
   DeclareValuesData,
   DeleteAdapterData,
+  DeleteApprovalPolicyData,
   DeleteEnvironmentData,
   DeleteFederationIssuerData,
   DeleteFolderData,
@@ -395,6 +403,8 @@ import type {
   LinkIdentityData,
   ListAdaptersData,
   ListAdapterTargetsData,
+  ListApprovalPoliciesData,
+  ListApprovalRequestsData,
   ListEnvironmentsData,
   ListFederationIssuersData,
   ListFoldersData,
@@ -537,10 +547,12 @@ import type {
   UnlinkIdentityData,
   UpdateAdapterOriginData,
   UpdateAdapterTargetData,
+  UpdateApprovalPolicyData,
   UpdateFederationIssuerData,
   UpdateKeyDeclarationData,
   UpdateKeyMetadataData,
   UpdateScimMappingData,
+  VoteApprovalRequestData,
   WatchProjectEventsData,
   WhoamiData,
 } from './types.gen.ts';
@@ -565,6 +577,7 @@ import {
   zCompromiseRetireSamlSpKeyResponse,
   zCopyValuesResponse,
   zCreateAdapterResponse,
+  zCreateApprovalPolicyResponse,
   zCreateDefinitionsPlanResponse,
   zCreateEnvGrantResponse,
   zCreateEnvironmentResponse,
@@ -626,6 +639,8 @@ import {
   zLinkIdentityResponse,
   zListAdaptersResponse,
   zListAdapterTargetsResponse,
+  zListApprovalPoliciesResponse,
+  zListApprovalRequestsResponse,
   zListEnvironmentsResponse,
   zListFederationIssuersResponse,
   zListFoldersResponse,
@@ -753,10 +768,12 @@ import {
   zUnlinkIdentityResponse,
   zUpdateAdapterOriginResponse,
   zUpdateAdapterTargetResponse,
+  zUpdateApprovalPolicyResponse,
   zUpdateFederationIssuerResponse,
   zUpdateKeyDeclarationResponse,
   zUpdateKeyMetadataResponse,
   zUpdateScimMappingResponse,
+  zVoteApprovalRequestResponse,
   zWatchProjectEventsResponse,
   zWhoamiResponse,
 } from './zod.gen.ts';
@@ -781,6 +798,7 @@ export const cloneEnvironmentOp: BodyOperation<CloneEnvironmentData, typeof zClo
 export const compromiseRetireSamlSpKeyOp: BodyOperation<CompromiseRetireSamlSpKeyData, typeof zCompromiseRetireSamlSpKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(compromiseRetireSamlSpKey, [200], zCompromiseRetireSamlSpKeyResponse);
 export const copyValuesOp: BodyOperation<CopyValuesData, typeof zCopyValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(copyValues, [200], zCopyValuesResponse);
 export const createAdapterOp: BodyOperation<CreateAdapterData, typeof zCreateAdapterResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createAdapter, [201], zCreateAdapterResponse);
+export const createApprovalPolicyOp: BodyOperation<CreateApprovalPolicyData, typeof zCreateApprovalPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createApprovalPolicy, [200], zCreateApprovalPolicyResponse);
 export const createDefinitionsPlanOp: BodyOperation<CreateDefinitionsPlanData, typeof zCreateDefinitionsPlanResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createDefinitionsPlan, [201], zCreateDefinitionsPlanResponse);
 export const createEnvGrantOp: BodyOperation<CreateEnvGrantData, typeof zCreateEnvGrantResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createEnvGrant, [200], zCreateEnvGrantResponse);
 export const createEnvironmentOp: BodyOperation<CreateEnvironmentData, typeof zCreateEnvironmentResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createEnvironment, [201], zCreateEnvironmentResponse);
@@ -842,6 +860,8 @@ export const importValuesOp: BodyOperation<ImportValuesData, typeof zImportValue
 export const linkIdentityOp: BodyOperation<LinkIdentityData, typeof zLinkIdentityResponse> = /* @__PURE__ */ new GeneratedBodyOperation(linkIdentity, [200], zLinkIdentityResponse);
 export const listAdaptersOp: BodyOperation<ListAdaptersData, typeof zListAdaptersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listAdapters, [200], zListAdaptersResponse);
 export const listAdapterTargetsOp: BodyOperation<ListAdapterTargetsData, typeof zListAdapterTargetsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listAdapterTargets, [200], zListAdapterTargetsResponse);
+export const listApprovalPoliciesOp: BodyOperation<ListApprovalPoliciesData, typeof zListApprovalPoliciesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listApprovalPolicies, [200], zListApprovalPoliciesResponse);
+export const listApprovalRequestsOp: BodyOperation<ListApprovalRequestsData, typeof zListApprovalRequestsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listApprovalRequests, [200], zListApprovalRequestsResponse);
 export const listEnvironmentsOp: BodyOperation<ListEnvironmentsData, typeof zListEnvironmentsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listEnvironments, [200], zListEnvironmentsResponse);
 export const listFederationIssuersOp: BodyOperation<ListFederationIssuersData, typeof zListFederationIssuersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listFederationIssuers, [200], zListFederationIssuersResponse);
 export const listFoldersOp: BodyOperation<ListFoldersData, typeof zListFoldersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listFolders, [200], zListFoldersResponse);
@@ -884,7 +904,7 @@ export const passkeyLoginFinishOp: BodyOperation<PasskeyLoginFinishData, typeof 
 export const passkeyLoginStartOp: BodyOperation<PasskeyLoginStartData, typeof zPasskeyLoginStartResponse> = /* @__PURE__ */ new GeneratedBodyOperation(passkeyLoginStart, [200], zPasskeyLoginStartResponse);
 export const patchSamlProviderOp: BodyOperation<PatchSamlProviderData, typeof zPatchSamlProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(patchSamlProvider, [200], zPatchSamlProviderResponse);
 export const planAdapterTargetOp: BodyOperation<PlanAdapterTargetData, typeof zPlanAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(planAdapterTarget, [200], zPlanAdapterTargetResponse);
-export const publishPendingChangesOp: BodyOperation<PublishPendingChangesData, typeof zPublishPendingChangesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(publishPendingChanges, [200], zPublishPendingChangesResponse);
+export const publishPendingChangesOp: BodyOperation<PublishPendingChangesData, typeof zPublishPendingChangesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(publishPendingChanges, [200, 202], zPublishPendingChangesResponse);
 export const putOidcProviderOp: BodyOperation<PutOidcProviderData, typeof zPutOidcProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(putOidcProvider, [200], zPutOidcProviderResponse);
 export const putSamlProviderOp: BodyOperation<PutSamlProviderData, typeof zPutSamlProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(putSamlProvider, [200], zPutSamlProviderResponse);
 export const queryEnvAuditOp: BodyOperation<QueryEnvAuditData, typeof zQueryEnvAuditResponse> = /* @__PURE__ */ new GeneratedBodyOperation(queryEnvAudit, [200], zQueryEnvAuditResponse);
@@ -969,11 +989,14 @@ export const testAdapterTargetOp: BodyOperation<TestAdapterTargetData, typeof zT
 export const unlinkIdentityOp: BodyOperation<UnlinkIdentityData, typeof zUnlinkIdentityResponse> = /* @__PURE__ */ new GeneratedBodyOperation(unlinkIdentity, [200], zUnlinkIdentityResponse);
 export const updateAdapterOriginOp: BodyOperation<UpdateAdapterOriginData, typeof zUpdateAdapterOriginResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateAdapterOrigin, [202], zUpdateAdapterOriginResponse);
 export const updateAdapterTargetOp: BodyOperation<UpdateAdapterTargetData, typeof zUpdateAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateAdapterTarget, [200, 202], zUpdateAdapterTargetResponse);
+export const updateApprovalPolicyOp: BodyOperation<UpdateApprovalPolicyData, typeof zUpdateApprovalPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateApprovalPolicy, [200], zUpdateApprovalPolicyResponse);
 export const updateFederationIssuerOp: BodyOperation<UpdateFederationIssuerData, typeof zUpdateFederationIssuerResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateFederationIssuer, [200], zUpdateFederationIssuerResponse);
 export const updateKeyDeclarationOp: BodyOperation<UpdateKeyDeclarationData, typeof zUpdateKeyDeclarationResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateKeyDeclaration, [200], zUpdateKeyDeclarationResponse);
 export const updateKeyMetadataOp: BodyOperation<UpdateKeyMetadataData, typeof zUpdateKeyMetadataResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateKeyMetadata, [200], zUpdateKeyMetadataResponse);
 export const updateScimMappingOp: BodyOperation<UpdateScimMappingData, typeof zUpdateScimMappingResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateScimMapping, [200], zUpdateScimMappingResponse);
+export const voteApprovalRequestOp: BodyOperation<VoteApprovalRequestData, typeof zVoteApprovalRequestResponse> = /* @__PURE__ */ new GeneratedBodyOperation(voteApprovalRequest, [200], zVoteApprovalRequestResponse);
 export const whoamiOp: BodyOperation<WhoamiData, typeof zWhoamiResponse> = /* @__PURE__ */ new GeneratedBodyOperation(whoami, [200], zWhoamiResponse);
+export const deleteApprovalPolicyOp: BodylessOperation<DeleteApprovalPolicyData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteApprovalPolicy, [204]);
 export const deleteEnvironmentOp: BodylessOperation<DeleteEnvironmentData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteEnvironment, [204]);
 export const deleteFederationIssuerOp: BodylessOperation<DeleteFederationIssuerData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteFederationIssuer, [204]);
 export const deleteFolderOp: BodylessOperation<DeleteFolderData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteFolder, [204]);

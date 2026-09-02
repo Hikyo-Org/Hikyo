@@ -433,6 +433,153 @@ func (e AffectedCredentialReason) Valid() bool {
 	}
 }
 
+// Defines values for ApprovalApproverKind.
+const (
+	ApprovalApproverKindPrincipal ApprovalApproverKind = "principal"
+	ApprovalApproverKindScimGroup ApprovalApproverKind = "scim_group"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalApproverKind enum.
+func (e ApprovalApproverKind) Valid() bool {
+	switch e {
+	case ApprovalApproverKindPrincipal:
+		return true
+	case ApprovalApproverKindScimGroup:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalRequestInvalidatedCause.
+const (
+	ApprovalRequestInvalidatedCauseApproverRemoved ApprovalRequestInvalidatedCause = "approver_removed"
+	ApprovalRequestInvalidatedCauseDraftEdited     ApprovalRequestInvalidatedCause = "draft_edited"
+	ApprovalRequestInvalidatedCauseEmpty           ApprovalRequestInvalidatedCause = ""
+	ApprovalRequestInvalidatedCauseEnvAdvanced     ApprovalRequestInvalidatedCause = "env_advanced"
+	ApprovalRequestInvalidatedCausePolicyChanged   ApprovalRequestInvalidatedCause = "policy_changed"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalRequestInvalidatedCause enum.
+func (e ApprovalRequestInvalidatedCause) Valid() bool {
+	switch e {
+	case ApprovalRequestInvalidatedCauseApproverRemoved:
+		return true
+	case ApprovalRequestInvalidatedCauseDraftEdited:
+		return true
+	case ApprovalRequestInvalidatedCauseEmpty:
+		return true
+	case ApprovalRequestInvalidatedCauseEnvAdvanced:
+		return true
+	case ApprovalRequestInvalidatedCausePolicyChanged:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalRequestState.
+const (
+	ApprovalRequestStateApproved    ApprovalRequestState = "approved"
+	ApprovalRequestStateBypassed    ApprovalRequestState = "bypassed"
+	ApprovalRequestStateExpired     ApprovalRequestState = "expired"
+	ApprovalRequestStateInvalidated ApprovalRequestState = "invalidated"
+	ApprovalRequestStateMerged      ApprovalRequestState = "merged"
+	ApprovalRequestStateOpen        ApprovalRequestState = "open"
+	ApprovalRequestStateRejected    ApprovalRequestState = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalRequestState enum.
+func (e ApprovalRequestState) Valid() bool {
+	switch e {
+	case ApprovalRequestStateApproved:
+		return true
+	case ApprovalRequestStateBypassed:
+		return true
+	case ApprovalRequestStateExpired:
+		return true
+	case ApprovalRequestStateInvalidated:
+		return true
+	case ApprovalRequestStateMerged:
+		return true
+	case ApprovalRequestStateOpen:
+		return true
+	case ApprovalRequestStateRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalRequestSummaryState.
+const (
+	ApprovalRequestSummaryStateApproved    ApprovalRequestSummaryState = "approved"
+	ApprovalRequestSummaryStateBypassed    ApprovalRequestSummaryState = "bypassed"
+	ApprovalRequestSummaryStateExpired     ApprovalRequestSummaryState = "expired"
+	ApprovalRequestSummaryStateInvalidated ApprovalRequestSummaryState = "invalidated"
+	ApprovalRequestSummaryStateMerged      ApprovalRequestSummaryState = "merged"
+	ApprovalRequestSummaryStateOpen        ApprovalRequestSummaryState = "open"
+	ApprovalRequestSummaryStateRejected    ApprovalRequestSummaryState = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalRequestSummaryState enum.
+func (e ApprovalRequestSummaryState) Valid() bool {
+	switch e {
+	case ApprovalRequestSummaryStateApproved:
+		return true
+	case ApprovalRequestSummaryStateBypassed:
+		return true
+	case ApprovalRequestSummaryStateExpired:
+		return true
+	case ApprovalRequestSummaryStateInvalidated:
+		return true
+	case ApprovalRequestSummaryStateMerged:
+		return true
+	case ApprovalRequestSummaryStateOpen:
+		return true
+	case ApprovalRequestSummaryStateRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalVoteDecision.
+const (
+	ApprovalVoteDecisionApprove ApprovalVoteDecision = "approve"
+	ApprovalVoteDecisionReject  ApprovalVoteDecision = "reject"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalVoteDecision enum.
+func (e ApprovalVoteDecision) Valid() bool {
+	switch e {
+	case ApprovalVoteDecisionApprove:
+		return true
+	case ApprovalVoteDecisionReject:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalVoteRequestDecision.
+const (
+	ApprovalVoteRequestDecisionApprove ApprovalVoteRequestDecision = "approve"
+	ApprovalVoteRequestDecisionReject  ApprovalVoteRequestDecision = "reject"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalVoteRequestDecision enum.
+func (e ApprovalVoteRequestDecision) Valid() bool {
+	switch e {
+	case ApprovalVoteRequestDecisionApprove:
+		return true
+	case ApprovalVoteRequestDecisionReject:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CLIReauthStartRequestOperation.
 const (
 	CLIReauthStartRequestOperationAdapterAdopt         CLIReauthStartRequestOperation = "adapter.adopt"
@@ -2559,6 +2706,152 @@ type ApplyTemplateRequest struct {
 	// Template The closed v1 role template set.
 	Template RoleTemplate `json:"template"`
 }
+
+// ApprovalApprover defines model for ApprovalApprover.
+type ApprovalApprover struct {
+	// BindingId The SCIM binding a group approver's members are resolved through.
+	BindingId *ID                  `json:"binding_id,omitempty"`
+	Kind      ApprovalApproverKind `json:"kind"`
+
+	// SubjectId A principal id, or a SCIM group id when kind is scim_group.
+	SubjectId ID `json:"subject_id"`
+}
+
+// ApprovalApproverKind defines model for ApprovalApprover.Kind.
+type ApprovalApproverKind string
+
+// ApprovalBypass Emergency bypass of a covered environment's approval quorum (#151). A
+// named bypasser force-merges an existing request with a mandatory reason,
+// under a current reauthentication ceremony; emits a dedicated high-signal
+// audit event and never mutates the policy.
+type ApprovalBypass struct {
+	// Reason Why the quorum was bypassed. Recorded in the audit trail.
+	Reason string `json:"reason"`
+}
+
+// ApprovalPolicy defines model for ApprovalPolicy.
+type ApprovalPolicy struct {
+	AllowSelfApproval bool               `json:"allow_self_approval"`
+	Approvers         []ApprovalApprover `json:"approvers"`
+	Bypassers         []ID               `json:"bypassers"`
+
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt     Timestamp `json:"created_at"`
+	Enabled       bool      `json:"enabled"`
+	EnvironmentId string    `json:"environment_id"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id                ID    `json:"id"`
+	MinApprovals      int32 `json:"min_approvals"`
+	RequestTtlSeconds int32 `json:"request_ttl_seconds"`
+
+	// UpdatedAt RFC 3339 UTC, microsecond precision.
+	UpdatedAt Timestamp `json:"updated_at"`
+	Version   int64     `json:"version"`
+}
+
+// ApprovalPolicyInput defines model for ApprovalPolicyInput.
+type ApprovalPolicyInput struct {
+	AllowSelfApproval *bool               `json:"allow_self_approval,omitempty"`
+	Approvers         *[]ApprovalApprover `json:"approvers,omitempty"`
+	Bypassers         *[]ID               `json:"bypassers,omitempty"`
+	Enabled           bool                `json:"enabled"`
+
+	// EnvironmentId The environment this policy covers; empty means every environment in the project.
+	EnvironmentId     *string `json:"environment_id,omitempty"`
+	MinApprovals      int32   `json:"min_approvals"`
+	RequestTtlSeconds int32   `json:"request_ttl_seconds"`
+}
+
+// ApprovalPolicyList defines model for ApprovalPolicyList.
+type ApprovalPolicyList struct {
+	Items []ApprovalPolicy `json:"items"`
+}
+
+// ApprovalRequest defines model for ApprovalRequest.
+type ApprovalRequest struct {
+	Approvals    int32 `json:"approvals"`
+	BaseRevision int64 `json:"base_revision"`
+	ChangeCount  int32 `json:"change_count"`
+
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt Timestamp `json:"created_at"`
+
+	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
+	EnvironmentId ID `json:"environment_id"`
+
+	// ExpiresAt RFC 3339 UTC, microsecond precision.
+	ExpiresAt Timestamp `json:"expires_at"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id               ID                              `json:"id"`
+	InvalidatedCause ApprovalRequestInvalidatedCause `json:"invalidated_cause"`
+	MinApprovals     int32                           `json:"min_approvals"`
+
+	// PolicyId A prefixed UUIDv7, e.g. `org_0198…`.
+	PolicyId      ID     `json:"policy_id"`
+	PolicyVersion int64  `json:"policy_version"`
+	Purpose       string `json:"purpose"`
+
+	// Requester A prefixed UUIDv7, e.g. `org_0198…`.
+	Requester ID `json:"requester"`
+
+	// ResolvedAt RFC 3339 UTC, microsecond precision.
+	ResolvedAt *Timestamp           `json:"resolved_at,omitempty"`
+	State      ApprovalRequestState `json:"state"`
+	Votes      []ApprovalVote       `json:"votes"`
+}
+
+// ApprovalRequestInvalidatedCause defines model for ApprovalRequest.InvalidatedCause.
+type ApprovalRequestInvalidatedCause string
+
+// ApprovalRequestState defines model for ApprovalRequest.State.
+type ApprovalRequestState string
+
+// ApprovalRequestList defines model for ApprovalRequestList.
+type ApprovalRequestList struct {
+	Items []ApprovalRequest `json:"items"`
+}
+
+// ApprovalRequestSummary defines model for ApprovalRequestSummary.
+type ApprovalRequestSummary struct {
+	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
+	EnvironmentId ID `json:"environment_id"`
+
+	// ExpiresAt RFC 3339 UTC, microsecond precision.
+	ExpiresAt Timestamp `json:"expires_at"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id ID `json:"id"`
+
+	// PolicyId A prefixed UUIDv7, e.g. `org_0198…`.
+	PolicyId ID                          `json:"policy_id"`
+	State    ApprovalRequestSummaryState `json:"state"`
+}
+
+// ApprovalRequestSummaryState defines model for ApprovalRequestSummary.State.
+type ApprovalRequestSummaryState string
+
+// ApprovalVote defines model for ApprovalVote.
+type ApprovalVote struct {
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt Timestamp            `json:"created_at"`
+	Decision  ApprovalVoteDecision `json:"decision"`
+
+	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
+	PrincipalId ID `json:"principal_id"`
+}
+
+// ApprovalVoteDecision defines model for ApprovalVote.Decision.
+type ApprovalVoteDecision string
+
+// ApprovalVoteRequest defines model for ApprovalVoteRequest.
+type ApprovalVoteRequest struct {
+	Decision ApprovalVoteRequestDecision `json:"decision"`
+}
+
+// ApprovalVoteRequestDecision defines model for ApprovalVoteRequest.Decision.
+type ApprovalVoteRequestDecision string
 
 // ApproveWorkspaceHandoffRequest defines model for ApproveWorkspaceHandoffRequest.
 type ApproveWorkspaceHandoffRequest struct {
@@ -4892,17 +5185,36 @@ type ProtocolCapability = string
 
 // PublishRequest defines model for PublishRequest.
 type PublishRequest struct {
+	// ApprovalRequestId Secret-change approvals (#151). Merge or bypass this approval
+	// request instead of publishing a caller-named selection: the
+	// request's reviewed version ids are used, and the request must be
+	// approved (quorum from currently-eligible approvers) unless `bypass`
+	// is set. Only the requester may merge their own reviewed change.
+	ApprovalRequestId *ID `json:"approval_request_id,omitempty"`
+
+	// Bypass Emergency bypass of a covered environment's approval quorum (#151). A
+	// named bypasser force-merges an existing request with a mandatory reason,
+	// under a current reauthentication ceremony; emits a dedicated high-signal
+	// audit event and never mutates the policy.
+	Bypass *ApprovalBypass `json:"bypass,omitempty"`
+
 	// ConfirmedProtectedEnvironments Exact protected-environment set reviewed by a machine principal; humans must use the bound ceremony.
 	ConfirmedProtectedEnvironments *[]ID `json:"confirmed_protected_environments,omitempty"`
 
 	// PreviewToken Required when any selected or closure-added draft came from rollback.
 	PreviewToken *string `json:"preview_token,omitempty"`
 
+	// Purpose Free-text reason recorded on the request when a covered publish
+	// stages one. Ignored where no policy covers the environment.
+	Purpose *string `json:"purpose,omitempty"`
+
 	// VersionIds The pending-change version ids to commit. Naming an id the caller
 	// does not own, or one that has been superseded or already published,
 	// is refused loud rather than resolved to whatever the owner typed
-	// since.
-	VersionIds []ID `json:"version_ids"`
+	// since. Required for an ordinary publish; omitted when merging or
+	// bypassing an approval request (whose reviewed selection is used
+	// instead).
+	VersionIds *[]ID `json:"version_ids,omitempty"`
 }
 
 // PublishResult defines model for PublishResult.
@@ -7495,6 +7807,12 @@ type SetAdapterCredentialJSONRequestBody = SetAdapterCredentialRequest
 // AddAdapterTargetJSONRequestBody defines body for AddAdapterTarget for application/json ContentType.
 type AddAdapterTargetJSONRequestBody = AdapterTargetInput
 
+// CreateApprovalPolicyJSONRequestBody defines body for CreateApprovalPolicy for application/json ContentType.
+type CreateApprovalPolicyJSONRequestBody = ApprovalPolicyInput
+
+// UpdateApprovalPolicyJSONRequestBody defines body for UpdateApprovalPolicy for application/json ContentType.
+type UpdateApprovalPolicyJSONRequestBody = ApprovalPolicyInput
+
 // CheckDefinitionsJSONRequestBody defines body for CheckDefinitions for application/json ContentType.
 type CheckDefinitionsJSONRequestBody = DefinitionsBundle
 
@@ -7518,6 +7836,9 @@ type ReorderEnvironmentsJSONRequestBody = EnvironmentOrderRequest
 
 // RenameEnvironmentJSONRequestBody defines body for RenameEnvironment for application/json ContentType.
 type RenameEnvironmentJSONRequestBody = RenameRequest
+
+// VoteApprovalRequestJSONRequestBody defines body for VoteApprovalRequest for application/json ContentType.
+type VoteApprovalRequestJSONRequestBody = ApprovalVoteRequest
 
 // ReconcileOfflineRecordsJSONRequestBody defines body for ReconcileOfflineRecords for application/json ContentType.
 type ReconcileOfflineRecordsJSONRequestBody = ReconcileOfflineRecordsRequest
@@ -8229,6 +8550,18 @@ type ServerInterface interface {
 	// AddAdapterTarget Add a tested target and atomically reassign adapter authority.
 	// (POST /api/v1/orgs/{org}/projects/{project}/adapters/{adapter}/targets)
 	AddAdapterTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, adapter AdapterID)
+	// ListApprovalPolicies The project's change-approval policies.
+	// (GET /api/v1/orgs/{org}/projects/{project}/approval-policies)
+	ListApprovalPolicies(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// CreateApprovalPolicy Create a change-approval policy.
+	// (POST /api/v1/orgs/{org}/projects/{project}/approval-policies)
+	CreateApprovalPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// DeleteApprovalPolicy Delete a change-approval policy.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/approval-policies/{policy})
+	DeleteApprovalPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, policy ID)
+	// UpdateApprovalPolicy Update a change-approval policy.
+	// (PUT /api/v1/orgs/{org}/projects/{project}/approval-policies/{policy})
+	UpdateApprovalPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, policy ID)
 	// QueryProjectAudit One bounded page of the project's audit trail.
 	// (GET /api/v1/orgs/{org}/projects/{project}/audit)
 	QueryProjectAudit(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, params QueryProjectAuditParams)
@@ -8277,6 +8610,12 @@ type ServerInterface interface {
 	// RenameEnvironment Rename an environment.
 	// (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment})
 	RenameEnvironment(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// ListApprovalRequests The environment's change-approval requests.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests)
+	ListApprovalRequests(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// VoteApprovalRequest Approve or reject a change-approval request.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/vote)
+	VoteApprovalRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, approvalRequest ID)
 	// QueryEnvAudit One bounded page of the environment's audit trail.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit)
 	QueryEnvAudit(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params QueryEnvAuditParams)
@@ -9348,6 +9687,30 @@ func (_ Unimplemented) AddAdapterTarget(w http.ResponseWriter, r *http.Request, 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListApprovalPolicies The project's change-approval policies.
+// (GET /api/v1/orgs/{org}/projects/{project}/approval-policies)
+func (_ Unimplemented) ListApprovalPolicies(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateApprovalPolicy Create a change-approval policy.
+// (POST /api/v1/orgs/{org}/projects/{project}/approval-policies)
+func (_ Unimplemented) CreateApprovalPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteApprovalPolicy Delete a change-approval policy.
+// (DELETE /api/v1/orgs/{org}/projects/{project}/approval-policies/{policy})
+func (_ Unimplemented) DeleteApprovalPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, policy ID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateApprovalPolicy Update a change-approval policy.
+// (PUT /api/v1/orgs/{org}/projects/{project}/approval-policies/{policy})
+func (_ Unimplemented) UpdateApprovalPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, policy ID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // QueryProjectAudit One bounded page of the project's audit trail.
 // (GET /api/v1/orgs/{org}/projects/{project}/audit)
 func (_ Unimplemented) QueryProjectAudit(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, params QueryProjectAuditParams) {
@@ -9441,6 +9804,18 @@ func (_ Unimplemented) GetEnvironment(w http.ResponseWriter, r *http.Request, or
 // RenameEnvironment Rename an environment.
 // (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment})
 func (_ Unimplemented) RenameEnvironment(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListApprovalRequests The environment's change-approval requests.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests)
+func (_ Unimplemented) ListApprovalRequests(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// VoteApprovalRequest Approve or reject a change-approval request.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/vote)
+func (_ Unimplemented) VoteApprovalRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, approvalRequest ID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -13347,6 +13722,164 @@ func (siw *ServerInterfaceWrapper) AddAdapterTarget(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ListApprovalPolicies operation middleware
+func (siw *ServerInterfaceWrapper) ListApprovalPolicies(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListApprovalPolicies(w, r, org, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateApprovalPolicy operation middleware
+func (siw *ServerInterfaceWrapper) CreateApprovalPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateApprovalPolicy(w, r, org, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteApprovalPolicy operation middleware
+func (siw *ServerInterfaceWrapper) DeleteApprovalPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "policy" -------------
+	var policy ID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "policy", chi.URLParam(r, "policy"), &policy, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "policy", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteApprovalPolicy(w, r, org, project, policy)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateApprovalPolicy operation middleware
+func (siw *ServerInterfaceWrapper) UpdateApprovalPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "policy" -------------
+	var policy ID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "policy", chi.URLParam(r, "policy"), &policy, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "policy", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateApprovalPolicy(w, r, org, project, policy)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // QueryProjectAudit operation middleware
 func (siw *ServerInterfaceWrapper) QueryProjectAudit(w http.ResponseWriter, r *http.Request) {
 
@@ -14228,6 +14761,103 @@ func (siw *ServerInterfaceWrapper) RenameEnvironment(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RenameEnvironment(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListApprovalRequests operation middleware
+func (siw *ServerInterfaceWrapper) ListApprovalRequests(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListApprovalRequests(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// VoteApprovalRequest operation middleware
+func (siw *ServerInterfaceWrapper) VoteApprovalRequest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "approvalRequest" -------------
+	var approvalRequest ID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "approvalRequest", chi.URLParam(r, "approvalRequest"), &approvalRequest, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "approvalRequest", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.VoteApprovalRequest(w, r, org, project, environment, approvalRequest)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -19663,6 +20293,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/publish", wrapper.PublishPendingChanges)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/approval-policies", wrapper.ListApprovalPolicies)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/approval-policies", wrapper.CreateApprovalPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/approval-policies/{policy}", wrapper.DeleteApprovalPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/approval-policies/{policy}", wrapper.UpdateApprovalPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests", wrapper.ListApprovalRequests)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/vote", wrapper.VoteApprovalRequest)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/signals", wrapper.GetEnvironmentSignals)
@@ -31596,6 +32244,380 @@ func (response AddAdapterTarget500JSONResponse) VisitAddAdapterTargetResponse(w 
 	return err
 }
 
+type ListApprovalPoliciesRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+}
+
+type ListApprovalPoliciesResponseObject interface {
+	VisitListApprovalPoliciesResponse(w http.ResponseWriter) error
+}
+
+type ListApprovalPolicies200JSONResponse ApprovalPolicyList
+
+func (response ListApprovalPolicies200JSONResponse) VisitListApprovalPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListApprovalPolicies401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListApprovalPolicies401JSONResponse) VisitListApprovalPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListApprovalPolicies404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListApprovalPolicies404JSONResponse) VisitListApprovalPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListApprovalPolicies429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListApprovalPolicies429JSONResponse) VisitListApprovalPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListApprovalPolicies500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListApprovalPolicies500JSONResponse) VisitListApprovalPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateApprovalPolicyRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+	Body    *CreateApprovalPolicyJSONRequestBody
+}
+
+type CreateApprovalPolicyResponseObject interface {
+	VisitCreateApprovalPolicyResponse(w http.ResponseWriter) error
+}
+
+type CreateApprovalPolicy200JSONResponse ApprovalPolicy
+
+func (response CreateApprovalPolicy200JSONResponse) VisitCreateApprovalPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateApprovalPolicy400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateApprovalPolicy400JSONResponse) VisitCreateApprovalPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateApprovalPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateApprovalPolicy401JSONResponse) VisitCreateApprovalPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateApprovalPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateApprovalPolicy404JSONResponse) VisitCreateApprovalPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateApprovalPolicy409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreateApprovalPolicy409JSONResponse) VisitCreateApprovalPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateApprovalPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response CreateApprovalPolicy429JSONResponse) VisitCreateApprovalPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateApprovalPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response CreateApprovalPolicy500JSONResponse) VisitCreateApprovalPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteApprovalPolicyRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+	Policy  ID        `json:"policy"`
+}
+
+type DeleteApprovalPolicyResponseObject interface {
+	VisitDeleteApprovalPolicyResponse(w http.ResponseWriter) error
+}
+
+type DeleteApprovalPolicy204Response struct {
+}
+
+func (response DeleteApprovalPolicy204Response) VisitDeleteApprovalPolicyResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteApprovalPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteApprovalPolicy401JSONResponse) VisitDeleteApprovalPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteApprovalPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteApprovalPolicy404JSONResponse) VisitDeleteApprovalPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteApprovalPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response DeleteApprovalPolicy429JSONResponse) VisitDeleteApprovalPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteApprovalPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response DeleteApprovalPolicy500JSONResponse) VisitDeleteApprovalPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateApprovalPolicyRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+	Policy  ID        `json:"policy"`
+	Body    *UpdateApprovalPolicyJSONRequestBody
+}
+
+type UpdateApprovalPolicyResponseObject interface {
+	VisitUpdateApprovalPolicyResponse(w http.ResponseWriter) error
+}
+
+type UpdateApprovalPolicy200JSONResponse ApprovalPolicy
+
+func (response UpdateApprovalPolicy200JSONResponse) VisitUpdateApprovalPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateApprovalPolicy400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateApprovalPolicy400JSONResponse) VisitUpdateApprovalPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateApprovalPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdateApprovalPolicy401JSONResponse) VisitUpdateApprovalPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateApprovalPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateApprovalPolicy404JSONResponse) VisitUpdateApprovalPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateApprovalPolicy409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpdateApprovalPolicy409JSONResponse) VisitUpdateApprovalPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateApprovalPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response UpdateApprovalPolicy429JSONResponse) VisitUpdateApprovalPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateApprovalPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response UpdateApprovalPolicy500JSONResponse) VisitUpdateApprovalPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type QueryProjectAuditRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -33140,6 +34162,212 @@ func (response RenameEnvironment500JSONResponse) VisitRenameEnvironmentResponse(
 	return err
 }
 
+type ListApprovalRequestsRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+}
+
+type ListApprovalRequestsResponseObject interface {
+	VisitListApprovalRequestsResponse(w http.ResponseWriter) error
+}
+
+type ListApprovalRequests200JSONResponse ApprovalRequestList
+
+func (response ListApprovalRequests200JSONResponse) VisitListApprovalRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListApprovalRequests401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListApprovalRequests401JSONResponse) VisitListApprovalRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListApprovalRequests404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListApprovalRequests404JSONResponse) VisitListApprovalRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListApprovalRequests429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListApprovalRequests429JSONResponse) VisitListApprovalRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListApprovalRequests500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListApprovalRequests500JSONResponse) VisitListApprovalRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteApprovalRequestRequestObject struct {
+	Org             OrgID         `json:"org"`
+	Project         ProjectID     `json:"project"`
+	Environment     EnvironmentID `json:"environment"`
+	ApprovalRequest ID            `json:"approvalRequest"`
+	Body            *VoteApprovalRequestJSONRequestBody
+}
+
+type VoteApprovalRequestResponseObject interface {
+	VisitVoteApprovalRequestResponse(w http.ResponseWriter) error
+}
+
+type VoteApprovalRequest200JSONResponse ApprovalRequest
+
+func (response VoteApprovalRequest200JSONResponse) VisitVoteApprovalRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteApprovalRequest400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response VoteApprovalRequest400JSONResponse) VisitVoteApprovalRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteApprovalRequest401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response VoteApprovalRequest401JSONResponse) VisitVoteApprovalRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteApprovalRequest403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response VoteApprovalRequest403JSONResponse) VisitVoteApprovalRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteApprovalRequest404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response VoteApprovalRequest404JSONResponse) VisitVoteApprovalRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteApprovalRequest409JSONResponse struct{ ConflictJSONResponse }
+
+func (response VoteApprovalRequest409JSONResponse) VisitVoteApprovalRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteApprovalRequest429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response VoteApprovalRequest429JSONResponse) VisitVoteApprovalRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteApprovalRequest500JSONResponse struct{ InternalJSONResponse }
+
+func (response VoteApprovalRequest500JSONResponse) VisitVoteApprovalRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type QueryEnvAuditRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -34280,6 +35508,20 @@ func (response PublishPendingChanges200JSONResponse) VisitPublishPendingChangesR
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PublishPendingChanges202JSONResponse ApprovalRequestSummary
+
+func (response PublishPendingChanges202JSONResponse) VisitPublishPendingChangesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -43618,6 +44860,18 @@ type StrictServerInterface interface {
 	// AddAdapterTarget Add a tested target and atomically reassign adapter authority.
 	// (POST /api/v1/orgs/{org}/projects/{project}/adapters/{adapter}/targets)
 	AddAdapterTarget(ctx context.Context, request AddAdapterTargetRequestObject) (AddAdapterTargetResponseObject, error)
+	// ListApprovalPolicies The project's change-approval policies.
+	// (GET /api/v1/orgs/{org}/projects/{project}/approval-policies)
+	ListApprovalPolicies(ctx context.Context, request ListApprovalPoliciesRequestObject) (ListApprovalPoliciesResponseObject, error)
+	// CreateApprovalPolicy Create a change-approval policy.
+	// (POST /api/v1/orgs/{org}/projects/{project}/approval-policies)
+	CreateApprovalPolicy(ctx context.Context, request CreateApprovalPolicyRequestObject) (CreateApprovalPolicyResponseObject, error)
+	// DeleteApprovalPolicy Delete a change-approval policy.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/approval-policies/{policy})
+	DeleteApprovalPolicy(ctx context.Context, request DeleteApprovalPolicyRequestObject) (DeleteApprovalPolicyResponseObject, error)
+	// UpdateApprovalPolicy Update a change-approval policy.
+	// (PUT /api/v1/orgs/{org}/projects/{project}/approval-policies/{policy})
+	UpdateApprovalPolicy(ctx context.Context, request UpdateApprovalPolicyRequestObject) (UpdateApprovalPolicyResponseObject, error)
 	// QueryProjectAudit One bounded page of the project's audit trail.
 	// (GET /api/v1/orgs/{org}/projects/{project}/audit)
 	QueryProjectAudit(ctx context.Context, request QueryProjectAuditRequestObject) (QueryProjectAuditResponseObject, error)
@@ -43666,6 +44920,12 @@ type StrictServerInterface interface {
 	// RenameEnvironment Rename an environment.
 	// (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment})
 	RenameEnvironment(ctx context.Context, request RenameEnvironmentRequestObject) (RenameEnvironmentResponseObject, error)
+	// ListApprovalRequests The environment's change-approval requests.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests)
+	ListApprovalRequests(ctx context.Context, request ListApprovalRequestsRequestObject) (ListApprovalRequestsResponseObject, error)
+	// VoteApprovalRequest Approve or reject a change-approval request.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/vote)
+	VoteApprovalRequest(ctx context.Context, request VoteApprovalRequestRequestObject) (VoteApprovalRequestResponseObject, error)
 	// QueryEnvAudit One bounded page of the environment's audit trail.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit)
 	QueryEnvAudit(ctx context.Context, request QueryEnvAuditRequestObject) (QueryEnvAuditResponseObject, error)
@@ -47615,6 +48875,130 @@ func (sh *strictHandler) AddAdapterTarget(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// ListApprovalPolicies operation middleware
+func (sh *strictHandler) ListApprovalPolicies(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	var request ListApprovalPoliciesRequestObject
+
+	request.Org = org
+	request.Project = project
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListApprovalPolicies(ctx, request.(ListApprovalPoliciesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListApprovalPolicies")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListApprovalPoliciesResponseObject); ok {
+		if err := validResponse.VisitListApprovalPoliciesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateApprovalPolicy operation middleware
+func (sh *strictHandler) CreateApprovalPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	var request CreateApprovalPolicyRequestObject
+
+	request.Org = org
+	request.Project = project
+
+	var body CreateApprovalPolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateApprovalPolicy(ctx, request.(CreateApprovalPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateApprovalPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateApprovalPolicyResponseObject); ok {
+		if err := validResponse.VisitCreateApprovalPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteApprovalPolicy operation middleware
+func (sh *strictHandler) DeleteApprovalPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, policy ID) {
+	var request DeleteApprovalPolicyRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Policy = policy
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteApprovalPolicy(ctx, request.(DeleteApprovalPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteApprovalPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteApprovalPolicyResponseObject); ok {
+		if err := validResponse.VisitDeleteApprovalPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateApprovalPolicy operation middleware
+func (sh *strictHandler) UpdateApprovalPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, policy ID) {
+	var request UpdateApprovalPolicyRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Policy = policy
+
+	var body UpdateApprovalPolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateApprovalPolicy(ctx, request.(UpdateApprovalPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateApprovalPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateApprovalPolicyResponseObject); ok {
+		if err := validResponse.VisitUpdateApprovalPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // QueryProjectAudit operation middleware
 func (sh *strictHandler) QueryProjectAudit(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, params QueryProjectAuditParams) {
 	var request QueryProjectAuditRequestObject
@@ -48105,6 +49489,70 @@ func (sh *strictHandler) RenameEnvironment(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RenameEnvironmentResponseObject); ok {
 		if err := validResponse.VisitRenameEnvironmentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListApprovalRequests operation middleware
+func (sh *strictHandler) ListApprovalRequests(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request ListApprovalRequestsRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListApprovalRequests(ctx, request.(ListApprovalRequestsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListApprovalRequests")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListApprovalRequestsResponseObject); ok {
+		if err := validResponse.VisitListApprovalRequestsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// VoteApprovalRequest operation middleware
+func (sh *strictHandler) VoteApprovalRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, approvalRequest ID) {
+	var request VoteApprovalRequestRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.ApprovalRequest = approvalRequest
+
+	var body VoteApprovalRequestJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.VoteApprovalRequest(ctx, request.(VoteApprovalRequestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "VoteApprovalRequest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(VoteApprovalRequestResponseObject); ok {
+		if err := validResponse.VisitVoteApprovalRequestResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
