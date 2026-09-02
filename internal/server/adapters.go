@@ -20,7 +20,35 @@ func targetInput(in apigen.AdapterTargetInput) service.AdapterTargetInput {
 	for i := range in.KeyIds {
 		keys[i] = string(in.KeyIds[i])
 	}
-	return service.AdapterTargetInput{EnvironmentID: string(in.EnvironmentId), DestinationKind: string(in.DestinationKind), DestinationOwner: in.DestinationOwner, DestinationName: in.DestinationName, DestinationEnvironment: in.DestinationEnvironment, Visibility: string(in.Visibility), SelectedRepositoryIDs: append([]int64(nil), in.SelectedRepositoryIds...), NamePrefix: in.NamePrefix, KeyIDs: keys}
+	return service.AdapterTargetInput{EnvironmentID: string(in.EnvironmentId), DestinationKind: string(in.DestinationKind), DestinationOwner: in.DestinationOwner, DestinationName: in.DestinationName, DestinationEnvironment: in.DestinationEnvironment, Visibility: string(in.Visibility), SelectedRepositoryIDs: append([]int64(nil), in.SelectedRepositoryIds...), NamePrefix: in.NamePrefix, KeyIDs: keys, KeySelection: keySelection(in.KeySelection)}
+}
+
+func keySelection(in *apigen.AdapterKeySelection) *service.AdapterKeySelection {
+	if in == nil {
+		return nil
+	}
+	out := &service.AdapterKeySelection{}
+	if in.Names != nil {
+		out.Names = append([]string(nil), *in.Names...)
+	}
+	if in.Include != nil {
+		out.Include = append([]string(nil), *in.Include...)
+	}
+	if in.Exclude != nil {
+		out.Exclude = append([]string(nil), *in.Exclude...)
+	}
+	if in.Classification != nil {
+		out.Classification = string(*in.Classification)
+	}
+	return out
+}
+
+func adapterTargetKeys(in []service.AdapterTargetKey) []apigen.AdapterTargetKey {
+	out := make([]apigen.AdapterTargetKey, 0, len(in))
+	for _, key := range in {
+		out = append(out, apigen.AdapterTargetKey{KeyId: apigen.ID(key.ID), Name: key.Name, Classification: apigen.AdapterTargetKeyClassification(key.Classification)})
+	}
+	return out
 }
 
 func adapterConflictResponses(in []service.AdapterConflictArtifact) []apigen.AdapterConflictArtifact {
@@ -36,7 +64,26 @@ func adapterConflictResponses(in []service.AdapterConflictArtifact) []apigen.Ada
 }
 
 func adapterTargetResponse(in service.AdapterTarget, conflicts ...service.AdapterConflictArtifact) apigen.AdapterTarget {
-	return apigen.AdapterTarget{Id: apigen.ID(in.ID), AdapterId: apigen.ID(in.AdapterID), EnvironmentId: apigen.ID(in.EnvironmentID), DestinationKind: apigen.AdapterDestinationKind(in.DestinationKind), DestinationOwner: in.DestinationOwner, DestinationName: in.DestinationName, DestinationEnvironment: in.DestinationEnvironment, DestinationId: in.DestinationID, RepositoryId: in.RepositoryID, Visibility: apigen.AdapterTargetVisibility(in.Visibility), SelectedRepositoryIds: append([]int64(nil), in.SelectedRepositoryIDs...), NamePrefix: in.NamePrefix, Generation: in.Generation, State: apigen.AdapterTargetState(in.State), SyncStatus: apigen.AdapterTargetSyncStatus(in.SyncStatus), ConvergedRevision: in.ConvergedRevision, FailureNames: append([]string{}, in.FailureNames...), Warnings: append([]string{}, in.Warnings...), Conflicts: adapterConflictResponses(conflicts)}
+	return apigen.AdapterTarget{
+		Id: apigen.ID(in.ID), AdapterId: apigen.ID(in.AdapterID), EnvironmentId: apigen.ID(in.EnvironmentID),
+		DestinationKind: apigen.AdapterDestinationKind(in.DestinationKind), DestinationOwner: in.DestinationOwner, DestinationName: in.DestinationName, DestinationEnvironment: in.DestinationEnvironment,
+		DestinationId: in.DestinationID, RepositoryId: in.RepositoryID, Visibility: apigen.AdapterTargetVisibility(in.Visibility), SelectedRepositoryIds: append([]int64(nil), in.SelectedRepositoryIDs...),
+		NamePrefix: in.NamePrefix, Generation: in.Generation, State: apigen.AdapterTargetState(in.State),
+		// The contract's sync_status is the derived operator health, never
+		// the stored outcome column (#157).
+		SyncStatus:            apigen.AdapterTargetSyncStatus(in.Health()),
+		ConvergedRevision:     in.ConvergedRevision,
+		LastAttemptedRevision: in.LastAttemptedRevision,
+		LastAttemptedAt:       in.LastAttemptedAt,
+		LastErrorClass:        apigen.AdapterTargetLastErrorClass(in.LastErrorClass),
+		RetryAt:               in.RetryAt,
+		PausedAt:              in.PausedAt,
+		DriftAttention:        in.DriftAttention,
+		FailureNames:          append([]string{}, in.FailureNames...),
+		Warnings:              append([]string{}, in.Warnings...),
+		Keys:                  adapterTargetKeys(in.Keys),
+		Conflicts:             adapterConflictResponses(conflicts),
+	}
 }
 
 func adapterResponse(in service.AdapterView) (apigen.Adapter, error) {
@@ -296,7 +343,7 @@ type targetMutationService interface {
 }
 
 func updateAdapterTarget(ctx context.Context, adapters targetMutationService, req apigen.UpdateAdapterTargetRequestObject) (apigen.UpdateAdapterTargetResponseObject, error) {
-	input := service.AdapterTargetInput{EnvironmentID: string(req.Body.EnvironmentId), DestinationKind: string(req.Body.DestinationKind), DestinationOwner: req.Body.DestinationOwner, DestinationName: req.Body.DestinationName, DestinationEnvironment: req.Body.DestinationEnvironment, Visibility: string(req.Body.Visibility), SelectedRepositoryIDs: append([]int64(nil), req.Body.SelectedRepositoryIds...), NamePrefix: req.Body.NamePrefix}
+	input := service.AdapterTargetInput{EnvironmentID: string(req.Body.EnvironmentId), DestinationKind: string(req.Body.DestinationKind), DestinationOwner: req.Body.DestinationOwner, DestinationName: req.Body.DestinationName, DestinationEnvironment: req.Body.DestinationEnvironment, Visibility: string(req.Body.Visibility), SelectedRepositoryIDs: append([]int64(nil), req.Body.SelectedRepositoryIds...), NamePrefix: req.Body.NamePrefix, KeySelection: keySelection(req.Body.KeySelection)}
 	for _, id := range req.Body.KeyIds {
 		input.KeyIDs = append(input.KeyIDs, string(id))
 	}
@@ -355,6 +402,22 @@ func (a *API) SyncAdapterTarget(ctx context.Context, req apigen.SyncAdapterTarge
 		return nil, err
 	}
 	return apigen.SyncAdapterTarget202JSONResponse{JobId: apigen.ID(job.JobID), Generation: job.Generation}, nil
+}
+
+func (a *API) PauseAdapterTarget(ctx context.Context, req apigen.PauseAdapterTargetRequestObject) (apigen.PauseAdapterTargetResponseObject, error) {
+	target, err := a.Adapters.PauseTarget(ctx, service.Bearer(bearer(ctx)), adapterScope(req.Org, req.Project), string(req.Target))
+	if err != nil {
+		return nil, err
+	}
+	return apigen.PauseAdapterTarget200JSONResponse(adapterTargetResponse(target)), nil
+}
+
+func (a *API) ResumeAdapterTarget(ctx context.Context, req apigen.ResumeAdapterTargetRequestObject) (apigen.ResumeAdapterTargetResponseObject, error) {
+	result, err := a.Adapters.ResumeTarget(ctx, service.Bearer(bearer(ctx)), adapterScope(req.Org, req.Project), string(req.Target))
+	if err != nil {
+		return nil, err
+	}
+	return apigen.ResumeAdapterTarget202JSONResponse{JobId: apigen.ID(result.Enqueue.JobID), Generation: result.Enqueue.Generation, Revision: result.Revision}, nil
 }
 
 func (a *API) TestAdapterTarget(ctx context.Context, req apigen.TestAdapterTargetRequestObject) (apigen.TestAdapterTargetResponseObject, error) {

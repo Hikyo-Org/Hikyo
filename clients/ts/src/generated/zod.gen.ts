@@ -26,6 +26,28 @@ export const zAdapterVisibility = z.enum([
 
 export const zAdapterProvider = z.enum(['forgejo', 'github-actions']);
 
+/**
+ * Configuration-time selection conveniences (#157). They are resolved
+ * against the project catalogue when the target is saved, the resolved
+ * key ids are stored as the explicit subset, and the patterns are NOT
+ * kept: a key created later that would have matched is never added.
+ * `names` are exact key names; `include` and `exclude` are bounded glob
+ * patterns (`*`, `?`, `[...]`) over key names; `classification` keeps
+ * only keys of that classification. `exclude` applies to what the
+ * patterns and classification selected, never to explicit ids or names.
+ *
+ */
+export const zAdapterKeySelection = z.object({
+    names: z.array(z.string().min(1).max(128)).max(512).optional(),
+    include: z.array(z.string().min(1).max(64)).max(32).optional(),
+    exclude: z.array(z.string().min(1).max(64)).max(32).optional(),
+    classification: z.enum([
+        '',
+        'secret',
+        'config'
+    ]).optional()
+});
+
 export const zAdapterTargetInput = z.object({
     environment_id: zId,
     destination_kind: zAdapterDestinationKind,
@@ -40,7 +62,8 @@ export const zAdapterTargetInput = z.object({
     ]),
     selected_repository_ids: z.array(z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })).max(500),
     name_prefix: z.string().max(64).regex(/^(?:[A-Z_][A-Z0-9_]*)?$/),
-    key_ids: z.array(zId).min(1).max(512)
+    key_ids: z.array(zId).min(0).max(512),
+    key_selection: zAdapterKeySelection.optional()
 });
 
 export const zCreateAdapterRequest = z.object({
@@ -74,7 +97,8 @@ export const zUpdateAdapterTargetRequest = z.object({
     ]),
     selected_repository_ids: z.array(z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })).max(500),
     name_prefix: z.string().max(64).regex(/^(?:[A-Z_][A-Z0-9_]*)?$/),
-    key_ids: z.array(zId).min(1).max(512),
+    key_ids: z.array(zId).min(0).max(512),
+    key_selection: zAdapterKeySelection.optional(),
     expected_generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     keep_remote: z.boolean().optional().default(false)
 });
@@ -106,6 +130,18 @@ export const zResumeAdapterMoveRequest = z.union([
     zResumeAdapterOriginMoveRequest,
     zResumeAdapterTargetMoveRequest
 ]);
+
+export const zAdapterTargetKey = z.object({
+    key_id: zId,
+    name: z.string(),
+    classification: z.enum(['secret', 'config'])
+});
+
+export const zAdapterResume = z.object({
+    job_id: zId,
+    generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    revision: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+});
 
 export const zDynamicProviderKind = z.enum(['postgres']);
 
@@ -237,13 +273,31 @@ export const zAdapterTarget = z.object({
     ]),
     sync_status: z.enum([
         'never',
+        'pending',
         'converging',
         'converged',
-        'failed'
+        'degraded',
+        'failed',
+        'paused'
     ]),
-    converged_revision: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullish(),
+    converged_revision: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullable(),
+    last_attempted_revision: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullable(),
+    last_attempted_at: z.iso.datetime().nullable(),
+    last_error_class: z.enum([
+        '',
+        'auth',
+        'network',
+        'conflict',
+        'provider_limit',
+        'provider_ambiguous',
+        'refused'
+    ]),
+    retry_at: z.iso.datetime().nullable(),
+    paused_at: z.iso.datetime().nullable(),
+    drift_attention: z.boolean(),
     failure_names: z.array(z.string()),
     warnings: z.array(z.string()),
+    keys: z.array(zAdapterTargetKey),
     conflicts: z.array(zAdapterConflictArtifact)
 });
 
@@ -1508,7 +1562,11 @@ export const zRetentionHealth = z.object({
     stale_after_seconds: z.literal(86400),
     peak_project_bytes: z.int(),
     storage_warn: z.boolean(),
-    backup: zBackupHealth
+    backup: zBackupHealth,
+    adapter_targets_failed: z.int().gte(0),
+    adapter_targets_paused: z.int().gte(0),
+    adapter_targets_attention: z.int().gte(0),
+    adapter_jobs_queued: z.int().gte(0)
 });
 
 export const zProjectRetentionPolicy = z.object({
@@ -5752,6 +5810,28 @@ export const zSyncAdapterTargetPath = z.object({
  * Queued job.
  */
 export const zSyncAdapterTargetResponse = zAdapterJob;
+
+export const zPauseAdapterTargetPath = z.object({
+    org: zId,
+    project: zId,
+    target: zId
+});
+
+/**
+ * The paused target.
+ */
+export const zPauseAdapterTargetResponse = zAdapterTarget;
+
+export const zResumeAdapterTargetPath = z.object({
+    org: zId,
+    project: zId,
+    target: zId
+});
+
+/**
+ * Queued catch-up converge.
+ */
+export const zResumeAdapterTargetResponse = zAdapterResume;
 
 export const zTestAdapterTargetPath = z.object({
     org: zId,

@@ -9384,6 +9384,55 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/Internal"}
 
+  /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/pause:
+    parameters: [{$ref: "#/components/parameters/OrgID"}, {$ref: "#/components/parameters/ProjectID"}, {$ref: "#/components/parameters/AdapterTargetID"}]
+    post:
+      operationId: pauseAdapterTarget
+      tags: [adapters]
+      summary: Stop every push for the target without releasing owned destination state.
+      description: |
+        Pause supersedes the target's active job and fences any worker still
+        inside it; the ownership ledger is retained, so resume needs no
+        re-adoption. Publishes skip a paused target and a manual sync is
+        refused with 409. Pause narrows what Hikyo does at the destination, so
+        it carries `manage-adapters` alone and no reauthentication ceremony.
+        Idempotent.
+      x-hikyo-class: tenant
+      x-hikyo-operation: adapter.configure
+      x-hikyo-formula: [manage-adapters@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "200": {description: The paused target., content: {application/json: {schema: {$ref: "#/components/schemas/AdapterTarget"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/resume:
+    parameters: [{$ref: "#/components/parameters/OrgID"}, {$ref: "#/components/parameters/ProjectID"}, {$ref: "#/components/parameters/AdapterTargetID"}]
+    post:
+      operationId: resumeAdapterTarget
+      tags: [adapters]
+      summary: Resume a paused target and queue one catch-up converge.
+      description: |
+        Resume pushes again, so it carries the manual-sync formula and the
+        adapter reauthentication ceremony over the adapter's environment set.
+        The response names the published revision the queued converge will
+        reach. A target that is not paused is refused with 409.
+      x-hikyo-class: tenant
+      x-hikyo-operation: adapter.sync
+      x-hikyo-formula: [manage-adapters@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "202": {description: Queued catch-up converge., content: {application/json: {schema: {$ref: "#/components/schemas/AdapterResume"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
   /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/test:
     parameters: [{$ref: "#/components/parameters/OrgID"}, {$ref: "#/components/parameters/ProjectID"}, {$ref: "#/components/parameters/AdapterTargetID"}]
     post:
@@ -10254,10 +10303,44 @@ components:
         name_prefix: {type: string, maxLength: 64, pattern: "^(?:[A-Z_][A-Z0-9_]*)?$"}
         key_ids:
           type: array
-          minItems: 1
+          minItems: 0
           maxItems: 512
           uniqueItems: true
           items: {$ref: "#/components/schemas/ID"}
+          description: >-
+            Explicit member key ids. May be empty only when `key_selection`
+            resolves to at least one key; the union must be non-empty.
+        key_selection: {$ref: "#/components/schemas/AdapterKeySelection"}
+
+    AdapterKeySelection:
+      type: object
+      additionalProperties: false
+      description: |
+        Configuration-time selection conveniences (#157). They are resolved
+        against the project catalogue when the target is saved, the resolved
+        key ids are stored as the explicit subset, and the patterns are NOT
+        kept: a key created later that would have matched is never added.
+        `names` are exact key names; `include` and `exclude` are bounded glob
+        patterns (`*`, `?`, `[...]`) over key names; `classification` keeps
+        only keys of that classification. `exclude` applies to what the
+        patterns and classification selected, never to explicit ids or names.
+      properties:
+        names:
+          type: array
+          maxItems: 512
+          uniqueItems: true
+          items: {type: string, minLength: 1, maxLength: 128}
+        include:
+          type: array
+          maxItems: 32
+          uniqueItems: true
+          items: {type: string, minLength: 1, maxLength: 64}
+        exclude:
+          type: array
+          maxItems: 32
+          uniqueItems: true
+          items: {type: string, minLength: 1, maxLength: 64}
+        classification: {type: string, enum: ["", secret, config]}
 
     CreateAdapterRequest:
       type: object
@@ -10308,10 +10391,11 @@ components:
         name_prefix: {type: string, maxLength: 64, pattern: "^(?:[A-Z_][A-Z0-9_]*)?$"}
         key_ids:
           type: array
-          minItems: 1
+          minItems: 0
           maxItems: 512
           uniqueItems: true
           items: {$ref: "#/components/schemas/ID"}
+        key_selection: {$ref: "#/components/schemas/AdapterKeySelection"}
         expected_generation: {type: integer, format: int64, minimum: 1}
         keep_remote: {type: boolean, default: false}
 
@@ -10356,7 +10440,7 @@ components:
     AdapterTarget:
       type: object
       additionalProperties: false
-      required: [id, adapter_id, environment_id, destination_kind, destination_owner, destination_name, destination_environment, destination_id, repository_id, visibility, selected_repository_ids, name_prefix, generation, state, sync_status, failure_names, warnings, conflicts]
+      required: [id, adapter_id, environment_id, destination_kind, destination_owner, destination_name, destination_environment, destination_id, repository_id, visibility, selected_repository_ids, name_prefix, generation, state, sync_status, converged_revision, last_attempted_revision, last_attempted_at, last_error_class, retry_at, paused_at, drift_attention, failure_names, warnings, keys, conflicts]
       properties:
         id: {$ref: "#/components/schemas/ID"}
         adapter_id: {$ref: "#/components/schemas/ID"}
@@ -10374,14 +10458,68 @@ components:
         name_prefix: {type: string}
         generation: {type: integer, format: int64, minimum: 1}
         state: {type: string, enum: [active, moving, tombstoned]}
-        sync_status: {type: string, enum: [never, converging, converged, failed]}
-        converged_revision: {type: [integer, "null"], format: int64}
+        sync_status:
+          type: string
+          enum: [never, pending, converging, converged, degraded, failed, paused]
+          description: |
+            Operator health (#157), derived at read time. `pending` is a
+            queued, not yet claimed converge; `converging` a running one;
+            `degraded` a failed attempt on a target that converged before, so
+            the destination still holds `converged_revision`; `paused` wins
+            over every other state while `paused_at` is set.
+        converged_revision:
+          type: [integer, "null"]
+          format: int64
+          description: The last revision a converge completed.
+        last_attempted_revision:
+          type: [integer, "null"]
+          format: int64
+          description: The revision the most recent attempt loaded, successful or not.
+        last_attempted_at: {type: [string, "null"], format: date-time}
+        last_error_class:
+          type: string
+          enum: ["", auth, network, conflict, provider_limit, provider_ambiguous, refused]
+          description: Bounded cause of the last failed attempt; empty after a success. Never a provider response body.
+        retry_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the queued retry becomes due, if the active job is waiting on one.
+        paused_at: {type: [string, "null"], format: date-time}
+        drift_attention:
+          type: boolean
+          description: The destination disagrees with the ownership ledger in a way only an operator can settle (unowned name in the way, destination identity moved, orphaned names). Cleared by the next successful converge.
         failure_names: {type: array, items: {type: string}}
         warnings: {type: array, items: {type: string}}
+        keys:
+          type: array
+          description: The resolved explicit key subset by name. Membership is by immutable id; names are echoed for the operator.
+          items: {$ref: "#/components/schemas/AdapterTargetKey"}
         conflicts:
           type: array
           description: Pending exact conflict artifacts eligible for adoption on this target.
           items: {$ref: "#/components/schemas/AdapterConflictArtifact"}
+
+    AdapterTargetKey:
+      type: object
+      additionalProperties: false
+      required: [key_id, name, classification]
+      properties:
+        key_id: {$ref: "#/components/schemas/ID"}
+        name: {type: string}
+        classification: {type: string, enum: [secret, config]}
+
+    AdapterResume:
+      type: object
+      additionalProperties: false
+      required: [job_id, generation, revision]
+      properties:
+        job_id: {$ref: "#/components/schemas/ID"}
+        generation: {type: integer, format: int64, minimum: 1}
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+          description: The published revision the queued converge catches up to; 0 when the environment has never published.
 
     AdapterTargetList:
       type: object
@@ -13729,7 +13867,7 @@ components:
     RetentionHealth:
       type: object
       additionalProperties: false
-      required: [last_prune_success, stale, stale_after_seconds, peak_project_bytes, storage_warn, backup]
+      required: [last_prune_success, stale, stale_after_seconds, peak_project_bytes, storage_warn, backup, adapter_targets_failed, adapter_targets_paused, adapter_targets_attention, adapter_jobs_queued]
       properties:
         last_prune_success:
           type: [string, "null"]
@@ -13752,6 +13890,22 @@ components:
             before the 4 GiB publish refusal.
         backup:
           $ref: "#/components/schemas/BackupHealth"
+        adapter_targets_failed:
+          type: integer
+          minimum: 0
+          description: Active deployment-adapter targets whose last attempt failed and that are not paused (#157).
+        adapter_targets_paused:
+          type: integer
+          minimum: 0
+          description: Active deployment-adapter targets an operator has paused.
+        adapter_targets_attention:
+          type: integer
+          minimum: 0
+          description: Active deployment-adapter targets whose destination drifted from the ownership ledger and need an operator.
+        adapter_jobs_queued:
+          type: integer
+          minimum: 0
+          description: Deployment-adapter outbox jobs waiting to be claimed, instance-wide.
 
     BackupHealth:
       type: object

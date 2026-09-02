@@ -368,6 +368,8 @@ operations:
   removeAdapterTarget:         {issue: 157}
   planAdapterTarget:           {issue: 157}
   syncAdapterTarget:           {issue: 157}
+  pauseAdapterTarget:          {issue: 157}
+  resumeAdapterTarget:         {issue: 157}
   testAdapterTarget:           {issue: 157}
   adoptAdapterTargetNames:     {issue: 157}
 

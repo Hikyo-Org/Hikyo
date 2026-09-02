@@ -32,6 +32,13 @@ const (
 	MetricTLSCertNotAfter    = "hikyo_tls_cert_not_after_timestamp_seconds"
 	MetricTLSReloadFailures  = "hikyo_tls_reload_failures_total"
 
+	// Deployment-adapter health (#157). Label-free by construction: they
+	// count targets and jobs instance-wide and never name a tenant.
+	MetricAdapterTargetsFailed    = "hikyo_adapter_targets_failed"
+	MetricAdapterTargetsPaused    = "hikyo_adapter_targets_paused"
+	MetricAdapterTargetsAttention = "hikyo_adapter_targets_attention"
+	MetricAdapterJobsQueued       = "hikyo_adapter_jobs_queued"
+
 	MetricRequestsTotal    = "hikyo_http_requests_total"
 	MetricRequestErrors    = "hikyo_http_request_errors_total"
 	MetricRequestsInFlight = "hikyo_http_requests_in_flight"
@@ -156,6 +163,10 @@ func RegisteredMetricFamilies() []MetricFamily {
 		{Name: MetricProjectStorageWarn, MaxSeries: 1},
 		{Name: MetricTLSCertNotAfter, MaxSeries: 1},
 		{Name: MetricTLSReloadFailures, MaxSeries: 1},
+		{Name: MetricAdapterTargetsFailed, MaxSeries: 1},
+		{Name: MetricAdapterTargetsPaused, MaxSeries: 1},
+		{Name: MetricAdapterTargetsAttention, MaxSeries: 1},
+		{Name: MetricAdapterJobsQueued, MaxSeries: 1},
 		{Name: MetricRequestsTotal, MaxSeries: len(classes) * len(statuses), Labels: map[string][]string{"class": classes, "status": statuses}},
 		{Name: MetricRequestErrors, MaxSeries: len(classes) * len(errors), Labels: map[string][]string{"class": classes, "status": errors}},
 		{Name: MetricRequestsInFlight, MaxSeries: 1},

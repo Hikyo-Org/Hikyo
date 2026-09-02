@@ -2426,11 +2426,8 @@ var operationTable = map[Operation]opSpec{
 			StoreSnapshotsRecordSecretValueOccurrence: true,
 			StoreSnapshotsInsertChange:                true,
 			StoreAdaptersEnqueuePublished:             true,
-			// Adapter health counts (#157): the operational /metrics and doctor
-			// read under the scheduler site, beside the storage high-water.
-			StoreAdaptersHealthCounts:       true,
-			StoreKeysAssertActiveDEKVersion: true,
-			StoreAuditTenantInsert:          true,
+			StoreKeysAssertActiveDEKVersion:           true,
+			StoreAuditTenantInsert:                    true,
 			// Per-project storage high-water (#185): the two byte sums read
 			// before the project's payload advances, to refuse a publish into a
 			// project already at the 4 GiB high-water.
@@ -4070,6 +4067,10 @@ var systemSites = map[SystemSite]map[StoreOp]bool{
 		StoreBackupStateSetPruneSuccess:  true,
 		StoreBackupStateSetDrill:         true,
 		StoreValuesSampleSecretEntry:     true,
+		// Deployment-adapter health counts (#157) ride the same door: the
+		// label-free gauges and `hikyo doctor` read them beside the storage
+		// high-water.
+		StoreAdaptersHealthCounts: true,
 	},
 }
 

@@ -1141,7 +1141,7 @@ func TestAdapterTargetMoveDeadCredentialReleasesOldCustodyThenActivates(t *testi
 	if err != nil || !ok || job.ID != move.JobID {
 		t.Fatalf("ClaimDue() = %+v, %v, %v", job, ok, err)
 	}
-	if err := runtime.Fail(t.Context(), job, now.Add(time.Second), adapter.ErrProviderAuth); err != nil {
+	if err := runtime.Fail(t.Context(), job, 0, now.Add(time.Second), adapter.ErrProviderAuth); err != nil {
 		t.Fatal(err)
 	}
 	var ledgerState, targetState, moveState, nextKind string
@@ -1195,7 +1195,7 @@ func TestAdapterMoveCredentialFailureRequiresAttentionAndCancelReconvergesOldRou
 	if err != nil || !ok || job.ID != move.JobID || job.Kind != adapter.Activate {
 		t.Fatalf("ClaimDue() = %+v, %v, %v", job, ok, err)
 	}
-	if err := runtime.Fail(t.Context(), job, now.Add(2*time.Second), adapter.ErrProviderAuth); err != nil {
+	if err := runtime.Fail(t.Context(), job, 0, now.Add(2*time.Second), adapter.ErrProviderAuth); err != nil {
 		t.Fatal(err)
 	}
 	status, err := svc.Move(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, move.MoveID)
@@ -1261,7 +1261,7 @@ func TestAdapterAttentionTargetReplacementResumesActivation(t *testing.T) {
 	if err != nil || !ok || job.ID != move.JobID || job.Kind != adapter.Activate {
 		t.Fatalf("ClaimDue() = %+v, %v, %v", job, ok, err)
 	}
-	if err := runtime.Fail(t.Context(), job, now.Add(2*time.Second), adapter.ErrProviderAuth); err != nil {
+	if err := runtime.Fail(t.Context(), job, 0, now.Add(2*time.Second), adapter.ErrProviderAuth); err != nil {
 		t.Fatal(err)
 	}
 	for _, statement := range []string{
@@ -1989,7 +1989,7 @@ func TestAdapterCredentialReplaceAndRevokeFenceWithoutAutoConverge(t *testing.T)
 	if !errors.Is(gateErr, adapter.ErrSuperseded) {
 		t.Fatalf("revoked queued job Gate() = %v, want generation stop", gateErr)
 	}
-	if err := runtime.Fail(t.Context(), job, now, gateErr); err != nil {
+	if err := runtime.Fail(t.Context(), job, 0, now, gateErr); err != nil {
 		t.Fatal(err)
 	}
 }

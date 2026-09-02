@@ -18,14 +18,14 @@ func TestDoctorResultsUseServerWarningsWithoutRecalculation(t *testing.T) {
 		}},
 	}}}, apigen.RetentionHealth{LastPruneSuccess: &lastPrune, Stale: false, StaleAfterSeconds: 86400, Backup: healthyBackup(effectiveAt)}, effectiveAt)
 	// Findings: [0] retention-prune, [1] project-storage, [2] backup-rpo,
-	// [3] restore-drill, [4] the provider error.
-	if result.Status != "error" || len(result.Findings) != 5 {
+	// [3] restore-drill, [4] adapter-targets, [5] the provider error.
+	if result.Status != "error" || len(result.Findings) != 6 {
 		t.Fatalf("doctor result = %#v", result)
 	}
-	if got := result.Findings[4]; got.Provider != "corp" || got.Code != "metadata_expired" || got.Message != "server message" {
+	if got := result.Findings[5]; got.Provider != "corp" || got.Code != "metadata_expired" || got.Message != "server message" {
 		t.Fatalf("doctor finding = %#v", got)
 	}
-	if len(rows) != 5 || rows[4][4] != "server message" {
+	if len(rows) != 6 || rows[5][4] != "server message" {
 		t.Fatalf("doctor rows = %#v", rows)
 	}
 }
@@ -93,6 +93,31 @@ func TestDoctorBackupFindings(t *testing.T) {
 	}, now)
 	if result.Status != "error" {
 		t.Fatalf("an exceeded RPO left doctor status %q", result.Status)
+	}
+// TestDoctorAdapterFinding pins the operator nudge (#157): attention or
+// failure warns, a pause is an operator's own state and only informs.
+func TestDoctorAdapterFinding(t *testing.T) {
+	tests := []struct {
+		name     string
+		health   apigen.RetentionHealth
+		severity string
+		want     string
+	}{
+		{"quiet", apigen.RetentionHealth{}, "ok", "0 target(s) need attention, 0 failed, 0 paused, 0 job(s) queued"},
+		{"paused only", apigen.RetentionHealth{AdapterTargetsPaused: 2, AdapterJobsQueued: 1}, "ok", "0 target(s) need attention, 0 failed, 2 paused, 1 job(s) queued"},
+		{"failed", apigen.RetentionHealth{AdapterTargetsFailed: 1}, "warn", "0 target(s) need attention, 1 failed, 0 paused, 0 job(s) queued; inspect them with `hikyo adapter list`"},
+		{"attention", apigen.RetentionHealth{AdapterTargetsAttention: 3}, "warn", "3 target(s) need attention, 0 failed, 0 paused, 0 job(s) queued; inspect them with `hikyo adapter list`"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// doctorAdapterFinding is asserted in isolation: the full
+			// doctorResults status depends on unrelated backup/prune findings
+			// too, which their own tests cover.
+			got := doctorAdapterFinding(tt.health)
+			if got.Code != "adapter-targets" || got.Severity != tt.severity || got.Message != tt.want {
+				t.Fatalf("finding = %#v", got)
+			}
+		})
 	}
 }
 
