@@ -376,6 +376,11 @@ export async function seedTenant(
     // unreadable without its own grant. Instance scope reaches every org's
     // trail by the same downward inheritance the rest of this list relies on.
     'audit-read',
+    // The Members surface's Reset credential row action (#568).
+    // `credential-reset` is not in the operator template the bootstrap
+    // administrator is seeded from, so the flow that resets an invitee's
+    // credential needs it granted here, before any session is minted.
+    'credential-reset',
   ]) {
     runAdminGrant(['--principal', principal, '--capability', capability]);
   }
