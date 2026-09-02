@@ -79,8 +79,8 @@ export const BASE_URL_B = `http://${HOST_B}:${PORT_B}`;
 /** The TLS front that exists only so `remote add` can be performed for real. */
 const PORT_TLS = Number(process.env['HIKYO_E2E_PORT_TLS'] ?? 45791);
 
-/** Browser-drivable fake provider, isolated from the two Hikyo listeners. */
-const PORT_OIDC = Number(process.env['HIKYO_E2E_PORT_OIDC'] ?? 45792);
+/** Browser-drivable fake provider. Let the OS avoid unrelated fixed-port collisions by default. */
+const PORT_OIDC = Number(process.env['HIKYO_E2E_PORT_OIDC'] ?? 0);
 
 /** Operational listeners stay loopback-only and isolated from both browser origins. */
 const PORT_OPERATIONAL = Number(process.env['HIKYO_E2E_PORT_OPERATIONAL'] ?? 45793);
@@ -208,13 +208,36 @@ function run(command: string, args: string[], options: { cwd: string; env?: Node
   return result;
 }
 
+/** Validate the issuer emitted after binding, including OS-assigned port zero. */
+export function idpIssuerMatchesRequestedPort(issuer: string, requestedPort: number): boolean {
+  try {
+    const parsed = new URL(issuer);
+    const actualPort = Number(parsed.port);
+    return (
+      parsed.protocol === 'http:' &&
+      parsed.hostname === '127.0.0.1' &&
+      parsed.username === '' &&
+      parsed.password === '' &&
+      parsed.pathname === '/' &&
+      parsed.search === '' &&
+      parsed.hash === '' &&
+      Number.isInteger(actualPort) &&
+      actualPort >= 1 &&
+      actualPort <= 65_535 &&
+      (requestedPort === 0 || actualPort === requestedPort)
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Build and start one test-only IdP on `port` and wait for its issuer line. */
 async function spawnIdP(
   dir: string,
   port: number,
   redirects: readonly string[],
 ): Promise<{ proc: ChildProcess; issuer: string }> {
-  if (await portTaken('127.0.0.1', port)) {
+  if (port !== 0 && (await portTaken('127.0.0.1', port))) {
     throw new Error(`something is already listening on 127.0.0.1:${String(port)}`);
   }
   const prebuiltBinary = process.env.HIKYO_E2E_OIDC_BINARY;
@@ -257,9 +280,10 @@ async function spawnIdP(
       reject(new Error(`the fake OIDC provider exited (${String(code)}): ${stderr}`));
     });
   });
-  const expected = `http://127.0.0.1:${String(port)}`;
-  if (issuer !== expected) {
+  if (!idpIssuerMatchesRequestedPort(issuer, port)) {
     proc.kill('SIGKILL');
+    const expected =
+      port === 0 ? 'http://127.0.0.1:<OS-assigned port>' : `http://127.0.0.1:${String(port)}`;
     throw new Error(`fake OIDC issuer = ${issuer}, want ${expected}`);
   }
   return { proc, issuer };
