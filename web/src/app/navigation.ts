@@ -313,6 +313,17 @@ export const SURFACES = defineSurfaceRegistry([
     mode: 'authenticated',
     chrome: 'shell',
   },
+  // Change approvals (#151). Project-scoped: the policy administration is a
+  // project act, and the review queue reads the project's environments. It sits
+  // in the project block beside machine access and settings.
+  {
+    id: 'change-approvals',
+    path: '/orgs/:org/projects/:project/change-approvals',
+    label: 'Change approvals',
+    section: 'project',
+    mode: 'authenticated',
+    chrome: 'shell',
+  },
   // Deployment adapters (#157): the multi-target synchronization surface.
   // Project-scoped like machine access: an adapter is project-owned, and the
   // sidebar's project context block fills the parameters from the route. The

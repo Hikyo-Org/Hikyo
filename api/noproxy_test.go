@@ -472,7 +472,17 @@ var pinnedContractSurface = map[string]bool{
 	"GET /api/v1/orgs/{org}/projects/{project}/audit/export":                            true,
 	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit":        true,
 	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit/export": true,
-	"POST /api/v1/instance/rotate-token-key":                                            true,
+	// Secret-change approvals (#151): policy administration and the review queue
+	// read/write only THIS instance's own approval rows; nothing is proxied or
+	// relayed. The merge/bypass decision rides the publish route already pinned.
+	"GET /api/v1/orgs/{org}/projects/{project}/approval-policies":                                                       true,
+	"POST /api/v1/orgs/{org}/projects/{project}/approval-policies":                                                      true,
+	"PUT /api/v1/orgs/{org}/projects/{project}/approval-policies/{policy}":                                              true,
+	"DELETE /api/v1/orgs/{org}/projects/{project}/approval-policies/{policy}":                                           true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests":                            true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/ceremony": true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/vote":    true,
+	"POST /api/v1/instance/rotate-token-key":                                                                            true,
 	// rotate-scanning-key (#74): replaces this instance's own scanning key and
 	// drops this instance's own dismissal rows. It returns this instance's own
 	// data and never fetches, relays or forwards on the caller's behalf.

@@ -115,4 +115,54 @@ describe('useProtectedPublishCeremony latest-run ownership', () => {
     expect(guard().error).toBe('guard failed: window unavailable');
     await act(async () => root.unmount());
   });
+
+  it('skips an unprotected merge ceremony', async () => {
+    mocks.fetchRevealWindow.mockResolvedValueOnce({
+      ...revealWindow(false),
+      protected: false,
+    });
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => root.render(<Harness />));
+    const complete = vi.fn();
+
+    await act(async () => {
+      await guard().run([{
+        environmentId: 'development',
+        environmentName: 'Development',
+        keys: [{ id: 'key-a', name: 'KEY_A' }],
+        purpose: 'publish',
+      }], complete, 'guard failed');
+    });
+
+    expect(complete).toHaveBeenCalledTimes(1);
+    expect(guard().request).toBeNull();
+    await act(async () => root.unmount());
+  });
+
+  it('requires an approve ceremony even in an unprotected environment', async () => {
+    mocks.fetchRevealWindow.mockResolvedValueOnce({
+      ...revealWindow(false),
+      protected: false,
+    });
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => root.render(<Harness />));
+    const complete = vi.fn();
+
+    await act(async () => {
+      await guard().run([{
+        environmentId: 'development',
+        environmentName: 'Development',
+        keys: [{ id: 'key-a', name: 'KEY_A' }],
+        purpose: 'approve',
+      }], complete, 'guard failed');
+    });
+
+    expect(guard().request?.purpose).toBe('approve');
+    expect(complete).not.toHaveBeenCalled();
+    await act(async () => root.unmount());
+  });
 });

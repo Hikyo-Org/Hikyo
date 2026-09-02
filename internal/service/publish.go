@@ -129,6 +129,20 @@ type PublishResult struct {
 	Published    []string
 	ClosedIn     []string
 	Environments []PublishedEnvironment
+	// CreatedApprovalRequest is set, and every other field empty, when the
+	// publish addressed a policy-covered environment with no approval presented:
+	// a request was staged instead of a revision published (#151). The transport
+	// answers 202 with the request rather than a publish result.
+	CreatedApprovalRequest *ApprovalRequestSummary
+}
+
+// ApprovalRequestSummary is the created-request summary a gated publish returns.
+type ApprovalRequestSummary struct {
+	ID            string
+	EnvironmentID string
+	PolicyID      string
+	State         string
+	ExpiresAt     time.Time
 }
 
 // PublishRequest carries the reviewed selection and the protected-environment
@@ -137,6 +151,20 @@ type PublishRequest struct {
 	VersionIDs                     []string
 	PreviewToken                   string
 	ConfirmedProtectedEnvironments []string
+	// Secret-change approvals (#151). When a policy covers the addressed
+	// environment, a bare publish is refused: the caller either creates a
+	// request (both fields empty), merges an approved one (ApprovalRequestID
+	// set), or emergency-bypasses one (ApprovalRequestID + Bypass set). Ignored
+	// where no policy covers the environment. Purpose is the requester's
+	// free-text reason, recorded on the created request.
+	ApprovalRequestID string
+	Bypass            *ApprovalBypass
+	Purpose           string
+}
+
+// ApprovalBypass carries an emergency bypasser's mandatory reason (#151).
+type ApprovalBypass struct {
+	Reason string
 }
 
 // ImpactPreview is the reveal-safe before/after plan shown before a restore is
@@ -232,7 +260,9 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 	if scope.Env == "" {
 		return PublishResult{}, fmt.Errorf("%w: a publish addresses an environment", domain.ErrInvalid)
 	}
-	if len(versionIDs) == 0 {
+	// A merge or bypass names an approval request, not a selection: the reviewed
+	// version ids are loaded from the request inside the transaction (#151).
+	if len(versionIDs) == 0 && request.ApprovalRequestID == "" {
 		return PublishResult{}, fmt.Errorf("%w: a publish names the pending changes it commits", domain.ErrInvalid)
 	}
 	if dup, ok := firstDuplicate(versionIDs); ok {
@@ -253,8 +283,10 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 
 	var out PublishResult
 	var rateCharged bool
+	var publishRefusal error
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		out = PublishResult{}
+		publishRefusal = nil
 		// The clock is read INSIDE the transaction: the sealer preflight can
 		// take real time, and a credential expiring during it must be refused
 		// by the authentication this publish actually rides.
@@ -285,8 +317,34 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 			return err
 		}
 
+		// Secret-change approvals (#151): a merge or bypass names an existing
+		// request and publishes EXACTLY its stored selection, not a
+		// caller-supplied one. Load it here, before version resolution, so the
+		// change set materialized is the reviewed change set.
+		var loadedApproval *store.ApprovalRequest
+		if request.ApprovalRequestID != "" {
+			req, err := r.Approvals().GetRequest(ctx, p, request.ApprovalRequestID)
+			if err != nil {
+				return err
+			}
+			loadedApproval = &req
+			versionIDs = req.VersionIDs
+		}
+
 		selected, byID, err := resolveVersions(ctx, r, p, caller.Principal, versionIDs)
 		if err != nil {
+			// Secret-change approvals (#151): a merge whose pinned drafts were
+			// edited (superseded) or discarded after the request cannot commit
+			// the reviewed change set. Invalidate the request (draft_edited) and
+			// surface the refusal after commit, rather than returning the raw
+			// stale-pending error against a request that stays open forever.
+			if loadedApproval != nil && isActiveRequest(loadedApproval.State) && errors.Is(err, ErrStalePending) {
+				if cErr := commitInvalidation(ctx, r, p, caller.Principal, *loadedApproval, "draft_edited", now); cErr != nil {
+					return cErr
+				}
+				publishRefusal = staleRefusal("draft_edited")
+				return nil
+			}
 			return err
 		}
 
@@ -318,6 +376,13 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 		}
 		selection, closed, err := selectVersions(ctx, r, p, caller.Principal, selected, byID, groupIndex)
 		if err != nil {
+			if loadedApproval != nil && isActiveRequest(loadedApproval.State) && errors.Is(err, ErrStalePending) {
+				if cErr := commitInvalidation(ctx, r, p, caller.Principal, *loadedApproval, "draft_edited", now); cErr != nil {
+					return cErr
+				}
+				publishRefusal = staleRefusal("draft_edited")
+				return nil
+			}
 			return err
 		}
 		for envID := range selection {
@@ -334,6 +399,9 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 		}
 		sort.Strings(envs)
 
+		// Restore drafts carry a one-shot impact-preview token. Validate it before
+		// approvalGate can persist a request and return 202. A later merge names
+		// the already-pinned request, so it deliberately does not replay the token.
 		restoreSelected := false
 		for _, applies := range selection {
 			for _, apply := range applies {
@@ -342,7 +410,7 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 				}
 			}
 		}
-		if restoreSelected {
+		if restoreSelected && request.ApprovalRequestID == "" {
 			token, err := publishPreviewToken(ctx, r, proofs, s.Keyring, az, caller.Principal, scope, selection)
 			if err != nil {
 				return err
@@ -351,6 +419,31 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 				return ErrStalePreview
 			}
 		}
+
+		// Secret-change approvals (#151): the live conjunct. Where a policy
+		// covers the addressed environment this either stages a request (and
+		// returns before any materialize), validates a merge, or admits a
+		// bypass. A gated publish addresses one environment.
+		approval, err := approvalGate(ctx, r, az, s.Auth, s.Keyring, caller, scope, request, loadedApproval, selection, closed, proofs, now)
+		if err != nil {
+			return err
+		}
+		if approval.refusal != nil {
+			// The gate committed an invalidation; commit the transaction so it
+			// persists, then surface the refusal after the tx returns.
+			publishRefusal = approval.refusal
+			out = PublishResult{}
+			return nil
+		}
+		if approval.created != nil {
+			out = PublishResult{CreatedApprovalRequest: &ApprovalRequestSummary{
+				ID: approval.created.ID, EnvironmentID: approval.created.EnvironmentID,
+				PolicyID: approval.created.PolicyID, State: string(approval.created.State),
+				ExpiresAt: approval.created.ExpiresAt,
+			}}
+			return nil
+		}
+
 		protectedEnvironments := make([]string, 0, len(envs))
 		for _, envID := range envs {
 			settings, err := az.EnvironmentReauthSettings(ctx, envID)
@@ -380,7 +473,9 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 			return invalidDetail("human protected-environment confirmation is supplied by the bound ceremony")
 		}
 		for _, envID := range protectedEnvironments {
-			if skipsCeremony(caller) {
+			// Emergency bypass already consumed a PurposeBypass decision over this
+			// exact environment and key set in approvalBypassGate.
+			if skipsCeremony(caller) || approval.bypass {
 				continue
 			}
 			unit := make([]string, 0, len(selection[envID]))
@@ -444,12 +539,30 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 			}
 			out.Environments = append(out.Environments, published)
 		}
+		// Secret-change approvals (#151): a merge or bypass flips its request to
+		// its terminal state and emits its event now that the revision has
+		// materialized in this same transaction.
+		if approval.resolveID != "" {
+			var revision int64
+			for _, env := range out.Environments {
+				if env.EnvironmentID == approval.coveredEnv {
+					revision = env.Revision
+				}
+			}
+			if err := resolveApprovalAfterPublish(ctx, r, proofs[approval.coveredEnv], caller.Principal, approval, revision, now); err != nil {
+				return err
+			}
+		}
+
 		out.ClosedIn = closed
 		slices.Sort(out.Published)
 		return nil
 	})
 	if err != nil {
 		return PublishResult{}, err
+	}
+	if publishRefusal != nil {
+		return PublishResult{}, publishRefusal
 	}
 	// Post-commit, never inside: no external effect may escape before commit,
 	// and an advisory about a publish that rolled back would be a claim clients
@@ -698,6 +811,22 @@ func republish(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, calle
 	p, err := az.Authorize(ctx, caller, authz.OpValuePublish, scope)
 	if err != nil {
 		return PublishedEnvironment{}, err
+	}
+	// Secret-change approvals (#151): the out-of-band value-change paths (copy,
+	// bulk-apply, clone-onto-an-existing-env, import) write cells and publish
+	// directly, sidestepping the draft→publish gate. Where a policy covers the
+	// destination they are refused with ErrApprovalRequired: a covered
+	// environment's changes must go through the reviewed draft flow. The
+	// structural fan-outs (schema `declare`, `environment-create`, and the
+	// draft `values`/`restore` publishes that already ran the gate) are exempt.
+	if approvalGatedTrigger(trigger) {
+		_, covered, err := r.Approvals().CoveringPolicy(ctx, p, string(scope.Env))
+		if err != nil {
+			return PublishedEnvironment{}, err
+		}
+		if covered {
+			return PublishedEnvironment{}, ErrApprovalRequired
+		}
 	}
 	groupIndex, err := groups.snapshot(ctx, r.Catalogue(), p)
 	if err != nil {

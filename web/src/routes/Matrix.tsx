@@ -644,13 +644,27 @@ export function Matrix({
               (error) => !selectedEnvironmentIds.includes(error.environmentId),
             ),
           );
+          setPublishOpen(false);
+          // Secret-change approvals (#151): a covered environment stages a
+          // request instead of publishing. Say so in plain language and point
+          // at the review queue rather than reporting a revision that did not
+          // move.
+          if (!('environments' in result)) {
+            const environment = environments.find(
+              (candidate) => candidate.id === result.environment_id,
+            );
+            setNotice(
+              `Submitted for approval in ${environment?.name ?? result.environment_id}. ` +
+                'Track it under Change approvals.',
+            );
+            return;
+          }
           const revisions = result.environments.map((published) => {
             const environment = environments.find(
               (candidate) => candidate.id === published.environment_id,
             );
             return `${environment?.name ?? published.environment_id} r${String(published.revision)}`;
           });
-          setPublishOpen(false);
           setNotice(`Published atomically: ${revisions.join(', ')}. Signals updated.`);
         },
         onError: (error) => {

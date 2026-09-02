@@ -152,6 +152,7 @@ var verbHandlers = map[string]func(context.Context, IO, []string) error{
 	"values":              runValues,
 	"revision":            runRevision,
 	"pin":                 runPin,
+	"approval":            runApproval,
 	"rotate-token-key":    runRotateTokenKey,
 	"rotate-scanning-key": runRotateScanningKey,
 	"rotate-dek":          runRotateDEK,
@@ -284,6 +285,15 @@ revisions:                                         --env selects the environment
   hikyo pin create --workload ID --revision N       create, re-pin, or renew
   hikyo pin list                                    show pins and expired status
   hikyo pin release <workload-principal>            release a durable pin
+  hikyo approval policy list                        list change-approval policies
+  hikyo approval policy create --min-approvals N    bind an approval policy to a project or env
+  hikyo approval policy update <policy>             replace an approval policy's fields and members
+  hikyo approval policy delete <policy>             delete an approval policy
+  hikyo approval request list                       the environment's change-approval requests
+  hikyo approval request approve <request>          approve a change-approval request
+  hikyo approval request reject <request>           reject a change-approval request
+  hikyo approval request merge <request>            merge an approved request via the publish path
+  hikyo approval request bypass <request> --reason R emergency-bypass a request's quorum
   hikyo rotate-token-key --yes                      new token key; one full fetch, no restart wave
   hikyo rotate-dek --instance --yes                 new instance DEK version (old stays readable)
   hikyo rotate-dek --org O --project P --yes         new project DEK version; follow with reencrypt

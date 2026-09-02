@@ -454,6 +454,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	}
 	retentionSvc := &service.Retention{DB: db, Backup: backupPolicy(cfg)}
 	backupSvc := &service.Backup{DB: db, Options: backup.Options{Recipients: cfg.BackupRecipients}}
+	approvalsSvc := &service.Approvals{DB: db, Auth: authSvc, Keyring: kr}
 	updateHTTP, err := updatecheck.NewHTTPClient(3 * time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("boot: update release client: %w", err)
@@ -500,6 +501,10 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	// operational /metrics handler (reader) (#513). The limiter supplies its
 	// admission-pressure gauges at scrape time.
 	metrics := server.NewMetrics(limiter)
+	// Secret-change approvals (#151): the two label-free approval gauges read
+	// their counts at scrape time under scheduler authority (#151, mirroring the
+	// storage high-water gauge's shared-door read).
+	metrics.SetApprovalSource(approvalMetricsSource{svc: approvalsSvc})
 	metrics.SetDynamicSource(dynamicGaugeSource{runtime: dynamicRuntime, log: log})
 	api := &server.API{
 		Auth:     authSvc,
@@ -557,6 +562,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		Adapters:        adapterService,
 		Dynamic:         dynamicService,
 		Audits:          &service.Audits{DB: db, Budget: budget},
+		Approvals:       approvalsSvc,
 		// ONE SCIM service behind both surfaces: the administration verbs and
 		// the identity provider's wire read the same bindings, the same mapping
 		// table and the same bounds. Two instances would let the wire clamp a
@@ -607,6 +613,12 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 				return err
 			},
 			LastSuccess: retentionSvc.LastPruneSuccess,
+		}, {
+			// Secret-change approvals (#151): resolve requests past their expiry
+			// across all tenants, fail closed, and emit a per-request expiry
+			// event. Idempotent and cross-tenant, like payload_gc beside it.
+			Name: "approval_expiry_sweep",
+			Run:  approvalsSvc.ExpireDue,
 		}, {
 			// Read-only operator nudge (#75/#187, scheduler option A): warn when a
 			// scope still carries a retiring DEK version so an operator runs
@@ -861,4 +873,21 @@ func (s *Server) ReloadTLS() error {
 // Close releases resources for a booted server that never served.
 func (s *Server) Close() error {
 	return errors.Join(s.publicLn.Close(), s.operationalLn.Close(), s.db.Close())
+}
+
+// approvalMetricsSource adapts the change-approval service to the metrics
+// collector's synchronous ApprovalSnapshot contract (#151): a bounded read that
+// reports zeros on any error rather than failing the scrape.
+type approvalMetricsSource struct {
+	svc *service.Approvals
+}
+
+func (s approvalMetricsSource) ApprovalSnapshot() server.ApprovalStats {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	active, expired, err := s.svc.OperationalCounts(ctx)
+	if err != nil {
+		return server.ApprovalStats{}
+	}
+	return server.ApprovalStats{Open: float64(active), Expired: float64(expired)}
 }

@@ -499,6 +499,11 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// emitter — warned, dismissed, blocked and overridden — driven end to end
 		// through the scanning-enabled value and declaration services.
 		runScanningLifecycle(t, db)
+		// Secret-change approvals (#151): the seven approval.* types get a real
+		// emitter — policy change/read, requested, voted, merged, invalidated,
+		// expired and bypassed — driven through the real publish gate, vote
+		// path, expiry sweep and a reauthenticated bypass.
+		runApprovalLifecycle(t, db)
 		beforeUpdateReads := queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type = 'system.update_status_read'")
 		if _, err := (&service.Updates{
 			DB: db, Version: "1.0.0", Channel: updatecheck.ChannelStable,

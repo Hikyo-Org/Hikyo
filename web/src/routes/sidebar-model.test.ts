@@ -48,6 +48,7 @@ describe('sidebarModel', () => {
     expect(model.context?.links.map((l) => [l.label, l.to])).toEqual([
       ['Environment matrix', '/orgs/org_1/projects/prj_1/matrix'],
       ['Machine access', '/orgs/org_1/projects/prj_1/machine-access'],
+      ['Change approvals', '/orgs/org_1/projects/prj_1/change-approvals'],
       ['Deployment adapters', '/orgs/org_1/projects/prj_1/adapters'],
       ['Members', '/orgs/org_1/members?project=prj_1'],
       ['Project settings', '/orgs/org_1/projects/prj_1/settings'],

@@ -133,9 +133,21 @@
   },
   {
     "engine": "postgres",
+    "name": "CountActiveApprovalRequests",
+    "annotation": "instance-scoped",
+    "hash": "b0fac7a5a51fafd5bb5fff5b193fa270e42171b909f560aab674031f3b00ff5a"
+  },
+  {
+    "engine": "postgres",
     "name": "CountBindingsForIssuer",
     "annotation": "authn-resolution",
     "hash": "35cb2098f9fd4c86d88b0e7bc238d1d1ed5e3ec8d6b7bd2886a0580f16523986"
+  },
+  {
+    "engine": "postgres",
+    "name": "CountExpiredApprovalRequests",
+    "annotation": "instance-scoped",
+    "hash": "d29c7021b8d0627ea9fc342ce97f0f2d2e415e12bdf7007443383aedb73d76a0"
   },
   {
     "engine": "postgres",
@@ -1189,6 +1201,12 @@
   },
   {
     "engine": "postgres",
+    "name": "MarkApprovalRequestExpired",
+    "annotation": "instance-scoped",
+    "hash": "f716b12d47f8134b232af6451c06d279b90d329d7872c82a4fef511830f61102"
+  },
+  {
+    "engine": "postgres",
     "name": "MarkSAMLSPKeyRetiringCAS",
     "annotation": "authn-resolution",
     "hash": "fcfa1609192d4062059f8e375a8ca832255856a52bbd936c72026e36a194bb4d"
@@ -1348,6 +1366,12 @@
     "name": "SealedRemoteCredential",
     "annotation": "instance-scoped",
     "hash": "c00d7dfa31f8e1f2595882928efd88712ac74f9fd69969e61155ec829341a071"
+  },
+  {
+    "engine": "postgres",
+    "name": "SelectExpiredApprovalRequests",
+    "annotation": "instance-scoped",
+    "hash": "896064f8657efa87226742640506e246641372ce1425156e3f7ac1e2ad3d5d13"
   },
   {
     "engine": "postgres",
@@ -1633,9 +1657,21 @@
   },
   {
     "engine": "sqlite",
+    "name": "CountActiveApprovalRequests",
+    "annotation": "instance-scoped",
+    "hash": "b0fac7a5a51fafd5bb5fff5b193fa270e42171b909f560aab674031f3b00ff5a"
+  },
+  {
+    "engine": "sqlite",
     "name": "CountBindingsForIssuer",
     "annotation": "authn-resolution",
     "hash": "b98c0f276802ff367b62169e60805c269e29d5f6a279fb238fbb435aefc5a494"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CountExpiredApprovalRequests",
+    "annotation": "instance-scoped",
+    "hash": "d29c7021b8d0627ea9fc342ce97f0f2d2e415e12bdf7007443383aedb73d76a0"
   },
   {
     "engine": "sqlite",
@@ -2689,6 +2725,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "MarkApprovalRequestExpired",
+    "annotation": "instance-scoped",
+    "hash": "cd27939d5fa14e31cdae0fd8968819f72aee41a10444d59d0f54ebefbf811423"
+  },
+  {
+    "engine": "sqlite",
     "name": "MarkSAMLSPKeyRetiringCAS",
     "annotation": "authn-resolution",
     "hash": "13fd254838e1a82f2d75dd438b0c2f979f4c233c7e3e09191d7129aec5bb3d89"
@@ -2848,6 +2890,12 @@
     "name": "SealedRemoteCredential",
     "annotation": "instance-scoped",
     "hash": "b9bde21fc56d19bfaab7e96f2085e673e995967a221cce6da73a3f1793b9375b"
+  },
+  {
+    "engine": "sqlite",
+    "name": "SelectExpiredApprovalRequests",
+    "annotation": "instance-scoped",
+    "hash": "40062b1fa416bebf73b53261fcbc18accb98220557ddf471cd5a59ddb410b727"
   },
   {
     "engine": "sqlite",

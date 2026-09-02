@@ -34,6 +34,9 @@ type Client struct {
 	Bearer string
 	// UserAgent identifies the client class in the audit trail.
 	UserAgent string
+	// lastStatus records the most recent response's 2xx status for DoStatus. A
+	// client serves one command at a time, so this needs no synchronization.
+	lastStatus int
 }
 
 // NewClient builds a client bound to a trust entry.
@@ -134,6 +137,18 @@ func isLoopbackOrigin(origin string) bool {
 // `out` may be nil for endpoints with no body. A non-2xx response is
 // converted to an exit code through the contract's closed error enum, so the
 // CLI's exit codes and the API's statuses cannot drift apart.
+// DoStatus is Do for a caller that must branch on a 2xx status: the publish
+// endpoint answers 200 with a publish result or 202 with a staged approval
+// request (#151). It decodes the payload into out only when out is non-nil and
+// returns the 2xx status so the caller can pick the right shape.
+func (c *Client) DoStatus(ctx context.Context, method, path string, body any) (int, []byte, error) {
+	var raw []byte
+	if err := c.Do(ctx, method, path, body, &raw); err != nil {
+		return 0, nil, err
+	}
+	return c.lastStatus, raw, nil
+}
+
 func (c *Client) Do(ctx context.Context, method, path string, body, out any) error {
 	var reader io.Reader
 	if body != nil {
@@ -175,6 +190,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body, out any) err
 	if resp.StatusCode >= 400 {
 		return errorFromResponse(resp.StatusCode, payload)
 	}
+	c.lastStatus = resp.StatusCode
 	if out == nil || len(payload) == 0 {
 		return nil
 	}

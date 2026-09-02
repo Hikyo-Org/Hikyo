@@ -106,6 +106,42 @@ func TestReauthIntentDerivesCanonicalBinding(t *testing.T) {
 			wantChallengeBinding: `{"operation":"mint","environment_id":"env_prod","key_ids":["key_a","key_b"]}`,
 		},
 		{
+			name: "approve",
+			make: func(t *testing.T) ReauthIntent {
+				intent, err := NewApproveReauthIntent("env_prod", []string{"key_b", "key_a"})
+				return mustReauthIntent(t, intent, err)
+			},
+			wantPurpose:          PurposeApprove,
+			wantOperation:        authz.OpApprovalVote,
+			wantEnvironment:      "env_prod",
+			wantKeySet:           "key_a\nkey_b",
+			wantChallengeBinding: `{"operation":"approve","environment_id":"env_prod","key_ids":["key_a","key_b"]}`,
+		},
+		{
+			name: "reject",
+			make: func(t *testing.T) ReauthIntent {
+				intent, err := NewRejectReauthIntent("env_prod", []string{"key_b", "key_a"})
+				return mustReauthIntent(t, intent, err)
+			},
+			wantPurpose:          PurposeReject,
+			wantOperation:        authz.OpApprovalVote,
+			wantEnvironment:      "env_prod",
+			wantKeySet:           "key_a\nkey_b",
+			wantChallengeBinding: `{"operation":"reject","environment_id":"env_prod","key_ids":["key_a","key_b"]}`,
+		},
+		{
+			name: "bypass",
+			make: func(t *testing.T) ReauthIntent {
+				intent, err := NewBypassReauthIntent("env_prod", []string{"key_b", "key_a"})
+				return mustReauthIntent(t, intent, err)
+			},
+			wantPurpose:          PurposeBypass,
+			wantOperation:        authz.OpApprovalBypass,
+			wantEnvironment:      "env_prod",
+			wantKeySet:           "key_a\nkey_b",
+			wantChallengeBinding: `{"operation":"bypass","environment_id":"env_prod","key_ids":["key_a","key_b"]}`,
+		},
+		{
 			name: "adapter configure",
 			make: func(t *testing.T) ReauthIntent {
 				intent, err := NewAdapterConfigureReauthIntent([]string{"env_prod", "env_dev", "env_prod"})

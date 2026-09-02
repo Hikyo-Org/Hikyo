@@ -67,14 +67,41 @@ func (a *API) PublishPendingChanges(ctx context.Context, req apigen.PublishPendi
 			confirmedProtected = append(confirmedProtected, string(envID))
 		}
 	}
+	var versionIDs []string
+	if req.Body.VersionIds != nil {
+		versionIDs = *req.Body.VersionIds
+	}
+	publishReq := service.PublishRequest{
+		VersionIDs:                     versionIDs,
+		PreviewToken:                   previewToken,
+		ConfirmedProtectedEnvironments: confirmedProtected,
+	}
+	// Secret-change approvals (#151): merge/bypass an existing request, or carry
+	// the requester's purpose for a covered publish that stages one.
+	if req.Body.ApprovalRequestId != nil {
+		publishReq.ApprovalRequestID = string(*req.Body.ApprovalRequestId)
+	}
+	if req.Body.Bypass != nil {
+		publishReq.Bypass = &service.ApprovalBypass{Reason: req.Body.Bypass.Reason}
+	}
+	if req.Body.Purpose != nil {
+		publishReq.Purpose = *req.Body.Purpose
+	}
 	result, err := a.Revisions.PublishPlanned(ctx, service.Bearer(bearer(ctx)),
-		envScope(req.Org, req.Project, req.Environment), service.PublishRequest{
-			VersionIDs:                     req.Body.VersionIds,
-			PreviewToken:                   previewToken,
-			ConfirmedProtectedEnvironments: confirmedProtected,
-		})
+		envScope(req.Org, req.Project, req.Environment), publishReq)
 	if err != nil {
 		return nil, err
+	}
+	// A covered publish with no approval presented staged a request instead of
+	// publishing a revision: answer 202 with the request, not a publish result.
+	if result.CreatedApprovalRequest != nil {
+		return apigen.PublishPendingChanges202JSONResponse(apigen.ApprovalRequestSummary{
+			Id:            result.CreatedApprovalRequest.ID,
+			EnvironmentId: result.CreatedApprovalRequest.EnvironmentID,
+			PolicyId:      result.CreatedApprovalRequest.PolicyID,
+			State:         apigen.ApprovalRequestSummaryState(result.CreatedApprovalRequest.State),
+			ExpiresAt:     result.CreatedApprovalRequest.ExpiresAt,
+		}), nil
 	}
 	out := apigen.PublishResult{
 		Published: emptyIfNil(result.Published),

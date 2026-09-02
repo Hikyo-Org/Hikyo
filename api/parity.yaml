@@ -128,6 +128,15 @@ operations:
   getEnvironmentSettings:      {webui: project-settings}
   setEnvironmentSettings:      {webui: project-settings}
 
+  # change approvals
+  listApprovalPolicies:        {webui: change-approvals}
+  createApprovalPolicy:        {webui: change-approvals}
+  updateApprovalPolicy:        {webui: change-approvals}
+  deleteApprovalPolicy:        {webui: change-approvals}
+  listApprovalRequests:        {webui: change-approvals}
+  getApprovalCeremony:         {webui: change-approvals}
+  voteApprovalRequest:         {webui: change-approvals}
+
   # definitions
   # The bundle verbs are the repository's path into the same catalogue the
   # key-detail editor writes directly (source-of-truth ADR § Git-governed
@@ -353,24 +362,24 @@ operations:
   # adapters
   listAdapters:                {webui: adapters}
   createAdapter:               {webui: adapters}
-  showAdapter:                 {issue: 157}
-  updateAdapterOrigin:         {issue: 157}
-  deleteAdapter:               {issue: 157}
-  showAdapterMove:             {issue: 157}
-  resumeAdapterMove:           {issue: 157}
-  cancelAdapterMove:           {issue: 157}
-  setAdapterCredential:        {issue: 157}
-  revokeAdapterCredential:     {issue: 157}
-  listAdapterTargets:          {issue: 157}
+  showAdapter:                 {issue: 504}
+  updateAdapterOrigin:         {issue: 504}
+  deleteAdapter:               {issue: 504}
+  showAdapterMove:             {issue: 504}
+  resumeAdapterMove:           {issue: 504}
+  cancelAdapterMove:           {issue: 504}
+  setAdapterCredential:        {issue: 504}
+  revokeAdapterCredential:     {issue: 504}
+  listAdapterTargets:          {issue: 504}
   addAdapterTarget:            {webui: adapters}
   showAdapterTarget:           {webui: adapters}
   updateAdapterTarget:         {webui: adapters}
   removeAdapterTarget:         {webui: adapters}
-  planAdapterTarget:           {issue: 157}
+  planAdapterTarget:           {issue: 504}
   syncAdapterTarget:           {webui: adapters}
   pauseAdapterTarget:          {webui: adapters}
   resumeAdapterTarget:         {webui: adapters}
-  testAdapterTarget:           {issue: 157}
+  testAdapterTarget:           {issue: 504}
   adoptAdapterTargetNames:     {webui: adapters}
 
   # dynamic secrets (#147 shipped API+CLI+read-only status; management WebUI #595)

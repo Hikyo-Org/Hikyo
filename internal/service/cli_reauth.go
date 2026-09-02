@@ -77,14 +77,20 @@ func cliReauthPurposeOperation(purpose ReauthPurpose, operation authz.Operation)
 		return operation == authz.OpValueReveal
 	case PurposeCopy:
 		return operation == authz.OpValueCopySource
+	case PurposePublish:
+		return operation == authz.OpValueCopyDestination
+	case PurposeApprove, PurposeReject:
+		return operation == authz.OpApprovalVote
+	case PurposeBypass:
+		return operation == authz.OpApprovalBypass
 	}
 	return false
 }
 
-// cliReauthDisclosure reports whether the handoff carries a disclosure
-// purpose: one the browser satisfies with the enumerated-key-set ceremony.
-func cliReauthDisclosure(purpose string) bool {
-	return purpose == string(PurposeReveal) || purpose == string(PurposeCopy)
+// cliReauthKeyBound reports whether the browser handoff carries an exact
+// environment and key set. Adapter handoffs bind an environment set instead.
+func cliReauthKeyBound(purpose string) bool {
+	return purpose != string(PurposeAdapter)
 }
 
 type CLIReauthRedeemed struct {
@@ -173,7 +179,7 @@ func (s *Auth) StartCLIReauth(ctx context.Context, presented string, intent Reau
 	// the CLI's disclosure consumes exactly this set, so a handoff without one
 	// would be a window any later disclosure could spend.
 	keySet := binding.keySet
-	if cliReauthDisclosure(purpose) == (keySet == "") {
+	if cliReauthKeyBound(purpose) == (keySet == "") {
 		return CLIReauthStart{}, s.rejectCLIReauthRequest(ctx, "start", ErrReauthUnitMismatch)
 	}
 	for _, keyID := range keyIDs {
@@ -230,12 +236,19 @@ func (s *Auth) StartCLIReauth(ctx context.Context, presented string, intent Reau
 // disclosure handoff authorizes `read` over the environment it will disclose
 // in: a principal who cannot read the environment is not offered a ceremony,
 // while the MFA-mandatory `reveal` conjunct is judged by the disclosure itself
-// once the session carries the factor the ceremony adds.
+// once the session carries the factor the ceremony adds. Approval handoffs
+// authorize their own publish-based operation because they disclose no value.
 func cliReauthAuthorizeStart(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, purpose, operation string, chain authz.EnvironmentChain, environmentID string) error {
-	if cliReauthDisclosure(purpose) {
-		env := domain.Scope{Org: domain.OrgID(chain.Org), Project: domain.ProjectID(chain.Project), Env: domain.EnvID(environmentID)}
+	env := domain.Scope{Org: domain.OrgID(chain.Org), Project: domain.ProjectID(chain.Project), Env: domain.EnvID(environmentID)}
+	if purpose == string(PurposeReveal) || purpose == string(PurposeCopy) || purpose == string(PurposePublish) {
 		if _, err := az.Authorize(ctx, caller, authz.OpValueList, env); err != nil {
 			return fmt.Errorf("authorize read for %s: %w", environmentID, err)
+		}
+		return nil
+	}
+	if cliReauthKeyBound(purpose) {
+		if _, err := az.Authorize(ctx, caller, authz.Operation(operation), env); err != nil {
+			return fmt.Errorf("authorize %s for %s: %w", operation, environmentID, err)
 		}
 		return nil
 	}

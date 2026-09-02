@@ -37,6 +37,8 @@ func TestMetricRegistryIsPinned(t *testing.T) {
 		{Name: "hikyo_ha_is_leader", MaxSeries: 1},
 		{Name: "hikyo_ha_nodes_seen", MaxSeries: 1},
 		{Name: "hikyo_ha_lease_age_seconds", MaxSeries: 1},
+		{Name: "hikyo_approval_requests_open", MaxSeries: 1},
+		{Name: "hikyo_approval_requests_expired", MaxSeries: 1},
 		// Disaster-recovery gauges (#145): label-free, one series each.
 		{Name: "hikyo_last_backup_export_success_timestamp_seconds", MaxSeries: 1},
 		{Name: "hikyo_backup_rpo_exceeded", MaxSeries: 1},

@@ -59,6 +59,10 @@ export const FLOWS: readonly Flow[] = [
   // `members.spec.ts` — already in group 1 and the org-scoped sibling surface —
   // so the pinned set runs from PR-checked-out content today.
   { id: 'audit', spec: 'flows/members.spec.ts', surfaces: ['audit'] },
+  // Change approvals (#151) rides matrix.spec.ts (group on main) so its pinned
+  // set runs from PR-checked-out content; a new spec file would never run on
+  // this PR (the merge gate loads ci.yml from base).
+  { id: 'change-approvals', spec: 'flows/matrix.spec.ts', surfaces: ['change-approvals'] },
   {
     id: 'chrome-settings',
     spec: 'flows/settings.spec.ts',
