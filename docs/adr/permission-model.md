@@ -78,7 +78,7 @@ Classification **is** the sensitivity boundary. A `config` value is by definitio
 
 ### `edit` and `publish` are separate
 
-Distinct because the revision ADR already gives per-user working state with others'-pending markers — so `edit`-without-`publish` **is** a propose-and-review flow at zero extra machinery, the closest thing to approvals available without building an approval engine (presumptively out of MVP, [#26](https://github.com/Hikyo-Org/Hikyo/issues/26)). It is also the intended production posture for the application-developer persona: propose a production change, a platform engineer commits it.
+Distinct because the revision ADR already gives per-user working state with others'-pending markers — so `edit`-without-`publish` **is** a propose-and-review flow at zero extra machinery, the closest thing to approvals available without building an approval engine (presumptively out of MVP, [#26](https://github.com/Hikyo-Org/Hikyo/issues/26)). It is also the intended production posture for the application-developer persona: propose a production change, a platform engineer commits it. **(Amendment 3, [#151](https://github.com/Hikyo-Org/Hikyo/issues/151)):** this edit/publish split is the no-policy baseline; a policy-bound approval **engine** is now promoted In (see the fog-note amendment below), and where a policy covers the environment the `publish` gains the conditional approval conjunct above. Staging stays `edit`-only regardless.
 
 Two consequences fixed here:
 
@@ -105,7 +105,7 @@ The formulas this ADR fixes:
 |---|---|
 | Read current `secret` plaintext (cell, diff, preview, validation of value-dependent rules, `values export`) | `read(E)` ∧ `reveal(E)` + reauthentication + one disclosure event per key |
 | Read superseded `secret` plaintext (history, diff-against-revision, restore preview, historical `values export`) | `read(E)` ∧ `reveal-history(E)` + reauthentication + one disclosure event per key, recording the revision |
-| Publish / rollback | `publish(E)` **for every affected environment** + protected-env confirmation for each protected environment reached + every disclosure check the operation dynamically triggers (below) |
+| Publish / rollback | `publish(E)` **for every affected environment** + protected-env confirmation for each protected environment reached + every disclosure check the operation dynamically triggers (below) + **(amendment 3, [#151](https://github.com/Hikyo-Org/Hikyo/issues/151))** where an approval policy covers the environment, a completed approval for this exact change set (quorum from currently-eligible approvers) or a dedicated emergency bypass — the check rides the same `publish(E)` chokepoint and does not create a second mutation path |
 | `apply` a definitions bundle | `definitions-edit(project)` ∧ `publish(E)` **for every affected environment** + protected-env confirmation for each protected environment reached ∧ every dynamically triggered disclosure check |
 | Copy / clone / bulk-apply value material | `reveal(source E)` for current material, `reveal-history(source E)` for historical material, ∧ `reveal(destination E)` ∧ `publish(destination E)` |
 | Create or reassign a revision pin | `pin(E)` ∧ `publish(E)`; **and `reveal-history(E)`** if the target is not the current revision |
@@ -149,6 +149,8 @@ Invariants that hold regardless of the window:
 **Reauthentication does not apply to machine identities** — the token *is* the credential and there is no second factor to re-present. Machine disclosure is instead controlled by the explicit per-project opt-in below, narrow scope, individual revocability, and per-fetch audit.
 
 *Deferred (fog): reason-for-access strings and approval-to-reveal.* A reason field with no reviewer is compliance theatre; approval workflows are presumptively out of the MVP.
+
+> **Amended 2026-09-02 ([#151](https://github.com/Hikyo-Org/Hikyo/issues/151), operative, per the [mvp-boundary](./mvp-boundary.md) declared-amendment 3):** the "approval workflows are presumptively out of the MVP" note is amended for the **change/publish** side only. Policy-bound multi-person review-and-merge of secret and configuration **changes** in sensitive scopes is promoted In, environment-scoped. It adds no new authorization scope and no new disclosure path: an approval authorises one exact reviewed change set pinned to the existing publish preview token, merge rides the ordinary `publish@env` chokepoint re-authorising every participant at execution, and staging stays `edit@env`-only exactly as this ADR describes. `reason-for-access` and **approval-to-reveal** remain fog (reveal-side, unchanged).
 
 *Rejected: two mechanisms* (sliding window for ordinary environments, per-burst reauthentication for protected ones). Identical protection to setting the knob to `0`, at the cost of two code paths on the most security-sensitive path in the product.
 

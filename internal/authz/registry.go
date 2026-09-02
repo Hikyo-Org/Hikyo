@@ -2308,8 +2308,10 @@ var operationTable = map[Operation]opSpec{
 	//
 	// `edit` ALONE stages. The permission-model ADR is explicit that `edit` confers
 	// no delivery power and that a draft is never a disclosure, so staging must
-	// not require `publish` -- edit-without-publish IS the propose-and-review
-	// flow v1 ships instead of an approval engine.
+	// not require `publish` -- edit-without-publish is the zero-machinery
+	// propose-and-review baseline. #151 adds a policy-bound approval ENGINE on
+	// top (declared amendment 3, mvp-boundary): staging is still `edit@env`
+	// only; a covering policy gates the PUBLISH, never the stage.
 	OpValueStage: {
 		class:   ClassTenant,
 		level:   domain.LevelEnv,
