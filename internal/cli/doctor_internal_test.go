@@ -94,6 +94,8 @@ func TestDoctorBackupFindings(t *testing.T) {
 	if result.Status != "error" {
 		t.Fatalf("an exceeded RPO left doctor status %q", result.Status)
 	}
+}
+
 // TestDoctorAdapterFinding pins the operator nudge (#157): attention or
 // failure warns, a pause is an operator's own state and only informs.
 func TestDoctorAdapterFinding(t *testing.T) {
