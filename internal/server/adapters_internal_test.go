@@ -119,6 +119,24 @@ func TestAdapterTargetResponseIncludesConvergedRevisionAndPendingConflicts(t *te
 	}
 }
 
+// TestAdapterTargetResponseEmitsArraysNotNull pins the contract's required
+// array members as [] on an empty repository target: a null would fail the
+// generated client's schema, which the browser surface parses (#157).
+func TestAdapterTargetResponseEmitsArraysNotNull(t *testing.T) {
+	out := adapterTargetResponse(service.AdapterTarget{})
+	blob, err := json.Marshal(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, member := range []string{`"selected_repository_ids":[]`, `"failure_names":[]`, `"warnings":[]`, `"keys":[]`, `"conflicts":[]`} {
+		if !strings.Contains(string(blob), member) {
+			t.Fatalf("adapter target response missing %s:\n%s", member, blob)
+		}
+	}
+	// The nullable members (converged_revision, last_attempted_*, retry_at,
+	// paused_at) are legitimately null; the required arrays above never are.
+}
+
 func TestUpdateAdapterTargetMapsOneIntentToServiceResult(t *testing.T) {
 	tests := []struct {
 		name       string

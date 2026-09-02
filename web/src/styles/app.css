@@ -5498,6 +5498,15 @@ select {
   }
 }
 
+.adapters__adapter,
+.adapters__detail {
+  /* A .panel on a chrome page gets its colour and padding from
+     `.page--chrome .panel`, but the hairline width and the container radius
+     are the component's own, exactly as the audit filter panel sets them. */
+  border: 1px solid var(--panel-line);
+  border-radius: var(--radius-container);
+}
+
 .adapters__adapter {
   display: flex;
   flex-direction: column;

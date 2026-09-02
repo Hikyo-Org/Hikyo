@@ -734,11 +734,15 @@ function TargetDetail({
                 className="btn btn--primary"
                 disabled={busy}
                 onClick={() =>
-                  void act('Resumed. A catch-up converge is queued.', async () => {
-                    await ceremonyFor('adapter.sync', environmentsOfAdapter);
-                    const result = await resume.mutateAsync(target.id);
-                    feedback.ok(`Resumed. Catching up to revision ${String(result.revision)}.`);
-                  })
+                  void (async () => {
+                    try {
+                      await ceremonyFor('adapter.sync', environmentsOfAdapter);
+                      const result = await resume.mutateAsync(target.id);
+                      feedback.ok(`Resumed. Catching up to revision ${String(result.revision)}.`);
+                    } catch (error) {
+                      feedback.report(error);
+                    }
+                  })()
                 }
               >
                 Resume
@@ -843,19 +847,22 @@ function TargetDetail({
           busy={remove.isPending}
           onCancel={() => setRemoving(false)}
           onDecide={(decision) =>
-            void act(
-              decision === 'prune'
-                ? 'Target removed. Owned names are being scrubbed.'
-                : 'Target removed. Custody released; the names stay at the destination.',
-              async () => {
+            void (async () => {
+              try {
                 const result = await remove.mutateAsync({ target: target.id, decision });
                 setRemoving(false);
                 onClose();
                 if (result.orphaned.length > 0) {
                   feedback.ok(`Target removed. Orphaned names left at the destination: ${result.orphaned.join(', ')}`);
+                } else if (decision === 'prune') {
+                  feedback.ok('Target removed. Owned names are being scrubbed.');
+                } else {
+                  feedback.ok('Target removed. Custody released; the names stay at the destination.');
                 }
-              },
-            )
+              } catch (error) {
+                feedback.report(error);
+              }
+            })()
           }
         />
       ) : null}

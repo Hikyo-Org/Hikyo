@@ -11,6 +11,16 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
+// int64List renders an id list as a JSON array, never null: the contract's
+// selected_repository_ids is a required array, so an empty repository target
+// must serialize as [] (#157).
+func int64List(v []int64) []int64 {
+	if len(v) == 0 {
+		return []int64{}
+	}
+	return append([]int64{}, v...)
+}
+
 func adapterScope(org apigen.OrgID, project apigen.ProjectID) domain.Scope {
 	return domain.Scope{Org: domain.OrgID(org), Project: domain.ProjectID(project)}
 }
@@ -67,7 +77,7 @@ func adapterTargetResponse(in service.AdapterTarget, conflicts ...service.Adapte
 	return apigen.AdapterTarget{
 		Id: apigen.ID(in.ID), AdapterId: apigen.ID(in.AdapterID), EnvironmentId: apigen.ID(in.EnvironmentID),
 		DestinationKind: apigen.AdapterDestinationKind(in.DestinationKind), DestinationOwner: in.DestinationOwner, DestinationName: in.DestinationName, DestinationEnvironment: in.DestinationEnvironment,
-		DestinationId: in.DestinationID, RepositoryId: in.RepositoryID, Visibility: apigen.AdapterTargetVisibility(in.Visibility), SelectedRepositoryIds: append([]int64(nil), in.SelectedRepositoryIDs...),
+		DestinationId: in.DestinationID, RepositoryId: in.RepositoryID, Visibility: apigen.AdapterTargetVisibility(in.Visibility), SelectedRepositoryIds: int64List(in.SelectedRepositoryIDs),
 		NamePrefix: in.NamePrefix, Generation: in.Generation, State: apigen.AdapterTargetState(in.State),
 		// The contract's sync_status is the derived operator health, never
 		// the stored outcome column (#157).
@@ -131,7 +141,7 @@ func adapterMoveResponse(in service.AdapterMove) (apigen.AdapterMove, error) {
 	}
 	out := apigen.AdapterMove{Id: apigen.ID(in.ID), AdapterId: apigen.ID(in.AdapterID), Kind: apigen.AdapterMoveKind(in.Kind), State: apigen.AdapterMoveState(in.State), KeepRemote: in.KeepRemote, PendingOrigin: in.PendingOrigin, CreatedAt: created, Targets: []apigen.AdapterMoveTarget{}}
 	for _, target := range in.Targets {
-		row := apigen.AdapterMoveTarget{TargetId: apigen.ID(target.TargetID), EnvironmentId: apigen.ID(target.EnvironmentID), DestinationKind: apigen.AdapterDestinationKind(target.DestinationKind), DestinationOwner: target.DestinationOwner, DestinationName: target.DestinationName, DestinationEnvironment: target.DestinationEnvironment, DestinationId: target.DestinationID, RepositoryId: target.RepositoryID, Visibility: apigen.AdapterMoveTargetVisibility(target.Visibility), SelectedRepositoryIds: append([]int64(nil), target.SelectedRepositoryIDs...), NamePrefix: target.NamePrefix, OrphanedNames: append([]string{}, target.Orphaned...), Jobs: []apigen.AdapterMoveJob{}}
+		row := apigen.AdapterMoveTarget{TargetId: apigen.ID(target.TargetID), EnvironmentId: apigen.ID(target.EnvironmentID), DestinationKind: apigen.AdapterDestinationKind(target.DestinationKind), DestinationOwner: target.DestinationOwner, DestinationName: target.DestinationName, DestinationEnvironment: target.DestinationEnvironment, DestinationId: target.DestinationID, RepositoryId: target.RepositoryID, Visibility: apigen.AdapterMoveTargetVisibility(target.Visibility), SelectedRepositoryIds: int64List(target.SelectedRepositoryIDs), NamePrefix: target.NamePrefix, OrphanedNames: append([]string{}, target.Orphaned...), Jobs: []apigen.AdapterMoveJob{}}
 		for _, job := range target.Jobs {
 			row.Jobs = append(row.Jobs, apigen.AdapterMoveJob{Id: apigen.ID(job.ID), TargetId: apigen.ID(job.TargetID), Kind: apigen.AdapterMoveJobKind(job.Kind), State: apigen.AdapterMoveJobState(job.State)})
 		}

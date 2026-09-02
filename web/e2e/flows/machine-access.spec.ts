@@ -5,7 +5,6 @@ import {
   establishSession,
   nextTotpCode,
   readSeed,
-  STORAGE_STATE,
 } from '../fixtures/instance.ts';
 import { test } from '../fixtures/passkey.ts';
 import { surfacesForFlow } from '../registry.ts';
@@ -704,25 +703,36 @@ const ADAPTER_ORIGIN = 'https://forgejo-e2e.example';
 const ADAPTER_KEY = seed.secrets[0] ?? '';
 
 async function authoriseAdapterCeremony(page: Page): Promise<void> {
+  // The target lives in the protected `prod` environment, whose window is
+  // capped at 0, so the adapter ceremony is a passkey decision: the virtual
+  // authenticator the passkey fixture installed satisfies it, and no shared
+  // TOTP step file is touched (desktop and mobile run in parallel projects).
   const dialog = page.getByRole('dialog', { name: 'Confirm it is you' });
   await expect(dialog).toBeVisible();
-  await dialog.getByLabel('Authenticator code').fill(await nextTotpCode());
+  const code = dialog.getByLabel('Authenticator code');
+  if (await code.isVisible().catch(() => false)) {
+    await code.fill(await nextTotpCode());
+  }
   await dialog.getByRole('button', { name: 'Authorise' }).click();
   await expect(dialog).toBeHidden();
 }
 
 test.describe('deployment adapters', () => {
   test.describe.configure({ mode: 'serial' });
-  test.use({ storageState: STORAGE_STATE });
 
-  test('creates an adapter behind the ceremony, watches it converge, pauses, resumes and removes', async ({
-    page,
-  }) => {
-    expect(ADAPTER_KEY).not.toBe('');
+  let page: Page;
+
+  test.beforeEach(async ({ passkeyPage }) => {
+    page = passkeyPage;
+    await page.context().clearCookies();
     await page.goto(ADAPTERS_PATH);
     await establishSession(page);
     await page.goto(ADAPTERS_PATH);
     await expect(page.getByRole('heading', { name: 'Deployment adapters', level: 1 })).toBeVisible();
+  });
+
+  test('creates an adapter behind the ceremony, watches it converge, pauses, resumes and removes', async () => {
+    expect(ADAPTER_KEY).not.toBe('');
 
     // Create: provider, origin, a write-only credential, and the first target
     // with one ticked key. The save opens the adapter-purpose ceremony over
@@ -731,14 +741,14 @@ test.describe('deployment adapters', () => {
     const form = page.getByRole('region', { name: 'New adapter' });
     await form.getByLabel('Origin').fill(ADAPTER_ORIGIN);
     await form.getByLabel('Credential').fill('e2e-provider-token');
-    await form.getByLabel('Environment').selectOption(seed.dev);
-    await form.getByLabel('Owner').fill('acme');
-    await form.getByLabel('Repository').fill('app');
+    await form.getByRole('combobox', { name: 'Environment', exact: true }).selectOption(seed.prod);
+    await form.getByRole('textbox', { name: 'Owner', exact: true }).fill('acme');
+    await form.getByRole('textbox', { name: 'Repository', exact: true }).fill('app');
     await form.getByLabel('Name prefix').fill('E2E_');
     await form.getByRole('checkbox', { name: ADAPTER_KEY, exact: true }).check();
     await form.getByRole('button', { name: 'Save' }).click();
     await authoriseAdapterCeremony(page);
-    await expect(page.getByRole('status')).toContainText('Adapter created');
+    await expect(page.locator('.adapters__done')).toContainText('Adapter created');
 
     // The credential never comes back: the panel says only that one is set.
     const panel = page.getByRole('region', { name: `Adapter ${ADAPTER_ORIGIN}` });
@@ -753,6 +763,12 @@ test.describe('deployment adapters', () => {
     const detail = page.getByRole('complementary', { name: 'Target detail' });
     await expect(detail).toBeVisible();
     await expect(detail.getByRole('list', { name: 'Member keys' })).toContainText(ADAPTER_KEY);
+    // The environment published before the adapter existed, so a fresh target
+    // starts `never`; a resync drives its first converge against the fake
+    // provider. Resync pushes, so it runs the ceremony.
+    await expect(detail.locator('.adapters__health')).toHaveText(/Never synced/);
+    await detail.getByRole('button', { name: 'Resync' }).click();
+    await authoriseAdapterCeremony(page);
     await expect(detail.locator('.adapters__health')).toHaveText(/Healthy/, { timeout: 20_000 });
     await expect(detail.locator('.adapters__facts')).toContainText('rev ');
     // The workflow mapping is names only, prefixed, and carries no value.
@@ -766,7 +782,7 @@ test.describe('deployment adapters', () => {
     // Resume pushes again, so it runs the ceremony and names its revision.
     await detail.getByRole('button', { name: 'Resume' }).click();
     await authoriseAdapterCeremony(page);
-    await expect(page.getByRole('status')).toContainText(/Catching up to revision \d+/);
+    await expect(page.locator('.adapters__done')).toContainText(/Catching up to revision \d+/);
     await expect(detail.locator('.adapters__health')).toHaveText(/Healthy/, { timeout: 20_000 });
 
     // Removal is an explicit decision: neither option is preselected, and
@@ -776,18 +792,15 @@ test.describe('deployment adapters', () => {
     await expect(remove.getByRole('button', { name: 'Remove target' })).toBeDisabled();
     await remove.getByRole('radio', { name: /Retain/ }).check();
     await remove.getByRole('button', { name: 'Remove target' }).click();
-    await expect(page.getByRole('status')).toContainText(`E2E_${ADAPTER_KEY}`);
+    await expect(page.locator('.adapters__done')).toContainText(`E2E_${ADAPTER_KEY}`);
     await expect(panel.locator('.adapters__target')).toHaveCount(0);
   });
 
   for (const scheme of ['dark', 'light'] as const) {
     for (const surface of surfacesForFlow('adapters')) {
-      test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({
-        page,
-      }, testInfo) => {
+      test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({}, testInfo) => {
         await page.emulateMedia({ colorScheme: scheme });
         try {
-          await page.goto(ADAPTERS_PATH);
           const heading = page.getByRole('heading', { name: 'Deployment adapters', level: 1 });
           await expect(heading).toBeVisible();
           const panel = page.getByRole('region', { name: `Adapter ${ADAPTER_ORIGIN}` });
