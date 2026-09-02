@@ -467,6 +467,29 @@ func TestDevServiceBudgetDisableAppliesInDevMode(t *testing.T) {
 	}
 }
 
+func TestDevAdapterFakeProviderRefusedOutsideDev(t *testing.T) {
+	_, _, err := Load("server", nil,
+		env("HIKYO_DB", "sqlite:x.db", "HIKYO_DEV_ADAPTER_FAKE_PROVIDER", "true"), nil)
+	if err == nil {
+		t.Fatal("a production server accepted the development-only fake adapter provider")
+	}
+	if !strings.Contains(err.Error(), "development-mode override") {
+		t.Fatalf("error should say why it is refused, got: %v", err)
+	}
+	if _, _, err := Load("server", []string{"--dev"},
+		env("HIKYO_DEV_ADAPTER_FAKE_PROVIDER", "sometimes"), nil); err == nil {
+		t.Fatal("a non-boolean fake-provider switch was accepted")
+	}
+	cfg, _, err := Load("server", []string{"--dev"},
+		env("HIKYO_DEV_ADAPTER_FAKE_PROVIDER", "true"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.DevAdapterFakeProvider {
+		t.Fatal("the fake adapter provider was not enabled in dev mode")
+	}
+}
+
 func TestDevServiceBudgetDisableRefusesNonsense(t *testing.T) {
 	if _, _, err := Load("server", []string{"--dev"},
 		env("HIKYO_DEV_SERVICE_BUDGETS_DISABLED", "sometimes"), nil); err == nil {

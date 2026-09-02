@@ -122,7 +122,8 @@ adapters:
   hikyo adapter create --provider forgejo|github-actions --origin <https-origin> --env E --kind repository|organization|environment
       --owner <owner> [--repo <repo>] [--destination-environment <name>]
       [--visibility all|private|selected] [--selected-repository-ids <id,...>]
-      --prefix <prefix> --keys <id,...>
+      --prefix <prefix> --keys <id,...> [--names <NAME,...>]
+      [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]
       [--stdin | --value-file PATH]
   hikyo adapter list [-o table|json]
   hikyo adapter show <adapter> [-o table|json]
@@ -130,19 +131,26 @@ adapters:
   hikyo adapter update <adapter> --target <target> --env E --kind <kind>
       --owner <owner> [--repo <repo>] [--destination-environment <name>]
       [--visibility all|private|selected] [--selected-repository-ids <id,...>]
-      --prefix <prefix> --keys <id,...>
+      --prefix <prefix> --keys <id,...> [--names <NAME,...>]
+      [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]
   hikyo adapter delete <adapter> [--keep-remote]
   hikyo adapter credential set --adapter <adapter> [--stdin | --value-file PATH]
   hikyo adapter credential revoke --adapter <adapter>
   hikyo adapter target add --adapter <adapter> --env E --kind <kind> --owner <owner>
       [--repo <repo>] [--destination-environment <name>]
       [--visibility all|private|selected] [--selected-repository-ids <id,...>]
-      [--prefix <prefix>] --keys <id,...>
+      [--prefix <prefix>] --keys <id,...> [--names <NAME,...>]
+      [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]
   hikyo adapter target list --adapter <adapter>
   hikyo adapter target show <target> [--format detail|workflow]
+  hikyo adapter target pause <target>                stop pushes; ledger and remote names kept
+  hikyo adapter target resume <target>               queue one catch-up converge
   hikyo adapter target remove <target> [--keep-remote]
   hikyo adapter adopt --target <target> [--artifact <id>] <NAME>...
-  hikyo adapter plan|sync|test --target <target>
+  hikyo adapter plan|sync|test --target <target>     sync is the idempotent resync
+
+  key selection (--names, --include, --exclude, --classification) resolves to
+  explicit key ids when the target is saved; keys created later are not added.
 
   adapter credentials are read with terminal echo disabled, from stdin, or
   from --value-file. There is no credential-value argv flag.

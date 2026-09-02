@@ -101,7 +101,8 @@ jobs:
           tar -xJf "$archive" -C "$RUNNER_TEMP"
           shellcheck_dir="$RUNNER_TEMP/shellcheck-$SHELLCHECK_VERSION"
           "$shellcheck_dir/shellcheck" \
-            scripts/lib/*.sh scripts/ci/*.sh scripts/release/*.sh scripts/compose-demo.sh install/install.sh.in
+            .githooks/* scripts/git/*.sh scripts/lib/*.sh scripts/ci/*.sh \
+            scripts/release/*.sh scripts/compose-demo.sh install/install.sh.in
           echo "$shellcheck_dir" >>"$GITHUB_PATH"
       - name: Actionlint
         run: ./scripts/ci/run-go-tool.sh actionlint
@@ -185,6 +186,8 @@ jobs:
         run: ./scripts/ci/check-release-binary-reuse_test.sh
       - name: DCO fixture
         run: ./scripts/ci/check-dco_test.sh
+      - name: Commit signature fixture
+        run: ./scripts/ci/check-commit-signatures_test.sh
       - name: Required-jobs fixture
         run: ./scripts/ci/check-required-jobs_test.sh
       - name: API freeze guard fixture

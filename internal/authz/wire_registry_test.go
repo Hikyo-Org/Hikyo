@@ -19,12 +19,12 @@ func rejectsWireRegistry(t *testing.T, name string, entry wireEntry) {
 func TestWireRegistrySnapshot(t *testing.T) {
 	facts := RegistryFacts{}
 	// #568 added member invitations, #147 added dynamic providers and leases,
-	// and #151 added the change-approval surface.
-	if got := len(facts.Wire()); got != 316 {
-		t.Fatalf("wire entries = %d, want 316", got)
+	// #151 added change approvals, and #157 added adapter pause and resume.
+	if got := len(facts.Wire()); got != 318 {
+		t.Fatalf("wire entries = %d, want 318", got)
 	}
-	if got := len(facts.WireRoutes()); got != 223 {
-		t.Fatalf("operation-linked entries = %d, want 223", got)
+	if got := len(facts.WireRoutes()); got != 225 {
+		t.Fatalf("operation-linked entries = %d, want 225", got)
 	}
 	if got := len(facts.WireEvents()); got != 67 {
 		t.Fatalf("direct-event entries = %d, want 67", got)

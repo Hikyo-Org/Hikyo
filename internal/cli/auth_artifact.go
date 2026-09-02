@@ -104,7 +104,7 @@ var authRuleRows = []authRuleRow{
 		"import",
 		"adapter create", "adapter list", "adapter show", "adapter update", "adapter delete",
 		"adapter credential set", "adapter credential revoke",
-		"adapter target add", "adapter target list", "adapter target show", "adapter target remove",
+		"adapter target add", "adapter target list", "adapter target show", "adapter target remove", "adapter target pause", "adapter target resume",
 		"adapter adopt", "adapter plan", "adapter sync", "adapter test",
 		"definitions export",
 		"dynamic-provider create", "dynamic-provider list", "dynamic-provider show", "dynamic-provider delete",

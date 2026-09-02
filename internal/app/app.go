@@ -477,6 +477,13 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		})
 	})
 	moduleWiring := newAdapterModuleWiring(cfg.AdapterEgressPolicy)
+	if cfg.Dev && cfg.DevAdapterFakeProvider {
+		// The browser flow suite's stand-in provider (#157): config.Load has
+		// already refused this switch on anything but a --dev server.
+		fake := newDevFakeProvider()
+		moduleWiring = adapterModuleWiring{worker: fake.factory, service: fake.factory}
+		log.Warn("deployment adapters use the in-process development fake provider; no provider is contacted")
+	}
 	adapterWorker := &adapter.Worker{
 		Store: adapterRuntime, Loader: &adapterLoader{runtime: adapterRuntime, keyring: kr, moduleFactory: moduleWiring.worker},
 		ID: "adapter-worker-" + uuid.Must(uuid.NewV7()).String(), Poll: time.Second, Log: log,

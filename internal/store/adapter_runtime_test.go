@@ -279,7 +279,7 @@ func TestAdapterJournalPUTNotFoundEndsEffectBeforeFreshCreateRetry(t *testing.T)
 	}
 
 	due := now.Add(time.Second)
-	if err := runtime.Retry(t.Context(), job, due, []adapter.Change{{Surface: adapter.Variable, EffectiveName: "LOG_LEVEL", Disposition: adapter.Update}}, []string{"provider capacity is near"}, errors.New("provider returned 404")); err != nil {
+	if err := runtime.Retry(t.Context(), job, due, 0, []adapter.Change{{Surface: adapter.Variable, EffectiveName: "LOG_LEVEL", Disposition: adapter.Update}}, []string{"provider capacity is near"}, errors.New("provider returned 404")); err != nil {
 		t.Fatal(err)
 	}
 	var retryWarnings string
@@ -347,7 +347,7 @@ func TestAdapterJournalFinishesUnsentIntentBeforeAuthorityAbort(t *testing.T) {
 	if err := journal.Finish(t.Context(), effect, adapter.Completion{Outcome: adapter.OutcomeFailure, State: state}); err != nil {
 		t.Fatal(err)
 	}
-	if err := runtime.Fail(t.Context(), job, now.Add(time.Second), adapter.ErrUnauthorized); err != nil {
+	if err := runtime.Fail(t.Context(), job, 0, now.Add(time.Second), adapter.ErrUnauthorized); err != nil {
 		t.Fatal(err)
 	}
 	var ledgerState, outcome string
@@ -395,7 +395,7 @@ func TestAdapterJournalFinishesUnsentIntentBeforeGenerationAbort(t *testing.T) {
 	if err := journal.Finish(t.Context(), effect, adapter.Completion{Outcome: adapter.OutcomeFailure, State: state}); err != nil {
 		t.Fatal(err)
 	}
-	if err := runtime.Fail(t.Context(), job, now.Add(time.Second), adapter.ErrSuperseded); err != nil {
+	if err := runtime.Fail(t.Context(), job, 0, now.Add(time.Second), adapter.ErrSuperseded); err != nil {
 		t.Fatal(err)
 	}
 	var fenceRows, aborts int
@@ -780,7 +780,7 @@ func TestAdapterDeadCredentialScrubTerminatesAndEnumeratesOrphans(t *testing.T) 
 	if _, err := runtime.LoadExecution(t.Context(), job); !errors.Is(err, adapter.ErrProviderAuth) {
 		t.Fatalf("LoadExecution() = %v, want terminal provider auth for revoked credential", err)
 	}
-	if err := runtime.Fail(t.Context(), job, now, adapter.ErrProviderAuth); err != nil {
+	if err := runtime.Fail(t.Context(), job, 0, now, adapter.ErrProviderAuth); err != nil {
 		t.Fatal(err)
 	}
 	var targetState, syncStatus, failureNames, outcome, payload string

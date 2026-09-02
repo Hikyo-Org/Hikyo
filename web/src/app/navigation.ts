@@ -324,10 +324,23 @@ export const SURFACES = defineSurfaceRegistry([
     mode: 'authenticated',
     chrome: 'shell',
   },
+  // Deployment adapters (#157): the multi-target synchronization surface.
+  // Project-scoped like machine access: an adapter is project-owned, and the
+  // sidebar's project context block fills the parameters from the route. The
+  // selected target is a `?target=` query parameter (an id, never a secret)
+  // so a reload and a shared link open the same detail.
+  {
+    id: 'adapters',
+    path: '/orgs/:org/projects/:project/adapters',
+    label: 'Deployment adapters',
+    section: 'project',
+    mode: 'authenticated',
+    chrome: 'shell',
+  },
   // Project settings addresses ONE project, exactly like the matrix, and is
   // project-scoped for the same reason (#567): the context block fills the
   // parameters from the route. Table order is sidebar order — matrix, machine
-  // access, project settings.
+  // access, deployment adapters, project settings.
   {
     id: 'project-settings',
     path: '/orgs/:org/projects/:project/settings',

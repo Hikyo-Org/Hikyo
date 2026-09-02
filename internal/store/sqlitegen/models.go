@@ -205,6 +205,11 @@ type AdapterTarget struct {
 	ProviderLeaseEffectID  sql.NullString
 	ProviderLeaseExpiresAt sql.NullString
 	CreatedAt              string
+	PausedAt               sql.NullString
+	LastAttemptedRevision  sql.NullInt64
+	LastAttemptedAt        sql.NullString
+	LastErrorClass         sql.NullString
+	DriftAttention         int64
 }
 
 type AdapterTargetKey struct {

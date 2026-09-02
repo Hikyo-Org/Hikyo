@@ -143,6 +143,84 @@ orphaned names. Remove targets while the PAT still authenticates. If a dead or
 revoked credential prevents scrub, Hikyo completes local teardown but reports
 the remote names as orphaned.
 
+## Multiple targets: selection, health, and control
+
+One published revision fans out to every target configured for its
+environment, across every adapter kind, through one immutable job per target
+pinned to that revision, the target's configuration generation, and the
+adapter's recorded authority. Targets never share a job: a failure, a pause,
+or a conflict at one destination cannot block, roll back, or falsely mark
+another target successful.
+
+**Selecting keys.** Membership is always an explicit set of immutable key ids.
+`--keys` names ids; `--names` names keys exactly; `--include` and `--exclude`
+are bounded glob patterns over key names (`DB_*`, `*_TEST`); `--classification`
+keeps only `secret` or `config` keys. Patterns and classification are resolved
+to ids when the target is saved and are not stored: a key created later that
+would have matched is never added on its own. `--exclude` narrows only what
+the patterns selected, never an explicit id or name. Widening the resolved set
+is a routing mutation and carries the full reauthentication ceremony.
+
+```sh
+hikyo adapter target add --adapter adp_123 --env prod --kind repository \
+  --owner acme --repo app --prefix PROD_ --include 'DB_*' --exclude '*_TEST' \
+  --classification secret
+```
+
+**Naming.** The per-target prefix is the one structural name mapping: every
+name the target writes is `prefix + canonical name`, validated whole against
+the provider grammar and collision-checked case-insensitively across the
+target and against every other target on the same destination. Values are
+never transformed. There is no per-key rename table by design; see the
+deployment-adapter ADR.
+
+**Health.** `adapter target list` and the target detail report one of:
+
+| Status | Meaning |
+| --- | --- |
+| `never` | No converge has run. |
+| `pending` | A converge is queued and not yet claimed. |
+| `converging` | A worker holds the job. |
+| `converged` | The destination holds `converged_revision`. |
+| `degraded` | The last attempt failed but an earlier revision converged; the destination still holds it. |
+| `failed` | The last attempt failed and nothing has converged yet. |
+| `paused` | An operator paused the target. |
+
+Beside the status: the last successful and last attempted revisions and time,
+a bounded error class (`auth`, `network`, `conflict`, `provider_limit`,
+`provider_ambiguous`, `refused`; never a provider response body), the retry
+time when a retry is queued, and `attention` when the destination disagrees
+with the ownership ledger in a way only an operator can settle (an unowned
+name in the way, a destination whose identity moved, orphaned names). Attention
+clears on the next successful converge.
+
+**Pause and resume.** `hikyo adapter target pause <target>` stops every push
+without deleting owned destination state: the active job is superseded, a
+worker still inside it is fenced, publishes skip the target, and a manual sync
+is refused. Pause narrows what Hikyo does and carries `manage-adapters` alone.
+`hikyo adapter target resume <target>` runs the sync ceremony, queues one
+catch-up converge, and prints the published revision it reaches.
+
+**Resync.** `hikyo adapter sync --target <target>` is the idempotent resync:
+newest wins, a second request supersedes the first, and neither bypasses
+adoption nor prunes beyond the ledger.
+
+**Removal** keeps the explicit retain-or-prune decision described above. The
+browser offers the same choice in a dialog with neither option preselected.
+
+**Operators.** `hikyo doctor` reports the instance-wide counts of targets that
+need attention, failed targets, paused targets, and queued jobs, and the same
+four label-free gauges appear on `/metrics` as `hikyo_adapter_targets_failed`,
+`hikyo_adapter_targets_paused`, `hikyo_adapter_targets_attention`, and
+`hikyo_adapter_jobs_queued`.
+
+**Crash windows.** If a worker dies between a push's INTENT and its OUTCOME,
+the next claim of that target settles the effect as OUTCOME `unknown`,
+correlated to the job that opened it; the ownership row stays presumed
+written and the retry converges it. On a multi-node installation every worker
+competes for jobs under the outbox lease; a worker that loses its lease can no
+longer push, mark success, retry, or scrub.
+
 ## Private origins and GHES
 
 Adapters deny private, loopback, link-local, documentation, and reserved

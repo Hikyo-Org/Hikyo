@@ -240,6 +240,10 @@ func NewOperational(ready ReadyChecker, healthService OperationalRetentionHealth
 			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricProjectStorageWarn, Help: "Whether project storage is above its warning threshold."}, func() float64 { return float64(storageWarn) }),
 			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricTLSCertNotAfter, Help: "Unix timestamp when the active TLS certificate expires."}, func() float64 { return float64(tlsNotAfter) }),
 			prometheus.NewCounterFunc(prometheus.CounterOpts{Name: MetricTLSReloadFailures, Help: "Total failed TLS certificate reloads."}, func() float64 { return float64(tlsReloadFailures) }),
+			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricAdapterTargetsFailed, Help: "Active deployment-adapter targets whose last attempt failed and that are not paused."}, func() float64 { return float64(health.Adapters.TargetsFailed) }),
+			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricAdapterTargetsPaused, Help: "Active deployment-adapter targets an operator has paused."}, func() float64 { return float64(health.Adapters.TargetsPaused) }),
+			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricAdapterTargetsAttention, Help: "Active deployment-adapter targets whose destination drifted from the ownership ledger and need an operator."}, func() float64 { return float64(health.Adapters.TargetsAttention) }),
+			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricAdapterJobsQueued, Help: "Deployment-adapter outbox jobs waiting to be claimed."}, func() float64 { return float64(health.Adapters.JobsQueued) }),
 		)
 		gatherers := prometheus.Gatherers{snapshot}
 		if metrics != nil {

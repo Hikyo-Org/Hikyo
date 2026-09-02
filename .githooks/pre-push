@@ -1,0 +1,22 @@
+#!/bin/sh
+set -eu
+
+_remote_name=$1
+repo_root=$(git rev-parse --show-toplevel)
+zero=0000000000000000000000000000000000000000
+base=refs/remotes/origin/main
+
+git rev-parse --verify "$base^{commit}" >/dev/null 2>&1 || {
+	printf 'pre-push: missing %s; fetch the remote main branch first\n' "$base" >&2
+	exit 1
+}
+
+while read -r local_ref local_oid _remote_ref _remote_oid; do
+	case "$local_ref:$local_oid" in
+		refs/heads/*:"$zero") continue ;;
+		refs/heads/*:*) ;;
+		*) continue ;;
+	esac
+
+	"$repo_root/scripts/ci/check-commit-signatures.sh" "$base" "$local_oid" "$repo_root"
+done

@@ -360,25 +360,27 @@ operations:
   rotateScanningKey:           {webui: instance-admin}
 
   # adapters
-  listAdapters:                {issue: 157}
-  createAdapter:               {issue: 157}
-  showAdapter:                 {issue: 157}
-  updateAdapterOrigin:         {issue: 157}
-  deleteAdapter:               {issue: 157}
-  showAdapterMove:             {issue: 157}
-  resumeAdapterMove:           {issue: 157}
-  cancelAdapterMove:           {issue: 157}
-  setAdapterCredential:        {issue: 157}
-  revokeAdapterCredential:     {issue: 157}
-  listAdapterTargets:          {issue: 157}
-  addAdapterTarget:            {issue: 157}
-  showAdapterTarget:           {issue: 157}
-  updateAdapterTarget:         {issue: 157}
-  removeAdapterTarget:         {issue: 157}
-  planAdapterTarget:           {issue: 157}
-  syncAdapterTarget:           {issue: 157}
-  testAdapterTarget:           {issue: 157}
-  adoptAdapterTargetNames:     {issue: 157}
+  listAdapters:                {webui: adapters}
+  createAdapter:               {webui: adapters}
+  showAdapter:                 {issue: 504}
+  updateAdapterOrigin:         {issue: 504}
+  deleteAdapter:               {issue: 504}
+  showAdapterMove:             {issue: 504}
+  resumeAdapterMove:           {issue: 504}
+  cancelAdapterMove:           {issue: 504}
+  setAdapterCredential:        {issue: 504}
+  revokeAdapterCredential:     {issue: 504}
+  listAdapterTargets:          {issue: 504}
+  addAdapterTarget:            {webui: adapters}
+  showAdapterTarget:           {webui: adapters}
+  updateAdapterTarget:         {webui: adapters}
+  removeAdapterTarget:         {webui: adapters}
+  planAdapterTarget:           {issue: 504}
+  syncAdapterTarget:           {webui: adapters}
+  pauseAdapterTarget:          {webui: adapters}
+  resumeAdapterTarget:         {webui: adapters}
+  testAdapterTarget:           {issue: 504}
+  adoptAdapterTargetNames:     {webui: adapters}
 
   # dynamic secrets (#147 shipped API+CLI+read-only status; management WebUI #595)
   listLeases:                  {webui: machine-access}

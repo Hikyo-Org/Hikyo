@@ -77,10 +77,51 @@ func (s adapterCredentialSource) read(ios IO) ([]byte, error) {
 func adapterBase(org, project string) string {
 	return api.PathPrefix + "/orgs/" + url.PathEscape(org) + "/projects/" + url.PathEscape(project)
 }
-func adapterTargetInput(env, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys string) (apigen.AdapterTargetInput, error) {
+
+// adapterKeySelection is the CLI's half of the configuration-time key
+// selection (#157). Names and patterns resolve server-side at save into the
+// explicit key-id subset; nothing here is stored, so a key created later that
+// would have matched is not added.
+type adapterKeySelection struct {
+	names, include, exclude, classification string
+}
+
+func (s adapterKeySelection) empty() bool {
+	return s.names == "" && s.include == "" && s.exclude == "" && s.classification == ""
+}
+
+func (s adapterKeySelection) body() *apigen.AdapterKeySelection {
+	if s.empty() {
+		return nil
+	}
+	out := &apigen.AdapterKeySelection{}
+	if names := splitAdapterKeys(s.names); len(names) != 0 {
+		out.Names = &names
+	}
+	if include := splitAdapterKeys(s.include); len(include) != 0 {
+		out.Include = &include
+	}
+	if exclude := splitAdapterKeys(s.exclude); len(exclude) != 0 {
+		out.Exclude = &exclude
+	}
+	if s.classification != "" {
+		classification := apigen.AdapterKeySelectionClassification(s.classification)
+		out.Classification = &classification
+	}
+	return out
+}
+
+func (s *adapterKeySelection) flags(fs *flag.FlagSet) {
+	fs.StringVar(&s.names, "names", "", "comma-separated exact key names, resolved to ids at save")
+	fs.StringVar(&s.include, "include", "", "comma-separated key-name glob patterns, resolved to ids at save; later keys are not added")
+	fs.StringVar(&s.exclude, "exclude", "", "comma-separated key-name glob patterns removed from the pattern selection")
+	fs.StringVar(&s.classification, "classification", "", "keep only secret or config keys from the pattern selection")
+}
+
+func adapterTargetInput(env, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys string, selection adapterKeySelection) (apigen.AdapterTargetInput, error) {
 	ids := splitAdapterKeys(keys)
-	if env == "" || kind == "" || owner == "" || len(ids) == 0 {
-		return apigen.AdapterTargetInput{}, failf(ExitUsage, "target requires --env, --kind, --owner, and a non-empty --keys list")
+	if env == "" || kind == "" || owner == "" || (len(ids) == 0 && selection.empty()) {
+		return apigen.AdapterTargetInput{}, failf(ExitUsage, "target requires --env, --kind, --owner, and keys via --keys, --names, --include, or --classification")
 	}
 	repositoryIDs, err := splitAdapterRepositoryIDs(selectedRepositories)
 	if err != nil {
@@ -105,7 +146,7 @@ func adapterTargetInput(env, kind, owner, repo, destinationEnvironment, visibili
 	default:
 		return apigen.AdapterTargetInput{}, failf(ExitUsage, "--kind must be repository, organization, or environment")
 	}
-	out := apigen.AdapterTargetInput{EnvironmentId: apigen.ID(env), DestinationKind: apigen.AdapterDestinationKind(kind), DestinationOwner: owner, DestinationName: repo, DestinationEnvironment: destinationEnvironment, Visibility: apigen.AdapterTargetInputVisibility(visibility), SelectedRepositoryIds: repositoryIDs, NamePrefix: prefix}
+	out := apigen.AdapterTargetInput{EnvironmentId: apigen.ID(env), DestinationKind: apigen.AdapterDestinationKind(kind), DestinationOwner: owner, DestinationName: repo, DestinationEnvironment: destinationEnvironment, Visibility: apigen.AdapterTargetInputVisibility(visibility), SelectedRepositoryIds: repositoryIDs, NamePrefix: prefix, KeyIds: []apigen.ID{}, KeySelection: selection.body()}
 	for _, id := range ids {
 		out.KeyIds = append(out.KeyIds, apigen.ID(id))
 	}
@@ -191,6 +232,7 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 	var format, provider, origin, target, moveID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys string
 	var keepRemote, cancelMove bool
 	var source adapterCredentialSource
+	var selection adapterKeySelection
 	st, flags, err := parseCommon("adapter "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
 		if sub == "create" || sub == "update" {
@@ -213,6 +255,7 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 			fs.StringVar(&selectedRepositories, "selected-repository-ids", "", "comma-separated GitHub numeric repository ids")
 			fs.StringVar(&prefix, "prefix", "", "structural name prefix")
 			fs.StringVar(&keys, "keys", "", "comma-separated immutable key ids")
+			selection.flags(fs)
 		}
 		if sub == "create" || sub == "update" {
 			fs.BoolVar(&source.stdin, "stdin", false, "read credential from stdin")
@@ -243,7 +286,7 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		return failf(ExitUsage, "adapter create requires --origin")
 	}
 	if sub == "update" {
-		targetFields := kind != "" || owner != "" || repo != "" || destinationEnvironment != "" || visibility != "" || selectedRepositories != "" || prefix != "" || keys != "" || flags.Env != ""
+		targetFields := kind != "" || owner != "" || repo != "" || destinationEnvironment != "" || visibility != "" || selectedRepositories != "" || prefix != "" || keys != "" || !selection.empty() || flags.Env != ""
 		credentialFields := source.stdin || source.file != ""
 		if cancelMove {
 			if moveID == "" || target != "" || origin != "" || targetFields || credentialFields || keepRemote {
@@ -311,7 +354,7 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		if err != nil {
 			return err
 		}
-		input, err := adapterTargetInput(envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys)
+		input, err := adapterTargetInput(envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection)
 		if err != nil {
 			return err
 		}
@@ -377,7 +420,7 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		if err != nil {
 			return err
 		}
-		input, err := adapterTargetInput(envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys)
+		input, err := adapterTargetInput(envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection)
 		if err != nil {
 			return err
 		}
@@ -520,12 +563,13 @@ func resumeAdapterTargetBody(targetID string, input apigen.AdapterTargetInput) a
 }
 
 func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
-	sub, rest, err := subverb("adapter target", args, "add", "list", "show", "remove")
+	sub, rest, err := subverb("adapter target", args, "add", "list", "show", "remove", "pause", "resume")
 	if err != nil {
 		return err
 	}
 	var adapterID, format, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, outFormat string
 	var keep bool
+	var selection adapterKeySelection
 	st, flags, err := parseCommon("adapter target "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&adapterID, "adapter", "", "adapter id")
 		fs.StringVar(&outFormat, "o", "table", "output format: table or json")
@@ -541,6 +585,7 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 			fs.StringVar(&selectedRepositories, "selected-repository-ids", "", "comma-separated GitHub numeric repository ids")
 			fs.StringVar(&prefix, "prefix", "", "structural prefix")
 			fs.StringVar(&keys, "keys", "", "comma-separated key ids")
+			selection.flags(fs)
 		}
 		if sub == "remove" {
 			fs.BoolVar(&keep, "keep-remote", false, "release custody without deleting remote names")
@@ -553,7 +598,7 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
-	if sub == "show" || sub == "remove" {
+	if sub == "show" || sub == "remove" || sub == "pause" || sub == "resume" {
 		if len(flags.positionals) != 1 {
 			return failf(ExitUsage, "adapter target %s takes one positional target", sub)
 		}
@@ -591,7 +636,7 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 		if err := runAdapterCeremony(ctx, ios, client, st, artifact, base, adapterID, "adapter.configure", envID); err != nil {
 			return err
 		}
-		input, err := adapterTargetInput(envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys)
+		input, err := adapterTargetInput(envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection)
 		if err != nil {
 			return err
 		}
@@ -630,6 +675,30 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 			return err
 		}
 		return Render(ios.Stdout, f, teardownTable(out))
+	case "pause":
+		// Pause narrows what Hikyo does at the destination: manage-adapters
+		// alone, no ceremony, exactly like credential revoke.
+		var out apigen.AdapterTarget
+		if err := client.Do(ctx, http.MethodPost, base+"/adapter-targets/"+url.PathEscape(flags.positional())+"/pause", nil, &out); err != nil {
+			return err
+		}
+		return Render(ios.Stdout, f, targetTable(apigen.AdapterTargetList{Items: []apigen.AdapterTarget{out}}))
+	case "resume":
+		// Resume pushes again, so it runs the manual-sync ceremony over the
+		// adapter's environment set before the request.
+		target := flags.positional()
+		var detail apigen.AdapterTargetDetail
+		if err := client.Do(ctx, http.MethodGet, base+"/adapter-targets/"+url.PathEscape(target), nil, &detail); err != nil {
+			return err
+		}
+		if err := runAdapterCeremony(ctx, ios, client, st, artifact, base, string(detail.Target.AdapterId), "adapter.sync"); err != nil {
+			return err
+		}
+		var out apigen.AdapterResume
+		if err := client.Do(ctx, http.MethodPost, base+"/adapter-targets/"+url.PathEscape(target)+"/resume", nil, &out); err != nil {
+			return err
+		}
+		return Render(ios.Stdout, f, Table{Columns: []string{"JOB", "GENERATION", "CATCH-UP REVISION"}, Rows: [][]string{{string(out.JobId), fmt.Sprint(out.Generation), fmt.Sprint(out.Revision)}}, JSON: out})
 	}
 	return nil
 }
@@ -795,9 +864,25 @@ func targetTable(list apigen.AdapterTargetList) Table {
 		if t.ConvergedRevision != nil {
 			revision = fmt.Sprint(*t.ConvergedRevision)
 		}
-		rows = append(rows, []string{string(t.Id), string(t.EnvironmentId), destination, t.NamePrefix, string(t.SyncStatus), revision, strings.Join(t.FailureNames, ","), strings.Join(t.Warnings, ","), strings.Join(adapterConflictNames(t.Conflicts), ",")})
+		attempted := ""
+		if t.LastAttemptedRevision != nil {
+			attempted = fmt.Sprint(*t.LastAttemptedRevision)
+		}
+		retryAt := ""
+		if t.RetryAt != nil {
+			retryAt = t.RetryAt.UTC().Format(time.RFC3339)
+		}
+		attention := ""
+		if t.DriftAttention {
+			attention = "yes"
+		}
+		names := make([]string, 0, len(t.Keys))
+		for _, key := range t.Keys {
+			names = append(names, key.Name)
+		}
+		rows = append(rows, []string{string(t.Id), string(t.EnvironmentId), destination, t.NamePrefix, string(t.SyncStatus), revision, attempted, string(t.LastErrorClass), retryAt, attention, strings.Join(names, ","), strings.Join(t.FailureNames, ","), strings.Join(t.Warnings, ","), strings.Join(adapterConflictNames(t.Conflicts), ",")})
 	}
-	return Table{Columns: []string{"ID", "ENVIRONMENT", "DESTINATION", "PREFIX", "STATUS", "REVISION", "FAILURES", "WARNINGS", "CONFLICTS"}, Rows: rows, JSON: list}
+	return Table{Columns: []string{"ID", "ENVIRONMENT", "DESTINATION", "PREFIX", "STATUS", "REVISION", "ATTEMPTED", "ERROR", "RETRY AT", "ATTENTION", "KEYS", "FAILURES", "WARNINGS", "CONFLICTS"}, Rows: rows, JSON: list}
 }
 
 func adapterDetailTable(in apigen.Adapter) Table {
@@ -815,12 +900,16 @@ func adapterDetailTable(in apigen.Adapter) Table {
 		if target.ConvergedRevision != nil {
 			revision = fmt.Sprint(*target.ConvergedRevision)
 		}
-		rows = append(rows, []string{string(in.Id), in.Origin, expires, string(target.Id), string(target.EnvironmentId), destination, string(target.SyncStatus), revision, strings.Join(target.FailureNames, ","), strings.Join(target.Warnings, ","), strings.Join(adapterConflictNames(target.Conflicts), ",")})
+		attention := ""
+		if target.DriftAttention {
+			attention = "yes"
+		}
+		rows = append(rows, []string{string(in.Id), in.Origin, expires, string(target.Id), string(target.EnvironmentId), destination, string(target.SyncStatus), revision, string(target.LastErrorClass), attention, strings.Join(target.FailureNames, ","), strings.Join(target.Warnings, ","), strings.Join(adapterConflictNames(target.Conflicts), ",")})
 	}
 	if len(rows) == 0 {
-		rows = append(rows, []string{string(in.Id), in.Origin, "", "", "", "", "", "", "", "", ""})
+		rows = append(rows, []string{string(in.Id), in.Origin, "", "", "", "", "", "", "", "", "", "", ""})
 	}
-	return Table{Columns: []string{"ADAPTER", "ORIGIN", "CREDENTIAL EXPIRES", "TARGET", "ENVIRONMENT", "DESTINATION", "STATUS", "REVISION", "FAILURES", "WARNINGS", "CONFLICTS"}, Rows: rows, JSON: in}
+	return Table{Columns: []string{"ADAPTER", "ORIGIN", "CREDENTIAL EXPIRES", "TARGET", "ENVIRONMENT", "DESTINATION", "STATUS", "REVISION", "ERROR", "ATTENTION", "FAILURES", "WARNINGS", "CONFLICTS"}, Rows: rows, JSON: in}
 }
 
 func adapterConflictNames(artifacts []apigen.AdapterConflictArtifact) []string {

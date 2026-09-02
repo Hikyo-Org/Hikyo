@@ -191,6 +191,10 @@ func TestInvariant06OperationRegistryCompleteness(t *testing.T) {
 		// operator read reaches it via retention.health-read, the scheduler
 		// jobs and the /metrics scrape via the mint site.
 		authz.StoreBackupStateGet: true,
+		// The deployment-adapter health counts are dual-use the same way (#157):
+		// the audited operator read reaches them via retention.health-read, the
+		// unauthenticated /metrics scrape via the scheduler mint site.
+		authz.StoreAdaptersHealthCounts: true,
 	}
 	seenShared := map[authz.StoreOp]bool{}
 	for method := range expected {
@@ -370,6 +374,10 @@ func TestInvariant11SystemProofEnumeration(t *testing.T) {
 		authz.StoreBackupStateSetPruneSuccess:  true,
 		authz.StoreBackupStateSetDrill:         true,
 		authz.StoreValuesSampleSecretEntry:     true,
+		// The /metrics deployment-adapter gauges and `hikyo doctor` read the
+		// instance-wide adapter health counts under scheduler authority (#157):
+		// a reviewed widening, pinned beside the storage high-water.
+		authz.StoreAdaptersHealthCounts: true,
 	}
 	for site, ops := range sites {
 		if !want[site] {

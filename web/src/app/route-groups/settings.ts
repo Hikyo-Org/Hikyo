@@ -1,4 +1,5 @@
 export { AccountSecurity } from '../../routes/AccountSecurity.tsx';
+export { Adapters } from '../../routes/Adapters.tsx';
 export { Audit } from '../../routes/Audit.tsx';
 export { ChangeApprovals } from '../../routes/ChangeApprovals.tsx';
 export { InstanceAdmin } from '../../routes/InstanceAdmin.tsx';

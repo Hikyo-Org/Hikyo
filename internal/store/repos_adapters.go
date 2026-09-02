@@ -43,18 +43,46 @@ func (r pgRepos) Adapters() AdapterRepo {
 func scanAdapterTarget(row interface{ Scan(...any) error }) (AdapterTarget, error) {
 	var target AdapterTarget
 	var failureRaw, warningRaw, selectedRaw []byte
+	var pausedAt, lastAttemptedAt, nextAttemptAt adapterStoredTime
+	var errorClass sql.NullString
+	var driftAttention any
+	var attemptCount int64
 	err := row.Scan(
 		&target.ID, &target.AdapterID, &target.EnvironmentID, &target.Provider, &target.Origin,
 		&target.DestinationKind, &target.DestinationOwner, &target.DestinationName, &target.DestinationEnvironment,
 		&target.DestinationID, &target.RepositoryID, &target.Visibility, &selectedRaw,
 		&target.NamePrefix, &target.Generation, &target.State,
 		&target.SyncStatus, &target.ConvergedRevision, &failureRaw, &warningRaw, &target.AuthorityPrincipalID,
+		&pausedAt, &target.LastAttemptedRevision, &lastAttemptedAt, &errorClass, &driftAttention,
+		&target.ActiveJobState, &nextAttemptAt, &attemptCount,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
 			return AdapterTarget{}, ErrNotFound
 		}
 		return AdapterTarget{}, err
+	}
+	if target.PausedAt, err = pausedAt.Time(); err != nil {
+		return AdapterTarget{}, err
+	}
+	if target.LastAttemptedAt, err = lastAttemptedAt.Time(); err != nil {
+		return AdapterTarget{}, err
+	}
+	target.LastErrorClass = adapter.ErrorClass(errorClass.String)
+	switch value := driftAttention.(type) {
+	case bool:
+		target.DriftAttention = value
+	case int64:
+		target.DriftAttention = value != 0
+	default:
+		return AdapterTarget{}, fmt.Errorf("store: adapter target drift_attention has unsupported type %T", driftAttention)
+	}
+	// A queued job with at least one attempt behind it is waiting for its
+	// retry time; a fresh job's next_attempt_at is merely its enqueue time.
+	if target.ActiveJobState == "queued" && attemptCount > 0 {
+		if target.RetryAt, err = nextAttemptAt.Time(); err != nil {
+			return AdapterTarget{}, err
+		}
 	}
 	if len(failureRaw) != 0 {
 		if err := json.Unmarshal(failureRaw, &target.FailureNames); err != nil {
@@ -90,8 +118,8 @@ func (r adapterQueries) Target(ctx context.Context, p authz.Proof, targetID stri
 		return AdapterTarget{}, err
 	}
 	query := r.db.SQL(
-		`SELECT `+adapterTargetColumns+` FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=? AND t.org_id=? AND t.project_id=?`,
-		`SELECT `+adapterTargetColumns+` FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=$1 AND t.org_id=$2 AND t.project_id=$3`)
+		`SELECT `+adapterTargetColumns+adapterTargetFrom+` WHERE t.id=? AND t.org_id=? AND t.project_id=?`,
+		`SELECT `+adapterTargetColumns+adapterTargetFrom+` WHERE t.id=$1 AND t.org_id=$2 AND t.project_id=$3`)
 	return scanAdapterTarget(r.db.QueryRow(ctx, query, targetID, chain.Org, chain.Project))
 }
 
@@ -226,8 +254,8 @@ func (r adapterQueries) PlanMaterial(ctx context.Context, p authz.Proof, targetI
 		return AdapterPlanMaterial{}, err
 	}
 	targetQuery := r.db.SQL(
-		`SELECT `+adapterTargetColumns+` FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=? AND t.org_id=? AND t.project_id=?`,
-		`SELECT `+adapterTargetColumns+` FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=$1 AND t.org_id=$2 AND t.project_id=$3`)
+		`SELECT `+adapterTargetColumns+adapterTargetFrom+` WHERE t.id=? AND t.org_id=? AND t.project_id=?`,
+		`SELECT `+adapterTargetColumns+adapterTargetFrom+` WHERE t.id=$1 AND t.org_id=$2 AND t.project_id=$3`)
 	target, err := scanAdapterTarget(r.db.QueryRow(ctx, targetQuery, targetID, chain.Org, chain.Project))
 	if err != nil {
 		return AdapterPlanMaterial{}, err
@@ -639,8 +667,10 @@ func (r adapterQueries) EnqueuePublished(ctx context.Context, p authz.Proof, at 
 		return nil, err
 	}
 	query := r.db.SQL(
-		`SELECT t.id,t.environment_id,a.authority_principal_id,t.generation,COALESCE(t.active_job_id,'') FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.org_id=? AND t.project_id=? AND t.environment_id=? AND t.state='active' ORDER BY t.id`,
-		`SELECT t.id,t.environment_id,a.authority_principal_id,t.generation,COALESCE(t.active_job_id,'') FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.org_id=$1 AND t.project_id=$2 AND t.environment_id=$3 AND t.state='active' ORDER BY t.id FOR UPDATE OF t`)
+		// A paused target is skipped, not queued: resume enqueues its own
+		// catch-up converge and names the revision it reaches (#157).
+		`SELECT t.id,t.environment_id,a.authority_principal_id,t.generation,COALESCE(t.active_job_id,'') FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.org_id=? AND t.project_id=? AND t.environment_id=? AND t.state='active' AND t.paused_at IS NULL ORDER BY t.id`,
+		`SELECT t.id,t.environment_id,a.authority_principal_id,t.generation,COALESCE(t.active_job_id,'') FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.org_id=$1 AND t.project_id=$2 AND t.environment_id=$3 AND t.state='active' AND t.paused_at IS NULL ORDER BY t.id FOR UPDATE OF t`)
 	rows, err := r.db.Query(ctx, query, chain.Org, chain.Project, chain.Env)
 	if err != nil {
 		return nil, err
@@ -729,11 +759,11 @@ func enqueueManualTarget(ctx context.Context, db adapterDB, chain domain.Scope, 
 		return AdapterEnqueueResult{}, fmt.Errorf("%w: manual adapter sync requires target and authority", domain.ErrInvalid)
 	}
 	var target publishedAdapterTarget
-	var providerBusy int
+	var providerBusy, paused int
 	lookup := db.SQL(
-		`SELECT t.id,t.environment_id,t.generation,COALESCE(t.active_job_id,''),CASE WHEN t.provider_lease_job_id IS NOT NULL AND t.provider_lease_expires_at>? THEN 1 ELSE 0 END FROM adapter_targets t WHERE t.id=? AND t.org_id=? AND t.project_id=? AND t.state='active'`,
-		`SELECT t.id,t.environment_id,t.generation,COALESCE(t.active_job_id,''),CASE WHEN t.provider_lease_job_id IS NOT NULL AND t.provider_lease_expires_at>$1 THEN 1 ELSE 0 END FROM adapter_targets t WHERE t.id=$2 AND t.org_id=$3 AND t.project_id=$4 AND t.state='active' FOR UPDATE`)
-	err := db.QueryRow(ctx, lookup, db.Stamp(at), targetID, chain.Org, chain.Project).Scan(&target.id, &target.environmentID, &target.generation, &target.activeJob, &providerBusy)
+		`SELECT t.id,t.environment_id,t.generation,COALESCE(t.active_job_id,''),CASE WHEN t.provider_lease_job_id IS NOT NULL AND t.provider_lease_expires_at>? THEN 1 ELSE 0 END,CASE WHEN t.paused_at IS NULL THEN 0 ELSE 1 END FROM adapter_targets t WHERE t.id=? AND t.org_id=? AND t.project_id=? AND t.state='active'`,
+		`SELECT t.id,t.environment_id,t.generation,COALESCE(t.active_job_id,''),CASE WHEN t.provider_lease_job_id IS NOT NULL AND t.provider_lease_expires_at>$1 THEN 1 ELSE 0 END,CASE WHEN t.paused_at IS NULL THEN 0 ELSE 1 END FROM adapter_targets t WHERE t.id=$2 AND t.org_id=$3 AND t.project_id=$4 AND t.state='active' FOR UPDATE`)
+	err := db.QueryRow(ctx, lookup, db.Stamp(at), targetID, chain.Org, chain.Project).Scan(&target.id, &target.environmentID, &target.generation, &target.activeJob, &providerBusy, &paused)
 	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
 		return AdapterEnqueueResult{}, ErrNotFound
 	}
@@ -743,12 +773,146 @@ func enqueueManualTarget(ctx context.Context, db adapterDB, chain domain.Scope, 
 	if providerBusy != 0 {
 		return AdapterEnqueueResult{}, adapter.ErrProviderBusy
 	}
+	if paused != 0 {
+		return AdapterEnqueueResult{}, ErrAdapterTargetPaused
+	}
 	target.authority = authorityPrincipalID
 	results, err := enqueuePublishedTargets(ctx, db, chain, []publishedAdapterTarget{target}, at)
 	if err != nil {
 		return AdapterEnqueueResult{}, err
 	}
 	return results[0], nil
+}
+
+// ErrAdapterTargetPaused refuses a push-shaped act on a paused target. Pause
+// is loud: resume is the one path back to pushing.
+var ErrAdapterTargetPaused = fmt.Errorf("%w: adapter target is paused; resume it to push", domain.ErrConflict)
+
+func (r adapterQueries) PauseTarget(ctx context.Context, p authz.Proof, targetID string, at time.Time) (AdapterPauseResult, error) {
+	chain, err := authz.Verify(p, authz.StoreAdaptersPauseTarget, r.tok)
+	if err != nil {
+		return AdapterPauseResult{}, err
+	}
+	if targetID == "" {
+		return AdapterPauseResult{}, fmt.Errorf("%w: pause requires a target", domain.ErrInvalid)
+	}
+	var target adapterTeardownTarget
+	var paused int
+	query := r.db.SQL(
+		`SELECT t.adapter_id,t.id,t.environment_id,a.authority_principal_id,t.generation,COALESCE(t.active_job_id,''),CASE WHEN t.provider_lease_job_id IS NOT NULL AND t.provider_lease_expires_at>? THEN 1 ELSE 0 END,CASE WHEN t.paused_at IS NULL THEN 0 ELSE 1 END FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=? AND t.org_id=? AND t.project_id=? AND t.state='active'`,
+		`SELECT t.adapter_id,t.id,t.environment_id,a.authority_principal_id,t.generation,COALESCE(t.active_job_id,''),CASE WHEN t.provider_lease_job_id IS NOT NULL AND t.provider_lease_expires_at>$1 THEN 1 ELSE 0 END,CASE WHEN t.paused_at IS NULL THEN 0 ELSE 1 END FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=$2 AND t.org_id=$3 AND t.project_id=$4 AND t.state='active' FOR UPDATE OF t`)
+	err = r.db.QueryRow(ctx, query, r.db.Stamp(at), targetID, chain.Org, chain.Project).Scan(
+		&target.adapterID, &target.targetID, &target.environmentID, &target.authority, &target.generation, &target.activeJob, &target.providerBusy, &paused)
+	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
+		return AdapterPauseResult{}, ErrNotFound
+	}
+	if err != nil {
+		return AdapterPauseResult{}, err
+	}
+	result := AdapterPauseResult{TargetID: target.targetID, AuthorityPrincipalID: target.authority, Generation: target.generation}
+	if paused != 0 {
+		result.AlreadyPaused = true
+		return result, nil
+	}
+	if target.providerBusy == 1 {
+		return AdapterPauseResult{}, adapter.ErrProviderBusy
+	}
+	stamp := r.db.Stamp(at)
+	if target.activeJob != "" {
+		supersede := r.db.SQL(
+			`UPDATE adapter_outbox SET state='superseded',finished_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND target_id=? AND org_id=? AND project_id=? AND environment_id=? AND state IN ('queued','running')`,
+			`UPDATE adapter_outbox SET state='superseded',finished_at=$1,lease_owner=NULL,lease_expires_at=NULL WHERE id=$2 AND target_id=$3 AND org_id=$4 AND project_id=$5 AND environment_id=$6 AND state IN ('queued','running')`)
+		rows, err := r.db.Exec(ctx, supersede, stamp, target.activeJob, target.targetID, chain.Org, chain.Project, target.environmentID)
+		if err != nil {
+			return AdapterPauseResult{}, err
+		}
+		if rows == 1 {
+			result.SupersededJobID = target.activeJob
+		}
+	}
+	// The generation bump fences a worker still inside the superseded job:
+	// its next Gate, Prepare, or Finish sees a generation it does not hold.
+	result.Generation = target.generation + 1
+	update := r.db.SQL(
+		`UPDATE adapter_targets SET paused_at=?,generation=?,active_job_id=NULL,provider_lease_job_id=NULL,provider_lease_effect_id=NULL,provider_lease_expires_at=NULL WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND generation=? AND state='active' AND paused_at IS NULL AND (provider_lease_job_id IS NULL OR provider_lease_expires_at<=?)`,
+		`UPDATE adapter_targets SET paused_at=$1,generation=$2,active_job_id=NULL,provider_lease_job_id=NULL,provider_lease_effect_id=NULL,provider_lease_expires_at=NULL WHERE id=$3 AND org_id=$4 AND project_id=$5 AND environment_id=$6 AND generation=$7 AND state='active' AND paused_at IS NULL AND (provider_lease_job_id IS NULL OR provider_lease_expires_at<=$8)`)
+	rows, err := r.db.Exec(ctx, update, stamp, result.Generation, target.targetID, chain.Org, chain.Project, target.environmentID, target.generation, stamp)
+	if err != nil {
+		return AdapterPauseResult{}, err
+	}
+	if rows != 1 {
+		return AdapterPauseResult{}, adapter.ErrProviderBusy
+	}
+	return result, nil
+}
+
+func (r adapterQueries) ResumeTarget(ctx context.Context, p authz.Proof, targetID, authorityPrincipalID string, at time.Time) (AdapterResumeResult, error) {
+	chain, err := authz.Verify(p, authz.StoreAdaptersResumeTarget, r.tok)
+	if err != nil {
+		return AdapterResumeResult{}, err
+	}
+	if targetID == "" || authorityPrincipalID == "" {
+		return AdapterResumeResult{}, fmt.Errorf("%w: resume requires target and authority", domain.ErrInvalid)
+	}
+	var target publishedAdapterTarget
+	var providerBusy, paused int
+	lookup := r.db.SQL(
+		`SELECT t.id,t.environment_id,t.generation,COALESCE(t.active_job_id,''),CASE WHEN t.provider_lease_job_id IS NOT NULL AND t.provider_lease_expires_at>? THEN 1 ELSE 0 END,CASE WHEN t.paused_at IS NULL THEN 0 ELSE 1 END FROM adapter_targets t WHERE t.id=? AND t.org_id=? AND t.project_id=? AND t.state='active'`,
+		`SELECT t.id,t.environment_id,t.generation,COALESCE(t.active_job_id,''),CASE WHEN t.provider_lease_job_id IS NOT NULL AND t.provider_lease_expires_at>$1 THEN 1 ELSE 0 END,CASE WHEN t.paused_at IS NULL THEN 0 ELSE 1 END FROM adapter_targets t WHERE t.id=$2 AND t.org_id=$3 AND t.project_id=$4 AND t.state='active' FOR UPDATE`)
+	err = r.db.QueryRow(ctx, lookup, r.db.Stamp(at), targetID, chain.Org, chain.Project).Scan(&target.id, &target.environmentID, &target.generation, &target.activeJob, &providerBusy, &paused)
+	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
+		return AdapterResumeResult{}, ErrNotFound
+	}
+	if err != nil {
+		return AdapterResumeResult{}, err
+	}
+	if paused == 0 {
+		return AdapterResumeResult{}, fmt.Errorf("%w: adapter target is not paused", domain.ErrConflict)
+	}
+	if providerBusy != 0 {
+		return AdapterResumeResult{}, adapter.ErrProviderBusy
+	}
+	clear := r.db.SQL(
+		`UPDATE adapter_targets SET paused_at=NULL WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND generation=? AND paused_at IS NOT NULL`,
+		`UPDATE adapter_targets SET paused_at=NULL WHERE id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4 AND generation=$5 AND paused_at IS NOT NULL`)
+	rows, err := r.db.Exec(ctx, clear, target.id, chain.Org, chain.Project, target.environmentID, target.generation)
+	if err != nil {
+		return AdapterResumeResult{}, err
+	}
+	if rows != 1 {
+		return AdapterResumeResult{}, adapter.ErrSuperseded
+	}
+	target.authority = authorityPrincipalID
+	results, err := enqueuePublishedTargets(ctx, r.db, chain, []publishedAdapterTarget{target}, at)
+	if err != nil {
+		return AdapterResumeResult{}, err
+	}
+	out := AdapterResumeResult{Enqueue: results[0]}
+	revisionQuery := r.db.SQL(
+		`SELECT COALESCE(MAX(revision),0) FROM snapshots WHERE org_id=? AND project_id=? AND environment_id=? AND payload_present=1`,
+		`SELECT COALESCE(MAX(revision),0) FROM snapshots WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND payload_present=true`)
+	if err := r.db.QueryRow(ctx, revisionQuery, chain.Org, chain.Project, target.environmentID).Scan(&out.Revision); err != nil {
+		return AdapterResumeResult{}, err
+	}
+	return out, nil
+}
+
+// HealthCounts is the label-free operator read (#157). It spans every tenant
+// on purpose: the gauges and doctor report how many targets need a human, not
+// which. Only active targets count; a tombstoned target's orphans were
+// reported loudly at removal time.
+func (r adapterQueries) HealthCounts(ctx context.Context, p authz.Proof) (AdapterHealthCounts, error) {
+	if _, err := authz.Verify(p, authz.StoreAdaptersHealthCounts, r.tok); err != nil {
+		return AdapterHealthCounts{}, err
+	}
+	query := r.db.SQL(
+		`SELECT (SELECT COUNT(*) FROM adapter_targets WHERE state='active' AND sync_status='failed' AND paused_at IS NULL),(SELECT COUNT(*) FROM adapter_targets WHERE state='active' AND paused_at IS NOT NULL),(SELECT COUNT(*) FROM adapter_targets WHERE state='active' AND drift_attention=1),(SELECT COUNT(*) FROM adapter_outbox WHERE state='queued')`,
+		`SELECT (SELECT COUNT(*) FROM adapter_targets WHERE state='active' AND sync_status='failed' AND paused_at IS NULL),(SELECT COUNT(*) FROM adapter_targets WHERE state='active' AND paused_at IS NOT NULL),(SELECT COUNT(*) FROM adapter_targets WHERE state='active' AND drift_attention=TRUE),(SELECT COUNT(*) FROM adapter_outbox WHERE state='queued')`)
+	var out AdapterHealthCounts
+	if err := r.db.QueryRow(ctx, query).Scan(&out.TargetsFailed, &out.TargetsPaused, &out.TargetsAttention, &out.JobsQueued); err != nil {
+		return AdapterHealthCounts{}, err
+	}
+	return out, nil
 }
 
 type adapterTeardownTarget struct {

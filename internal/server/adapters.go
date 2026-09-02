@@ -11,6 +11,16 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
+// int64List renders an id list as a JSON array, never null: the contract's
+// selected_repository_ids is a required array, so an empty repository target
+// must serialize as [] (#157).
+func int64List(v []int64) []int64 {
+	if len(v) == 0 {
+		return []int64{}
+	}
+	return append([]int64{}, v...)
+}
+
 func adapterScope(org apigen.OrgID, project apigen.ProjectID) domain.Scope {
 	return domain.Scope{Org: domain.OrgID(org), Project: domain.ProjectID(project)}
 }
@@ -20,7 +30,35 @@ func targetInput(in apigen.AdapterTargetInput) service.AdapterTargetInput {
 	for i := range in.KeyIds {
 		keys[i] = string(in.KeyIds[i])
 	}
-	return service.AdapterTargetInput{EnvironmentID: string(in.EnvironmentId), DestinationKind: string(in.DestinationKind), DestinationOwner: in.DestinationOwner, DestinationName: in.DestinationName, DestinationEnvironment: in.DestinationEnvironment, Visibility: string(in.Visibility), SelectedRepositoryIDs: append([]int64(nil), in.SelectedRepositoryIds...), NamePrefix: in.NamePrefix, KeyIDs: keys}
+	return service.AdapterTargetInput{EnvironmentID: string(in.EnvironmentId), DestinationKind: string(in.DestinationKind), DestinationOwner: in.DestinationOwner, DestinationName: in.DestinationName, DestinationEnvironment: in.DestinationEnvironment, Visibility: string(in.Visibility), SelectedRepositoryIDs: append([]int64(nil), in.SelectedRepositoryIds...), NamePrefix: in.NamePrefix, KeyIDs: keys, KeySelection: keySelection(in.KeySelection)}
+}
+
+func keySelection(in *apigen.AdapterKeySelection) *service.AdapterKeySelection {
+	if in == nil {
+		return nil
+	}
+	out := &service.AdapterKeySelection{}
+	if in.Names != nil {
+		out.Names = append([]string(nil), *in.Names...)
+	}
+	if in.Include != nil {
+		out.Include = append([]string(nil), *in.Include...)
+	}
+	if in.Exclude != nil {
+		out.Exclude = append([]string(nil), *in.Exclude...)
+	}
+	if in.Classification != nil {
+		out.Classification = string(*in.Classification)
+	}
+	return out
+}
+
+func adapterTargetKeys(in []service.AdapterTargetKey) []apigen.AdapterTargetKey {
+	out := make([]apigen.AdapterTargetKey, 0, len(in))
+	for _, key := range in {
+		out = append(out, apigen.AdapterTargetKey{KeyId: apigen.ID(key.ID), Name: key.Name, Classification: apigen.AdapterTargetKeyClassification(key.Classification)})
+	}
+	return out
 }
 
 func adapterConflictResponses(in []service.AdapterConflictArtifact) []apigen.AdapterConflictArtifact {
@@ -36,7 +74,26 @@ func adapterConflictResponses(in []service.AdapterConflictArtifact) []apigen.Ada
 }
 
 func adapterTargetResponse(in service.AdapterTarget, conflicts ...service.AdapterConflictArtifact) apigen.AdapterTarget {
-	return apigen.AdapterTarget{Id: apigen.ID(in.ID), AdapterId: apigen.ID(in.AdapterID), EnvironmentId: apigen.ID(in.EnvironmentID), DestinationKind: apigen.AdapterDestinationKind(in.DestinationKind), DestinationOwner: in.DestinationOwner, DestinationName: in.DestinationName, DestinationEnvironment: in.DestinationEnvironment, DestinationId: in.DestinationID, RepositoryId: in.RepositoryID, Visibility: apigen.AdapterTargetVisibility(in.Visibility), SelectedRepositoryIds: append([]int64(nil), in.SelectedRepositoryIDs...), NamePrefix: in.NamePrefix, Generation: in.Generation, State: apigen.AdapterTargetState(in.State), SyncStatus: apigen.AdapterTargetSyncStatus(in.SyncStatus), ConvergedRevision: in.ConvergedRevision, FailureNames: append([]string{}, in.FailureNames...), Warnings: append([]string{}, in.Warnings...), Conflicts: adapterConflictResponses(conflicts)}
+	return apigen.AdapterTarget{
+		Id: apigen.ID(in.ID), AdapterId: apigen.ID(in.AdapterID), EnvironmentId: apigen.ID(in.EnvironmentID),
+		DestinationKind: apigen.AdapterDestinationKind(in.DestinationKind), DestinationOwner: in.DestinationOwner, DestinationName: in.DestinationName, DestinationEnvironment: in.DestinationEnvironment,
+		DestinationId: in.DestinationID, RepositoryId: in.RepositoryID, Visibility: apigen.AdapterTargetVisibility(in.Visibility), SelectedRepositoryIds: int64List(in.SelectedRepositoryIDs),
+		NamePrefix: in.NamePrefix, Generation: in.Generation, State: apigen.AdapterTargetState(in.State),
+		// The contract's sync_status is the derived operator health, never
+		// the stored outcome column (#157).
+		SyncStatus:            apigen.AdapterTargetSyncStatus(in.Health()),
+		ConvergedRevision:     in.ConvergedRevision,
+		LastAttemptedRevision: in.LastAttemptedRevision,
+		LastAttemptedAt:       in.LastAttemptedAt,
+		LastErrorClass:        apigen.AdapterTargetLastErrorClass(in.LastErrorClass),
+		RetryAt:               in.RetryAt,
+		PausedAt:              in.PausedAt,
+		DriftAttention:        in.DriftAttention,
+		FailureNames:          append([]string{}, in.FailureNames...),
+		Warnings:              append([]string{}, in.Warnings...),
+		Keys:                  adapterTargetKeys(in.Keys),
+		Conflicts:             adapterConflictResponses(conflicts),
+	}
 }
 
 func adapterResponse(in service.AdapterView) (apigen.Adapter, error) {
@@ -84,7 +141,7 @@ func adapterMoveResponse(in service.AdapterMove) (apigen.AdapterMove, error) {
 	}
 	out := apigen.AdapterMove{Id: apigen.ID(in.ID), AdapterId: apigen.ID(in.AdapterID), Kind: apigen.AdapterMoveKind(in.Kind), State: apigen.AdapterMoveState(in.State), KeepRemote: in.KeepRemote, PendingOrigin: in.PendingOrigin, CreatedAt: created, Targets: []apigen.AdapterMoveTarget{}}
 	for _, target := range in.Targets {
-		row := apigen.AdapterMoveTarget{TargetId: apigen.ID(target.TargetID), EnvironmentId: apigen.ID(target.EnvironmentID), DestinationKind: apigen.AdapterDestinationKind(target.DestinationKind), DestinationOwner: target.DestinationOwner, DestinationName: target.DestinationName, DestinationEnvironment: target.DestinationEnvironment, DestinationId: target.DestinationID, RepositoryId: target.RepositoryID, Visibility: apigen.AdapterMoveTargetVisibility(target.Visibility), SelectedRepositoryIds: append([]int64(nil), target.SelectedRepositoryIDs...), NamePrefix: target.NamePrefix, OrphanedNames: append([]string{}, target.Orphaned...), Jobs: []apigen.AdapterMoveJob{}}
+		row := apigen.AdapterMoveTarget{TargetId: apigen.ID(target.TargetID), EnvironmentId: apigen.ID(target.EnvironmentID), DestinationKind: apigen.AdapterDestinationKind(target.DestinationKind), DestinationOwner: target.DestinationOwner, DestinationName: target.DestinationName, DestinationEnvironment: target.DestinationEnvironment, DestinationId: target.DestinationID, RepositoryId: target.RepositoryID, Visibility: apigen.AdapterMoveTargetVisibility(target.Visibility), SelectedRepositoryIds: int64List(target.SelectedRepositoryIDs), NamePrefix: target.NamePrefix, OrphanedNames: append([]string{}, target.Orphaned...), Jobs: []apigen.AdapterMoveJob{}}
 		for _, job := range target.Jobs {
 			row.Jobs = append(row.Jobs, apigen.AdapterMoveJob{Id: apigen.ID(job.ID), TargetId: apigen.ID(job.TargetID), Kind: apigen.AdapterMoveJobKind(job.Kind), State: apigen.AdapterMoveJobState(job.State)})
 		}
@@ -296,7 +353,7 @@ type targetMutationService interface {
 }
 
 func updateAdapterTarget(ctx context.Context, adapters targetMutationService, req apigen.UpdateAdapterTargetRequestObject) (apigen.UpdateAdapterTargetResponseObject, error) {
-	input := service.AdapterTargetInput{EnvironmentID: string(req.Body.EnvironmentId), DestinationKind: string(req.Body.DestinationKind), DestinationOwner: req.Body.DestinationOwner, DestinationName: req.Body.DestinationName, DestinationEnvironment: req.Body.DestinationEnvironment, Visibility: string(req.Body.Visibility), SelectedRepositoryIDs: append([]int64(nil), req.Body.SelectedRepositoryIds...), NamePrefix: req.Body.NamePrefix}
+	input := service.AdapterTargetInput{EnvironmentID: string(req.Body.EnvironmentId), DestinationKind: string(req.Body.DestinationKind), DestinationOwner: req.Body.DestinationOwner, DestinationName: req.Body.DestinationName, DestinationEnvironment: req.Body.DestinationEnvironment, Visibility: string(req.Body.Visibility), SelectedRepositoryIDs: append([]int64(nil), req.Body.SelectedRepositoryIds...), NamePrefix: req.Body.NamePrefix, KeySelection: keySelection(req.Body.KeySelection)}
 	for _, id := range req.Body.KeyIds {
 		input.KeyIDs = append(input.KeyIDs, string(id))
 	}
@@ -355,6 +412,22 @@ func (a *API) SyncAdapterTarget(ctx context.Context, req apigen.SyncAdapterTarge
 		return nil, err
 	}
 	return apigen.SyncAdapterTarget202JSONResponse{JobId: apigen.ID(job.JobID), Generation: job.Generation}, nil
+}
+
+func (a *API) PauseAdapterTarget(ctx context.Context, req apigen.PauseAdapterTargetRequestObject) (apigen.PauseAdapterTargetResponseObject, error) {
+	target, err := a.Adapters.PauseTarget(ctx, service.Bearer(bearer(ctx)), adapterScope(req.Org, req.Project), string(req.Target))
+	if err != nil {
+		return nil, err
+	}
+	return apigen.PauseAdapterTarget200JSONResponse(adapterTargetResponse(target)), nil
+}
+
+func (a *API) ResumeAdapterTarget(ctx context.Context, req apigen.ResumeAdapterTargetRequestObject) (apigen.ResumeAdapterTargetResponseObject, error) {
+	result, err := a.Adapters.ResumeTarget(ctx, service.Bearer(bearer(ctx)), adapterScope(req.Org, req.Project), string(req.Target))
+	if err != nil {
+		return nil, err
+	}
+	return apigen.ResumeAdapterTarget202JSONResponse{JobId: apigen.ID(result.Enqueue.JobID), Generation: result.Enqueue.Generation, Revision: result.Revision}, nil
 }
 
 func (a *API) TestAdapterTarget(ctx context.Context, req apigen.TestAdapterTargetRequestObject) (apigen.TestAdapterTargetResponseObject, error) {

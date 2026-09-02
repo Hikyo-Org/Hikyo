@@ -145,6 +145,27 @@ func (e AdapterDestinationKind) Valid() bool {
 	}
 }
 
+// Defines values for AdapterKeySelectionClassification.
+const (
+	AdapterKeySelectionClassificationConfig AdapterKeySelectionClassification = "config"
+	AdapterKeySelectionClassificationEmpty  AdapterKeySelectionClassification = ""
+	AdapterKeySelectionClassificationSecret AdapterKeySelectionClassification = "secret"
+)
+
+// Valid indicates whether the value is a known member of the AdapterKeySelectionClassification enum.
+func (e AdapterKeySelectionClassification) Valid() bool {
+	switch e {
+	case AdapterKeySelectionClassificationConfig:
+		return true
+	case AdapterKeySelectionClassificationEmpty:
+		return true
+	case AdapterKeySelectionClassificationSecret:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AdapterMappingEntrySurface.
 const (
 	AdapterMappingEntrySurfaceSecret   AdapterMappingEntrySurface = "secret"
@@ -301,6 +322,39 @@ func (e AdapterProvider) Valid() bool {
 	}
 }
 
+// Defines values for AdapterTargetLastErrorClass.
+const (
+	AdapterTargetLastErrorClassAuth              AdapterTargetLastErrorClass = "auth"
+	AdapterTargetLastErrorClassConflict          AdapterTargetLastErrorClass = "conflict"
+	AdapterTargetLastErrorClassEmpty             AdapterTargetLastErrorClass = ""
+	AdapterTargetLastErrorClassNetwork           AdapterTargetLastErrorClass = "network"
+	AdapterTargetLastErrorClassProviderAmbiguous AdapterTargetLastErrorClass = "provider_ambiguous"
+	AdapterTargetLastErrorClassProviderLimit     AdapterTargetLastErrorClass = "provider_limit"
+	AdapterTargetLastErrorClassRefused           AdapterTargetLastErrorClass = "refused"
+)
+
+// Valid indicates whether the value is a known member of the AdapterTargetLastErrorClass enum.
+func (e AdapterTargetLastErrorClass) Valid() bool {
+	switch e {
+	case AdapterTargetLastErrorClassAuth:
+		return true
+	case AdapterTargetLastErrorClassConflict:
+		return true
+	case AdapterTargetLastErrorClassEmpty:
+		return true
+	case AdapterTargetLastErrorClassNetwork:
+		return true
+	case AdapterTargetLastErrorClassProviderAmbiguous:
+		return true
+	case AdapterTargetLastErrorClassProviderLimit:
+		return true
+	case AdapterTargetLastErrorClassRefused:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AdapterTargetState.
 const (
 	AdapterTargetStateActive     AdapterTargetState = "active"
@@ -326,8 +380,11 @@ func (e AdapterTargetState) Valid() bool {
 const (
 	AdapterTargetSyncStatusConverged  AdapterTargetSyncStatus = "converged"
 	AdapterTargetSyncStatusConverging AdapterTargetSyncStatus = "converging"
+	AdapterTargetSyncStatusDegraded   AdapterTargetSyncStatus = "degraded"
 	AdapterTargetSyncStatusFailed     AdapterTargetSyncStatus = "failed"
 	AdapterTargetSyncStatusNever      AdapterTargetSyncStatus = "never"
+	AdapterTargetSyncStatusPaused     AdapterTargetSyncStatus = "paused"
+	AdapterTargetSyncStatusPending    AdapterTargetSyncStatus = "pending"
 )
 
 // Valid indicates whether the value is a known member of the AdapterTargetSyncStatus enum.
@@ -337,9 +394,15 @@ func (e AdapterTargetSyncStatus) Valid() bool {
 		return true
 	case AdapterTargetSyncStatusConverging:
 		return true
+	case AdapterTargetSyncStatusDegraded:
+		return true
 	case AdapterTargetSyncStatusFailed:
 		return true
 	case AdapterTargetSyncStatusNever:
+		return true
+	case AdapterTargetSyncStatusPaused:
+		return true
+	case AdapterTargetSyncStatusPending:
 		return true
 	default:
 		return false
@@ -388,6 +451,24 @@ func (e AdapterTargetInputVisibility) Valid() bool {
 	case AdapterTargetInputVisibilityPrivate:
 		return true
 	case AdapterTargetInputVisibilitySelected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AdapterTargetKeyClassification.
+const (
+	AdapterTargetKeyClassificationConfig AdapterTargetKeyClassification = "config"
+	AdapterTargetKeyClassificationSecret AdapterTargetKeyClassification = "secret"
+)
+
+// Valid indicates whether the value is a known member of the AdapterTargetKeyClassification enum.
+func (e AdapterTargetKeyClassification) Valid() bool {
+	switch e {
+	case AdapterTargetKeyClassificationConfig:
+		return true
+	case AdapterTargetKeyClassificationSecret:
 		return true
 	default:
 		return false
@@ -2619,6 +2700,24 @@ type AdapterJob struct {
 	JobId ID `json:"job_id"`
 }
 
+// AdapterKeySelection Configuration-time selection conveniences (#157). They are resolved
+// against the project catalogue when the target is saved, the resolved
+// key ids are stored as the explicit subset, and the patterns are NOT
+// kept: a key created later that would have matched is never added.
+// `names` are exact key names; `include` and `exclude` are bounded glob
+// patterns (`*`, `?`, `[...]`) over key names; `classification` keeps
+// only keys of that classification. `exclude` applies to what the
+// patterns and classification selected, never to explicit ids or names.
+type AdapterKeySelection struct {
+	Classification *AdapterKeySelectionClassification `json:"classification,omitempty"`
+	Exclude        *[]string                          `json:"exclude,omitempty"`
+	Include        *[]string                          `json:"include,omitempty"`
+	Names          *[]string                          `json:"names,omitempty"`
+}
+
+// AdapterKeySelectionClassification defines model for AdapterKeySelection.Classification.
+type AdapterKeySelectionClassification string
+
 // AdapterList defines model for AdapterList.
 type AdapterList struct {
 	Items []Adapter `json:"items"`
@@ -2712,19 +2811,35 @@ type AdapterPlan struct {
 // AdapterProvider defines model for AdapterProvider.
 type AdapterProvider string
 
+// AdapterResume defines model for AdapterResume.
+type AdapterResume struct {
+	Generation int64 `json:"generation"`
+
+	// JobId A prefixed UUIDv7, e.g. `org_0198…`.
+	JobId ID `json:"job_id"`
+
+	// Revision The published revision the queued converge catches up to; 0 when the environment has never published.
+	Revision int64 `json:"revision"`
+}
+
 // AdapterTarget defines model for AdapterTarget.
 type AdapterTarget struct {
 	// AdapterId A prefixed UUIDv7, e.g. `org_0198…`.
 	AdapterId ID `json:"adapter_id"`
 
 	// Conflicts Pending exact conflict artifacts eligible for adoption on this target.
-	Conflicts              []AdapterConflictArtifact `json:"conflicts"`
-	ConvergedRevision      *int64                    `json:"converged_revision,omitempty"`
-	DestinationEnvironment string                    `json:"destination_environment"`
-	DestinationId          int64                     `json:"destination_id"`
-	DestinationKind        AdapterDestinationKind    `json:"destination_kind"`
-	DestinationName        string                    `json:"destination_name"`
-	DestinationOwner       string                    `json:"destination_owner"`
+	Conflicts []AdapterConflictArtifact `json:"conflicts"`
+
+	// ConvergedRevision The last revision a converge completed.
+	ConvergedRevision      *int64                 `json:"converged_revision"`
+	DestinationEnvironment string                 `json:"destination_environment"`
+	DestinationId          int64                  `json:"destination_id"`
+	DestinationKind        AdapterDestinationKind `json:"destination_kind"`
+	DestinationName        string                 `json:"destination_name"`
+	DestinationOwner       string                 `json:"destination_owner"`
+
+	// DriftAttention The destination disagrees with the ownership ledger in a way only an operator can settle (unowned name in the way, destination identity moved, orphaned names). Cleared by the next successful converge.
+	DriftAttention bool `json:"drift_attention"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId ID       `json:"environment_id"`
@@ -2732,20 +2847,47 @@ type AdapterTarget struct {
 	Generation    int64    `json:"generation"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
-	Id                    ID                      `json:"id"`
-	NamePrefix            string                  `json:"name_prefix"`
-	RepositoryId          int64                   `json:"repository_id"`
-	SelectedRepositoryIds []int64                 `json:"selected_repository_ids"`
-	State                 AdapterTargetState      `json:"state"`
-	SyncStatus            AdapterTargetSyncStatus `json:"sync_status"`
-	Visibility            AdapterTargetVisibility `json:"visibility"`
-	Warnings              []string                `json:"warnings"`
+	Id ID `json:"id"`
+
+	// Keys The resolved explicit key subset by name. Membership is by immutable id; names are echoed for the operator.
+	Keys            []AdapterTargetKey `json:"keys"`
+	LastAttemptedAt *time.Time         `json:"last_attempted_at"`
+
+	// LastAttemptedRevision The revision the most recent attempt loaded, successful or not.
+	LastAttemptedRevision *int64 `json:"last_attempted_revision"`
+
+	// LastErrorClass Bounded cause of the last failed attempt; empty after a success. Never a provider response body.
+	LastErrorClass AdapterTargetLastErrorClass `json:"last_error_class"`
+	NamePrefix     string                      `json:"name_prefix"`
+	PausedAt       *time.Time                  `json:"paused_at"`
+	RepositoryId   int64                       `json:"repository_id"`
+
+	// RetryAt When the queued retry becomes due, if the active job is waiting on one.
+	RetryAt               *time.Time         `json:"retry_at"`
+	SelectedRepositoryIds []int64            `json:"selected_repository_ids"`
+	State                 AdapterTargetState `json:"state"`
+
+	// SyncStatus Operator health (#157), derived at read time. `pending` is a
+	// queued, not yet claimed converge; `converging` a running one;
+	// `degraded` a failed attempt on a target that converged before, so
+	// the destination still holds `converged_revision`; `paused` wins
+	// over every other state while `paused_at` is set.
+	SyncStatus AdapterTargetSyncStatus `json:"sync_status"`
+	Visibility AdapterTargetVisibility `json:"visibility"`
+	Warnings   []string                `json:"warnings"`
 }
+
+// AdapterTargetLastErrorClass Bounded cause of the last failed attempt; empty after a success. Never a provider response body.
+type AdapterTargetLastErrorClass string
 
 // AdapterTargetState defines model for AdapterTarget.State.
 type AdapterTargetState string
 
-// AdapterTargetSyncStatus defines model for AdapterTarget.SyncStatus.
+// AdapterTargetSyncStatus Operator health (#157), derived at read time. `pending` is a
+// queued, not yet claimed converge; `converging` a running one;
+// `degraded` a failed attempt on a target that converged before, so
+// the destination still holds `converged_revision`; `paused` wins
+// over every other state while `paused_at` is set.
 type AdapterTargetSyncStatus string
 
 // AdapterTargetVisibility defines model for AdapterTarget.Visibility.
@@ -2769,10 +2911,22 @@ type AdapterTargetInput struct {
 	DestinationOwner string `json:"destination_owner"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
-	EnvironmentId         ID      `json:"environment_id"`
-	KeyIds                []ID    `json:"key_ids"`
-	NamePrefix            string  `json:"name_prefix"`
-	SelectedRepositoryIds []int64 `json:"selected_repository_ids"`
+	EnvironmentId ID `json:"environment_id"`
+
+	// KeyIds Explicit member key ids. May be empty only when `key_selection` resolves to at least one key; the union must be non-empty.
+	KeyIds []ID `json:"key_ids"`
+
+	// KeySelection Configuration-time selection conveniences (#157). They are resolved
+	// against the project catalogue when the target is saved, the resolved
+	// key ids are stored as the explicit subset, and the patterns are NOT
+	// kept: a key created later that would have matched is never added.
+	// `names` are exact key names; `include` and `exclude` are bounded glob
+	// patterns (`*`, `?`, `[...]`) over key names; `classification` keeps
+	// only keys of that classification. `exclude` applies to what the
+	// patterns and classification selected, never to explicit ids or names.
+	KeySelection          *AdapterKeySelection `json:"key_selection,omitempty"`
+	NamePrefix            string               `json:"name_prefix"`
+	SelectedRepositoryIds []int64              `json:"selected_repository_ids"`
 
 	// Visibility GitHub organization recipient visibility; empty for other destinations.
 	Visibility AdapterTargetInputVisibility `json:"visibility"`
@@ -2780,6 +2934,18 @@ type AdapterTargetInput struct {
 
 // AdapterTargetInputVisibility GitHub organization recipient visibility; empty for other destinations.
 type AdapterTargetInputVisibility string
+
+// AdapterTargetKey defines model for AdapterTargetKey.
+type AdapterTargetKey struct {
+	Classification AdapterTargetKeyClassification `json:"classification"`
+
+	// KeyId A prefixed UUIDv7, e.g. `org_0198…`.
+	KeyId ID     `json:"key_id"`
+	Name  string `json:"name"`
+}
+
+// AdapterTargetKeyClassification defines model for AdapterTargetKey.Classification.
+type AdapterTargetKeyClassification string
 
 // AdapterTargetList defines model for AdapterTargetList.
 type AdapterTargetList struct {
@@ -5919,6 +6085,18 @@ type RetentionConsequence string
 
 // RetentionHealth defines model for RetentionHealth.
 type RetentionHealth struct {
+	// AdapterJobsQueued Deployment-adapter outbox jobs waiting to be claimed, instance-wide.
+	AdapterJobsQueued int `json:"adapter_jobs_queued"`
+
+	// AdapterTargetsAttention Active deployment-adapter targets whose destination drifted from the ownership ledger and need an operator.
+	AdapterTargetsAttention int `json:"adapter_targets_attention"`
+
+	// AdapterTargetsFailed Active deployment-adapter targets whose last attempt failed and that are not paused (#157).
+	AdapterTargetsFailed int `json:"adapter_targets_failed"`
+
+	// AdapterTargetsPaused Active deployment-adapter targets an operator has paused.
+	AdapterTargetsPaused int `json:"adapter_targets_paused"`
+
 	// Backup Disaster-recovery health: the latest successful export, its age against the configured recovery point objective, the latest failure, and the latest restore drill. Names archives and versions only; never a recipient, an identity or a key.
 	Backup           BackupHealth `json:"backup"`
 	LastPruneSuccess *time.Time   `json:"last_prune_success"`
@@ -6923,10 +7101,20 @@ type UpdateAdapterTargetRequest struct {
 	DestinationOwner       string                 `json:"destination_owner"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
-	EnvironmentId         ID                                   `json:"environment_id"`
-	ExpectedGeneration    int64                                `json:"expected_generation"`
-	KeepRemote            *bool                                `json:"keep_remote,omitempty"`
-	KeyIds                []ID                                 `json:"key_ids"`
+	EnvironmentId      ID    `json:"environment_id"`
+	ExpectedGeneration int64 `json:"expected_generation"`
+	KeepRemote         *bool `json:"keep_remote,omitempty"`
+	KeyIds             []ID  `json:"key_ids"`
+
+	// KeySelection Configuration-time selection conveniences (#157). They are resolved
+	// against the project catalogue when the target is saved, the resolved
+	// key ids are stored as the explicit subset, and the patterns are NOT
+	// kept: a key created later that would have matched is never added.
+	// `names` are exact key names; `include` and `exclude` are bounded glob
+	// patterns (`*`, `?`, `[...]`) over key names; `classification` keeps
+	// only keys of that classification. `exclude` applies to what the
+	// patterns and classification selected, never to explicit ids or names.
+	KeySelection          *AdapterKeySelection                 `json:"key_selection,omitempty"`
 	NamePrefix            string                               `json:"name_prefix"`
 	SelectedRepositoryIds []int64                              `json:"selected_repository_ids"`
 	Visibility            UpdateAdapterTargetRequestVisibility `json:"visibility"`
@@ -8928,9 +9116,15 @@ type ServerInterface interface {
 	// AdoptAdapterTargetNames Adopt an exact enumerated conflict artifact and enqueue convergence.
 	// (POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/adoptions)
 	AdoptAdapterTargetNames(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, target AdapterTargetID)
+	// PauseAdapterTarget Stop every push for the target without releasing owned destination state.
+	// (POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/pause)
+	PauseAdapterTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, target AdapterTargetID)
 	// PlanAdapterTarget Produce a value-blind name plan and a conflict artifact when needed.
 	// (POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/plan)
 	PlanAdapterTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, target AdapterTargetID)
+	// ResumeAdapterTarget Resume a paused target and queue one catch-up converge.
+	// (POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/resume)
+	ResumeAdapterTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, target AdapterTargetID)
 	// SyncAdapterTarget Enqueue a newest-wins manual converge.
 	// (POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/sync)
 	SyncAdapterTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, target AdapterTargetID)
@@ -10080,9 +10274,21 @@ func (_ Unimplemented) AdoptAdapterTargetNames(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// PauseAdapterTarget Stop every push for the target without releasing owned destination state.
+// (POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/pause)
+func (_ Unimplemented) PauseAdapterTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, target AdapterTargetID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // PlanAdapterTarget Produce a value-blind name plan and a conflict artifact when needed.
 // (POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/plan)
 func (_ Unimplemented) PlanAdapterTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, target AdapterTargetID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ResumeAdapterTarget Resume a paused target and queue one catch-up converge.
+// (POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/resume)
+func (_ Unimplemented) ResumeAdapterTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, target AdapterTargetID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -13779,6 +13985,50 @@ func (siw *ServerInterfaceWrapper) AdoptAdapterTargetNames(w http.ResponseWriter
 	handler.ServeHTTP(w, r)
 }
 
+// PauseAdapterTarget operation middleware
+func (siw *ServerInterfaceWrapper) PauseAdapterTarget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "target" -------------
+	var target AdapterTargetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "target", chi.URLParam(r, "target"), &target, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "target", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PauseAdapterTarget(w, r, org, project, target)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PlanAdapterTarget operation middleware
 func (siw *ServerInterfaceWrapper) PlanAdapterTarget(w http.ResponseWriter, r *http.Request) {
 
@@ -13814,6 +14064,50 @@ func (siw *ServerInterfaceWrapper) PlanAdapterTarget(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PlanAdapterTarget(w, r, org, project, target)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResumeAdapterTarget operation middleware
+func (siw *ServerInterfaceWrapper) ResumeAdapterTarget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "target" -------------
+	var target AdapterTargetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "target", chi.URLParam(r, "target"), &target, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "target", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResumeAdapterTarget(w, r, org, project, target)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -21638,6 +21932,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/sync", wrapper.SyncAdapterTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/pause", wrapper.PauseAdapterTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/resume", wrapper.ResumeAdapterTarget)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/test", wrapper.TestAdapterTarget)
@@ -32723,6 +33023,100 @@ func (response AdoptAdapterTargetNames500JSONResponse) VisitAdoptAdapterTargetNa
 	return err
 }
 
+type PauseAdapterTargetRequestObject struct {
+	Org     OrgID           `json:"org"`
+	Project ProjectID       `json:"project"`
+	Target  AdapterTargetID `json:"target"`
+}
+
+type PauseAdapterTargetResponseObject interface {
+	VisitPauseAdapterTargetResponse(w http.ResponseWriter) error
+}
+
+type PauseAdapterTarget200JSONResponse AdapterTarget
+
+func (response PauseAdapterTarget200JSONResponse) VisitPauseAdapterTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseAdapterTarget401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response PauseAdapterTarget401JSONResponse) VisitPauseAdapterTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseAdapterTarget403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PauseAdapterTarget403JSONResponse) VisitPauseAdapterTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseAdapterTarget404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PauseAdapterTarget404JSONResponse) VisitPauseAdapterTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseAdapterTarget409JSONResponse struct{ ConflictJSONResponse }
+
+func (response PauseAdapterTarget409JSONResponse) VisitPauseAdapterTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PauseAdapterTarget500JSONResponse struct{ InternalJSONResponse }
+
+func (response PauseAdapterTarget500JSONResponse) VisitPauseAdapterTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PlanAdapterTargetRequestObject struct {
 	Org     OrgID           `json:"org"`
 	Project ProjectID       `json:"project"`
@@ -32792,6 +33186,100 @@ func (response PlanAdapterTarget409JSONResponse) VisitPlanAdapterTargetResponse(
 type PlanAdapterTarget500JSONResponse struct{ InternalJSONResponse }
 
 func (response PlanAdapterTarget500JSONResponse) VisitPlanAdapterTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeAdapterTargetRequestObject struct {
+	Org     OrgID           `json:"org"`
+	Project ProjectID       `json:"project"`
+	Target  AdapterTargetID `json:"target"`
+}
+
+type ResumeAdapterTargetResponseObject interface {
+	VisitResumeAdapterTargetResponse(w http.ResponseWriter) error
+}
+
+type ResumeAdapterTarget202JSONResponse AdapterResume
+
+func (response ResumeAdapterTarget202JSONResponse) VisitResumeAdapterTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeAdapterTarget401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ResumeAdapterTarget401JSONResponse) VisitResumeAdapterTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeAdapterTarget403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ResumeAdapterTarget403JSONResponse) VisitResumeAdapterTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeAdapterTarget404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ResumeAdapterTarget404JSONResponse) VisitResumeAdapterTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeAdapterTarget409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ResumeAdapterTarget409JSONResponse) VisitResumeAdapterTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeAdapterTarget500JSONResponse struct{ InternalJSONResponse }
+
+func (response ResumeAdapterTarget500JSONResponse) VisitResumeAdapterTargetResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -47367,9 +47855,15 @@ type StrictServerInterface interface {
 	// AdoptAdapterTargetNames Adopt an exact enumerated conflict artifact and enqueue convergence.
 	// (POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/adoptions)
 	AdoptAdapterTargetNames(ctx context.Context, request AdoptAdapterTargetNamesRequestObject) (AdoptAdapterTargetNamesResponseObject, error)
+	// PauseAdapterTarget Stop every push for the target without releasing owned destination state.
+	// (POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/pause)
+	PauseAdapterTarget(ctx context.Context, request PauseAdapterTargetRequestObject) (PauseAdapterTargetResponseObject, error)
 	// PlanAdapterTarget Produce a value-blind name plan and a conflict artifact when needed.
 	// (POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/plan)
 	PlanAdapterTarget(ctx context.Context, request PlanAdapterTargetRequestObject) (PlanAdapterTargetResponseObject, error)
+	// ResumeAdapterTarget Resume a paused target and queue one catch-up converge.
+	// (POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/resume)
+	ResumeAdapterTarget(ctx context.Context, request ResumeAdapterTargetRequestObject) (ResumeAdapterTargetResponseObject, error)
 	// SyncAdapterTarget Enqueue a newest-wins manual converge.
 	// (POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/sync)
 	SyncAdapterTarget(ctx context.Context, request SyncAdapterTargetRequestObject) (SyncAdapterTargetResponseObject, error)
@@ -51158,6 +51652,34 @@ func (sh *strictHandler) AdoptAdapterTargetNames(w http.ResponseWriter, r *http.
 	}
 }
 
+// PauseAdapterTarget operation middleware
+func (sh *strictHandler) PauseAdapterTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, target AdapterTargetID) {
+	var request PauseAdapterTargetRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Target = target
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PauseAdapterTarget(ctx, request.(PauseAdapterTargetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PauseAdapterTarget")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PauseAdapterTargetResponseObject); ok {
+		if err := validResponse.VisitPauseAdapterTargetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PlanAdapterTarget operation middleware
 func (sh *strictHandler) PlanAdapterTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, target AdapterTargetID) {
 	var request PlanAdapterTargetRequestObject
@@ -51179,6 +51701,34 @@ func (sh *strictHandler) PlanAdapterTarget(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PlanAdapterTargetResponseObject); ok {
 		if err := validResponse.VisitPlanAdapterTargetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResumeAdapterTarget operation middleware
+func (sh *strictHandler) ResumeAdapterTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, target AdapterTargetID) {
+	var request ResumeAdapterTargetRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Target = target
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResumeAdapterTarget(ctx, request.(ResumeAdapterTargetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResumeAdapterTarget")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResumeAdapterTargetResponseObject); ok {
+		if err := validResponse.VisitResumeAdapterTargetResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

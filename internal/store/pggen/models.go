@@ -205,6 +205,11 @@ type AdapterTarget struct {
 	Visibility             string
 	SelectedRepositoryIds  []byte
 	Warnings               []byte
+	PausedAt               pgtype.Timestamptz
+	LastAttemptedRevision  pgtype.Int8
+	LastAttemptedAt        pgtype.Timestamptz
+	LastErrorClass         pgtype.Text
+	DriftAttention         bool
 }
 
 type AdapterTargetKey struct {

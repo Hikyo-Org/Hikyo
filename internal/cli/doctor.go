@@ -91,6 +91,12 @@ func doctorResults(providers apigen.SamlProviderList, health apigen.RetentionHea
 			}
 		}
 	}
+	adapters := doctorAdapterFinding(health)
+	result.Findings = append(result.Findings, adapters)
+	rows = append(rows, []string{adapters.Severity, adapters.Provider, adapters.Code, adapters.EffectiveAt, adapters.Message})
+	if adapters.Severity == "warn" && result.Status == "ok" {
+		result.Status = "warning"
+	}
 	providerRowStart := len(rows)
 	for _, provider := range providers.Providers {
 		for _, warning := range provider.Warnings {
@@ -149,6 +155,22 @@ func doctorStorageFinding(health apigen.RetentionHealth) doctorFinding {
 		return finding
 	}
 	finding.Message = fmt.Sprintf("peak project holds %s", peak)
+	return finding
+}
+
+// doctorAdapterFinding surfaces deployment-adapter targets that need a human
+// (#157): a destination that drifted from the ownership ledger, or a target
+// whose last attempt failed. Paused targets are reported but never warn: an
+// operator chose that state. Counts only; which targets is a tenant read.
+func doctorAdapterFinding(health apigen.RetentionHealth) doctorFinding {
+	finding := doctorFinding{Provider: "-", Code: "adapter-targets", Severity: "ok", EffectiveAt: "-"}
+	summary := fmt.Sprintf("%d target(s) need attention, %d failed, %d paused, %d job(s) queued", health.AdapterTargetsAttention, health.AdapterTargetsFailed, health.AdapterTargetsPaused, health.AdapterJobsQueued)
+	if health.AdapterTargetsAttention > 0 || health.AdapterTargetsFailed > 0 {
+		finding.Severity = "warn"
+		finding.Message = summary + "; inspect them with `hikyo adapter list`"
+		return finding
+	}
+	finding.Message = summary
 	return finding
 }
 

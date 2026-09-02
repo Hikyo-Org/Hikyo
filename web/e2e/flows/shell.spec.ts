@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
+import { zRetentionHealth } from '@hikyo/zod';
 
+import type { RetentionHealth } from '../../src/api/retention.ts';
 import {
   expectNoSeriousAxeViolations,
   expectPinnedAssertionSet,
@@ -38,6 +40,18 @@ async function openNav(page: Page): Promise<void> {
     await toggle.click();
   }
   await expect(navigation).toBeVisible();
+}
+
+/** Override only scenario facts while preserving the live generated response contract. */
+async function mockRetentionHealth(
+  page: Page,
+  overrides: Partial<RetentionHealth>,
+): Promise<void> {
+  await page.route('**/api/v1/instance/retention-health', async (route) => {
+    const response = await route.fetch();
+    const health = zRetentionHealth.parse(await response.json());
+    await route.fulfill({ response, json: { ...health, ...overrides } });
+  });
 }
 
 test.describe('app chrome', () => {
@@ -247,32 +261,7 @@ test.describe('app chrome', () => {
 
   test('shows stale pruning health in the persistent app chrome', async ({ page }) => {
     const lastSuccess = '2026-08-14T10:00:00Z';
-    await page.route('**/api/v1/instance/retention-health', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          last_prune_success: lastSuccess,
-          stale: true,
-          stale_after_seconds: 86400,
-          peak_project_bytes: 0,
-          storage_warn: false,
-          backup: {
-            scheduled: false,
-            last_success_at: null,
-            artifact_age_seconds: 0,
-            rpo_seconds: 0,
-            rpo_exceeded: false,
-            last_failure_at: null,
-            last_failure_reason: '',
-            last_prune_at: null,
-            last_drill_at: null,
-            last_drill_ok: false,
-            drill_stale: true,
-          },
-        }),
-      }),
-    );
+    await mockRetentionHealth(page, { last_prune_success: lastSuccess, stale: true });
     await page.reload();
 
     const warning = page.locator('.retention-warning');
@@ -283,32 +272,12 @@ test.describe('app chrome', () => {
   });
 
   test('warns when a project reaches the storage high-water', async ({ page }) => {
-    await page.route('**/api/v1/instance/retention-health', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          last_prune_success: '2026-08-20T10:00:00Z',
-          stale: false,
-          stale_after_seconds: 86400,
-          peak_project_bytes: 1_500_000_000,
-          storage_warn: true,
-          backup: {
-            scheduled: false,
-            last_success_at: null,
-            artifact_age_seconds: 0,
-            rpo_seconds: 0,
-            rpo_exceeded: false,
-            last_failure_at: null,
-            last_failure_reason: '',
-            last_prune_at: null,
-            last_drill_at: null,
-            last_drill_ok: false,
-            drill_stale: true,
-          },
-        }),
-      }),
-    );
+    await mockRetentionHealth(page, {
+      last_prune_success: '2026-08-20T10:00:00Z',
+      stale: false,
+      peak_project_bytes: 1_500_000_000,
+      storage_warn: true,
+    });
     await page.reload();
 
     const warning = page.locator('.retention-warning');

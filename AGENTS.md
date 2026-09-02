@@ -29,6 +29,50 @@ commit in the range is missing one.
 The `-s` flag only records that you agree to the DCO
 (<https://developercertificate.org/>); it is not a cryptographic signature.
 
+## Commits must be cryptographically signed
+
+Every commit on a pull request must also carry a valid Git cryptographic
+signature that GitHub reports as Verified. The DCO trailer above is required,
+but it is not a substitute for this signature.
+
+- Keep `commit.gpgsign=true` and commit normally with `git commit -s`. Never
+  override or disable the configured signing behavior.
+- Install the repository's fail-closed pre-push hook once in each clone:
+
+  ```sh
+  scripts/git/install-hooks.sh
+  ```
+
+  The hook checks every commit between `origin/main` and each branch being
+  pushed. Keep the hook installed; do not bypass it with `--no-verify`.
+- After a reboot, restart, or GPG-agent timeout, GPG may be installed and
+  configured but still locked. Before the first commit, verify non-interactive
+  signing works:
+
+  ```sh
+  printf test | gpg --batch --pinentry-mode loopback \
+    --local-user 30CC8A404B41D6AE2B11596FEA4208DC5ABEB135 --sign >/dev/null
+  ```
+
+- If that command fails with `No pinentry`, `can't get input`, or another
+  locked-agent error, stop before committing, rebasing, or pushing. Ask the
+  user to unlock GPG. The user can trigger the pinentry prompt with:
+
+  ```sh
+  printf unlock | gpg \
+    --local-user 30CC8A404B41D6AE2B11596FEA4208DC5ABEB135 --sign >/dev/null
+  ```
+
+  Re-run the non-interactive check after the user unlocks GPG. Do not bypass
+  signing to keep working.
+- Before every push, verify the complete pull-request range:
+
+  ```sh
+  scripts/ci/check-commit-signatures.sh origin/main HEAD
+  ```
+
+  After pushing, confirm GitHub reports `verified: true` for the pushed commits.
+
 ## Before pushing
 
 - Run the relevant checks for what you touched (for `web/`: `node --run

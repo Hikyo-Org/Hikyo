@@ -709,6 +709,10 @@ const (
 	StoreAdaptersReplaceCredential     StoreOp = "adapters.ReplaceCredential"
 	StoreAdaptersRevokeCredential      StoreOp = "adapters.RevokeCredential"
 	StoreAdaptersEnqueueManual         StoreOp = "adapters.EnqueueManual"
+	StoreAdaptersTargetKeys            StoreOp = "adapters.TargetKeys"
+	StoreAdaptersPauseTarget           StoreOp = "adapters.PauseTarget"
+	StoreAdaptersResumeTarget          StoreOp = "adapters.ResumeTarget"
+	StoreAdaptersHealthCounts          StoreOp = "adapters.HealthCounts"
 	StoreCatalogueRevisionBump         StoreOp = "catalogue.BumpSchemaRevision"
 
 	// Dynamic secrets (#147). Request-path (proof-carrying) store methods; the
@@ -1028,6 +1032,7 @@ var storeOpCatalogue = map[StoreOp]bool{
 	StoreAdaptersReencryptMove: true, StoreAdaptersReplaceCredential: true, StoreAdaptersReplaceMoveOrigin: true, StoreAdaptersReplaceMoveTarget: true,
 	StoreAdaptersRevokeCredential: true, StoreAdaptersTarget: true, StoreAdaptersTargetEnvironments: true, StoreAdaptersTargetKeyIDs: true,
 	StoreAdaptersTeardownAdapter: true, StoreAdaptersTeardownTarget: true, StoreAdaptersUpdateTarget: true, StoreAuditClaimOfflineRecord: true,
+	StoreAdaptersTargetKeys: true, StoreAdaptersPauseTarget: true, StoreAdaptersResumeTarget: true, StoreAdaptersHealthCounts: true,
 	StoreAuditInstanceInsert: true, StoreAuditInstancePage: true, StoreAuditTenantInsert: true, StoreAuditTenantPage: true,
 	StoreAuditTenantMaxSeq: true, StoreAuditInstanceMaxSeq: true,
 	StoreCatalogueAdapterPins: true, StoreCatalogueCount: true, StoreCatalogueCreate: true, StoreCatalogueDelete: true,
@@ -1142,6 +1147,8 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreAdaptersList:                        true,
 	StoreAdaptersListTargets:                 true,
 	StoreAdaptersTargetKeyIDs:                true,
+	StoreAdaptersTargetKeys:                  true,
+	StoreAdaptersHealthCounts:                true,
 	StoreAdaptersMapping:                     true,
 	StoreAdaptersPlanMaterial:                true,
 	StoreAdaptersTargetEnvironments:          true,
@@ -3388,6 +3395,9 @@ var operationTable = map[Operation]opSpec{
 		storeOps: map[StoreOp]bool{
 			StoreRetentionLastSuccess: true,
 			StoreAuditInstanceInsert:  true,
+			// Adapter health counts (#157): the same operator read feeds
+			// `hikyo doctor` and the label-free adapter gauges.
+			StoreAdaptersHealthCounts: true,
 			// Per-project storage high-water (#185): the operator health read
 			// also reports the instance's peak stored project, for the 1 GiB warn.
 			StoreValuesInstancePayloadByProject:    true,
@@ -4023,7 +4033,7 @@ var operationTable = map[Operation]opSpec{
 	OpAdapterConfigure: {
 		class: ClassTenant, level: domain.LevelProject, postGrantForbidden: true,
 		formula:  Formula{{Cap: domain.CapManageAdapters, At: domain.LevelProject}},
-		storeOps: map[StoreOp]bool{StoreAdaptersCreate: true, StoreAdaptersAddTarget: true, StoreAdaptersBeginConfigureEffect: true, StoreAdaptersFinishConfigureEffect: true, StoreAdaptersUpdateTarget: true, StoreAdaptersMoveTarget: true, StoreAdaptersMoveOrigin: true, StoreAdaptersCancelMove: true, StoreAdaptersReplaceMoveTarget: true, StoreAdaptersReplaceMoveOrigin: true, StoreAdaptersMove: true, StoreAdaptersConfiguration: true, StoreAdaptersTarget: true, StoreAdaptersTargetKeyIDs: true, StoreAdaptersEnvironments: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreAdaptersCreate: true, StoreAdaptersAddTarget: true, StoreAdaptersBeginConfigureEffect: true, StoreAdaptersFinishConfigureEffect: true, StoreAdaptersUpdateTarget: true, StoreAdaptersMoveTarget: true, StoreAdaptersMoveOrigin: true, StoreAdaptersCancelMove: true, StoreAdaptersReplaceMoveTarget: true, StoreAdaptersReplaceMoveOrigin: true, StoreAdaptersMove: true, StoreAdaptersConfiguration: true, StoreAdaptersTarget: true, StoreAdaptersTargetKeyIDs: true, StoreAdaptersTargetKeys: true, StoreAdaptersPauseTarget: true, StoreAdaptersEnvironments: true, StoreCatalogueList: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventAdapterConfigure, audit.EventAdapterSyncRequested, audit.EventAdapterSuperseded, audit.EventAdapterScrub, audit.EventAdapterPushIntent, audit.EventAdapterPushOutcome},
 	},
 	OpAdapterCredentialSet: {
@@ -4047,7 +4057,7 @@ var operationTable = map[Operation]opSpec{
 	OpAdapterInspect: {
 		class: ClassTenant, level: domain.LevelProject,
 		formula:  Formula{{Cap: domain.CapManageAdapters, At: domain.LevelProject}},
-		storeOps: map[StoreOp]bool{StoreAdaptersGet: true, StoreAdaptersList: true, StoreAdaptersListTargets: true, StoreAdaptersTarget: true, StoreAdaptersMapping: true, StoreAdaptersTargetEnvironments: true, StoreAdaptersConflicts: true, StoreAdaptersMove: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreAdaptersGet: true, StoreAdaptersList: true, StoreAdaptersListTargets: true, StoreAdaptersTarget: true, StoreAdaptersTargetKeys: true, StoreAdaptersMapping: true, StoreAdaptersTargetEnvironments: true, StoreAdaptersConflicts: true, StoreAdaptersMove: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventAdapterInspect},
 	},
 	OpAdapterPlan: {
@@ -4065,7 +4075,7 @@ var operationTable = map[Operation]opSpec{
 	OpAdapterSync: {
 		class: ClassTenant, level: domain.LevelProject, postGrantForbidden: true,
 		formula:  Formula{{Cap: domain.CapManageAdapters, At: domain.LevelProject}},
-		storeOps: map[StoreOp]bool{StoreAdaptersTarget: true, StoreAdaptersEnvironments: true, StoreAdaptersEnqueueManual: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreAdaptersTarget: true, StoreAdaptersEnvironments: true, StoreAdaptersEnqueueManual: true, StoreAdaptersResumeTarget: true, StoreAuditTenantInsert: true},
 		events: []audit.EventType{
 			audit.EventAdapterSyncRequested, audit.EventAdapterPushIntent, audit.EventAdapterPushOutcome,
 			audit.EventAdapterKeyDelivered, audit.EventAdapterAbort, audit.EventAdapterSuperseded,
@@ -4274,6 +4284,10 @@ var systemSites = map[SystemSite]map[StoreOp]bool{
 		StoreBackupStateSetPruneSuccess:  true,
 		StoreBackupStateSetDrill:         true,
 		StoreValuesSampleSecretEntry:     true,
+		// Deployment-adapter health counts (#157) ride the same door: the
+		// label-free gauges and `hikyo doctor` read them beside the storage
+		// high-water.
+		StoreAdaptersHealthCounts: true,
 	},
 }
 
