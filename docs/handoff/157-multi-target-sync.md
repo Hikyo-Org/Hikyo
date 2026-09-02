@@ -6,7 +6,7 @@ object, `adapter_targets` is the target.
 
 ## What landed
 
-- **Migration 00037** (both engines, additive): `paused_at`,
+- **Migration 00040** (both engines, additive): `paused_at`,
   `last_attempted_revision`, `last_attempted_at`, `last_error_class` (closed
   CHECK), `drift_attention` on `adapter_targets`. The stored `sync_status`
   keeps its four outcomes; operator health is DERIVED (`adapter.DeriveHealth`)
