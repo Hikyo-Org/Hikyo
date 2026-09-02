@@ -8,6 +8,8 @@ import {
   zCreateGrantRequest,
   zCreateProjectRequest,
   zEnvironmentSettings,
+  zEstablishCredentialRequest,
+  zInviteMemberRequest,
   zPublishRequest,
   zRenameRequest,
   zRetentionPolicy,
@@ -1089,6 +1091,43 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
     const items = scenario === 'empty' ? [] : prototypeGrants;
     send(response, 200, { items, count: items.length });
     return true;
+  }
+
+  // Member invitation and credential establishment (#568). The prototype
+  // mints a fixed authority; nothing is ever verified against it.
+  if (
+    (path === `/api/v1/orgs/${ids.org}/invitations` || path === '/api/v1/instance/invitations') &&
+    method === 'POST'
+  ) {
+    return body(request).then((raw) => {
+      const input = zInviteMemberRequest.parse(JSON.parse(raw));
+      if (input.username === 'taken') {
+        send(response, 409, { error: { code: 'conflict', detail: 'that username is already in use' } });
+        return true;
+      }
+      send(response, 201, {
+        principal_id: 'prn_77777777-7777-4777-8777-777777777777',
+        account_id: 'acc_77777777-7777-4777-8777-777777777777',
+        authority: 'hik_cea_prototype_invitation_authority_value',
+        expires_at: '2026-08-25T10:00:00Z',
+      });
+      return true;
+    });
+  }
+  const resetMatch = /^\/api\/v1\/accounts\/([^/]+)\/credential-reset$/.exec(path);
+  if (resetMatch !== null && method === 'POST') {
+    send(response, 200, {
+      authority: 'hik_cea_prototype_reset_authority_value',
+      expires_at: '2026-08-25T10:00:00Z',
+    });
+    return true;
+  }
+  if (path === '/api/v1/auth/credential/establish' && method === 'POST') {
+    return body(request).then((raw) => {
+      zEstablishCredentialRequest.parse(JSON.parse(raw));
+      send(response, 204);
+      return true;
+    });
   }
 
   const grantPathMatch = new RegExp(

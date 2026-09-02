@@ -10,6 +10,8 @@ import {
   grantOutcomeSummary,
   grantScopeLabel,
   membershipFailureText,
+  resetCredential,
+  resetFailureText,
   membershipRows,
   optionByValue,
   ROLE_TEMPLATES,
@@ -24,6 +26,7 @@ import {
   useOrgGrants,
   useRevokeGrant,
   whoCan,
+  type IssuedAuthority,
   type Names,
   type ScopeOption,
 } from '../api/access.ts';
@@ -31,6 +34,7 @@ import { ApiError } from '../api/client.ts';
 import type { Grant } from '../api/identities.ts';
 import { useOrg, useOrgTopology } from '../api/settings.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
+import { InviteDialog, IssuedAuthorityDialog } from './InviteDialog.tsx';
 import { Alert, Done, Explain, JumpIndex, Panel } from './Sections.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
 
@@ -115,8 +119,15 @@ export function Members({ scope }: { scope: MembersScope }) {
   const topology = useOrgTopology(org);
   const auth = useAuth();
   const revoke = useRevokeGrant();
-  const feedback = useFeedback(grantFailureText);
-  const [modal, setModal] = useState<'none' | 'grant' | 'blast'>('none');
+  const feedback = useFeedback(membersFailureText);
+  const [modal, setModal] = useState<'none' | 'grant' | 'blast' | 'invite'>('none');
+  // Reset credential (#568): a plain async call and component state, never a
+  // mutation cache, so the display-once authority lives exactly as long as
+  // the dialog that shows it.
+  const [resetPending, setResetPending] = useState<string | null>(null);
+  const [resetIssued, setResetIssued] = useState<
+    { principal: string; issued: IssuedAuthority } | null
+  >(null);
 
   const orgName = orgQuery.data?.name ?? org;
   const project = topology.projects.find((candidate) => candidate.id === projectId);
@@ -239,6 +250,19 @@ export function Members({ scope }: { scope: MembersScope }) {
     );
   };
 
+  const onReset = async (principal: string) => {
+    feedback.clear();
+    setResetPending(principal);
+    try {
+      const issued = await resetCredential(principal);
+      setResetIssued({ principal, issued });
+    } catch (error) {
+      feedback.report(new ResetRefusal(error));
+    } finally {
+      setResetPending(null);
+    }
+  };
+
   return (
     <div className="page page--chrome page--members">
       <h1>{`Members\u00a0·\u00a0${scopeName}`}</h1>
@@ -321,7 +345,7 @@ export function Members({ scope }: { scope: MembersScope }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
+              {rows.map((row, index) => {
                 const protectedScope = row.grants.some((grant) => {
                   const scope = scopeOf(grant);
                   return scope.kind === 'environment' && project?.environments.some(
@@ -339,6 +363,27 @@ export function Members({ scope }: { scope: MembersScope }) {
                         {principalLabel(row.principal)}
                       </span>
                       {row.principal === me && !compactPresentation ? <span className="badge">you</span> : null}
+                      {/* Reset credential (#568): humans only (`mch_` is a
+                          machine, which has no password), never yourself (a
+                          reset revokes the target's sessions, this one
+                          included), once per principal even when they hold
+                          lines at several scopes, and not on the compact
+                          project projection. */}
+                      {!compactPresentation &&
+                      !row.principal.startsWith('mch_') &&
+                      row.principal !== me &&
+                      rows.findIndex((candidate) => candidate.principal === row.principal) === index ? (
+                        <button
+                          type="button"
+                          className="btn btn--quiet"
+                          disabled={resetPending !== null}
+                          aria-busy={resetPending === row.principal ? true : undefined}
+                          aria-label={`Reset credential for ${row.principal}`}
+                          onClick={() => void onReset(row.principal)}
+                        >
+                          {resetPending === row.principal ? 'Resetting…' : 'Reset credential'}
+                        </button>
+                      ) : null}
                     </td>
                     <td>
                       <span
@@ -445,10 +490,54 @@ export function Members({ scope }: { scope: MembersScope }) {
           >
             {compactPresentation ? '+ new grant' : 'New grant'}
           </button>
+          {/* Invite (#568) lives at organisation and instance scope only: a
+              project has no accounts of its own, and the org page is one
+              click up from the project projection. */}
+          {projectId === '' ? (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                feedback.clear();
+                setModal('invite');
+              }}
+            >
+              Invite
+            </button>
+          ) : null}
         </div>
       </Panel>
 
-      {modal === 'none' ? null : (
+      {modal === 'invite' ? (
+        <InviteDialog
+          scope={instance ? { kind: 'instance' } : { kind: 'org', org: orgQuery.data?.id ?? org }}
+          scopeName={scopeName}
+          origin={window.location.origin}
+          onDone={(text) => {
+            feedback.ok(text);
+            setModal('none');
+            void grants.refetch();
+          }}
+          onCancel={() => setModal('none')}
+        />
+      ) : null}
+      {resetIssued === null ? null : (
+        <IssuedAuthorityDialog
+          title={`Credential reset for ${principalLabel(resetIssued.principal)}`}
+          lede="Their sessions are revoked. Hand this authority to them out of band; it is shown once and only ever establishes a new password."
+          username={null}
+          principalId={resetIssued.principal}
+          issued={resetIssued.issued}
+          origin={window.location.origin}
+          onClose={() => {
+            feedback.ok(
+              `Reset the credential for ${principalLabel(resetIssued.principal)}. The authority was shown once.`,
+            );
+            setResetIssued(null);
+          }}
+        />
+      )}
+      {modal === 'none' || modal === 'invite' ? null : (
         <GrantModal
           orgName={scopeName}
           options={grantOptions}
@@ -647,6 +736,22 @@ function compactGrantScopeLabel(
   if (scope.kind === 'project') return `project · ${names.project(scope.project)}`;
   if (scope.kind === 'org') return `org · ${names.org(scope.org)}`;
   return fallback;
+}
+
+/**
+ * ResetRefusal carries a reset failure through the page's one feedback slot,
+ * which voices grant refusals; the wrapper is what lets `grantFailureText`
+ * hand the sentence to `resetFailureText` instead.
+ */
+class ResetRefusal extends Error {
+  constructor(cause: unknown) {
+    super(resetFailureText(cause), { cause });
+    this.name = 'ResetRefusal';
+  }
+}
+
+function membersFailureText(error: unknown): string {
+  return error instanceof ResetRefusal ? error.message : grantFailureText(error);
 }
 
 function principalLabel(principal: string): string {

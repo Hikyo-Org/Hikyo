@@ -129,6 +129,18 @@ export const SURFACES = defineSurfaceRegistry([
     mode: 'public',
     chrome: 'none',
   },
+  // Credential establishment (#568): where an invitee, or the target of a
+  // credential reset, turns a display-once authority into a password. Public
+  // and chromeless like login — the holder has no session yet — and reached
+  // from the login page and the invitation hand-off, never from the sidebar.
+  {
+    id: 'establish-credential',
+    path: '/establish',
+    label: 'Establish credential',
+    section: null,
+    mode: 'public',
+    chrome: 'none',
+  },
   {
     id: 'overview',
     path: '/',

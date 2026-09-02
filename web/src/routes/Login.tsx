@@ -1,8 +1,10 @@
 import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router';
 
 import { useAuthMethods } from '../api/account.ts';
 import { loginFailureText, useLogin, useOIDCLogin } from '../api/session.ts';
 import { passkeysAvailable, stepUpFailureText, usePasskeyLogin } from '../api/stepup.ts';
+import { surfaceById } from '../app/navigation.ts';
 import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
 
 /**
@@ -120,6 +122,11 @@ export function Login() {
             <span>{loginFailureText(oidc.error)}</span>
           </p>
         ) : null}
+        {/* A `.btn` link, not an inline one: the mobile pinned set holds every
+            interactive element to the 44px touch floor (#567). */}
+        <Link className="btn" to={surfaceById('establish-credential').path}>
+          Have a setup authority? Establish your credential
+        </Link>
       </form>
     </main>
   );

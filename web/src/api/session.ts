@@ -3,12 +3,13 @@ import {
   localLoginOp,
   logoutOp,
   oidcStartOp,
+  establishCredentialOp,
 } from '@hikyo/operations';
 import { zLoginResult, zMyOrgList } from '@hikyo/zod';
 import { useMutation, useQuery, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
-import { ApiError, ok, parsed } from './client.ts';
+import { ApiError, ok, parsed, transportRefusalText } from './client.ts';
 import { useTransport } from './transport.tsx';
 import { useAuth } from '../app/AuthProvider.tsx';
 
@@ -118,4 +119,30 @@ export function useOIDCLogin() {
       }),
     onSuccess: (result) => globalThis.location.assign(result.authorization_url),
   });
+}
+
+// --- credential establishment (#568) ----------------------------------------
+
+/**
+ * establishCredential turns a display-once authority (bootstrap, invitation,
+ * credential reset or break-glass) into a password. Public: the holder has no
+ * session, and the server answers a 204 that establishes none.
+ */
+export function establishCredential(authority: string, password: string): Promise<void> {
+  return ok(establishCredentialOp, { body: { authority, password } });
+}
+
+/**
+ * establishFailureText keeps the server's oracle closed: an expired, spent,
+ * unknown or malformed authority is one sentence, so the page cannot be used
+ * to tell which.
+ */
+export function establishFailureText(error: unknown): string {
+  if (error instanceof ApiError && (error.status === 400 || error.status === 401)) {
+    return 'The authority was not accepted. It may have expired or already been used.';
+  }
+  return (
+    transportRefusalText(error) ??
+    'The credential could not be established, or the answer did not match the contract.'
+  );
 }

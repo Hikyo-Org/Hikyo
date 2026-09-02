@@ -19,10 +19,9 @@ import {
 import { rememberOIDCReturn } from '../api/oidcChannel.ts';
 import { useRevokeSession, useSessions, type ActiveSession } from '../api/remotes.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
-import { writeClipboard } from '../app/clipboard.ts';
 import { themeLabel, useThemeChoice, type ThemeChoice } from '../app/theme.ts';
 import { clearNotification, notifyFailure } from '../app/notifications.tsx';
-import { Alert, Done, JumpIndex, Panel } from './Sections.tsx';
+import { Alert, DisplayOnceCopy, Done, JumpIndex, Panel } from './Sections.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
 
 const prototypeMode = import.meta.env.MODE === 'prototype';
@@ -763,39 +762,6 @@ function RecoveryCodes({ codes, onClose }: { codes: readonly string[]; onClose: 
         </button>
       </div>
     </dialog>
-  );
-}
-
-function DisplayOnceCopy({ value, success }: { value: string; success: string }) {
-  const [status, setStatus] = useState<string | null>(null);
-
-  return (
-    <>
-      <div className="panel__actions">
-        <button
-          type="button"
-          className="btn"
-          onClick={async () => {
-            const result = await writeClipboard(value);
-            setStatus(
-              result === 'ok'
-                ? success
-                : 'This browser refused clipboard access, so nothing was copied.',
-            );
-          }}
-        >
-          Copy
-        </button>
-      </div>
-      {status === null ? null : (
-        <p className="notice" role="status">
-          <span className="alert__glyph" aria-hidden="true">
-            ⧉
-          </span>
-          <span>{status}</span>
-        </p>
-      )}
-    </>
   );
 }
 

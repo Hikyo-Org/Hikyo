@@ -4251,6 +4251,18 @@ select {
   font-size: 12px;
 }
 
+/* A display-once value (#568): selectable as one run, wraps anywhere so a long
+   authority never overflows a phone-width dialog. */
+.display-once__value {
+  display: block;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
 /* Shared panel modifiers (#567). Per-id overrides let pages drift; a modifier
    names the intent once and every surface opts in by class. */
 .page--chrome .settings-row--compact {
