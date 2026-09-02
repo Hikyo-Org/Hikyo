@@ -686,6 +686,13 @@ func runGrantLifecycle(t *testing.T, db *store.DB) {
 	if _, err := g.List(ctx, service.LocalPrincipal(orgAdmin), orgAScope); err != nil {
 		t.Fatalf("grant.membership_read: %v", err)
 	}
+	// Member invitation (#568): member.invited on the org trail and the
+	// authority mint with issuer `invitation` on the instance trail.
+	if _, err := g.InviteMember(ctx, service.LocalPrincipal(orgAdmin), service.InviteSpec{
+		Scope: orgAScope, Username: "audited-invitee", Template: domain.TemplateViewer, Delivery: "response",
+	}); err != nil {
+		t.Fatalf("member.invited: %v", err)
+	}
 	if _, err := g.BreakGlassGrant(ctx, service.GrantSpec{
 		Target: grantee, Capability: domain.CapRevealHistory, Scope: envScope(envA1),
 	}); err != nil {
