@@ -197,6 +197,13 @@ mirroring how adapters (#157) ship CLI/API first with a tracked WebUI follow-up.
   `renewLease`, `revokeLease`, `settleLease`) -> `{issue: 595}` tracking the
   management WebUI (human mint keeps the reauth ceremony + display-once).
 
+**Resolved by #595** (`docs/handoff/595-dynamic-secrets-webui.md`): all ten rows
+above flipped to `{webui: machine-access}` — `showDynamicProvider` as
+`{webui: machine-access, via: [listDynamicProviders]}`. The `machine-access` page
+gained a **Providers** tab (provider CRUD + write-only credential set/revoke) and
+lease write actions on the **Leases** tab (display-once mint with the `mint`
+reauth ceremony, plus queued renew/revoke/settle). WebUI-only: no server change.
+
 ## CI wiring for the provider integration test (needs a workflow-scoped push)
 
 `scripts/ci/start-dynamic-pg.sh` is committed but the `ci.yml` step that invokes

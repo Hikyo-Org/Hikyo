@@ -55,18 +55,42 @@ import {
   type ServiceAccount,
 } from '../api/identities.ts';
 import { TypedNameConfirm } from './Sections.tsx';
-import { useLeases } from '../api/dynamic.ts';
+import { ApiError } from '../api/client.ts';
+import {
+  createDynamicProvider,
+  createProviderRefusalText,
+  deleteProviderRefusalText,
+  leaseActionRefusalText,
+  leaseMintFailureText,
+  leaseMintRefusalText,
+  mintLease,
+  revokeCredentialRefusalText,
+  setCredentialRefusalText,
+  setDynamicProviderCredential,
+  useDeleteDynamicProvider,
+  useDynamicProviders,
+  useLeases,
+  useRefreshLeases,
+  useRefreshProviders,
+  useRenewLease,
+  useRevokeDynamicProviderCredential,
+  useRevokeLease,
+  useSettleLease,
+  type DynamicLease,
+  type DynamicProvider,
+  type LeaseMinted,
+} from '../api/dynamic.ts';
 import { useMachineReveal, useSetMachineReveal } from '../api/machineReveal.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { writeClipboard } from '../app/clipboard.ts';
 import { runPasskeyCeremony, useEnvironments } from '../api/values.ts';
 import {
-  idleMintLifecycle,
-  mintLifecycleAtBoundary,
+  type IsMintSubmitting,
   type MintBoundary,
-  transitionMintLifecycle,
+  type MintBoundaryFields,
   type MintLifecycle,
-  type MintLifecycleEvent,
+  type MoveMint,
+  useMintLifecycle,
 } from './mintLifecycle.ts';
 import { useModalDialog } from './useModalDialog.ts';
 
@@ -96,26 +120,47 @@ import { useModalDialog } from './useModalDialog.ts';
  * rendered because it is real.
  */
 
-type Tab = 'accounts' | 'federation' | 'kubernetes' | 'leases';
+type Tab = 'accounts' | 'federation' | 'kubernetes' | 'providers' | 'leases';
 
 type Dialog =
   | { kind: 'binding'; account: ServiceAccount; replaces?: MachineCredential }
   | { kind: 'grant'; account: ServiceAccount }
   | { kind: 'create' }
-  | { kind: 'delete'; account: ServiceAccount };
+  | { kind: 'delete'; account: ServiceAccount }
+  | { kind: 'create-provider' }
+  | { kind: 'set-credential'; provider: DynamicProvider }
+  | { kind: 'revoke-credential'; provider: DynamicProvider }
+  | { kind: 'delete-provider'; provider: DynamicProvider };
 
-type MintTransitionResult = {
-  readonly state: MintLifecycle;
-  readonly accepted: boolean;
+/** A queued lease-lifecycle action awaiting confirmation. */
+type LeaseAction = {
+  readonly verb: 'renew' | 'revoke' | 'settle';
+  readonly environmentId: string;
+  readonly environmentName: string;
+  readonly lease: DynamicLease;
 };
 
-type MoveMint = (event: MintLifecycleEvent) => MintTransitionResult;
-type IsMintSubmitting = (requestId: number) => boolean;
+/** An environment as the lease-mint form addresses one. */
+type EnvOption = { readonly id: string; readonly name: string };
+
+/**
+ * The frozen inputs of a lease mint. Like MintRequest it carries only the
+ * addressed provider/environment and the labels the review panel shows — never a
+ * response field, so the disclosed password lives only in the lifecycle result.
+ */
+type LeaseMintRequest = MintBoundaryFields & {
+  readonly providerId: string;
+  readonly providerLabel: string;
+  readonly environmentId: string;
+  readonly environmentName: string;
+  readonly maxTtlSeconds: number;
+};
 
 const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
   { id: 'accounts', label: 'Service accounts' },
   { id: 'federation', label: 'Federation' },
   { id: 'kubernetes', label: 'Kubernetes targets' },
+  { id: 'providers', label: 'Providers' },
   { id: 'leases', label: 'Leases' },
 ];
 
@@ -140,6 +185,11 @@ export function MachineAccess() {
     [environmentsQuery.data],
   );
   const leases = useLeases(project, environments);
+  const providersQuery = useDynamicProviders(project);
+  const providers = useMemo(
+    () => providersQuery.data?.items ?? [],
+    [providersQuery.data],
+  );
   const grants = useMemo(() => grantsQuery.data?.items ?? [], [grantsQuery.data]);
   const credentials = useCredentials(project, accounts);
 
@@ -148,58 +198,22 @@ export function MachineAccess() {
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [mintLifecycle, setMintLifecycle] = useState<MintLifecycle>(idleMintLifecycle);
-  const mintLifecycleRef = useRef<MintLifecycle>(idleMintLifecycle);
+  const [leaseMintOpen, setLeaseMintOpen] = useState(false);
+  const [leaseAction, setLeaseAction] = useState<LeaseAction | null>(null);
   const mintBoundary: MintBoundary = {
     sessionId: liveSessionId,
     org: project.org,
     project: project.project,
   };
-  const mintBoundaryRef = useRef<MintBoundary>(mintBoundary);
-  mintBoundaryRef.current = mintBoundary;
-  const mintRequestId = useRef(0);
-
-  const moveMint = useCallback<MoveMint>((event) => {
-    const current = mintLifecycleRef.current;
-    const next = transitionMintLifecycle(current, event);
-    mintLifecycleRef.current = next;
-    if (next !== current) {
-      setMintLifecycle(next);
-    }
-    return { state: next, accepted: next !== current };
-  }, []);
-  const isMintSubmitting = useCallback<IsMintSubmitting>(
-    (requestId) => {
-      const current = mintLifecycleAtBoundary(
-        mintLifecycleRef.current,
-        mintBoundaryRef.current,
-      );
-      return current.kind === 'submitting' && current.request.id === requestId;
-    },
-    [],
-  );
-
-  // A project route is a new mint boundary. Clear before any completion from
-  // the old route can publish its display-once response into this one.
-  useEffect(() => {
-    moveMint({ type: 'clear', reason: 'navigation' });
-  }, [moveMint, project.org, project.project]);
-
-  // Session replacement is a harder boundary than navigation: even if the
-  // route remains mounted, no disclosure from the old browser session may
-  // survive into the new one.
-  useEffect(() => {
-    moveMint({ type: 'clear', reason: 'session-transition' });
-  }, [liveSessionId, moveMint]);
-
-  // Wipe the synchronous ref on unmount too, so an already-resolving promise
-  // sees idle and drops its late result.
-  useEffect(
-    () => () => {
-      mintLifecycleRef.current = idleMintLifecycle;
-    },
-    [],
-  );
+  // The display-once mint lifecycle, with its request-addressed completion and
+  // its navigation/session/unmount boundary clears (see useMintLifecycle).
+  const mint = useMintLifecycle(mintBoundary);
+  const moveMint: MoveMint = mint.moveMint;
+  const isMintSubmitting: IsMintSubmitting = mint.isSubmitting;
+  // A second, independent lifecycle for the dynamic-lease mint. It shares the
+  // same session/project boundary, so a route or session change clears the
+  // display-once lease password on exactly the same terms as a credential.
+  const leaseMint = useMintLifecycle<LeaseMintRequest, LeaseMinted>(mintBoundary);
 
   // A create, delete, binding or grant dialog carries a decision scoped to ONE
   // project and session. A boundary crossing — a route change, or a session
@@ -209,6 +223,8 @@ export function MachineAccess() {
   // this covers the setDialog-based dialogs.
   useEffect(() => {
     setDialog(null);
+    setLeaseMintOpen(false);
+    setLeaseAction(null);
   }, [project.org, project.project, liveSessionId]);
 
   const revoke = useRevokeCredential(project);
@@ -235,11 +251,10 @@ export function MachineAccess() {
       setRefusal('The current session could not be read. Reload before minting a credential.');
       return;
     }
-    mintRequestId.current += 1;
     moveMint({
       type: 'review',
       request: {
-        id: mintRequestId.current,
+        id: mint.nextRequestId(),
         sessionId: liveSessionId,
         org: project.org,
         project: project.project,
@@ -286,12 +301,30 @@ export function MachineAccess() {
    */
   const canAdminister = liveSessionId !== null && accountsQuery.isSuccess;
 
+  // Provider administration needs only a live session and a readable provider
+  // listing — the same lighter gate as create/delete above, for the same reason.
+  const canAdministerProviders = liveSessionId !== null && providersQuery.isSuccess;
+
+  // A lease can be minted only against a provider that is active AND holds a
+  // credential (the mint dials the provider), and only into an environment.
+  const mintableProviders = useMemo(
+    () => providers.filter((p) => p.state === 'active' && p.credential_present),
+    [providers],
+  );
+  const canMintLease =
+    liveSessionId !== null &&
+    providersQuery.isSuccess &&
+    environmentsQuery.isSuccess &&
+    mintableProviders.length > 0 &&
+    environments.length > 0;
+
   const tabCount: Record<Tab, string> = {
     accounts: accountsQuery.isSuccess ? String(accounts.length) : '—',
     // Unknown is rendered as unknown: "Federation (0)" on a failed listing
     // reads as "there are none", which is the one thing it does not know.
     federation: credentials.isPending || credentials.isError ? '—' : String(allBindings.length),
     kubernetes: '0',
+    providers: providersQuery.isSuccess ? String(providers.length) : '—',
     leases: leases.isPending || leases.isError ? '—' : String(leases.rows.length),
   };
 
@@ -309,7 +342,7 @@ export function MachineAccess() {
     );
   };
 
-  const activeMintLifecycle = mintLifecycleAtBoundary(mintLifecycle, mintBoundary);
+  const activeMintLifecycle = mint.active;
 
   return (
     <section className="card card--wide machine" aria-labelledby="machine-title">
@@ -575,13 +608,154 @@ export function MachineAccess() {
           </>
         ) : null}
 
+        {tab === 'providers' ? (
+          <>
+            <h2>Dynamic-secret providers</h2>
+            <p className="machine__lede">
+              Where Hikyo mints short-lived credentials. A provider is project-scoped, always
+              connects over <code>verify-full</code> TLS, and its admin credential is write-only —
+              set or replaced, never read back. Every minted lease role inherits the grant role.
+            </p>
+            <p className="machine__actions">
+              <button
+                className="btn btn--primary"
+                type="button"
+                disabled={!canAdministerProviders}
+                onClick={() => {
+                  setRefusal(null);
+                  setNotice(null);
+                  setDialog({ kind: 'create-provider' });
+                }}
+              >
+                Configure provider
+              </button>
+            </p>
+            <table className="values__table machine__table">
+              <caption className="visually-hidden">
+                The project&apos;s dynamic-secret providers. The admin credential is never listed.
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Kind</th>
+                  <th scope="col">Origin</th>
+                  <th scope="col" className="col-secondary">
+                    Grant role
+                  </th>
+                  <th scope="col">Credential</th>
+                  <th scope="col" className="col-secondary">
+                    State
+                  </th>
+                  <th scope="col">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {providers.map((provider) => (
+                  <tr key={provider.id}>
+                    <td>{provider.kind}</td>
+                    <td>
+                      <code>{provider.origin}</code>
+                    </td>
+                    <td className="col-secondary">
+                      <code>{provider.grant_role}</code>
+                    </td>
+                    <td>
+                      {provider.credential_present
+                        ? provider.credential_set_at === undefined ||
+                          provider.credential_set_at === null
+                          ? 'set'
+                          : `set ${isoDay(provider.credential_set_at)}`
+                        : 'none'}
+                    </td>
+                    <td className="col-secondary">{provider.state}</td>
+                    <td>
+                      {provider.state === 'active' ? (
+                        <span className="machine__row-actions">
+                          <button
+                            className="btn"
+                            type="button"
+                            disabled={!canAdministerProviders}
+                            onClick={() => {
+                              setRefusal(null);
+                              setNotice(null);
+                              setDialog({ kind: 'set-credential', provider });
+                            }}
+                          >
+                            {provider.credential_present
+                              ? 'Replace credential'
+                              : 'Set credential'}
+                          </button>
+                          {provider.credential_present ? (
+                            <button
+                              className="btn"
+                              type="button"
+                              disabled={!canAdministerProviders}
+                              onClick={() => {
+                                setRefusal(null);
+                                setNotice(null);
+                                setDialog({ kind: 'revoke-credential', provider });
+                              }}
+                            >
+                              Revoke credential
+                            </button>
+                          ) : null}
+                          <button
+                            className="btn"
+                            type="button"
+                            disabled={!canAdministerProviders}
+                            onClick={() => {
+                              setRefusal(null);
+                              setNotice(null);
+                              setDialog({ kind: 'delete-provider', provider });
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </span>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {providersQuery.isError ? (
+              <p role="status">The providers could not be read.</p>
+            ) : providers.length === 0 && !providersQuery.isPending ? (
+              <p role="status">
+                No dynamic-secret providers on this project yet. Configure one to mint leased
+                credentials.
+              </p>
+            ) : null}
+          </>
+        ) : null}
+
         {tab === 'leases' ? (
           <>
             <h2>Dynamic-secret leases</h2>
             <p className="machine__lede">
               Short-lived credentials Hikyo minted at a provider. Status and metadata only — the
-              credential is disclosed once, at mint, and never shown again. Mint and lifecycle live
-              on the API and CLI (<code>hikyo lease</code>).
+              password is disclosed once, at mint, and never shown again. Renew, revoke and settle
+              are queued: the worker carries them out and the row moves when it does.
+            </p>
+            <p className="machine__actions">
+              <button
+                className="btn btn--primary"
+                type="button"
+                disabled={!canMintLease}
+                onClick={() => {
+                  setRefusal(null);
+                  setNotice(null);
+                  setLeaseMintOpen(true);
+                }}
+              >
+                Mint lease
+              </button>
+              {!canMintLease && providersQuery.isSuccess && mintableProviders.length === 0 ? (
+                <span className="machine__hint">
+                  Configure a provider with a credential first — a lease is minted against one.
+                </span>
+              ) : null}
             </p>
             <table className="values__table machine__table">
               <caption className="visually-hidden">
@@ -599,32 +773,90 @@ export function MachineAccess() {
                   <th scope="col" className="col-secondary">
                     Principal
                   </th>
+                  <th scope="col">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {leases.rows.map((row) => (
-                  <tr key={row.lease.id}>
-                    <td>{row.environmentName}</td>
-                    <td>
-                      <code>{row.lease.provider_handle}</code>
-                    </td>
-                    <td>{row.lease.state}</td>
-                    <td className="col-secondary">
-                      {row.lease.expires_at === undefined || row.lease.expires_at === null
-                        ? '—'
-                        : isoDay(row.lease.expires_at)}
-                    </td>
-                    <td className="col-secondary">{row.lease.principal_class}</td>
-                  </tr>
-                ))}
+                {leases.rows.map((row) => {
+                  const state = row.lease.state;
+                  const canRenew = state === 'active';
+                  const canRevoke = !['revoked', 'expired', 'failed', 'revoking'].includes(state);
+                  const canSettle = state === 'unknown';
+                  const openAction = (verb: LeaseAction['verb']) => {
+                    setRefusal(null);
+                    setNotice(null);
+                    setLeaseAction({
+                      verb,
+                      environmentId: row.lease.environment_id,
+                      environmentName: row.environmentName,
+                      lease: row.lease,
+                    });
+                  };
+                  return (
+                    <tr key={row.lease.id}>
+                      <td>{row.environmentName}</td>
+                      <td>
+                        <code>{row.lease.provider_handle}</code>
+                      </td>
+                      <td>
+                        {state === 'unknown' ? (
+                          <span className="alert" role="status">
+                            <span className="alert__glyph" aria-hidden="true">
+                              !
+                            </span>
+                            <span>unknown — awaiting reconcile</span>
+                          </span>
+                        ) : (
+                          state
+                        )}
+                      </td>
+                      <td className="col-secondary">
+                        {row.lease.expires_at === undefined || row.lease.expires_at === null
+                          ? '—'
+                          : isoDay(row.lease.expires_at)}
+                      </td>
+                      <td className="col-secondary">{row.lease.principal_class}</td>
+                      <td>
+                        {liveSessionId !== null && (canRenew || canRevoke || canSettle) ? (
+                          <span className="machine__row-actions">
+                            {canRenew ? (
+                              <button className="btn" type="button" onClick={() => openAction('renew')}>
+                                Renew
+                              </button>
+                            ) : null}
+                            {canSettle ? (
+                              <button
+                                className="btn"
+                                type="button"
+                                onClick={() => openAction('settle')}
+                              >
+                                Settle
+                              </button>
+                            ) : null}
+                            {canRevoke ? (
+                              <button
+                                className="btn"
+                                type="button"
+                                onClick={() => openAction('revoke')}
+                              >
+                                Revoke
+                              </button>
+                            ) : null}
+                          </span>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             {leases.isError ? (
               <p role="status">The leases could not be read for one or more environments.</p>
             ) : leases.rows.length === 0 && !leases.isPending ? (
               <p role="status">
-                No dynamic-secret leases on this project yet. Configure a provider and mint one with{' '}
-                <code>hikyo lease mint</code>.
+                No dynamic-secret leases on this project yet. Configure a provider and mint one.
               </p>
             ) : null}
           </>
@@ -705,6 +937,95 @@ export function MachineAccess() {
             setNotice(
               `Deleted ${name}. Every credential it held is revoked and every grant released — atomically, and this cannot be undone.`,
             );
+          }}
+        />
+      ) : null}
+
+      {dialog?.kind === 'create-provider' ? (
+        <CreateProviderDialog
+          project={project}
+          onClose={() => setDialog(null)}
+          onCreated={(origin) => {
+            setDialog(null);
+            setNotice(
+              `Configured provider ${origin}. Hikyo reached it and authenticated — it can now mint leased credentials.`,
+            );
+          }}
+        />
+      ) : null}
+
+      {dialog?.kind === 'set-credential' ? (
+        <SetCredentialDialog
+          project={project}
+          provider={dialog.provider}
+          onClose={() => setDialog(null)}
+          onSet={(origin) => {
+            setDialog(null);
+            setNotice(
+              `Replaced the admin credential for ${origin}. Hikyo re-probed the provider and authenticated with the new one.`,
+            );
+          }}
+        />
+      ) : null}
+
+      {dialog?.kind === 'revoke-credential' ? (
+        <RevokeCredentialDialog
+          project={project}
+          provider={dialog.provider}
+          onClose={() => setDialog(null)}
+          onRevoked={(origin) => {
+            setDialog(null);
+            setNotice(
+              `Cleared the admin credential for ${origin}. Existing leases stay minted at the provider, but Hikyo cannot renew, revoke or expire them until a credential is set.`,
+            );
+          }}
+        />
+      ) : null}
+
+      {dialog?.kind === 'delete-provider' ? (
+        <DeleteProviderDialog
+          project={project}
+          provider={dialog.provider}
+          liveLeaseCount={leases.rows.filter(
+            (row) =>
+              row.lease.provider_id === dialog.provider.id &&
+              !['revoked', 'expired', 'failed'].includes(row.lease.state),
+          ).length}
+          leasesKnown={!leases.isPending && !leases.isError}
+          onClose={() => setDialog(null)}
+          onDeleted={(origin, revokedCount) => {
+            setDialog(null);
+            setNotice(
+              revokedCount === 0
+                ? `Deleted provider ${origin}.`
+                : `Deleted provider ${origin}. ${String(revokedCount)} live lease${revokedCount === 1 ? ' was' : 's were'} queued for revocation as part of the delete.`,
+            );
+          }}
+        />
+      ) : null}
+
+      {leaseMintOpen || leaseMint.active.kind !== 'idle' ? (
+        <LeaseMintDialog
+          project={project}
+          sessionId={liveSessionId}
+          providers={mintableProviders}
+          environments={environments}
+          lifecycle={leaseMint.active}
+          move={leaseMint.moveMint}
+          isSubmitting={leaseMint.isSubmitting}
+          nextRequestId={leaseMint.nextRequestId}
+          onClose={() => setLeaseMintOpen(false)}
+        />
+      ) : null}
+
+      {leaseAction !== null ? (
+        <LeaseActionDialog
+          project={project}
+          action={leaseAction}
+          onClose={() => setLeaseAction(null)}
+          onDone={(message) => {
+            setLeaseAction(null);
+            setNotice(message);
           }}
         />
       ) : null}
@@ -2540,5 +2861,980 @@ function DeleteAccountDialog({
 function blankClaims(preset: FederationPreset): Record<string, string> {
   return Object.fromEntries(
     preset.claims.map((field) => [field.claim, field.kind === 'event' ? 'push' : '']),
+  );
+}
+
+/**
+ * CreateProviderDialog configures a dynamic-secret provider.
+ *
+ * The server PROBES the origin with the admin credential before it stores
+ * anything, so a create that succeeds is a provider Hikyo could reach and
+ * authenticate against — the dialog says so rather than promising a store that
+ * might be unreachable. There is no passkey here: configuring standing project
+ * authority is `manage-identities`, not a per-environment disclosure.
+ */
+function CreateProviderDialog({
+  project,
+  onClose,
+  onCreated,
+}: {
+  project: ProjectRef;
+  onClose: () => void;
+  onCreated: (origin: string) => void;
+}) {
+  const dialog = useModalDialog();
+  const refresh = useRefreshProviders(project);
+  const [origin, setOrigin] = useState('');
+  const [grantRole, setGrantRole] = useState('');
+  const [credential, setCredential] = useState('');
+  const [failure, setFailure] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (origin.trim() === '' || grantRole.trim() === '' || credential === '') {
+      setFailure('Origin, grant role and the admin credential are all required. Nothing was created.');
+      return;
+    }
+    setBusy(true);
+    setFailure(null);
+    try {
+      await createDynamicProvider(project, {
+        kind: 'postgres',
+        origin,
+        grant_role: grantRole,
+        credential,
+      });
+      refresh();
+      onCreated(origin);
+    } catch (error) {
+      // A create whose response was lost may still have committed; re-read the
+      // listing so a committed provider shows even when the dialog reports failure.
+      refresh();
+      setFailure(createProviderRefusalText(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useNavigationGuard(busy, () => {});
+
+  return (
+    <dialog
+      className="ceremony"
+      aria-labelledby="create-provider-title"
+      ref={dialog}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) {
+          onClose();
+        }
+      }}
+    >
+      <h2 className="ceremony__title" id="create-provider-title">
+        Configure dynamic-secret provider
+      </h2>
+      <p className="ceremony__lede">
+        PostgreSQL is the only provider kind. Hikyo connects over <code>verify-full</code> TLS and
+        mints each lease role <code>IN ROLE</code> the grant role, so the lease inherits exactly the
+        access you granted that parent. The admin credential is write-only: it is never returned, and
+        the server dials the origin with it before storing anything.
+      </p>
+
+      <fieldset className="machine__lock" disabled={busy}>
+        <div className="field">
+          <label htmlFor="create-provider-origin">Origin (host:port/dbname)</label>
+          <input
+            id="create-provider-origin"
+            className="mono"
+            value={origin}
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={2048}
+            placeholder="db.internal:5432/app"
+            onChange={(event) => {
+              setOrigin(event.target.value);
+              setFailure(null);
+            }}
+          />
+        </div>
+
+        <div className="field">
+          <label htmlFor="create-provider-grant-role">Grant role</label>
+          <input
+            id="create-provider-grant-role"
+            className="mono"
+            value={grantRole}
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={63}
+            onChange={(event) => {
+              setGrantRole(event.target.value);
+              setFailure(null);
+            }}
+          />
+        </div>
+
+        <div className="field">
+          <label htmlFor="create-provider-credential">Admin credential (write-only)</label>
+          <input
+            id="create-provider-credential"
+            className="mono"
+            type="password"
+            value={credential}
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={4096}
+            onChange={(event) => {
+              setCredential(event.target.value);
+              setFailure(null);
+            }}
+          />
+        </div>
+      </fieldset>
+
+      {failure !== null ? (
+        <p className="alert" role="alert">
+          <span className="alert__glyph" aria-hidden="true">
+            !
+          </span>
+          <span>{failure}</span>
+        </p>
+      ) : null}
+
+      <div className="ceremony__actions">
+        <button
+          className="btn btn--primary"
+          type="button"
+          disabled={busy}
+          onClick={() => void submit()}
+        >
+          {busy ? 'Configuring…' : 'Configure provider'}
+        </button>
+        <button className="btn" type="button" onClick={onClose} disabled={busy}>
+          Cancel
+        </button>
+      </div>
+    </dialog>
+  );
+}
+
+/**
+ * SetCredentialDialog replaces a provider's write-only admin credential. It
+ * re-probes on set, so a success means the new credential authenticates; the
+ * prior one is never shown and is overwritten, not archived.
+ */
+function SetCredentialDialog({
+  project,
+  provider,
+  onClose,
+  onSet,
+}: {
+  project: ProjectRef;
+  provider: DynamicProvider;
+  onClose: () => void;
+  onSet: (origin: string) => void;
+}) {
+  const dialog = useModalDialog();
+  const refresh = useRefreshProviders(project);
+  const [credential, setCredential] = useState('');
+  const [failure, setFailure] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (credential === '') {
+      setFailure('The credential is required. The stored credential is unchanged.');
+      return;
+    }
+    setBusy(true);
+    setFailure(null);
+    try {
+      await setDynamicProviderCredential(project, { provider: provider.id, credential });
+      refresh();
+      onSet(provider.origin);
+    } catch (error) {
+      // A set whose response was lost may still have replaced the credential;
+      // re-read so the credential-set date reflects a write that may have landed.
+      refresh();
+      setFailure(setCredentialRefusalText(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useNavigationGuard(busy, () => {});
+
+  return (
+    <dialog
+      className="ceremony"
+      aria-labelledby="set-credential-title"
+      ref={dialog}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) {
+          onClose();
+        }
+      }}
+    >
+      <h2 className="ceremony__title" id="set-credential-title">
+        {`${provider.credential_present ? 'Replace' : 'Set'} admin credential · ${provider.origin}`}
+      </h2>
+      <p className="ceremony__lede">
+        Write-only: the credential is never read back. Hikyo dials the provider with it before
+        storing it, so a failure here leaves the current credential in place.
+      </p>
+
+      <fieldset className="machine__lock" disabled={busy}>
+        <div className="field">
+          <label htmlFor="set-credential-value">Admin credential</label>
+          <input
+            id="set-credential-value"
+            className="mono"
+            type="password"
+            value={credential}
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={4096}
+            onChange={(event) => {
+              setCredential(event.target.value);
+              setFailure(null);
+            }}
+          />
+        </div>
+      </fieldset>
+
+      {failure !== null ? (
+        <p className="alert" role="alert">
+          <span className="alert__glyph" aria-hidden="true">
+            !
+          </span>
+          <span>{failure}</span>
+        </p>
+      ) : null}
+
+      <div className="ceremony__actions">
+        <button
+          className="btn btn--primary"
+          type="button"
+          disabled={busy}
+          onClick={() => void submit()}
+        >
+          {busy ? 'Saving…' : 'Save credential'}
+        </button>
+        <button className="btn" type="button" onClick={onClose} disabled={busy}>
+          Cancel
+        </button>
+      </div>
+    </dialog>
+  );
+}
+
+/**
+ * RevokeCredentialDialog clears a provider's admin credential.
+ *
+ * It states the fail-closed consequence the ticket requires: existing leases are
+ * NOT torn down — their roles stay minted at the provider — but the worker can
+ * no longer renew, revoke or expire them until a replacement credential is set.
+ * A lease revocation that needs the credential will strand until then.
+ */
+function RevokeCredentialDialog({
+  project,
+  provider,
+  onClose,
+  onRevoked,
+}: {
+  project: ProjectRef;
+  provider: DynamicProvider;
+  onClose: () => void;
+  onRevoked: (origin: string) => void;
+}) {
+  const dialog = useModalDialog();
+  const revoke = useRevokeDynamicProviderCredential(project);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    setBusy(true);
+    setFailure(null);
+    try {
+      await revoke.mutateAsync(provider.id);
+      onRevoked(provider.origin);
+    } catch (error) {
+      setFailure(revokeCredentialRefusalText(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useNavigationGuard(busy, () => {});
+
+  return (
+    <dialog
+      className="ceremony"
+      aria-labelledby="revoke-credential-title"
+      ref={dialog}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) {
+          onClose();
+        }
+      }}
+    >
+      <h2 className="ceremony__title" id="revoke-credential-title">
+        {`Revoke admin credential · ${provider.origin}`}
+      </h2>
+      <p className="ceremony__cap" role="status">
+        <span className="alert__glyph" aria-hidden="true">
+          !
+        </span>
+        <span>
+          This clears the stored credential. Existing leases stay minted at the provider, but Hikyo
+          can no longer renew, revoke or expire them — a revocation that needs the credential will
+          strand — until you set a replacement. New mints are refused while there is no credential.
+        </span>
+      </p>
+
+      {failure !== null ? (
+        <p className="alert" role="alert">
+          <span className="alert__glyph" aria-hidden="true">
+            !
+          </span>
+          <span>{failure}</span>
+        </p>
+      ) : null}
+
+      <div className="ceremony__actions">
+        <button
+          className="btn btn--primary"
+          type="button"
+          disabled={busy}
+          onClick={() => void submit()}
+        >
+          {busy ? 'Revoking…' : 'Revoke credential'}
+        </button>
+        <button className="btn" type="button" onClick={onClose} disabled={busy}>
+          Cancel
+        </button>
+      </div>
+    </dialog>
+  );
+}
+
+/**
+ * DeleteProviderDialog removes a provider behind a typed-origin confirmation.
+ *
+ * The server refuses while the provider has live leases unless the cascade is
+ * confirmed, in which case it queues every one of them for revocation. So the
+ * dialog states that truth — how many live leases go — and requires the cascade
+ * checkbox when there are any, rather than letting the operator meet the refusal
+ * as a 409.
+ */
+function DeleteProviderDialog({
+  project,
+  provider,
+  liveLeaseCount,
+  leasesKnown,
+  onClose,
+  onDeleted,
+}: {
+  project: ProjectRef;
+  provider: DynamicProvider;
+  liveLeaseCount: number;
+  leasesKnown: boolean;
+  onClose: () => void;
+  onDeleted: (origin: string, revokedCount: number) => void;
+}) {
+  const dialog = useModalDialog();
+  const remove = useDeleteDynamicProvider(project);
+  const [revokeAll, setRevokeAll] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  // A lease that appeared AFTER the cached count was read makes the server refuse
+  // with 409 even though this dialog thought there were none. Latch that so the
+  // cascade option appears and the operator can confirm and retry, rather than
+  // being stuck behind a hidden checkbox.
+  const [serverDemandsCascade, setServerDemandsCascade] = useState(false);
+
+  // With a known live-lease count the cascade is a required, explicit tick; when
+  // the lease listing could not be read the count is unknown, so the checkbox is
+  // offered; and a 409 from the server's own guard forces it on either way.
+  const cascadeRequired = (leasesKnown && liveLeaseCount > 0) || serverDemandsCascade;
+  const showCascade = cascadeRequired || !leasesKnown;
+  const confirmDisabled = busy || (cascadeRequired && !revokeAll);
+
+  const submit = async () => {
+    setBusy(true);
+    setFailure(null);
+    try {
+      const result = await remove.mutateAsync({ provider: provider.id, revokeAll });
+      onDeleted(provider.origin, result.revoked_lease_ids.length);
+    } catch (error) {
+      // The server's own live-leases guard (409) can fire on a lease that
+      // appeared after the cached count: reveal the cascade so a retry can carry it.
+      if (error instanceof ApiError && error.status === 409) {
+        setServerDemandsCascade(true);
+      }
+      setFailure(deleteProviderRefusalText(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useNavigationGuard(busy, () => {});
+
+  return (
+    <dialog
+      className="ceremony"
+      aria-labelledby="delete-provider-title"
+      ref={dialog}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) {
+          onClose();
+        }
+      }}
+    >
+      <h2 className="ceremony__title" id="delete-provider-title">
+        {`Delete provider · ${provider.origin}`}
+      </h2>
+      <p className="ceremony__cap" role="status">
+        <span className="alert__glyph" aria-hidden="true">
+          !
+        </span>
+        <span>
+          {leasesKnown
+            ? liveLeaseCount === 0
+              ? 'This provider has no live leases. Deleting it removes its configuration and its stored credential. This cannot be undone.'
+              : `This provider has ${String(liveLeaseCount)} live lease${liveLeaseCount === 1 ? '' : 's'}. Deleting it queues ${liveLeaseCount === 1 ? 'that lease' : 'each of them'} for revocation, then removes the provider. This cannot be undone.`
+            : 'The lease listing could not be read, so the number of live leases is unknown. If any exist, confirm the cascade below or the delete will be refused.'}
+        </span>
+      </p>
+
+      {showCascade ? (
+        <div className="field chk">
+          <input
+            id="delete-provider-cascade"
+            type="checkbox"
+            checked={revokeAll}
+            disabled={busy}
+            onChange={(event) => {
+              setRevokeAll(event.target.checked);
+              setFailure(null);
+            }}
+          />
+          <label htmlFor="delete-provider-cascade">
+            Revoke every live lease of this provider as part of the delete.
+          </label>
+        </div>
+      ) : null}
+
+      {failure !== null ? (
+        <p className="alert" role="alert">
+          <span className="alert__glyph" aria-hidden="true">
+            !
+          </span>
+          <span>{failure}</span>
+        </p>
+      ) : null}
+
+      <TypedNameConfirm
+        label="Confirm the provider origin to delete it"
+        expect={provider.origin}
+        action="Delete provider"
+        hint={
+          <>
+            Type <span className="mono">{provider.origin}</span> to enable deletion.
+          </>
+        }
+        busy={confirmDisabled}
+        onConfirm={() => void submit()}
+      />
+
+      <div className="ceremony__actions">
+        <button className="btn" type="button" onClick={onClose} disabled={busy}>
+          Cancel
+        </button>
+      </div>
+    </dialog>
+  );
+}
+
+/**
+ * LeaseMintDialog is the display-once lease mint.
+ *
+ * It reuses the mint lifecycle (request-addressed completion, stored-confirmation
+ * gate, boundary masking) that the credential mint runs on. A human mint takes a
+ * passkey reauthentication over the chosen environment, then the server discloses
+ * the role name and its password EXACTLY once — a retry is a new lease, never the
+ * old secret.
+ */
+function LeaseMintDialog({
+  project,
+  sessionId,
+  providers,
+  environments,
+  lifecycle,
+  move,
+  isSubmitting,
+  nextRequestId,
+  onClose,
+}: {
+  project: ProjectRef;
+  sessionId: string | null;
+  providers: readonly DynamicProvider[];
+  environments: readonly EnvOption[];
+  lifecycle: MintLifecycle<LeaseMintRequest, LeaseMinted>;
+  move: MoveMint<LeaseMintRequest, LeaseMinted>;
+  isSubmitting: IsMintSubmitting;
+  nextRequestId: () => number;
+  onClose: () => void;
+}) {
+  const dialog = useModalDialog();
+  const refreshLeases = useRefreshLeases(project);
+  const confirmation = useRef<HTMLInputElement>(null);
+  const [providerId, setProviderId] = useState(providers[0]?.id ?? '');
+  const [environmentId, setEnvironmentId] = useState(environments[0]?.id ?? '');
+  const [ttl, setTtl] = useState('3600');
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const disclosed = lifecycle.kind === 'disclosed' ? lifecycle : null;
+  const disclosedValue = disclosed?.result.password ?? null;
+  const busy = lifecycle.kind === 'submitting';
+  const failure = lifecycle.kind === 'failed' ? lifecycle.error : null;
+
+  useEffect(() => {
+    if (disclosedValue !== null) {
+      confirmation.current?.focus();
+    }
+  }, [disclosedValue]);
+
+  const run = async () => {
+    if (sessionId === null) {
+      setFormError('The current session could not be read. Reload before minting a lease.');
+      return;
+    }
+    const provider = providers.find((p) => p.id === providerId);
+    const environment = environments.find((e) => e.id === environmentId);
+    if (provider === undefined || environment === undefined) {
+      setFormError('Choose a provider and an environment.');
+      return;
+    }
+    const seconds = Number(ttl);
+    if (!Number.isInteger(seconds) || seconds <= 0) {
+      setFormError('Enter the maximum lifetime as a whole number of seconds.');
+      return;
+    }
+    setFormError(null);
+    const request: LeaseMintRequest = {
+      id: nextRequestId(),
+      sessionId,
+      org: project.org,
+      project: project.project,
+      providerId: provider.id,
+      providerLabel: provider.origin,
+      environmentId: environment.id,
+      environmentName: environment.name,
+      maxTtlSeconds: seconds,
+    };
+    const reviewed = move({ type: 'review', request });
+    if (!reviewed.accepted || reviewed.state.kind !== 'reviewing') {
+      return;
+    }
+    const started = move({ type: 'submit' });
+    if (!started.accepted || started.state.kind !== 'submitting') {
+      return;
+    }
+    const active = started.state.request;
+    // `issued` is the difference between "nothing happened" and "a live role
+    // whose password is gone forever": once the mint request leaves, a failure
+    // says nothing about whether the server committed.
+    let issued = false;
+    try {
+      await runPasskeyCeremony({
+        operation: 'mint',
+        environmentId: active.environmentId,
+        keyIds: [],
+      });
+      if (!isSubmitting(active.id)) {
+        return;
+      }
+      issued = true;
+      const minted = await mintLease(
+        { org: active.org, project: active.project, environment: active.environmentId },
+        { providerId: active.providerId, maxTtlSeconds: active.maxTtlSeconds },
+      );
+      move({ type: 'succeeded', requestId: active.id, result: minted });
+      refreshLeases(active.environmentId);
+    } catch (error) {
+      if (issued) {
+        refreshLeases(active.environmentId);
+        move({ type: 'failed', requestId: active.id, error: leaseMintFailureText(error) });
+      } else {
+        move({ type: 'failed', requestId: active.id, error: leaseMintRefusalText(error) });
+      }
+    }
+  };
+
+  const dismiss = () => {
+    if (lifecycle.kind === 'idle') {
+      onClose();
+      return;
+    }
+    const result = move({ type: 'dismiss' });
+    if (result.state.kind === 'idle') {
+      onClose();
+    }
+  };
+
+  useNavigationGuard(busy || (disclosed !== null && !disclosed.stored), dismiss);
+
+  return (
+    <dialog
+      className="ceremony"
+      aria-labelledby="lease-mint-title"
+      ref={dialog}
+      onCancel={(event) => {
+        event.preventDefault();
+        dismiss();
+      }}
+    >
+      {disclosed === null ? (
+        <>
+          <h2 className="ceremony__title" id="lease-mint-title">
+            Mint dynamic-secret lease
+          </h2>
+          <p className="ceremony__stepup">
+            <span className="alert__glyph" aria-hidden="true">
+              ⚿
+            </span>
+            <span>
+              <strong>Confirm it&apos;s you.</strong> The password is delivered display-once, to you.
+              A human mint takes a passkey reauthentication over the chosen environment and a
+              disclosure capability there.
+            </span>
+          </p>
+
+          <fieldset className="machine__lock" disabled={busy}>
+            <div className="field">
+              <label htmlFor="lease-mint-provider">Provider</label>
+              <select
+                id="lease-mint-provider"
+                value={providerId}
+                onChange={(event) => {
+                  setProviderId(event.target.value);
+                  setFormError(null);
+                }}
+              >
+                {providers.map((provider) => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.origin}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field">
+              <label htmlFor="lease-mint-environment">Environment</label>
+              <select
+                id="lease-mint-environment"
+                value={environmentId}
+                onChange={(event) => {
+                  setEnvironmentId(event.target.value);
+                  setFormError(null);
+                }}
+              >
+                {environments.map((environment) => (
+                  <option key={environment.id} value={environment.id}>
+                    {environment.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field">
+              <label htmlFor="lease-mint-ttl">Maximum lifetime (seconds)</label>
+              <input
+                id="lease-mint-ttl"
+                className="mono"
+                inputMode="numeric"
+                value={ttl}
+                onChange={(event) => {
+                  setTtl(event.target.value);
+                  setFormError(null);
+                }}
+              />
+            </div>
+          </fieldset>
+          <p className="ceremony__scope">
+            The provider clamps the lifetime to its own ceiling, and PostgreSQL enforces expiry with{' '}
+            <code>VALID UNTIL</code> even if Hikyo is down.
+          </p>
+
+          {formError !== null ? (
+            <p className="alert" role="alert">
+              <span className="alert__glyph" aria-hidden="true">
+                !
+              </span>
+              <span>{formError}</span>
+            </p>
+          ) : null}
+          {failure !== null ? (
+            <p className="alert" role="alert">
+              <span className="alert__glyph" aria-hidden="true">
+                !
+              </span>
+              <span>{failure}</span>
+            </p>
+          ) : null}
+
+          <div className="ceremony__actions">
+            <button
+              className="btn btn--primary"
+              type="button"
+              disabled={busy}
+              onClick={() => void run()}
+            >
+              {busy ? 'Minting…' : 'Use a passkey and mint'}
+            </button>
+            <button className="btn" type="button" onClick={dismiss} disabled={busy}>
+              Cancel
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <h2 className="ceremony__title" id="lease-mint-title">
+            Lease minted — shown exactly once
+          </h2>
+          <div className="field">
+            <label htmlFor="lease-mint-username">Role name</label>
+            <p className="mono machine__token" id="lease-mint-username">
+              {disclosed.result.username}
+            </p>
+          </div>
+          <div className="field">
+            <label htmlFor="lease-mint-password">Password</label>
+            <p className="mono machine__token" id="lease-mint-password">
+              {disclosed.result.password}
+            </p>
+          </div>
+          {disclosed.result.expires_at !== undefined && disclosed.result.expires_at !== null ? (
+            <p className="notice" role="status">
+              <span className="alert__glyph" aria-hidden="true">
+                !
+              </span>
+              <span>{`This lease expires ${isoDay(disclosed.result.expires_at)}. The provider may have shortened the lifetime you asked for.`}</span>
+            </p>
+          ) : null}
+          <p className="ceremony__cap" role="status">
+            <span className="alert__glyph" aria-hidden="true">
+              !
+            </span>
+            <span>
+              This password is never retrievable again. The list shows metadata only, and a renewal
+              never returns it. Store it in the consuming workload now; if it is lost, revoke this
+              lease and mint a fresh one.
+            </span>
+          </p>
+          <button
+            className="btn"
+            type="button"
+            onClick={async () => {
+              const result = await writeClipboard(disclosed.result.password);
+              move({
+                type: 'copy-status',
+                requestId: disclosed.request.id,
+                message:
+                  result === 'ok'
+                    ? 'Copied. The clipboard is now the only copy outside its target system.'
+                    : 'This browser refused clipboard access, so nothing was copied.',
+              });
+            }}
+          >
+            Copy password
+          </button>
+          {disclosed.copyStatus === null ? null : (
+            <p className="notice" role="status">
+              <span className="alert__glyph" aria-hidden="true">
+                ⧉
+              </span>
+              <span>{disclosed.copyStatus}</span>
+            </p>
+          )}
+          <div className="field chk">
+            <input
+              id="lease-mint-stored"
+              type="checkbox"
+              ref={confirmation}
+              checked={disclosed.stored}
+              onChange={(event) => {
+                move({ type: 'confirm-stored', stored: event.target.checked });
+              }}
+            />
+            <label htmlFor="lease-mint-stored">
+              I have stored this password in its target workload.
+            </label>
+          </div>
+          {disclosed.heldBack ? (
+            <p className="alert" role="alert">
+              <span className="alert__glyph" aria-hidden="true">
+                !
+              </span>
+              <span>Confirm you have stored it — there is no second look at this password.</span>
+            </p>
+          ) : null}
+          <div className="ceremony__actions">
+            <button className="btn btn--primary" type="button" onClick={dismiss}>
+              Done
+            </button>
+          </div>
+        </>
+      )}
+    </dialog>
+  );
+}
+
+/**
+ * LeaseActionDialog confirms and queues a renew, revoke or settle. Each is
+ * QUEUED: the server records the intent and the worker carries it out, so the
+ * copy says "queued" rather than promising a done state the row does not yet
+ * show. Renew offers an optional new ceiling; revoke and settle are one-tap.
+ */
+function LeaseActionDialog({
+  project,
+  action,
+  onClose,
+  onDone,
+}: {
+  project: ProjectRef;
+  action: LeaseAction;
+  onClose: () => void;
+  onDone: (message: string) => void;
+}) {
+  const dialog = useModalDialog();
+  const renew = useRenewLease(project);
+  const revoke = useRevokeLease(project);
+  const settle = useSettleLease(project);
+  const [ttl, setTtl] = useState('');
+  const [failure, setFailure] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const handle = action.lease.provider_handle;
+
+  const submit = async () => {
+    setBusy(true);
+    setFailure(null);
+    try {
+      if (action.verb === 'renew') {
+        let seconds: number | null = null;
+        if (ttl.trim() !== '') {
+          const parsed = Number(ttl);
+          if (!Number.isInteger(parsed) || parsed <= 0) {
+            setFailure('Enter the new ceiling as a whole number of seconds, or leave it blank.');
+            setBusy(false);
+            return;
+          }
+          seconds = parsed;
+        }
+        await renew.mutateAsync({
+          environment: action.environmentId,
+          lease: action.lease.id,
+          maxTtlSeconds: seconds,
+        });
+        onDone(`Queued a renewal of ${handle}. The worker extends the role; the row moves when it does.`);
+      } else if (action.verb === 'revoke') {
+        await revoke.mutateAsync({ environment: action.environmentId, lease: action.lease.id });
+        onDone(`Queued the revocation of ${handle}. The worker drops the role; the row moves when it does.`);
+      } else {
+        await settle.mutateAsync({ environment: action.environmentId, lease: action.lease.id });
+        onDone(`Queued a reconcile of ${handle}. The worker re-probes the provider and settles the lease.`);
+      }
+    } catch (error) {
+      setFailure(leaseActionRefusalText(action.verb, error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useNavigationGuard(busy, () => {});
+
+  const title =
+    action.verb === 'renew'
+      ? `Renew lease · ${handle}`
+      : action.verb === 'revoke'
+        ? `Revoke lease · ${handle}`
+        : `Settle lease · ${handle}`;
+
+  const lede =
+    action.verb === 'renew'
+      ? 'Queues a renewal: the worker extends the role at the provider, never past the lease’s maximum TTL. Renewal re-checks read over this environment.'
+      : action.verb === 'revoke'
+        ? 'Queues a revocation: the worker drops the role at the provider. This is the fail-safe teardown — it succeeds even after the workload’s grants are gone.'
+        : 'This lease is in an ambiguous state. Settling re-triggers reconcile: the worker re-probes the provider and settles the lease to its true state.';
+
+  return (
+    <dialog
+      className="ceremony"
+      aria-labelledby="lease-action-title"
+      ref={dialog}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) {
+          onClose();
+        }
+      }}
+    >
+      <h2 className="ceremony__title" id="lease-action-title">
+        {title}
+      </h2>
+      <p className="ceremony__lede">{lede}</p>
+
+      {action.verb === 'renew' ? (
+        <fieldset className="machine__lock" disabled={busy}>
+          <div className="field">
+            <label htmlFor="lease-action-ttl">New maximum lifetime (seconds, optional)</label>
+            <input
+              id="lease-action-ttl"
+              className="mono"
+              inputMode="numeric"
+              value={ttl}
+              placeholder="leave blank to keep the current ceiling"
+              onChange={(event) => {
+                setTtl(event.target.value);
+                setFailure(null);
+              }}
+            />
+          </div>
+        </fieldset>
+      ) : null}
+
+      {failure !== null ? (
+        <p className="alert" role="alert">
+          <span className="alert__glyph" aria-hidden="true">
+            !
+          </span>
+          <span>{failure}</span>
+        </p>
+      ) : null}
+
+      <div className="ceremony__actions">
+        <button
+          className="btn btn--primary"
+          type="button"
+          disabled={busy}
+          onClick={() => void submit()}
+        >
+          {busy
+            ? 'Queuing…'
+            : action.verb === 'renew'
+              ? 'Queue renewal'
+              : action.verb === 'revoke'
+                ? 'Queue revocation'
+                : 'Queue reconcile'}
+        </button>
+        <button className="btn" type="button" onClick={onClose} disabled={busy}>
+          Cancel
+        </button>
+      </div>
+    </dialog>
   );
 }

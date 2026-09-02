@@ -7,6 +7,7 @@ import {
   type MintLifecycle,
   type MintBoundary,
   type MintRequest,
+  type MintResult,
 } from './mintLifecycle.ts';
 
 const SENTINEL = 'hik_1_wl_SENTINEL_PLAINTEXT';
@@ -42,7 +43,10 @@ const request = (id: number, accountId = 'mch_first'): MintRequest => ({
 });
 
 function submitting(input: MintRequest): MintLifecycle {
-  const reviewing = transitionMintLifecycle(idleMintLifecycle, { type: 'review', request: input });
+  const reviewing = transitionMintLifecycle<MintRequest, MintResult>(idleMintLifecycle, {
+    type: 'review',
+    request: input,
+  });
   return transitionMintLifecycle(reviewing, { type: 'submit' });
 }
 
