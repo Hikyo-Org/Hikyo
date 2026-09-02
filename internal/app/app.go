@@ -121,6 +121,7 @@ type Server struct {
 	log                *slog.Logger
 	scheduler          *Scheduler
 	adapterWorker      *adapter.Worker
+	dynamicWorker      *dynamicWorker
 	updateReconciler   *service.Updates
 }
 
@@ -481,12 +482,18 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	}
 	adapterService := &service.Adapters{DB: db, Auth: authSvc, Keyring: kr, Budget: budget, ModuleFactory: moduleWiring.service}
 	definitionsService := &service.Definitions{DB: db, Keyring: kr, Advisory: advisory, Budget: budget, Scan: ruleset}
+	dynamicRuntime := store.NewDynamicRuntime(db)
+	dynamicService := &service.Dynamic{
+		DB: db, Auth: authSvc, Keyring: kr, Budget: budget, Runtime: dynamicRuntime,
+		ProviderFactory: newDynamicFactory(cfg.DynamicEgressPolicy), LeaseDeadline: dynamicProviderDeadline,
+	}
 
 	updatesService := &service.Updates{DB: db, Source: updateSource, Version: Version, Channel: updatecheck.Channel(cfg.UpdateChannel), Control: updateControl, Log: log}
 	// One RED collector shared by the API middleware (writer) and the
 	// operational /metrics handler (reader) (#513). The limiter supplies its
 	// admission-pressure gauges at scrape time.
 	metrics := server.NewMetrics(limiter)
+	metrics.SetDynamicSource(dynamicGaugeSource{runtime: dynamicRuntime, log: log})
 	api := &server.API{
 		Auth:     authSvc,
 		SAMLAuth: authSvc,
@@ -541,6 +548,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		Providers:       &service.Providers{DB: db, Keyring: kr, ExternalOrigin: cfg.ExternalOrigin, Log: log},
 		SAMLProviders:   samlProviders,
 		Adapters:        adapterService,
+		Dynamic:         dynamicService,
 		Audits:          &service.Audits{DB: db, Budget: budget},
 		// ONE SCIM service behind both surfaces: the administration verbs and
 		// the identity provider's wire read the same bindings, the same mapping
@@ -612,6 +620,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 			},
 		}}},
 		adapterWorker:    adapterWorker,
+		dynamicWorker:    &dynamicWorker{svc: dynamicService, id: "dynamic-worker-" + uuid.Must(uuid.NewV7()).String(), log: log},
 		updateReconciler: updatesService,
 	}
 	if cfg.BackupScheduled() {
@@ -767,10 +776,21 @@ func (s *Server) serve(ctx context.Context, ready func()) error {
 			s.adapterWorker.Run(workerCtx)
 		}()
 	}
+	var dynamicWorkerDone chan struct{}
+	if s.dynamicWorker != nil {
+		dynamicWorkerDone = make(chan struct{})
+		go func() {
+			defer close(dynamicWorkerDone)
+			s.dynamicWorker.Run(workerCtx)
+		}()
+	}
 	defer func() {
 		stopWorker()
 		if workerDone != nil {
 			<-workerDone
+		}
+		if dynamicWorkerDone != nil {
+			<-dynamicWorkerDone
 		}
 	}()
 	reloaderCtx, stopReloader := context.WithCancel(ctx)

@@ -370,3 +370,17 @@ operations:
   syncAdapterTarget:           {issue: 157}
   testAdapterTarget:           {issue: 157}
   adoptAdapterTargetNames:     {issue: 157}
+
+  # dynamic secrets (#147 shipped API+CLI+read-only status; management WebUI #595)
+  listLeases:                  {webui: machine-access}
+  showLease:                   {webui: machine-access, via: [listLeases]}
+  listDynamicProviders:        {issue: 595}
+  createDynamicProvider:       {issue: 595}
+  showDynamicProvider:         {issue: 595}
+  deleteDynamicProvider:       {issue: 595}
+  setDynamicProviderCredential: {issue: 595}
+  revokeDynamicProviderCredential: {issue: 595}
+  mintLease:                   {issue: 595}
+  renewLease:                  {issue: 595}
+  revokeLease:                 {issue: 595}
+  settleLease:                 {issue: 595}

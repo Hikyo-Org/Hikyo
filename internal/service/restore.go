@@ -140,6 +140,9 @@ func CompleteRestore(now time.Time, m store.Manifest) tx.RestoreFn {
 		if err := az.InvalidateRestoredAdapterCredentials(ctx); err != nil {
 			return err
 		}
+		if err := az.InvalidateRestoredDynamicProviderCredentials(ctx); err != nil {
+			return err
+		}
 		state, err := az.RestoreState(ctx)
 		if err != nil {
 			return err

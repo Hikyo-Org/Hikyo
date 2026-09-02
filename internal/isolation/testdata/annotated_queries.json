@@ -901,6 +901,12 @@
   },
   {
     "engine": "postgres",
+    "name": "InvalidateRestoredDynamicProviderCredentials",
+    "annotation": "authn-resolution",
+    "hash": "96eaf3c2f40351bf1bed78e2fcc47738a1c166aed7aaec424a4140235019cede"
+  },
+  {
+    "engine": "postgres",
     "name": "ListAllProjects",
     "annotation": "instance-scoped",
     "hash": "be5159c9886d81dedcac17808f126b2d858322f74b939e41c48ae90d042e71d3"
@@ -2392,6 +2398,12 @@
     "name": "InvalidateRestoredAdapterCredentials",
     "annotation": "authn-resolution",
     "hash": "27f28de7b5558d0d0df1d153be0982c3a6c48223a443d429ff592975c2f51ca4"
+  },
+  {
+    "engine": "sqlite",
+    "name": "InvalidateRestoredDynamicProviderCredentials",
+    "annotation": "authn-resolution",
+    "hash": "96eaf3c2f40351bf1bed78e2fcc47738a1c166aed7aaec424a4140235019cede"
   },
   {
     "engine": "sqlite",

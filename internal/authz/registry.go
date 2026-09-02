@@ -548,6 +548,24 @@ const (
 	OpAdapterDelete           Operation = "adapter.delete"
 	OpAdapterPush             Operation = "adapter.push"
 
+	// Dynamic secrets (#147). Provider configuration is project-scoped standing
+	// authority (manage-identities); a lease is an environment-scoped
+	// short-lived credential. Mint carries read+reveal so the machine-reveal
+	// opt-in and pin rules apply unchanged. OpLeaseRenew is the worker's
+	// per-transition re-authorization for renew (mint re-auths through
+	// OpLeaseMint); revoke/expire are the fail-safe direction and re-check no
+	// grants.
+	OpDynamicProviderConfigure        Operation = "dynamic-provider.configure"
+	OpDynamicProviderInspect          Operation = "dynamic-provider.inspect"
+	OpDynamicProviderCredentialSet    Operation = "dynamic-provider.credential-set"
+	OpDynamicProviderCredentialRevoke Operation = "dynamic-provider.credential-revoke"
+	OpDynamicProviderDelete           Operation = "dynamic-provider.delete"
+	OpLeaseMint                       Operation = "lease.mint"
+	OpLeaseInspect                    Operation = "lease.inspect"
+	OpLeaseRenew                      Operation = "lease.renew"
+	OpLeaseRevoke                     Operation = "lease.revoke"
+	OpLeaseSettle                     Operation = "lease.settle"
+
 	// NOT REGISTERED, deliberately: the active-session listing and its revoke
 	// (#71 criterion 5). Both are SELF-SCOPED — they address the caller's own
 	// principal and nothing else — so they take the shape /api/v1/me/orgs
@@ -679,6 +697,25 @@ const (
 	StoreAdaptersRevokeCredential      StoreOp = "adapters.RevokeCredential"
 	StoreAdaptersEnqueueManual         StoreOp = "adapters.EnqueueManual"
 	StoreCatalogueRevisionBump         StoreOp = "catalogue.BumpSchemaRevision"
+
+	// Dynamic secrets (#147). Request-path (proof-carrying) store methods; the
+	// worker's lease-transition SQL runs through the proof-free DynamicRuntime
+	// (the domain-specific outbox pattern, like AdapterRuntime).
+	StoreDynamicProvidersCreate               StoreOp = "dynamic.CreateProvider"
+	StoreDynamicProvidersGet                  StoreOp = "dynamic.GetProvider"
+	StoreDynamicProvidersCredentialCiphertext StoreOp = "dynamic.ProviderCredentialCiphertext"
+	StoreDynamicProvidersList                 StoreOp = "dynamic.ListProviders"
+	StoreDynamicProvidersReplaceCredential    StoreOp = "dynamic.ReplaceProviderCredential"
+	StoreDynamicProvidersRevokeCredential     StoreOp = "dynamic.RevokeProviderCredential"
+	StoreDynamicProvidersDelete               StoreOp = "dynamic.DeleteProvider"
+	StoreDynamicProvidersListForReencrypt     StoreOp = "dynamic.ListProvidersForReencrypt"
+	StoreDynamicProvidersReencrypt            StoreOp = "dynamic.ReencryptProvider"
+	StoreDynamicLeasesActiveIDsForProvider    StoreOp = "dynamic.ActiveLeaseIDsForProvider"
+	StoreDynamicLeasesCreate                  StoreOp = "dynamic.CreateLease"
+	StoreDynamicLeasesGet                     StoreOp = "dynamic.GetLease"
+	StoreDynamicLeasesList                    StoreOp = "dynamic.ListLeasesForEnvironment"
+	StoreDynamicLeasesFinishMint              StoreOp = "dynamic.FinishMint"
+	StoreDynamicLeasesEnqueueTransition       StoreOp = "dynamic.EnqueueTransition"
 
 	StoreFoldersCreate StoreOp = "folders.Create"
 	StoreFoldersGet    StoreOp = "folders.Get"
@@ -1007,15 +1044,25 @@ var storeOpCatalogue = map[StoreOp]bool{
 	StoreValuesPut: true, StoreValuesReencrypt: true, StoreValuesSampleSecretEntry: true,
 	StoreBackupStateGet: true, StoreBackupStateSetExportSuccess: true, StoreBackupStateSetExportFailure: true,
 	StoreBackupStateSetPruneSuccess: true, StoreBackupStateSetDrill: true,
+	StoreDynamicProvidersCreate: true, StoreDynamicProvidersGet: true, StoreDynamicProvidersList: true,
+	StoreDynamicProvidersReplaceCredential: true, StoreDynamicProvidersRevokeCredential: true, StoreDynamicProvidersDelete: true,
+	StoreDynamicProvidersCredentialCiphertext: true, StoreDynamicProvidersListForReencrypt: true, StoreDynamicProvidersReencrypt: true,
+	StoreDynamicLeasesActiveIDsForProvider: true,
+	StoreDynamicLeasesCreate:               true, StoreDynamicLeasesGet: true, StoreDynamicLeasesList: true,
+	StoreDynamicLeasesFinishMint: true, StoreDynamicLeasesEnqueueTransition: true,
 }
 
 var readOnlyStoreOps = map[StoreOp]bool{
-	StoreOrgsGet:         true,
-	StoreOrgsList:        true,
-	StoreOrgsCount:       true,
-	StoreProjectsGet:     true,
-	StoreProjectsList:    true,
-	StoreProjectsListAll: true,
+	StoreOrgsGet:   true,
+	StoreOrgsList:  true,
+	StoreOrgsCount: true,
+	// Lease inspect is a bare-read (`read@env`), so its two reads are pinned
+	// read-only for the auditedNone check (#147).
+	StoreDynamicLeasesGet:  true,
+	StoreDynamicLeasesList: true,
+	StoreProjectsGet:       true,
+	StoreProjectsList:      true,
+	StoreProjectsListAll:   true,
 	// The definitions-settings read is `read@project`, audited-none; its only
 	// non-project store op is the latest-applied-plan lookup (#70).
 	StoreDefinitionsLatestAppliedPlan: true,
@@ -2487,19 +2534,21 @@ var operationTable = map[Operation]opSpec{
 		level:   domain.LevelProject,
 		formula: Formula{{Cap: domain.CapReencrypt, At: domain.LevelNone}},
 		storeOps: map[StoreOp]bool{
-			StoreValuesListForReencrypt:        true,
-			StoreValuesReencrypt:               true,
-			StoreSnapshotsListForReencrypt:     true,
-			StoreSnapshotsReencrypt:            true,
-			StorePendingListForReencrypt:       true,
-			StorePendingReencrypt:              true,
-			StoreAdaptersListForReencrypt:      true,
-			StoreAdaptersReencrypt:             true,
-			StoreAdaptersListMovesForReencrypt: true,
-			StoreAdaptersReencryptMove:         true,
-			StoreKeysAssertActiveDEKVersion:    true,
-			StoreKeysRetireRetiringTier3:       true,
-			StoreAuditTenantInsert:             true,
+			StoreValuesListForReencrypt:           true,
+			StoreValuesReencrypt:                  true,
+			StoreSnapshotsListForReencrypt:        true,
+			StoreSnapshotsReencrypt:               true,
+			StorePendingListForReencrypt:          true,
+			StorePendingReencrypt:                 true,
+			StoreAdaptersListForReencrypt:         true,
+			StoreAdaptersReencrypt:                true,
+			StoreAdaptersListMovesForReencrypt:    true,
+			StoreAdaptersReencryptMove:            true,
+			StoreDynamicProvidersListForReencrypt: true,
+			StoreDynamicProvidersReencrypt:        true,
+			StoreKeysAssertActiveDEKVersion:       true,
+			StoreKeysRetireRetiringTier3:          true,
+			StoreAuditTenantInsert:                true,
 		},
 		events: []audit.EventType{audit.EventReencryptCompleted},
 	},
@@ -3828,6 +3877,70 @@ var operationTable = map[Operation]opSpec{
 			audit.EventAdapterPushIntent, audit.EventAdapterPushOutcome, audit.EventAdapterKeyDelivered,
 			audit.EventAdapterAbort, audit.EventAdapterScrub, audit.EventAdapterSuperseded,
 		},
+	},
+
+	// --- Dynamic secrets (#147) ----------------------------------------------
+	OpDynamicProviderConfigure: {
+		class: ClassTenant, level: domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreDynamicProvidersCreate: true, StoreDynamicProvidersGet: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventDynamicProviderConfigured},
+	},
+	OpDynamicProviderInspect: {
+		class: ClassTenant, level: domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersList: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventDynamicProviderInspected},
+	},
+	OpDynamicProviderCredentialSet: {
+		class: ClassTenant, level: domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersReplaceCredential: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventDynamicProviderCredentialReplace},
+	},
+	OpDynamicProviderCredentialRevoke: {
+		class: ClassTenant, level: domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersRevokeCredential: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventDynamicProviderCredentialRevoke},
+	},
+	OpDynamicProviderDelete: {
+		class: ClassTenant, level: domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersDelete: true, StoreDynamicLeasesActiveIDsForProvider: true, StoreDynamicLeasesGet: true, StoreDynamicLeasesEnqueueTransition: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventDynamicProviderDeleted, audit.EventDynamicLeaseTransitionIntent},
+	},
+	OpLeaseMint: {
+		class: ClassTenant, level: domain.LevelEnv, postGrantForbidden: true,
+		formula:  Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersCredentialCiphertext: true, StoreDynamicLeasesCreate: true, StoreDynamicLeasesGet: true, StoreDynamicLeasesFinishMint: true, StoreAuditTenantInsert: true},
+		events: []audit.EventType{
+			audit.EventDynamicLeaseTransitionIntent, audit.EventDynamicLeaseTransitionOutcome, audit.EventDynamicLeaseDisclosed,
+		},
+	},
+	OpLeaseInspect: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:     Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps:    map[StoreOp]bool{StoreDynamicLeasesGet: true, StoreDynamicLeasesList: true},
+		auditedNone: true,
+	},
+	OpLeaseRenew: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreDynamicLeasesGet: true, StoreDynamicLeasesEnqueueTransition: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventDynamicLeaseTransitionIntent},
+	},
+	OpLeaseRevoke: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreDynamicLeasesGet: true, StoreDynamicLeasesEnqueueTransition: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventDynamicLeaseTransitionIntent},
+	},
+	OpLeaseSettle: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreDynamicLeasesGet: true, StoreDynamicLeasesEnqueueTransition: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventDynamicLeaseSettleRequested},
 	},
 }
 

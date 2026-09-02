@@ -136,7 +136,7 @@ New subsystem; shape decided in its ticket. **Minimum bar fixed here so a no-op 
 
 | Item | Disposition | Trigger to revisit |
 |---|---|---|
-| Dynamic DB credentials | Out — Vault/OpenBao territory; wedge is static config done right | Repeated user demand naming a concrete engine set |
+| Dynamic DB credentials | ~~Out — Vault/OpenBao territory; wedge is static config done right~~ **Amended 2026-09-02 ([#147](https://github.com/Hikyo-Org/Hikyo/issues/147) reopened per the [oss-mechanics](./oss-mechanics.md) governance procedure; operative):** the trigger fired — a concrete engine (PostgreSQL) is named. Dynamic secrets are promoted **In** as a self-hostable leased-credential lifecycle: an authorized workload requests a short-lived credential, Hikyo mints it at the provider, discloses it exactly once, and durably renews/revokes the lease without retaining plaintext (not even a hash). The provider boundary stays closed (a `postgres` enum, one adapter at a time — the arbitrary-rotation row below is unaffected). This is NOT a Vault replacement (that row stays Out): no PKI, no SSH certs, no encryption-as-a-service. Mechanics: [system-architecture.md](./system-architecture.md) § Jobs (a second domain-specific outbox whose per-row lease fence composes with #146 exactly as the adapter outbox does) and `docs/handoff/147-dynamic-secrets.md`. | Repeated user demand naming a concrete engine set |
 | PKI / CA | Out — different product | No trigger; new map only |
 | SSH certificates | Out — different product | No trigger; new map only |
 | Encryption-as-a-service API | Out — explicit non-goal | No trigger; new map only |
@@ -164,7 +164,7 @@ Every "recorded here as deliberate exclusion needing explicit in/out confirmatio
 | LDAP | [human-auth](./human-auth.md) | Out. Trigger: demand from directory shops without an OIDC-speaking IdP bridge |
 | Per-project reauthentication-factor policy | [human-auth](./human-auth.md) | Out — protected flag + window cap cover the need. Trigger: demand |
 | General WebAuthn-only reveal enforcement | [human-auth](./human-auth.md) | Out — the effective-window-0 rule already forces WebAuthn where it matters. Trigger: compliance demand |
-| Local agent daemon / resident watcher (Compose or otherwise) | [machine-identities](./machine-identities.md), [compose-integration](./compose-integration.md) | Out. Trigger: dynamic secrets only — revisit against the agent prohibition |
+| Local agent daemon / resident watcher (Compose or otherwise) | [machine-identities](./machine-identities.md), [compose-integration](./compose-integration.md) | Out. Trigger: dynamic secrets only — revisit against the agent prohibition. **Revisited 2026-09-02 (#147): stays Out.** Dynamic secrets shipped without an agent — lease renewal is an explicit client call (`hikyo lease renew`) or the workload's own loop, and `hikyo run --` gets no resident renewer. The agent prohibition is upheld, not spent. |
 | `--watch` auto-restart | [compose-integration](./compose-integration.md) | Out (withdrawn there). Same trigger as the agent |
 | Short-lived exchanged tokens / JIT deploy-time tokens | [machine-identities](./machine-identities.md), [compose-integration](./compose-integration.md) | Out. Trigger: demand, on top of the locked lifetime rules |
 | Enrolment tokens | [machine-identities](./machine-identities.md) | Out permanently — the honest version is federation, which ships. No trigger |

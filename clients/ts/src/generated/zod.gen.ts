@@ -107,6 +107,96 @@ export const zResumeAdapterMoveRequest = z.union([
     zResumeAdapterTargetMoveRequest
 ]);
 
+export const zDynamicProviderKind = z.enum(['postgres']);
+
+export const zDynamicProviderState = z.enum(['active', 'tombstoned']);
+
+/**
+ * minting/renewing/revoking are in-flight; active is a usable credential;
+ * revoked/expired/failed are terminal; unknown is an ambiguous provider
+ * outcome awaiting reconcile and is NEVER reported as success.
+ *
+ */
+export const zDynamicLeaseState = z.enum([
+    'minting',
+    'active',
+    'renewing',
+    'revoking',
+    'revoked',
+    'expired',
+    'unknown',
+    'failed'
+]);
+
+export const zCreateDynamicProviderRequest = z.object({
+    kind: zDynamicProviderKind,
+    origin: z.string().min(1).max(2048),
+    tls_mode: z.enum(['verify-full']).optional().default('verify-full'),
+    grant_role: z.string().min(1).max(63),
+    credential: z.string().min(1).max(4096)
+});
+
+export const zSetDynamicProviderCredentialRequest = z.object({
+    credential: z.string().min(1).max(4096)
+});
+
+export const zDynamicProvider = z.object({
+    id: zId,
+    kind: zDynamicProviderKind,
+    origin: z.string(),
+    tls_mode: z.enum(['verify-full']),
+    grant_role: z.string(),
+    credential_present: z.boolean(),
+    credential_set_at: z.iso.datetime().nullish(),
+    authority_principal_id: zId,
+    state: zDynamicProviderState,
+    created_at: zTimestamp
+});
+
+export const zDynamicProviderList = z.object({
+    items: z.array(zDynamicProvider)
+});
+
+export const zDynamicProviderDeletion = z.object({
+    provider_id: zId,
+    revoked_lease_ids: z.array(zId)
+});
+
+export const zDynamicLease = z.object({
+    id: zId,
+    provider_id: zId,
+    environment_id: zId,
+    principal_id: zId,
+    principal_class: z.string(),
+    provider_handle: z.string(),
+    state: zDynamicLeaseState,
+    issued_at: z.iso.datetime().nullish(),
+    expires_at: z.iso.datetime().nullish(),
+    max_ttl_seconds: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    last_transition_at: zTimestamp,
+    created_at: zTimestamp
+});
+
+export const zDynamicLeaseList = z.object({
+    items: z.array(zDynamicLease)
+});
+
+export const zMintLeaseRequest = z.object({
+    provider_id: zId,
+    max_ttl_seconds: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+});
+
+export const zRenewLeaseRequest = z.object({
+    max_ttl_seconds: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullish()
+});
+
+export const zMintLeaseResult = z.object({
+    lease: zDynamicLease,
+    username: z.string(),
+    password: z.string(),
+    expires_at: z.iso.datetime().nullish()
+});
+
 export const zAdapterConflictEntry = z.object({
     surface: z.enum(['secret', 'variable']),
     effective_name: z.string()
@@ -2810,6 +2900,10 @@ export const zEnvironmentId = zId;
 export const zAdapterId = zId;
 
 export const zAdapterTargetId = zId;
+
+export const zDynamicProviderId = zId;
+
+export const zLeaseId = zId;
 
 /**
  * Folder identifier.
@@ -5682,3 +5776,149 @@ export const zAdoptAdapterTargetNamesPath = z.object({
  * Adoption committed and converge queued.
  */
 export const zAdoptAdapterTargetNamesResponse = zAdapterJob;
+
+export const zListDynamicProvidersPath = z.object({
+    org: zId,
+    project: zId
+});
+
+/**
+ * Provider list.
+ */
+export const zListDynamicProvidersResponse = zDynamicProviderList;
+
+export const zCreateDynamicProviderBody = zCreateDynamicProviderRequest;
+
+export const zCreateDynamicProviderPath = z.object({
+    org: zId,
+    project: zId
+});
+
+/**
+ * Provider configured and reachable.
+ */
+export const zCreateDynamicProviderResponse = zDynamicProvider;
+
+export const zDeleteDynamicProviderPath = z.object({
+    org: zId,
+    project: zId,
+    provider: zId
+});
+
+export const zDeleteDynamicProviderQuery = z.object({
+    revoke_all: z.boolean().optional().default(false)
+});
+
+/**
+ * Provider deleted; any leases queued for revocation.
+ */
+export const zDeleteDynamicProviderResponse = zDynamicProviderDeletion;
+
+export const zShowDynamicProviderPath = z.object({
+    org: zId,
+    project: zId,
+    provider: zId
+});
+
+/**
+ * Provider.
+ */
+export const zShowDynamicProviderResponse = zDynamicProvider;
+
+export const zRevokeDynamicProviderCredentialPath = z.object({
+    org: zId,
+    project: zId,
+    provider: zId
+});
+
+/**
+ * Credential revoked.
+ */
+export const zRevokeDynamicProviderCredentialResponse = z.void();
+
+export const zSetDynamicProviderCredentialBody = zSetDynamicProviderCredentialRequest;
+
+export const zSetDynamicProviderCredentialPath = z.object({
+    org: zId,
+    project: zId,
+    provider: zId
+});
+
+/**
+ * Credential replaced.
+ */
+export const zSetDynamicProviderCredentialResponse = z.void();
+
+export const zListLeasesPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * Lease list.
+ */
+export const zListLeasesResponse = zDynamicLeaseList;
+
+export const zMintLeaseBody = zMintLeaseRequest;
+
+export const zMintLeasePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * The lease and its display-once secret.
+ */
+export const zMintLeaseResponse = zMintLeaseResult;
+
+export const zShowLeasePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    lease: zId
+});
+
+/**
+ * Lease.
+ */
+export const zShowLeaseResponse = zDynamicLease;
+
+export const zRenewLeaseBody = zRenewLeaseRequest;
+
+export const zRenewLeasePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    lease: zId
+});
+
+/**
+ * Lease after renewal.
+ */
+export const zRenewLeaseResponse = zDynamicLease;
+
+export const zRevokeLeasePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    lease: zId
+});
+
+/**
+ * Lease after revocation was queued.
+ */
+export const zRevokeLeaseResponse = zDynamicLease;
+
+export const zSettleLeasePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    lease: zId
+});
+
+/**
+ * Lease after settlement.
+ */
+export const zSettleLeaseResponse = zDynamicLease;

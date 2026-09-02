@@ -309,6 +309,46 @@
     ]
   },
   {
+    "operation": "dynamic-provider.configure",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-identities@project"
+    ]
+  },
+  {
+    "operation": "dynamic-provider.credential-revoke",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-identities@project"
+    ]
+  },
+  {
+    "operation": "dynamic-provider.credential-set",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-identities@project"
+    ]
+  },
+  {
+    "operation": "dynamic-provider.delete",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-identities@project"
+    ]
+  },
+  {
+    "operation": "dynamic-provider.inspect",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-identities@project"
+    ]
+  },
+  {
     "operation": "environment.create",
     "class": "tenant",
     "level": "project",
@@ -778,6 +818,47 @@
     "level": "project",
     "formula": [
       "definitions-edit@project"
+    ]
+  },
+  {
+    "operation": "lease.inspect",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ]
+  },
+  {
+    "operation": "lease.mint",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ],
+    "post_grant_forbidden": true
+  },
+  {
+    "operation": "lease.renew",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ]
+  },
+  {
+    "operation": "lease.revoke",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ]
+  },
+  {
+    "operation": "lease.settle",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
     ]
   },
   {

@@ -726,6 +726,17 @@ const (
 	EventAdapterScrub             EventType = "adapter.scrub"
 	EventAdapterSuperseded        EventType = "adapter.superseded"
 
+	// Dynamic secrets (#147).
+	EventDynamicProviderConfigured        EventType = "dynamic.provider_configured"
+	EventDynamicProviderCredentialReplace EventType = "dynamic.provider_credential_replace"
+	EventDynamicProviderCredentialRevoke  EventType = "dynamic.provider_credential_revoke"
+	EventDynamicProviderDeleted           EventType = "dynamic.provider_deleted"
+	EventDynamicProviderInspected         EventType = "dynamic.provider_inspected"
+	EventDynamicLeaseTransitionIntent     EventType = "dynamic.lease_transition_intent"
+	EventDynamicLeaseTransitionOutcome    EventType = "dynamic.lease_transition_outcome"
+	EventDynamicLeaseDisclosed            EventType = "dynamic.lease_disclosed"
+	EventDynamicLeaseSettleRequested      EventType = "dynamic.lease_settle_requested"
+
 	// remote.* — the multi-instance categories (#71, multi-instance ADR §
 	// Audit) ARE registered above, every one of them that has an honest
 	// emitter, including remote.directory_served; its audited_exemptions.json
@@ -2669,6 +2680,77 @@ var registry = map[EventType]TypeSpec{
 		SchemaVersion: 1, Retention: RetentionAccess,
 		Outcomes: map[Outcome]bool{OutcomeSuccess: true, OutcomeDenied: true},
 		Trails:   map[Trail]bool{TrailTenant: true}, Schema: Schema{"row_count": {Kind: KindInt, Required: true}},
+	},
+
+	// --- Dynamic secrets (#147) ----------------------------------------------
+	// Provider lifecycle mirrors the adapter lifecycle shape. No provider
+	// credential, origin secret, or minted password ever appears in a payload:
+	// these events record that a transition happened, never the material.
+	EventDynamicProviderConfigured: adapterLifecycleEvent(Schema{
+		"kind":      {Kind: KindString, Required: true, Enum: []string{"postgres"}},
+		"authority": {Kind: KindString, Required: true},
+	}),
+	EventDynamicProviderCredentialReplace: adapterLifecycleEvent(Schema{
+		"credential_present": {Kind: KindBool, Required: true},
+	}),
+	EventDynamicProviderCredentialRevoke: adapterLifecycleEvent(Schema{
+		"credential_present": {Kind: KindBool, Required: true},
+	}),
+	EventDynamicProviderDeleted: adapterLifecycleEvent(Schema{
+		"revoked_lease_count": {Kind: KindInt, Required: true},
+	}),
+	EventDynamicProviderInspected: {
+		SchemaVersion: 1, Retention: RetentionAccess,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true, OutcomeDenied: true},
+		Trails:   map[Trail]bool{TrailTenant: true}, Schema: Schema{"row_count": {Kind: KindInt, Required: true}},
+	},
+	// A lease transition's INTENT is written before the provider call; the
+	// OUTCOME after. kind is the transition; provider_handle is the role name,
+	// which is public metadata, never the password.
+	EventDynamicLeaseTransitionIntent: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeIntent: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"kind":            {Kind: KindString, Required: true, Enum: []string{"mint", "renew", "revoke", "expire"}},
+			"provider_handle": {Kind: KindString, Required: true},
+		},
+	},
+	EventDynamicLeaseTransitionOutcome: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true, OutcomeFailure: true, OutcomeUnknown: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"kind":            {Kind: KindString, Required: true, Enum: []string{"mint", "renew", "revoke", "expire"}},
+			"provider_handle": {Kind: KindString, Required: true},
+		},
+	},
+	// The display-once disclosure: one per mint. It records THAT a credential
+	// crossed to a principal, never the credential.
+	EventDynamicLeaseDisclosed: {
+		SchemaVersion: 1,
+		Retention:     RetentionAccess,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"provider_handle": {Kind: KindString, Required: true},
+			"principal_class": {Kind: KindString, Required: true},
+			"expires_at":      {Kind: KindString},
+		},
+	},
+	// An operator (or the workload) asked an uncertain lease to be re-probed and
+	// settled. The worker's subsequent transition events record the settlement;
+	// this records the request.
+	EventDynamicLeaseSettleRequested: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"provider_handle": {Kind: KindString, Required: true},
+		},
 	},
 	EventAdapterPlan: adapterLifecycleEvent(Schema{
 		"changes": {Kind: KindStringList, Required: true},

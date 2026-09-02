@@ -55,6 +55,7 @@ import {
   type ServiceAccount,
 } from '../api/identities.ts';
 import { TypedNameConfirm } from './Sections.tsx';
+import { useLeases } from '../api/dynamic.ts';
 import { useMachineReveal, useSetMachineReveal } from '../api/machineReveal.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { writeClipboard } from '../app/clipboard.ts';
@@ -95,7 +96,7 @@ import { useModalDialog } from './useModalDialog.ts';
  * rendered because it is real.
  */
 
-type Tab = 'accounts' | 'federation' | 'kubernetes';
+type Tab = 'accounts' | 'federation' | 'kubernetes' | 'leases';
 
 type Dialog =
   | { kind: 'binding'; account: ServiceAccount; replaces?: MachineCredential }
@@ -115,6 +116,7 @@ const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
   { id: 'accounts', label: 'Service accounts' },
   { id: 'federation', label: 'Federation' },
   { id: 'kubernetes', label: 'Kubernetes targets' },
+  { id: 'leases', label: 'Leases' },
 ];
 
 export function MachineAccess() {
@@ -137,6 +139,7 @@ export function MachineAccess() {
     () => environmentsQuery.data?.items ?? [],
     [environmentsQuery.data],
   );
+  const leases = useLeases(project, environments);
   const grants = useMemo(() => grantsQuery.data?.items ?? [], [grantsQuery.data]);
   const credentials = useCredentials(project, accounts);
 
@@ -289,6 +292,7 @@ export function MachineAccess() {
     // reads as "there are none", which is the one thing it does not know.
     federation: credentials.isPending || credentials.isError ? '—' : String(allBindings.length),
     kubernetes: '0',
+    leases: leases.isPending || leases.isError ? '—' : String(leases.rows.length),
   };
 
   const doRevoke = (account: ServiceAccount, credential: MachineCredential) => {
@@ -568,6 +572,61 @@ export function MachineAccess() {
               state to show — an empty list here means nothing is reporting, never that everything
               is healthy.
             </p>
+          </>
+        ) : null}
+
+        {tab === 'leases' ? (
+          <>
+            <h2>Dynamic-secret leases</h2>
+            <p className="machine__lede">
+              Short-lived credentials Hikyo minted at a provider. Status and metadata only — the
+              credential is disclosed once, at mint, and never shown again. Mint and lifecycle live
+              on the API and CLI (<code>hikyo lease</code>).
+            </p>
+            <table className="values__table machine__table">
+              <caption className="visually-hidden">
+                The project&apos;s dynamic-secret leases across every environment. No secret value is
+                listed.
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Environment</th>
+                  <th scope="col">Handle</th>
+                  <th scope="col">State</th>
+                  <th scope="col" className="col-secondary">
+                    Expires
+                  </th>
+                  <th scope="col" className="col-secondary">
+                    Principal
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {leases.rows.map((row) => (
+                  <tr key={row.lease.id}>
+                    <td>{row.environmentName}</td>
+                    <td>
+                      <code>{row.lease.provider_handle}</code>
+                    </td>
+                    <td>{row.lease.state}</td>
+                    <td className="col-secondary">
+                      {row.lease.expires_at === undefined || row.lease.expires_at === null
+                        ? '—'
+                        : isoDay(row.lease.expires_at)}
+                    </td>
+                    <td className="col-secondary">{row.lease.principal_class}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {leases.isError ? (
+              <p role="status">The leases could not be read for one or more environments.</p>
+            ) : leases.rows.length === 0 && !leases.isPending ? (
+              <p role="status">
+                No dynamic-secret leases on this project yet. Configure a provider and mint one with{' '}
+                <code>hikyo lease mint</code>.
+              </p>
+            ) : null}
           </>
         ) : null}
       </div>

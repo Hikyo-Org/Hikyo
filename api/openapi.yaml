@@ -9422,6 +9422,252 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/Internal"}
 
+  /api/v1/orgs/{org}/projects/{project}/dynamic-providers:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+    get:
+      operationId: listDynamicProviders
+      tags: [dynamic]
+      summary: List dynamic-secret providers with redacted credential metadata.
+      x-hikyo-class: tenant
+      x-hikyo-operation: dynamic-provider.inspect
+      x-hikyo-formula: [manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "200": {description: Provider list., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicProviderList"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+    post:
+      operationId: createDynamicProvider
+      tags: [dynamic]
+      summary: Configure a PostgreSQL provider; the admin credential is write-only.
+      x-hikyo-class: tenant
+      x-hikyo-operation: dynamic-provider.configure
+      x-hikyo-formula: [manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CreateDynamicProviderRequest"}}}}
+      responses:
+        "201": {description: Provider configured and reachable., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicProvider"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/DynamicProviderID"
+    get:
+      operationId: showDynamicProvider
+      tags: [dynamic]
+      summary: Show one provider's status and metadata.
+      x-hikyo-class: tenant
+      x-hikyo-operation: dynamic-provider.inspect
+      x-hikyo-formula: [manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "200": {description: Provider., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicProvider"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+    delete:
+      operationId: deleteDynamicProvider
+      tags: [dynamic]
+      summary: Delete a provider; refuses while active leases exist unless revoke_all.
+      x-hikyo-class: tenant
+      x-hikyo-operation: dynamic-provider.delete
+      x-hikyo-formula: [manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      parameters:
+        - name: revoke_all
+          in: query
+          required: false
+          description: Revoke every live lease of this provider before deleting it.
+          schema: {type: boolean, default: false}
+      responses:
+        "200": {description: Provider deleted; any leases queued for revocation., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicProviderDeletion"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/DynamicProviderID"
+    put:
+      operationId: setDynamicProviderCredential
+      tags: [dynamic]
+      summary: Replace the write-only admin credential.
+      x-hikyo-class: tenant
+      x-hikyo-operation: dynamic-provider.credential-set
+      x-hikyo-formula: [manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/SetDynamicProviderCredentialRequest"}}}}
+      responses:
+        "204": {description: Credential replaced.}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+    delete:
+      operationId: revokeDynamicProviderCredential
+      tags: [dynamic]
+      summary: Destroy admin custody; renewal and revocation may then be impossible.
+      x-hikyo-class: tenant
+      x-hikyo-operation: dynamic-provider.credential-revoke
+      x-hikyo-formula: [manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "204": {description: Credential revoked.}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    get:
+      operationId: listLeases
+      tags: [dynamic]
+      summary: List an environment's leases with status and metadata, never the secret.
+      x-hikyo-class: tenant
+      x-hikyo-operation: lease.inspect
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 1
+      responses:
+        "200": {description: Lease list., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicLeaseList"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+    post:
+      operationId: mintLease
+      tags: [dynamic]
+      summary: Mint a short-lived credential; the secret is disclosed exactly once.
+      description: |
+        Display-once: the password is in this response and nowhere else, ever.
+        A retry mints a NEW lease with a NEW secret; the old secret is never
+        returned again. A machine principal mints under the project's
+        machine-reveal opt-in; a human mint needs the mint reauthentication
+        ceremony.
+      x-hikyo-class: tenant
+      x-hikyo-operation: lease.mint
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 1
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/MintLeaseRequest"}}}}
+      responses:
+        "200": {description: The lease and its display-once secret., content: {application/json: {schema: {$ref: "#/components/schemas/MintLeaseResult"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/LeaseID"
+    get:
+      operationId: showLease
+      tags: [dynamic]
+      summary: Show one lease's status and metadata, never the secret.
+      x-hikyo-class: tenant
+      x-hikyo-operation: lease.inspect
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 1
+      responses:
+        "200": {description: Lease., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicLease"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/renew:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/LeaseID"
+    post:
+      operationId: renewLease
+      tags: [dynamic]
+      summary: Extend a lease's validity, bounded by its maximum TTL.
+      x-hikyo-class: tenant
+      x-hikyo-operation: lease.renew
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 1
+      requestBody: {required: false, content: {application/json: {schema: {$ref: "#/components/schemas/RenewLeaseRequest"}}}}
+      responses:
+        "200": {description: Lease after renewal., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicLease"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/revoke:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/LeaseID"
+    post:
+      operationId: revokeLease
+      tags: [dynamic]
+      summary: Revoke a lease; idempotent, an already-gone role is a success.
+      x-hikyo-class: tenant
+      x-hikyo-operation: lease.revoke
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 1
+      responses:
+        "200": {description: Lease after revocation was queued., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicLease"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/settle:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/LeaseID"
+    post:
+      operationId: settleLease
+      tags: [dynamic]
+      summary: Settle an uncertain lease by re-probing it at the provider.
+      x-hikyo-class: tenant
+      x-hikyo-operation: lease.settle
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "200": {description: Lease after settlement., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicLease"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
 components:
   securitySchemes:
     hikyoSession:
@@ -9462,6 +9708,16 @@ components:
       schema: {$ref: "#/components/schemas/ID"}
     AdapterTargetID:
       name: target
+      in: path
+      required: true
+      schema: {$ref: "#/components/schemas/ID"}
+    DynamicProviderID:
+      name: provider
+      in: path
+      required: true
+      schema: {$ref: "#/components/schemas/ID"}
+    LeaseID:
+      name: lease
       in: path
       required: true
       schema: {$ref: "#/components/schemas/ID"}
@@ -10156,6 +10412,151 @@ components:
       required: [items]
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/Adapter"}}
+
+    DynamicProviderKind:
+      type: string
+      enum: [postgres]
+    DynamicProviderState:
+      type: string
+      enum: [active, tombstoned]
+    DynamicLeaseState:
+      type: string
+      description: |
+        minting/renewing/revoking are in-flight; active is a usable credential;
+        revoked/expired/failed are terminal; unknown is an ambiguous provider
+        outcome awaiting reconcile and is NEVER reported as success.
+      enum: [minting, active, renewing, revoking, revoked, expired, unknown, failed]
+
+    CreateDynamicProviderRequest:
+      type: object
+      additionalProperties: false
+      required: [kind, origin, grant_role, credential]
+      properties:
+        kind: {$ref: "#/components/schemas/DynamicProviderKind"}
+        origin:
+          type: string
+          minLength: 1
+          maxLength: 2048
+          description: PostgreSQL origin as host:port/dbname.
+        tls_mode:
+          type: string
+          enum: [verify-full]
+          default: verify-full
+          description: Only verify-full is accepted; a weaker mode is refused.
+        grant_role:
+          type: string
+          minLength: 1
+          maxLength: 63
+          description: Parent role every minted lease role inherits (IN ROLE).
+        credential:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          description: Write-only admin credential. Never returned.
+
+    SetDynamicProviderCredentialRequest:
+      type: object
+      additionalProperties: false
+      required: [credential]
+      properties:
+        credential: {type: string, minLength: 1, maxLength: 4096}
+
+    DynamicProvider:
+      type: object
+      additionalProperties: false
+      required: [id, kind, origin, tls_mode, grant_role, credential_present, authority_principal_id, state, created_at]
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        kind: {$ref: "#/components/schemas/DynamicProviderKind"}
+        origin: {type: string}
+        tls_mode: {type: string, enum: [verify-full]}
+        grant_role: {type: string}
+        credential_present: {type: boolean}
+        credential_set_at: {type: [string, "null"], format: date-time}
+        authority_principal_id: {$ref: "#/components/schemas/ID"}
+        state: {$ref: "#/components/schemas/DynamicProviderState"}
+        created_at: {$ref: "#/components/schemas/Timestamp"}
+
+    DynamicProviderList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/DynamicProvider"}}
+
+    DynamicProviderDeletion:
+      type: object
+      additionalProperties: false
+      required: [provider_id, revoked_lease_ids]
+      properties:
+        provider_id: {$ref: "#/components/schemas/ID"}
+        revoked_lease_ids:
+          type: array
+          items: {$ref: "#/components/schemas/ID"}
+          description: Leases queued for revocation as part of the delete.
+
+    DynamicLease:
+      type: object
+      additionalProperties: false
+      required: [id, provider_id, environment_id, principal_id, principal_class, provider_handle, state, max_ttl_seconds, last_transition_at, created_at]
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        provider_id: {$ref: "#/components/schemas/ID"}
+        environment_id: {$ref: "#/components/schemas/ID"}
+        principal_id: {$ref: "#/components/schemas/ID"}
+        principal_class: {type: string}
+        provider_handle: {type: string, description: The provider-side role name. Public metadata; not a secret.}
+        state: {$ref: "#/components/schemas/DynamicLeaseState"}
+        issued_at: {type: [string, "null"], format: date-time}
+        expires_at: {type: [string, "null"], format: date-time}
+        max_ttl_seconds: {type: integer, format: int64, minimum: 1}
+        last_transition_at: {$ref: "#/components/schemas/Timestamp"}
+        created_at: {$ref: "#/components/schemas/Timestamp"}
+
+    DynamicLeaseList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/DynamicLease"}}
+
+    MintLeaseRequest:
+      type: object
+      additionalProperties: false
+      required: [provider_id, max_ttl_seconds]
+      properties:
+        provider_id: {$ref: "#/components/schemas/ID"}
+        max_ttl_seconds:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Requested maximum lifetime; the provider clamps to its own ceiling.
+
+    RenewLeaseRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        max_ttl_seconds:
+          type: [integer, "null"]
+          format: int64
+          minimum: 1
+          description: Optional new ceiling; renewal never extends past the lease's max TTL.
+
+    MintLeaseResult:
+      type: object
+      additionalProperties: false
+      required: [lease, username, password]
+      properties:
+        lease: {$ref: "#/components/schemas/DynamicLease"}
+        username:
+          type: string
+          description: The minted role name; also the lease's provider_handle.
+        password:
+          type: string
+          description: |
+            The credential secret, returned EXACTLY ONCE to exactly one caller.
+            No other route in this contract returns it.
+        expires_at: {type: [string, "null"], format: date-time}
 
     AdapterConflictEntry:
       type: object

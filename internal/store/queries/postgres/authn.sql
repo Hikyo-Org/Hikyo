@@ -595,6 +595,16 @@ UPDATE principals SET reconciled_epoch = 0;
 -- name: InvalidateRestoredAdapterCredentials :exec
 UPDATE adapters SET credential_ciphertext = NULL, credential_set_at = NULL;
 
+-- Restored dynamic-secret provider admin credentials are never trusted for the
+-- same reason as adapter PATs (#147): the sealed credential authenticates to an
+-- external engine that has no local epoch, so a restore must destroy custody
+-- and require operator re-entry. Live leases are deliberately left alone: their
+-- roles carry the engine's own VALID UNTIL, and re-probing them here could drop
+-- a credential a workload restored alongside is still using.
+-- hikyo:authn-resolution
+-- name: InvalidateRestoredDynamicProviderCredentials :exec
+UPDATE dynamic_providers SET admin_credential_ciphertext = NULL, credential_set_at = NULL;
+
 -- The operator's commit covers `manual` origins ONLY (#73, scim-provisioning
 -- ADR section 9.1). A restored `scim` origin is a claim about what an identity
 -- provider asserted BEFORE the backup was taken, and the whole point of the

@@ -61,6 +61,7 @@ func (s sqliteReadRepos) Folders() FolderReader           { return s.r.Folders()
 func (s sqliteReadRepos) Audit() AuditReader              { return s.r.Audit() }
 func (s sqliteReadRepos) Remotes() RemoteReader           { return s.r.Remotes() }
 func (s sqliteReadRepos) Adapters() AdapterReader         { return s.r.Adapters() }
+func (s sqliteReadRepos) Dynamic() DynamicReader          { return s.r.Dynamic() }
 func (s sqliteReadRepos) Definitions() DefinitionsReader  { return s.r.Definitions() }
 
 type pgReadRepos struct{ r pgRepos }
@@ -80,6 +81,7 @@ func (p pgReadRepos) Folders() FolderReader           { return p.r.Folders() }
 func (p pgReadRepos) Audit() AuditReader              { return p.r.Audit() }
 func (p pgReadRepos) Remotes() RemoteReader           { return p.r.Remotes() }
 func (p pgReadRepos) Adapters() AdapterReader         { return p.r.Adapters() }
+func (p pgReadRepos) Dynamic() DynamicReader          { return p.r.Dynamic() }
 func (p pgReadRepos) Definitions() DefinitionsReader  { return p.r.Definitions() }
 
 // CanonTime fixes the canonical cross-engine timestamp semantics: UTC,
