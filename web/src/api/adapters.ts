@@ -89,8 +89,12 @@ const environmentsKey = (ref: ProjectRef): EnvironmentsKey => ['environments', r
 const keysKey = (ref: ProjectRef): KeysKey => ['adapter-keys', ref.org, ref.project];
 
 /** The project's environments, for the target form and for naming targets. */
-export function useProjectEnvironments(ref: ProjectRef): UseQueryResult<z.infer<typeof zEnvironmentList>> {
+export function useProjectEnvironments(
+  ref: ProjectRef,
+  enabled = true,
+): UseQueryResult<z.infer<typeof zEnvironmentList>> {
   return useQuery({
+    enabled,
     queryKey: environmentsKey(ref),
     queryFn: () => parsed(listEnvironmentsOp, { path: ref }),
     retry: false,

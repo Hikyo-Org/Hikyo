@@ -46,6 +46,13 @@ export function Audit() {
   const params = useParams();
   const org = params.org ?? '';
   const project = params.project ?? '';
+  // Keyed by scope so a client-side move between organisations or projects
+  // remounts the page: a picked environment or an applied filter belongs to
+  // the scope it was picked in and must not follow the route to another.
+  return <AuditTrail key={`${org}/${project}`} org={org} project={project} />;
+}
+
+function AuditTrail({ org, project }: { readonly org: string; readonly project: string }) {
   const [draft, setDraft] = useState<AuditFilter>(emptyAuditFilter);
   const [applied, setApplied] = useState<AuditFilter>(emptyAuditFilter);
   const [environmentDraft, setEnvironmentDraft] = useState('');
@@ -53,7 +60,7 @@ export function Audit() {
   const [selected, setSelected] = useState<AuditEvent | null>(null);
   const scope: AuditScope = project === '' ? { org } : { org, project, environment };
   const trail = useAuditTrail(scope, applied);
-  const environments = useProjectEnvironments({ org, project });
+  const environments = useProjectEnvironments({ org, project }, project !== '');
 
   const events = trail.data?.pages.flatMap((page) => page.items) ?? [];
   const scannedEnd = trail.hasNextPage !== true;

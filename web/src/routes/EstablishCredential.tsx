@@ -114,8 +114,8 @@ export function EstablishCredential() {
         <h1 className="login__title">Establish your credential</h1>
         {recovered ? (
           <p className="login__lede" role="status">
-            Your recovery code was accepted. Choose a new password; the authority below is
-            filled in for you and works once.
+            Your recovery code was accepted. Choose a new password; the establishment authority
+            is held for you and works once.
           </p>
         ) : (
           <p className="login__lede">
@@ -133,19 +133,27 @@ export function EstablishCredential() {
           </p>
         )}
 
-        <div className="field">
-          <label htmlFor={authorityId}>Setup authority</label>
-          <input
-            id={authorityId}
-            name="authority"
-            autoComplete="off"
-            spellCheck={false}
-            required
-            disabled={pending}
-            value={authority}
-            onChange={(event) => setAuthority(event.target.value)}
-          />
-        </div>
+        {recovered ? null : (
+          // Masked like the password below: a setup authority is a bearer of
+          // credential establishment until it is spent, and a text field would
+          // hand it to screenshots, extensions and accessibility tooling. After
+          // a recovery the authority stays in component state and is not
+          // rendered at all.
+          <div className="field">
+            <label htmlFor={authorityId}>Setup authority</label>
+            <input
+              id={authorityId}
+              name="authority"
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              required
+              disabled={pending}
+              value={authority}
+              onChange={(event) => setAuthority(event.target.value)}
+            />
+          </div>
+        )}
 
         <div className="field">
           <label htmlFor={passwordId}>New password</label>
@@ -265,6 +273,7 @@ function RecoveryForm({
           <input
             id={codeId}
             name="code"
+            type="password"
             autoComplete="one-time-code"
             spellCheck={false}
             required

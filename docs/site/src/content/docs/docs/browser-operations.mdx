@@ -1,18 +1,21 @@
 ---
 title: Operate Hikyo from the browser
-description: Take an empty installation to Kubernetes-ready delivery from the embedded web UI, without the CLI.
+description: Take a fresh organisation to Kubernetes-ready delivery from the embedded web UI, without the CLI.
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/browser-operations.mdx
 ---
 
-Every server-mediated capability in Hikyo is reachable from both the CLI and
-the embedded web UI. Neither surface is the "advanced" one. This page follows
-the browser path end to end, from an installation that holds nothing but the
-bootstrap administrator to a workload receiving secrets in Kubernetes, and
-then lists exactly what stays outside the browser and why.
+Hikyo's server-mediated capabilities are reachable from both the CLI and the
+embedded web UI, with one tracked exception listed at the end of this page
+(dynamic-secret provider and lease management). Neither surface is the
+"advanced" one. This page follows the browser path end to end, from a fresh
+organisation on an installation whose only human is the bootstrap
+administrator to a workload receiving secrets in Kubernetes, and then lists
+exactly what stays outside the browser and why.
 
 The same journey is executable: the Playwright flow `browser-only lifecycle`
 in `web/e2e/flows/machine-access.spec.ts` runs it against a real instance on
-every change, on a desktop and a phone viewport.
+every change, on a desktop and a phone viewport, from a fresh organisation on
+the suite's shared instance.
 
 ## Before you start
 

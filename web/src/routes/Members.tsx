@@ -938,10 +938,18 @@ function GrantModal({
       // the environment in the refusal. Answer each named environment with the
       // mint-purpose passkey ceremony the machine-access page uses, then retry
       // the capabilities that have not landed yet; completed lines stay live.
-      // Bounded by the environments a grant can reach, never by wall-clock.
+      // Bounded by the DISTINCT environments the refusals name: an environment
+      // named twice means the ceremony did not satisfy the server, and asking
+      // the human again would be a loop, not a remedy.
       let pending: readonly string[] = draft.capabilities;
       const done: GrantOutcomeView[] = [];
-      for (let attempt = 0; attempt < 64; attempt += 1) {
+      const reauthenticated = new Set<string>();
+      const total = draft.capabilities.length;
+      const refused = (capability: string, text: string) =>
+        done.length === 0
+          ? text
+          : `Completed ${String(done.length)} of ${String(total)} (live and listed below). ${grantOutcomeSummary(done)} ${capability} was refused: ${text}`;
+      for (;;) {
         try {
           done.push(...(await create.mutateAsync({ scope, principal, capabilities: pending })));
           onDone(
@@ -951,31 +959,34 @@ function GrantModal({
         } catch (error) {
           const partial = error instanceof GrantPartialFailure ? error : null;
           const cause = partial === null ? error : partial.cause;
-          const widened = wideningEnvironment(cause);
-          if (widened === null) {
-            onStage('grant');
-            setFailure(grantFailureText(error));
-            return;
-          }
           if (partial !== null) {
             done.push(...partial.completed);
             pending = pending.slice(partial.completed.length);
           }
+          const capability = pending[0] ?? '';
+          const widened = wideningEnvironment(cause);
+          if (widened === null) {
+            onStage('grant');
+            setFailure(refused(capability, grantFailureText(cause)));
+            return;
+          }
+          if (reauthenticated.has(widened)) {
+            onStage('grant');
+            setFailure(
+              refused(capability, 'The reauthentication over that environment was not accepted for this grant. Reload and try again.'),
+            );
+            return;
+          }
+          reauthenticated.add(widened);
           try {
             await runPasskeyCeremony({ operation: 'mint', environmentId: widened, keyIds: [] });
           } catch (ceremonyError) {
             onStage('grant');
-            setFailure(
-              done.length === 0
-                ? grantFailureText(error)
-                : `Completed ${String(done.length)} of ${String(draft.capabilities.length)} (live and listed below). ${grantOutcomeSummary(done)} ${pending[0] ?? ''} was refused: ${grantFailureText(ceremonyError)}`,
-            );
+            setFailure(refused(capability, grantFailureText(ceremonyError)));
             return;
           }
         }
       }
-      onStage('grant');
-      setFailure('The grant kept asking for another reauthentication; reload and try again.');
     })();
   };
 

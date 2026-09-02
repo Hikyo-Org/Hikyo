@@ -1089,10 +1089,13 @@ test.describe('project audit', () => {
 /**
  * Browser-only lifecycle acceptance (#504).
  *
- * One operator, one browser, no CLI: from an installation that holds nothing
- * but the bootstrap administrator (`hikyo admin create` is host-local
- * authority, the one accepted exception at the start of the journey) to a
- * Kubernetes-ready delivery. Every Hikyo-side prerequisite the operator
+ * One operator, one browser, no CLI: from a fresh organisation to a
+ * Kubernetes-ready delivery. The instance is the suite's shared one, bootstrapped
+ * with `hikyo admin create` (host-local authority, the one accepted exception at
+ * the start of the journey); the seeded fixture tenant exists beside the
+ * organisation this flow creates and is never touched by it, so what is proved
+ * is the organisation-scoped lifecycle from nothing, not instance-level
+ * defaults on an otherwise empty database. Every Hikyo-side prerequisite the operator
  * needs (`kubernetes-operator.mdx` § The five-step journey) is done from the
  * SPA, and the delivery wire is then exercised the way the operator's
  * controller does it — a bearer fetch of the environment projection — so the
@@ -1134,24 +1137,13 @@ async function captureCreated<T>(
   return schema.parse(await (await response).json());
 }
 
-/** authoriseIfAsked answers a purpose-bound ceremony when one opens, with the passkey. */
-async function authoriseIfAsked(page: Page): Promise<void> {
-  const passkey = page.getByRole('button', { name: 'Use a passkey' });
-  const authorise = page.getByRole('button', { name: 'Authorise' });
-  await expect
-    .poll(async () => (await passkey.isVisible()) || (await authorise.isVisible()) || (await page.getByRole('dialog').count()) === 0, {
-      timeout: 5_000,
-    })
-    .toBe(true);
-  if (await passkey.isVisible()) {
-    await passkey.click();
-  } else if (await authorise.isVisible()) {
-    const code = page.getByLabel('Authenticator code');
-    if (await code.isVisible().catch(() => false)) {
-      await code.fill(await nextTotpCode());
-    }
-    await authorise.click();
-  }
+/**
+ * Secret-bearing assertions are made on booleans so a regression prints
+ * "false", never the value it was checking for.
+ */
+async function expectAbsentFromPage(page: Page, value: string, what: string): Promise<void> {
+  expect(value).not.toBe('');
+  expect((await page.content()).includes(value), `${what} is present in the page`).toBe(false);
 }
 
 test.describe('browser-only lifecycle', () => {
@@ -1252,11 +1244,13 @@ test.describe('browser-only lifecycle', () => {
       const publishSheet = page.getByRole('region', { name: 'Publish drafts' });
       await expect(publishSheet).toContainText('LOG_LEVEL');
       // The secret's plaintext never reaches the sheet, the notice, or the DOM.
-      await expect(page.getByText(secretValue)).toHaveCount(0);
+      await expectAbsentFromPage(page, secretValue, 'the secret value');
+      // Development is unprotected: no confirmation, no ceremony; the notice
+      // is the proof the publish went straight through.
       await publishSheet.getByRole('button', { name: /Publish selected/ }).click();
-      await authoriseIfAsked(page);
       await expect(page.locator('.notice')).toContainText('Published atomically: development');
-      await expect(page.getByText(secretValue)).toHaveCount(0);
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expectAbsentFromPage(page, secretValue, 'the secret value');
 
       // 5. HUMAN ACCESS: invite a member with a template. The display-once
       // authority is shown in the dialog and nowhere else.
@@ -1271,7 +1265,7 @@ test.describe('browser-only lifecycle', () => {
       expect(authority.length).toBeGreaterThan(16);
       await invite.getByRole('button', { name: 'Close' }).click();
       await expect(page.getByRole('dialog')).toBeHidden();
-      expect(((await page.locator('main').textContent()) ?? '').includes(authority), 'the invitation authority outlived its dialog').toBe(false);
+      await expectAbsentFromPage(page, authority, 'the invitation authority');
 
       // 6. WORKLOAD ACCESS: service account, display-once credential, read
       // grant on development. Minting first keeps the mint on the no-plaintext
@@ -1304,8 +1298,10 @@ test.describe('browser-only lifecycle', () => {
       const grant = page.getByRole('dialog');
       await expect(grant).toContainText('1 live credential');
       await grant.locator('#grant-environment').selectOption(dev);
+      // `read` newly decrypts nothing for a workload, so the dialog says the
+      // reauthentication conjunct is vacuous and no ceremony runs.
+      await expect(grant).toContainText('no reauthentication is required');
       await grant.getByRole('button', { name: 'Grant read' }).click();
-      await authoriseIfAsked(page);
       await expect(page.getByRole('status').filter({ hasText: /Grant result for development/ })).toBeVisible();
 
       const delivery = `${BASE_URL}${api}/environments/${dev}/delivery`;
@@ -1327,9 +1323,29 @@ test.describe('browser-only lifecycle', () => {
       await expect(optIn).toContainText('Nothing is granted by this act alone');
       await optIn.getByRole('checkbox').check();
       await optIn.getByRole('button', { name: 'Enable the opt-in' }).click();
-      await authoriseIfAsked(page);
       await expect(page.getByText('Machine secret delivery (per-project opt-in): on')).toBeVisible();
 
+      // The reveal grant WIDENS what the workload decrypts, so the server
+      // refuses the first attempt until the session has reauthenticated over
+      // development, and the dialog answers with the mint-purpose passkey
+      // ceremony and retries. The wire proves it: one refused grant, one
+      // reauthentication finish, one accepted grant, in that order.
+      const grantPath = `${api}/environments/${dev}/grants`;
+      const wire: string[] = [];
+      const onResponse = (response: import('@playwright/test').Response) => {
+        const pathname = new URL(response.url()).pathname;
+        const method = response.request().method();
+        // Refusal versus acceptance is the fact; the exact success code is
+        // the contract's (a created line answers 200 or 201 by outcome).
+        const status = response.status();
+        const outcome = status >= 200 && status < 300 ? 'ok' : String(status);
+        if (method === 'POST' && pathname === grantPath) {
+          wire.push(`grant:${outcome}`);
+        } else if (method === 'POST' && pathname === '/api/v1/auth/webauthn/reauth/finish') {
+          wire.push(`reauth:${outcome}`);
+        }
+      };
+      page.on('response', onResponse);
       await page.goto(`/orgs/${org.id}/members`);
       await page.getByRole('button', { name: 'New grant' }).click();
       const reveal = page.getByRole('dialog');
@@ -1337,8 +1353,9 @@ test.describe('browser-only lifecycle', () => {
       await reveal.getByRole('checkbox', { name: 'reveal', exact: true }).check();
       await reveal.getByLabel('Scope').selectOption(`env:${project.id}:${dev}`);
       await reveal.getByRole('button', { name: 'Grant', exact: true }).click();
-      await authoriseIfAsked(page);
       await expect(page.locator('.notice').filter({ hasText: 'Grant results' })).toContainText('Created: reveal');
+      page.off('response', onResponse);
+      expect(wire).toEqual(['grant:409', 'reauth:ok', 'grant:ok']);
 
       // The controller's fetch now carries the secret: a Kubernetes-ready
       // projection, obtained with a credential minted in the browser.
@@ -1371,7 +1388,7 @@ test.describe('browser-only lifecycle', () => {
         await authoriseAdapterCeremony(page);
       }
       await expect(detail.locator('.adapters__health')).toHaveText(/Healthy/, { timeout: 30_000 });
-      await expect(page.getByText(secretValue)).toHaveCount(0);
+      await expectAbsentFromPage(page, secretValue, 'the secret value');
 
       // 9. AUDIT: the organisation's trail is readable and names the publish.
       await page.goto(`/orgs/${org.id}/audit`);
@@ -1379,7 +1396,7 @@ test.describe('browser-only lifecycle', () => {
       await page.getByLabel('Operation').fill('revision.published');
       await page.getByRole('button', { name: 'Apply filter' }).click();
       await expect(page.locator('.audit__row').first()).toBeVisible();
-      await expect(page.getByText(secretValue)).toHaveCount(0);
+      await expectAbsentFromPage(page, secretValue, 'the secret value');
 
       // 10. RECOVERY, credential leak: revoke and re-mint. The old value is
       // refused at the very next fetch; the new one delivers.
@@ -1389,7 +1406,7 @@ test.describe('browser-only lifecycle', () => {
       await expect(expansion.locator('.cred')).toHaveCount(0);
       expect((await fetchAs(firstToken)).status()).toBe(401);
       const secondToken = await mint();
-      expect(secondToken).not.toBe(firstToken);
+      expect(secondToken === firstToken, 'the re-mint returned the revoked value').toBe(false);
       expect((await fetchAs(secondToken)).status()).toBe(200);
 
       // 11. RECOVERY, bad publish: change LOG_LEVEL, publish, then restore the
@@ -1401,7 +1418,6 @@ test.describe('browser-only lifecycle', () => {
       await editor.getByRole('button', { name: 'Save 1 draft' }).click();
       await page.getByRole('button', { name: /unpublished edit/ }).click();
       await page.getByRole('region', { name: 'Publish drafts' }).getByRole('button', { name: /Publish selected/ }).click();
-      await authoriseIfAsked(page);
       await expect(page.locator('.notice')).toContainText('Published atomically: development');
       expect(zDelivered.parse(await (await fetchAs(secondToken)).json()).keys.find((key) => key.name === 'LOG_LEVEL')?.value).toBe('debug');
 
@@ -1437,7 +1453,7 @@ test.describe('browser-only lifecycle', () => {
       await page.getByRole('region', { name: 'Publish drafts' }).getByRole('button', { name: /Publish selected/ }).click();
       await expect(page.locator('.notice')).toContainText('Published atomically: development');
       expect(zDelivered.parse(await (await fetchAs(secondToken)).json()).keys.find((key) => key.name === 'LOG_LEVEL')?.value).toBe('info');
-      await expect(page.getByText(secretValue)).toHaveCount(0);
+      await expectAbsentFromPage(page, secretValue, 'the secret value');
     } finally {
       await peer.dispose();
     }

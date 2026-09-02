@@ -455,9 +455,11 @@ test.describe('login', () => {
       await expect(
         page.getByRole('status').filter({ hasText: 'Your recovery code was accepted' }),
       ).toBeVisible();
-      const authority = page.getByLabel('Setup authority');
-      await expect(authority).not.toHaveValue('');
-      expect(page.url()).not.toContain(await authority.inputValue());
+      // The authority is held in component state only: no field renders it,
+      // and neither the URL nor the document carries the recovery code.
+      await expect(page.getByLabel('Setup authority')).toHaveCount(0);
+      expect(page.url().includes(code ?? ''), 'the recovery code reached the URL').toBe(false);
+      expect((await page.content()).includes(code ?? ''), 'the recovery code reached the page').toBe(false);
       await page.getByLabel('New password').fill(newPassword);
       await page.getByLabel('Repeat the password').fill(newPassword);
       await page.getByRole('button', { name: 'Establish credential' }).click();
@@ -473,7 +475,7 @@ test.describe('login', () => {
       await page.getByLabel('Password').fill(newPassword);
       await page.getByRole('button', { name: 'Sign in' }).click();
       await expect(page.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
-      expect(((await page.content()) ?? '').includes(code ?? '')).toBe(false);
+      expect((await page.content()).includes(code ?? ''), 'the recovery code outlived the ceremony').toBe(false);
     } finally {
       await context.close();
     }
