@@ -119,15 +119,16 @@ UPDATE approval_requests
 SET state = ?, invalidated_cause = ?, resolved_at = ?
 WHERE org_id = ? AND project_id = ? AND environment_id = ? AND id = ?;
 
--- SelectExpiredApprovalRequests is the installation-wide expiry sweep: every
--- active request past its expiry, across all tenants, read under scheduler
--- authority. Cross-tenant by definition; annotated and content-pinned.
+-- SelectExpiredApprovalRequests is one bounded installation-wide expiry batch.
+-- Repeated scheduler runs commit progress without putting an unbounded backlog
+-- inside one transaction's deadline.
 -- hikyo:instance-scoped
 -- name: SelectExpiredApprovalRequests :many
 SELECT id, org_id, project_id, environment_id, policy_id, requester_principal_id, expires_at
 FROM approval_requests
 WHERE resolved_at IS NULL AND expires_at < ?
-ORDER BY id;
+ORDER BY id
+LIMIT 100;
 
 -- MarkApprovalRequestExpired resolves one request as expired, idempotent by the
 -- resolved_at IS NULL guard so a concurrent merge that already resolved it wins.

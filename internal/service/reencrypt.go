@@ -224,6 +224,17 @@ func (s *Reencrypt) ReencryptProject(ctx context.Context, actor Actor, orgID, pr
 			func(ctx context.Context, r store.Repos, p authz.Proof, id string, newCt, oldCt []byte) (bool, error) {
 				return r.Adapters().ReencryptRouteMove(ctx, p, id, newCt, oldCt)
 			}},
+		{"dynamic_provider",
+			func(ctx context.Context, r store.Repos, p authz.Proof, cursor string) ([]projectFieldRow, error) {
+				rows, err := r.Dynamic().ListProvidersForReencrypt(ctx, p, cursor, s.chunkSize())
+				return fieldRows(rows), err
+			},
+			func(row projectFieldRow) crypto.AAD {
+				return providerCredentialAAD(orgID, projectID, row.owner)
+			},
+			func(ctx context.Context, r store.Repos, p authz.Proof, id string, newCt, oldCt []byte) (bool, error) {
+				return r.Dynamic().ReencryptProvider(ctx, p, id, newCt, oldCt)
+			}},
 	}
 
 	moved := 0

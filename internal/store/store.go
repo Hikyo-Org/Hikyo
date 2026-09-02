@@ -404,6 +404,7 @@ type Repos interface {
 	Snapshots() SnapshotRepo
 	Pins() RevisionPinRepo
 	Retention() RetentionRepo
+	BackupState() BackupStateRepo
 	Projects() ProjectRepo
 	Environments() EnvironmentRepo
 	Folders() FolderRepo
@@ -417,6 +418,8 @@ type Repos interface {
 	// Remotes is the multi-instance directory's viewing side (#71).
 	Remotes() RemoteRepo
 	Adapters() AdapterRepo
+	// Dynamic is the dynamic-secret provider + lease surface (#147).
+	Dynamic() DynamicRepo
 	// Definitions is the plan ledger behind definitions plan/apply (#70).
 	Definitions() DefinitionsRepo
 	// ScanningDismissals is the secret-scanning "keep as config" dismissal
@@ -470,12 +473,14 @@ type ReadRepos interface {
 	Snapshots() SnapshotReader
 	Pins() RevisionPinReader
 	Retention() RetentionReader
+	BackupState() BackupStateReader
 	Projects() ProjectReader
 	Environments() EnvironmentReader
 	Folders() FolderReader
 	Audit() AuditReader
 	Remotes() RemoteReader
 	Adapters() AdapterReader
+	Dynamic() DynamicReader
 	Definitions() DefinitionsReader
 }
 

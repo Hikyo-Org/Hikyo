@@ -29,8 +29,12 @@ import (
 // This file owns policy administration, the request/vote read surfaces, voting,
 // the expiry sweep, and the shared gate helpers publish.go calls.
 
-// maxApprovalPurposeBytes bounds the free-text purpose a requester may attach.
-const maxApprovalPurposeBytes = 1024
+const (
+	// maxApprovalPurposeBytes bounds the free-text purpose a requester may attach.
+	maxApprovalPurposeBytes = 1024
+	// maxApprovalPolicyMembers bounds each policy member list before any writes.
+	maxApprovalPolicyMembers = 100
+)
 
 // ErrApprovalRequired is the named refusal a publish returns when a policy
 // covers the environment but no completed approval or bypass is presented. It
@@ -122,7 +126,15 @@ type ApprovalRequestView struct {
 	ResolvedAt       *time.Time
 	MinApprovals     int
 	Approvals        int
+	KeyIDs           []string
 	Votes            []ApprovalVoteView
+}
+
+// ApprovalCeremonyBinding is the approval-authorized preflight used by clients
+// that hold publish without read. It carries no value material.
+type ApprovalCeremonyBinding struct {
+	KeyIDs []string
+	Window RevealWindow
 }
 
 // approvalGatedTrigger reports whether a republish trigger is an out-of-band
@@ -210,6 +222,16 @@ func (s *Approvals) UpdatePolicy(ctx context.Context, actor Actor, scope domain.
 		p, err := az.Authorize(ctx, caller, authz.OpApprovalPolicyWrite, scope)
 		if err != nil {
 			return err
+		}
+		current, err := r.Approvals().GetPolicy(ctx, p, id)
+		if err != nil {
+			return err
+		}
+		// Policy scope is immutable. Moving a policy would create a protection
+		// gap between the old and new environments and would make requests pinned
+		// to the old scope ambiguous. Replace it explicitly instead.
+		if input.EnvironmentID != current.EnvironmentID {
+			return fmt.Errorf("%w: an approval policy's environment cannot be changed; create a replacement policy", domain.ErrInvalid)
 		}
 		updated, err := r.Approvals().UpdatePolicy(ctx, p, store.ApprovalPolicyUpdate{
 			ID: id, MinApprovals: input.MinApprovals, AllowSelfApproval: input.AllowSelfApproval,
@@ -322,12 +344,50 @@ func (s *Approvals) ListRequests(ctx context.Context, actor Actor, scope domain.
 		}
 		out = make([]ApprovalRequestView, 0, len(requests))
 		for _, req := range requests {
-			view, err := requestViewWithVotes(ctx, r, p, req)
+			view, err := requestViewWithVotes(ctx, r, az, p, scope, req)
 			if err != nil {
 				return err
 			}
 			out = append(out, view)
 		}
+		return nil
+	})
+	return out, err
+}
+
+// CeremonyBinding returns the exact key unit and window policy for a named
+// approval decision. It is authorized by publish, matching vote, merge, and
+// bypass, so clients never need read or reveal merely to prepare the ceremony.
+func (s *Approvals) CeremonyBinding(ctx context.Context, actor Actor, scope domain.Scope, requestID string) (ApprovalCeremonyBinding, error) {
+	if s.Auth == nil {
+		return ApprovalCeremonyBinding{}, ErrNoCeremonySeam
+	}
+	if scope.Env == "" {
+		return ApprovalCeremonyBinding{}, fmt.Errorf("%w: an approval ceremony addresses an environment", domain.ErrInvalid)
+	}
+	now := s.now()
+	var out ApprovalCeremonyBinding
+	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		caller, err := actor.resolve(ctx, az, now)
+		if err != nil {
+			return err
+		}
+		p, err := az.Authorize(ctx, caller, authz.OpApprovalVote, scope)
+		if err != nil {
+			return err
+		}
+		req, err := r.Approvals().GetRequest(ctx, p, requestID)
+		if err != nil {
+			return err
+		}
+		if req.EnvironmentID != string(scope.Env) {
+			return domain.ErrNotFound
+		}
+		window, err := reauthWindowState(ctx, s.Auth, az, caller, scope)
+		if err != nil {
+			return err
+		}
+		out = ApprovalCeremonyBinding{KeyIDs: slices.Clone(req.KeyIDs), Window: window}
 		return nil
 	})
 	return out, err
@@ -359,10 +419,23 @@ func (s *Approvals) Vote(ctx context.Context, actor Actor, scope domain.Scope, r
 		if err != nil {
 			return err
 		}
-		// The request must be live: open or approved, not resolved, not expired.
+		existing, existingErr := r.Approvals().GetVote(ctx, p, requestID, string(caller.Principal))
+		if existingErr != nil && !errors.Is(existingErr, domain.ErrNotFound) {
+			return existingErr
+		}
+		// A repeated identical decision remains idempotent after that decision
+		// resolves the request. A different second decision is always a conflict.
 		if req.State != store.ApprovalStateOpen && req.State != store.ApprovalStateApproved {
+			if existingErr == nil {
+				if existing.Decision != decision {
+					return fmt.Errorf("%w: this approver already cast a %s vote", domain.ErrConflict, existing.Decision)
+				}
+				view, err = requestViewWithVotes(ctx, r, az, p, scope, req)
+				return err
+			}
 			return fmt.Errorf("%w: the request is %s", domain.ErrConflict, req.State)
 		}
+		// The request must be live: open or approved, not resolved, not expired.
 		if !now.Before(req.ExpiresAt) {
 			return fmt.Errorf("%w: the request has expired", domain.ErrConflict)
 		}
@@ -379,7 +452,7 @@ func (s *Approvals) Vote(ctx context.Context, actor Actor, scope domain.Scope, r
 			}
 			return err
 		}
-		if policy.Version != req.PolicyVersion {
+		if policy.ID != req.PolicyID || policy.Version != req.PolicyVersion {
 			if err := commitInvalidation(ctx, r, p, caller.Principal, req, "policy_changed", now); err != nil {
 				return err
 			}
@@ -402,19 +475,42 @@ func (s *Approvals) Vote(ctx context.Context, actor Actor, scope domain.Scope, r
 		if decision == store.ApprovalDecisionApprove && self && !policy.AllowSelfApproval {
 			return fmt.Errorf("%w: the requester cannot approve their own change under this policy", domain.ErrUnauthorized)
 		}
+		digest, err := s.requestPreviewDigest(ctx, r, az, p, scope, req)
+		if err != nil {
+			if errors.Is(err, ErrStalePending) {
+				cause := driftCause(ctx, r, p, req)
+				if err := commitInvalidation(ctx, r, p, caller.Principal, req, cause, now); err != nil {
+					return err
+				}
+				refusal = staleRefusal(cause)
+				return nil
+			}
+			return err
+		}
+		if !constantTimeEqual(digest, req.PreviewTokenDigest) {
+			cause := driftCause(ctx, r, p, req)
+			if err := commitInvalidation(ctx, r, p, caller.Principal, req, cause, now); err != nil {
+				return err
+			}
+			refusal = staleRefusal(cause)
+			return nil
+		}
 		// Idempotency: a repeated identical decision is a no-op; a conflicting
 		// one is a 409.
-		if existing, err := r.Approvals().GetVote(ctx, p, requestID, string(caller.Principal)); err == nil {
+		if existingErr == nil {
 			if existing.Decision == decision {
-				view, err = requestViewWithVotes(ctx, r, p, req)
+				view, err = requestViewWithVotes(ctx, r, az, p, scope, req)
 				return err
 			}
 			return fmt.Errorf("%w: this approver already cast a %s vote", domain.ErrConflict, existing.Decision)
-		} else if !errors.Is(err, domain.ErrNotFound) {
-			return err
 		}
 		// The vote is a reauthenticated decision over the request's key set.
-		intent, err := NewApproveReauthIntent(req.EnvironmentID, req.KeyIDs)
+		var intent ReauthIntent
+		if decision == store.ApprovalDecisionApprove {
+			intent, err = NewApproveReauthIntent(req.EnvironmentID, req.KeyIDs)
+		} else {
+			intent, err = NewRejectReauthIntent(req.EnvironmentID, req.KeyIDs)
+		}
 		if err != nil {
 			return err
 		}
@@ -455,7 +551,7 @@ func (s *Approvals) Vote(ctx context.Context, actor Actor, scope domain.Scope, r
 		if err != nil {
 			return err
 		}
-		view, err = requestViewWithVotes(ctx, r, p, fresh)
+		view, err = requestViewWithVotes(ctx, r, az, p, scope, fresh)
 		return err
 	})
 	if err != nil {
@@ -467,9 +563,9 @@ func (s *Approvals) Vote(ctx context.Context, actor Actor, scope domain.Scope, r
 	return view, err
 }
 
-// ExpireDue is the scheduler job: it resolves every active request past its
-// expiry, across all tenants, and emits a per-request expiry event on the
-// tenant trail under scoped scheduler authority. It mirrors the retention GC.
+// ExpireDue is one bounded scheduler batch. It resolves up to 100 active
+// requests past expiry and emits a per-request event under scoped scheduler
+// authority. Repeated calls drain a backlog with committed progress.
 func (s *Approvals) ExpireDue(ctx context.Context) error {
 	now := store.CanonTime(s.now())
 	_, err := tx.WriteResult(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) (int, error) {
@@ -538,6 +634,12 @@ func validatePolicyInput(input ApprovalPolicyInput) error {
 	}
 	if input.RequestTTLSeconds <= 0 {
 		return fmt.Errorf("%w: request_ttl_seconds must be positive", domain.ErrInvalid)
+	}
+	if len(input.Approvers) > maxApprovalPolicyMembers {
+		return fmt.Errorf("%w: approvers cannot contain more than %d entries", domain.ErrInvalid, maxApprovalPolicyMembers)
+	}
+	if len(input.Bypassers) > maxApprovalPolicyMembers {
+		return fmt.Errorf("%w: bypassers cannot contain more than %d entries", domain.ErrInvalid, maxApprovalPolicyMembers)
 	}
 	for _, a := range input.Approvers {
 		switch a.Kind {
@@ -769,7 +871,39 @@ func loadPolicyView(ctx context.Context, r store.Repos, p authz.Proof, id string
 	return policyViewWithMembers(ctx, r, p, policy)
 }
 
-func requestViewWithVotes(ctx context.Context, r store.Repos, p authz.Proof, req store.ApprovalRequest) (ApprovalRequestView, error) {
+// requestPreviewDigest rebuilds the request's exact publish selection from the
+// requester's current pending state. Voting therefore pins a still-live review,
+// not a digest that may already have drifted before the first decision.
+func (s *Approvals) requestPreviewDigest(ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
+	p authz.Proof, scope domain.Scope, req store.ApprovalRequest) (string, error) {
+	selected, byID, err := resolveVersions(ctx, r, p, domain.PrincipalID(req.RequesterPrincipalID), req.VersionIDs)
+	if err != nil {
+		return "", err
+	}
+	groups, err := loadGroupMembershipIndex(ctx, r.Catalogue(), p)
+	if err != nil {
+		return "", err
+	}
+	selection, closed, err := selectVersions(ctx, r, p, domain.PrincipalID(req.RequesterPrincipalID), selected, byID, groups)
+	if err != nil {
+		return "", err
+	}
+	if !slices.Equal(sortedUnique(closed), sortedUnique(req.ClosedVersionIDs)) || len(selection) != 1 {
+		return "", ErrStalePending
+	}
+	if _, ok := selection[req.EnvironmentID]; !ok {
+		return "", ErrStalePending
+	}
+	token, err := publishPreviewToken(ctx, r, map[string]authz.Proof{req.EnvironmentID: p},
+		s.Keyring, az, domain.PrincipalID(req.RequesterPrincipalID), scope, selection)
+	if err != nil {
+		return "", err
+	}
+	return approvalPreviewDigest(token), nil
+}
+
+func requestViewWithVotes(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof,
+	scope domain.Scope, req store.ApprovalRequest) (ApprovalRequestView, error) {
 	votes, err := r.Approvals().ListVotes(ctx, p, req.ID)
 	if err != nil {
 		return ApprovalRequestView{}, err
@@ -777,13 +911,19 @@ func requestViewWithVotes(ctx context.Context, r store.Repos, p authz.Proof, req
 	view := requestView(req)
 	for _, v := range votes {
 		view.Votes = append(view.Votes, ApprovalVoteView{PrincipalID: v.PrincipalID, Decision: string(v.Decision), CreatedAt: v.CreatedAt})
-		if v.Decision == store.ApprovalDecisionApprove {
-			view.Approvals++
-		}
 	}
-	// The policy's current quorum, best-effort: a deleted policy leaves it zero.
+	// Report the same live quorum merge enforces. A recorded vote stops counting
+	// when its principal loses approver membership or publish authority.
 	if policy, err := r.Approvals().GetPolicy(ctx, p, req.PolicyID); err == nil {
 		view.MinApprovals = policy.MinApprovals
+		approvers, err := r.Approvals().ListApprovers(ctx, p, req.PolicyID)
+		if err != nil {
+			return ApprovalRequestView{}, err
+		}
+		view.Approvals, err = countEligibleApprovals(ctx, r, az, p, scope, approvers, req, policy)
+		if err != nil {
+			return ApprovalRequestView{}, err
+		}
 	} else if !errors.Is(err, domain.ErrNotFound) {
 		return ApprovalRequestView{}, err
 	}
@@ -796,6 +936,7 @@ func requestView(req store.ApprovalRequest) ApprovalRequestView {
 		PolicyVersion: req.PolicyVersion, Requester: req.RequesterPrincipalID,
 		ChangeCount: len(req.VersionIDs) + len(req.ClosedVersionIDs), BaseRevision: req.BaseRevision,
 		Purpose: req.Purpose, State: string(req.State), InvalidatedCause: req.InvalidatedCause,
+		KeyIDs:    slices.Clone(req.KeyIDs),
 		CreatedAt: req.CreatedAt, ExpiresAt: req.ExpiresAt, ResolvedAt: req.ResolvedAt,
 	}
 }
@@ -968,7 +1109,7 @@ func approvalMergeGate(ctx context.Context, r store.Repos, az *authz.TxAuthorize
 	if caller.Principal != domain.PrincipalID(req.RequesterPrincipalID) {
 		return approvalOutcome{}, fmt.Errorf("%w: only the proposer may merge their reviewed change", domain.ErrUnauthorized)
 	}
-	if policy.Version != req.PolicyVersion {
+	if policy.ID != req.PolicyID || policy.Version != req.PolicyVersion {
 		if err := commitInvalidation(ctx, r, p, caller.Principal, *req, "policy_changed", now); err != nil {
 			return approvalOutcome{}, err
 		}
@@ -990,6 +1131,13 @@ func approvalMergeGate(ctx context.Context, r store.Repos, az *authz.TxAuthorize
 		return approvalOutcome{}, err
 	}
 	if approvals < policy.MinApprovals {
+		if req.State == store.ApprovalStateApproved {
+			const cause = "approver_removed"
+			if err := commitInvalidation(ctx, r, p, caller.Principal, *req, cause, now); err != nil {
+				return approvalOutcome{}, err
+			}
+			return approvalOutcome{gated: true, coveredEnv: coveredEnv, refusal: staleRefusal(cause)}, nil
+		}
 		return approvalOutcome{}, ErrApprovalNotSatisfied
 	}
 	return approvalOutcome{gated: true, resolveID: req.ID, previewDigest: digest, coveredEnv: coveredEnv, approvals: approvals}, nil
@@ -1018,7 +1166,7 @@ func approvalBypassGate(ctx context.Context, r store.Repos, az *authz.TxAuthoriz
 	if caller.Principal != domain.PrincipalID(req.RequesterPrincipalID) {
 		return approvalOutcome{}, fmt.Errorf("%w: only the proposer may commit their own change set", domain.ErrUnauthorized)
 	}
-	if policy.Version != req.PolicyVersion {
+	if policy.ID != req.PolicyID || policy.Version != req.PolicyVersion {
 		if err := commitInvalidation(ctx, r, p, caller.Principal, *req, "policy_changed", now); err != nil {
 			return approvalOutcome{}, err
 		}

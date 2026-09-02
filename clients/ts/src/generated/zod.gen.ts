@@ -107,6 +107,96 @@ export const zResumeAdapterMoveRequest = z.union([
     zResumeAdapterTargetMoveRequest
 ]);
 
+export const zDynamicProviderKind = z.enum(['postgres']);
+
+export const zDynamicProviderState = z.enum(['active', 'tombstoned']);
+
+/**
+ * minting/renewing/revoking are in-flight; active is a usable credential;
+ * revoked/expired/failed are terminal; unknown is an ambiguous provider
+ * outcome awaiting reconcile and is NEVER reported as success.
+ *
+ */
+export const zDynamicLeaseState = z.enum([
+    'minting',
+    'active',
+    'renewing',
+    'revoking',
+    'revoked',
+    'expired',
+    'unknown',
+    'failed'
+]);
+
+export const zCreateDynamicProviderRequest = z.object({
+    kind: zDynamicProviderKind,
+    origin: z.string().min(1).max(2048),
+    tls_mode: z.enum(['verify-full']).optional().default('verify-full'),
+    grant_role: z.string().min(1).max(63),
+    credential: z.string().min(1).max(4096)
+});
+
+export const zSetDynamicProviderCredentialRequest = z.object({
+    credential: z.string().min(1).max(4096)
+});
+
+export const zDynamicProvider = z.object({
+    id: zId,
+    kind: zDynamicProviderKind,
+    origin: z.string(),
+    tls_mode: z.enum(['verify-full']),
+    grant_role: z.string(),
+    credential_present: z.boolean(),
+    credential_set_at: z.iso.datetime().nullish(),
+    authority_principal_id: zId,
+    state: zDynamicProviderState,
+    created_at: zTimestamp
+});
+
+export const zDynamicProviderList = z.object({
+    items: z.array(zDynamicProvider)
+});
+
+export const zDynamicProviderDeletion = z.object({
+    provider_id: zId,
+    revoked_lease_ids: z.array(zId)
+});
+
+export const zDynamicLease = z.object({
+    id: zId,
+    provider_id: zId,
+    environment_id: zId,
+    principal_id: zId,
+    principal_class: z.string(),
+    provider_handle: z.string(),
+    state: zDynamicLeaseState,
+    issued_at: z.iso.datetime().nullish(),
+    expires_at: z.iso.datetime().nullish(),
+    max_ttl_seconds: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    last_transition_at: zTimestamp,
+    created_at: zTimestamp
+});
+
+export const zDynamicLeaseList = z.object({
+    items: z.array(zDynamicLease)
+});
+
+export const zMintLeaseRequest = z.object({
+    provider_id: zId,
+    max_ttl_seconds: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+});
+
+export const zRenewLeaseRequest = z.object({
+    max_ttl_seconds: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullish()
+});
+
+export const zMintLeaseResult = z.object({
+    lease: zDynamicLease,
+    username: z.string(),
+    password: z.string(),
+    expires_at: z.iso.datetime().nullish()
+});
+
 export const zAdapterConflictEntry = z.object({
     surface: z.enum(['secret', 'variable']),
     effective_name: z.string()
@@ -463,16 +553,20 @@ export const zTotpEnvironmentReauthRequest = z.object({
 
 /**
  * `adapter` carries an adapter-routing decision over an environment set.
- * `reveal` and `copy` carry a DISCLOSURE: the browser runs the same
- * purpose-bound, enumerated-key-set ceremony the UI runs, so `key_ids`
- * is required and names exactly the keys the one decision covers.
+ * Every non-adapter purpose carries an exact environment and key set. The
+ * browser runs the same purpose-bound ceremony the UI runs, so `key_ids`
+ * names exactly the unit the decision covers.
  *
  */
 export const zCliReauthStartRequest = z.object({
     purpose: z.enum([
         'adapter',
         'reveal',
-        'copy'
+        'copy',
+        'publish',
+        'approve',
+        'reject',
+        'bypass'
     ]),
     operation: z.enum([
         'adapter.configure',
@@ -480,7 +574,10 @@ export const zCliReauthStartRequest = z.object({
         'adapter.adopt',
         'adapter.sync',
         'value.reveal',
-        'value.copy-source'
+        'value.copy-source',
+        'value.copy-destination',
+        'approval.vote',
+        'approval.bypass'
     ]),
     environment_ids: z.array(zId).min(1),
     key_ids: z.array(zId).max(500).optional(),
@@ -514,7 +611,11 @@ export const zCliReauthTransaction = z.object({
     purpose: z.enum([
         'adapter',
         'reveal',
-        'copy'
+        'copy',
+        'publish',
+        'approve',
+        'reject',
+        'bypass'
     ]),
     operation: z.enum([
         'adapter.configure',
@@ -522,7 +623,10 @@ export const zCliReauthTransaction = z.object({
         'adapter.adopt',
         'adapter.sync',
         'value.reveal',
-        'value.copy-source'
+        'value.copy-source',
+        'value.copy-destination',
+        'approval.vote',
+        'approval.bypass'
     ]),
     environments: z.array(zCliReauthEnvironmentPolicy).min(1),
     key_ids: z.array(zId),
@@ -549,6 +653,13 @@ export const zRecoveryBeginRequest = z.object({
 });
 
 export const zRecoveryBeginResult = z.object({
+    authority: z.string(),
+    expires_at: zTimestamp
+});
+
+export const zInvitationResult = z.object({
+    principal_id: zId,
+    account_id: zId,
     authority: z.string(),
     expires_at: zTimestamp
 });
@@ -777,8 +888,8 @@ export const zApprovalPolicyInput = z.object({
     allow_self_approval: z.boolean().optional(),
     request_ttl_seconds: z.int().gte(1).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
     enabled: z.boolean(),
-    approvers: z.array(zApprovalApprover).optional(),
-    bypassers: z.array(zId).optional()
+    approvers: z.array(zApprovalApprover).max(100).optional(),
+    bypassers: z.array(zId).max(100).optional()
 });
 
 export const zApprovalPolicy = z.object({
@@ -832,6 +943,7 @@ export const zApprovalRequest = z.object({
     ]),
     min_approvals: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
     approvals: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    key_ids: z.array(zId),
     votes: z.array(zApprovalVote),
     created_at: zTimestamp,
     expires_at: zTimestamp,
@@ -1408,6 +1520,12 @@ export const zRoleTemplate = z.enum([
     'operator'
 ]);
 
+export const zInviteMemberRequest = z.object({
+    username: z.string().min(1).max(128),
+    display_name: z.string().max(256).optional(),
+    template: zRoleTemplate.optional()
+});
+
 export const zCreateGrantRequest = z.object({
     principal: zId,
     capability: zCapability
@@ -1493,12 +1611,30 @@ export const zRetentionPolicy = z.object({
     last_revisions: z.int().gte(1).nullish()
 });
 
+/**
+ * Disaster-recovery health: the latest successful export, its age against the configured recovery point objective, the latest failure, and the latest restore drill. Names archives and versions only; never a recipient, an identity or a key.
+ */
+export const zBackupHealth = z.object({
+    scheduled: z.boolean(),
+    last_success_at: z.iso.datetime().nullable(),
+    artifact_age_seconds: z.int(),
+    rpo_seconds: z.int(),
+    rpo_exceeded: z.boolean(),
+    last_failure_at: z.iso.datetime().nullable(),
+    last_failure_reason: z.string(),
+    last_prune_at: z.iso.datetime().nullable(),
+    last_drill_at: z.iso.datetime().nullable(),
+    last_drill_ok: z.boolean(),
+    drill_stale: z.boolean()
+});
+
 export const zRetentionHealth = z.object({
     last_prune_success: z.iso.datetime().nullable(),
     stale: z.boolean(),
     stale_after_seconds: z.literal(86400),
     peak_project_bytes: z.int(),
-    storage_warn: z.boolean()
+    storage_warn: z.boolean(),
+    backup: zBackupHealth
 });
 
 export const zProjectRetentionPolicy = z.object({
@@ -2342,7 +2478,10 @@ export const zReauthPurpose = z.enum([
     'copy',
     'publish',
     'mint',
-    'adapter'
+    'adapter',
+    'approve',
+    'reject',
+    'bypass'
 ]);
 
 /**
@@ -2421,6 +2560,11 @@ export const zRevealWindow = z.object({
     single_decision: z.boolean(),
     can_reveal: z.boolean(),
     expires_at: zTimestamp.optional()
+});
+
+export const zApprovalCeremonyBinding = z.object({
+    key_ids: z.array(zId),
+    window: zRevealWindow
 });
 
 export const zTotpStatus = z.object({
@@ -2792,7 +2936,10 @@ export const zWorkspaceHandoffStepUp = z.object({
     operation: z.enum([
         'reveal',
         'copy',
-        'publish'
+        'publish',
+        'approve',
+        'reject',
+        'bypass'
     ]),
     environment: zId,
     key_ids: z.array(zId),
@@ -2890,6 +3037,10 @@ export const zEnvironmentId = zId;
 export const zAdapterId = zId;
 
 export const zAdapterTargetId = zId;
+
+export const zDynamicProviderId = zId;
+
+export const zLeaseId = zId;
 
 /**
  * Folder identifier.
@@ -3595,6 +3746,13 @@ export const zApplyInstanceTemplateBody = zApplyTemplateRequest;
  */
 export const zApplyInstanceTemplateResponse = zGrantResultList;
 
+export const zInviteInstanceMemberBody = zInviteMemberRequest;
+
+/**
+ * The invited principal and its single-use authority.
+ */
+export const zInviteInstanceMemberResponse = zInvitationResult;
+
 export const zRevokeOrgGrantPath = z.object({
     org: zId
 });
@@ -3639,6 +3797,17 @@ export const zApplyOrgTemplatePath = z.object({
  * The grants the expansion produced.
  */
 export const zApplyOrgTemplateResponse = zGrantResultList;
+
+export const zInviteOrgMemberBody = zInviteMemberRequest;
+
+export const zInviteOrgMemberPath = z.object({
+    org: zId
+});
+
+/**
+ * The invited principal and its single-use authority.
+ */
+export const zInviteOrgMemberResponse = zInvitationResult;
 
 export const zRevokeProjectGrantPath = z.object({
     org: zId,
@@ -5244,6 +5413,18 @@ export const zVoteApprovalRequestPath = z.object({
  */
 export const zVoteApprovalRequestResponse = zApprovalRequest;
 
+export const zGetApprovalCeremonyPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    approvalRequest: zId
+});
+
+/**
+ * The exact approval ceremony binding.
+ */
+export const zGetApprovalCeremonyResponse = zApprovalCeremonyBinding;
+
 export const zGetEnvironmentSignalsPath = z.object({
     org: zId,
     project: zId,
@@ -5815,3 +5996,149 @@ export const zAdoptAdapterTargetNamesPath = z.object({
  * Adoption committed and converge queued.
  */
 export const zAdoptAdapterTargetNamesResponse = zAdapterJob;
+
+export const zListDynamicProvidersPath = z.object({
+    org: zId,
+    project: zId
+});
+
+/**
+ * Provider list.
+ */
+export const zListDynamicProvidersResponse = zDynamicProviderList;
+
+export const zCreateDynamicProviderBody = zCreateDynamicProviderRequest;
+
+export const zCreateDynamicProviderPath = z.object({
+    org: zId,
+    project: zId
+});
+
+/**
+ * Provider configured and reachable.
+ */
+export const zCreateDynamicProviderResponse = zDynamicProvider;
+
+export const zDeleteDynamicProviderPath = z.object({
+    org: zId,
+    project: zId,
+    provider: zId
+});
+
+export const zDeleteDynamicProviderQuery = z.object({
+    revoke_all: z.boolean().optional().default(false)
+});
+
+/**
+ * Provider deleted; any leases queued for revocation.
+ */
+export const zDeleteDynamicProviderResponse = zDynamicProviderDeletion;
+
+export const zShowDynamicProviderPath = z.object({
+    org: zId,
+    project: zId,
+    provider: zId
+});
+
+/**
+ * Provider.
+ */
+export const zShowDynamicProviderResponse = zDynamicProvider;
+
+export const zRevokeDynamicProviderCredentialPath = z.object({
+    org: zId,
+    project: zId,
+    provider: zId
+});
+
+/**
+ * Credential revoked.
+ */
+export const zRevokeDynamicProviderCredentialResponse = z.void();
+
+export const zSetDynamicProviderCredentialBody = zSetDynamicProviderCredentialRequest;
+
+export const zSetDynamicProviderCredentialPath = z.object({
+    org: zId,
+    project: zId,
+    provider: zId
+});
+
+/**
+ * Credential replaced.
+ */
+export const zSetDynamicProviderCredentialResponse = z.void();
+
+export const zListLeasesPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * Lease list.
+ */
+export const zListLeasesResponse = zDynamicLeaseList;
+
+export const zMintLeaseBody = zMintLeaseRequest;
+
+export const zMintLeasePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * The lease and its display-once secret.
+ */
+export const zMintLeaseResponse = zMintLeaseResult;
+
+export const zShowLeasePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    lease: zId
+});
+
+/**
+ * Lease.
+ */
+export const zShowLeaseResponse = zDynamicLease;
+
+export const zRenewLeaseBody = zRenewLeaseRequest;
+
+export const zRenewLeasePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    lease: zId
+});
+
+/**
+ * Lease after renewal.
+ */
+export const zRenewLeaseResponse = zDynamicLease;
+
+export const zRevokeLeasePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    lease: zId
+});
+
+/**
+ * Lease after revocation was queued.
+ */
+export const zRevokeLeaseResponse = zDynamicLease;
+
+export const zSettleLeasePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    lease: zId
+});
+
+/**
+ * Lease after settlement.
+ */
+export const zSettleLeaseResponse = zDynamicLease;

@@ -20,6 +20,7 @@ type ApprovalService interface {
 	UpdatePolicy(ctx context.Context, actor service.Actor, scope domain.Scope, id string, input service.ApprovalPolicyInput) (service.ApprovalPolicyView, error)
 	DeletePolicy(ctx context.Context, actor service.Actor, scope domain.Scope, id string) error
 	ListRequests(ctx context.Context, actor service.Actor, scope domain.Scope) ([]service.ApprovalRequestView, error)
+	CeremonyBinding(ctx context.Context, actor service.Actor, scope domain.Scope, requestID string) (service.ApprovalCeremonyBinding, error)
 	Vote(ctx context.Context, actor service.Actor, scope domain.Scope, requestID string, decision string) (service.ApprovalRequestView, error)
 }
 
@@ -85,6 +86,7 @@ func wireApprovalRequest(r service.ApprovalRequestView) apigen.ApprovalRequest {
 		Purpose: r.Purpose, State: apigen.ApprovalRequestState(r.State),
 		InvalidatedCause: apigen.ApprovalRequestInvalidatedCause(r.InvalidatedCause),
 		MinApprovals:     int32(r.MinApprovals), Approvals: int32(r.Approvals), Votes: votes,
+		KeyIds:    r.KeyIDs,
 		CreatedAt: r.CreatedAt, ExpiresAt: r.ExpiresAt,
 	}
 	if r.ResolvedAt != nil {
@@ -138,6 +140,26 @@ func (a *API) ListApprovalRequests(ctx context.Context, req apigen.ListApprovalR
 		items = append(items, wireApprovalRequest(r))
 	}
 	return apigen.ListApprovalRequests200JSONResponse(apigen.ApprovalRequestList{Items: items}), nil
+}
+
+func (a *API) GetApprovalCeremony(ctx context.Context, req apigen.GetApprovalCeremonyRequestObject) (apigen.GetApprovalCeremonyResponseObject, error) {
+	binding, err := a.Approvals.CeremonyBinding(ctx, service.Bearer(bearer(ctx)),
+		envScope(req.Org, req.Project, req.Environment), string(req.ApprovalRequest))
+	if err != nil {
+		return nil, err
+	}
+	window := apigen.RevealWindow{
+		EffectiveWindowSeconds: binding.Window.EffectiveWindowSeconds,
+		Protected:              binding.Window.Protected, TotpOffered: binding.Window.TOTPOffered,
+		Live: binding.Window.Live, SingleDecision: binding.Window.SingleDecision,
+		CanReveal: binding.Window.CanReveal,
+	}
+	if !binding.Window.ExpiresAt.IsZero() {
+		window.ExpiresAt = &binding.Window.ExpiresAt
+	}
+	return apigen.GetApprovalCeremony200JSONResponse(apigen.ApprovalCeremonyBinding{
+		KeyIds: binding.KeyIDs, Window: window,
+	}), nil
 }
 
 func (a *API) VoteApprovalRequest(ctx context.Context, req apigen.VoteApprovalRequestRequestObject) (apigen.VoteApprovalRequestResponseObject, error) {

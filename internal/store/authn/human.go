@@ -14,6 +14,9 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
+	"github.com/jackc/pgx/v5/pgconn"
+	"modernc.org/sqlite"
+	sqlitelib "modernc.org/sqlite/lib"
 )
 
 // purposeInstance is the tier-3 purpose value for the instance DEK. It MUST
@@ -428,17 +431,40 @@ func (r *Resolver) CreatePrincipal(ctx context.Context, id domain.PrincipalID, k
 	})
 }
 
+// CreateAccount writes one account row. A taken login handle is the
+// `accounts.username` UNIQUE index, folded onto domain.ErrConflict by typed
+// extended code so every creator (bootstrap, SCIM, invitation) answers one
+// cross-engine refusal instead of a driver string.
 func (r *Resolver) CreateAccount(ctx context.Context, a Account) error {
 	if r.sq != nil {
-		return r.sq.InsertAccount(ctx, sqlitegen.InsertAccountParams{
+		return accountConstraint(r.sq.InsertAccount(ctx, sqlitegen.InsertAccountParams{
 			ID: a.ID, PrincipalID: string(a.PrincipalID), Username: a.Username,
 			DisplayName: a.DisplayName, CreatedAt: encodeTime(a.CreatedAt),
-		})
+		}))
 	}
-	return r.pg.InsertAccount(ctx, pggen.InsertAccountParams{
+	return accountConstraint(r.pg.InsertAccount(ctx, pggen.InsertAccountParams{
 		ID: a.ID, PrincipalID: string(a.PrincipalID), Username: a.Username,
 		DisplayName: a.DisplayName, CreatedAt: pgTime(a.CreatedAt),
-	})
+	}))
+}
+
+// accountConstraint folds a duplicate account handle (or id) onto one
+// cross-engine refusal, by typed extended code rather than driver message text.
+func accountConstraint(err error) error {
+	if err == nil {
+		return nil
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return fmt.Errorf("%w: that username is already in use", domain.ErrConflict)
+	}
+	var sqliteErr *sqlite.Error
+	if errors.As(err, &sqliteErr) &&
+		(sqliteErr.Code() == sqlitelib.SQLITE_CONSTRAINT_UNIQUE ||
+			sqliteErr.Code() == sqlitelib.SQLITE_CONSTRAINT_PRIMARYKEY) {
+		return fmt.Errorf("%w: that username is already in use", domain.ErrConflict)
+	}
+	return err
 }
 
 // CreateGrant writes one grant row. The bootstrap path uses it to apply the

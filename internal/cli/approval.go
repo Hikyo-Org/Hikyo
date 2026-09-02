@@ -213,7 +213,7 @@ func runApprovalRequest(ctx context.Context, ios IO, args []string) error {
 			return failf(ExitUsage, "hikyo approval request bypass requires --reason")
 		}
 	}
-	client, _, resolved, err := authenticatedTarget(st, ios, flags)
+	client, artifact, resolved, err := authenticatedTarget(st, ios, flags)
 	if err != nil {
 		return err
 	}
@@ -240,9 +240,15 @@ func runApprovalRequest(ctx context.Context, ios IO, args []string) error {
 			return failf(ExitUsage, "usage: hikyo approval request %s <request>", sub)
 		}
 		var out apigen.ApprovalRequest
+		id := flags.positional()
 		body := apigen.ApprovalVoteRequest{Decision: apigen.ApprovalVoteRequestDecision(sub)}
-		if err := client.Do(ctx, http.MethodPost,
-			base+"/approval-requests/"+url.PathEscape(flags.positional())+"/vote", body, &out); err != nil {
+		act := func() error {
+			return client.Do(ctx, http.MethodPost,
+				base+"/approval-requests/"+url.PathEscape(id)+"/vote", body, &out)
+		}
+		purpose := sub
+		if err := withRevealCeremony(ctx, client, st, ios, artifact, project,
+			[]string{resolved.Get(DimEnv)}, approvalDisclosure(client, base, id, purpose), act); err != nil {
 			return err
 		}
 		return Render(ios.Stdout, f, approvalRequestTable([]apigen.ApprovalRequest{out}))
@@ -259,7 +265,13 @@ func runApprovalRequest(ctx context.Context, ios IO, args []string) error {
 			body.Bypass = &apigen.ApprovalBypass{Reason: reason}
 		}
 		var out apigen.PublishResult
-		if err := client.Do(ctx, http.MethodPost, base+"/publish", body, &out); err != nil {
+		act := func() error { return client.Do(ctx, http.MethodPost, base+"/publish", body, &out) }
+		purpose := "publish"
+		if sub == "bypass" {
+			purpose = "bypass"
+		}
+		if err := withRevealCeremony(ctx, client, st, ios, artifact, project,
+			[]string{resolved.Get(DimEnv)}, approvalDisclosure(client, base, id, purpose), act); err != nil {
 			return err
 		}
 		return Render(ios.Stdout, f, Table{
@@ -269,6 +281,36 @@ func runApprovalRequest(ctx context.Context, ios IO, args []string) error {
 		})
 	}
 	return failf(ExitInternal, "hikyo approval request: unhandled subverb %q", sub)
+}
+
+// approvalDisclosure resolves the immutable key set only if a zero-window
+// browser handoff is needed. The action is attempted first, so a live sliding
+// window and an idempotent repeated vote cost no extra queue read.
+func approvalDisclosure(client *Client, environmentBase, requestID, purpose string) disclosure {
+	var cached *apigen.ApprovalCeremonyBinding
+	load := func(ctx context.Context) (apigen.ApprovalCeremonyBinding, error) {
+		if cached != nil {
+			return *cached, nil
+		}
+		var binding apigen.ApprovalCeremonyBinding
+		if err := client.Do(ctx, http.MethodGet,
+			environmentBase+"/approval-requests/"+url.PathEscape(requestID)+"/ceremony", nil, &binding); err != nil {
+			return apigen.ApprovalCeremonyBinding{}, err
+		}
+		cached = &binding
+		return binding, nil
+	}
+	return disclosure{
+		purpose: purpose,
+		keys: func(ctx context.Context, _ string) ([]string, error) {
+			binding, err := load(ctx)
+			return binding.KeyIds, err
+		},
+		window: func(ctx context.Context, _ string) (apigen.RevealWindow, error) {
+			binding, err := load(ctx)
+			return binding.Window, err
+		},
+	}
 }
 
 func approvalRequestTable(requests []apigen.ApprovalRequest) Table {

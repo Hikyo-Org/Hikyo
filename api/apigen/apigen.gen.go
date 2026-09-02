@@ -586,6 +586,9 @@ const (
 	CLIReauthStartRequestOperationAdapterConfigure     CLIReauthStartRequestOperation = "adapter.configure"
 	CLIReauthStartRequestOperationAdapterCredentialSet CLIReauthStartRequestOperation = "adapter.credential-set"
 	CLIReauthStartRequestOperationAdapterSync          CLIReauthStartRequestOperation = "adapter.sync"
+	CLIReauthStartRequestOperationApprovalBypass       CLIReauthStartRequestOperation = "approval.bypass"
+	CLIReauthStartRequestOperationApprovalVote         CLIReauthStartRequestOperation = "approval.vote"
+	CLIReauthStartRequestOperationValueCopyDestination CLIReauthStartRequestOperation = "value.copy-destination"
 	CLIReauthStartRequestOperationValueCopySource      CLIReauthStartRequestOperation = "value.copy-source"
 	CLIReauthStartRequestOperationValueReveal          CLIReauthStartRequestOperation = "value.reveal"
 )
@@ -601,6 +604,12 @@ func (e CLIReauthStartRequestOperation) Valid() bool {
 		return true
 	case CLIReauthStartRequestOperationAdapterSync:
 		return true
+	case CLIReauthStartRequestOperationApprovalBypass:
+		return true
+	case CLIReauthStartRequestOperationApprovalVote:
+		return true
+	case CLIReauthStartRequestOperationValueCopyDestination:
+		return true
 	case CLIReauthStartRequestOperationValueCopySource:
 		return true
 	case CLIReauthStartRequestOperationValueReveal:
@@ -613,7 +622,11 @@ func (e CLIReauthStartRequestOperation) Valid() bool {
 // Defines values for CLIReauthStartRequestPurpose.
 const (
 	CLIReauthStartRequestPurposeAdapter CLIReauthStartRequestPurpose = "adapter"
+	CLIReauthStartRequestPurposeApprove CLIReauthStartRequestPurpose = "approve"
+	CLIReauthStartRequestPurposeBypass  CLIReauthStartRequestPurpose = "bypass"
 	CLIReauthStartRequestPurposeCopy    CLIReauthStartRequestPurpose = "copy"
+	CLIReauthStartRequestPurposePublish CLIReauthStartRequestPurpose = "publish"
+	CLIReauthStartRequestPurposeReject  CLIReauthStartRequestPurpose = "reject"
 	CLIReauthStartRequestPurposeReveal  CLIReauthStartRequestPurpose = "reveal"
 )
 
@@ -622,7 +635,15 @@ func (e CLIReauthStartRequestPurpose) Valid() bool {
 	switch e {
 	case CLIReauthStartRequestPurposeAdapter:
 		return true
+	case CLIReauthStartRequestPurposeApprove:
+		return true
+	case CLIReauthStartRequestPurposeBypass:
+		return true
 	case CLIReauthStartRequestPurposeCopy:
+		return true
+	case CLIReauthStartRequestPurposePublish:
+		return true
+	case CLIReauthStartRequestPurposeReject:
 		return true
 	case CLIReauthStartRequestPurposeReveal:
 		return true
@@ -637,6 +658,9 @@ const (
 	CLIReauthTransactionOperationAdapterConfigure     CLIReauthTransactionOperation = "adapter.configure"
 	CLIReauthTransactionOperationAdapterCredentialSet CLIReauthTransactionOperation = "adapter.credential-set"
 	CLIReauthTransactionOperationAdapterSync          CLIReauthTransactionOperation = "adapter.sync"
+	CLIReauthTransactionOperationApprovalBypass       CLIReauthTransactionOperation = "approval.bypass"
+	CLIReauthTransactionOperationApprovalVote         CLIReauthTransactionOperation = "approval.vote"
+	CLIReauthTransactionOperationValueCopyDestination CLIReauthTransactionOperation = "value.copy-destination"
 	CLIReauthTransactionOperationValueCopySource      CLIReauthTransactionOperation = "value.copy-source"
 	CLIReauthTransactionOperationValueReveal          CLIReauthTransactionOperation = "value.reveal"
 )
@@ -652,6 +676,12 @@ func (e CLIReauthTransactionOperation) Valid() bool {
 		return true
 	case CLIReauthTransactionOperationAdapterSync:
 		return true
+	case CLIReauthTransactionOperationApprovalBypass:
+		return true
+	case CLIReauthTransactionOperationApprovalVote:
+		return true
+	case CLIReauthTransactionOperationValueCopyDestination:
+		return true
 	case CLIReauthTransactionOperationValueCopySource:
 		return true
 	case CLIReauthTransactionOperationValueReveal:
@@ -664,7 +694,11 @@ func (e CLIReauthTransactionOperation) Valid() bool {
 // Defines values for CLIReauthTransactionPurpose.
 const (
 	CLIReauthTransactionPurposeAdapter CLIReauthTransactionPurpose = "adapter"
+	CLIReauthTransactionPurposeApprove CLIReauthTransactionPurpose = "approve"
+	CLIReauthTransactionPurposeBypass  CLIReauthTransactionPurpose = "bypass"
 	CLIReauthTransactionPurposeCopy    CLIReauthTransactionPurpose = "copy"
+	CLIReauthTransactionPurposePublish CLIReauthTransactionPurpose = "publish"
+	CLIReauthTransactionPurposeReject  CLIReauthTransactionPurpose = "reject"
 	CLIReauthTransactionPurposeReveal  CLIReauthTransactionPurpose = "reveal"
 )
 
@@ -673,7 +707,15 @@ func (e CLIReauthTransactionPurpose) Valid() bool {
 	switch e {
 	case CLIReauthTransactionPurposeAdapter:
 		return true
+	case CLIReauthTransactionPurposeApprove:
+		return true
+	case CLIReauthTransactionPurposeBypass:
+		return true
 	case CLIReauthTransactionPurposeCopy:
+		return true
+	case CLIReauthTransactionPurposePublish:
+		return true
+	case CLIReauthTransactionPurposeReject:
 		return true
 	case CLIReauthTransactionPurposeReveal:
 		return true
@@ -715,6 +757,21 @@ func (e ChangedKeyChange) Valid() bool {
 	case ChangedKeyChangeEdited:
 		return true
 	case ChangedKeyChangeRemoved:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateDynamicProviderRequestTlsMode.
+const (
+	CreateDynamicProviderRequestTlsModeVerifyFull CreateDynamicProviderRequestTlsMode = "verify-full"
+)
+
+// Valid indicates whether the value is a known member of the CreateDynamicProviderRequestTlsMode enum.
+func (e CreateDynamicProviderRequestTlsMode) Valid() bool {
+	switch e {
+	case CreateDynamicProviderRequestTlsModeVerifyFull:
 		return true
 	default:
 		return false
@@ -874,6 +931,90 @@ func (e DeliveredKeyPresence) Valid() bool {
 	case DeliveredKeyPresenceRequired:
 		return true
 	case DeliveredKeyPresenceSet:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DynamicLeaseState.
+const (
+	DynamicLeaseStateActive   DynamicLeaseState = "active"
+	DynamicLeaseStateExpired  DynamicLeaseState = "expired"
+	DynamicLeaseStateFailed   DynamicLeaseState = "failed"
+	DynamicLeaseStateMinting  DynamicLeaseState = "minting"
+	DynamicLeaseStateRenewing DynamicLeaseState = "renewing"
+	DynamicLeaseStateRevoked  DynamicLeaseState = "revoked"
+	DynamicLeaseStateRevoking DynamicLeaseState = "revoking"
+	DynamicLeaseStateUnknown  DynamicLeaseState = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the DynamicLeaseState enum.
+func (e DynamicLeaseState) Valid() bool {
+	switch e {
+	case DynamicLeaseStateActive:
+		return true
+	case DynamicLeaseStateExpired:
+		return true
+	case DynamicLeaseStateFailed:
+		return true
+	case DynamicLeaseStateMinting:
+		return true
+	case DynamicLeaseStateRenewing:
+		return true
+	case DynamicLeaseStateRevoked:
+		return true
+	case DynamicLeaseStateRevoking:
+		return true
+	case DynamicLeaseStateUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DynamicProviderTlsMode.
+const (
+	DynamicProviderTlsModeVerifyFull DynamicProviderTlsMode = "verify-full"
+)
+
+// Valid indicates whether the value is a known member of the DynamicProviderTlsMode enum.
+func (e DynamicProviderTlsMode) Valid() bool {
+	switch e {
+	case DynamicProviderTlsModeVerifyFull:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DynamicProviderKind.
+const (
+	Postgres DynamicProviderKind = "postgres"
+)
+
+// Valid indicates whether the value is a known member of the DynamicProviderKind enum.
+func (e DynamicProviderKind) Valid() bool {
+	switch e {
+	case Postgres:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DynamicProviderState.
+const (
+	DynamicProviderStateActive     DynamicProviderState = "active"
+	DynamicProviderStateTombstoned DynamicProviderState = "tombstoned"
+)
+
+// Valid indicates whether the value is a known member of the DynamicProviderState enum.
+func (e DynamicProviderState) Valid() bool {
+	switch e {
+	case DynamicProviderStateActive:
+		return true
+	case DynamicProviderStateTombstoned:
 		return true
 	default:
 		return false
@@ -1315,9 +1456,12 @@ func (e ProjectRetentionPolicyMode) Valid() bool {
 // Defines values for ReauthPurpose.
 const (
 	ReauthPurposeAdapter ReauthPurpose = "adapter"
+	ReauthPurposeApprove ReauthPurpose = "approve"
+	ReauthPurposeBypass  ReauthPurpose = "bypass"
 	ReauthPurposeCopy    ReauthPurpose = "copy"
 	ReauthPurposeMint    ReauthPurpose = "mint"
 	ReauthPurposePublish ReauthPurpose = "publish"
+	ReauthPurposeReject  ReauthPurpose = "reject"
 	ReauthPurposeReveal  ReauthPurpose = "reveal"
 )
 
@@ -1326,11 +1470,17 @@ func (e ReauthPurpose) Valid() bool {
 	switch e {
 	case ReauthPurposeAdapter:
 		return true
+	case ReauthPurposeApprove:
+		return true
+	case ReauthPurposeBypass:
+		return true
 	case ReauthPurposeCopy:
 		return true
 	case ReauthPurposeMint:
 		return true
 	case ReauthPurposePublish:
+		return true
+	case ReauthPurposeReject:
 		return true
 	case ReauthPurposeReveal:
 		return true
@@ -1903,9 +2053,12 @@ func (e TotpAdapterReauthRequestOperation) Valid() bool {
 // Defines values for TotpAdapterReauthRequestPurpose.
 const (
 	TotpAdapterReauthRequestPurposeAdapter TotpAdapterReauthRequestPurpose = "adapter"
+	TotpAdapterReauthRequestPurposeApprove TotpAdapterReauthRequestPurpose = "approve"
+	TotpAdapterReauthRequestPurposeBypass  TotpAdapterReauthRequestPurpose = "bypass"
 	TotpAdapterReauthRequestPurposeCopy    TotpAdapterReauthRequestPurpose = "copy"
 	TotpAdapterReauthRequestPurposeMint    TotpAdapterReauthRequestPurpose = "mint"
 	TotpAdapterReauthRequestPurposePublish TotpAdapterReauthRequestPurpose = "publish"
+	TotpAdapterReauthRequestPurposeReject  TotpAdapterReauthRequestPurpose = "reject"
 	TotpAdapterReauthRequestPurposeReveal  TotpAdapterReauthRequestPurpose = "reveal"
 )
 
@@ -1914,11 +2067,17 @@ func (e TotpAdapterReauthRequestPurpose) Valid() bool {
 	switch e {
 	case TotpAdapterReauthRequestPurposeAdapter:
 		return true
+	case TotpAdapterReauthRequestPurposeApprove:
+		return true
+	case TotpAdapterReauthRequestPurposeBypass:
+		return true
 	case TotpAdapterReauthRequestPurposeCopy:
 		return true
 	case TotpAdapterReauthRequestPurposeMint:
 		return true
 	case TotpAdapterReauthRequestPurposePublish:
+		return true
+	case TotpAdapterReauthRequestPurposeReject:
 		return true
 	case TotpAdapterReauthRequestPurposeReveal:
 		return true
@@ -2043,17 +2202,26 @@ func (e WorkspaceHandoffEstablishmentPurpose) Valid() bool {
 
 // Defines values for WorkspaceHandoffStepUpOperation.
 const (
+	WorkspaceHandoffStepUpOperationApprove WorkspaceHandoffStepUpOperation = "approve"
+	WorkspaceHandoffStepUpOperationBypass  WorkspaceHandoffStepUpOperation = "bypass"
 	WorkspaceHandoffStepUpOperationCopy    WorkspaceHandoffStepUpOperation = "copy"
 	WorkspaceHandoffStepUpOperationPublish WorkspaceHandoffStepUpOperation = "publish"
+	WorkspaceHandoffStepUpOperationReject  WorkspaceHandoffStepUpOperation = "reject"
 	WorkspaceHandoffStepUpOperationReveal  WorkspaceHandoffStepUpOperation = "reveal"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceHandoffStepUpOperation enum.
 func (e WorkspaceHandoffStepUpOperation) Valid() bool {
 	switch e {
+	case WorkspaceHandoffStepUpOperationApprove:
+		return true
+	case WorkspaceHandoffStepUpOperationBypass:
+		return true
 	case WorkspaceHandoffStepUpOperationCopy:
 		return true
 	case WorkspaceHandoffStepUpOperationPublish:
+		return true
+	case WorkspaceHandoffStepUpOperationReject:
 		return true
 	case WorkspaceHandoffStepUpOperationReveal:
 		return true
@@ -2729,6 +2897,17 @@ type ApprovalBypass struct {
 	Reason string `json:"reason"`
 }
 
+// ApprovalCeremonyBinding defines model for ApprovalCeremonyBinding.
+type ApprovalCeremonyBinding struct {
+	// KeyIds The immutable key unit pinned by the approval request.
+	KeyIds []ID `json:"key_ids"`
+
+	// Window The reveal guard's state for one environment and the acting session.
+	// Nothing here is material: it is project settings plus the caller's own
+	// window.
+	Window RevealWindow `json:"window"`
+}
+
 // ApprovalPolicy defines model for ApprovalPolicy.
 type ApprovalPolicy struct {
 	AllowSelfApproval bool               `json:"allow_self_approval"`
@@ -2786,7 +2965,10 @@ type ApprovalRequest struct {
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id               ID                              `json:"id"`
 	InvalidatedCause ApprovalRequestInvalidatedCause `json:"invalidated_cause"`
-	MinApprovals     int32                           `json:"min_approvals"`
+
+	// KeyIds The exact key set bound to vote, merge, and bypass ceremonies.
+	KeyIds       []ID  `json:"key_ids"`
+	MinApprovals int32 `json:"min_approvals"`
 
 	// PolicyId A prefixed UUIDv7, e.g. `org_0198…`.
 	PolicyId      ID     `json:"policy_id"`
@@ -2965,6 +3147,32 @@ type AuthMethods struct {
 	Providers         []AuthMethodProvider `json:"providers"`
 }
 
+// BackupHealth Disaster-recovery health: the latest successful export, its age against the configured recovery point objective, the latest failure, and the latest restore drill. Names archives and versions only; never a recipient, an identity or a key.
+type BackupHealth struct {
+	// ArtifactAgeSeconds Age of the newest successful export; 0 when there has never been one.
+	ArtifactAgeSeconds int `json:"artifact_age_seconds"`
+
+	// DrillStale True when no successful restore drill is younger than 90 days.
+	DrillStale    bool       `json:"drill_stale"`
+	LastDrillAt   *time.Time `json:"last_drill_at"`
+	LastDrillOk   bool       `json:"last_drill_ok"`
+	LastFailureAt *time.Time `json:"last_failure_at"`
+
+	// LastFailureReason Bounded operator-facing text of the latest export failure; empty when none.
+	LastFailureReason string     `json:"last_failure_reason"`
+	LastPruneAt       *time.Time `json:"last_prune_at"`
+	LastSuccessAt     *time.Time `json:"last_success_at"`
+
+	// RpoExceeded True when exports are scheduled and no successful export is younger than the RPO.
+	RpoExceeded bool `json:"rpo_exceeded"`
+
+	// RpoSeconds The configured recovery point objective; 0 when nothing is scheduled.
+	RpoSeconds int `json:"rpo_seconds"`
+
+	// Scheduled True when an export policy (recipients + destination) is configured and the in-process schedule runs.
+	Scheduled bool `json:"scheduled"`
+}
+
 // CLIReauthApproveRequest defines model for CLIReauthApproveRequest.
 type CLIReauthApproveRequest struct {
 	State string `json:"state"`
@@ -3015,13 +3223,13 @@ type CLIReauthStart struct {
 }
 
 // CLIReauthStartRequest `adapter` carries an adapter-routing decision over an environment set.
-// `reveal` and `copy` carry a DISCLOSURE: the browser runs the same
-// purpose-bound, enumerated-key-set ceremony the UI runs, so `key_ids`
-// is required and names exactly the keys the one decision covers.
+// Every non-adapter purpose carries an exact environment and key set. The
+// browser runs the same purpose-bound ceremony the UI runs, so `key_ids`
+// names exactly the unit the decision covers.
 type CLIReauthStartRequest struct {
 	EnvironmentIds []ID `json:"environment_ids"`
 
-	// KeyIds The enumerated unit of a disclosure purpose; absent or empty for `adapter`.
+	// KeyIds The enumerated unit of a non-adapter purpose; absent or empty for `adapter`.
 	KeyIds        *[]ID                          `json:"key_ids,omitempty"`
 	Operation     CLIReauthStartRequestOperation `json:"operation"`
 	PkceChallenge string                         `json:"pkce_challenge"`
@@ -3244,6 +3452,25 @@ type CreateBindingRequest struct {
 	RequiredClaims []FederatedClaimPin `json:"required_claims"`
 	Subject        string              `json:"subject"`
 }
+
+// CreateDynamicProviderRequest defines model for CreateDynamicProviderRequest.
+type CreateDynamicProviderRequest struct {
+	// Credential Write-only admin credential. Never returned.
+	Credential string `json:"credential"`
+
+	// GrantRole Parent role every minted lease role inherits (IN ROLE).
+	GrantRole string              `json:"grant_role"`
+	Kind      DynamicProviderKind `json:"kind"`
+
+	// Origin PostgreSQL origin as host:port/dbname.
+	Origin string `json:"origin"`
+
+	// TlsMode Only verify-full is accepted; a weaker mode is refused.
+	TlsMode *CreateDynamicProviderRequestTlsMode `json:"tls_mode,omitempty"`
+}
+
+// CreateDynamicProviderRequestTlsMode Only verify-full is accepted; a weaker mode is refused.
+type CreateDynamicProviderRequestTlsMode string
 
 // CreateEnvironmentRequest defines model for CreateEnvironmentRequest.
 type CreateEnvironmentRequest struct {
@@ -3830,6 +4057,91 @@ type DirectoryOrg struct {
 	Name     string   `json:"name"`
 	Projects []string `json:"projects"`
 }
+
+// DynamicLease defines model for DynamicLease.
+type DynamicLease struct {
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt Timestamp `json:"created_at"`
+
+	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
+	EnvironmentId ID         `json:"environment_id"`
+	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id       ID         `json:"id"`
+	IssuedAt *time.Time `json:"issued_at,omitempty"`
+
+	// LastTransitionAt RFC 3339 UTC, microsecond precision.
+	LastTransitionAt Timestamp `json:"last_transition_at"`
+	MaxTtlSeconds    int64     `json:"max_ttl_seconds"`
+	PrincipalClass   string    `json:"principal_class"`
+
+	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
+	PrincipalId ID `json:"principal_id"`
+
+	// ProviderHandle The provider-side role name. Public metadata; not a secret.
+	ProviderHandle string `json:"provider_handle"`
+
+	// ProviderId A prefixed UUIDv7, e.g. `org_0198…`.
+	ProviderId ID `json:"provider_id"`
+
+	// State minting/renewing/revoking are in-flight; active is a usable credential;
+	// revoked/expired/failed are terminal; unknown is an ambiguous provider
+	// outcome awaiting reconcile and is NEVER reported as success.
+	State DynamicLeaseState `json:"state"`
+}
+
+// DynamicLeaseList defines model for DynamicLeaseList.
+type DynamicLeaseList struct {
+	Items []DynamicLease `json:"items"`
+}
+
+// DynamicLeaseState minting/renewing/revoking are in-flight; active is a usable credential;
+// revoked/expired/failed are terminal; unknown is an ambiguous provider
+// outcome awaiting reconcile and is NEVER reported as success.
+type DynamicLeaseState string
+
+// DynamicProvider defines model for DynamicProvider.
+type DynamicProvider struct {
+	// AuthorityPrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
+	AuthorityPrincipalId ID `json:"authority_principal_id"`
+
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt         Timestamp  `json:"created_at"`
+	CredentialPresent bool       `json:"credential_present"`
+	CredentialSetAt   *time.Time `json:"credential_set_at,omitempty"`
+	GrantRole         string     `json:"grant_role"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id      ID                     `json:"id"`
+	Kind    DynamicProviderKind    `json:"kind"`
+	Origin  string                 `json:"origin"`
+	State   DynamicProviderState   `json:"state"`
+	TlsMode DynamicProviderTlsMode `json:"tls_mode"`
+}
+
+// DynamicProviderTlsMode defines model for DynamicProvider.TlsMode.
+type DynamicProviderTlsMode string
+
+// DynamicProviderDeletion defines model for DynamicProviderDeletion.
+type DynamicProviderDeletion struct {
+	// ProviderId A prefixed UUIDv7, e.g. `org_0198…`.
+	ProviderId ID `json:"provider_id"`
+
+	// RevokedLeaseIds Leases queued for revocation as part of the delete.
+	RevokedLeaseIds []ID `json:"revoked_lease_ids"`
+}
+
+// DynamicProviderKind defines model for DynamicProviderKind.
+type DynamicProviderKind string
+
+// DynamicProviderList defines model for DynamicProviderList.
+type DynamicProviderList struct {
+	Items []DynamicProvider `json:"items"`
+}
+
+// DynamicProviderState defines model for DynamicProviderState.
+type DynamicProviderState string
 
 // EntityName A display name for an organisation, project or environment. Identity is
 // the immutable id, so this is a label and a rename never breaks a
@@ -4460,6 +4772,37 @@ type InstanceUpdateRequest struct {
 	Version string `json:"version"`
 }
 
+// InvitationResult defines model for InvitationResult.
+type InvitationResult struct {
+	// AccountId A prefixed UUIDv7, e.g. `org_0198…`.
+	AccountId ID `json:"account_id"`
+
+	// Authority The single-use credential-establishment authority for the new
+	// account, returned once. It creates no session and may only ever
+	// establish a password; hand it to the invitee out of band.
+	Authority string `json:"authority"`
+
+	// ExpiresAt RFC 3339 UTC, microsecond precision.
+	ExpiresAt Timestamp `json:"expires_at"`
+
+	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
+	PrincipalId ID `json:"principal_id"`
+}
+
+// InviteMemberRequest defines model for InviteMemberRequest.
+type InviteMemberRequest struct {
+	// DisplayName Defaults to the username.
+	DisplayName *string `json:"display_name,omitempty"`
+
+	// Template Optional initial grants, expanded at the invitation's scope in the
+	// same transaction. Absent means the account can sign in and see
+	// nothing until someone grants it something.
+	Template *RoleTemplate `json:"template,omitempty"`
+
+	// Username The invitee's local login handle; globally unique.
+	Username string `json:"username"`
+}
+
 // IssuerType The federation issuer's platform. It is DECLARED rather than inferred
 // from the issuer URL, because the per-platform binding rules differ — a
 // Forgejo or GitHub Actions binding MUST pin `event_name`, a Kubernetes one
@@ -4875,6 +5218,28 @@ type MintInstanceConnectionRequest struct {
 	// the default; naming both this and `indefinite` is a refusal, never a
 	// precedence rule.
 	LifetimeSeconds *int `json:"lifetime_seconds,omitempty"`
+}
+
+// MintLeaseRequest defines model for MintLeaseRequest.
+type MintLeaseRequest struct {
+	// MaxTtlSeconds Requested maximum lifetime; the provider clamps to its own ceiling.
+	MaxTtlSeconds int64 `json:"max_ttl_seconds"`
+
+	// ProviderId A prefixed UUIDv7, e.g. `org_0198…`.
+	ProviderId ID `json:"provider_id"`
+}
+
+// MintLeaseResult defines model for MintLeaseResult.
+type MintLeaseResult struct {
+	ExpiresAt *time.Time   `json:"expires_at,omitempty"`
+	Lease     DynamicLease `json:"lease"`
+
+	// Password The credential secret, returned EXACTLY ONCE to exactly one caller.
+	// No other route in this contract returns it.
+	Password string `json:"password"`
+
+	// Username The minted role name; also the lease's provider_handle.
+	Username string `json:"username"`
 }
 
 // MintScimCredentialRequest defines model for MintScimCredentialRequest.
@@ -5507,6 +5872,12 @@ type RenameRequest struct {
 	Name EntityName `json:"name"`
 }
 
+// RenewLeaseRequest defines model for RenewLeaseRequest.
+type RenewLeaseRequest struct {
+	// MaxTtlSeconds Optional new ceiling; renewal never extends past the lease's max TTL.
+	MaxTtlSeconds *int64 `json:"max_ttl_seconds,omitempty"`
+}
+
 // ResumeAdapterMoveRequest defines model for ResumeAdapterMoveRequest.
 type ResumeAdapterMoveRequest struct {
 	union json.RawMessage
@@ -5548,7 +5919,9 @@ type RetentionConsequence string
 
 // RetentionHealth defines model for RetentionHealth.
 type RetentionHealth struct {
-	LastPruneSuccess *time.Time `json:"last_prune_success"`
+	// Backup Disaster-recovery health: the latest successful export, its age against the configured recovery point objective, the latest failure, and the latest restore drill. Names archives and versions only; never a recipient, an identity or a key.
+	Backup           BackupHealth `json:"backup"`
+	LastPruneSuccess *time.Time   `json:"last_prune_success"`
 
 	// PeakProjectBytes Largest per-project stored payload across the instance, in bytes (ciphertext of value cells plus published snapshot entries). The per-project storage high-water surface.
 	PeakProjectBytes  int                              `json:"peak_project_bytes"`
@@ -6370,6 +6743,11 @@ type SetDefinitionsSettingsRequest struct {
 // SetDefinitionsSettingsRequestDefinitionsSource defines model for SetDefinitionsSettingsRequest.DefinitionsSource.
 type SetDefinitionsSettingsRequestDefinitionsSource string
 
+// SetDynamicProviderCredentialRequest defines model for SetDynamicProviderCredentialRequest.
+type SetDynamicProviderCredentialRequest struct {
+	Credential string `json:"credential"`
+}
+
 // SetKeyGroupRequest defines model for SetKeyGroupRequest.
 type SetKeyGroupRequest struct {
 	// GroupId The group to join, or empty to leave every group.
@@ -6932,13 +7310,13 @@ type WorkspaceHandoffStepUp struct {
 	// KeyIds The enumerated unit the elevation binds.
 	KeyIds []ID `json:"key_ids"`
 
-	// Operation The disclosure the reauth authorizes.
+	// Operation The exact decision the reauthentication authorizes.
 	Operation WorkspaceHandoffStepUpOperation `json:"operation"`
 	Purpose   WorkspaceHandoffStepUpPurpose   `json:"purpose"`
 	State     string                          `json:"state"`
 }
 
-// WorkspaceHandoffStepUpOperation The disclosure the reauth authorizes.
+// WorkspaceHandoffStepUpOperation The exact decision the reauthentication authorizes.
 type WorkspaceHandoffStepUpOperation string
 
 // WorkspaceHandoffStepUpPurpose defines model for WorkspaceHandoffStepUp.Purpose.
@@ -7074,6 +7452,9 @@ type DeliveryCursor = string
 // DeliveryProjection defines model for DeliveryProjection.
 type DeliveryProjection string
 
+// DynamicProviderID A prefixed UUIDv7, e.g. `org_0198…`.
+type DynamicProviderID = ID
+
 // EnvironmentID A prefixed UUIDv7, e.g. `org_0198…`.
 type EnvironmentID = ID
 
@@ -7103,6 +7484,9 @@ type KeyGroupID = ID
 
 // KeyID A prefixed UUIDv7, e.g. `org_0198…`.
 type KeyID = ID
+
+// LeaseID A prefixed UUIDv7, e.g. `org_0198…`.
+type LeaseID = ID
 
 // OrgID A prefixed UUIDv7, e.g. `org_0198…`.
 type OrgID = ID
@@ -7409,6 +7793,12 @@ type CreateDefinitionsPlanParams struct {
 	// `--acknowledge` flag that carries them. Comma-separated. There is no
 	// blanket ignore-all input.
 	Acknowledge *DefinitionsAcknowledgements `form:"acknowledge,omitempty" json:"acknowledge,omitempty"`
+}
+
+// DeleteDynamicProviderParams defines parameters for DeleteDynamicProvider.
+type DeleteDynamicProviderParams struct {
+	// RevokeAll Revoke every live lease of this provider before deleting it.
+	RevokeAll *bool `form:"revoke_all,omitempty" json:"revoke_all,omitempty"`
 }
 
 // QueryEnvAuditParams defines parameters for QueryEnvAudit.
@@ -7735,6 +8125,9 @@ type CreateInstanceGrantJSONRequestBody = CreateGrantRequest
 // ApplyInstanceTemplateJSONRequestBody defines body for ApplyInstanceTemplate for application/json ContentType.
 type ApplyInstanceTemplateJSONRequestBody = ApplyTemplateRequest
 
+// InviteInstanceMemberJSONRequestBody defines body for InviteInstanceMember for application/json ContentType.
+type InviteInstanceMemberJSONRequestBody = InviteMemberRequest
+
 // PutOidcProviderJSONRequestBody defines body for PutOidcProvider for application/json ContentType.
 type PutOidcProviderJSONRequestBody = OidcProviderInput
 
@@ -7779,6 +8172,9 @@ type CreateOrgGrantJSONRequestBody = CreateGrantRequest
 
 // ApplyOrgTemplateJSONRequestBody defines body for ApplyOrgTemplate for application/json ContentType.
 type ApplyOrgTemplateJSONRequestBody = ApplyTemplateRequest
+
+// InviteOrgMemberJSONRequestBody defines body for InviteOrgMember for application/json ContentType.
+type InviteOrgMemberJSONRequestBody = InviteMemberRequest
 
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = CreateProjectRequest
@@ -7825,6 +8221,12 @@ type ApplyDefinitionsPlanJSONRequestBody = ApplyDefinitionsPlanRequest
 // SetDefinitionsSettingsJSONRequestBody defines body for SetDefinitionsSettings for application/json ContentType.
 type SetDefinitionsSettingsJSONRequestBody = SetDefinitionsSettingsRequest
 
+// CreateDynamicProviderJSONRequestBody defines body for CreateDynamicProvider for application/json ContentType.
+type CreateDynamicProviderJSONRequestBody = CreateDynamicProviderRequest
+
+// SetDynamicProviderCredentialJSONRequestBody defines body for SetDynamicProviderCredential for application/json ContentType.
+type SetDynamicProviderCredentialJSONRequestBody = SetDynamicProviderCredentialRequest
+
 // CreateEnvironmentJSONRequestBody defines body for CreateEnvironment for application/json ContentType.
 type CreateEnvironmentJSONRequestBody = CreateEnvironmentRequest
 
@@ -7848,6 +8250,12 @@ type CreateEnvGrantJSONRequestBody = CreateGrantRequest
 
 // ApplyEnvTemplateJSONRequestBody defines body for ApplyEnvTemplate for application/json ContentType.
 type ApplyEnvTemplateJSONRequestBody = ApplyTemplateRequest
+
+// MintLeaseJSONRequestBody defines body for MintLease for application/json ContentType.
+type MintLeaseJSONRequestBody = MintLeaseRequest
+
+// RenewLeaseJSONRequestBody defines body for RenewLease for application/json ContentType.
+type RenewLeaseJSONRequestBody = RenewLeaseRequest
 
 // CreateRevisionPinJSONRequestBody defines body for CreateRevisionPin for application/json ContentType.
 type CreateRevisionPinJSONRequestBody = RevisionPinRequest
@@ -8337,6 +8745,9 @@ type ServerInterface interface {
 	// ApplyInstanceTemplate Apply a role template at instance scope.
 	// (POST /api/v1/instance/grants/template)
 	ApplyInstanceTemplate(w http.ResponseWriter, r *http.Request)
+	// InviteInstanceMember Invite a human at instance scope with a local credential.
+	// (POST /api/v1/instance/invitations)
+	InviteInstanceMember(w http.ResponseWriter, r *http.Request)
 	// ListOidcProviders List configured OIDC providers.
 	// (GET /api/v1/instance/oidc-providers)
 	ListOidcProviders(w http.ResponseWriter, r *http.Request)
@@ -8478,6 +8889,9 @@ type ServerInterface interface {
 	// ApplyOrgTemplate Apply a role template at organisation scope.
 	// (POST /api/v1/orgs/{org}/grants/template)
 	ApplyOrgTemplate(w http.ResponseWriter, r *http.Request, org OrgID)
+	// InviteOrgMember Invite a human into this organisation with a local credential.
+	// (POST /api/v1/orgs/{org}/invitations)
+	InviteOrgMember(w http.ResponseWriter, r *http.Request, org OrgID)
 	// ListProjects List the organisation's projects.
 	// (GET /api/v1/orgs/{org}/projects)
 	ListProjects(w http.ResponseWriter, r *http.Request, org OrgID)
@@ -8589,6 +9003,24 @@ type ServerInterface interface {
 	// SetDefinitionsSettings Select database- or Git-governed definitions.
 	// (PUT /api/v1/orgs/{org}/projects/{project}/definitions/settings)
 	SetDefinitionsSettings(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// ListDynamicProviders List dynamic-secret providers with redacted credential metadata.
+	// (GET /api/v1/orgs/{org}/projects/{project}/dynamic-providers)
+	ListDynamicProviders(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// CreateDynamicProvider Configure a PostgreSQL provider; the admin credential is write-only.
+	// (POST /api/v1/orgs/{org}/projects/{project}/dynamic-providers)
+	CreateDynamicProvider(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// DeleteDynamicProvider Delete a provider; refuses while active leases exist unless revoke_all.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider})
+	DeleteDynamicProvider(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, provider DynamicProviderID, params DeleteDynamicProviderParams)
+	// ShowDynamicProvider Show one provider's status and metadata.
+	// (GET /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider})
+	ShowDynamicProvider(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, provider DynamicProviderID)
+	// RevokeDynamicProviderCredential Destroy admin custody; renewal and revocation may then be impossible.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential)
+	RevokeDynamicProviderCredential(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, provider DynamicProviderID)
+	// SetDynamicProviderCredential Replace the write-only admin credential.
+	// (PUT /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential)
+	SetDynamicProviderCredential(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, provider DynamicProviderID)
 	// ListEnvironments List the project's environments, in display order.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments)
 	ListEnvironments(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
@@ -8613,6 +9045,9 @@ type ServerInterface interface {
 	// ListApprovalRequests The environment's change-approval requests.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests)
 	ListApprovalRequests(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// GetApprovalCeremony Prepare a purpose-bound approval ceremony.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/ceremony)
+	GetApprovalCeremony(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, approvalRequest ID)
 	// VoteApprovalRequest Approve or reject a change-approval request.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/vote)
 	VoteApprovalRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, approvalRequest ID)
@@ -8637,6 +9072,24 @@ type ServerInterface interface {
 	// ApplyEnvTemplate Apply a role template on one environment.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/grants/template)
 	ApplyEnvTemplate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// ListLeases List an environment's leases with status and metadata, never the secret.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases)
+	ListLeases(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// MintLease Mint a short-lived credential; the secret is disclosed exactly once.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases)
+	MintLease(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// ShowLease Show one lease's status and metadata, never the secret.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease})
+	ShowLease(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, lease LeaseID)
+	// RenewLease Extend a lease's validity, bounded by its maximum TTL.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/renew)
+	RenewLease(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, lease LeaseID)
+	// RevokeLease Revoke a lease; idempotent, an already-gone role is a success.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/revoke)
+	RevokeLease(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, lease LeaseID)
+	// SettleLease Settle an uncertain lease by re-probing it at the provider.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/settle)
+	SettleLease(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, lease LeaseID)
 	// ListPendingDrafts Preview the caller's pending drafts in one environment.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/pending)
 	ListPendingDrafts(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
@@ -9261,6 +9714,12 @@ func (_ Unimplemented) ApplyInstanceTemplate(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// InviteInstanceMember Invite a human at instance scope with a local credential.
+// (POST /api/v1/instance/invitations)
+func (_ Unimplemented) InviteInstanceMember(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListOidcProviders List configured OIDC providers.
 // (GET /api/v1/instance/oidc-providers)
 func (_ Unimplemented) ListOidcProviders(w http.ResponseWriter, r *http.Request) {
@@ -9543,6 +10002,12 @@ func (_ Unimplemented) ApplyOrgTemplate(w http.ResponseWriter, r *http.Request, 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// InviteOrgMember Invite a human into this organisation with a local credential.
+// (POST /api/v1/orgs/{org}/invitations)
+func (_ Unimplemented) InviteOrgMember(w http.ResponseWriter, r *http.Request, org OrgID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListProjects List the organisation's projects.
 // (GET /api/v1/orgs/{org}/projects)
 func (_ Unimplemented) ListProjects(w http.ResponseWriter, r *http.Request, org OrgID) {
@@ -9765,6 +10230,42 @@ func (_ Unimplemented) SetDefinitionsSettings(w http.ResponseWriter, r *http.Req
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListDynamicProviders List dynamic-secret providers with redacted credential metadata.
+// (GET /api/v1/orgs/{org}/projects/{project}/dynamic-providers)
+func (_ Unimplemented) ListDynamicProviders(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateDynamicProvider Configure a PostgreSQL provider; the admin credential is write-only.
+// (POST /api/v1/orgs/{org}/projects/{project}/dynamic-providers)
+func (_ Unimplemented) CreateDynamicProvider(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteDynamicProvider Delete a provider; refuses while active leases exist unless revoke_all.
+// (DELETE /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider})
+func (_ Unimplemented) DeleteDynamicProvider(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, provider DynamicProviderID, params DeleteDynamicProviderParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ShowDynamicProvider Show one provider's status and metadata.
+// (GET /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider})
+func (_ Unimplemented) ShowDynamicProvider(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, provider DynamicProviderID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeDynamicProviderCredential Destroy admin custody; renewal and revocation may then be impossible.
+// (DELETE /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential)
+func (_ Unimplemented) RevokeDynamicProviderCredential(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, provider DynamicProviderID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetDynamicProviderCredential Replace the write-only admin credential.
+// (PUT /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential)
+func (_ Unimplemented) SetDynamicProviderCredential(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, provider DynamicProviderID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListEnvironments List the project's environments, in display order.
 // (GET /api/v1/orgs/{org}/projects/{project}/environments)
 func (_ Unimplemented) ListEnvironments(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
@@ -9813,6 +10314,12 @@ func (_ Unimplemented) ListApprovalRequests(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// GetApprovalCeremony Prepare a purpose-bound approval ceremony.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/ceremony)
+func (_ Unimplemented) GetApprovalCeremony(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, approvalRequest ID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // VoteApprovalRequest Approve or reject a change-approval request.
 // (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/vote)
 func (_ Unimplemented) VoteApprovalRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, approvalRequest ID) {
@@ -9858,6 +10365,42 @@ func (_ Unimplemented) CreateEnvGrant(w http.ResponseWriter, r *http.Request, or
 // ApplyEnvTemplate Apply a role template on one environment.
 // (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/grants/template)
 func (_ Unimplemented) ApplyEnvTemplate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListLeases List an environment's leases with status and metadata, never the secret.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases)
+func (_ Unimplemented) ListLeases(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// MintLease Mint a short-lived credential; the secret is disclosed exactly once.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases)
+func (_ Unimplemented) MintLease(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ShowLease Show one lease's status and metadata, never the secret.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease})
+func (_ Unimplemented) ShowLease(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, lease LeaseID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RenewLease Extend a lease's validity, bounded by its maximum TTL.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/renew)
+func (_ Unimplemented) RenewLease(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, lease LeaseID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeLease Revoke a lease; idempotent, an already-gone role is a success.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/revoke)
+func (_ Unimplemented) RevokeLease(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, lease LeaseID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SettleLease Settle an uncertain lease by re-probing it at the provider.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/settle)
+func (_ Unimplemented) SettleLease(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, lease LeaseID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -11471,6 +12014,20 @@ func (siw *ServerInterfaceWrapper) ApplyInstanceTemplate(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// InviteInstanceMember operation middleware
+func (siw *ServerInterfaceWrapper) InviteInstanceMember(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.InviteInstanceMember(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListOidcProviders operation middleware
 func (siw *ServerInterfaceWrapper) ListOidcProviders(w http.ResponseWriter, r *http.Request) {
 
@@ -12690,6 +13247,32 @@ func (siw *ServerInterfaceWrapper) ApplyOrgTemplate(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ApplyOrgTemplate(w, r, org)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// InviteOrgMember operation middleware
+func (siw *ServerInterfaceWrapper) InviteOrgMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.InviteOrgMember(w, r, org)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -14498,6 +15081,268 @@ func (siw *ServerInterfaceWrapper) SetDefinitionsSettings(w http.ResponseWriter,
 	handler.ServeHTTP(w, r)
 }
 
+// ListDynamicProviders operation middleware
+func (siw *ServerInterfaceWrapper) ListDynamicProviders(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDynamicProviders(w, r, org, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateDynamicProvider operation middleware
+func (siw *ServerInterfaceWrapper) CreateDynamicProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateDynamicProvider(w, r, org, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteDynamicProvider operation middleware
+func (siw *ServerInterfaceWrapper) DeleteDynamicProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "provider" -------------
+	var provider DynamicProviderID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", chi.URLParam(r, "provider"), &provider, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteDynamicProviderParams
+
+	// ------------- Optional query parameter "revoke_all" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "revoke_all", r.URL.Query(), &params.RevokeAll, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "revoke_all"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "revoke_all", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteDynamicProvider(w, r, org, project, provider, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ShowDynamicProvider operation middleware
+func (siw *ServerInterfaceWrapper) ShowDynamicProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "provider" -------------
+	var provider DynamicProviderID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", chi.URLParam(r, "provider"), &provider, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ShowDynamicProvider(w, r, org, project, provider)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeDynamicProviderCredential operation middleware
+func (siw *ServerInterfaceWrapper) RevokeDynamicProviderCredential(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "provider" -------------
+	var provider DynamicProviderID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", chi.URLParam(r, "provider"), &provider, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeDynamicProviderCredential(w, r, org, project, provider)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetDynamicProviderCredential operation middleware
+func (siw *ServerInterfaceWrapper) SetDynamicProviderCredential(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "provider" -------------
+	var provider DynamicProviderID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", chi.URLParam(r, "provider"), &provider, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetDynamicProviderCredential(w, r, org, project, provider)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListEnvironments operation middleware
 func (siw *ServerInterfaceWrapper) ListEnvironments(w http.ResponseWriter, r *http.Request) {
 
@@ -14805,6 +15650,59 @@ func (siw *ServerInterfaceWrapper) ListApprovalRequests(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListApprovalRequests(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetApprovalCeremony operation middleware
+func (siw *ServerInterfaceWrapper) GetApprovalCeremony(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "approvalRequest" -------------
+	var approvalRequest ID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "approvalRequest", chi.URLParam(r, "approvalRequest"), &approvalRequest, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "approvalRequest", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetApprovalCeremony(w, r, org, project, environment, approvalRequest)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -15490,6 +16388,306 @@ func (siw *ServerInterfaceWrapper) ApplyEnvTemplate(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ApplyEnvTemplate(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListLeases operation middleware
+func (siw *ServerInterfaceWrapper) ListLeases(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListLeases(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MintLease operation middleware
+func (siw *ServerInterfaceWrapper) MintLease(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MintLease(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ShowLease operation middleware
+func (siw *ServerInterfaceWrapper) ShowLease(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "lease" -------------
+	var lease LeaseID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "lease", chi.URLParam(r, "lease"), &lease, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "lease", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ShowLease(w, r, org, project, environment, lease)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenewLease operation middleware
+func (siw *ServerInterfaceWrapper) RenewLease(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "lease" -------------
+	var lease LeaseID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "lease", chi.URLParam(r, "lease"), &lease, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "lease", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenewLease(w, r, org, project, environment, lease)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeLease operation middleware
+func (siw *ServerInterfaceWrapper) RevokeLease(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "lease" -------------
+	var lease LeaseID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "lease", chi.URLParam(r, "lease"), &lease, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "lease", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeLease(w, r, org, project, environment, lease)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SettleLease operation middleware
+func (siw *ServerInterfaceWrapper) SettleLease(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "lease" -------------
+	var lease LeaseID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "lease", chi.URLParam(r, "lease"), &lease, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "lease", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SettleLease(w, r, org, project, environment, lease)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -19827,6 +21025,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/instance/grants/template", wrapper.ApplyInstanceTemplate)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/invitations", wrapper.InviteInstanceMember)
+	})
+	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/grants", wrapper.RevokeOrgGrant)
 	})
 	r.Group(func(r chi.Router) {
@@ -19837,6 +21038,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/grants/template", wrapper.ApplyOrgTemplate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/invitations", wrapper.InviteOrgMember)
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/grants", wrapper.RevokeProjectGrant)
@@ -20313,6 +21517,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/vote", wrapper.VoteApprovalRequest)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/ceremony", wrapper.GetApprovalCeremony)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/signals", wrapper.GetEnvironmentSignals)
 	})
 	r.Group(func(r chi.Router) {
@@ -20437,6 +21644,42 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/adoptions", wrapper.AdoptAdapterTargetNames)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/dynamic-providers", wrapper.ListDynamicProviders)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/dynamic-providers", wrapper.CreateDynamicProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}", wrapper.DeleteDynamicProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}", wrapper.ShowDynamicProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential", wrapper.RevokeDynamicProviderCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential", wrapper.SetDynamicProviderCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases", wrapper.ListLeases)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases", wrapper.MintLease)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}", wrapper.ShowLease)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/renew", wrapper.RenewLease)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/revoke", wrapper.RevokeLease)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/settle", wrapper.SettleLease)
 	})
 
 	return r
@@ -25482,6 +26725,127 @@ func (response ApplyInstanceTemplate500JSONResponse) VisitApplyInstanceTemplateR
 	return err
 }
 
+type InviteInstanceMemberRequestObject struct {
+	Body *InviteInstanceMemberJSONRequestBody
+}
+
+type InviteInstanceMemberResponseObject interface {
+	VisitInviteInstanceMemberResponse(w http.ResponseWriter) error
+}
+
+type InviteInstanceMember201JSONResponse InvitationResult
+
+func (response InviteInstanceMember201JSONResponse) VisitInviteInstanceMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteInstanceMember400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response InviteInstanceMember400JSONResponse) VisitInviteInstanceMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteInstanceMember401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response InviteInstanceMember401JSONResponse) VisitInviteInstanceMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteInstanceMember403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response InviteInstanceMember403JSONResponse) VisitInviteInstanceMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteInstanceMember404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response InviteInstanceMember404JSONResponse) VisitInviteInstanceMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteInstanceMember409JSONResponse struct{ ConflictJSONResponse }
+
+func (response InviteInstanceMember409JSONResponse) VisitInviteInstanceMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteInstanceMember429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response InviteInstanceMember429JSONResponse) VisitInviteInstanceMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteInstanceMember500JSONResponse struct{ InternalJSONResponse }
+
+func (response InviteInstanceMember500JSONResponse) VisitInviteInstanceMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListOidcProvidersRequestObject struct {
 }
 
@@ -30113,6 +31477,128 @@ func (response ApplyOrgTemplate500JSONResponse) VisitApplyOrgTemplateResponse(w 
 	return err
 }
 
+type InviteOrgMemberRequestObject struct {
+	Org  OrgID `json:"org"`
+	Body *InviteOrgMemberJSONRequestBody
+}
+
+type InviteOrgMemberResponseObject interface {
+	VisitInviteOrgMemberResponse(w http.ResponseWriter) error
+}
+
+type InviteOrgMember201JSONResponse InvitationResult
+
+func (response InviteOrgMember201JSONResponse) VisitInviteOrgMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMember400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response InviteOrgMember400JSONResponse) VisitInviteOrgMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMember401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response InviteOrgMember401JSONResponse) VisitInviteOrgMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMember403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response InviteOrgMember403JSONResponse) VisitInviteOrgMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMember404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response InviteOrgMember404JSONResponse) VisitInviteOrgMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMember409JSONResponse struct{ ConflictJSONResponse }
+
+func (response InviteOrgMember409JSONResponse) VisitInviteOrgMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMember429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response InviteOrgMember429JSONResponse) VisitInviteOrgMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InviteOrgMember500JSONResponse struct{ InternalJSONResponse }
+
+func (response InviteOrgMember500JSONResponse) VisitInviteOrgMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListProjectsRequestObject struct {
 	Org OrgID `json:"org"`
 }
@@ -33489,6 +34975,461 @@ func (response SetDefinitionsSettings500JSONResponse) VisitSetDefinitionsSetting
 	return err
 }
 
+type ListDynamicProvidersRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+}
+
+type ListDynamicProvidersResponseObject interface {
+	VisitListDynamicProvidersResponse(w http.ResponseWriter) error
+}
+
+type ListDynamicProviders200JSONResponse DynamicProviderList
+
+func (response ListDynamicProviders200JSONResponse) VisitListDynamicProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDynamicProviders401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListDynamicProviders401JSONResponse) VisitListDynamicProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDynamicProviders404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListDynamicProviders404JSONResponse) VisitListDynamicProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDynamicProviders500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListDynamicProviders500JSONResponse) VisitListDynamicProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDynamicProviderRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+	Body    *CreateDynamicProviderJSONRequestBody
+}
+
+type CreateDynamicProviderResponseObject interface {
+	VisitCreateDynamicProviderResponse(w http.ResponseWriter) error
+}
+
+type CreateDynamicProvider201JSONResponse DynamicProvider
+
+func (response CreateDynamicProvider201JSONResponse) VisitCreateDynamicProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDynamicProvider400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateDynamicProvider400JSONResponse) VisitCreateDynamicProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDynamicProvider401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateDynamicProvider401JSONResponse) VisitCreateDynamicProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDynamicProvider404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateDynamicProvider404JSONResponse) VisitCreateDynamicProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDynamicProvider409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreateDynamicProvider409JSONResponse) VisitCreateDynamicProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDynamicProvider500JSONResponse struct{ InternalJSONResponse }
+
+func (response CreateDynamicProvider500JSONResponse) VisitCreateDynamicProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDynamicProviderRequestObject struct {
+	Org      OrgID             `json:"org"`
+	Project  ProjectID         `json:"project"`
+	Provider DynamicProviderID `json:"provider"`
+	Params   DeleteDynamicProviderParams
+}
+
+type DeleteDynamicProviderResponseObject interface {
+	VisitDeleteDynamicProviderResponse(w http.ResponseWriter) error
+}
+
+type DeleteDynamicProvider200JSONResponse DynamicProviderDeletion
+
+func (response DeleteDynamicProvider200JSONResponse) VisitDeleteDynamicProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDynamicProvider401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteDynamicProvider401JSONResponse) VisitDeleteDynamicProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDynamicProvider404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteDynamicProvider404JSONResponse) VisitDeleteDynamicProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDynamicProvider409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeleteDynamicProvider409JSONResponse) VisitDeleteDynamicProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDynamicProvider500JSONResponse struct{ InternalJSONResponse }
+
+func (response DeleteDynamicProvider500JSONResponse) VisitDeleteDynamicProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowDynamicProviderRequestObject struct {
+	Org      OrgID             `json:"org"`
+	Project  ProjectID         `json:"project"`
+	Provider DynamicProviderID `json:"provider"`
+}
+
+type ShowDynamicProviderResponseObject interface {
+	VisitShowDynamicProviderResponse(w http.ResponseWriter) error
+}
+
+type ShowDynamicProvider200JSONResponse DynamicProvider
+
+func (response ShowDynamicProvider200JSONResponse) VisitShowDynamicProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowDynamicProvider401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ShowDynamicProvider401JSONResponse) VisitShowDynamicProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowDynamicProvider404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ShowDynamicProvider404JSONResponse) VisitShowDynamicProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowDynamicProvider500JSONResponse struct{ InternalJSONResponse }
+
+func (response ShowDynamicProvider500JSONResponse) VisitShowDynamicProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeDynamicProviderCredentialRequestObject struct {
+	Org      OrgID             `json:"org"`
+	Project  ProjectID         `json:"project"`
+	Provider DynamicProviderID `json:"provider"`
+}
+
+type RevokeDynamicProviderCredentialResponseObject interface {
+	VisitRevokeDynamicProviderCredentialResponse(w http.ResponseWriter) error
+}
+
+type RevokeDynamicProviderCredential204Response struct {
+}
+
+func (response RevokeDynamicProviderCredential204Response) VisitRevokeDynamicProviderCredentialResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokeDynamicProviderCredential401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RevokeDynamicProviderCredential401JSONResponse) VisitRevokeDynamicProviderCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeDynamicProviderCredential404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RevokeDynamicProviderCredential404JSONResponse) VisitRevokeDynamicProviderCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeDynamicProviderCredential500JSONResponse struct{ InternalJSONResponse }
+
+func (response RevokeDynamicProviderCredential500JSONResponse) VisitRevokeDynamicProviderCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetDynamicProviderCredentialRequestObject struct {
+	Org      OrgID             `json:"org"`
+	Project  ProjectID         `json:"project"`
+	Provider DynamicProviderID `json:"provider"`
+	Body     *SetDynamicProviderCredentialJSONRequestBody
+}
+
+type SetDynamicProviderCredentialResponseObject interface {
+	VisitSetDynamicProviderCredentialResponse(w http.ResponseWriter) error
+}
+
+type SetDynamicProviderCredential204Response struct {
+}
+
+func (response SetDynamicProviderCredential204Response) VisitSetDynamicProviderCredentialResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type SetDynamicProviderCredential400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SetDynamicProviderCredential400JSONResponse) VisitSetDynamicProviderCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetDynamicProviderCredential401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response SetDynamicProviderCredential401JSONResponse) VisitSetDynamicProviderCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetDynamicProviderCredential404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SetDynamicProviderCredential404JSONResponse) VisitSetDynamicProviderCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetDynamicProviderCredential409JSONResponse struct{ ConflictJSONResponse }
+
+func (response SetDynamicProviderCredential409JSONResponse) VisitSetDynamicProviderCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetDynamicProviderCredential500JSONResponse struct{ InternalJSONResponse }
+
+func (response SetDynamicProviderCredential500JSONResponse) VisitSetDynamicProviderCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListEnvironmentsRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -34232,6 +36173,102 @@ func (response ListApprovalRequests429JSONResponse) VisitListApprovalRequestsRes
 type ListApprovalRequests500JSONResponse struct{ InternalJSONResponse }
 
 func (response ListApprovalRequests500JSONResponse) VisitListApprovalRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetApprovalCeremonyRequestObject struct {
+	Org             OrgID         `json:"org"`
+	Project         ProjectID     `json:"project"`
+	Environment     EnvironmentID `json:"environment"`
+	ApprovalRequest ID            `json:"approvalRequest"`
+}
+
+type GetApprovalCeremonyResponseObject interface {
+	VisitGetApprovalCeremonyResponse(w http.ResponseWriter) error
+}
+
+type GetApprovalCeremony200JSONResponse ApprovalCeremonyBinding
+
+func (response GetApprovalCeremony200JSONResponse) VisitGetApprovalCeremonyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetApprovalCeremony401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetApprovalCeremony401JSONResponse) VisitGetApprovalCeremonyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetApprovalCeremony403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetApprovalCeremony403JSONResponse) VisitGetApprovalCeremonyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetApprovalCeremony404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetApprovalCeremony404JSONResponse) VisitGetApprovalCeremonyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetApprovalCeremony429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetApprovalCeremony429JSONResponse) VisitGetApprovalCeremonyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetApprovalCeremony500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetApprovalCeremony500JSONResponse) VisitGetApprovalCeremonyResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -35133,6 +37170,492 @@ func (response ApplyEnvTemplate500JSONResponse) VisitApplyEnvTemplateResponse(w 
 	return err
 }
 
+type ListLeasesRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+}
+
+type ListLeasesResponseObject interface {
+	VisitListLeasesResponse(w http.ResponseWriter) error
+}
+
+type ListLeases200JSONResponse DynamicLeaseList
+
+func (response ListLeases200JSONResponse) VisitListLeasesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListLeases401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListLeases401JSONResponse) VisitListLeasesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListLeases404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListLeases404JSONResponse) VisitListLeasesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListLeases500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListLeases500JSONResponse) VisitListLeasesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MintLeaseRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Body        *MintLeaseJSONRequestBody
+}
+
+type MintLeaseResponseObject interface {
+	VisitMintLeaseResponse(w http.ResponseWriter) error
+}
+
+type MintLease200JSONResponse MintLeaseResult
+
+func (response MintLease200JSONResponse) VisitMintLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MintLease400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response MintLease400JSONResponse) VisitMintLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MintLease401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response MintLease401JSONResponse) VisitMintLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MintLease403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response MintLease403JSONResponse) VisitMintLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MintLease404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response MintLease404JSONResponse) VisitMintLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MintLease409JSONResponse struct{ ConflictJSONResponse }
+
+func (response MintLease409JSONResponse) VisitMintLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MintLease500JSONResponse struct{ InternalJSONResponse }
+
+func (response MintLease500JSONResponse) VisitMintLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowLeaseRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Lease       LeaseID       `json:"lease"`
+}
+
+type ShowLeaseResponseObject interface {
+	VisitShowLeaseResponse(w http.ResponseWriter) error
+}
+
+type ShowLease200JSONResponse DynamicLease
+
+func (response ShowLease200JSONResponse) VisitShowLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowLease401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ShowLease401JSONResponse) VisitShowLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowLease404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ShowLease404JSONResponse) VisitShowLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowLease500JSONResponse struct{ InternalJSONResponse }
+
+func (response ShowLease500JSONResponse) VisitShowLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenewLeaseRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Lease       LeaseID       `json:"lease"`
+	Body        *RenewLeaseJSONRequestBody
+}
+
+type RenewLeaseResponseObject interface {
+	VisitRenewLeaseResponse(w http.ResponseWriter) error
+}
+
+type RenewLease200JSONResponse DynamicLease
+
+func (response RenewLease200JSONResponse) VisitRenewLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenewLease400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RenewLease400JSONResponse) VisitRenewLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenewLease401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RenewLease401JSONResponse) VisitRenewLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenewLease404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RenewLease404JSONResponse) VisitRenewLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenewLease409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RenewLease409JSONResponse) VisitRenewLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenewLease500JSONResponse struct{ InternalJSONResponse }
+
+func (response RenewLease500JSONResponse) VisitRenewLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeLeaseRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Lease       LeaseID       `json:"lease"`
+}
+
+type RevokeLeaseResponseObject interface {
+	VisitRevokeLeaseResponse(w http.ResponseWriter) error
+}
+
+type RevokeLease200JSONResponse DynamicLease
+
+func (response RevokeLease200JSONResponse) VisitRevokeLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeLease401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RevokeLease401JSONResponse) VisitRevokeLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeLease404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RevokeLease404JSONResponse) VisitRevokeLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeLease500JSONResponse struct{ InternalJSONResponse }
+
+func (response RevokeLease500JSONResponse) VisitRevokeLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SettleLeaseRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Lease       LeaseID       `json:"lease"`
+}
+
+type SettleLeaseResponseObject interface {
+	VisitSettleLeaseResponse(w http.ResponseWriter) error
+}
+
+type SettleLease200JSONResponse DynamicLease
+
+func (response SettleLease200JSONResponse) VisitSettleLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SettleLease401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response SettleLease401JSONResponse) VisitSettleLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SettleLease404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SettleLease404JSONResponse) VisitSettleLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SettleLease409JSONResponse struct{ ConflictJSONResponse }
+
+func (response SettleLease409JSONResponse) VisitSettleLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SettleLease500JSONResponse struct{ InternalJSONResponse }
+
+func (response SettleLease500JSONResponse) VisitSettleLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListPendingDraftsRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -35550,6 +38073,20 @@ func (response PublishPendingChanges401JSONResponse) VisitPublishPendingChangesR
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PublishPendingChanges403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PublishPendingChanges403JSONResponse) VisitPublishPendingChangesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -44647,6 +47184,9 @@ type StrictServerInterface interface {
 	// ApplyInstanceTemplate Apply a role template at instance scope.
 	// (POST /api/v1/instance/grants/template)
 	ApplyInstanceTemplate(ctx context.Context, request ApplyInstanceTemplateRequestObject) (ApplyInstanceTemplateResponseObject, error)
+	// InviteInstanceMember Invite a human at instance scope with a local credential.
+	// (POST /api/v1/instance/invitations)
+	InviteInstanceMember(ctx context.Context, request InviteInstanceMemberRequestObject) (InviteInstanceMemberResponseObject, error)
 	// ListOidcProviders List configured OIDC providers.
 	// (GET /api/v1/instance/oidc-providers)
 	ListOidcProviders(ctx context.Context, request ListOidcProvidersRequestObject) (ListOidcProvidersResponseObject, error)
@@ -44788,6 +47328,9 @@ type StrictServerInterface interface {
 	// ApplyOrgTemplate Apply a role template at organisation scope.
 	// (POST /api/v1/orgs/{org}/grants/template)
 	ApplyOrgTemplate(ctx context.Context, request ApplyOrgTemplateRequestObject) (ApplyOrgTemplateResponseObject, error)
+	// InviteOrgMember Invite a human into this organisation with a local credential.
+	// (POST /api/v1/orgs/{org}/invitations)
+	InviteOrgMember(ctx context.Context, request InviteOrgMemberRequestObject) (InviteOrgMemberResponseObject, error)
 	// ListProjects List the organisation's projects.
 	// (GET /api/v1/orgs/{org}/projects)
 	ListProjects(ctx context.Context, request ListProjectsRequestObject) (ListProjectsResponseObject, error)
@@ -44899,6 +47442,24 @@ type StrictServerInterface interface {
 	// SetDefinitionsSettings Select database- or Git-governed definitions.
 	// (PUT /api/v1/orgs/{org}/projects/{project}/definitions/settings)
 	SetDefinitionsSettings(ctx context.Context, request SetDefinitionsSettingsRequestObject) (SetDefinitionsSettingsResponseObject, error)
+	// ListDynamicProviders List dynamic-secret providers with redacted credential metadata.
+	// (GET /api/v1/orgs/{org}/projects/{project}/dynamic-providers)
+	ListDynamicProviders(ctx context.Context, request ListDynamicProvidersRequestObject) (ListDynamicProvidersResponseObject, error)
+	// CreateDynamicProvider Configure a PostgreSQL provider; the admin credential is write-only.
+	// (POST /api/v1/orgs/{org}/projects/{project}/dynamic-providers)
+	CreateDynamicProvider(ctx context.Context, request CreateDynamicProviderRequestObject) (CreateDynamicProviderResponseObject, error)
+	// DeleteDynamicProvider Delete a provider; refuses while active leases exist unless revoke_all.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider})
+	DeleteDynamicProvider(ctx context.Context, request DeleteDynamicProviderRequestObject) (DeleteDynamicProviderResponseObject, error)
+	// ShowDynamicProvider Show one provider's status and metadata.
+	// (GET /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider})
+	ShowDynamicProvider(ctx context.Context, request ShowDynamicProviderRequestObject) (ShowDynamicProviderResponseObject, error)
+	// RevokeDynamicProviderCredential Destroy admin custody; renewal and revocation may then be impossible.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential)
+	RevokeDynamicProviderCredential(ctx context.Context, request RevokeDynamicProviderCredentialRequestObject) (RevokeDynamicProviderCredentialResponseObject, error)
+	// SetDynamicProviderCredential Replace the write-only admin credential.
+	// (PUT /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential)
+	SetDynamicProviderCredential(ctx context.Context, request SetDynamicProviderCredentialRequestObject) (SetDynamicProviderCredentialResponseObject, error)
 	// ListEnvironments List the project's environments, in display order.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments)
 	ListEnvironments(ctx context.Context, request ListEnvironmentsRequestObject) (ListEnvironmentsResponseObject, error)
@@ -44923,6 +47484,9 @@ type StrictServerInterface interface {
 	// ListApprovalRequests The environment's change-approval requests.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests)
 	ListApprovalRequests(ctx context.Context, request ListApprovalRequestsRequestObject) (ListApprovalRequestsResponseObject, error)
+	// GetApprovalCeremony Prepare a purpose-bound approval ceremony.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/ceremony)
+	GetApprovalCeremony(ctx context.Context, request GetApprovalCeremonyRequestObject) (GetApprovalCeremonyResponseObject, error)
 	// VoteApprovalRequest Approve or reject a change-approval request.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/vote)
 	VoteApprovalRequest(ctx context.Context, request VoteApprovalRequestRequestObject) (VoteApprovalRequestResponseObject, error)
@@ -44947,6 +47511,24 @@ type StrictServerInterface interface {
 	// ApplyEnvTemplate Apply a role template on one environment.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/grants/template)
 	ApplyEnvTemplate(ctx context.Context, request ApplyEnvTemplateRequestObject) (ApplyEnvTemplateResponseObject, error)
+	// ListLeases List an environment's leases with status and metadata, never the secret.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases)
+	ListLeases(ctx context.Context, request ListLeasesRequestObject) (ListLeasesResponseObject, error)
+	// MintLease Mint a short-lived credential; the secret is disclosed exactly once.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases)
+	MintLease(ctx context.Context, request MintLeaseRequestObject) (MintLeaseResponseObject, error)
+	// ShowLease Show one lease's status and metadata, never the secret.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease})
+	ShowLease(ctx context.Context, request ShowLeaseRequestObject) (ShowLeaseResponseObject, error)
+	// RenewLease Extend a lease's validity, bounded by its maximum TTL.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/renew)
+	RenewLease(ctx context.Context, request RenewLeaseRequestObject) (RenewLeaseResponseObject, error)
+	// RevokeLease Revoke a lease; idempotent, an already-gone role is a success.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/revoke)
+	RevokeLease(ctx context.Context, request RevokeLeaseRequestObject) (RevokeLeaseResponseObject, error)
+	// SettleLease Settle an uncertain lease by re-probing it at the provider.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/settle)
+	SettleLease(ctx context.Context, request SettleLeaseRequestObject) (SettleLeaseResponseObject, error)
 	// ListPendingDrafts Preview the caller's pending drafts in one environment.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/pending)
 	ListPendingDrafts(ctx context.Context, request ListPendingDraftsRequestObject) (ListPendingDraftsResponseObject, error)
@@ -46862,6 +49444,37 @@ func (sh *strictHandler) ApplyInstanceTemplate(w http.ResponseWriter, r *http.Re
 	}
 }
 
+// InviteInstanceMember operation middleware
+func (sh *strictHandler) InviteInstanceMember(w http.ResponseWriter, r *http.Request) {
+	var request InviteInstanceMemberRequestObject
+
+	var body InviteInstanceMemberJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.InviteInstanceMember(ctx, request.(InviteInstanceMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "InviteInstanceMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(InviteInstanceMemberResponseObject); ok {
+		if err := validResponse.VisitInviteInstanceMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListOidcProviders operation middleware
 func (sh *strictHandler) ListOidcProviders(w http.ResponseWriter, r *http.Request) {
 	var request ListOidcProvidersRequestObject
@@ -48146,6 +50759,39 @@ func (sh *strictHandler) ApplyOrgTemplate(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// InviteOrgMember operation middleware
+func (sh *strictHandler) InviteOrgMember(w http.ResponseWriter, r *http.Request, org OrgID) {
+	var request InviteOrgMemberRequestObject
+
+	request.Org = org
+
+	var body InviteOrgMemberJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.InviteOrgMember(ctx, request.(InviteOrgMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "InviteOrgMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(InviteOrgMemberResponseObject); ok {
+		if err := validResponse.VisitInviteOrgMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListProjects operation middleware
 func (sh *strictHandler) ListProjects(w http.ResponseWriter, r *http.Request, org OrgID) {
 	var request ListProjectsRequestObject
@@ -49276,6 +51922,187 @@ func (sh *strictHandler) SetDefinitionsSettings(w http.ResponseWriter, r *http.R
 	}
 }
 
+// ListDynamicProviders operation middleware
+func (sh *strictHandler) ListDynamicProviders(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	var request ListDynamicProvidersRequestObject
+
+	request.Org = org
+	request.Project = project
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDynamicProviders(ctx, request.(ListDynamicProvidersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDynamicProviders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDynamicProvidersResponseObject); ok {
+		if err := validResponse.VisitListDynamicProvidersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateDynamicProvider operation middleware
+func (sh *strictHandler) CreateDynamicProvider(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	var request CreateDynamicProviderRequestObject
+
+	request.Org = org
+	request.Project = project
+
+	var body CreateDynamicProviderJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateDynamicProvider(ctx, request.(CreateDynamicProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateDynamicProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateDynamicProviderResponseObject); ok {
+		if err := validResponse.VisitCreateDynamicProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteDynamicProvider operation middleware
+func (sh *strictHandler) DeleteDynamicProvider(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, provider DynamicProviderID, params DeleteDynamicProviderParams) {
+	var request DeleteDynamicProviderRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Provider = provider
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteDynamicProvider(ctx, request.(DeleteDynamicProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteDynamicProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteDynamicProviderResponseObject); ok {
+		if err := validResponse.VisitDeleteDynamicProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ShowDynamicProvider operation middleware
+func (sh *strictHandler) ShowDynamicProvider(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, provider DynamicProviderID) {
+	var request ShowDynamicProviderRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Provider = provider
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ShowDynamicProvider(ctx, request.(ShowDynamicProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ShowDynamicProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ShowDynamicProviderResponseObject); ok {
+		if err := validResponse.VisitShowDynamicProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeDynamicProviderCredential operation middleware
+func (sh *strictHandler) RevokeDynamicProviderCredential(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, provider DynamicProviderID) {
+	var request RevokeDynamicProviderCredentialRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Provider = provider
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeDynamicProviderCredential(ctx, request.(RevokeDynamicProviderCredentialRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeDynamicProviderCredential")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeDynamicProviderCredentialResponseObject); ok {
+		if err := validResponse.VisitRevokeDynamicProviderCredentialResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetDynamicProviderCredential operation middleware
+func (sh *strictHandler) SetDynamicProviderCredential(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, provider DynamicProviderID) {
+	var request SetDynamicProviderCredentialRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Provider = provider
+
+	var body SetDynamicProviderCredentialJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetDynamicProviderCredential(ctx, request.(SetDynamicProviderCredentialRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetDynamicProviderCredential")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetDynamicProviderCredentialResponseObject); ok {
+		if err := validResponse.VisitSetDynamicProviderCredentialResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListEnvironments operation middleware
 func (sh *strictHandler) ListEnvironments(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
 	var request ListEnvironmentsRequestObject
@@ -49517,6 +52344,35 @@ func (sh *strictHandler) ListApprovalRequests(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListApprovalRequestsResponseObject); ok {
 		if err := validResponse.VisitListApprovalRequestsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetApprovalCeremony operation middleware
+func (sh *strictHandler) GetApprovalCeremony(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, approvalRequest ID) {
+	var request GetApprovalCeremonyRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.ApprovalRequest = approvalRequest
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetApprovalCeremony(ctx, request.(GetApprovalCeremonyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetApprovalCeremony")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetApprovalCeremonyResponseObject); ok {
+		if err := validResponse.VisitGetApprovalCeremonyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -49774,6 +52630,195 @@ func (sh *strictHandler) ApplyEnvTemplate(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ApplyEnvTemplateResponseObject); ok {
 		if err := validResponse.VisitApplyEnvTemplateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListLeases operation middleware
+func (sh *strictHandler) ListLeases(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request ListLeasesRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListLeases(ctx, request.(ListLeasesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListLeases")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListLeasesResponseObject); ok {
+		if err := validResponse.VisitListLeasesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// MintLease operation middleware
+func (sh *strictHandler) MintLease(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request MintLeaseRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	var body MintLeaseJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MintLease(ctx, request.(MintLeaseRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MintLease")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MintLeaseResponseObject); ok {
+		if err := validResponse.VisitMintLeaseResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ShowLease operation middleware
+func (sh *strictHandler) ShowLease(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, lease LeaseID) {
+	var request ShowLeaseRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Lease = lease
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ShowLease(ctx, request.(ShowLeaseRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ShowLease")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ShowLeaseResponseObject); ok {
+		if err := validResponse.VisitShowLeaseResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RenewLease operation middleware
+func (sh *strictHandler) RenewLease(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, lease LeaseID) {
+	var request RenewLeaseRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Lease = lease
+
+	var body RenewLeaseJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RenewLease(ctx, request.(RenewLeaseRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RenewLease")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RenewLeaseResponseObject); ok {
+		if err := validResponse.VisitRenewLeaseResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeLease operation middleware
+func (sh *strictHandler) RevokeLease(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, lease LeaseID) {
+	var request RevokeLeaseRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Lease = lease
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeLease(ctx, request.(RevokeLeaseRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeLease")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeLeaseResponseObject); ok {
+		if err := validResponse.VisitRevokeLeaseResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SettleLease operation middleware
+func (sh *strictHandler) SettleLease(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, lease LeaseID) {
+	var request SettleLeaseRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Lease = lease
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SettleLease(ctx, request.(SettleLeaseRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SettleLease")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SettleLeaseResponseObject); ok {
+		if err := validResponse.VisitSettleLeaseResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

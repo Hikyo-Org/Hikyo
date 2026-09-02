@@ -81,6 +81,7 @@ import {
   createAdapter,
   createApprovalPolicy,
   createDefinitionsPlan,
+  createDynamicProvider,
   createEnvGrant,
   createEnvironment,
   createFederatedBinding,
@@ -100,6 +101,7 @@ import {
   declareValues,
   deleteAdapter,
   deleteApprovalPolicy,
+  deleteDynamicProvider,
   deleteEnvironment,
   deleteFederationIssuer,
   deleteFolder,
@@ -124,6 +126,7 @@ import {
   exportProjectAudit,
   exportValues,
   fetchDelivery,
+  getApprovalCeremony,
   getCredentialPolicy,
   getDefinitionsPlan,
   getDefinitionsSettings,
@@ -151,11 +154,14 @@ import {
   getUpdateStatus,
   getValue,
   importValues,
+  inviteInstanceMember,
+  inviteOrgMember,
   linkIdentity,
   listAdapters,
   listAdapterTargets,
   listApprovalPolicies,
   listApprovalRequests,
+  listDynamicProviders,
   listEnvironments,
   listFederationIssuers,
   listFolders,
@@ -164,6 +170,7 @@ import {
   listInstanceGrants,
   listKeyGroups,
   listKeys,
+  listLeases,
   listMachineCredentials,
   listMyOrgs,
   listMySessions,
@@ -191,6 +198,7 @@ import {
   localLogin,
   logout,
   mintInstanceConnection,
+  mintLease,
   mintMachineCredential,
   mintScimCredential,
   oidcCallback,
@@ -229,6 +237,7 @@ import {
   renameOrg,
   renameProject,
   renameRemote,
+  renewLease,
   reorderEnvironments,
   requestInstanceUpdate,
   resetCredential,
@@ -238,9 +247,11 @@ import {
   revealValueDiff,
   revealValues,
   revokeAdapterCredential,
+  revokeDynamicProviderCredential,
   revokeEnvGrant,
   revokeInstanceConnection,
   revokeInstanceGrant,
+  revokeLease,
   revokeMachineCredential,
   revokeMySession,
   revokeOrgGrant,
@@ -275,17 +286,21 @@ import {
   setAdapterCredential,
   setCredentialPolicy,
   setDefinitionsSettings,
+  setDynamicProviderCredential,
   setEnvironmentSettings,
   setKeyGroup,
   setMachineReveal,
   setOrgRetention,
   setProjectRetention,
+  settleLease,
   setValue,
   showAdapter,
   showAdapterMove,
   showAdapterTarget,
   showCliReauthTransaction,
+  showDynamicProvider,
   showInstanceConnection,
+  showLease,
   showRemote,
   showWorkspaceHandoff,
   startCliReauth,
@@ -330,6 +345,7 @@ import type {
   CreateAdapterData,
   CreateApprovalPolicyData,
   CreateDefinitionsPlanData,
+  CreateDynamicProviderData,
   CreateEnvGrantData,
   CreateEnvironmentData,
   CreateFederatedBindingData,
@@ -349,6 +365,7 @@ import type {
   DeclareValuesData,
   DeleteAdapterData,
   DeleteApprovalPolicyData,
+  DeleteDynamicProviderData,
   DeleteEnvironmentData,
   DeleteFederationIssuerData,
   DeleteFolderData,
@@ -373,6 +390,7 @@ import type {
   ExportProjectAuditData,
   ExportValuesData,
   FetchDeliveryData,
+  GetApprovalCeremonyData,
   GetCredentialPolicyData,
   GetDefinitionsPlanData,
   GetDefinitionsSettingsData,
@@ -400,11 +418,14 @@ import type {
   GetUpdateStatusData,
   GetValueData,
   ImportValuesData,
+  InviteInstanceMemberData,
+  InviteOrgMemberData,
   LinkIdentityData,
   ListAdaptersData,
   ListAdapterTargetsData,
   ListApprovalPoliciesData,
   ListApprovalRequestsData,
+  ListDynamicProvidersData,
   ListEnvironmentsData,
   ListFederationIssuersData,
   ListFoldersData,
@@ -413,6 +434,7 @@ import type {
   ListInstanceGrantsData,
   ListKeyGroupsData,
   ListKeysData,
+  ListLeasesData,
   ListMachineCredentialsData,
   ListMyOrgsData,
   ListMySessionsData,
@@ -440,6 +462,7 @@ import type {
   LocalLoginData,
   LogoutData,
   MintInstanceConnectionData,
+  MintLeaseData,
   MintMachineCredentialData,
   MintScimCredentialData,
   OidcCallbackData,
@@ -478,6 +501,7 @@ import type {
   RenameOrgData,
   RenameProjectData,
   RenameRemoteData,
+  RenewLeaseData,
   ReorderEnvironmentsData,
   RequestInstanceUpdateData,
   ResetCredentialData,
@@ -487,9 +511,11 @@ import type {
   RevealValueDiffData,
   RevealValuesData,
   RevokeAdapterCredentialData,
+  RevokeDynamicProviderCredentialData,
   RevokeEnvGrantData,
   RevokeInstanceConnectionData,
   RevokeInstanceGrantData,
+  RevokeLeaseData,
   RevokeMachineCredentialData,
   RevokeMySessionData,
   RevokeOrgGrantData,
@@ -524,17 +550,21 @@ import type {
   SetAdapterCredentialData,
   SetCredentialPolicyData,
   SetDefinitionsSettingsData,
+  SetDynamicProviderCredentialData,
   SetEnvironmentSettingsData,
   SetKeyGroupData,
   SetMachineRevealData,
   SetOrgRetentionData,
   SetProjectRetentionData,
+  SettleLeaseData,
   SetValueData,
   ShowAdapterData,
   ShowAdapterMoveData,
   ShowAdapterTargetData,
   ShowCliReauthTransactionData,
+  ShowDynamicProviderData,
   ShowInstanceConnectionData,
+  ShowLeaseData,
   ShowRemoteData,
   ShowWorkspaceHandoffData,
   StartCliReauthData,
@@ -579,6 +609,7 @@ import {
   zCreateAdapterResponse,
   zCreateApprovalPolicyResponse,
   zCreateDefinitionsPlanResponse,
+  zCreateDynamicProviderResponse,
   zCreateEnvGrantResponse,
   zCreateEnvironmentResponse,
   zCreateFederatedBindingResponse,
@@ -597,6 +628,7 @@ import {
   zCreateServiceAccountResponse,
   zDeclareValuesResponse,
   zDeleteAdapterResponse,
+  zDeleteDynamicProviderResponse,
   zDeleteScimMappingResponse,
   zDiffValuesResponse,
   zEnrolPasskeyFinishResponse,
@@ -609,6 +641,7 @@ import {
   zExportProjectAuditResponse,
   zExportValuesResponse,
   zFetchDeliveryResponse,
+  zGetApprovalCeremonyResponse,
   zGetCredentialPolicyResponse,
   zGetDefinitionsPlanResponse,
   zGetDefinitionsSettingsResponse,
@@ -636,11 +669,14 @@ import {
   zGetUpdateStatusResponse,
   zGetValueResponse,
   zImportValuesResponse,
+  zInviteInstanceMemberResponse,
+  zInviteOrgMemberResponse,
   zLinkIdentityResponse,
   zListAdaptersResponse,
   zListAdapterTargetsResponse,
   zListApprovalPoliciesResponse,
   zListApprovalRequestsResponse,
+  zListDynamicProvidersResponse,
   zListEnvironmentsResponse,
   zListFederationIssuersResponse,
   zListFoldersResponse,
@@ -649,6 +685,7 @@ import {
   zListInstanceGrantsResponse,
   zListKeyGroupsResponse,
   zListKeysResponse,
+  zListLeasesResponse,
   zListMachineCredentialsResponse,
   zListMyOrgsResponse,
   zListMySessionsResponse,
@@ -675,6 +712,7 @@ import {
   zListWorkspaceOriginsResponse,
   zLocalLoginResponse,
   zMintInstanceConnectionResponse,
+  zMintLeaseResponse,
   zMintMachineCredentialResponse,
   zMintScimCredentialResponse,
   zOidcCallbackResponse,
@@ -712,6 +750,7 @@ import {
   zRenameOrgResponse,
   zRenameProjectResponse,
   zRenameRemoteResponse,
+  zRenewLeaseResponse,
   zReorderEnvironmentsResponse,
   zRequestInstanceUpdateResponse,
   zResetCredentialResponse,
@@ -719,6 +758,7 @@ import {
   zRevealValueDiffResponse,
   zRevealValueResponse,
   zRevealValuesResponse,
+  zRevokeLeaseResponse,
   zRollbackRevisionResponse,
   zRotateDekResponse,
   zRotateMasterKeyResponse,
@@ -750,12 +790,15 @@ import {
   zSetMachineRevealResponse,
   zSetOrgRetentionResponse,
   zSetProjectRetentionResponse,
+  zSettleLeaseResponse,
   zSetValueResponse,
   zShowAdapterMoveResponse,
   zShowAdapterResponse,
   zShowAdapterTargetResponse,
   zShowCliReauthTransactionResponse,
+  zShowDynamicProviderResponse,
   zShowInstanceConnectionResponse,
+  zShowLeaseResponse,
   zShowRemoteResponse,
   zShowWorkspaceHandoffResponse,
   zStartCliReauthResponse,
@@ -800,6 +843,7 @@ export const copyValuesOp: BodyOperation<CopyValuesData, typeof zCopyValuesRespo
 export const createAdapterOp: BodyOperation<CreateAdapterData, typeof zCreateAdapterResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createAdapter, [201], zCreateAdapterResponse);
 export const createApprovalPolicyOp: BodyOperation<CreateApprovalPolicyData, typeof zCreateApprovalPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createApprovalPolicy, [200], zCreateApprovalPolicyResponse);
 export const createDefinitionsPlanOp: BodyOperation<CreateDefinitionsPlanData, typeof zCreateDefinitionsPlanResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createDefinitionsPlan, [201], zCreateDefinitionsPlanResponse);
+export const createDynamicProviderOp: BodyOperation<CreateDynamicProviderData, typeof zCreateDynamicProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createDynamicProvider, [201], zCreateDynamicProviderResponse);
 export const createEnvGrantOp: BodyOperation<CreateEnvGrantData, typeof zCreateEnvGrantResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createEnvGrant, [200], zCreateEnvGrantResponse);
 export const createEnvironmentOp: BodyOperation<CreateEnvironmentData, typeof zCreateEnvironmentResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createEnvironment, [201], zCreateEnvironmentResponse);
 export const createFederatedBindingOp: BodyOperation<CreateFederatedBindingData, typeof zCreateFederatedBindingResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createFederatedBinding, [201], zCreateFederatedBindingResponse);
@@ -818,6 +862,7 @@ export const createScimMappingOp: BodyOperation<CreateScimMappingData, typeof zC
 export const createServiceAccountOp: BodyOperation<CreateServiceAccountData, typeof zCreateServiceAccountResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createServiceAccount, [201], zCreateServiceAccountResponse);
 export const declareValuesOp: BodyOperation<DeclareValuesData, typeof zDeclareValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(declareValues, [200], zDeclareValuesResponse);
 export const deleteAdapterOp: BodyOperation<DeleteAdapterData, typeof zDeleteAdapterResponse> = /* @__PURE__ */ new GeneratedBodyOperation(deleteAdapter, [200], zDeleteAdapterResponse);
+export const deleteDynamicProviderOp: BodyOperation<DeleteDynamicProviderData, typeof zDeleteDynamicProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(deleteDynamicProvider, [200], zDeleteDynamicProviderResponse);
 export const deleteScimMappingOp: BodyOperation<DeleteScimMappingData, typeof zDeleteScimMappingResponse> = /* @__PURE__ */ new GeneratedBodyOperation(deleteScimMapping, [200], zDeleteScimMappingResponse);
 export const diffValuesOp: BodyOperation<DiffValuesData, typeof zDiffValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(diffValues, [200], zDiffValuesResponse);
 export const enrolPasskeyFinishOp: BodyOperation<EnrolPasskeyFinishData, typeof zEnrolPasskeyFinishResponse> = /* @__PURE__ */ new GeneratedBodyOperation(enrolPasskeyFinish, [200], zEnrolPasskeyFinishResponse);
@@ -830,6 +875,7 @@ export const exportOrgAuditOp: BodyOperation<ExportOrgAuditData, typeof zExportO
 export const exportProjectAuditOp: BodyOperation<ExportProjectAuditData, typeof zExportProjectAuditResponse> = /* @__PURE__ */ new GeneratedBodyOperation(exportProjectAudit, [200], zExportProjectAuditResponse);
 export const exportValuesOp: BodyOperation<ExportValuesData, typeof zExportValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(exportValues, [200], zExportValuesResponse);
 export const fetchDeliveryOp: BodyOperation<FetchDeliveryData, typeof zFetchDeliveryResponse> = /* @__PURE__ */ new GeneratedBodyOperation(fetchDelivery, [200], zFetchDeliveryResponse);
+export const getApprovalCeremonyOp: BodyOperation<GetApprovalCeremonyData, typeof zGetApprovalCeremonyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getApprovalCeremony, [200], zGetApprovalCeremonyResponse);
 export const getCredentialPolicyOp: BodyOperation<GetCredentialPolicyData, typeof zGetCredentialPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getCredentialPolicy, [200], zGetCredentialPolicyResponse);
 export const getDefinitionsPlanOp: BodyOperation<GetDefinitionsPlanData, typeof zGetDefinitionsPlanResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getDefinitionsPlan, [200], zGetDefinitionsPlanResponse);
 export const getDefinitionsSettingsOp: BodyOperation<GetDefinitionsSettingsData, typeof zGetDefinitionsSettingsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getDefinitionsSettings, [200], zGetDefinitionsSettingsResponse);
@@ -857,11 +903,14 @@ export const getTotpStatusOp: BodyOperation<GetTotpStatusData, typeof zGetTotpSt
 export const getUpdateStatusOp: BodyOperation<GetUpdateStatusData, typeof zGetUpdateStatusResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getUpdateStatus, [200], zGetUpdateStatusResponse);
 export const getValueOp: BodyOperation<GetValueData, typeof zGetValueResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getValue, [200], zGetValueResponse);
 export const importValuesOp: BodyOperation<ImportValuesData, typeof zImportValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(importValues, [200], zImportValuesResponse);
+export const inviteInstanceMemberOp: BodyOperation<InviteInstanceMemberData, typeof zInviteInstanceMemberResponse> = /* @__PURE__ */ new GeneratedBodyOperation(inviteInstanceMember, [201], zInviteInstanceMemberResponse);
+export const inviteOrgMemberOp: BodyOperation<InviteOrgMemberData, typeof zInviteOrgMemberResponse> = /* @__PURE__ */ new GeneratedBodyOperation(inviteOrgMember, [201], zInviteOrgMemberResponse);
 export const linkIdentityOp: BodyOperation<LinkIdentityData, typeof zLinkIdentityResponse> = /* @__PURE__ */ new GeneratedBodyOperation(linkIdentity, [200], zLinkIdentityResponse);
 export const listAdaptersOp: BodyOperation<ListAdaptersData, typeof zListAdaptersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listAdapters, [200], zListAdaptersResponse);
 export const listAdapterTargetsOp: BodyOperation<ListAdapterTargetsData, typeof zListAdapterTargetsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listAdapterTargets, [200], zListAdapterTargetsResponse);
 export const listApprovalPoliciesOp: BodyOperation<ListApprovalPoliciesData, typeof zListApprovalPoliciesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listApprovalPolicies, [200], zListApprovalPoliciesResponse);
 export const listApprovalRequestsOp: BodyOperation<ListApprovalRequestsData, typeof zListApprovalRequestsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listApprovalRequests, [200], zListApprovalRequestsResponse);
+export const listDynamicProvidersOp: BodyOperation<ListDynamicProvidersData, typeof zListDynamicProvidersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listDynamicProviders, [200], zListDynamicProvidersResponse);
 export const listEnvironmentsOp: BodyOperation<ListEnvironmentsData, typeof zListEnvironmentsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listEnvironments, [200], zListEnvironmentsResponse);
 export const listFederationIssuersOp: BodyOperation<ListFederationIssuersData, typeof zListFederationIssuersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listFederationIssuers, [200], zListFederationIssuersResponse);
 export const listFoldersOp: BodyOperation<ListFoldersData, typeof zListFoldersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listFolders, [200], zListFoldersResponse);
@@ -870,6 +919,7 @@ export const listInstanceConnectionsOp: BodyOperation<ListInstanceConnectionsDat
 export const listInstanceGrantsOp: BodyOperation<ListInstanceGrantsData, typeof zListInstanceGrantsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listInstanceGrants, [200], zListInstanceGrantsResponse);
 export const listKeyGroupsOp: BodyOperation<ListKeyGroupsData, typeof zListKeyGroupsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listKeyGroups, [200], zListKeyGroupsResponse);
 export const listKeysOp: BodyOperation<ListKeysData, typeof zListKeysResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listKeys, [200], zListKeysResponse);
+export const listLeasesOp: BodyOperation<ListLeasesData, typeof zListLeasesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listLeases, [200], zListLeasesResponse);
 export const listMachineCredentialsOp: BodyOperation<ListMachineCredentialsData, typeof zListMachineCredentialsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listMachineCredentials, [200], zListMachineCredentialsResponse);
 export const listMyOrgsOp: BodyOperation<ListMyOrgsData, typeof zListMyOrgsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listMyOrgs, [200], zListMyOrgsResponse);
 export const listMySessionsOp: BodyOperation<ListMySessionsData, typeof zListMySessionsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listMySessions, [200], zListMySessionsResponse);
@@ -896,6 +946,7 @@ export const listValuesOp: BodyOperation<ListValuesData, typeof zListValuesRespo
 export const listWorkspaceOriginsOp: BodyOperation<ListWorkspaceOriginsData, typeof zListWorkspaceOriginsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listWorkspaceOrigins, [200], zListWorkspaceOriginsResponse);
 export const localLoginOp: BodyOperation<LocalLoginData, typeof zLocalLoginResponse> = /* @__PURE__ */ new GeneratedBodyOperation(localLogin, [200], zLocalLoginResponse);
 export const mintInstanceConnectionOp: BodyOperation<MintInstanceConnectionData, typeof zMintInstanceConnectionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(mintInstanceConnection, [201], zMintInstanceConnectionResponse);
+export const mintLeaseOp: BodyOperation<MintLeaseData, typeof zMintLeaseResponse> = /* @__PURE__ */ new GeneratedBodyOperation(mintLease, [200], zMintLeaseResponse);
 export const mintMachineCredentialOp: BodyOperation<MintMachineCredentialData, typeof zMintMachineCredentialResponse> = /* @__PURE__ */ new GeneratedBodyOperation(mintMachineCredential, [200], zMintMachineCredentialResponse);
 export const mintScimCredentialOp: BodyOperation<MintScimCredentialData, typeof zMintScimCredentialResponse> = /* @__PURE__ */ new GeneratedBodyOperation(mintScimCredential, [200], zMintScimCredentialResponse);
 export const oidcCallbackOp: BodyOperation<OidcCallbackData, typeof zOidcCallbackResponse> = /* @__PURE__ */ new GeneratedBodyOperation(oidcCallback, [200], zOidcCallbackResponse);
@@ -933,6 +984,7 @@ export const renameKeyGroupOp: BodyOperation<RenameKeyGroupData, typeof zRenameK
 export const renameOrgOp: BodyOperation<RenameOrgData, typeof zRenameOrgResponse> = /* @__PURE__ */ new GeneratedBodyOperation(renameOrg, [200], zRenameOrgResponse);
 export const renameProjectOp: BodyOperation<RenameProjectData, typeof zRenameProjectResponse> = /* @__PURE__ */ new GeneratedBodyOperation(renameProject, [200], zRenameProjectResponse);
 export const renameRemoteOp: BodyOperation<RenameRemoteData, typeof zRenameRemoteResponse> = /* @__PURE__ */ new GeneratedBodyOperation(renameRemote, [200], zRenameRemoteResponse);
+export const renewLeaseOp: BodyOperation<RenewLeaseData, typeof zRenewLeaseResponse> = /* @__PURE__ */ new GeneratedBodyOperation(renewLease, [200], zRenewLeaseResponse);
 export const reorderEnvironmentsOp: BodyOperation<ReorderEnvironmentsData, typeof zReorderEnvironmentsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(reorderEnvironments, [200], zReorderEnvironmentsResponse);
 export const requestInstanceUpdateOp: BodyOperation<RequestInstanceUpdateData, typeof zRequestInstanceUpdateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(requestInstanceUpdate, [202], zRequestInstanceUpdateResponse);
 export const resetCredentialOp: BodyOperation<ResetCredentialData, typeof zResetCredentialResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resetCredential, [200], zResetCredentialResponse);
@@ -940,6 +992,7 @@ export const resumeAdapterMoveOp: BodyOperation<ResumeAdapterMoveData, typeof zR
 export const revealValueOp: BodyOperation<RevealValueData, typeof zRevealValueResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revealValue, [200], zRevealValueResponse);
 export const revealValueDiffOp: BodyOperation<RevealValueDiffData, typeof zRevealValueDiffResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revealValueDiff, [200], zRevealValueDiffResponse);
 export const revealValuesOp: BodyOperation<RevealValuesData, typeof zRevealValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revealValues, [200], zRevealValuesResponse);
+export const revokeLeaseOp: BodyOperation<RevokeLeaseData, typeof zRevokeLeaseResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revokeLease, [200], zRevokeLeaseResponse);
 export const rollbackRevisionOp: BodyOperation<RollbackRevisionData, typeof zRollbackRevisionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(rollbackRevision, [200], zRollbackRevisionResponse);
 export const rotateDekOp: BodyOperation<RotateDekData, typeof zRotateDekResponse> = /* @__PURE__ */ new GeneratedBodyOperation(rotateDek, [200], zRotateDekResponse);
 export const rotateMasterKeyOp: BodyOperation<RotateMasterKeyData, typeof zRotateMasterKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(rotateMasterKey, [200], zRotateMasterKeyResponse);
@@ -971,12 +1024,15 @@ export const setKeyGroupOp: BodyOperation<SetKeyGroupData, typeof zSetKeyGroupRe
 export const setMachineRevealOp: BodyOperation<SetMachineRevealData, typeof zSetMachineRevealResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setMachineReveal, [200], zSetMachineRevealResponse);
 export const setOrgRetentionOp: BodyOperation<SetOrgRetentionData, typeof zSetOrgRetentionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setOrgRetention, [200], zSetOrgRetentionResponse);
 export const setProjectRetentionOp: BodyOperation<SetProjectRetentionData, typeof zSetProjectRetentionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setProjectRetention, [200], zSetProjectRetentionResponse);
+export const settleLeaseOp: BodyOperation<SettleLeaseData, typeof zSettleLeaseResponse> = /* @__PURE__ */ new GeneratedBodyOperation(settleLease, [200], zSettleLeaseResponse);
 export const setValueOp: BodyOperation<SetValueData, typeof zSetValueResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setValue, [200], zSetValueResponse);
 export const showAdapterOp: BodyOperation<ShowAdapterData, typeof zShowAdapterResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showAdapter, [200], zShowAdapterResponse);
 export const showAdapterMoveOp: BodyOperation<ShowAdapterMoveData, typeof zShowAdapterMoveResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showAdapterMove, [200], zShowAdapterMoveResponse);
 export const showAdapterTargetOp: BodyOperation<ShowAdapterTargetData, typeof zShowAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showAdapterTarget, [200], zShowAdapterTargetResponse);
 export const showCliReauthTransactionOp: BodyOperation<ShowCliReauthTransactionData, typeof zShowCliReauthTransactionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showCliReauthTransaction, [200], zShowCliReauthTransactionResponse);
+export const showDynamicProviderOp: BodyOperation<ShowDynamicProviderData, typeof zShowDynamicProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showDynamicProvider, [200], zShowDynamicProviderResponse);
 export const showInstanceConnectionOp: BodyOperation<ShowInstanceConnectionData, typeof zShowInstanceConnectionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showInstanceConnection, [200], zShowInstanceConnectionResponse);
+export const showLeaseOp: BodyOperation<ShowLeaseData, typeof zShowLeaseResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showLease, [200], zShowLeaseResponse);
 export const showRemoteOp: BodyOperation<ShowRemoteData, typeof zShowRemoteResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showRemote, [200], zShowRemoteResponse);
 export const showWorkspaceHandoffOp: BodyOperation<ShowWorkspaceHandoffData, typeof zShowWorkspaceHandoffResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showWorkspaceHandoff, [200], zShowWorkspaceHandoffResponse);
 export const startCliReauthOp: BodyOperation<StartCliReauthData, typeof zStartCliReauthResponse> = /* @__PURE__ */ new GeneratedBodyOperation(startCliReauth, [201], zStartCliReauthResponse);
@@ -1013,6 +1069,7 @@ export const logoutOp: BodylessOperation<LogoutData> = /* @__PURE__ */ new Gener
 export const removeRemoteOp: BodylessOperation<RemoveRemoteData> = /* @__PURE__ */ new GeneratedBodylessOperation(removeRemote, [204]);
 export const retireSamlSpKeyOp: BodylessOperation<RetireSamlSpKeyData> = /* @__PURE__ */ new GeneratedBodylessOperation(retireSamlSpKey, [204]);
 export const revokeAdapterCredentialOp: BodylessOperation<RevokeAdapterCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeAdapterCredential, [204]);
+export const revokeDynamicProviderCredentialOp: BodylessOperation<RevokeDynamicProviderCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeDynamicProviderCredential, [204]);
 export const revokeEnvGrantOp: BodylessOperation<RevokeEnvGrantData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeEnvGrant, [204]);
 export const revokeInstanceConnectionOp: BodylessOperation<RevokeInstanceConnectionData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeInstanceConnection, [204]);
 export const revokeInstanceGrantOp: BodylessOperation<RevokeInstanceGrantData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeInstanceGrant, [204]);
@@ -1024,4 +1081,5 @@ export const revokeScimCredentialOp: BodylessOperation<RevokeScimCredentialData>
 export const scimDeleteGroupOp: BodylessOperation<ScimDeleteGroupData> = /* @__PURE__ */ new GeneratedBodylessOperation(scimDeleteGroup, [204]);
 export const scimDeleteUserOp: BodylessOperation<ScimDeleteUserData> = /* @__PURE__ */ new GeneratedBodylessOperation(scimDeleteUser, [204]);
 export const setAdapterCredentialOp: BodylessOperation<SetAdapterCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(setAdapterCredential, [204]);
+export const setDynamicProviderCredentialOp: BodylessOperation<SetDynamicProviderCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(setDynamicProviderCredential, [204]);
 export const watchProjectEventsOp: StreamOperation<typeof watchProjectEvents, typeof zWatchProjectEventsResponse> = /* @__PURE__ */ new GeneratedStreamOperation(watchProjectEvents, [200], zWatchProjectEventsResponse);

@@ -399,6 +399,27 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 		}
 		sort.Strings(envs)
 
+		// Restore drafts carry a one-shot impact-preview token. Validate it before
+		// approvalGate can persist a request and return 202. A later merge names
+		// the already-pinned request, so it deliberately does not replay the token.
+		restoreSelected := false
+		for _, applies := range selection {
+			for _, apply := range applies {
+				if apply.source == store.PendingSourceRestore {
+					restoreSelected = true
+				}
+			}
+		}
+		if restoreSelected && request.ApprovalRequestID == "" {
+			token, err := publishPreviewToken(ctx, r, proofs, s.Keyring, az, caller.Principal, scope, selection)
+			if err != nil {
+				return err
+			}
+			if request.PreviewToken == "" || subtle.ConstantTimeCompare([]byte(request.PreviewToken), []byte(token)) != 1 {
+				return ErrStalePreview
+			}
+		}
+
 		// Secret-change approvals (#151): the live conjunct. Where a policy
 		// covers the addressed environment this either stages a request (and
 		// returns before any materialize), validates a merge, or admits a
@@ -423,23 +444,6 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 			return nil
 		}
 
-		restoreSelected := false
-		for _, applies := range selection {
-			for _, apply := range applies {
-				if apply.source == store.PendingSourceRestore {
-					restoreSelected = true
-				}
-			}
-		}
-		if restoreSelected {
-			token, err := publishPreviewToken(ctx, r, proofs, s.Keyring, az, caller.Principal, scope, selection)
-			if err != nil {
-				return err
-			}
-			if request.PreviewToken == "" || subtle.ConstantTimeCompare([]byte(request.PreviewToken), []byte(token)) != 1 {
-				return ErrStalePreview
-			}
-		}
 		protectedEnvironments := make([]string, 0, len(envs))
 		for _, envID := range envs {
 			settings, err := az.EnvironmentReauthSettings(ctx, envID)
@@ -469,7 +473,9 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 			return invalidDetail("human protected-environment confirmation is supplied by the bound ceremony")
 		}
 		for _, envID := range protectedEnvironments {
-			if skipsCeremony(caller) {
+			// Emergency bypass already consumed a PurposeBypass decision over this
+			// exact environment and key set in approvalBypassGate.
+			if skipsCeremony(caller) || approval.bypass {
 				continue
 			}
 			unit := make([]string, 0, len(selection[envID]))

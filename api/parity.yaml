@@ -1,0 +1,395 @@
+# WebUI parity registry (#490).
+#
+# Every operation in openapi.yaml appears here exactly once, keyed by its
+# operationId, with ONE disposition:
+#
+#   webui: <surface>          The SPA reaches this operation itself. <surface>
+#                             is an id from web/src/app/navigation.ts SURFACES,
+#                             the same closed list the Playwright flow registry
+#                             closes over. Evidence is the generated
+#                             `<operationId>Op` import somewhere under web/src
+#                             (tests and the test kit excluded); `reach: path`
+#                             switches the evidence to a literal `/api/v1` path
+#                             for the few plain fetches (download links,
+#                             cross-origin workspace calls).
+#   webui: <surface>, via: [] The SAME USER OUTCOME is delivered through the
+#                             listed operations, which must themselves be direct
+#                             webui rows. This is the registry's line between
+#                             equivalent outcomes and literal CLI mirroring: a
+#                             `get` whose list already shows the row, a batch
+#                             verb whose cells the matrix edits one by one.
+#   exception: <class>        One of the closed classes below. Membership is a
+#                             predicate over the contract's own metadata
+#                             (parity_test.go), not the word alone.
+#   issue: <n>                An OPEN implementation issue. CI fails when it is
+#                             closed without the row flipping to webui
+#                             (scripts/ci/check-parity-issues.sh), and fails
+#                             when the SPA starts importing the operation while
+#                             the row still says issue.
+#
+# Closed exception classes (api-cli-surface ADR § The parity principle and its
+# amendments; docs/spec/api-cli-spellings.md § identity-protocol endpoints):
+#
+#   identity-protocol              Protocol-shaped, client-specific by nature:
+#                                  the CLI's own legs of a handoff, an OIDC
+#                                  callback, a SAML ACS, the SCIM wire an IdP
+#                                  drives. Paths under /api/v1/auth/ or /scim/v2/.
+#   client-local-delivery          The machine delivery wire: acts on the box the
+#                                  credential lives on and admits no human session.
+#   host-local-authority           init, migrate, restore reconcile, break-glass.
+#                                  No HTTP endpoint by ADR, so no member here by
+#                                  construction; a row claiming it is a spec
+#                                  review event.
+#   k8s-controller-reconciliation  The operator reconciles through the delivery
+#                                  wire above, so likewise no HTTP member; kept
+#                                  named so the closure is stated in one place.
+#
+# What the gate proves: the operation is reached from the SPA's runtime source
+# and the named surface is served. It does not prove the journey is complete or
+# reached from that particular surface; the browser-acceptance half is #504.
+# Frequency orders delivery, it never excuses a missing surface: administrative
+# operations for OIDC, SAML, SCIM, federation, remotes, adapters, audit and
+# remote crypto are dispositioned like any other.
+#
+# Adding an operation: add its row here in the same commit, or `go test ./api`
+# fails naming it.
+
+operations:
+
+  # meta
+  getMeta:                     {webui: overview}
+
+  # auth
+  establishCredential:         {webui: establish-credential}
+  localLogin:                  {webui: login}
+  logout:                      {webui: overview}
+  whoami:                      {webui: overview}
+  enrolTotpStart:              {webui: settings}
+  enrolTotpConfirm:            {webui: settings}
+  stepUpTotp:                  {webui: overview}
+  reauthTotp:                  {webui: values}
+  startCLIReauth:              {exception: identity-protocol}
+  showCLIReauthTransaction:    {webui: cli-reauth}
+  approveCLIReauth:            {webui: cli-reauth}
+  redeemCLIReauth:             {exception: identity-protocol}
+  getTotpStatus:               {webui: settings}
+  removeTotp:                  {webui: settings}
+  regenerateRecoveryCodes:     {webui: settings}
+  beginRecovery:               {issue: 571}
+
+  # orgs
+  listOrgs:                    {webui: overview}
+  createOrg:                   {webui: overview}
+
+  # hierarchy
+  getOrg:                      {webui: org-settings}
+  renameOrg:                   {webui: org-settings}
+  deleteOrg:                   {webui: org-settings}
+  listProjects:                {webui: projects}
+  createProject:               {webui: projects}
+  getOrgRetention:             {webui: org-settings}
+  setOrgRetention:             {webui: org-settings}
+  getProject:                  {webui: project-settings}
+  renameProject:               {webui: project-settings}
+  deleteProject:               {webui: project-settings}
+  listEnvironments:            {webui: project-settings}
+  createEnvironment:           {webui: project-settings}
+  cloneEnvironment:            {webui: project-settings}
+  reorderEnvironments:         {webui: project-settings}
+  getEnvironment:              {webui: project-settings, via: [listEnvironments]}
+  renameEnvironment:           {webui: project-settings}
+  deleteEnvironment:           {webui: project-settings}
+  getProjectRetention:         {webui: project-settings}
+  setProjectRetention:         {webui: project-settings}
+  listFolders:                 {webui: matrix}
+  createFolder:                {webui: key-detail}
+  getFolder:                   {webui: key-detail, via: [listFolders]}
+  renameFolder:                {webui: key-detail}
+  deleteFolder:                {webui: key-detail}
+
+  # access
+  listInstanceGrants:          {webui: instance-members}
+  createInstanceGrant:         {webui: instance-members}
+  revokeInstanceGrant:         {webui: instance-members}
+  applyInstanceTemplate:       {webui: instance-members}
+  listOrgGrants:               {webui: members}
+  createOrgGrant:              {webui: members}
+  revokeOrgGrant:              {webui: members}
+  applyOrgTemplate:            {webui: members}
+  inviteInstanceMember:        {webui: instance-members}
+  inviteOrgMember:             {webui: members}
+  listProjectGrants:           {webui: machine-access}
+  createProjectGrant:          {webui: members}
+  revokeProjectGrant:          {webui: members}
+  applyProjectTemplate:        {webui: members}
+  createEnvGrant:              {webui: machine-access}
+  revokeEnvGrant:              {webui: members}
+  applyEnvTemplate:            {webui: members}
+  getEnvironmentSettings:      {webui: project-settings}
+  setEnvironmentSettings:      {webui: project-settings}
+
+  # change approvals
+  listApprovalPolicies:        {webui: change-approvals}
+  createApprovalPolicy:        {webui: change-approvals}
+  updateApprovalPolicy:        {webui: change-approvals}
+  deleteApprovalPolicy:        {webui: change-approvals}
+  listApprovalRequests:        {webui: change-approvals}
+  getApprovalCeremony:         {webui: change-approvals}
+  voteApprovalRequest:         {webui: change-approvals}
+
+  # definitions
+  # The bundle verbs are the repository's path into the same catalogue the
+  # key-detail editor writes directly (source-of-truth ADR § Git-governed
+  # projects: db mode edits through the UI as normal; git mode renders the UI
+  # read-only by design and accepts writes only through apply).
+  exportDefinitions:           {webui: key-detail, via: [listKeys, getKey, listFolders, listKeyGroups]}
+  checkDefinitions:            {webui: key-detail, via: [listKeys, getKey, listFolders, listKeyGroups]}
+  createDefinitionsPlan:       {webui: key-detail, via: [createKey, updateKeyDeclaration, deleteKey]}
+  getDefinitionsPlan:          {webui: key-detail, via: [createKey, updateKeyDeclaration, deleteKey]}
+  applyDefinitionsPlan:        {webui: key-detail, via: [createKey, updateKeyDeclaration, deleteKey]}
+  getDefinitionsSettings:      {webui: project-settings}
+  setDefinitionsSettings:      {webui: project-settings}
+
+  # access
+  getMachineReveal:            {webui: machine-access}
+  setMachineReveal:            {webui: machine-access}
+
+  # keys
+  listKeys:                    {webui: matrix}
+  createKey:                   {webui: matrix}
+  getKey:                      {webui: key-detail}
+  updateKeyMetadata:           {webui: key-detail}
+  deleteKey:                   {webui: key-detail}
+  renameKey:                   {webui: key-detail}
+  updateKeyDeclaration:        {webui: key-detail}
+  reclassifyKey:               {webui: key-detail}
+  setKeyGroup:                 {webui: key-detail}
+  listKeyGroups:               {webui: matrix}
+  createKeyGroup:              {webui: key-detail}
+  getKeyGroup:                 {webui: key-detail, via: [listKeyGroups]}
+  renameKeyGroup:              {webui: key-detail}
+  deleteKeyGroup:              {webui: key-detail}
+
+  # values
+  listValues:                  {webui: matrix}
+  getValue:                    {webui: matrix, via: [listValues]}
+  setValue:                    {webui: matrix}
+  clearValue:                  {webui: matrix}
+  # One value into several environments: the matrix row editor sets the
+  # cells and copy-values fans an environment out; no relationship between the
+  # copies either way.
+  declareValues:               {webui: matrix, via: [setValue, copyValues]}
+  copyValues:                  {webui: matrix}
+  # The matrix IS the side-by-side comparison of environments.
+  diffValues:                  {webui: matrix, via: [listValues]}
+  getRevealWindow:             {webui: values}
+  listValueOccurrences:        {webui: matrix}
+  importValues:                {webui: matrix}
+  revealValues:                {webui: values}
+  revealValue:                 {webui: values}
+  revealValueDiff:             {webui: values, via: [revealValues]}
+
+  # auth
+  authMethods:                 {webui: login}
+  oidcStart:                   {webui: login}
+  oidcCallback:                {exception: identity-protocol}
+  samlStart:                   {webui: login}
+  samlACS:                     {exception: identity-protocol}
+  samlMetadata:                {exception: identity-protocol}
+  listMyOrgs:                  {webui: overview}
+  listIdentities:              {webui: settings}
+  linkIdentity:                {webui: settings}
+  unlinkIdentity:              {webui: settings}
+
+  # accounts
+  resetCredential:             {webui: members}
+
+  # auth
+  enrolPasskeyStart:           {webui: settings}
+  enrolPasskeyFinish:          {webui: settings}
+  passkeyLoginStart:           {webui: login}
+  passkeyLoginFinish:          {webui: login}
+  stepUpPasskeyStart:          {webui: overview}
+  stepUpPasskeyFinish:         {webui: overview}
+  reauthPasskeyStart:          {webui: values}
+  reauthPasskeyFinish:         {webui: values}
+  listPasskeys:                {webui: settings}
+  removePasskey:               {webui: settings}
+
+  # instance
+  listOidcProviders:           {webui: instance-admin}
+  getOidcProvider:             {webui: instance-admin, via: [listOidcProviders]}
+  putOidcProvider:             {webui: instance-admin}
+  deleteOidcProvider:          {webui: instance-admin}
+  getRetentionHealth:          {webui: instance-admin}
+  getUpdateStatus:             {webui: instance-admin}
+  requestInstanceUpdate:       {webui: instance-admin}
+  getInstanceUpdateJob:        {webui: instance-admin}
+  listSamlProviders:           {webui: instance-admin}
+  getSamlProvider:             {webui: instance-admin, via: [listSamlProviders]}
+  putSamlProvider:             {webui: instance-admin}
+  patchSamlProvider:           {webui: instance-admin}
+  deleteSamlProvider:          {webui: instance-admin}
+  refreshSamlProviderMetadata: {webui: instance-admin}
+  listSamlSpKeys:              {webui: instance-admin}
+  rotateSamlSpKey:             {webui: instance-admin}
+  retireSamlSpKey:             {webui: instance-admin}
+  compromiseRetireSamlSpKey:   {webui: instance-admin}
+
+  # identities
+  listServiceAccounts:         {webui: machine-access}
+  createServiceAccount:        {webui: machine-access}
+  deleteServiceAccount:        {webui: machine-access}
+  listMachineCredentials:      {webui: machine-access}
+  mintMachineCredential:       {webui: machine-access}
+  revokeMachineCredential:     {webui: machine-access}
+
+  # instance
+  getCredentialPolicy:         {webui: instance-admin}
+  setCredentialPolicy:         {webui: instance-admin}
+  listFederationIssuers:       {webui: instance-admin}
+  createFederationIssuer:      {webui: instance-admin}
+  updateFederationIssuer:      {webui: instance-admin}
+  deleteFederationIssuer:      {webui: instance-admin}
+
+  # identities
+  createFederatedBinding:      {webui: machine-access}
+
+  # delivery
+  fetchDelivery:               {exception: client-local-delivery}
+  reconcileOfflineRecords:     {exception: client-local-delivery}
+
+  # scim
+  listScimBindings:            {webui: scim}
+  createScimBinding:           {webui: scim}
+  getScimBinding:              {webui: scim}
+  deleteScimBinding:           {webui: scim}
+  listScimMappings:            {webui: scim}
+  createScimMapping:           {webui: scim}
+  updateScimMapping:           {webui: scim}
+  deleteScimMapping:           {webui: scim}
+  listScimCredentials:         {webui: scim}
+  mintScimCredential:          {webui: scim}
+  getScimCredential:           {webui: scim, via: [listScimCredentials]}
+  revokeScimCredential:        {webui: scim}
+  listScimDirectoryUsers:      {webui: scim}
+  listScimDirectoryGroups:     {webui: scim}
+
+  # scim-protocol
+  scimServiceProviderConfig:   {exception: identity-protocol}
+  scimResourceTypes:           {exception: identity-protocol}
+  scimSchemas:                 {exception: identity-protocol}
+  scimListUsers:               {exception: identity-protocol}
+  scimCreateUser:              {exception: identity-protocol}
+  scimGetUser:                 {exception: identity-protocol}
+  scimReplaceUser:             {exception: identity-protocol}
+  scimPatchUser:               {exception: identity-protocol}
+  scimDeleteUser:              {exception: identity-protocol}
+  scimListGroups:              {exception: identity-protocol}
+  scimCreateGroup:             {exception: identity-protocol}
+  scimGetGroup:                {exception: identity-protocol}
+  scimReplaceGroup:            {exception: identity-protocol}
+  scimPatchGroup:              {exception: identity-protocol}
+  scimDeleteGroup:             {exception: identity-protocol}
+  scimBulk:                    {exception: identity-protocol}
+  scimMe:                      {exception: identity-protocol}
+  scimSearchUsers:             {exception: identity-protocol}
+  scimSearchGroups:            {exception: identity-protocol}
+
+  # instance
+  # The directory a connected instance pulls is this instance's own org and
+  # project names and counts, which the shell already lists.
+  serveDirectory:              {webui: remotes, via: [listOrgs, listProjects]}
+  listRemotes:                 {webui: remotes}
+  addRemote:                   {webui: remotes}
+  showRemote:                  {webui: remotes, via: [listRemotes]}
+  renameRemote:                {webui: remotes}
+  removeRemote:                {webui: remotes}
+  listInstanceConnections:     {webui: remotes}
+  mintInstanceConnection:      {webui: remotes}
+  showInstanceConnection:      {webui: remotes, via: [listInstanceConnections]}
+  revokeInstanceConnection:    {webui: remotes}
+  listWorkspaceOrigins:        {webui: remotes}
+  addWorkspaceOrigin:          {webui: remotes}
+  removeWorkspaceOrigin:       {webui: remotes}
+
+  # auth
+  # The SPA is the workspace client here: it calls the remote origin with a
+  # plain fetch (web/src/api/workspace.ts) because the cookie-carrying client
+  # must never cross an origin.
+  startWorkspaceHandoff:       {webui: remotes, reach: path}
+  approveWorkspaceHandoff:     {webui: workspace-approve}
+  redeemWorkspaceHandoff:      {webui: remotes, reach: path}
+  showWorkspaceHandoff:        {webui: workspace-approve}
+  listMySessions:              {webui: settings}
+  revokeMySession:             {webui: settings}
+
+  # revisions
+  publishPendingChanges:       {webui: matrix}
+  getEnvironmentSignals:       {webui: matrix}
+  listPendingDrafts:           {webui: matrix}
+  rollbackRevision:            {webui: history}
+  listRevisionPins:            {webui: history}
+  createRevisionPin:           {webui: history}
+  releaseRevisionPin:          {webui: history}
+  listRevisions:               {webui: history}
+  getRevision:                 {webui: history}
+
+  # values
+  exportValues:                {webui: history}
+
+  # revisions
+  watchProjectEvents:          {webui: matrix}
+
+  # audit
+  queryOrgAudit:               {webui: audit}
+  # A plain same-origin download link; the browser streams the JSONL itself.
+  exportOrgAudit:              {webui: audit, reach: path}
+  queryProjectAudit:           {issue: 572}
+  exportProjectAudit:          {issue: 572}
+  queryEnvAudit:               {issue: 572}
+  exportEnvAudit:              {issue: 572}
+
+  # instance
+  rotateTokenKey:              {webui: instance-admin}
+  rotateDEK:                   {webui: instance-admin}
+  reencryptInstance:           {webui: instance-admin}
+  rotateMasterKey:             {webui: instance-admin}
+  rotateRootKey:               {webui: instance-admin}
+  reencryptProject:            {webui: instance-admin}
+  rotateScanningKey:           {webui: instance-admin}
+
+  # adapters
+  listAdapters:                {issue: 157}
+  createAdapter:               {issue: 157}
+  showAdapter:                 {issue: 157}
+  updateAdapterOrigin:         {issue: 157}
+  deleteAdapter:               {issue: 157}
+  showAdapterMove:             {issue: 157}
+  resumeAdapterMove:           {issue: 157}
+  cancelAdapterMove:           {issue: 157}
+  setAdapterCredential:        {issue: 157}
+  revokeAdapterCredential:     {issue: 157}
+  listAdapterTargets:          {issue: 157}
+  addAdapterTarget:            {issue: 157}
+  showAdapterTarget:           {issue: 157}
+  updateAdapterTarget:         {issue: 157}
+  removeAdapterTarget:         {issue: 157}
+  planAdapterTarget:           {issue: 157}
+  syncAdapterTarget:           {issue: 157}
+  testAdapterTarget:           {issue: 157}
+  adoptAdapterTargetNames:     {issue: 157}
+
+  # dynamic secrets (#147 shipped API+CLI+read-only status; management WebUI #595)
+  listLeases:                  {webui: machine-access}
+  showLease:                   {webui: machine-access, via: [listLeases]}
+  listDynamicProviders:        {issue: 595}
+  createDynamicProvider:       {issue: 595}
+  showDynamicProvider:         {issue: 595}
+  deleteDynamicProvider:       {issue: 595}
+  setDynamicProviderCredential: {issue: 595}
+  revokeDynamicProviderCredential: {issue: 595}
+  mintLease:                   {issue: 595}
+  renewLease:                  {issue: 595}
+  revokeLease:                 {issue: 595}
+  settleLease:                 {issue: 595}

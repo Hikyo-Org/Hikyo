@@ -207,6 +207,13 @@ const (
 	// under `manage-members`, not an object read. Access retention class —
 	// read volume, not grant history.
 	EventGrantMembershipRead EventType = "grant.membership_read"
+	// member.invited records an invitation (#568): a human principal and its
+	// account came to exist under a `manage-members` holder's authority, with
+	// the optional template named. The minted authority is its own instance
+	// event (auth.credential_authority_minted, issued_by=invitation); this one
+	// lives on the scope's trail so an org administrator can answer "who
+	// invited whom" without instance access.
+	EventMemberInvited EventType = "member.invited"
 
 	// settings.reauthentication_window_changed and
 	// settings.protected_flag_changed are the `project-settings` security
@@ -276,6 +283,15 @@ const (
 	// to leave a per-principal record, and a single "reconciliation completed"
 	// event would be exactly the bulk accept the surface refuses to offer.
 	EventRestorePrincipalReconciled EventType = "restore.principal_reconciled"
+	// EventBackupExportFailed is the scheduled export's loud failure (#145):
+	// a configured policy that was not honoured, on the instance trail so
+	// it survives the morning after. The reason is a bounded class, never a
+	// path that could carry a secret.
+	EventBackupExportFailed EventType = "backup.export_failed"
+	// EventRestoreDrillCompleted records one isolated restore drill (#145):
+	// archive identity, versions, elapsed time and the RTO verdict. Never
+	// key material, never the decrypted sample.
+	EventRestoreDrillCompleted EventType = "restore.drill_completed"
 	// settings.key_* — the key catalogue's lifecycle (#49). The catalogue IS
 	// the project's schema, so these are schema events; they are named
 	// `settings.*` like the rest of the definitions surface because an
@@ -725,6 +741,17 @@ const (
 	EventAdapterScrub             EventType = "adapter.scrub"
 	EventAdapterSuperseded        EventType = "adapter.superseded"
 
+	// Dynamic secrets (#147).
+	EventDynamicProviderConfigured        EventType = "dynamic.provider_configured"
+	EventDynamicProviderCredentialReplace EventType = "dynamic.provider_credential_replace"
+	EventDynamicProviderCredentialRevoke  EventType = "dynamic.provider_credential_revoke"
+	EventDynamicProviderDeleted           EventType = "dynamic.provider_deleted"
+	EventDynamicProviderInspected         EventType = "dynamic.provider_inspected"
+	EventDynamicLeaseTransitionIntent     EventType = "dynamic.lease_transition_intent"
+	EventDynamicLeaseTransitionOutcome    EventType = "dynamic.lease_transition_outcome"
+	EventDynamicLeaseDisclosed            EventType = "dynamic.lease_disclosed"
+	EventDynamicLeaseSettleRequested      EventType = "dynamic.lease_settle_requested"
+
 	// remote.* — the multi-instance categories (#71, multi-instance ADR §
 	// Audit) ARE registered above, every one of them that has an honest
 	// emitter, including remote.directory_served; its audited_exemptions.json
@@ -916,7 +943,7 @@ var registry = map[EventType]TypeSpec{
 		Schema: Schema{
 			"authority_id": {Kind: KindString, Required: true},
 			"account_id":   {Kind: KindString, Required: true},
-			"issued_by":    {Kind: KindString, Required: true, Enum: []string{"bootstrap", "credential-reset", "break-glass", "recovery"}},
+			"issued_by":    {Kind: KindString, Required: true, Enum: []string{"bootstrap", "credential-reset", "break-glass", "recovery", "invitation"}},
 			"delivery":     {Kind: KindString, Required: true, Enum: []string{"file", "terminal", "stdout", "response"}},
 		},
 	},
@@ -1628,6 +1655,22 @@ var registry = map[EventType]TypeSpec{
 			"sessions_revoked":  {Kind: KindBool, Required: true},
 		}),
 	},
+	EventMemberInvited: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true, TrailInstance: true},
+		Schema: Schema{
+			"principal_id":   {Kind: KindString, Required: true},
+			"account_id":     {Kind: KindString, Required: true},
+			"username":       {Kind: KindFreeText, Required: true},
+			"scope":          {Kind: KindString, Required: true},
+			"template":       {Kind: KindString},
+			"grants_created": {Kind: KindInt, Required: true},
+			"authority_id":   {Kind: KindString, Required: true},
+			"delivery":       {Kind: KindString, Required: true, Enum: []string{"file", "terminal", "stdout", "response"}},
+		},
+	},
 	EventGrantTemplateApplied: {
 		SchemaVersion: 1,
 		Retention:     RetentionSecurity,
@@ -1972,6 +2015,46 @@ var registry = map[EventType]TypeSpec{
 			"restore_epoch":      {Kind: KindInt, Required: true},
 			"pending_principals": {Kind: KindInt, Required: true},
 			"authority":          {Kind: KindString, Required: true}, // local-host
+		},
+	},
+	EventBackupExportFailed: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeFailure: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			// Why the export ran: `scheduled`.
+			"trigger": {Kind: KindString, Required: true},
+			// A bounded failure class (`destination`, `datastore`, `container`,
+			// `deadline`, `canceled`, `internal`), never the error text: an
+			// error string can quote a path, and a path can name a mount an
+			// operator considers private.
+			"error_class": {Kind: KindString, Required: true},
+		},
+	},
+	EventRestoreDrillCompleted: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true, OutcomeFailure: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			// The archive by base name and manifest digest; never its contents.
+			"archive":         {Kind: KindString, Required: true},
+			"archive_digest":  {Kind: KindString, Required: true},
+			"engine":          {Kind: KindString, Required: true},
+			"schema_version":  {Kind: KindInt, Required: true},
+			"binary_version":  {Kind: KindString, Required: true},
+			"elapsed_ms":      {Kind: KindInt, Required: true},
+			"rto_target_ms":   {Kind: KindInt, Required: true},
+			"rto_met":         {Kind: KindBool, Required: true},
+			"values_readable": {Kind: KindBool, Required: true},
+			// The single principal the drill reconciled, and whether a fresh
+			// machine credential was minted and revoked in the scratch instance.
+			"reconciled_principal": {Kind: KindString, Required: true},
+			"credential_minted":    {Kind: KindBool, Required: true},
+			// Which step failed, empty on success.
+			"failed_step": {Kind: KindString, Required: true},
+			"authority":   {Kind: KindString, Required: true}, // local-host
 		},
 	},
 
@@ -2709,6 +2792,77 @@ var registry = map[EventType]TypeSpec{
 		SchemaVersion: 1, Retention: RetentionAccess,
 		Outcomes: map[Outcome]bool{OutcomeSuccess: true, OutcomeDenied: true},
 		Trails:   map[Trail]bool{TrailTenant: true}, Schema: Schema{"row_count": {Kind: KindInt, Required: true}},
+	},
+
+	// --- Dynamic secrets (#147) ----------------------------------------------
+	// Provider lifecycle mirrors the adapter lifecycle shape. No provider
+	// credential, origin secret, or minted password ever appears in a payload:
+	// these events record that a transition happened, never the material.
+	EventDynamicProviderConfigured: adapterLifecycleEvent(Schema{
+		"kind":      {Kind: KindString, Required: true, Enum: []string{"postgres"}},
+		"authority": {Kind: KindString, Required: true},
+	}),
+	EventDynamicProviderCredentialReplace: adapterLifecycleEvent(Schema{
+		"credential_present": {Kind: KindBool, Required: true},
+	}),
+	EventDynamicProviderCredentialRevoke: adapterLifecycleEvent(Schema{
+		"credential_present": {Kind: KindBool, Required: true},
+	}),
+	EventDynamicProviderDeleted: adapterLifecycleEvent(Schema{
+		"revoked_lease_count": {Kind: KindInt, Required: true},
+	}),
+	EventDynamicProviderInspected: {
+		SchemaVersion: 1, Retention: RetentionAccess,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true, OutcomeDenied: true},
+		Trails:   map[Trail]bool{TrailTenant: true}, Schema: Schema{"row_count": {Kind: KindInt, Required: true}},
+	},
+	// A lease transition's INTENT is written before the provider call; the
+	// OUTCOME after. kind is the transition; provider_handle is the role name,
+	// which is public metadata, never the password.
+	EventDynamicLeaseTransitionIntent: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeIntent: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"kind":            {Kind: KindString, Required: true, Enum: []string{"mint", "renew", "revoke", "expire"}},
+			"provider_handle": {Kind: KindString, Required: true},
+		},
+	},
+	EventDynamicLeaseTransitionOutcome: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true, OutcomeFailure: true, OutcomeUnknown: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"kind":            {Kind: KindString, Required: true, Enum: []string{"mint", "renew", "revoke", "expire"}},
+			"provider_handle": {Kind: KindString, Required: true},
+		},
+	},
+	// The display-once disclosure: one per mint. It records THAT a credential
+	// crossed to a principal, never the credential.
+	EventDynamicLeaseDisclosed: {
+		SchemaVersion: 1,
+		Retention:     RetentionAccess,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"provider_handle": {Kind: KindString, Required: true},
+			"principal_class": {Kind: KindString, Required: true},
+			"expires_at":      {Kind: KindString},
+		},
+	},
+	// An operator (or the workload) asked an uncertain lease to be re-probed and
+	// settled. The worker's subsequent transition events record the settlement;
+	// this records the request.
+	EventDynamicLeaseSettleRequested: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"provider_handle": {Kind: KindString, Required: true},
+		},
 	},
 	EventAdapterPlan: adapterLifecycleEvent(Schema{
 		"changes": {Kind: KindStringList, Required: true},

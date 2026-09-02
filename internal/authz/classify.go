@@ -432,6 +432,9 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"http:POST /api/v1/orgs/{org}/grants":          {Class: ClassTenant, Ops: []Operation{OpGrantCreateOrg}},
 	"http:DELETE /api/v1/orgs/{org}/grants":        {Class: ClassTenant, Ops: []Operation{OpGrantRevokeOrg}},
 	"http:POST /api/v1/orgs/{org}/grants/template": {Class: ClassTenant, Ops: []Operation{OpTemplateApplyOrg}},
+	// Member invitation (#568): one route per depth, like grant.create.
+	"http:POST /api/v1/orgs/{org}/invitations": {Class: ClassTenant, Ops: []Operation{OpMemberInviteOrg}},
+	"http:POST /api/v1/instance/invitations":   {Class: ClassInstance, Ops: []Operation{OpMemberInviteInstance}},
 
 	// Machine identities (#61). Tenant-class at project depth: an identity
 	// surface a caller may not administer answers exactly like a project
@@ -661,12 +664,13 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	// Secret-change approvals (#151). Policy administration is project-scoped;
 	// the review queue is a read@env audited-none; voting is publish@env. The
 	// merge/bypass decision rides the publish route, not these.
-	"http:GET /api/v1/orgs/{org}/projects/{project}/approval-policies":                                                    {Class: ClassTenant, Ops: []Operation{OpApprovalPolicyRead}, Events: []audit.EventType{audit.EventApprovalPolicyRead}},
-	"http:POST /api/v1/orgs/{org}/projects/{project}/approval-policies":                                                   {Class: ClassTenant, Ops: []Operation{OpApprovalPolicyWrite}, Events: []audit.EventType{audit.EventApprovalPolicyChanged}},
-	"http:PUT /api/v1/orgs/{org}/projects/{project}/approval-policies/{policy}":                                           {Class: ClassTenant, Ops: []Operation{OpApprovalPolicyWrite}, Events: []audit.EventType{audit.EventApprovalPolicyChanged}},
-	"http:DELETE /api/v1/orgs/{org}/projects/{project}/approval-policies/{policy}":                                        {Class: ClassTenant, Ops: []Operation{OpApprovalPolicyWrite}, Events: []audit.EventType{audit.EventApprovalPolicyChanged}},
-	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests":                         {Class: ClassTenant, Ops: []Operation{OpApprovalRequestRead}},
-	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/vote": {Class: ClassTenant, Ops: []Operation{OpApprovalVote}, Events: []audit.EventType{audit.EventApprovalVoted, audit.EventApprovalInvalidated}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/approval-policies":                                                       {Class: ClassTenant, Ops: []Operation{OpApprovalPolicyRead}, Events: []audit.EventType{audit.EventApprovalPolicyRead}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/approval-policies":                                                      {Class: ClassTenant, Ops: []Operation{OpApprovalPolicyWrite}, Events: []audit.EventType{audit.EventApprovalPolicyChanged}},
+	"http:PUT /api/v1/orgs/{org}/projects/{project}/approval-policies/{policy}":                                              {Class: ClassTenant, Ops: []Operation{OpApprovalPolicyWrite}, Events: []audit.EventType{audit.EventApprovalPolicyChanged}},
+	"http:DELETE /api/v1/orgs/{org}/projects/{project}/approval-policies/{policy}":                                           {Class: ClassTenant, Ops: []Operation{OpApprovalPolicyWrite}, Events: []audit.EventType{audit.EventApprovalPolicyChanged}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests":                            {Class: ClassTenant, Ops: []Operation{OpApprovalRequestRead}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/ceremony": {Class: ClassTenant, Ops: []Operation{OpApprovalVote}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/vote":    {Class: ClassTenant, Ops: []Operation{OpApprovalVote}, Events: []audit.EventType{audit.EventApprovalVoted, audit.EventApprovalInvalidated}},
 	// The root token key belongs to the instance, so there is no tenant object
 	// whose nonexistence a refusal could mimic. The same holds for every DEK: a
 	// DEK belongs to the instance's crypto hierarchy, not a tenant.
@@ -706,6 +710,20 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"http:GET /api/v1/orgs/{org}/projects/{project}/adapter-moves/{move}":                {Class: ClassTenant, Ops: []Operation{OpAdapterInspect}},
 	"http:PATCH /api/v1/orgs/{org}/projects/{project}/adapter-moves/{move}":              {Class: ClassTenant, Ops: []Operation{OpAdapterConfigure}},
 	"http:DELETE /api/v1/orgs/{org}/projects/{project}/adapter-moves/{move}":             {Class: ClassTenant, Ops: []Operation{OpAdapterConfigure}},
+
+	// Dynamic secrets (#147).
+	"http:GET /api/v1/orgs/{org}/projects/{project}/dynamic-providers":                                 {Class: ClassTenant, Ops: []Operation{OpDynamicProviderInspect}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/dynamic-providers":                                {Class: ClassTenant, Ops: []Operation{OpDynamicProviderConfigure}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}":                      {Class: ClassTenant, Ops: []Operation{OpDynamicProviderInspect}},
+	"http:DELETE /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}":                   {Class: ClassTenant, Ops: []Operation{OpDynamicProviderDelete}},
+	"http:PUT /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential":           {Class: ClassTenant, Ops: []Operation{OpDynamicProviderCredentialSet}},
+	"http:DELETE /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential":        {Class: ClassTenant, Ops: []Operation{OpDynamicProviderCredentialRevoke}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases":                 {Class: ClassTenant, Ops: []Operation{OpLeaseInspect}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases":                {Class: ClassTenant, Ops: []Operation{OpLeaseMint}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}":         {Class: ClassTenant, Ops: []Operation{OpLeaseInspect}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/renew":  {Class: ClassTenant, Ops: []Operation{OpLeaseRenew}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/revoke": {Class: ClassTenant, Ops: []Operation{OpLeaseRevoke}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/settle": {Class: ClassTenant, Ops: []Operation{OpLeaseSettle}},
 
 	"http:GET /api/v1/orgs/{org}/projects/{project}/key-groups":            {Class: ClassTenant, Ops: []Operation{OpKeyGroupList}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/key-groups":           {Class: ClassTenant, Ops: []Operation{OpKeyGroupCreate}},
@@ -755,7 +773,7 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	// `restore` writes the reconstruction and one event per principal the
 	// operator reconciles afterwards.
 	"cli:backup":  {Class: ClassSystem, Events: []audit.EventType{audit.EventBackupExported, audit.EventBackupExportSkipped}},
-	"cli:restore": {Class: ClassSystem, Events: []audit.EventType{audit.EventRestoreCompleted, audit.EventRestorePrincipalReconciled}},
+	"cli:restore": {Class: ClassSystem, Events: []audit.EventType{audit.EventRestoreCompleted, audit.EventRestorePrincipalReconciled, audit.EventRestoreDrillCompleted}},
 
 	// Local product-information commands print build metadata — no principal,
 	// no server, no store; the pre-auth contract is trivially total.
@@ -839,6 +857,11 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	// `adapter` reaches only project-owned adapter and target routes. Dynamic
 	// affected-environment checks happen behind those tenant routes.
 	"cli:adapter": {Class: ClassTenant},
+
+	// Dynamic secrets (#147): both verbs are client transport for the
+	// tenant-scoped provider and lease routes and nothing wider.
+	"cli:dynamic-provider": {Class: ClassTenant},
+	"cli:lease":            {Class: ClassTenant},
 
 	// The Compose delivery verbs (#63). `run` and `compose` both reach the
 	// tenant-scoped delivery routes (GET .../delivery and its offline-records

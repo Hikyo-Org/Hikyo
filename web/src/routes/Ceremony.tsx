@@ -60,7 +60,16 @@ import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHando
  * the server — the same route, the same audit surface — but they are not the
  * same sentence to a person, and the modal owes them the true one.
  */
-export type CeremonyPurpose = 'reveal' | 'clipboard' | 'copy' | 'publish' | 'restore' | 'pin';
+export type CeremonyPurpose =
+  | 'reveal'
+  | 'clipboard'
+  | 'copy'
+  | 'publish'
+  | 'restore'
+  | 'pin'
+  | 'approve'
+  | 'reject'
+  | 'bypass';
 
 const PURPOSE_VERB: Record<CeremonyPurpose, string> = {
   reveal: 'reveal',
@@ -69,6 +78,9 @@ const PURPOSE_VERB: Record<CeremonyPurpose, string> = {
   publish: 'publish into',
   restore: 'restore an earlier revision of',
   pin: 'pin a historical revision of',
+  approve: 'approve changes in',
+  reject: 'reject changes in',
+  bypass: 'bypass approvals in',
 };
 
 /**
@@ -84,7 +96,10 @@ const PURPOSE_VERB: Record<CeremonyPurpose, string> = {
  * `copy` is the source leg of moving material INTO another environment, which
  * is a different route and a different decision.
  */
-const SIGNED_OPERATION: Record<CeremonyPurpose, 'reveal' | 'copy' | 'publish'> = {
+const SIGNED_OPERATION: Record<
+  CeremonyPurpose,
+  'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass'
+> = {
   reveal: 'reveal',
   clipboard: 'reveal',
   copy: 'copy',
@@ -97,6 +112,9 @@ const SIGNED_OPERATION: Record<CeremonyPurpose, 'reveal' | 'copy' | 'publish'> =
   // the two decisions they are actually taking.
   restore: 'reveal',
   pin: 'reveal',
+  approve: 'approve',
+  reject: 'reject',
+  bypass: 'bypass',
 };
 
 export type CeremonyRequest = {
@@ -192,7 +210,7 @@ export function Ceremony({
         {title}
       </h2>
       <p className="ceremony__lede">
-        This confirms a <strong>disclosure</strong>, not your account security. It is separate from
+        This confirms a <strong>{request.purpose === 'approve' || request.purpose === 'reject' || request.purpose === 'bypass' ? 'change decision' : 'disclosure'}</strong>, not your account security. It is separate from
         signing in and from any step-up you have already done.
         {workspace === null ? null : (
           <>
@@ -323,7 +341,7 @@ export function WorkspaceStepUp({
   onCancel,
 }: {
   origin: string;
-  operation: 'reveal' | 'copy' | 'publish';
+  operation: 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass';
   environmentId: string;
   keyIds: readonly string[];
   firstRef: React.RefObject<HTMLButtonElement | null>;

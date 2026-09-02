@@ -59,12 +59,15 @@ func forbidden(err error) bool {
 // disclosure names what a CLI disclosure is about to do, for the ceremony
 // that may have to precede it: the purpose and the keys per environment.
 type disclosure struct {
-	// purpose is "reveal" or "copy" (service.ReauthPurpose on the wire).
+	// purpose is a non-adapter service.ReauthPurpose on the wire.
 	purpose string
 	// keys resolves the enumerated unit for one environment: the ids of the
 	// secret keys the act will open there. It is consulted only when a
 	// browser handoff is needed, so the common case costs no extra request.
 	keys func(ctx context.Context, env string) ([]string, error)
+	// window overrides the read-authorized reveal-window route for decisions
+	// whose own operation is authorized by publish instead.
+	window func(ctx context.Context, env string) (apigen.RevealWindow, error)
 }
 
 // withRevealCeremony runs a disclosure, and on the server's refusal opens the
@@ -99,13 +102,23 @@ func withRevealCeremony(ctx context.Context, client *Client, st *State, ios IO, 
 func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, artifact *SessionArtifact,
 	projectBase, env string, d disclosure, refusal error) error {
 	var window apigen.RevealWindow
-	if err := client.Do(ctx, http.MethodGet, revealWindowPath(projectBase, env), nil, &window); err != nil {
+	if d.window != nil {
+		var err error
+		window, err = d.window(ctx, env)
+		if err != nil {
+			return err
+		}
+	} else if err := client.Do(ctx, http.MethodGet, revealWindowPath(projectBase, env), nil, &window); err != nil {
 		return err
 	}
 	if window.Live {
 		return nil
 	}
-	if !window.CanReveal {
+	// Approval votes and bypasses require publish authority, not reveal. Their
+	// failed action is the authoritative capability check, so the reveal-window
+	// affordance must not block their purpose-bound ceremony.
+	approvalDecision := d.purpose == "approve" || d.purpose == "reject" || d.purpose == "bypass"
+	if !window.CanReveal && !approvalDecision {
 		return refusal
 	}
 	// Dispatch by what the environment allows AND what the account can
@@ -138,9 +151,16 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 		if err != nil {
 			return err
 		}
-		operation := "value.reveal"
-		if d.purpose == "copy" {
-			operation = "value.copy-source"
+		operation := map[string]string{
+			"reveal":  "value.reveal",
+			"copy":    "value.copy-source",
+			"publish": "value.copy-destination",
+			"approve": "approval.vote",
+			"reject":  "approval.vote",
+			"bypass":  "approval.bypass",
+		}[d.purpose]
+		if operation == "" {
+			return failf(ExitInternal, "unknown reauthentication purpose %q", d.purpose)
 		}
 		fmt.Fprintf(ios.Stderr, "disclosure in %s: %s, so the ceremony is the browser's. Opening it to authorize %d key(s)...\n", env, why, len(keyIDs))
 		return runCLIDisclosureReauth(ctx, client, st, *artifact, d.purpose, operation, env, keyIDs, ios.OpenURL)

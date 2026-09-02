@@ -189,6 +189,8 @@ jobs:
         run: ./scripts/ci/check-required-jobs_test.sh
       - name: API freeze guard fixture
         run: ./scripts/ci/check-api-freeze_test.sh
+      - name: Parity registry issue liveness fixture
+        run: ./scripts/ci/check-parity-issues_test.sh
       - name: Changed-path classifier fixture
         run: ./scripts/ci/classify-changed-paths_test.sh
       - name: CI job registry and workflow bijection fixture
@@ -517,6 +519,14 @@ jobs:
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Enforce frozen API surface
         run: ./scripts/ci/check-api-freeze.sh
+      # WebUI parity (#490): every `issue:` row in api/parity.yaml must still be
+      # open. Public-repo issue reads need only the workflow token; the script
+      # fails loud on a denied read rather than guessing.
+      - name: Parity registry references only open issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: ./scripts/ci/check-parity-issues.sh
 
   # The TypeScript half of the contract chain. It is a separate job because it
   # needs a different toolchain, and because a Go-only change must not be able
@@ -804,7 +814,10 @@ jobs:
       - name: Go tests (transport, serving rules, browser session)
         # Restored GOCACHE may contain passing test results. Compile from cache,
         # but always execute against a fresh build.
-        run: go test -count=1 -tags ui ./internal/server/... ./internal/webui/...
+        # `./api` rides here too: its parity registry tests read web/src, so a
+        # web-only change that drops an operation import must fail on this
+        # plan, not on the next Go change.
+        run: go test -count=1 -tags ui ./api/... ./internal/server/... ./internal/webui/...
 
   # Fast package/build checks stay together; the historically dominant
   # internal/isolation package runs on three independent PostgreSQL runners.

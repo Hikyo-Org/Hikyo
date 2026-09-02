@@ -24,6 +24,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/oidcfed"
 	"github.com/Hikyo-Org/hikyo/internal/remotefetch"
@@ -120,6 +121,7 @@ type Server struct {
 	log                *slog.Logger
 	scheduler          *Scheduler
 	adapterWorker      *adapter.Worker
+	dynamicWorker      *dynamicWorker
 	updateReconciler   *service.Updates
 }
 
@@ -450,7 +452,8 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	if err != nil {
 		return nil, fmt.Errorf("boot: outbound directory client: %w", err)
 	}
-	retentionSvc := &service.Retention{DB: db}
+	retentionSvc := &service.Retention{DB: db, Backup: backupPolicy(cfg)}
+	backupSvc := &service.Backup{DB: db, Options: backup.Options{Recipients: cfg.BackupRecipients}}
 	approvalsSvc := &service.Approvals{DB: db, Auth: authSvc, Keyring: kr}
 	updateHTTP, err := updatecheck.NewHTTPClient(3 * time.Second)
 	if err != nil {
@@ -480,6 +483,11 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	}
 	adapterService := &service.Adapters{DB: db, Auth: authSvc, Keyring: kr, Budget: budget, ModuleFactory: moduleWiring.service}
 	definitionsService := &service.Definitions{DB: db, Keyring: kr, Advisory: advisory, Budget: budget, Scan: ruleset}
+	dynamicRuntime := store.NewDynamicRuntime(db)
+	dynamicService := &service.Dynamic{
+		DB: db, Auth: authSvc, Keyring: kr, Budget: budget, Runtime: dynamicRuntime,
+		ProviderFactory: newDynamicFactory(cfg.DynamicEgressPolicy), LeaseDeadline: dynamicProviderDeadline,
+	}
 
 	updatesService := &service.Updates{DB: db, Source: updateSource, Version: Version, Channel: updatecheck.Channel(cfg.UpdateChannel), Control: updateControl, Log: log}
 	// One RED collector shared by the API middleware (writer) and the
@@ -490,6 +498,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	// their counts at scrape time under scheduler authority (#151, mirroring the
 	// storage high-water gauge's shared-door read).
 	metrics.SetApprovalSource(approvalMetricsSource{svc: approvalsSvc})
+	metrics.SetDynamicSource(dynamicGaugeSource{runtime: dynamicRuntime, log: log})
 	api := &server.API{
 		Auth:     authSvc,
 		SAMLAuth: authSvc,
@@ -544,6 +553,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		Providers:       &service.Providers{DB: db, Keyring: kr, ExternalOrigin: cfg.ExternalOrigin, Log: log},
 		SAMLProviders:   samlProviders,
 		Adapters:        adapterService,
+		Dynamic:         dynamicService,
 		Audits:          &service.Audits{DB: db, Budget: budget},
 		Approvals:       approvalsSvc,
 		// ONE SCIM service behind both surfaces: the administration verbs and
@@ -622,7 +632,11 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 			},
 		}}},
 		adapterWorker:    adapterWorker,
+		dynamicWorker:    &dynamicWorker{svc: dynamicService, id: "dynamic-worker-" + uuid.Must(uuid.NewV7()).String(), log: log},
 		updateReconciler: updatesService,
+	}
+	if cfg.BackupScheduled() {
+		srv.scheduler.Jobs = append(srv.scheduler.Jobs, backupJobs(cfg, log, backupSvc)...)
 	}
 	if cfg.HA {
 		coord, onTick, status, err := configureHA(ctx, cfg, log, db, sc, kr)
@@ -774,10 +788,21 @@ func (s *Server) serve(ctx context.Context, ready func()) error {
 			s.adapterWorker.Run(workerCtx)
 		}()
 	}
+	var dynamicWorkerDone chan struct{}
+	if s.dynamicWorker != nil {
+		dynamicWorkerDone = make(chan struct{})
+		go func() {
+			defer close(dynamicWorkerDone)
+			s.dynamicWorker.Run(workerCtx)
+		}()
+	}
 	defer func() {
 		stopWorker()
 		if workerDone != nil {
 			<-workerDone
+		}
+		if dynamicWorkerDone != nil {
+			<-dynamicWorkerDone
 		}
 	}()
 	reloaderCtx, stopReloader := context.WithCancel(ctx)

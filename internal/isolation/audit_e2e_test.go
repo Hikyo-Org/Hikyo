@@ -481,6 +481,10 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// converge/abort and teardown all traverse their real service/runtime
 		// boundaries before the registry-emitter closure check.
 		runAdapterAuditLifecycle(t, db)
+		// Dynamic secrets (#147): provider configuration, lease mint (display-
+		// once), worker-driven renew/revoke, an ambiguous outcome, reconcile and
+		// provider deletion all traverse the real service, runtime and store.
+		runDynamicLifecycle(t, db)
 		// The multi-instance surface (#71): both tiers, against a real pinned
 		// TLS peer, so every remote.* type has a real emitter behind it too.
 		// Before the backup lifecycle, because that one advances the restore

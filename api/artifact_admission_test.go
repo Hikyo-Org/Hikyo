@@ -76,6 +76,14 @@ func TestWorkloadRevealHistoryWireSurfaceStaysPinBound(t *testing.T) {
 		"reconcileOfflineRecords": "write-only disclosure records",
 		"publishPendingChanges":   "not reachable with workload read",
 		"getRevision":             "non-value-bearing revision metadata",
+		// Dynamic secrets (#147): a workload mints and manages its OWN leased
+		// credential. Mint discloses a freshly created credential once (never a
+		// stored Hikyo value); the rest carry lease metadata, no stored value.
+		"mintLease":   "display-once leased credential mint",
+		"renewLease":  "lease lifecycle, no stored value",
+		"revokeLease": "lease lifecycle, no stored value",
+		"listLeases":  "non-value-bearing lease metadata",
+		"showLease":   "non-value-bearing lease metadata",
 	}
 	seen := make(map[string]bool, len(wantMachine))
 	for _, operation := range operations {

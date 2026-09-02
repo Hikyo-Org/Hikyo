@@ -89,7 +89,7 @@ describe('the closed flow registry', () => {
 describe('surfacesForFlow', () => {
   it('resolves a flow\'s claims to the router\'s own records', () => {
     expect(surfacesForFlow('shell').map((s) => s.id)).toEqual(['overview', 'projects']);
-    expect(surfacesForFlow('login').map((s) => s.path)).toEqual(['/login', '/auth/oidc/done']);
+    expect(surfacesForFlow('login').map((s) => s.path)).toEqual(['/login', '/auth/oidc/done', '/establish']);
   });
 
   it('throws on an unknown flow rather than returning an empty loop', () => {

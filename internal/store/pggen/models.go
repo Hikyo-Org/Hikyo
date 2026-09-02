@@ -348,6 +348,22 @@ type AuthInstanceState struct {
 	ReactivatedAt   pgtype.Timestamptz
 }
 
+type BackupState struct {
+	ID                     int64
+	LastSuccessAt          pgtype.Timestamptz
+	LastArtifactName       string
+	LastArtifactBytes      int64
+	LastFailureAt          pgtype.Timestamptz
+	LastFailureReason      string
+	LastPruneAt            pgtype.Timestamptz
+	LastDrillAt            pgtype.Timestamptz
+	LastDrillOk            bool
+	LastDrillArchive       string
+	LastDrillElapsedMs     int64
+	LastDrillBinaryVersion string
+	LastDrillSchemaVersion int64
+}
+
 type CliReauthHandoff struct {
 	ID              string
 	StateVerifier   []byte
@@ -409,6 +425,57 @@ type DefinitionsPlan struct {
 	ProvenanceRef      pgtype.Text
 	ProvenanceActor    pgtype.Text
 	ScanSnapshot       string
+}
+
+type DynamicEffect struct {
+	ID             string
+	OrgID          string
+	ProjectID      string
+	EnvironmentID  string
+	LeaseID        string
+	Kind           string
+	IntentAuditID  string
+	OutcomeAuditID pgtype.Text
+	Outcome        pgtype.Text
+	CreatedAt      pgtype.Timestamptz
+	FinishedAt     pgtype.Timestamptz
+}
+
+type DynamicLease struct {
+	ID               string
+	OrgID            string
+	ProjectID        string
+	EnvironmentID    string
+	ProviderID       string
+	PrincipalID      string
+	PrincipalClass   string
+	ProviderHandle   string
+	State            string
+	IssuedAt         pgtype.Timestamptz
+	ExpiresAt        pgtype.Timestamptz
+	MaxTtlSeconds    int64
+	LastTransitionAt pgtype.Timestamptz
+	LeaseOwner       pgtype.Text
+	LeaseExpiresAt   pgtype.Timestamptz
+	LeaseClaimToken  int64
+	AttemptCount     int32
+	NextAttemptAt    pgtype.Timestamptz
+	CreatedAt        pgtype.Timestamptz
+}
+
+type DynamicProvider struct {
+	ID                        string
+	OrgID                     string
+	ProjectID                 string
+	Kind                      string
+	Origin                    string
+	TlsMode                   string
+	GrantRole                 string
+	AdminCredentialCiphertext []byte
+	CredentialSetAt           pgtype.Timestamptz
+	AuthorityPrincipalID      string
+	State                     string
+	CreatedAt                 pgtype.Timestamptz
 }
 
 type Environment struct {

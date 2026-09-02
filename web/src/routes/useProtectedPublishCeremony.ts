@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { useTransport } from '../api/transport.tsx';
+import { fetchApprovalCeremony } from '../api/approvals.ts';
 import { fetchRevealWindow, type EnvRef } from '../api/values.ts';
 import type { CeremonyPurpose, CeremonyRequest } from './Ceremony.tsx';
 import {
@@ -12,6 +13,8 @@ export type ProtectedPublishTarget = {
   readonly environmentId: string;
   readonly environmentName: string;
   readonly keys: CeremonyRequest['keys'];
+  /** A named approval uses its publish-authorized ceremony preflight. */
+  readonly approvalRequestId?: string;
   /**
    * What the human is TOLD they are authorising. `publish` by default, because
    * that is what publish and copy-into-protected share. The history drawer
@@ -61,6 +64,7 @@ export function useProtectedPublishCeremony(
     const operationKey = targets.map((target) => [
         target.purpose ?? 'publish',
         target.environmentId,
+        target.approvalRequestId ?? '',
         target.keys.map((key) => key.id),
       ]);
     const task = ceremony.begin(operationKey);
@@ -74,15 +78,31 @@ export function useProtectedPublishCeremony(
         return;
       }
       try {
-        const window = await fetchRevealWindow(
-          {
-            ...refData,
-            environment: target.environmentId,
-          },
-          transport.client,
-          task.signal,
-        );
+        const binding = target.approvalRequestId === undefined
+          ? null
+          : await fetchApprovalCeremony(
+              refData,
+              target.environmentId,
+              target.approvalRequestId,
+              transport.client,
+              task.signal,
+            );
+        const window = binding?.window ?? await fetchRevealWindow(
+            { ...refData, environment: target.environmentId },
+            transport.client,
+            task.signal,
+          );
+        const keys = binding === null
+          ? target.keys
+          : binding.key_ids.map((id) => target.keys.find((key) => key.id === id) ?? { id, name: id });
         if (!ceremony.isCurrent(task)) return;
+        // An ordinary merge needs a ceremony only when it publishes into a
+        // protected environment. Votes and bypasses always consume their own
+        // purpose-bound decision, even in an unprotected environment.
+        if ((target.purpose ?? 'publish') === 'publish' && !window.protected) {
+          await advance(remaining.slice(1));
+          return;
+        }
         if (window.live && !window.single_decision) {
           await advance(remaining.slice(1));
           return;
@@ -93,7 +113,7 @@ export function useProtectedPublishCeremony(
             purpose: target.purpose ?? 'publish',
             environmentId: target.environmentId,
             environmentName: target.environmentName,
-            keys: target.keys,
+            keys,
             window,
           },
           () => void advance(remaining.slice(1)),

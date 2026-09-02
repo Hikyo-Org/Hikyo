@@ -601,3 +601,74 @@ func TestHSTSAcceptsLegacyNonLoopbackIPv4Hostname(t *testing.T) {
 		t.Fatal("EmitHSTS(https://126.1) = false, want true for browser-canonicalized 126.0.0.1")
 	}
 }
+
+func TestBackupScheduleDefaultsAndBounds(t *testing.T) {
+	policy := []string{"HIKYO_DB", "sqlite:/data/hikyo.db",
+		"HIKYO_BACKUP_RECIPIENTS", "age1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
+		"HIKYO_BACKUP_DIR", "/var/backups/hikyo"}
+	cfg, _, err := Load("server", nil, env(policy...), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.BackupScheduled() {
+		t.Fatal("a complete export policy must enable the schedule")
+	}
+	if cfg.BackupInterval != DefaultBackupInterval || cfg.BackupRPO != DefaultBackupRPO ||
+		cfg.BackupRetainCount != DefaultBackupRetainCount || cfg.BackupRetainDays != DefaultBackupRetainDays ||
+		cfg.BackupRTOTarget != DefaultBackupRTOTarget {
+		t.Fatalf("defaults = %+v", cfg)
+	}
+
+	cfg, _, err = Load("server", nil, env(append(policy,
+		"HIKYO_BACKUP_INTERVAL", "6h", "HIKYO_BACKUP_RPO", "8h",
+		"HIKYO_BACKUP_RETAIN_COUNT", "3", "HIKYO_BACKUP_RETAIN_DAYS", "30",
+		"HIKYO_BACKUP_RTO_TARGET", "45m")...), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.BackupInterval != 6*time.Hour || cfg.BackupRPO != 8*time.Hour || cfg.BackupRetainCount != 3 ||
+		cfg.BackupRetainDays != 30 || cfg.BackupRTOTarget != 45*time.Minute {
+		t.Fatalf("explicit knobs = %+v", cfg)
+	}
+
+	for name, over := range map[string][]string{
+		"interval below the hour floor":  {"HIKYO_BACKUP_INTERVAL", "30m"},
+		"rpo shorter than the interval":  {"HIKYO_BACKUP_INTERVAL", "12h", "HIKYO_BACKUP_RPO", "6h"},
+		"retain count of zero":           {"HIKYO_BACKUP_RETAIN_COUNT", "0"},
+		"retain count above ceiling":     {"HIKYO_BACKUP_RETAIN_COUNT", "100001"},
+		"retain days above the ceiling":  {"HIKYO_BACKUP_RETAIN_DAYS", "181"},
+		"retain days of zero":            {"HIKYO_BACKUP_RETAIN_DAYS", "0"},
+		"malformed duration":             {"HIKYO_BACKUP_INTERVAL", "daily"},
+		"non-positive rto target":        {"HIKYO_BACKUP_RTO_TARGET", "0s"},
+		"malformed count is not default": {"HIKYO_BACKUP_RETAIN_COUNT", "seven"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, _, err := Load("server", nil, env(append(policy, over...)...), nil); err == nil {
+				t.Fatal("misconfiguration was accepted; the ops spec requires a startup error")
+			}
+		})
+	}
+}
+
+func TestBackupScheduleKnobsWithoutPolicyRefuse(t *testing.T) {
+	// A schedule knob on an instance that exports nothing describes a
+	// schedule that never runs; the operator who set it believes otherwise.
+	for _, key := range []string{"HIKYO_BACKUP_INTERVAL", "HIKYO_BACKUP_RPO", "HIKYO_BACKUP_RETAIN_COUNT", "HIKYO_BACKUP_RETAIN_DAYS"} {
+		value := "12h"
+		if strings.HasSuffix(key, "COUNT") || strings.HasSuffix(key, "DAYS") {
+			value = "5"
+		}
+		if _, _, err := Load("server", nil, env("HIKYO_DB", "sqlite:/data/hikyo.db", key, value), nil); err == nil {
+			t.Fatalf("%s without an export policy was accepted", key)
+		}
+	}
+	// The RTO target is the drill's verdict line and the drill needs no
+	// export policy of its own, so it stands alone.
+	cfg, _, err := Load("server", nil, env("HIKYO_DB", "sqlite:/data/hikyo.db", "HIKYO_BACKUP_RTO_TARGET", "20m"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.BackupScheduled() || cfg.BackupRTOTarget != 20*time.Minute {
+		t.Fatalf("standalone RTO target: scheduled=%v target=%s", cfg.BackupScheduled(), cfg.BackupRTOTarget)
+	}
+}

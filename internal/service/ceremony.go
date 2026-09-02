@@ -199,6 +199,53 @@ type Reveal struct {
 	Auth *Auth
 }
 
+func reauthWindowState(ctx context.Context, auth *Auth, az *authz.TxAuthorizer,
+	caller authz.Identity, scope domain.Scope) (RevealWindow, error) {
+	effective, err := auth.effectiveReauthWindow(ctx, az, string(scope.Env))
+	if err != nil {
+		return RevealWindow{}, err
+	}
+	settings, err := az.EnvironmentReauthSettings(ctx, string(scope.Env))
+	if err != nil {
+		return RevealWindow{}, err
+	}
+	canReveal, err := az.CallerHolds(ctx, caller, authz.OpValueReveal, scope)
+	if err != nil {
+		return RevealWindow{}, err
+	}
+	out := RevealWindow{
+		EffectiveWindowSeconds: int(effective / time.Second),
+		Protected:              settings.Protected,
+		TOTPOffered:            effective > 0,
+		CanReveal:              canReveal,
+	}
+	if skipsCeremony(caller) {
+		return out, nil
+	}
+	w, err := az.ReauthWindowFor(ctx, caller.SessionID, string(scope.Env))
+	if errors.Is(err, domain.ErrNotFound) {
+		return out, nil
+	}
+	if err != nil {
+		return RevealWindow{}, err
+	}
+	epoch, err := az.CredentialEpoch(ctx)
+	if err != nil {
+		return RevealWindow{}, err
+	}
+	now := auth.now()
+	if w.CredentialEpoch != epoch || !now.Before(w.HardExpiresAt) || !now.Before(w.WindowExpiresAt) {
+		return out, nil
+	}
+	out.Live = true
+	out.SingleDecision = w.SingleDecision
+	out.ExpiresAt = w.WindowExpiresAt
+	if w.HardExpiresAt.Before(out.ExpiresAt) {
+		out.ExpiresAt = w.HardExpiresAt
+	}
+	return out, nil
+}
+
 // Window resolves the guard's state for one environment.
 func (s *Reveal) Window(ctx context.Context, actor Actor, scope domain.Scope) (RevealWindow, error) {
 	if s.Auth == nil {
@@ -221,55 +268,8 @@ func (s *Reveal) Window(ctx context.Context, actor Actor, scope domain.Scope) (R
 		if _, err := az.Authorize(ctx, caller, authz.OpRevealWindowRead, scope); err != nil {
 			return err
 		}
-		effective, err := s.Auth.effectiveReauthWindow(ctx, az, string(scope.Env))
-		if err != nil {
-			return err
-		}
-		settings, err := az.EnvironmentReauthSettings(ctx, string(scope.Env))
-		if err != nil {
-			return err
-		}
-		canReveal, err := az.CallerHolds(ctx, caller, authz.OpValueReveal, scope)
-		if err != nil {
-			return err
-		}
-		out = RevealWindow{
-			EffectiveWindowSeconds: int(effective / time.Second),
-			Protected:              settings.Protected,
-			TOTPOffered:            effective > 0,
-			CanReveal:              canReveal,
-		}
-		if skipsCeremony(caller) {
-			// A machine never reauthenticates, so it never has a window and
-			// never prompts. Reporting "no window, no TOTP" would read as "you
-			// will be prompted", which is the opposite of the truth.
-			return nil
-		}
-		w, err := az.ReauthWindowFor(ctx, caller.SessionID, string(scope.Env))
-		if errors.Is(err, domain.ErrNotFound) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		epoch, err := az.CredentialEpoch(ctx)
-		if err != nil {
-			return err
-		}
-		// The same three liveness conditions ConsumeReauthWindow enforces, read
-		// rather than consumed. A window this reports as live is one that
-		// consumption would accept; reporting a lapsed one live would put a
-		// countdown on a chip that cannot disclose.
-		if w.CredentialEpoch != epoch || !now.Before(w.HardExpiresAt) || !now.Before(w.WindowExpiresAt) {
-			return nil
-		}
-		out.Live = true
-		out.SingleDecision = w.SingleDecision
-		out.ExpiresAt = w.WindowExpiresAt
-		if w.HardExpiresAt.Before(out.ExpiresAt) {
-			out.ExpiresAt = w.HardExpiresAt
-		}
-		return nil
+		out, err = reauthWindowState(ctx, s.Auth, az, caller, scope)
+		return err
 	})
 	if err != nil {
 		return RevealWindow{}, err
@@ -286,8 +286,9 @@ func (s *Reveal) Window(ctx context.Context, actor Actor, scope domain.Scope) (R
 // gave to "reveal · production" is spendable on "publish into · production"
 // over the same keys, which is a different decision they were never shown.
 //
-// Four members: reading plaintext, taking it out of an environment, putting it
-// into one, and minting or widening a machine path to it.
+// The closed members distinguish reading plaintext, taking it out of an
+// environment, putting it into one, minting or widening a machine path, and
+// the approval decisions below.
 type ReauthPurpose string
 
 const (
@@ -313,6 +314,9 @@ const (
 	// disclosure purpose — an assertion given to reveal production is not
 	// consent to approve a change to it.
 	PurposeApprove ReauthPurpose = "approve"
+	// PurposeReject is an approver's rejection. It is distinct from approve so
+	// the signed decision always matches the button the human selected.
+	PurposeReject ReauthPurpose = "reject"
 	// PurposeBypass is the emergency-bypass decision (#151): a named bypasser
 	// signs "I am committing this change WITHOUT the required approval", the
 	// single most consequential action the engine allows, so it is its own
@@ -325,7 +329,7 @@ const (
 func (p ReauthPurpose) Valid() bool {
 	switch p {
 	case PurposeReveal, PurposeCopy, PurposePublish, PurposeMint, PurposeAdapter,
-		PurposeApprove, PurposeBypass:
+		PurposeApprove, PurposeReject, PurposeBypass:
 		return true
 	}
 	return false

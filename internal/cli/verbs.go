@@ -170,6 +170,8 @@ var verbHandlers = map[string]func(context.Context, IO, []string) error{
 	"import":              runImport,
 	"definitions":         runDefinitions,
 	"adapter":             runAdapter,
+	"dynamic-provider":    runDynamicProvider,
+	"lease":               runLease,
 	"run":                 runRun,
 	"compose":             runCompose,
 	"update":              runUpdate,
@@ -328,6 +330,26 @@ adapters:
   adapter credentials are read with terminal echo disabled, from stdin, or
   from --value-file. There is no credential-value argv flag.
 
+dynamic secrets:
+  hikyo dynamic-provider create --provider postgres --origin <postgres://user@host:port/db>
+      --grant-role <role> [--stdin | --value-file PATH]
+  hikyo dynamic-provider list [-o table|json]
+  hikyo dynamic-provider show <provider> [-o table|json]
+  hikyo dynamic-provider credential set --provider <provider> [--stdin | --value-file PATH]
+  hikyo dynamic-provider credential revoke --provider <provider>
+  hikyo dynamic-provider delete <provider> [--revoke-all]
+  hikyo lease mint --provider <provider> --env E --ttl <duration>
+      [--output-file PATH | --dangerously-print]
+  hikyo lease list --env E [-o table|json]
+  hikyo lease show <lease> --env E [-o table|json]
+  hikyo lease renew <lease> --env E [--ttl <duration>]
+  hikyo lease revoke <lease> --env E
+  hikyo lease settle <lease> --env E
+
+  the minted credential is shown exactly once, through the print triad (a
+  controlling terminal, --output-file, or --dangerously-print); the admin
+  provider credential is read like an adapter credential, never on argv.
+
 delivery:                                          machine credential only
   hikyo run [--config-only] [--allow-override KEY,KEY] [--project-directory DIR]
       [--token-file PATH] -- <command> [args...]   fetch, merge, exec
@@ -360,6 +382,7 @@ access:
   hikyo access grant remove --principal <id> --capability <atom>
   hikyo access grant template --principal <id> --template <name>
   hikyo access member list [--org O] [--project P] [-o table|json]
+  hikyo access member invite <username> [--display-name NAME] [--template T] [--org O | --instance-scope] [--output-file PATH | --dangerously-print]
   hikyo access member remove --principal <id>
   hikyo project-settings get --env E [-o table|json]
   hikyo project-settings set --env E [--protected true|false] [--reauth-window-seconds N|inherit]

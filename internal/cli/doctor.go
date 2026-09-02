@@ -59,7 +59,7 @@ func runDoctor(ctx context.Context, ios IO, args []string) error {
 		return err
 	}
 	if result.Status == "error" {
-		return failf(ExitRefused, "doctor found provider errors")
+		return failf(ExitRefused, "doctor found errors")
 	}
 	return nil
 }
@@ -78,6 +78,18 @@ func doctorResults(providers apigen.SamlProviderList, health apigen.RetentionHea
 	rows = append(rows, []string{storage.Severity, storage.Provider, storage.Code, storage.EffectiveAt, storage.Message})
 	if storage.Severity == "warn" && result.Status == "ok" {
 		result.Status = "warning"
+	}
+	for _, finding := range doctorBackupFindings(health.Backup, now) {
+		result.Findings = append(result.Findings, finding)
+		rows = append(rows, []string{finding.Severity, finding.Provider, finding.Code, finding.EffectiveAt, finding.Message})
+		switch finding.Severity {
+		case "error":
+			result.Status = "error"
+		case "warn":
+			if result.Status == "ok" {
+				result.Status = "warning"
+			}
+		}
 	}
 	providerRowStart := len(rows)
 	for _, provider := range providers.Providers {
@@ -148,4 +160,59 @@ func formatBytesGiB(bytes int) string {
 		return fmt.Sprintf("%.2f GiB", float64(bytes)/float64(gib))
 	}
 	return fmt.Sprintf("%.1f MiB", float64(bytes)/float64(1<<20))
+}
+
+// doctorBackupFindings is the disaster-recovery half (#145, ops-spec section
+// 11): the recovery point objective as an ERROR when exceeded (a silently
+// failing export converts the RPO to infinity, and doctor's exit status is
+// how a cron-driven check notices), and the quarterly restore drill as a
+// warning when stale or never run. The server owns both verdicts; doctor
+// renders them.
+func doctorBackupFindings(b apigen.BackupHealth, now time.Time) []doctorFinding {
+	age := func(at *time.Time) (string, time.Duration) {
+		if at == nil {
+			return "-", 0
+		}
+		d := now.Sub(at.UTC())
+		if d < 0 {
+			d = 0
+		}
+		return at.UTC().Format(time.RFC3339), d.Truncate(time.Second)
+	}
+	rpo := doctorFinding{Provider: "-", Code: "backup-rpo", Severity: "ok"}
+	rpo.EffectiveAt, _ = age(b.LastSuccessAt)
+	_, artifactAge := age(b.LastSuccessAt)
+	switch {
+	case !b.Scheduled:
+		rpo.Severity = "warn"
+		rpo.Message = "no export schedule: set HIKYO_BACKUP_RECIPIENTS and HIKYO_BACKUP_DIR"
+	case b.RpoExceeded && b.LastSuccessAt == nil:
+		rpo.Severity = "error"
+		rpo.Message = fmt.Sprintf("no successful export has ever been recorded (RPO %s)", time.Duration(b.RpoSeconds)*time.Second)
+	case b.RpoExceeded:
+		rpo.Severity = "error"
+		rpo.Message = fmt.Sprintf("newest export is %s old, over the %s RPO", artifactAge, time.Duration(b.RpoSeconds)*time.Second)
+	default:
+		rpo.Message = fmt.Sprintf("newest export is %s old (RPO %s)", artifactAge, time.Duration(b.RpoSeconds)*time.Second)
+	}
+	if b.LastFailureAt != nil && (b.LastSuccessAt == nil || b.LastFailureAt.After(*b.LastSuccessAt)) {
+		rpo.Message += "; last export failed: " + b.LastFailureReason
+	}
+	drill := doctorFinding{Provider: "-", Code: "restore-drill", Severity: "ok"}
+	drill.EffectiveAt, _ = age(b.LastDrillAt)
+	_, drillAge := age(b.LastDrillAt)
+	switch {
+	case b.LastDrillAt == nil:
+		drill.Severity = "warn"
+		drill.Message = "no restore drill has ever been recorded: run `hikyo restore drill` quarterly"
+	case !b.LastDrillOk:
+		drill.Severity = "warn"
+		drill.Message = fmt.Sprintf("last restore drill %s ago FAILED; the recovery path is not proven", drillAge)
+	case b.DrillStale:
+		drill.Severity = "warn"
+		drill.Message = fmt.Sprintf("last successful restore drill is %s old (> 90d)", drillAge)
+	default:
+		drill.Message = fmt.Sprintf("last successful restore drill is %s old", drillAge)
+	}
+	return []doctorFinding{rpo, drill}
 }

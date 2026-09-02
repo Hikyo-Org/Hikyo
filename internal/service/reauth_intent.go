@@ -32,6 +32,7 @@ const (
 	intentPublish
 	intentMint
 	intentApprove
+	intentReject
 	intentBypass
 	intentAdapterConfigure
 	intentAdapterCredentialSet
@@ -69,6 +70,7 @@ var reauthIntentDescriptors = [...]reauthIntentDescriptor{
 	{variant: intentPublish, purpose: PurposePublish, operation: authz.OpValueCopyDestination},
 	{variant: intentMint, purpose: PurposeMint, operation: authz.OpCredentialMint},
 	{variant: intentApprove, purpose: PurposeApprove, operation: authz.OpApprovalVote},
+	{variant: intentReject, purpose: PurposeReject, operation: authz.OpApprovalVote},
 	{variant: intentBypass, purpose: PurposeBypass, operation: authz.OpApprovalBypass},
 	{variant: intentAdapterConfigure, purpose: PurposeAdapter, operation: authz.OpAdapterConfigure, adapter: true},
 	{variant: intentAdapterCredentialSet, purpose: PurposeAdapter, operation: authz.OpAdapterCredentialSet, adapter: true},
@@ -127,6 +129,12 @@ func NewMintReauthIntent(environmentID string, keyIDs []string) (ReauthIntent, e
 // and exact key set (#151).
 func NewApproveReauthIntent(environmentID string, keyIDs []string) (ReauthIntent, error) {
 	return NewDisclosureReauthIntent(PurposeApprove, []string{environmentID}, keyIDs)
+}
+
+// NewRejectReauthIntent binds an approver's rejection to the request's
+// environment and exact key set (#151).
+func NewRejectReauthIntent(environmentID string, keyIDs []string) (ReauthIntent, error) {
+	return NewDisclosureReauthIntent(PurposeReject, []string{environmentID}, keyIDs)
 }
 
 // NewBypassReauthIntent binds an emergency bypass to the request's environment

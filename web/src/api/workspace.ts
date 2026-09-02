@@ -447,7 +447,7 @@ export type StepUpParams = {
   /** The workspace session being elevated. A step-up NEVER mints a second one. */
   readonly session: string;
   /** What the reauthentication authorizes, as the reveal endpoint consumes it. */
-  readonly operation: 'reveal' | 'copy' | 'publish';
+  readonly operation: 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass';
   /** The environment the elevation covers. */
   readonly environment: string;
   /** The enumerated key unit the elevation covers. */

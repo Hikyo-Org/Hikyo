@@ -96,6 +96,20 @@ func (r sqliteValues) List(ctx context.Context, p authz.Proof) ([]ValueEntry, er
 	return out, nil
 }
 
+func (r sqliteValues) SampleSecretEntry(ctx context.Context, p authz.Proof) (ValueEntry, error) {
+	if _, err := authz.Verify(p, authz.StoreValuesSampleSecretEntry, r.tok); err != nil {
+		return ValueEntry{}, err
+	}
+	row, err := r.q.SampleSecretValueEntry(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ValueEntry{}, ErrNotFound
+	}
+	if err != nil {
+		return ValueEntry{}, err
+	}
+	return valueFromSQLite(row)
+}
+
 func (r sqliteValues) ListForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptValueRow, error) {
 	chain, err := authz.Verify(p, authz.StoreValuesListForReencrypt, r.tok)
 	if err != nil {
@@ -439,6 +453,20 @@ func (r pgValues) InstancePayloadByProject(ctx context.Context, p authz.Proof) (
 		out = append(out, ProjectPayloadBytes{OrgID: row.OrgID, ProjectID: row.ProjectID, Bytes: row.Bytes})
 	}
 	return out, nil
+}
+
+func (r pgValues) SampleSecretEntry(ctx context.Context, p authz.Proof) (ValueEntry, error) {
+	if _, err := authz.Verify(p, authz.StoreValuesSampleSecretEntry, r.tok); err != nil {
+		return ValueEntry{}, err
+	}
+	row, err := r.q.SampleSecretValueEntry(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ValueEntry{}, ErrNotFound
+	}
+	if err != nil {
+		return ValueEntry{}, err
+	}
+	return valueFromPG(row), nil
 }
 
 func (r pgValues) Put(ctx context.Context, p authz.Proof, entry NewValueEntry) error {

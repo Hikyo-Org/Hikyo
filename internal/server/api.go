@@ -162,6 +162,9 @@ type API struct {
 	Providers       ProviderService
 	SAMLProviders   SAMLProviderService
 	Adapters        *service.Adapters
+	// Dynamic is the dynamic-secret provider + lease surface (#147). Concrete
+	// like Adapters: it resolves the session and mints/settles leases itself.
+	Dynamic *service.Dynamic
 	// Audits is the trail read/export surface. Concrete like Adapters: it is
 	// principal-keyed and the handler resolves the session before calling it.
 	Audits *service.Audits

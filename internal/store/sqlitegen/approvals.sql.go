@@ -736,6 +736,7 @@ SELECT id, org_id, project_id, environment_id, policy_id, requester_principal_id
 FROM approval_requests
 WHERE resolved_at IS NULL AND expires_at < ?
 ORDER BY id
+LIMIT 100
 `
 
 type SelectExpiredApprovalRequestsRow struct {
@@ -748,9 +749,9 @@ type SelectExpiredApprovalRequestsRow struct {
 	ExpiresAt            string
 }
 
-// SelectExpiredApprovalRequests is the installation-wide expiry sweep: every
-// active request past its expiry, across all tenants, read under scheduler
-// authority. Cross-tenant by definition; annotated and content-pinned.
+// SelectExpiredApprovalRequests is one bounded installation-wide expiry batch.
+// Repeated scheduler runs commit progress without putting an unbounded backlog
+// inside one transaction's deadline.
 // hikyo:instance-scoped
 func (q *Queries) SelectExpiredApprovalRequests(ctx context.Context, expiresAt string) ([]SelectExpiredApprovalRequestsRow, error) {
 	rows, err := q.db.QueryContext(ctx, selectExpiredApprovalRequests, expiresAt)

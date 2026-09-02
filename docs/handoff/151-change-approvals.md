@@ -12,7 +12,7 @@ conditional-approval conjunct.
 
 Full vertical, both engines (sqlite + postgres):
 
-- **Migration 00037** (both engines): `approval_policies`,
+- **Migration 00040** (both engines, after synchronization with `main`): `approval_policies`,
   `approval_policy_approvers`, `approval_policy_bypassers`,
   `approval_requests`, `approval_votes`. FK `ON DELETE CASCADE` from requests
   to environments and from policies to projects; votes/approvers/bypassers
@@ -41,7 +41,7 @@ Full vertical, both engines (sqlite + postgres):
   per-environment review queue with approve/reject/merge/bypass) and the matrix
   / restore publish flows branch on the 202 ("submitted for approval").
 - **metrics**: `hikyo_approval_requests_open` and
-  `hikyo_approval_requests_expired_total`, label-free.
+  `hikyo_approval_requests_expired`, label-free.
 - **scheduler**: `approval_expiry_sweep` job beside `payload_gc`.
 
 ## Decisions taken / deviations from the original handoff (accept or ticket)
@@ -73,17 +73,13 @@ Full vertical, both engines (sqlite + postgres):
    `ErrApprovalRequired` via a single `republish` chokepoint. Structural
    fan-outs (schema `declare`, `environment-create`, and the draft
    `values`/`restore` publishes that already ran the gate) are exempt.
-7. **Deferred, with disclosure: the in-browser vote/bypass reauthentication
-   ceremony as a first-class WebAuthn purpose.** The client `Ceremony` binds
-   `SIGNED_OPERATION ∈ {reveal, copy, publish}`; `approve`/`bypass` are distinct
-   server operations. A protected (window-0) environment can only spend a
-   single-decision WebAuthn window, which is operation-bound, so vote/bypass in
-   the browser work today only where the environment's effective reauthentication
-   window is > 0 (an unbound TOTP/step-up window is accepted for any intent). The
-   full approve/bypass-as-WebAuthn-purpose wiring (openapi `ReauthPurpose` enum,
-   `cli_reauth.go`, `webauthn.go` intent, `Ceremony.tsx`) is a follow-up. The
-   vote/merge/bypass FLOW itself is exercised end to end at the service layer on
-   both engines.
+7. **Vote, merge, and bypass use purpose-bound reauthentication ceremonies.**
+   The browser and CLI bind `approve`, `reject`, `publish`, or `bypass` to the
+   request's exact environment and key ids through a publish-authorized
+   ceremony preflight. A protected (window-0) environment therefore
+   spends a single-decision WebAuthn window on the action the human selected;
+   an assertion for reveal or publish cannot be replayed as an approval or
+   emergency bypass.
 
 ## Tests
 
@@ -91,12 +87,18 @@ Full vertical, both engines (sqlite + postgres):
   (policy CRUD, gated-publish request creation, quorum/idempotency/conflict/
   self-approval, merge through the ordinary publish, invalidation on a policy
   change, expiry sweep, reauthenticated bypass) — also the runtime audit-emitter
-  obligation for all eight events. Plus `TestApprovalEdges*` for the four
-  fail-closed edges (draft-edited, policy-deleted merge, env-delete cascade).
+  obligation for all eight events. Plus `TestApprovalEdges*` for the
+  fail-closed edges (draft-edited, policy-deleted merge, env-delete cascade,
+  immutable policy scope, policy-id pinning, copy-before-disclosure, and
+  approved restore merge without replaying its preview token), concurrent vote
+  tests on both engines with two service instances, and bounded expiry-backlog
+  draining.
 - Playwright (`web/e2e/flows/matrix.spec.ts`, `change approvals` describe): the
-  browser proposal (covered publish → 202 → request in the queue) and the
-  surface pinned assertion set. Rides `matrix.spec.ts` (group on main) because a
-  new spec file's pinned claims never run on the PR.
+  browser proposal (covered publish → 202 → request in the queue), real
+  second-user approval, proposer merge, stale refusal, emergency bypass, and
+  the surface pinned assertion set in both viewport projects. Rides
+  `matrix.spec.ts` (group on main) because a new spec file's pinned claims never
+  run on the PR.
 
 ## Gotchas / recipes for the next session
 

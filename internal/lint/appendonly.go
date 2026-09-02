@@ -328,7 +328,11 @@ var ResolutionSurfaceWriters = map[string]bool{
 	// enforce, so CompleteRestore must erase them in the same local-host act.
 	"AdvanceRestoreEpoch":                  true,
 	"InvalidateRestoredAdapterCredentials": true,
-	"ReconcilePrincipal":                   true,
+	// #147: like adapter PATs, a dynamic-secret provider's admin credential
+	// authenticates to an external engine with no Hikyo credential epoch, so the
+	// same local-host restore act erases it.
+	"InvalidateRestoredDynamicProviderCredentials": true,
+	"ReconcilePrincipal":                           true,
 	// #73 section 9.1: the reconciliation commit drops restored `scim` origins
 	// and any grant row they were the last hold on, in the same act.
 	"dropRestoredSCIMOrigins": true,

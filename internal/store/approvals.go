@@ -233,9 +233,8 @@ type ApprovalRepo interface {
 	GetVote(ctx context.Context, p authz.Proof, requestID, principalID string) (ApprovalVote, error)
 	ListVotes(ctx context.Context, p authz.Proof, requestID string) ([]ApprovalVote, error)
 
-	// SelectExpired and MarkExpired are the installation-wide expiry sweep, run
-	// under scheduler authority (a SystemProof). Cross-tenant by definition;
-	// their queries are annotated instance-scoped and content-pinned.
+	// SelectExpired returns one bounded installation-wide expiry batch. Repeated
+	// scheduler runs commit progress under system authority.
 	SelectExpired(ctx context.Context, p authz.Proof, now time.Time) ([]ExpiredApprovalRequest, error)
 	MarkExpired(ctx context.Context, p authz.Proof, id string, now time.Time) (bool, error)
 

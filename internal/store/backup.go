@@ -721,6 +721,10 @@ var migrationSeededTables = map[string]bool{
 	// merely tolerable: a restore reconstitutes THAT instance, and a remote
 	// that pinned the old identity must keep resolving to it.
 	"instance_identity": true,
+	// The disaster-recovery health row (#145) is seeded id=1 by the migration
+	// like credential_policy: a freshly migrated restore target carries the
+	// one default row, and the restore replaces it with the archive's.
+	"backup_state": true,
 	// The version table is populated by the RunUpTo that created this schema
 	// moments ago; its rows are the migration run's own bookkeeping, not
 	// instance state, and the truncate replaces them with the archive's.

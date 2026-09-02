@@ -40,6 +40,10 @@ func (a *TxAuthorizer) InvalidateRestoredAdapterCredentials(ctx context.Context)
 	return a.r.InvalidateRestoredAdapterCredentials(ctx)
 }
 
+func (a *TxAuthorizer) InvalidateRestoredDynamicProviderCredentials(ctx context.Context) error {
+	return a.r.InvalidateRestoredDynamicProviderCredentials(ctx)
+}
+
 // ReconcilePrincipal commits ONE principal's reconciliation. The signature is
 // the guarantee: one id in, one answer out. There is no set-taking sibling of
 // this method anywhere in the module, and the drill asserts that.

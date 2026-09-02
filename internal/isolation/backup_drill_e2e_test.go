@@ -1057,6 +1057,20 @@ func runBackupLifecycle(t *testing.T, db *store.DB) {
 	if err := svc.RecordSkip(ctx, service.TriggerPreMigration, "drill"); err != nil {
 		t.Fatalf("backup.export_skipped: %v", err)
 	}
+	// The scheduled export's loud failure (#145): a real emission through the
+	// scheduler's own recorder, with the error class the payload carries.
+	if err := svc.RecordFailure(ctx, service.TriggerScheduled, errors.New("destination unavailable")); err == nil {
+		t.Fatal("backup.export_failed: RecordFailure swallowed the run error")
+	}
+	// The restore drill's verdict (#145): recorded on the live instance the
+	// way the verb records it, with no secret-bearing field to leak.
+	if err := svc.RecordDrill(ctx, service.DrillReport{
+		Archive: filepath.Base(result.Path), ArchiveDigest: "sha256:drill", Engine: result.Manifest.Engine,
+		SchemaVersion: result.Manifest.SchemaVersion, BinaryVersion: "test", Elapsed: time.Minute,
+		RTOTarget: 30 * time.Minute, ValuesReadable: true, Principal: string(root), Minted: true,
+	}); err != nil {
+		t.Fatalf("restore.drill_completed: %v", err)
+	}
 
 	// restore.completed is the restore transaction's own closure. Running it
 	// here against the fixture datastore is the same act it performs there.
@@ -1238,5 +1252,105 @@ func runRestoreEpochForgery(t *testing.T, target drillTarget, c custody) {
 	}
 	if err := grantsAuthorize(t, restored); err == nil {
 		t.Error("a forged pre-reconciled principal authorized after the restore")
+	}
+}
+
+// drillScratch builds an EMPTY scratch datastore for the restore drill (#145),
+// distinct from the live target: the drill restores into it and the live
+// instance sees only the recorded verdict.
+func drillScratch(t *testing.T, target drillTarget) store.Config {
+	t.Helper()
+	switch store.Engine(target.cfg.Store.Engine) {
+	case store.EngineSQLite:
+		return store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "scratch.db")}
+	case store.EnginePostgres:
+		dsn := derivedDatabase(t, target.cfg.Store.DSN, "scratch")
+		db, err := store.Open(t.Context(), store.Config{Engine: store.EnginePostgres, DSN: dsn})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.PG().Exec(t.Context(), "DROP SCHEMA public CASCADE; CREATE SCHEMA public"); err != nil {
+			t.Fatalf("empty drill scratch: %v", err)
+		}
+		db.Close()
+		return store.Config{Engine: store.EnginePostgres, DSN: dsn}
+	default:
+		t.Fatalf("unknown engine %q", target.cfg.Store.Engine)
+		return store.Config{}
+	}
+}
+
+// TestRestoreDrillVerbSQLite and its postgres sibling drive the real
+// `hikyo restore drill` verb end to end (#145): it restores the exported
+// archive into an empty scratch target, boots it under the separately supplied
+// root key, proves a secret decrypts, reconciles one human, mints and revokes
+// a credential, records the RTO verdict on the LIVE instance, and leaks no key
+// material into its output or the audit trail.
+func TestRestoreDrillVerbSQLite(t *testing.T) {
+	c := newCustody(t)
+	runRestoreDrillVerb(t, sqliteTarget(t, t.TempDir(), c.recipient(t)), c)
+}
+
+func TestRestoreDrillVerbPostgres(t *testing.T) {
+	c := newCustody(t)
+	runRestoreDrillVerb(t, postgresTarget(t, t.TempDir(), c.recipient(t)), c)
+}
+
+func runRestoreDrillVerb(t *testing.T, target drillTarget, c custody) {
+	db, a := buildInstance(t, target, c)
+	// A realistic RTO target: the e2e configs are built by hand, so without
+	// this the target is zero and every drill would "exceed" it.
+	target.cfg.BackupRTOTarget = 30 * time.Minute
+	archive := exportArchive(t, target)
+	scratch := drillScratch(t, target)
+
+	var scratchFlag []string
+	switch scratch.Engine {
+	case store.EngineSQLite:
+		scratchFlag = []string{"--target-sqlite", scratch.Path}
+	case store.EnginePostgres:
+		dsnFile := filepath.Join(t.TempDir(), "scratch-dsn")
+		if err := os.WriteFile(dsnFile, []byte(scratch.DSN), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		scratchFlag = []string{"--target-postgres-dsn-file", dsnFile}
+	}
+
+	var out strings.Builder
+	args := append([]string{"drill",
+		"--from", archive,
+		"--identity-file", c.identityFile(),
+		"--root-key-file", filepath.Join(c.rootStore, "rootkey"),
+		"--principal", "usr_ident",
+		"--project", "org_a/prj_a1",
+		"--cleanup",
+		"-o", "json",
+	}, scratchFlag...)
+	if err := app.RunRestore(t.Context(), target.cfg, drillLogger(), args, &out, nil, nil); err != nil {
+		t.Fatalf("restore drill: %v\noutput: %s", err, out.String())
+	}
+
+	// The verdict is on the LIVE instance: a passing drill row and a
+	// success-outcome audit event naming this archive.
+	base := filepath.Base(archive)
+	if n := queryInt(t, db, "SELECT COUNT(*) FROM backup_state WHERE last_drill_ok AND last_drill_archive = '"+base+"'"); n != 1 {
+		t.Fatalf("live backup_state has %d passing drill rows for %s, want 1", n, base)
+	}
+	if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type = 'restore.drill_completed' AND outcome = 'success'"); n != 1 {
+		t.Fatalf("live trail has %d successful restore.drill_completed events, want 1", n)
+	}
+
+	// K3 for the drill surface: neither the machine-readable output nor the
+	// recorded audit payload may carry any planted secret in the clear.
+	assertNoPlaintext(t, "drill output", []byte(out.String()), a)
+	payloads := queryStrings(t, db, "SELECT payload FROM audit_instance_events WHERE type = 'restore.drill_completed'")
+	assertNoPlaintext(t, "drill audit payload", []byte(payloads), a)
+
+	// --cleanup removed the scratch target; the drill left nothing behind but
+	// the live record.
+	if scratch.Engine == store.EngineSQLite {
+		if _, err := os.Stat(scratch.Path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("scratch sqlite target survived --cleanup: %v", err)
+		}
 	}
 }

@@ -7,15 +7,18 @@ import {
   createInstanceGrantOp,
   createOrgGrantOp,
   createProjectGrantOp,
+  inviteInstanceMemberOp,
+  inviteOrgMemberOp,
   listInstanceGrantsOp,
   listOrgGrantsOp,
   revokeEnvGrantOp,
   revokeInstanceGrantOp,
   revokeOrgGrantOp,
+  resetCredentialOp,
   revokeProjectGrantOp,
 } from '@hikyo/operations';
 import type { GrantResult } from '@hikyo/client';
-import { zGrantList } from '@hikyo/zod';
+import { zGrantList, type zInvitationResult } from '@hikyo/zod';
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
@@ -27,7 +30,7 @@ import {
   type Level,
   type RoleTemplateId,
 } from './access-templates.ts';
-import { ApiError, ok, parsed } from './client.ts';
+import { ApiError, ok, parsed, parsedPick, transportRefusalText } from './client.ts';
 import type { Grant } from './identities.ts';
 
 export { expandTemplate, ROLE_TEMPLATES, templatesAt };
@@ -694,6 +697,99 @@ export function useRevokeGrant() {
     },
     onSettled: () => auth.refreshSession(),
   });
+}
+
+// --- invitation and credential reset (#568) ---------------------------------
+
+/** Where an invitation lands: an organisation, or the instance itself. */
+export type InviteScope = { readonly kind: 'org'; readonly org: string } | { readonly kind: 'instance' };
+
+export type Invitation = z.infer<typeof zInvitationResult>;
+
+/** The display-once outcome both the invite and the reset hand to the dialog. */
+export type IssuedAuthority = {
+  readonly authority: string;
+  readonly expiresAt: string;
+};
+
+/**
+ * inviteMember is the human-auth ADR's account-creation path: a human
+ * principal, an account with this login handle, optional template grants at
+ * the invitation's scope and a single-use credential-establishment authority,
+ * all in one server transaction.
+ *
+ * Display-once discipline (#498): a plain async call, never a TanStack
+ * mutation. A mutation caches its `data` and `reset()` leaves an idle entry
+ * holding the value until gc, so the authority would linger in memory after
+ * the dialog that showed it is gone. `parsedPick` keeps the validation to the
+ * fields the dialog needs, so drift in an unrelated response field cannot
+ * throw away an irretrievable value.
+ */
+export async function inviteMember(
+  scope: InviteScope,
+  input: { username: string; displayName: string; template: string },
+): Promise<Pick<Invitation, 'principal_id' | 'authority' | 'expires_at'>> {
+  const body = {
+    username: input.username,
+    ...(input.displayName === '' ? {} : { display_name: input.displayName }),
+    ...(input.template === '' ? {} : { template: templateOf(input.template) }),
+  };
+  const mask = { principal_id: true, authority: true, expires_at: true } as const;
+  return scope.kind === 'instance'
+    ? parsedPick(inviteInstanceMemberOp, { body }, mask)
+    : parsedPick(inviteOrgMemberOp, { path: { org: scope.org }, body }, mask);
+}
+
+/**
+ * resetCredential mints a fresh establishment authority for an existing
+ * account and revokes its sessions. Same display-once discipline as the invite.
+ */
+export async function resetCredential(principal: string): Promise<IssuedAuthority> {
+  const result = await parsed(resetCredentialOp, { path: { principal } });
+  return { authority: result.authority, expiresAt: result.expires_at };
+}
+
+/**
+ * inviteFailureText: a 409 is the one refusal with a useful cause (the
+ * username is taken). 403 and 404 are the uniform tenant refusal and are
+ * voiced as one sentence, so the page never tells "no such org" from "not
+ * yours".
+ */
+export function inviteFailureText(error: unknown): string {
+  if (error instanceof ApiError) {
+    switch (error.status) {
+      case 400:
+        return error.detail ?? 'The invitation was refused: check the username and the template.';
+      case 401:
+        return 'Your session ended. Sign in again to invite members.';
+      case 403:
+        return 'Inviting members needs a second factor. Sign in again and present your passkey or a code, then retry.';
+      case 404:
+        return 'This scope is not available to you, or it does not exist. The two are deliberately the same answer.';
+      case 409:
+        return 'That username is already taken.';
+    }
+  }
+  return (
+    transportRefusalText(error) ??
+    'The invitation could not be sent, or the answer did not match the contract. Nothing was issued.'
+  );
+}
+
+/**
+ * resetFailureText: the reset route answers every enumerable cause — unknown
+ * or non-human target, a caller without `credential-reset`, a target holding
+ * an instance capability — with one uniform 401, and this sentence keeps it
+ * that way.
+ */
+export function resetFailureText(error: unknown): string {
+  if (error instanceof ApiError && (error.status === 401 || error.status === 404)) {
+    return 'No credential was reset: the principal has no resettable account, or this session may not reset it.';
+  }
+  return (
+    transportRefusalText(error) ??
+    'The credential could not be reset, or the answer did not match the contract. Nothing was issued.'
+  );
 }
 
 // --- refusals ---------------------------------------------------------------

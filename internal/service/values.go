@@ -1193,9 +1193,16 @@ func authorizeDestination(ctx context.Context, r store.Repos, az *authz.TxAuthor
 	}
 	var protected bool
 	for i, op := range legs {
-		if err := withDestination(ctx, r, az, caller, op, destScope, func(_ authz.Proof, isProtected bool) error {
+		if err := withDestination(ctx, r, az, caller, op, destScope, func(p authz.Proof, isProtected bool) error {
 			if i == 0 {
 				protected = isProtected
+				_, covered, err := r.Approvals().CoveringPolicy(ctx, p, string(destScope.Env))
+				if err != nil {
+					return err
+				}
+				if covered {
+					return ErrApprovalRequired
+				}
 			}
 			return nil
 		}); err != nil {

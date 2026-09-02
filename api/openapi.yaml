@@ -148,7 +148,7 @@ paths:
         authorize its own enrolment" (human-auth ADR § Credential-establishment
         authority). The authority is target-bound, purpose-bound, single-use,
         expiring, and issued only by the bootstrap path, `credential-reset`,
-        or local break-glass.
+        a member invitation, or local break-glass.
 
         Consuming it establishes exactly one initial credential, atomically,
         and nothing more: **no session is created, no assurance is carried,
@@ -1728,6 +1728,53 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/instance/invitations:
+    post:
+      operationId: inviteInstanceMember
+      tags: [access]
+      summary: Invite a human at instance scope with a local credential.
+      description: |
+        The instance-scope form of `inviteOrgMember`: the same one-transaction
+        account creation and authority mint, authorized by `manage-members`
+        held at instance scope. The optional template is expanded at instance
+        scope (`operator`), so this is how a second instance operator comes to
+        exist without host access. Without a template the account can sign in
+        and see nothing until someone grants it something.
+
+        A username already in use is a `conflict`.
+      x-hikyo-class: instance
+      x-hikyo-operation: member.invite-instance
+      x-hikyo-formula: [manage-members@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteMemberRequest"
+      responses:
+        "201":
+          description: The invited principal and its single-use authority.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /api/v1/orgs/{org}/grants:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -1868,6 +1915,61 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/invitations:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+    post:
+      operationId: inviteOrgMember
+      tags: [access]
+      summary: Invite a human into this organisation with a local credential.
+      description: |
+        The account-creation path the human-auth ADR names ("accounts are
+        created by invitation from a `manage-members` holder"). In ONE
+        transaction: a human principal and an account with the given login
+        handle are created, the optional role template is expanded into
+        grants at organisation scope exactly as `applyOrgTemplate` would
+        write them, and a credential-establishment authority is minted for
+        the new account with issuer `invitation` and the credential-reset
+        lifetime. The authority is returned once and never re-displayed:
+        hand it to the invitee out of band, who consumes it at
+        `establishCredential` and then signs in like anyone else.
+
+        No session, no assurance and no identity link are created. An
+        invitation carries no email and no delivery channel of its own. A
+        username already in use is a `conflict`.
+      x-hikyo-class: tenant
+      x-hikyo-operation: member.invite-org
+      x-hikyo-formula: [manage-members@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteMemberRequest"
+      responses:
+        "201":
+          description: The invited principal and its single-use authority.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "429":
           $ref: "#/components/responses/TooManyRequests"
         "500":
@@ -8013,6 +8115,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -8246,6 +8350,47 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/ceremony:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - name: approvalRequest
+        in: path
+        required: true
+        schema: {$ref: "#/components/schemas/ID"}
+    get:
+      operationId: getApprovalCeremony
+      tags: [approvals]
+      summary: Prepare a purpose-bound approval ceremony.
+      description: |
+        Returns the request's exact key unit and the acting session's current
+        reauthentication-window state. It carries no value material and is
+        authorized by `publish`, so a named approver does not need `read` or
+        `reveal` merely to prepare an otherwise-authorized decision.
+      x-hikyo-class: tenant
+      x-hikyo-operation: approval.vote
+      x-hikyo-formula: [publish@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "200":
+          description: The exact approval ceremony binding.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalCeremonyBinding"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "429":
           $ref: "#/components/responses/TooManyRequests"
         "500":
@@ -9564,6 +9709,252 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/Internal"}
 
+  /api/v1/orgs/{org}/projects/{project}/dynamic-providers:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+    get:
+      operationId: listDynamicProviders
+      tags: [dynamic]
+      summary: List dynamic-secret providers with redacted credential metadata.
+      x-hikyo-class: tenant
+      x-hikyo-operation: dynamic-provider.inspect
+      x-hikyo-formula: [manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "200": {description: Provider list., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicProviderList"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+    post:
+      operationId: createDynamicProvider
+      tags: [dynamic]
+      summary: Configure a PostgreSQL provider; the admin credential is write-only.
+      x-hikyo-class: tenant
+      x-hikyo-operation: dynamic-provider.configure
+      x-hikyo-formula: [manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CreateDynamicProviderRequest"}}}}
+      responses:
+        "201": {description: Provider configured and reachable., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicProvider"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/DynamicProviderID"
+    get:
+      operationId: showDynamicProvider
+      tags: [dynamic]
+      summary: Show one provider's status and metadata.
+      x-hikyo-class: tenant
+      x-hikyo-operation: dynamic-provider.inspect
+      x-hikyo-formula: [manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "200": {description: Provider., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicProvider"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+    delete:
+      operationId: deleteDynamicProvider
+      tags: [dynamic]
+      summary: Delete a provider; refuses while active leases exist unless revoke_all.
+      x-hikyo-class: tenant
+      x-hikyo-operation: dynamic-provider.delete
+      x-hikyo-formula: [manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      parameters:
+        - name: revoke_all
+          in: query
+          required: false
+          description: Revoke every live lease of this provider before deleting it.
+          schema: {type: boolean, default: false}
+      responses:
+        "200": {description: Provider deleted; any leases queued for revocation., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicProviderDeletion"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/dynamic-providers/{provider}/credential:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/DynamicProviderID"
+    put:
+      operationId: setDynamicProviderCredential
+      tags: [dynamic]
+      summary: Replace the write-only admin credential.
+      x-hikyo-class: tenant
+      x-hikyo-operation: dynamic-provider.credential-set
+      x-hikyo-formula: [manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/SetDynamicProviderCredentialRequest"}}}}
+      responses:
+        "204": {description: Credential replaced.}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+    delete:
+      operationId: revokeDynamicProviderCredential
+      tags: [dynamic]
+      summary: Destroy admin custody; renewal and revocation may then be impossible.
+      x-hikyo-class: tenant
+      x-hikyo-operation: dynamic-provider.credential-revoke
+      x-hikyo-formula: [manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "204": {description: Credential revoked.}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    get:
+      operationId: listLeases
+      tags: [dynamic]
+      summary: List an environment's leases with status and metadata, never the secret.
+      x-hikyo-class: tenant
+      x-hikyo-operation: lease.inspect
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 1
+      responses:
+        "200": {description: Lease list., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicLeaseList"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+    post:
+      operationId: mintLease
+      tags: [dynamic]
+      summary: Mint a short-lived credential; the secret is disclosed exactly once.
+      description: |
+        Display-once: the password is in this response and nowhere else, ever.
+        A retry mints a NEW lease with a NEW secret; the old secret is never
+        returned again. A machine principal mints under the project's
+        machine-reveal opt-in; a human mint needs the mint reauthentication
+        ceremony.
+      x-hikyo-class: tenant
+      x-hikyo-operation: lease.mint
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 1
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/MintLeaseRequest"}}}}
+      responses:
+        "200": {description: The lease and its display-once secret., content: {application/json: {schema: {$ref: "#/components/schemas/MintLeaseResult"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/LeaseID"
+    get:
+      operationId: showLease
+      tags: [dynamic]
+      summary: Show one lease's status and metadata, never the secret.
+      x-hikyo-class: tenant
+      x-hikyo-operation: lease.inspect
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 1
+      responses:
+        "200": {description: Lease., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicLease"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/renew:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/LeaseID"
+    post:
+      operationId: renewLease
+      tags: [dynamic]
+      summary: Extend a lease's validity, bounded by its maximum TTL.
+      x-hikyo-class: tenant
+      x-hikyo-operation: lease.renew
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 1
+      requestBody: {required: false, content: {application/json: {schema: {$ref: "#/components/schemas/RenewLeaseRequest"}}}}
+      responses:
+        "200": {description: Lease after renewal., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicLease"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/revoke:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/LeaseID"
+    post:
+      operationId: revokeLease
+      tags: [dynamic]
+      summary: Revoke a lease; idempotent, an already-gone role is a success.
+      x-hikyo-class: tenant
+      x-hikyo-operation: lease.revoke
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 1
+      responses:
+        "200": {description: Lease after revocation was queued., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicLease"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/settle:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/LeaseID"
+    post:
+      operationId: settleLease
+      tags: [dynamic]
+      summary: Settle an uncertain lease by re-probing it at the provider.
+      x-hikyo-class: tenant
+      x-hikyo-operation: lease.settle
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "200": {description: Lease after settlement., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicLease"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
 components:
   securitySchemes:
     hikyoSession:
@@ -9604,6 +9995,16 @@ components:
       schema: {$ref: "#/components/schemas/ID"}
     AdapterTargetID:
       name: target
+      in: path
+      required: true
+      schema: {$ref: "#/components/schemas/ID"}
+    DynamicProviderID:
+      name: provider
+      in: path
+      required: true
+      schema: {$ref: "#/components/schemas/ID"}
+    LeaseID:
+      name: lease
       in: path
       required: true
       schema: {$ref: "#/components/schemas/ID"}
@@ -10299,6 +10700,151 @@ components:
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/Adapter"}}
 
+    DynamicProviderKind:
+      type: string
+      enum: [postgres]
+    DynamicProviderState:
+      type: string
+      enum: [active, tombstoned]
+    DynamicLeaseState:
+      type: string
+      description: |
+        minting/renewing/revoking are in-flight; active is a usable credential;
+        revoked/expired/failed are terminal; unknown is an ambiguous provider
+        outcome awaiting reconcile and is NEVER reported as success.
+      enum: [minting, active, renewing, revoking, revoked, expired, unknown, failed]
+
+    CreateDynamicProviderRequest:
+      type: object
+      additionalProperties: false
+      required: [kind, origin, grant_role, credential]
+      properties:
+        kind: {$ref: "#/components/schemas/DynamicProviderKind"}
+        origin:
+          type: string
+          minLength: 1
+          maxLength: 2048
+          description: PostgreSQL origin as host:port/dbname.
+        tls_mode:
+          type: string
+          enum: [verify-full]
+          default: verify-full
+          description: Only verify-full is accepted; a weaker mode is refused.
+        grant_role:
+          type: string
+          minLength: 1
+          maxLength: 63
+          description: Parent role every minted lease role inherits (IN ROLE).
+        credential:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          description: Write-only admin credential. Never returned.
+
+    SetDynamicProviderCredentialRequest:
+      type: object
+      additionalProperties: false
+      required: [credential]
+      properties:
+        credential: {type: string, minLength: 1, maxLength: 4096}
+
+    DynamicProvider:
+      type: object
+      additionalProperties: false
+      required: [id, kind, origin, tls_mode, grant_role, credential_present, authority_principal_id, state, created_at]
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        kind: {$ref: "#/components/schemas/DynamicProviderKind"}
+        origin: {type: string}
+        tls_mode: {type: string, enum: [verify-full]}
+        grant_role: {type: string}
+        credential_present: {type: boolean}
+        credential_set_at: {type: [string, "null"], format: date-time}
+        authority_principal_id: {$ref: "#/components/schemas/ID"}
+        state: {$ref: "#/components/schemas/DynamicProviderState"}
+        created_at: {$ref: "#/components/schemas/Timestamp"}
+
+    DynamicProviderList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/DynamicProvider"}}
+
+    DynamicProviderDeletion:
+      type: object
+      additionalProperties: false
+      required: [provider_id, revoked_lease_ids]
+      properties:
+        provider_id: {$ref: "#/components/schemas/ID"}
+        revoked_lease_ids:
+          type: array
+          items: {$ref: "#/components/schemas/ID"}
+          description: Leases queued for revocation as part of the delete.
+
+    DynamicLease:
+      type: object
+      additionalProperties: false
+      required: [id, provider_id, environment_id, principal_id, principal_class, provider_handle, state, max_ttl_seconds, last_transition_at, created_at]
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        provider_id: {$ref: "#/components/schemas/ID"}
+        environment_id: {$ref: "#/components/schemas/ID"}
+        principal_id: {$ref: "#/components/schemas/ID"}
+        principal_class: {type: string}
+        provider_handle: {type: string, description: The provider-side role name. Public metadata; not a secret.}
+        state: {$ref: "#/components/schemas/DynamicLeaseState"}
+        issued_at: {type: [string, "null"], format: date-time}
+        expires_at: {type: [string, "null"], format: date-time}
+        max_ttl_seconds: {type: integer, format: int64, minimum: 1}
+        last_transition_at: {$ref: "#/components/schemas/Timestamp"}
+        created_at: {$ref: "#/components/schemas/Timestamp"}
+
+    DynamicLeaseList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/DynamicLease"}}
+
+    MintLeaseRequest:
+      type: object
+      additionalProperties: false
+      required: [provider_id, max_ttl_seconds]
+      properties:
+        provider_id: {$ref: "#/components/schemas/ID"}
+        max_ttl_seconds:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Requested maximum lifetime; the provider clamps to its own ceiling.
+
+    RenewLeaseRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        max_ttl_seconds:
+          type: [integer, "null"]
+          format: int64
+          minimum: 1
+          description: Optional new ceiling; renewal never extends past the lease's max TTL.
+
+    MintLeaseResult:
+      type: object
+      additionalProperties: false
+      required: [lease, username, password]
+      properties:
+        lease: {$ref: "#/components/schemas/DynamicLease"}
+        username:
+          type: string
+          description: The minted role name; also the lease's provider_handle.
+        password:
+          type: string
+          description: |
+            The credential secret, returned EXACTLY ONCE to exactly one caller.
+            No other route in this contract returns it.
+        expires_at: {type: [string, "null"], format: date-time}
+
     AdapterConflictEntry:
       type: object
       additionalProperties: false
@@ -10830,19 +11376,19 @@ components:
       required: [purpose, operation, environment_ids, pkce_challenge, redirect_uri]
       description: |
         `adapter` carries an adapter-routing decision over an environment set.
-        `reveal` and `copy` carry a DISCLOSURE: the browser runs the same
-        purpose-bound, enumerated-key-set ceremony the UI runs, so `key_ids`
-        is required and names exactly the keys the one decision covers.
+        Every non-adapter purpose carries an exact environment and key set. The
+        browser runs the same purpose-bound ceremony the UI runs, so `key_ids`
+        names exactly the unit the decision covers.
       properties:
-        purpose: {type: string, enum: [adapter, reveal, copy]}
-        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source]}
+        purpose: {type: string, enum: [adapter, reveal, copy, publish, approve, reject, bypass]}
+        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source, value.copy-destination, approval.vote, approval.bypass]}
         environment_ids: {type: array, minItems: 1, uniqueItems: true, items: {$ref: "#/components/schemas/ID"}}
         key_ids:
           type: array
           uniqueItems: true
           maxItems: 500
           items: {$ref: "#/components/schemas/ID"}
-          description: The enumerated unit of a disclosure purpose; absent or empty for `adapter`.
+          description: The enumerated unit of a non-adapter purpose; absent or empty for `adapter`.
         pkce_challenge: {type: string, minLength: 43, maxLength: 43, pattern: "^[A-Za-z0-9_-]{43}$"}
         redirect_uri:
           type: string
@@ -10889,8 +11435,8 @@ components:
       required: [state, purpose, operation, environments, key_ids, redirect_uri, expires_at]
       properties:
         state: {type: string, minLength: 1}
-        purpose: {type: string, enum: [adapter, reveal, copy]}
-        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source]}
+        purpose: {type: string, enum: [adapter, reveal, copy, publish, approve, reject, bypass]}
+        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source, value.copy-destination, approval.vote, approval.bypass]}
         environments: {type: array, minItems: 1, items: {$ref: "#/components/schemas/CLIReauthEnvironmentPolicy"}}
         key_ids:
           type: array
@@ -10976,6 +11522,46 @@ components:
           description: |
             The single-use credential-establishment authority, returned once.
             It creates no session: establish a password with it, then log in.
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+
+    InviteMemberRequest:
+      type: object
+      additionalProperties: false
+      required: [username]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: The invitee's local login handle; globally unique.
+        display_name:
+          type: string
+          maxLength: 256
+          description: Defaults to the username.
+        template:
+          allOf:
+            - $ref: "#/components/schemas/RoleTemplate"
+          description: |
+            Optional initial grants, expanded at the invitation's scope in the
+            same transaction. Absent means the account can sign in and see
+            nothing until someone grants it something.
+
+    InvitationResult:
+      type: object
+      additionalProperties: false
+      required: [principal_id, account_id, authority, expires_at]
+      properties:
+        principal_id:
+          $ref: "#/components/schemas/ID"
+        account_id:
+          $ref: "#/components/schemas/ID"
+        authority:
+          type: string
+          description: |
+            The single-use credential-establishment authority for the new
+            account, returned once. It creates no session and may only ever
+            establish a password; hand it to the invitee out of band.
         expires_at:
           $ref: "#/components/schemas/Timestamp"
 
@@ -11574,9 +12160,11 @@ components:
           type: boolean
         approvers:
           type: array
+          maxItems: 100
           items: {$ref: "#/components/schemas/ApprovalApprover"}
         bypassers:
           type: array
+          maxItems: 100
           uniqueItems: true
           items: {$ref: "#/components/schemas/ID"}
     ApprovalPolicy:
@@ -11621,7 +12209,7 @@ components:
         created_at: {$ref: "#/components/schemas/Timestamp"}
     ApprovalRequest:
       type: object
-      required: [id, environment_id, policy_id, policy_version, requester, change_count, base_revision, purpose, state, invalidated_cause, min_approvals, approvals, votes, created_at, expires_at]
+      required: [id, environment_id, policy_id, policy_version, requester, change_count, base_revision, purpose, state, invalidated_cause, min_approvals, approvals, key_ids, votes, created_at, expires_at]
       additionalProperties: false
       properties:
         id: {$ref: "#/components/schemas/ID"}
@@ -11640,6 +12228,11 @@ components:
           enum: ["", policy_changed, draft_edited, env_advanced, approver_removed]
         min_approvals: {type: integer, format: int32}
         approvals: {type: integer, format: int32}
+        key_ids:
+          type: array
+          uniqueItems: true
+          items: {$ref: "#/components/schemas/ID"}
+          description: The exact key set bound to vote, merge, and bypass ceremonies.
         votes:
           type: array
           items: {$ref: "#/components/schemas/ApprovalVote"}
@@ -13599,7 +14192,7 @@ components:
     RetentionHealth:
       type: object
       additionalProperties: false
-      required: [last_prune_success, stale, stale_after_seconds, peak_project_bytes, storage_warn]
+      required: [last_prune_success, stale, stale_after_seconds, peak_project_bytes, storage_warn, backup]
       properties:
         last_prune_success:
           type: [string, "null"]
@@ -13620,6 +14213,53 @@ components:
           description: >-
             True once peak_project_bytes reaches the 1 GiB warn threshold, well
             before the 4 GiB publish refusal.
+        backup:
+          $ref: "#/components/schemas/BackupHealth"
+
+    BackupHealth:
+      type: object
+      additionalProperties: false
+      description: >-
+        Disaster-recovery health: the latest successful export, its age against
+        the configured recovery point objective, the latest failure, and the
+        latest restore drill. Names archives and versions only; never a
+        recipient, an identity or a key.
+      required:
+        [scheduled, last_success_at, artifact_age_seconds, rpo_seconds, rpo_exceeded,
+         last_failure_at, last_failure_reason, last_prune_at, last_drill_at, last_drill_ok, drill_stale]
+      properties:
+        scheduled:
+          type: boolean
+          description: True when an export policy (recipients + destination) is configured and the in-process schedule runs.
+        last_success_at:
+          type: [string, "null"]
+          format: date-time
+        artifact_age_seconds:
+          type: integer
+          description: Age of the newest successful export; 0 when there has never been one.
+        rpo_seconds:
+          type: integer
+          description: The configured recovery point objective; 0 when nothing is scheduled.
+        rpo_exceeded:
+          type: boolean
+          description: True when exports are scheduled and no successful export is younger than the RPO.
+        last_failure_at:
+          type: [string, "null"]
+          format: date-time
+        last_failure_reason:
+          type: string
+          description: Bounded operator-facing text of the latest export failure; empty when none.
+        last_prune_at:
+          type: [string, "null"]
+          format: date-time
+        last_drill_at:
+          type: [string, "null"]
+          format: date-time
+        last_drill_ok:
+          type: boolean
+        drill_stale:
+          type: boolean
+          description: True when no successful restore drill is younger than 90 days.
 
     ProjectRetentionPolicy:
       type: object
@@ -14631,6 +15271,9 @@ components:
         - publish
         - mint
         - adapter
+        - approve
+        - reject
+        - bypass
 
     WebauthnCredentialProofRequest:
       type: object
@@ -14727,6 +15370,20 @@ components:
             rather than guessing from whether a cell happens to be on screen.
         expires_at:
           $ref: "#/components/schemas/Timestamp"
+
+    ApprovalCeremonyBinding:
+      type: object
+      additionalProperties: false
+      required: [key_ids, window]
+      properties:
+        key_ids:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/ID"
+          description: The immutable key unit pinned by the approval request.
+        window:
+          $ref: "#/components/schemas/RevealWindow"
 
     PasskeyList:
       type: object
@@ -15638,8 +16295,8 @@ components:
           enum: [step-up]
         operation:
           type: string
-          enum: [reveal, copy, publish]
-          description: The disclosure the reauth authorizes.
+          enum: [reveal, copy, publish, approve, reject, bypass]
+          description: The exact decision the reauthentication authorizes.
         environment:
           $ref: "#/components/schemas/ID"
           description: The environment the elevation covers.

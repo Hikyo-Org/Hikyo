@@ -1,13 +1,15 @@
 import {
   createApprovalPolicyOp,
   deleteApprovalPolicyOp,
+  getApprovalCeremonyOp,
   listApprovalPoliciesOp,
   listApprovalRequestsOp,
   publishPendingChangesOp,
   updateApprovalPolicyOp,
   voteApprovalRequestOp,
 } from '@hikyo/operations';
-import { zApprovalPolicy, zApprovalRequest } from '@hikyo/zod';
+import { zApprovalCeremonyBinding, zApprovalPolicy, zApprovalRequest } from '@hikyo/zod';
+import type { Client } from '@hikyo/runtime-core';
 import {
   useMutation,
   useQuery,
@@ -28,6 +30,21 @@ import { useTransport } from './transport.tsx';
 export type ApprovalPolicy = z.infer<typeof zApprovalPolicy>;
 export type ApprovalRequest = z.infer<typeof zApprovalRequest>;
 export type ApproverSpec = ApprovalPolicy['approvers'][number];
+export type ApprovalCeremonyBinding = z.infer<typeof zApprovalCeremonyBinding>;
+
+export function fetchApprovalCeremony(
+	ref: MatrixRef,
+	environment: string,
+	request: string,
+	client?: Client,
+	signal?: AbortSignal,
+): Promise<ApprovalCeremonyBinding> {
+	return parsed(getApprovalCeremonyOp, {
+		path: { ...ref, environment, approvalRequest: request },
+		client,
+		signal,
+	});
+}
 
 /** A policy's editable shape, as the editor collects it. */
 export type PolicyDraft = {

@@ -17,6 +17,9 @@ const loadWorkspaceRoutes = () => import('./route-groups/workspace.ts');
 const loadSettingsRoutes = () => import('./route-groups/settings.ts');
 
 const Login = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.Login })));
+const EstablishCredential = lazy(() =>
+  loadAuthRoutes().then((routes) => ({ default: routes.EstablishCredential })),
+);
 const CLIReauth = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.CLIReauth })));
 const OIDCDone = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.OIDCDone })));
 const WorkspaceApprove = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.WorkspaceApprove })));
@@ -56,6 +59,7 @@ const withRouteFallback = (element: ReactElement) => (
  */
 const ELEMENTS: Record<SurfaceId, ReactElement> = {
   login: withRouteFallback(<Login />),
+  'establish-credential': withRouteFallback(<EstablishCredential />),
   overview: <Overview />,
   projects: withRouteFallback(<Projects />),
   remotes: withRouteFallback(<Remotes />),

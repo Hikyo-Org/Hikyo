@@ -89,10 +89,10 @@ func TestRegistryWellFormed(t *testing.T) {
 		}
 		// Outcome licensing (invariant 12): intent / unknown / disconnected
 		// only where the envelope section licenses them.
-		if spec.Outcomes[OutcomeIntent] && typ != EventAuditExportStarted && typ != EventAdapterPushIntent && typ != EventUpdateRequested {
+		if spec.Outcomes[OutcomeIntent] && typ != EventAuditExportStarted && typ != EventAdapterPushIntent && typ != EventUpdateRequested && typ != EventDynamicLeaseTransitionIntent {
 			t.Errorf("%s: intent outcome licensed outside the INTENT-phase set", typ)
 		}
-		if spec.Outcomes[OutcomeUnknown] && typ != EventAdapterPushOutcome {
+		if spec.Outcomes[OutcomeUnknown] && typ != EventAdapterPushOutcome && typ != EventDynamicLeaseTransitionOutcome {
 			t.Errorf("%s: unknown outcome licensed outside adapter.push_outcome", typ)
 		}
 		if spec.Outcomes[OutcomeDisconnected] && typ != EventAuditExportCompleted {
@@ -390,7 +390,7 @@ func TestValidateRefusesValuesOutsideClosedTaxonomies(t *testing.T) {
 			[]string{"single-factor", "multi-factor"}},
 		{"authority issuer", EventAuthAuthorityMinted, OutcomeSuccess, TrailInstance, domain.Scope{}, "issued_by",
 			Payload{"authority_id": "cea_a", "account_id": "acc_a", "issued_by": "bootstrap", "delivery": "terminal"},
-			[]string{"bootstrap", "credential-reset", "break-glass", "recovery"}},
+			[]string{"bootstrap", "credential-reset", "break-glass", "recovery", "invitation"}},
 		{"authority delivery", EventAuthAuthorityMinted, OutcomeSuccess, TrailInstance, domain.Scope{}, "delivery",
 			Payload{"authority_id": "cea_a", "account_id": "acc_a", "issued_by": "bootstrap", "delivery": "stdout"},
 			[]string{"file", "terminal", "stdout", "response"}},

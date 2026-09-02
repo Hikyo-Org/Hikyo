@@ -187,6 +187,10 @@ func TestInvariant06OperationRegistryCompleteness(t *testing.T) {
 		// unauthenticated /metrics scrape via the scheduler mint site (#185).
 		authz.StoreValuesInstancePayloadByProject:    true,
 		authz.StoreSnapshotsInstancePayloadByProject: true,
+		// The DR health row (#145) is dual-use the same way: the audited
+		// operator read reaches it via retention.health-read, the scheduler
+		// jobs and the /metrics scrape via the mint site.
+		authz.StoreBackupStateGet: true,
 	}
 	seenShared := map[authz.StoreOp]bool{}
 	for method := range expected {
@@ -355,6 +359,17 @@ func TestInvariant11SystemProofEnumeration(t *testing.T) {
 		authz.StoreApprovalRequestSelectExpiry: true,
 		authz.StoreApprovalRequestMarkExpired:  true,
 		authz.StoreApprovalRequestCounts:       true,
+		// Disaster-recovery program (#145): the export and prune jobs write
+		// the DR health row, /metrics reads it through the scheduler door,
+		// and the host-local restore drill rides the same authority for its
+		// verdict write and its one ciphertext sample rather than minting a
+		// new system site. A reviewed widening, pinned.
+		authz.StoreBackupStateGet:              true,
+		authz.StoreBackupStateSetExportSuccess: true,
+		authz.StoreBackupStateSetExportFailure: true,
+		authz.StoreBackupStateSetPruneSuccess:  true,
+		authz.StoreBackupStateSetDrill:         true,
+		authz.StoreValuesSampleSecretEntry:     true,
 	}
 	for site, ops := range sites {
 		if !want[site] {

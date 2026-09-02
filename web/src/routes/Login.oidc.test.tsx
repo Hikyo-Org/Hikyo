@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
+import { MemoryRouter } from 'react-router';
 import { beforeEach, expect, it, vi } from 'vitest';
 
 import { Login } from './Login.tsx';
@@ -54,7 +55,7 @@ beforeEach(() => {
 it('offers each configured OIDC provider and starts the selected login', async () => {
   const container = document.createElement('div');
   const root = createRoot(container);
-  await act(async () => root.render(<Login />));
+  await act(async () => root.render(<MemoryRouter><Login /></MemoryRouter>));
   const button = [...container.querySelectorAll('button')].find(
     (candidate) => candidate.textContent === 'Continue with Corporate IdP',
   );
@@ -75,7 +76,7 @@ it.each([
   const container = document.createElement('div');
   const root = createRoot(container);
 
-  await act(async () => root.render(<Login />));
+  await act(async () => root.render(<MemoryRouter><Login /></MemoryRouter>));
 
   const controls = container.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, button');
   expect(controls.length).toBe(5);
@@ -91,7 +92,7 @@ it('shows and retries an identity-provider discovery failure', async () => {
   const container = document.createElement('div');
   const root = createRoot(container);
 
-  await act(async () => root.render(<Login />));
+  await act(async () => root.render(<MemoryRouter><Login /></MemoryRouter>));
 
   expect(container.textContent).toContain('Identity provider options could not be loaded.');
   const retry = [...container.querySelectorAll('button')].find(

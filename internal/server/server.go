@@ -8,6 +8,7 @@ import (
 	"context"
 	"io/fs"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus"
@@ -211,7 +212,27 @@ func NewOperational(ready ReadyChecker, healthService OperationalRetentionHealth
 		if metrics, ok := healthService.(TLSMetrics); ok {
 			tlsNotAfter, tlsReloadFailures = metrics.TLSMetrics()
 		}
+		unix := func(t time.Time) float64 {
+			if t.IsZero() {
+				return 0
+			}
+			return float64(t.Unix())
+		}
+		flag := func(b bool) float64 {
+			if b {
+				return 1
+			}
+			return 0
+		}
+		backup := health.Backup
 		snapshot := prometheus.NewPedanticRegistry()
+		snapshot.MustRegister(
+			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricLastBackupExportSuccess, Help: "Unix timestamp of the last successful backup export; 0 when never."}, func() float64 { return unix(backup.LastSuccessAt) }),
+			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricBackupRPOExceeded, Help: "Whether the newest successful backup export is older than the configured RPO."}, func() float64 { return flag(backup.RPOExceeded) }),
+			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricLastBackupPruneSuccess, Help: "Unix timestamp of the last successful backup retention prune; 0 when never."}, func() float64 { return unix(backup.LastPruneAt) }),
+			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricLastRestoreDrill, Help: "Unix timestamp of the last recorded restore drill; 0 when never."}, func() float64 { return unix(backup.LastDrillAt) }),
+			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricRestoreDrillOK, Help: "Whether the last recorded restore drill passed every step within the RTO target."}, func() float64 { return flag(backup.LastDrillOK) }),
+		)
 		snapshot.MustRegister(
 			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricLastPruneSuccess, Help: "Unix timestamp of the last successful retention prune."}, func() float64 { return float64(last) }),
 			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricPruneStale, Help: "Whether the retention prune state is stale."}, func() float64 { return float64(stale) }),

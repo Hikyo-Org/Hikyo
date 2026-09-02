@@ -344,6 +344,11 @@ const (
 	OpGrantCreateProject  Operation = "grant.create-project"
 	OpGrantCreateEnv      Operation = "grant.create-env"
 	OpGrantCreateInstance Operation = "grant.create-instance"
+	// Member invitation (#568): account creation under manage-members, the
+	// human-auth ADR's named path. Two operations because the formula differs
+	// per depth exactly as grant.create does; each route names one.
+	OpMemberInviteOrg      Operation = "member.invite-org"
+	OpMemberInviteInstance Operation = "member.invite-instance"
 
 	OpGrantRevokeOrg      Operation = "grant.revoke-org"
 	OpGrantRevokeProject  Operation = "grant.revoke-project"
@@ -556,6 +561,24 @@ const (
 	OpAdapterDelete           Operation = "adapter.delete"
 	OpAdapterPush             Operation = "adapter.push"
 
+	// Dynamic secrets (#147). Provider configuration is project-scoped standing
+	// authority (manage-identities); a lease is an environment-scoped
+	// short-lived credential. Mint carries read+reveal so the machine-reveal
+	// opt-in and pin rules apply unchanged. OpLeaseRenew is the worker's
+	// per-transition re-authorization for renew (mint re-auths through
+	// OpLeaseMint); revoke/expire are the fail-safe direction and re-check no
+	// grants.
+	OpDynamicProviderConfigure        Operation = "dynamic-provider.configure"
+	OpDynamicProviderInspect          Operation = "dynamic-provider.inspect"
+	OpDynamicProviderCredentialSet    Operation = "dynamic-provider.credential-set"
+	OpDynamicProviderCredentialRevoke Operation = "dynamic-provider.credential-revoke"
+	OpDynamicProviderDelete           Operation = "dynamic-provider.delete"
+	OpLeaseMint                       Operation = "lease.mint"
+	OpLeaseInspect                    Operation = "lease.inspect"
+	OpLeaseRenew                      Operation = "lease.renew"
+	OpLeaseRevoke                     Operation = "lease.revoke"
+	OpLeaseSettle                     Operation = "lease.settle"
+
 	// NOT REGISTERED, deliberately: the active-session listing and its revoke
 	// (#71 criterion 5). Both are SELF-SCOPED — they address the caller's own
 	// principal and nothing else — so they take the shape /api/v1/me/orgs
@@ -688,6 +711,25 @@ const (
 	StoreAdaptersEnqueueManual         StoreOp = "adapters.EnqueueManual"
 	StoreCatalogueRevisionBump         StoreOp = "catalogue.BumpSchemaRevision"
 
+	// Dynamic secrets (#147). Request-path (proof-carrying) store methods; the
+	// worker's lease-transition SQL runs through the proof-free DynamicRuntime
+	// (the domain-specific outbox pattern, like AdapterRuntime).
+	StoreDynamicProvidersCreate               StoreOp = "dynamic.CreateProvider"
+	StoreDynamicProvidersGet                  StoreOp = "dynamic.GetProvider"
+	StoreDynamicProvidersCredentialCiphertext StoreOp = "dynamic.ProviderCredentialCiphertext"
+	StoreDynamicProvidersList                 StoreOp = "dynamic.ListProviders"
+	StoreDynamicProvidersReplaceCredential    StoreOp = "dynamic.ReplaceProviderCredential"
+	StoreDynamicProvidersRevokeCredential     StoreOp = "dynamic.RevokeProviderCredential"
+	StoreDynamicProvidersDelete               StoreOp = "dynamic.DeleteProvider"
+	StoreDynamicProvidersListForReencrypt     StoreOp = "dynamic.ListProvidersForReencrypt"
+	StoreDynamicProvidersReencrypt            StoreOp = "dynamic.ReencryptProvider"
+	StoreDynamicLeasesActiveIDsForProvider    StoreOp = "dynamic.ActiveLeaseIDsForProvider"
+	StoreDynamicLeasesCreate                  StoreOp = "dynamic.CreateLease"
+	StoreDynamicLeasesGet                     StoreOp = "dynamic.GetLease"
+	StoreDynamicLeasesList                    StoreOp = "dynamic.ListLeasesForEnvironment"
+	StoreDynamicLeasesFinishMint              StoreOp = "dynamic.FinishMint"
+	StoreDynamicLeasesEnqueueTransition       StoreOp = "dynamic.EnqueueTransition"
+
 	StoreFoldersCreate StoreOp = "folders.Create"
 	StoreFoldersGet    StoreOp = "folders.Get"
 	StoreFoldersList   StoreOp = "folders.List"
@@ -762,6 +804,20 @@ const (
 	StoreRetentionDeleteEntries  StoreOp = "retention.DeleteCollectedEntries"
 	StoreRetentionLastSuccess    StoreOp = "retention.LastPruneSuccess"
 	StoreRetentionSetLastSuccess StoreOp = "retention.SetLastPruneSuccess"
+
+	// Disaster-recovery health row (#145, ops-spec section 11). Instance
+	// operational state, no tenant chain: the scheduler's export and prune
+	// jobs write it, the restore drill writes its verdict, and the audited
+	// health read plus the /metrics scrape read it.
+	StoreBackupStateGet              StoreOp = "backupstate.Get"
+	StoreBackupStateSetExportSuccess StoreOp = "backupstate.SetExportSuccess"
+	StoreBackupStateSetExportFailure StoreOp = "backupstate.SetExportFailure"
+	StoreBackupStateSetPruneSuccess  StoreOp = "backupstate.SetPruneSuccess"
+	StoreBackupStateSetDrill         StoreOp = "backupstate.SetDrill"
+	// The restore drill's decrypt proof reads ONE stored secret cell,
+	// ciphertext only, across the instance (#145). Opening it needs the
+	// keyring the drill is handed separately; the read alone discloses nothing.
+	StoreValuesSampleSecretEntry StoreOp = "values.SampleSecretEntry"
 
 	// Per-project storage high-water (#185, ops-spec section 8 / section 141).
 	// The two project-scoped byte sums are read at publish to refuse a project
@@ -1026,7 +1082,7 @@ var storeOpCatalogue = map[StoreOp]bool{
 	StoreSnapshotsReencrypt: true, StoreSnapshotsSecretValueOccurrenceIDs: true, StoreValuesClear: true, StoreValuesClearEnvironment: true,
 	StoreValuesClearKey: true, StoreValuesCountEnvironment: true, StoreValuesEnvironmentsWithValue: true, StoreValuesGet: true,
 	StoreValuesInstancePayloadByProject: true, StoreValuesList: true, StoreValuesListForReencrypt: true, StoreValuesPayloadBytesForProject: true,
-	StoreValuesPut: true, StoreValuesReencrypt: true,
+	StoreValuesPut: true, StoreValuesReencrypt: true, StoreValuesSampleSecretEntry: true,
 	StoreApprovalPolicyInsert: true, StoreApprovalPolicyGet: true, StoreApprovalPolicyCovering: true,
 	StoreApprovalPolicyList: true, StoreApprovalPolicyUpdate: true, StoreApprovalPolicyDelete: true,
 	StoreApprovalApproverInsert: true, StoreApprovalApproverList: true, StoreApprovalApproverClear: true,
@@ -1035,15 +1091,27 @@ var storeOpCatalogue = map[StoreOp]bool{
 	StoreApprovalRequestList: true, StoreApprovalRequestUpdateState: true, StoreApprovalRequestSelectExpiry: true,
 	StoreApprovalRequestMarkExpired: true, StoreApprovalVoteInsert: true, StoreApprovalVoteGet: true,
 	StoreApprovalVoteList: true, StoreApprovalRequestCounts: true,
+	StoreBackupStateGet: true, StoreBackupStateSetExportSuccess: true, StoreBackupStateSetExportFailure: true,
+	StoreBackupStateSetPruneSuccess: true, StoreBackupStateSetDrill: true,
+	StoreDynamicProvidersCreate: true, StoreDynamicProvidersGet: true, StoreDynamicProvidersList: true,
+	StoreDynamicProvidersReplaceCredential: true, StoreDynamicProvidersRevokeCredential: true, StoreDynamicProvidersDelete: true,
+	StoreDynamicProvidersCredentialCiphertext: true, StoreDynamicProvidersListForReencrypt: true, StoreDynamicProvidersReencrypt: true,
+	StoreDynamicLeasesActiveIDsForProvider: true,
+	StoreDynamicLeasesCreate:               true, StoreDynamicLeasesGet: true, StoreDynamicLeasesList: true,
+	StoreDynamicLeasesFinishMint: true, StoreDynamicLeasesEnqueueTransition: true,
 }
 
 var readOnlyStoreOps = map[StoreOp]bool{
-	StoreOrgsGet:         true,
-	StoreOrgsList:        true,
-	StoreOrgsCount:       true,
-	StoreProjectsGet:     true,
-	StoreProjectsList:    true,
-	StoreProjectsListAll: true,
+	StoreOrgsGet:   true,
+	StoreOrgsList:  true,
+	StoreOrgsCount: true,
+	// Lease inspect is a bare-read (`read@env`), so its two reads are pinned
+	// read-only for the auditedNone check (#147).
+	StoreDynamicLeasesGet:  true,
+	StoreDynamicLeasesList: true,
+	StoreProjectsGet:       true,
+	StoreProjectsList:      true,
+	StoreProjectsListAll:   true,
 	// The definitions-settings read is `read@project`, audited-none; its only
 	// non-project store op is the latest-applied-plan lookup (#70).
 	StoreDefinitionsLatestAppliedPlan: true,
@@ -1116,6 +1184,8 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreSnapshotsPayloadBytesForProject:     true,
 	StoreValuesInstancePayloadByProject:      true,
 	StoreSnapshotsInstancePayloadByProject:   true,
+	StoreValuesSampleSecretEntry:             true,
+	StoreBackupStateGet:                      true,
 	StoreSnapshotsLatest:                     true,
 	StoreSnapshotsAtRevision:                 true,
 	StoreSnapshotsList:                       true,
@@ -1137,6 +1207,8 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreApprovalVoteList:            true,
 	StoreApprovalRequestSelectExpiry: true,
 	StoreApprovalRequestCounts:       true,
+	StoreSCIMUserByAccount:           true,
+	StoreSCIMMembershipsForUser:      true,
 }
 
 // bootKeyringOps is boot's closed operation set. The tenant-isolation ADR
@@ -2288,7 +2360,8 @@ var operationTable = map[Operation]opSpec{
 		storeOps: map[StoreOp]bool{
 			StoreProjectsLock: true, StoreCatalogueList: true,
 			StoreCataloguePresenceList: true, StoreEnvironmentsGetSettings: true,
-			StoreValuesPut: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true,
+			StoreApprovalPolicyCovering: true,
+			StoreValuesPut:              true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventValueCopied},
 	},
@@ -2303,7 +2376,8 @@ var operationTable = map[Operation]opSpec{
 		storeOps: map[StoreOp]bool{
 			StoreProjectsLock: true, StoreCatalogueList: true,
 			StoreCataloguePresenceList: true, StoreEnvironmentsGetSettings: true,
-			StoreValuesPut: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true,
+			StoreApprovalPolicyCovering: true,
+			StoreValuesPut:              true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true,
 		},
 		// The config leg is where a copied/cloned config value is scanned
 		// warn-only (#74, Surface 1); the secret leg never scans.
@@ -2398,9 +2472,10 @@ var operationTable = map[Operation]opSpec{
 	// because it IS the materialization: the published cells, the immutable
 	// snapshot, its entries, its lineage, and the drafts it consumes.
 	OpValuePublish: {
-		class:   ClassTenant,
-		level:   domain.LevelEnv,
-		formula: Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
+		class:              ClassTenant,
+		level:              domain.LevelEnv,
+		formula:            Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
+		postGrantForbidden: true,
 		storeOps: map[StoreOp]bool{
 			StoreProjectsLock: true, StoreCatalogueList: true,
 			StoreCataloguePresenceList: true, StoreCatalogueRevisionGet: true,
@@ -2527,6 +2602,7 @@ var operationTable = map[Operation]opSpec{
 			StoreApprovalVoteList: true, StoreApprovalPolicyGet: true,
 			StoreApprovalPolicyCovering: true, StoreApprovalApproverList: true,
 			StoreApprovalBypasserList: true,
+			StoreSCIMUserByAccount:    true, StoreSCIMMembershipsForUser: true,
 		},
 	},
 	OpApprovalVote: {
@@ -2545,6 +2621,11 @@ var operationTable = map[Operation]opSpec{
 			StoreApprovalVoteGet: true, StoreApprovalVoteInsert: true,
 			StoreApprovalVoteList: true, StoreApprovalPolicyGet: true,
 			StoreApprovalApproverList: true,
+			// A vote recomputes the requester's exact live publish preview before
+			// recording the decision, then invalidates the request on drift.
+			StorePendingListForOwner: true, StorePendingListMarkers: true,
+			StoreCatalogueList: true, StoreCatalogueRevisionGet: true,
+			StoreSnapshotsLatest: true,
 			// Live eligibility for a SCIM-group approver: the voter's account,
 			// their provisioned user in the binding, and its group memberships.
 			StoreSCIMUserByAccount: true, StoreSCIMMembershipsForUser: true,
@@ -2664,19 +2745,21 @@ var operationTable = map[Operation]opSpec{
 		level:   domain.LevelProject,
 		formula: Formula{{Cap: domain.CapReencrypt, At: domain.LevelNone}},
 		storeOps: map[StoreOp]bool{
-			StoreValuesListForReencrypt:        true,
-			StoreValuesReencrypt:               true,
-			StoreSnapshotsListForReencrypt:     true,
-			StoreSnapshotsReencrypt:            true,
-			StorePendingListForReencrypt:       true,
-			StorePendingReencrypt:              true,
-			StoreAdaptersListForReencrypt:      true,
-			StoreAdaptersReencrypt:             true,
-			StoreAdaptersListMovesForReencrypt: true,
-			StoreAdaptersReencryptMove:         true,
-			StoreKeysAssertActiveDEKVersion:    true,
-			StoreKeysRetireRetiringTier3:       true,
-			StoreAuditTenantInsert:             true,
+			StoreValuesListForReencrypt:           true,
+			StoreValuesReencrypt:                  true,
+			StoreSnapshotsListForReencrypt:        true,
+			StoreSnapshotsReencrypt:               true,
+			StorePendingListForReencrypt:          true,
+			StorePendingReencrypt:                 true,
+			StoreAdaptersListForReencrypt:         true,
+			StoreAdaptersReencrypt:                true,
+			StoreAdaptersListMovesForReencrypt:    true,
+			StoreAdaptersReencryptMove:            true,
+			StoreDynamicProvidersListForReencrypt: true,
+			StoreDynamicProvidersReencrypt:        true,
+			StoreKeysAssertActiveDEKVersion:       true,
+			StoreKeysRetireRetiringTier3:          true,
+			StoreAuditTenantInsert:                true,
 		},
 		events: []audit.EventType{audit.EventReencryptCompleted},
 	},
@@ -3217,6 +3300,30 @@ var operationTable = map[Operation]opSpec{
 		}, grantCureEvents...),
 	},
 
+	// Member invitation (#568). The optional template rides the SAME writer
+	// the template operations use, so its events — and §2.4's cure — must be
+	// reachable from these operations too: each is a superset of the template
+	// operation at its depth plus the invitation record itself.
+	OpMemberInviteOrg: {
+		class:    ClassTenant,
+		level:    domain.LevelOrg,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelOrg}},
+		storeOps: withCure(map[StoreOp]bool{StoreAuditTenantInsert: true}),
+		events: append([]audit.EventType{
+			audit.EventMemberInvited, audit.EventGrantTemplateApplied,
+			audit.EventGrantCreated, audit.EventGrantModified,
+		}, grantCureEvents...),
+	},
+	OpMemberInviteInstance: {
+		class:    ClassInstance,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true},
+		events: append([]audit.EventType{
+			audit.EventMemberInvited, audit.EventGrantTemplateApplied,
+			audit.EventGrantCreated, audit.EventGrantModified,
+		}, grantCureEvents...),
+	},
+
 	// The protected flag and the per-environment reauthentication window.
 	OpEnvSettingsRead: {
 		class:       ClassTenant,
@@ -3285,6 +3392,9 @@ var operationTable = map[Operation]opSpec{
 			// also reports the instance's peak stored project, for the 1 GiB warn.
 			StoreValuesInstancePayloadByProject:    true,
 			StoreSnapshotsInstancePayloadByProject: true,
+			// Disaster-recovery health (#145): the same operator read reports
+			// the latest export, the RPO verdict and the latest restore drill.
+			StoreBackupStateGet: true,
 		},
 		events: []audit.EventType{audit.EventRetentionHealthRead},
 	},
@@ -3979,6 +4089,70 @@ var operationTable = map[Operation]opSpec{
 			audit.EventAdapterAbort, audit.EventAdapterScrub, audit.EventAdapterSuperseded,
 		},
 	},
+
+	// --- Dynamic secrets (#147) ----------------------------------------------
+	OpDynamicProviderConfigure: {
+		class: ClassTenant, level: domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreDynamicProvidersCreate: true, StoreDynamicProvidersGet: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventDynamicProviderConfigured},
+	},
+	OpDynamicProviderInspect: {
+		class: ClassTenant, level: domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersList: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventDynamicProviderInspected},
+	},
+	OpDynamicProviderCredentialSet: {
+		class: ClassTenant, level: domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersReplaceCredential: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventDynamicProviderCredentialReplace},
+	},
+	OpDynamicProviderCredentialRevoke: {
+		class: ClassTenant, level: domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersRevokeCredential: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventDynamicProviderCredentialRevoke},
+	},
+	OpDynamicProviderDelete: {
+		class: ClassTenant, level: domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersDelete: true, StoreDynamicLeasesActiveIDsForProvider: true, StoreDynamicLeasesGet: true, StoreDynamicLeasesEnqueueTransition: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventDynamicProviderDeleted, audit.EventDynamicLeaseTransitionIntent},
+	},
+	OpLeaseMint: {
+		class: ClassTenant, level: domain.LevelEnv, postGrantForbidden: true,
+		formula:  Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreDynamicProvidersGet: true, StoreDynamicProvidersCredentialCiphertext: true, StoreDynamicLeasesCreate: true, StoreDynamicLeasesGet: true, StoreDynamicLeasesFinishMint: true, StoreAuditTenantInsert: true},
+		events: []audit.EventType{
+			audit.EventDynamicLeaseTransitionIntent, audit.EventDynamicLeaseTransitionOutcome, audit.EventDynamicLeaseDisclosed,
+		},
+	},
+	OpLeaseInspect: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:     Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps:    map[StoreOp]bool{StoreDynamicLeasesGet: true, StoreDynamicLeasesList: true},
+		auditedNone: true,
+	},
+	OpLeaseRenew: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreDynamicLeasesGet: true, StoreDynamicLeasesEnqueueTransition: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventDynamicLeaseTransitionIntent},
+	},
+	OpLeaseRevoke: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreDynamicLeasesGet: true, StoreDynamicLeasesEnqueueTransition: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventDynamicLeaseTransitionIntent},
+	},
+	OpLeaseSettle: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreDynamicLeasesGet: true, StoreDynamicLeasesEnqueueTransition: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventDynamicLeaseSettleRequested},
+	},
 }
 
 // scimAdminFormula is `manage-members` AT ORG SCOPE EXACTLY (ADR §1). The atom
@@ -4085,6 +4259,21 @@ var systemSites = map[SystemSite]map[StoreOp]bool{
 		// (#185): a shared door, like the retention health read beside it.
 		StoreValuesInstancePayloadByProject:    true,
 		StoreSnapshotsInstancePayloadByProject: true,
+		// Disaster-recovery program (#145). The scheduled export and prune
+		// jobs write the DR health row under scheduler authority; the
+		// unauthenticated /metrics scrape reads it through the same shared
+		// door as the storage high-water (#185), and the audited health read
+		// reaches it via retention.health-read. The restore drill is a
+		// host-local operator verb of the same class as `restore run`; it
+		// rides scheduler authority for its DR-row write and for the ONE
+		// ciphertext sample it decrypts under the separately supplied root
+		// key, rather than minting a new system site (tenant-isolation ADR).
+		StoreBackupStateGet:              true,
+		StoreBackupStateSetExportSuccess: true,
+		StoreBackupStateSetExportFailure: true,
+		StoreBackupStateSetPruneSuccess:  true,
+		StoreBackupStateSetDrill:         true,
+		StoreValuesSampleSecretEntry:     true,
 	},
 }
 
@@ -4095,6 +4284,9 @@ var systemSiteEvents = map[SystemSite][]audit.EventType{
 		audit.EventUpdateOutcome,
 		// Expired change-approval requests swept by the hourly GC (#151).
 		audit.EventApprovalExpired,
+		// The scheduled export's loud failure (#145): the scheduler is the
+		// only emitter, so it is registered here rather than on an operation.
+		audit.EventBackupExportFailed,
 	},
 }
 

@@ -87,6 +87,8 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpDefinitionsExport, authz.OpDefinitionsCheck, authz.OpDeliveryReconcileOffline)
 	add(budgetClassDefaultExpensive, "master-key rotation rewraps every project DEK (project-proportional)",
 		authz.OpRotateMasterKey)
+	add(budgetClassDefaultExpensive, "dynamic secret: in-request external PostgreSQL round-trip (provider connection test / synchronous lease mint)",
+		authz.OpDynamicProviderConfigure, authz.OpDynamicProviderCredentialSet, authz.OpLeaseMint)
 
 	// ---- EXEMPT ----
 	add(budgetClassExempt, "SSE admission caps (§10, 4/32/128) own concurrency; per-event authz must not be budgeted",
@@ -175,8 +177,17 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpAdapterTest, authz.OpAdapterCredentialSet, authz.OpAdapterCredentialRevoke,
 		// templates
 		authz.OpTemplateApplyEnv, authz.OpTemplateApplyProject, authz.OpTemplateApplyOrg, authz.OpTemplateApplyInstance,
+		// member invitation (#568): one account row, one template expansion, one
+		// authority mint; frequency governed by the §10 authenticated-API budget
+		// exactly as the template and credential-reset operations beside it.
+		authz.OpMemberInviteOrg, authz.OpMemberInviteInstance,
 		// instance operational reads
 		authz.OpRetentionHealthRead, authz.OpUpdateStatusRead, authz.OpUpdateRequest, authz.OpUpdateJobRead,
+		// dynamic secrets: reads, revoke/delete, and the enqueue-only lease
+		// transitions (the worker does the external call under its own fenced
+		// concurrency cap; the request itself only writes a row)
+		authz.OpDynamicProviderInspect, authz.OpDynamicProviderCredentialRevoke, authz.OpDynamicProviderDelete,
+		authz.OpLeaseInspect, authz.OpLeaseRenew, authz.OpLeaseRevoke, authz.OpLeaseSettle,
 	)
 
 	return m

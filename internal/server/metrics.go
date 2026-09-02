@@ -56,7 +56,20 @@ const (
 	// unmerged (a monotonic-ish operational signal that a policy's reviewers are
 	// not keeping up). No per-tenant labels, so cardinality is one each.
 	MetricApprovalRequestsOpen    = "hikyo_approval_requests_open"
-	MetricApprovalRequestsExpired = "hikyo_approval_requests_expired_total"
+	MetricApprovalRequestsExpired = "hikyo_approval_requests_expired"
+	// Disaster-recovery gauges (#145, ops-spec section 11). Label-free like
+	// every other operator gauge: one series each, no archive name, no path.
+	MetricLastBackupExportSuccess = "hikyo_last_backup_export_success_timestamp_seconds"
+	MetricBackupRPOExceeded       = "hikyo_backup_rpo_exceeded"
+	MetricLastBackupPruneSuccess  = "hikyo_last_backup_prune_success_timestamp_seconds"
+	MetricLastRestoreDrill        = "hikyo_last_restore_drill_timestamp_seconds"
+	MetricRestoreDrillOK          = "hikyo_restore_drill_ok"
+
+	// Dynamic-secret gauges (#147). Label-free, cardinality one each. active is
+	// the count of currently usable leases; effectsUnknown is the count of lease
+	// transitions stuck in an uncertain state awaiting reconcile.
+	MetricDynamicLeasesActive   = "hikyo_dynamic_leases_active"
+	MetricDynamicEffectsUnknown = "hikyo_dynamic_effects_unknown"
 
 	// MetricSeriesBudget is the ops-spec ceiling for every registered series.
 	MetricSeriesBudget = 1000
@@ -163,6 +176,13 @@ func RegisteredMetricFamilies() []MetricFamily {
 		{Name: MetricHALeaseAgeSecond, MaxSeries: 1},
 		{Name: MetricApprovalRequestsOpen, MaxSeries: 1},
 		{Name: MetricApprovalRequestsExpired, MaxSeries: 1},
+		{Name: MetricLastBackupExportSuccess, MaxSeries: 1},
+		{Name: MetricBackupRPOExceeded, MaxSeries: 1},
+		{Name: MetricLastBackupPruneSuccess, MaxSeries: 1},
+		{Name: MetricLastRestoreDrill, MaxSeries: 1},
+		{Name: MetricRestoreDrillOK, MaxSeries: 1},
+		{Name: MetricDynamicLeasesActive, MaxSeries: 1},
+		{Name: MetricDynamicEffectsUnknown, MaxSeries: 1},
 	}
 }
 
@@ -259,6 +279,7 @@ type Metrics struct {
 	durations [numClasses]prometheus.Observer
 	ha        *haCollector
 	approvals *approvalCollector
+	dyn       *dynamicCollector
 }
 
 // SetHASource attaches the multi-node HA gauge source. It is called once
@@ -290,9 +311,10 @@ func NewMetrics(adm AdmissionSnapshotter) *Metrics {
 	}, []string{"class"})
 	ha := newHACollector()
 	approvals := newApprovalCollector()
-	registry.MustRegister(requests, errors, inFlight, durations, newAdmissionCollector(adm), ha, approvals)
+	dyn := newDynamicCollector()
+	registry.MustRegister(requests, errors, inFlight, durations, newAdmissionCollector(adm), ha, approvals, dyn)
 
-	m := &Metrics{registry: registry, inFlight: inFlight, ha: ha, approvals: approvals}
+	m := &Metrics{registry: registry, inFlight: inFlight, ha: ha, approvals: approvals, dyn: dyn}
 	for c := surfaceClass(0); c < numClasses; c++ {
 		for s := statusBucket(0); s < numStatusBuckets; s++ {
 			m.requests[c][s] = requests.WithLabelValues(classNames[c], statusNames[s])
@@ -432,15 +454,55 @@ func (c *approvalCollector) Describe(ch chan<- *prometheus.Desc) {
 	}
 }
 
+// DynamicSnapshotter is the dynamic-secret gauge source, read at scrape time. A
+// nil source (or an error inside it) renders zeros, so the exposition shape
+// stays deterministic on a datastore hiccup.
+type DynamicSnapshotter interface {
+	DynamicSnapshot() (activeLeases, unknownEffects int64)
+}
+
+// SetDynamicSource attaches the dynamic-secret gauge source once at boot.
+func (m *Metrics) SetDynamicSource(source DynamicSnapshotter) { m.dyn.source.Store(&source) }
+
+type dynamicCollector struct {
+	source atomic.Pointer[DynamicSnapshotter]
+	descs  [2]*prometheus.Desc
+}
+
+func newDynamicCollector() *dynamicCollector {
+	return &dynamicCollector{descs: [2]*prometheus.Desc{
+		prometheus.NewDesc(MetricDynamicLeasesActive, "Number of currently usable dynamic-secret leases.", nil, nil),
+		prometheus.NewDesc(MetricDynamicEffectsUnknown, "Number of dynamic-secret lease transitions in an uncertain state awaiting reconcile.", nil, nil),
+	}}
+}
+
+func (c *dynamicCollector) Describe(ch chan<- *prometheus.Desc) {
+	for _, desc := range c.descs {
+		ch <- desc
+	}
+}
+
 func (c *approvalCollector) Collect(ch chan<- prometheus.Metric) {
 	stats := ApprovalStats{}
 	if p := c.source.Load(); p != nil && *p != nil {
 		stats = (*p).ApprovalSnapshot()
 	}
 	values := [...]float64{stats.Open, stats.Expired}
-	kinds := [...]prometheus.ValueType{prometheus.GaugeValue, prometheus.CounterValue}
+	kinds := [...]prometheus.ValueType{prometheus.GaugeValue, prometheus.GaugeValue}
 	for i, desc := range c.descs {
 		ch <- prometheus.MustNewConstMetric(desc, kinds[i], values[i])
+	}
+}
+
+func (c *dynamicCollector) Collect(ch chan<- prometheus.Metric) {
+	active, unknown := 0.0, 0.0
+	if p := c.source.Load(); p != nil && *p != nil {
+		a, u := (*p).DynamicSnapshot()
+		active, unknown = float64(a), float64(u)
+	}
+	values := [...]float64{active, unknown}
+	for i, desc := range c.descs {
+		ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, values[i])
 	}
 }
 

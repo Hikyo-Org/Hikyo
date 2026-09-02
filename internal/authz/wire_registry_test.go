@@ -18,11 +18,13 @@ func rejectsWireRegistry(t *testing.T, name string, entry wireEntry) {
 // explicit review of the wire, operation-linkage, and direct-event surfaces.
 func TestWireRegistrySnapshot(t *testing.T) {
 	facts := RegistryFacts{}
-	if got := len(facts.Wire()); got != 298 {
-		t.Fatalf("wire entries = %d, want 298", got)
+	// #568 added member invitations, #147 added dynamic providers and leases,
+	// and #151 added the change-approval surface.
+	if got := len(facts.Wire()); got != 316 {
+		t.Fatalf("wire entries = %d, want 316", got)
 	}
-	if got := len(facts.WireRoutes()); got != 208 {
-		t.Fatalf("operation-linked entries = %d, want 208", got)
+	if got := len(facts.WireRoutes()); got != 223 {
+		t.Fatalf("operation-linked entries = %d, want 223", got)
 	}
 	if got := len(facts.WireEvents()); got != 67 {
 		t.Fatalf("direct-event entries = %d, want 67", got)

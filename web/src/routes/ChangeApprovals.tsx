@@ -15,6 +15,8 @@ import {
 } from '../api/approvals.ts';
 import { ApiError } from '../api/client.ts';
 import { useEnvironments } from '../api/settings.ts';
+import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
+import { useProtectedPublishCeremony } from './useProtectedPublishCeremony.ts';
 
 /** A stored UTC timestamp rendered in the operator's locale. */
 function when(value: string): string {
@@ -95,6 +97,7 @@ export function ChangeApprovals() {
   const deletePolicy = useDeletePolicy(ref);
   const vote = useVote(ref, selectedEnv);
   const resolve = useResolveRequest(ref, selectedEnv);
+  const approvalGuard = useProtectedPublishCeremony(ref, ['change-approvals', selectedEnv]);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<PolicyDraft>(emptyDraft);
@@ -151,6 +154,27 @@ export function ChangeApprovals() {
   const act = (fn: () => void) => {
     setActionError(null);
     fn();
+  };
+
+  const guardedAct = (
+    request: ApprovalRequest,
+    purpose: Extract<CeremonyPurpose, 'approve' | 'reject' | 'bypass' | 'publish'>,
+    fn: () => void,
+  ) => {
+    const environment = envItems.find((item) => item.id === request.environment_id);
+    void approvalGuard.run(
+      [
+        {
+          environmentId: request.environment_id,
+          environmentName: environment?.name ?? request.environment_id,
+          keys: request.key_ids.map((id) => ({ id, name: id })),
+          purpose,
+          approvalRequestId: request.id,
+        },
+      ],
+      () => act(fn),
+      'The approval ceremony could not be prepared, so no action was taken',
+    );
   };
 
   return (
@@ -239,6 +263,7 @@ export function ChangeApprovals() {
             <select
               id="ca-env"
               value={draft.environmentId}
+              disabled={editingId !== null}
               onChange={(event) => setDraft({ ...draft, environmentId: event.target.value })}
             >
               <option value="">All environments in the project</option>
@@ -337,6 +362,20 @@ export function ChangeApprovals() {
           </p>
         ) : null}
 
+        {approvalGuard.error === null ? null : (
+          <p className="alert" role="alert">
+            <span className="alert__glyph" aria-hidden="true">!</span>
+            <span>{approvalGuard.error}</span>
+          </p>
+        )}
+
+        {selectedEnv !== '' && requests.isError ? (
+          <p className="alert" role="alert">
+            <span className="alert__glyph" aria-hidden="true">!</span>
+            <span>{refusal(requests.error)}</span>
+          </p>
+        ) : null}
+
         {selectedEnv !== '' && requests.data !== undefined && requests.data.items.length === 0 ? (
           <p>No requests in this environment.</p>
         ) : null}
@@ -352,7 +391,7 @@ export function ChangeApprovals() {
                   setBypassReasons((current) => ({ ...current, [request.id]: value }))
                 }
                 onVote={(decision) =>
-                  act(() =>
+                  guardedAct(request, decision, () =>
                     vote.mutate(
                       { request: request.id, decision },
                       { onError: (error) => setActionError(refusal(error)) },
@@ -360,7 +399,7 @@ export function ChangeApprovals() {
                   )
                 }
                 onMerge={() =>
-                  act(() =>
+                  guardedAct(request, 'publish', () =>
                     resolve.mutate(
                       { request: request.id },
                       { onError: (error) => setActionError(refusal(error)) },
@@ -368,7 +407,7 @@ export function ChangeApprovals() {
                   )
                 }
                 onBypass={() =>
-                  act(() =>
+                  guardedAct(request, 'bypass', () =>
                     resolve.mutate(
                       { request: request.id, bypassReason: bypassReasons[request.id] ?? '' },
                       { onError: (error) => setActionError(refusal(error)) },
@@ -381,6 +420,14 @@ export function ChangeApprovals() {
           </ul>
         ) : null}
       </section>
+      {approvalGuard.request === null ? null : (
+        <Ceremony
+          key={approvalGuard.requestKey}
+          request={approvalGuard.request}
+          onAuthorised={approvalGuard.onAuthorised}
+          onCancel={approvalGuard.onCancel}
+        />
+      )}
     </main>
   );
 }
