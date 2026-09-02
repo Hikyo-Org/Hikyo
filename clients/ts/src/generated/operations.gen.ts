@@ -201,6 +201,7 @@ import {
   passkeyLoginFinish,
   passkeyLoginStart,
   patchSamlProvider,
+  pauseAdapterTarget,
   planAdapterTarget,
   publishPendingChanges,
   putOidcProvider,
@@ -237,6 +238,7 @@ import {
   requestInstanceUpdate,
   resetCredential,
   resumeAdapterMove,
+  resumeAdapterTarget,
   retireSamlSpKey,
   revealValue,
   revealValueDiff,
@@ -458,6 +460,7 @@ import type {
   PasskeyLoginFinishData,
   PasskeyLoginStartData,
   PatchSamlProviderData,
+  PauseAdapterTargetData,
   PlanAdapterTargetData,
   PublishPendingChangesData,
   PutOidcProviderData,
@@ -494,6 +497,7 @@ import type {
   RequestInstanceUpdateData,
   ResetCredentialData,
   ResumeAdapterMoveData,
+  ResumeAdapterTargetData,
   RetireSamlSpKeyData,
   RevealValueData,
   RevealValueDiffData,
@@ -702,6 +706,7 @@ import {
   zPasskeyLoginFinishResponse,
   zPasskeyLoginStartResponse,
   zPatchSamlProviderResponse,
+  zPauseAdapterTargetResponse,
   zPlanAdapterTargetResponse,
   zPublishPendingChangesResponse,
   zPutOidcProviderResponse,
@@ -737,6 +742,7 @@ import {
   zRequestInstanceUpdateResponse,
   zResetCredentialResponse,
   zResumeAdapterMoveResponse,
+  zResumeAdapterTargetResponse,
   zRevealValueDiffResponse,
   zRevealValueResponse,
   zRevealValuesResponse,
@@ -930,6 +936,7 @@ export const oidcStartOp: BodyOperation<OidcStartData, typeof zOidcStartResponse
 export const passkeyLoginFinishOp: BodyOperation<PasskeyLoginFinishData, typeof zPasskeyLoginFinishResponse> = /* @__PURE__ */ new GeneratedBodyOperation(passkeyLoginFinish, [200], zPasskeyLoginFinishResponse);
 export const passkeyLoginStartOp: BodyOperation<PasskeyLoginStartData, typeof zPasskeyLoginStartResponse> = /* @__PURE__ */ new GeneratedBodyOperation(passkeyLoginStart, [200], zPasskeyLoginStartResponse);
 export const patchSamlProviderOp: BodyOperation<PatchSamlProviderData, typeof zPatchSamlProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(patchSamlProvider, [200], zPatchSamlProviderResponse);
+export const pauseAdapterTargetOp: BodyOperation<PauseAdapterTargetData, typeof zPauseAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(pauseAdapterTarget, [200], zPauseAdapterTargetResponse);
 export const planAdapterTargetOp: BodyOperation<PlanAdapterTargetData, typeof zPlanAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(planAdapterTarget, [200], zPlanAdapterTargetResponse);
 export const publishPendingChangesOp: BodyOperation<PublishPendingChangesData, typeof zPublishPendingChangesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(publishPendingChanges, [200], zPublishPendingChangesResponse);
 export const putOidcProviderOp: BodyOperation<PutOidcProviderData, typeof zPutOidcProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(putOidcProvider, [200], zPutOidcProviderResponse);
@@ -965,6 +972,7 @@ export const reorderEnvironmentsOp: BodyOperation<ReorderEnvironmentsData, typeo
 export const requestInstanceUpdateOp: BodyOperation<RequestInstanceUpdateData, typeof zRequestInstanceUpdateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(requestInstanceUpdate, [202], zRequestInstanceUpdateResponse);
 export const resetCredentialOp: BodyOperation<ResetCredentialData, typeof zResetCredentialResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resetCredential, [200], zResetCredentialResponse);
 export const resumeAdapterMoveOp: BodyOperation<ResumeAdapterMoveData, typeof zResumeAdapterMoveResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resumeAdapterMove, [202], zResumeAdapterMoveResponse);
+export const resumeAdapterTargetOp: BodyOperation<ResumeAdapterTargetData, typeof zResumeAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resumeAdapterTarget, [202], zResumeAdapterTargetResponse);
 export const revealValueOp: BodyOperation<RevealValueData, typeof zRevealValueResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revealValue, [200], zRevealValueResponse);
 export const revealValueDiffOp: BodyOperation<RevealValueDiffData, typeof zRevealValueDiffResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revealValueDiff, [200], zRevealValueDiffResponse);
 export const revealValuesOp: BodyOperation<RevealValuesData, typeof zRevealValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revealValues, [200], zRevealValuesResponse);

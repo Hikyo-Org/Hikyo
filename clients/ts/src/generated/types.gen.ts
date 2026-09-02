@@ -38,7 +38,29 @@ export type AdapterTargetInput = {
     visibility: '' | 'all' | 'private' | 'selected';
     selected_repository_ids: Array<number>;
     name_prefix: string;
+    /**
+     * Explicit member key ids. May be empty only when `key_selection` resolves to at least one key; the union must be non-empty.
+     */
     key_ids: Array<Id>;
+    key_selection?: AdapterKeySelection;
+};
+
+/**
+ * Configuration-time selection conveniences (#157). They are resolved
+ * against the project catalogue when the target is saved, the resolved
+ * key ids are stored as the explicit subset, and the patterns are NOT
+ * kept: a key created later that would have matched is never added.
+ * `names` are exact key names; `include` and `exclude` are bounded glob
+ * patterns (`*`, `?`, `[...]`) over key names; `classification` keeps
+ * only keys of that classification. `exclude` applies to what the
+ * patterns and classification selected, never to explicit ids or names.
+ *
+ */
+export type AdapterKeySelection = {
+    names?: Array<string>;
+    include?: Array<string>;
+    exclude?: Array<string>;
+    classification?: '' | 'secret' | 'config';
 };
 
 export type CreateAdapterRequest = {
@@ -74,6 +96,7 @@ export type UpdateAdapterTargetRequest = {
     selected_repository_ids: Array<number>;
     name_prefix: string;
     key_ids: Array<Id>;
+    key_selection?: AdapterKeySelection;
     expected_generation: number;
     keep_remote?: boolean;
 };
@@ -116,14 +139,62 @@ export type AdapterTarget = {
     name_prefix: string;
     generation: number;
     state: 'active' | 'moving' | 'tombstoned';
-    sync_status: 'never' | 'converging' | 'converged' | 'failed';
-    converged_revision?: number | null;
+    /**
+     * Operator health (#157), derived at read time. `pending` is a
+     * queued, not yet claimed converge; `converging` a running one;
+     * `degraded` a failed attempt on a target that converged before, so
+     * the destination still holds `converged_revision`; `paused` wins
+     * over every other state while `paused_at` is set.
+     *
+     */
+    sync_status: 'never' | 'pending' | 'converging' | 'converged' | 'degraded' | 'failed' | 'paused';
+    /**
+     * The last revision a converge completed.
+     */
+    converged_revision: number | null;
+    /**
+     * The revision the most recent attempt loaded, successful or not.
+     */
+    last_attempted_revision: number | null;
+    last_attempted_at: string | null;
+    /**
+     * Bounded cause of the last failed attempt; empty after a success. Never a provider response body.
+     */
+    last_error_class: '' | 'auth' | 'network' | 'conflict' | 'provider_limit' | 'provider_ambiguous' | 'refused';
+    /**
+     * When the queued retry becomes due, if the active job is waiting on one.
+     */
+    retry_at: string | null;
+    paused_at: string | null;
+    /**
+     * The destination disagrees with the ownership ledger in a way only an operator can settle (unowned name in the way, destination identity moved, orphaned names). Cleared by the next successful converge.
+     */
+    drift_attention: boolean;
     failure_names: Array<string>;
     warnings: Array<string>;
+    /**
+     * The resolved explicit key subset by name. Membership is by immutable id; names are echoed for the operator.
+     */
+    keys: Array<AdapterTargetKey>;
     /**
      * Pending exact conflict artifacts eligible for adoption on this target.
      */
     conflicts: Array<AdapterConflictArtifact>;
+};
+
+export type AdapterTargetKey = {
+    key_id: Id;
+    name: string;
+    classification: 'secret' | 'config';
+};
+
+export type AdapterResume = {
+    job_id: Id;
+    generation: number;
+    /**
+     * The published revision the queued converge catches up to; 0 when the environment has never published.
+     */
+    revision: number;
 };
 
 export type AdapterTargetList = {
@@ -2504,6 +2575,22 @@ export type RetentionHealth = {
      */
     storage_warn: boolean;
     backup: BackupHealth;
+    /**
+     * Active deployment-adapter targets whose last attempt failed and that are not paused (#157).
+     */
+    adapter_targets_failed: number;
+    /**
+     * Active deployment-adapter targets an operator has paused.
+     */
+    adapter_targets_paused: number;
+    /**
+     * Active deployment-adapter targets whose destination drifted from the ownership ledger and need an operator.
+     */
+    adapter_targets_attention: number;
+    /**
+     * Deployment-adapter outbox jobs waiting to be claimed, instance-wide.
+     */
+    adapter_jobs_queued: number;
 };
 
 /**
@@ -20276,6 +20363,154 @@ export type SyncAdapterTargetResponses = {
 };
 
 export type SyncAdapterTargetResponse = SyncAdapterTargetResponses[keyof SyncAdapterTargetResponses];
+
+export type PauseAdapterTargetData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        target: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/pause';
+};
+
+export type PauseAdapterTargetErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type PauseAdapterTargetError = PauseAdapterTargetErrors[keyof PauseAdapterTargetErrors];
+
+export type PauseAdapterTargetResponses = {
+    /**
+     * The paused target.
+     */
+    200: AdapterTarget;
+};
+
+export type PauseAdapterTargetResponse = PauseAdapterTargetResponses[keyof PauseAdapterTargetResponses];
+
+export type ResumeAdapterTargetData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        target: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/resume';
+};
+
+export type ResumeAdapterTargetErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type ResumeAdapterTargetError = ResumeAdapterTargetErrors[keyof ResumeAdapterTargetErrors];
+
+export type ResumeAdapterTargetResponses = {
+    /**
+     * Queued catch-up converge.
+     */
+    202: AdapterResume;
+};
+
+export type ResumeAdapterTargetResponse = ResumeAdapterTargetResponses[keyof ResumeAdapterTargetResponses];
 
 export type TestAdapterTargetData = {
     body?: never;

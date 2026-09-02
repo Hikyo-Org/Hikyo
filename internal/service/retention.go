@@ -49,6 +49,9 @@ type PruneHealth struct {
 	// Backup is the disaster-recovery half of the same operator read (#145):
 	// latest export, RPO verdict, latest failure, latest restore drill.
 	Backup BackupHealth
+	// Adapters are the instance-wide deployment-adapter health counts (#157):
+	// the label-free gauges and the doctor finding read the same numbers.
+	Adapters store.AdapterHealthCounts
 }
 
 // peakProjectStorage sums each project's stored ciphertext bytes across both
@@ -520,7 +523,7 @@ func (s *Retention) LastPruneSuccess(ctx context.Context) (time.Time, bool, erro
 
 // health assembles the operator health snapshot from the persisted prune
 // timestamp and the per-project storage high-water.
-func (s *Retention) health(at time.Time, recorded bool, peakStorage int64, backup store.BackupState) PruneHealth {
+func (s *Retention) health(at time.Time, recorded bool, peakStorage int64, backup store.BackupState, adapters store.AdapterHealthCounts) PruneHealth {
 	now := s.now()
 	return PruneHealth{
 		LastSuccess:      at,
@@ -529,6 +532,7 @@ func (s *Retention) health(at time.Time, recorded bool, peakStorage int64, backu
 		PeakProjectBytes: peakStorage,
 		StorageWarn:      peakStorage >= ProjectStorageWarnBytes,
 		Backup:           backupHealth(now, s.Backup, backup),
+		Adapters:         adapters,
 	}
 }
 
@@ -540,6 +544,7 @@ func (s *Retention) OperationalHealth(ctx context.Context) (PruneHealth, error) 
 	var recorded bool
 	var peak int64
 	var backup store.BackupState
+	var adapters store.AdapterHealthCounts
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
 		p, err := authz.SystemAuthority(authz.SiteScheduler, az.Token())
 		if err != nil {
@@ -552,17 +557,19 @@ func (s *Retention) OperationalHealth(ctx context.Context) (PruneHealth, error) 
 		if err != nil {
 			return err
 		}
-		peak, err = peakProjectStorage(ctx, r.Values(), r.Snapshots(), p)
-		if err != nil {
+		if peak, err = peakProjectStorage(ctx, r.Values(), r.Snapshots(), p); err != nil {
 			return err
 		}
-		backup, err = r.BackupState().Get(ctx, p)
+		if backup, err = r.BackupState().Get(ctx, p); err != nil {
+			return err
+		}
+		adapters, err = r.Adapters().HealthCounts(ctx, p)
 		return err
 	})
 	if err != nil {
 		return PruneHealth{}, err
 	}
-	return s.health(at, recorded, peak, backup), nil
+	return s.health(at, recorded, peak, backup, adapters), nil
 }
 
 // GetHealth authorizes and audits the instance API read in one transaction.
@@ -593,7 +600,11 @@ func (s *Retention) GetHealth(ctx context.Context, actor Actor) (PruneHealth, er
 		if err != nil {
 			return err
 		}
-		out = s.health(at, recorded, peak, backup)
+		adapters, err := r.Adapters().HealthCounts(ctx, proof)
+		if err != nil {
+			return err
+		}
+		out = s.health(at, recorded, peak, backup, adapters)
 		ev, err := domainEvent(ctx, audit.EventRetentionHealthRead, caller.Principal,
 			audit.Object{Type: "retention_health", ID: "payload_gc"}, audit.Payload{
 				"recorded": out.Recorded, "stale": out.Stale,

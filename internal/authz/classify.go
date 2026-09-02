@@ -695,6 +695,8 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"http:DELETE /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}":         {Class: ClassTenant, Ops: []Operation{OpAdapterDelete}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/plan":      {Class: ClassTenant, Ops: []Operation{OpAdapterPlan}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/sync":      {Class: ClassTenant, Ops: []Operation{OpAdapterSync}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/pause":     {Class: ClassTenant, Ops: []Operation{OpAdapterConfigure}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/resume":    {Class: ClassTenant, Ops: []Operation{OpAdapterSync}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/test":      {Class: ClassTenant, Ops: []Operation{OpAdapterTest}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/adoptions": {Class: ClassTenant, Ops: []Operation{OpAdapterAdopt}},
 	"http:GET /api/v1/orgs/{org}/projects/{project}/adapter-moves/{move}":                {Class: ClassTenant, Ops: []Operation{OpAdapterInspect}},

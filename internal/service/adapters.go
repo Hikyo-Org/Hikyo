@@ -60,6 +60,11 @@ type AdapterView struct {
 // enforces that handlers never import internal/store directly.
 type AdapterTarget = store.AdapterTarget
 
+// AdapterTargetKey intentionally shares a store-owned type with transport mapping.
+// This sanctioned seam follows the system-architecture ADR; boundary_test.go
+// enforces that handlers never import internal/store directly.
+type AdapterTargetKey = store.AdapterTargetKey
+
 // AdapterConflictEntry intentionally shares a store-owned type with transport mapping.
 // This sanctioned seam follows the system-architecture ADR; boundary_test.go
 // enforces that handlers never import internal/store directly.
@@ -90,6 +95,9 @@ type AdapterTargetInput struct {
 	SelectedRepositoryIDs  []int64
 	NamePrefix             string
 	KeyIDs                 []string
+	// KeySelection is resolved into KeyIDs before any ceremony (#157) and is
+	// never stored.
+	KeySelection *AdapterKeySelection
 }
 
 func adapterDestination(input AdapterTargetInput) adapter.Destination {
@@ -319,7 +327,13 @@ func (s *Adapters) Create(ctx context.Context, actor Actor, scope domain.Scope, 
 	if err != nil {
 		return AdapterView{}, err
 	}
-	if scope.Project == "" || scope.Env != "" || request.Origin == "" || len(request.Credential) == 0 || request.Target.EnvironmentID == "" || len(request.Target.KeyIDs) == 0 {
+	if scope.Project == "" || scope.Env != "" || request.Origin == "" || len(request.Credential) == 0 || request.Target.EnvironmentID == "" {
+		return AdapterView{}, fmt.Errorf("%w: adapter create requires project scope, credential, and first target", domain.ErrInvalid)
+	}
+	if err := s.resolveTargetKeys(ctx, actor, scope, &request.Target); err != nil {
+		return AdapterView{}, err
+	}
+	if len(request.Target.KeyIDs) == 0 {
 		return AdapterView{}, fmt.Errorf("%w: adapter create requires project scope, credential, and first target", domain.ErrInvalid)
 	}
 	now := store.CanonTime(s.now())
@@ -383,6 +397,9 @@ func (s *Adapters) Create(ctx context.Context, actor Actor, scope domain.Scope, 
 			return err
 		}
 		out = AdapterView{Adapter: record, Targets: []store.AdapterTarget{target}}
+		if err := attachTargetKeys(ctx, r.Adapters(), proof, out.Targets); err != nil {
+			return err
+		}
 		ev, err := domainEvent(ctx, audit.EventAdapterConfigure, caller.Principal, audit.Object{Type: "adapter", ID: adapterID}, audit.Payload{"mutation": "adapter-create", "authority": string(caller.Principal)})
 		if err != nil {
 			return err
@@ -413,6 +430,9 @@ func (s *Adapters) Get(ctx context.Context, actor Actor, scope domain.Scope, ada
 		}
 		out.Targets, err = r.Adapters().ListTargets(ctx, p, adapterID)
 		if err != nil {
+			return err
+		}
+		if err := attachTargetKeys(ctx, r.Adapters(), p, out.Targets); err != nil {
 			return err
 		}
 		out.TargetConflicts = make(map[string][]store.AdapterConflictArtifact, len(out.Targets))
@@ -455,6 +475,9 @@ func (s *Adapters) List(ctx context.Context, actor Actor, scope domain.Scope) ([
 			if err != nil {
 				return err
 			}
+			if err := attachTargetKeys(ctx, r.Adapters(), p, targets); err != nil {
+				return err
+			}
 			view := AdapterView{Adapter: record, Targets: targets, TargetConflicts: make(map[string][]store.AdapterConflictArtifact, len(targets))}
 			for _, target := range targets {
 				conflicts, err := r.Adapters().Conflicts(ctx, p, target.ID)
@@ -475,7 +498,13 @@ func (s *Adapters) List(ctx context.Context, actor Actor, scope domain.Scope) ([
 }
 
 func (s *Adapters) AddTarget(ctx context.Context, actor Actor, scope domain.Scope, adapterID string, input AdapterTargetInput) (store.AdapterTarget, error) {
-	if scope.Project == "" || scope.Env != "" || adapterID == "" || input.EnvironmentID == "" || len(input.KeyIDs) == 0 {
+	if scope.Project == "" || scope.Env != "" || adapterID == "" || input.EnvironmentID == "" {
+		return store.AdapterTarget{}, fmt.Errorf("%w: target add requires adapter, environment, destination, and keys", domain.ErrInvalid)
+	}
+	if err := s.resolveTargetKeys(ctx, actor, scope, &input); err != nil {
+		return store.AdapterTarget{}, err
+	}
+	if len(input.KeyIDs) == 0 {
 		return store.AdapterTarget{}, fmt.Errorf("%w: target add requires adapter, environment, destination, and keys", domain.ErrInvalid)
 	}
 	var record store.AdapterRecord
@@ -573,6 +602,9 @@ func (s *Adapters) AddTarget(ctx context.Context, actor Actor, scope domain.Scop
 			return err
 		}
 		out = added.Target
+		if out.Keys, err = r.Adapters().TargetKeys(ctx, p, out.ID); err != nil {
+			return err
+		}
 		ev, err := domainEvent(ctx, audit.EventAdapterConfigure, caller.Principal, audit.Object{Type: "adapter-target", ID: targetID}, audit.Payload{
 			"mutation": "target-add", "previous_authority": added.PreviousAuthorityPrincipalID, "authority": added.AuthorityPrincipalID,
 		})
@@ -629,6 +661,12 @@ func (s *Adapters) prepareTargetMutation(ctx context.Context, actor Actor, scope
 // move decision. The decision and selected mutation share one write transaction,
 // so a concurrent target mutation cannot bypass scrub-before-switch.
 func (s *Adapters) ApplyTargetMutation(ctx context.Context, actor Actor, scope domain.Scope, request UpdateAdapterTargetRequest, keepRemote bool) (TargetMutationResult, error) {
+	if scope.Project == "" || scope.Env != "" {
+		return nil, fmt.Errorf("%w: target mutation requires project scope", domain.ErrInvalid)
+	}
+	if err := s.resolveTargetKeys(ctx, actor, scope, &request.Target); err != nil {
+		return nil, err
+	}
 	preparedMove, err := s.prepareTargetMutation(ctx, actor, scope, request)
 	if err != nil {
 		return nil, err
@@ -769,6 +807,9 @@ func (s *Adapters) applyTargetUpdate(ctx context.Context, r store.Repos, az *aut
 		if err := r.Audit().InsertTenant(ctx, proof, superseded); err != nil {
 			return store.AdapterTarget{}, err
 		}
+	}
+	if updated.Target.Keys, err = r.Adapters().TargetKeys(ctx, proof, request.TargetID); err != nil {
+		return store.AdapterTarget{}, err
 	}
 	return updated.Target, nil
 }
@@ -1268,6 +1309,137 @@ func (s *Adapters) SyncTarget(ctx context.Context, actor Actor, scope domain.Sco
 	return result, err
 }
 
+// PauseTarget stops every push for one target (#157). It narrows what Hikyo
+// does at the destination, so it carries manage-adapters alone and no
+// reauthentication ceremony, exactly like credential revocation. The ledger
+// is untouched: resume needs no re-adoption.
+func (s *Adapters) PauseTarget(ctx context.Context, actor Actor, scope domain.Scope, targetID string) (store.AdapterTarget, error) {
+	if scope.Project == "" || scope.Env != "" || targetID == "" {
+		return store.AdapterTarget{}, fmt.Errorf("%w: adapter target pause requires project scope and target id", domain.ErrInvalid)
+	}
+	now := store.CanonTime(s.now())
+	var out store.AdapterTarget
+	err := retryAdapterProviderFence(ctx, func() error {
+		return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+			caller, err := actor.resolve(ctx, az, now)
+			if err != nil {
+				return err
+			}
+			proof, err := az.Authorize(ctx, caller, authz.OpAdapterConfigure, scope)
+			if err != nil {
+				return err
+			}
+			result, err := r.Adapters().PauseTarget(ctx, proof, targetID, now)
+			if err != nil {
+				return err
+			}
+			out, err = r.Adapters().Target(ctx, proof, targetID)
+			if err != nil {
+				return err
+			}
+			if out.Keys, err = r.Adapters().TargetKeys(ctx, proof, targetID); err != nil {
+				return err
+			}
+			if result.AlreadyPaused {
+				return nil
+			}
+			ev, err := domainEvent(ctx, audit.EventAdapterConfigure, caller.Principal, audit.Object{Type: "adapter-target", ID: targetID}, audit.Payload{
+				"mutation": "target-pause", "authority": result.AuthorityPrincipalID,
+			})
+			if err != nil {
+				return err
+			}
+			if err := r.Audit().InsertTenant(ctx, proof, ev); err != nil {
+				return err
+			}
+			if result.SupersededJobID == "" {
+				return nil
+			}
+			superseded, err := domainEvent(ctx, audit.EventAdapterSuperseded, caller.Principal,
+				audit.Object{Type: "adapter-target", ID: targetID}, audit.Payload{
+					"previous_job_id": result.SupersededJobID, "job_id": "",
+				})
+			if err != nil {
+				return err
+			}
+			return r.Audit().InsertTenant(ctx, proof, superseded)
+		})
+	})
+	if err != nil {
+		return store.AdapterTarget{}, err
+	}
+	return out, nil
+}
+
+// ResumeTarget lifts a pause and queues one catch-up converge (#157). It
+// pushes again, so it carries the manual-sync formula and ceremony; the
+// result names the published revision the converge reaches.
+func (s *Adapters) ResumeTarget(ctx context.Context, actor Actor, scope domain.Scope, targetID string) (store.AdapterResumeResult, error) {
+	if scope.Project == "" || scope.Env != "" || targetID == "" {
+		return store.AdapterResumeResult{}, fmt.Errorf("%w: adapter target resume requires project scope and target id", domain.ErrInvalid)
+	}
+	release, err := s.Budget.acquire(budgetAdapter, budgetKeys{Org: scope.Org})
+	if err != nil {
+		return store.AdapterResumeResult{}, err
+	}
+	defer release()
+	now := store.CanonTime(s.now())
+	var result store.AdapterResumeResult
+	var rateCharged bool
+	err = retryAdapterProviderFence(ctx, func() error {
+		return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+			caller, err := actor.resolve(ctx, az, now)
+			if err != nil {
+				return err
+			}
+			proof, err := az.Authorize(ctx, caller, authz.OpAdapterSync, scope)
+			if err != nil {
+				return err
+			}
+			if err := s.Budget.chargeOnce(&rateCharged, budgetAdapterRate, budgetKeys{Principal: caller.Principal}); err != nil {
+				return err
+			}
+			target, err := r.Adapters().Target(ctx, proof, targetID)
+			if err != nil {
+				return err
+			}
+			environments, err := r.Adapters().Environments(ctx, proof, target.AdapterID)
+			if err != nil {
+				return err
+			}
+			if err := s.requireAdapterCeremony(ctx, az, caller, scope, environments, authz.OpAdapterSync, now); err != nil {
+				return err
+			}
+			result, err = r.Adapters().ResumeTarget(ctx, proof, targetID, string(caller.Principal), now)
+			if err != nil {
+				return err
+			}
+			requested, err := newAuditEvent(ctx, audit.EventAdapterSyncRequested, caller.Principal,
+				audit.Object{Type: "adapter-target", ID: targetID}, audit.OutcomeSuccess,
+				result.Enqueue.JobID, audit.Payload{"trigger": "resume"})
+			if err != nil {
+				return err
+			}
+			requested.AuthorityID = result.Enqueue.AuthorityPrincipalID
+			if err := r.Audit().InsertTenant(ctx, proof, requested); err != nil {
+				return err
+			}
+			if result.Enqueue.SupersededJobID == "" {
+				return nil
+			}
+			superseded, err := domainEvent(ctx, audit.EventAdapterSuperseded, caller.Principal,
+				audit.Object{Type: "adapter-target", ID: targetID}, audit.Payload{
+					"previous_job_id": result.Enqueue.SupersededJobID, "job_id": result.Enqueue.JobID,
+				})
+			if err != nil {
+				return err
+			}
+			return r.Audit().InsertTenant(ctx, proof, superseded)
+		})
+	})
+	return result, err
+}
+
 func (s *Adapters) TestTarget(ctx context.Context, actor Actor, scope domain.Scope, targetID string) (adapter.Connection, error) {
 	if scope.Project == "" || scope.Env != "" || targetID == "" {
 		return adapter.Connection{}, fmt.Errorf("%w: adapter connection test requires project scope and target id", domain.ErrInvalid)
@@ -1641,6 +1813,9 @@ func (s *Adapters) InspectTarget(ctx context.Context, actor Actor, scope domain.
 		}
 		out.Target, err = r.Adapters().Target(ctx, p, targetID)
 		if err != nil {
+			return err
+		}
+		if out.Target.Keys, err = r.Adapters().TargetKeys(ctx, p, targetID); err != nil {
 			return err
 		}
 		out.Conflicts, err = r.Adapters().Conflicts(ctx, p, targetID)

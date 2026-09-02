@@ -132,6 +132,13 @@ type Config struct {
 	// more than the production publish allowance. Load refuses the override
 	// outside --dev; false keeps the production budget enabled.
 	DevServiceBudgetsDisabled bool
+	// DevAdapterFakeProvider replaces the deployment-adapter provider modules
+	// with an in-process, in-memory stand-in (#157). It exists for the browser
+	// flow suite, which cannot reach a real HTTPS provider from inside the
+	// harness; every other part of the adapter path (ceremonies, outbox,
+	// ledger, INTENT/OUTCOME journaling, audit) stays real. Load refuses the
+	// override outside --dev.
+	DevAdapterFakeProvider bool
 	// ReauthWindow is the instance-default disclosure reauthentication
 	// window (human-auth ADR section Assurance; permission-model ADR's
 	// per-environment knob inherits it). Zero - the production default - means
@@ -195,6 +202,7 @@ var knownEnv = map[string]bool{
 	// obvious at a glance, and refused at boot outside --dev regardless.
 	"HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE": true,
 	"HIKYO_DEV_SERVICE_BUDGETS_DISABLED":    true,
+	"HIKYO_DEV_ADAPTER_FAKE_PROVIDER":       true,
 
 	// Client-side keys. They configure no server behaviour, but they are
 	// listed here because the unknown-key warning is a typo detector: a
@@ -352,6 +360,18 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 				return nil, nil, fmt.Errorf("HIKYO_DEV_SERVICE_BUDGETS_DISABLED: %q is not a boolean", raw)
 			}
 			cfg.DevServiceBudgetsDisabled = disabled
+		}
+		if raw := strings.TrimSpace(getenv("HIKYO_DEV_ADAPTER_FAKE_PROVIDER")); raw != "" {
+			if !cfg.Dev {
+				return nil, nil, fmt.Errorf(
+					"HIKYO_DEV_ADAPTER_FAKE_PROVIDER is a development-mode override and this is not a development server: " +
+						"remove it, or pass --dev if this is an evaluation instance")
+			}
+			fake, err := strconv.ParseBool(raw)
+			if err != nil {
+				return nil, nil, fmt.Errorf("HIKYO_DEV_ADAPTER_FAKE_PROVIDER: %q is not a boolean", raw)
+			}
+			cfg.DevAdapterFakeProvider = fake
 		}
 	}
 	if subcommand == "server" {

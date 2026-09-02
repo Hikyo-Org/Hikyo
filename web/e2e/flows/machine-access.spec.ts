@@ -3,9 +3,13 @@ import { expect, type Page } from '@playwright/test';
 import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
 import {
   establishSession,
+  nextTotpCode,
   readSeed,
 } from '../fixtures/instance.ts';
 import { test } from '../fixtures/passkey.ts';
+import { surfacesForFlow } from '../registry.ts';
+
+const COLOR_SCHEMES: readonly ['dark', 'light'] = ['dark', 'light'];
 
 /**
  * Flow: machine access (registry surface `machine-access`) — mvp-boundary S3's
@@ -504,7 +508,7 @@ test.describe('machine access', () => {
     await expect(page.locator('.bindrow', { hasText: subject })).toHaveCount(0);
   });
 
-  for (const scheme of ['dark', 'light'] as const) {
+  for (const scheme of COLOR_SCHEMES) {
     test(`meets the pinned assertion set on the inventory (${scheme})`, async () => {
       await page.emulateMedia({ colorScheme: scheme });
       try {
@@ -672,4 +676,168 @@ test.describe('machine access', () => {
     await expect(dialog).toBeHidden();
     await revokeMinted(page);
   });
+});
+
+/**
+ * Flow: deployment adapters (registry surface `adapters`, #157).
+ *
+ * It rides this file for the reason the registry states: the merge gate loads
+ * `ci.yml` from the base branch, so a spec a PR adds to a group never runs on
+ * that PR. machine-access.spec.ts is already in group 3 and is the
+ * project-scoped sibling, so the surface's pinned set runs from PR-checked-out
+ * content today.
+ *
+ * What this flow proves, in the ADRs' own terms:
+ *
+ *  - an adapter and its first target are created from the browser behind the
+ *    adapter reauthentication ceremony, with the credential write-only;
+ *  - the key subset is explicit: the ticked key is echoed back by name;
+ *  - the target's health moves through the real outbox to `Healthy` against
+ *    the --dev fake provider (ceremony, outbox, ledger and audit are real);
+ *  - pause is instant and needs no ceremony; resume runs the ceremony and
+ *    names the revision it catches up to;
+ *  - removal is an explicit retain-or-prune decision, and retaining lists the
+ *    orphaned names loudly.
+ */
+const ADAPTERS_PATH = `/orgs/${seed.org}/projects/${seed.project}/adapters`;
+const ADAPTER_ORIGIN = 'https://forgejo-e2e.example';
+/** The one key the flow ticks; the seed always creates at least one secret. */
+const ADAPTER_KEY = seed.secrets[0] ?? '';
+
+async function authoriseAdapterCeremony(page: Page): Promise<void> {
+  // The target lives in the protected `prod` environment, whose window is
+  // capped at 0, so the adapter ceremony is a passkey decision: the virtual
+  // authenticator the passkey fixture installed satisfies it, and no shared
+  // TOTP step file is touched (desktop and mobile run in parallel projects).
+  const dialog = page.getByRole('dialog', { name: 'Confirm it is you' });
+  await expect(dialog).toBeVisible();
+  const code = dialog.getByLabel('Authenticator code');
+  if (await code.isVisible().catch(() => false)) {
+    await code.fill(await nextTotpCode());
+  }
+  await dialog.getByRole('button', { name: 'Authorise' }).click();
+  await expect(dialog).toBeHidden();
+}
+
+test.describe('deployment adapters', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let page: Page;
+
+  test.beforeEach(async ({ passkeyPage }) => {
+    page = passkeyPage;
+    await page.context().clearCookies();
+    await page.goto(ADAPTERS_PATH);
+    await establishSession(page);
+    await page.goto(ADAPTERS_PATH);
+    await expect(page.getByRole('heading', { name: 'Deployment adapters', level: 1 })).toBeVisible();
+  });
+
+  test('creates an adapter behind the ceremony, watches it converge, pauses, resumes and removes', async () => {
+    expect(ADAPTER_KEY).not.toBe('');
+
+    // Create: provider, origin, a write-only credential, and the first target
+    // with one ticked key. The save opens the adapter-purpose ceremony over
+    // exactly the target's environment; the code authorises it.
+    await page.getByRole('button', { name: 'Add adapter' }).click();
+    const form = page.getByRole('region', { name: 'New adapter' });
+    await form.getByLabel('Origin').fill(ADAPTER_ORIGIN);
+    await form.getByLabel('Credential').fill('e2e-provider-token');
+    await form.getByRole('combobox', { name: 'Environment', exact: true }).selectOption(seed.prod);
+    await form.getByRole('textbox', { name: 'Owner', exact: true }).fill('acme');
+    await form.getByRole('textbox', { name: 'Repository', exact: true }).fill('app');
+    await form.getByLabel('Name prefix').fill('E2E_');
+    await form.getByRole('checkbox', { name: ADAPTER_KEY, exact: true }).check();
+    await form.getByRole('button', { name: 'Save' }).click();
+    await authoriseAdapterCeremony(page);
+    await expect(page.locator('.adapters__done')).toContainText('Adapter created');
+
+    // The credential never comes back: the panel says only that one is set.
+    const panel = page.getByRole('region', { name: `Adapter ${ADAPTER_ORIGIN}` });
+    await expect(panel).toBeVisible();
+    await expect(panel.getByText('credential set')).toBeVisible();
+    await expect(page.getByText('e2e-provider-token')).toHaveCount(0);
+
+    // The target row opens its detail; the ticked key is echoed by name and
+    // the real outbox converges it against the fake provider.
+    const row = panel.locator('.adapters__target').first();
+    await row.click();
+    const detail = page.getByRole('complementary', { name: 'Target detail' });
+    await expect(detail).toBeVisible();
+    await expect(detail.getByRole('list', { name: 'Member keys' })).toContainText(ADAPTER_KEY);
+    // The environment published before the adapter existed, so a fresh target
+    // starts `never`; a resync drives its first converge against the fake
+    // provider. Resync pushes, so it runs the ceremony.
+    await expect(detail.locator('.adapters__health')).toHaveText(/Never synced/);
+    await detail.getByRole('button', { name: 'Resync' }).click();
+    await authoriseAdapterCeremony(page);
+    await expect(detail.locator('.adapters__health')).toHaveText(/Healthy/, { timeout: 20_000 });
+    await expect(detail.locator('.adapters__facts')).toContainText('rev ');
+    // The workflow mapping is names only, prefixed, and carries no value.
+    await expect(detail.locator('.adapters__workflow')).toContainText(`E2E_${ADAPTER_KEY}`);
+
+    // Pause needs no ceremony; the chip says so in words.
+    await detail.getByRole('button', { name: 'Pause' }).click();
+    await expect(detail.locator('.adapters__health')).toHaveText(/Paused/);
+    await expect(detail.getByRole('button', { name: 'Resync' })).toBeDisabled();
+
+    // Resume pushes again, so it runs the ceremony and names its revision.
+    await detail.getByRole('button', { name: 'Resume' }).click();
+    await authoriseAdapterCeremony(page);
+    await expect(page.locator('.adapters__done')).toContainText(/Catching up to revision \d+/);
+    await expect(detail.locator('.adapters__health')).toHaveText(/Healthy/, { timeout: 20_000 });
+
+    // Removal is an explicit decision: neither option is preselected, and
+    // retaining lists the names left behind.
+    await detail.getByRole('button', { name: 'Remove' }).click();
+    const remove = page.getByRole('dialog', { name: /Remove target/ });
+    await expect(remove.getByRole('button', { name: 'Remove target' })).toBeDisabled();
+    await remove.getByRole('radio', { name: /Retain/ }).check();
+    await remove.getByRole('button', { name: 'Remove target' }).click();
+    await expect(page.locator('.adapters__done')).toContainText(`E2E_${ADAPTER_KEY}`);
+    await expect(panel.locator('.adapters__target')).toHaveCount(0);
+  });
+
+  for (const scheme of COLOR_SCHEMES) {
+    for (const surface of surfacesForFlow('adapters')) {
+      test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({}, testInfo) => {
+        await page.emulateMedia({ colorScheme: scheme });
+        try {
+          const heading = page.getByRole('heading', { name: 'Deployment adapters', level: 1 });
+          await expect(heading).toBeVisible();
+          const panel = page.getByRole('region', { name: `Adapter ${ADAPTER_ORIGIN}` });
+          await expect(panel).toBeVisible();
+          const origin = panel.locator('.adapters__origin');
+          const badge = panel.locator('.chip').first();
+          const addTarget = panel.getByRole('button', { name: 'Add target' });
+          const rowDensity = testInfo.project.name === 'mobile' ? '--touch' : '--row';
+
+          await expectPinnedAssertionSet(page, {
+            flow: 'adapters',
+            surface: surface.id,
+            theme: scheme,
+            text: [heading, origin],
+            radii: [
+              [panel, 'container'],
+              [addTarget, 'control'],
+              [badge, 'badge'],
+            ],
+            fonts: [
+              [heading, 'ui'],
+              [origin, 'mono'],
+            ],
+            colours: [
+              [heading, 'color', '--tx'],
+              [panel, 'backgroundColor', '--bg-panel'],
+              [panel, 'borderTopColor', '--panel-line'],
+            ],
+            hairlines: [panel],
+            density: [[addTarget, rowDensity]],
+          });
+        } finally {
+          await page.emulateMedia({ colorScheme: null });
+        }
+      });
+    }
+  }
 });

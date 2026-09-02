@@ -96,6 +96,11 @@ export const FLOWS: readonly Flow[] = [
     spec: 'flows/machine-access.spec.ts',
     surfaces: ['machine-access'],
   },
+  // Deployment adapters (#157) is a new SURFACE, so the S3 closure demands a
+  // flow, but it cannot get its own spec FILE (the merge gate loads `ci.yml`
+  // from the base branch); it rides `machine-access.spec.ts`, already in
+  // group 3 and the project-scoped sibling surface.
+  { id: 'adapters', spec: 'flows/machine-access.spec.ts', surfaces: ['adapters'] },
   {
     id: 'workspace',
     spec: 'flows/workspace.spec.ts',

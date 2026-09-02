@@ -446,12 +446,16 @@ func (a *API) GetRetentionHealth(ctx context.Context, _ apigen.GetRetentionHealt
 		last = &at
 	}
 	return apigen.GetRetentionHealth200JSONResponse{
-		LastPruneSuccess:  last,
-		Stale:             health.Stale,
-		StaleAfterSeconds: apigen.RetentionHealthStaleAfterSeconds(service.PruneStaleAfter / time.Second),
-		PeakProjectBytes:  int(health.PeakProjectBytes),
-		StorageWarn:       health.StorageWarn,
-		Backup:            wireBackupHealth(health.Backup),
+		LastPruneSuccess:        last,
+		Stale:                   health.Stale,
+		StaleAfterSeconds:       apigen.RetentionHealthStaleAfterSeconds(service.PruneStaleAfter / time.Second),
+		PeakProjectBytes:        int(health.PeakProjectBytes),
+		StorageWarn:             health.StorageWarn,
+		Backup:                  wireBackupHealth(health.Backup),
+		AdapterTargetsFailed:    int(health.Adapters.TargetsFailed),
+		AdapterTargetsPaused:    int(health.Adapters.TargetsPaused),
+		AdapterTargetsAttention: int(health.Adapters.TargetsAttention),
+		AdapterJobsQueued:       int(health.Adapters.JobsQueued),
 	}, nil
 }
 

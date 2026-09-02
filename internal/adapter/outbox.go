@@ -37,12 +37,15 @@ type Job struct {
 	CreatedAt          time.Time
 }
 
+// JobStore is the durable half of the worker. Retry and Fail carry the
+// revision the attempt loaded (0 when it never got that far) and the attempt's
+// error, so the target records what was last attempted and why it failed.
 type JobStore interface {
 	ClaimDue(context.Context, string, time.Time, time.Time) (Job, bool, error)
 	Journal(Job) Journal
-	Retry(context.Context, Job, time.Time, []Change, []string, error) error
+	Retry(ctx context.Context, job Job, due time.Time, revision int64, failed []Change, warnings []string, cause error) error
 	Succeed(context.Context, Job, int64, []string, time.Time) error
-	Fail(context.Context, Job, time.Time, error) error
+	Fail(ctx context.Context, job Job, revision int64, at time.Time, cause error) error
 }
 
 type LoadedSync struct {
@@ -140,19 +143,19 @@ func (w *Worker) RunOnce(ctx context.Context) (bool, error) {
 	journal := w.Store.Journal(job)
 	if err := journal.Gate(ctx, Effect{Surface: Secret, EffectiveName: "*", Disposition: Update}); err != nil {
 		if errors.Is(err, ErrUnauthorized) || errors.Is(err, ErrSuperseded) {
-			return true, w.Store.Fail(ctx, job, w.now(), err)
+			return true, w.Store.Fail(ctx, job, 0, w.now(), err)
 		}
 		due := retryDue(w.now(), job.Attempt, w.Jitter, err)
-		return true, w.Store.Retry(ctx, job, due, nil, nil, err)
+		return true, w.Store.Retry(ctx, job, due, 0, nil, nil, err)
 	}
 	if job.Kind == Activate {
 		loader, ok := w.Loader.(ActivationLoader)
 		if !ok {
-			return true, w.Store.Fail(ctx, job, w.now(), errors.New("adapter: activation loader is not configured"))
+			return true, w.Store.Fail(ctx, job, 0, w.now(), errors.New("adapter: activation loader is not configured"))
 		}
 		activationStore, ok := w.Store.(ActivationStore)
 		if !ok {
-			return true, w.Store.Fail(ctx, job, w.now(), errors.New("adapter: activation store is not configured"))
+			return true, w.Store.Fail(ctx, job, 0, w.now(), errors.New("adapter: activation store is not configured"))
 		}
 		for {
 			loaded, loadErr := loader.LoadActivation(ctx, job, journal)
@@ -180,13 +183,13 @@ func (w *Worker) RunOnce(ctx context.Context) (bool, error) {
 			}
 		}
 		if errors.Is(err, ErrUnauthorized) || errors.Is(err, ErrSuperseded) {
-			return true, w.Store.Fail(ctx, job, w.now(), err)
+			return true, w.Store.Fail(ctx, job, 0, w.now(), err)
 		}
 		if errors.Is(err, ErrProviderAuth) || errors.Is(err, ErrConflict) {
-			return true, w.Store.Fail(ctx, job, w.now(), err)
+			return true, w.Store.Fail(ctx, job, 0, w.now(), err)
 		}
 		due := retryDue(w.now(), job.Attempt, w.Jitter, err)
-		return true, w.Store.Retry(ctx, job, due, nil, nil, err)
+		return true, w.Store.Retry(ctx, job, due, 0, nil, nil, err)
 	}
 	completed := []Change{}
 	var result SyncResult
@@ -196,10 +199,10 @@ func (w *Worker) RunOnce(ctx context.Context) (bool, error) {
 		if loadErr != nil {
 			err = loadErr
 			if errors.Is(err, ErrUnauthorized) || errors.Is(err, ErrSuperseded) || errors.Is(err, ErrProviderAuth) {
-				return true, w.Store.Fail(ctx, job, w.now(), err)
+				return true, w.Store.Fail(ctx, job, revision, w.now(), err)
 			}
 			due := retryDue(w.now(), job.Attempt, w.Jitter, err)
-			return true, w.Store.Retry(ctx, job, due, nil, nil, err)
+			return true, w.Store.Retry(ctx, job, due, revision, nil, nil, err)
 		}
 		revision = loaded.Revision
 		loaded.Request.Teardown = job.Kind == Scrub
@@ -233,10 +236,10 @@ func (w *Worker) RunOnce(ctx context.Context) (bool, error) {
 		}
 	}
 	if errors.Is(err, ErrUnauthorized) || errors.Is(err, ErrSuperseded) {
-		return true, w.Store.Fail(ctx, job, w.now(), err)
+		return true, w.Store.Fail(ctx, job, revision, w.now(), err)
 	}
 	if errors.Is(err, ErrProviderAuth) {
-		return true, w.Store.Fail(ctx, job, w.now(), err)
+		return true, w.Store.Fail(ctx, job, revision, w.now(), err)
 	}
 	due := retryDue(w.now(), job.Attempt, w.Jitter, err)
 	if !job.CreatedAt.IsZero() && w.now().Sub(job.CreatedAt) > time.Hour {
@@ -247,7 +250,7 @@ func (w *Worker) RunOnce(ctx context.Context) (bool, error) {
 		log.Error("adapter target has failed for more than one hour", "target_id", job.TargetID, "job_id", job.ID)
 	}
 	failures := append(append([]Change{}, result.Failed...), result.Conflicts...)
-	return true, w.Store.Retry(ctx, job, due, failures, result.Warnings, err)
+	return true, w.Store.Retry(ctx, job, due, revision, failures, result.Warnings, err)
 }
 
 func (w *Worker) Run(ctx context.Context) {

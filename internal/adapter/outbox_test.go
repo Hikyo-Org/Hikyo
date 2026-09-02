@@ -165,7 +165,7 @@ func (s *workerJobStore) Journal(Job) Journal {
 	}
 	return workerJournal{}
 }
-func (s *workerJobStore) Retry(_ context.Context, _ Job, due time.Time, failed []Change, warnings []string, _ error) error {
+func (s *workerJobStore) Retry(_ context.Context, _ Job, due time.Time, _ int64, failed []Change, warnings []string, _ error) error {
 	s.retried = true
 	s.retryDue = due
 	s.retryFailures = append([]Change{}, failed...)
@@ -273,7 +273,7 @@ func (s *workerJobStore) Succeed(_ context.Context, _ Job, _ int64, warnings []s
 	s.warnings = append([]string(nil), warnings...)
 	return nil
 }
-func (s *workerJobStore) Fail(context.Context, Job, time.Time, error) error {
+func (s *workerJobStore) Fail(context.Context, Job, int64, time.Time, error) error {
 	s.failed = true
 	return nil
 }

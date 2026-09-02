@@ -226,6 +226,8 @@ var pinnedContractSurface = map[string]bool{
 	"DELETE /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}":         true,
 	"POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/plan":      true,
 	"POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/sync":      true,
+	"POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/pause":     true,
+	"POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/resume":    true,
 	"POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/test":      true,
 	"POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/adoptions": true,
 	"GET /api/v1/orgs/{org}/projects/{project}/adapter-moves/{move}":                true,

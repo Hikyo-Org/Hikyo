@@ -351,8 +351,8 @@ operations:
   rotateScanningKey:           {webui: instance-admin}
 
   # adapters
-  listAdapters:                {issue: 157}
-  createAdapter:               {issue: 157}
+  listAdapters:                {webui: adapters}
+  createAdapter:               {webui: adapters}
   showAdapter:                 {issue: 157}
   updateAdapterOrigin:         {issue: 157}
   deleteAdapter:               {issue: 157}
@@ -362,14 +362,16 @@ operations:
   setAdapterCredential:        {issue: 157}
   revokeAdapterCredential:     {issue: 157}
   listAdapterTargets:          {issue: 157}
-  addAdapterTarget:            {issue: 157}
-  showAdapterTarget:           {issue: 157}
-  updateAdapterTarget:         {issue: 157}
-  removeAdapterTarget:         {issue: 157}
+  addAdapterTarget:            {webui: adapters}
+  showAdapterTarget:           {webui: adapters}
+  updateAdapterTarget:         {webui: adapters}
+  removeAdapterTarget:         {webui: adapters}
   planAdapterTarget:           {issue: 157}
-  syncAdapterTarget:           {issue: 157}
+  syncAdapterTarget:           {webui: adapters}
+  pauseAdapterTarget:          {webui: adapters}
+  resumeAdapterTarget:         {webui: adapters}
   testAdapterTarget:           {issue: 157}
-  adoptAdapterTargetNames:     {issue: 157}
+  adoptAdapterTargetNames:     {webui: adapters}
 
   # dynamic secrets (#147 shipped API+CLI+read-only status; management WebUI #595)
   listLeases:                  {webui: machine-access}

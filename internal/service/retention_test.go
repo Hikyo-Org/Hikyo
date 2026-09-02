@@ -59,7 +59,7 @@ func TestHealthStorageWarnBoundary(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := s.health(now, true, tt.peak, store.BackupState{})
+			got := s.health(now, true, tt.peak, store.BackupState{}, store.AdapterHealthCounts{})
 			if got.StorageWarn != tt.warn {
 				t.Fatalf("peak %d: StorageWarn = %v, want %v", tt.peak, got.StorageWarn, tt.warn)
 			}

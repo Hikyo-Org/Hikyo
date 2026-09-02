@@ -2762,7 +2762,7 @@ var registry = map[EventType]TypeSpec{
 		SchemaVersion: 1, Retention: RetentionSecurity,
 		Outcomes: map[Outcome]bool{OutcomeSuccess: true, OutcomeDenied: true},
 		Trails:   map[Trail]bool{TrailTenant: true}, Schema: Schema{
-			"trigger": {Kind: KindString, Required: true, Enum: []string{"manual", "on-publish"}},
+			"trigger": {Kind: KindString, Required: true, Enum: []string{"manual", "on-publish", "resume"}},
 		},
 	},
 	EventAdapterKeyDelivered: {

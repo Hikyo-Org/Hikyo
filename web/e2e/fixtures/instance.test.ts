@@ -1,10 +1,28 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  idpIssuerMatchesRequestedPort,
   persistSharedPasskey,
   refreshSharedSessionFromProbe,
   type VirtualCredential,
 } from './instance.ts';
+
+describe('fake IdP issuer binding', () => {
+  it('accepts the actual loopback port when the OS assigns it', () => {
+    expect(idpIssuerMatchesRequestedPort('http://127.0.0.1:54321', 0)).toBe(true);
+  });
+
+  it('requires an explicitly requested port to match', () => {
+    expect(idpIssuerMatchesRequestedPort('http://127.0.0.1:45792', 45792)).toBe(true);
+    expect(idpIssuerMatchesRequestedPort('http://127.0.0.1:45793', 45792)).toBe(false);
+  });
+
+  it('rejects malformed, non-loopback, and unbound issuers', () => {
+    expect(idpIssuerMatchesRequestedPort('not a URL', 0)).toBe(false);
+    expect(idpIssuerMatchesRequestedPort('http://localhost:54321', 0)).toBe(false);
+    expect(idpIssuerMatchesRequestedPort('http://127.0.0.1:0', 0)).toBe(false);
+  });
+});
 
 const credential: VirtualCredential = {
   credentialId: 'shared-passkey',
