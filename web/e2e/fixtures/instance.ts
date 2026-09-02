@@ -778,7 +778,7 @@ const DIRECTORY_ORIGIN_ID = 'gor_00000000-0000-7000-8000-00000000e2e2';
 export const INSTANCE_GRANT_TARGET = 'usr_00000000-0000-7000-8000-00000000e2e3';
 
 function seedDirectoryGrant(dir: string): void {
-  const db = new DatabaseSync(join(dir, 'hikyo-dev.db'));
+  const db = openHarnessDb(join(dir, 'hikyo-dev.db'));
   try {
     const row = db.prepare(`SELECT id FROM principals WHERE kind = 'human' LIMIT 1`).get();
     const principal = row === undefined ? undefined : Object(row)['id'];
@@ -846,7 +846,7 @@ export function readServing(): ServingSeed {
 
 /** servingPrincipal reads the bootstrap human's id from the serving store. */
 function servingPrincipal(dir: string): string {
-  const db = new DatabaseSync(join(dir, 'hikyo-dev.db'));
+  const db = openHarnessDb(join(dir, 'hikyo-dev.db'));
   try {
     const row = db.prepare(`SELECT id FROM principals WHERE kind = 'human' LIMIT 1`).get();
     const id = row === undefined ? undefined : Object(row)['id'];
@@ -973,6 +973,20 @@ function startTLSFront(dir: string): string {
 const TLS_FRONT_HOST = '127.0.0.1';
 
 /**
+ * openHarnessDb opens the instance's sqlite file for a store-level seam while
+ * the server is running against it. The server holds the database and may be
+ * mid-write; without a busy timeout, sqlite answers SQLITE_BUSY at once
+ * ("database is locked") and the suite dies in global setup. Ten seconds is
+ * headroom over any single server write, and the seams below are one
+ * statement each.
+ */
+function openHarnessDb(path: string, options?: { readonly readOnly?: boolean }): DatabaseSync {
+  const db = options?.readOnly === true ? new DatabaseSync(path, { readOnly: true }) : new DatabaseSync(path);
+  db.exec('PRAGMA busy_timeout = 10000');
+  return db;
+}
+
+/**
  * repointRemoteAtB rewrites the entry's URL to B's loopback http origin.
  *
  * THE ONLY OTHER store-level seam in this harness, and it is here because the
@@ -984,7 +998,7 @@ const TLS_FRONT_HOST = '127.0.0.1';
  * a plaintext URL, and the snapshot it shows is genuinely the last one it got.
  */
 function repointRemoteAtB(instance: Instance): void {
-  const db = new DatabaseSync(join(instance.dir, 'hikyo-dev.db'));
+  const db = openHarnessDb(join(instance.dir, 'hikyo-dev.db'));
   try {
     db.prepare('UPDATE remotes SET url = ? WHERE name = ?').run(BASE_URL_B, REMOTE_NAME);
   } finally {
@@ -1564,7 +1578,7 @@ const sessionScript = async ({
  * created it.
  */
 export function countDisclosureEvents(): number {
-  const db = new DatabaseSync(readSeed().dbPath, { readOnly: true });
+  const db = openHarnessDb(readSeed().dbPath, { readOnly: true });
   try {
     const row = db
       .prepare("SELECT COUNT(*) AS n FROM audit_tenant_events WHERE type = 'disclosure.value_revealed'")
