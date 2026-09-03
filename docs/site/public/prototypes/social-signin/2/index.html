@@ -1,0 +1,1177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PROTOTYPE — Hikyo social sign-in &amp; open registration (ticket #587)</title>
+<!--
+  THROWAWAY PROTOTYPE — wayfinder ticket #587, iteration 2 (LOCKED reference).
+
+  Alex's it-1 verdict baked in:
+  - Entry structure = STAGED (it-1 variant 3): step 1 picks a method, step 2
+    shows only that method's form; the sign-up door lists only the methods the
+    registration policy admits. Picker removed; two doors / one door discarded.
+  - Q1 → intent flag on the federated start (own ticket #604 grills the server
+    shape). The staged sign-up door therefore sends intent=sign-up; the login
+    door sends intent=sign-in. Copy unchanged until #604 lands.
+  - Q2 → the public login page says only "Sign-up is paused." The cause stays
+    on the Members panel. (#579 d6 wording to be narrowed at synthesis.)
+  - Q3 → Microsoft keeps "Sign in with Microsoft · <tenant>" on sign-up
+    surfaces; Google gets "Sign up with Google". Accepted.
+  - Q4 unchanged (system font).
+  Everything else identical to iteration 1.
+
+  Iteration 1 notes follow.
+
+  Question: how do the login and sign-up surfaces look and behave with social
+  providers (Google, Microsoft Entra per tenant row, GitHub) and an
+  open-registration policy — plus the ceremonies and settings surfaces the
+  resolved tickets (#579 #580 #582 #584 #585 #586 #588 #598) hand to this one.
+
+  VARIANTS (bottom picker, keys 1–3, ←/→). The axis is the STRUCTURE of the
+  entry surface. Everything else (mail wait, verification, claim, step-up,
+  Members panel, Security, instance settings) is shared and identical across
+  variants — judged separately, not per variant.
+    1 Two doors  — login page as today + provider buttons; "Create an account"
+                   link appears only while registration is open; sign-up is
+                   its own page; social sign-up passes a confirmation step.
+    2 One door   — one card; while open, a Sign in / Create account intent
+                   control; providers under both; confirmation copy inline.
+    3 Staged     — step 1 picks a method (password · passkey · one row per
+                   provider), step 2 shows only that method's form; the
+                   sign-up door lists only policy-admitted methods. Scales to
+                   many Entra tenant rows.
+
+  SCENES (top strip, off-system on purpose): login · sign-up entry · check
+  your mail · verification · verification refused · invitation claim
+  (establish page) · step-up refusals · org Members / instance Members with
+  the Open registration panel · Account & security · instance settings
+  (mailer, organizations) · org settings (rename).
+  State toggles: registration policy fixture (closed / org / instance none /
+  instance fresh-org / cap reached / inactive causes) · session credential
+  inventory (social-only vs has password + TOTP) · theme.
+
+  PLACEMENT — the ticket text says "Settings › Registration" and "Settings ›
+  account › identities"; the resolutions moved them: the policy editor is an
+  "Open registration" panel on Members per scope, beside invite (#579 d10);
+  linked identities stay on Account & security (app-chrome 15).
+
+  UNIFORM STATES (deliberately NOT distinguished, per the resolutions): the
+  verification page renders ONE sentence for expired / consumed / unknown /
+  malformed tokens (#584 d7, one ErrUnauthenticated); the claim page renders
+  ONE sentence for every authority refusal including identity-exists (#582
+  d6, cause is trail-only); a sign-up request is always 202 with one mail
+  (#584 d4) so "check your mail" never says whether the address was new.
+
+  OPEN QUESTIONS FOR ALEX (built as decided, flagged, not resolved here):
+  Q1  There is no federated sign-up purpose: an unknown identity on a `login`
+      callback is created under the active policy (#582 d1, #585 d2). Any
+      variant that separates "sign in" from "create account" intent (2 and 3)
+      is client-side copy only — unless the start endpoint gains an intent
+      flag the callback honours. Server change, undecided. Variant 1 has the
+      same exposure on its login-page provider buttons while open.
+  Q2  #579 d6 says the login page shows inactive-with-cause. Rendered as
+      decided ("Sign-up is paused: mailer not configured") — is naming the
+      cause on a public page wanted?
+  Q3  Microsoft's brand rule blesses the text "Sign in with Microsoft" (or
+      "Sign in") with the logo; there is no "Sign up with Microsoft". The
+      sign-up surfaces keep "Sign in with Microsoft" under a "Create an
+      account" heading. Google gets "Sign up with Google" (permitted).
+  Q4  Google's button spec asks for Google Sans Medium; no remote fonts are
+      loaded here (site policy), so the button uses the system font at 500.
+
+  Design context: DESIGN.md at repo root wins on tokens (AAA-leaning: tx-faint
+  0.71, control boundaries 0.5); structure follows env-matrix 31 / app-chrome
+  15+16+18 (radius roles 6/4/3, 999px reserved, sidebar treatment e, sticky
+  jump index, blue "confirm it's you" step-up distinct from teal reveal).
+  Everything is fixture data: Acme Corp, alex@acme.example, example hosts.
+-->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231d2b33'/%3E%3Cpath d='M8 12h16M8 16h16M8 20h10' stroke='%237fd0cd' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --mono:ui-monospace,monospace;
+    --sans:system-ui,sans-serif;
+    --pb:38px; /* prototype strip height */
+    --bg:oklch(0.19 0.012 220);
+    --bg-raise:oklch(0.23 0.014 220);
+    --bg-panel:oklch(0.225 0.014 220);
+    --bg-hover:oklch(0.27 0.016 220);
+    --line:oklch(0.5 0.016 220);
+    --chrome-line:oklch(0.3488 0.01488 220);
+    --panel-line:oklch(0.34 0.014 220);
+    --tx:oklch(0.93 0.008 200);
+    --tx-dim:oklch(0.76 0.01 210);
+    --tx-faint:oklch(0.71 0.012 215);
+    --accent:oklch(0.82 0.09 195);
+    --on-accent:oklch(0.2 0.02 220);
+    --accent-soft:oklch(0.82 0.09 195/.14);
+    --bad:oklch(0.72 0.13 25);
+    --bad-soft:oklch(0.72 0.13 25/.14);
+    --chg:oklch(0.78 0.07 250);
+    --chg-soft:oklch(0.78 0.07 250/.14);
+    --shadow:0 18px 60px oklch(0 0 0/.5);
+    /* brand buttons (provider-published themes, dark scheme) */
+    --g-bg:#131314;--g-line:#8E918F;--g-tx:#E3E3E3;
+    --ms-bg:#2F2F2F;--ms-line:#2F2F2F;--ms-tx:#FFFFFF;
+    --gh-bg:#24292F;--gh-line:#24292F;--gh-tx:#FFFFFF;
+  }
+  [data-theme=light]{
+    --bg:oklch(0.965 0.008 200);
+    --bg-raise:oklch(0.995 0.004 200);
+    --bg-panel:oklch(0.935 0.01 200);
+    --bg-hover:oklch(0.895 0.012 200);
+    --line:oklch(0.64 0.012 210);
+    --chrome-line:oklch(0.8388 0.00752 204.4);
+    --panel-line:oklch(0.82 0.014 210);
+    --tx:oklch(0.25 0.03 225);
+    --tx-dim:oklch(0.44 0.02 220);
+    --tx-faint:oklch(0.46 0.02 218);
+    --accent:oklch(0.45 0.085 210);
+    --on-accent:oklch(0.97 0.008 200);
+    --accent-soft:oklch(0.45 0.085 210/.1);
+    --bad:oklch(0.48 0.14 30);
+    --bad-soft:oklch(0.48 0.14 30/.1);
+    --chg:oklch(0.45 0.08 255);
+    --chg-soft:oklch(0.45 0.08 255/.12);
+    --shadow:0 18px 60px oklch(0.3 0.02 220/.25);
+    --g-bg:#FFFFFF;--g-line:#747775;--g-tx:#1F1F1F;
+    --ms-bg:#FFFFFF;--ms-line:#8C8C8C;--ms-tx:#5E5E5E;
+    --gh-bg:#FFFFFF;--gh-line:#D0D7DE;--gh-tx:#24292F;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{background:var(--bg)}
+  body{background:var(--bg);color:var(--tx);font-family:var(--sans);font-size:14px;
+    -webkit-font-smoothing:antialiased;min-height:100dvh;padding-top:var(--pb)}
+  button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  input,select{font:inherit}
+  a{color:var(--accent)}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+  :is(button,select,input,a):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  [hidden]{display:none!important}
+
+  /* ---------------- prototype strip (off-system on purpose) ---------------- */
+  #protobar{position:fixed;top:0;left:0;right:0;height:var(--pb);z-index:60;display:flex;align-items:center;gap:10px;
+    padding:0 12px;background:oklch(0.14 0.02 300);border-bottom:1px solid oklch(0.45 0.06 300);
+    font-family:var(--mono);font-size:11px;color:oklch(0.92 0.02 300);overflow-x:auto;white-space:nowrap}
+  #protobar .pl{color:oklch(0.85 0.1 300);font-weight:700}
+  #protobar label{display:flex;align-items:center;gap:5px;color:oklch(0.75 0.03 300)}
+  #protobar select{background:oklch(0.2 0.03 300);color:oklch(0.92 0.02 300);border:1px solid oklch(0.45 0.06 300);
+    border-radius:4px;padding:3px 6px;font-family:var(--mono);font-size:11px;max-width:230px}
+  #protobar button{border:1px solid oklch(0.45 0.06 300);border-radius:4px;padding:3px 8px;color:inherit;min-height:24px}
+  #protobar .note{color:oklch(0.85 0.1 300);margin-left:auto}
+
+  /* ---------------- chromeless sheet pages (login, sign-up, verify, claim) ---------------- */
+  .sheetpage{min-height:calc(100dvh - var(--pb));display:grid;place-items:center;padding:24px 16px 96px}
+  .sheet{width:min(100%,400px);display:grid;gap:16px;padding:24px;border:1px solid var(--panel-line);
+    border-radius:6px;background:var(--bg-raise)}
+  .sheet.wide{width:min(100%,520px)}
+  .sheet h1{font-size:20px;font-weight:700;letter-spacing:-.01em}
+  .sheet .lede{color:var(--tx-dim);line-height:1.5;max-width:60ch}
+  .sheet .landing{font-size:13px;color:var(--tx);background:var(--accent-soft);border:1px solid var(--accent);
+    border-radius:6px;padding:10px 12px;line-height:1.5}
+  .sheet .landing b{font-family:var(--mono);font-weight:600}
+  .sheet .or{text-align:center;color:var(--tx-faint);font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+    display:flex;align-items:center;gap:10px}
+  .sheet .or::before,.sheet .or::after{content:'';flex:1;border-top:1px solid var(--panel-line)}
+  .sheet .foot{font-size:13px;color:var(--tx-dim);line-height:1.5}
+  .sheet .foot a{color:var(--accent)}
+  .stack{display:grid;gap:10px}
+  .btn{border:1px solid var(--line);border-radius:4px;padding:8px 14px;font-size:13.5px;color:var(--tx);
+    min-height:44px;display:inline-flex;align-items:center;justify-content:center;gap:7px;text-decoration:none;
+    transition:border-color .15s ease-out,color .15s ease-out;background:var(--bg-raise)}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:600}
+  .btn.primary:hover{filter:brightness(1.06);color:var(--on-accent)}
+  .btn.danger{color:var(--bad)}
+  .btn.danger:hover{border-color:var(--bad)}
+  .btn.blue{color:var(--chg)}
+  .btn.blue:hover{border-color:var(--chg)}
+  .btn.quiet{border-color:transparent;color:var(--tx-dim)}
+  .btn[disabled]{opacity:.45;cursor:not-allowed}
+  .btn.full{width:100%}
+  .btn.left{justify-content:flex-start;text-align:left}
+  .btn.sm{min-height:36px;padding:6px 12px;font-size:13px}
+  .field{display:grid;gap:5px}
+  .field label{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--tx-faint);font-weight:700}
+  .field input,.field select{background:var(--bg);border:1px solid var(--line);color:var(--tx);
+    padding:10px 12px;border-radius:4px;font-size:14px;min-height:44px;width:100%}
+  .field input[aria-invalid=true]{border-color:var(--bad)}
+  .field .hint{font-size:12px;color:var(--tx-faint);line-height:1.45}
+  .formerr{color:var(--bad);font-size:12.5px;font-weight:600;line-height:1.4}
+  .alert{display:flex;gap:8px;padding:10px 12px;border:1px solid var(--bad);border-radius:6px;color:var(--tx);
+    background:color-mix(in oklch,var(--bg),var(--bad) 8%);line-height:1.45}
+  .alert.info{border-color:var(--chg);background:color-mix(in oklch,var(--bg),var(--chg) 8%)}
+  .alert.ok{border-color:var(--accent);background:var(--accent-soft)}
+  .alert .g{font-weight:700;color:var(--bad);flex:none}
+  .alert.info .g{color:var(--chg)}
+  .alert.ok .g{color:var(--accent)}
+  .paused{font-size:12.5px;color:var(--tx-dim);display:flex;gap:8px;align-items:flex-start;line-height:1.45}
+  .paused .g{color:var(--bad);font-weight:700}
+
+  /* segmented intent control (variant 2) */
+  .seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+  .seg button{min-height:40px;font-size:13.5px;color:var(--tx-dim)}
+  .seg button[aria-selected=true]{background:var(--accent-soft);color:var(--tx);font-weight:600}
+  .seg button+button{border-left:1px solid var(--line)}
+
+  /* method list (variant 3) */
+  .methods{display:grid;gap:8px}
+  .methods .btn{min-height:48px}
+  .methods .btn .k{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--tx-faint)}
+  .back{font-size:13px;color:var(--tx-dim);display:inline-flex;align-items:center;gap:6px;min-height:36px}
+  .back:hover{color:var(--accent)}
+
+  /* ---------------- brand buttons ---------------- */
+  .brand{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:0 12px;border-radius:4px;
+    border:1px solid;font-size:14px;font-weight:500;text-align:left;transition:filter .15s ease-out}
+  .brand:hover{filter:brightness(1.08)}
+  .brand svg{flex:none;width:18px;height:18px}
+  .brand .tenant{color:inherit;opacity:.72;font-weight:400;margin-left:6px}
+  .brand.google{background:var(--g-bg);border-color:var(--g-line);color:var(--g-tx)}
+  .brand.microsoft{background:var(--ms-bg);border-color:var(--ms-line);color:var(--ms-tx)}
+  .brand.github{background:var(--gh-bg);border-color:var(--gh-line);color:var(--gh-tx)}
+  .brand.plain{background:var(--bg-raise);border-color:var(--line);color:var(--tx)}
+  .brand.plain:hover{border-color:var(--accent);color:var(--accent);filter:none}
+  .brand[disabled]{opacity:.45;cursor:not-allowed;filter:none}
+  .brandhint{font-size:12px;color:var(--tx-faint);margin-top:-4px}
+
+  /* ---------------- app shell (in-chrome scenes) ---------------- */
+  #app{display:grid;grid-template-columns:56px 218px 1fr;height:calc(100dvh - var(--pb));overflow:hidden}
+  #main{display:flex;flex-direction:column;overflow:hidden;min-width:0}
+  #rail{display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 0 12px;
+    border-right:1px solid var(--chrome-line);background:var(--bg-panel)}
+  .pav{width:36px;height:36px;border-radius:4px;display:flex;align-items:center;justify-content:center;
+    font-weight:700;font-size:12px;letter-spacing:.02em;color:var(--tx-dim);border:1px solid transparent;flex:none}
+  .pav.orgav{border-radius:50%;font-size:11px;background:var(--bg-hover);color:var(--tx)}
+  .pav.orgav.act{outline:2px solid var(--accent);outline-offset:2px}
+  .pav.act{background:var(--accent);color:var(--on-accent)}
+  #rail .raildiv{width:26px;border-top:1px solid var(--chrome-line);margin:4px 0;flex:none}
+  #rail .spacer{flex:1}
+  #rail .railbtn{width:36px;height:36px;border-radius:4px;display:flex;align-items:center;justify-content:center;
+    color:var(--tx-faint);font-size:15px;flex:none;border:1px solid transparent}
+  #rail .railbtn.act{color:var(--accent);border-color:var(--accent)}
+  #rail .me{border-radius:50%;background:var(--bg-hover);color:var(--tx);font-weight:700;font-size:11px}
+  #side{display:flex;flex-direction:column;overflow-y:auto;border-right:1px solid var(--chrome-line);
+    background:var(--bg-panel);padding:6px 0 20px}
+  #side .orghead{display:flex;align-items:center;gap:10px;padding:12px 16px 4px}
+  #side .orghead .oname{font-weight:700;font-size:14px}
+  #side .orghead .orole{font-size:10.5px;color:var(--tx-faint);font-family:var(--mono)}
+  #side .stitle{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--tx-faint);
+    padding:30px 16px 6px;font-weight:700}
+  #side .stitle:first-child,#side .orghead+.stitle{padding-top:16px}
+  #side .srow{display:flex;align-items:center;gap:8px;text-align:left;padding:9px 16px 9px 13px;font-size:13px;
+    color:var(--tx-dim);min-height:38px;margin-left:19px;width:calc(100% - 19px);
+    border-left:1px solid oklch(from var(--chrome-line) l c h/.9)}
+  #side .srow:hover{color:var(--tx);background:var(--bg-hover)}
+  #side .srow.act{color:var(--tx);background:var(--accent-soft);font-weight:600;border-left-color:var(--accent)}
+  header.h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;
+    border-bottom:1px solid var(--chrome-line);background:var(--bg);flex:none}
+  header.h .crumb{font-weight:600;font-size:15px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  header.h .crumb .sep{color:var(--accent)}
+  header.h .crumb .dimseg{color:var(--tx-dim);font-weight:500}
+  header.h .grow{flex:1}
+  #menubtn{display:none;border:1px solid var(--line);border-radius:4px;min-height:36px;min-width:40px;
+    align-items:center;justify-content:center;color:var(--tx-dim)}
+  .wrap{flex:1;overflow:auto;overscroll-behavior:contain;padding:clamp(16px,3vw,32px) clamp(16px,3vw,32px) 96px}
+  .page{max-width:860px;margin:0 auto;display:grid;gap:18px}
+  .page h2{font-size:19px;font-weight:700;letter-spacing:-.01em}
+  .page .sub{font-size:13px;color:var(--tx-dim);margin-top:-12px;line-height:1.55;max-width:64ch}
+  .card{background:var(--bg-panel);border:1px solid var(--panel-line);border-radius:6px;padding:16px 18px;scroll-margin-top:72px}
+  .card h3{font-size:13px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--tx-faint);margin-bottom:12px;
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .card h3 .tag{margin-left:auto}
+  .card .note{font-size:12.5px;color:var(--tx-faint);line-height:1.55;margin-top:10px}
+  .card .note a{color:var(--accent)}
+  .rowline{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--panel-line);flex-wrap:wrap}
+  .rowline:first-of-type{border-top:none}
+  .rowline .main{display:grid;gap:3px;min-width:0}
+  .rowline .t{font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .rowline .d{font-size:12px;color:var(--tx-faint);font-family:var(--mono);line-height:1.45}
+  .rowline .d.sans{font-family:var(--sans);color:var(--tx-dim)}
+  .rowline .grow{flex:1}
+  .rowline.sub{padding-left:18px}
+  .tag{font-size:10px;letter-spacing:.07em;font-weight:700;text-transform:uppercase;border-radius:3px;padding:3px 9px;
+    border:1px solid var(--line);color:var(--tx-dim);white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
+  .tag.acc{color:var(--accent);border-color:var(--accent)}
+  .tag.blue{color:var(--chg);border-color:var(--chg)}
+  .tag.bad{color:var(--bad);border-color:var(--bad)}
+  .tag.mono{font-family:var(--mono);text-transform:none;letter-spacing:0}
+  .xbtn{color:var(--tx-faint);font-size:15px;min-width:36px;min-height:36px;display:inline-flex;align-items:center;
+    justify-content:center;border-radius:4px;border:1px solid transparent}
+  .xbtn:hover{color:var(--bad);border-color:var(--bad)}
+  .secjump{display:flex;gap:6px;flex-wrap:wrap;position:sticky;top:-17px;z-index:5;background:var(--bg);padding:10px 0;margin:-10px 0}
+  .atab{border:1px solid var(--line);border-radius:4px;padding:7px 14px;font-size:12.5px;color:var(--tx-dim);min-height:36px}
+  .atab:hover{border-color:var(--accent);color:var(--accent)}
+  .fgrid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+  .kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;font-size:13px;align-items:baseline}
+  .kv dt{color:var(--tx-faint);font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;padding-top:2px}
+  .kv dd{line-height:1.5}
+  .kv dd code{font-family:var(--mono);font-size:12px;color:var(--tx-dim)}
+  .ok{color:var(--accent);font-weight:700}
+  .no{color:var(--bad);font-weight:700}
+  .req{font-size:11.5px;color:var(--tx-faint);line-height:1.45;font-family:var(--sans)}
+  .entry{border:1px solid var(--panel-line);border-radius:6px;padding:10px 12px;display:grid;gap:8px;background:var(--bg)}
+  .entry .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .entry .top label{display:flex;align-items:center;gap:9px;font-weight:600;font-size:13.5px;min-height:36px;cursor:pointer}
+  .entry input[type=checkbox],.entry input[type=radio],.fld input[type=radio]{accent-color:var(--accent);width:18px;height:18px}
+  .entry .sub{display:grid;gap:8px;grid-template-columns:minmax(120px,160px) 1fr;align-items:end}
+  .entry .sub .field input{min-height:40px;padding:8px 10px;font-family:var(--mono);font-size:12.5px}
+  .radio{display:flex;align-items:flex-start;gap:9px;padding:8px 0;cursor:pointer;line-height:1.45}
+  .radio input{margin-top:3px;accent-color:var(--accent);width:18px;height:18px;flex:none}
+  .radio .d{font-size:12px;color:var(--tx-faint)}
+  table.list{width:100%;border-collapse:collapse;font-size:13px}
+  .list th{text-align:left;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--tx-faint);
+    padding:8px 10px;border-bottom:1px solid var(--panel-line);font-weight:700}
+  .list td{padding:9px 10px;border-bottom:1px solid var(--panel-line);vertical-align:middle}
+  .list tr:last-child td{border-bottom:none}
+  .list td.m{font-family:var(--mono);font-size:12px;color:var(--tx-dim)}
+  .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+  .toolbar select{background:var(--bg);border:1px solid var(--line);color:var(--tx);padding:7px 10px;border-radius:4px;min-height:36px}
+
+  /* modals */
+  #scrim{position:fixed;inset:0;z-index:40;background:oklch(0 0 0/.45);display:none}
+  body.modal #scrim{display:block}
+  .modal-box{position:fixed;z-index:41;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:min(520px,calc(100vw - 32px));max-height:calc(100dvh - var(--pb) - 24px);overflow:auto;
+    background:var(--bg-panel);border:1px solid var(--panel-line);border-radius:6px;padding:20px;display:none;box-shadow:var(--shadow)}
+  .modal-box.wide{width:min(680px,calc(100vw - 32px))}
+  body.modal .modal-box{display:grid;gap:14px}
+  .modal-box h3{font-size:16px;font-weight:700;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .modal-box.stepup{border-color:var(--chg)}
+  .modal-box.stepup h3{color:var(--chg)}
+  .modal-box .actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;position:sticky;bottom:-20px;
+    background:var(--bg-panel);padding-top:10px;margin-bottom:-6px}
+  .modal-box p{line-height:1.5;font-size:13.5px}
+  .modal-box .dim{color:var(--tx-dim)}
+  #toast{position:fixed;z-index:70;right:16px;top:calc(var(--pb) + 12px);display:flex;align-items:center;gap:12px;
+    background:var(--bg-panel);border:1px solid var(--panel-line);border-radius:6px;padding:10px 14px;box-shadow:var(--shadow);
+    font-size:13px;max-width:min(460px,calc(100vw - 32px));line-height:1.45}
+  #toast .g{color:var(--accent);font-weight:700}
+
+  @media (max-width:760px){
+    #app{grid-template-columns:1fr}
+    #rail{display:none}
+    #side{display:none}
+    body.drawer #side{display:flex;position:fixed;top:var(--pb);left:0;bottom:0;width:min(300px,86vw);z-index:45;box-shadow:var(--shadow)}
+    #menubtn{display:inline-flex}
+    .secjump{top:-17px}
+    .entry .sub{grid-template-columns:1fr}
+  }
+
+  /* ---------------- picker (harness chrome, verbatim spec) ---------------- */
+  .proto-picker {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    width: max-content; /* shrink-to-fit fix: left:50% halves the available width on narrow viewports */
+    transform: translateX(-50%);
+    z-index: 2147483647;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px;
+    border-radius: 999px;
+    background: rgba(10, 10, 10, 0.82);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    backdrop-filter: blur(12px) saturate(1.4);
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+      0 8px 24px rgba(0, 0, 0, 0.24),
+      0 2px 6px rgba(0, 0, 0, 0.12);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 13px;
+    line-height: 1;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .proto-picker-highlight {
+    position: absolute;
+    top: 4px;
+    left: 0;
+    height: 28px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    will-change: transform;
+  }
+  .proto-picker[data-ready] .proto-picker-highlight {
+    transition:
+      transform 250ms cubic-bezier(0.23, 1, 0.32, 1),
+      width 250ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .proto-picker[data-ready] .proto-picker-highlight { transition: none; }
+  }
+  .proto-picker-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 28px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.55);
+    font: inherit;
+    cursor: pointer;
+    transition: color 150ms ease-out;
+  }
+  .proto-picker-item:hover { color: rgba(255, 255, 255, 0.85); }
+  .proto-picker-item:active { transform: scale(0.97); }
+  .proto-picker-item:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.4); outline-offset: 2px; }
+  .proto-picker-item[data-active] { color: #fff; }
+  .proto-picker-divider { width: 1px; height: 16px; margin: 0 4px; background: rgba(255, 255, 255, 0.12); }
+  .proto-picker-replay { padding: 0 10px; font-size: 14px; }
+  .proto-picker[data-position="top"] { bottom: auto; top: 24px; }
+</style>
+</head>
+<body>
+<div id="protobar">
+  <span class="pl">#587 · it-2 · locked</span>
+  <label>scene <select id="sceneSel" onchange="setScene(this.value)"></select></label>
+  <label>registration <select id="regSel" onchange="setReg(this.value)">
+    <option value="closed">closed (no policy)</option>
+    <option value="org" selected>org · Acme Corp → Developer</option>
+    <option value="instance-none">instance · landing none</option>
+    <option value="instance-fresh">instance · fresh-org · 12/100</option>
+    <option value="instance-cap">instance · fresh-org · cap reached</option>
+    <option value="inactive-mailer">org · inactive: mailer-unconfigured</option>
+    <option value="inactive-authority">org · inactive: authority-lost</option>
+  </select></label>
+  <label>session <select id="sesSel" onchange="setSession(this.value)">
+    <option value="social-only" selected>social-only (GitHub + Google)</option>
+    <option value="has-password">password + TOTP + passkey</option>
+  </select></label>
+  <button type="button" onclick="toggleTheme()" aria-label="toggle theme">☾ / ☀</button>
+  <span class="note" id="protonote"></span>
+</div>
+
+<div id="stage"></div>
+
+<nav class="proto-picker" aria-label="Prototype variants" hidden>
+  <span class="proto-picker-highlight" aria-hidden="true"></span>
+  <button class="proto-picker-item" data-active aria-current="true">Staged</button>
+</nav>
+
+<div id="scrim" onclick="closeModal()"></div>
+<div id="modal" class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-title"></div>
+<div id="toast" role="status" hidden></div>
+
+<script>
+/* =====================================================================
+   fixtures
+   ===================================================================== */
+const ICON={
+  google:`<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>`,
+  microsoft:`<svg viewBox="0 0 21 21" aria-hidden="true"><rect x="1" y="1" width="9" height="9" fill="#F25022"/><rect x="11" y="1" width="9" height="9" fill="#7FBA00"/><rect x="1" y="11" width="9" height="9" fill="#00A4EF"/><rect x="11" y="11" width="9" height="9" fill="#FFB900"/></svg>`,
+  github:`<svg viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>`,
+  plain:`<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6.2"/><path d="M2 8h12M8 2c2.2 2 2.2 10 0 12M8 2c-2.2 2-2.2 10 0 12"/></svg>`,
+};
+/* instance-enabled providers. Entra = one row per tenant (#588 d1). */
+const PROVIDERS=[
+  {slug:'google',  kind:'oidc',  display_name:'Google',   brand:'google',    issuer:'https://accounts.google.com', email_scope:true,  assurance:false},
+  {slug:'contoso', kind:'oidc',  display_name:'Contoso',  brand:'microsoft', issuer:'https://login.microsoftonline.com/72f988bf-…/v2.0', email_scope:true, assurance:true},
+  {slug:'fabrikam',kind:'oidc',  display_name:'Fabrikam', brand:'microsoft', issuer:'https://login.microsoftonline.com/3c1f0a2e-…/v2.0', email_scope:true, assurance:false},
+  {slug:'github',  kind:'oauth2',display_name:'GitHub',   brand:'github',    issuer:'https://github.com', profile:'github'},
+  {slug:'corp',    kind:'oidc',  display_name:'Corp SSO', brand:null,        issuer:'https://sso.corp.example', email_scope:false, assurance:true},
+];
+const P=s=>PROVIDERS.find(p=>p.slug===s);
+const TEMPLATES=[['developer','Developer'],['viewer','Viewer'],['admin','Administrator']];
+const ORGS=[
+  {name:'Acme Corp',origin:'manual',created:'2026-03-11',policy:null},
+  {name:'Platform Guild',origin:'manual',created:'2026-05-02',policy:null},
+  {name:'org-org_019a4c3e…',origin:'registration',created:'2026-09-01',policy:'pol_019a…'},
+  {name:'Northwind Labs',origin:'registration',created:'2026-09-02',policy:'pol_019a…'},
+];
+
+const S={scene:'login',reg:'org',session:'social-only',intent:'signin',step:null,confirm:null,claimAuth:'',
+  stamp:null,verifyErr:null,claimErr:null,edit:null,editErr:null,orgFilter:'all',orgName:'Acme Corp',override:null,
+  identities:null,factors:null};
+
+function resetSession(){
+  if(S.session==='social-only'){
+    S.identities=[{slug:'github'},{slug:'google'}];
+    S.factors={password:false,totp:false,passkeys:[],codes:false};
+  }else{
+    S.identities=[{slug:'google'}];
+    S.factors={password:true,totp:true,passkeys:['MacBook Touch ID'],codes:true};
+  }
+  S.stamp=null;
+}
+resetSession();
+
+/* the registration policy in force for the chosen fixture (or the saved editor draft) */
+function policy(){
+  if(S.override) return S.override;
+  const base={authority:'Alex',inactive:null};
+  switch(S.reg){
+    case 'closed': return null;
+    case 'org': return {...base,scope:'org',org:'Acme Corp',entries:['google','github','contoso'],
+      allow:{google:{claim:'hd',values:'acme.example'}},local:{enabled:true,domains:'acme.example'},landing:'org',template:'developer'};
+    case 'instance-none': return {...base,scope:'instance',entries:['contoso','fabrikam'],allow:{},local:{enabled:false,domains:''},landing:'none'};
+    case 'instance-fresh': return {...base,scope:'instance',entries:['google','github'],allow:{},local:{enabled:true,domains:''},landing:'fresh-org',cap:100,count:12};
+    case 'instance-cap': return {...base,scope:'instance',entries:['google','github'],allow:{},local:{enabled:true,domains:''},landing:'fresh-org',cap:100,count:100};
+    case 'inactive-mailer': return {...base,scope:'org',org:'Acme Corp',entries:['google'],allow:{},local:{enabled:true,domains:'acme.example'},landing:'org',template:'developer',inactive:'mailer-unconfigured'};
+    case 'inactive-authority': return {...base,scope:'org',org:'Acme Corp',entries:['google','github'],allow:{},local:{enabled:false,domains:''},landing:'org',template:'developer',inactive:'authority-lost'};
+  }
+}
+const mailerConfigured=()=>S.reg!=='inactive-mailer';
+const isOpen=()=>{const p=policy();return !!p&&!p.inactive;};
+const isPaused=()=>{const p=policy();return !!p&&!!p.inactive;};
+const CAUSE={
+  'mailer-unconfigured':{short:'mailer not configured',remedy:'The local entry needs a configured mailer. Set HIKYO_MAIL_* on the instance, or remove the local entry.'},
+  'authority-lost':{short:'authority lost',remedy:'Alex no longer holds the grant this policy hands out. Sign-ups are refused. Re-save to become the authority.'},
+};
+function landingText(p){
+  if(!p) return '';
+  if(p.scope==='org') return `You'll join <b>${p.org}</b> as ${TEMPLATES.find(t=>t[0]===p.template)[1]}.`;
+  if(p.landing==='none') return `You'll get an account with no organization yet. An administrator grants access afterwards.`;
+  return `You'll get your own organization, with you as its first administrator.`;
+}
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+
+/* =====================================================================
+   shared pieces
+   ===================================================================== */
+function brandBtn(p,mode,disabled){
+  let label;
+  if(p.brand==='google') label=mode==='signup'?'Sign up with Google':'Continue with Google';
+  else if(p.brand==='microsoft') label='Sign in with Microsoft';
+  else if(p.brand==='github') label=mode==='signup'?'Sign up with GitHub':'Continue with GitHub';
+  else label=`Continue with ${p.display_name}`;
+  const suffix=p.brand==='microsoft'?`<span class="tenant">· ${p.display_name}</span>`:'';
+  return `<button class="brand ${p.brand||'plain'}" type="button" ${disabled?'disabled':''} onclick="provider('${p.slug}','${mode}')">${ICON[p.brand||'plain']}<span>${label}${suffix}</span></button>`;
+}
+function brandList(slugs,mode,disabled){
+  const ps=slugs.map(P);
+  const hasMs=ps.some(p=>p.brand==='microsoft');
+  return `<div class="stack">${ps.map(p=>brandBtn(p,mode,disabled)).join('')}</div>${hasMs?'<p class="brandhint">Microsoft: work or school account</p>':''}`;
+}
+function alert(msg,kind){const g=kind==='ok'?'✓':kind==='info'?'i':'!';return `<p class="alert ${kind||''}" role="alert"><span class="g" aria-hidden="true">${g}</span><span>${msg}</span></p>`;}
+function pausedLine(){
+  return `<p class="paused"><span class="g" aria-hidden="true">!</span><span>Sign-up is paused.</span></p>`;
+}
+function localLogin(){
+  return `<form class="stack" onsubmit="event.preventDefault();toast('Signed in (demo)');go('security')" novalidate>
+    <div class="field"><label for="u">Username or email</label><input id="u" autocomplete="username" required></div>
+    <div class="field"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password" required></div>
+    <button class="btn primary full" type="submit">Sign in</button>
+    <button class="btn full" type="button" onclick="toast('Waiting for the passkey… (demo)')">Use a passkey instead</button>
+  </form>`;
+}
+function localSignup(p){
+  if(!p.local.enabled) return '';
+  const dom=p.local.domains?`<p class="hint">Only <code>@${p.local.domains}</code> addresses can sign up here.</p>`:'';
+  return `<form class="stack" onsubmit="event.preventDefault();go('mail')" novalidate>
+    <div class="field"><label for="em">Email</label><input id="em" type="email" autocomplete="email" required placeholder="you@acme.example">${dom}</div>
+    <button class="btn primary full" type="submit">Send me a sign-up link</button>
+  </form>`;
+}
+const CONFIRM_COPY=(name)=>`This creates a new account. Already have one? Sign in with it first, then add ${name} under Settings › Security.`;
+
+/* the entry surface: one function per variant ------------------------- */
+function entry(v,intent){
+  const p=policy(),open=isOpen(),paused=isPaused();
+  if(S.confirm&&open&&v!==1) return sheet(confirmPage(p));
+  if(v===0) return sheet(intent==='signup'&&open?signupPageA(p):loginA(p,open,paused));
+  // one door and staged carry the intent in state: the control on the card sets it
+  if(v===1) return sheet(oneDoor(p,open,paused,S.intent));
+  return sheet(staged(p,open,paused,S.intent));
+}
+function sheet(inner,wide){return `<main class="sheetpage"><div class="sheet ${wide?'wide':''}">${inner}</div></main>`;}
+
+/* 1 · Two doors */
+function loginA(p,open,paused){
+  return `<h1>Sign in to Hikyo</h1>
+    ${localLogin()}
+    <p class="or" aria-hidden="true">or</p>
+    ${brandList(PROVIDERS.map(x=>x.slug),'signin')}
+    ${paused?pausedLine():''}
+    <p class="foot">${open?`New here? <a href="#" onclick="event.preventDefault();go('signup')">Create an account</a> · `:''}<a href="#" onclick="event.preventDefault();go('establish')">Have a setup authority?</a></p>`;
+}
+function signupPageA(p){
+  return `<a class="back" href="#" onclick="event.preventDefault();go('login')">‹ Sign in</a>
+    <h1>Create an account</h1>
+    <p class="landing">${landingText(p)}</p>
+    ${brandList(p.entries,'signup')}
+    ${p.local.enabled?'<p class="or" aria-hidden="true">or with email</p>':''}
+    ${localSignup(p)}`;
+}
+function confirmPage(p){
+  const pr=P(S.confirm);
+  return `<h1>Create an account with ${pr.display_name}</h1>
+    <p class="lede">${CONFIRM_COPY(pr.display_name)}</p>
+    <p class="landing">${landingText(p)}</p>
+    <div class="stack">
+      <button class="btn primary full" type="button" onclick="roundTrip('${pr.slug}','signup')">Continue to ${pr.display_name}</button>
+      <button class="btn full" type="button" onclick="S.confirm=null;update()">Back</button>
+    </div>`;
+}
+
+/* 2 · One door */
+function oneDoor(p,open,paused,intent){
+  const mode=open?intent:'signin';
+  const seg=open?`<div class="seg" role="tablist" aria-label="Sign in or create an account">
+      <button role="tab" aria-selected="${mode==='signin'}" onclick="S.intent='signin';update()">Sign in</button>
+      <button role="tab" aria-selected="${mode==='signup'}" onclick="S.intent='signup';update()">Create account</button></div>`:'';
+  if(mode==='signin') return `<h1>Sign in to Hikyo</h1>${seg}
+    ${localLogin()}
+    <p class="or" aria-hidden="true">or</p>
+    ${brandList(PROVIDERS.map(x=>x.slug),'signin')}
+    ${paused?pausedLine():''}
+    <p class="foot"><a href="#" onclick="event.preventDefault();go('establish')">Have a setup authority?</a></p>`;
+  return `<h1>Create an account</h1>${seg}
+    <p class="landing">${landingText(p)}</p>
+    ${brandList(p.entries,'signup')}
+    <p class="foot">${CONFIRM_COPY('the provider')}</p>
+    ${p.local.enabled?'<p class="or" aria-hidden="true">or with email</p>':''}
+    ${localSignup(p)}`;
+}
+
+/* 3 · Staged */
+function staged(p,open,paused,intent){
+  const mode=open?intent:'signin';
+  const row=(label,k,onclick,cls)=>`<button class="btn full left ${cls||''}" type="button" onclick="${onclick}">${label}<span class="k">${k}</span></button>`;
+  if(S.step){
+    const back=`<a class="back" href="#" onclick="event.preventDefault();S.step=null;update()">‹ Other ways to ${mode==='signup'?'create an account':'sign in'}</a>`;
+    if(S.step==='password') return `${back}<h1>Sign in with a password</h1>${localLogin()}`;
+    if(S.step==='email') return `${back}<h1>Create an account with email</h1><p class="landing">${landingText(p)}</p>${localSignup(p)}`;
+    const pr=P(S.step);
+    return `${back}<h1>Create an account with ${pr.display_name}</h1>
+      <p class="lede">${CONFIRM_COPY(pr.display_name)}</p><p class="landing">${landingText(p)}</p>
+      <button class="btn primary full" type="button" onclick="roundTrip('${pr.slug}','signup')">Continue to ${pr.display_name}</button>`;
+  }
+  if(mode==='signin') return `<h1>Sign in to Hikyo</h1><p class="lede">Choose how you sign in.</p>
+    <div class="methods">
+      ${row('Password','username or email',"S.step='password';update()")}
+      ${row('Passkey','this device',"toast('Waiting for the passkey… (demo)')")}
+      ${PROVIDERS.map(x=>brandBtn(x,'signin')).join('')}
+    </div>
+    <p class="brandhint">Microsoft: work or school account</p>
+    ${paused?pausedLine():''}
+    <p class="foot">${open?`New here? <a href="#" onclick="event.preventDefault();S.intent='signup';update()">Create an account</a> · `:''}<a href="#" onclick="event.preventDefault();go('establish')">Have a setup authority?</a></p>`;
+  return `<a class="back" href="#" onclick="event.preventDefault();S.intent='signin';update()">‹ Sign in instead</a>
+    <h1>Create an account</h1><p class="landing">${landingText(p)}</p>
+    <div class="methods">
+      ${p.local.enabled?row('Email + password',p.local.domains?`@${p.local.domains} only`:'any address',"S.step='email';update()"):''}
+      ${p.entries.map(s=>brandBtn(P(s),'signup')).join('')}
+    </div>
+    ${p.entries.some(s=>P(s).brand==='microsoft')?'<p class="brandhint">Microsoft: work or school account</p>':''}`;
+}
+
+/* provider button actions ---------------------------------------------- */
+function provider(slug,mode){
+  const pr=P(slug);
+  if(mode==='signup'){
+    S.step=slug;update();return;                             // staged: step 2 is the confirmation
+  }
+  if(mode==='claim'){
+    if(S.claimAuth.trim()==='bad'){S.claimErr=true;update();return;}
+    toast(`Round-trip to ${pr.display_name} with purpose <b>claim</b> · callback consumes the authority, binds (${pr.kind}, ${pr.issuer.replace(/\/[0-9a-f]{8}-.*$/,'/…')}, subject), signs you in`);
+    S.claimErr=null;setTimeout(()=>go('security'),1400);return;
+  }
+  if(mode==='establish'){
+    S.stamp={via:pr.display_name,at:Date.now()};closeModal();update();
+    toast(`Verified via ${pr.display_name} · valid for about 5 minutes`);return;
+  }
+  roundTrip(slug,'signin');
+}
+function roundTrip(slug,mode){
+  const pr=P(slug);
+  toast(`Round-trip to ${pr.display_name} · purpose <b>login</b> · intent <b>${mode==='signup'?'sign-up':'sign-in'}</b> (#604). Callback lands signed in.`);
+  S.confirm=null;S.step=null;
+}
+
+/* check your mail ------------------------------------------------------ */
+function mailPage(){
+  return sheet(`<h1>Check your mail</h1>
+    <p class="lede">We sent a sign-up link to <b>alex@acme.example</b>. It works once and expires 24 hours after it was sent.</p>
+    <p class="foot">If that address already has an account, the mail says so instead of carrying a link.</p>
+    <div class="stack">
+      <button class="btn full" type="button" onclick="toast('Sent again · same pending sign-up, new link, old link invalid')">Send it again</button>
+      <a class="btn full" href="#" onclick="event.preventDefault();go('login')">Back to sign in</a>
+    </div>`);
+}
+
+/* verification (fragment-driven: #token=…&landing=<hint>) ---------------- */
+function verifyPage(refused){
+  if(refused) return sheet(`<h1>Finish creating your account</h1>
+    ${alert("This link can't be used. Start again from the sign-up page.")}
+    <a class="btn full" href="#" onclick="event.preventDefault();go('signup')">Go to sign-up</a>`);
+  const p=policy()||{scope:'instance',landing:'none'};
+  const fresh=p.scope==='instance'&&p.landing==='fresh-org';
+  const e=S.verifyErr||{};
+  return sheet(`<h1>Finish creating your account</h1>
+    <p class="lede">${landingText(p)}</p>
+    <form class="stack" onsubmit="verifySubmit(event)" novalidate>
+      <div class="field"><label for="ve">Email</label><input id="ve" type="email" autocomplete="username" readonly value="alex@acme.example" style="color:var(--tx-dim)"></div>
+      <div class="field"><label for="dn">Display name</label><input id="dn" autocomplete="name" required value="Alex"></div>
+      ${fresh?`<div class="field"><label for="on">Organization name</label>
+        <input id="on" required value="${esc(S.orgName)}" aria-invalid="${!!e.org}" aria-describedby="on-err">
+        ${e.org?`<p class="formerr" id="on-err">${e.org}</p>`:'<p class="hint">You can rename it later under Settings.</p>'}</div>`:''}
+      <div class="field"><label for="np">Password</label><input id="np" type="password" autocomplete="new-password" required aria-invalid="${!!e.pw}"><p class="hint">At least 12 characters.</p></div>
+      <div class="field"><label for="rp">Repeat password</label><input id="rp" type="password" autocomplete="new-password" required>${e.pw?`<p class="formerr">${e.pw}</p>`:''}</div>
+      <button class="btn primary full" type="submit">Create account</button>
+    </form>
+    <p class="foot">Creating the account signs nothing in. You sign in afterwards like anyone else.</p>`);
+}
+function verifySubmit(ev){
+  ev.preventDefault();
+  const pw=document.getElementById('np').value,rp=document.getElementById('rp').value,on=document.getElementById('on');
+  const err={};
+  if(pw.length<12) err.pw='Choose a password of at least 12 characters.';
+  else if(pw!==rp) err.pw='The two passwords differ. Type the same password twice.';
+  if(on){S.orgName=on.value;if(on.value.trim().toLowerCase()==='acme corp') err.org='An organization named “Acme Corp” already exists on this instance. Choose another name — your link is still valid.';}
+  if(Object.keys(err).length){S.verifyErr=err;update();return;}
+  S.verifyErr=null;toast('Account created · sign in to continue');go('login');
+}
+
+/* establish page = the claim surface (#582 d2) --------------------------- */
+function establishPage(){
+  const auth=S.claimAuth;
+  return sheet(`<h1>Establish your credential</h1>
+    <p class="lede">Paste the authority you were handed. Then choose a password, or continue with a provider — either one becomes your first credential.</p>
+    ${S.claimErr?alert("That authority can't be used. Ask whoever invited you for a new one."):''}
+    <div class="field"><label for="auth">Authority</label><input id="auth" autocomplete="off" spellcheck="false" placeholder="hs_…" value="${esc(auth)}" oninput="authChanged(this.value)" style="font-family:var(--mono)"><p class="hint">Type <code>bad</code> to see the refusal.</p></div>
+    <form class="stack" onsubmit="event.preventDefault();claimPassword()" novalidate>
+      <div class="field"><label for="cp">Password</label><input id="cp" type="password" autocomplete="new-password" required></div>
+      <div class="field"><label for="cr">Repeat password</label><input id="cr" type="password" autocomplete="new-password" required></div>
+      <button class="btn primary full" type="submit" id="claim-pw" ${auth.trim()?'':'disabled'}>Establish password</button>
+    </form>
+    <p class="or" aria-hidden="true">or continue with</p>
+    <div id="claim-providers">${brandList(PROVIDERS.map(x=>x.slug),'claim',!auth.trim())}</div>
+    <p class="foot">Nothing here needs an account you can already use: an invitation is claimed by whichever credential you establish first.</p>`,true);
+}
+function authChanged(v){
+  S.claimAuth=v;const on=!!v.trim();
+  document.getElementById('claim-pw').disabled=!on;
+  document.querySelectorAll('#claim-providers .brand').forEach(b=>b.disabled=!on);
+}
+function claimPassword(){
+  if(S.claimAuth.trim()==='bad'){S.claimErr=true;update();return;}
+  S.claimErr=null;toast('Credential established · sign in to continue');go('login');
+}
+
+/* =====================================================================
+   in-chrome scenes
+   ===================================================================== */
+function chrome(active,crumb,body,scope){
+  const instance=scope==='instance';
+  const side=`
+    <div class="orghead"><span class="pav orgav">AC</span><div><div class="oname">Acme Corp</div><div class="orole">org admin</div></div></div>
+    <div class="stitle">${instance?'Instance':'Organization'}</div>
+    ${instance?`<button class="srow ${active==='overview'?'act':''}">Overview</button>
+      <button class="srow ${active==='members'?'act':''}" onclick="go('members-instance')">Members</button>
+      <button class="srow ${active==='settings'?'act':''}" onclick="go('instance')">Settings</button>
+      <button class="srow">Providers</button>`
+    :`<button class="srow">Projects</button>
+      <button class="srow ${active==='members'?'act':''}" onclick="go('members-org')">Members</button>
+      <button class="srow ${active==='settings'?'act':''}" onclick="go('org-settings')">Settings</button>
+      <button class="srow">Audit</button>`}
+    <div class="stitle">Account</div>
+    <button class="srow ${active==='security'?'act':''}" onclick="go('security')">Account &amp; security</button>`;
+  return `<div id="app">
+    <nav id="rail" aria-label="organizations">
+      <span class="pav orgav ${instance?'':'act'}" title="Acme Corp">AC</span><span class="pav orgav" title="Platform Guild">PG</span>
+      <div class="raildiv"></div><span class="pav act" title="payments">PA</span><span class="pav" title="web">WE</span>
+      <div class="spacer"></div>
+      <button class="railbtn ${instance?'act':''}" title="instance" onclick="go('instance')">⚙</button>
+      <button class="railbtn me" title="account" onclick="go('security')">AL</button>
+    </nav>
+    <nav id="side" aria-label="sections">${side}</nav>
+    <div id="main">
+      <header class="h"><button id="menubtn" type="button" aria-label="menu" onclick="document.body.classList.toggle('drawer')">☰</button>
+        <div class="crumb">${crumb}</div><div class="grow"></div></header>
+      <div class="wrap"><div class="page">${body}</div></div>
+    </div></div>`;
+}
+const crumb=(...s)=>s.map((x,i)=>i?`<span class="sep">/</span><span>${x}</span>`:`<span class="dimseg">${x}</span>`).join('');
+const jump=items=>`<nav class="secjump" aria-label="sections on this page">${items.map(([id,l])=>`<button class="atab" onclick="document.getElementById('${id}')?.scrollIntoView({behavior:'smooth',block:'start'})">${l}</button>`).join('')}</nav>`;
+
+/* Members pages: invite beside the Open registration panel (#579 d10) ---- */
+function membersPage(scope){
+  const instance=scope==='instance';
+  const body=`<h2>Members</h2><p class="sub">${instance?'Everyone with an account on this instance, and how new accounts may arrive.':'Who belongs to Acme Corp, and how new members may arrive.'}</p>
+    ${jump([['sec-inv','Invite'],['sec-reg','Open registration'],['sec-list','Members']])}
+    <div class="card" id="sec-inv"><h3>Invite</h3>
+      <div class="rowline"><div class="main"><span class="t">Invite by hand</span><span class="d sans">Creates the account now and hands you a display-once authority. The invitee claims it with a password or any provider.</span></div>
+        <span class="grow"></span><button class="btn sm" onclick="capStepUp('invite a member')">Invite…</button></div>
+    </div>
+    ${regPanel(scope)}
+    <div class="card" id="sec-list"><h3>Members <span class="tag mono">${instance?'41':'12'}</span></h3>
+      <div class="rowline"><div class="main"><span class="t">Alex <span class="tag acc">you</span></span><span class="d">${instance?'instance administrator':'Administrator · via manual grant'}</span></div></div>
+      <div class="rowline"><div class="main"><span class="t">Dana</span><span class="d">${instance?'Acme Corp':'Developer · via registration (Google, hd=acme.example)'}</span></div></div>
+      <div class="rowline"><div class="main"><span class="t">Sam</span><span class="d">${instance?'Northwind Labs · self-serve org':'Developer · via invitation (GitHub)'}</span></div></div>
+    </div>`;
+  return chrome('members',instance?crumb('Instance','Members'):crumb('Acme Corp','Members'),body,scope);
+}
+function regPanel(scope){
+  const p=policy();const instance=scope==='instance';
+  const here=p&&p.scope===scope;
+  if(!here) return `<div class="card" id="sec-reg"><h3>Open registration <span class="tag">closed</span></h3>
+    <div class="rowline"><div class="main"><span class="t">Closed</span><span class="d sans">${instance?'No one can sign up on this instance without an invitation.':'No one can sign up into Acme Corp without an invitation.'}${p&&!instance?' An instance-scope policy exists separately.':''}${p&&instance?' An org-scope policy exists on Acme Corp.':''}</span></div>
+      <span class="grow"></span><button class="btn sm" onclick="openEditor('${scope}')">Open registration…</button></div>
+    <div class="note">No policy means closed. Opening registration is an audited, reauth-gated change; the policy is a standing delegation re-checked against your grants at every sign-up.</div></div>`;
+  const status=p.inactive?`<span class="tag bad">inactive · ${p.inactive}</span>`:`<span class="tag acc">active</span>`;
+  const entries=p.entries.map(s=>{const pr=P(s);const al=p.allow[s];
+    return `<div class="rowline sub"><div class="main"><span class="t">${pr.display_name} <span class="tag mono">${pr.kind}${pr.profile?' · '+pr.profile:''}</span></span>
+      <span class="d">${al?`${al.claim} ∈ {${al.values}} · `:''}${pr.kind==='oauth2'?'primary, verified GitHub address':'email + email_verified | xms_edov = true'}</span></div></div>`;}).join('');
+  const local=p.local.enabled?`<div class="rowline sub"><div class="main"><span class="t">Email + password</span><span class="d">${p.local.domains?`@${p.local.domains} only`:'any address'} · verified by mailed link · 24 h</span></div></div>`:'';
+  const landing=p.scope==='org'?`${p.org} · ${TEMPLATES.find(t=>t[0]===p.template)[1]} template`
+    :p.landing==='none'?'no organization · zero grants until an administrator grants access'
+    :`a new organization per sign-up · <b>${p.count} / ${p.cap}</b> minted${p.count>=p.cap?' · <span class="no">cap reached, sign-ups refused</span>':''}`;
+  const mailer=mailerConfigured();
+  return `<div class="card" id="sec-reg"><h3>Open registration ${status}</h3>
+    ${p.inactive?alert(`${CAUSE[p.inactive].remedy}`,''):''}
+    <div class="rowline"><div class="main"><span class="t">Who may sign up</span></div></div>
+    ${entries}${local}
+    <div class="rowline"><div class="main"><span class="t">Landing</span><span class="d sans">${landing}</span></div></div>
+    <div class="rowline"><div class="main"><span class="t">Authority</span><span class="d sans">${p.authority} · re-checked against their current grants at every sign-up · any edit makes the editor the authority</span></div></div>
+    <div class="rowline"><div class="main"><span class="t">Preconditions</span>
+      <span class="d"><span class="ok">✓</span> public origin explicit · https://hikyo.acme.example<br>
+      <span class="${mailer?'ok':'no'}">${mailer?'✓':'✕'}</span> mailer ${mailer?'configured':'not configured'}${p.local.enabled?' · required by the email entry':''}</span></div></div>
+    <div class="rowline"><span class="grow"></span>
+      ${p.inactive==='authority-lost'?`<button class="btn sm blue" onclick="stepUpThen('re-save this policy as its authority',()=>{S.override={...policy(),inactive:null,authority:'Alex'};update();toast('Saved · you are now the authority')})">Re-save as authority</button>`:''}
+      <button class="btn sm" onclick="openEditor('${scope}')">Edit…</button>
+      <button class="btn sm danger" onclick="stepUpThen('close registration',()=>{S.override=null;S.reg='closed';document.getElementById('regSel').value='closed';update();toast('Registration closed · policy deleted, audited')})">Close registration</button></div>
+    <div class="note">Sign-ups arrive under <code>registration.*</code> in the ${instance?'instance':'tenant'} trail. Refusals (no verified email, not on the allowlist, budget, cap) are read there — the panel shows no per-identity state.</div>
+  </div>`;
+}
+
+/* policy editor ---------------------------------------------------------- */
+function openEditor(scope){
+  const p=policy();const here=p&&p.scope===scope;
+  S.edit=here?JSON.parse(JSON.stringify(p)):{scope,org:'Acme Corp',entries:[],allow:{},local:{enabled:false,domains:''},landing:scope==='org'?'org':'none',template:'developer',cap:100,count:0,authority:'Alex',inactive:null};
+  S.editErr={};renderEditor();
+}
+function renderEditor(){
+  const e=S.edit,err=S.editErr,instance=e.scope==='instance',mailer=mailerConfigured();
+  const entry=pr=>{const on=e.entries.includes(pr.slug);const al=e.allow[pr.slug]||{claim:'',values:''};
+    const req=pr.kind==='oauth2'?'GitHub must hold a primary, verified address.':'The ID token must carry <code>email</code> plus <code>email_verified</code> or <code>xms_edov</code> as boolean true — app-registration steps in ops-spec.';
+    return `<div class="entry"><div class="top"><label><input type="checkbox" ${on?'checked':''} onchange="edToggle('${pr.slug}',this.checked)">${pr.display_name}</label>
+      <span class="tag mono">${pr.kind}${pr.profile?' · '+pr.profile:''}</span>${pr.brand==='microsoft'?'<span class="tag mono">tenant row</span>':''}</div>
+      ${on&&pr.kind==='oidc'?`<div class="sub"><div class="field"><label>allowlist claim</label><input value="${esc(al.claim)}" placeholder="hd" oninput="edAllow('${pr.slug}','claim',this.value)"></div>
+        <div class="field"><label>accepted values</label><input value="${esc(al.values)}" placeholder="acme.example, acme.test" oninput="edAllow('${pr.slug}','values',this.value)"></div></div>`:''}
+      ${on?`<p class="req">${req}</p>`:''}
+      ${err[pr.slug]?`<p class="formerr">${err[pr.slug]}</p>`:''}</div>`;};
+  const html=`<h3 id="modal-title">${instance?'Instance':'Acme Corp'} · open registration</h3>
+    <p class="dim">One policy per scope. Who may sign up, and where they land. Saving needs fresh proof and re-assigns the authority to you.</p>
+    <div class="stack"><div class="field"><label>Who may sign up</label></div>
+      ${PROVIDERS.map(entry).join('')}
+      <div class="entry"><div class="top"><label><input type="checkbox" ${e.local.enabled?'checked':''} onchange="S.edit.local.enabled=this.checked;renderEditor()">Email + password</label><span class="tag mono">local</span>
+        <span class="tag ${mailer?'':'bad'}">${mailer?'mailer configured':'mailer not configured'}</span></div>
+        ${e.local.enabled?`<div class="sub"><div class="field"><label>email domain allowlist</label><input value="${esc(e.local.domains)}" placeholder="acme.example (empty = any)" oninput="S.edit.local.domains=this.value"></div></div>
+          <p class="req">The address is proven by a mailed link before any account exists. Plain-text mail, valid 24 hours.</p>`:''}
+        ${err.local?`<p class="formerr">${err.local}</p>`:''}</div>
+    </div>
+    <div class="field"><label>Landing</label></div>
+    ${instance?`<label class="radio"><input type="radio" name="landing" ${e.landing==='none'?'checked':''} onchange="S.edit.landing='none';renderEditor()"><span>No organization<br><span class="d">The account exists with zero grants; an administrator grants access later (the former JIT shape).</span></span></label>
+      <label class="radio"><input type="radio" name="landing" ${e.landing==='fresh-org'?'checked':''} onchange="S.edit.landing='fresh-org';renderEditor()"><span>A new organization per sign-up<br><span class="d">The signer becomes its first administrator, under your <code>org.create</code> grant.</span></span></label>
+      ${e.landing==='fresh-org'?`<div class="field" style="max-width:220px"><label for="cap">cap on organizations minted</label><input id="cap" type="number" min="1" value="${e.cap}" oninput="S.edit.cap=Number(this.value)" aria-invalid="${!!err.cap}">${err.cap?`<p class="formerr">${err.cap}</p>`:`<p class="hint">${e.count} minted so far. Reaching the cap refuses sign-ups until an idle org is deleted.</p>`}</div>`:''}`
+    :`<div class="field" style="max-width:280px"><label for="tpl">role template in Acme Corp</label><select id="tpl" onchange="S.edit.template=this.value">${TEMPLATES.map(t=>`<option value="${t[0]}" ${e.template===t[0]?'selected':''}>${t[1]}</option>`).join('')}</select>
+      <p class="hint">Bounded by your own grants: you can hand out only what you hold.</p></div>`}
+    <div class="kv"><dt>preconditions</dt><dd><span class="ok">✓</span> public origin explicit<br><span class="${mailer?'ok':'no'}">${mailer?'✓':'✕'}</span> mailer ${mailer?'configured':'not configured'}</dd></div>
+    ${err.form?alert(err.form):''}
+    <div class="actions"><button class="btn sm" onclick="closeModal()">Cancel</button><button class="btn sm primary" onclick="saveEditor()">Save</button></div>`;
+  openModal(html,'wide');
+}
+function edToggle(slug,on){const e=S.edit;e.entries=e.entries.filter(s=>s!==slug);if(on)e.entries.push(slug);renderEditor();}
+function edAllow(slug,k,v){S.edit.allow[slug]={...(S.edit.allow[slug]||{claim:'',values:''}),[k]:v};}
+function saveEditor(){
+  const e=S.edit,err={};
+  if(!e.entries.length&&!e.local.enabled) err.form='Admit at least one way to sign up, or close registration instead.';
+  e.entries.forEach(s=>{const pr=P(s);if(pr.kind==='oidc'&&!pr.email_scope) err[s]=`${pr.display_name}: this provider row does not request the email scope, so it cannot assert a verified address. Add the scope on the provider, then admit it.`;});
+  if(e.local.enabled&&!mailerConfigured()) err.local='The email entry needs a configured mailer (HIKYO_MAIL_*). Configure it on the instance, or leave this entry off.';
+  if(e.scope==='instance'&&e.landing==='fresh-org'&&!(e.cap>0)) err.cap='A cap of at least 1 is required for this landing.';
+  Object.keys(e.allow).forEach(s=>{const a=e.allow[s];if(e.entries.includes(s)&&a.claim==='email') err[s]='email is not accepted as an allowlist claim — it is never a linking key.';});
+  if(Object.keys(err).length){S.editErr=err;renderEditor();return;}
+  const existed=!!policy()&&policy().scope===e.scope;
+  stepUpThen('save the registration policy',()=>{
+    Object.keys(e.allow).forEach(s=>{if(!e.allow[s].claim||!e.allow[s].values)delete e.allow[s];});
+    e.inactive=null;e.authority='Alex';S.override=e;S.edit=null;closeModal();update();
+    toast('Policy saved · <code>registration.policy_'+(existed?'updated':'created')+'</code> · you are its authority');
+  });
+}
+
+/* step-up (blue, "confirm it's you"): capability gates and reauth-gated mutations */
+function capStepUp(what){
+  if(S.session==='has-password'){
+    openModal(`<h3 id="modal-title">Confirm it's you</h3><p class="dim">To ${what}, enter the code from your authenticator app.</p>
+      <div class="field"><label for="totp">one-time code</label><input id="totp" inputmode="numeric" autocomplete="one-time-code" style="font-family:var(--mono);max-width:200px"></div>
+      <div class="actions"><button class="btn sm" onclick="closeModal()">Cancel</button><button class="btn sm blue" onclick="closeModal();toast('Confirmed · step-up window open')">Confirm</button></div>`,'stepup');
+    return;
+  }
+  openModal(`<h3 id="modal-title">This needs a second factor</h3>
+    <p>To ${what}, your session has to carry a second factor. Your GitHub and Google sign-ins can't assert one.</p>
+    <p class="dim">Sign in through a provider that asserts one, or add an authenticator or password under Settings › Security.</p>
+    <div class="actions"><button class="btn sm" onclick="closeModal()">Not now</button><button class="btn sm blue" onclick="closeModal();go('security')">Go to Account &amp; security</button></div>`,'stepup');
+}
+function stepUpThen(what,fn){
+  window.__stepOk=fn;
+  if(S.session==='has-password'){
+    openModal(`<h3 id="modal-title">Confirm it's you</h3><p class="dim">To ${what}, enter your password or a one-time code. Fresh proof, every time.</p>
+      <div class="field"><label for="pf">password or one-time code</label><input id="pf" type="password" autocomplete="current-password"></div>
+      <div class="actions"><button class="btn sm" onclick="closeModal()">Cancel</button><button class="btn sm blue" onclick="closeModal();__stepOk()">Confirm</button></div>`,'stepup');
+  }else capStepUp(what);
+}
+function reauthRefusal(){
+  openModal(`<h3 id="modal-title">Google can't confirm it's you again</h3>
+    <p>Revealing this value needs a fresh proof of possession. This provider row has no assurance policy, so a new round-trip proves only that a Google cookie exists — it isn't started.</p>
+    <p class="dim">Enrol a passkey or an authenticator app under Settings › Security to continue.</p>
+    <div class="actions"><button class="btn sm" onclick="closeModal()">Not now</button><button class="btn sm blue" onclick="closeModal();go('security')">Go to Account &amp; security</button></div>`,'stepup');
+}
+function stepupScene(){
+  const social=S.session==='social-only';
+  const body=`<h2>Step-up refusals</h2><p class="sub">Where a social-only session meets a capability it can't satisfy. The remedy is offered here and nowhere else — no banner, no nudge.</p>
+    <div class="card"><h3>Session</h3>
+      <div class="rowline"><div class="main"><span class="t">${social?'GitHub':'Password + authenticator'} <span class="tag mono">${social?'oauth2:github.com · single-factor':'password · totp'}</span></span>
+        <span class="d sans">${social?'An OAuth2 session is always single-factor; GitHub\'s two_factor_authentication field is refused as evidence.':'Two factors; step-up prompts for the one-time code.'}</span></div></div>
+    </div>
+    <div class="card"><h3>Try a gated action</h3>
+      <div class="rowline"><div class="main"><span class="t">Invite a member</span><span class="d">manage-members · MFA-mandatory</span></div><span class="grow"></span><button class="btn sm" onclick="capStepUp('invite a member')">Invite…</button></div>
+      <div class="rowline"><div class="main"><span class="t">Reveal DATABASE_URL in production</span><span class="d">reauth per disclosure · signed in via Google (no assurance policy)</span></div><span class="grow"></span><button class="btn sm" onclick="${social?'reauthRefusal()':"capStepUp('reveal DATABASE_URL')"}">Reveal</button></div>
+      <div class="note">The reauth refusal happens at <em>start</em>: no round-trip is made and no undocumented parameters are sent to the provider (#588 d4). The same prompt appears for an <code>oauth2</code> identity, which never reauthenticates (#580 d6).</div>
+    </div>`;
+  return chrome('members',crumb('Acme Corp','payments','Matrix'),body,'org');
+}
+
+/* Account & security ------------------------------------------------------ */
+function securityScene(){
+  const f=S.factors,ids=S.identities,noLocal=!f.password&&!f.totp&&!f.passkeys.length;
+  const stampLine=S.stamp?alert(`Verified via ${S.stamp.via} · valid for about 5 minutes · lets you create a password, an authenticator, a passkey or recovery codes`,'ok'):'';
+  const loginCreds=(f.password?1:0)+(f.passkeys.length>=2&&f.codes?1:0)+ids.length;
+  const body=`<h2>Account &amp; security</h2><p class="sub">How you sign in, how you prove it's you, and which identities are yours.</p>
+    ${jump([['sec-factors','Sign-in factors'],['sec-ids','Linked identities'],['sec-sessions','Sessions']])}
+    ${stampLine}
+    <div class="card" id="sec-factors"><h3>Sign-in factors</h3>
+      <div class="rowline"><div class="main"><span class="t">Password</span><span class="d sans">${f.password?'signs you in; never authorises security changes on its own':'none set — your providers sign you in'}</span></div><span class="grow"></span>
+        <button class="btn sm" onclick="proofDialog('${f.password?'change your password':'set a password'}',passwordForm)">${f.password?'Change password':'Set password'}</button></div>
+      <div class="rowline"><div class="main"><span class="t">Authenticator app</span><span class="d">${f.totp?'TOTP · enrolled':'not enrolled'}</span></div><span class="grow"></span>
+        ${f.totp?'<span class="tag">enrolled</span>':`<button class="btn sm" onclick="proofDialog('enrol an authenticator app',()=>{S.factors.totp=true;S.stamp=null;update();toast('Authenticator enrolled · audited with authorizing_credential')})">Enrol</button>`}</div>
+      ${f.passkeys.map(n=>`<div class="rowline"><div class="main"><span class="t">🔑 ${n}</span><span class="d">passkey</span></div><span class="grow"></span><button class="xbtn" aria-label="remove passkey" onclick="proofDialog('remove the passkey ${n}',()=>{S.factors.passkeys=S.factors.passkeys.filter(x=>x!=='${n}');update()})">✕</button></div>`).join('')}
+      <div class="rowline"><div class="main"><span class="t">Add passkey</span><span class="d sans">a new credential never authorises its own enrolment</span></div><span class="grow"></span>
+        <button class="btn sm" onclick="proofDialog('add a passkey',()=>{S.factors.passkeys.push('New device');S.stamp=null;update();toast('Passkey added')})">+ Add</button></div>
+      <div class="rowline"><div class="main"><span class="t">Recovery codes</span><span class="d">${f.codes?'generated · shown once':'not generated'}</span></div><span class="grow"></span>
+        <button class="btn sm" onclick="proofDialog('generate recovery codes',()=>{S.factors.codes=true;S.stamp=null;update();toast('Recovery codes generated · shown once')})">${f.codes?'Replace':'Generate'}</button></div>
+      ${noLocal?'<div class="note">Signing in through a provider is a complete way to use Hikyo. A password or authenticator is only ever asked for at the moment something needs a second factor.</div>':''}
+    </div>
+    <div class="card" id="sec-ids"><h3>Linked identities</h3>
+      ${ids.map(i=>{const pr=P(i.slug);return `<div class="rowline"><div class="main"><span class="t">${pr.display_name} <span class="tag mono">${pr.kind}${pr.profile?' · '+pr.profile:''}</span></span><span class="d">linked 2026-06-02 · ${pr.brand==='microsoft'?'tenant '+pr.display_name:pr.issuer}</span></div>
+        <span class="grow"></span><button class="xbtn" aria-label="unlink ${pr.display_name}" onclick="unlinkDialog('${pr.slug}')">✕</button></div>`;}).join('')}
+      <div class="rowline"><div class="main"><span class="t">Link another identity</span><span class="d sans">an explicit act with fresh proof from a credential you already hold; email never links accounts</span></div><span class="grow"></span>
+        <button class="btn sm" onclick="linkDialog()">+ Link</button></div>
+      ${loginCreds<=1?'<div class="note">This is the only way into your account, so it cannot be unlinked until another one exists.</div>':''}
+    </div>
+    <div class="card" id="sec-sessions"><h3>Sessions</h3>
+      <div class="rowline"><div class="main"><span class="t">This browser <span class="tag acc">this session</span></span><span class="d">${S.session==='social-only'?'oauth2:github.com · single-factor':'password + totp · two factors'} · last active now</span></div></div>
+      <div class="rowline"><div class="main"><span class="t">hikyo CLI on laptop</span><span class="d">CLI artifact · last active 3 h ago</span></div><span class="grow"></span><button class="xbtn" aria-label="revoke">✕</button></div>
+    </div>`;
+  return chrome('security',crumb('Account','Account & security'),body,'org');
+}
+function proofDialog(what,onOk){
+  const f=S.factors,noLocal=!f.password&&!f.totp&&!f.passkeys.length;
+  const fnBody=typeof onOk==='function'?onOk:null;
+  window.__proofOk=()=>{closeModal();if(fnBody===passwordForm){passwordForm();return;}fnBody&&fnBody();};
+  if(noLocal){
+    if(S.stamp){openModal(`<h3 id="modal-title">Confirm it's you</h3>${alert(`Verified via ${S.stamp.via} · valid for about 5 minutes`,'ok')}<p class="dim">That verification covers this change; nothing more to prove.</p>
+      <div class="actions"><button class="btn sm" onclick="closeModal()">Cancel</button><button class="btn sm blue" onclick="__proofOk()">Continue</button></div>`,'stepup');return;}
+    openModal(`<h3 id="modal-title">Confirm it's you</h3><p class="dim">To ${what}, verify through one of your identities. This is accepted only while you hold no password, authenticator or passkey — it lets you create one, nothing else.</p>
+      <div class="stack">${S.identities.map(i=>{const pr=P(i.slug);return `<button class="brand ${pr.brand}" type="button" onclick="provider('${pr.slug}','establish')">${ICON[pr.brand]}<span>Verify with ${pr.display_name}</span></button>`;}).join('')}</div>
+      <div class="actions"><button class="btn sm" onclick="closeModal()">Cancel</button></div>`,'stepup');return;
+  }
+  openModal(`<h3 id="modal-title">Confirm it's you</h3><p class="dim">To ${what}, enter your ${f.password?'password':'one-time code'}. Fresh proof, every time.</p>
+    <div class="field"><label for="pf">${f.password?'password':'one-time code'}</label><input id="pf" type="password" autocomplete="${f.password?'current-password':'one-time-code'}"></div>
+    <div class="actions"><button class="btn sm" onclick="closeModal()">Cancel</button><button class="btn sm blue" onclick="__proofOk()">Confirm</button></div>`,'stepup');
+}
+function passwordForm(){
+  const first=!S.factors.password;
+  openModal(`<h3 id="modal-title">${first?'Set a password':'Change your password'}</h3>
+    <div class="field"><label for="p1">new password</label><input id="p1" type="password" autocomplete="new-password"><p class="hint">At least 12 characters.</p></div>
+    <div class="field"><label for="p2">repeat</label><input id="p2" type="password" autocomplete="new-password"></div>
+    <p class="dim">Every other session of yours is signed out; this one is re-issued with no open windows.</p>
+    <div class="actions"><button class="btn sm" onclick="closeModal()">Cancel</button><button class="btn sm primary" onclick="S.factors.password=true;S.stamp=null;closeModal();update();toast('Password ${first?'set':'changed'} · other sessions signed out · <code>auth.password_changed</code>')">${first?'Set password':'Change password'}</button></div>`);
+}
+function noLocalProofDialog(title){
+  openModal(`<h3 id="modal-title">${title}</h3><p>Linking and unlinking need proof from a password or an authenticator you already hold. Verifying through a provider is not enough for this.</p>
+    <p class="dim">Set a password or enrol an authenticator first.</p>
+    <div class="actions"><button class="btn sm" onclick="closeModal()">Close</button></div>`,'stepup');
+}
+function linkDialog(){
+  const f=S.factors;if(!f.password&&!f.totp){noLocalProofDialog('Link an identity');return;}
+  const free=PROVIDERS.filter(p=>!S.identities.some(i=>i.slug===p.slug));
+  openModal(`<h3 id="modal-title">Link an identity</h3><p class="dim">Prove it's you, then complete a round-trip with the provider. The identity returned is bound to this account byte-exactly.</p>
+    <div class="field"><label for="lp">provider</label><select id="lp">${free.map(p=>`<option value="${p.slug}">${p.display_name} · ${p.kind}${p.profile?' · '+p.profile:''}</option>`).join('')}</select></div>
+    <div class="field"><label for="pf">${f.password?'password':'one-time code'}</label><input id="pf" type="password"></div>
+    <div class="actions"><button class="btn sm" onclick="closeModal()">Cancel</button><button class="btn sm blue" onclick="const s=document.getElementById('lp').value;S.identities.push({slug:s});closeModal();update();toast('Round-trip with purpose <b>link</b> · identity linked · <code>auth.identity_linked</code>')">Continue</button></div>`,'stepup');
+}
+function unlinkDialog(slug){
+  const f=S.factors,pr=P(slug);
+  if(!f.password&&!f.totp){noLocalProofDialog(`Unlink ${pr.display_name}`);return;}
+  const remaining=(f.password?1:0)+(f.passkeys.length>=2&&f.codes?1:0)+(S.identities.length-1);
+  if(remaining===0){openModal(`<h3 id="modal-title">Unlink ${pr.display_name}</h3>${alert('This is the only way into your account. Add another before unlinking it.')}<div class="actions"><button class="btn sm" onclick="closeModal()">Close</button></div>`);return;}
+  openModal(`<h3 id="modal-title">Unlink ${pr.display_name}</h3><p>Every session that signed in through ${pr.display_name} ends. You keep signing in with what remains.</p>
+    <div class="field"><label for="pf">${f.password?'password':'one-time code'}</label><input id="pf" type="password"></div>
+    <div class="actions"><button class="btn sm" onclick="closeModal()">Cancel</button><button class="btn sm danger" onclick="S.identities=S.identities.filter(i=>i.slug!=='${slug}');closeModal();update();toast('Unlinked · its sessions deleted · <code>auth.identity_unlinked</code>')">Unlink</button></div>`,'stepup');
+}
+
+/* instance settings: mailer + organizations -------------------------------- */
+function instanceScene(){
+  const mailer=mailerConfigured();
+  const rows=ORGS.filter(o=>S.orgFilter==='all'||o.origin===S.orgFilter);
+  const body=`<h2>Instance settings</h2><p class="sub">Process configuration is read-only here; it comes from the environment and is validated at boot without dialling anything.</p>
+    ${jump([['sec-mail','Mailer'],['sec-orgs','Organizations']])}
+    <div class="card" id="sec-mail"><h3>Mailer ${mailer?'<span class="tag acc">configured</span>':'<span class="tag bad">not configured</span>'}</h3>
+      <dl class="kv">
+        <dt>transport</dt><dd>${mailer?'<code>smtp.example.net:465</code> · implicit TLS · TLS 1.2 floor · CA file set':'<code>HIKYO_MAIL_ADDR</code> unset'}</dd>
+        <dt>from</dt><dd>${mailer?'<code>Hikyo &lt;noreply@hikyo.acme.example&gt;</code>':'—'}</dd>
+        <dt>public origin</dt><dd><code>https://hikyo.acme.example</code> · explicit</dd>
+        <dt>used by</dt><dd>email sign-up verification only</dd>
+      </dl>
+      <div class="rowline" style="margin-top:8px"><div class="main"><span class="t">Send a test mail</span><span class="d sans">The only reachability probe. Audited, under its own admission class.</span></div><span class="grow"></span>
+        <button class="btn sm" ${mailer?'':'disabled'} onclick="testSend()">Send test…</button></div>
+      ${mailer?'':'<div class="note">Set <code>HIKYO_MAIL_ADDR</code>, <code>HIKYO_MAIL_TLS</code>, <code>HIKYO_MAIL_FROM</code> and the credential file on the process. Until then any registration policy with an email entry stays inactive.</div>'}
+    </div>
+    <div class="card" id="sec-orgs"><h3>Organizations <span class="tag mono">${ORGS.length}</span></h3>
+      <div class="toolbar"><label class="field" style="display:flex;align-items:center;gap:8px"><span>origin</span>
+        <select onchange="S.orgFilter=this.value;update()"><option value="all" ${S.orgFilter==='all'?'selected':''}>all</option><option value="manual" ${S.orgFilter==='manual'?'selected':''}>manual</option><option value="registration" ${S.orgFilter==='registration'?'selected':''}>self-serve</option></select></label></div>
+      <table class="list"><thead><tr><th>name</th><th>origin</th><th>created</th><th></th></tr></thead><tbody>
+        ${rows.map(o=>`<tr><td>${o.name}</td><td>${o.origin==='manual'?'<span class="tag">manual</span>':`<span class="tag acc">self-serve</span> <span class="tag mono">${o.policy}</span>`}</td><td class="m">${o.created}</td><td style="text-align:right"><button class="btn sm danger" onclick="stepUpThen('delete ${o.name}',()=>toast('Deleted (demo) · frees a cap slot'))">Delete</button></td></tr>`).join('')}
+      </tbody></table>
+      <div class="note">Self-serve orgs are never deleted automatically. Pruning idle ones is this list's job and frees cap slots on the policy that minted them.</div>
+    </div>`;
+  return chrome('settings',crumb('Instance','Settings'),body,'instance');
+}
+function testSend(){
+  openModal(`<h3 id="modal-title">Send a test mail</h3><p class="dim">One plain-text mail to a recipient you type. Result is what the relay says; the boot check never dials.</p>
+    <div class="field"><label for="tr">recipient</label><input id="tr" type="email" value="alex@acme.example"></div>
+    <div class="actions"><button class="btn sm" onclick="closeModal()">Cancel</button><button class="btn sm primary" onclick="closeModal();toast('Test mail accepted by smtp.example.net in 0.4 s · audited')">Send</button></div>`);
+}
+
+/* org settings: rename (manage-members on the org) ------------------------- */
+function orgSettingsScene(){
+  const body=`<h2>Settings</h2><p class="sub">Organization identity and lifecycle. Access lives on Members.</p>
+    ${jump([['sec-oident','Identity'],['sec-odanger','Danger zone']])}
+    <div class="card" id="sec-oident"><h3>Identity</h3>
+      <div class="fgrid"><div class="field"><label for="oname">name</label><input id="oname" value="${esc(S.orgName)}" oninput="S.orgName=this.value"></div></div>
+      <div class="rowline" style="margin-top:10px"><div class="main"><span class="t">Rename</span><span class="d sans">Any administrator of this org may rename it — a self-served org starts as <code>org-&lt;id&gt;</code> and is renamed here.</span></div><span class="grow"></span>
+        <button class="btn sm" onclick="stepUpThen('rename this organization',()=>toast('Renamed · <code>settings.org_renamed</code>'))">Rename</button></div>
+    </div>
+    <div class="card" id="sec-odanger" style="border-color:color-mix(in oklch,var(--bad) 45%,var(--panel-line))"><h3 style="color:var(--bad)">Danger zone</h3>
+      <div class="rowline"><div class="main"><span class="t">Delete organization</span><span class="d sans">Instance administrators only. Self-service leave and delete for self-served accounts are still in the map's fog.</span></div><span class="grow"></span><button class="btn sm danger" disabled title="instance-config only">Delete</button></div>
+    </div>`;
+  return chrome('settings',crumb('Acme Corp','Settings'),body,'org');
+}
+
+/* =====================================================================
+   scene dispatch + prototype chrome
+   ===================================================================== */
+const SCENES=[
+  ['login','Login'],['signup','Sign-up entry'],['mail','Check your mail'],['verify','Verification'],['verify-refused','Verification · refused'],
+  ['establish','Invitation claim (establish page)'],['stepup','Step-up refusals'],['members-org','Org Members · Open registration'],
+  ['members-instance','Instance Members · Open registration'],['security','Account & security'],['instance','Instance settings · mailer, orgs'],['org-settings','Org settings · rename']];
+const NOTES={
+  login:()=>isOpen()?'open: login door sends intent=sign-in (#604)':isPaused()?'paused: cause only on Members (Q2 verdict)':'closed: nothing hints at sign-up',
+  signup:()=>isOpen()?'sign-up door: intent=sign-up, policy-admitted methods only':'closed — no sign-up door exists; login renders',
+  verify:()=>'landing hint from the fixture; org name “Acme Corp” collides',
+  establish:()=>'token first; paste “bad” for the one refusal sentence',
+  stepup:()=>'toggle session to compare',security:()=>'toggle session: social-only shows the establish branch',
+  'members-org':()=>'org-scope panel; editor via Edit…/Open registration…','members-instance':()=>'instance-scope panel: landing none | fresh-org + cap',
+};
+function renderScene(v){
+  document.body.classList.remove('drawer');
+  const n=NOTES[S.scene];document.getElementById('protonote').textContent=n?n():'';
+  switch(S.scene){
+    case 'login': return entry(v,'signin');
+    case 'signup': return entry(v,'signup');
+    case 'mail': return mailPage();
+    case 'verify': return verifyPage(false);
+    case 'verify-refused': return verifyPage(true);
+    case 'establish': return establishPage();
+    case 'stepup': return stepupScene();
+    case 'members-org': return membersPage('org');
+    case 'members-instance': return membersPage('instance');
+    case 'security': return securityScene();
+    case 'instance': return instanceScene();
+    case 'org-settings': return orgSettingsScene();
+  }
+  return '';
+}
+function go(scene){S.scene=scene;if(scene==='signup')S.intent='signup';if(scene==='login')S.intent='signin';S.step=null;S.confirm=null;S.verifyErr=null;S.claimErr=null;S.claimAuth='';
+  document.getElementById('sceneSel').value=scene;const u=new URL(location);u.searchParams.set('scene',scene);history.replaceState(null,'',u);update();window.scrollTo(0,0);}
+function setScene(v){go(v);}
+function setReg(v){S.reg=v;S.override=null;S.confirm=null;S.step=null;update();}
+function setSession(v){S.session=v;resetSession();update();}
+function toggleTheme(){const r=document.documentElement;r.dataset.theme=r.dataset.theme==='light'?'':'light';}
+function update(){mount(current);}
+
+/* modal + toast */
+function openModal(html,cls){const m=document.getElementById('modal');m.className='modal-box '+(cls||'');m.innerHTML=html;document.body.classList.add('modal');
+  requestAnimationFrame(()=>{m.querySelector('input,select,button')?.focus();});}
+function closeModal(){document.body.classList.remove('modal');document.getElementById('modal').innerHTML='';}
+let toastT;
+function toast(msg){const t=document.getElementById('toast');t.innerHTML=`<span class="g" aria-hidden="true">✓</span><span>${msg}</span>`;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,5000);}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('modal'))closeModal();});
+
+/* scene select */
+const sel=document.getElementById('sceneSel');
+SCENES.forEach(([id,l])=>{const o=document.createElement('option');o.value=id;o.textContent=l;sel.appendChild(o);});
+S.scene=new URLSearchParams(location.search).get('scene')||'login';if(!SCENES.some(s=>s[0]===S.scene))S.scene='login';sel.value=S.scene;if(S.scene==='signup')S.intent='signup';
+
+/* =====================================================================
+   picker wiring (verbatim reference wiring)
+   ===================================================================== */
+const variants=[()=>renderScene(2)];
+const stage = document.getElementById('stage');
+const picker = document.querySelector('.proto-picker');
+const highlight = picker.querySelector('.proto-picker-highlight');
+const items = [...picker.querySelectorAll('.proto-picker-item:not(.proto-picker-replay)')];
+const replay = picker.querySelector('.proto-picker-replay');
+let current = 0;
+
+function moveHighlight() {
+  const el = items[current];
+  highlight.style.width = el.offsetWidth + 'px';
+  highlight.style.transform = `translateX(${el.offsetLeft}px)`;
+}
+
+function mount(i) {
+  stage.innerHTML = '';
+  // Clear first, render next frame, so entrance animations re-run.
+  requestAnimationFrame(() => { stage.innerHTML = variants[i](); });
+}
+
+function setActive(i) {
+  if (i < 0 || i >= variants.length) return;
+  current = i;
+  items.forEach((el, j) => {
+    el.toggleAttribute('data-active', j === i);
+    if (j === i) el.setAttribute('aria-current', 'true');
+    else el.removeAttribute('aria-current');
+  });
+  moveHighlight();
+  const url = new URL(location);
+  url.searchParams.set('v', i + 1);
+  history.replaceState(null, '', url);
+  mount(i);
+}
+
+items.forEach((el, i) => el.addEventListener('click', () => setActive(i)));
+replay?.addEventListener('click', () => mount(current));
+window.addEventListener('resize', moveHighlight);
+
+document.addEventListener('keydown', (e) => {
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const num = parseInt(e.key, 10);
+  if (num >= 1 && num <= variants.length) setActive(num - 1);
+  else if (e.key === 'ArrowRight') setActive((current + 1) % variants.length);
+  else if (e.key === 'ArrowLeft') setActive((current - 1 + variants.length) % variants.length);
+  else if (e.key === 'r' || e.key === 'R') mount(current);
+});
+
+setActive((parseInt(new URLSearchParams(location.search).get('v'), 10) || 1) - 1);
+// Enable the slide only after first paint, so load doesn't animate.
+requestAnimationFrame(() => requestAnimationFrame(() => picker.setAttribute('data-ready', '')));
+</script>
+</body>
+</html>
