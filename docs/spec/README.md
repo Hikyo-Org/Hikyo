@@ -40,6 +40,7 @@ This is the build-ready specification set for Hikyo 1.0: a fully open-source, se
 | Audit & event model | [adr/audit-model.md](../adr/audit-model.md) |
 | OSS project mechanics | [adr/oss-mechanics.md](../adr/oss-mechanics.md) |
 | Post-spec open items (fog sweep) | [open-items.md](./open-items.md) |
+| Social sign-in and open registration (map [#578](https://github.com/Hikyo-Org/Hikyo/issues/578), synthesis [#589](https://github.com/Hikyo-Org/Hikyo/issues/589), 2026-09-03) | [social-signin.md](./social-signin.md) + amendment banners in human-auth, tenant-isolation, audit-model, permission-model, threat-model, ops-spec, mvp-boundary, api-cli-surface |
 
 ## Synthesis obligations, discharged
 

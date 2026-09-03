@@ -78,6 +78,23 @@ Pi-4 fit: one serial pacer per credential at ≥ 1 s spacing bounds adapter CPU 
 | Username collision | `409 conflict`; the transaction leaves no principal, account or grant behind | fixed |
 | Delivery | out of band (HTTP response to the inviter, or the CLI print triad); no email channel | fixed |
 
+## Open registration and social sign-in ([ops-spec.md](../adr/ops-spec.md) amendment 2026-09-03, [#589](https://github.com/Hikyo-Org/Hikyo/issues/589); spec [social-signin.md](./social-signin.md))
+
+| Entry | Default | Scope |
+|---|---|---|
+| `signup` budget (rate-only, instance-wide, charged at the first state-creating leg: local request, or unknown identity on a `login` callback with intent `sign-up`) | 20/hour | instance-config |
+| Sign-up verification token lifetime | the credential-reset lifetime (`service.ResetLifetime`, 24 h); single use; hashed; fragment-carried; GET never consumes | fixed |
+| Establish window (session stamp left by an `establish` callback; spent by the first local-credential mutation) | 5 min unused TTL | instance-config |
+| Mail per-send deadline | 15 s (go-mail default, set explicitly) | instance-config |
+| Operator test send (`mail-test` budget) | 5/hour per principal, 1 concurrent per instance; instance scope, audited (`registration.mail_intent` + `mail_outcome`); the only reachability probe (boot never dials) | instance-config |
+| Pending sign-up reaper | the existing hourly pruning run; prunes expired rows only (verification deletes the row it consumes) | fixed |
+| Fresh-org cap (per instance policy with landing `fresh-org`; live count of orgs carrying the policy id, inside the serialized transaction; `0` refused at write) | 100 | per policy, `manage-members@instance` |
+| Mailer transport | `HIKYO_MAIL_ADDR` `host:port`; `HIKYO_MAIL_TLS` ∈ `implicit` \| `starttls`; `HIKYO_MAIL_CA_FILE`; `HIKYO_MAIL_USER`; `HIKYO_MAIL_PASSWORD_FILE` or `HIKYO_MAIL_PASSWORD` (exactly one); `HIKYO_MAIL_FROM` (RFC 5322); `HIKYO_MAIL_EHLO`; `HIKYO_MAIL_ALLOWED_CIDRS` | process config; every name in `knownEnv` |
+| "Mailer configured" | static predicate: transport well-formed, `From` parses, `HIKYO_EXTERNAL_ORIGIN` explicit; reachability excluded | fixed |
+| Entra app registration | tenant-specific GUID issuer rows; one multi-tenant app; `email` scope on the row; `email` + `xms_edov` optional claims (plus `auth_time` + `amr` for a reauth-capable row); ≤256 redirect URIs (100 with personal accounts) bounds the tenant count; never delete + recreate the app | runbook |
+| Google client | `email` scope; HTTPS public-suffix redirect host, no IP literal (tighter than the `HIKYO_EXTERNAL_ORIGIN` validator); idle clients deleted after six months | runbook |
+| GitHub OAuth app | scope `user:email` only; up to 10 callback URLs; GHES documents no PKCE support (GHES rows refused until verified) | runbook |
+
 ## Backup and disaster recovery ([ops-spec.md](../adr/ops-spec.md) section 11 delegation, #145)
 
 Scheduling is enabled exactly when an export policy is configured

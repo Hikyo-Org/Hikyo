@@ -280,3 +280,62 @@ Creating a request is not a verb: publishing into a policy-covered environment
 (`values publish`) with no completed approval answers `202` and stages the
 request. All approval verbs are human-session only; a machine credential cannot
 administer, vote, merge or bypass.
+
+## 8. Social sign-in and open registration ([api-cli-surface.md](../adr/api-cli-surface.md) amendment 2026-09-03, [#589](https://github.com/Hikyo-Org/Hikyo/issues/589))
+
+Semantics in [social-signin.md](./social-signin.md); this section fixes spellings only.
+
+### OAuth2 providers (mirror the SAML family; `instance-config@instance` ∧ reauth on write)
+
+```
+hikyo instance-config oauth2-provider create --slug <slug> --profile github \
+    --origin https://github.com --display-name <name> --client-id <id> \
+    --client-secret-file <path>            # sealed at rest; never printed back
+hikyo instance-config oauth2-provider list
+hikyo instance-config oauth2-provider show    <slug>
+hikyo instance-config oauth2-provider update  <slug> [--display-name] [--client-id] [--client-secret-file] [--enabled=true|false]
+hikyo instance-config oauth2-provider delete  <slug>
+```
+
+REST: `GET|PUT|DELETE /api/v1/instance/oauth2-providers/{slug}`, `GET /api/v1/instance/oauth2-providers`. Put validates the origin (`https`, host only, no path or query) and the profile; runs no discovery.
+
+### Registration policy (one per scope; `manage-members` at that scope ∧ reauth on write)
+
+```
+hikyo access registration show   [--org <org> | --instance-scope]
+hikyo access registration set    [--org <org> | --instance-scope] --file <policy.json>   # full replacement; the caller becomes authority
+hikyo access registration delete [--org <org> | --instance-scope]
+```
+
+REST: `GET|PUT|DELETE /api/v1/orgs/{org}/registration-policy` and `/api/v1/instance/registration-policy`. `PUT` body `RegistrationPolicy {external: [{provider, claim?, values?}], local?: {domains?: [...]}, landing: {kind: org-template, template} | {kind: none} | {kind: fresh-org, cap}}`; the response adds `authority_principal_id`, `state: active | inactive`, `inactive_cause?`, `fresh_org_count?`. Write-time refusals are `400` naming the failing precondition (`no-public-origin`, `mailer-unconfigured`, `provider-disabled`, `provider-missing-email-scope`, `cap-zero`, `template-not-org-applicable`).
+
+### Public sign-up (pre-auth, admission-bounded, uniform responses)
+
+```
+POST /api/v1/auth/signup            {email, org?}                              → 202 always (org = the org id whose policy is addressed; absent = instance)
+POST /api/v1/auth/signup/verify     {token, password, display_name, org_name?} → 204; then the login page
+POST /api/v1/auth/oidc/{slug}/start    {purpose: login|link|reauth|establish|claim, intent?: sign-in|sign-up, signup_org?, environment_id?, proof?, browser?}
+POST /api/v1/auth/oauth2/{slug}/start  {purpose: login|link|establish|claim, intent?, signup_org?, proof?, browser?}
+GET  /api/v1/auth/oauth2/{slug}/callback
+```
+
+`intent` is valid only with purpose `login`; absent means `sign-in`; `signup_org` is valid only with `intent: sign-up`. `claim` starts carry the credential-establishment authority in the existing proof slot. `GET /api/v1/auth/methods[?org=<id>]` provider entries gain `kind` and, for `oauth2`, `profile`, plus the public `signup_open: bool` and `signup_methods: [{kind, slug} | "local"]` for the addressed scope. Providers are always referenced as `{kind, slug}`; slugs are unique per kind only.
+
+### Account
+
+```
+hikyo account password set|change            # one verb family over PUT /api/v1/auth/password; refuses by name on a social-only account and prints the Settings › Security URL
+hikyo login <url> [--provider <kind>:<slug>] # preselects the browser's method step only; a bare slug is accepted when unambiguous across kinds; unknown or ambiguous refused before the browser opens
+```
+
+`PUT /api/v1/auth/password {password, proof?}`: set-or-change; every session of the principal deleted, the acting session reissued. `POST /api/v1/auth/identities/link` stays the OIDC alias; `oauth2` links through its own start with purpose `link`.
+
+### Org
+
+`hikyo org rename <org> --name <new>` (`manage-members(org)`); `PATCH /api/v1/orgs/{org} {name}`. `Org` gains required `origin: manual | registration` and nullable `registration_policy_id`; `hikyo org list [--origin manual|registration]`.
+
+### Mail
+
+`hikyo instance-config mail test --to <address>` (`instance-config@instance` ∧ reauth; `POST /api/v1/instance/mail/test`; budget `mail-test` 5/h per principal, 1 concurrent per instance); `GET /api/v1/instance/mail` returns `{configured: bool}` only.
+
+Not verbs, by locked rule: sign-up, claim, link and establish from the terminal ([#596](https://github.com/Hikyo-Org/Hikyo/issues/596)); the CLI prints the browser URL.
