@@ -65,7 +65,8 @@ for prototype_family in \
 	landing-opus-5 \
 	machine-access \
 	reveal-edit \
-	revision-history; do
+	revision-history \
+	social-signin; do
 	require_file "$site_root/prototypes/$prototype_family/index.html"
 done
 require_file "$site_root/prototypes/index.html"
