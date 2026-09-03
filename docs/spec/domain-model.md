@@ -30,11 +30,13 @@ Ergonomics for shared values are three explicit operations with no ongoing relat
 
 ## Identity & principal vocabulary
 
-- **Human account** — local credential and/or linked external identities `(kind ∈ {oidc, saml}, issuer, subject)`, byte-exact matching ([human-auth.md](../adr/human-auth.md)).
+- **Human account**: local credential and/or linked external identities `(kind ∈ {oidc, saml, oauth2}, issuer, subject)`, byte-exact matching ([human-auth.md](../adr/human-auth.md)); for `oauth2` the issuer is the provider's canonical origin and the subject its stable numeric id. A self-served local account additionally carries a verified `email` (login identifier only, never a linking key).
+- **Registration policy**: the single switch that opens sign-up on an otherwise closed instance; at most one per org and one at instance scope; absent = closed; a standing delegation with an **authority principal**; landing by scope (org + template, or `none` | *fresh org*); admission predicate = external entries with a verified-email assertion plus at most one local entry ([human-auth.md](../adr/human-auth.md) amendment 2026-09-03, [social-signin.md](./social-signin.md)).
+- **Sign-up / claim / establish / intent**: sign-up: an unknown identity or a fresh local credential becoming an account under a policy; claim: a federated round-trip spending a credential-establishment authority as an account's first credential; establish: a same-pair round-trip accepted as proof for local-credential creation while no local proof exists; intent: `sign-in | sign-up` on a federated `login` start, deciding only what happens to an unknown identity.
 - **Service account** — machine principal, project-owned, kind `workload | automation`; credentials: `hikyo-token` (bearer `hik_…`) or `oidc-federation` ([machine-identities.md](../adr/machine-identities.md)).
 - **Provisioning connection** — org-owned machine principal, one per SCIM binding, holds exactly `scim-provision` ([scim-provisioning.md](../adr/scim-provisioning.md)).
 - **Instance connection** — instance-owned machine principal for the multi-instance directory, holds exactly `instance-directory` ([multi-instance.md](../adr/multi-instance.md)).
-- **Grant** — `(principal, capability, scope)` triple with origins (`manual | scim | lockout-retention | structural`); the only authorization input ([permission-model.md](../adr/permission-model.md)).
+- **Grant**: `(principal, capability, scope)` triple with origins (`manual | scim | lockout-retention | structural | registration`); the only authorization input ([permission-model.md](../adr/permission-model.md)).
 
 ## Canonical key grammar (restated per import-paths.md's delegation)
 
@@ -56,7 +58,8 @@ One row per persisted entity class; the owning ADR holds the authoritative shape
 | MFA factors, recovery codes (encrypted) | [human-auth.md](../adr/human-auth.md) |
 | Service account, credential (hashed verifier), federated binding | [machine-identities.md](../adr/machine-identities.md) |
 | Grant (with origins) | [permission-model.md](../adr/permission-model.md), [scim-provisioning.md](../adr/scim-provisioning.md) |
-| Identity provider (OIDC/SAML), SP material (encrypted) | [human-auth.md](../adr/human-auth.md), [saml-sp.md](../adr/saml-sp.md) |
+| Identity provider (OIDC/SAML/OAuth2), SP material (encrypted) | [human-auth.md](../adr/human-auth.md), [saml-sp.md](../adr/saml-sp.md), [social-signin.md](./social-signin.md) |
+| Registration policy (+ entries), pending sign-up, OAuth2 transaction | [social-signin.md](./social-signin.md) (DDL both engines) |
 | SCIM binding, mapping row, provisioning connection | [scim-provisioning.md](../adr/scim-provisioning.md) |
 | Adapter, target, ownership-ledger row | [deployment-adapter.md](../adr/deployment-adapter.md) |
 | Adapter outbox job | [system-architecture.md](../adr/system-architecture.md) |
