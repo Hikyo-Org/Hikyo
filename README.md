@@ -62,6 +62,7 @@ remain immutable evidence.
 | [`CAP-SECRET-SCANNING`](./docs/status/README.md#cap-secret-scanning) Secret scanning | Surface-1 warnings and Surface-2 blocks on every CLI/API value ingress |
 | [`CAP-SUPPLY-CHAIN-SITE`](./docs/status/README.md#cap-supply-chain-site) Supply chain and project site | Signed release pipeline, SBOMs, documentation/governance site, matching icons, and offline-capable PWA |
 | [`CAP-BROWSER-SCANNING`](./docs/status/README.md#cap-browser-scanning) Secret scanning in the browser | Surface-1 warn dialog on matrix editing and the Surface-2 block dialog on the declaration editor |
+| [`CAP-WEBUI-PARITY`](./docs/status/README.md#cap-webui-parity) WebUI parity | Executable parity registry over every public operation with closed exception classes, browser-only lifecycle acceptance from an empty organisation to Kubernetes-ready delivery, recovery-code sign-in, project and environment audit, browser administration of identity providers, adapters, and remote crypto, and dynamic-secret provider and lease management |
 
 ### Partially implemented
 
@@ -69,7 +70,6 @@ remain immutable evidence.
 | --- | --- | --- |
 | [`CAP-PRODUCTION-OPS`](./docs/status/README.md#cap-production-ops) Production operations | All registered operational bounds, doctor, upgrade path, no-egress posture, and pinned operator resource limits | Record an arm64 cgroup run proving operator reconciliation within the 128 MiB limit under load |
 | [`CAP-PUBLIC-RELEASE`](./docs/status/README.md#cap-public-release) Public release and distribution | Cosign trust, SBOM generation, GoReleaser/Helm packaging, and installer verification | Run full acceptance, freeze API/CLI, and publish 1.0 under [#79](https://github.com/Hikyo-Org/Hikyo/issues/79) |
-| [`CAP-WEBUI-PARITY`](./docs/status/README.md#cap-webui-parity) WebUI parity | Executable parity registry over every public operation with closed exception classes, browser-only lifecycle acceptance from an empty organisation to Kubernetes-ready delivery, recovery-code sign-in, project and environment audit, and browser administration of identity providers, adapters, and remote crypto | Dynamic-secret provider and lease management under [#595](https://github.com/Hikyo-Org/Hikyo/issues/595) |
 
 </details>
 <!-- implementation-status:end -->

@@ -230,13 +230,13 @@
       "id": "CAP-WEBUI-PARITY",
       "kind": "capability",
       "title": "WebUI parity",
-      "status": "partial",
-      "implemented": "Executable parity registry over every public operation with closed exception classes, browser-only lifecycle acceptance from an empty organisation to Kubernetes-ready delivery, recovery-code sign-in, project and environment audit, and browser administration of identity providers, adapters, and remote crypto",
-      "remaining": "Dynamic-secret provider and lease management under [#595](https://github.com/Hikyo-Org/Hikyo/issues/595)",
+      "status": "implemented",
+      "implemented": "Executable parity registry over every public operation with closed exception classes, browser-only lifecycle acceptance from an empty organisation to Kubernetes-ready delivery, recovery-code sign-in, project and environment audit, browser administration of identity providers, adapters, and remote crypto, and dynamic-secret provider and lease management",
       "evidence": [
         { "label": "parity registry", "path": "api/parity.yaml" },
         { "label": "#490 handoff", "path": "docs/handoff/issue-490-webui-parity-registry.md" },
-        { "label": "#504 handoff", "path": "docs/handoff/504-webui-parity-acceptance.md" }
+        { "label": "#504 handoff", "path": "docs/handoff/504-webui-parity-acceptance.md" },
+        { "label": "#595 handoff", "path": "docs/handoff/595-dynamic-secrets-webui.md" }
       ]
     },
     {
