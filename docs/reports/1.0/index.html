@@ -1,0 +1,1281 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Hikyo 1.0 release decisions</title><style>body{font:16px/1.55 system-ui,sans-serif;max-width:1400px;margin:40px auto;padding:0 24px;background:#fafaf9;color:#17212b}h1,h2{line-height:1.15}table{border-collapse:collapse;width:100%}th,td{padding:12px;text-align:left;vertical-align:top;border-bottom:1px solid #ccc}th{background:#e5e7eb}a{color:#164cb5}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.45 monospace}details{margin-top:12px}aside{padding:20px;background:#fff3cd;border-left:5px solid #8a6200}.status{font-size:20px;font-weight:700}li{margin:8px 0}</style><h1>Hikyo 1.0 release decisions</h1><p>Assessment started 2026-09-05. Baseline <code>e114b56e2423a0996fa266fafbb59b561712d35d</code>. All 41 open issues read by subject, requirements and current implementation. Milestones and labels were not used to select scope.</p><p class="status">Release status: NOT YET SHIPPABLE. Work and verification in progress.</p><aside>Passing checks are evidence for the tested scope only. This report does not declare 1.0 released, enterprise certified, floor-hardware proven, or MCP client-compatible until the corresponding evidence is recorded.</aside><h2>Choices made on the maintainer's behalf</h2><table><tr><th>Question</th><th>Options</th><th>Choice and reason</th></tr><tr><td>What belongs in 1.0?</td><td>A: fix supported product correctness and operational safety; B: implement every roadmap feature.</td><td>A. A trustworthy bounded release is more supportable than new PKI, OAuth-AS, KMS and provider surfaces.</td></tr><tr><td>Ship social sign-in now?</td><td>A: pre-freeze compatibility changes now, full social registration later; B: ship the entire new onboarding system now.</td><td>A. Existing invitation and enterprise IdP paths cover controlled onboarding. New public registration is not required for self-hosting.</td></tr><tr><td>Automated deployment upgrades?</td><td>A: signed compatibility foundations now, platform apply disabled until independently proven; B: latest-only updates; C: mandatory sequential majors.</td><td>A. The release must be able to refuse unsafe migrations. A direct verified safe edge is preferable to unnecessary bridge hops.</td></tr><tr><td>Approval deviations?</td><td>A: retain environment scope, requester-owned publish, lazy fail-closed invalidation and read-scoped inspection; B: introduce new folder/cross-owner semantics.</td><td>A, subject to verification. Align with the current domain and preserve authorization; fix missing concurrency safety.</td></tr><tr><td>Broad cleanup audit?</td><td>A: validate and fix defects plus missing tests; B: remove every reported duplication or test.</td><td>A. Stale claims and high-volume structural churn do not establish release safety. Never delete checks to obtain green CI.</td></tr><tr><td>Existing MCP PR?</td><td>A: inspect and incorporate current work after exact-head CI; B: duplicate its implementation.</td><td>A. Preserve existing work, verify support claims, and keep unsupported clients explicitly documented.</td></tr><tr><td>Release tag during this run?</td><td>A: prepare shippable repository and merge verified changes; tag only if complete acceptance and authorized signing custody are available; B: tag early to imply readiness.</td><td>A. User authorizes repository delivery; no stable tag can substitute for missing acceptance evidence.</td></tr></table><h2>Live work reports</h2><ul><li><a href="verification-gaps.html">Production verification gaps</a>: local tests and review passed.</li><li>Pre-freeze compatibility (in progress)</li><li>Browser workflows (in progress)</li><li>Approval safety (in progress)</li></ul><h2>Every open issue</h2><table><thead><tr><th>Issue</th><th>Subject</th><th>Disposition</th><th>Reason and source</th></tr></thead><tbody><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/8">#8</a></td><td>Grilling: threat model</td><td>Required governance</td><td>Threat boundary for signed compatibility and externally held deployment/restore authority. Reopened under #638; close only after native Codex review and operative ADR amendment.<details><summary>Original issue snapshot</summary><pre>## Question
+
+What is Hikyo defending, against whom, and with what compromise assumptions?
+
+Resolve: protected assets; trust boundaries; expected attacker classes for the chosen target user; assumptions under server compromise, database compromise, backup theft; malicious tenant and malicious administrator stance; workload-credential theft; browser/session threats; logging/telemetry leakage; supply-chain risks.
+
+This is the upstream input for the encryption model, RBAC, tenant isolation, and audit tickets. Lock as an ADR with a blocking cross-model grill (standing rule) before closing.
+
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/18">#18</a></td><td>Grilling: Docker Compose integration</td><td>Required governance</td><td>External host helper ownership for Compose upgrades; server receives no Docker socket. Reopened under #638; close only after native Codex review and operative ADR amendment.<details><summary>Original issue snapshot</summary><pre>## Question
+
+Which Compose delivery mechanism ships in v1, specified end-to-end?
+
+Resolve, picking from the ranked research options:
+
+- The mechanism (leading candidates from the brief: `hikyo run --` wrapper and/or ephemeral rendered `.env`). One primary path, others deferred explicitly.
+- Token provisioning on the host, caching/offline behaviour when the server is unreachable, failure behaviour (fail closed vs stale cache - fail-fast principle applies), rotation, restart interaction.
+- Plaintext persistence: exactly what touches disk and for how long.
+- The documented user journey from `docker compose up` today to Hikyo-managed, in full.
+
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/19">#19</a></td><td>Grilling: Kubernetes integration</td><td>Required governance</td><td>Separate Flux upgrade controller and full-stop sequencing; server receives no cluster deployment privileges. Reopened under #638; close only after native Codex review and operative ADR amendment.<details><summary>Original issue snapshot</summary><pre>## Question
+
+Which single Kubernetes/K3s integration ships in v1, specified end-to-end?
+
+Resolve, picking from the ranked research options (likely head-to-head: own minimal operator syncing native Secrets vs shipping an ESO provider):
+
+- The mechanism, its CRDs/config surface, namespace scoping, K8s RBAC posture.
+- Refresh cadence and rollout triggering under changes-apply-on-restart (annotation-hash restarts?), etcd persistence acceptance (values land in native Secrets - say so honestly), failure modes (Hikyo down, token expired).
+- Workload identity: how the operator/provider authenticates (ties to service-account decision).
+- Documented extension path for the not-chosen mechanisms.
+
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/22">#22</a></td><td>Grilling: system architecture &amp; stack</td><td>Required governance</td><td>Compatibility metadata, durable applied-release identity and migration gate. Reopened under #638; close only after native Codex review and operative ADR amendment.<details><summary>Original issue snapshot</summary><pre>## Question
+
+What architecture and stack is the simplest that meets the threat model and product requirements, maintainable by a small OSS team?
+
+Resolve:
+
+- Modular monolith presumption - confirm (no microservices without concrete need). Single deployable + CLI + (operator?) as the component set.
+- Backend language/framework and frontend framework. Known stack (TS/Fastify/React/Postgres/Drizzle/Zod) is the default candidate, not a mandate - argue fit vs alternatives (e.g. Go for single-binary ops + operator/CLI synergy) and decide. Contributor-pool size matters for OSS.
+- Database (Postgres presumed - confirm; SQLite for tiny installs or not), job processing, API style (REST/OpenAPI vs alternatives), real-time needs for the matrix UI (polling vs SSE/WS).
+- Encryption boundary placement in the code (where plaintext exists in memory).
+- Packaging: container images, single binary?, Compose file + Helm chart as first-class artifacts.
+
+Lock as an ADR with cross-model grill (stack choices are expensive to reverse).
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/26">#26</a></td><td>Grilling: MVP boundary &amp; acceptance criteria</td><td>Required governance</td><td>Compatibility foundations become explicit pre-1.0 acceptance requirements. Reopened under #638; close only after native Codex review and operative ADR amendment.<details><summary>Original issue snapshot</summary><pre>## Question
+
+What exactly is in the first release, what is explicitly out, and how is &quot;done&quot; verified?
+
+Resolve:
+
+- The final in-list (brief&#x27;s MVP sketch, corrected by everything decided upstream) with an acceptance criterion per capability - empirically checkable, per the verification workstyle.
+- An explicit recorded decision for *each* presumptively-out item (dynamic creds, PKI, SSH certs, EaaS, HSM, cloud sync, SAML, SCIM, approval workflows, secret scanning, plugin marketplace, multi-region, billing, SaaS, auto-rotation, Vault replacement) - confirmed out or promoted with justification.
+- Deferrals needed to keep the project achievable for a small team, recorded with their triggers for revisiting.
+- Implementation sequencing recommendation (what gets built first and why).
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/32">#32</a></td><td>Grilling: operational &amp; deployment spec</td><td>Required governance</td><td>Maintenance, backup custody, crash recovery and operator runbooks. Reopened under #638; close only after native Codex review and operative ADR amendment.<details><summary>Original issue snapshot</summary><pre>## Question
+
+What are the concrete operational bounds, defaults, and runbooks for v1 - the ops spec every locked ADR has been depositing values into?
+
+Resolve, consolidating every &#x27;→ ops spec&#x27; delegation:
+
+- **Inheritance bounds** (#10): max base-chain depth, max env count, publish fan-out cap - enforced loud.
+- **Revision/pin policy** (#11): payload-retention defaults (N revisions, X days) + unlimited option; pin quotas and expiry; **backup-retention bound (mandatory** - per-revision crypto-erasure was removed by #14, the key hierarchy travels in every backup).
+- **Schema/validation bounds** (#12): pinned JSON Schema library + conformance baseline + keyword allowlist; declaration-size and evaluation bounds incl. aggregate per-publish work cap; pending-draft quotas, superseded-version GC, schema-revision rate limit, canonical dedup.
+- **Source-of-truth bounds** (#13): plan quotas/expiry, bundle size bounds, scaffold input limits.
+- **Encryption ops** (#14): backup identity vs root key custody separation; VM-snapshot RNG hazard; scrypt-stanza exclusivity in runbooks; token-key rotation as warned operation (no rollout wave per #19 amendment); full post-compromise recovery order (root → master → DEKs → reencrypt → token key) + dual-wrapped transition; recipient-set hygiene (one identity per retention class; one surviving recipient or decrypted copy defeats erasure); root-key escrow/loss; reencrypt scheduling; DEK cache bound.
+- **Permission values** (#15): default reauth window; protected-env window cap (a security value - effective 0 forces WebAuthn enrolment per #16/#17); pin quotas/expiry; grant-count bounds per org.
+- **Human-auth values** (#16): session idle/absolute lifetimes per artifact type (browser vs CLI); reauth absolute hard cap; bootstrap/invitation/reset/credential-establishment token expiry; recovery-code batch size; instance-wide pre-auth admission budget + queue depth + overload response (**required by #8**); throttle curve; common-password list source/update; Argon2id tuning + hard floor values (boot refuses below); proxy-trust configuration; WebAuthn RP ID/origin guidance for reverse-proxy deployments.
+- **Machine-identity values** (#17): default credential + federation-binding lifetime, instance ceiling, allow_indefinite default off; concurrent-credential cap per SA; expiry-notification thresholds + SMTP policy; max accepted federated-token age and exp−iat span; max accepted positive clock skew (security value - sets the post-restore quarantine boundary); JWKS refresh/staleness/unknown-kid limits; per-principal fetch rate limits + machine-fetch audit retention.
+- **Compose values** (#18): snapshot maximum age (the only thing making revocation bite offline); sync timer defaults + fetch rate limits; runtime-dir conventions per init system; render-generation retention (never collecting the stamped generation); stamp/snapshot key protection + backup; reconnect reconciliation window.
+- **Kubernetes values** (#19): operator resyncInterval, retry/backoff, per-principal rate limits; JWKS bounds per cluster; operator resource requests/limits for Pi-class nodes; stamp-root custody/backup/rotation runbook; K3s --secrets-encryption runbook incl. secretbox version floor.
+- **Architecture ops** (#22, [ADR](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/system-architecture.md)): TLS cert reload; trusted-proxy CIDR values; SSE heartbeat interval + connection caps (per-principal/org/instance); migration compatibility window + downgrade guidance; auto-backup-export retention N; restore-testing cadence; DEK cache bound; metrics cardinality budget; signing re-key/revocation procedure (existence required by #22); transaction retry bounds/backoff values.
+- **Cross-cutting**: backup/restore runbooks (restore = fail-closed security event per #8), upgrade &amp; schema-migration process, HA/scaling expectations (none in v1 - say so), health checks, rate limiting, resource limits, air-gapped operation, release support policy, RPO/RTO.
+
+Lock as the ops spec document (per map Notes, synthesis-grade doc is the destination - this ticket produces the decided values; #27 assembles).
+
+
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/33">#33</a></td><td>Grilling: OSS project mechanics</td><td>Required governance</td><td>Release binding, trust domains and compatibility artifact verification. Reopened under #638; close only after native Codex review and operative ADR amendment.<details><summary>Original issue snapshot</summary><pre>## Question
+
+How does the Hikyo open-source project actually run - repository, contribution, release, governance?
+
+Resolve:
+
+- Repository structure (monorepo layout for the one-module multicall binary + SPA + chart + spec docs, per the [architecture ADR](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/system-architecture.md)).
+- Contribution model: **DCO enforcement** (settled in #9 - CONTRIBUTING.md + sign-off enforcement lands here); mandatory maintainer security review for crypto/auth/adapter/delivery contributions (#8).
+- Security disclosure policy (private reporting channel, embargo, CVE handling).
+- Release process: cadence, versioning policy, support window; the **offline-key signing ceremony** (#22 fixes the trust model - this ticket fixes the human process: custody, ceremony steps, re-key/revocation runbook ownership).
+- Governance: the **public &#x27;no /ee&#x27; commitment** (settled in #9 - where and how it is published); maintainer structure; protected branches + 2FA (#8).
+- Documentation structure (user docs, operator docs, the spec set from #27).
+- Whether a plugin/extension system is justified in v1 (presumption: no - the deployment-module seam #28 and the ESO extension path #19 are the named extension points).
+- How a future hosted service coexists without weakening the OSS edition (scope guard: not precluding, per map Out-of-scope).
+
+
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/41">#41</a></td><td>Spec: Hikyo 1.0 - implement the synthesized specification</td><td>Required</td><td>Umbrella remains open until the complete release gate is met. No claim of enterprise readiness without evidence.<details><summary>Original issue snapshot</summary><pre>&gt; **Canonicality rule (standing):** this issue is the tracker-side handoff for the Hikyo 1.0 build. It **decides nothing**. The docs corpus on the [`main`](https://github.com/Hikyo-Org/Hikyo/tree/main/docs) branch - 26 locked ADRs and the synthesized spec set under [`docs/spec/`](https://github.com/Hikyo-Org/Hikyo/tree/main/docs/spec) - is canonical. The five frozen prototypes remain on the [`wayfinder-docs`](https://github.com/Hikyo-Org/Hikyo/tree/wayfinder-docs/prototype) branch as locked visual references. On any divergence between this issue and an ADR, **the ADR wins and the contradiction reopens the owning ticket** (synthesis rule, #27). Read ADRs through their amendment banners; [inheritance-model](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/inheritance-model.md) is superseded in full by [flat-model](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/flat-model.md).
+
+**Reading order for the implementing agent:** [product-requirements](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/product-requirements.md) → [domain-model](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/domain-model.md) → [threat-model](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/threat-model.md) → [system-architecture](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/system-architecture.md) → per-subsystem ADRs as the sequencing reaches them ([spec README](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/README.md) holds the full document map).
+
+## Problem Statement
+
+Self-hosting developers and platform engineers who want to manage secrets and configuration across environments face a market where every surveyed product either paywalls the operational core - audit, RBAC, SSO, SCIM, secret scanning, the classic `/ee` lineup - or lacks the combination of explicit multi-environment values, schema validation, and fully-open licensing entirely ([competitive-landscape](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/research/competitive-landscape.md)). They end up with hand-maintained `.env` files that drift, no validation before a bad value reaches production, no answer to &quot;who saw this secret and when&quot;, and no trustworthy self-hosted home for production secrets that works from a phone in the server closet as well as a desk.
+
+## Solution
+
+Build **Hikyo 1.0**: a fully open-source (MPL-2.0, published no-`/ee` pledge), self-hosted control plane for validated secrets and configuration across environments - Docker Compose and Kubernetes first-class, single multicall Go binary with embedded SPA, sqlite and postgres, Raspberry Pi 4 as the calibration floor.
+
+&gt; Fully open-source secrets &amp; config across environments - with validation, explicit per-environment values, and no enterprise tier.
+
+The **environment matrix** is the signature surface: every key × environment at a glance, every value explicitly `set` or `absent` (no inheritance, no fallback), schema-validated before publish, secrets revealed only through an audited ceremony. Delivery is a gradient: *if your job can fetch, federate; push what must exist before the first fetch.* Four classic paywall items ship free in 1.0 as wedge proof: GitHub Actions adapter, SAML SP, SCIM provisioning, secret scanning.
+
+The corpus is the spec; this build implements it. Scope, acceptance criteria, and sequencing: [mvp-boundary](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/mvp-boundary.md).
+
+## User Stories
+
+Core domain
+
+1. As a self-hosting developer, I want Hikyo as a single multicall binary with an embedded web UI running on sqlite, so that I can run it on a Pi-class box with no external dependencies.
+2. As a self-hosting developer, I want secrets and config organized as Instance → Organization → Project → Environment → Folder → Key/Value, so that every value has exactly one explicit home.
+3. As a self-hosting developer, I want each key declared once per project with a `secret | config` classification, so that a matrix row is uniformly secret or config and typing an undeclared name is a key creation, never a silent value write.
+4. As a self-hosting developer, I want every `(key, environment)` value to be explicitly `set` or `absent` with no inheritance or fallback source, so that what delivers to an environment is exactly what the matrix shows.
+5. As a self-hosting developer, I want the environment matrix to surface gaps, validation problems, and required-but-absent keys at a glance (never color-only), so that I spot drift without reading docs.
+6. As a self-hosting developer, I want schema validation - six types + `any_of`, whole-value RE2 patterns, JSON Schema subset on `json` keys, presence rules, `forbidden_in`, key groups - enforced at publish, so that invalid configuration never reaches a workload.
+7. As a self-hosting developer, I want per-user pending changes and selective publish with key-group auto-close, so that edits stage privately and land atomically per project.
+8. As a self-hosting developer, I want per-environment revision history with diff and restore-as-normal-publish, so that rolling back a bad publish is safe, validated, and least-blast.
+9. As a self-hosting developer, I want pins on non-current snapshots as quota-bounded resources with mandatory expiry, so that a workload can hold a known-good revision without blocking GC forever.
+10. As an org admin, I want payload retention with an org default and project cap, permanent lineage, and loud failures on collected-revision fetches, so that storage stays bounded without silent data loss.
+
+Disclosure &amp; editing
+
+11. As a self-hosting developer, I want revealing a secret to be a ceremony - purpose-bound re-auth (passkey/TOTP), sliding window, auto-remask, one audit event per key including clipboard copy - so that disclosure is always deliberate and attributable.
+12. As a self-hosting developer, I want write-only editing without reveal, so that I can rotate a secret I am not entitled to read.
+13. As a self-hosting developer, I want copy-to, bulk-apply, and clone-at-creation as explicit one-time operations under the locked permission formulas, so that shared values are ergonomic without any ongoing inheritance relationship.
+14. As a self-hosting developer, I want secret scanning at value entry backed by a normative ruleset, so that pasted foreign credentials are caught at save, not after a leak.
+
+AuthN, AuthZ, audit
+
+15. As a human user, I want local accounts (Argon2id) plus multi-provider OIDC, WebAuthn, TOTP, and single-use recovery codes, so that login matches my infrastructure and the local floor is never disableable.
+16. As an org admin, I want `(principal, capability, scope)` grants issued through eight role templates expanding at grant time, so that access is predictable and revocation is immediate.
+17. As an org admin, I want protected environments where effective reveal windows drop to zero and publish-into-protected takes a ceremony, so that production is stricter than dev.
+18. As an org admin, I want unauthorized resources to be uniformly nonexistent - content and counts - so that nothing leaks across tenant boundaries.
+19. As an org admin, I want SAML (SP) sign-in and SCIM provisioning free in core, so that IdP-driven membership needs no enterprise tier.
+20. As an operator, I want an on-host break-glass path with local authority only, so that an IdP outage or lost grant never locks the instance permanently.
+21. As an auditor, I want two append-only trails with a closed `category.action` registry, denials durable before response, per-key disclosure events, and re-authorized paged export, so that every access question is answerable.
+
+Crypto &amp; operations
+
+22. As an operator, I want envelope encryption (root → master → project DEKs, XChaCha20-Poly1305, per-kind AAD) with five rotation operations including crash-safe root rotation, so that key hygiene never requires downtime or a re-import.
+23. As an operator, I want the headline guarantee held: a stolen database plus backups without the root key yields no values and no replayable credentials.
+24. As an operator, I want age-encrypted backups with mandatory root-key escrow, and a restore that kills bearer credentials, re-validates identity links, and stages grants for per-principal reconciliation, so that restore never resurrects stolen access.
+25. As an operator, I want goose migrations with fail-closed serving and a tested upgrade path with pre-migration export, so that upgrades are boring.
+26. As an operator, I want doctor, static-series metrics, every ops bound to fail as a named refusal, and zero unsolicited egress, so that the instance is diagnosable and air-gap-safe.
+
+Surfaces
+
+27. As a developer, I want a spec-first `/api/v1` (OpenAPI 3.0.3) with additive-only post-freeze machinery and a loud minimum-revision refusal, so that clients never silently misbehave across version skew.
+28. As a developer, I want a full noun-verb CLI with UI↔CLI parity, contexts with an SPKI trust store, the universal output triad, and `run --` exec semantics, so that everything the UI can do scripts.
+29. As a self-hosting developer, I want the web UI - matrix, reveal surfaces, app chrome, history, machine access, instance administration - matching the five locked prototypes and DESIGN.md tokens, so that the product feels like the frozen references on desktop and phone.
+30. As a mobile user, I want every surface AAA-leaning - 44px+ touch targets, ≥4.5:1 computed contrast, state never color-only, full keyboard navigation - so that server-closet fixes work from the couch.
+31. As a platform engineer, I want `definitions export | check | plan | apply` with digest+revision pinning and a `db | git` source-of-truth switch, so that project structure can live in version control.
+
+Machine access &amp; delivery
+
+32. As a CI workload, I want OIDC federation (Kubernetes, Forgejo, GitHub Actions) with byte-exact binding instead of stored tokens, so that jobs authenticate without long-lived credentials.
+33. As a self-hosting developer, I want service accounts with `hik_` tokens minted display-once through positively-exercised safe channels only, so that a bearer credential never lands in a shell history or log.
+34. As a self-hosting developer, I want `hikyo run --` and rendered `env_file` delivery for Compose, byte-exact with named refusals for unrepresentable values, plus an expiring offline encrypted snapshot, so that my stack survives a Hikyo outage restart.
+35. As a platform engineer, I want the K8s operator converging `HikyoInstance`/`HikyoSecret` to owned native Secrets with workload-consent rollout, so that clusters consume values natively with no agent.
+36. As a self-hosting developer, I want push adapters (Forgejo, GitHub Actions) that own a server-side ledger and structurally cannot read values back, so that CI surfaces needing standing values stay in sync without a new disclosure path.
+37. As a self-hosting developer, I want two-phase imports from K8s (file+live), SOPS (file), Vault/OpenBao (file+live), and Infisical (file), so that migration is a reviewed plan, never a re-type.
+38. As a self-hosting developer, I want a workspace tier managing multiple instances from one UI with no server-side proxy, so that homelab and VPS instances are one pane of glass without a new trust surface.
+
+Open source
+
+39. As an open-source user, I want MPL-2.0, DCO, the published no-`/ee` pledge, signed immutable releases with SBOM and a fail-closed installer, so that &quot;fully open&quot; is enforceable governance, not marketing.
+
+## Implementation Decisions
+
+All decisions are locked in the corpus; one line + owning document each. The [spec README document map](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/README.md) is the complete index.
+
+- **Stack &amp; shape** - Go, single multicall binary, embedded SPA, sqlite + postgres behind an engine-neutral store, goose migrations, adapter outbox: [system-architecture](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/system-architecture.md).
+- **Domain &amp; vocabulary** - hierarchy, key-declared-once, canonical key grammar `\A[A-Z_][A-Z0-9_]*\z`, entity inventory: [domain-model](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/domain-model.md).
+- **Value model** - flat, two-state `set | absent`, no inheritance, explicit copy/clone/bulk-apply: [flat-model](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/flat-model.md) (supersedes inheritance-model in full).
+- **Schema &amp; validation** - [schema-model](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/schema-model.md). **Revisions &amp; publish** - [revision-model](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/revision-model.md).
+- **Security architecture** - [encryption-model](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/encryption-model.md), [tenant-isolation](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/tenant-isolation.md) (proof-carrying `authorize()`, 13 invariants + 3 analyzers), [human-auth](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/human-auth.md), [permission-model](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/permission-model.md), [audit-model](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/audit-model.md), [threat-model](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/threat-model.md).
+- **Machine access &amp; delivery** - [machine-identities](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/machine-identities.md), [compose-integration](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/compose-integration.md), [k8s-integration](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/k8s-integration.md), [deployment-adapter](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/deployment-adapter.md) + [github-adapter](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/github-adapter.md), [import-paths](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/import-paths.md), [source-of-truth](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/source-of-truth.md), [multi-instance](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/multi-instance.md).
+- **Promoted wedge capabilities** - [saml-sp](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/saml-sp.md), [scim-provisioning](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/scim-provisioning.md), [secret-scanning](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/secret-scanning.md).
+- **API &amp; CLI** - [api-cli-surface](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/api-cli-surface.md) + [api-cli-spellings](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/api-cli-spellings.md). Freeze happens once, at 1.0.
+- **UI** - [ui-spec](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/ui-spec.md) + [DESIGN.md](https://github.com/Hikyo-Org/Hikyo/blob/main/DESIGN.md) + the five frozen prototypes under [`prototype/`](https://github.com/Hikyo-Org/Hikyo/tree/wayfinder-docs/prototype) (env-matrix, reveal-edit, app-chrome, revision-history, machine-access). Prototypes are locked references - implementation follows them, not the other way around.
+- **Ops &amp; release** - [ops-spec](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/ops-spec.md) + [ops-catalogue](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/ops-catalogue.md) (tunable values), [oss-mechanics](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/oss-mechanics.md) (governance, signing, release pipeline).
+- **Sequencing** - build in [mvp-boundary §5](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/mvp-boundary.md) order: foundations (crypto, `authorize()` + analyzers, audit registry, release pipeline - everything with a CI invariant is foundation, retrofit is impossible by design) → domain core → auth core → API/CLI per slice → UI → machine access &amp; delivery → import + multi-instance → promotions build → ops closure. `0.x` prereleases throughout; nothing freezes before 1.0.
+- **Scale envelope (designed-for)** - 1 instance · 1–3 orgs · ≤25 users · ≤50 projects · ≤10 envs/project · ≤10k entries · ≤100 workload clients; load-tested at 10×; Pi 4 (4 GB, sqlite) calibration floor.
+
+## Testing Decisions
+
+The seams are locked in [mvp-boundary §1.1](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/mvp-boundary.md) - three executable check classes, nothing else counts as an acceptance criterion:
+
+- **[E2E]** - scripted flows against a real server and real CLI, run on the full engine matrix (sqlite **and** postgres). No mocked server components.
+- **[UI]** - Playwright flows against the embedded SPA, desktop + mobile viewports, assertions on computed state (including computed styles vs DESIGN.md tokens, axe-core serious/critical = 0), not screenshots alone.
+- **[CI]** - the invariants the locked ADRs mandate (crypto ×16, isolation ×13 + 3 analyzers, audit registry completeness, oasdiff fail-closed gate, parity check, redaction fixtures, no-egress).
+
+What makes a good test here: it exercises **external behavior at the highest seam** (real binary, real wire, real DB engine), it is an executable criterion cross-referencing the ADR clause it proves, and it can never be satisfied by deleting or weakening its check (adversarial-review standing rule). Prose Given/When/Then without an executable check is not an acceptance criterion.
+
+Every capability&#x27;s criteria are already enumerated in [mvp-boundary §1.2](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/mvp-boundary.md) (C1–C6, A1–A6, K1–K3, S1–S4, M1–M6, O1–O7) plus the four promotion ADRs&#x27; criteria sets - that table **is** the test plan; implement it, don&#x27;t re-derive it.
+
+Prior art: the repo has no code yet, so the corpus&#x27;s registry-as-fixture-generator pattern is the house style - the authorization registry generates the A2 permission fixtures (a formula without a fixture fails CI), the S3 closed flow registry lives in CI (a locked surface without a Playwright flow fails), the ops bound registry drives the O2 refusal fixtures. Build the registries first; they make missing tests a CI failure rather than a review catch.
+
+The 1.0 gate ([mvp-boundary §6](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/mvp-boundary.md)): every criterion green on both engines, backup→restore drill on floor hardware, oasdiff + golden snapshots + parity green, self-hoster checklist re-asserted, then the freeze tag - which **is** the 1.0 release act.
+
+## Out of Scope
+
+The complete out register with per-item dispositions and reopen triggers is [mvp-boundary §4](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/mvp-boundary.md), verbatim - silence elsewhere is not a decision. Headline outs: hosted SaaS + billing (committed follow-on map after 1.0 ships), HA/multi-region, dynamic DB credentials, PKI/CA, SSH certificates, LDAP, approval workflows, plugin marketplace, ESO provider, cloud secret-manager sync, local agent daemons, GitLab adapter. Nothing returns via scope creep; each row names its trigger or an honest &quot;no trigger&quot;.
+
+## Further Notes
+
+- **Provenance**: destination of wayfinder map #1, synthesized at #27 from 26 locked ADRs and 5 locked prototypes; all 40 planning tickets closed. This issue is the map&#x27;s handoff into implementation.
+- **Open items**: [open-items.md](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/open-items.md) - none foundational; each names its owner and resolution moment (Pi-class `bench-scan` before implementation freeze, connector fixtures at connector build, S3 flow-registry enumeration at first CI wiring, repo transfer to a GitHub org as a fixed step).
+- **Amendment procedure**: any contradiction found during implementation reopens the owning ticket per [oss-mechanics](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/oss-mechanics.md) § Governance - never patch the corpus silently.
+- **Docs corpus location**: `main`, under [`docs/`](https://github.com/Hikyo-Org/Hikyo/tree/main/docs). The ADRs and synthesized spec have been merged; implementation and docs changes target `main`.
+- The self-hoster checklist ([self-hoster-checklist.md](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/self-hoster-checklist.md)) passed at synthesis and re-asserts against the release candidate.
+
+
+
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/79">#79</a></td><td>1.0 gate: full acceptance run + API freeze + release</td><td>Required</td><td>Final acceptance must cover both engines, browser surfaces, floor hardware, signed artifacts and compatibility freeze.<details><summary>Original issue snapshot</summary><pre>## Parent
+
+#41 (do not close or modify).
+
+## What to build
+
+The 1.0 release act per [mvp-boundary](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/mvp-boundary.md) §6 and [oss-mechanics](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/oss-mechanics.md): the full acceptance run - every §1.2 criterion plus the #36–#40 criteria, all three check classes, both engines; ops-spec fail-closed checklist incl. one complete floor-hardware backup→restore drill; oasdiff + golden snapshots + parity green against the release candidate; self-hoster checklist re-asserted; docs artifacts asserted; then the freeze tag - the API/CLI freeze and the 1.0 release are the same act. No criterion satisfied by deleting or weakening its check.
+
+## Acceptance criteria
+
+- [ ] mvp-boundary §6 items 1–5 all green
+- [ ] Freeze tag cut; release pipeline produces the signed, verifiable 1.0 artifacts
+
+## Blocked by
+
+- #42
+- #43
+- #44
+- #45
+- #46
+- #47
+- #48
+- #49
+- #50
+- #51
+- #52
+- #53
+- #54
+- #55
+- #56
+- #57
+- #58
+- #59
+- #60
+- #61
+- #62
+- #63
+- #64
+- #65
+- #66
+- #67
+- #68
+- #69
+- #70
+- #71
+- #72
+- #73
+- #74
+- #75
+- #76
+- #77
+- #78
+- #112
+- #183 (secret-scanning SS3 [UI] criterion: Surface-2 block dialog in the SPA)
+- #185 (ops-spec bound: per-project storage high-water, registered enforcement-pending)
+- #186 (ops-spec bounds: schema-revision rate and audit-export budget, registered enforcement-pending)
+- #617 (pre-freeze: JIT retirement, org.rename formula, open enums; the breaking-after-freeze slice of the post-1.0 social sign-in effort)
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/148">#148</a></td><td>Automated secret rotation: scheduled overlap and safe revocation</td><td>After 1.0</td><td>Scheduled rotation adds a new credential-management state machine; manual rotation and existing dynamic leases support a bounded first release.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+Add scheduled rotation for provider-managed credentials on top of the dynamic-secret lifecycle. An operator chooses a supported provider, rotation interval, and revocation delay. Hikyo mints replacement credentials, publishes the new values through the normal validated revision path, allows a bounded overlap, and revokes the previous credentials only after consumers have had time to converge.
+
+Ship one complete provider path using the PostgreSQL provider from #147. Rotation is a state machine, not a timer callback: every transition is durable, visible, retry-safe, and fenced across nodes. Never destroy the last known-working credential after an ambiguous mint, publish, or revoke result.
+
+## Acceptance criteria
+
+- [ ] An authorized operator can create, pause, resume, rotate-now, inspect, and remove a rotation with an interval and revocation delay validated against safe bounds.
+- [ ] A scheduled run mints a replacement, validates and publishes its declared outputs atomically in Hikyo, waits through the overlap, then revokes the superseded provider credential.
+- [ ] Failure before publish revokes or quarantines the candidate without changing the delivered value; failure after publish preserves explicit old/new state and retries revocation without hiding a possibly live credential.
+- [ ] Delivery cursors advance through the normal revision path so Compose and Kubernetes consumers receive rotations without a parallel secret-delivery mechanism.
+- [ ] Rotate-now requires explicit destructive confirmation, skips the overlap only when requested, and reports which consumers may still hold the superseded credential.
+- [ ] Browser, CLI, API, audit, health, metrics, docs, and end-to-end tests cover scheduling, overlap, restart, pause/resume, manual rotation, provider failure, publish failure, delayed revocation, and multi-node takeover.
+
+## Blocked by
+
+- #147
+- #63
+- #64</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/152">#152</a></td><td>Approval-mediated temporary access requests and grants</td><td>After 1.0</td><td>Temporary access is additive; current RBAC, revocation and approvals cover controlled access without this new grant lifecycle.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+Add approval-mediated, time-bound access to Hikyo resources for humans. This is privileged access request JIT, distinct from OIDC just-in-time account provisioning: the requester already has an identity but temporarily needs named capabilities in a sensitive environment or folder.
+
+An access policy defines requestable capabilities, maximum duration, approvers, and emergency bypass. A requester supplies scope, capabilities, duration, and reason. Approval creates a revocable grant with an absolute expiry; expiry or revocation must take effect across all sessions and server nodes without relying on client cooperation.
+
+## Acceptance criteria
+
+- [ ] An authorized administrator can define which capabilities and scopes are requestable, the maximum duration, required approval policy, and permitted emergency bypass principals.
+- [ ] A human can request exact capabilities for one environment or folder, duration, and reason; the immutable request records its policy version and cannot expand during review.
+- [ ] Approval through #151 creates one time-bound grant with an absolute expiry; rejection, cancellation, expiry, and explicit revocation are durable and idempotent.
+- [ ] Authorization evaluates current grant state on every protected operation so existing sessions, remotes, and node hopping cannot extend or retain expired access.
+- [ ] Removing a principal, disabling a policy, restoring a backup, or losing HA coordination fails closed without converting temporary access into a permanent grant.
+- [ ] Emergency access requires reauthentication and a reason, remains time-bound, and emits dedicated high-signal audit evidence.
+- [ ] Browser, CLI, API, audit export, health/metrics, and end-to-end tests cover request, approval, use, expiry, early revocation, concurrent access, and multi-node takeover on SQLite and PostgreSQL.
+
+## Blocked by
+
+- #151
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/153">#153</a></td><td>Repository and CI secret scanning</td><td>After 1.0</td><td>Repository/history scanning is a separate product surface; entry-time scanning already protects Hikyo ingress.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+Extend #74&#x27;s scan-on-value-entry detector into a local and CI leak-prevention workflow. Reuse the same pinned ruleset and finding identity so entry-time, working-tree, history, and CI results cannot disagree about what matched.
+
+Operators and developers can scan files, directories, Git history, staged changes, or a bounded commit range without sending source or findings to the Hikyo server. CI receives stable exit codes and machine-readable output; suppressions are explicit, reviewable, and never contain matched plaintext.
+
+## Acceptance criteria
+
+- [ ] The CLI scans named files/directories, a full Git history, staged or unstaged changes, and an explicit commit range with bounded file, byte, match, and runtime budgets.
+- [ ] Detection reuses #74&#x27;s versioned ruleset, entropy behavior, and provenance; local and value-entry fixtures produce the same rule IDs and fingerprints.
+- [ ] Human output redacts matched plaintext by default; JSON and SARIF outputs contain stable fingerprints, rule provenance, path/line metadata, and no recoverable secret material.
+- [ ] Config supports reviewed path/rule exclusions, fingerprint suppressions, and custom rules with fail-closed parsing; inline suppression cannot hide unrelated matches.
+- [ ] CI mode has documented stable exit codes for clean, findings, invalid configuration, and scanner failure; a pre-commit workflow scans staged changes only.
+- [ ] Symlinks, binary files, archives, huge histories, malformed repositories, concurrent mutation, and untrusted filenames are bounded and tested without escaping the selected root.
+- [ ] Cross-platform end-to-end fixtures prove local, pre-commit, and CI operation and detect attempts to weaken the default ruleset or silently truncate coverage.
+
+## Blocked by
+
+- #74
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/154">#154</a></td><td>PKI: policy-bound X.509 certificate lifecycle</td><td>After 1.0</td><td>A private certificate authority adds signing and revocation custody beyond secrets/config delivery.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+Add a self-hostable private-PKI path: protected CA custody, constrained certificate profiles, short-lived X.509 issuance, renewal, and revocation. Keep root and intermediate roles explicit, make offline-root operation possible, and never expose CA private keys through ordinary reads, exports, logs, audit payloads, or process arguments.
+
+An authorized operator creates or imports a CA, defines a profile with subject/SAN, key-usage, algorithm, and TTL bounds, then grants selected human or machine principals permission to issue through that profile. Issuance returns leaf material once and records only encrypted lifecycle state and public metadata needed for renewal and revocation.
+
+## Acceptance criteria
+
+- [ ] An operator can create a root for evaluation or import/sign an intermediate for production; CA private material is protected input, non-exportable by default, separately authorized, and versioned for overlap rotation.
+- [ ] Certificate profiles constrain subject and SAN patterns, key usages, algorithms, maximum TTL, renewal window, and allowed issuers; ambiguous or widening policy changes fail closed.
+- [ ] An authorized principal can request a short-lived leaf certificate bound to one profile and scope; private key delivery is display-once or client-generated CSR, with no plaintext persistence.
+- [ ] Renewal, explicit revocation, expiry, CA rotation, and issuer retirement are durable, idempotent, and fenced across nodes; uncertain signing state is visible and never reported as success.
+- [ ] CRL publication and status inspection remain available without revealing protected key material; revoked or retired issuers cannot mint new leaves.
+- [ ] Backup/restore preserves public inventory and encrypted CA custody while restored credentials remain subject to Hikyo&#x27;s existing reconciliation boundary.
+- [ ] Browser, CLI, API, audit, health/metrics, and end-to-end tests exercise CA setup, profile refusal, CSR and generated-key issuance, renewal, revocation, overlap rotation, restart, and multi-node takeover on SQLite and PostgreSQL.
+
+## Blocked by
+
+- #146
+- #147
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/155">#155</a></td><td>SSH certificates: short-lived principal access</td><td>After 1.0</td><td>SSH certificate issuance is a separate signing and host-trust lifecycle.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+Add short-lived OpenSSH user certificates as an identity-bound dynamic credential. An operator creates or imports an SSH user CA, defines a profile with allowed principals, critical options, extensions, and TTL bounds, and grants selected human or machine principals permission to request certificates through that profile.
+
+Each lease generates a new key pair or signs a client CSR, returns private material at most once, and produces host-trust instructions plus a revocation artifact. The feature manages SSH certificates only; it does not become a remote shell, session proxy, or host inventory product.
+
+## Acceptance criteria
+
+- [ ] An operator can create or import an SSH user CA, rotate it with a bounded overlap, and retire old signing keys without exposing private CA material.
+- [ ] Profiles constrain selectable principals, critical options, extensions, source-address rules, algorithms, default/max TTL, and permitted requesters.
+- [ ] An authorized principal can request one certificate using a generated key or supplied public key; generated private material is display-once and never persists in plaintext.
+- [ ] Lease expiry, explicit revoke, principal/grant revocation, CA rotation, and profile disable are durable and fenced across nodes; stale nodes cannot sign or extend a lease.
+- [ ] Hikyo publishes a bounded Key Revocation List and documented host trust configuration; status clearly distinguishes record deletion from cryptographic revocation or natural expiry.
+- [ ] Browser, CLI, API, audit, health/metrics, and end-to-end tests exercise issuance, real OpenSSH authentication, expiry, KRL refusal, rotation overlap, restart, and multi-node takeover.
+
+## Blocked by
+
+- #146
+- #147
+
+#154 may share signer and custody primitives but does not technically block this independently testable SSH path.
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/156">#156</a></td><td>Transit/KMS: versioned cryptographic operations</td><td>After 1.0</td><td>Transit/KMS cryptography is a new service, not a prerequisite for securely storing and delivering configuration.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+Add policy-bound cryptography as a service without storing caller plaintext: versioned managed keys provide encrypt/decrypt/rewrap, sign/verify, HMAC, and data-key operations through the normal Hikyo identity, authorization, audit, and multi-node boundaries.
+
+Start with Hikyo&#x27;s software-protected key custody and a provider seam for later HSM/KMIP backing. Applications receive ciphertext, signatures, or wrapped data keys; ordinary APIs never export non-exportable key material, and audit records describe the decision without recording cryptographic inputs or outputs.
+
+## Acceptance criteria
+
+- [ ] An authorized operator can create a named key with an immutable algorithm/purpose, allowed operations, rotation policy, exportability rule, and scoped caller grants.
+- [ ] Authorized callers can encrypt/decrypt/rewrap, sign/verify, create/verify HMACs, and request wrapped-only or display-once plaintext data keys with strict size and algorithm bounds.
+- [ ] Keys rotate by version with configurable minimum encryption/signing and decryption/verification versions; rewrap moves ciphertext without returning plaintext.
+- [ ] Non-exportable keys cannot cross API, CLI, backup diagnostics, logs, audit payloads, or process arguments; every operation has bounded input/output and rate limits.
+- [ ] Key disable, compromise, retirement, deletion scheduling, restart, backup/restore, concurrent rotation, and multi-node takeover fail closed with explicit recoverable state.
+- [ ] Provider abstraction proves software custody and one mock external-custody implementation have identical authorization, versioning, failure, and audit semantics; unavailable external custody never falls back to software keys.
+- [ ] CLI, API, client SDK, health/metrics, known-answer tests, fuzzing, and end-to-end coverage exercise every operation and negative authorization path on SQLite and PostgreSQL.
+
+## Blocked by
+
+- #75
+- #146
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/158">#158</a></td><td>Post-1.0: AWS Secrets Manager synchronization adapter</td><td>After 1.0</td><td>AWS synchronization is an additional destination; current native workload fetch and existing adapters provide the initial delivery contract.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+Add a one-way adapter from Hikyo to AWS Secrets Manager over the multi-platform synchronization contract in #157. Support explicit AWS region/account identity, one JSON secret per sync target or one AWS secret per selected key, and role-based authentication without making AWS a source of truth.
+
+Prefer ambient workload identity or web-identity role assumption. Static access keys are protected input only when explicitly selected. The adapter may inspect destination metadata needed for safe concurrency but must never call an API that returns existing secret plaintext.
+
+## Acceptance criteria
+
+- [ ] An operator can configure region, authentication mode, destination naming mode, optional customer KMS key, and selected Hikyo source through browser, CLI, and API.
+- [ ] Authentication supports AWS workload credentials and AssumeRole/WebIdentity with bounded session duration; static credentials, when enabled, never cross argv, logs, audit payloads, or ordinary reads.
+- [ ] Create, update, version staging, adoption, retain, prune, pause/resume, retry, and teardown follow #157 and #65 ownership semantics without calling GetSecretValue.
+- [ ] JSON-object mode has deterministic encoding and collision refusal; per-key mode preserves atomic per-key outcomes and reports partial target failure explicitly.
+- [ ] Concurrent external updates, KMS denial, throttling, expired credentials, region/account movement, ambiguous provider outcomes, and retry-after handling fail loud without blind overwrite or false success.
+- [ ] End-to-end coverage against an isolated AWS-compatible harness plus a credential-gated real-AWS smoke test proves value delivery, no-read API closure, replay safety, and cleanup.
+
+## Blocked by
+
+- #157
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/159">#159</a></td><td>GitLab CI/CD variable synchronization adapter</td><td>After 1.0</td><td>GitLab synchronization is another destination with distinct plaintext-read risks; not necessary for the supported deployment envelope.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+Add one-way synchronization from Hikyo into GitLab project and group CI/CD variables, including self-hosted GitLab. Map Hikyo environments and folders to explicit GitLab scope, protected, masked, raw, and variable-type settings while preserving Hikyo as source of truth.
+
+GitLab variable APIs can disclose stored values. The adapter must structurally exclude value-returning read/list operations: existence, adoption, and conflict handling use Hikyo&#x27;s ownership ledger and explicit operator confirmation, never destination plaintext comparison.
+
+## Acceptance criteria
+
+- [ ] Browser, CLI, and API configure GitLab base URL, project or group destination, environment scope, variable flags, authentication, and selected Hikyo source.
+- [ ] Fine-grained project/group access tokens are accepted at the minimum viable scope; broader personal tokens require explicit refusal or documented protected confirmation.
+- [ ] Create, update, adopt, retain, prune, pause/resume, retry, and teardown follow #157 and #65 without importing or reading destination variable values.
+- [ ] Hikyo validates GitLab masking and naming constraints before enqueueing; incompatible selected values fail by name without leaking plaintext or silently disabling masking.
+- [ ] Self-hosted TLS trust, SPKI pinning, pagination, rate limits, token expiry, moved projects, external edits, and ambiguous responses fail loud and preserve ledger truth.
+- [ ] End-to-end coverage against a real disposable GitLab instance exercises project/group/environment scopes, protected and masked variables, conflict refusal, replay, no-read API closure, and cleanup.
+
+## Blocked by
+
+- #157
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/161">#161</a></td><td>Cloudflare Workers and Pages synchronization adapter</td><td>After 1.0</td><td>Cloudflare synchronization adds a hosted destination and deployment side effects, not core self-hosting correctness.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+Add one-way synchronization from Hikyo to encrypted Cloudflare Workers secrets and Cloudflare Pages environment variables. Workers scripts and Pages projects/environments are explicit target kinds sharing one Cloudflare credential and ownership model; plaintext or ordinary variables are never an implicit fallback.
+
+The adapter batches a pinned Hikyo revision where the destination API permits it, records each destination outcome, and makes deployment side effects visible. Hikyo remains source of truth and never imports Cloudflare values during synchronization.
+
+## Acceptance criteria
+
+- [ ] Browser, CLI, and API configure account, Workers script or Pages project, preview/production scope, authentication, selected source, and deterministic name mapping.
+- [ ] Tokens are checked for minimum account/project permissions before activation and remain protected input; global API keys and overbroad tokens are refused by default.
+- [ ] Writes always use Workers secret or Pages encrypted-variable semantics; a destination that cannot preserve secrecy is refused rather than downgraded.
+- [ ] Create, update, adopt, retain, prune, pause/resume, retry, and teardown follow #157 and #65 without reading existing destination values.
+- [ ] API batching, deployment/version side effects, rate limits, token expiry, renamed targets, external edits, partial writes, and ambiguous responses are surfaced per target and replay safely.
+- [ ] End-to-end coverage against disposable Workers and Pages targets proves preview/production isolation, encrypted destination type, no-read API closure, conflict refusal, replay, and cleanup.
+
+## Blocked by
+
+- #157
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/162">#162</a></td><td>Vault and OpenBao KV synchronization adapter</td><td>After 1.0</td><td>Continuous Vault/OpenBao export is additive; existing import supports migrations into Hikyo.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+Add one-way synchronization from Hikyo into Vault or OpenBao KV v2 mounts. This complements the existing read-only import connector: import helps migration into Hikyo, while this adapter continuously delivers Hikyo-published revisions outward without creating a bidirectional merge loop.
+
+A target names one server, mount, path mapping, authentication method, and explicit ownership policy. Use KV v2 check-and-set metadata for concurrency. The adapter must not link value-returning read/list endpoints; metadata reads may establish version and ownership but never fetch destination plaintext.
+
+## Acceptance criteria
+
+- [ ] Browser, CLI, and API configure Vault/OpenBao URL, pinned trust, namespace where supported, KV v2 mount, destination path mapping, authentication, and selected Hikyo source.
+- [ ] Authentication supports short-lived OIDC/JWT or AppRole-style credentials with bounded renewal; static tokens are protected input and never cross argv, logs, audit payloads, or ordinary reads.
+- [ ] Create and update use KV v2 CAS so external movement causes conflict rather than blind overwrite; adoption requires explicit confirmation of named paths without reading values.
+- [ ] Retain, prune, destroy-version, pause/resume, retry, and teardown clearly distinguish soft deletion from irreversible metadata/version destruction and follow #157 ownership rules.
+- [ ] Import provenance prevents accidental source-target loops; the same target cannot be both an active import source and sync destination without explicit loop-safe refusal.
+- [ ] Sealed targets, auth renewal failure, namespaces, mount movement, rate limits, network partitions, partial path writes, and ambiguous outcomes fail loud and replay safely.
+- [ ] End-to-end coverage runs against current Vault and OpenBao versions and proves CAS conflict handling, no-value-read API closure, replay, retention versus destruction, and cleanup.
+
+## Blocked by
+
+- #157
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/163">#163</a></td><td>Sealed webhook synchronization protocol and adapter</td><td>After 1.0</td><td>Generic sealed webhooks add a new protocol and trust boundary; no first-release dependency requires them.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+Add a generic HTTPS push target without turning webhooks into a plaintext exfiltration path. Define a versioned receiver protocol in which Hikyo encrypts each payload to a pinned recipient public key, signs the envelope, and sends revision-pinned upsert or prune operations with an idempotency key. The receiver returns a signed acknowledgement bound to the exact envelope digest.
+
+Endpoints are instance-admin configuration, not tenant-controlled arbitrary URLs. No callback URL, redirect, DNS response, or response body may change the configured trust boundary after activation.
+
+## Acceptance criteria
+
+- [ ] The protocol specifies version, target identity, source scope/revision, operation, canonical key names, ciphertext, idempotency key, expiry, envelope signature, and acknowledgement signature without exposing values in metadata.
+- [ ] Target setup requires an exact HTTPS origin, pinned recipient encryption key, pinned acknowledgement key, bounded timeout/body size, and explicit instance-admin confirmation after independent fingerprint verification.
+- [ ] Secret values appear only inside recipient-encrypted ciphertext and never in URLs, headers, logs, audit payloads, metrics, retries, diagnostics, or acknowledgement bodies.
+- [ ] DNS rebinding, redirects, proxy bypass, private/link-local/metadata destinations, host changes, key changes, oversized responses, invalid acknowledgements, and replayed or expired envelopes fail closed.
+- [ ] At-least-once delivery is safe: retries reuse the idempotency identity, acknowledgement advances only the matching target cursor, and ambiguous results remain visible rather than reported successful.
+- [ ] Pause/resume, retain/prune, key overlap rotation, target replacement, teardown, and multi-node takeover follow #157 with explicit custody and recovery behavior.
+- [ ] A small reference receiver plus adversarial end-to-end tests prove encryption/signature interoperability, crash replay, forged acknowledgements, SSRF refusal, key rotation, and absence of plaintext at every observable boundary.
+
+## Blocked by
+
+- #157
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/164">#164</a></td><td>Generic file synchronization: client-pull atomic rendering</td><td>After 1.0</td><td>Generic filesystem generations add a new client delivery surface; existing Compose and Kubernetes paths cover the initial supported workloads.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+Add a portable file destination for workloads that cannot consume a native platform adapter. Preserve the network direction: an authenticated client on the destination host pulls one revision and atomically renders it to an explicitly configured local path; the Hikyo server never receives or writes arbitrary host paths.
+
+Build on #63&#x27;s protected local state, generation stamps, offline snapshot rules, and byte-exact dotenv behavior. Add deterministic JSON and YAML object formats plus raw single-value files. Representation limits fail by key name before any target file changes.
+
+## Acceptance criteria
+
+- [ ] A local client config binds one #157 target to an absolute destination path, format, ownership/mode policy, selected keys, refresh mode, and optional tmpfs-only requirement; path configuration stays client-local.
+- [ ] Supported formats are byte-exact dotenv over its declared domain, deterministic JSON/YAML string maps, and one raw value per target file; unrepresentable names or values fail before writing.
+- [ ] Writes use same-directory temporary files, fsync where supported, atomic replacement, restrictive creation mode, symlink-safe root-bound access, and a crash-consistent generation stamp.
+- [ ] Multi-file targets publish as one generation: readers see either the prior complete generation or the new complete generation, never a mixed set after crash or cancellation.
+- [ ] Poll, one-shot, and watch modes pin a server revision, authenticate with one target-scoped machine identity, report applied revision/health, and preserve the last valid generation during outages.
+- [ ] Deletion, retain/prune, expiry, offline cache, permission/ownership failure, disk exhaustion, target movement, process restart, and concurrent clients fail loud without widening filesystem access.
+- [ ] End-to-end coverage on Linux and macOS proves exact rendering, permissions, symlink and traversal refusal, crash consistency, offline expiry, concurrent update handling, and zero plaintext outside configured destinations and approved temporary memory/filesystems.
+
+## Blocked by
+
+- #63
+- #157
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/527">#527</a></td><td>Roadmap: execution order and parallel lanes for open tickets</td><td>Coordination refresh</td><td>The roadmap is stale: #617 and #638 are now blockers. Refresh from this evidence-based assessment, not milestones or labels.<details><summary>Original issue snapshot</summary><pre>Derived from the `Blocked by` fields of all open issues. First surveyed 2026-08-29; **re-surveyed 2026-09-03** (see Maintenance). Closed blockers are omitted. **Solid arrows = declared dependency**; **dashed arrows = recommended sequencing only**.
+
+## Re-survey 2026-09-03
+
+- **Pre-1.0 graph fully consumed.** Every ticket in the original Waves 1 to 3 is closed (#183, #439, #440, #451, #452, #457, #464, #491 to #504, #510 to #521). Umbrellas #1 and #437 closed 2026-09-03; #41 stays open until the gate.
+- **#79 (1.0 gate) is unblocked.** Its only remaining blocker #183 is closed. What remains is untracked gate work inside #79 itself: acceptance ledger (`docs/release/acceptance-1.0.md`), arm64 cgroup floor drill, skew + min-revision CI job and golden regeneration, self-hoster checklist re-assertion, signing ceremony and trust files, `v1.0.0` tag push. Ledger rows still `partial`: `CAP-PRODUCTION-OPS`, `CAP-PUBLIC-RELEASE`; obligations still `open`: `OBL-OPERATOR-PI-FIT`, `OBL-UI-SCHEMA-POLISH`, `OBL-OPS-SUPERSESSION`, `OBL-OPS-ROW-NUMBERING`.
+- **Post-1.0 seeds and Tier 2/3 partly landed ahead of the release:** #145 (PR #590), #146 (PR #570), #147 (PR #593), #151 (PR #594, follow-up #616), #157 (PR #592) are closed. #153 is still open; its ADR collisions (secret-scanning ADR locks scan-on-value-entry) need a declared amendment first.
+- **Two WebUI parity residuals filed after #504:** #575 (definitions bundle file mode) and #576 (own directory on Remotes). Neither is a declared #79 blocker.
+- **New lane: social sign-in and open registration.** Map #578 closed; umbrella #615 tracks the nine `ready-for-agent` tickets #605 to #613. #612 (CLI login handoff) is a named precondition for CLI social sign-in; #605 (migration 00042 + domain types) is the root of that chain.
+
+## Critical path to 1.0
+
+&gt; **#79** alone. No open blocker. Human steps: signing ceremony, tag push, release flip.
+
+## Execution graph - current
+
+```mermaid
+flowchart LR
+    subgraph R[&quot;Release&quot;]
+        t79[&quot;#79 1.0 gate + freeze + release&quot;]
+    end
+
+    subgraph P[&quot;WebUI parity residuals (parallel, not gating)&quot;]
+        t575[&quot;#575 definitions bundle mode&quot;]
+        t576[&quot;#576 own directory on Remotes&quot;]
+    end
+
+    subgraph SS[&quot;Social sign-in lane (#615)&quot;]
+        t605[&quot;#605 migration 00042 + types&quot;]
+        t606[&quot;#606 registration policy&quot;]
+        t607[&quot;#607 federated sign-up (OIDC)&quot;]
+        t608[&quot;#608 mailer + local sign-up&quot;]
+        t609[&quot;#609 OAuth2 kind (GitHub)&quot;]
+        t610[&quot;#610 invitation claim&quot;]
+        t611[&quot;#611 establish + password + unlink&quot;]
+        t612[&quot;#612 CLI login handoff + device flow&quot;]
+        t613[&quot;#613 A7 acceptance closure&quot;]
+    end
+
+    subgraph POST[&quot;Post-1.0 (do not delay the release)&quot;]
+        t153[&quot;#153 CI secret scanning (ADR amendment first)&quot;]
+        t152[&quot;#152 temporary access&quot;]
+        t148[&quot;#148 automated rotation&quot;]
+        t154[&quot;#154 PKI&quot;]
+        t156[&quot;#156 Transit/KMS&quot;]
+        t155[&quot;#155 SSH certs&quot;]
+        t158[&quot;#158 AWS adapter&quot;]
+        t159[&quot;#159 GitLab adapter&quot;]
+        t161[&quot;#161 Cloudflare adapter&quot;]
+        t162[&quot;#162 Vault/OpenBao adapter&quot;]
+        t163[&quot;#163 sealed webhook&quot;]
+        t164[&quot;#164 generic file sync&quot;]
+    end
+
+    t605 --&gt; t606
+    t605 --&gt; t607
+    t605 --&gt; t608
+    t605 --&gt; t609
+    t606 --&gt; t607
+    t606 --&gt; t608
+    t607 --&gt; t610
+    t609 --&gt; t610
+    t607 --&gt; t611
+    t609 --&gt; t611
+    t612 -.-&gt; t613
+    t606 --&gt; t613
+    t607 --&gt; t613
+    t608 --&gt; t613
+    t609 --&gt; t613
+    t610 --&gt; t613
+    t611 --&gt; t613
+```
+
+## Waves, rationale, and parallel lanes
+
+### Wave A - release (now)
+
+- **#79.** Everything it needs is inside the ticket. Land the acceptance ledger and the CI jobs first, then the human signing and tag steps.
+
+### Wave B - social sign-in lane (parallel to A, promoted into 1.0 by mvp-boundary amendment 4 / criterion A7)
+
+1. **#605** first: migration and domain types on both engines; every other ticket in the lane imports them.
+2. Then **#606** (registration policy) and **#609** (OAuth2 kind) in parallel; **#608** (mailer + local sign-up) can start on the mailer seam in parallel and joins #606 for the policy predicate.
+3. Then **#607** (federated sign-up) once #606 lands; **#610** (claim) and **#611** (establish, password, unlink) once #607 and #609 land.
+4. **#612** (CLI login handoff) is independent of the lane&#x27;s data model and can run at any point; it is a precondition for CLI social sign-in only.
+5. **#613** closes the lane: flows, bounds, audit lifecycle, docs, ledger.
+
+### Wave C - WebUI parity residuals (any time, not gating)
+
+- **#575**, **#576**: independent of each other and of the lanes above. Each flips one `api/parity.yaml` row from `via` to `webui`.
+
+### Wave D - post-1.0 (unchanged leverage order, seeds now landed)
+
+1. **#153** after its ADR amendment; **#152** (its seed #151 is closed).
+2. **#148**, **#154**, **#156** (their seeds #146 / #147 are closed).
+3. **#155** and the six sync adapters **#158, #159, #161, #162, #163, #164** (their seed #157 is closed; adapter enum is still `forgejo`, `github-actions` only).
+
+## Maintenance
+
+Re-survey the graphs when any ticket closes: a solid-arrow closure promotes its downstream tickets into the earliest wave that satisfies their remaining blockers. Update this map in the same PR that closes the ticket.</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/575">#575</a></td><td>WebUI: definitions bundle file mode (export, check, plan, apply) for db-mode projects</td><td>Required</td><td>Browser-only operators cannot perform definitions bundle workflows; catalogue CRUD is not equivalent to immutable bundle check/plan/apply.<details><summary>Original issue snapshot</summary><pre>## Why
+
+The WebUI parity registry (#490, `api/parity.yaml`) inventories every public operation. Five definitions operations have no browser journey:
+
+- `exportDefinitions` `GET .../definitions/export`
+- `checkDefinitions` `POST .../definitions/check`
+- `createDefinitionsPlan` `POST .../definitions/plans`
+- `getDefinitionsPlan` `GET .../definitions/plans/{plan}`
+- `applyDefinitionsPlan` `POST .../definitions/plans/{plan}/apply`
+
+The key-detail editor covers direct catalogue authoring, but the bundle outcomes are distinct: download the canonical bundle, check a file against current state (equal, file ahead, database ahead, diverged), see an immutable plan, apply it atomically. The source-of-truth ADR says `apply` is &quot;a publish with a file as input instead of the UI&quot;, so a browser file mode is the ADR-shaped equivalent, like the values import wizard (#495).
+
+Git-governed projects stay read-only in the browser by ADR (writes only through `apply` from the repository path); this ticket is the db-mode file flow plus the read-only views.
+
+## What to build
+
+- Project settings (or the catalogue manage dialog): &quot;Download definitions bundle&quot; as a plain same-origin GET link to `exportDefinitions`, plus the `--portable` variant if the contract exposes it.
+- &quot;Check a bundle&quot; file picker: post the file to `checkDefinitions`, render the drift state and per-key differences.
+- &quot;Plan and apply&quot;: `createDefinitionsPlan` from the checked file, show the plan (`getDefinitionsPlan`), apply with the existing publish ceremony (`applyDefinitionsPlan`), refusal states for stale base and per-environment publish authorization.
+- Git-mode projects: check and plan views only; apply stays refused with the repository pointer.
+
+## Acceptance criteria
+
+- [ ] A browser-only operator on a db-mode project can export, check, plan and apply a bundle without the CLI.
+- [ ] Refusals for stale base, git mode, and missing publish authorization render as refusals, never as blank states.
+- [ ] `api/parity.yaml` flips the five rows from `issue` to `webui` and `go test ./api` stays green.
+- [ ] Flow rides `settings.spec.ts` or `matrix.spec.ts` (already grouped in `ci.yml` on main); axe both schemes; mobile viewport.
+
+## Blocked by
+
+None.
+
+## Delivery notes
+
+No API change. Bundles are documentation-class material by ADR; never place them in URLs or durable browser storage. Reference this issue in the PR.</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/576">#576</a></td><td>WebUI: show this instance&#x27;s own directory (serveDirectory) on the Remotes surface</td><td>Required</td><td>The instance directory has distinct authorization and identity/version output; org/project listing is not equivalent.<details><summary>Original issue snapshot</summary><pre>## Why
+
+The WebUI parity registry (#490, `api/parity.yaml`) inventories every public operation. `serveDirectory` (`GET /api/v1/instance/directory`, formula `instance-directory`, artifacts human-session and instance-credential) has no browser journey. The Remotes surface shows the directories of connected remotes (fetched server-side), but never what THIS instance publishes to them: its opaque identity, version, and the names and counts of organisations and projects.
+
+`listOrgs` and `listProjects` are not an equivalent outcome: different authorization formula, different scope, and the identity and version are absent.
+
+## What to build
+
+- On the Remotes surface, a &quot;This instance&quot; panel backed by `serveDirectory`: identity, version, organisation and project names with counts, refreshed with the same polling cadence the remote directories use.
+- 403 renders the scoped forbidden state (holder lacks `instance-directory`), never a blank panel.
+
+## Acceptance criteria
+
+- [ ] A human holding `instance-directory` sees the panel; one without it sees the refusal state.
+- [ ] `api/parity.yaml` flips `serveDirectory` from `issue` to `webui` and `go test ./api` stays green.
+- [ ] Flow rides `workspace.spec.ts` (already grouped in `ci.yml` on main); axe both schemes; mobile viewport.
+
+## Blocked by
+
+None.
+
+## Delivery notes
+
+No API change. Reference this issue in the PR.</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/589">#589</a></td><td>Synthesis: ADR amendment set and handoff spec for social sign-in and open registration</td><td>After 1.0</td><td>Closed-by-default invitation, OIDC, SAML and SCIM support enterprise onboarding today. Open registration and social account creation widen the public auth surface and are additive after #617. Preserve the locked future design; do not ship its UI before backend semantics.<details><summary>Original issue snapshot</summary><pre>## Question
+
+Synthesize every closed ticket on this map into the **ADR amendment set and the handoff spec**. This ticket is the destination.
+
+Blocked by every other ticket on the map.
+
+Produce:
+
+- **Amendments**, each via the oss-mechanics procedure, each with a blocking native Codex review at high effort before lock:
+  - human-auth: registration policy as the third named account-creation path (beside invitation and SCIM), the OAuth2 identity kind, invitation claiming by external identity, local sign-up and the account email field, linking additions.
+  - tenant-isolation: the sign-up create as a named member of the identity-resolution interface.
+  - audit-model: new event types (policy change, sign-up outcomes by cause, verification, claim, OAuth2 transaction failures).
+  - permission-model: the fresh-org ceremony&#x27;s authority and grant origin, the org cap.
+  - Any other ADR a closed ticket names.
+- **Handoff spec** under `docs/spec/`: data model (both engines), API/CLI surface additions joining the pinned contract surface, ceremonies, UI surfaces referencing the prototype, mailer config, e2e pitfalls, and a sequenced list of `ready-for-agent` implementation tickets with model labels per the routing scheme.
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/605">#605</a></td><td>Social sign-in: migration 00042 and domain types (both engines)</td><td>After 1.0</td><td>Closed-by-default invitation, OIDC, SAML and SCIM support enterprise onboarding today. Open registration and social account creation widen the public auth surface and are additive after #617. Preserve the locked future design; do not ship its UI before backend semantics.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+Migration **00042**, purely additive and backward-compatible (`docs/spec/social-signin.md` section 2; the JIT fold, the `jit_policy` drop and the `intent`-required CHECK belong to 00043 in #607, NOT here), on both engines, with nothing user-visible: `registration_policies`, `registration_policy_entries`, `registration_signups`, `oauth2_providers`, `oauth2_transactions`; the rebuilds of `oidc_transactions` (purpose set, `intent`, `authority_id`), `external_identities` (`oauth2` kind), `sessions` (`oauth2_provider_id`, three-way one-of CHECK), `credential_authorities` (`established_credential_kind`), `grant_origins` (`registration`); `orgs.origin` + `registration_policy_id`; `accounts.email` with its partial unique index; `crypto.ArtifactSignup` (`su`) with its redaction pin; `domain.OriginRegistration`; the commentary corrections in the 00042 header (historical migrations untouched); the email canonicalizer of section 2.5 and the `{kind, slug}` provider reference of section 2.6.
+
+## Acceptance criteria
+
+- [ ] [CI] `go test ./internal/store/... ./internal/isolation/...` green on sqlite and postgres; directive parity lint passes; every rebuilt table carries its `hikyo:table` directive on both engines.
+- [ ] [E2E] With only 00042 applied and today&#x27;s service code, OIDC login, link and reauth still pass the existing isolation suite (no CHECK is violated by current writers).
+- [ ] [E2E] Canonicalizer fixtures: display name refused, IDNA refused, domain lowercased, local part preserved, trailing dot refused, ≤254 bytes.
+- [ ] [E2E] CHECKs refuse: an org policy without a template; an instance policy with a template; `fresh_org_cap` without landing `fresh-org` and vice versa; `intent` or `signup_scope_org_id` on a non-`login` transaction; a `login` row with `binding_kind = session`; a `link` row without `ceremony_id`; `authority_id` without purpose `claim`; two federated provider ids on one session; `established_credential_kind = oidc` with `issued_by = recovery`.
+- [ ] [E2E] `accounts.email` UNIQUE is case-insensitive by canonical form (writer lowercases); two NULL emails coexist on both engines.
+- [ ] [CI] `su` artifact redaction and grammar pinned beside `hs`/`hc`.
+- [ ] Release note: every open reauth window is closed by the sessions rebuild (sessions survive).
+
+## Blocked by
+
+None (spec landed with #589).
+
+## Gates
+
+DCO sign-off on every commit; both engines (sqlite + postgres) for every schema and lifecycle test; Codex `gpt-5.6-sol` high R1 to R3 (cap 3); preview verified; handoff doc `docs/handoff/&lt;this issue&gt;-….md`; no em-dash in new text. Decisions are not restated in this ticket: link the owning resolution when a question arises, and if the spec and a resolution disagree, stop and reopen #589.</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/606">#606</a></td><td>Registration policy: service, API, CLI and Members editor</td><td>After 1.0</td><td>Closed-by-default invitation, OIDC, SAML and SCIM support enterprise onboarding today. Open registration and social account creation widen the public auth surface and are additive after #617. Preserve the locked future design; do not ship its UI before backend semantics.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+The registration policy of #579 as amended (final state), on top of #605: read/put/delete at org and instance scope (`manage-members` at scope, reauth-gated), the standing delegation (authority principal recorded and reassigned on every edit, re-checked on use), write-time preconditions by name (`no-public-origin`, `mailer-unconfigured` from a stub predicate that reads &quot;unconfigured&quot; until the mailer ticket lands, `provider-disabled`, `provider-missing-email-scope`, `cap-zero`, `template-not-org-applicable`), use-time inactive-with-cause (`authority-lost`, `authority-unassigned`, `precondition`), the `signup` budget category (20/h instance-wide, rate-only) in `budget.go` + classification, `registration.policy_*` events, `AuthMethods.signup_open` + `signup_methods` (`{kind, slug}` entries) incl. `?org=&lt;id&gt;`, the org sign-up link on the Members panel, policy deletion deleting its pending rows, the Open registration panel and editor on Members at org and instance scope (prototype iteration 2), the JIT-fold re-save path (the fold itself lands with #607), CLI `access registration show|set|delete`, parity rows, formula pins. Spellings: `docs/spec/api-cli-spellings.md` section 8.
+
+## Acceptance criteria
+
+- [ ] [E2E] Both engines: 0..1 policy per scope enforced; a second instance policy is refused; edits reassign authority; revoking the authority principal&#x27;s `manage-members` (org) or `org.create` inputs (instance) flips the policy to `inactive: authority-lost` on the next read and refuses sign-up use uniformly with the audited cause.
+- [ ] [E2E] Every write-time precondition refuses `400` naming the failing item and the provider row where relevant; `email` refused as an allowlist claim; org-scope entries may name only instance-enabled providers.
+- [ ] [E2E] Policy mutations require fresh proof and do not purge the actor&#x27;s sessions; `registration.policy_created|updated|deleted` land on the right trail with `authority_principal_id`.
+- [ ] [UI] Playwright desktop + mobile: editor at both scopes, requirement line per entry, inactive-with-cause with re-save, `n / cap` on a fresh-org policy, blue reauth-gated save; public login page shows only &quot;Sign-up is paused.&quot; when inactive.
+- [ ] [CI] operation registry + `operation_formulas.json` + `parity.yaml` rows; budget totality test passes with the new category.
+
+## Blocked by
+
+#605.
+
+## Gates
+
+DCO sign-off on every commit; both engines (sqlite + postgres) for every schema and lifecycle test; Codex `gpt-5.6-sol` high R1 to R3 (cap 3); preview verified; handoff doc `docs/handoff/&lt;this issue&gt;-….md`; no em-dash in new text. Decisions are not restated in this ticket: link the owning resolution when a question arises, and if the spec and a resolution disagree, stop and reopen #589.</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/607">#607</a></td><td>Federated sign-up on the OIDC kind: intent, verified email, landing, fresh org, org rename</td><td>After 1.0</td><td>Closed-by-default invitation, OIDC, SAML and SCIM support enterprise onboarding today. Open registration and social account creation widen the public auth surface and are additive after #617. Preserve the locked future design; do not ship its UI before backend semantics.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+Migration **00043** (JIT fold incl. disabled providers, `DROP COLUMN jit_policy`, `intent`-required CHECK, live transaction purge; `jitProvision`, `auth.jit_provisioned` and `jit-refused` removed) plus the `login`-callback registration branch of `docs/spec/social-signin.md` section 4 for the `oidc` kind, per #604, #579, #598, #585 and #588 (final state): `intent` and `signup_org` on `OidcStartRequest` and the transaction (absent = `sign-in` / instance scope), `completeLogin` order (revalidate → epoch → instance-wide resolution → known signs in under either intent → unknown: `sign-in` refuses `unknown-identity` with no charge; `sign-up`: admission gate (policy present, active, provider admitted; uncharged refusal) → budget → verified-email assertion (`email_verified` or `xms_edov` boolean `true` beside non-empty `email`, from the signed token only) → allowlist → cap → write), the write under the policy&#x27;s authority principal (org template via `applyTemplate` with origin `registration`; fresh org inside `WriteSerialized` with identity row before org row, name `org-&lt;org id&gt;`, `origin = registration`), the tenant-isolation third member with its fixture pin, `settings.org_created` widening, `registration.signup_*` emitters, `OpOrgRename` formula = `manage-members@org` + org rename in org settings, instance org list `origin` column and filter, the staged login entry with the sign-up door and confirmation copy (prototype iteration 2), `oidcrp` belt deletion (`ErrIssuer`), reauth refused at start for a NULL assurance policy with the remedy text, the pairwise `client_id` PUT guard. JIT code and `ErrNoInvitationPath` retire here for the OIDC path.
+
+## Acceptance criteria
+
+- [ ] [E2E] Both engines: the scenarios of #604 as reordered by the spec section 14.2 (known identity either intent; unknown + `sign-in` refused, no registration event, no charge; unknown + `sign-up` on a closed scope or an unadmitted provider refuses `closed`/`predicate` **without** charging; an admitted unknown identity is charged before the write; `intent` on any other purpose refused at start; `signup_org` naming an unknown org refuses `closed`).
+- [ ] [E2E] JIT fold: enabled and disabled providers with `jit_policy` fold into one inactive instance policy; re-save activates it; the column is gone; OIDC login unchanged for known identities.
+- [ ] [E2E] Verified-email fixtures: Google-shaped token admits; Entra-shaped with `xms_edov: true` admits; missing claim, `false`, string `&quot;true&quot;`, empty `email` refuse `no-verified-email` with `verified_by: none`, evaluated before the allowlist; allowlist miss refuses `predicate`.
+- [ ] [E2E] Fresh org: minted under the authority principal in one serialized transaction, `identity-exists` refuses before any org row exists, cap overflow refuses `cap` and frees a slot after an operator delete; `settings.org_created {origin: registration, policy_id}` actor = authority; `signup_completed {org_id}` actor = new principal; the first admin is single-factor and reaches `manage-members` only after a local factor.
+- [ ] [E2E] Google bare `iss` token accepted (go-oidc check); Entra `common` discovery refused naming the GUID issuer; `client_id` change refused on a pairwise row with identities and allowed otherwise; `reauth` start refused for a NULL-policy row with no round-trip.
+- [ ] [E2E] `org.rename` by an org admin succeeds, by a bare `instance-config` principal is refused; `org.delete` unchanged.
+- [ ] [UI] Staged entry, door only while open, confirmation copy, one Microsoft row per Entra tenant row, brand rules per `docs/research/social-providers.md`.
+- [ ] [CI] third member fixture-pinned in the isolation suite; `runRegistrationLifecycle` in the audit e2e covers every emitted type.
+
+## Blocked by
+
+#606 (#605&#x27;s 00042 must be deployed before 00043 runs).
+
+## Gates
+
+DCO sign-off on every commit; both engines (sqlite + postgres) for every schema and lifecycle test; Codex `gpt-5.6-sol` high R1 to R3 (cap 3); preview verified; handoff doc `docs/handoff/&lt;this issue&gt;-….md`; no em-dash in new text. Decisions are not restated in this ticket: link the owning resolution when a question arises, and if the spec and a resolution disagree, stop and reopen #589.</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/608">#608</a></td><td>Mailer seam and local email + password sign-up</td><td>After 1.0</td><td>Closed-by-default invitation, OIDC, SAML and SCIM support enterprise onboarding today. Open registration and social account creation widen the public auth surface and are additive after #617. Preserve the locked future design; do not ship its UI before backend semantics.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+`docs/spec/social-signin.md` section 7 and the local ceremonies of section 4, per #584 and #585 (final state): `internal/mail` over `github.com/wneessen/go-mail` with the posture conformance test (TLS mandatory, 1.2 floor, `ServerName`, no skip-verify, `netpolicy.PublicDialer` with `HIKYO_MAIL_ALLOWED_CIDRS`, 15 s deadline), `HIKYO_MAIL_*` in `knownEnv` validated by name at boot and never dialed, the static &quot;mailer configured&quot; predicate wired into #606&#x27;s precondition, `internal/mailtest` TLS sink with a generated CA, `POST /api/v1/auth/signup {email, org?}` (always `202`; admission gate before the charge; the durable `registration.mail_intent` written in the pending-row transaction and `registration.mail_outcome` after the dial; exactly one send: verification link in the fragment with the landing hint, or the no-link existing-address mail), the pending row (replace an expired row, re-issue on a live one; policy delete removes its rows with `signup_expired {policy-deleted}`), the reaper on the scheduler, `POST /api/v1/auth/signup/verify` (`CheckPassword` first, uniform token refusals, live policy re-check, CAS-consume, account + password + landing incl. `org_name` on a fresh-org hint with the loud collision, no session), `accounts.email` login resolution (`@` handle via email only; `@` refused in every username creator), the `signup-verify` public route and check-your-mail state, instance settings mailer line + test send (`mail-test` budget 5/h per principal, 1 concurrent per instance; intent + outcome events), `registration.signup_expired`, the no-egress second run with a mailer configured.
+
+## Acceptance criteria
+
+- [ ] [E2E] Both engines: new address, pending address (resend re-issues on the same row), verified existing address, allowlisted-domain miss, closed policy all answer `202` with one SMTP round-trip captured by the sink; body and link never appear in logs or trail; `email-exists` mail carries no link.
+- [ ] [E2E] Verification: GET never consumes; malformed/unknown/expired/epoch-superseded refuse uniformly (a replayed token reads `unknown`); policy edited to exclude the domain after the mail refuses `predicate` and leaves the row; success writes account + credential + landing, mints no session, deletes the row; `org_name` collision is a 400 on the field with the token unspent; a stale `landing` hint falls back to `org-&lt;id&gt;`.
+- [ ] [E2E] Closed scope, unadmitted domain, unconfigured mailer answer `202` without charging; budget charged at request for an admitted address, not refunded on a failed send; a simulated crash between commit and dial leaves a `mail_intent` with no `mail_outcome` and the resend path recovers; failed send answers `202` with `registration.mail_outcome {outcome: failure}` and increments the RED counter; reaper prunes only expired rows and emits `signup_expired`.
+- [ ] [CI] Posture conformance test; `TestKnownEnvCoversEveryGetenv` green; boot refuses a malformed mailer config by name and boots with none; `scripts/ci/no-egress.sh` passes with and without a mailer configured.
+- [ ] [UI] Sign-up form, check-your-mail with resend, fragment-driven verification page with read-only address, display name, password ×2, `org_name` only on the fresh-org hint, one sentence for every dead link; mailer line + test send on instance settings.
+
+## Blocked by
+
+#607 (the staged sign-up door and the local entry on the login page land there).
+
+## Gates
+
+DCO sign-off on every commit; both engines (sqlite + postgres) for every schema and lifecycle test; Codex `gpt-5.6-sol` high R1 to R3 (cap 3); preview verified; handoff doc `docs/handoff/&lt;this issue&gt;-….md`; no em-dash in new text. Decisions are not restated in this ticket: link the owning resolution when a question arises, and if the spec and a resolution disagree, stop and reopen #589.</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/609">#609</a></td><td>OAuth2 identity kind: GitHub provider, transactions, admin and login</td><td>After 1.0</td><td>Closed-by-default invitation, OIDC, SAML and SCIM support enterprise onboarding today. Open registration and social account creation widen the public auth surface and are additive after #617. Preserve the locked future design; do not ship its UI before backend semantics.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+The `oauth2` kind of #580 as amended (final state): `internal/oauth2rp` over `golang.org/x/oauth2` (PKCE S256 always, `Accept: application/json`, `redirect_uri` always sent, access token used once inside the callback and discarded, refresh token discarded, scope `user:email` only, GHES origins refused at write until PKCE is verified), the `oauth2_providers` + `oauth2_transactions` service with per-provider callback as the mix-up defence, `POST /api/v1/auth/oauth2/{slug}/start` and `GET …/callback` (purposes `login | link | establish | claim`, `reauth` refused at start), admin API `/api/v1/instance/oauth2-providers[...]` + CLI `instance-config oauth2-provider …` + WebUI beside OIDC/SAML, `sessions.oauth2_provider_id` and method `oauth2:&lt;origin&gt;` with single-factor assurance and `two_factor_authentication` ignored, the sign-up branch of #607 for this kind (`/user/emails` `primary &amp;&amp; verified` on the `sign-up` unknown branch only), `auth.oauth2_login|refused` with the closed cause enum, `AuthMethodProvider.profile`, the GitHub button with brand rules, `CLIReauth.tsx` and `AccountSecurity.tsx` widened to the kind.
+
+## Acceptance criteria
+
+- [ ] [E2E] Both engines: login of a known identity; unknown identity by intent as in #607; token exchange with a wrong `code_verifier` refused; an OIDC code presented on the OAuth2 callback refused `mixup`; `login`/`node_id` never used as subject; a `/user/emails` set with no `primary &amp;&amp; verified` entry refuses `no-verified-email` on the registration event; a failed `/user/emails` fetch is `userinfo-error`; `/user/emails` is never called on login, link, establish or claim (sink assertion).
+- [ ] [E2E] Session is single-factor; reveal-class capability refused until a local factor exists; `reauth` start refused with the remedy; provider disable deletes its sessions.
+- [ ] [E2E] Admin: create validates origin and profile, runs no discovery; one enabled row per `(kind, issuer)`; secret sealed and never read back; `auth.provider_changed|read` carry the kind.
+- [ ] [UI] GitHub row on the staged entry (Invertocat, &quot;Continue/Sign up with GitHub&quot;), provider CRUD on instance admin, identities row shows profile.
+- [ ] [CI] parity rows (`oauth2Callback` = `exception: identity-protocol`), formula pins, audit emitter closure.
+
+## Blocked by
+
+#607.
+
+## Gates
+
+DCO sign-off on every commit; both engines (sqlite + postgres) for every schema and lifecycle test; Codex `gpt-5.6-sol` high R1 to R3 (cap 3); preview verified; handoff doc `docs/handoff/&lt;this issue&gt;-….md`; no em-dash in new text. Decisions are not restated in this ticket: link the owning resolution when a question arises, and if the spec and a resolution disagree, stop and reopen #589.</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/610">#610</a></td><td>Invitation claim by an external identity (purpose `claim`)</td><td>After 1.0</td><td>Closed-by-default invitation, OIDC, SAML and SCIM support enterprise onboarding today. Open registration and social account creation widen the public auth surface and are additive after #617. Preserve the locked future design; do not ship its UI before backend semantics.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+#582 as amended (final state) on both federated kinds: purpose `claim` on the start endpoints with the credential-establishment authority in the proof slot, `EstablishCredential` phase-1 checks reused without consumption (authority-refused event by cause; an `issued_by = recovery` authority refused with cause `purpose`, keeping the recovery ⇒ password CHECK), `authority_id` recorded, `browser-cookie` binding, callback = one write transaction (re-check the live authority, precondition &quot;no credential of any kind&quot; else `purpose`, CAS `consumed_at`, create identity under UNIQUE with `identity-exists` refusing WITHOUT consuming, `established_credential_kind = oidc | oauth2`, session minted as login would, no reauth window), `auth.credential_established` widening, `auth.*_login {purpose: claim}`, the establish page with one button per enabled provider beside the password form and a single refusal sentence, `ErrNoInvitationPath` and its comments removed, OpenAPI purpose enum widened; `EstablishCredentialRequest` description gains the `recovery` issuer.
+
+## Acceptance criteria
+
+- [ ] [E2E] Both engines: invite → claim with Google lands signed in; the same authority claimed twice concurrently: first callback wins, second refuses `consumed`; claim on an account holding any credential (password, TOTP, passkey, identity) refuses `purpose`; identity already bound elsewhere refuses `identity-exists` and the authority remains spendable by the password path; a reset authority on a still-empty invited account also claims; a recovery-issued authority is refused before the round-trip; a `claim` response cannot complete `login`, `link`, `reauth` or `establish`.
+- [ ] [E2E] `oauth2` claim yields a single-factor session; `oidc` claim assurance per the row&#x27;s policy; no `/user/emails` call.
+- [ ] [UI] Establish page: token first, providers beside the password form, one uniform refused state; login page never offers a claim affordance.
+- [ ] [CI] transaction CHECK `(purpose = claim) = (authority_id IS NOT NULL)` pinned; audit emitter closure.
+
+## Blocked by
+
+#609.
+
+## Gates
+
+DCO sign-off on every commit; both engines (sqlite + postgres) for every schema and lifecycle test; Codex `gpt-5.6-sol` high R1 to R3 (cap 3); preview verified; handoff doc `docs/handoff/&lt;this issue&gt;-….md`; no em-dash in new text. Decisions are not restated in this ticket: link the owning resolution when a question arises, and if the spec and a resolution disagree, stop and reopen #589.</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/611">#611</a></td><td>Establish purpose, local factors for social-only accounts, password set-or-change, unlink predicate</td><td>After 1.0</td><td>Closed-by-default invitation, OIDC, SAML and SCIM support enterprise onboarding today. Open registration and social account creation widen the public auth surface and are additive after #617. Preserve the locked future design; do not ship its UI before backend semantics.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+#586 and #580 d7 as amended (final state): purpose `establish` on both kinds (same-pair check against the acting account&#x27;s identities, precondition &quot;no local proof credential&quot; else `purpose`), the session-stamped establish window in the `ReauthEvidence` shape (purpose `account-security`, 5 min unused TTL, principal- and session-bound, never inherited, spent by `reissueSession`), empty-proof acceptance on TOTP enrol, passkey enrol, recovery-code regeneration and password set when the stamp is live AND the precondition holds inside the write, `PUT /api/v1/auth/password` set-or-change (proof by `proofSelection` or the stamp; every session deleted, acting one reissued; no removal) + CLI `account password set|change` refusing by name on a social-only account with the Settings URL, `proofSelection` adopted by link and unlink, unlink predicate &quot;no login credential would remain&quot; (fixes the passkey-only blind spot), `oauth2` link through its own start, provider picker by `{kind, slug}` in the link dialog (replaces `providers[0]`), `auth.credential_establish` + `auth.password_changed`, `authorizing_credential: establish` on the three enrolment events, Security panel branches (Set vs Change password; &quot;Verify with &lt;provider&gt;&quot; with the five-minute status line; link/unlink copy without a local proof), step-up refusal copy in the browser reauth page and the CLI (refused before the browser opens for a session that can satisfy nothing).
+
+## Acceptance criteria
+
+- [ ] [E2E] Both engines: social-only account sets a password via `establish` (`first: true`); `establish` refused after a password exists; the stamp dies with the session and is not inherited by the reissued one; recovery-code regeneration before any local proof costs a second round-trip; `establish` never satisfies link or unlink.
+- [ ] [E2E] Password change with password proof and with TOTP proof; every session deleted; passkey-only account with one identity can unlink it; TOTP-only account can link; last-credential refusal when nothing would remain.
+- [ ] [E2E] CLI: `account password set` and `factor enrol-totp` on a social-only account print the Settings URL and exit refused; step-up on an `oauth2:` session refuses without opening the browser and names the remedy.
+- [ ] [UI] Security panel branches per prototype iteration 2; step-up prompt copy; link dialog provider picker.
+- [ ] [CI] contract chain for `setPassword`; parity row; audit emitter closure.
+
+## Blocked by
+
+#609.
+
+## Gates
+
+DCO sign-off on every commit; both engines (sqlite + postgres) for every schema and lifecycle test; Codex `gpt-5.6-sol` high R1 to R3 (cap 3); preview verified; handoff doc `docs/handoff/&lt;this issue&gt;-….md`; no em-dash in new text. Decisions are not restated in this ticket: link the owning resolution when a question arises, and if the spec and a resolution disagree, stop and reopen #589.</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/612">#612</a></td><td>CLI login handoff and device flow (api-cli-surface login transports)</td><td>After 1.0</td><td>Closed-by-default invitation, OIDC, SAML and SCIM support enterprise onboarding today. Open registration and social account creation widen the public auth surface and are additive after #617. Preserve the locked future design; do not ship its UI before backend semantics.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+The ADR-locked, unbuilt login transports of `docs/adr/api-cli-surface.md` section &quot;Login and reauth transports&quot;, as the precondition #596 names for CLI social sign-in: RFC 8252 loopback listener (`127.0.0.1`/`::1`, ephemeral port, no reuse flags), `hikyo login &lt;url&gt;` opening the instance login page under a handoff with state + PKCE S256 + exact redirect URI, the login page running any method under its ordinary browser-cookie binding then showing the approval step (client class, instance, purpose, session type), approve binding the browser session, redeem over the back channel minting a separate `ArtifactCLISession` that snapshots `auth_method`, `factors`, assurance and provider id and records the issuing handoff id (no windows inherited), `--device` (RFC 8628: 8-char Crockford user code, 15 min, poll 5 s with `slow_down`), `--provider &lt;kind&gt;:&lt;slug&gt;` preselect (query hint; a bare slug only when unambiguous; unknown or ambiguous refused before the browser opens via `/auth/methods`), the page hiding the sign-up door and sending intent `sign-in` under a handoff or device approval, `meta.protocol_capabilities` gaining the transports, ops-spec section 4 values (10 min code, single use).
+
+## Acceptance criteria
+
+- [ ] [E2E] Loopback handoff with local password, passkey, OIDC and OAuth2 methods; state mismatch, wrong redirect, replayed code, wrong verifier all refused; the browser keeps its session; CLI session carries the snapshot and the handoff id; device flow end to end with `slow_down`.
+- [ ] [E2E] Under a handoff the sign-up door is absent and an unknown identity is refused uniformly (`unknown-identity`), no registration event.
+- [ ] [E2E] `--provider` preselects step 2; unknown or ambiguous slug refused before the browser opens; `--local` unchanged; non-TTY refused.
+- [ ] [CI] golden snapshots; parity exception rows for the handoff endpoints; artifact admission pins.
+
+## Blocked by
+
+#607 (the door-hiding assertion needs the door).
+
+## Gates
+
+DCO sign-off on every commit; both engines (sqlite + postgres) for every schema and lifecycle test; Codex `gpt-5.6-sol` high R1 to R3 (cap 3); preview verified; handoff doc `docs/handoff/&lt;this issue&gt;-….md`; no em-dash in new text. Decisions are not restated in this ticket: link the owning resolution when a question arises, and if the spec and a resolution disagree, stop and reopen #589.</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/613">#613</a></td><td>A7 acceptance closure: flows, bounds, audit lifecycle, docs, ledger</td><td>After 1.0</td><td>Closed-by-default invitation, OIDC, SAML and SCIM support enterprise onboarding today. Open registration and social account creation widen the public auth surface and are additive after #617. Preserve the locked future design; do not ship its UI before backend semantics.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+Close criterion A7 of `docs/adr/mvp-boundary.md`: the S3 Playwright flow registry entries for the social sign-in family (login staged entry and doors, signup request/verify with the mail sink, members policy editor, account-security establish branch and password set, instance-admin OAuth2 provider CRUD and org origin filter, org rename) on desktop and mobile with the pinned assertion set; bound-registry rows with executable fixtures for `signup`, `mail-test`, the sign-up token lifetime, the establish window, the send deadline and the fresh-org cap; `runRegistrationLifecycle` in the audit e2e (including a mail intent without outcome); a full both-engine run; every new operation&#x27;s parity row verified `webui:`; operator docs (Entra tenant rows and optional claims, Google client rules, GitHub app, mailer variables and test send, release notes for the session rebuild and the JIT fold); `docs/status/ledger.json` evidence for `CAP-HUMAN-ACCESS` and `CAP-ADMINISTRATION-UI`; `docs/spec/open-items.md` untouched unless a residual becomes an obligation.
+
+## Acceptance criteria
+
+- [ ] [UI] Every flow above green on desktop + mobile, axe serious/critical = 0, contrast and touch targets per S3.
+- [ ] [E2E] `hikyo login &lt;url&gt; --provider &lt;kind&gt;:&lt;slug&gt;` through the #612 handoff with a federated method, end to end.
+- [ ] [E2E] Full suite green on sqlite and postgres in CI.
+- [ ] [CI] `TestReconciledBoundsMatchOpsSpecValues` covers the new rows; `every_registered_type_is_actually_emitted` covers every `registration.*` and `auth.oauth2_*` type; parity check passes with no `issue:` rows left for this family.
+- [ ] Docs site pages published; ledger regenerated by `scripts/ci/check-doc-status.mjs`.
+
+## Blocked by
+
+#606 to #612.
+
+## Gates
+
+DCO sign-off on every commit; both engines (sqlite + postgres) for every schema and lifecycle test; Codex `gpt-5.6-sol` high R1 to R3 (cap 3); preview verified; handoff doc `docs/handoff/&lt;this issue&gt;-….md`; no em-dash in new text. Decisions are not restated in this ticket: link the owning resolution when a question arises, and if the spec and a resolution disagree, stop and reopen #589.</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/615">#615</a></td><td>Spec: social sign-in and open registration (implement the synthesized specification)</td><td>After 1.0</td><td>Closed-by-default invitation, OIDC, SAML and SCIM support enterprise onboarding today. Open registration and social account creation widen the public auth surface and are additive after #617. Preserve the locked future design; do not ship its UI before backend semantics.<details><summary>Original issue snapshot</summary><pre>&gt; **Canonicality rule (standing):** this issue is the tracker-side handoff for the social sign-in and open registration build, the destination of wayfinder map [Wayfinder map: social sign-in and open registration](https://github.com/Hikyo-Org/Hikyo/issues/578). It **decides nothing**. Canonical are the 2026-09-03 amendment banners in [human-auth](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/human-auth.md), [tenant-isolation](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/tenant-isolation.md), [audit-model](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/audit-model.md), [permission-model](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/permission-model.md), [threat-model](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/threat-model.md), [ops-spec](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/ops-spec.md), [mvp-boundary](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/mvp-boundary.md) (declared amendment 4, criterion A7) and [api-cli-surface](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/api-cli-surface.md), plus the handoff spec [social-signin.md](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/social-signin.md). Precedence: banner beats spec beats this issue. Read every ticket resolution through its dated amendment lines; the final state binds. On any divergence, the banner wins and the contradiction reopens [Synthesis: ADR amendment set and handoff spec for social sign-in and open registration](https://github.com/Hikyo-Org/Hikyo/issues/589) per [oss-mechanics](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/oss-mechanics.md); never patch the corpus silently.
+
+**Reading order for the implementing agent:** [social-signin.md](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/social-signin.md) section 1 (decision index) → the human-auth banner → section 2 (data model) → section 4 (ceremonies, order normative) → section 9 (pitfalls) → the ticket you hold and its owning resolutions. The locked prototype family is on `main` under [docs/site/public/prototypes/social-signin/2/](https://github.com/Hikyo-Org/Hikyo/tree/main/docs/site/public/prototypes/social-signin/2) (index row in [ui-spec](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/ui-spec.md)).
+
+## Problem Statement
+
+A self-hosted Hikyo instance is closed by construction: a human gets in only when an administrator hand-creates a local account or sends an invitation, and an external identity gets in only through generic OIDC with a brittle just-in-time policy (one string-equality claim, a zero-grant account, a generated handle) or through SAML plus SCIM. Teams that live in Google Workspace, Microsoft Entra or GitHub cannot offer their members &quot;sign in with the account you already have&quot;, an invited member cannot claim an invitation with Google, and an operator who wants to let a known domain self-register (or, on a shared instance, let strangers land in their own organisation) has no switch that is safe to flip. An account created through a provider has no path to a local password or a second factor, so it can never clear a reveal ceremony. Nothing in the product can send an email, so a local email + password sign-up is impossible. The result is that every onboarding is an administrator&#x27;s chore, and the seam a hosted deployment would need does not exist.
+
+## Solution
+
+Ship **social sign-in and operator-enabled open registration** as the first post-1.0 effort (owner decision 2026-09-03; the freeze-sensitive slice lands pre-1.0 as [Pre-freeze: retire JIT provisioning, move org.rename to manage-members@org, open the enums social sign-in grows](https://github.com/Hikyo-Org/Hikyo/issues/617)): Google, Microsoft Entra (tenant-specific OIDC provider rows) and GitHub (a new OAuth2-only identity kind) sign in beside local credentials and generic OIDC, and a **registration policy** (closed by default, at most one per org and one at instance scope, a standing delegation carrying an authority principal whose own permissions bound what the policy can grant) opens sign-up for admitted providers and, optionally, for local email + password through a real SMTP mailer. Sign-ups land by scope: an org policy applies a role template in that org; an instance policy lands the account nowhere or in a **fresh org** with the admin template. An invited member claims the invitation with a provider. A social-only account adds a password, TOTP or passkey through an `establish` round-trip. Every refusal is uniform on the wire and named in the audit trail. The CLI signs in through the ADR-locked browser handoff. Self-hosted first; positioning unchanged; this is the seam a hosted deployment could later use, not the hosted offering.
+
+## User Stories
+
+Registration policy (administrators)
+
+1. As an instance administrator, I want an instance with no registration policy to be closed, so that nobody can create an account unless I explicitly open a door.
+2. As an instance administrator, I want to create an instance-scope registration policy naming which providers may sign up and with which claim allowlist, so that only the identities I trust can self-register.
+3. As an instance administrator, I want an instance policy to land sign-ups either nowhere or in a fresh organisation with the admin template, so that a shared instance can host strangers in their own tenant without touching mine.
+4. As an instance administrator, I want a cap on how many fresh organisations one policy may mint, so that an open door cannot fill my database unbounded.
+5. As an org member holding `manage-members`, I want to create an org-scope registration policy that lands sign-ups in my org with a role template, so that my colleagues join without an invitation each.
+6. As an org member holding `manage-members`, I want my policy bounded by my own permissions, so that I cannot delegate a grant I do not hold myself.
+7. As a policy author, I want the policy to be a standing delegation recorded against me as the authority principal, so that if my authority is later revoked, the policy goes inactive with cause `authority-lost` rather than continuing to act in my name.
+8. As a policy author, I want write-time preconditions (public base URL configured, mailer configured for a local entry, provider carries the `email` scope) refused by name, so that I learn what to fix at save time rather than after a user hits a dead door.
+9. As a policy author, I want to enable a local email + password entry with a domain allowlist, so that people on my company domain can self-register without a provider.
+10. As a policy author, I want saving or deleting a policy to require fresh proof and to be audited as `registration.policy_created | policy_updated | policy_deleted`, so that opening the instance is an account-security act with a trail.
+11. As a policy author, I want to edit the policy on the Members panel of the scope it belongs to and see it as inactive-with-cause, `n / cap`, and a copyable sign-up link, so that I can see and fix its state without reading logs.
+12. As an operator whose instance used JIT provisioning before 1.0, I want JIT retired before the freeze (#617) and the registration policy to be its only successor, so that nothing opens silently on upgrade and no frozen surface has to carry a dead field.
+
+Sign-in and sign-up (end users)
+
+13. As a first-time visitor, I want a staged login entry that first asks which method I use and then shows that method&#x27;s form, so that the login page stays readable with several providers configured.
+14. As a first-time visitor, I want the sign-up door to list only the methods the scope&#x27;s policy admits, so that I never click a button that will refuse me.
+15. As a visitor to an org&#x27;s sign-up link, I want the door for that org, so that I land in the organisation that invited me publicly.
+16. As a user with a Google account, I want &quot;Continue with Google&quot; to sign me in when my identity is known, so that I never see a sign-up prompt on a returning visit.
+17. As a user with a Microsoft work or school account, I want one `Sign in with Microsoft · &lt;tenant&gt;` row per configured tenant, so that I pick the tenant I belong to.
+18. As a user with a GitHub account, I want &quot;Continue with GitHub&quot; to work with only the `user:email` scope, so that Hikyo never holds more of my GitHub than it needs.
+19. As a returning user who picks the sign-up door by mistake, I want to be signed in anyway, so that intent only decides what happens to unknown identities.
+20. As an unknown identity clicking sign-in on a closed instance, I want a uniform refusal, so that the instance discloses nothing about who exists.
+21. As an unknown identity signing up through a provider, I want my verified email checked on the signed ID token (Google `email_verified`, Entra `xms_edov`, GitHub `primary &amp;&amp; verified`), so that an unverified address can never land an account.
+22. As a self-registering user, I want to land with the role template the policy names and a generated handle, so that I am productive immediately without an administrator.
+23. As a self-registering user under a fresh-org policy, I want my own organisation created atomically with me as its single-factor admin, so that a partial failure never leaves an orphan org.
+24. As a person with a company email and no provider account, I want to request a sign-up by email and receive exactly one verification mail, so that I can create a local account.
+25. As a person requesting a sign-up for an address that already has an account, I want the same &quot;check your mail&quot; answer and a mail telling me I already have an account with no link, so that an attacker cannot enumerate accounts and I am not confused.
+26. As a person verifying a sign-up, I want the token in the URL fragment and consumed only by my explicit form submission (display name, password, optional org name), so that a link scanner or preview bot cannot spend it.
+27. As a person verifying a fresh-org sign-up, I want to name my organisation on the form and get a loud collision error with my token unspent, so that a taken name does not cost me the whole ceremony.
+28. As a person whose verification link expired, I want a one-sentence dead-link explanation and a resend path, so that I can recover without support.
+29. As a person who signed up locally, I want to log in with my email as the handle, so that I do not have to remember a generated username.
+
+Invitation claiming
+
+30. As an invited member with a Google or GitHub account, I want to claim my invitation by signing in with that provider, so that I never need a password.
+31. As an invited member, I want the claim refused if my provider identity is already bound to another account, with the invitation still spendable by the password path, so that a mistake does not burn the invitation.
+32. As an administrator, I want a claim to be accepted only while the account holds no credential of any kind and to consume the authority exactly once under concurrency, so that an invitation is a single first credential and nothing more.
+33. As an administrator, I want recovery-issued authorities never to claim through a provider, so that account recovery always ends in a password.
+
+Social-only accounts and local factors
+
+34. As a social-only account holder, I want to stay social-only indefinitely, so that Hikyo does not nag me into a password I do not want.
+35. As a social-only account holder refused at a reveal ceremony, I want the refusal to name the remedy (enrol a local factor), so that I know why and what to do.
+36. As a social-only account holder, I want to prove myself by a round-trip with my own provider and then set a password, enrol TOTP or a passkey, or generate recovery codes within a short window, so that I can reach step-up ceremonies.
+37. As any account holder, I want one set-or-change password endpoint that deletes every session and reissues mine, so that a password change always evicts a stolen session.
+38. As any account holder, I want to link a second provider identity with fresh proof (password or TOTP, never the establish window), so that linking stays an explicit act.
+39. As any account holder, I want unlinking refused only when no login credential would remain (a passkey-only account counts as having one), so that I can never lock myself out and am never wrongly blocked.
+40. As any account holder, I want the link dialog to let me pick the provider by kind and name, so that a GitHub link and a Google link are distinguishable.
+
+Provider administration
+
+41. As an instance administrator, I want to register a GitHub OAuth2 provider beside OIDC and SAML with a sealed secret, so that GitHub sign-in needs no OIDC shim.
+42. As an instance administrator, I want an Entra provider registered per tenant GUID issuer and `common` refused at discovery naming the GUID to use, so that the byte-exact issuer rule stands and misconfiguration is self-explaining.
+43. As an instance administrator, I want a `client_id` change refused on a pairwise-subject provider that has linked identities, so that I cannot silently orphan every user of that provider.
+44. As an instance administrator, I want an OIDC provider without an assurance policy refused at reauth start with the remedy, so that a Google session never masquerades as step-up capable.
+45. As an instance administrator, I want a GitHub Enterprise Server origin refused until PKCE support is verified, so that a downgrade of the mix-up defence is a named refusal, not a surprise.
+46. As an instance administrator, I want the org list to show and filter by origin, so that I can see which organisations were self-served and delete the ones I do not want.
+
+Mailer
+
+47. As an operator, I want the mailer configured by environment variables validated by name at boot and never dialed at boot, so that a bad config fails loud and boot originates zero connections.
+48. As an operator, I want TLS mandatory with a 1.2 floor, no skip-verify, an optional CA file, and a CIDR allowlist as the only way to reach a private relay, so that the relay class is bounded by the threat model.
+49. As an operator, I want a test-send action under fresh proof with its own budget, so that the only reachability probe is deliberate and audited.
+50. As an operator, I want every send to leave a durable intent event before the dial and an outcome event after it, so that a crash mid-send is visible in the trail and the resend path is the retry.
+51. As an operator, I want mail bodies and links never logged or audited, so that the trail can never leak a live token.
+
+CLI
+
+52. As a CLI user, I want `hikyo login &lt;url&gt;` to open the instance login page in my browser under an RFC 8252 loopback handoff and sign in with any method, so that federated sign-in works from the terminal.
+53. As a CLI user, I want `--provider &lt;kind&gt;:&lt;slug&gt;` to preselect the provider and an ambiguous bare slug refused before the browser opens, so that scripting is unambiguous.
+54. As a CLI user under a handoff, I want the sign-up door hidden and the start sent as sign-in, so that a CLI login can never create an account.
+55. As a CLI user on a social-only account, I want `account password set` and `factor enrol-totp` to refuse by name and print the Settings › Security URL, so that I am routed to the browser ceremony instead of a dead end.
+56. As a CLI user on a single-factor federated session, I want step-up refused before the browser opens with the remedy named, so that I do not waste a round-trip.
+57. As a CLI user on a headless box, I want a device flow, so that a machine without a browser can still sign in.
+
+Audit, budgets, isolation
+
+58. As an auditor, I want every registration outcome in the trail as `registration.*` with a named cause, so that &quot;who opened this instance and who got in&quot; is answerable.
+59. As an auditor, I want `settings.org_created` to carry origin and policy and the actor to be the authority principal, so that a self-served org is attributable to whoever delegated it.
+60. As an auditor, I want `auth.oauth2_login | oauth2_refused` distinct from the OIDC events and every login event to carry intent and purpose, so that the kind is never ambiguous in the trail.
+61. As an operator, I want a `signup` budget charged only after the admission gate and before any write, so that a forged sign-up against a closed scope cannot drain the instance-wide budget.
+62. As an operator, I want every sign-up refusal to share one wire shape and timing with success, so that the door leaks nothing beyond what it renders.
+63. As a tenant, I want identity resolution to be instance-wide by `(kind, issuer, subject)` and intent-blind, so that no org boundary can be crossed by a look-alike identity.
+64. As a tenant on a shared instance, I want a SCIM-pushed identity that already exists as a self-served account to attach rather than duplicate, so that provisioning and self-service agree on who I am.
+
+Hosted seam
+
+65. As a future hosted-deployment operator, I want the registration policy, fresh-org landing, mailer and provider kinds to exist as instance-level seams today, so that a hosted offering is a configuration and business decision later, not a redesign.
+
+## Implementation Decisions
+
+All decisions are locked in the corpus; one line plus owning link each. The [decision index](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/social-signin.md#1-decision-index) is the complete map.
+
+- **Registration policy**: one row per scope (0..1 org, 0..1 instance), subsumes and retires JIT, landing by scope, standing delegation with an authority principal re-checked on use, preconditions at write and use with inactive-with-cause, `signup` budget category, `registration.*` audit, reauth-gated mutations, editor on Members: [Grilling: registration policy](https://github.com/Hikyo-Org/Hikyo/issues/579), human-auth banner clauses.
+- **Allowlists are child rows**, not JSON arrays, so the database refuses empty, duplicate and non-text values; the values-iff-claim cardinality rule is writer-enforced with a conformance pin (left for the owner, see Further Notes): spec section 14.13.
+- **OAuth2 identity kind** for GitHub: closed profile enum, key `(oauth2, canonical origin, numeric id)`, own provider and transaction tables, PKCE S256 always, per-provider callback as the mix-up defence, verified email from the emails endpoint on sign-up only, sessions always single-factor, no OAuth2 reauth, third session FK: [Grilling: OAuth2-only identity kind for GitHub](https://github.com/Hikyo-Org/Hikyo/issues/580).
+- **Intent** `sign-in | sign-up` as an optional field on a purpose-`login` start (absent = sign-in), recorded on both transaction tables; known identity signs in under either; unknown + sign-in refused `unknown-identity` with no registration event and no charge; start stays policy-blind: [Grilling: sign-in versus sign-up intent](https://github.com/Hikyo-Org/Hikyo/issues/604).
+- **Admission gate before the charge** (synthesis reorder of the intent ticket&#x27;s decision 3): policy present, active, provider admitted, evaluated before the `signup` budget; uniform response: spec section 14.2.
+- **Verified-email assertion**: fixed recognised set `email_verified` or `xms_edov` as JSON boolean `true` beside a non-empty `email`, signed ID token only, never UserInfo; write-time 400 for an OIDC row without the `email` scope; one cause `no-verified-email` checked before the allowlist: [Grilling: per-provider verified-email assertion](https://github.com/Hikyo-Org/Hikyo/issues/598).
+- **Provider departures**: Entra tenant-specific GUID issuer rows only (the `{tenantid}` template is a named reopen trigger); Google bare `iss` handled by the library&#x27;s unconditional issuer check with the Hikyo belt deleted; NULL assurance policy = not reauth-capable, refused at start; pairwise `client_id` change refused by name: [Grilling: provider departures from the byte-exact issuer](https://github.com/Hikyo-Org/Hikyo/issues/588).
+- **Invitation claim**: purpose `claim` on both kinds spends the credential-establishment authority through a federated round-trip; accepted only while the account holds no credential; `identity-exists` refuses without consuming; recovery-issued authorities never claim; `ErrNoInvitationPath` retired: [Grilling: invitation claiming by an OIDC or OAuth2 identity](https://github.com/Hikyo-Org/Hikyo/issues/582), spec section 14.4.
+- **Establish and local factors**: social-only is a steady state; purpose `establish` proves local-credential creation only, carried as a session-stamped five-minute window spent by one mutation; new set-or-change password endpoint; unlink refuses iff no login credential would remain; link and unlink kind-agnostic under `proofSelection`: [Grilling: identity linking and credential adding for social users](https://github.com/Hikyo-Org/Hikyo/issues/586).
+- **Local sign-up**: pending row plus reaper, no account until verification; full-entropy token in the URL fragment, GET never consumes; nullable UNIQUE canonical email on accounts; always `202` with exactly one send; verification re-checks the policy live, writes account + credential + landing, mints no session; consumed tokens read `unknown`; 24 h token: [Grilling: local email + password sign-up ceremony](https://github.com/Hikyo-Org/Hikyo/issues/584), spec section 14.3.
+- **Email canonical form**: parsed addr-spec, ASCII domain lowercased, local part byte-preserved, ≤254 bytes, IDNA refused: spec section 2.5.
+- **Fresh-org landing**: authority principal is the caller for org create + admin template inside one serialized transaction, identity row before org row; federated names `org-&lt;id&gt;`, local `org_name` on the form; org rename becomes `manage-members` at org; per-policy nullable cap, live count, cause `cap`: [Grilling: fresh-org landing](https://github.com/Hikyo-Org/Hikyo/issues/585).
+- **Mailer**: SMTP-over-TLS only, `go-mail` behind a Hikyo package with a posture conformance test, synchronous send after commit, no outbox, durable mail intent and outcome events around every dial, &quot;configured&quot; is a static predicate, boot validates and never dials: [Research: mailer seam](https://github.com/Hikyo-Org/Hikyo/issues/583), spec sections 7 and 14.5.
+- **Provider references** are `{kind, slug}` on every surface; the CLI takes `&lt;kind&gt;:&lt;slug&gt;` and a bare slug only when unambiguous: spec section 2.6.
+- **CLI**: login by browser handoff is ADR-locked and unbuilt; federated rides it unchanged; handoff pages hide the door and send sign-in with no server marker; link, establish, claim and sign-up are browser-only identity-protocol ceremonies (documented parity exemption): [Grilling: CLI login and establish through federated providers](https://github.com/Hikyo-Org/Hikyo/issues/596), api-cli-surface banner.
+- **Migrations split**: additive 00042 (no CHECK today&#x27;s writers can violate) then 00043 (JIT fold covering disabled providers, `jit_policy` drop, intent-required CHECK, live transaction purge): spec sections 2.1 to 2.3.
+- **Audit deltas**: `registration.*` family, `auth.oauth2_*`, `auth.credential_establish`, `auth.password_changed`, field widenings, `auth.jit_provisioned` removed, issuer mismatch audits as `signature`: spec section 5, audit-model banner.
+- **Tenant isolation**: third named member on the resolution interface, instance-wide identity resolution, intent-blind: tenant-isolation banner.
+- **UI**: the locked prototype family iteration 2 (staged entry, door lists only admitted methods, one Microsoft row per tenant, inactive cause off the public page, brand rules per [research](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/research/social-providers.md)): [Prototype: login, sign-up, invitation-claim, and registration-policy surfaces](https://github.com/Hikyo-Org/Hikyo/issues/587), spec section 6.
+- **Operational values**: `signup` 20/h instance-wide, token 24 h, establish window 5 min, send deadline 15 s, test send 5/h per principal and 1 concurrent, fresh-org cap 100: [ops-catalogue](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/ops-catalogue.md), spec section 8.
+- **Wire**: spellings in [api-cli-spellings § 8](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/api-cli-spellings.md); every addition rides the pinned contract chain and gets its parity and formula rows in the same commit: spec section 3.
+
+**Sequencing** (spec [section 13](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/social-signin.md#13-implementation-tickets-sequenced-ready-for-agent-one-model-label-each)); each ticket links its owning resolutions and never restates them:
+
+| Step | Ticket | Blocked by |
+|---|---|---|
+| T1 | [Social sign-in: migration 00042 and domain types (both engines)](https://github.com/Hikyo-Org/Hikyo/issues/605) | none |
+| T2 | [Registration policy: service, API, CLI and Members editor](https://github.com/Hikyo-Org/Hikyo/issues/606) | T1 |
+| T3 | [Federated sign-up on the OIDC kind: intent, verified email, landing, fresh org, org rename](https://github.com/Hikyo-Org/Hikyo/issues/607) | T2 |
+| T4 | [Mailer seam and local email + password sign-up](https://github.com/Hikyo-Org/Hikyo/issues/608) | T3 |
+| T5 | [OAuth2 identity kind: GitHub provider, transactions, admin and login](https://github.com/Hikyo-Org/Hikyo/issues/609) | T3 |
+| T6 | [Invitation claim by an external identity (purpose `claim`)](https://github.com/Hikyo-Org/Hikyo/issues/610) | T5 |
+| T7 | [Establish purpose, local factors for social-only accounts, password set-or-change, unlink predicate](https://github.com/Hikyo-Org/Hikyo/issues/611) | T5 |
+| T8 | [CLI login handoff and device flow (api-cli-surface login transports)](https://github.com/Hikyo-Org/Hikyo/issues/612) | T3 |
+| T9 | [A7 acceptance closure: flows, bounds, audit lifecycle, docs, ledger](https://github.com/Hikyo-Org/Hikyo/issues/613) | T2 to T8 |
+
+T4, T5 and T8 are parallel lanes after T3; T6 and T7 are parallel after T5. T8 is pre-existing debt (locked, unbuilt) that this promotion surfaces: CLI social sign-in and therefore A7 wait on it. Model routing per ticket label: `model:fable-5` for the auth core (T1, T3 to T7), `model:opus-4.8` for feature and closure work (T2, T8, T9); every ticket gets a Codex `gpt-5.6-sol` high review, rounds capped at 3.
+
+## Testing Decisions
+
+The seams are the three locked in [mvp-boundary §1.1](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/mvp-boundary.md); nothing else counts as an acceptance criterion:
+
+- **[E2E]** scripted flows against a real server and real CLI on both engines (sqlite and postgres), no mocked server components. External identity providers are in-repo test doubles at the process edge, in the house style of the existing OIDC, SAML and WebAuthn doubles. Two new doubles: a **TLS SMTP sink** (generated CA passed through the CA-file variable, no cleartext path in any mode) and a **GitHub-shaped OAuth2 fake** (authorize, token with PKCE verification, `/user`, `/user/emails`); the existing OIDC double gains Google-shaped (bare `iss`, `email_verified`) and Entra-shaped (`xms_edov`, GUID issuer, `common` discovery) token fixtures.
+- **[UI]** Playwright flows over the embedded SPA, desktop and mobile, with the S3 pinned assertion set (axe serious/critical = 0, text + ARIA for every state, focus, contrast, touch targets, computed styles against the design tokens). The closed flow registry gains the social sign-in family: login staged entry and doors, sign-up request and verify with the sink, Members policy editor, Security establish branch and password set, instance-admin OAuth2 CRUD and org origin filter, org rename. A locked surface without a flow fails CI.
+- **[CI]** the registries that make a missing test a build failure: both-engine migration pin and directive parity, isolation suite with the third resolution member fixture-pinned, audit registry closure (`every_registered_type_is_actually_emitted` with a registration lifecycle including a mail intent with no outcome), bound registry rows with executable fixtures for every new value, parity dispositions for every new operation, contract chain and golden snapshots, known-env gate for the mailer variables, no-egress with and without a mailer configured, mailer posture conformance test.
+
+What makes a good test here: it exercises external behaviour at the highest seam (real binary, real wire, real engine, fake at the network edge only), it cross-references the clause it proves, and it can never be satisfied by deleting or weakening its check. Uniform-refusal tests assert shape and timing parity between success and every cause, and read the cause from the trail, not the wire.
+
+The **A7 row** in [mvp-boundary §1.2](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/mvp-boundary.md) **is** the test plan: implement its [E2E], [UI] and [CI] lists, do not re-derive them. Each ticket&#x27;s acceptance checklist is a slice of that row. Prior art: the existing login, members, account and instance-admin Playwright flows; the OIDC federation isolation and audit lifecycle suites; the bound registry and budget totality tests; the parity test; the no-egress script.
+
+## Out of Scope
+
+The map&#x27;s register, verbatim, with reopen triggers:
+
+- **Hosted offering operations** (billing, per-tenant quotas, plan tiers, hosted abuse tooling): the seam is in scope; the business is a separate follow-on map.
+- **Positioning change**: PRODUCT.md and the positioning ADR stay self-hosted first.
+- **Apple and Facebook sign-in**: Apple needs an ES256 client-secret minting seam; Facebook adds no audience. Both return as a fresh effort on the OAuth2 kind.
+- **LDAP**: stays out per human-auth.
+- **SAML invitation claiming**: same shape as the OIDC claim; returns as its own effort.
+- **Other mailer consumers** (invitation, reset, recovery mail): the destination names the seam; adoption by shipped ceremonies is a second effort; &quot;email is never on the critical path of any recovery flow&quot; stands.
+- **Password removal**: gated by the passkey-only invariant; the set-or-change endpoint&#x27;s last-credential predicate is the reuse point.
+- **Entra `{tenantid}` issuer template**: returns when the hosted seam needs any-tenant Microsoft sign-in or an operator nears Entra&#x27;s redirect-URI cap; identity key identical, no rekeying.
+- **Self-service for self-served accounts** (leave or delete the org you signed up into, delete your own account, the fate of a fresh org whose only admin leaves): account-lifecycle work no ADR carries; operator tools meanwhile are the org list&#x27;s origin filter and org delete. Reversible by the owner.
+
+## Further Notes
+
+- **Provenance**: destination of [Wayfinder map: social sign-in and open registration](https://github.com/Hikyo-Org/Hikyo/issues/578), synthesized at [Synthesis: ADR amendment set and handoff spec](https://github.com/Hikyo-Org/Hikyo/issues/589) from twelve grilling and research resolutions and one locked prototype family; amendment set and spec merged to `main` in PR #614, handoff under [docs/handoff/589-social-signin-synthesis.md](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/handoff/589-social-signin-synthesis.md). This issue is the map&#x27;s handoff into implementation; the nine tickets above are the work.
+- **Dispositions still open for the owner** (recorded defaults apply until changed):
+  1. **1.0 membership**: DECIDED 2026-09-03 by the owner: post-1.0, first. A7 leaves the gate and becomes a §4.3 out-row with trigger &quot;post-1.0, first&quot;; amendment in flight on #589. The freeze-sensitive slice (JIT retirement, `org.rename` formula, open enums) ships pre-1.0 as #617, which blocks #79. After #617 the JIT fold in spec section 2.3 and T3 is a no-op.
+  2. **Values-iff-claim rule** on policy entries: writer-enforced with a conformance pin, not a database guard (Codex round 3 leftover).
+  3. **Audit-model intent-outcome licence** widened by banner only, per the corpus rule that banner text wins over a locked body (Codex round 3 leftover).
+- **Known divergence, reopened on the synthesis ticket**: the A7 row in mvp-boundary says a closed instance refusing an unknown identity under `sign-up` &quot;charges budget&quot;, while spec section 4 and clarification 14.2 place the admission gate before the charge (closed scope refuses `closed` uncharged), and the acceptance lists of T3 and T4 encode the uncharged reading. The A7 row predates the round-1 reorder. Recorded default until the owner rules: the spec (uncharged). Implementers hitting this on T3 or T9 follow the spec and do not touch the ADR body.
+- **Residuals recorded, not fixed** (spec [section 11](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/social-signin.md#11-residuals-recorded-not-fixed)): possession-first proof preference unimplemented (password-first everywhere); ops-spec reset-lifetime row (1 h) versus code (24 h), editorial amendment on its own ticket; Google non-authoritative `email_verified` caveat recorded, not enforced; Entra redirect-URI cap; engine microtiming on the third resolution member; crash between pending-row commit and dial leaves an intent with no outcome by decision.
+- **Preconditions**: member invitation (local-credential) merged; prototype PR #603 merged; login handoff and device flow built as T8 before CLI social sign-in and the A7 closure.
+- **Roadmap**: the nine lanes belong on [Roadmap: execution order and parallel lanes for open tickets](https://github.com/Hikyo-Org/Hikyo/issues/527); this issue does not edit it.
+- **Gates on every ticket**: DCO sign-off and verified signature on every commit, both engines for every schema and lifecycle test, Codex high review R1 to R3, preview verified, handoff doc per ticket, no em-dash in new text. Any contradiction between the spec and a resolution stops the work and reopens the synthesis ticket.
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/616">#616</a></td><td>Change approvals (#151): close the untested criteria and disposition the recorded deviations</td><td>Required</td><td>Already shipped approval controls need proof of fencing, quorum races and target movement. A stale-leader expiry defect is confirmed and being fixed.<details><summary>Original issue snapshot</summary><pre>Follow-up to #151, shipped in PR #594 (`docs/handoff/151-change-approvals.md`). Everything below was found while verifying that ticket against `main` on 2026-09-03; nothing here is new scope, only the unmet or untested parts of the original acceptance criteria and the deviations the handoff marks &quot;accept or ticket&quot;.
+
+## Untested acceptance criteria (tests to add, both engines)
+
+1. **Multi-node takeover and retry (criterion 5).** `internal/isolation/approvals_e2e_test.go` only runs two `service.Approvals` structs on one datastore (`nodeA` / `nodeB`). There is no test that a request created on one node is merged or expired on another after the first node loses its `singleton_leases` fence (#146), and no named retry test. Prove: expiry sweep runs at most once across two nodes; a stale leader cannot expire; a vote raced across nodes yields exactly one quorum.
+2. **Target movement invalidates (criterion 2).** `BaseRevision` is pinned (`internal/service/approvals.go`), but only draft-edit and policy-change invalidation are exercised. Add: environment advance between request creation and merge fails closed and emits `approval.invalidated`.
+
+## Deviations recorded in the handoff, owner disposition needed
+
+| # | Ticket text | Shipped | Disposition |
+|---|---|---|---|
+| a | Folder-scoped policies | Environment scope only (`environment_id`, NULL = all envs); the domain has no folder scope | accept or reopen |
+| b | Designated bypassers | Requester-only merge and bypass, since staged drafts have no cross-owner publish | accept, or ticket cross-owner publish |
+| c | Eager invalidation on policy change | Lazy, commit-then-refuse at next vote / merge | accept |
+| d | `OpApprovalRequestRead` at `publish@env` | `read@env`, audited-none | accept |
+
+## Doc notes (no action unless the owner wants a ledger row)
+
+- `docs/status/ledger.json` has no row for change approvals. Same for every other post-1.0 feature (#145, #146, #147, #157), so this is a ledger-scope question, not drift specific to #151.
+- Handoff cites migration 00040; the actual file is `00041_change_approvals.sql`. Handoffs are immutable evidence per `docs/status/README.md`, so this is recorded here rather than edited.</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/617">#617</a></td><td>Pre-freeze: retire JIT provisioning, move org.rename to manage-members@org, open the enums social sign-in grows</td><td>Required</td><td>Breaking API changes must precede the additive-only freeze. Remove obsolete JIT provisioning, authorize org rename at org scope, and keep future enum extensions compatible.<details><summary>Original issue snapshot</summary><pre>## Why
+
+Social sign-in and open registration ([Spec: social sign-in and open registration](https://github.com/Hikyo-Org/Hikyo/issues/615), tickets #605 to #613) moves to post-1.0 (owner decision 2026-09-03, amendment on #589). The api-cli-surface freeze is additive-only from `v1.0.0`: no removals even after a deprecation window, and an operation&#x27;s authorization formula is part of the contract. Three pieces of that build are therefore breaking after the freeze and must land before it, without the rest of the feature:
+
+1. **JIT provisioning retirement.** The registration policy subsumes JIT (#579). Post-freeze, `jit_policy` could never leave the wire and `auth.jit_provisioned` could never leave the audit registry. Retire it now: OIDC stays invitation-and-link only until the policy lands.
+2. **Org rename formula.** `org.rename` (`PATCH /api/v1/orgs/{org}`) moves from its instance-class formula to `manage-members@org` (#585 decision, permission-model banner 2026-09-03). Formula changes are breaking post-freeze.
+3. **Open enums.** Every wire enum the spec grows must be declared open (`x-extensible-enum`) at freeze time; closed enums never grow.
+
+## What to build
+
+- Remove JIT: `jit_policy` column via a new migration on both engines (drop, no fold; pre-1.0, no external instances), the `jit_policy` field on the OIDC provider wire schemas and CLI, `jitProvision` and the `jitPolicy` evaluation in the OIDC service, the `auth.jit_provisioned` registry entry and the `jit-refused` cause on `auth.oidc_refused`, the Members/instance-admin UI field, docs mentions. An unknown OIDC identity on the login callback refuses `unknown-identity` uniformly (the existing shape). Dead code goes, nothing is kept for later.
+- Move `org.rename` to `manage-members@org`: authz registry entry, operation formula pin, OpenAPI `x-hikyo-formula`, parity row unchanged, the org settings rename surface reachable by an org admin. `org.delete` stays instance-class.
+- Declare open, with the pinned `x-extensible-enum` shape and the three generated consumers tolerating unknown values: `IdentityProviderKind` (will gain `oauth2`), `OidcStartRequest.purpose` (both occurrences; will gain `establish`, `claim`), the grant origin enum where exposed (will gain `registration`), `EstablishCredentialRequest` issuer values (will gain `recovery`, a pre-existing doc/DDL asymmetry), and any other enum `docs/spec/social-signin.md` section 3.1 grows. Do not add the new values; only open the enums.
+- Record on #607 that its JIT fold (spec section 2.3) is now a plain no-op: the column and rows are gone before 00043 runs.
+
+## Acceptance criteria
+
+- [ ] [CI] Both engines: migration applies, `jit_policy` absent from both schemas, directive parity green; `every_registered_type_is_actually_emitted` passes with `auth.jit_provisioned` gone; oidc refused-cause fixtures no longer contain `jit-refused`.
+- [ ] [E2E] Both engines: unknown OIDC identity on login refuses `unknown-identity` uniformly with no account created; known identity logs in unchanged; link and reauth unchanged.
+- [ ] [E2E] `org.rename` by a `manage-members@org` holder succeeds; by a bare `instance-config` principal is refused; formula pin in `operation_formulas.json` updated; isolation suite green.
+- [ ] [CI] Contract chain and golden snapshots updated; the freeze negative fixture that pins &quot;removing a response-enum value fails&quot; still passes; Go server, Go client and TS/Zod client tolerate an unknown value for each newly open enum (one fixture per enum).
+- [ ] No `jit` symbol left in `internal/`, `web/src`, `api/openapi.yaml` or docs outside history.
+
+## Blocked by
+
+None. Blocks #79 (added to its list).
+
+## Gates
+
+DCO sign-off and verified signature on every commit; both engines for every schema and lifecycle test; Codex `gpt-5.6-sol` high R1 to R3 (cap 3); preview verified; handoff doc `docs/handoff/&lt;this issue&gt;-….md`; no em-dash in new text. Decisions are not restated here: #579 (JIT subsumed), #585 (org rename formula), api-cli-surface § Version promise (open enums).
+</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/619">#619</a></td><td>Slop audit remediation: dead code, useless tests, duplication, doc slop</td><td>Required defect subset</td><td>Validate and fix runtime bugs and unexecuted acceptance tests now. Broad deduplication, test deletion and stylistic churn are not release criteria. Audit claims are head-specific: environment lifecycle and ledger drift have already changed.<details><summary>Original issue snapshot</summary><pre># Hikyo slop audit (2026-09-04)
+
+Method: mechanical pass (deadcode, staticcheck, go vet, knip, tsc --noUnusedLocals) then ten read-only Fable 5.1 auditors, one per area, each seeded with tool output and required to give grep evidence per finding. Main thread spot-verified the top findings of every report by re-running the greps. Per-area reports: `.audit/report-*.md`. No cross-model (Codex) pass ran; this is an audit report, not a diff. The fix PRs will need one.
+
+Mechanical baseline is unusually clean: go.mod tidy, 36 staticcheck hits (4 U1000), zero TODO/FIXME/commented-out code, 8 `interface{}`. The slop is structural, not lint-visible.
+
+## Headline numbers
+
+| Area | Deletable LOC | Notes |
+|---|---|---|
+| Go tests (isolation/conformance) | ~2,200 | 450 SQLite/Postgres wrapper funcs, dead/tautological tests |
+| internal/service | ~1,800 | 206 copies of the same 8-line prelude, 21 `now()` clones |
+| web/src | ~1,440 | dead feature chain, inert prototype panel, 69 `retry:false` |
+| small Go pkgs | ~1,350 | hand-rolled TS lexer, vendored suite files, strict-JSON copy |
+| server/api/authz | ~1,100 (~1,800) | wire registry restates OpenAPI; 186 pass-through methods |
+| internal/store | ~950 | five per-engine styles; 220 hand-SQL pairs |
+| web tests/e2e | ~780 | 20 files hand-roll createRoot; fixture-of-fixture tests |
+| scripts/CI | ~700 | 11x Go setup prelude; 250 LOC of YAML-grep tests |
+| cli/cmd/app | ~370 (+175) | 4 atomic-write copies; dead verb stubs |
+| docs | ~4,000 + 927 KB PNG | 1,978-line session log; executed plans |
+| Per-area sum | ~10,700 LOC | |
+| Cross-area overlap | ~-900 LOC | fixtureref lexer, saml_wiring_test, AssuranceEnforced, metrics pin, scanning arch_test, adapters_test fixtures, postgres preamble, ClientVerbs, stubModule each counted in two reports |
+| **Deduplicated code total** | **~9,700 LOC** | **docs ~4,000 more** |
+
+Deps: -1 (`@typescript/native` in clients/ts), -1 direct (one of two semver libs), 2 relocatable to a nested module (klauspost/compress, go-rpmutils). Everything else load-bearing.
+
+## Real bugs found on the way (fix regardless)
+
+1. `internal/cli/update.go:243` shadows `err`; a failing state reload after a successful refresh is silently dropped and `current` is zero-valued (SA4006).
+2. `internal/dynamic/postgres/postgres_integration_test.go` has never run in CI: `scripts/ci/start-dynamic-pg.sh` was committed but never wired (handoff 147 says so). Test skips when DSN unset.
+3. `internal/isolation/audit_invariants_test.go:272` pins audit columns by regex over `CREATE TABLE` text; misses `ALTER TABLE ADD COLUMN` (postgres 00011 adds `commit_seq`). Pin is already stale and still green.
+4. `internal/store`: AdapterRuntime opens pg tx Serializable, DynamicRuntime uses default isolation while its comment claims the same dialect. Verify intent.
+5. `internal/store`: three timestamp text formats (RFC3339Nano vs fixed-width x2); migration 00034 exists solely to repair rows written in the wrong one. Bug class, not cosmetic.
+6. `docs/status/ledger.json` CAP-WEBUI-PARITY says #595 remaining; #595 merged after the ledger&#x27;s last edit. README and site under-report.
+7. `scripts/ci/analysis-shards_test.sh` (145 LOC) references only itself; never runs.
+
+## Slop by category
+
+### A. Duplicate-by-copy (largest class, ~4,500 LOC)
+Agents solve each task locally and never look two files over.
+- service: `actor.resolve -&gt; az.Authorize` prelude x206; `now()` x21; scope-guard x22 in adapters.go; superseded-audit block x8; `insertInspected` exists in dynamic.go, adapters.go re-inlines it.
+- store: sqliteAdapters/pgAdapters 22 identical pairs; 172/220 hand-SQL pairs differ only `?` vs `$N`; dialect shim implemented twice; `isNoRows` exists, inlined 32x; `boolInt` exists, hand-rolled 6x; 14 nullable-string wrappers; 5 identical postgres test preambles (11 repo-wide).
+- authz: wire registry restates 271 rows that openapi.yaml already carries as `x-hikyo-class`/`x-hikyo-operation`; `storeOpCatalogue` restates 301 consts; `optStr` x3.
+- cli: 4 tmp+rename atomic writers while `securefile.WriteAtomic` exists (2 of 4 skip fsync); egress-policy loader x2; import summary printer x2.
+- small pkgs: importer/artifacts.go byte-copies definitions/jsonstrict.go (whose header says it was placed there to avoid this copy); length-prefix appender x5; compose/fsio atomicWrite x2; forgejo/githubactions test scaffolding identical.
+- web: `useEnvironments` x3 with 3 key spellings; `useProjectRetention` x2; 47 `*FailureText` ladders sharing identical 401/429/default arms; `when()` date formatter x3 + 8 inline; JSON-validity check x3 while `zJSONText` exists; `Refusal` class x2.
+- web tests: 20 files hand-roll createRoot+unmount; `deferred()` x5; `button()` x10; MemoryRouter wrapper x11; pinned-set loop skeleton in 12 specs.
+- CI: Go setup prelude x11 in ci.yml; Node/Helm pins in 3 places; governance sentences pinned in 2 scripts; SPA build inlined in release.yml; check-candidate x6 in one job.
+- Go tests: 450 `TestXSQLite/TestXPostgres` 3-line wrappers (conformance already has the table shape); factor-enrolment prologue across 4 e2e files; kubeconfig fixture x9.
+
+### B. Useless tests (~1,600 LOC)
+- Source/AST/YAML-text pattern tests: service `budget_seam_test`/`reauth_seam_test` (untyped go/parser, deprecated ParseDir, `internal/lint` already has typed analyzers); app `saml_wiring_test`; scanning `arch_test` (duplicates boundary_test, own comment says so); conformance `TestMaskedIsAbsentFromSchemaAndAPI` (greps migrations for the word &quot;masked&quot;); `TestQueryObserverIsTestOnly` (byte-scans prod for 3 names deadcode already reports); e2e `registry.test.ts` passkey-ownership regex; 7 orphan `scripts/ci/*_test.sh` grepping ci.yml for `cron: &quot;0 2 * * *&quot;`, `retention-days: 14`, and one asserting a file was removed.
+- Constant-equals-copy: `TestMetricRegistryIsPinned` (31-entry list vs `RegisteredMetricFamilies`, both hand-written); `wire_registry_test` pins `len == 318/225/67`; `scim_criteria_test` pins its own map size; `TestEmbeddedSpecMatchesTheFileOnDisk` (go:embed cannot differ); navigation.test.ts restates SURFACES as a 25-line literal; e2e prototype-mock test spreads a constant twice and compares; `TestPublishResultNeedsCleanupFollowsPhase` asserts `Phase != Complete` equals itself; clients/ts &quot;deterministic&quot; test calls a pure fn twice.
+- Compile-time dead: `TestAssuranceEnforcementCannotBeForgotten` (every branch guarded by `!AssuranceEnforced`, a `const = true`); authz_test second half same.
+- Tests of test helpers: e2e `instance.test.ts` (DI seam created to test a 6-line if/else), `api.test.ts` (ctor stores args), webauthntest accessors nobody calls, fixtureref `playwright_test.go` (137 LOC testing a hand-rolled TS tokenizer).
+- Why the 450 isolation wrappers count but store&#x27;s `TestFooSQLite/Postgres` wrappers do not: store has a handful, isolation has 450 identical 3-line shims (900 LOC of pure ceremony); `internal/conformance` already uses the table form (`corpus []scenario` + one runner per engine) so the repo has the pattern; the collapse also touches `ISOLATION_PLAN` (ci.yml shards by top-level test name and must emit `TestX/sqlite` patterns). Judgment call on the planner change, not on the duplication.
+- Duplicate coverage: 5 help-text `strings.Contains` tests already covered by the frozen `help.txt` golden; route-partition 404 test written 3x; profile refusals tested inline AND via fixture dirs; `TestEmbeddedMigrationVersionsAreUnique` re-implements goose.
+
+### C. Dead code and test-only exports in prod (~900 LOC)
+- Confirmed dead: `ttyDevice` (both tty files), `valuesSetUsage`, `fakeTTY`, `insertTarget` first assign, `OperationFor`, `ErrFrozen`, `RetireTier3Key` sqlc query, `legacySignatureBundle.Cert/RekorBundle`, `stubModule` methods, `MintCode`, `Env.Home/StateD` fields (set in 6 tests, never read), `cmd/bench-scan -check` flag, `Config.SQLiteDriver`.
+- Dead feature: web environment-lifecycle chain (4 hooks, 4 refusal mappers, invalidator, CSS) whose UI was removed in #509; `ChromeIdentityControls` panel fully inert in prod (12 `disabled={!prototypeMode}`), 330 LOC + 15 CSS rules shipped.
+- Dead verbs: `app.ClientVerbs` (`render`/`sync`/`adopt` stubs, `definitions` unreachable) + `ClassStub` rows + help text lying about &quot;not implemented yet&quot;.
+- Test-only symbols in prod files: `NewAdapter{Configure,CredentialSet,Adopt,Sync}ReauthIntent`, `CanonicalKeySet` (also re-inlined 60 lines away), `Revisions.Publish`, `Server.Serve/Close`, `adapter.Workflow`, `PlannedNames`, `NewTestClient` x2, `controllerRefUID`, `AssertionID`, `NeedsCleanup`, `RegisteredMetricFamilies`+4 helpers, `scanningFindingSpecs`+init+accessor, web `retentionDayState`/`retentionBoundsPayload`/`parseMatrix*` wrappers. Plus 18 exported query keys and ~30 exported types with zero importers (drop `export`).
+- Dead CSS: 6 selectors + `--danger-soft` token; 3 vendored jsonschema-suite files that run zero cases.
+
+### D. Wrappers and yagni (~1,200 LOC)
+- authz `TxAuthorizer`: 186 one-line pass-throughs to `*authn.Resolver` (160 same-name). Embedding keeps the ADR import boundary and deletes ~700 LOC. Needs trusted-set disposition.
+- `storeOpCatalogue` map + test: superset check already exists in `TestInvariant06`.
+- `const AssuranceEnforced = true`: flag nobody flips, 75 LOC of dead branches and stale tripwire comments hang off it.
+- `routeRegistryViolations` re-checks at runtime what the discriminated union forbids at compile time; `RouteCandidate` exists so tests can feed values the type refuses.
+- fixtureref `playwright.go`: 345-line hand-rolled TypeScript lexer to confirm 3 `test(&#x27;title&#x27;)` strings exist in one spec file. Replacement: line-anchored regex over non-comment lines (zero new deps; `playwright test --list` would need a Playwright install in the Go test path, which it does not have).
+- `adapterModuleWiring{worker, service}` holds `factory.Build` twice + a test asserting they are equal; `compose/loadercontrol.go` one-line pass-through + reimplementation of `delivery.Unacknowledged`; `metadataIPIsNonPublic` one-liner with an 18-row IP test netpolicy already has; `refreshSharedSessionFromProbe` DI seam with one caller; `ServerStartupMessage` = `if !interactive return &quot;&quot;`; `readCloser` in its own file; `server.New` zero prod callers; `DynamicRuntime.transaction` -&gt; `dynamicTransaction` (one caller each).
+- `legacyVersionString` + interactive/non-interactive split of `hikyo version` for a format nothing parses; schema-0 `updates.json` migration + 4 &quot;Legacy&quot; tests for a format that shipped in 3 nightly tags on one day (judgment call).
+- `ci-job-registry.json.plan_jobs` restates ci.yml `if:` conditions the Go test already extracts; `go-tool-modules.txt` + `run-go-tool.sh` duplicate go.mod&#x27;s `tool` block; `check-docs-live.sh` zod branch only reachable from its own test.
+
+### E. Pythonic / pre-modern idioms (~300 LOC, mostly mechanical)
+- 128 `sort.Strings/sort.Slice` -&gt; `slices.Sort/SortFunc/Sorted(maps.Keys())`; 114 `append([]T(nil), x...)` -&gt; `slices.Clone` (17 files already use Clone, mixed in same package).
+- `Zero(b)` loop -&gt; `clear`; `containsString`/`hasKV`/`hasEnv` -&gt; `slices.Contains`; `cutEnv` -&gt; `strings.Cut`; `firstNonEmpty` -&gt; `cmp.Or`; `ptrInt64` -&gt; `ptr.To`; `fmt.Sprintf(&quot;%d&quot;)` -&gt; `strconv.Itoa`; `for i := 0; i &lt; len` over slices x4; `mapKeys` reimplemented beside `sortedKeys`.
+- Timestamps as `string` in store record types (`AdapterRecord`, `AdapterMove`, `DynamicLease`) forcing re-parse in service; `json.Marshal(map[string]any{...})` with swallowed error x4; `writeDrillJSON` 13 hand-typed map keys; `wireAdvisory` SSE body as map with conditional keys; `map[string]interface{}` x1; `(error, evalOutcome)` return order; capitalised error strings x5; `tar.TypeRegA` x3; deprecated `GetEventRecorderFor`, `scheme.Builder`, `ast.Object` x2, `parser.ParseDir` x2.
+- TS: `[busy,setBusy]`+`[failure,setFailure]`+try/catch around mutations that expose `isPending`/`error` (15+22 sites); `useEffect` syncing route state into `useState` x4; `ThemeToggle` hand-rolls matchMedia subscription beside an existing `useSyncExternalStore`; `Object(row)[&#x27;id&#x27;]` x2; 7 `as` casts (Marc standard); `void _field` loop to count keys.
+- `default: unknown engine` arm in 16+ switches though `Open()` refuses other engines; `init()` for registry merge.
+
+### F. Doc slop (~4,400 LOC + 927 KB)
+- `docs/handoff/71-multi-instance.md`: 1,978-line session log with &quot;STILL NOT DONE, resume here&quot; for shipped work, 5 Codex-round sections, ADR links pointing at gitignored `.xreview/`. Second handoff under the same number.
+- `docs/superpowers/plans/*.md`: 2,095 lines of executed implementation plans for merged PRs.
+- 14 PNG screenshots (927 KB) in git; `v1-launch-blockers-plan.md` fully landed; `.xreview/` cited in 8 handoffs; `/tmp/` paths in 3; 18 Codex review-round headings in handoffs.
+- Comment shouting: 753 ALL-CAPS comment lines in service/domain alone, 779 shouted words across 154 Go files, 130 `// chain column: proof-bound` trailers nothing reads. History narration ~28 sites (&quot;used to&quot;, &quot;previously&quot;). `server.go` `New` doc comment attached to the wrong function. Stale comments: `budget_classification.go` says &quot;never consulted at runtime&quot; while budget.go:37 reads it; `disclose_test.go` claims deadcode can&#x27;t resolve a seam that has zero refs; `state.go:141` calls the current format &quot;historical&quot;; audit/registry tripwire for a flip that already happened.
+- Misnamed: `TestSnapshotLegacyContainerStillLoads` (no legacy format exists), `TestSessionsReadLegacyFixture` (current format), `snapshot-manifest_test.sh` (release gate, not a test).
+
+## Architectural questions for the owner (verdicts per option, no pick made)
+
+1. **internal/store hand SQL (~5,400 LOC over a home-made dialect shim; ADR system-architecture.md:77 lists this approach as Rejected; invisible to the tenant-isolation predicate analyzer).**
+   a. Migrate style 4 to sqlc. Honours the ADR, analyzer sees every query, dynamic IN-lists need `sqlc.slice`. Large (weeks), highest safety.
+   b. Amend the ADR to admit the shim, extend `internal/lint` sqlpredicate to walk `db.SQL(...)` strings. Medium, keeps velocity, closes the blind spot.
+   c. Keep as-is, dedupe the 172 identical pairs only. Small, blind spot stays. Cheapest, weakest.
+2. **TxAuthorizer 186 pass-throughs to `*authn.Resolver`.**
+   a. Embed `*authn.Resolver`; 160 same-name methods promote, 26 renames stay explicit. ~700 LOC gone, ADR import boundary unchanged, but ~6 resolver methods authz currently hides become reachable (trusted-set diff needed).
+   b. Keep explicit wrappers, generate them (`go generate` from the Resolver method set). Zero hand-maintenance, still 700 LOC in tree.
+   c. Keep as-is. Explicit allowlist by construction; cost is review noise on every new Resolver method.
+3. **authz wire registry restating openapi.yaml (271 rows).**
+   a. Derive HTTP rows from `api.Operations()` at init; hand table only for cli rows, operational routes, events, the one two-op row. One source, retires the sync test. Boot depends on spec parse (already does via `api.Warm()`).
+   b. Reverse: make openapi.yaml `x-hikyo-*` generated from the Go registry. Keeps Go as truth, adds a generator + drift gate.
+   c. Keep both, keep the sync test. Known duplication, zero risk.
+4. **MachineAccess.tsx 3,840 lines.**
+   a. Move the 960-line dynamic-provider block (own api module already) to `DynamicProviders.tsx`, keep route. Pure move, no behaviour change.
+   b. Full split into ~6 files by dialog family. More churn, better navigability.
+   c. Leave. Works; every reviewer pays 3,840 lines per diff.
+
+## Proposal
+
+Ordering principle: mechanical first so structural PRs review clean; each PR self-contained, folded, Codex-reviewed at high effort (3-round cap); handoff doc per PR.
+
+**A. Mechanical and dead (1 PR, ~1,500 LOC, low risk)** staticcheck fixes incl. the `update.go` bug; every confirmed-dead symbol and file; drop `export` on ~50 TS symbols; `slices`/`maps`/`cmp`/`clear` sweep via gofmt -r where possible; deprecated API replacements; wire the dark PG integration test and the shard test; ledger correction.
+
+**B. Tests (2 PRs)** B1: `forEngine` helper + collapse 450 wrappers (needs ISOLATION_PLAN planner to emit `Test/sqlite` patterns); postgres preamble helper; testkit `renderForm`/`button`/`deferred` adoption. B2: delete useless tests listed in category B; move `seam` tests into `internal/lint` typed analyzers; replace audit-column regex pin with `pragma_table_info`; trim the 7 YAML-grep shell tests to their supply-chain halves.
+
+**C. Duplicate helpers (1 PR per package: service, store, cli, small pkgs, web api)** prelude helper, `nowOr`, `requireProjectScope`, `auditSuperseded`; `db.SQL(q)` placeholder rewrite + one dialect shim + one timestamp rule; `securefile.WriteAtomic` adoption; `definitions.DecodeStrict` in importer; one `useEnvironments`/`useProjectRetention`; `statusText` failure-mapper scaffold; `formatWhen`.
+
+**D. Dead features and yagni (1 PR)** environment-lifecycle chain, ChromeIdentityControls to `web/prototype/`, ClientVerbs, `AssuranceEnforced`, `storeOpCatalogue`, `RegisteredMetricFamilies`, fixtureref lexer, `routeRegistryViolations`, `legacyVersionString`, ci-job-registry `plan_jobs`, go-tool shell layer -&gt; `tool` block, ci.yml composite action.
+
+**E. Docs (1 PR)** trim handoff 71 to outcome sections, delete executed plans and PNGs, reword `.xreview/` refs, lowercase comment shouting via one sed pass, fix the misplaced/stale comments.
+
+**F. Architecture (ADR amendments, grilled then locked)** store hand-SQL disposition; TxAuthorizer embedding; wire registry derivation; MachineAccess split.
+
+Ordering options:
+- Option 1 (recommended): A, B1, D, C, B2, E; F opened as ADR discussions in parallel. Mechanical and dead first so structural PRs review clean; A and D are highest value per hour.
+- Option 2: F first (settle store/TxAuthorizer/registry), then A, C, B, D, E. Avoids touching store/authz twice, but blocks ~9,000 LOC of safe cuts on ADR grilling.
+Skip nothing in A; everything there is evidence-backed dead or a bug.
+
+net: -~9,700 code lines (deduplicated), -~4,000 doc lines, -927 KB binaries, -1 to -2 deps possible.</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/630">#630</a></td><td>MCP 4: prove deployment and named-client interoperability</td><td>Required for advertised MCP</td><td>Transport and tools already ship, feature-gated. Verify the merged PR #639 (f4175a5d) and report named-client support honestly; unsupported profiles must be explicit refusals.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+Make the controlled-bearer MCP release operable and prove it with named clients. Operators can enable the endpoint, configure a narrowly granted service-account token without putting it in a repository, observe safe metrics, and follow a recovery-focused runbook.
+
+Research source: [Hikyo remote MCP server implementation research](https://github.com/Hikyo-Org/Hikyo/blob/6fb110e555e745b1cf750c1c324c35856302fa74/docs/research/hikyo-mcp-server.md)
+
+## Acceptance criteria
+
+- [ ] Document and validate feature configuration, canonical public URL, reverse-proxy behavior, Helm and Compose deployment, token minting, least-privilege grants, rotation, revocation, and troubleshooting.
+- [ ] Pin MCP conformance and smoke-test the official Go client, Inspector, Codex, Claude, and OpenAI API against the exact supported authentication and protocol profiles.
+- [ ] Prove two replicas serve successive calls without protocol sessions or stickiness and that graceful shutdown cancels or completes requests safely.
+- [ ] Public HTTPS checks prove discovery, one authorized safe tool call, invalid-token handling, and immediate revoked-token denial without exposing tenant facts.
+- [ ] Logs, traces, metrics, examples, and client configuration contain no literal bearer or secret; documentation clearly distinguishes managed bearer support from unavailable automatic OAuth sign-in.
+
+## Blocked by
+
+- #629</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/631">#631</a></td><td>MCP 5: decide whether human delegation requires embedded OAuth</td><td>After core gates</td><td>A human OAuth authorization server is not needed for a managed service-account bearer release. Base any later decision on current named-client evidence.<details><summary>Original issue snapshot</summary><pre>## What to build
+
+After the controlled-bearer MCP release and current human-auth work land, make a fresh ADR decision on whether named target clients still require OAuth human delegation. If OAuth is required, select a maintained embedded Go implementation from current evidence and decompose delivery into new tracer-bullet tickets. Do not presume Fosite, hand-write OAuth protocol machinery, or add an external authorization service.
+
+Research source: [Hikyo remote MCP server implementation research](https://github.com/Hikyo-Org/Hikyo/blob/6fb110e555e745b1cf750c1c324c35856302fa74/docs/research/hikyo-mcp-server.md)
+
+## Acceptance criteria
+
+- [ ] Capture current named-client evidence showing whether managed service-account bearers meet supported workflows and what user-facing capability OAuth would add.
+- [ ] Record either a no-OAuth decision with no protocol code, or an embedded-AS decision covering identity, consent, resource binding, client registration, token lifecycle, revocation, scope attenuation, audit, and multi-replica storage.
+- [ ] For an embedded AS, compare then-maintained Go packages using release cadence, security response, transitive vulnerabilities, standards coverage, storage atomicity, API stability, license, and target-client interoperability. Fosite is prior evidence only.
+- [ ] Spike only shortlisted packages against MCP discovery, RFC 8707 resource indicators, RFC 9207 issuer behavior, exact redirects, mandatory PKCE, storage races, revocation, and target clients.
+- [ ] Publish independently grabbable implementation tickets with exact blockers. Keep secret reveal, sensitive entry, and mutation ceremonies in separate decision and implementation lanes.
+
+## Blocked by
+
+- #630
+- #613
+- #617</pre></details></td></tr><tr><td><a href="https://github.com/Hikyo-Org/Hikyo/issues/638">#638</a></td><td>Governance: lock signed upgrade compatibility and platform orchestration</td><td>Required</td><td>Safe version routing and crash-safe migration identity must exist before the first stable database lineage. Platform apply can remain disabled.<details><summary>Original issue snapshot</summary><pre>## Decision to lock
+
+Promote the maintainer-selected option A into the locked Hikyo corpus: a signed release-compatibility graph with platform-owned orchestration.
+
+Direct version skips remain allowed when the target release declares the edge safe. When no direct edge exists, the updater computes the shortest verified route through required bridge releases. This replaces both unsafe latest-only jumps and a blanket rule requiring every major version in sequence.
+
+## Contract to review
+
+- Stable compatibility declarations are bound into offline-root-signed release manifests. Nightly declarations use a separately constrained, explicitly weaker keyless identity and remain CLI-only.
+- Discovery, the privileged helper or controller, and the target binary independently enforce the route. The target records a crash-safe pending migration before schema writes.
+- Every schema-changing, bridge, or rolling-incompatible route uses durable maintenance. Automatic rollback is limited to a proven pre-schema-write abort; post-write recovery requires operator-held backup identity and restore reconciliation.
+- Bare systemd and Docker Compose use an external host helper. Flux uses a separate pull-based upgrade controller with full-stop migration sequencing. Hikyo server receives no Docker, Git, Flux, Helm, or Kubernetes deployment credential.
+- WebUI application is stable-only and instance-admin-only. Direct Helm remains a future adapter. Compatibility foundations must land before `1.0.0`; platform apply stays disabled until its backup, health, rollback, and restart-recovery gates pass.
+
+## Governance work
+
+Reopen and record scoped amendments on:
+
+- #8 threat model
+- #18 Docker Compose integration
+- #19 Kubernetes integration
+- #22 system architecture and stack
+- #26 MVP boundary and acceptance criteria
+- #32 operational and deployment spec
+- #33 OSS project mechanics
+
+Run the standing native Codex adversarial review at high effort against the affected Claude-authored locked decisions. Maximum three rounds: full findings, fix verification, final `CLEAN` or explicit blockers for maintainer disposition.
+
+## Acceptance criteria
+
+- [ ] Every owning issue above links back here and states its exact amendment scope.
+- [ ] Review resolves nightly trust, compatibility routing, HA skew, migration crash recovery, restore custody, Git credential blast radius, and first-hop bootstrap limits.
+- [ ] Operative amendment banners are added only after review passes.
+- [ ] The proposal becomes a locked ADR and joins the build-ready spec index.
+- [ ] The MVP gate requires compatibility metadata, release binding, the applied-release ledger, legacy genesis edge, and migration gate on SQLite and PostgreSQL before `1.0.0`.
+- [ ] Documentation and policy gates pass; review evidence and the merged PR are recorded here.
+- [ ] Implementation tickets are filed from the approved handoff only after this governance ticket locks.
+
+## Blocked by
+
+None. This issue is the governance frontier. Runtime implementation is blocked by this issue.
+</pre></details></td></tr></tbody></table></html>

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hikyo production verification gaps</title>
+<style>body{font:16px/1.6 system-ui,sans-serif;max-width:1000px;margin:40px auto;padding:0 24px;color:#17212b;background:#fafaf9}table{border-collapse:collapse;width:100%}td,th{padding:12px;text-align:left;vertical-align:top;border-bottom:1px solid #ccc}a{color:#164cb5}code{overflow-wrap:anywhere}</style>
+<h1>Production verification gaps</h1>
+<p><a href="index.html">All release decisions</a> | Issue <a href="https://github.com/Hikyo-Org/Hikyo/issues/619">#619</a></p>
+<p>Local validation passed. Exact-head CI and merge pending.</p>
+<table><tr><th>Finding</th><th>Decision</th><th>Evidence</th></tr>
+<tr><td>Dynamic PostgreSQL lease tests never executed in CI</td><td>Run the existing real provider lifecycle against a disposable TLS-only PostgreSQL instance in the core job.</td><td>9 tests passed, including create, expiry extension, status, idempotent revoke, default-deny private egress and definite network failure. TLS target refuses a plaintext TCP connection.</td></tr>
+<tr><td>Audit schema parser ignored ALTER TABLE</td><td>Inspect the effective migrated schema on both engines. Preserve explicit envelope pins.</td><td>SQLite and PostgreSQL passed. PostgreSQL's commit_seq column is now checked.</td></tr>
+<tr><td>Analysis-shard fixture was orphaned</td><td>Run it in core CI.</td><td>Complete, disjoint race packages, fuzz targets and isolation test fixtures passed.</td></tr>
+<tr><td>Audit report contains stale defects</td><td>Verify the current baseline before editing.</td><td>Update reload error handling, serializable dynamic transactions, timestamp unification and the dynamic-secret capability ledger were already repaired.</td></tr>
+</table>
+<h2>Choices made</h2>
+<p><strong>Question:</strong> fix every cleanup recommendation before 1.0, or repair correctness and verification gaps first? <strong>Options:</strong> A: focused production defects; B: broad structural cleanup. <strong>Choice:</strong> A. Blanket test deletion or module rewrites introduce review risk without proving production safety. This does not declare the broad cleanup issue complete.</p>
+<p><strong>Question:</strong> use a host-owned TLS key or container-owned permissions? <strong>Choice:</strong> container-owned permissions. It avoids sudo and mismatched host/container UIDs, works on macOS and Linux, and retains verify-full transport.</p>
+<h2>Review</h2>
+<p>Standards axis: CLEAN. Spec axis R1 found the unreachable test was stopped by egress policy before dialing; explicit loopback allowance fixed it. R2: CLEAN. Parent checks: real TLS run, both-engine audit test, planner fixtures, ShellCheck, actionlint and whitespace validation passed.</p>
+</html>

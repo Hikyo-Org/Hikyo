@@ -17,6 +17,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/lint"
+	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
 type auditExemptions struct {
@@ -283,21 +284,26 @@ func TestInvariantAuditNoAggregates(t *testing.T) {
 		"authority_id", "object_type", "object_id", "outcome", "correlation_id",
 		"source_ip", "user_agent", "origin", "payload",
 	}
-	slices.Sort(wantTenant)
-	slices.Sort(wantInstance)
-	for _, engine := range []string{"sqlite", "postgres"} {
-		bodies := tableBodies(t, filepath.Join("..", "store", "migrations", engine))
-		for table, want := range map[string][]string{
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		for table, envelope := range map[string][]string{
 			"audit_tenant_events":   wantTenant,
 			"audit_instance_events": wantInstance,
 		} {
-			got := columnNames(bodies[table])
-			slices.Sort(got)
-			if strings.Join(got, ",") != strings.Join(want, ",") {
-				t.Errorf("%s: %s columns drifted from the pinned envelope:\n got %v\nwant %v", engine, table, got, want)
+			want := slices.Clone(envelope)
+			query := "SELECT name || ',' FROM pragma_table_info('" + table + "') ORDER BY name"
+			if db.Engine() == store.EnginePostgres {
+				// PostgreSQL assigns export order at commit; SQLite's serialized
+				// writer uses seq. Inspect the applied schema, including ALTERs.
+				want = append(want, "commit_seq")
+				query = "SELECT column_name || ',' FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '" + table + "' ORDER BY column_name"
+			}
+			slices.Sort(want)
+			got := strings.TrimSuffix(queryStrings(t, db, query), ",")
+			if got != strings.Join(want, ",") {
+				t.Errorf("%s: columns drifted from the pinned envelope:\n got %s\nwant %v", table, got, want)
 			}
 		}
-	}
+	})
 }
 
 // tableBodies returns each CREATE TABLE statement's body text per table.
@@ -319,53 +325,6 @@ func tableBodies(t *testing.T, migDir string) map[string]string {
 		}
 		for _, m := range createRe.FindAllStringSubmatch(string(b), -1) {
 			out[strings.ToLower(m[1])] = m[2]
-		}
-	}
-	return out
-}
-
-// columnNames extracts the column identifiers from a CREATE TABLE body,
-// skipping table-level constraints.
-func columnNames(body string) []string {
-	// Strip line comments first: a comma inside prose would otherwise split
-	// into a fragment the identifier regex happily reads as a column.
-	var stripped []string
-	for _, line := range strings.Split(body, "\n") {
-		if i := strings.Index(line, "--"); i >= 0 {
-			line = line[:i]
-		}
-		stripped = append(stripped, line)
-	}
-	body = strings.Join(stripped, "\n")
-
-	var out []string
-	depth := 0
-	var lines []string
-	current := strings.Builder{}
-	for _, r := range body {
-		switch r {
-		case '(':
-			depth++
-		case ')':
-			depth--
-		case ',':
-			if depth == 0 {
-				lines = append(lines, current.String())
-				current.Reset()
-				continue
-			}
-		}
-		current.WriteRune(r)
-	}
-	lines = append(lines, current.String())
-	constraint := regexp.MustCompile(`(?i)^\s*(CHECK|UNIQUE|PRIMARY|FOREIGN|CONSTRAINT)\b`)
-	ident := regexp.MustCompile(`^\s*(\w+)`)
-	for _, line := range lines {
-		if strings.TrimSpace(line) == "" || constraint.MatchString(line) {
-			continue
-		}
-		if m := ident.FindStringSubmatch(line); m != nil {
-			out = append(out, strings.ToLower(m[1]))
 		}
 	}
 	return out
