@@ -35,11 +35,32 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | quote }}
 {{- if and (not (hasPrefix "https://" $origin)) (not .Values.network.allowPlaintextOrigin) -}}
   {{- fail "externalOrigin must use https:// unless network.allowPlaintextOrigin is true" -}}
 {{- end -}}
+{{- if and .Values.mcp.enabled (not (hasPrefix "https://" $origin)) -}}
+  {{- fail "mcp.enabled requires an https:// externalOrigin" -}}
+{{- end -}}
 {{- $portSuffix := regexFind `:[0-9]+$` $origin -}}
 {{- if $portSuffix -}}
   {{- $port := atoi (trimPrefix ":" $portSuffix) -}}
   {{- if or (gt $port 65535) (and (hasPrefix "https://" $origin) (eq $port 443)) (and (hasPrefix "http://" $origin) (eq $port 80)) -}}
     {{- fail "externalOrigin port must be in 1..65535 and must omit the scheme default" -}}
+  {{- end -}}
+{{- end -}}
+{{- if and (not .Values.mcp.enabled) (not (empty .Values.mcp.allowedOrigins)) -}}
+  {{- fail "mcp.allowedOrigins requires mcp.enabled=true" -}}
+{{- end -}}
+{{- if ne (len .Values.mcp.allowedOrigins) (len (uniq .Values.mcp.allowedOrigins)) -}}
+  {{- fail "mcp.allowedOrigins must not contain duplicates" -}}
+{{- end -}}
+{{- range $mcpOrigin := .Values.mcp.allowedOrigins -}}
+  {{- if or (contains "\\" $mcpOrigin) (not (regexMatch `^https?://([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(:[1-9][0-9]{0,4})?$` $mcpOrigin)) -}}
+    {{- fail (printf "mcp.allowedOrigins entry %q must be an exact canonical lowercase HTTP(S) origin" $mcpOrigin) -}}
+  {{- end -}}
+  {{- $mcpPortSuffix := regexFind `:[0-9]+$` $mcpOrigin -}}
+  {{- if $mcpPortSuffix -}}
+    {{- $mcpPort := atoi (trimPrefix ":" $mcpPortSuffix) -}}
+    {{- if or (gt $mcpPort 65535) (and (hasPrefix "https://" $mcpOrigin) (eq $mcpPort 443)) (and (hasPrefix "http://" $mcpOrigin) (eq $mcpPort 80)) -}}
+      {{- fail (printf "mcp.allowedOrigins entry %q port must be in 1..65535 and must omit the scheme default" $mcpOrigin) -}}
+    {{- end -}}
   {{- end -}}
 {{- end -}}
 {{- if .Values.database.tls.existingSecret -}}

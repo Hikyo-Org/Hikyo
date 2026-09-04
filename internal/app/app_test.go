@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -143,6 +144,105 @@ func TestServeCancellationStopsBothListeners(t *testing.T) {
 			conn.Close()
 			t.Errorf("listener %s still accepts after shutdown", address)
 		}
+	}
+}
+
+func startDrainTestServer(t *testing.T, handler http.Handler) (*managedHTTPServer, string, <-chan error) {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := newHTTPServer(handler)
+	done := make(chan error, 1)
+	go func() { done <- httpServer.Serve(listener) }()
+	return httpServer, "http://" + listener.Addr().String(), done
+}
+
+func TestMCPGracefulShutdownLetsActiveCallComplete(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	httpServer, baseURL, serveDone := startDrainTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/mcp" {
+			http.NotFound(w, r)
+			return
+		}
+		close(started)
+		<-release
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	responseDone := make(chan error, 1)
+	go func() {
+		response, err := http.Post(baseURL+"/mcp", "application/json", strings.NewReader(`{}`))
+		if err == nil {
+			response.Body.Close()
+			if response.StatusCode != http.StatusNoContent {
+				err = errors.New("active MCP call returned an unexpected status")
+			}
+		}
+		responseDone <- err
+	}()
+	<-started
+	shutdownDone := make(chan error, 1)
+	go func() { shutdownDone <- shutdownHTTPServers(time.Second, httpServer) }()
+	close(release)
+	if err := <-responseDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-shutdownDone; err != nil {
+		t.Fatalf("graceful MCP drain: %v", err)
+	}
+	if err := <-serveDone; !errors.Is(err, http.ErrServerClosed) {
+		t.Fatalf("Serve() = %v, want http.ErrServerClosed", err)
+	}
+}
+
+func TestMCPGracefulShutdownCancelsCallWhenDrainExpires(t *testing.T) {
+	started := make(chan struct{})
+	cancelled := make(chan struct{})
+	finishCleanup := make(chan struct{})
+	cleaned := make(chan struct{})
+	httpServer, baseURL, serveDone := startDrainTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-r.Context().Done()
+		close(cancelled)
+		<-finishCleanup
+		close(cleaned)
+	}))
+
+	responseDone := make(chan error, 1)
+	go func() {
+		response, err := http.Post(baseURL+"/mcp", "application/json", strings.NewReader(`{}`))
+		if err == nil {
+			response.Body.Close()
+		}
+		responseDone <- err
+	}()
+	<-started
+	shutdownDone := make(chan error, 1)
+	go func() { shutdownDone <- shutdownHTTPServers(25*time.Millisecond, httpServer) }()
+	select {
+	case <-cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("active MCP request context was not cancelled after drain expiry")
+	}
+	select {
+	case err := <-shutdownDone:
+		t.Fatalf("shutdown returned before active request cleanup: %v", err)
+	case <-time.After(25 * time.Millisecond):
+	}
+	close(finishCleanup)
+	<-cleaned
+	err := <-shutdownDone
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("drain expiry = %v, want context deadline exceeded", err)
+	}
+	if err := <-responseDone; err == nil {
+		t.Fatal("client unexpectedly received a successful response after forced MCP cancellation")
+	}
+	if err := <-serveDone; !errors.Is(err, http.ErrServerClosed) {
+		t.Fatalf("Serve() = %v, want http.ErrServerClosed", err)
 	}
 }
 

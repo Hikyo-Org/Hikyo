@@ -48,6 +48,11 @@ serve any request. Point the load balancer's health check at `/readyz` on the
 operational port. A node whose lease datastore is unreachable, or whose schema
 lags the database, reports not-ready and is taken out of rotation.
 
+The MCP endpoint follows the same rule. It emits no session ID, keeps no
+connection-local state, and seals cursors with the shared root-key authority.
+Successive pages may reach different replicas. See the
+[MCP operations runbook](/docs/mcp/) for the deployment and public checks.
+
 Enable it in the chart:
 
 ```yaml

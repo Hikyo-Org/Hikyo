@@ -107,6 +107,14 @@ spec:
               value: {{ .Values.updates.channel | quote }}
             - name: HIKYO_EXTERNAL_ORIGIN
               value: {{ .Values.externalOrigin | quote }}
+            {{- if .Values.mcp.enabled }}
+            - name: HIKYO_MCP_ENABLED
+              value: "true"
+            {{- if .Values.mcp.allowedOrigins }}
+            - name: HIKYO_MCP_ALLOWED_ORIGINS
+              value: {{ join "," .Values.mcp.allowedOrigins | quote }}
+            {{- end }}
+            {{- end }}
             {{- if $trustedProxyCIDRs }}
             - name: HIKYO_TRUSTED_PROXY_CIDRS
               value: {{ $trustedProxyCIDRs | quote }}

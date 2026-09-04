@@ -37,6 +37,15 @@ network.trustedProxyCIDRs. The read-only root filesystem makes PostgreSQL the
 supported chart datastore. For a private PostgreSQL CA, also set
 database.tls.existingSecret and put its key name in database.tls.key.
 
+{{- if .Values.mcp.enabled }}
+MCP: enabled at {{ .Values.externalOrigin }}/mcp
+  protocol: 2026-07-28 stateless JSON
+  session stickiness: not required
+  client credentials: managed outside this chart
+{{- else }}
+MCP: disabled (set mcp.enabled=true to expose /mcp)
+{{- end }}
+
 {{- if .Values.operator.enabled }}
 Operator: enabled
   mode: {{ if empty .Values.operator.namespaces }}cluster-wide{{ else }}namespaced{{ end }}

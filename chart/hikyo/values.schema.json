@@ -42,6 +42,19 @@
       }
     },
     "externalOrigin": {"type": "string", "minLength": 1},
+    "mcp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "allowedOrigins"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "allowedOrigins": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
     "ha": {
       "type": "object",
       "properties": {

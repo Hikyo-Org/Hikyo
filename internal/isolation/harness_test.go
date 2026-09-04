@@ -99,11 +99,38 @@ func authService(t *testing.T, db *store.DB) *service.Auth {
 func authServiceWithKeyring(t *testing.T, db *store.DB) *service.Auth {
 	t.Helper()
 	kr := probeKeyring(t, db)
+	return authServiceForKeyring(t, db, kr)
+}
+
+func authServiceForKeyring(t *testing.T, db *store.DB, kr *crypto.Keyring) *service.Auth {
+	t.Helper()
 	limiter, err := admission.New(admission.Config{ArgonMemoryKiB: crypto.PasswordFloor.MemoryKiB})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return &service.Auth{DB: db, Keyring: kr, KDF: crypto.PasswordFloor, Admission: limiter}
+}
+
+// reloadProbeKeyring models another process loading the shared hierarchy from
+// the same root authority. It intentionally returns a distinct keyring object.
+func reloadProbeKeyring(t *testing.T, db *store.DB) *crypto.Keyring {
+	t.Helper()
+	probeKeyringMu.Lock()
+	registration, ok := probeKeyringRegistry[db]
+	if !ok {
+		probeKeyringMu.Unlock()
+		t.Fatal("reload probe keyring: datastore has no registered root")
+	}
+	root := bytes.Clone(registration.root)
+	probeKeyringMu.Unlock()
+	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
+	if err != nil {
+		t.Fatalf("reload probe keyring: %v", err)
+	}
+	if kr == registration.keyring {
+		t.Fatal("reload probe keyring returned the original process object")
+	}
+	return kr
 }
 
 func queryString(t *testing.T, db *store.DB, q string) string {

@@ -33,6 +33,33 @@ const (
 	ToolListRevisions        = "hikyo_list_revisions"
 )
 
+type productionToolRegistration struct {
+	name     string
+	register func(*Registry, ProductionServices) error
+}
+
+// productionToolCatalog is the single source for both installation and the
+// closed telemetry label set. Pairing each name with its registration function
+// prevents a newly installed tool from silently falling into the "other"
+// metric label.
+var productionToolCatalog = [...]productionToolRegistration{
+	{ToolListDefinitions, registerListDefinitions},
+	{ToolListEnvironments, registerListEnvironments},
+	{ToolInspectConfiguration, registerInspectConfiguration},
+	{ToolListPendingChanges, registerListPendingChanges},
+	{ToolListRevisions, registerListRevisions},
+}
+
+// ProductionToolNames returns the closed phase-1 catalog for telemetry and
+// interoperability checks without exposing mutable registry state.
+func ProductionToolNames() []string {
+	names := make([]string, 0, len(productionToolCatalog))
+	for _, tool := range productionToolCatalog {
+		names = append(names, tool.name)
+	}
+	return names
+}
+
 // Narrow service interfaces. The concrete service structs satisfy them; a test
 // double implements them without a datastore.
 type (
@@ -222,11 +249,8 @@ func RegisterProductionTools(registry *Registry, services ProductionServices) er
 		services.Configuration == nil || services.Pending == nil || services.Revisions == nil {
 		return errors.New("mcpserver: incomplete production services")
 	}
-	for _, register := range []func(*Registry, ProductionServices) error{
-		registerListDefinitions, registerListEnvironments, registerInspectConfiguration,
-		registerListPendingChanges, registerListRevisions,
-	} {
-		if err := register(registry, services); err != nil {
+	for _, tool := range productionToolCatalog {
+		if err := tool.register(registry, services); err != nil {
 			return err
 		}
 	}

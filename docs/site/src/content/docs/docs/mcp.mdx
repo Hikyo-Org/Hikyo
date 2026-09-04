@@ -1,0 +1,316 @@
+---
+title: MCP operations
+description: Deploy, authorize, validate, rotate, and troubleshoot Hikyo's read-only MCP endpoint.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/mcp.mdx
+---
+
+Hikyo exposes one opt-in, stateless JSON endpoint at the canonical public URL
+`https://hikyo.example.com/mcp`. It implements MCP `2026-07-28` and five
+bounded read tools. It does not expose resources, prompts, subscriptions,
+write tools, secret plaintext, or secret draft material.
+
+MCP authentication is a Hikyo-managed service-account bearer. Hikyo does not
+publish OAuth authorization-server metadata and does not perform automatic
+OAuth registration or token exchange. A client's OAuth button is therefore
+not a substitute for provisioning a workload or automation credential in
+Hikyo.
+
+## Enable the endpoint
+
+Set all three production facts explicitly:
+
+```dotenv
+HIKYO_EXTERNAL_ORIGIN=https://hikyo.example.com
+HIKYO_MCP_ENABLED=true
+HIKYO_MCP_ALLOWED_ORIGINS=
+```
+
+`HIKYO_EXTERNAL_ORIGIN` has no path or trailing slash. The endpoint appends
+`/mcp`. Leave the browser-origin list empty for Go, Inspector, Codex, Claude
+Code, and OpenAI API clients because they do not send an `Origin` header. Add
+only exact browser origins when a browser MCP client is required. Wildcards,
+`null`, paths, queries, fragments, credentials, and non-canonical origins stop
+startup.
+
+The reverse proxy must:
+
+- terminate valid public HTTPS and preserve the canonical `Host`;
+- forward `POST /mcp` without rewriting the path;
+- pass `Authorization`, `Mcp-Protocol-Version`, `Mcp-Method`, and `Mcp-Name`;
+- allow request bodies up to 256 KiB and responses up to 256 KiB;
+- pass Hikyo security headers unchanged.
+
+The transport returns ordinary JSON, not an SSE session. Disable response
+buffering only if the proxy imposes a smaller body limit. Do not configure
+cookie affinity or MCP session stickiness.
+
+## Helm
+
+The chart validates MCP settings and never accepts a client credential:
+
+```yaml
+externalOrigin: https://hikyo.example.com
+mcp:
+  enabled: true
+  allowedOrigins: []
+ha:
+  enabled: true
+  replicaCount: 3
+  minAvailable: 2
+```
+
+The chart ships no Ingress. Point the Ingress at service port `8080`, use
+`/readyz` on operational port `8081` for readiness, and keep the operational
+port private. All replicas share PostgreSQL and the root-key authority. A load
+balancer may send every request to any ready replica.
+
+## Docker Compose
+
+Use the executable fixture at `deploy/mcp/compose.yaml` with its exact
+`deploy/mcp/nginx.conf` reverse proxy. It pins the proxy image by digest,
+requires a digest-pinned Hikyo image, publishes only HTTPS publicly, preserves
+the exact `/mcp` route and MCP headers, and configures no session affinity.
+Its one-shot staging service copies the root key into an owner-only file for
+the image's nonroot process; Hikyo never consumes Compose's group-readable
+file-backed secret directly. Keep the DSN, root key, and TLS key outside the
+Compose file:
+
+```bash
+export HIKYO_IMAGE='ghcr.io/hikyo-org/hikyo@sha256:<verified-release-digest>'
+export HIKYO_DB="$(secret-store read hikyo-postgres-dsn)"
+export HIKYO_EXTERNAL_ORIGIN=https://hikyo.example.com
+export HIKYO_COMPOSE_SUBNET='<dedicated-compose-network-cidr>'
+export HIKYO_ROOT_KEY_FILE=/run/credentials/hikyo-root-key
+export HIKYO_TLS_CERT_FILE=/run/credentials/hikyo-tls-cert
+export HIKYO_TLS_KEY_FILE=/run/credentials/hikyo-tls-key
+./scripts/mcp-compose-preflight.sh
+docker compose -f deploy/mcp/compose.yaml up -d
+```
+
+Replace `secret-store read` with the deployment secret store's non-logging
+read mechanism. Do not put its result in shell history or a committed env file.
+
+Compose does not add replicas to one Hikyo installation safely by itself. Use
+the Helm HA shape or an equivalent orchestrator when multiple replicas are
+needed.
+
+## Provision least privilege
+
+Use a dedicated workload or automation identity. `read` at project scope is
+enough for the five phase-1 tools and does not grant secret reveal:
+
+```bash
+hikyo sa create --org <org-id> --project <project-id> \
+  --name mcp-read-prod --kind automation
+hikyo access grant add \
+  --org <org-id> \
+  --principal <machine-principal-id> \
+  --capability read \
+  --project <project-id>
+hikyo sa credential mint \
+  --org <org-id> \
+  --project <project-id> \
+  --sa <service-account-id> \
+  --lifetime 720h \
+  --output-file /run/credentials/hikyo-mcp-token
+```
+
+Keep the returned principal ID, service-account ID, and credential ID in the
+deployment record. The bearer is shown once. Put it in the client's secret
+store or an owner-only runtime file, never in Helm values, Compose YAML,
+`.mcp.json`, shell history, logs, traces, or metrics.
+
+## Client profiles
+
+The interoperability gate pins these profiles:
+
+| Client | Pinned profile | Credential channel |
+| --- | --- | --- |
+| Official Go SDK | `github.com/modelcontextprotocol/go-sdk v1.7.0` | HTTP transport injects an environment-loaded bearer |
+| MCP Inspector | `@modelcontextprotocol/inspector 2.5.0` | Transient Authorization header, not a saved catalog |
+| Codex CLI | `0.153.2` | `bearer_token_env_var` |
+| Claude Code | `2.1.261` | `.mcp.json` environment expansion in `headers` |
+| OpenAI Responses API | remote MCP tool | request-time `authorization`, restricted `allowed_tools` |
+
+Set the credential only in the launching process:
+
+```bash
+export HIKYO_MCP_URL=https://hikyo.example.com/mcp
+export HIKYO_MCP_TOKEN="$(</run/credentials/hikyo-mcp-token)"
+```
+
+### Codex
+
+```toml
+[mcp_servers.hikyo]
+url = "https://hikyo.example.com/mcp"
+bearer_token_env_var = "HIKYO_MCP_TOKEN"
+```
+
+The equivalent command is:
+
+```bash
+codex mcp add hikyo \
+  --url "$HIKYO_MCP_URL" \
+  --bearer-token-env-var HIKYO_MCP_TOKEN
+```
+
+### Claude Code
+
+Commit only the variable references:
+
+```json
+{
+  "mcpServers": {
+    "hikyo": {
+      "type": "http",
+      "url": "${HIKYO_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer ${HIKYO_MCP_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+Claude Code warns and leaves a missing `${VAR}` reference unexpanded; it does
+not refuse the server automatically. Treat either missing-variable warning as
+fatal, correct the launching environment, and approve the project-scoped
+server only after reviewing the expanded URL and tool catalog.
+
+### MCP Inspector
+
+Inspector's CLI header is a command-line value, so expanding a production
+credential there can expose it to process inspection. For a manual smoke,
+start Inspector `2.5.0`, choose Streamable HTTP, set the URL from
+`HIKYO_MCP_URL`, and set Protocol Era to **Modern**. Paste the bearer into the
+transient Authorization field from the secret manager, call
+`hikyo_list_definitions`, then clear the field and do not save the server
+catalog. The default legacy/auto profile is not Hikyo's `2026-07-28` wire
+contract.
+
+CI runs Inspector only against a non-tenant fixture. The production public
+smoke below uses a Go process so credential values never enter command-line
+arguments.
+
+### OpenAI Responses API
+
+The OpenAI API receives MCP tool results, so use it only after approving that
+recipient. Pass the Hikyo credential on every request; the Responses API does
+not return it in the response object:
+
+```python
+import os
+from openai import OpenAI
+
+client = OpenAI()
+response = client.responses.create(
+    model=os.environ["OPENAI_MODEL"],
+    input="List the key definitions in the configured Hikyo project.",
+    tools=[{
+        "type": "mcp",
+        "server_label": "hikyo",
+        "server_url": os.environ["HIKYO_MCP_URL"],
+        "authorization": os.environ["HIKYO_MCP_TOKEN"],
+        "allowed_tools": ["hikyo_list_definitions"],
+        "require_approval": "never",
+    }],
+)
+print(response.output_text)
+```
+
+`require_approval: never` is limited here to Hikyo's closed read-only tool.
+Keep approval enabled for any future tool whose effects are not read-only.
+
+## Rotate, revoke, and prove the deployment
+
+Mint a replacement credential, update every client secret store, and make one
+successful call with the replacement. Keep the predecessor live until the
+checker below has proved it works:
+
+```bash
+hikyo sa credential mint \
+  --org <org-id> \
+  --project <project-id> \
+  --sa <service-account-id> \
+  --lifetime 720h \
+  --output-file /run/credentials/hikyo-mcp-token-next
+```
+
+Start the public checker with both credentials. It proves the predecessor is
+live, prints a safe prompt, and then polls for at most two minutes. In another
+terminal, revoke that exact credential. The first process proves the same
+credential changed from authorized to tenant-safe denial without ever writing
+the bearer, response body, or tool result:
+
+```bash
+export HIKYO_MCP_TOKEN="$(</run/credentials/hikyo-mcp-token-next)"
+export HIKYO_MCP_ROTATING_TOKEN="$(</run/credentials/hikyo-mcp-token)"
+go run ./scripts/mcp-public-smoke \
+  --url "$HIKYO_MCP_URL" \
+  --org <org-id> \
+  --project <project-id>
+unset HIKYO_MCP_TOKEN HIKYO_MCP_ROTATING_TOKEN
+```
+
+```bash
+hikyo sa credential revoke \
+  --org <org-id> \
+  --project <project-id> \
+  --sa <service-account-id> \
+  --id <old-credential-id>
+```
+
+The check proves unauthenticated discovery, the closed tool catalog, one
+authorized safe read, invalid-token denial, immediate revoked-token denial,
+and absence of an MCP session ID. Invalid and revoked credentials must return
+the same tenant-safe result.
+
+## Conformance, replicas, and shutdown
+
+CI locks `@modelcontextprotocol/conformance@0.2.0-alpha.11`, the first published
+suite profile carrying the `2026-07-28` server requirements used here, and all
+of its transitive packages. A conformance-only fixture exposes the upstream
+diagnostic tools, so no server-stateless MUST check is baselined. The committed
+baseline names only prompts/resources capabilities Hikyo deliberately does not
+advertise. Any new failure changes the baseline result and fails CI.
+
+The isolation suite sends a continuation cursor between independently loaded
+keyrings, auth/admission services, domain services, registries, and handlers
+over the shared datastore and root authority. It also asserts that no
+`Mcp-Session-Id` is emitted and that completed calls leave no shared concurrency
+claim. Shutdown tests prove an in-flight MCP call may complete inside the
+five-second drain and that expiry cancels its request context. The chart and
+Compose grace periods both exceed that server drain budget.
+
+## Metrics and logs
+
+MCP metrics use only closed labels. They never contain a raw path, ID, bearer,
+argument, result, or tenant name:
+
+| Metric | Labels |
+| --- | --- |
+| `hikyo_mcp_requests_total` | `method`, `tool`, `status` |
+| `hikyo_mcp_requests_in_flight` | none |
+| `hikyo_mcp_request_duration_seconds` | `method`, `tool` |
+
+The method labels are `server/discover`, `tools/list`, `tools/call`, and
+`other`. Tool labels are the five registered names, `none`, and `other`.
+Debug access logs use the same closed method/tool values plus status and
+duration. Trace and log exporters must not capture request headers or bodies.
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| `404` at `/mcp` | `HIKYO_MCP_ENABLED` is false, or the proxy rewrote the path. Enable it and forward exact `POST /mcp`. |
+| `401` with `WWW-Authenticate: Bearer` | The tool call supplied no single bearer header. Repair the client's runtime secret channel. |
+| `Hikyo operation refused` | The token is invalid, expired, revoked, the wrong principal class, or lacks scope. Check credential metadata and grants without logging the bearer. |
+| `unsupported protocol version` | The client did not negotiate `2026-07-28`. Upgrade it to the pinned profile. |
+| `protocol mirror headers do not match request` | A proxy or client removed or changed the modern MCP mirror headers. Preserve all three headers. |
+
+After any incident, revoke the exposed credential first, mint a replacement,
+redistribute it, and repeat the public checker. Do not widen the grant to make
+an authentication failure disappear.
+
+Next: [manage machine identities](/docs/machine-identities/).

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -38,10 +39,13 @@ const (
 	MetricAdapterTargetsAttention = "hikyo_adapter_targets_attention"
 	MetricAdapterJobsQueued       = "hikyo_adapter_jobs_queued"
 
-	MetricRequestsTotal    = "hikyo_http_requests_total"
-	MetricRequestErrors    = "hikyo_http_request_errors_total"
-	MetricRequestsInFlight = "hikyo_http_requests_in_flight"
-	MetricRequestDuration  = "hikyo_http_request_duration_seconds"
+	MetricRequestsTotal       = "hikyo_http_requests_total"
+	MetricRequestErrors       = "hikyo_http_request_errors_total"
+	MetricRequestsInFlight    = "hikyo_http_requests_in_flight"
+	MetricRequestDuration     = "hikyo_http_request_duration_seconds"
+	MetricMCPRequestsTotal    = "hikyo_mcp_requests_total"
+	MetricMCPRequestsInFlight = "hikyo_mcp_requests_in_flight"
+	MetricMCPRequestDuration  = "hikyo_mcp_request_duration_seconds"
 
 	MetricAdmissionConcurrencyLimit = "hikyo_admission_concurrency_limit"
 	MetricAdmissionInFlight         = "hikyo_admission_in_flight"
@@ -223,13 +227,16 @@ type HASnapshotter interface {
 type Metrics struct {
 	registry *prometheus.Registry
 
-	inFlight  prometheus.Gauge
-	requests  [numClasses][numStatusBuckets]prometheus.Counter
-	errors    [numClasses][numStatusBuckets]prometheus.Counter
-	durations [numClasses]prometheus.Observer
-	ha        *haCollector
-	approvals *approvalCollector
-	dyn       *dynamicCollector
+	inFlight     prometheus.Gauge
+	requests     [numClasses][numStatusBuckets]prometheus.Counter
+	errors       [numClasses][numStatusBuckets]prometheus.Counter
+	durations    [numClasses]prometheus.Observer
+	mcpRequests  *prometheus.CounterVec
+	mcpInFlight  prometheus.Gauge
+	mcpDurations *prometheus.HistogramVec
+	ha           *haCollector
+	approvals    *approvalCollector
+	dyn          *dynamicCollector
 }
 
 // SetHASource attaches the multi-node HA gauge source. It is called once
@@ -259,12 +266,29 @@ func NewMetrics(adm AdmissionSnapshotter) *Metrics {
 		Help:    "HTTP request duration in seconds by closed API surface class.",
 		Buckets: RequestLatencyBucketsSeconds(),
 	}, []string{"class"})
+	mcpRequests := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: MetricMCPRequestsTotal,
+		Help: "Total MCP requests by closed method, tool, and status bucket.",
+	}, []string{"method", "tool", "status"})
+	mcpInFlight := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: MetricMCPRequestsInFlight,
+		Help: "Current number of MCP requests in flight.",
+	})
+	mcpDurations := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    MetricMCPRequestDuration,
+		Help:    "MCP request duration in seconds by closed method and tool.",
+		Buckets: RequestLatencyBucketsSeconds(),
+	}, []string{"method", "tool"})
 	ha := newHACollector()
 	approvals := newApprovalCollector()
 	dyn := newDynamicCollector()
-	registry.MustRegister(requests, errors, inFlight, durations, newAdmissionCollector(adm), ha, approvals, dyn)
+	registry.MustRegister(requests, errors, inFlight, durations, mcpRequests, mcpInFlight, mcpDurations, newAdmissionCollector(adm), ha, approvals, dyn)
 
-	m := &Metrics{registry: registry, inFlight: inFlight, ha: ha, approvals: approvals, dyn: dyn}
+	m := &Metrics{
+		registry: registry, inFlight: inFlight,
+		mcpRequests: mcpRequests, mcpInFlight: mcpInFlight, mcpDurations: mcpDurations,
+		ha: ha, approvals: approvals, dyn: dyn,
+	}
 	for c := surfaceClass(0); c < numClasses; c++ {
 		for s := statusBucket(0); s < numStatusBuckets; s++ {
 			m.requests[c][s] = requests.WithLabelValues(classNames[c], statusNames[s])
@@ -274,7 +298,76 @@ func NewMetrics(adm AdmissionSnapshotter) *Metrics {
 		}
 		m.durations[c] = durations.WithLabelValues(classNames[c])
 	}
+	m.initializeMCPMetrics([]string{"none", "other"})
 	return m
+}
+
+var mcpMetricMethods = [...]string{"server/discover", "tools/list", "tools/call", "other"}
+
+func (m *Metrics) initializeMCPMetrics(tools []string) {
+	for _, method := range mcpMetricMethods {
+		for _, tool := range tools {
+			for _, status := range statusNames {
+				m.mcpRequests.WithLabelValues(method, tool, status).Add(0)
+			}
+			m.mcpDurations.WithLabelValues(method, tool)
+		}
+	}
+}
+
+// ObserveMCP wraps the feature-gated MCP handler with closed-cardinality
+// metrics and debug access logs. toolNames must come from the compiled
+// registry. Request-controlled method and tool strings collapse to "other".
+func (m *Metrics) ObserveMCP(next http.Handler, log *slog.Logger, toolNames []string) http.Handler {
+	knownTools := make(map[string]struct{}, len(toolNames))
+	for _, name := range toolNames {
+		knownTools[name] = struct{}{}
+	}
+	m.initializeMCPMetrics(toolNames)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method := mcpMetricMethod(r.Header.Get("Mcp-Method"))
+		tool := "none"
+		if method == "tools/call" {
+			candidate := r.Header.Get("Mcp-Name")
+			if _, ok := knownTools[candidate]; ok {
+				tool = candidate
+			} else {
+				tool = "other"
+			}
+		}
+		sw := newResponseWriter(w)
+		start := time.Now()
+		m.mcpInFlight.Inc()
+		defer func() {
+			if recover() != nil {
+				if !sw.wroteHeader {
+					http.Error(sw, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				} else {
+					sw.markRecoveredPanic()
+				}
+			}
+			m.mcpInFlight.Dec()
+			duration := time.Since(start)
+			status := statusNames[bucketForStatus(sw.status)]
+			m.mcpRequests.WithLabelValues(method, tool, status).Inc()
+			m.mcpDurations.WithLabelValues(method, tool).Observe(duration.Seconds())
+			if log != nil {
+				log.DebugContext(r.Context(), "mcp request",
+					"method", method, "tool", tool,
+					"status", sw.status, "duration_ms", duration.Milliseconds())
+			}
+		}()
+		next.ServeHTTP(sw, r)
+	})
+}
+
+func mcpMetricMethod(candidate string) string {
+	for _, method := range mcpMetricMethods[:len(mcpMetricMethods)-1] {
+		if candidate == method {
+			return candidate
+		}
+	}
+	return "other"
 }
 
 func (m *Metrics) record(class surfaceClass, code int, d time.Duration) {

@@ -53,6 +53,7 @@ release/trust/*.key
 # Playwright's own output. The build output is deliberately NOT committed —
 # a minified bundle is unreviewable, and a stale one would ship silently.
 web/node_modules/
+scripts/mcp-conformance/node_modules/
 web/test-results/
 web/playwright-report/
 web/.playwright/

@@ -99,8 +99,10 @@ func mustCreateKey(t *testing.T, keys *service.Keys, scope domain.Scope, name st
 }
 
 type workloadCredential struct {
-	Principal domain.PrincipalID
-	token     string
+	Principal    domain.PrincipalID
+	AccountID    string
+	CredentialID string
+	token        string
 }
 
 // mintWorkload creates a workload service account and mints one credential for
@@ -116,7 +118,10 @@ func mintWorkload(t *testing.T, db *store.DB, auth *service.Auth, scope domain.S
 	if err != nil {
 		t.Fatalf("mint credential %s: %v", name, err)
 	}
-	return workloadCredential{Principal: sa.Principal, token: minted.Value}
+	return workloadCredential{
+		Principal: sa.Principal, AccountID: sa.ID,
+		CredentialID: minted.Credential.ID, token: minted.Value,
+	}
 }
 
 func extractNextCursor(t *testing.T, body []byte) string {
@@ -313,9 +318,24 @@ func TestMCPToolsEndToEndCanaryAndDenial(t *testing.T) {
 			httptest.NewRequest(http.MethodGet, "http://127.0.0.1/metrics", nil))
 		assertMCPNoCanary(t, "metrics", metricsRec.Body.Bytes())
 
-		// Alternating replicas: a cursor minted by one handler is accepted by an
-		// independent handler with its own registry over the same datastore.
-		other := setupMCPHandler(t, sealer, services)
+		// Alternating replicas: boot a distinct keyring, auth/admission services,
+		// domain services, registry, and handler from the shared datastore and root
+		// authority. A cursor minted by replica one must work on replica two.
+		replicaKeyring := reloadProbeKeyring(t, db)
+		replicaAuth := authServiceForKeyring(t, db, replicaKeyring)
+		replicaServices := mcpserver.ProductionServices{
+			Admission:     &service.MCPAdmission{DB: db},
+			Definitions:   &service.Keys{DB: db, Keyring: replicaKeyring},
+			Environments:  &service.Environments{DB: db, Keyring: replicaKeyring},
+			Configuration: &service.Values{DB: db, Keyring: replicaKeyring, Auth: replicaAuth},
+			Pending:       &service.Revisions{DB: db, Keyring: replicaKeyring, Auth: replicaAuth},
+			Revisions:     &service.Revisions{DB: db, Keyring: replicaKeyring, Auth: replicaAuth},
+		}
+		replicaSealer, err := replicaKeyring.MCPCursorSealer()
+		if err != nil {
+			t.Fatal(err)
+		}
+		other := setupMCPHandler(t, replicaSealer, replicaServices)
 		first := mcpCall(t, handler, granted.token, mcpserver.ToolListDefinitions,
 			`{"org_id":"org_a","project_id":"prj_a1","page_size":1}`)
 		cursor := extractNextCursor(t, first.Body.Bytes())
@@ -330,6 +350,24 @@ func TestMCPToolsEndToEndCanaryAndDenial(t *testing.T) {
 		}
 		if inflight := queryInt(t, db, `SELECT COUNT(*) FROM mcp_inflight`); inflight != 0 {
 			t.Fatalf("completed MCP calls left %d shared concurrency claims", inflight)
+		}
+
+		// Revocation is uncached. The credential that just succeeded through both
+		// replicas is denied on the very next request, with the exact same public
+		// result as a token that never existed.
+		identities := &service.Identities{DB: db, Auth: auth}
+		if err := identities.RevokeCredential(ctx, service.LocalPrincipal(custodian), projectScope,
+			granted.AccountID, granted.CredentialID); err != nil {
+			t.Fatalf("revoke MCP credential: %v", err)
+		}
+		revoked := mcpCall(t, other, granted.token, mcpserver.ToolListDefinitions,
+			`{"org_id":"org_a","project_id":"prj_a1"}`)
+		invalidAfterRevoke := mcpCall(t, other, "not-a-real-token", mcpserver.ToolListDefinitions,
+			`{"org_id":"org_a","project_id":"prj_a1"}`)
+		if revoked.Code != http.StatusOK || revoked.Body.String() != invalidAfterRevoke.Body.String() ||
+			!strings.Contains(revoked.Body.String(), mcpserver.SafeOperationError) {
+			t.Fatalf("revoked result differs from invalid-token result: revoked=%d %q invalid=%d %q",
+				revoked.Code, revoked.Body.String(), invalidAfterRevoke.Code, invalidAfterRevoke.Body.String())
 		}
 	})
 }

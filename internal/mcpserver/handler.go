@@ -171,7 +171,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	requestedVersion, requestedName := metadataFrom(envelope.Params)
 	headerVersions := r.Header.Values("Mcp-Protocol-Version")
-	if len(headerVersions) != 1 || requestedVersion == "" || headerVersions[0] != requestedVersion {
+	if len(headerVersions) != 1 || (requestedVersion != "" && headerVersions[0] != requestedVersion) {
 		writeRPCError(w, http.StatusBadRequest, envelope.ID, -32020, "protocol mirror headers do not match request", nil)
 		return
 	}
@@ -181,6 +181,13 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		(envelope.Method == "tools/call" && (len(nameHeaders) != 1 || nameHeaders[0] != requestedName)) ||
 		(envelope.Method != "tools/call" && len(nameHeaders) != 0) {
 		writeRPCError(w, http.StatusBadRequest, envelope.ID, -32020, "protocol mirror headers do not match request", nil)
+		return
+	}
+	if requestedVersion == "" {
+		// Missing modern request metadata is an invalid-params error. The SDK
+		// owns that schema check; a present mirror header cannot turn malformed
+		// body metadata into a header-mismatch error.
+		h.serveSDK(w, r, envelope.Method, envelope.ID, MaxStaticResponseBytes, nil)
 		return
 	}
 	if requestedVersion != "" && requestedVersion != ProtocolVersion {

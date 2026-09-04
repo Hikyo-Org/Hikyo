@@ -53,11 +53,14 @@ render_mode no-rollouts --set operator.triggerRollouts=false
 render_mode native-tls \
 	--set 'network.trustedProxyCIDRs={}' \
 	--set tls.existingSecret=fixture-tls
+render_mode mcp-enabled \
+	--set mcp.enabled=true \
+	--set 'mcp.allowedOrigins={https://assistant.example.com,http://localhost:6274}'
 
-python3 - "$tmp/cluster-wide.yaml" "$tmp/namespaced.yaml" "$tmp/no-rollouts.yaml" "$tmp/native-tls.yaml" <<'PY' || exit 1
+python3 - "$tmp/cluster-wide.yaml" "$tmp/namespaced.yaml" "$tmp/no-rollouts.yaml" "$tmp/native-tls.yaml" "$tmp/mcp-enabled.yaml" <<'PY' || exit 1
 import sys, yaml
 
-cluster_wide, namespaced, no_rollouts, native_tls = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+cluster_wide, namespaced, no_rollouts, native_tls, mcp_enabled = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
 
 def load(path):
     with open(path) as f:
@@ -370,7 +373,17 @@ tls_docs = load(native_tls)
 assert_hardened(tls_docs, "native-tls")
 assert_server_network(tls_docs, "native-tls", True)
 
-print("Chart check: every RBAC rule set, TokenRequest scope, stamp-root grant, hardening, args and the exact env allowlist asserted")
+mcp_docs = load(mcp_enabled)
+assert_hardened(mcp_docs, "mcp-enabled")
+assert_server_network(mcp_docs, "mcp-enabled", False)
+mcp_server = next(c for d in by(mcp_docs, "Deployment") for c in d["spec"]["template"]["spec"]["containers"] if c["name"] == "server")
+mcp_env = {e["name"]: e.get("value") for e in mcp_server.get("env", [])}
+if mcp_env.get("HIKYO_MCP_ENABLED") != "true":
+    fail(f"mcp-enabled: HIKYO_MCP_ENABLED = {mcp_env.get('HIKYO_MCP_ENABLED')}")
+if mcp_env.get("HIKYO_MCP_ALLOWED_ORIGINS") != "https://assistant.example.com,http://localhost:6274":
+    fail(f"mcp-enabled: HIKYO_MCP_ALLOWED_ORIGINS = {mcp_env.get('HIKYO_MCP_ALLOWED_ORIGINS')}")
+
+print("Chart check: every RBAC rule set, TokenRequest scope, stamp-root grant, hardening, MCP config, args and the exact env allowlist asserted")
 PY
 
 if grep -Eh '[0-9a-f]{64}' "$tmp"/*.yaml | grep -Ev 'sha256:[0-9a-f]{64}' >/dev/null; then
@@ -416,6 +429,15 @@ if helm template fixture "$chart" \
 	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' >/dev/null 2>&1; then
 	fail 'chart accepted plaintext externalOrigin without network.allowPlaintextOrigin'
 fi
+if helm template fixture "$chart" \
+	--set database.existingSecret=fixture \
+	--set rootKey.existingSecret=fixture-root-key \
+	--set externalOrigin=http://hikyo.example.com \
+	--set network.allowPlaintextOrigin=true \
+	--set mcp.enabled=true \
+	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' >/dev/null 2>&1; then
+	fail 'chart accepted plaintext externalOrigin while MCP is enabled'
+fi
 for invalid_origin in \
 	'https://hikyo.example.com/path' \
 	'https://:' \
@@ -430,6 +452,46 @@ for invalid_origin in \
 		--set-json externalOrigin="$origin_json" \
 		--set 'network.trustedProxyCIDRs={10.42.0.0/16}' >/dev/null 2>&1; then
 		fail "chart accepted noncanonical externalOrigin $invalid_origin"
+	fi
+done
+if helm template fixture "$chart" \
+	--set database.existingSecret=fixture \
+	--set rootKey.existingSecret=fixture-root-key \
+	--set externalOrigin=https://hikyo.example.com \
+	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
+	--set 'mcp.allowedOrigins={https://assistant.example.com}' >/dev/null 2>&1; then
+	fail 'chart accepted MCP browser origins while MCP is disabled'
+fi
+if helm template fixture "$chart" \
+	--set database.existingSecret=fixture \
+	--set rootKey.existingSecret=fixture-root-key \
+	--set externalOrigin=https://hikyo.example.com \
+	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
+	--set mcp.enabled=true \
+	--set 'mcp.allowedOrigins={*}' >/dev/null 2>&1; then
+	fail 'chart accepted a wildcard MCP browser origin'
+fi
+if helm template fixture "$chart" \
+	--set database.existingSecret=fixture \
+	--set rootKey.existingSecret=fixture-root-key \
+	--set externalOrigin=https://hikyo.example.com \
+	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
+	--set mcp.enabled=true \
+	--set mcp.token=must-not-exist >/dev/null 2>&1; then
+	fail 'chart accepted an undeclared MCP credential value'
+fi
+for invalid_mcp_origin in \
+	https://Assistant.example.com \
+	https://assistant.example.com:443 \
+	https://assistant.example.com:70000; do
+	if helm template fixture "$chart" \
+		--set database.existingSecret=fixture \
+		--set rootKey.existingSecret=fixture-root-key \
+		--set externalOrigin=https://hikyo.example.com \
+		--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
+		--set mcp.enabled=true \
+		--set "mcp.allowedOrigins={$invalid_mcp_origin}" >/dev/null 2>&1; then
+		fail "chart accepted noncanonical MCP browser origin $invalid_mcp_origin"
 	fi
 done
 # A designated ServiceAccount for a namespace outside the watch set is refused.
