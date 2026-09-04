@@ -47,11 +47,7 @@ func (s *Revisions) Restore(ctx context.Context, actor Actor, scope domain.Scope
 		out.Preview = ImpactPreview{}
 		announced = nil
 		now := s.now()
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpRevisionRestore, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpRevisionRestore, scope, now)
 		if err != nil {
 			return err
 		}

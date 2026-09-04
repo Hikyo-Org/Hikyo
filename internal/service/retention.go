@@ -98,10 +98,7 @@ type Retention struct {
 }
 
 func (s *Retention) now() time.Time {
-	if s.Now == nil {
-		return time.Now().UTC()
-	}
-	return s.Now().UTC()
+	return nowOr(s.Now)
 }
 
 func storePolicy(policy RetentionPolicy) store.RetentionPolicy {
@@ -162,11 +159,7 @@ func formatRetentionPolicy(policy RetentionPolicy) string {
 func (s *Retention) GetOrg(ctx context.Context, actor Actor, orgID domain.OrgID) (RetentionPolicy, error) {
 	var out RetentionPolicy
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpOrgRetentionRead, domain.Scope{Org: orgID})
+		_, p, err := authorize(ctx, az, actor, authz.OpOrgRetentionRead, domain.Scope{Org: orgID}, s.now())
 		if err != nil {
 			return err
 		}
@@ -189,11 +182,7 @@ func (s *Retention) SetOrg(ctx context.Context, actor Actor, orgID domain.OrgID,
 	}
 	var out RetentionPolicy
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpOrgRetentionUpdate, domain.Scope{Org: orgID})
+		caller, p, err := authorize(ctx, az, actor, authz.OpOrgRetentionUpdate, domain.Scope{Org: orgID}, s.now())
 		if err != nil {
 			return err
 		}
@@ -249,11 +238,7 @@ func (s *Retention) SetOrg(ctx context.Context, actor Actor, orgID domain.OrgID,
 func (s *Retention) GetProject(ctx context.Context, actor Actor, scope domain.Scope) (ProjectRetention, error) {
 	var out ProjectRetention
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpProjectRetentionRead, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpProjectRetentionRead, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -279,11 +264,7 @@ func (s *Retention) GetProject(ctx context.Context, actor Actor, scope domain.Sc
 func (s *Retention) SetProject(ctx context.Context, actor Actor, scope domain.Scope, want *RetentionPolicy) (ProjectRetention, error) {
 	var out ProjectRetention
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpProjectRetentionUpdate, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpProjectRetentionUpdate, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -577,11 +558,7 @@ func (s *Retention) GetHealth(ctx context.Context, actor Actor) (PruneHealth, er
 	var out PruneHealth
 	now := s.now()
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpRetentionHealthRead, domain.Scope{})
+		caller, proof, err := authorize(ctx, az, actor, authz.OpRetentionHealthRead, domain.Scope{}, now)
 		if err != nil {
 			return err
 		}

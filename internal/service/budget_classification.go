@@ -39,7 +39,9 @@ type budgetClassification struct {
 }
 
 // operationBudgetClass classifies every authz operation. Exported for the
-// conformance totality test via BudgetClassOf; never consulted at runtime.
+// operationBudgetClass is consulted at runtime by chargeDefaultAtEntry
+// (budget.go) to confirm an operation is default-expensive before charging, and
+// enumerated at build time by the conformance totality test via BudgetClassOf.
 var operationBudgetClass = buildBudgetClassification()
 
 // BudgetClassOf reports an operation's classification and whether it is known.

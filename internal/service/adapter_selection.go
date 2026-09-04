@@ -108,11 +108,7 @@ func (s *Adapters) resolveTargetKeys(ctx context.Context, actor Actor, scope dom
 	}
 	var catalogue []store.CatalogueKey
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpAdapterConfigure, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, s.now())
 		if err != nil {
 			return err
 		}

@@ -75,10 +75,7 @@ type ProjectSettings struct {
 }
 
 func (s *ProjectSettings) now() time.Time {
-	if s.Now == nil {
-		return time.Now().UTC()
-	}
-	return s.Now().UTC()
+	return nowOr(s.Now)
 }
 
 // GetEnvironment reads one environment's protection state and window. It is
@@ -88,11 +85,7 @@ func (s *ProjectSettings) now() time.Time {
 func (s *ProjectSettings) GetEnvironment(ctx context.Context, actor Actor, scope domain.Scope) (EnvironmentSettings, error) {
 	var out EnvironmentSettings
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpEnvSettingsRead, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpEnvSettingsRead, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -116,11 +109,7 @@ func (s *ProjectSettings) SetEnvironment(ctx context.Context, actor Actor, scope
 		if want.HasWindow && want.Window < 0 {
 			return ErrNegativeWindow
 		}
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpEnvSettingsUpdate, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpEnvSettingsUpdate, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -261,11 +250,7 @@ type MachineRevealSettings struct {
 func (s *ProjectSettings) GetMachineReveal(ctx context.Context, actor Actor, scope domain.Scope) (MachineRevealSettings, error) {
 	var out MachineRevealSettings
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpProjectMachineRevealGet, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpProjectMachineRevealGet, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -289,11 +274,7 @@ func (s *ProjectSettings) GetMachineReveal(ctx context.Context, actor Actor, sco
 func (s *ProjectSettings) SetMachineReveal(ctx context.Context, actor Actor, scope domain.Scope, enabled bool) (MachineRevealSettings, error) {
 	var out MachineRevealSettings
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpProjectMachineRevealSet, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpProjectMachineRevealSet, scope, s.now())
 		if err != nil {
 			return err
 		}

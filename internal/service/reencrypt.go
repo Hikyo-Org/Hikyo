@@ -78,10 +78,7 @@ func (s *Reencrypt) chunkPause() time.Duration {
 }
 
 func (s *Reencrypt) now() time.Time {
-	if s.Now == nil {
-		return time.Now().UTC()
-	}
-	return s.Now().UTC()
+	return nowOr(s.Now)
 }
 
 // ReencryptResult reports one reencrypt run: the scope and how many rows moved.
@@ -487,11 +484,7 @@ func (s *Reencrypt) pause(ctx context.Context) error {
 
 func (s *Reencrypt) retireInstance(ctx context.Context, actor Actor, moved int, active uint32, tables []instanceTable) error {
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpReencryptInstance, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpReencryptInstance, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}
@@ -645,11 +638,7 @@ func (s *Reencrypt) walkTable(
 // scope.
 func (s *Reencrypt) retireProject(ctx context.Context, actor Actor, scope domain.Scope, moved int, active uint32, tables []projectTable) error {
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpReencryptProject, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpReencryptProject, scope, s.now())
 		if err != nil {
 			return err
 		}

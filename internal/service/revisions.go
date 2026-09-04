@@ -114,11 +114,7 @@ func (s *Revisions) History(ctx context.Context, actor Actor, scope domain.Scope
 	var out []RevisionView
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
 		out = nil
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpRevisionList, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpRevisionList, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -159,11 +155,7 @@ func (s *Revisions) Show(ctx context.Context, actor Actor, scope domain.Scope, r
 	var out RevisionDetail
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
 		out = RevisionDetail{}
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpRevisionShow, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpRevisionShow, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -261,11 +253,7 @@ func (s *Revisions) Signals(ctx context.Context, actor Actor, scope domain.Scope
 	var out EnvironmentSignals
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
 		out = EnvironmentSignals{EnvironmentID: string(scope.Env)}
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpRevisionSignals, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpRevisionSignals, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -340,11 +328,7 @@ func (s *Revisions) PendingDrafts(ctx context.Context, actor Actor, scope domain
 	var out []PendingDraft
 	err = tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
 		out = nil
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpValuePendingList, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpValuePendingList, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -500,7 +484,7 @@ func (s *Revisions) Export(ctx context.Context, actor Actor, scope domain.Scope,
 					unit = append(unit, entry.KeyID)
 				}
 			}
-			gate := ceremonyGate(ctx, s.Auth, az, caller, revealIntentBuilder(string(scope.Env)))
+			gate := ceremonyGate(ctx, s.Auth, az, caller, disclosureIntent(PurposeReveal, string(scope.Env)))
 			if err := gate(unit); err != nil {
 				return revisionExportResult{}, err
 			}
@@ -588,11 +572,7 @@ func (s *Revisions) RotateTokenKey(ctx context.Context, actor Actor) (TokenKeyRo
 	defer abort()
 	next.CreatedAt = store.CanonTime(s.now())
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpRotateTokenKey, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpRotateTokenKey, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}

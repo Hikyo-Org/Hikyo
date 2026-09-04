@@ -78,10 +78,7 @@ type Workspace struct {
 }
 
 func (s *Workspace) now() time.Time {
-	if s.Now == nil {
-		return time.Now().UTC()
-	}
-	return s.Now().UTC()
+	return nowOr(s.Now)
 }
 
 // ---------------------------------------------------------------------------
@@ -104,11 +101,7 @@ func (s *Workspace) Serve(ctx context.Context, actor Actor) (remotefetch.Listing
 	now := s.now()
 	var out remotefetch.Listing
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpRemoteDirectoryServe, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpRemoteDirectoryServe, domain.Scope{}, now)
 		if err != nil {
 			return err
 		}
@@ -238,11 +231,7 @@ func (s *Workspace) MintConnection(ctx context.Context, actor Actor, label strin
 	now := s.now()
 	var out MintConnectionResult
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpRemoteCredentialCreate, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpRemoteCredentialCreate, domain.Scope{}, now)
 		if err != nil {
 			return err
 		}
@@ -324,11 +313,7 @@ func (s *Workspace) ListConnections(ctx context.Context, actor Actor) ([]Connect
 	now := s.now()
 	var out []ConnectionView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpRemoteCredentialList, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpRemoteCredentialList, domain.Scope{}, now)
 		if err != nil {
 			return err
 		}
@@ -359,11 +344,7 @@ func (s *Workspace) ShowConnection(ctx context.Context, actor Actor, id string) 
 	now := s.now()
 	var out ConnectionView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpRemoteCredentialShow, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpRemoteCredentialShow, domain.Scope{}, now)
 		if err != nil {
 			return err
 		}
@@ -393,11 +374,7 @@ func (s *Workspace) ShowConnection(ctx context.Context, actor Actor, id string) 
 func (s *Workspace) RevokeConnection(ctx context.Context, actor Actor, id string) error {
 	now := s.now()
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpRemoteCredentialRevoke, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpRemoteCredentialRevoke, domain.Scope{}, now)
 		if err != nil {
 			return err
 		}
@@ -464,11 +441,7 @@ func (s *Workspace) ListOrigins(ctx context.Context, actor Actor) ([]OriginView,
 	now := s.now()
 	var out []OriginView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpWorkspaceOriginList, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpWorkspaceOriginList, domain.Scope{}, now)
 		if err != nil {
 			return err
 		}
@@ -534,11 +507,7 @@ func (s *Workspace) AddOrigin(ctx context.Context, actor Actor, origin string) (
 	s.originAllowlistMu.Lock()
 	defer s.originAllowlistMu.Unlock()
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpWorkspaceOriginAdd, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpWorkspaceOriginAdd, domain.Scope{}, now)
 		if err != nil {
 			return err
 		}
@@ -581,11 +550,7 @@ func (s *Workspace) RemoveOrigin(ctx context.Context, actor Actor, origin string
 	s.originAllowlistMu.Lock()
 	defer s.originAllowlistMu.Unlock()
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpWorkspaceOriginRemove, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpWorkspaceOriginRemove, domain.Scope{}, now)
 		if err != nil {
 			return err
 		}

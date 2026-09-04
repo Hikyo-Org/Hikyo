@@ -64,10 +64,7 @@ func (s *Remotes) fetchGate() *fetchGate {
 }
 
 func (s *Remotes) now() time.Time {
-	if s.Now == nil {
-		return time.Now().UTC()
-	}
-	return s.Now().UTC()
+	return nowOr(s.Now)
 }
 
 // RemoteView is one directory card entry: the stored configuration plus the
@@ -171,11 +168,7 @@ func (s *Remotes) AddRemote(ctx context.Context, actor Actor, name, rawURL, pin,
 		known        map[string]string // remote identity -> entry name
 	)
 	if err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpRemoteAdd, domain.Scope{})
+		_, p, err := authorize(ctx, az, actor, authz.OpRemoteAdd, domain.Scope{}, now)
 		if err != nil {
 			return err
 		}
@@ -221,11 +214,7 @@ func (s *Remotes) AddRemote(ctx context.Context, actor Actor, name, rawURL, pin,
 	}
 	var out RemoteView
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpRemoteAdd, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpRemoteAdd, domain.Scope{}, now)
 		if err != nil {
 			return err
 		}
@@ -360,11 +349,7 @@ func (s *Remotes) loadForFetch(ctx context.Context, actor Actor, now time.Time, 
 		snaps   = map[string]store.RemoteSnapshot{}
 	)
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, op, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, op, domain.Scope{}, now)
 		if err != nil {
 			return err
 		}
@@ -500,11 +485,7 @@ func (s *Remotes) settle(
 	// inferring it would put the wrong operation name on the audit trail.
 	var views []RemoteView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, op, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, op, domain.Scope{}, now)
 		if err != nil {
 			return err
 		}
@@ -611,11 +592,7 @@ func (s *Remotes) RenameRemote(ctx context.Context, actor Actor, name, newName s
 	now := s.now()
 	var out RemoteView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpRemoteRename, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpRemoteRename, domain.Scope{}, now)
 		if err != nil {
 			return err
 		}
@@ -656,11 +633,7 @@ func (s *Remotes) RenameRemote(ctx context.Context, actor Actor, name, newName s
 func (s *Remotes) RemoveRemote(ctx context.Context, actor Actor, name string) error {
 	now := s.now()
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpRemoteRemove, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpRemoteRemove, domain.Scope{}, now)
 		if err != nil {
 			return err
 		}

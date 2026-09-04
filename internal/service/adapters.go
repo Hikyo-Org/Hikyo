@@ -35,10 +35,38 @@ type Adapters struct {
 }
 
 func (s *Adapters) now() time.Time {
-	if s.Now != nil {
-		return s.Now().UTC()
+	return nowOr(s.Now)
+}
+
+// requireProjectScope enforces the project-scoped precondition shared by the
+// adapter and dynamic-provider operations: a project must be addressed, no
+// environment may be pinned, and every supplied id must be non-empty. msg is the
+// operation's own invalid-argument message, preserved verbatim per call site.
+func requireProjectScope(scope domain.Scope, msg string, ids ...string) error {
+	bad := scope.Project == "" || scope.Env != ""
+	for _, id := range ids {
+		bad = bad || id == ""
 	}
-	return time.Now().UTC()
+	if bad {
+		return fmt.Errorf("%w: %s", domain.ErrInvalid, msg)
+	}
+	return nil
+}
+
+// auditSuperseded records the EventAdapterSuperseded audit event when a newly
+// enqueued job displaced a prior one. prev is the superseded job id; an empty
+// prev means nothing was superseded and no event is written.
+func auditSuperseded(ctx context.Context, r store.Repos, proof authz.Proof, principal domain.PrincipalID, targetID, prev, next string) error {
+	if prev == "" {
+		return nil
+	}
+	event, err := domainEvent(ctx, audit.EventAdapterSuperseded, principal,
+		audit.Object{Type: "adapter-target", ID: targetID},
+		audit.Payload{"previous_job_id": prev, "job_id": next})
+	if err != nil {
+		return err
+	}
+	return r.Audit().InsertTenant(ctx, proof, event)
 }
 
 type AdapterTargetView struct {
@@ -128,11 +156,7 @@ func (s *Adapters) environmentCreateAudit(actor Actor, scope domain.Scope, targe
 	before := func(ctx context.Context) error {
 		return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 			now := store.CanonTime(s.now())
-			caller, err := actor.resolve(ctx, az, now)
-			if err != nil {
-				return err
-			}
-			proof, err := az.Authorize(ctx, caller, authz.OpAdapterConfigure, scope)
+			caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
 			if err != nil {
 				return err
 			}
@@ -161,11 +185,7 @@ func (s *Adapters) environmentCreateAudit(actor Actor, scope domain.Scope, targe
 		}
 		return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 			now := store.CanonTime(s.now())
-			caller, err := actor.resolve(ctx, az, now)
-			if err != nil {
-				return err
-			}
-			proof, err := az.Authorize(ctx, caller, authz.OpAdapterConfigure, scope)
+			caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
 			if err != nil {
 				return err
 			}
@@ -257,6 +277,23 @@ func (s *Adapters) providerGate(actor Actor, operation authz.Operation, projectS
 	}
 }
 
+// gate builds a provider callback that authorizes op against scope in its own
+// read transaction, minted per call. Unlike providerGate it performs no
+// separate push check; it is the single-operation gate used by TestTarget and
+// Plan, where the addressed scope is the only thing to authorize.
+func (s *Adapters) gate(actor Actor, op authz.Operation, scope domain.Scope) func(context.Context) error {
+	return func(ctx context.Context) error {
+		return tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
+			caller, err := actor.resolve(ctx, az, s.now())
+			if err != nil {
+				return err
+			}
+			_, err = az.Authorize(ctx, caller, op, scope)
+			return err
+		})
+	}
+}
+
 func (s *Adapters) requireAdapterCeremony(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, projectScope domain.Scope, environmentIDs []string, operation authz.Operation, now time.Time) error {
 	intent, err := newReauthIntentForAdapterOperation(operation, environmentIDs)
 	if err != nil {
@@ -286,8 +323,6 @@ func (s *Adapters) requireAdapterCeremony(ctx context.Context, az *authz.TxAutho
 
 func adapterCeremonyError(environmentID string, err error) error {
 	switch {
-	case err == nil:
-		return nil
 	case errors.Is(err, ErrNoReauthWindow), errors.Is(err, ErrReauthWindowExpired), errors.Is(err, ErrReauthUnitMismatch), errors.Is(err, ErrReauthWindowSpent):
 		return fmt.Errorf("%w (%s)", ErrReauthRequired, environmentID)
 	default:
@@ -298,8 +333,7 @@ func adapterCeremonyError(environmentID string, err error) error {
 func adapterEnvironmentSet(environmentIDs []string, additional ...string) []string {
 	out := append([]string(nil), environmentIDs...)
 	out = append(out, additional...)
-	slices.Sort(out)
-	return slices.Compact(out)
+	return canonicalSet(out)
 }
 
 func (s *Adapters) consumeAdapterCeremony(ctx context.Context, actor Actor, scope domain.Scope, environmentIDs []string, operation authz.Operation, now time.Time) (authz.Identity, error) {
@@ -377,11 +411,7 @@ func (s *Adapters) Create(ctx context.Context, actor Actor, scope domain.Scope, 
 	}
 	var out AdapterView
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpAdapterConfigure, scope)
+		caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
 		if err != nil {
 			return err
 		}
@@ -410,16 +440,12 @@ func (s *Adapters) Create(ctx context.Context, actor Actor, scope domain.Scope, 
 }
 
 func (s *Adapters) Get(ctx context.Context, actor Actor, scope domain.Scope, adapterID string) (AdapterView, error) {
-	if scope.Project == "" || scope.Env != "" || adapterID == "" {
-		return AdapterView{}, fmt.Errorf("%w: adapter show requires project scope and adapter id", domain.ErrInvalid)
+	if err := requireProjectScope(scope, "adapter show requires project scope and adapter id", adapterID); err != nil {
+		return AdapterView{}, err
 	}
 	var out AdapterView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpAdapterInspect, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpAdapterInspect, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -442,26 +468,18 @@ func (s *Adapters) Get(ctx context.Context, actor Actor, scope domain.Scope, ada
 			}
 			out.TargetConflicts[target.ID] = conflicts
 		}
-		ev, err := domainEvent(ctx, audit.EventAdapterInspect, caller.Principal, audit.Object{Type: "adapter", ID: adapterID}, audit.Payload{"row_count": 1})
-		if err != nil {
-			return err
-		}
-		return r.Audit().InsertTenant(ctx, p, ev)
+		return insertInspected(ctx, r, p, caller.Principal, audit.EventAdapterInspect, audit.Object{Type: "adapter", ID: adapterID}, 1)
 	})
 	return out, err
 }
 
 func (s *Adapters) List(ctx context.Context, actor Actor, scope domain.Scope) ([]AdapterView, error) {
-	if scope.Project == "" || scope.Env != "" {
-		return nil, fmt.Errorf("%w: adapter list requires project scope", domain.ErrInvalid)
+	if err := requireProjectScope(scope, "adapter list requires project scope"); err != nil {
+		return nil, err
 	}
 	var out []AdapterView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpAdapterInspect, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpAdapterInspect, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -487,18 +505,14 @@ func (s *Adapters) List(ctx context.Context, actor Actor, scope domain.Scope) ([
 			}
 			out = append(out, view)
 		}
-		ev, err := domainEvent(ctx, audit.EventAdapterInspect, caller.Principal, audit.Object{Type: "adapter-list", ID: string(scope.Project)}, audit.Payload{"row_count": len(out)})
-		if err != nil {
-			return err
-		}
-		return r.Audit().InsertTenant(ctx, p, ev)
+		return insertInspected(ctx, r, p, caller.Principal, audit.EventAdapterInspect, audit.Object{Type: "adapter-list", ID: string(scope.Project)}, int64(len(out)))
 	})
 	return out, err
 }
 
 func (s *Adapters) AddTarget(ctx context.Context, actor Actor, scope domain.Scope, adapterID string, input AdapterTargetInput) (store.AdapterTarget, error) {
-	if scope.Project == "" || scope.Env != "" || adapterID == "" || input.EnvironmentID == "" {
-		return store.AdapterTarget{}, fmt.Errorf("%w: target add requires adapter, environment, destination, and keys", domain.ErrInvalid)
+	if err := requireProjectScope(scope, "target add requires adapter, environment, destination, and keys", adapterID, input.EnvironmentID); err != nil {
+		return store.AdapterTarget{}, err
 	}
 	if err := s.resolveTargetKeys(ctx, actor, scope, &input); err != nil {
 		return store.AdapterTarget{}, err
@@ -511,11 +525,7 @@ func (s *Adapters) AddTarget(ctx context.Context, actor Actor, scope domain.Scop
 	var authorizedEnvironments []string
 	now := store.CanonTime(s.now())
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpAdapterConfigure, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -534,11 +544,7 @@ func (s *Adapters) AddTarget(ctx context.Context, actor Actor, scope domain.Scop
 		return store.AdapterTarget{}, err
 	}
 	err = tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpAdapterConfigure, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -581,11 +587,7 @@ func (s *Adapters) AddTarget(ctx context.Context, actor Actor, scope domain.Scop
 	}
 	var out store.AdapterTarget
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpAdapterConfigure, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
 		if err != nil {
 			return err
 		}
@@ -632,11 +634,7 @@ func (s *Adapters) prepareTargetMutation(ctx context.Context, actor Actor, scope
 	}
 	var move bool
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpAdapterConfigure, scope)
+		_, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -660,8 +658,8 @@ func (s *Adapters) prepareTargetMutation(ctx context.Context, actor Actor, scope
 // move decision. The decision and selected mutation share one write transaction,
 // so a concurrent target mutation cannot bypass scrub-before-switch.
 func (s *Adapters) ApplyTargetMutation(ctx context.Context, actor Actor, scope domain.Scope, request UpdateAdapterTargetRequest, keepRemote bool) (TargetMutationResult, error) {
-	if scope.Project == "" || scope.Env != "" {
-		return nil, fmt.Errorf("%w: target mutation requires project scope", domain.ErrInvalid)
+	if err := requireProjectScope(scope, "target mutation requires project scope"); err != nil {
+		return nil, err
 	}
 	if err := s.resolveTargetKeys(ctx, actor, scope, &request.Target); err != nil {
 		return nil, err
@@ -692,11 +690,7 @@ func (s *Adapters) ApplyTargetMutation(ctx context.Context, actor Actor, scope d
 	var rateCharged bool
 	err = retryAdapterProviderFence(ctx, func() error {
 		return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-			caller, err := actor.resolve(ctx, az, now)
-			if err != nil {
-				return err
-			}
-			p, err := az.Authorize(ctx, caller, authz.OpAdapterConfigure, scope)
+			caller, p, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
 			if err != nil {
 				return err
 			}
@@ -794,17 +788,8 @@ func (s *Adapters) applyTargetUpdate(ctx context.Context, r store.Repos, az *aut
 	if err := r.Audit().InsertTenant(ctx, proof, requested); err != nil {
 		return store.AdapterTarget{}, err
 	}
-	if updated.Enqueue.SupersededJobID != "" {
-		superseded, err := domainEvent(ctx, audit.EventAdapterSuperseded, caller.Principal,
-			audit.Object{Type: "adapter-target", ID: request.TargetID}, audit.Payload{
-				"previous_job_id": updated.Enqueue.SupersededJobID, "job_id": updated.Enqueue.JobID,
-			})
-		if err != nil {
-			return store.AdapterTarget{}, err
-		}
-		if err := r.Audit().InsertTenant(ctx, proof, superseded); err != nil {
-			return store.AdapterTarget{}, err
-		}
+	if err := auditSuperseded(ctx, r, proof, caller.Principal, request.TargetID, updated.Enqueue.SupersededJobID, updated.Enqueue.JobID); err != nil {
+		return store.AdapterTarget{}, err
 	}
 	if updated.Target.Keys, err = r.Adapters().TargetKeys(ctx, proof, request.TargetID); err != nil {
 		return store.AdapterTarget{}, err
@@ -817,11 +802,7 @@ func (s *Adapters) preflightTargetRouting(ctx context.Context, actor Actor, scop
 	var record store.AdapterRecord
 	var ciphertext []byte
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpAdapterConfigure, scope)
+		_, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -909,17 +890,8 @@ func (s *Adapters) applyTargetMove(ctx context.Context, r store.Repos, az *authz
 	if err := r.Audit().InsertTenant(ctx, proof, configured); err != nil {
 		return store.AdapterRouteMoveResult{}, err
 	}
-	if out.SupersededJobID != "" {
-		superseded, err := domainEvent(ctx, audit.EventAdapterSuperseded, caller.Principal,
-			audit.Object{Type: "adapter-target", ID: request.TargetID}, audit.Payload{
-				"previous_job_id": out.SupersededJobID, "job_id": out.JobID,
-			})
-		if err != nil {
-			return store.AdapterRouteMoveResult{}, err
-		}
-		if err := r.Audit().InsertTenant(ctx, proof, superseded); err != nil {
-			return store.AdapterRouteMoveResult{}, err
-		}
+	if err := auditSuperseded(ctx, r, proof, caller.Principal, request.TargetID, out.SupersededJobID, out.JobID); err != nil {
+		return store.AdapterRouteMoveResult{}, err
 	}
 	if keepRemote {
 		scrubbed, err := domainEvent(ctx, audit.EventAdapterScrub, caller.Principal,
@@ -971,11 +943,7 @@ func (s *Adapters) MoveOrigin(ctx context.Context, actor Actor, scope domain.Sco
 	var out store.AdapterRouteMoveBatch
 	err = retryAdapterProviderFence(ctx, func() error {
 		return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-			caller, err := actor.resolve(ctx, az, now)
-			if err != nil {
-				return err
-			}
-			proof, err := az.Authorize(ctx, caller, authz.OpAdapterConfigure, scope)
+			caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
 			if err != nil {
 				return err
 			}
@@ -1014,17 +982,8 @@ func (s *Adapters) MoveOrigin(ctx context.Context, actor Actor, scope domain.Sco
 				return err
 			}
 			for _, target := range out.Targets {
-				if target.SupersededJobID != "" {
-					superseded, err := domainEvent(ctx, audit.EventAdapterSuperseded, caller.Principal,
-						audit.Object{Type: "adapter-target", ID: target.TargetID}, audit.Payload{
-							"previous_job_id": target.SupersededJobID, "job_id": target.JobID,
-						})
-					if err != nil {
-						return err
-					}
-					if err := r.Audit().InsertTenant(ctx, proof, superseded); err != nil {
-						return err
-					}
+				if err := auditSuperseded(ctx, r, proof, caller.Principal, target.TargetID, target.SupersededJobID, target.JobID); err != nil {
+					return err
 				}
 				if keepRemote {
 					scrubbed, err := domainEvent(ctx, audit.EventAdapterScrub, caller.Principal,
@@ -1044,16 +1003,12 @@ func (s *Adapters) MoveOrigin(ctx context.Context, actor Actor, scope domain.Sco
 }
 
 func (s *Adapters) Move(ctx context.Context, actor Actor, scope domain.Scope, moveID string) (store.AdapterMove, error) {
-	if scope.Project == "" || scope.Env != "" || moveID == "" {
-		return store.AdapterMove{}, fmt.Errorf("%w: adapter move show requires project scope and move id", domain.ErrInvalid)
+	if err := requireProjectScope(scope, "adapter move show requires project scope and move id", moveID); err != nil {
+		return store.AdapterMove{}, err
 	}
 	var out store.AdapterMove
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpAdapterInspect, scope)
+		caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterInspect, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -1061,27 +1016,19 @@ func (s *Adapters) Move(ctx context.Context, actor Actor, scope domain.Scope, mo
 		if err != nil {
 			return err
 		}
-		event, err := domainEvent(ctx, audit.EventAdapterInspect, caller.Principal, audit.Object{Type: "adapter-move", ID: moveID}, audit.Payload{"row_count": 1})
-		if err != nil {
-			return err
-		}
-		return r.Audit().InsertTenant(ctx, proof, event)
+		return insertInspected(ctx, r, proof, caller.Principal, audit.EventAdapterInspect, audit.Object{Type: "adapter-move", ID: moveID}, 1)
 	})
 	return out, err
 }
 
 func (s *Adapters) CancelMove(ctx context.Context, actor Actor, scope domain.Scope, moveID string) (store.AdapterMove, error) {
-	if scope.Project == "" || scope.Env != "" || moveID == "" {
-		return store.AdapterMove{}, fmt.Errorf("%w: adapter move cancellation requires project scope and move id", domain.ErrInvalid)
+	if err := requireProjectScope(scope, "adapter move cancellation requires project scope and move id", moveID); err != nil {
+		return store.AdapterMove{}, err
 	}
 	now := store.CanonTime(s.now())
 	var out store.AdapterMove
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpAdapterConfigure, scope)
+		caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
 		if err != nil {
 			return err
 		}
@@ -1119,11 +1066,7 @@ func (s *Adapters) ResumeTargetMove(ctx context.Context, actor Actor, scope doma
 	now := store.CanonTime(s.now())
 	var out store.AdapterMove
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpAdapterConfigure, scope)
+		caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
 		if err != nil {
 			return err
 		}
@@ -1186,11 +1129,7 @@ func (s *Adapters) ResumeOriginMove(ctx context.Context, actor Actor, scope doma
 	now := store.CanonTime(s.now())
 	var out store.AdapterMove
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpAdapterConfigure, scope)
+		caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
 		if err != nil {
 			return err
 		}
@@ -1238,8 +1177,8 @@ func (s *Adapters) ResumeOriginMove(ctx context.Context, actor Actor, scope doma
 }
 
 func (s *Adapters) SyncTarget(ctx context.Context, actor Actor, scope domain.Scope, targetID string) (store.AdapterEnqueueResult, error) {
-	if scope.Project == "" || scope.Env != "" || targetID == "" {
-		return store.AdapterEnqueueResult{}, fmt.Errorf("%w: manual adapter sync requires project scope and target id", domain.ErrInvalid)
+	if err := requireProjectScope(scope, "manual adapter sync requires project scope and target id", targetID); err != nil {
+		return store.AdapterEnqueueResult{}, err
 	}
 	// § 179 adapter sync/trigger concurrency: 4 per org. Held for the enqueue.
 	release, err := s.Budget.acquire(budgetAdapter, budgetKeys{Org: scope.Org})
@@ -1252,11 +1191,7 @@ func (s *Adapters) SyncTarget(ctx context.Context, actor Actor, scope domain.Sco
 	var rateCharged bool
 	err = retryAdapterProviderFence(ctx, func() error {
 		return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-			caller, err := actor.resolve(ctx, az, now)
-			if err != nil {
-				return err
-			}
-			proof, err := az.Authorize(ctx, caller, authz.OpAdapterSync, scope)
+			caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterSync, scope, now)
 			if err != nil {
 				return err
 			}
@@ -1291,17 +1226,7 @@ func (s *Adapters) SyncTarget(ctx context.Context, actor Actor, scope domain.Sco
 			if err := r.Audit().InsertTenant(ctx, proof, requested); err != nil {
 				return err
 			}
-			if result.SupersededJobID == "" {
-				return nil
-			}
-			superseded, err := domainEvent(ctx, audit.EventAdapterSuperseded, caller.Principal,
-				audit.Object{Type: "adapter-target", ID: targetID}, audit.Payload{
-					"previous_job_id": result.SupersededJobID, "job_id": result.JobID,
-				})
-			if err != nil {
-				return err
-			}
-			return r.Audit().InsertTenant(ctx, proof, superseded)
+			return auditSuperseded(ctx, r, proof, caller.Principal, targetID, result.SupersededJobID, result.JobID)
 		})
 	})
 	return result, err
@@ -1312,18 +1237,14 @@ func (s *Adapters) SyncTarget(ctx context.Context, actor Actor, scope domain.Sco
 // reauthentication ceremony, exactly like credential revocation. The ledger
 // is untouched: resume needs no re-adoption.
 func (s *Adapters) PauseTarget(ctx context.Context, actor Actor, scope domain.Scope, targetID string) (store.AdapterTarget, error) {
-	if scope.Project == "" || scope.Env != "" || targetID == "" {
-		return store.AdapterTarget{}, fmt.Errorf("%w: adapter target pause requires project scope and target id", domain.ErrInvalid)
+	if err := requireProjectScope(scope, "adapter target pause requires project scope and target id", targetID); err != nil {
+		return store.AdapterTarget{}, err
 	}
 	now := store.CanonTime(s.now())
 	var out store.AdapterTarget
 	err := retryAdapterProviderFence(ctx, func() error {
 		return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-			caller, err := actor.resolve(ctx, az, now)
-			if err != nil {
-				return err
-			}
-			proof, err := az.Authorize(ctx, caller, authz.OpAdapterConfigure, scope)
+			caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
 			if err != nil {
 				return err
 			}
@@ -1350,17 +1271,7 @@ func (s *Adapters) PauseTarget(ctx context.Context, actor Actor, scope domain.Sc
 			if err := r.Audit().InsertTenant(ctx, proof, ev); err != nil {
 				return err
 			}
-			if result.SupersededJobID == "" {
-				return nil
-			}
-			superseded, err := domainEvent(ctx, audit.EventAdapterSuperseded, caller.Principal,
-				audit.Object{Type: "adapter-target", ID: targetID}, audit.Payload{
-					"previous_job_id": result.SupersededJobID, "job_id": "",
-				})
-			if err != nil {
-				return err
-			}
-			return r.Audit().InsertTenant(ctx, proof, superseded)
+			return auditSuperseded(ctx, r, proof, caller.Principal, targetID, result.SupersededJobID, "")
 		})
 	})
 	if err != nil {
@@ -1373,8 +1284,8 @@ func (s *Adapters) PauseTarget(ctx context.Context, actor Actor, scope domain.Sc
 // pushes again, so it carries the manual-sync formula and ceremony; the
 // result names the published revision the converge reaches.
 func (s *Adapters) ResumeTarget(ctx context.Context, actor Actor, scope domain.Scope, targetID string) (store.AdapterResumeResult, error) {
-	if scope.Project == "" || scope.Env != "" || targetID == "" {
-		return store.AdapterResumeResult{}, fmt.Errorf("%w: adapter target resume requires project scope and target id", domain.ErrInvalid)
+	if err := requireProjectScope(scope, "adapter target resume requires project scope and target id", targetID); err != nil {
+		return store.AdapterResumeResult{}, err
 	}
 	release, err := s.Budget.acquire(budgetAdapter, budgetKeys{Org: scope.Org})
 	if err != nil {
@@ -1386,11 +1297,7 @@ func (s *Adapters) ResumeTarget(ctx context.Context, actor Actor, scope domain.S
 	var rateCharged bool
 	err = retryAdapterProviderFence(ctx, func() error {
 		return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-			caller, err := actor.resolve(ctx, az, now)
-			if err != nil {
-				return err
-			}
-			proof, err := az.Authorize(ctx, caller, authz.OpAdapterSync, scope)
+			caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterSync, scope, now)
 			if err != nil {
 				return err
 			}
@@ -1422,25 +1329,15 @@ func (s *Adapters) ResumeTarget(ctx context.Context, actor Actor, scope domain.S
 			if err := r.Audit().InsertTenant(ctx, proof, requested); err != nil {
 				return err
 			}
-			if result.Enqueue.SupersededJobID == "" {
-				return nil
-			}
-			superseded, err := domainEvent(ctx, audit.EventAdapterSuperseded, caller.Principal,
-				audit.Object{Type: "adapter-target", ID: targetID}, audit.Payload{
-					"previous_job_id": result.Enqueue.SupersededJobID, "job_id": result.Enqueue.JobID,
-				})
-			if err != nil {
-				return err
-			}
-			return r.Audit().InsertTenant(ctx, proof, superseded)
+			return auditSuperseded(ctx, r, proof, caller.Principal, targetID, result.Enqueue.SupersededJobID, result.Enqueue.JobID)
 		})
 	})
 	return result, err
 }
 
 func (s *Adapters) TestTarget(ctx context.Context, actor Actor, scope domain.Scope, targetID string) (adapter.Connection, error) {
-	if scope.Project == "" || scope.Env != "" || targetID == "" {
-		return adapter.Connection{}, fmt.Errorf("%w: adapter connection test requires project scope and target id", domain.ErrInvalid)
+	if err := requireProjectScope(scope, "adapter connection test requires project scope and target id", targetID); err != nil {
+		return adapter.Connection{}, err
 	}
 	sealer, err := sealerFor(ctx, s.DB, s.Keyring, actor, authz.OpAdapterTest, scope)
 	if err != nil {
@@ -1448,11 +1345,7 @@ func (s *Adapters) TestTarget(ctx context.Context, actor Actor, scope domain.Sco
 	}
 	var material store.AdapterPlanMaterial
 	err = tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpAdapterTest, scope)
+		_, proof, err := authorize(ctx, az, actor, authz.OpAdapterTest, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -1479,30 +1372,16 @@ func (s *Adapters) TestTarget(ctx context.Context, actor Actor, scope domain.Sco
 		return adapter.Connection{}, err
 	}
 	defer lease.Release()
-	providerGate := func(gateCtx context.Context) error {
-		return tx.Read(gateCtx, s.DB, func(gateCtx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
-			caller, err := actor.resolve(gateCtx, az, s.now())
-			if err != nil {
-				return err
-			}
-			_, err = az.Authorize(gateCtx, caller, authz.OpAdapterTest, scope)
-			return err
-		})
-	}
 	connection, err := lease.Module.TestConnection(ctx, adapter.ConnectionRequest{
 		Config: adapter.Config{Origin: material.Target.Origin}, Destination: adapterTarget(material.Target).Destination,
-		Access: adapter.Access{Credential: string(credential)}, Gate: providerGate,
+		Access: adapter.Access{Credential: string(credential)}, Gate: s.gate(actor, authz.OpAdapterTest, scope),
 	})
 	if err != nil {
 		return adapter.Connection{}, err
 	}
 	now := store.CanonTime(s.now())
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpAdapterTest, scope)
+		caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterTest, scope, now)
 		if err != nil {
 			return err
 		}
@@ -1605,8 +1484,8 @@ func (s *Adapters) ReplaceCredential(ctx context.Context, actor Actor, scope dom
 }
 
 func (s *Adapters) RevokeCredential(ctx context.Context, actor Actor, scope domain.Scope, adapterID string) (store.AdapterCredentialResult, error) {
-	if scope.Project == "" || scope.Env != "" || adapterID == "" {
-		return store.AdapterCredentialResult{}, fmt.Errorf("%w: credential revocation requires project scope and adapter id", domain.ErrInvalid)
+	if err := requireProjectScope(scope, "credential revocation requires project scope and adapter id", adapterID); err != nil {
+		return store.AdapterCredentialResult{}, err
 	}
 	now := store.CanonTime(s.now())
 	return tx.WriteResult(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) (store.AdapterCredentialResult, error) {
@@ -1641,18 +1520,22 @@ func (s *Adapters) buildModule(provider adapter.Provider, origin, credential str
 	return s.ModuleFactory(provider, adapter.Config{Origin: origin}, credential)
 }
 
-func (s *Adapters) providerForAdapter(ctx context.Context, actor Actor, scope domain.Scope, adapterID string) (string, error) {
+// providerFor authorizes OpAdapterConfigure on scope, resolves the adapter id
+// via adapterID (which may run its own lookups under the same proof), and
+// returns that adapter's provider name. It is the shared body of
+// providerForAdapter and providerForMove.
+func (s *Adapters) providerFor(ctx context.Context, actor Actor, scope domain.Scope, adapterID func(context.Context, store.ReadRepos, authz.Proof) (string, error)) (string, error) {
 	var provider string
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
+		_, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, s.now())
 		if err != nil {
 			return err
 		}
-		proof, err := az.Authorize(ctx, caller, authz.OpAdapterConfigure, scope)
+		id, err := adapterID(ctx, r, proof)
 		if err != nil {
 			return err
 		}
-		record, _, err := r.Adapters().Configuration(ctx, proof, adapterID)
+		record, _, err := r.Adapters().Configuration(ctx, proof, id)
 		if err != nil {
 			return err
 		}
@@ -1662,29 +1545,20 @@ func (s *Adapters) providerForAdapter(ctx context.Context, actor Actor, scope do
 	return provider, err
 }
 
+func (s *Adapters) providerForAdapter(ctx context.Context, actor Actor, scope domain.Scope, adapterID string) (string, error) {
+	return s.providerFor(ctx, actor, scope, func(context.Context, store.ReadRepos, authz.Proof) (string, error) {
+		return adapterID, nil
+	})
+}
+
 func (s *Adapters) providerForMove(ctx context.Context, actor Actor, scope domain.Scope, moveID string) (string, error) {
-	var provider string
-	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpAdapterConfigure, scope)
-		if err != nil {
-			return err
-		}
+	return s.providerFor(ctx, actor, scope, func(ctx context.Context, r store.ReadRepos, proof authz.Proof) (string, error) {
 		move, err := r.Adapters().Move(ctx, proof, moveID)
 		if err != nil {
-			return err
+			return "", err
 		}
-		record, _, err := r.Adapters().Configuration(ctx, proof, move.AdapterID)
-		if err != nil {
-			return err
-		}
-		provider = record.Provider
-		return nil
+		return move.AdapterID, nil
 	})
-	return provider, err
 }
 
 func adapterTarget(target store.AdapterTarget) adapter.Target {
@@ -1695,8 +1569,8 @@ func adapterTarget(target store.AdapterTarget) adapter.Target {
 }
 
 func (s *Adapters) Plan(ctx context.Context, actor Actor, scope domain.Scope, targetID string) (AdapterPlanResult, error) {
-	if scope.Project == "" || scope.Env != "" || targetID == "" {
-		return AdapterPlanResult{}, fmt.Errorf("%w: adapter plan requires project scope and target id", domain.ErrInvalid)
+	if err := requireProjectScope(scope, "adapter plan requires project scope and target id", targetID); err != nil {
+		return AdapterPlanResult{}, err
 	}
 	sealer, err := sealerFor(ctx, s.DB, s.Keyring, actor, authz.OpAdapterPlan, scope)
 	if err != nil {
@@ -1704,11 +1578,7 @@ func (s *Adapters) Plan(ctx context.Context, actor Actor, scope domain.Scope, ta
 	}
 	var material store.AdapterPlanMaterial
 	err = tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpAdapterPlan, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpAdapterPlan, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -1735,17 +1605,7 @@ func (s *Adapters) Plan(ctx context.Context, actor Actor, scope domain.Scope, ta
 		return AdapterPlanResult{}, err
 	}
 	defer lease.Release()
-	providerGate := func(gateCtx context.Context) error {
-		return tx.Read(gateCtx, s.DB, func(gateCtx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
-			caller, err := actor.resolve(gateCtx, az, s.now())
-			if err != nil {
-				return err
-			}
-			_, err = az.Authorize(gateCtx, caller, authz.OpAdapterPlan, scope)
-			return err
-		})
-	}
-	plan, err := lease.Module.Plan(ctx, adapter.PlanRequest{Config: adapter.Config{Origin: material.Target.Origin}, Target: adapterTarget(material.Target), Manifest: material.Manifest, Ledger: material.Ledger, Gate: providerGate})
+	plan, err := lease.Module.Plan(ctx, adapter.PlanRequest{Config: adapter.Config{Origin: material.Target.Origin}, Target: adapterTarget(material.Target), Manifest: material.Manifest, Ledger: material.Ledger, Gate: s.gate(actor, authz.OpAdapterPlan, scope)})
 	if err != nil {
 		return AdapterPlanResult{}, err
 	}
@@ -1755,11 +1615,7 @@ func (s *Adapters) Plan(ctx context.Context, actor Actor, scope domain.Scope, ta
 	}
 	now := store.CanonTime(s.now())
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpAdapterPlan, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpAdapterPlan, scope, now)
 		if err != nil {
 			return err
 		}
@@ -1796,16 +1652,12 @@ func (s *Adapters) Plan(ctx context.Context, actor Actor, scope domain.Scope, ta
 }
 
 func (s *Adapters) InspectTarget(ctx context.Context, actor Actor, scope domain.Scope, targetID string) (AdapterTargetView, error) {
-	if scope.Project == "" || scope.Env != "" || targetID == "" {
-		return AdapterTargetView{}, fmt.Errorf("%w: adapter target inspection requires project scope and target id", domain.ErrInvalid)
+	if err := requireProjectScope(scope, "adapter target inspection requires project scope and target id", targetID); err != nil {
+		return AdapterTargetView{}, err
 	}
 	var out AdapterTargetView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpAdapterInspect, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpAdapterInspect, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -1831,11 +1683,7 @@ func (s *Adapters) InspectTarget(ctx context.Context, actor Actor, scope domain.
 		if out.Target.Provider == "github-actions" && out.Target.DestinationKind == string(adapter.Environment) {
 			out.Workflow = "environment: " + strconv.Quote(out.Target.DestinationEnvironment) + "\n" + out.Workflow
 		}
-		ev, err := domainEvent(ctx, audit.EventAdapterInspect, caller.Principal, audit.Object{Type: "adapter-target", ID: targetID}, audit.Payload{"row_count": 1})
-		if err != nil {
-			return err
-		}
-		return r.Audit().InsertTenant(ctx, p, ev)
+		return insertInspected(ctx, r, p, caller.Principal, audit.EventAdapterInspect, audit.Object{Type: "adapter-target", ID: targetID}, 1)
 	})
 	return out, err
 }
@@ -1859,11 +1707,7 @@ func (s *Adapters) Adopt(ctx context.Context, actor Actor, scope domain.Scope, r
 	now := store.CanonTime(s.now())
 	var out AdoptAdapterResult
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpAdapterAdopt, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpAdapterAdopt, scope, now)
 		if err != nil {
 			return err
 		}
@@ -1905,16 +1749,8 @@ func (s *Adapters) Adopt(ctx context.Context, actor Actor, scope domain.Scope, r
 		if err := r.Audit().InsertTenant(ctx, p, ev); err != nil {
 			return err
 		}
-		if result.SupersededJobID != "" {
-			superseded, err := domainEvent(ctx, audit.EventAdapterSuperseded, caller.Principal, audit.Object{Type: "adapter-target", ID: request.TargetID}, audit.Payload{
-				"previous_job_id": result.SupersededJobID, "job_id": result.JobID,
-			})
-			if err != nil {
-				return err
-			}
-			if err := r.Audit().InsertTenant(ctx, p, superseded); err != nil {
-				return err
-			}
+		if err := auditSuperseded(ctx, r, p, caller.Principal, request.TargetID, result.SupersededJobID, result.JobID); err != nil {
+			return err
 		}
 		out = AdoptAdapterResult{Generation: result.Generation, JobID: result.JobID}
 		return nil
@@ -1923,18 +1759,14 @@ func (s *Adapters) Adopt(ctx context.Context, actor Actor, scope domain.Scope, r
 }
 
 func (s *Adapters) RemoveTarget(ctx context.Context, actor Actor, scope domain.Scope, targetID string, keepRemote bool) (AdapterTeardownResult, error) {
-	if scope.Project == "" || scope.Env != "" || targetID == "" {
-		return AdapterTeardownResult{}, fmt.Errorf("%w: adapter target removal requires project scope and target id", domain.ErrInvalid)
+	if err := requireProjectScope(scope, "adapter target removal requires project scope and target id", targetID); err != nil {
+		return AdapterTeardownResult{}, err
 	}
 	now := store.CanonTime(s.now())
 	var result store.AdapterTeardownResult
 	err := retryAdapterProviderFence(ctx, func() error {
 		return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-			caller, err := actor.resolve(ctx, az, now)
-			if err != nil {
-				return err
-			}
-			proof, err := az.Authorize(ctx, caller, authz.OpAdapterDelete, scope)
+			caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterDelete, scope, now)
 			if err != nil {
 				return err
 			}
@@ -1955,18 +1787,14 @@ func (s *Adapters) RemoveTarget(ctx context.Context, actor Actor, scope domain.S
 }
 
 func (s *Adapters) Delete(ctx context.Context, actor Actor, scope domain.Scope, adapterID string, keepRemote bool) (AdapterTeardownResult, error) {
-	if scope.Project == "" || scope.Env != "" || adapterID == "" {
-		return AdapterTeardownResult{}, fmt.Errorf("%w: adapter deletion requires project scope and adapter id", domain.ErrInvalid)
+	if err := requireProjectScope(scope, "adapter deletion requires project scope and adapter id", adapterID); err != nil {
+		return AdapterTeardownResult{}, err
 	}
 	now := store.CanonTime(s.now())
 	var batch store.AdapterTeardownBatch
 	err := retryAdapterProviderFence(ctx, func() error {
 		return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-			caller, err := actor.resolve(ctx, az, now)
-			if err != nil {
-				return err
-			}
-			proof, err := az.Authorize(ctx, caller, authz.OpAdapterDelete, scope)
+			caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterDelete, scope, now)
 			if err != nil {
 				return err
 			}

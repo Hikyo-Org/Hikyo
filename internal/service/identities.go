@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -96,10 +98,7 @@ type Identities struct {
 }
 
 func (s *Identities) now() time.Time {
-	if s.Now == nil {
-		return time.Now().UTC()
-	}
-	return s.Now().UTC()
+	return nowOr(s.Now)
 }
 
 // ServiceAccountView is the metadata surface of one service account.
@@ -216,11 +215,7 @@ func (s *Identities) CreateServiceAccount(ctx context.Context, actor Actor, scop
 	now := s.now()
 	var out ServiceAccountView
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpServiceAccountCreate, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpServiceAccountCreate, scope, now)
 		if err != nil {
 			return err
 		}
@@ -259,11 +254,7 @@ func (s *Identities) ListServiceAccounts(ctx context.Context, actor Actor, scope
 	now := s.now()
 	var out []ServiceAccountView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpServiceAccountList, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpServiceAccountList, scope, now)
 		if err != nil {
 			return err
 		}
@@ -310,11 +301,7 @@ func (s *Identities) ListServiceAccounts(ctx context.Context, actor Actor, scope
 func (s *Identities) DeleteServiceAccount(ctx context.Context, actor Actor, scope domain.Scope, id string) error {
 	now := s.now()
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpServiceAccountDelete, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpServiceAccountDelete, scope, now)
 		if err != nil {
 			return err
 		}
@@ -365,11 +352,7 @@ func (s *Identities) MintCredential(ctx context.Context, actor Actor, scope doma
 	now := s.now()
 	var out MintResult
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpCredentialMint, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpCredentialMint, scope, now)
 		if err != nil {
 			return err
 		}
@@ -430,7 +413,7 @@ func (s *Identities) MintCredential(ctx context.Context, actor Actor, scope doma
 		if s.Auth == nil {
 			return errors.New("service: the identity surface has no reauthentication seam wired")
 		}
-		current, historical := sortedKeys(reach.Current), sortedKeys(reach.Historical)
+		current, historical := slices.Sorted(maps.Keys(reach.Current)), slices.Sorted(maps.Keys(reach.Historical))
 		if err := s.Auth.RequireDisclosureAuthority(ctx, az, caller, actorGrants, scope, current, historical, now); err != nil {
 			return err
 		}
@@ -496,11 +479,7 @@ func (s *Identities) ListCredentials(ctx context.Context, actor Actor, scope dom
 	now := s.now()
 	var out []CredentialView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpCredentialList, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpCredentialList, scope, now)
 		if err != nil {
 			return err
 		}
@@ -569,11 +548,7 @@ func (s *Identities) ListCredentials(ctx context.Context, actor Actor, scope dom
 func (s *Identities) RevokeCredential(ctx context.Context, actor Actor, scope domain.Scope, saID, credentialID string) error {
 	now := s.now()
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpCredentialRevoke, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpCredentialRevoke, scope, now)
 		if err != nil {
 			return err
 		}
@@ -630,11 +605,7 @@ type PolicyView struct {
 func (s *Identities) Policy(ctx context.Context, actor Actor) (PolicyView, error) {
 	var out PolicyView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpCredentialPolicyRead, domain.Scope{})
+		caller, proof, err := authorize(ctx, az, actor, authz.OpCredentialPolicyRead, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}
@@ -730,11 +701,7 @@ func (s *Identities) SetPolicy(ctx context.Context, actor Actor, change PolicyCh
 	now := s.now()
 	var out PolicyResult
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpCredentialPolicyUpdate, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpCredentialPolicyUpdate, domain.Scope{}, now)
 		if err != nil {
 			return err
 		}
@@ -935,10 +902,6 @@ func expiringSoon(c CredentialView, now time.Time) bool {
 		return false
 	}
 	return c.ExpiresAt.After(now) && c.ExpiresAt.Before(now.Add(ExpiryWarningWindow))
-}
-
-func sortedKeys(m map[domain.EnvID]bool) []domain.EnvID {
-	return newlyReachable(nil, m)
 }
 
 // credentialKindOf answers which kind a credential is, for the revoke event's

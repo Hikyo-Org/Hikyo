@@ -571,11 +571,7 @@ func (s *Keys) Create(ctx context.Context, actor Actor, scope domain.Scope, spec
 	}
 	var rateCharged bool
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpKeyCreate, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpKeyCreate, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -670,11 +666,7 @@ func checkGroupMembership(ctx context.Context, r store.Repos, p authz.Proof, gro
 func (s *Keys) Get(ctx context.Context, actor Actor, scope domain.Scope, id string) (Key, error) {
 	var out Key
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpKeyGet, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpKeyGet, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -699,11 +691,7 @@ func (s *Keys) List(ctx context.Context, actor Actor, scope domain.Scope) ([]Key
 	var out []Key
 	var revision int64
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpKeyList, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpKeyList, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -753,11 +741,7 @@ func (s *Keys) Rename(ctx context.Context, actor Actor, scope domain.Scope, id, 
 	}
 	var rateCharged bool
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpKeyRename, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpKeyRename, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -836,11 +820,7 @@ func (s *Keys) UpdateMetadata(ctx context.Context, actor Actor, scope domain.Sco
 	var out Key
 	var rateCharged bool
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpKeyUpdateMetadata, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpKeyUpdateMetadata, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -985,11 +965,7 @@ func (s *Keys) UpdateDeclaration(ctx context.Context, actor Actor, scope domain.
 	}
 	var rateCharged bool
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpKeyUpdateDeclaration, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpKeyUpdateDeclaration, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -1147,11 +1123,7 @@ func (s *Keys) Reclassify(ctx context.Context, actor Actor, scope domain.Scope, 
 	var rateCharged bool
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		findings = nil
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpKeyReclassify, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpKeyReclassify, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -1317,11 +1289,7 @@ func (s *Keys) SetGroup(ctx context.Context, actor Actor, scope domain.Scope, id
 	}
 	var rateCharged bool
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpKeySetGroup, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpKeySetGroup, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -1421,11 +1389,7 @@ func (s *Keys) Delete(ctx context.Context, actor Actor, scope domain.Scope, id s
 	}
 	var rateCharged bool
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpKeyDelete, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpKeyDelete, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -1517,11 +1481,7 @@ func (s *KeyGroups) Create(ctx context.Context, actor Actor, scope domain.Scope,
 	created := store.CanonTime(time.Now())
 	var rateCharged bool
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpKeyGroupCreate, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpKeyGroupCreate, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -1574,11 +1534,7 @@ func (s *KeyGroups) Create(ctx context.Context, actor Actor, scope domain.Scope,
 func (s *KeyGroups) Get(ctx context.Context, actor Actor, scope domain.Scope, id string) (KeyGroupView, error) {
 	var out KeyGroupView
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpKeyGroupGet, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpKeyGroupGet, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -1599,11 +1555,7 @@ func (s *KeyGroups) Get(ctx context.Context, actor Actor, scope domain.Scope, id
 func (s *KeyGroups) List(ctx context.Context, actor Actor, scope domain.Scope) ([]KeyGroupView, error) {
 	var out []KeyGroupView
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpKeyGroupList, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpKeyGroupList, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -1653,11 +1605,7 @@ func (s *KeyGroups) Rename(ctx context.Context, actor Actor, scope domain.Scope,
 	var out KeyGroupView
 	var rateCharged bool
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpKeyGroupRename, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpKeyGroupRename, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -1717,11 +1665,7 @@ func (s *KeyGroups) Delete(ctx context.Context, actor Actor, scope domain.Scope,
 	}
 	var rateCharged bool
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpKeyGroupDelete, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpKeyGroupDelete, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}

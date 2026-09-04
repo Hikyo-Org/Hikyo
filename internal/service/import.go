@@ -156,11 +156,7 @@ func (s *Values) Occurrences(ctx context.Context, actor Actor, scope domain.Scop
 	}
 	var out ImportPresence
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpImportPresence, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpImportPresence, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -335,7 +331,7 @@ func (s *Values) Import(ctx context.Context, actor Actor, scope domain.Scope, re
 		}
 	}
 
-	sealer, err := s.sealer(ctx, actor, authz.OpValueImport, scope)
+	sealer, err := sealerFor(ctx, s.DB, s.Keyring, actor, authz.OpValueImport, scope)
 	if err != nil {
 		return ImportResult{}, err
 	}
@@ -360,11 +356,7 @@ func (s *Values) Import(ctx context.Context, actor Actor, scope domain.Scope, re
 		published = PublishedEnvironment{}
 		advanced = false
 		total := 0
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpValueImport, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpValueImport, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}

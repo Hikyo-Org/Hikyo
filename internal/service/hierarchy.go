@@ -183,11 +183,7 @@ func (s *Orgs) Create(ctx context.Context, actor Actor, name string, active bool
 	// This is a low-rate control-plane operation; sqlite already admits one
 	// writer at a time through BEGIN IMMEDIATE.
 	err = tx.WriteSerialized(ctx, s.DB, "hikyo:org-create", func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpOrgCreate, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpOrgCreate, domain.Scope{}, now)
 		if err != nil {
 			return err
 		}
@@ -231,11 +227,7 @@ func (s *Orgs) Create(ctx context.Context, actor Actor, name string, active bool
 func (s *Orgs) Get(ctx context.Context, actor Actor, org domain.OrgID) (Org, error) {
 	var out store.Org
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpOrgGet, domain.Scope{Org: org})
+		_, p, err := authorize(ctx, az, actor, authz.OpOrgGet, domain.Scope{Org: org}, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -317,11 +309,7 @@ func (s *Orgs) ListMine(ctx context.Context, actor Actor) ([]MyOrg, error) {
 func (s *Orgs) List(ctx context.Context, actor Actor) ([]Org, error) {
 	var out []store.Org
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpOrgList, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpOrgList, domain.Scope{}, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -349,11 +337,7 @@ func (s *Orgs) List(ctx context.Context, actor Actor) ([]Org, error) {
 func (s *Orgs) Count(ctx context.Context, actor Actor) (int64, error) {
 	var out int64
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpOrgList, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpOrgList, domain.Scope{}, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -380,11 +364,7 @@ func (s *Orgs) Rename(ctx context.Context, actor Actor, org domain.OrgID, name s
 	}
 	var out store.Org
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpOrgRename, domain.Scope{Org: org})
+		caller, p, err := authorize(ctx, az, actor, authz.OpOrgRename, domain.Scope{Org: org}, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -421,11 +401,7 @@ func (s *Orgs) Rename(ctx context.Context, actor Actor, org domain.OrgID, name s
 // keeps the ancestry constraint live and the whole transaction rolls back.
 func (s *Orgs) Delete(ctx context.Context, actor Actor, org domain.OrgID) error {
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpOrgDelete, domain.Scope{Org: org})
+		caller, p, err := authorize(ctx, az, actor, authz.OpOrgDelete, domain.Scope{Org: org}, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -522,11 +498,7 @@ func (s *Projects) Create(ctx context.Context, actor Actor, org domain.OrgID, na
 	}
 	proj := store.NewProject{ID: id, Name: name, CreatedAt: store.CanonTime(time.Now())}
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpProjectCreate, domain.Scope{Org: org})
+		caller, p, err := authorize(ctx, az, actor, authz.OpProjectCreate, domain.Scope{Org: org}, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -550,11 +522,7 @@ func (s *Projects) Create(ctx context.Context, actor Actor, org domain.OrgID, na
 func (s *Projects) Get(ctx context.Context, actor Actor, scope domain.Scope) (Project, error) {
 	var out store.Project
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpProjectGet, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpProjectGet, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -570,11 +538,7 @@ func (s *Projects) Get(ctx context.Context, actor Actor, scope domain.Scope) (Pr
 func (s *Projects) List(ctx context.Context, actor Actor, org domain.OrgID) ([]Project, error) {
 	var out []store.Project
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpProjectList, domain.Scope{Org: org})
+		_, p, err := authorize(ctx, az, actor, authz.OpProjectList, domain.Scope{Org: org}, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -597,11 +561,7 @@ func (s *Projects) Rename(ctx context.Context, actor Actor, scope domain.Scope, 
 	}
 	var out store.Project
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpProjectRename, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpProjectRename, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -636,11 +596,7 @@ func (s *Projects) Rename(ctx context.Context, actor Actor, scope domain.Scope, 
 // by the ancestry constraints as a conflict.
 func (s *Projects) Delete(ctx context.Context, actor Actor, scope domain.Scope) error {
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpProjectDelete, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpProjectDelete, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -785,11 +741,7 @@ func (s *Environments) create(ctx context.Context, actor Actor, scope domain.Sco
 	var rateCharged bool
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		clone = CloneResult{}
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpEnvCreate, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpEnvCreate, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -861,7 +813,7 @@ func (s *Environments) create(ctx context.Context, actor Actor, scope domain.Sco
 			// can be evaluated against the environment being created — which
 			// is what the ADR requires it to be evaluated against.
 			clone, err = cloneInto(ctx, r, az, caller, sealer, s.Keyring, s.Scan, scope, sourceEnvID, created.ID,
-				ceremonyGate(ctx, s.Auth, az, caller, copyIntentBuilder(sourceEnvID)))
+				ceremonyGate(ctx, s.Auth, az, caller, disclosureIntent(PurposeCopy, sourceEnvID)))
 			if err != nil {
 				return err
 			}
@@ -891,11 +843,7 @@ func (s *Environments) create(ctx context.Context, actor Actor, scope domain.Sco
 func (s *Environments) Get(ctx context.Context, actor Actor, scope domain.Scope) (Environment, error) {
 	var out store.Environment
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpEnvRead, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpEnvRead, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -912,11 +860,7 @@ func (s *Environments) Get(ctx context.Context, actor Actor, scope domain.Scope)
 func (s *Environments) List(ctx context.Context, actor Actor, scope domain.Scope) ([]Environment, error) {
 	var out []store.Environment
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpEnvList, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpEnvList, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -940,11 +884,7 @@ func (s *Environments) Rename(ctx context.Context, actor Actor, scope domain.Sco
 	var out store.Environment
 	var rateCharged bool
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpEnvRename, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpEnvRename, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -1004,11 +944,7 @@ func (s *Environments) Rename(ctx context.Context, actor Actor, scope domain.Sco
 func (s *Environments) Reorder(ctx context.Context, actor Actor, scope domain.Scope, ordered []string) ([]Environment, error) {
 	var out []store.Environment
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpEnvReorder, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpEnvReorder, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -1084,11 +1020,7 @@ func (s *Environments) Reorder(ctx context.Context, actor Actor, scope domain.Sc
 func (s *Environments) Delete(ctx context.Context, actor Actor, scope domain.Scope) error {
 	var rateCharged bool
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpEnvDelete, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpEnvDelete, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -1168,11 +1100,7 @@ func (s *Environments) Delete(ctx context.Context, actor Actor, scope domain.Sco
 // `definitions-edit(project)` are enforced as different authorities.
 func (s *Environments) UpdateNote(ctx context.Context, actor Actor, scope domain.Scope, note string, acks []string) error {
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpEnvUpdateNote, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpEnvUpdateNote, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -1233,11 +1161,7 @@ func (s *Folders) Create(ctx context.Context, actor Actor, scope domain.Scope, p
 	}
 	folder := store.NewFolder{ID: id, Path: path, CreatedAt: store.CanonTime(time.Now())}
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpFolderCreate, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpFolderCreate, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -1272,11 +1196,7 @@ func (s *Folders) Create(ctx context.Context, actor Actor, scope domain.Scope, p
 func (s *Folders) Get(ctx context.Context, actor Actor, scope domain.Scope, id string) (Folder, error) {
 	var out store.Folder
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpFolderGet, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpFolderGet, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -1292,11 +1212,7 @@ func (s *Folders) Get(ctx context.Context, actor Actor, scope domain.Scope, id s
 func (s *Folders) List(ctx context.Context, actor Actor, scope domain.Scope) ([]Folder, error) {
 	var out []store.Folder
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpFolderList, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpFolderList, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -1322,11 +1238,7 @@ func (s *Folders) Rename(ctx context.Context, actor Actor, scope domain.Scope, i
 	}
 	var out store.Folder
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpFolderRename, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpFolderRename, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -1365,11 +1277,7 @@ func (s *Folders) Rename(ctx context.Context, actor Actor, scope domain.Scope, i
 
 func (s *Folders) Delete(ctx context.Context, actor Actor, scope domain.Scope, id string) error {
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpFolderDelete, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpFolderDelete, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}

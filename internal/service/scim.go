@@ -59,10 +59,7 @@ type SCIM struct {
 }
 
 func (s *SCIM) now() time.Time {
-	if s.Now == nil {
-		return time.Now().UTC()
-	}
-	return s.Now().UTC()
+	return nowOr(s.Now)
 }
 
 func (s *SCIM) staleness() time.Duration {
@@ -824,11 +821,7 @@ func (s *SCIM) adminTx(
 	body func(context.Context, *scimAdminContext) error,
 ) error {
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, op, domain.Scope{Org: org})
+		caller, p, err := authorize(ctx, az, actor, op, domain.Scope{Org: org}, s.now())
 		if err != nil {
 			return err
 		}

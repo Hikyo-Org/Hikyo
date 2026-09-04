@@ -103,11 +103,7 @@ func (s *Grants) InviteMember(ctx context.Context, actor Actor, spec InviteSpec)
 	expires := now.Add(ResetLifetime)
 	var out InvitationResult
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, op, spec.Scope)
+		caller, p, err := authorize(ctx, az, actor, op, spec.Scope, now)
 		if err != nil {
 			return err
 		}

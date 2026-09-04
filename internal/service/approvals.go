@@ -62,10 +62,7 @@ type Approvals struct {
 }
 
 func (s *Approvals) now() time.Time {
-	if s.Now == nil {
-		return time.Now().UTC()
-	}
-	return s.Now().UTC()
+	return nowOr(s.Now)
 }
 
 // ApprovalApproverSpec is one approver-set member as the admin surface states it.
@@ -171,11 +168,7 @@ func (s *Approvals) CreatePolicy(ctx context.Context, actor Actor, scope domain.
 	now := s.now()
 	var view ApprovalPolicyView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpApprovalPolicyWrite, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpApprovalPolicyWrite, scope, now)
 		if err != nil {
 			return err
 		}
@@ -214,11 +207,7 @@ func (s *Approvals) UpdatePolicy(ctx context.Context, actor Actor, scope domain.
 	now := s.now()
 	var view ApprovalPolicyView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpApprovalPolicyWrite, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpApprovalPolicyWrite, scope, now)
 		if err != nil {
 			return err
 		}
@@ -265,11 +254,7 @@ func (s *Approvals) UpdatePolicy(ctx context.Context, actor Actor, scope domain.
 func (s *Approvals) DeletePolicy(ctx context.Context, actor Actor, scope domain.Scope, id string) error {
 	now := s.now()
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpApprovalPolicyWrite, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpApprovalPolicyWrite, scope, now)
 		if err != nil {
 			return err
 		}
@@ -294,11 +279,7 @@ func (s *Approvals) ListPolicies(ctx context.Context, actor Actor, scope domain.
 	now := s.now()
 	var out []ApprovalPolicyView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpApprovalPolicyRead, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpApprovalPolicyRead, scope, now)
 		if err != nil {
 			return err
 		}
@@ -329,11 +310,7 @@ func (s *Approvals) ListRequests(ctx context.Context, actor Actor, scope domain.
 	now := s.now()
 	var out []ApprovalRequestView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpApprovalRequestRead, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpApprovalRequestRead, scope, now)
 		if err != nil {
 			return err
 		}
@@ -367,11 +344,7 @@ func (s *Approvals) CeremonyBinding(ctx context.Context, actor Actor, scope doma
 	now := s.now()
 	var out ApprovalCeremonyBinding
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpApprovalVote, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpApprovalVote, scope, now)
 		if err != nil {
 			return err
 		}
@@ -406,11 +379,7 @@ func (s *Approvals) Vote(ctx context.Context, actor Actor, scope domain.Scope, r
 	var refusal error
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		refusal = nil
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpApprovalVote, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpApprovalVote, scope, now)
 		if err != nil {
 			return err
 		}

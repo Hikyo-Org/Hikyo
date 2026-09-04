@@ -71,11 +71,7 @@ func sanitizeProvenance(field, s string) (string, error) {
 func (s *Definitions) Plan(ctx context.Context, actor Actor, scope domain.Scope, raw []byte, acks []string) (PlanView, error) {
 	var view PlanView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpDefinitionsPlanCreate, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpDefinitionsPlanCreate, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -354,11 +350,7 @@ func (s *Definitions) envRevisions(ctx context.Context, r store.Repos, p authz.P
 func (s *Definitions) GetPlan(ctx context.Context, actor Actor, scope domain.Scope, planID string) (PlanView, error) {
 	var view PlanView
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpDefinitionsPlanGet, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpDefinitionsPlanGet, scope, s.now())
 		if err != nil {
 			return err
 		}

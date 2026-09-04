@@ -112,10 +112,6 @@ func NewRevealReauthIntent(environmentID string, keyIDs []string) (ReauthIntent,
 	return NewDisclosureReauthIntent(PurposeReveal, []string{environmentID}, keyIDs)
 }
 
-func NewCopyReauthIntent(environmentID string, keyIDs []string) (ReauthIntent, error) {
-	return NewDisclosureReauthIntent(PurposeCopy, []string{environmentID}, keyIDs)
-}
-
 func NewPublishReauthIntent(environmentID string, keyIDs []string) (ReauthIntent, error) {
 	return NewDisclosureReauthIntent(PurposePublish, []string{environmentID}, keyIDs)
 }
@@ -164,9 +160,14 @@ func newReauthIntentForOperation(operation authz.Operation, environmentID string
 	return newDisclosureReauthIntent(descriptor.variant, []string{environmentID}, keyIDs)
 }
 
+// canonicalSet returns ids sorted with adjacent duplicates removed, without
+// mutating the caller's slice.
+func canonicalSet(ids []string) []string {
+	return slices.Compact(slices.Sorted(slices.Values(ids)))
+}
+
 func newDisclosureReauthIntent(variant reauthIntentVariant, environmentIDs, keyIDs []string) (ReauthIntent, error) {
-	canonicalEnvironments := slices.Sorted(slices.Values(environmentIDs))
-	canonicalEnvironments = slices.Compact(canonicalEnvironments)
+	canonicalEnvironments := canonicalSet(environmentIDs)
 	if len(canonicalEnvironments) == 0 {
 		return ReauthIntent{}, fmt.Errorf("%w: reauthentication intent requires an environment", domain.ErrInvalid)
 	}
@@ -224,8 +225,7 @@ func newReauthIntentFromBinding(purpose ReauthPurpose, operation authz.Operation
 }
 
 func newAdapterReauthIntent(variant reauthIntentVariant, environmentIDs []string) (ReauthIntent, error) {
-	canonical := slices.Sorted(slices.Values(environmentIDs))
-	canonical = slices.Compact(canonical)
+	canonical := canonicalSet(environmentIDs)
 	if len(canonical) == 0 {
 		return ReauthIntent{}, fmt.Errorf("%w: adapter reauthentication intent requires environments", domain.ErrInvalid)
 	}

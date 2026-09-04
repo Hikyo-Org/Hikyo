@@ -33,10 +33,6 @@ type Updates struct {
 	outcomeMu sync.Mutex
 }
 
-type pendingOutcomeControl interface {
-	PendingOutcomes(context.Context) ([]updater.Job, error)
-}
-
 // Run reconciles helper-owned terminal outcomes independently of any browser.
 // The helper journal is durable, so startup catches outcomes completed while
 // the server was stopped; the short poll records ordinary completions promptly.
@@ -66,6 +62,10 @@ func (s *Updates) Run(ctx context.Context) {
 // closed system authority, then acknowledges it. Browser departure, session
 // expiry, and grant changes after the committed intent cannot erase outcome
 // evidence for an already-authorized privileged action.
+type pendingOutcomeControl interface {
+	PendingOutcomes(context.Context) ([]updater.Job, error)
+}
+
 func (s *Updates) ReconcileOutcomes(ctx context.Context) error {
 	control, ok := s.Control.(pendingOutcomeControl)
 	if !ok {
@@ -128,11 +128,7 @@ func (s *Updates) GetStatus(ctx context.Context, actor Actor) (updatecheck.Statu
 	}
 
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now())
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpUpdateStatusRead, domain.Scope{})
+		caller, proof, err := authorize(ctx, az, actor, authz.OpUpdateStatusRead, domain.Scope{}, now())
 		if err != nil {
 			return err
 		}
@@ -303,11 +299,7 @@ func (s *Updates) recordOutcome(ctx context.Context, actor Actor, job updater.Jo
 		now = s.Now
 	}
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now())
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpUpdateJobRead, domain.Scope{})
+		caller, proof, err := authorize(ctx, az, actor, authz.OpUpdateJobRead, domain.Scope{}, now())
 		if err != nil {
 			return err
 		}

@@ -20,6 +20,45 @@ import (
 	storetx "github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
+// adapterScope is the project scope every adapter test operates in.
+var adapterScope = domain.Scope{Org: "org_adapter", Project: "prj_adapter"}
+
+// adapterKeyring generates a fresh root key and loads a keyring over db, the
+// setup every adapter test that touches sealed material repeats.
+func adapterKeyring(t *testing.T, db *store.DB) *crypto.Keyring {
+	t.Helper()
+	root, err := crypto.GenerateRootKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return kr
+}
+
+// seedKey inserts a project key row for the adapter scope. The batch fixtures
+// that set up several rows atomically keep their inline SQL; seedKey is the
+// standalone single-key setup.
+func seedKey(t *testing.T, db *store.DB, id, name string) {
+	t.Helper()
+	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `INSERT INTO keys (id,org_id,project_id,name,folder_path,classification,description,deprecated,deprecation_note,declaration,required_mode,forbidden_mode,created_at) VALUES (?,'org_adapter','prj_adapter',?,'','secret','',0,'','optional','none','none','2026-08-17T00:00:00Z')`, id, name); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// sealAdapterCredential seals value as adp_1's provider credential under the
+// test's project sealer. The AAD matches the adapter fixture every test uses.
+func sealAdapterCredential(t *testing.T, sealer *crypto.ProjectSealer, value string) []byte {
+	t.Helper()
+	sealed, err := sealer.SealField(adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), []byte(value))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sealed
+}
+
 func adapterCLISession(t *testing.T, db *store.DB) string {
 	t.Helper()
 	value, verifier, err := crypto.NewArtifact(crypto.ArtifactCLISession)
@@ -228,7 +267,7 @@ func TestAdapterCreateAndAddTargetRefuseBeforeCredentialOrProviderWithoutCeremon
 			providerCalls++
 			return fakeAdapterConfigureModule{gates: new(int)}, nil, nil
 		})}
-		_, err := svc.Create(t.Context(), Bearer(bearer), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, CreateAdapterRequest{
+		_, err := svc.Create(t.Context(), Bearer(bearer), adapterScope, CreateAdapterRequest{
 			Origin: "https://new.example", Credential: []byte("provider-token"),
 			Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "new", KeyIDs: []string{"key_create"}},
 		})
@@ -248,7 +287,7 @@ func TestAdapterCreateAndAddTargetRefuseBeforeCredentialOrProviderWithoutCeremon
 			providerCalls++
 			return fakeAdapterConfigureModule{gates: new(int)}, nil, nil
 		})}
-		_, err := svc.AddTarget(t.Context(), Bearer(bearer), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, "adp_1", AdapterTargetInput{
+		_, err := svc.AddTarget(t.Context(), Bearer(bearer), adapterScope, "adp_1", AdapterTargetInput{
 			EnvironmentID: "env_one", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "new", KeyIDs: []string{"key_create"},
 		})
 		if !errors.Is(err, ErrReauthRequired) || providerCalls != 0 {
@@ -263,7 +302,7 @@ func TestAdapterCreateRejectsUnknownProviderBeforeCredentialUse(t *testing.T) {
 		factoryCalled = true
 		return adapter.NewModuleLease(fakeAdapterPlanModule{}, nil)
 	}}
-	_, err := svc.Create(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, CreateAdapterRequest{
+	_, err := svc.Create(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, CreateAdapterRequest{
 		Provider: "gitlab", Origin: "https://gitlab.example", Credential: []byte("provider-token"),
 		Target: AdapterTargetInput{EnvironmentID: "env_one", KeyIDs: []string{"key_one"}},
 	})
@@ -303,17 +342,8 @@ func (fakeAdapterConfigureModule) Sync(context.Context, adapter.SyncRequest, ada
 
 func TestAdapterCreateAtomicallyBootstrapsCredentialAndFirstTarget(t *testing.T) {
 	db := adapterServiceDB(t)
-	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `INSERT INTO keys (id,org_id,project_id,name,folder_path,classification,description,deprecated,deprecation_note,declaration,required_mode,forbidden_mode,created_at) VALUES ('key_create','org_adapter','prj_adapter','API_TOKEN','','secret','',0,'','optional','none','none','2026-08-17T00:00:00Z')`); err != nil {
-		t.Fatal(err)
-	}
-	root, err := crypto.GenerateRootKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	seedKey(t, db, "key_create", "API_TOKEN")
+	kr := adapterKeyring(t, db)
 	gates := 0
 	expires := time.Date(2026, 9, 30, 12, 34, 56, 0, time.UTC)
 	svc := &Adapters{DB: db, Keyring: kr, ModuleFactory: providerBlindTestModuleFactory(func(origin, credential string) (adapter.Module, func(), error) {
@@ -322,7 +352,7 @@ func TestAdapterCreateAtomicallyBootstrapsCredentialAndFirstTarget(t *testing.T)
 		}
 		return fakeAdapterConfigureModule{gates: &gates, credentialExpiry: expires}, nil, nil
 	})}
-	view, err := svc.Create(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, CreateAdapterRequest{Origin: "https://new.example", Credential: []byte("provider-token"), Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "new", NamePrefix: "PROD_", KeyIDs: []string{"key_create"}}})
+	view, err := svc.Create(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, CreateAdapterRequest{Origin: "https://new.example", Credential: []byte("provider-token"), Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "new", NamePrefix: "PROD_", KeyIDs: []string{"key_create"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,7 +377,7 @@ func TestAdapterCreateAtomicallyBootstrapsCredentialAndFirstTarget(t *testing.T)
 	if keys != 1 {
 		t.Fatalf("target keys=%d", keys)
 	}
-	shown, err := svc.Get(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, view.Adapter.ID)
+	shown, err := svc.Get(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, view.Adapter.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,24 +388,15 @@ func TestAdapterCreateAtomicallyBootstrapsCredentialAndFirstTarget(t *testing.T)
 
 func TestEnvironmentCreatePersistsGenerationFenceAndCorrelatedAudit(t *testing.T) {
 	db := adapterServiceDB(t)
-	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `INSERT INTO keys (id,org_id,project_id,name,folder_path,classification,description,deprecated,deprecation_note,declaration,required_mode,forbidden_mode,created_at) VALUES ('key_env_create','org_adapter','prj_adapter','API_TOKEN','','secret','',0,'','optional','none','none','2026-08-17T00:00:00Z')`); err != nil {
-		t.Fatal(err)
-	}
-	root, err := crypto.GenerateRootKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	seedKey(t, db, "key_env_create", "API_TOKEN")
+	kr := adapterKeyring(t, db)
 	svc := &Adapters{DB: db, Keyring: kr, ModuleFactory: testModuleFactory(func(provider adapter.Provider, _, _ string) (adapter.Module, func(), error) {
 		if provider != adapter.GitHubActionsProvider {
 			t.Fatalf("provider = %q, want persisted github-actions", provider)
 		}
 		return fakeEnvironmentConfigureModule{}, nil, nil
 	})}
-	view, err := svc.Create(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, CreateAdapterRequest{
+	view, err := svc.Create(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, CreateAdapterRequest{
 		Provider: "github-actions", Origin: "https://api.github.com", Credential: []byte("github_pat_fine"),
 		Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "environment", DestinationOwner: "acme", DestinationName: "app", DestinationEnvironment: "production", KeyIDs: []string{"key_env_create"}},
 	})
@@ -419,22 +440,12 @@ func TestOrganizationSelectedRepositoryIDsAreVerifiedBeforeRoutingCommit(t *test
 			t.Fatal(err)
 		}
 	}
-	root, err := crypto.GenerateRootKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	kr := adapterKeyring(t, db)
 	sealer, err := kr.ForProject(t.Context(), "org_adapter", "prj_adapter")
 	if err != nil {
 		t.Fatal(err)
 	}
-	sealed, err := sealer.SealField(adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), []byte("github_pat_fine"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	sealed := sealAdapterCredential(t, sealer, "github_pat_fine")
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapters SET credential_ciphertext=?,credential_set_at='2026-08-17T00:00:00Z' WHERE id='adp_1'`, sealed); err != nil {
 		t.Fatal(err)
 	}
@@ -445,7 +456,7 @@ func TestOrganizationSelectedRepositoryIDsAreVerifiedBeforeRoutingCommit(t *test
 		}
 		return fakeRoutingPreflightModule{seen: &seen}, nil, nil
 	})}
-	updated, err := svc.updateTarget(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, UpdateAdapterTargetRequest{
+	updated, err := svc.updateTarget(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, UpdateAdapterTargetRequest{
 		TargetID: "tgt_one", ExpectedGeneration: 1,
 		Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "organization", DestinationOwner: "acme", Visibility: "selected", SelectedRepositoryIDs: []int64{11, 22}, NamePrefix: "ONE_", KeyIDs: []string{"key_org_route"}},
 	})
@@ -467,7 +478,7 @@ func TestAdapterRoutingStateRoundTripsFromStore(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	view, err := (&Adapters{DB: db}).Get(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, "adp_github")
+	view, err := (&Adapters{DB: db}).Get(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, "adp_github")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -513,7 +524,7 @@ func TestApplyTargetMutationClassifiesUpdateAndMove(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			result, err := (&Adapters{DB: db}).ApplyTargetMutation(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, UpdateAdapterTargetRequest{
+			result, err := (&Adapters{DB: db}).ApplyTargetMutation(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, UpdateAdapterTargetRequest{
 				TargetID: "tgt_one", ExpectedGeneration: 1, Target: tt.target,
 			}, tt.keepRemote)
 			if err != nil {
@@ -563,10 +574,8 @@ func TestApplyTargetMutationKeepsMovePolicyInsideService(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			db := adapterServiceDB(t)
-			if _, err := db.SQLiteWrite().ExecContext(t.Context(), `INSERT INTO keys (id,org_id,project_id,name,folder_path,classification,description,deprecated,deprecation_note,declaration,required_mode,forbidden_mode,created_at) VALUES ('key_policy','org_adapter','prj_adapter','API_TOKEN','','secret','',0,'','optional','none','none','2026-08-17T00:00:00Z')`); err != nil {
-				t.Fatal(err)
-			}
-			_, err := (&Adapters{DB: db}).ApplyTargetMutation(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, UpdateAdapterTargetRequest{
+			seedKey(t, db, "key_policy", "API_TOKEN")
+			_, err := (&Adapters{DB: db}).ApplyTargetMutation(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, UpdateAdapterTargetRequest{
 				TargetID: "tgt_one", ExpectedGeneration: 1, Target: tt.target,
 			}, tt.keepRemote)
 			if !errors.Is(err, tt.want) {
@@ -616,7 +625,7 @@ func TestApplyTargetMutationRequiresCeremonyForUpdateAndMove(t *testing.T) {
 				}
 			}
 			bearer := adapterCLISession(t, db)
-			_, err := (&Adapters{DB: db, Auth: &Auth{DB: db}}).ApplyTargetMutation(t.Context(), Bearer(bearer), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, UpdateAdapterTargetRequest{
+			_, err := (&Adapters{DB: db, Auth: &Auth{DB: db}}).ApplyTargetMutation(t.Context(), Bearer(bearer), adapterScope, UpdateAdapterTargetRequest{
 				TargetID: "tgt_one", ExpectedGeneration: 1, Target: tt.target,
 			}, false)
 			if !errors.Is(err, ErrReauthRequired) {
@@ -650,7 +659,7 @@ func TestAdapterCeremonyErrorClassification(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			return svc.requireAdapterCeremony(ctx, az, caller, domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, []string{"env_one"}, authz.OpAdapterSync, time.Now().UTC())
+			return svc.requireAdapterCeremony(ctx, az, caller, adapterScope, []string{"env_one"}, authz.OpAdapterSync, time.Now().UTC())
 		})
 		if !consumerCalled {
 			t.Fatal("requireAdapterCeremony() did not reach reauth consumer")
@@ -677,7 +686,7 @@ func TestAdapterCeremonyErrorClassification(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				return svc.requireAdapterCeremony(ctx, az, caller, domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, []string{"env_one"}, operation, time.Now().UTC())
+				return svc.requireAdapterCeremony(ctx, az, caller, adapterScope, []string{"env_one"}, operation, time.Now().UTC())
 			})
 			if !errors.Is(err, ErrReauthRequired) {
 				t.Fatalf("requireAdapterCeremony(%s) = %v, want reauth required", operation, err)
@@ -699,22 +708,12 @@ func TestApplyTargetMutationConcurrentChangesUseLockedGeneration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	root, err := crypto.GenerateRootKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	kr := adapterKeyring(t, db)
 	sealer, err := kr.ForProject(t.Context(), "org_adapter", "prj_adapter")
 	if err != nil {
 		t.Fatal(err)
 	}
-	sealed, err := sealer.SealField(adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), []byte("github_pat_fine"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	sealed := sealAdapterCredential(t, sealer, "github_pat_fine")
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapters SET credential_ciphertext=?,credential_set_at='2026-08-17T00:00:00Z' WHERE id='adp_1'`, sealed); err != nil {
 		t.Fatal(err)
 	}
@@ -723,7 +722,7 @@ func TestApplyTargetMutationConcurrentChangesUseLockedGeneration(t *testing.T) {
 	svc := &Adapters{DB: db, Keyring: kr, ModuleFactory: testModuleFactory(func(adapter.Provider, string, string) (adapter.Module, func(), error) {
 		return blockingRoutingPreflightModule{started: preflightStarted, proceed: preflightProceed}, nil, nil
 	})}
-	scope := domain.Scope{Org: "org_adapter", Project: "prj_adapter"}
+	scope := adapterScope
 	update := UpdateAdapterTargetRequest{
 		TargetID: "tgt_one", ExpectedGeneration: 1,
 		Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "organization", DestinationOwner: "acme", Visibility: "selected", SelectedRepositoryIDs: []int64{11}, NamePrefix: "ONE_", KeyIDs: []string{"key_concurrent_mutation"}},
@@ -767,22 +766,12 @@ func TestAdapterTargetAddAuditsTransactionAuthorityTransition(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	root, err := crypto.GenerateRootKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	kr := adapterKeyring(t, db)
 	sealer, err := kr.ForProject(t.Context(), "org_adapter", "prj_adapter")
 	if err != nil {
 		t.Fatal(err)
 	}
-	sealed, err := sealer.SealField(adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), []byte("provider-token"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	sealed := sealAdapterCredential(t, sealer, "provider-token")
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapters SET credential_ciphertext=?,credential_set_at='2026-08-17T00:00:00Z' WHERE id='adp_1'`, sealed); err != nil {
 		t.Fatal(err)
 	}
@@ -790,7 +779,7 @@ func TestAdapterTargetAddAuditsTransactionAuthorityTransition(t *testing.T) {
 	svc := &Adapters{DB: db, Keyring: kr, ModuleFactory: providerBlindTestModuleFactory(func(string, string) (adapter.Module, func(), error) {
 		return fakeAdapterConfigureModule{gates: new(int), destinationID: 303, credentialExpiry: expires}, nil, nil
 	})}
-	target, err := svc.AddTarget(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, "adp_1", AdapterTargetInput{
+	target, err := svc.AddTarget(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, "adp_1", AdapterTargetInput{
 		EnvironmentID: "env_three", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "next", NamePrefix: "THREE_", KeyIDs: []string{"key_add_authority"},
 	})
 	if err != nil {
@@ -824,22 +813,12 @@ func TestAdapterTargetAddRefusesDestinationEffectiveNameCollisionAtomically(t *t
 			t.Fatal(err)
 		}
 	}
-	root, err := crypto.GenerateRootKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	kr := adapterKeyring(t, db)
 	sealer, err := kr.ForProject(t.Context(), "org_adapter", "prj_adapter")
 	if err != nil {
 		t.Fatal(err)
 	}
-	sealed, err := sealer.SealField(adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), []byte("provider-token"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	sealed := sealAdapterCredential(t, sealer, "provider-token")
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapters SET credential_ciphertext=?,credential_set_at='2026-08-17T00:00:00Z' WHERE id='adp_1'`, sealed); err != nil {
 		t.Fatal(err)
 	}
@@ -847,7 +826,7 @@ func TestAdapterTargetAddRefusesDestinationEffectiveNameCollisionAtomically(t *t
 	svc := &Adapters{DB: db, Keyring: kr, ModuleFactory: providerBlindTestModuleFactory(func(string, string) (adapter.Module, func(), error) {
 		return fakeAdapterConfigureModule{gates: &gates, destinationID: 42}, nil, nil
 	})}
-	_, err = svc.AddTarget(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, "adp_1", AdapterTargetInput{EnvironmentID: "env_three", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "app", NamePrefix: "ONE_", KeyIDs: []string{"key_collision"}})
+	_, err = svc.AddTarget(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, "adp_1", AdapterTargetInput{EnvironmentID: "env_three", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "app", NamePrefix: "ONE_", KeyIDs: []string{"key_collision"}})
 	if !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("AddTarget() error = %v, want conflict", err)
 	}
@@ -876,15 +855,8 @@ func TestTargetedKeyDeleteCascadesMembershipAndQueuesOwnedSlotPrune(t *testing.T
 			t.Fatal(err)
 		}
 	}
-	root, err := crypto.GenerateRootKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := (&Keys{DB: db, Keyring: kr}).Delete(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, "key_delete"); err != nil {
+	kr := adapterKeyring(t, db)
+	if err := (&Keys{DB: db, Keyring: kr}).Delete(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, "key_delete"); err != nil {
 		t.Fatal(err)
 	}
 	var memberships, queued int
@@ -928,22 +900,12 @@ func TestAdapterTargetAddRequiresRevealAcrossEveryAdapterEnvironmentBeforeCreden
 			t.Fatal(err)
 		}
 	}
-	root, err := crypto.GenerateRootKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	kr := adapterKeyring(t, db)
 	sealer, err := kr.ForProject(t.Context(), "org_adapter", "prj_adapter")
 	if err != nil {
 		t.Fatal(err)
 	}
-	sealed, err := sealer.SealField(adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), []byte("provider-token"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	sealed := sealAdapterCredential(t, sealer, "provider-token")
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapters SET credential_ciphertext=?,credential_set_at='2026-08-17T00:00:00Z' WHERE id='adp_1'`, sealed); err != nil {
 		t.Fatal(err)
 	}
@@ -951,7 +913,7 @@ func TestAdapterTargetAddRequiresRevealAcrossEveryAdapterEnvironmentBeforeCreden
 	svc := &Adapters{DB: db, Keyring: kr, ModuleFactory: providerBlindTestModuleFactory(func(string, string) (adapter.Module, func(), error) {
 		return fakeAdapterConfigureModule{gates: &gates, destinationID: 42}, nil, nil
 	})}
-	_, err = svc.AddTarget(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, "adp_1", AdapterTargetInput{EnvironmentID: "env_three", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "app", NamePrefix: "THREE_", KeyIDs: []string{"key_new_target"}})
+	_, err = svc.AddTarget(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, "adp_1", AdapterTargetInput{EnvironmentID: "env_three", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "app", NamePrefix: "THREE_", KeyIDs: []string{"key_new_target"}})
 	if !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("AddTarget() error = %v, want tenant-safe refusal without env_two reveal", err)
 	}
@@ -973,7 +935,7 @@ func TestAdapterTargetDestinationMoveScrubsOldRouteBeforePendingRouteActivation(
 		}
 	}
 	svc := &Adapters{DB: db}
-	result, err := svc.moveTarget(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, UpdateAdapterTargetRequest{
+	result, err := svc.moveTarget(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, UpdateAdapterTargetRequest{
 		TargetID: "tgt_one", ExpectedGeneration: 1,
 		Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "next", NamePrefix: "ONE_", KeyIDs: []string{"key_move"}},
 	}, false)
@@ -1034,7 +996,7 @@ func TestAdapterTargetDestinationMoveKeepRemoteReleasesBeforeActivation(t *testi
 			t.Fatal(err)
 		}
 	}
-	result, err := (&Adapters{DB: db}).moveTarget(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, UpdateAdapterTargetRequest{
+	result, err := (&Adapters{DB: db}).moveTarget(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, UpdateAdapterTargetRequest{
 		TargetID: "tgt_one", ExpectedGeneration: 1,
 		Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "next", NamePrefix: "ONE_", KeyIDs: []string{"key_keep_move"}},
 	}, true)
@@ -1081,7 +1043,7 @@ func TestAdapterTargetMoveScrubCompletionQueuesPendingRouteActivation(t *testing
 	}
 	now := time.Date(2026, 8, 17, 1, 0, 0, 0, time.UTC)
 	svc := &Adapters{DB: db, Now: func() time.Time { return now }}
-	move, err := svc.moveTarget(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, UpdateAdapterTargetRequest{
+	move, err := svc.moveTarget(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, UpdateAdapterTargetRequest{
 		TargetID: "tgt_one", ExpectedGeneration: 1,
 		Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "next", NamePrefix: "ONE_", KeyIDs: []string{"key_scrub_move"}},
 	}, false)
@@ -1129,7 +1091,7 @@ func TestAdapterTargetMoveDeadCredentialReleasesOldCustodyThenActivates(t *testi
 		}
 	}
 	now := time.Now().UTC()
-	move, err := (&Adapters{DB: db, Now: func() time.Time { return now }}).moveTarget(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, UpdateAdapterTargetRequest{
+	move, err := (&Adapters{DB: db, Now: func() time.Time { return now }}).moveTarget(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, UpdateAdapterTargetRequest{
 		TargetID: "tgt_one", ExpectedGeneration: 1,
 		Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "next", NamePrefix: "ONE_", KeyIDs: []string{"key_dead_move"}},
 	}, false)
@@ -1183,7 +1145,7 @@ func TestAdapterMoveCredentialFailureRequiresAttentionAndCancelReconvergesOldRou
 	}
 	now := time.Date(2026, 8, 17, 1, 0, 0, 0, time.UTC)
 	svc := &Adapters{DB: db, Now: func() time.Time { return now }}
-	move, err := svc.moveTarget(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, UpdateAdapterTargetRequest{
+	move, err := svc.moveTarget(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, UpdateAdapterTargetRequest{
 		TargetID: "tgt_one", ExpectedGeneration: 1,
 		Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "next", NamePrefix: "ONE_", KeyIDs: []string{"key_attention"}},
 	}, true)
@@ -1198,7 +1160,7 @@ func TestAdapterMoveCredentialFailureRequiresAttentionAndCancelReconvergesOldRou
 	if err := runtime.Fail(t.Context(), job, 0, now.Add(2*time.Second), adapter.ErrProviderAuth); err != nil {
 		t.Fatal(err)
 	}
-	status, err := svc.Move(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, move.MoveID)
+	status, err := svc.Move(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, move.MoveID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1213,7 +1175,7 @@ func TestAdapterMoveCredentialFailureRequiresAttentionAndCancelReconvergesOldRou
 			t.Fatal(err)
 		}
 	}
-	canceled, err := svc.CancelMove(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, move.MoveID)
+	canceled, err := svc.CancelMove(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, move.MoveID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1249,7 +1211,7 @@ func TestAdapterAttentionTargetReplacementResumesActivation(t *testing.T) {
 	}
 	now := time.Date(2026, 8, 17, 1, 0, 0, 0, time.UTC)
 	svc := &Adapters{DB: db, Now: func() time.Time { return now }}
-	move, err := svc.moveTarget(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, UpdateAdapterTargetRequest{
+	move, err := svc.moveTarget(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, UpdateAdapterTargetRequest{
 		TargetID: "tgt_one", ExpectedGeneration: 1,
 		Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "bad", NamePrefix: "BAD_", KeyIDs: []string{"key_resume"}},
 	}, true)
@@ -1272,7 +1234,7 @@ func TestAdapterAttentionTargetReplacementResumesActivation(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	resumed, err := svc.ResumeTargetMove(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, move.MoveID, UpdateAdapterTargetRequest{
+	resumed, err := svc.ResumeTargetMove(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, move.MoveID, UpdateAdapterTargetRequest{
 		TargetID: "tgt_one",
 		Target:   AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "fixed", NamePrefix: "FIXED_", KeyIDs: []string{"key_resume"}},
 	})
@@ -1316,7 +1278,7 @@ func TestAdapterTargetMoveActivationTestsPendingRouteThenEnqueuesConverge(t *tes
 		}
 	}
 	now := time.Now().UTC()
-	move, err := (&Adapters{DB: db, Now: func() time.Time { return now }}).moveTarget(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, UpdateAdapterTargetRequest{
+	move, err := (&Adapters{DB: db, Now: func() time.Time { return now }}).moveTarget(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, UpdateAdapterTargetRequest{
 		TargetID: "tgt_one", ExpectedGeneration: 1,
 		Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "next", NamePrefix: "NEXT_", KeyIDs: []string{"key_activate_move"}},
 	}, true)
@@ -1380,22 +1342,12 @@ func TestAdapterOriginMoveKeepsOldRouteAndCredentialThroughScrubBarrier(t *testi
 			t.Fatal(err)
 		}
 	}
-	root, err := crypto.GenerateRootKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	kr := adapterKeyring(t, db)
 	sealer, err := kr.ForProject(t.Context(), "org_adapter", "prj_adapter")
 	if err != nil {
 		t.Fatal(err)
 	}
-	oldCredential, err := sealer.SealField(adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), []byte("old-token"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	oldCredential := sealAdapterCredential(t, sealer, "old-token")
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapters SET credential_ciphertext=?,credential_set_at='2026-08-17T00:00:00Z' WHERE id='adp_1'`, oldCredential); err != nil {
 		t.Fatal(err)
 	}
@@ -1405,7 +1357,7 @@ func TestAdapterOriginMoveKeepsOldRouteAndCredentialThroughScrubBarrier(t *testi
 		}
 		return fakeAdapterConfigureModule{gates: new(int)}, nil, nil
 	})}
-	move, err := svc.MoveOrigin(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, "adp_1", "https://git.next.example", []byte("new-token"), false)
+	move, err := svc.MoveOrigin(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, "adp_1", "https://git.next.example", []byte("new-token"), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1543,14 +1495,7 @@ func TestAdapterPendingOriginReplacementAuditsTransactionAuthorityTransition(t *
 			t.Fatal(err)
 		}
 	}
-	root, err := crypto.GenerateRootKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	kr := adapterKeyring(t, db)
 	if _, err := kr.ForProject(t.Context(), "org_adapter", "prj_adapter"); err != nil {
 		t.Fatal(err)
 	}
@@ -1560,7 +1505,7 @@ func TestAdapterPendingOriginReplacementAuditsTransactionAuthorityTransition(t *
 		}
 		return fakeAdapterConfigureModule{gates: new(int)}, nil, nil
 	})}
-	resumed, err := svc.ResumeOriginMove(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, "move_origin_resume", "https://git.fixed.example", []byte("fixed-token"))
+	resumed, err := svc.ResumeOriginMove(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, "move_origin_resume", "https://git.fixed.example", []byte("fixed-token"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1588,7 +1533,7 @@ func TestAdapterTargetWidenRequiresRevealAcrossEveryAdapterEnvironment(t *testin
 		}
 	}
 	svc := &Adapters{DB: db}
-	_, err := svc.updateTarget(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, UpdateAdapterTargetRequest{TargetID: "tgt_one", ExpectedGeneration: 1, Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "app", NamePrefix: "ONE_", KeyIDs: []string{"key_existing", "key_widened"}}})
+	_, err := svc.updateTarget(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, UpdateAdapterTargetRequest{TargetID: "tgt_one", ExpectedGeneration: 1, Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "app", NamePrefix: "ONE_", KeyIDs: []string{"key_existing", "key_widened"}}})
 	if !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("UpdateTarget() error = %v, want tenant-safe refusal without env_two reveal", err)
 	}
@@ -1629,7 +1574,7 @@ func TestAdapterTargetInPlaceClassificationAndReplacementConverge(t *testing.T) 
 			t.Fatal(err)
 		}
 		bearer := adapterCLISession(t, db)
-		out, err := (&Adapters{DB: db, Auth: &Auth{DB: db}}).updateTarget(t.Context(), Bearer(bearer), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, UpdateAdapterTargetRequest{
+		out, err := (&Adapters{DB: db, Auth: &Auth{DB: db}}).updateTarget(t.Context(), Bearer(bearer), adapterScope, UpdateAdapterTargetRequest{
 			TargetID: "tgt_one", ExpectedGeneration: 1,
 			Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "app", NamePrefix: "ONE_", KeyIDs: []string{"key_update_a"}},
 		})
@@ -1676,7 +1621,7 @@ func TestAdapterTargetInPlaceClassificationAndReplacementConverge(t *testing.T) 
 				t.Fatal(err)
 			}
 			bearer := adapterCLISession(t, db)
-			_, err := (&Adapters{DB: db, Auth: &Auth{DB: db}}).updateTarget(t.Context(), Bearer(bearer), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, UpdateAdapterTargetRequest{
+			_, err := (&Adapters{DB: db, Auth: &Auth{DB: db}}).updateTarget(t.Context(), Bearer(bearer), adapterScope, UpdateAdapterTargetRequest{
 				TargetID: "tgt_one", ExpectedGeneration: 1,
 				Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "app", NamePrefix: tc.prefix, KeyIDs: tc.keys},
 			})
@@ -1709,7 +1654,7 @@ func TestAdapterFullTargetUpdateAuditsTransactionAuthorityTransition(t *testing.
 			t.Fatal(err)
 		}
 	}
-	out, err := (&Adapters{DB: db}).updateTarget(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, UpdateAdapterTargetRequest{
+	out, err := (&Adapters{DB: db}).updateTarget(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, UpdateAdapterTargetRequest{
 		TargetID: "tgt_one", ExpectedGeneration: 1,
 		Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "app", NamePrefix: "ONE_", KeyIDs: []string{"key_update_a", "key_update_b"}},
 	})
@@ -1740,7 +1685,7 @@ func (m fakeAdapterPlanModule) Sync(context.Context, adapter.SyncRequest, adapte
 func recordAdapterPlanArtifact(t *testing.T, db *store.DB, artifactID string) {
 	t.Helper()
 	err := storetx.Write(t.Context(), db, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
-		p, err := az.Authorize(ctx, authz.Identity{Principal: "usr_adapter"}, authz.OpAdapterPlan, domain.Scope{Org: "org_adapter", Project: "prj_adapter"})
+		p, err := az.Authorize(ctx, authz.Identity{Principal: "usr_adapter"}, authz.OpAdapterPlan, adapterScope)
 		if err != nil {
 			return err
 		}
@@ -1755,7 +1700,7 @@ func TestAdapterAdoptRequiresRevealAcrossEveryAdapterEnvironment(t *testing.T) {
 	db := adapterServiceDB(t)
 	recordAdapterPlanArtifact(t, db, "plan_all_envs")
 	service := &Adapters{DB: db}
-	_, err := service.Adopt(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, AdoptAdapterRequest{
+	_, err := service.Adopt(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, AdoptAdapterRequest{
 		TargetID: "tgt_one", ArtifactID: "plan_all_envs", ExpectedGeneration: 1, ExpectedDestinationID: 42, Entries: []store.AdapterConflictEntry{{Surface: "secret", EffectiveName: "ONE_TOKEN"}},
 	})
 	if !errors.Is(err, domain.ErrNotFound) {
@@ -1764,7 +1709,7 @@ func TestAdapterAdoptRequiresRevealAcrossEveryAdapterEnvironment(t *testing.T) {
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('gr_reveal_two','usr_adapter','reveal','org_adapter','prj_adapter','env_two','2026-08-17T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
-	result, err := service.Adopt(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, AdoptAdapterRequest{
+	result, err := service.Adopt(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, AdoptAdapterRequest{
 		TargetID: "tgt_one", ArtifactID: "plan_all_envs", ExpectedGeneration: 1, ExpectedDestinationID: 42, Entries: []store.AdapterConflictEntry{{Surface: "secret", EffectiveName: "ONE_TOKEN"}},
 	})
 	if err != nil {
@@ -1797,7 +1742,7 @@ func TestAdapterTargetKeepRemoteReleasesAndEnumeratesCustodyWithoutReveal(t *tes
 	// The fixture deliberately grants reveal only in env_one and none in
 	// env_two. Target deletion is the ADR's plain destructive formula, so it
 	// must not consume or require reveal material.
-	result, err := (&Adapters{DB: db}).RemoveTarget(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, "tgt_one", true)
+	result, err := (&Adapters{DB: db}).RemoveTarget(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, "tgt_one", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1846,7 +1791,7 @@ func TestAdapterDeleteQueuesEveryScrubAndRetainsCredentialUntilLastTerminal(t *t
 			t.Fatal(err)
 		}
 	}
-	result, err := (&Adapters{DB: db}).Delete(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, "adp_1", false)
+	result, err := (&Adapters{DB: db}).Delete(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, "adp_1", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1898,16 +1843,9 @@ func TestAdapterCredentialReplaceAndRevokeFenceWithoutAutoConverge(t *testing.T)
 			t.Fatal(err)
 		}
 	}
-	root, err := crypto.GenerateRootKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	kr := adapterKeyring(t, db)
 	svc := &Adapters{DB: db, Keyring: kr}
-	scope := domain.Scope{Org: "org_adapter", Project: "prj_adapter"}
+	scope := adapterScope
 	if _, err := svc.ReplaceCredential(t.Context(), LocalPrincipal("usr_adapter"), scope, "adp_1", []byte("provider-token")); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("ReplaceCredential() without reveal in every target env = %v, want uniform refusal", err)
 	}
@@ -1997,7 +1935,7 @@ func TestAdapterCredentialReplaceAndRevokeFenceWithoutAutoConverge(t *testing.T)
 func TestAdapterManualSyncRequiresTargetRevealAndSupersedesNewest(t *testing.T) {
 	db := adapterServiceDB(t)
 	svc := &Adapters{DB: db}
-	scope := domain.Scope{Org: "org_adapter", Project: "prj_adapter"}
+	scope := adapterScope
 	if _, err := svc.SyncTarget(t.Context(), LocalPrincipal("usr_adapter"), scope, "tgt_two"); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("SyncTarget(env_two) = %v, want reveal refusal", err)
 	}
@@ -2032,22 +1970,12 @@ func TestAdapterManualSyncRequiresTargetRevealAndSupersedesNewest(t *testing.T) 
 
 func TestAdapterTargetConnectionReauthorizesEveryProviderRequest(t *testing.T) {
 	db := adapterServiceDB(t)
-	root, err := crypto.GenerateRootKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	kr := adapterKeyring(t, db)
 	sealer, err := kr.ForProject(t.Context(), "org_adapter", "prj_adapter")
 	if err != nil {
 		t.Fatal(err)
 	}
-	sealed, err := sealer.SealField(adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), []byte("provider-token"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	sealed := sealAdapterCredential(t, sealer, "provider-token")
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapters SET credential_ciphertext=?,credential_set_at='2026-08-17T00:00:00Z',credential_expires_at='2026-08-18T00:00:00Z' WHERE id='adp_1'`, sealed); err != nil {
 		t.Fatal(err)
 	}
@@ -2062,7 +1990,7 @@ func TestAdapterTargetConnectionReauthorizesEveryProviderRequest(t *testing.T) {
 		}
 		return fakeAdapterTestModule{gates: &gates, credentialExpiry: expires}, nil, nil
 	})}
-	if _, err := svc.ReplaceCredential(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, "adp_1", []byte("provider-token")); err != nil {
+	if _, err := svc.ReplaceCredential(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, "adp_1", []byte("provider-token")); err != nil {
 		t.Fatal(err)
 	}
 	var clearedExpiry any
@@ -2072,14 +2000,14 @@ func TestAdapterTargetConnectionReauthorizesEveryProviderRequest(t *testing.T) {
 	if clearedExpiry != nil {
 		t.Fatalf("credential replacement retained stale expiry %v", clearedExpiry)
 	}
-	connection, err := svc.TestTarget(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, "tgt_one")
+	connection, err := svc.TestTarget(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, "tgt_one")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if connection.Version != "1.21.11" || connection.DestinationID != 42 || gates != 2 {
 		t.Fatalf("TestTarget() = %+v gates=%d", connection, gates)
 	}
-	shown, err := svc.Get(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, "adp_1")
+	shown, err := svc.Get(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, "adp_1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2108,22 +2036,12 @@ func TestAdapterPlanPersistsProviderConflictArtifactAndInspectReturnsIt(t *testi
 			t.Fatal(err)
 		}
 	}
-	root, err := crypto.GenerateRootKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	kr := adapterKeyring(t, db)
 	sealer, err := kr.ForProject(t.Context(), "org_adapter", "prj_adapter")
 	if err != nil {
 		t.Fatal(err)
 	}
-	sealed, err := sealer.SealField(adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), []byte("provider-token"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	sealed := sealAdapterCredential(t, sealer, "provider-token")
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapters SET credential_ciphertext=?,credential_set_at='2026-08-17T00:00:00Z' WHERE id='adp_1'`, sealed); err != nil {
 		t.Fatal(err)
 	}
@@ -2140,7 +2058,7 @@ func TestAdapterPlanPersistsProviderConflictArtifactAndInspectReturnsIt(t *testi
 			return fakeAdapterPlanModule{plan: adapter.Plan{Changes: []adapter.Change{wantChange}}}, func() {}, nil
 		}),
 	}
-	scope := domain.Scope{Org: "org_adapter", Project: "prj_adapter"}
+	scope := adapterScope
 	result, err := svc.Plan(t.Context(), LocalPrincipal("usr_adapter"), scope, "tgt_one")
 	if err != nil {
 		t.Fatal(err)
@@ -2214,22 +2132,12 @@ func TestAdapterOriginMoveCredentialFailureRequiresAttentionAndCancelReconverges
 			t.Fatal(err)
 		}
 	}
-	root, err := crypto.GenerateRootKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	kr := adapterKeyring(t, db)
 	sealer, err := kr.ForProject(t.Context(), "org_adapter", "prj_adapter")
 	if err != nil {
 		t.Fatal(err)
 	}
-	oldCredential, err := sealer.SealField(adapter.CredentialAAD("org_adapter", "prj_adapter", "adp_1"), []byte("old-token"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	oldCredential := sealAdapterCredential(t, sealer, "old-token")
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapters SET credential_ciphertext=?,credential_set_at='2026-08-17T00:00:00Z' WHERE id='adp_1'`, oldCredential); err != nil {
 		t.Fatal(err)
 	}
@@ -2239,7 +2147,7 @@ func TestAdapterOriginMoveCredentialFailureRequiresAttentionAndCancelReconverges
 		}
 		return fakeAdapterConfigureModule{gates: new(int)}, nil, nil
 	})}
-	move, err := svc.MoveOrigin(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, "adp_1", "https://git.next.example", []byte("new-token"), false)
+	move, err := svc.MoveOrigin(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, "adp_1", "https://git.next.example", []byte("new-token"), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2314,14 +2222,14 @@ func TestAdapterOriginMoveCredentialFailureRequiresAttentionAndCancelReconverges
 	if err := runtime.Fail(t.Context(), firstActivation, 0, now.Add(5*time.Second), adapter.ErrProviderAuth); err != nil {
 		t.Fatal(err)
 	}
-	status, err := svc.Move(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, move.MoveID)
+	status, err := svc.Move(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, move.MoveID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if status.State != "attention_required" {
 		t.Fatalf("attention status = %+v", status)
 	}
-	canceled, err := svc.CancelMove(t.Context(), LocalPrincipal("usr_adapter"), domain.Scope{Org: "org_adapter", Project: "prj_adapter"}, move.MoveID)
+	canceled, err := svc.CancelMove(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, move.MoveID)
 	if err != nil {
 		t.Fatalf("CancelMove() after a refused origin activation: %v", err)
 	}

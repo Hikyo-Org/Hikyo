@@ -177,10 +177,7 @@ type DeliveryConformanceProbe interface {
 }
 
 func (s *Delivery) now() time.Time {
-	if s.Now == nil {
-		return time.Now().UTC()
-	}
-	return s.Now().UTC()
+	return nowOr(s.Now)
 }
 
 // Fetch delivers the authorized projection of the addressed environment, or
@@ -291,16 +288,12 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 		// pin-expiry check, and the server-asserted snapshot issuance/expiry all
 		// name the same instant.
 		issuedAt := s.now()
-		caller, err := actor.resolve(ctx, az, issuedAt)
-		if err != nil {
-			return err
-		}
 		// The SAME authorization the delivering path performs, because it IS the
 		// delivering path: a caller who has lost `read` gets
 		// authorize()'s uniform nonexistent answer, never "current". A separate
 		// cheap check on the conditional branch is exactly the shape the ADR
 		// forbids.
-		p, err := az.Authorize(ctx, caller, authz.OpDeliveryFetch, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpDeliveryFetch, scope, issuedAt)
 		if err != nil {
 			return err
 		}
@@ -564,11 +557,7 @@ func (s *Delivery) ReconcileOfflineRecordsAs(ctx context.Context, actor Actor, s
 	var out ReconcileResult
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		out = ReconcileResult{}
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpDeliveryReconcileOffline, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpDeliveryReconcileOffline, scope, s.now())
 		if err != nil {
 			return err
 		}

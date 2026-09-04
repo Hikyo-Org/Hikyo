@@ -49,10 +49,7 @@ type RootKeySource interface {
 }
 
 func (s *Rotation) now() time.Time {
-	if s.Now == nil {
-		return time.Now().UTC()
-	}
-	return s.Now().UTC()
+	return nowOr(s.Now)
 }
 
 // DEKScope selects what rotate-dek / reencrypt operate on: one project's DEK,
@@ -123,11 +120,7 @@ func (s *Rotation) RotateDEK(ctx context.Context, actor Actor, scope DEKScope) (
 	next.CreatedAt = store.CanonTime(s.now())
 
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpRotateDEK, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpRotateDEK, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}
@@ -225,11 +218,7 @@ func (s *Rotation) RotateMasterKey(ctx context.Context, actor Actor) (MasterKeyR
 	}()
 
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpRotateMasterKey, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpRotateMasterKey, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}
@@ -375,11 +364,7 @@ func (s *Rotation) rootRotateFinalize(ctx context.Context, actor Actor) (RootKey
 
 	var newEpoch uint32
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpRotateRootKey, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpRotateRootKey, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}
@@ -412,11 +397,7 @@ func (s *Rotation) rootRotateFinalize(ctx context.Context, actor Actor) (RootKey
 // inside its own transaction and does not.
 func (s *Rotation) rootRotationTx(ctx context.Context, actor Actor, event audit.EventType, epoch uint32, mutate func(context.Context, store.Repos, authz.Proof) error) error {
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpRotateRootKey, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpRotateRootKey, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}

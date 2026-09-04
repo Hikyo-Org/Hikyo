@@ -105,11 +105,7 @@ func (s *SCIM) wireTxOnce(
 ) error {
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		now := s.now()
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, op, domain.Scope{Org: org})
+		caller, p, err := authorize(ctx, az, actor, op, domain.Scope{Org: org}, now)
 		if err != nil {
 			return err
 		}
