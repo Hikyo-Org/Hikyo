@@ -25,21 +25,30 @@ func TestUpgradeOldToNewSQLite(t *testing.T) {
 }
 
 func TestUpgradeOldToNewPostgres(t *testing.T) {
+	// A dedicated scratch database so the partial-schema (N-1) state never
+	// collides with other postgres legs sharing the server.
+	runUpgradeOldToNew(t, postgresTestConfig(t, "upgrade"))
+}
+
+// postgresTestConfig provisions a throwaway postgres database for a migration
+// leg: it fails loud under CI when the DSN is unset, skips otherwise, creates a
+// uniquely named scratch database, drops it on cleanup, and returns the config
+// pointed at it (migration tests run migrate.Run against the config themselves).
+func postgresTestConfig(t *testing.T, label string) store.Config {
+	t.Helper()
 	dsn := os.Getenv("HIKYO_TEST_POSTGRES_DSN")
 	if dsn == "" {
 		if os.Getenv("CI") != "" {
-			t.Fatal("CI run without HIKYO_TEST_POSTGRES_DSN: the postgres upgrade leg must not silently skip in CI")
+			t.Fatal("CI run without HIKYO_TEST_POSTGRES_DSN: the postgres migration leg must not silently skip in CI")
 		}
 		t.Skip("HIKYO_TEST_POSTGRES_DSN not set")
 	}
-	// A dedicated scratch database so the partial-schema (N-1) state never
-	// collides with other postgres legs sharing the server.
 	parsed, err := url.Parse(dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	base := strings.TrimPrefix(parsed.Path, "/")
-	database := fmt.Sprintf("%s_upgrade_%d", base, time.Now().UnixNano())
+	database := fmt.Sprintf("%s_%s_%d", base, label, time.Now().UnixNano())
 	admin, err := store.Open(t.Context(), store.Config{Engine: store.EnginePostgres, DSN: dsn})
 	if err != nil {
 		t.Fatal(err)
@@ -52,7 +61,7 @@ func TestUpgradeOldToNewPostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	parsed.Path = "/" + database
-	runUpgradeOldToNew(t, store.Config{Engine: store.EnginePostgres, DSN: parsed.String()})
+	return store.Config{Engine: store.EnginePostgres, DSN: parsed.String()}
 }
 
 func runUpgradeOldToNew(t *testing.T, cfg store.Config) {

@@ -128,7 +128,7 @@ func (r *Resolver) CreateProvisioningPrincipal(ctx context.Context, id domain.Pr
 		})
 	}
 	return r.pg.InsertMachinePrincipal(ctx, pggen.InsertMachinePrincipalParams{
-		ID: string(id), Class: pgNullString(class), CreatedAt: pgTime(at),
+		ID: string(id), Class: pgNullString(class), CreatedAt: pgTimestamp(at),
 	})
 }
 
@@ -195,7 +195,7 @@ func pgNullTime(t time.Time) pgtype.Timestamptz {
 	if t.IsZero() {
 		return pgtype.Timestamptz{}
 	}
-	return pgTime(t)
+	return pgTimestamp(t)
 }
 
 func pgNullString(s string) pgtype.Text {

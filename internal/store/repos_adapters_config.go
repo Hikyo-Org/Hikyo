@@ -2,14 +2,11 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
 	"time"
-
-	"github.com/jackc/pgx/v5"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
@@ -21,7 +18,7 @@ func scanAdapterRecord(row interface{ Scan(...any) error }) (AdapterRecord, erro
 	var credential int
 	var credentialSetAt, credentialExpiresAt, createdAt adapterStoredTime
 	err := row.Scan(&out.ID, &out.Provider, &out.Origin, &credential, &credentialSetAt, &credentialExpiresAt, &out.AuthorityPrincipalID, &out.State, &createdAt)
-	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
+	if isNoRows(err) {
 		return AdapterRecord{}, ErrNotFound
 	}
 	if err != nil {
@@ -77,23 +74,17 @@ func (t *adapterStoredTime) Scan(src any) error {
 	}
 }
 
-func (r sqliteAdapters) Get(ctx context.Context, p authz.Proof, adapterID string) (AdapterRecord, error) {
+func (r adapterQueries) Get(ctx context.Context, p authz.Proof, adapterID string) (AdapterRecord, error) {
 	chain, err := authz.Verify(p, authz.StoreAdaptersGet, r.tok)
 	if err != nil {
 		return AdapterRecord{}, err
 	}
-	return scanAdapterRecord(r.db.QueryRowContext(ctx, `SELECT `+adapterRecordColumns+` FROM adapters WHERE id=? AND org_id=? AND project_id=? AND state<>'tombstoned'`, adapterID, chain.Org, chain.Project))
+	return scanAdapterRecord(r.db.QueryRow(ctx, r.db.SQLPerEngine(
+		`SELECT `+adapterRecordColumns+` FROM adapters WHERE id=? AND org_id=? AND project_id=? AND state<>'tombstoned'`,
+		`SELECT `+adapterRecordColumns+` FROM adapters WHERE id=$1 AND org_id=$2 AND project_id=$3 AND state<>'tombstoned'`), adapterID, chain.Org, chain.Project))
 }
 
-func (r pgAdapters) Get(ctx context.Context, p authz.Proof, adapterID string) (AdapterRecord, error) {
-	chain, err := authz.Verify(p, authz.StoreAdaptersGet, r.tok)
-	if err != nil {
-		return AdapterRecord{}, err
-	}
-	return scanAdapterRecord(r.db.QueryRow(ctx, `SELECT `+adapterRecordColumns+` FROM adapters WHERE id=$1 AND org_id=$2 AND project_id=$3 AND state<>'tombstoned'`, adapterID, chain.Org, chain.Project))
-}
-
-func (r sqliteAdapters) Configuration(ctx context.Context, p authz.Proof, adapterID string) (AdapterRecord, []byte, error) {
+func (r adapterQueries) Configuration(ctx context.Context, p authz.Proof, adapterID string) (AdapterRecord, []byte, error) {
 	chain, err := authz.Verify(p, authz.StoreAdaptersConfiguration, r.tok)
 	if err != nil {
 		return AdapterRecord{}, nil, err
@@ -102,31 +93,10 @@ func (r sqliteAdapters) Configuration(ctx context.Context, p authz.Proof, adapte
 	var credential []byte
 	var present int
 	var credentialSetAt, credentialExpiresAt, createdAt adapterStoredTime
-	err = r.db.QueryRowContext(ctx, `SELECT `+adapterRecordColumns+`,credential_ciphertext FROM adapters WHERE id=? AND org_id=? AND project_id=? AND state<>'tombstoned'`, adapterID, chain.Org, chain.Project).Scan(&record.ID, &record.Provider, &record.Origin, &present, &credentialSetAt, &credentialExpiresAt, &record.AuthorityPrincipalID, &record.State, &createdAt, &credential)
-	if errors.Is(err, sql.ErrNoRows) {
-		return AdapterRecord{}, nil, ErrNotFound
-	}
-	if err != nil {
-		return AdapterRecord{}, nil, err
-	}
-	record.CredentialPresent = present == 1
-	record.CredentialSetAt = credentialSetAt.value
-	record.CredentialExpiresAt = credentialExpiresAt.value
-	record.CreatedAt = createdAt.value
-	return record, credential, nil
-}
-
-func (r pgAdapters) Configuration(ctx context.Context, p authz.Proof, adapterID string) (AdapterRecord, []byte, error) {
-	chain, err := authz.Verify(p, authz.StoreAdaptersConfiguration, r.tok)
-	if err != nil {
-		return AdapterRecord{}, nil, err
-	}
-	var record AdapterRecord
-	var credential []byte
-	var present int
-	var credentialSetAt, credentialExpiresAt, createdAt adapterStoredTime
-	err = r.db.QueryRow(ctx, `SELECT `+adapterRecordColumns+`,credential_ciphertext FROM adapters WHERE id=$1 AND org_id=$2 AND project_id=$3 AND state<>'tombstoned'`, adapterID, chain.Org, chain.Project).Scan(&record.ID, &record.Provider, &record.Origin, &present, &credentialSetAt, &credentialExpiresAt, &record.AuthorityPrincipalID, &record.State, &createdAt, &credential)
-	if errors.Is(err, pgx.ErrNoRows) {
+	err = r.db.QueryRow(ctx, r.db.SQLPerEngine(
+		`SELECT `+adapterRecordColumns+`,credential_ciphertext FROM adapters WHERE id=? AND org_id=? AND project_id=? AND state<>'tombstoned'`,
+		`SELECT `+adapterRecordColumns+`,credential_ciphertext FROM adapters WHERE id=$1 AND org_id=$2 AND project_id=$3 AND state<>'tombstoned'`), adapterID, chain.Org, chain.Project).Scan(&record.ID, &record.Provider, &record.Origin, &present, &credentialSetAt, &credentialExpiresAt, &record.AuthorityPrincipalID, &record.State, &createdAt, &credential)
+	if isNoRows(err) {
 		return AdapterRecord{}, nil, ErrNotFound
 	}
 	if err != nil {
@@ -157,29 +127,18 @@ func collectAdapterRecords(rows adapterRecordRows) ([]AdapterRecord, error) {
 	return out, rows.Err()
 }
 
-func (r sqliteAdapters) List(ctx context.Context, p authz.Proof) ([]AdapterRecord, error) {
+func (r adapterQueries) List(ctx context.Context, p authz.Proof) ([]AdapterRecord, error) {
 	chain, err := authz.Verify(p, authz.StoreAdaptersList, r.tok)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT `+adapterRecordColumns+` FROM adapters WHERE org_id=? AND project_id=? AND state<>'tombstoned' ORDER BY id`, chain.Org, chain.Project)
+	rows, err := r.db.Query(ctx, r.db.SQLPerEngine(
+		`SELECT `+adapterRecordColumns+` FROM adapters WHERE org_id=? AND project_id=? AND state<>'tombstoned' ORDER BY id`,
+		`SELECT `+adapterRecordColumns+` FROM adapters WHERE org_id=$1 AND project_id=$2 AND state<>'tombstoned' ORDER BY id`), chain.Org, chain.Project)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	return collectAdapterRecords(rows)
-}
-
-func (r pgAdapters) List(ctx context.Context, p authz.Proof) ([]AdapterRecord, error) {
-	chain, err := authz.Verify(p, authz.StoreAdaptersList, r.tok)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := r.db.Query(ctx, `SELECT `+adapterRecordColumns+` FROM adapters WHERE org_id=$1 AND project_id=$2 AND state<>'tombstoned' ORDER BY id`, chain.Org, chain.Project)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+	defer closeAdapterRows(rows)
 	return collectAdapterRecords(rows)
 }
 
@@ -211,29 +170,18 @@ const adapterTargetColumns = `t.id,t.adapter_id,t.environment_id,a.provider,a.or
 // be locked.
 const adapterTargetFrom = ` FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id LEFT JOIN adapter_outbox j ON j.id=t.active_job_id AND j.org_id=t.org_id AND j.project_id=t.project_id AND j.environment_id=t.environment_id`
 
-func (r sqliteAdapters) ListTargets(ctx context.Context, p authz.Proof, adapterID string) ([]AdapterTarget, error) {
+func (r adapterQueries) ListTargets(ctx context.Context, p authz.Proof, adapterID string) ([]AdapterTarget, error) {
 	chain, err := authz.Verify(p, authz.StoreAdaptersListTargets, r.tok)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT `+adapterTargetColumns+adapterTargetFrom+` WHERE t.adapter_id=? AND t.org_id=? AND t.project_id=? AND t.state='active' ORDER BY t.id`, adapterID, chain.Org, chain.Project)
+	rows, err := r.db.Query(ctx, r.db.SQLPerEngine(
+		`SELECT `+adapterTargetColumns+adapterTargetFrom+` WHERE t.adapter_id=? AND t.org_id=? AND t.project_id=? AND t.state='active' ORDER BY t.id`,
+		`SELECT `+adapterTargetColumns+adapterTargetFrom+` WHERE t.adapter_id=$1 AND t.org_id=$2 AND t.project_id=$3 AND t.state='active' ORDER BY t.id`), adapterID, chain.Org, chain.Project)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	return collectAdapterTargets(rows)
-}
-
-func (r pgAdapters) ListTargets(ctx context.Context, p authz.Proof, adapterID string) ([]AdapterTarget, error) {
-	chain, err := authz.Verify(p, authz.StoreAdaptersListTargets, r.tok)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := r.db.Query(ctx, `SELECT `+adapterTargetColumns+adapterTargetFrom+` WHERE t.adapter_id=$1 AND t.org_id=$2 AND t.project_id=$3 AND t.state='active' ORDER BY t.id`, adapterID, chain.Org, chain.Project)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+	defer closeAdapterRows(rows)
 	return collectAdapterTargets(rows)
 }
 
@@ -253,29 +201,18 @@ func collectStrings(rows interface {
 	return out, rows.Err()
 }
 
-func (r sqliteAdapters) TargetKeyIDs(ctx context.Context, p authz.Proof, targetID string) ([]string, error) {
+func (r adapterQueries) TargetKeyIDs(ctx context.Context, p authz.Proof, targetID string) ([]string, error) {
 	chain, err := authz.Verify(p, authz.StoreAdaptersTargetKeyIDs, r.tok)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT key_id FROM adapter_target_keys WHERE target_id=? AND org_id=? AND project_id=? ORDER BY key_id`, targetID, chain.Org, chain.Project)
+	rows, err := r.db.Query(ctx, r.db.SQL(
+		`SELECT key_id FROM adapter_target_keys WHERE target_id=? AND org_id=? AND project_id=? ORDER BY key_id`,
+	), targetID, chain.Org, chain.Project)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	return collectStrings(rows)
-}
-
-func (r pgAdapters) TargetKeyIDs(ctx context.Context, p authz.Proof, targetID string) ([]string, error) {
-	chain, err := authz.Verify(p, authz.StoreAdaptersTargetKeyIDs, r.tok)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := r.db.Query(ctx, `SELECT key_id FROM adapter_target_keys WHERE target_id=$1 AND org_id=$2 AND project_id=$3 ORDER BY key_id`, targetID, chain.Org, chain.Project)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+	defer closeAdapterRows(rows)
 	return collectStrings(rows)
 }
 
@@ -289,7 +226,7 @@ func (r adapterQueries) TargetKeys(ctx context.Context, p authz.Proof, targetID 
 	}
 	query := r.db.SQL(
 		`SELECT k.id,k.name,k.classification FROM adapter_target_keys tk JOIN keys k ON k.id=tk.key_id AND k.org_id=tk.org_id AND k.project_id=tk.project_id WHERE tk.target_id=? AND tk.org_id=? AND tk.project_id=? ORDER BY k.name`,
-		`SELECT k.id,k.name,k.classification FROM adapter_target_keys tk JOIN keys k ON k.id=tk.key_id AND k.org_id=tk.org_id AND k.project_id=tk.project_id WHERE tk.target_id=$1 AND tk.org_id=$2 AND tk.project_id=$3 ORDER BY k.name`)
+	)
 	rows, err := r.db.Query(ctx, query, targetID, chain.Org, chain.Project)
 	if err != nil {
 		return nil, err
@@ -358,7 +295,7 @@ func validateTargetMutation(m AdapterTargetMutation) error {
 func targetManifest(ctx context.Context, db adapterDB, chain domain.Scope, m AdapterTargetMutation) ([]adapter.ManifestEntry, error) {
 	providerQuery := db.SQL(
 		`SELECT provider FROM adapters WHERE id=? AND org_id=? AND project_id=?`,
-		`SELECT provider FROM adapters WHERE id=$1 AND org_id=$2 AND project_id=$3`)
+	)
 	providerRows, err := db.Query(ctx, providerQuery, m.AdapterID, chain.Org, chain.Project)
 	if err != nil {
 		return nil, err
@@ -383,7 +320,7 @@ func targetManifest(ctx context.Context, db adapterDB, chain domain.Scope, m Ada
 	for _, id := range m.KeyIDs {
 		args = append(args, id)
 	}
-	q := db.SQL(
+	q := db.SQLPerEngine(
 		`SELECT id,name,classification FROM keys WHERE org_id=? AND project_id=? AND id IN (`+db.Placeholders(len(m.KeyIDs), 3)+`) ORDER BY id`,
 		`SELECT id,name,classification FROM keys WHERE org_id=$1 AND project_id=$2 AND id IN (`+db.Placeholders(len(m.KeyIDs), 3)+`) ORDER BY id`)
 	rows, err := db.Query(ctx, q, args...)
@@ -417,7 +354,7 @@ func refuseDestinationNameCollision(ctx context.Context, db adapterDB, chain dom
 	for _, entry := range manifest {
 		desired[m.NamePrefix+entry.CanonicalName] = struct{}{}
 	}
-	q := db.SQL(`SELECT t.id,t.name_prefix,COALESCE(k.name,'')
+	q := db.SQLPerEngine(`SELECT t.id,t.name_prefix,COALESCE(k.name,'')
 		FROM adapter_targets t
 		JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id
 		JOIN adapters candidate ON candidate.id=? AND candidate.org_id=t.org_id AND candidate.project_id=t.project_id
@@ -458,7 +395,7 @@ func refuseDestinationNameCollision(ctx context.Context, db adapterDB, chain dom
 	}
 	pendingQuery := db.SQL(
 		`SELECT c.target_id,c.effective_name FROM adapter_route_move_claims c JOIN adapters candidate ON candidate.id=? AND candidate.org_id=c.org_id AND candidate.project_id=c.project_id WHERE c.org_id=? AND c.project_id=? AND c.provider_origin=candidate.origin AND c.destination_kind=? AND c.destination_owner=? AND c.destination_name=? AND c.destination_environment=? AND c.target_id<>? ORDER BY c.target_id,c.effective_name`,
-		`SELECT c.target_id,c.effective_name FROM adapter_route_move_claims c JOIN adapters candidate ON candidate.id=$1 AND candidate.org_id=c.org_id AND candidate.project_id=c.project_id WHERE c.org_id=$2 AND c.project_id=$3 AND c.provider_origin=candidate.origin AND c.destination_kind=$4 AND c.destination_owner=$5 AND c.destination_name=$6 AND c.destination_environment=$7 AND c.target_id<>$8 ORDER BY c.target_id,c.effective_name`)
+	)
 	pendingRows, err := db.Query(ctx, pendingQuery, m.AdapterID, chain.Org, chain.Project, m.DestinationKind, m.DestinationOwner, m.DestinationName, m.DestinationEnvironment, excludeTargetID)
 	if err != nil {
 		return err
@@ -489,14 +426,14 @@ func insertTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 	}
 	q := db.SQL(
 		`INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_environment,destination_id,repository_id,visibility,selected_repository_ids,name_prefix,generation,state,sync_status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,'active','never',?)`,
-		`INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_environment,destination_id,repository_id,visibility,selected_repository_ids,name_prefix,generation,state,sync_status,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,1,'active','never',$15)`)
+	)
 	if _, err := db.Exec(ctx, q, m.ID, chain.Org, chain.Project, m.EnvironmentID, m.AdapterID, m.DestinationKind, m.DestinationOwner, m.DestinationName, m.DestinationEnvironment, m.DestinationID, m.RepositoryID, m.Visibility, selected, m.NamePrefix, db.Stamp(at)); err != nil {
 		return constraint(err)
 	}
 	for _, keyID := range m.KeyIDs {
 		q = db.SQL(
 			`INSERT INTO adapter_target_keys (org_id,project_id,environment_id,target_id,adapter_id,key_id) VALUES (?,?,?,?,?,?)`,
-			`INSERT INTO adapter_target_keys (org_id,project_id,environment_id,target_id,adapter_id,key_id) VALUES ($1,$2,$3,$4,$5,$6)`)
+		)
 		if _, err := db.Exec(ctx, q, chain.Org, chain.Project, m.EnvironmentID, m.ID, m.AdapterID, keyID); err != nil {
 			return constraint(err)
 		}
@@ -504,7 +441,7 @@ func insertTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 	return nil
 }
 
-func (r sqliteAdapters) Create(ctx context.Context, p authz.Proof, m AdapterCreate) (AdapterRecord, AdapterTarget, error) {
+func (r adapterQueries) Create(ctx context.Context, p authz.Proof, m AdapterCreate) (AdapterRecord, AdapterTarget, error) {
 	chain, err := authz.Verify(p, authz.StoreAdaptersCreate, r.tok)
 	if err != nil {
 		return AdapterRecord{}, AdapterTarget{}, err
@@ -516,45 +453,18 @@ func (r sqliteAdapters) Create(ctx context.Context, p authz.Proof, m AdapterCrea
 		return AdapterRecord{}, AdapterTarget{}, err
 	}
 	at := CanonTime(m.At)
-	atString := at.Format(timeFormat)
+	stamp := r.db.Stamp(at)
 	var expires any
 	if !m.CredentialExpiresAt.IsZero() {
-		expires = CanonTime(m.CredentialExpiresAt).Format(timeFormat)
+		expires = r.db.Stamp(m.CredentialExpiresAt)
 	}
-	if _, err := r.db.ExecContext(ctx, `INSERT INTO adapters (id,org_id,project_id,provider,origin,credential_ciphertext,credential_set_at,credential_expires_at,authority_principal_id,state,created_at) VALUES (?,?,?,?,?,?,?,?,?,'active',?)`, m.ID, chain.Org, chain.Project, m.Provider, m.Origin, m.CredentialCiphertext, atString, expires, m.AuthorityPrincipalID, atString); err != nil {
+	if _, err := r.db.Exec(ctx, r.db.SQL(
+		`INSERT INTO adapters (id,org_id,project_id,provider,origin,credential_ciphertext,credential_set_at,credential_expires_at,authority_principal_id,state,created_at) VALUES (?,?,?,?,?,?,?,?,?,'active',?)`,
+	),
+		m.ID, chain.Org, chain.Project, m.Provider, m.Origin, m.CredentialCiphertext, stamp, expires, m.AuthorityPrincipalID, stamp); err != nil {
 		return AdapterRecord{}, AdapterTarget{}, constraint(err)
 	}
-	if err := insertTargetConfig(ctx, sqliteAdoptDB{db: r.db}, chain, m.Target, at); err != nil {
-		return AdapterRecord{}, AdapterTarget{}, err
-	}
-	record := AdapterRecord{ID: m.ID, Provider: m.Provider, Origin: m.Origin, CredentialPresent: true, CredentialSetAt: atString, AuthorityPrincipalID: m.AuthorityPrincipalID, State: "active", CreatedAt: atString}
-	if expires != nil {
-		record.CredentialExpiresAt = expires.(string)
-	}
-	target := mutationTarget(record, m.Target, 1)
-	return record, target, nil
-}
-
-func (r pgAdapters) Create(ctx context.Context, p authz.Proof, m AdapterCreate) (AdapterRecord, AdapterTarget, error) {
-	chain, err := authz.Verify(p, authz.StoreAdaptersCreate, r.tok)
-	if err != nil {
-		return AdapterRecord{}, AdapterTarget{}, err
-	}
-	if m.ID == "" || (m.Provider != "forgejo" && m.Provider != "github-actions") || m.Origin == "" || len(m.CredentialCiphertext) == 0 || m.AuthorityPrincipalID == "" || m.Target.AdapterID != m.ID {
-		return AdapterRecord{}, AdapterTarget{}, fmt.Errorf("%w: incomplete atomic adapter bootstrap", domain.ErrInvalid)
-	}
-	if err := validateTargetMutation(m.Target); err != nil {
-		return AdapterRecord{}, AdapterTarget{}, err
-	}
-	at := CanonTime(m.At)
-	var expires any
-	if !m.CredentialExpiresAt.IsZero() {
-		expires = CanonTime(m.CredentialExpiresAt)
-	}
-	if _, err := r.db.Exec(ctx, `INSERT INTO adapters (id,org_id,project_id,provider,origin,credential_ciphertext,credential_set_at,credential_expires_at,authority_principal_id,state,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'active',$10)`, m.ID, chain.Org, chain.Project, m.Provider, m.Origin, m.CredentialCiphertext, at, expires, m.AuthorityPrincipalID, at); err != nil {
-		return AdapterRecord{}, AdapterTarget{}, constraint(err)
-	}
-	if err := insertTargetConfig(ctx, pgAdoptDB{db: r.db}, chain, m.Target, at); err != nil {
+	if err := insertTargetConfig(ctx, r.db, chain, m.Target, at); err != nil {
 		return AdapterRecord{}, AdapterTarget{}, err
 	}
 	atString := at.Format(timeFormat)
@@ -569,7 +479,7 @@ func mutationTarget(record AdapterRecord, m AdapterTargetMutation, generation in
 	return AdapterTarget{ID: m.ID, AdapterID: m.AdapterID, Provider: record.Provider, EnvironmentID: m.EnvironmentID, Origin: record.Origin, DestinationKind: m.DestinationKind, DestinationOwner: m.DestinationOwner, DestinationName: m.DestinationName, DestinationEnvironment: m.DestinationEnvironment, DestinationID: m.DestinationID, RepositoryID: m.RepositoryID, Visibility: m.Visibility, SelectedRepositoryIDs: append([]int64(nil), m.SelectedRepositoryIDs...), NamePrefix: m.NamePrefix, Generation: generation, State: "active", SyncStatus: "never", AuthorityPrincipalID: record.AuthorityPrincipalID}
 }
 
-func (r sqliteAdapters) AddTarget(ctx context.Context, p authz.Proof, m AdapterTargetUpdate) (AdapterTargetAddResult, error) {
+func (r adapterQueries) AddTarget(ctx context.Context, p authz.Proof, m AdapterTargetUpdate) (AdapterTargetAddResult, error) {
 	chain, err := authz.Verify(p, authz.StoreAdaptersAddTarget, r.tok)
 	if err != nil {
 		return AdapterTargetAddResult{}, err
@@ -577,7 +487,9 @@ func (r sqliteAdapters) AddTarget(ctx context.Context, p authz.Proof, m AdapterT
 	if err := validateTargetMutation(m.Target); err != nil {
 		return AdapterTargetAddResult{}, err
 	}
-	record, err := scanAdapterRecord(r.db.QueryRowContext(ctx, `SELECT `+adapterRecordColumns+` FROM adapters WHERE id=? AND org_id=? AND project_id=? AND state='active'`, m.Target.AdapterID, chain.Org, chain.Project))
+	record, err := scanAdapterRecord(r.db.QueryRow(ctx, r.db.SQLPerEngine(
+		`SELECT `+adapterRecordColumns+` FROM adapters WHERE id=? AND org_id=? AND project_id=? AND state='active'`,
+		`SELECT `+adapterRecordColumns+` FROM adapters WHERE id=$1 AND org_id=$2 AND project_id=$3 AND state='active' FOR UPDATE`), m.Target.AdapterID, chain.Org, chain.Project))
 	if err != nil {
 		return AdapterTargetAddResult{}, err
 	}
@@ -586,62 +498,27 @@ func (r sqliteAdapters) AddTarget(ctx context.Context, p authz.Proof, m AdapterT
 	}
 	previousAuthority := record.AuthorityPrincipalID
 	at := CanonTime(m.At)
-	if err := insertTargetConfig(ctx, sqliteAdoptDB{db: r.db}, chain, m.Target, at); err != nil {
-		return AdapterTargetAddResult{}, err
-	}
-	expires := any(nil)
-	if !m.CredentialExpiresAt.IsZero() {
-		expires = CanonTime(m.CredentialExpiresAt).Format(timeFormat)
-	}
-	result, err := r.db.ExecContext(ctx, `UPDATE adapters SET authority_principal_id=?,credential_expires_at=COALESCE(?,credential_expires_at) WHERE id=? AND org_id=? AND project_id=? AND state='active'`, m.AuthorityPrincipalID, expires, m.Target.AdapterID, chain.Org, chain.Project)
-	if err != nil {
-		return AdapterTargetAddResult{}, err
-	}
-	if rows, err := result.RowsAffected(); err != nil || rows != 1 {
-		return AdapterTargetAddResult{}, errors.Join(err, ErrNotFound)
-	}
-	record.AuthorityPrincipalID = m.AuthorityPrincipalID
-	if expires != nil {
-		record.CredentialExpiresAt = expires.(string)
-	}
-	return AdapterTargetAddResult{Target: mutationTarget(record, m.Target, 1), PreviousAuthorityPrincipalID: previousAuthority, AuthorityPrincipalID: m.AuthorityPrincipalID}, nil
-}
-
-func (r pgAdapters) AddTarget(ctx context.Context, p authz.Proof, m AdapterTargetUpdate) (AdapterTargetAddResult, error) {
-	chain, err := authz.Verify(p, authz.StoreAdaptersAddTarget, r.tok)
-	if err != nil {
-		return AdapterTargetAddResult{}, err
-	}
-	if err := validateTargetMutation(m.Target); err != nil {
-		return AdapterTargetAddResult{}, err
-	}
-	record, err := scanAdapterRecord(r.db.QueryRow(ctx, `SELECT `+adapterRecordColumns+` FROM adapters WHERE id=$1 AND org_id=$2 AND project_id=$3 AND state='active' FOR UPDATE`, m.Target.AdapterID, chain.Org, chain.Project))
-	if err != nil {
-		return AdapterTargetAddResult{}, err
-	}
-	if !record.CredentialPresent {
-		return AdapterTargetAddResult{}, adapter.ErrProviderAuth
-	}
-	previousAuthority := record.AuthorityPrincipalID
-	at := CanonTime(m.At)
-	if err := insertTargetConfig(ctx, pgAdoptDB{db: r.db}, chain, m.Target, at); err != nil {
+	if err := insertTargetConfig(ctx, r.db, chain, m.Target, at); err != nil {
 		return AdapterTargetAddResult{}, err
 	}
 	var expires any
 	if !m.CredentialExpiresAt.IsZero() {
-		expires = CanonTime(m.CredentialExpiresAt)
+		expires = r.db.Stamp(m.CredentialExpiresAt)
 	}
-	if tag, err := r.db.Exec(ctx, `UPDATE adapters SET authority_principal_id=$1,credential_expires_at=COALESCE($2,credential_expires_at) WHERE id=$3 AND org_id=$4 AND project_id=$5 AND state='active'`, m.AuthorityPrincipalID, expires, m.Target.AdapterID, chain.Org, chain.Project); err != nil || tag.RowsAffected() != 1 {
+	if rows, err := r.db.Exec(ctx, r.db.SQL(
+		`UPDATE adapters SET authority_principal_id=?,credential_expires_at=COALESCE(?,credential_expires_at) WHERE id=? AND org_id=? AND project_id=? AND state='active'`,
+	),
+		m.AuthorityPrincipalID, expires, m.Target.AdapterID, chain.Org, chain.Project); err != nil || rows != 1 {
 		return AdapterTargetAddResult{}, errors.Join(err, ErrNotFound)
 	}
 	record.AuthorityPrincipalID = m.AuthorityPrincipalID
-	if expires != nil {
+	if !m.CredentialExpiresAt.IsZero() {
 		record.CredentialExpiresAt = CanonTime(m.CredentialExpiresAt).Format(timeFormat)
 	}
 	return AdapterTargetAddResult{Target: mutationTarget(record, m.Target, 1), PreviousAuthorityPrincipalID: previousAuthority, AuthorityPrincipalID: m.AuthorityPrincipalID}, nil
 }
 
-func (r sqliteAdapters) RecordCredentialExpiry(ctx context.Context, p authz.Proof, adapterID string, expiresAt time.Time) error {
+func (r adapterQueries) RecordCredentialExpiry(ctx context.Context, p authz.Proof, adapterID string, expiresAt time.Time) error {
 	chain, err := authz.Verify(p, authz.StoreAdaptersRecordCredentialExpiry, r.tok)
 	if err != nil {
 		return err
@@ -649,26 +526,11 @@ func (r sqliteAdapters) RecordCredentialExpiry(ctx context.Context, p authz.Proo
 	if adapterID == "" || expiresAt.IsZero() {
 		return fmt.Errorf("%w: credential expiry requires adapter and timestamp", domain.ErrInvalid)
 	}
-	result, err := r.db.ExecContext(ctx, `UPDATE adapters SET credential_expires_at=? WHERE id=? AND org_id=? AND project_id=? AND state='active'`, CanonTime(expiresAt).Format(timeFormat), adapterID, chain.Org, chain.Project)
-	if err != nil {
-		return err
-	}
-	if rows, err := result.RowsAffected(); err != nil || rows != 1 {
-		return errors.Join(err, ErrNotFound)
-	}
-	return nil
-}
-
-func (r pgAdapters) RecordCredentialExpiry(ctx context.Context, p authz.Proof, adapterID string, expiresAt time.Time) error {
-	chain, err := authz.Verify(p, authz.StoreAdaptersRecordCredentialExpiry, r.tok)
-	if err != nil {
-		return err
-	}
-	if adapterID == "" || expiresAt.IsZero() {
-		return fmt.Errorf("%w: credential expiry requires adapter and timestamp", domain.ErrInvalid)
-	}
-	tag, err := r.db.Exec(ctx, `UPDATE adapters SET credential_expires_at=$1 WHERE id=$2 AND org_id=$3 AND project_id=$4 AND state='active'`, CanonTime(expiresAt), adapterID, chain.Org, chain.Project)
-	if err != nil || tag.RowsAffected() != 1 {
+	rows, err := r.db.Exec(ctx, r.db.SQL(
+		`UPDATE adapters SET credential_expires_at=? WHERE id=? AND org_id=? AND project_id=? AND state='active'`,
+	),
+		r.db.Stamp(expiresAt), adapterID, chain.Org, chain.Project)
+	if err != nil || rows != 1 {
 		return errors.Join(err, ErrNotFound)
 	}
 	return nil
@@ -681,7 +543,7 @@ func validateAdapterConfigureFence(fence AdapterConfigureFence) error {
 	return nil
 }
 
-func (r sqliteAdapters) BeginConfigureEffect(ctx context.Context, p authz.Proof, fence AdapterConfigureFence) error {
+func (r adapterQueries) BeginConfigureEffect(ctx context.Context, p authz.Proof, fence AdapterConfigureFence) error {
 	chain, err := authz.Verify(p, authz.StoreAdaptersBeginConfigureEffect, r.tok)
 	if err != nil {
 		return err
@@ -689,19 +551,10 @@ func (r sqliteAdapters) BeginConfigureEffect(ctx context.Context, p authz.Proof,
 	if err := validateAdapterConfigureFence(fence); err != nil {
 		return err
 	}
-	_, err = r.db.ExecContext(ctx, `INSERT INTO adapter_configure_fences (target_id,org_id,project_id,environment_id,destination_kind,destination_owner,destination_name,destination_environment,generation,effect_id,lease_expires_at,state,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,'leased',?)`, fence.TargetID, chain.Org, chain.Project, fence.EnvironmentID, fence.DestinationKind, fence.DestinationOwner, fence.DestinationName, fence.DestinationEnvironment, fence.Generation, fence.EffectID, CanonTime(fence.LeaseExpiresAt).Format(timeFormat), CanonTime(fence.At).Format(timeFormat))
-	return constraint(err)
-}
-
-func (r pgAdapters) BeginConfigureEffect(ctx context.Context, p authz.Proof, fence AdapterConfigureFence) error {
-	chain, err := authz.Verify(p, authz.StoreAdaptersBeginConfigureEffect, r.tok)
-	if err != nil {
-		return err
-	}
-	if err := validateAdapterConfigureFence(fence); err != nil {
-		return err
-	}
-	_, err = r.db.Exec(ctx, `INSERT INTO adapter_configure_fences (target_id,org_id,project_id,environment_id,destination_kind,destination_owner,destination_name,destination_environment,generation,effect_id,lease_expires_at,state,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'leased',$12)`, fence.TargetID, chain.Org, chain.Project, fence.EnvironmentID, fence.DestinationKind, fence.DestinationOwner, fence.DestinationName, fence.DestinationEnvironment, fence.Generation, fence.EffectID, CanonTime(fence.LeaseExpiresAt), CanonTime(fence.At))
+	_, err = r.db.Exec(ctx, r.db.SQL(
+		`INSERT INTO adapter_configure_fences (target_id,org_id,project_id,environment_id,destination_kind,destination_owner,destination_name,destination_environment,generation,effect_id,lease_expires_at,state,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,'leased',?)`,
+	),
+		fence.TargetID, chain.Org, chain.Project, fence.EnvironmentID, fence.DestinationKind, fence.DestinationOwner, fence.DestinationName, fence.DestinationEnvironment, fence.Generation, fence.EffectID, r.db.Stamp(fence.LeaseExpiresAt), r.db.Stamp(fence.At))
 	return constraint(err)
 }
 
@@ -712,7 +565,7 @@ func validateAdapterConfigureOutcome(targetID, effectID, outcome string, at time
 	return nil
 }
 
-func (r sqliteAdapters) FinishConfigureEffect(ctx context.Context, p authz.Proof, targetID, effectID, outcome string, at time.Time) error {
+func (r adapterQueries) FinishConfigureEffect(ctx context.Context, p authz.Proof, targetID, effectID, outcome string, at time.Time) error {
 	chain, err := authz.Verify(p, authz.StoreAdaptersFinishConfigureEffect, r.tok)
 	if err != nil {
 		return err
@@ -720,47 +573,25 @@ func (r sqliteAdapters) FinishConfigureEffect(ctx context.Context, p authz.Proof
 	if err := validateAdapterConfigureOutcome(targetID, effectID, outcome, at); err != nil {
 		return err
 	}
-	result, err := r.db.ExecContext(ctx, `UPDATE adapter_configure_fences SET state=?,completed_at=? WHERE target_id=? AND effect_id=? AND org_id=? AND project_id=? AND state='leased'`, outcome, CanonTime(at).Format(timeFormat), targetID, effectID, chain.Org, chain.Project)
+	rows, err := r.db.Exec(ctx, r.db.SQL(
+		`UPDATE adapter_configure_fences SET state=?,completed_at=? WHERE target_id=? AND effect_id=? AND org_id=? AND project_id=? AND state='leased'`,
+	),
+		outcome, r.db.Stamp(at), targetID, effectID, chain.Org, chain.Project)
 	if err != nil {
 		return constraint(err)
 	}
-	if rows, err := result.RowsAffected(); err != nil || rows != 1 {
-		return errors.Join(err, ErrConflict)
-	}
-	return nil
-}
-
-func (r pgAdapters) FinishConfigureEffect(ctx context.Context, p authz.Proof, targetID, effectID, outcome string, at time.Time) error {
-	chain, err := authz.Verify(p, authz.StoreAdaptersFinishConfigureEffect, r.tok)
-	if err != nil {
-		return err
-	}
-	if err := validateAdapterConfigureOutcome(targetID, effectID, outcome, at); err != nil {
-		return err
-	}
-	tag, err := r.db.Exec(ctx, `UPDATE adapter_configure_fences SET state=$1,completed_at=$2 WHERE target_id=$3 AND effect_id=$4 AND org_id=$5 AND project_id=$6 AND state='leased'`, outcome, CanonTime(at), targetID, effectID, chain.Org, chain.Project)
-	if err != nil {
-		return constraint(err)
-	}
-	if tag.RowsAffected() != 1 {
+	if rows != 1 {
 		return ErrConflict
 	}
 	return nil
 }
 
-func (r sqliteAdapters) UpdateTarget(ctx context.Context, p authz.Proof, m AdapterTargetUpdate) (AdapterTargetUpdateResult, error) {
+func (r adapterQueries) UpdateTarget(ctx context.Context, p authz.Proof, m AdapterTargetUpdate) (AdapterTargetUpdateResult, error) {
 	chain, err := authz.Verify(p, authz.StoreAdaptersUpdateTarget, r.tok)
 	if err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
-	return updateTargetConfig(ctx, sqliteAdoptDB{db: r.db}, chain, m)
-}
-func (r pgAdapters) UpdateTarget(ctx context.Context, p authz.Proof, m AdapterTargetUpdate) (AdapterTargetUpdateResult, error) {
-	chain, err := authz.Verify(p, authz.StoreAdaptersUpdateTarget, r.tok)
-	if err != nil {
-		return AdapterTargetUpdateResult{}, err
-	}
-	return updateTargetConfig(ctx, pgAdoptDB{db: r.db}, chain, m)
+	return updateTargetConfig(ctx, r.db, chain, m)
 }
 
 func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m AdapterTargetUpdate) (AdapterTargetUpdateResult, error) {
@@ -777,7 +608,7 @@ func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 	if err := refuseDestinationNameCollision(ctx, db, chain, m.Target, manifest, m.Target.ID); err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
-	lookup := db.SQL(
+	lookup := db.SQLPerEngine(
 		`SELECT `+adapterTargetColumns+adapterTargetFrom+` WHERE t.id=? AND t.org_id=? AND t.project_id=? AND t.state='active'`,
 		`SELECT `+adapterTargetColumns+adapterTargetFrom+` WHERE t.id=$1 AND t.org_id=$2 AND t.project_id=$3 AND t.state='active' FOR UPDATE OF t`)
 	rows, err := db.Query(ctx, lookup, m.Target.ID, chain.Org, chain.Project)
@@ -803,20 +634,20 @@ func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 	var activeJob string
 	activeQuery := db.SQL(
 		`SELECT COALESCE(active_job_id,'') FROM adapter_targets WHERE id=? AND org_id=? AND project_id=? AND environment_id=?`,
-		`SELECT COALESCE(active_job_id,'') FROM adapter_targets WHERE id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4`)
+	)
 	if err := db.QueryRow(ctx, activeQuery, m.Target.ID, chain.Org, chain.Project, m.Target.EnvironmentID).Scan(&activeJob); err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
 	q := db.SQL(
 		`DELETE FROM adapter_target_keys WHERE target_id=? AND org_id=? AND project_id=? AND environment_id=?`,
-		`DELETE FROM adapter_target_keys WHERE target_id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4`)
+	)
 	if _, err := db.Exec(ctx, q, m.Target.ID, chain.Org, chain.Project, m.Target.EnvironmentID); err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
 	for _, keyID := range m.Target.KeyIDs {
 		q = db.SQL(
 			`INSERT INTO adapter_target_keys (org_id,project_id,environment_id,target_id,adapter_id,key_id) VALUES (?,?,?,?,?,?)`,
-			`INSERT INTO adapter_target_keys (org_id,project_id,environment_id,target_id,adapter_id,key_id) VALUES ($1,$2,$3,$4,$5,$6)`)
+		)
 		if _, err := db.Exec(ctx, q, chain.Org, chain.Project, m.Target.EnvironmentID, m.Target.ID, m.Target.AdapterID, keyID); err != nil {
 			return AdapterTargetUpdateResult{}, constraint(err)
 		}
@@ -827,7 +658,7 @@ func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 	}
 	q = db.SQL(
 		`UPDATE adapter_targets SET visibility=?,selected_repository_ids=?,name_prefix=? WHERE id=? AND org_id=? AND project_id=? AND generation=? AND state='active' AND provider_lease_job_id IS NULL`,
-		`UPDATE adapter_targets SET visibility=$1,selected_repository_ids=$2,name_prefix=$3 WHERE id=$4 AND org_id=$5 AND project_id=$6 AND generation=$7 AND state='active' AND provider_lease_job_id IS NULL`)
+	)
 	n, err := db.Exec(ctx, q, m.Target.Visibility, selectedJSON, m.Target.NamePrefix, m.Target.ID, chain.Org, chain.Project, m.ExpectedGeneration)
 	if err != nil {
 		return AdapterTargetUpdateResult{}, err
@@ -844,7 +675,7 @@ func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 	}
 	q = db.SQL(
 		`UPDATE adapters SET authority_principal_id=? WHERE id=? AND org_id=? AND project_id=? AND state='active'`,
-		`UPDATE adapters SET authority_principal_id=$1 WHERE id=$2 AND org_id=$3 AND project_id=$4 AND state='active'`)
+	)
 	if n, err = db.Exec(ctx, q, m.AuthorityPrincipalID, m.Target.AdapterID, chain.Org, chain.Project); err != nil || n != 1 {
 		return AdapterTargetUpdateResult{}, errors.Join(err, ErrNotFound)
 	}

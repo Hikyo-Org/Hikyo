@@ -139,10 +139,7 @@ func (r sqliteBackupState) SetDrill(ctx context.Context, p authz.Proof, rec Back
 	if _, err := authz.Verify(p, authz.StoreBackupStateSetDrill, r.tok); err != nil {
 		return err
 	}
-	ok := int64(0)
-	if rec.OK {
-		ok = 1
-	}
+	ok := boolInt(rec.OK)
 	return r.q.SetBackupDrill(ctx, sqlitegen.SetBackupDrillParams{
 		LastDrillAt: sqliteStamp(rec.At), LastDrillOk: ok, LastDrillArchive: rec.Archive,
 		LastDrillElapsedMs: rec.Elapsed.Milliseconds(), LastDrillBinaryVersion: rec.BinaryVersion,
@@ -155,11 +152,7 @@ type pgBackupState struct {
 	tok *authz.TxToken
 }
 
-func pgStamp(at time.Time) pgtype.Timestamptz {
-	return pgtype.Timestamptz{Time: CanonTime(at), Valid: true}
-}
-
-func pgTime(v pgtype.Timestamptz) time.Time {
+func pgTimeToGo(v pgtype.Timestamptz) time.Time {
 	if !v.Valid {
 		return time.Time{}
 	}
@@ -178,10 +171,10 @@ func (r pgBackupState) Get(ctx context.Context, p authz.Proof) (BackupState, err
 		return BackupState{}, err
 	}
 	return BackupState{
-		LastSuccessAt: pgTime(row.LastSuccessAt), LastArtifactName: row.LastArtifactName, LastArtifactBytes: row.LastArtifactBytes,
-		LastFailureAt: pgTime(row.LastFailureAt), LastFailureReason: row.LastFailureReason,
-		LastPruneAt: pgTime(row.LastPruneAt),
-		LastDrillAt: pgTime(row.LastDrillAt), LastDrillOK: row.LastDrillOk, LastDrillArchive: row.LastDrillArchive,
+		LastSuccessAt: pgTimeToGo(row.LastSuccessAt), LastArtifactName: row.LastArtifactName, LastArtifactBytes: row.LastArtifactBytes,
+		LastFailureAt: pgTimeToGo(row.LastFailureAt), LastFailureReason: row.LastFailureReason,
+		LastPruneAt: pgTimeToGo(row.LastPruneAt),
+		LastDrillAt: pgTimeToGo(row.LastDrillAt), LastDrillOK: row.LastDrillOk, LastDrillArchive: row.LastDrillArchive,
 		LastDrillElapsed:       time.Duration(row.LastDrillElapsedMs) * time.Millisecond,
 		LastDrillBinaryVersion: row.LastDrillBinaryVersion, LastDrillSchemaVersion: row.LastDrillSchemaVersion,
 	}, nil
@@ -192,7 +185,7 @@ func (r pgBackupState) SetExportSuccess(ctx context.Context, p authz.Proof, at t
 		return err
 	}
 	return r.q.SetBackupExportSuccess(ctx, pggen.SetBackupExportSuccessParams{
-		LastSuccessAt: pgStamp(at), LastArtifactName: artifactName, LastArtifactBytes: artifactBytes,
+		LastSuccessAt: pgTimestamp(at), LastArtifactName: artifactName, LastArtifactBytes: artifactBytes,
 	})
 }
 
@@ -201,7 +194,7 @@ func (r pgBackupState) SetExportFailure(ctx context.Context, p authz.Proof, at t
 		return err
 	}
 	return r.q.SetBackupExportFailure(ctx, pggen.SetBackupExportFailureParams{
-		LastFailureAt: pgStamp(at), LastFailureReason: reason,
+		LastFailureAt: pgTimestamp(at), LastFailureReason: reason,
 	})
 }
 
@@ -209,7 +202,7 @@ func (r pgBackupState) SetPruneSuccess(ctx context.Context, p authz.Proof, at ti
 	if _, err := authz.Verify(p, authz.StoreBackupStateSetPruneSuccess, r.tok); err != nil {
 		return err
 	}
-	return r.q.SetBackupPruneSuccess(ctx, pgStamp(at))
+	return r.q.SetBackupPruneSuccess(ctx, pgTimestamp(at))
 }
 
 func (r pgBackupState) SetDrill(ctx context.Context, p authz.Proof, rec BackupDrillRecord) error {
@@ -217,7 +210,7 @@ func (r pgBackupState) SetDrill(ctx context.Context, p authz.Proof, rec BackupDr
 		return err
 	}
 	return r.q.SetBackupDrill(ctx, pggen.SetBackupDrillParams{
-		LastDrillAt: pgStamp(rec.At), LastDrillOk: rec.OK, LastDrillArchive: rec.Archive,
+		LastDrillAt: pgTimestamp(rec.At), LastDrillOk: rec.OK, LastDrillArchive: rec.Archive,
 		LastDrillElapsedMs: rec.Elapsed.Milliseconds(), LastDrillBinaryVersion: rec.BinaryVersion,
 		LastDrillSchemaVersion: rec.SchemaVersion,
 	})

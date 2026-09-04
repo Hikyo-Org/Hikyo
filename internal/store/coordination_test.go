@@ -1,10 +1,7 @@
 package store_test
 
 import (
-	"context"
 	"errors"
-	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -17,20 +14,7 @@ func TestCoordinationSQLite(t *testing.T) {
 }
 
 func TestCoordinationPostgres(t *testing.T) {
-	dsn := os.Getenv("HIKYO_TEST_POSTGRES_DSN")
-	if dsn == "" {
-		if os.Getenv("CI") != "" {
-			t.Fatal("CI run without HIKYO_TEST_POSTGRES_DSN: the postgres coordination leg must not silently skip")
-		}
-		t.Skip("HIKYO_TEST_POSTGRES_DSN not set")
-	}
-	admin, cfg := postgresKeyTestConfig(t, dsn)
-	t.Cleanup(func() {
-		_, _ = admin.PG().Exec(context.Background(), `DROP DATABASE IF EXISTS "`+
-			strings.ReplaceAll(strings.TrimPrefix(mustParseURL(t, cfg.DSN).Path, "/"), `"`, ``)+`" WITH (FORCE)`)
-		admin.Close()
-	})
-	runCoordinationInvariants(t, openKeyTestDB(t, cfg))
+	runCoordinationInvariants(t, postgresTestDB(t))
 }
 
 func runCoordinationInvariants(t *testing.T, db *store.DB) {

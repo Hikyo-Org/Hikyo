@@ -154,7 +154,7 @@ func (r *Resolver) CreateProvider(ctx context.Context, n NewProvider) error {
 		ClientID: n.ClientID, ClientSecret: n.ClientSecret, Scopes: n.Scopes, RedirectUri: n.RedirectURI,
 		JitPolicy: ptrPgTextIn(n.JITPolicy), AssurancePolicy: ptrPgTextIn(n.AssurancePolicy),
 		Enabled: boolInt(n.Enabled), DekVersion: n.DEKVersion,
-		CreatedAt: pgTime(n.CreatedAt), UpdatedAt: pgTime(n.UpdatedAt),
+		CreatedAt: pgTimestamp(n.CreatedAt), UpdatedAt: pgTimestamp(n.UpdatedAt),
 	})
 }
 
@@ -216,7 +216,7 @@ func (r *Resolver) UpdateProvider(ctx context.Context, u ProviderUpdate) (bool, 
 		DisplayName: u.DisplayName, ClientID: u.ClientID, ClientSecret: u.ClientSecret,
 		Scopes: u.Scopes, RedirectUri: u.RedirectURI,
 		JitPolicy: ptrPgTextIn(u.JITPolicy), AssurancePolicy: ptrPgTextIn(u.AssurancePolicy),
-		Enabled: boolInt(u.Enabled), DekVersion: u.DEKVersion, UpdatedAt: pgTime(u.UpdatedAt),
+		Enabled: boolInt(u.Enabled), DekVersion: u.DEKVersion, UpdatedAt: pgTimestamp(u.UpdatedAt),
 		ID: u.ID, RowVersion: u.RowVersion,
 	})
 	return n == 1, err
@@ -379,7 +379,7 @@ func (r *Resolver) CreateOIDCTransaction(ctx context.Context, t NewOIDCTransacti
 		CeremonyID:             pgText(t.CeremonyID),
 		Browser:                t.Browser,
 		CredentialEpoch:        t.CredentialEpoch,
-		CreatedAt:              pgTime(t.CreatedAt), ExpiresAt: pgTime(t.ExpiresAt),
+		CreatedAt:              pgTimestamp(t.CreatedAt), ExpiresAt: pgTimestamp(t.ExpiresAt),
 	})
 }
 
@@ -440,7 +440,7 @@ func (r *Resolver) ConsumeOIDCTransaction(ctx context.Context, id string, at tim
 		return n == 1, err
 	}
 	n, err := r.pg.ConsumeOIDCTransaction(ctx, pggen.ConsumeOIDCTransactionParams{
-		ConsumedAt: pgTime(at), ID: id,
+		ConsumedAt: pgTimestamp(at), ID: id,
 	})
 	return n == 1, err
 }
@@ -561,7 +561,7 @@ func (r *Resolver) CreateExternalIdentity(ctx context.Context, n NewExternalIden
 	}
 	return r.pg.InsertExternalIdentity(ctx, pggen.InsertExternalIdentityParams{
 		ID: n.ID, AccountID: n.AccountID, Kind: n.Kind, Issuer: n.Issuer, Subject: n.Subject,
-		ProviderID: n.ProviderID, CredentialEpoch: n.CredentialEpoch, CreatedAt: pgTime(n.CreatedAt),
+		ProviderID: n.ProviderID, CredentialEpoch: n.CredentialEpoch, CreatedAt: pgTimestamp(n.CreatedAt),
 	})
 }
 
@@ -652,9 +652,9 @@ func (r *Resolver) CreateReauthWindow(ctx context.Context, w NewReauthWindow) er
 	return r.pg.InsertReauthWindow(ctx, pggen.InsertReauthWindowParams{
 		ID: w.ID, SessionID: w.SessionID, EnvironmentID: w.EnvironmentID, CeremonyID: w.CeremonyID,
 		FactorClass: w.FactorClass, SingleDecision: boolInt(w.SingleDecision),
-		AuthenticatedAt: pgTime(w.AuthenticatedAt),
-		WindowExpiresAt: pgTime(w.WindowExpiresAt), HardExpiresAt: pgTime(w.HardExpiresAt),
-		CredentialEpoch: w.CredentialEpoch, CreatedAt: pgTime(w.CreatedAt),
+		AuthenticatedAt: pgTimestamp(w.AuthenticatedAt),
+		WindowExpiresAt: pgTimestamp(w.WindowExpiresAt), HardExpiresAt: pgTimestamp(w.HardExpiresAt),
+		CredentialEpoch: w.CredentialEpoch, CreatedAt: pgTimestamp(w.CreatedAt),
 		BoundOperation: w.BoundOperation, BoundKeySet: w.BoundKeySet,
 		BoundPurpose: w.BoundPurpose, BoundEnvironmentSet: w.BoundEnvironmentSet,
 	})

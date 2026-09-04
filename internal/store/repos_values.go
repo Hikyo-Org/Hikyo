@@ -52,9 +52,9 @@ func (r sqliteValues) Get(ctx context.Context, p authz.Proof, keyID string) (Val
 		return ValueEntry{}, err
 	}
 	row, err := r.q.GetValueEntry(ctx, sqlitegen.GetValueEntryParams{
-		OrgID:         string(chain.Org),     // chain column: proof-bound
-		ProjectID:     string(chain.Project), // chain column: proof-bound
-		EnvironmentID: env,                   // proof-bound
+		OrgID:         string(chain.Org),
+		ProjectID:     string(chain.Project),
+		EnvironmentID: env,
 		KeyID:         keyID,
 	})
 	if errors.Is(err, sql.ErrNoRows) {

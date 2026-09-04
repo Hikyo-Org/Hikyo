@@ -31,7 +31,7 @@ func (r *Resolver) CreateCLIReauthHandoff(ctx context.Context, h NewCLIReauthHan
 	if r.sq != nil {
 		return r.sq.InsertCLIReauthHandoff(ctx, sqlitegen.InsertCLIReauthHandoffParams{ID: h.ID, StateVerifier: h.StateVerifier, SessionID: h.SessionID, PrincipalID: string(h.PrincipalID), Purpose: h.Purpose, Operation: h.Operation, EnvironmentSet: h.EnvironmentSet, KeySet: h.KeySet, PkceChallenge: h.PKCEChallenge, RedirectUri: h.RedirectURI, CreatedAt: encodeTime(h.CreatedAt), ExpiresAt: encodeTime(h.ExpiresAt)})
 	}
-	return r.pg.InsertCLIReauthHandoff(ctx, pggen.InsertCLIReauthHandoffParams{ID: h.ID, StateVerifier: h.StateVerifier, SessionID: h.SessionID, PrincipalID: string(h.PrincipalID), Purpose: h.Purpose, Operation: h.Operation, EnvironmentSet: h.EnvironmentSet, KeySet: h.KeySet, PkceChallenge: h.PKCEChallenge, RedirectUri: h.RedirectURI, CreatedAt: pgTime(h.CreatedAt), ExpiresAt: pgTime(h.ExpiresAt)})
+	return r.pg.InsertCLIReauthHandoff(ctx, pggen.InsertCLIReauthHandoffParams{ID: h.ID, StateVerifier: h.StateVerifier, SessionID: h.SessionID, PrincipalID: string(h.PrincipalID), Purpose: h.Purpose, Operation: h.Operation, EnvironmentSet: h.EnvironmentSet, KeySet: h.KeySet, PkceChallenge: h.PKCEChallenge, RedirectUri: h.RedirectURI, CreatedAt: pgTimestamp(h.CreatedAt), ExpiresAt: pgTimestamp(h.ExpiresAt)})
 }
 
 func (r *Resolver) CLIReauthHandoffByState(ctx context.Context, verifier []byte) (CLIReauthHandoff, error) {

@@ -92,6 +92,22 @@ func CanonTime(t time.Time) time.Time { return t.UTC().Truncate(time.Microsecond
 
 const timeFormat = time.RFC3339Nano
 
+// fixedStampLayout is the fixed-width microsecond UTC form. SQLite compares
+// scheduling and lease timestamps lexically, so every column a query ORDERs or
+// range-filters on MUST be written this width: a bare RFC3339Nano value with a
+// short or absent fraction ('...05Z') sorts after a fully padded one and breaks
+// the ordering. Migration 00034 repaired the rows written before this codec was
+// enforced; fixedStamp keeps them consistent going forward.
+//
+// WRITE fixed-width, PARSE with RFC3339Nano: time.Parse(RFC3339Nano) accepts
+// both this fixed form and any variable-width fraction, so parseStamp reads
+// old and new rows alike.
+const fixedStampLayout = "2006-01-02T15:04:05.000000Z"
+
+func fixedStamp(t time.Time) string { return CanonTime(t).Format(fixedStampLayout) }
+
+func parseStamp(s string) (time.Time, error) { return time.Parse(timeFormat, s) }
+
 func validMetadata(m json.RawMessage) error {
 	if !json.Valid(m) {
 		return errors.New("store: org metadata is not valid JSON")
@@ -242,10 +258,7 @@ func (o sqliteOrgs) Create(ctx context.Context, p authz.Proof, org Org) error {
 	if err := validMetadata(org.Metadata); err != nil {
 		return err
 	}
-	active := int64(0)
-	if org.Active {
-		active = 1
-	}
+	active := boolInt(org.Active)
 	return constraint(o.q.CreateOrg(ctx, sqlitegen.CreateOrgParams{
 		ID:        org.ID,
 		Name:      org.Name,
@@ -260,7 +273,7 @@ func (o sqliteOrgs) Get(ctx context.Context, p authz.Proof) (Org, error) {
 	if err != nil {
 		return Org{}, err
 	}
-	row, err := o.q.GetOrg(ctx, string(chain.Org)) // chain column: proof-bound
+	row, err := o.q.GetOrg(ctx, string(chain.Org))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Org{}, ErrNotFound
 	}
@@ -315,7 +328,7 @@ func (o sqliteOrgs) Rename(ctx context.Context, p authz.Proof, name string) erro
 	}
 	return affected(o.q.RenameOrg(ctx, sqlitegen.RenameOrgParams{
 		Name: name,
-		ID:   string(chain.Org), // chain column: proof-bound
+		ID:   string(chain.Org),
 	}))
 }
 
@@ -382,7 +395,7 @@ func (r sqliteProjects) Create(ctx context.Context, p authz.Proof, proj NewProje
 	}
 	if err := constraint(r.q.CreateProject(ctx, sqlitegen.CreateProjectParams{
 		ID:        proj.ID,
-		OrgID:     string(chain.Org), // chain column: proof-bound, never caller input
+		OrgID:     string(chain.Org),
 		Name:      proj.Name,
 		CreatedAt: CanonTime(proj.CreatedAt).Format(timeFormat),
 	})); err != nil {
@@ -394,8 +407,8 @@ func (r sqliteProjects) Create(ctx context.Context, p authz.Proof, proj NewProje
 	// advances — and no second store operation to authorize for a row nobody
 	// addresses independently.
 	return constraint(r.q.InsertProjectSchemaRevision(ctx, sqlitegen.InsertProjectSchemaRevisionParams{
-		OrgID:     string(chain.Org), // chain column: proof-bound
-		ProjectID: proj.ID,           // the row being created, like ID above
+		OrgID:     string(chain.Org),
+		ProjectID: proj.ID, // the row being created, like ID above
 	}))
 }
 
@@ -535,10 +548,7 @@ func (r sqliteProjects) SetMachineReveal(ctx context.Context, p authz.Proof, ena
 	if err != nil {
 		return err
 	}
-	var flag int64
-	if enabled {
-		flag = 1
-	}
+	flag := boolInt(enabled)
 	return affected(r.q.SetProjectMachineReveal(ctx, sqlitegen.SetProjectMachineRevealParams{
 		MachineReveal: flag,
 		OrgID:         string(chain.Org),
@@ -579,8 +589,8 @@ func (r sqliteEnvs) Create(ctx context.Context, p authz.Proof, env NewEnvironmen
 	}
 	return constraint(r.q.CreateEnvironment(ctx, sqlitegen.CreateEnvironmentParams{
 		ID:           env.ID,
-		OrgID:        string(chain.Org),     // chain column: proof-bound
-		ProjectID:    string(chain.Project), // chain column: proof-bound
+		OrgID:        string(chain.Org),
+		ProjectID:    string(chain.Project),
 		Name:         env.Name,
 		Note:         env.Note,
 		DisplayOrder: env.DisplayOrder,
@@ -710,10 +720,7 @@ func (r sqliteEnvs) SetSettings(ctx context.Context, p authz.Proof, s Environmen
 	if err != nil {
 		return err
 	}
-	protected := int64(0)
-	if s.Protected {
-		protected = 1
-	}
+	protected := boolInt(s.Protected)
 	return affected(r.q.SetEnvironmentSettings(ctx, sqlitegen.SetEnvironmentSettingsParams{
 		Protected:           protected,
 		ReauthWindowSeconds: nullWindow(s),
@@ -796,8 +803,8 @@ func (r sqliteFolders) Create(ctx context.Context, p authz.Proof, folder NewFold
 	}
 	return constraint(r.q.CreateFolder(ctx, sqlitegen.CreateFolderParams{
 		ID:        folder.ID,
-		OrgID:     string(chain.Org),     // chain column: proof-bound
-		ProjectID: string(chain.Project), // chain column: proof-bound
+		OrgID:     string(chain.Org),
+		ProjectID: string(chain.Project),
 		Path:      folder.Path,
 		CreatedAt: CanonTime(folder.CreatedAt).Format(timeFormat),
 	}))
@@ -925,7 +932,7 @@ func (o pgOrgs) Get(ctx context.Context, p authz.Proof) (Org, error) {
 	if err != nil {
 		return Org{}, err
 	}
-	row, err := o.q.GetOrg(ctx, string(chain.Org)) // chain column: proof-bound
+	row, err := o.q.GetOrg(ctx, string(chain.Org))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Org{}, ErrNotFound
 	}
@@ -980,7 +987,7 @@ func (o pgOrgs) Rename(ctx context.Context, p authz.Proof, name string) error {
 	}
 	return affected(o.q.RenameOrg(ctx, pggen.RenameOrgParams{
 		Name:       name,
-		ChainOrgID: string(chain.Org), // chain column: proof-bound
+		ChainOrgID: string(chain.Org),
 	}))
 }
 
@@ -1041,7 +1048,7 @@ func (r pgProjects) Create(ctx context.Context, p authz.Proof, proj NewProject) 
 	}
 	if err := constraint(r.q.CreateProject(ctx, pggen.CreateProjectParams{
 		ID:         proj.ID,
-		ChainOrgID: string(chain.Org), // chain column: proof-bound, never caller input
+		ChainOrgID: string(chain.Org),
 		Name:       proj.Name,
 		CreatedAt:  pgtype.Timestamptz{Time: CanonTime(proj.CreatedAt), Valid: true},
 	})); err != nil {
@@ -1050,8 +1057,8 @@ func (r pgProjects) Create(ctx context.Context, p authz.Proof, proj NewProject) 
 	// See the sqlite copy: the key-catalogue revision row is born with the
 	// project, inside the same store operation.
 	return constraint(r.q.InsertProjectSchemaRevision(ctx, pggen.InsertProjectSchemaRevisionParams{
-		ChainOrgID: string(chain.Org), // chain column: proof-bound
-		ProjectID:  proj.ID,           // the row being created, like ID above
+		ChainOrgID: string(chain.Org),
+		ProjectID:  proj.ID, // the row being created, like ID above
 	}))
 }
 
@@ -1226,8 +1233,8 @@ func (r pgEnvs) Create(ctx context.Context, p authz.Proof, env NewEnvironment) e
 	}
 	return constraint(r.q.CreateEnvironment(ctx, pggen.CreateEnvironmentParams{
 		ID:             env.ID,
-		ChainOrgID:     string(chain.Org),     // chain column: proof-bound
-		ChainProjectID: string(chain.Project), // chain column: proof-bound
+		ChainOrgID:     string(chain.Org),
+		ChainProjectID: string(chain.Project),
 		Name:           env.Name,
 		Note:           env.Note,
 		DisplayOrder:   env.DisplayOrder,
@@ -1429,8 +1436,8 @@ func (r pgFolders) Create(ctx context.Context, p authz.Proof, folder NewFolder) 
 	}
 	return constraint(r.q.CreateFolder(ctx, pggen.CreateFolderParams{
 		ID:             folder.ID,
-		ChainOrgID:     string(chain.Org),     // chain column: proof-bound
-		ChainProjectID: string(chain.Project), // chain column: proof-bound
+		ChainOrgID:     string(chain.Org),
+		ChainProjectID: string(chain.Project),
 		Path:           folder.Path,
 		CreatedAt:      pgtype.Timestamptz{Time: CanonTime(folder.CreatedAt), Valid: true},
 	}))

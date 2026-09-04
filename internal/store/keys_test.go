@@ -30,21 +30,7 @@ func TestKeyRotationInvariantsSQLite(t *testing.T) {
 }
 
 func TestKeyRotationInvariantsPostgres(t *testing.T) {
-	dsn := os.Getenv("HIKYO_TEST_POSTGRES_DSN")
-	if dsn == "" {
-		if os.Getenv("CI") != "" {
-			t.Fatal("CI run without HIKYO_TEST_POSTGRES_DSN: the postgres key-store leg must not silently skip")
-		}
-		t.Skip("HIKYO_TEST_POSTGRES_DSN not set")
-	}
-
-	admin, cfg := postgresKeyTestConfig(t, dsn)
-	t.Cleanup(func() {
-		_, _ = admin.PG().Exec(context.Background(), `DROP DATABASE IF EXISTS "`+
-			strings.ReplaceAll(strings.TrimPrefix(mustParseURL(t, cfg.DSN).Path, "/"), `"`, ``)+`" WITH (FORCE)`)
-		admin.Close()
-	})
-	runKeyRotationInvariants(t, openKeyTestDB(t, cfg))
+	runKeyRotationInvariants(t, postgresTestDB(t))
 }
 
 func runKeyRotationInvariants(t *testing.T, db *store.DB) {
@@ -321,4 +307,25 @@ func mustParseURL(t *testing.T, raw string) *url.URL {
 		t.Fatalf("parse postgres DSN: %v", err)
 	}
 	return parsed
+}
+
+// postgresTestDB opens a fresh, migrated postgres store for the store package's
+// postgres legs: it fails loud under CI when the DSN is unset, skips otherwise,
+// and drops the throwaway database on cleanup.
+func postgresTestDB(t *testing.T) *store.DB {
+	t.Helper()
+	dsn := os.Getenv("HIKYO_TEST_POSTGRES_DSN")
+	if dsn == "" {
+		if os.Getenv("CI") != "" {
+			t.Fatal("CI run without HIKYO_TEST_POSTGRES_DSN: the postgres store leg must not silently skip")
+		}
+		t.Skip("HIKYO_TEST_POSTGRES_DSN not set")
+	}
+	admin, cfg := postgresKeyTestConfig(t, dsn)
+	t.Cleanup(func() {
+		_, _ = admin.PG().Exec(context.Background(), `DROP DATABASE IF EXISTS "`+
+			strings.ReplaceAll(strings.TrimPrefix(mustParseURL(t, cfg.DSN).Path, "/"), `"`, ``)+`" WITH (FORCE)`)
+		admin.Close()
+	})
+	return openKeyTestDB(t, cfg)
 }

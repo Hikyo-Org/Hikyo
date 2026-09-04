@@ -202,7 +202,7 @@ func (r *Resolver) AllowWorkspaceOrigin(ctx context.Context, o WorkspaceOrigin) 
 		})
 	}
 	return r.pg.InsertWorkspaceOrigin(ctx, pggen.InsertWorkspaceOriginParams{
-		Origin: o.Origin, CreatedAt: pgTime(o.CreatedAt), CreatedBy: string(o.CreatedBy),
+		Origin: o.Origin, CreatedAt: pgTimestamp(o.CreatedAt), CreatedBy: string(o.CreatedBy),
 	})
 }
 
@@ -329,7 +329,7 @@ func (r *Resolver) CreateWorkspaceHandoff(ctx context.Context, h NewWorkspaceHan
 		Purpose:   string(h.Purpose),
 		SessionID: pgText(h.SessionID), Operation: pgText(h.Operation),
 		EnvID: pgText(h.EnvID), KeySet: pgText(h.KeySet),
-		CreatedAt: pgTime(h.CreatedAt), ExpiresAt: pgTime(h.ExpiresAt),
+		CreatedAt: pgTimestamp(h.CreatedAt), ExpiresAt: pgTimestamp(h.ExpiresAt),
 	})
 }
 
@@ -384,7 +384,7 @@ func (r *Resolver) ApproveWorkspaceHandoff(ctx context.Context, id string, codeV
 	n, err := r.pg.ApproveWorkspaceHandoff(ctx, pggen.ApproveWorkspaceHandoffParams{
 		CodeVerifier: codeVerifier, PrincipalID: pgText(string(p)),
 		Factors: factors, FactorClass: factorClass,
-		AuthenticatedAt: pgTime(authenticatedAt), ID: id,
+		AuthenticatedAt: pgTimestamp(authenticatedAt), ID: id,
 	})
 	return n > 0, err
 }
@@ -446,7 +446,7 @@ func (r *Resolver) SweepExpiredWorkspaceHandoffs(ctx context.Context, before tim
 	if r.sq != nil {
 		return r.sq.DeleteExpiredWorkspaceHandoffs(ctx, encodeTime(before))
 	}
-	return r.pg.DeleteExpiredWorkspaceHandoffs(ctx, pgTime(before))
+	return r.pg.DeleteExpiredWorkspaceHandoffs(ctx, pgTimestamp(before))
 }
 
 func handoffFromSQLite(row sqlitegen.WorkspaceHandoff) (WorkspaceHandoff, error) {

@@ -1,15 +1,10 @@
 package migrate
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
-	"net/url"
-	"os"
 	"path/filepath"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/pressly/goose/v3"
 
@@ -57,30 +52,5 @@ func TestSAMLIdentityBackfillSQLite(t *testing.T) {
 }
 
 func TestSAMLIdentityBackfillPostgres(t *testing.T) {
-	dsn := os.Getenv("HIKYO_TEST_POSTGRES_DSN")
-	if dsn == "" {
-		if os.Getenv("CI") != "" {
-			t.Fatal("CI run without HIKYO_TEST_POSTGRES_DSN: the postgres migration leg must not silently skip in CI")
-		}
-		t.Skip("HIKYO_TEST_POSTGRES_DSN not set")
-	}
-	parsed, err := url.Parse(dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	base := strings.TrimPrefix(parsed.Path, "/")
-	database := fmt.Sprintf("%s_saml_migration_%d", base, time.Now().UnixNano())
-	admin, err := store.Open(t.Context(), store.Config{Engine: store.EnginePostgres, DSN: dsn})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		_, _ = admin.PG().Exec(context.Background(), `DROP DATABASE IF EXISTS "`+strings.ReplaceAll(database, `"`, `""`)+`" WITH (FORCE)`)
-		admin.Close()
-	})
-	if _, err := admin.PG().Exec(t.Context(), `CREATE DATABASE "`+strings.ReplaceAll(database, `"`, `""`)+`"`); err != nil {
-		t.Fatal(err)
-	}
-	parsed.Path = "/" + database
-	runSAMLIdentityBackfill(t, store.Config{Engine: store.EnginePostgres, DSN: parsed.String()})
+	runSAMLIdentityBackfill(t, postgresTestConfig(t, "saml_migration"))
 }

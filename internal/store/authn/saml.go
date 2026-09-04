@@ -100,7 +100,7 @@ func optionalPGTime(t *time.Time) pgtype.Timestamptz {
 	if t == nil {
 		return pgtype.Timestamptz{}
 	}
-	return pgTime(*t)
+	return pgTimestamp(*t)
 }
 
 func decodeOptionalSQLiteTime(t sql.NullString) (*time.Time, error) {
@@ -186,7 +186,7 @@ func (r *Resolver) CreateSAMLProvider(ctx context.Context, n NewSAMLProvider) er
 		MetadataSigned:             boolInt(n.MetadataSigned),
 		MetadataSigningFingerprint: ptrPgTextIn(n.MetadataSigningFingerprint),
 		MetadataValidUntil:         optionalPGTime(n.MetadataValidUntil), Enabled: boolInt(n.Enabled),
-		CreatedAt: pgTime(n.CreatedAt), UpdatedAt: pgTime(n.UpdatedAt),
+		CreatedAt: pgTimestamp(n.CreatedAt), UpdatedAt: pgTimestamp(n.UpdatedAt),
 	}))
 }
 
@@ -290,7 +290,7 @@ func (r *Resolver) UpdateSAMLProvider(ctx context.Context, u SAMLProviderUpdate)
 		MetadataSigned:             boolInt(u.MetadataSigned),
 		MetadataSigningFingerprint: ptrPgTextIn(u.MetadataSigningFingerprint),
 		MetadataValidUntil:         optionalPGTime(u.MetadataValidUntil), Enabled: boolInt(u.Enabled),
-		UpdatedAt: pgTime(u.UpdatedAt), ID: u.ID, RowVersion: u.RowVersion,
+		UpdatedAt: pgTimestamp(u.UpdatedAt), ID: u.ID, RowVersion: u.RowVersion,
 	})
 	return n == 1, samlProviderConstraint(err)
 }
@@ -381,7 +381,7 @@ func (r *Resolver) CreateSAMLTransaction(ctx context.Context, t NewSAMLTransacti
 		InitiatingSessionID: pgText(t.InitiatingSessionID), AccountID: pgText(t.AccountID),
 		EnvironmentID: pgText(t.EnvironmentID), CeremonyID: pgText(t.CeremonyID),
 		CredentialEpoch: t.CredentialEpoch,
-		CreatedAt:       pgTime(t.CreatedAt), ExpiresAt: pgTime(t.ExpiresAt),
+		CreatedAt:       pgTimestamp(t.CreatedAt), ExpiresAt: pgTimestamp(t.ExpiresAt),
 	})
 }
 
@@ -443,7 +443,7 @@ func (r *Resolver) ConsumeSAMLTransaction(ctx context.Context, id string, at tim
 		return n == 1, err
 	}
 	n, err := r.pg.ConsumeSAMLTransaction(ctx, pggen.ConsumeSAMLTransactionParams{
-		ConsumedAt: pgTime(at), ID: id,
+		ConsumedAt: pgTimestamp(at), ID: id,
 	})
 	return n == 1, err
 }
@@ -467,7 +467,7 @@ func (r *Resolver) ClaimSAMLReplay(ctx context.Context, replay NewSAMLReplay) (b
 	}
 	n, err := r.pg.InsertSAMLReplay(ctx, pggen.InsertSAMLReplayParams{
 		Issuer: replay.Issuer, AssertionID: replay.AssertionID,
-		ExpiresAt: pgTime(replay.ExpiresAt), CreatedAt: pgTime(replay.CreatedAt),
+		ExpiresAt: pgTimestamp(replay.ExpiresAt), CreatedAt: pgTimestamp(replay.CreatedAt),
 	})
 	return n == 1, err
 }
@@ -476,7 +476,7 @@ func (r *Resolver) DeleteExpiredSAMLReplay(ctx context.Context, at time.Time) (i
 	if r.sq != nil {
 		return r.sq.DeleteExpiredSAMLReplay(ctx, encodeTime(at))
 	}
-	return r.pg.DeleteExpiredSAMLReplay(ctx, pgTime(at))
+	return r.pg.DeleteExpiredSAMLReplay(ctx, pgTimestamp(at))
 }
 
 type SAMLSPKey struct {
@@ -531,7 +531,7 @@ func (r *Resolver) CreateSAMLSPKey(ctx context.Context, key NewSAMLSPKey) error 
 	return r.pg.InsertSAMLSPKey(ctx, pggen.InsertSAMLSPKeyParams{
 		ID: key.ID, State: key.State, EncryptedPrivateKey: key.EncryptedPrivateKey,
 		CertificateDer: key.CertificateDER, Fingerprint: key.Fingerprint,
-		DekVersion: key.DEKVersion, CreatedAt: pgTime(key.CreatedAt),
+		DekVersion: key.DEKVersion, CreatedAt: pgTimestamp(key.CreatedAt),
 	})
 }
 

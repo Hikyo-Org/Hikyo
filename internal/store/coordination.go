@@ -44,10 +44,6 @@ func isNoRows(err error) bool {
 // authority. RegisterNodeChecked returns it and boot refuses to serve.
 var ErrMixedRootKey = errors.New("store: another live node registered a different root-key fingerprint (mixed root keys)")
 
-// sqliteTime renders an instant in the fixed-width canonical form the sqlite
-// schema stores, so lexicographic comparison in SQL matches time comparison.
-func sqliteTime(t time.Time) string { return t.UTC().Format(adapterTimeFormat) }
-
 // ---- Singleton lease -------------------------------------------------------
 
 // ClaimLease acquires the named lease for owner when it is unheld or its
@@ -80,7 +76,7 @@ func (c *Coordination) ClaimLease(ctx context.Context, name, owner string, now, 
 			       expires_at = excluded.expires_at
 			   WHERE singleton_leases.expires_at <= ?
 			 RETURNING fence_token`,
-			name, owner, sqliteTime(now), sqliteTime(expires), sqliteTime(now)).Scan(&fence)
+			name, owner, fixedStamp(now), fixedStamp(expires), fixedStamp(now)).Scan(&fence)
 	default:
 		return 0, false, fmt.Errorf("store: coordination lease claim on unknown engine %q", c.db.engine)
 	}
@@ -117,7 +113,7 @@ func (c *Coordination) RenewLease(ctx context.Context, name, owner string, fence
 		res, e := c.db.sqWrite.ExecContext(ctx,
 			`UPDATE singleton_leases SET expires_at = ?
 			 WHERE name = ? AND owner = ? AND fence_token = ? AND expires_at > ?`,
-			sqliteTime(expires), name, owner, fence, sqliteTime(now))
+			fixedStamp(expires), name, owner, fence, fixedStamp(now))
 		if e != nil {
 			return false, fmt.Errorf("store: renew lease %q: %w", name, e)
 		}
@@ -144,7 +140,7 @@ func (c *Coordination) ReleaseLease(ctx context.Context, name, owner string, fen
 	case EngineSQLite:
 		_, err = c.db.sqWrite.ExecContext(ctx,
 			`UPDATE singleton_leases SET expires_at = ? WHERE name = ? AND owner = ? AND fence_token = ?`,
-			sqliteTime(accountWindow), name, owner, fence)
+			fixedStamp(accountWindow), name, owner, fence)
 	default:
 		return fmt.Errorf("store: coordination lease release on unknown engine %q", c.db.engine)
 	}
@@ -162,6 +158,9 @@ func (c *Coordination) Now(ctx context.Context) (time.Time, error) {
 	switch c.db.engine {
 	case EnginePostgres:
 		var now time.Time
+		// now()/transaction_timestamp() (frozen at BEGIN), NOT clock_timestamp():
+		// every lease comparison inside one transaction reads a single stable
+		// instant. AuditExportSnapshotTime deliberately uses the opposite clock.
 		if err := c.db.pool.QueryRow(ctx, `SELECT now()`).Scan(&now); err != nil {
 			return time.Time{}, fmt.Errorf("store: datastore clock: %w", err)
 		}
@@ -200,8 +199,8 @@ func (c *Coordination) LeaseHolder(ctx context.Context, name string, now time.Ti
 		if err != nil {
 			return "", time.Time{}, false, fmt.Errorf("store: lease holder %q: %w", name, err)
 		}
-		acquiredAt, _ = time.Parse(adapterTimeFormat, acquiredStr)
-		expires, _ := time.Parse(adapterTimeFormat, expiresStr)
+		acquiredAt, _ = parseStamp(acquiredStr)
+		expires, _ := parseStamp(expiresStr)
 		return owner, acquiredAt.UTC(), expires.After(now), nil
 	default:
 		return "", time.Time{}, false, fmt.Errorf("store: coordination lease holder on unknown engine %q", c.db.engine)
@@ -244,7 +243,7 @@ func (c *Coordination) UpsertNode(ctx context.Context, n HANode) error {
 			       schema_version = excluded.schema_version,
 			       root_key_fingerprint = excluded.root_key_fingerprint,
 			       heartbeat_at = excluded.heartbeat_at`,
-			n.NodeID, n.BinaryVersion, n.SchemaVersion, n.RootKeyFingerprint, sqliteTime(n.StartedAt), sqliteTime(n.HeartbeatAt))
+			n.NodeID, n.BinaryVersion, n.SchemaVersion, n.RootKeyFingerprint, fixedStamp(n.StartedAt), fixedStamp(n.HeartbeatAt))
 	default:
 		return fmt.Errorf("store: coordination node upsert on unknown engine %q", c.db.engine)
 	}
@@ -328,7 +327,7 @@ func (c *Coordination) CountLiveNodes(ctx context.Context, since time.Time) (int
 			`SELECT COUNT(*) FROM ha_nodes WHERE heartbeat_at >= $1`, since).Scan(&count)
 	case EngineSQLite:
 		err = c.db.sqRead.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM ha_nodes WHERE heartbeat_at >= ?`, sqliteTime(since)).Scan(&count)
+			`SELECT COUNT(*) FROM ha_nodes WHERE heartbeat_at >= ?`, fixedStamp(since)).Scan(&count)
 	default:
 		return 0, fmt.Errorf("store: coordination live-node count on unknown engine %q", c.db.engine)
 	}
@@ -346,7 +345,7 @@ func (c *Coordination) PruneNodes(ctx context.Context, cutoff time.Time) error {
 	case EnginePostgres:
 		_, err = c.db.pool.Exec(ctx, `DELETE FROM ha_nodes WHERE heartbeat_at < $1`, cutoff)
 	case EngineSQLite:
-		_, err = c.db.sqWrite.ExecContext(ctx, `DELETE FROM ha_nodes WHERE heartbeat_at < ?`, sqliteTime(cutoff))
+		_, err = c.db.sqWrite.ExecContext(ctx, `DELETE FROM ha_nodes WHERE heartbeat_at < ?`, fixedStamp(cutoff))
 	default:
 		return fmt.Errorf("store: coordination node prune on unknown engine %q", c.db.engine)
 	}
@@ -386,7 +385,7 @@ func (c *Coordination) ForeignRootKeyFingerprints(ctx context.Context, nodeID, f
 	case EngineSQLite:
 		r, err := c.db.sqRead.QueryContext(ctx,
 			`SELECT DISTINCT root_key_fingerprint FROM ha_nodes
-			 WHERE node_id <> ? AND root_key_fingerprint <> ? AND heartbeat_at >= ?`, nodeID, fingerprint, sqliteTime(since))
+			 WHERE node_id <> ? AND root_key_fingerprint <> ? AND heartbeat_at >= ?`, nodeID, fingerprint, fixedStamp(since))
 		if err != nil {
 			return nil, fmt.Errorf("store: foreign root fingerprints: %w", err)
 		}
@@ -428,7 +427,7 @@ func (c *Coordination) BumpWindow(ctx context.Context, bucket, subject string, w
 			 ON CONFLICT (bucket, subject, window_start) DO UPDATE
 			   SET hits = admission_counters.hits + 1
 			 RETURNING hits`,
-			bucket, subject, sqliteTime(windowStart)).Scan(&count)
+			bucket, subject, fixedStamp(windowStart)).Scan(&count)
 	default:
 		return 0, fmt.Errorf("store: coordination window bump on unknown engine %q", c.db.engine)
 	}
@@ -466,7 +465,7 @@ func (c *Coordination) AccountFailureState(ctx context.Context, subject string) 
 		var until sql.NullString
 		e := c.db.sqRead.QueryRowContext(ctx,
 			`SELECT failures, until_at FROM admission_counters WHERE bucket = ? AND subject = ? AND window_start = ?`,
-			AccountBucket, subject, sqliteTime(accountWindow)).Scan(&failures, &until)
+			AccountBucket, subject, fixedStamp(accountWindow)).Scan(&failures, &until)
 		if isNoRows(e) {
 			return 0, time.Time{}, time.Time{}, false, nil
 		}
@@ -474,7 +473,7 @@ func (c *Coordination) AccountFailureState(ctx context.Context, subject string) 
 			return 0, time.Time{}, time.Time{}, false, fmt.Errorf("store: account failure state %s: %w", subject, e)
 		}
 		if until.Valid && until.String != "" {
-			lastFailure, _ = time.Parse(adapterTimeFormat, until.String)
+			lastFailure, _ = parseStamp(until.String)
 			lastFailure = lastFailure.UTC()
 		}
 		// sqlite is single-node, so the process clock is the datastore clock.
@@ -512,7 +511,7 @@ func (c *Coordination) RecordAccountFailure(ctx context.Context, subject string,
 			   SET failures = admission_counters.failures + 1,
 			       until_at = max(admission_counters.until_at, ?)
 			 RETURNING failures`,
-			AccountBucket, subject, sqliteTime(accountWindow), sqliteTime(now), sqliteTime(now)).Scan(&failures)
+			AccountBucket, subject, fixedStamp(accountWindow), fixedStamp(now), fixedStamp(now)).Scan(&failures)
 	default:
 		return 0, fmt.Errorf("store: coordination record failure on unknown engine %q", c.db.engine)
 	}
@@ -535,7 +534,7 @@ func (c *Coordination) PruneAccountBackoff(ctx context.Context, cutoff time.Time
 	case EngineSQLite:
 		_, err = c.db.sqWrite.ExecContext(ctx,
 			`DELETE FROM admission_counters WHERE bucket = ? AND (until_at IS NULL OR until_at < ?)`,
-			AccountBucket, sqliteTime(cutoff))
+			AccountBucket, fixedStamp(cutoff))
 	default:
 		return fmt.Errorf("store: coordination account prune on unknown engine %q", c.db.engine)
 	}
@@ -556,7 +555,7 @@ func (c *Coordination) ClearAccount(ctx context.Context, subject string) error {
 	case EngineSQLite:
 		_, err = c.db.sqWrite.ExecContext(ctx,
 			`DELETE FROM admission_counters WHERE bucket = ? AND subject = ? AND window_start = ?`,
-			AccountBucket, subject, sqliteTime(accountWindow))
+			AccountBucket, subject, fixedStamp(accountWindow))
 	default:
 		return fmt.Errorf("store: coordination clear account on unknown engine %q", c.db.engine)
 	}
@@ -579,7 +578,7 @@ func (c *Coordination) PruneAdmissionWindows(ctx context.Context, cutoff time.Ti
 	case EngineSQLite:
 		_, err = c.db.sqWrite.ExecContext(ctx,
 			`DELETE FROM admission_counters WHERE bucket <> ? AND window_start < ?`,
-			AccountBucket, sqliteTime(cutoff))
+			AccountBucket, fixedStamp(cutoff))
 	default:
 		return fmt.Errorf("store: coordination prune on unknown engine %q", c.db.engine)
 	}

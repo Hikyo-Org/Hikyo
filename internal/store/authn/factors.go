@@ -124,7 +124,7 @@ func (r *Resolver) CreateTOTP(ctx context.Context, c NewTOTPCredential) error {
 	return r.pg.InsertTOTP(ctx, pggen.InsertTOTPParams{
 		ID: c.ID, AccountID: c.AccountID, Seed: c.Seed, DekVersion: c.DEKVersion,
 		CredentialEpoch: c.CredentialEpoch, LastStep: c.CreatedStep - 1,
-		CreatedStep: c.CreatedStep, CreatedAt: pgTime(c.CreatedAt),
+		CreatedStep: c.CreatedStep, CreatedAt: pgTimestamp(c.CreatedAt),
 	})
 }
 
@@ -140,7 +140,7 @@ func (r *Resolver) ConfirmTOTP(ctx context.Context, id string, rowVersion, step 
 		return n == 1, err
 	}
 	n, err := r.pg.ConfirmTOTP(ctx, pggen.ConfirmTOTPParams{
-		ConfirmedAt: pgTime(at), LastStep: step, ID: id, RowVersion: rowVersion, LastStep_2: step,
+		ConfirmedAt: pgTimestamp(at), LastStep: step, ID: id, RowVersion: rowVersion, LastStep_2: step,
 	})
 	return n == 1, err
 }
@@ -215,7 +215,7 @@ func (r *Resolver) CreateRecoveryCodes(ctx context.Context, b RecoveryBatch, at 
 	}
 	return r.pg.InsertRecoveryCodes(ctx, pggen.InsertRecoveryCodesParams{
 		AccountID: b.AccountID, Batch: b.Batch, DekVersion: b.DEKVersion,
-		CredentialEpoch: b.CredentialEpoch, GeneratedAt: pgTime(at),
+		CredentialEpoch: b.CredentialEpoch, GeneratedAt: pgTimestamp(at),
 	})
 }
 
@@ -231,7 +231,7 @@ func (r *Resolver) UpdateRecoveryCodes(ctx context.Context, b RecoveryBatch, at 
 	}
 	n, err := r.pg.UpdateRecoveryCodesCAS(ctx, pggen.UpdateRecoveryCodesCASParams{
 		Batch: b.Batch, DekVersion: b.DEKVersion, CredentialEpoch: b.CredentialEpoch,
-		GeneratedAt: pgTime(at), AccountID: b.AccountID, RowVersion: b.RowVersion,
+		GeneratedAt: pgTimestamp(at), AccountID: b.AccountID, RowVersion: b.RowVersion,
 	})
 	return n == 1, err
 }
@@ -261,6 +261,6 @@ func (r *Resolver) ConsumeOutstandingAuthorities(ctx context.Context, accountID 
 		})
 	}
 	return r.pg.ConsumeOutstandingAuthoritiesForAccount(ctx, pggen.ConsumeOutstandingAuthoritiesForAccountParams{
-		ConsumedAt: pgTime(at), AccountID: accountID,
+		ConsumedAt: pgTimestamp(at), AccountID: accountID,
 	})
 }

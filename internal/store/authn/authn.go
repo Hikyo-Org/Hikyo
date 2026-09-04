@@ -381,7 +381,7 @@ func grantFrom(capability, org, project, env string) (domain.Grant, error) {
 }
 
 func notFoundOr(err error) error {
-	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
+	if isNoRows(err) {
 		return domain.ErrNotFound
 	}
 	return err

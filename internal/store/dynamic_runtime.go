@@ -2,14 +2,12 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 // DynamicRuntime is the dynamic-secret lease worker's system boundary, the
@@ -58,42 +56,15 @@ type LeaseProviderMaterial struct {
 	CredentialCiphertext []byte
 }
 
-func (r *DynamicRuntime) readDB() adapterDB {
-	if r.db.Engine() == EnginePostgres {
-		return pgAdoptDB{db: r.db.PG()}
-	}
-	return sqliteAdoptDB{db: r.db.SQLiteRead()}
-}
+func (r *DynamicRuntime) readDB() adapterDB { return readDB(r.db) }
 
+// transaction runs fn in a SERIALIZABLE (postgres) write transaction, unified
+// with the adapter runtime via dbTransaction. Bug fix (#619): the previous
+// dynamicTransaction opened postgres with the pool default (READ COMMITTED)
+// while a comment claimed parity with the adapter runtime's SERIALIZABLE
+// transaction; the two now share one helper and one isolation level.
 func (r *DynamicRuntime) transaction(ctx context.Context, fn func(adapterDBTX) error) error {
-	return dynamicTransaction(ctx, r.db, fn)
-}
-
-// dynamicTransaction opens an engine-appropriate transaction wrapped in the
-// same adapterDBTX dialect the adapter runtime uses.
-func dynamicTransaction(ctx context.Context, db *DB, fn func(adapterDBTX) error) error {
-	if db.Engine() == EnginePostgres {
-		tx, err := db.PG().Begin(ctx)
-		if err != nil {
-			return err
-		}
-		wrapped := pgAdapterTx{tx: tx}
-		if err := fn(wrapped); err != nil {
-			_ = tx.Rollback(ctx)
-			return err
-		}
-		return tx.Commit(ctx)
-	}
-	tx, err := db.SQLiteWrite().BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	wrapped := sqliteAdapterTx{tx: tx}
-	if err := fn(wrapped); err != nil {
-		_ = tx.Rollback()
-		return err
-	}
-	return tx.Commit()
+	return dbTransaction(ctx, r.db, fn)
 }
 
 func dynamicClaimTime(v any) time.Time {
@@ -118,7 +89,7 @@ func dynamicClaimTime(v any) time.Time {
 func (r *DynamicRuntime) ClaimDueLease(ctx context.Context, worker string, now, leaseUntil time.Time) (ClaimedLease, bool, error) {
 	var out ClaimedLease
 	err := r.transaction(ctx, func(tx adapterDBTX) error {
-		selectQuery := tx.SQL(
+		selectQuery := tx.SQLPerEngine(
 			`SELECT l.id,l.org_id,l.project_id,l.environment_id,l.provider_id,l.provider_handle,l.principal_id,l.principal_class,l.state,l.max_ttl_seconds,l.issued_at,l.expires_at,l.attempt_count,l.lease_claim_token
              FROM dynamic_leases l
              WHERE ((l.state IN ('minting','renewing','revoking','unknown') AND l.next_attempt_at<=?) OR (l.state='active' AND l.expires_at IS NOT NULL AND l.expires_at<=? AND l.next_attempt_at<=?))
@@ -136,7 +107,7 @@ func (r *DynamicRuntime) ClaimDueLease(ctx context.Context, worker string, now, 
 		var issued, expires any
 		var priorToken int64
 		if err := row.Scan(&out.ID, &out.OrgID, &out.ProjectID, &out.EnvironmentID, &out.ProviderID, &out.ProviderHandle, &out.PrincipalID, &out.PrincipalClass, &out.State, &out.MaxTTLSeconds, &issued, &expires, &out.Attempt, &priorToken); err != nil {
-			if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
+			if isNoRows(err) {
 				return ErrNotFound
 			}
 			return err
@@ -148,7 +119,7 @@ func (r *DynamicRuntime) ClaimDueLease(ctx context.Context, worker string, now, 
 		out.ClaimToken = priorToken + 1
 		update := tx.SQL(
 			`UPDATE dynamic_leases SET attempt_count=?,lease_owner=?,lease_expires_at=?,lease_claim_token=? WHERE id=?`,
-			`UPDATE dynamic_leases SET attempt_count=$1,lease_owner=$2,lease_expires_at=$3,lease_claim_token=$4 WHERE id=$5`)
+		)
 		_, err := tx.Exec(ctx, update, out.Attempt, worker, tx.Stamp(leaseUntil), out.ClaimToken, out.ID)
 		return err
 	})
@@ -164,11 +135,11 @@ func (r *DynamicRuntime) LoadProviderMaterial(ctx context.Context, lease Claimed
 	db := r.readDB()
 	query := db.SQL(
 		`SELECT p.kind,p.origin,p.tls_mode,p.grant_role,p.id,p.admin_credential_ciphertext FROM dynamic_providers p JOIN dynamic_leases l ON l.provider_id=p.id AND l.org_id=p.org_id AND l.project_id=p.project_id WHERE l.id=? AND l.org_id=? AND l.project_id=? AND l.lease_owner=? AND l.lease_expires_at>? AND l.lease_claim_token=?`,
-		`SELECT p.kind,p.origin,p.tls_mode,p.grant_role,p.id,p.admin_credential_ciphertext FROM dynamic_providers p JOIN dynamic_leases l ON l.provider_id=p.id AND l.org_id=p.org_id AND l.project_id=p.project_id WHERE l.id=$1 AND l.org_id=$2 AND l.project_id=$3 AND l.lease_owner=$4 AND l.lease_expires_at>$5 AND l.lease_claim_token=$6`)
+	)
 	var out LeaseProviderMaterial
 	var credential []byte
 	if err := db.QueryRow(ctx, query, lease.ID, lease.OrgID, lease.ProjectID, lease.LeaseOwner, db.Stamp(time.Now().UTC()), lease.ClaimToken).Scan(&out.Kind, &out.Origin, &out.TLSMode, &out.GrantRole, &out.CredentialOwnerID, &credential); err != nil {
-		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
+		if isNoRows(err) {
 			return LeaseProviderMaterial{}, ErrNotFound
 		}
 		return LeaseProviderMaterial{}, err
@@ -221,15 +192,22 @@ func (r *DynamicRuntime) LatestEffectKind(ctx context.Context, lease ClaimedLeas
 	db := r.readDB()
 	query := db.SQL(
 		`SELECT kind FROM dynamic_effects WHERE lease_id=? AND org_id=? ORDER BY created_at DESC,id DESC LIMIT 1`,
-		`SELECT kind FROM dynamic_effects WHERE lease_id=$1 AND org_id=$2 ORDER BY created_at DESC,id DESC LIMIT 1`)
+	)
 	var kind string
 	if err := db.QueryRow(ctx, query, lease.ID, lease.OrgID).Scan(&kind); err != nil {
-		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
+		if isNoRows(err) {
 			return "", ErrNotFound
 		}
 		return "", err
 	}
 	return kind, nil
+}
+
+// leaseTransitionPayload is the audit payload for dynamic lease transition
+// intent/outcome events.
+type leaseTransitionPayload struct {
+	Kind           string `json:"kind"`
+	ProviderHandle string `json:"provider_handle"`
 }
 
 // RecordIntent writes the durable INTENT (effect row + audit event) before the
@@ -243,14 +221,17 @@ func (r *DynamicRuntime) RecordIntent(ctx context.Context, lease ClaimedLease, k
 		if err := r.assertLeased(ctx, tx, lease, now); err != nil {
 			return err
 		}
-		payload, _ := json.Marshal(map[string]string{"kind": kind, "provider_handle": lease.ProviderHandle})
+		payload, err := json.Marshal(leaseTransitionPayload{Kind: kind, ProviderHandle: lease.ProviderHandle})
+		if err != nil {
+			return err
+		}
 		if err := r.insertLeaseAudit(ctx, tx, lease, intentAudit, "dynamic.lease_transition_intent", "intent", now, payload); err != nil {
 			return err
 		}
 		insert := tx.SQL(
 			`INSERT INTO dynamic_effects (id,org_id,project_id,environment_id,lease_id,kind,intent_audit_id,created_at) VALUES (?,?,?,?,?,?,?,?)`,
-			`INSERT INTO dynamic_effects (id,org_id,project_id,environment_id,lease_id,kind,intent_audit_id,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`)
-		_, err := tx.Exec(ctx, insert, effectID, lease.OrgID, lease.ProjectID, lease.EnvironmentID, lease.ID, kind, intentAudit, tx.Stamp(now))
+		)
+		_, err = tx.Exec(ctx, insert, effectID, lease.OrgID, lease.ProjectID, lease.EnvironmentID, lease.ID, kind, intentAudit, tx.Stamp(now))
 		return err
 	})
 	if err != nil {
@@ -259,23 +240,29 @@ func (r *DynamicRuntime) RecordIntent(ctx context.Context, lease ClaimedLease, k
 	return effectID, nil
 }
 
-// RecordOutcome closes the effect with its terminal OUTCOME (effect row + audit
-// event) and moves the lease to newState, stamping issued/expires when the
-// transition established them. It clears the crash fence so the term ends.
-func (r *DynamicRuntime) RecordOutcome(ctx context.Context, lease ClaimedLease, effectID, kind, outcome, newState string, issuedAt, expiresAt time.Time) error {
+// settle closes a lease's OUTCOME effect (effect row + audit event) and moves
+// the lease to newState under its crash fence, all in one transaction — the
+// shared body of RecordOutcome/RecordOutcomeRetry/EnterUnknown. issuedAt and
+// expiresAt stamp the lease only when non-zero (COALESCE keeps the existing
+// value otherwise); nextAttempt is the re-derived far-future stamp for a
+// terminal row or the retry deadline for a transient one.
+func (r *DynamicRuntime) settle(ctx context.Context, lease ClaimedLease, effectID, kind, outcome, newState string, issuedAt, expiresAt, nextAttempt time.Time) error {
 	outcomeAudit := "dau_" + uuid.Must(uuid.NewV7()).String()
 	now := time.Now().UTC()
 	return r.transaction(ctx, func(tx adapterDBTX) error {
 		if err := r.assertLeased(ctx, tx, lease, now); err != nil {
 			return err
 		}
-		payload, _ := json.Marshal(map[string]string{"kind": kind, "provider_handle": lease.ProviderHandle})
+		payload, err := json.Marshal(leaseTransitionPayload{Kind: kind, ProviderHandle: lease.ProviderHandle})
+		if err != nil {
+			return err
+		}
 		if err := r.insertLeaseAudit(ctx, tx, lease, outcomeAudit, "dynamic.lease_transition_outcome", outcome, now, payload); err != nil {
 			return err
 		}
 		closeEffect := tx.SQL(
 			`UPDATE dynamic_effects SET outcome=?,outcome_audit_id=?,finished_at=? WHERE id=? AND org_id=?`,
-			`UPDATE dynamic_effects SET outcome=$1,outcome_audit_id=$2,finished_at=$3 WHERE id=$4 AND org_id=$5`)
+		)
 		if _, err := tx.Exec(ctx, closeEffect, outcome, outcomeAudit, tx.Stamp(now), effectID, lease.OrgID); err != nil {
 			return err
 		}
@@ -286,46 +273,32 @@ func (r *DynamicRuntime) RecordOutcome(ctx context.Context, lease ClaimedLease, 
 		if !expiresAt.IsZero() {
 			expires = tx.Stamp(expiresAt)
 		}
-		// next_attempt_at is set far ahead for a settled row; a re-derivable
-		// future stamp keeps the not-null column satisfied without re-claiming.
-		next := tx.Stamp(now.Add(365 * 24 * time.Hour))
-		if newState == "active" && !expiresAt.IsZero() {
-			next = tx.Stamp(expiresAt)
-		}
 		update := tx.SQL(
 			`UPDATE dynamic_leases SET state=?,issued_at=COALESCE(?,issued_at),expires_at=COALESCE(?,expires_at),last_transition_at=?,next_attempt_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND org_id=? AND lease_owner=? AND lease_expires_at>? AND lease_claim_token=?`,
-			`UPDATE dynamic_leases SET state=$1,issued_at=COALESCE($2,issued_at),expires_at=COALESCE($3,expires_at),last_transition_at=$4,next_attempt_at=$5,lease_owner=NULL,lease_expires_at=NULL WHERE id=$6 AND org_id=$7 AND lease_owner=$8 AND lease_expires_at>$9 AND lease_claim_token=$10`)
-		rows, err := tx.Exec(ctx, update, newState, issued, expires, tx.Stamp(now), next, lease.ID, lease.OrgID, lease.LeaseOwner, tx.Stamp(now), lease.ClaimToken)
+		)
+		rows, err := tx.Exec(ctx, update, newState, issued, expires, tx.Stamp(now), tx.Stamp(nextAttempt), lease.ID, lease.OrgID, lease.LeaseOwner, tx.Stamp(now), lease.ClaimToken)
 		return fenceRows(rows, err)
 	})
+}
+
+// RecordOutcome closes the effect with its terminal OUTCOME and moves the lease
+// to newState, stamping issued/expires when the transition established them. It
+// clears the crash fence so the term ends.
+func (r *DynamicRuntime) RecordOutcome(ctx context.Context, lease ClaimedLease, effectID, kind, outcome, newState string, issuedAt, expiresAt time.Time) error {
+	// A settled row parks next_attempt_at far ahead so it is never re-claimed;
+	// an activated lease parks it at expiry so the worker expires it on time.
+	next := time.Now().UTC().Add(365 * 24 * time.Hour)
+	if newState == "active" && !expiresAt.IsZero() {
+		next = expiresAt
+	}
+	return r.settle(ctx, lease, effectID, kind, outcome, newState, issuedAt, expiresAt, next)
 }
 
 // RecordOutcomeRetry closes an effect with a `failure` outcome but keeps the
 // lease in a transient state for another attempt: the provider was unreachable
 // (a definite non-event), so the transition simply runs again later.
 func (r *DynamicRuntime) RecordOutcomeRetry(ctx context.Context, lease ClaimedLease, effectID, kind, keepState string, nextAttempt time.Time) error {
-	outcomeAudit := "dau_" + uuid.Must(uuid.NewV7()).String()
-	now := time.Now().UTC()
-	return r.transaction(ctx, func(tx adapterDBTX) error {
-		if err := r.assertLeased(ctx, tx, lease, now); err != nil {
-			return err
-		}
-		payload, _ := json.Marshal(map[string]string{"kind": kind, "provider_handle": lease.ProviderHandle})
-		if err := r.insertLeaseAudit(ctx, tx, lease, outcomeAudit, "dynamic.lease_transition_outcome", "failure", now, payload); err != nil {
-			return err
-		}
-		closeEffect := tx.SQL(
-			`UPDATE dynamic_effects SET outcome='failure',outcome_audit_id=?,finished_at=? WHERE id=? AND org_id=?`,
-			`UPDATE dynamic_effects SET outcome='failure',outcome_audit_id=$1,finished_at=$2 WHERE id=$3 AND org_id=$4`)
-		if _, err := tx.Exec(ctx, closeEffect, outcomeAudit, tx.Stamp(now), effectID, lease.OrgID); err != nil {
-			return err
-		}
-		update := tx.SQL(
-			`UPDATE dynamic_leases SET state=?,last_transition_at=?,next_attempt_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND org_id=? AND lease_owner=? AND lease_expires_at>? AND lease_claim_token=?`,
-			`UPDATE dynamic_leases SET state=$1,last_transition_at=$2,next_attempt_at=$3,lease_owner=NULL,lease_expires_at=NULL WHERE id=$4 AND org_id=$5 AND lease_owner=$6 AND lease_expires_at>$7 AND lease_claim_token=$8`)
-		rows, err := tx.Exec(ctx, update, keepState, tx.Stamp(now), tx.Stamp(nextAttempt), lease.ID, lease.OrgID, lease.LeaseOwner, tx.Stamp(now), lease.ClaimToken)
-		return fenceRows(rows, err)
-	})
+	return r.settle(ctx, lease, effectID, kind, "failure", keepState, time.Time{}, time.Time{}, nextAttempt)
 }
 
 // Retry releases the lease for another attempt without changing its state: the
@@ -338,7 +311,7 @@ func (r *DynamicRuntime) Retry(ctx context.Context, lease ClaimedLease, nextAtte
 		}
 		update := tx.SQL(
 			`UPDATE dynamic_leases SET next_attempt_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND org_id=? AND lease_owner=? AND lease_expires_at>? AND lease_claim_token=?`,
-			`UPDATE dynamic_leases SET next_attempt_at=$1,lease_owner=NULL,lease_expires_at=NULL WHERE id=$2 AND org_id=$3 AND lease_owner=$4 AND lease_expires_at>$5 AND lease_claim_token=$6`)
+		)
 		rows, err := tx.Exec(ctx, update, tx.Stamp(nextAttempt), lease.ID, lease.OrgID, lease.LeaseOwner, tx.Stamp(now), lease.ClaimToken)
 		return fenceRows(rows, err)
 	})
@@ -347,28 +320,7 @@ func (r *DynamicRuntime) Retry(ctx context.Context, lease ClaimedLease, nextAtte
 // EnterUnknown records an ambiguous outcome: the OUTCOME effect is `unknown`,
 // the lease moves to `unknown`, and reconcile settles it later.
 func (r *DynamicRuntime) EnterUnknown(ctx context.Context, lease ClaimedLease, effectID, kind string, nextAttempt time.Time) error {
-	outcomeAudit := "dau_" + uuid.Must(uuid.NewV7()).String()
-	now := time.Now().UTC()
-	return r.transaction(ctx, func(tx adapterDBTX) error {
-		if err := r.assertLeased(ctx, tx, lease, now); err != nil {
-			return err
-		}
-		payload, _ := json.Marshal(map[string]string{"kind": kind, "provider_handle": lease.ProviderHandle})
-		if err := r.insertLeaseAudit(ctx, tx, lease, outcomeAudit, "dynamic.lease_transition_outcome", "unknown", now, payload); err != nil {
-			return err
-		}
-		closeEffect := tx.SQL(
-			`UPDATE dynamic_effects SET outcome='unknown',outcome_audit_id=?,finished_at=? WHERE id=? AND org_id=?`,
-			`UPDATE dynamic_effects SET outcome='unknown',outcome_audit_id=$1,finished_at=$2 WHERE id=$3 AND org_id=$4`)
-		if _, err := tx.Exec(ctx, closeEffect, outcomeAudit, tx.Stamp(now), effectID, lease.OrgID); err != nil {
-			return err
-		}
-		update := tx.SQL(
-			`UPDATE dynamic_leases SET state='unknown',last_transition_at=?,next_attempt_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND org_id=? AND lease_owner=? AND lease_expires_at>? AND lease_claim_token=?`,
-			`UPDATE dynamic_leases SET state='unknown',last_transition_at=$1,next_attempt_at=$2,lease_owner=NULL,lease_expires_at=NULL WHERE id=$3 AND org_id=$4 AND lease_owner=$5 AND lease_expires_at>$6 AND lease_claim_token=$7`)
-		rows, err := tx.Exec(ctx, update, tx.Stamp(now), tx.Stamp(nextAttempt), lease.ID, lease.OrgID, lease.LeaseOwner, tx.Stamp(now), lease.ClaimToken)
-		return fenceRows(rows, err)
-	})
+	return r.settle(ctx, lease, effectID, kind, "unknown", "unknown", time.Time{}, time.Time{}, nextAttempt)
 }
 
 // assertLeased re-checks this worker still holds the lease crash fence inside
@@ -376,7 +328,7 @@ func (r *DynamicRuntime) EnterUnknown(ctx context.Context, lease ClaimedLease, e
 func (r *DynamicRuntime) assertLeased(ctx context.Context, tx adapterDBTX, lease ClaimedLease, now time.Time) error {
 	query := tx.SQL(
 		`SELECT COUNT(*) FROM dynamic_leases WHERE id=? AND org_id=? AND lease_owner=? AND lease_expires_at>? AND lease_claim_token=?`,
-		`SELECT COUNT(*) FROM dynamic_leases WHERE id=$1 AND org_id=$2 AND lease_owner=$3 AND lease_expires_at>$4 AND lease_claim_token=$5`)
+	)
 	var count int
 	if err := tx.QueryRow(ctx, query, lease.ID, lease.OrgID, lease.LeaseOwner, tx.Stamp(now), lease.ClaimToken).Scan(&count); err != nil {
 		return err
@@ -388,7 +340,7 @@ func (r *DynamicRuntime) assertLeased(ctx context.Context, tx adapterDBTX, lease
 }
 
 func (r *DynamicRuntime) insertLeaseAudit(ctx context.Context, tx adapterDBTX, lease ClaimedLease, id, typ, outcome string, at time.Time, payload []byte) error {
-	query := tx.SQL(
+	query := tx.SQLPerEngine(
 		`INSERT INTO audit_tenant_events (id,type,schema_version,occurred_at,occurred_asserted,recorded_at,actor_id,actor_class,authority_id,scope_class,org_id,project_id,env_id,object_type,object_id,outcome,correlation_id,origin,payload) VALUES (?,?,1,?,0,?,NULL,'system',?,'env',?,?,?,'dynamic-lease',?,?,?,'system',?)`,
 		`INSERT INTO audit_tenant_events (id,type,schema_version,occurred_at,occurred_asserted,recorded_at,actor_id,actor_class,authority_id,scope_class,org_id,project_id,env_id,object_type,object_id,outcome,correlation_id,origin,payload) VALUES ($1,$2,1,$3,false,$4,NULL,'system',$5,'env',$6,$7,$8,'dynamic-lease',$9,$10,$11,'system',$12)`)
 	stamp := tx.Stamp(at)

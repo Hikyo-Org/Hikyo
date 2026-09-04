@@ -31,8 +31,8 @@ func (r sqliteCatalogue) Create(ctx context.Context, p authz.Proof, key NewCatal
 	}
 	return constraint(r.q.CreateKey(ctx, sqlitegen.CreateKeyParams{
 		ID:              key.ID,
-		OrgID:           string(chain.Org),     // chain column: proof-bound
-		ProjectID:       string(chain.Project), // chain column: proof-bound
+		OrgID:           string(chain.Org),
+		ProjectID:       string(chain.Project),
 		Name:            key.Name,
 		FolderPath:      key.FolderPath,
 		Classification:  key.Classification,
@@ -359,7 +359,7 @@ func (r sqliteCatalogue) DeletePresenceForEnvironment(ctx context.Context, p aut
 	return constraint(r.q.DeleteEnvironmentPresence(ctx, sqlitegen.DeleteEnvironmentPresenceParams{
 		OrgID:         string(chain.Org),
 		ProjectID:     string(chain.Project),
-		EnvironmentID: string(chain.Env), // chain column: proof-bound
+		EnvironmentID: string(chain.Env),
 	}))
 }
 
@@ -457,8 +457,8 @@ func (r pgCatalogue) Create(ctx context.Context, p authz.Proof, key NewCatalogue
 	}
 	return constraint(r.q.CreateKey(ctx, pggen.CreateKeyParams{
 		ID:              key.ID,
-		ChainOrgID:      string(chain.Org),     // chain column: proof-bound
-		ChainProjectID:  string(chain.Project), // chain column: proof-bound
+		ChainOrgID:      string(chain.Org),
+		ChainProjectID:  string(chain.Project),
 		Name:            key.Name,
 		FolderPath:      key.FolderPath,
 		Classification:  key.Classification,
@@ -783,7 +783,7 @@ func (r pgCatalogue) DeletePresenceForEnvironment(ctx context.Context, p authz.P
 	return constraint(r.q.DeleteEnvironmentPresence(ctx, pggen.DeleteEnvironmentPresenceParams{
 		ChainOrgID:     string(chain.Org),
 		ChainProjectID: string(chain.Project),
-		EnvironmentID:  string(chain.Env), // chain column: proof-bound
+		EnvironmentID:  string(chain.Env),
 	}))
 }
 

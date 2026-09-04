@@ -229,7 +229,7 @@ func (r *Resolver) CreateWebAuthnCredential(ctx context.Context, c NewWebAuthnCr
 		Aaguid: c.AAGUID, SignCount: c.SignCount, Transports: c.Transports,
 		Discoverable: boolInt(c.Discoverable), BackupEligible: boolInt(c.BackupEligible),
 		BackupState: boolInt(c.BackupState), Label: c.Label, CredentialEpoch: c.CredentialEpoch,
-		CreatedAt: pgTime(c.CreatedAt),
+		CreatedAt: pgTimestamp(c.CreatedAt),
 	})
 }
 
@@ -244,7 +244,7 @@ func (r *Resolver) AdvanceWebAuthnSignCount(ctx context.Context, id string, rowV
 		return n == 1, err
 	}
 	n, err := r.pg.AdvanceWebAuthnSignCount(ctx, pggen.AdvanceWebAuthnSignCountParams{
-		SignCount: count, LastUsedAt: pgTime(at), ID: id, RowVersion: rowVersion,
+		SignCount: count, LastUsedAt: pgTimestamp(at), ID: id, RowVersion: rowVersion,
 	})
 	return n == 1, err
 }
@@ -259,7 +259,7 @@ func (r *Resolver) DisableWebAuthnCredential(ctx context.Context, id string, row
 		return n == 1, err
 	}
 	n, err := r.pg.DisableWebAuthnCredential(ctx, pggen.DisableWebAuthnCredentialParams{
-		DisabledAt: pgTime(at), ID: id, RowVersion: rowVersion,
+		DisabledAt: pgTimestamp(at), ID: id, RowVersion: rowVersion,
 	})
 	return n == 1, err
 }
@@ -301,7 +301,7 @@ func (r *Resolver) CreateWebAuthnCeremony(ctx context.Context, c NewWebAuthnCere
 		ID: c.ID, ChallengeVerifier: c.ChallengeVerifier, SessionData: c.SessionData,
 		AccountID: pgText(c.AccountID), SessionID: pgText(c.SessionID), Purpose: c.Purpose,
 		OperationBinding: pgText(c.OperationBinding), EnvironmentID: pgText(c.EnvironmentID),
-		CredentialEpoch: c.CredentialEpoch, ExpiresAt: pgTime(c.ExpiresAt), CreatedAt: pgTime(c.CreatedAt),
+		CredentialEpoch: c.CredentialEpoch, ExpiresAt: pgTimestamp(c.ExpiresAt), CreatedAt: pgTimestamp(c.CreatedAt),
 	})
 }
 
@@ -340,7 +340,7 @@ func (r *Resolver) ConsumeWebAuthnCeremony(ctx context.Context, id, credentialID
 		return n == 1, err
 	}
 	n, err := r.pg.ConsumeWebAuthnCeremony(ctx, pggen.ConsumeWebAuthnCeremonyParams{
-		ConsumedAt: pgTime(at), CredentialID: pgText(credentialID), ID: id,
+		ConsumedAt: pgTimestamp(at), CredentialID: pgText(credentialID), ID: id,
 	})
 	return n == 1, err
 }
