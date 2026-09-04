@@ -279,19 +279,16 @@ Claude-authored work.
 all machine-only with no human-session fallback; exit codes closed set + the
 child-side 126/127; stable stderr strings in spellings §6; probe classes
 `cli:run`/`cli:compose` = tenant; e2e in
-`internal/isolation/compose_cli_e2e_test.go`. Full behaviour inventory:
-`.xreview/C-summary.md`, `.xreview/C-fix1-summary.md`,
-`.xreview/C-fix2-summary.md` (gitignored, session-local).
+`internal/isolation/compose_cli_e2e_test.go`.
 
 ## Review trail (cross-model, blocking, 3-round cap)
 
-- Stream B (Claude-authored) → Codex gpt-5.6-sol high: R1 6 BLOCKER/10 MAJOR →
-  fix round 1 → R2 verify (9 partial/1 new) → fix round 2 → R3 verdict: one
-  remaining MAJOR (runtime-dir symlink TOCTOU), fixed by Codex (856cf74).
-- Stream C (Claude-authored) → Codex: R1 4 BLOCKER/9 MAJOR/2 MINOR → fix
-  round 1 → R2 (2 BLOCKER/3 MAJOR remaining) → fix round 2 → **R3: CLEAN**.
-- Streams A and D are Codex-authored — no Claude review per the standing
-  one-way routing.
+The two Claude-authored streams (B and C) were reviewed by Codex `gpt-5.6-sol`
+high across the 3-round cap; findings fixed before merge. Stream B closed with
+one remaining MAJOR (a runtime-dir symlink TOCTOU) fixed by Codex in 856cf74;
+Stream C reached R3 CLEAN. Streams A and D are Codex-authored and got no Claude
+review per the standing one-way routing.
+
 - Orchestrator dispositions accepted during review (for human ratification):
   sync's pre-render gate excludes the server-drift + generation families (the
   staleness sync repairs); explicit `runtime_dir` off tmpfs is a doctor error,

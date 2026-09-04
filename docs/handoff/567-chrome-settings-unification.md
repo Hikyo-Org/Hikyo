@@ -1,7 +1,6 @@
 # #567 — Chrome + settings unification (handoff)
 
-Spec: `docs/superpowers/specs/2026-09-01-chrome-settings-invite-design.md` (PR1 section).
-Plan: `docs/superpowers/plans/2026-09-01-chrome-settings-unification.md`.
+Spec: `docs/superpowers/specs/2026-09-01-chrome-settings-invite-design.md` (PR1 section). The implementation plan was executed and removed after merge; the spec remains the design record.
 Follow-up: #568 (member invitation) stacks on this branch.
 
 ## What changed
@@ -72,11 +71,9 @@ decision, not a density drift; fold it into a class if that panel is next touche
 
 ## Screens (prototype mode, 2026-09-01)
 
-- `567-screens/567-desktop-org.png` — org route: organisation block only, rail cog + account foot.
-- `567-screens/567-desktop-project.png` — project route: project context block (matrix + groups, machine access, members, settings) stacked above the organisation block.
-- `567-screens/567-desktop-instance-members.png` — `/instance/members`: instance context block above the organisation block; Who-can + Members panels; breadcrumb `hikyo / Instance / members`.
-- `567-screens/567-desktop-instance-settings.png` — `/instance` as Instance settings with the Members entry-point panel.
-- `567-screens/567-mobile-drawer-project.png` — mobile drawer on a project route: switcher, project block, organisation block (Projects / Instance / You sections follow below the fold).
+Prototype-mode screenshots of the desktop org/project/instance routes and the
+mobile drawer were captured for review on PR #569 (issue #567); see that PR for
+the images.
 
 ## Seam for #568
 

@@ -104,7 +104,10 @@ operative artifact and live in this PR.
   exactly-once singleton, stale-fence write affects zero rows) end to end
   against the real datastore.
 
-## Cross-model review (Codex R1) fixes
+## Review outcome
+
+Reviewed by Codex R1-R3; findings fixed before merge. The invariants the review
+drove, each now load-bearing:
 
 - **Fence preserved on release**: `ReleaseLease` marks the row expired instead
   of deleting it, so `fence_token` never resets to 1 (a delete/reinsert would

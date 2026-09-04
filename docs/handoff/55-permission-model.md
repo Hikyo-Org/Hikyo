@@ -470,206 +470,46 @@ the census excludes project-scope holders (P1), that a principal covering the
 org at two scopes may lose one of them (P2), and that the revocation trail
 records `break-glass` when that is what was released (P3).
 
-## Cross-model review (Codex `gpt-5.6-sol`, high effort)
+## Cross-model review
 
-### Round 1 — BLOCKED, 2 HIGH / 6 MEDIUM / 2 LOW
+Reviewed by Codex (`gpt-5.6-sol`, high) R1-R3; findings fixed before merge. R1
+returned BLOCKED with 10 findings (2 HIGH, 6 MEDIUM, 2 LOW); the eight code
+findings were fixed in-slice, and F10 (`break-glass` as an origin kind and
+`DefaultReauthHardCap = 15m`) was dispositioned by the human at the merge gate as
+a code-made ADR/ops-spec decision, the same house procedure #54's `recovery`
+issuer took. A bare-sentinel defect found while fixing was also closed: refusals
+in `internal/service/grants.go` and `settings.go` now wrap domain sentinels
+(shape errors `invalid`, post-authorization state refusals `conflict`, an unheld
+triple `not found`) instead of rendering `internal`. R2 confirmed eight findings
+plus the sentinel fix and left F4 and F5 partial; both closed in that round (the
+real-stack pair table grew from 7 to 13 routes with a `SetQueryObserver`
+test-only seam measuring the real service path, and the origin-join generation
+advance was gated on `out.Created`). R3 was the final verdict round.
 
-R1 verdict **BLOCKED** — 2 HIGH, 6 MEDIUM, 2 LOW. Report:
-`.xreview/55-perms-r1.md`. Eight fixed in-slice; F10 dispositioned by the human
-(below). Nothing disputed.
+**Decisions the review changed (durable):**
 
-**F1 (HIGH) — machine allowlists bounded capability but not scope.**
-`checkPrincipalClass` saw only `(class, capability)`, so a workload could take
-`read` at org or instance scope — reaching every environment in the org, the
-opposite of the ADR's "explicit (project, environment)" — and automation could
-take grants across unrelated projects. Two rules added and enforced at the ONE
-point all three writers share (`lockAndClassify`, called by the individual
-grant, by template expansion through `grantOne`, and by break-glass):
-
-- **scope depth** (`domain.machineDepths`): workload grants must address an
-  environment, automation project depth or below;
-- **one project**: the principal's existing grants fix the project and every
-  later grant must match it.
-
-*Stated limit, and the reason it is this shape:* the credential BINDING that
-names a machine's project authoritatively is #17's and does not exist yet, so
-the principal's own grants are today's record of which project it belongs to.
-#17 replaces this with the binding, and the rule gets stricter, never looser.
-Regression: `isolation.TestMachineScopeBounds{SQLite,Postgres}` runs org-,
-instance- and foreign-project refusals through **all three writers**, plus
-positive controls.
-
-**F2 (HIGH) — bootstrap seeded a bespoke instance-scope bundle including
-`read`, `reveal` and `reveal-history`.** The parallel `AdminTemplate` list is
-gone. Bootstrap now applies the ADR's own `operator` template at instance scope
-(`BootstrapTemplate = domain.TemplateOperator`), expanded from the locked
-table.
-
-*The reconciliation, stated because two ADR clauses pull apart at bootstrap:*
-Propagations → #16 says the first administrator MUST be bootstrapped "via the
-`admin` template (so reveal/reveal-history are seeded as separate visible
-grants)"; the template table makes `admin` applicable at **org/project scope
-only**, and § Administrative power says an instance operator reaches an org's
-data "through an explicit audited grant, **never by bundle**". At bootstrap
-there is no org, so both cannot be satisfied literally at once. The reading
-taken: **bootstrap seeds `operator` at instance scope** — separate visible
-grants, no disclosure, no tenant data by bundle — and the `admin`-template
-clause is satisfied where it is applicable, at **org scope**. As amended on
-2026-08-21, creating the first org atomically applies `admin` to the creator
-through their instance `manage-members` authority. `reveal` and
-`reveal-history` arrive as the separate seeded rows the clause asks for.
-
-Knock-ons, all landed: org creation applies the admin template and the demo
-re-logs in (the grant advances the administrator's own generation and deletes
-their sessions — the ADR's rule applied to the creator); `credential-reset` is no longer bundled, so
-#54's reset fixtures grant it explicitly through the real grant surface, which
-is exactly the "explicit audited grant" the ADR describes.
-
-**F3 (MED) — project listing read the whole org and filtered in Go.**
-`ListGrantsWithOriginsForProject` added both dialects, plus
-`GrantLinesInProject`; `Grants.List` switches on the addressed depth instead of
-over-reading. Regression:
-`isolation.TestProjectListingDoesNotReadSiblings{SQLite,Postgres}` lands 20
-grants in a SIBLING project and asserts the project listing does not move —
-**asserted on rows returned, not query count**, because the overfetch is one
-query either way and a query-count trace structurally cannot see it.
-
-**F4 (MED) — A2 uniformity was stub-proven only.**
-`internal/isolation/access_wire_test.go`, dual-engine: a bootstrapped
-instance, a WebAuthn-stepped-up session (the grant routes are MFA-mandatory,
-so a password-only session would answer 403 and drown the comparison), the real
-services behind the real router. Seven route pairs — genuinely missing scope vs
-genuinely unauthorized existing scope — asserting identical status, identical
-bytes, and no `count`/`items` member on refusal, with positive controls first
-so "both answered 404" cannot be satisfied by a broken surface. Plus
-`TestAccessWireQueryTrace{SQLite,Postgres}`: the structural timing control for
-the new operations (1 query on a miss at any depth, 2 on a denial against an
-existing object).
-
-**F5 (MED) — audit lifecycle did not match the state transition.** Three fixes:
-an idempotent repeat that created no row and attached no origin now emits **no
-lifecycle event** (the zero event is "nothing happened", skipped by
-`insertGrantEvent`); a release that leaves the row alive because a
-`scim`/`structural` origin still holds it is a **`grant.modified`**, matching
-the registry comment that already said so; and the generation advance and
-session deletion on revoke now run **only when the row actually died**, because
-releasing one of two origins takes no authority away and killing sessions for a
-bookkeeping change is a denial of service dressed as security. The template
-summary splits `grants_deduped` into `grants_joined` and `grants_unchanged`.
-The four revoke operations declare both event types. Regression:
-`isolation.TestGrantLifecycleEvents{SQLite,Postgres}`, which plants a `scim`
-origin by raw SQL (only #73 can mint one, and the surface must already behave
-correctly when it meets one).
-
-**F6 (MED) — `project-settings set` silently cleared protection.** The
-`--protected` bool defaulted to false and was sent on every `set`, so
-`--reauth-window-seconds N` unprotected the environment through a command that
-never mentioned protection. Now tri-state (`--protected true|false`,
-`--reauth-window-seconds N|inherit`), unspecified preserving the stored value
-by reading the current settings and overlaying only what was named — the route
-is a full replacement, so the read is what makes "unchanged" mean it.
-Regression in the CLI demo: protect, then a window-only update, then assert
-still protected.
-
-**F7 (MED) — only EFFECTIVE durations were compared.** The stored configuration
-is now compared and audited too: `previous_configured_seconds`,
-`configured_seconds` (with `-1` for "inherits", distinct from a real `0`),
-`previous_inherited` and `inherited`. `widened` stays its own field and stays
-about the effective value, so an inheritance flip that changes nothing today is
-not filed as a widening. Regression in
-`isolation.TestProtectedEnvironment{SQLite,Postgres}`: inherited→explicit at
-the SAME duration, and back, each emit an event.
-
-**F8 (MED) — the migration classified every legacy machine as automation.**
-The backfill is **gone**, not softened. An unclassified machine principal stays
-NULL and fails closed at every allowlist path, so it can hold no NEW grant
-until an operator classifies it; its existing grants keep evaluating, because
-authorization reads the grant table and never the class. Guessing `automation`
-would have handed a pre-existing WORKLOAD credential the
-edit/publish/definitions-edit set — a privilege escalation performed by a
-migration. The isolation fixture now states its own machine class explicitly,
-which is the honest consequence: a fixture that wants an automation credential
-has to say so.
-
-**F9 (LOW) — the protected branch was not a true clamp.** `effectiveWindow`
-now computes the base window first (explicit or inherited) and applies
-`min(base, ProtectedWindowCap)` to that. The old shape returned the cap flat
-for the inherited case, so a positive ops-owned cap over a smaller instance
-default would have made protecting an environment WIDEN it.
-
-**F10 (LOW) — NOT changed in code, by orchestrator triage.** `break-glass` as
-an origin kind and `DefaultReauthHardCap = 15m` are already disposition items 4
-and 5 for the human merge gate — the house procedure for a code-made ADR /
-ops-spec decision, same shape as #54's `recovery` issuer. The orchestrator
-carries that answer to R2.
-
-**Found while fixing, not reported:** every refusal sentinel in
-`internal/service/grants.go` and `settings.go` was bare, so all of them
-rendered `internal` — telling a script the server broke when it had answered
-correctly. This is the same defect #48 found when `conflict` and
-`limit_exceeded` fell through the CLI's status mapping. Each now wraps a domain
-sentinel: shape errors `invalid`, post-authorization state refusals `conflict`,
-a triple that is not held `not found`.
-
-### Round 2 — 8/10 FIXED, F4 and F5 PARTIAL; both closed
-
-Report: `.xreview/55-perms-r2.md`. R2 confirmed F1, F2, F3, F6, F7, F8, F9, F10
-and the extra sentinel fix. Two remained partial; both are now closed.
-
-**F4 — the real-stack pairs were not all unauthorized-vs-existing.**
-
-- *(a)* The wire fixture created only an ORG, so the project-list and both
-  settings "refused" legs were comparing a missing CHILD against a missing ORG
-  — two kinds of missing, not the case the acceptance row is about. Setup now
-  seeds a real project and environment under the wire org
-  (`internal/isolation/access_wire_test.go`, `newAccessWireEnv`), so the
-  refused leg addresses objects that genuinely exist. They are seeded directly,
-  as every other fixture row is: creating them through the API would mean first
-  granting the administrator `manage-projects` and `definitions-edit` and then
-  re-authenticating (a self-grant kills the acting session), churn that changes
-  nothing about the property under test.
-- *(b)* The pair table went from 7 routes to **13** — the full access surface:
-  org list/create/revoke/template, project list/create/revoke/template, env
-  create/revoke/template, and settings read/update.
-- *(c)* The query trace no longer calls `Authorize` directly. It runs the
-  **real service path** (`Grants.List`, `Grants.Create`,
-  `ProjectSettings.GetEnvironment`) with a real `service.Bearer` artifact, so
-  session resolution and everything else the request does is inside the
-  measurement. Two properties are asserted, relative to a measured baseline
-  rather than a hardcoded number: **every miss costs the same whichever level
-  is missing** (a per-level walk would make a missing environment cost more
-  than a missing org, and a caller could count its way to which level exists),
-  and **a denial against an existing object costs exactly one query more** —
-  the grant lookup a miss skips, which is the residual the isolation ADR
-  already accepts.
-
-  Counting the service path needed a seam: `tx` builds the resolver inside
-  itself, and `internal/store/tx` may not import the generated query packages
-  (the driver-handle allowlist). The seam is therefore
-  `authn.SetQueryObserver` — nil in production, installed at Resolver
-  construction so an unset observer costs one atomic load per transaction and
-  never per query. It lives on the resolution surface because that is the
-  package the generated queries may be imported into at all, and because on a
-  REFUSED request the resolution surface is the entire query traffic:
-  authorization runs before any store call, so a request that does not
-  authorize issues nothing else. `TestQueryObserverIsTestOnly` pins that the
-  seam has no production call site, so the doc comment's claim is a check
-  rather than a promise.
-
-**F5 — an origin join was still treated as an authority change.** Adding a
-second origin to a grant the holder ALREADY had advanced their generation and
-deleted their sessions, although effective policy did not move: the capability
-was held before and after. The advance is now gated on `out.Created` — a NEW
-row, which is when the capability becomes held — and the join emits
-`grant.modified` and nothing else. Symmetric with revoke, where the advance was
-already gated on the row actually dying. Without this, one administrator's
-bookkeeping logged another principal out.
-
-Regression: `isolation.TestOriginAddKeepsSessionAlive{SQLite,Postgres}` — a
-second grantor joins the triple and the holder's session survives, with a
-control in the same test proving the same session DOES die when the grant is
-revoked, so the assertion is the gate working rather than the machinery being
-disconnected.
+- **Machine grants are bounded by scope, not just capability (F1).** Enforced at
+  the single `lockAndClassify` chokepoint all three writers share: workload
+  grants must address an environment, automation project depth or below, and a
+  principal's existing grants fix its one project. Stated limit: #17's credential
+  binding that names a machine's project authoritatively does not exist yet, so
+  the principal's own grants are today's record; #17 replaces this and the rule
+  gets stricter, never looser.
+- **Bootstrap seeds the ADR `operator` template at instance scope (F2)**, not a
+  bespoke `read`/`reveal`/`reveal-history` bundle; the parallel `AdminTemplate`
+  is gone. Creating the first org atomically applies `admin` to the creator
+  through their instance `manage-members` authority (amended 2026-08-21), so
+  `reveal`/`reveal-history` arrive as the separate seeded grants the ADR asks for
+  and no tenant data is reachable by bundle.
+- **No legacy-machine backfill (F8).** An unclassified machine principal stays
+  NULL and fails closed at every allowlist path until an operator classifies it;
+  its existing grants keep evaluating (authorization reads the grant table, never
+  the class). Guessing `automation` would have been a migration-performed
+  privilege escalation.
+- **Adding a second origin to an already-held grant is `grant.modified` only
+  (F5)** — no generation advance, no session deletion — because the capability
+  was held before and after; the advance is gated on a newly created row,
+  symmetric with revoke gating the advance on the row actually dying.
 
 ## Pickup notes
 
@@ -741,6 +581,6 @@ orchestrator's dual-engine run and fixed in this tree; recorded here because a
 sqlite-only run structurally cannot see it — the RESTRICT FK is what makes the
 drop order load-bearing, and sqlite's harness recreates the file per test.
 
-- **Cross-model review: R1 BLOCKED (10 findings), R2 8/10 FIXED with F4 and F5
-  PARTIAL — both closed in this round. R3 is the final verdict round.** See the
-  round-1 and round-2 sections above.
+- **Cross-model review: reviewed by Codex R1-R3; findings fixed before merge.**
+  See the Cross-model review section above for the outcome and the decisions it
+  changed.

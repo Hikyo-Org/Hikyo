@@ -332,7 +332,7 @@
       "nonBlocking": "Optional dialog polish does not block the implemented matrix/disclosure capability or the 1.0 release gate.",
       "evidence": [
         { "label": "UI contract", "path": "docs/spec/ui-spec.md" },
-        { "label": "1.0 blocker plan", "path": "docs/handoff/v1-launch-blockers-plan.md" }
+        { "label": "1.0 blocker handoff", "path": "docs/handoff/v1-launch-blockers.md" }
       ]
     },
     {

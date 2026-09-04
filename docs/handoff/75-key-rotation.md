@@ -445,93 +445,39 @@ discard keyring and reboot from the datastore alone → RootRotationPending
 surfaces and the value opens under BOTH old and new root → verify → finalize →
 reboot clears pending and the old root is refused. LoadKeyring IS the reboot.
 
-## Open items for the merge gate (human disposition)
+## Open: needs owner decision (A/B/C)
 
-1. **Codex R1 review in flight** on the reencrypt + fence diff
-   (`.xreview/reencrypt-fence-r1.md`). Standing/blocking per WORKSTYLE; round
-   cap 3. Findings loop back before merge.
-2. **ScheduledJob for background reencrypt (#187 pacing) — DEFERRED, needs a
-   decision.** The operator-triggered reencrypt (CLI/HTTP) is complete and
-   resumable. A scheduler that auto-sweeps scopes with a retiring version would
-   need SiteScheduler's system proof to gain write access to all 11 ciphertext
-   tables, materially widening the invariant-11 system-proof enumeration.
-   Options for Marc: (A) read-only sweep-and-warn under system proof — smallest
-   surface, reencrypt stays an operator act like the other rotations
-   [recommended]; (B) full auto-reencrypt under system proof; (C) operator-only,
-   document resume, no scheduler. Not built pending Marc's pick.
-3. **Human merge gate.** CI green + review CLEAN + (no preview env for a crypto
-   backend change) → STOP and ask before merge. Not pre-authorized.
+**ScheduledJob for background reencrypt (#187 pacing) — not built, needs a
+decision.** The operator-triggered reencrypt (CLI/HTTP) is complete and
+resumable. A scheduler that auto-sweeps scopes with a retiring version would
+need SiteScheduler's system proof to gain write access to all 11 ciphertext
+tables, materially widening the invariant-11 system-proof enumeration.
+Options: (A) read-only sweep-and-warn under system proof — smallest surface,
+reencrypt stays an operator act like the other rotations [recommended];
+(B) full auto-reencrypt under system proof; (C) operator-only, document resume,
+no scheduler. Not built pending the owner's pick.
 
-## Review round 1 — reencrypt + fence diff (Codex high + local Standards/Spec)
+## Review outcome
 
-Diff reviewed: `db1d5cf1..HEAD` (reencrypt walk + fence-completeness + transport;
-the rotation core through db1d5cf1 already passed its own closed R1→R3). Round
-cap 3.
-
-**BLOCKING (fixed, commit 122ceff8).** Codex HIGH + Spec-1 agreed: the retire
-ran an unconditional `UPDATE tier3_keys SET state=retired WHERE state=retiring`
-with no zero-reference check — ADR line 172 ("verified by query inside the
-fence, never assumed"). Codex's data-loss scenario: reencrypt captures active=v2,
-a concurrent rotate-dek makes v3 active + v2 retiring, reencrypt finishes on v2,
-the retire destroys v2 → moved rows undecryptable. Fixed with three in-fence
-layers (per-chunk re-assert, retire re-assert under FOR SHARE, dryness scan over
-every table) + the reencrypt-coverage lint. Two TDD refusal tests, both engines.
-
-**Spec-2 (fixed).** Promised reencrypt-coverage gate now exists
-(`internal/lint/reencrypt_coverage.go`): every schema BLOB/BYTEA column is pinned
-covered-or-exempt; an unclassified new column fails the build.
-
-**Standards-1 (fixed).** `walkTable` used the shared `s.pause` helper.
-
-**Dispositions (human, at the merge gate) — not code-fixed:**
-
-1. **Codex MEDIUM — fence lint cannot prove same-transaction.** The
-   `CheckFenceCompleteness` analyzer proves a seal and a fence co-occur in a
-   function, not that the fence runs in the same transaction as the store write
-   (seal→fence-commit in tx A, write in tx B would pass). Proving tx co-location
-   needs dataflow the type-only pass does not attempt. All 15 current sealing
-   sites were verified in-tx by hand (each fences immediately before its write,
-   in that write's own tx); the limit is now stated in `fence.go`. Accept as a
-   documented build-time-surfacing limit (the runtime fence is the enforcement).
-2. **Spec-3 — "per-row transactional" is chunk-transactional.** ADR line 149
-   says "per-row transactional"; the walk seals a whole chunk (default 100 rows)
-   per `tx.Write`. Resumability (per-row CAS + skip-if-current) is preserved, so
-   the guarantee the phrase protects holds; only the literal granularity differs.
-   Deliberate deviation for connection-efficiency (#187's chunking mandate);
-   human disposition.
-3. **Standards-3 — DEK version type split (uint32 in crypto, int64 at the
-   sqlc/store boundary).** The two fence entrypoints differ
-   (`fenceInstanceVersion(uint32)` vs `AssertActiveInstanceDEKVersion(int64)`);
-   callers convert at the boundary. Rooted in sqlc's int64 columns — unavoidable
-   at the boundary; not churned mid-review.
-4. **Standards-4 — two stale-DEK error conventions.** The proof-carrying fence
-   returns `store.ErrStaleDEK` (mapped to `ErrConflict` centrally); the
-   proof-free authn twin returns `domain.ErrConflict` inline (it cannot import
-   store — cycle). Same surfaced behavior; the divergence is a package-layering
-   constraint, documented here.
-
-## Review round 2 — CLOSED (Codex high)
-
-R2 verified the R1 fixes. Verdict verbatim: **"fixes sound."** All three findings
-RESOLVED:
-1. HIGH retire-without-dryness — RESOLVED: the active-version FOR SHARE, dryness
-   scan, scope-generation acquisition and retirement all execute in the same
-   tx.Write; all 5 project + 6 instance tables scanned; the v2/v3 race now
-   refuses retirement or blocks rotation; no remaining window.
-2. Coverage gate — RESOLVED: covered set matches the walk's 11 tables; the
-   verifier/flow exemptions are hashed/opaque/short-lived, not DEK envelopes.
-3. Lint same-tx limit — RESOLVED as documented; no split fence/write tx in the diff.
-
-Review loop CLOSED at R2 (cap 3; R3 not needed). The reencrypt + fence diff is
-review-CLEAN. Combined with the rotation core's own closed R1→R3, the whole #75
-feature has passed its blocking cross-model review.
-
-## Merge-gate state
-
-- CI: NOT yet run (branch not pushed; push needs the parallel-session rebase +
-  migration-renumber coordination per the branch-state memory).
-- Review: CLEAN (this feature's two loops both closed).
-- Preview: N/A (crypto backend; no UI/preview surface).
-- Local verification: full suite green on BOTH engines (sqlite + local pg 18).
-- STILL NEEDS MARC: (1) the #187 scheduler decision (A/B/C above); (2) go-ahead
-  to push (triggering CI) and the merge itself. Not pre-authorized.
+Reviewed by Codex (high) plus local Standards/Spec across two rounds; the
+rotation core through db1d5cf1 passed its own closed R1-R3 earlier. R1 raised
+one blocking data-loss finding — the retire ran an unconditional
+`UPDATE tier3_keys SET state=retired WHERE state=retiring` with no zero-reference
+check (ADR line 172: "verified by query inside the fence, never assumed"), which
+a concurrent rotate-dek could turn into undecryptable moved rows — fixed before
+merge (commit 122ceff8) with three in-fence layers (per-chunk re-assert, retire
+re-assert under FOR SHARE, dryness scan over every table), the promised
+reencrypt-coverage lint (`internal/lint/reencrypt_coverage.go`), and two TDD
+refusal tests on both engines. R2 verified the fixes ("fixes sound") and the loop
+CLOSED at R2 (cap 3, R3 not needed). Four items were dispositioned by the human
+rather than code-changed, and the deliberate deviations they record still hold:
+(1) the `CheckFenceCompleteness` lint proves seal/fence co-occurrence in a
+function but not same-transaction — the 15 sealing sites were hand-verified in-tx
+and the limit is stated in `fence.go`, accepted as a build-time-surfacing limit
+because the runtime fence is the enforcement; (2) "per-row transactional" (ADR
+line 149) is implemented chunk-transactional (100 rows per `tx.Write`) — a
+deliberate deviation for connection-efficiency per #187's chunking mandate, with
+per-row CAS resumability preserved; (3) the DEK version type split (uint32 in
+crypto, int64 at the sqlc boundary) is unavoidable at the boundary; (4) the two
+stale-DEK error conventions (`store.ErrStaleDEK` vs inline `domain.ErrConflict`)
+are a package-layering constraint with the same surfaced behaviour.

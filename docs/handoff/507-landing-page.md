@@ -20,6 +20,4 @@
 - Static build, OSS policy, PostHog, PWA, and offline-browser gates passed.
 - Rendered motion checks covered exact timing, stationary borders, no replay, reduced motion, deep links, no JavaScript, and a 390px viewport.
 
-## Remaining work
-
-- Merge PR 507 after its exact head passes required CI.
+Merged as 69efde32.

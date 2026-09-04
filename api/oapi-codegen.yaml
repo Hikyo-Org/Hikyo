@@ -9,8 +9,8 @@
 # rule expressed in the transport layer.
 # Output is repo-root-relative: the documented regeneration command runs from
 # the repo root (`go tool oapi-codegen --config api/oapi-codegen.yaml
-# api/openapi.yaml`), and a bare `apigen/` path silently wrote a stray
-# duplicate at the root instead of the live package.
+# api/openapi.yaml`), so the output path below must be given relative to the
+# repo root, not to this file.
 package: apigen
 output: api/apigen/apigen.gen.go
 generate:

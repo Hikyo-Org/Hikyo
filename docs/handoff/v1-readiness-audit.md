@@ -9,7 +9,7 @@ fresh instance, `scripts/compose-demo.sh`, a distroless image built from
 `Dockerfile.release` and run with a SQLite volume, `helm lint/template`, and a
 Playwright walkthrough of the SPA at 1200px and 390px.
 
-Screenshots: `docs/handoff/v1-readiness-audit-screens/` (untracked).
+Screenshots from the Playwright walkthrough were captured for review on PR #194 (issue #79); see that PR for the images.
 
 ## Verdict table
 

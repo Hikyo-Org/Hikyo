@@ -7,7 +7,7 @@ Do NOT use em-dash (—)
 ## Commits must be DCO signed-off
 
 Every commit on a pull request **must** carry a Developer Certificate of Origin
-(DCO) sign-off, and this is checked **before** the PR can merge — the
+(DCO) sign-off, and this is checked **before** the PR can merge: the
 `validation / dco` CI job (`scripts/ci/check-dco.sh`) fails the build when any
 commit in the range is missing one.
 
@@ -22,7 +22,7 @@ commit in the range is missing one.
   add commits, each one still needs its own sign-off (`git rebase --signoff
   <base>` re-applies it across a range).
 - Sign off as you go. A missing sign-off on an already-pushed commit can only be
-  added by rewriting that commit, which then needs a force push — so it is far
+  added by rewriting that commit, which then needs a force push, so it is far
   cheaper to sign off at commit time than to fix it after the DCO check has
   already gone red.
 

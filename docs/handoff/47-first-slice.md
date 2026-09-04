@@ -269,60 +269,22 @@ Recorded because each was found by a check rather than by reading:
   and a command that refuses to run again. Superseded by #238: `disclose.Prepare`
   now reserves the exact sink before the administrator is created.
 
-## Cross-model review (Codex `gpt-5.6-sol`, high effort)
+## Cross-model review
 
-Standing rule: Claude-authored code gets a blocking pass by the other
-vendor's model. Round 1 was run twice — the first attempt died with context
-exhausted on a 445 KB diff, which is CODEX.md's documented failure mode — and
-then split into two focused passes over the actual files. Both reports are in
-`.xreview/`.
-
-**Round 1: 4 blockers, 11 highs, 6 mediums, 2 lows across the two passes.**
-All fixed in this branch; none deferred. The two that mattered most:
-
-1. **Identity was resolved in a different transaction from the operation it
-   authorized.** Both reviewers found it independently. The transport
-   resolved the session, then handed a bare principal id to a service that
-   opened its own transaction — so a session revoked in between still
-   authorized the operation. A principal id crossing a transaction boundary
-   IS the cross-request authorization cache the permission model forbids; it
-   just looks like an argument. `service.Actor` now carries the raw artifact
-   and the service resolves it at the chokepoint, with a lint check refusing
-   `internal/server` the right to name the bypass constructor.
-
-2. **The proof-free-writer analyzer was fail-open.** It guessed "does this
-   mutate?" from a name-prefix list, and `ConsumeCredentialAuthority`,
-   `TouchSession` and `AdvancePrincipalGeneration` match no listed prefix —
-   so three real writers bypassed the enforcement that exists to catch
-   exactly them. Classification now comes from sqlc's own command
-   annotation, with an unrecognised command treated as mutating.
-
-Also fixed: `EstablishCredential` derived Argon2id inside a write
-transaction; the malformed-authority audit event was rolled back with the
-refusal it recorded (a previous pass claimed to have fixed this and had not —
-the reviewer read the code, not the claim); an unreadable verifier answered
-500 while a missing account answered 401, an account-existence oracle;
-session liveness returned early so the query count told you why an artifact
-was dead; the KDF upgrade existed only in a comment; per-account backoff slept
-while holding an expensive-work slot; stored KDF parameters were unbounded
-before Argon2id allocated; `ParseArtifact` accepted arbitrary bytes;
-`X-Forwarded-For` was read leftmost, which is the client-controlled end; the
-freeze allowlist permitted closed-enum growth and optionality relaxation;
-a failed disclosure left its file behind; an explicit instance URL was not
-compared against the trust entry it resolved to; the limiter's maps were
-unbounded.
-
-**Round 2** verified the fixes: 10 HOLDS, 5 PARTIAL, 0 new criticals. All five
-partials closed in the follow-up commit — the Actor pattern extended to the
-Projects/Environments demonstration services; login/authority refusal audit
-failures made loud rather than swallowed with `_ =`; the proof-free-writer
-analyzer broadened to catch a mutating query taken as a method value; the
-artifact grammar tightened to a canonical decode so the accepted set equals
-the emittable set; and an oldest-live fallback added to account eviction so
-the limiter maps cannot grow past their bound.
-
-**Round 3 (the cap): CLEAN.** All five round-2 partials verified closed, no
-blocking items, no new scope. The adversarial loop is complete.
+Reviewed by Codex R1-R3 (high); findings fixed before merge. R1 returned 4
+blockers, 11 highs, 6 mediums and 2 lows (split into two focused passes after a
+context-exhaustion retry, per CODEX.md), all fixed and none deferred. The two
+load-bearing fixes: (1) identity was resolved in a different transaction from
+the operation it authorized — a principal id crossing a transaction boundary is
+the cross-request authorization cache the permission model forbids, so
+`service.Actor` now carries the raw artifact and the service resolves it at the
+chokepoint, with a lint refusing `internal/server` the bypass constructor; and
+(2) the proof-free-writer analyzer was fail-open (name-prefix guessing let
+`ConsumeCredentialAuthority`, `TouchSession` and `AdvancePrincipalGeneration`
+through), now driven by sqlc's own command annotation with unrecognised commands
+treated as mutating. R2 verified the fixes (10 HOLDS, 5 PARTIAL, 0 new
+criticals) and all five partials closed in the follow-up commit; R3 (the cap)
+returned CLEAN with no blocking items and no new scope.
 
 ### Known-open, for disposition
 

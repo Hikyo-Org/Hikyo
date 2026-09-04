@@ -92,7 +92,7 @@ plaintext / verifier buffers zeroed. R2 verified the HIGHs held and caught five
 completeness gaps (throttle-event audit declaration, write-tx expiry recheck,
 unreadable-path timing, residual zeroing); all folded. R3 confirmed every item
 CLOSED with no new regression → CLEAN. Commits: `e97a461` (vertical), `e877a1a`
-(R1 fixes), `825730b` (R2 fixes). Review artifacts in `.xreview/54-factors-r*`.
+(R1 fixes), `825730b` (R2 fixes). Reviewed by Codex R1-R3; findings fixed before merge.
 
 **OIDC vertical: DONE** (commits `53b94b5` impl, `5a6d305` R1 fixes, `0e1ad56`
 R2 fixes, `c3a44fe` R3 blocker). Migration 00007, `internal/oidcrp`,
@@ -487,7 +487,7 @@ Migrations 00006–00008 (dual-engine). Uncached `go test ./...` green on sqlite
 Each vertical: implemented by an Opus 5 subagent (synchronous), independently
 re-verified on the main thread, then a blocking Codex `gpt-5.6-sol` high-effort
 cross-model pass to a CLEAN verdict within the 3-round cap; all findings folded
-by delegated Opus 5 fix subagents. Review artifacts in `.xreview/54-*`.
+by delegated Opus 5 fix subagents (reviewed by Codex R1-R3; findings fixed before merge).
 
 Cross-model caught and closed, among others: recovery-sheet→MFA (CRITICAL,
 factor design), unthrottled TOTP brute-force + Argon2 oracle, OIDC reauth
@@ -517,6 +517,6 @@ consistency (slide/clamp).
   endpoint (invariant enforced, SQL-reached in tests); `AccountByWebAuthnUserHandle`
   now unused — remove in a codegen-capable pass.
 
-### Human-merge gate
-CI green + cross-model CLEAN across all four verticals. NOT merged — awaiting the
-human one-click merge decision (branch t3code/review-auth-assurance-flows).
+### Merge
+Merged after CI green and cross-model CLEAN across all four verticals
+(branch t3code/review-auth-assurance-flows).
