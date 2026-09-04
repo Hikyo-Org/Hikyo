@@ -4,7 +4,9 @@
 // artifact embedding the harness version and the ruleset snapshot version.
 //
 // The absolute-ms gate is a property of Pi-class hardware (ADR §7); this binary
-// produces the artifact the scanning validation test checks.
+// produces the artifact the scanning validation test checks. `-check` runs the
+// same measurement and prints the result without any absolute-ms assertion, for
+// CI use as a relative regression guard.
 package main
 
 import (
@@ -30,6 +32,7 @@ const itemBytes = 64 * 1024
 
 func main() {
 	out := flag.String("o", "", "write the JSON result artifact to this path (default stdout)")
+	check := flag.Bool("check", false, "run as a relative regression guard: measure and print, no absolute-ms assertion")
 	host := flag.String("host", "", "host label recorded in the artifact (e.g. pi4-4gb)")
 	flag.Parse()
 
@@ -46,6 +49,11 @@ func main() {
 	}
 	data = append(data, '\n')
 
+	if *check {
+		fmt.Printf("bench-scan: %d items @ %d bytes, boot %.2fms, p50 %.3fms, p99 %.3fms\n",
+			res.Items, res.ItemBytes, res.BootCompileMillis, res.P50Millis, res.P99Millis)
+		return
+	}
 	if *out == "" {
 		os.Stdout.Write(data)
 		return

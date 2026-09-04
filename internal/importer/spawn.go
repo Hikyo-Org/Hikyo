@@ -151,7 +151,9 @@ func RunInternalSubprocess(args []string, stdout io.Writer) (bool, int) {
 
 func replaceEnv(env []string, name, value string) []string {
 	prefix := name + "="
-	return append(slices.DeleteFunc(env, func(item string) bool { return strings.HasPrefix(item, prefix) }), prefix+value)
+	// Clone first: DeleteFunc compacts in place and would zero the caller's tail.
+	kept := slices.DeleteFunc(slices.Clone(env), func(item string) bool { return strings.HasPrefix(item, prefix) })
+	return append(kept, prefix+value)
 }
 
 func boundedSubprocessExit(err error) (int, bool) {
