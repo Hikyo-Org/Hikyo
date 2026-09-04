@@ -44,6 +44,7 @@ for its ripple register.
 | inheritance-model ADR (superseded) | [inheritance-model.md](./inheritance-model.md) |
 | k8s-integration ADR | [k8s-integration.md](./k8s-integration.md) |
 | machine-identities ADR | [machine-identities.md](./machine-identities.md) |
+| mcp-server ADR | [mcp-server.md](./mcp-server.md) |
 | multi-instance ADR | [multi-instance.md](./multi-instance.md) |
 | mvp-boundary ADR | [mvp-boundary.md](./mvp-boundary.md) |
 | ops-spec ADR | [ops-spec.md](./ops-spec.md) |
