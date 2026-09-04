@@ -937,29 +937,27 @@ revoked credentials reveal no tenant fact; client configurations contain no
 literal tokens; and the docs distinguish local/private clients, public API
 reachability, ChatGPT plugin packaging, and OAuth availability.
 
-### Ticket 5: OAuth human delegation and sensitive mutations
+### Ticket 5: decide whether MCP needs OAuth human delegation
 
-**Deliver:** a separate OAuth ADR that first reconfirms the need for human
-delegation. If OAuth proceeds, keep the AS in `hikyo server`; compare
-then-maintained Go implementations using section 4.6's release, security,
-standards, storage, and interoperability gates; select and spike a package
-without presuming Fosite;
-define protected-resource and AS metadata, client registration, access-token
-profile, principal mapping, and scope attenuation; allow only ADR-approved
-mutation ceremonies; and add one-use URL elicitation for sensitive entry or
-confirmation. Never hand-write OAuth protocol machinery and do not add an
-external authorization service.
+**Deliver:** a separate OAuth ADR that starts from named-client evidence and
+decides whether human delegation is still necessary after the controlled-bearer
+release. Compare retaining only managed service-account access with adding an
+embedded authorization server. If OAuth is selected, compare then-maintained Go
+implementations using section 4.6's release, security, standards, storage, and
+interoperability gates; spike only the shortlist; keep the AS in `hikyo server`;
+and define the follow-up tracer tickets. Never hand-write OAuth protocol
+machinery and do not add an external authorization service. Keep secret reveal,
+sensitive entry, and mutation ceremonies in separate decision and implementation
+tickets rather than coupling them to OAuth.
 
-**Accept when:** the ADR records the necessity and package decisions from
-current primary-source evidence. If OAuth proceeds, the selected implementation
-has an active maintenance and security-response posture, passes dependency
-scanning and the required discovery, resource-indicator, PKCE, issuer, redirect,
-registration, storage-race, and target-client tests; 401/403 challenges are
-exact; URLs contain no secret or ambient authentication; handles are
-principal/client/target/operation-bound, expiring, one use, and replay tested;
-existing scan/reauth/preview/approval/publish rules cannot be skipped; two
-replicas complete the flow; deployment needs no stickiness; and public HTTPS
-checks prove metadata discovery, OAuth login, and one authorized safe tool call.
+**Accept when:** the ADR records the necessity decision from current
+primary-source and named-client evidence. A no-OAuth decision closes the ticket
+without adding protocol code. An OAuth decision records the selected package or
+an explicit no-viable-package outcome; protected-resource and AS metadata;
+client registration; access-token profile; principal mapping; scope
+attenuation; release and vulnerability evidence; spike results for discovery,
+resource indicator, PKCE, issuer, redirects, storage races, and target clients;
+and independently grabbable implementation tickets with exact blocking edges.
 
 ### Planning range
 
