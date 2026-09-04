@@ -365,6 +365,133 @@ func TestSQLPredicateAcceptsProvableShapes(t *testing.T) {
 	}
 }
 
+func TestCrossEngineQueryContractsCatchDrift(t *testing.T) {
+	base := Query{
+		Name: "GetEnvironment", Cmd: "one",
+		SQL: "SELECT id, name FROM environments WHERE org_id = ? AND id = ?",
+	}
+	baseAPI := generatedContract{
+		Parameters:             []apiField{{Name: "OrgID", Type: "string"}, {Name: "ID", Type: "string"}},
+		Results:                []apiField{{Name: "ID", Type: "string"}, {Name: "Name", Type: "string"}},
+		ResultOrderSignificant: true,
+		BindSites:              []string{"OrgID", "ID"},
+		BindSitesKnown:         true,
+	}
+	cases := []struct {
+		name  string
+		pg    Query
+		pgAPI generatedContract
+		want  string
+	}{
+		{
+			name:  "command",
+			pg:    Query{Name: base.Name, Cmd: "many", SQL: "SELECT id, name FROM environments WHERE org_id = $1 AND id = $2"},
+			pgAPI: baseAPI,
+			want:  `query "GetEnvironment" command differs`,
+		},
+		{
+			name:  "annotation",
+			pg:    Query{Name: base.Name, Cmd: base.Cmd, Annotation: "instance-scoped", SQL: "SELECT id, name FROM environments WHERE org_id = $1 AND id = $2"},
+			pgAPI: baseAPI,
+			want:  `query "GetEnvironment" annotation differs`,
+		},
+		{
+			name:  "parameter identity",
+			pg:    Query{Name: base.Name, Cmd: base.Cmd, SQL: "SELECT id, name FROM environments WHERE org_id = $1 AND id = $2"},
+			pgAPI: generatedContract{Parameters: []apiField{{Name: "OrgID", Type: "string"}, {Name: "Alias", Type: "string"}}, Results: baseAPI.Results},
+			want:  `query "GetEnvironment" parameter contract differs`,
+		},
+		{
+			name:  "parameter count",
+			pg:    Query{Name: base.Name, Cmd: base.Cmd, SQL: "SELECT id, name FROM environments WHERE org_id = $1"},
+			pgAPI: generatedContract{Parameters: []apiField{{Name: "OrgID", Type: "string"}}, Results: baseAPI.Results},
+			want:  `query "GetEnvironment" parameter contract differs`,
+		},
+		{
+			name:  "parameter type",
+			pg:    Query{Name: base.Name, Cmd: base.Cmd, SQL: "SELECT id, name FROM environments WHERE org_id = $1 AND id = $2"},
+			pgAPI: generatedContract{Parameters: []apiField{{Name: "OrgID", Type: "int64"}, {Name: "ID", Type: "string"}}, Results: baseAPI.Results},
+			want:  `query "GetEnvironment" parameter types differ`,
+		},
+		{
+			name:  "bind order",
+			pg:    Query{Name: base.Name, Cmd: base.Cmd, SQL: "SELECT id, name FROM environments WHERE id = $1 AND org_id = $2"},
+			pgAPI: generatedContract{Parameters: baseAPI.Parameters, Results: baseAPI.Results, BindSites: []string{"ID", "OrgID"}},
+			want:  `query "GetEnvironment" bind-site order/reuse differs`,
+		},
+		{
+			name:  "bind reuse",
+			pg:    Query{Name: base.Name, Cmd: base.Cmd, SQL: "SELECT id, name FROM environments WHERE org_id = $1 AND id = $2 AND parent_id = $2"},
+			pgAPI: generatedContract{Parameters: baseAPI.Parameters, Results: baseAPI.Results, BindSites: []string{"OrgID", "ID", "ID"}},
+			want:  `query "GetEnvironment" bind-site order/reuse differs`,
+		},
+		{
+			name:  "same-width result replacement",
+			pg:    Query{Name: base.Name, Cmd: base.Cmd, SQL: "SELECT id, alias FROM environments WHERE org_id = $1 AND id = $2"},
+			pgAPI: generatedContract{Parameters: baseAPI.Parameters, Results: []apiField{{Name: "ID", Type: "string"}, {Name: "Alias", Type: "string"}}},
+			want:  `query "GetEnvironment" result shape differs`,
+		},
+		{
+			name:  "result order",
+			pg:    Query{Name: base.Name, Cmd: base.Cmd, SQL: "SELECT name, id FROM environments WHERE org_id = $1 AND id = $2"},
+			pgAPI: generatedContract{Parameters: baseAPI.Parameters, Results: []apiField{{Name: "Name", Type: "string"}, {Name: "ID", Type: "string"}}, ResultOrderSignificant: true},
+			want:  `query "GetEnvironment" result shape differs`,
+		},
+		{
+			name:  "result type",
+			pg:    Query{Name: base.Name, Cmd: base.Cmd, SQL: "SELECT id, name FROM environments WHERE org_id = $1 AND id = $2"},
+			pgAPI: generatedContract{Parameters: baseAPI.Parameters, Results: []apiField{{Name: "ID", Type: "string"}, {Name: "Name", Type: "int64"}}},
+			want:  `query "GetEnvironment" result types differ`,
+		},
+		{
+			name:  "result nullability",
+			pg:    Query{Name: base.Name, Cmd: base.Cmd, SQL: "SELECT id, name FROM environments WHERE org_id = $1 AND id = $2"},
+			pgAPI: generatedContract{Parameters: baseAPI.Parameters, Results: []apiField{{Name: "ID", Type: "string"}, {Name: "Name", Type: "pgtype.Text"}}},
+			want:  `query "GetEnvironment" result types differ`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pgAPI := tc.pgAPI
+			pgAPI.BindSitesKnown = true
+			if pgAPI.BindSites == nil {
+				pgAPI.BindSites = baseAPI.BindSites
+			}
+			findings := compareQueryContracts(base.Name, base, tc.pg, baseAPI, pgAPI)
+			assertFindings(t, findings, []string{tc.want})
+		})
+	}
+}
+
+func TestCrossEngineQueryContractsRequireGeneratedAPIs(t *testing.T) {
+	query := Query{Name: "GetEnvironment", Cmd: "one", SQL: "SELECT id FROM environments"}
+	findings := crossEngine(
+		map[string][]Query{"sqlite": {query}, "postgres": {query}},
+		map[string]map[string]TableRule{},
+		map[string]map[string]generatedContract{},
+	)
+	assertFindings(t, findings, []string{`query "GetEnvironment" has no generated API contract`})
+}
+
+func TestCrossEngineQueryContractsAcceptDialectSpecificSQL(t *testing.T) {
+	sqlite := Query{Name: "GetEnvironment", Cmd: "one", SQL: "SELECT id, active FROM environments WHERE org_id = ? AND id = ?"}
+	postgres := Query{Name: "GetEnvironment", Cmd: "one", SQL: "SELECT id, active::boolean AS active FROM environments WHERE org_id = $1 AND id = $2 FOR UPDATE"}
+	sqliteAPI := generatedContract{
+		Parameters: []apiField{{Name: "OrgID", Type: "string"}, {Name: "ID", Type: "string"}},
+		Results:    []apiField{{Name: "ID", Type: "string"}, {Name: "Active", Type: "int64"}},
+		BindSites:  []string{"OrgID", "ID"}, BindSitesKnown: true,
+	}
+	postgresAPI := generatedContract{
+		Parameters: []apiField{{Name: "OrgID", Type: "string"}, {Name: "ID", Type: "string"}},
+		Results:    []apiField{{Name: "ID", Type: "string"}, {Name: "Active", Type: "bool"}},
+		BindSites:  []string{"OrgID", "ID"}, BindSitesKnown: true,
+	}
+	if findings := compareQueryContracts(sqlite.Name, sqlite, postgres, sqliteAPI, postgresAPI); len(findings) != 0 {
+		t.Fatalf("dialect-specific query has false-positive drift: %v", findings)
+	}
+}
+
 func assertFindings(t *testing.T, findings, wantSubstrings []string) {
 	t.Helper()
 	for _, want := range wantSubstrings {

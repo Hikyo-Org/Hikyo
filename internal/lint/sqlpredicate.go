@@ -190,11 +190,12 @@ func ParseQueries(dir string) ([]Query, error) {
 
 // CheckSQLPredicates runs analyzer 2 over both engines' migration and query
 // directories under repoRoot, including the cross-engine agreement checks
-// (same tables, same directives, same query names on both engines).
+// (same tables, directives, and query contracts on both engines).
 func CheckSQLPredicates(repoRoot string) []string {
 	var findings []string
 	perEngine := map[string][]Query{}
 	perEngineRules := map[string]map[string]TableRule{}
+	perEngineContracts := map[string]map[string]generatedContract{}
 
 	for _, engine := range []string{"sqlite", "postgres"} {
 		migDir := filepath.Join(repoRoot, "internal", "store", "migrations", engine)
@@ -229,12 +230,18 @@ func CheckSQLPredicates(repoRoot string) []string {
 		}
 		perEngine[engine] = queries
 		perEngineRules[engine] = rules
+		generatedDir := filepath.Join(repoRoot, "internal", "store", map[string]string{"sqlite": "sqlitegen", "postgres": "pggen"}[engine])
+		contracts, err := readGeneratedContracts(generatedDir, engine)
+		if err != nil {
+			return append(findings, "sqlpredicate: "+err.Error())
+		}
+		perEngineContracts[engine] = contracts
 		for _, q := range queries {
 			findings = append(findings, checkQuery(engine, q, rules)...)
 		}
 	}
 
-	findings = append(findings, crossEngine(perEngine, perEngineRules)...)
+	findings = append(findings, crossEngine(perEngine, perEngineRules, perEngineContracts)...)
 	return findings
 }
 
@@ -409,24 +416,36 @@ func checkSet(label, sql, upper string, chainCols []string) []string {
 	return out
 }
 
-func crossEngine(queries map[string][]Query, rules map[string]map[string]TableRule) []string {
+func crossEngine(queries map[string][]Query, rules map[string]map[string]TableRule, contracts map[string]map[string]generatedContract) []string {
 	var out []string
-	names := map[string]map[string]bool{}
+	byName := map[string]map[string]Query{}
+	allNames := map[string]bool{}
 	for engine, qs := range queries {
-		names[engine] = map[string]bool{}
+		byName[engine] = map[string]Query{}
 		for _, q := range qs {
-			names[engine][q.Name] = true
+			byName[engine][q.Name] = q
+			allNames[q.Name] = true
 		}
 	}
-	for name := range names["sqlite"] {
-		if !names["postgres"][name] {
+	names := sortedSet(allNames)
+	for _, name := range names {
+		sqQuery, inSQLite := byName["sqlite"][name]
+		pgQuery, inPostgres := byName["postgres"][name]
+		switch {
+		case !inPostgres:
 			out = append(out, fmt.Sprintf("sqlpredicate: query %q exists on sqlite but not postgres", name))
-		}
-	}
-	for name := range names["postgres"] {
-		if !names["sqlite"][name] {
+			continue
+		case !inSQLite:
 			out = append(out, fmt.Sprintf("sqlpredicate: query %q exists on postgres but not sqlite", name))
+			continue
 		}
+		sqContract, sqGenerated := contracts["sqlite"][name]
+		pgContract, pgGenerated := contracts["postgres"][name]
+		if !sqGenerated || !pgGenerated {
+			out = append(out, fmt.Sprintf("sqlpredicate: query %q has no generated API contract: sqlite=%t postgres=%t", name, sqGenerated, pgGenerated))
+			continue
+		}
+		out = append(out, compareQueryContracts(name, sqQuery, pgQuery, sqContract, pgContract)...)
 	}
 	sq, pg := rules["sqlite"], rules["postgres"]
 	for t, r := range sq {
