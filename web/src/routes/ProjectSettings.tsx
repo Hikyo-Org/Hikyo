@@ -11,7 +11,6 @@ import {
 import {
   createEnvironmentRefusalText,
   cryptoFailureText,
-  retentionSentence,
   settingsFailureText,
   settingsOperationFailure,
   useCreateEnvironment,

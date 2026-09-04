@@ -12,10 +12,10 @@ import {
   useSetValue,
   useValues,
   writeRefusalText,
-  type EnvRef,
   type RevealWindow,
   type ValueCell,
 } from '../api/values.ts';
+import type { EnvRef } from '../api/keys.ts';
 import { useTransport } from '../api/transport.tsx';
 import { writeExpiringClipboard } from '../app/clipboard.ts';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';

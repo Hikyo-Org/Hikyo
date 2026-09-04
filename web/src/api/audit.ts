@@ -51,7 +51,6 @@ export const AUDIT_OUTCOMES = [
   'unknown',
   'disconnected',
 ] as const;
-export type AuditOutcome = (typeof AUDIT_OUTCOMES)[number];
 
 /**
  * AuditFilter is the browser's view of the query parameters. Every field is
@@ -124,7 +123,7 @@ function auditQuery(filter: AuditFilter): Record<string, string> {
  * operator picks is the boundary the server compares against, not one shifted by
  * their offset.
  */
-export function localDatetimeToUtc(local: string): string {
+function localDatetimeToUtc(local: string): string {
   return new Date(local).toISOString();
 }
 
@@ -145,7 +144,7 @@ function safeSeq(seq: bigint): number {
   return Number(seq);
 }
 
-export const auditPageKey = (scope: AuditScope, filter: AuditFilter) =>
+const auditPageKey = (scope: AuditScope, filter: AuditFilter) =>
   ['audit', scope.org, scope.project ?? '', scope.environment ?? '', filter] as const;
 
 /** queryScoped calls the one operation the scope addresses; the three share a response contract. */

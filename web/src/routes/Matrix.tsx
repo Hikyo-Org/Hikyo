@@ -23,9 +23,9 @@ import {
   type MatrixKeyList,
   type MatrixEnvironmentRow,
   type MatrixPendingDraft,
-  type MatrixRef,
   type MatrixSignalCell,
 } from '../api/matrix.ts';
+import type { MatrixRef } from '../api/keys.ts';
 import {
   type EnvironmentList,
   type ValueCell,

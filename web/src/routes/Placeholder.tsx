@@ -6,7 +6,7 @@
  * accessibility tree is honest — not a grey rectangle labelled "TODO". The
  * ticket that owns the surface replaces the body and leaves the route alone.
  */
-export function Placeholder({ title, children }: { title: string; children: string }) {
+function Placeholder({ title, children }: { title: string; children: string }) {
   return (
     <section className="card" aria-labelledby="well-title">
       <h1 id="well-title">{title}</h1>

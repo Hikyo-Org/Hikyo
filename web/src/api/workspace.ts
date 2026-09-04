@@ -29,7 +29,7 @@ import type { ZodType } from 'zod';
  * downgrade or a restore. The shell refuses BY NAME rather than rendering a
  * secrets matrix it half understands.
  */
-export const WORKSPACE_MIN_API_REVISION = 1;
+const WORKSPACE_MIN_API_REVISION = 1;
 
 /** WorkspaceBearer is one live workspace session, held in MEMORY ONLY. */
 export type WorkspaceBearer = {
@@ -355,9 +355,9 @@ async function challengeFor(verifier: string): Promise<string> {
 // --- the ceremony ------------------------------------------------------------
 
 /** The path the viewing UI's own callback page is served at. */
-export const CALLBACK_PATH = '/workspace/callback';
+const CALLBACK_PATH = '/workspace/callback';
 /** The path a serving instance's authorization page is served at. */
-export const APPROVE_PATH = '/workspace/approve';
+const APPROVE_PATH = '/workspace/approve';
 
 /** channelName is the nonce-named BroadcastChannel for one transaction. */
 export function channelName(state: string): string {

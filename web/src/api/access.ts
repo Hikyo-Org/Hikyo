@@ -19,7 +19,7 @@ import {
 } from '@hikyo/operations';
 import type { GrantResult } from '@hikyo/client';
 import { zGrantList, type zInvitationResult } from '@hikyo/zod';
-import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { useMutation, useQuery, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
 import { useAuth } from '../app/AuthProvider.tsx';

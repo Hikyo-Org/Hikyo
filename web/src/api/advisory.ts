@@ -26,7 +26,7 @@ import type { TransportOptions } from './transport.tsx';
  */
 
 /** The event types the revision-model ADR enumerates. */
-export type AdvisoryEventType = 'revision.published' | 'cell.changed' | 'pending.staged';
+type AdvisoryEventType = 'revision.published' | 'cell.changed' | 'pending.staged';
 
 /** One advisory event, camelCased for the SPA. */
 export type AdvisoryEvent = {

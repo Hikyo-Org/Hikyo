@@ -18,7 +18,7 @@ export type MachineRevealSettings = z.infer<typeof zMachineRevealSettings>;
 
 const machineRevealKey = (org: string, project: string) => ['machine-reveal', org, project];
 
-export function machineRevealQueryOptions(org: string, project: string) {
+function machineRevealQueryOptions(org: string, project: string) {
   return {
     queryKey: machineRevealKey(org, project),
     queryFn: () => parsed(getMachineRevealOp, { path: { org, project } }),

@@ -7,9 +7,9 @@ import {
   useCreateKey,
   useImportValues,
   useListValueOccurrences,
-  type MatrixRef,
   type ValueOccurrenceList,
 } from '../api/matrix.ts';
+import type { MatrixRef } from '../api/keys.ts';
 import type { KeyClassification } from '@hikyo/client';
 import {
   indexOccurrences,

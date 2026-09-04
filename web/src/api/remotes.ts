@@ -19,7 +19,6 @@ import {
   zRemote,
   zRemoteList,
   zSessionList,
-  zWorkspaceOrigin,
   zWorkspaceOriginList,
 } from '@hikyo/zod';
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
@@ -48,7 +47,6 @@ import { ok, parsed, parsedPick } from './client.ts';
 
 export type Remote = z.infer<typeof zRemote>;
 export type RemoteList = z.infer<typeof zRemoteList>;
-export type WorkspaceOrigin = z.infer<typeof zWorkspaceOrigin>;
 export type SessionList = z.infer<typeof zSessionList>;
 export type ActiveSession = SessionList['items'][number];
 export type InstanceConnection = z.infer<typeof zInstanceConnection>;
@@ -66,10 +64,10 @@ export type MintedConnectionValue = Pick<
   'value' | 'clamped'
 >;
 
-export const remotesKey = ['remotes'] as const;
-export const originsKey = ['workspace-origins'] as const;
-export const sessionsKey = ['sessions'] as const;
-export const connectionsKey = ['instance-connections'] as const;
+const remotesKey = ['remotes'] as const;
+const originsKey = ['workspace-origins'] as const;
+const sessionsKey = ['sessions'] as const;
+const connectionsKey = ['instance-connections'] as const;
 
 /**
  * The directory refresh cadence.
@@ -279,7 +277,7 @@ export function useRevokeSession() {
 }
 
 /** originOf is a remote's browser origin: the popup's destination. */
-export function originOf(url: string): string {
+function originOf(url: string): string {
   return new URL(url).origin;
 }
 

@@ -106,7 +106,7 @@ export class ApiError extends Error {
  * understand" — the conflation #452 exists to end. Everything the client cannot
  * trust that is NOT this class is a contract violation.
  */
-export class TransportError extends Error {
+class TransportError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'TransportError';

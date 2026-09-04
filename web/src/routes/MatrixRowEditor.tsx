@@ -2,11 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 
 import { historyHref } from '../api/history.ts';
-import type {
-  MatrixKeyList,
-  MatrixRef,
-  MatrixSignalCell,
-} from '../api/matrix.ts';
+import type { MatrixKeyList, MatrixSignalCell } from '../api/matrix.ts';
+import type { MatrixRef } from '../api/keys.ts';
 import { withRemote, useTransport, useWorkspaceContext } from '../api/transport.tsx';
 import {
   disclosureRefusalText,

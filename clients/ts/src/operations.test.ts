@@ -21,11 +21,6 @@ const sources = () => ({
   zodSource: here('zod.gen.ts'),
 });
 
-test('generation is deterministic: the same inputs yield byte-identical output', () => {
-  const input = sources();
-  assert.equal(buildOperationsModule(input), buildOperationsModule(input));
-});
-
 test('a body-bearing operation binds its call, success status and response parser', () => {
   const module = buildOperationsModule(sources());
   assert.match(

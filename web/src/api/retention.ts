@@ -12,7 +12,7 @@ export type RetentionHealthAccess = {
   readonly health: RetentionHealth | null;
 };
 
-export const retentionHealthKey = ['retention-health'] as const;
+const retentionHealthKey = ['retention-health'] as const;
 // The health read is audited. Match the hourly scheduler cadence so long-lived
 // tabs notice stale/recovered state without turning the instance trail into a
 // per-tab heartbeat log.

@@ -23,7 +23,6 @@ import {
   zEnvironmentSettings,
   zApprovalRequestSummary,
   zEnvironmentSignals,
-  zImportValuesResult,
   zKeyList,
   zPendingDraftList,
   zPublishResult,
@@ -61,9 +60,6 @@ import {
 } from './keys.ts';
 import { environmentSettingsQueryOptions, useEnvironments } from './settings.ts';
 import { useTransport } from './transport.tsx';
-
-export { useProjects } from './settings.ts';
-export type { MatrixRef } from './keys.ts';
 
 /**
  * Whole-project matrix API boundary.
@@ -106,7 +102,7 @@ type MatrixPendingDraftList = z.infer<typeof zPendingDraftList>;
 
 export type MatrixQueryStatus = 'pending' | 'forbidden' | 'error' | 'stale' | 'ready';
 
-export type MatrixQueryState<T> =
+type MatrixQueryState<T> =
   | { readonly status: 'pending'; readonly data?: undefined }
   // A per-environment 403: the caller may not read this column. Distinct from
   // 'error' because a denial never heals on retry, so the surface must say so
@@ -362,7 +358,7 @@ export function restorePreviewWasAttached(error: Error): boolean {
   return previewAttachedErrors.has(error);
 }
 
-const zMatrixEnvironmentSignals = zEnvironmentSignals
+export const zMatrixEnvironmentSignals = zEnvironmentSignals
   .superRefine((signals, context) => {
     signals.cells.forEach((cell, index) => {
       if ((cell.pending_version_id === undefined) !== (cell.pending_operation === undefined)) {
@@ -383,10 +379,6 @@ const zMatrixEnvironmentSignals = zEnvironmentSignals
         : { pending: { versionId: pending_version_id, operation: pending_operation } }),
     })),
   }));
-
-export function parseMatrixEnvironmentSignals(input: unknown): MatrixEnvironmentSignals {
-  return zMatrixEnvironmentSignals.parse(input);
-}
 
 export function revisionAdvanced(previous: bigint | undefined, next: bigint): boolean {
   return previous !== undefined && next > previous;
@@ -476,10 +468,6 @@ export const zMatrixPendingDraftList = zPendingDraftList.superRefine((drafts, co
 });
 
 export type MatrixPendingDraft = z.infer<typeof zMatrixPendingDraftList>['items'][number];
-
-export function parseMatrixPendingDrafts(input: unknown): z.infer<typeof zMatrixPendingDraftList> {
-  return zMatrixPendingDraftList.parse(input);
-}
 
 /** The config material a signal's own pending set previews, if the server revealed it. */
 export function pendingConfigPreview(
@@ -799,7 +787,6 @@ export function useCreateKey(ref: MatrixRef) {
 }
 
 export type ValueOccurrenceList = z.infer<typeof zValueOccurrenceList>;
-export type ImportValuesResult = z.infer<typeof zImportValuesResult>;
 
 /**
  * useListValueOccurrences is import phase 1 (`import.presence`, #495): a

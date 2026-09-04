@@ -260,11 +260,11 @@ async function signIn(): Promise<string> {
 
 
 /** The two organisation names the chrome flows read off the screen. */
-export const ORG_NAME = 'Ceremonies';
-export const ORG_B_NAME = 'Wayfinder';
+const ORG_NAME = 'Ceremonies';
+const ORG_B_NAME = 'Wayfinder';
 
 /** REVEAL_GRANT is the instance-scope `reveal` row the write-only flow toggles. */
-export const REVEAL_GRANT = { capability: 'reveal', scope: 'instance' } as const;
+const REVEAL_GRANT = { capability: 'reveal', scope: 'instance' } as const;
 
 /**
  * MACHINE is the machine-access fixture's fixed vocabulary (#67).
@@ -283,7 +283,7 @@ export const REVEAL_GRANT = { capability: 'reveal', scope: 'instance' } as const
  * override — a state that cannot be created any other way, because publication
  * correctly refuses a value its own schema rejects.
  */
-export const HISTORY = {
+const HISTORY = {
   project: 'ledger',
   configKey: 'LOG_LEVEL',
   secretKey: 'DB_PASSWORD',
@@ -294,7 +294,7 @@ export const HISTORY = {
   pinExpiryDays: 20,
 } as const;
 
-export const MACHINE = {
+const MACHINE = {
   workload: 'web-api',
   automation: 'nightly-export',
   mintable: 'batch-worker',
@@ -306,7 +306,7 @@ export const MACHINE = {
 } as const;
 
 /** grantReveal creates the revocable instance-scope `reveal` grant. */
-export async function grantReveal(token: string, principal: string): Promise<void> {
+async function grantReveal(token: string, principal: string): Promise<void> {
   await call(token, 'POST', '/api/v1/instance/grants', zGrantResult, {
     principal,
     capability: REVEAL_GRANT.capability,

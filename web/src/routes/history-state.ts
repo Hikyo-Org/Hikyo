@@ -16,7 +16,7 @@
 
 import type { RetentionConsequence } from '@hikyo/client';
 
-export type HistoryChangedKey = {
+type HistoryChangedKey = {
   readonly keyId: string;
   readonly name: string;
   readonly change: 'added' | 'edited' | 'removed';
@@ -151,7 +151,7 @@ export function restoreKeyName(
   );
 }
 
-export type PinActionKind = 'pin' | 'move' | 'renew';
+type PinActionKind = 'pin' | 'move' | 'renew';
 
 export type PinActionPlan = {
   readonly kind: PinActionKind;
@@ -194,7 +194,7 @@ export function pinAction(
   };
 }
 
-export type PinExpiryTier = 'ok' | 'month' | 'week' | 'day' | 'expired';
+type PinExpiryTier = 'ok' | 'month' | 'week' | 'day' | 'expired';
 
 export type PinExpiry = {
   /** Display days: ceiled while live, zero or negative once expired. */

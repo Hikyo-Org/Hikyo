@@ -150,7 +150,7 @@ export function transitionMintLifecycle<Req extends MintBoundaryFields, Res>(
 }
 
 /** The result of applying an event: the next state and whether it changed. */
-export type MintTransitionResult<Req extends MintBoundaryFields, Res> = {
+type MintTransitionResult<Req extends MintBoundaryFields, Res> = {
   readonly state: MintLifecycle<Req, Res>;
   readonly accepted: boolean;
 };

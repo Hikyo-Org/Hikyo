@@ -4,7 +4,7 @@ import { generatePath, Link } from 'react-router';
 
 import { ApiError } from '../api/client.ts';
 import { isoDay } from '../api/identities.ts';
-import { useProjects } from '../api/matrix.ts';
+import { useProjects } from '../api/settings.ts';
 import {
   remoteStateText,
   safeOriginOf,

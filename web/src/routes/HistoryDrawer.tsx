@@ -29,9 +29,9 @@ import {
   restorePreviewWasAttached,
   usePublishMatrix,
   type MatrixKeyList,
-  type MatrixRef,
 } from '../api/matrix.ts';
-import type { EnvironmentList, EnvRef, ValueCell } from '../api/values.ts';
+import type { EnvRef, MatrixRef } from '../api/keys.ts';
+import type { EnvironmentList, ValueCell } from '../api/values.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { Ceremony } from './Ceremony.tsx';
 import {

@@ -176,7 +176,7 @@ export function InstanceAdmin() {
     </Panel>
 
     <Panel id="instance-keys" title="Keys &amp; crypto">
-      <CryptoMaintenance onDone={ok} onFailure={report} />
+      <CryptoMaintenance onDone={ok} />
     </Panel>
     <SamlProvidersPanel />
     <SamlSpKeysPanel />
@@ -241,7 +241,7 @@ type CryptoCeremony =
  * calls; the host-only set (`init`, `migrate`, restore reconciliation,
  * break-glass, host-file custody, startup-only key material) stays absent.
  */
-function CryptoMaintenance({ onDone, onFailure }: { onDone: (message: string) => void; onFailure: (error: unknown) => void }) {
+function CryptoMaintenance({ onDone }: { onDone: (message: string) => void }) {
   const token = useRotateTokenKey();
   const scanning = useRotateScanningKey();
   const master = useRotateMasterKey();

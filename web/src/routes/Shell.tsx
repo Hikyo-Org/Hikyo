@@ -27,7 +27,6 @@ import {
   type UpdateStatus,
 } from '../api/updates.ts';
 import { useWorkspaces } from '../api/workspace.ts';
-import { withRemote } from '../api/transport.tsx';
 import { effectiveTheme, prefersDark, useThemeChoice, type Theme } from '../app/theme.ts';
 import { needsOrg, SURFACES, surfaceById, type Surface } from '../app/navigation.ts';
 import { notifyUpdate } from '../app/notifications.tsx';
@@ -42,7 +41,7 @@ import {
 import { isLinkActive, sidebarModel, type SidebarBlock, type SidebarLink } from './sidebar-model.ts';
 import { StepUpBanner } from './StepUpBanner.tsx';
 
-export type ProjectSidebarGroup = {
+type ProjectSidebarGroup = {
   readonly id: string;
   readonly name: string;
   readonly keyCount: number;
@@ -1111,7 +1110,7 @@ function matchedSurface(
 }
 
 /** The compact surface names fixed by the app-chrome breadcrumb treatment. */
-export function chromeCrumbLabel(surface: Surface | undefined): string {
+function chromeCrumbLabel(surface: Surface | undefined): string {
   switch (surface?.id) {
     case 'members':
     case 'instance-members':

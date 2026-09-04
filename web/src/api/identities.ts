@@ -483,7 +483,7 @@ export function isoDay(timestamp: string): string {
   return timestamp.slice(0, 10);
 }
 
-export type JourneyState = 'done' | 'next' | 'unavailable';
+type JourneyState = 'done' | 'next' | 'unavailable';
 
 export type JourneyStep = {
   readonly title: string;
@@ -590,9 +590,9 @@ export function lastUsedLabel(credential: MachineCredential): string {
     : `last used ${isoDay(credential.last_used_at)}`;
 }
 
-export type IssuerPlatform = 'kubernetes' | 'forgejo' | 'github-actions';
+type IssuerPlatform = 'kubernetes' | 'forgejo' | 'github-actions';
 
-export type ClaimField = {
+type ClaimField = {
   readonly claim: string;
   readonly label: string;
   readonly kind: 'string' | 'number' | 'event';
@@ -881,7 +881,3 @@ export function mintFailureText(error: unknown): string {
 export function bindingFailureText(error: unknown): string {
   return `${identityRefusalText(error)} The binding may still have been created: check the account's rows and revoke anything you did not expect.`;
 }
-
-// One mapper for every grant surface. Re-exporting preserves the machine-access
-// import while keeping refusal semantics in the access module that owns them.
-export { grantFailureText } from './access.ts';

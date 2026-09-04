@@ -55,7 +55,7 @@ const KEY_NAME = /^[A-Z_][A-Z0-9_]*$/;
 
 /** One normalized leaf: a target key under a folder, with its source name for
  * the rename surface. `value` is the exact bytes phase 2 will write. */
-export type SourceEntry = {
+type SourceEntry = {
   readonly key: string;
   readonly sourceName: string;
   readonly value: string;
@@ -63,7 +63,7 @@ export type SourceEntry = {
 };
 
 /** A surfaced rename (source name → canonical KEY); nothing is renamed unseen. */
-export type SourceRename = { readonly from: string; readonly to: string };
+type SourceRename = { readonly from: string; readonly to: string };
 
 /** The connector's result: a set of entries plus what it skipped and renamed,
  * OR an all-or-nothing refusal naming keys/paths/bounds (never content). */
@@ -108,14 +108,14 @@ function byteLength(value: string): number {
  * its slot (`b.Record`/`b.Bytes` in the Go connectors). Exceeding a bound fails
  * loud, naming it.
  */
-type Budget = { record: () => void; bytes: (count: number) => void };
+type Budget = { record: (count?: number) => void; bytes: (count: number) => void };
 
 function newBudget(): Budget {
   let records = 0;
   let decoded = 0;
   return {
-    record() {
-      records += 1;
+    record(count = 1) {
+      records += count;
       if (records > MAX_RECORDS) {
         refuse(`the source holds more than the ${MAX_RECORDS}-record cap`);
       }
@@ -199,7 +199,6 @@ export function transformName(source: string): { readonly target: string } | { r
   const chars = [...source];
   for (let i = 0; i < chars.length; i += 1) {
     const char = chars[i] ?? '';
-    const code = char.codePointAt(0) ?? 0;
     if (char >= 'a' && char <= 'z') {
       out += char.toUpperCase();
     } else if ((char >= 'A' && char <= 'Z') || char === '_') {
@@ -211,8 +210,7 @@ export function transformName(source: string): { readonly target: string } | { r
     } else if (char === '-' || char === '.' || char === '/' || char === '\\') {
       out += '_';
     } else {
-      // Space, `=`, `:`, any non-ASCII rune (`code > 0x7f`): outside the mapping.
-      void code;
+      // Space, `=`, `:`, any non-ASCII rune: outside the mapping.
       return { error: true };
     }
   }
@@ -773,10 +771,7 @@ function readVault(text: string, budget: Budget): { records: SourceRecord[]; ski
     if (capture.deleted || capture.destroyed) {
       budget.record();
     } else {
-      for (const _field of Object.keys(capture.data)) {
-        void _field;
-        budget.record();
-      }
+      budget.record(Object.keys(capture.data).length);
     }
     captures.push(capture);
   }

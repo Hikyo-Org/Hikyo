@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 
 import { useTransport } from '../api/transport.tsx';
 import { fetchApprovalCeremony } from '../api/approvals.ts';
-import { fetchRevealWindow, type EnvRef } from '../api/values.ts';
+import { fetchRevealWindow } from '../api/values.ts';
+import type { EnvRef } from '../api/keys.ts';
 import type { CeremonyPurpose, CeremonyRequest } from './Ceremony.tsx';
 import {
   useCeremonyTask,

@@ -8,7 +8,7 @@ type Environment = EnvironmentList['items'][number];
 type PresenceMode = CreateKeyPresence['mode'];
 
 /** The first value a declared key opens with, staged after the key exists. */
-export type MatrixKeyCreateFirstValue = {
+type MatrixKeyCreateFirstValue = {
   readonly value: string;
   readonly environmentIds: readonly string[];
 };

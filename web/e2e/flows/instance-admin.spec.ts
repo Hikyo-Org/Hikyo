@@ -3,7 +3,6 @@ import {
   zAuthMethods,
   zGrantList,
   zOrg,
-  zOrgList,
   zSamlProviderMutationResult,
   zSamlSpKeyList,
   zScimBinding,
