@@ -18,22 +18,10 @@ func TestWriteVersionUsesReadableBuildSummary(t *testing.T) {
 	version, commit, buildDate = "0.2.0", "abcdef12", "2026-08-24T08:00:00Z"
 
 	var output bytes.Buffer
-	writeVersion(&output, true)
+	writeVersion(&output)
 	want := "Hikyo 0.2.0\n  Commit  abcdef12\n  Built   2026-08-24T08:00:00Z\n"
 	if output.String() != want {
 		t.Fatalf("version output = %q, want %q", output.String(), want)
-	}
-}
-
-func TestWriteVersionKeepsLegacyNonInteractiveContract(t *testing.T) {
-	oldVersion, oldCommit, oldDate := version, commit, buildDate
-	t.Cleanup(func() { version, commit, buildDate = oldVersion, oldCommit, oldDate })
-	version, commit, buildDate = "0.2.0", "abcdef12", "2026-08-24T08:00:00Z"
-
-	var output bytes.Buffer
-	writeVersion(&output, false)
-	if got, want := output.String(), "hikyo 0.2.0 (abcdef12, 2026-08-24T08:00:00Z)\n"; got != want {
-		t.Fatalf("non-interactive version output = %q, want %q", got, want)
 	}
 }
 

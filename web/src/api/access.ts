@@ -514,7 +514,6 @@ export function useOrgGrants(org: string): UseQueryResult<GrantList> {
     queryKey: orgGrantsKey(org),
     queryFn: () => parsed(listOrgGrantsOp, { path: { org } }),
     enabled: org !== '',
-    retry: false,
   });
 }
 
@@ -523,7 +522,6 @@ export function useInstanceGrants(enabled = true): UseQueryResult<GrantList> {
     queryKey: instanceGrantsKey,
     queryFn: () => parsed(listInstanceGrantsOp, {}),
     enabled,
-    retry: false,
   });
 }
 

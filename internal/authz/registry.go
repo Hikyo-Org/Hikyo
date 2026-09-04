@@ -1016,96 +1016,6 @@ const (
 // CI invariant 2): an operation may skip audit mapping only when every store
 // op it can invoke is in this set. A wrongly listed op is caught by review
 // of this pinned table, exactly like the formula pins.
-// storeOpCatalogue is the closed set of store operations the registry may name.
-// It is the in-package half of "known store operations": the constructor
-// rejects any operation naming a StoreOp absent here, before initialization
-// succeeds. Adding a StoreOp const means adding it here too. That the method
-// actually exists on the store is invariant 6's reflection cross-check
-// (internal/isolation), which needs internal/store this package must not import.
-var storeOpCatalogue = map[StoreOp]bool{
-	StoreAdaptersAddTarget: true, StoreAdaptersAdopt: true, StoreAdaptersBeginConfigureEffect: true, StoreAdaptersCancelMove: true,
-	StoreAdaptersConfiguration: true, StoreAdaptersConflicts: true, StoreAdaptersCreate: true, StoreAdaptersEnqueueManual: true,
-	StoreAdaptersEnqueuePublished: true, StoreAdaptersEnvironments: true, StoreAdaptersFinishConfigureEffect: true, StoreAdaptersGet: true,
-	StoreAdaptersList: true, StoreAdaptersListForReencrypt: true, StoreAdaptersListMovesForReencrypt: true, StoreAdaptersListTargets: true,
-	StoreAdaptersMapping: true, StoreAdaptersMove: true, StoreAdaptersMoveOrigin: true, StoreAdaptersMoveTarget: true,
-	StoreAdaptersPlanMaterial: true, StoreAdaptersRecordCredentialExpiry: true, StoreAdaptersRecordPlan: true, StoreAdaptersReencrypt: true,
-	StoreAdaptersReencryptMove: true, StoreAdaptersReplaceCredential: true, StoreAdaptersReplaceMoveOrigin: true, StoreAdaptersReplaceMoveTarget: true,
-	StoreAdaptersRevokeCredential: true, StoreAdaptersTarget: true, StoreAdaptersTargetEnvironments: true, StoreAdaptersTargetKeyIDs: true,
-	StoreAdaptersTeardownAdapter: true, StoreAdaptersTeardownTarget: true, StoreAdaptersUpdateTarget: true, StoreAuditClaimOfflineRecord: true,
-	StoreAdaptersTargetKeys: true, StoreAdaptersPauseTarget: true, StoreAdaptersResumeTarget: true, StoreAdaptersHealthCounts: true,
-	StoreAuditInstanceInsert: true, StoreAuditInstancePage: true, StoreAuditTenantInsert: true, StoreAuditTenantPage: true,
-	StoreAuditTenantMaxSeq: true, StoreAuditInstanceMaxSeq: true,
-	StoreCatalogueAdapterPins: true, StoreCatalogueCount: true, StoreCatalogueCreate: true, StoreCatalogueDelete: true,
-	StoreCatalogueGet: true, StoreCatalogueGroupClearMembers: true, StoreCatalogueGroupCount: true, StoreCatalogueGroupCreate: true,
-	StoreCatalogueGroupDelete: true, StoreCatalogueGroupGet: true, StoreCatalogueGroupList: true, StoreCatalogueGroupRename: true,
-	StoreCatalogueList: true, StoreCataloguePresenceCascade: true, StoreCataloguePresenceList: true, StoreCataloguePresenceReplace: true,
-	StoreCatalogueRename: true, StoreCatalogueRevisionBump: true, StoreCatalogueRevisionGet: true, StoreCatalogueSetClassification: true,
-	StoreCatalogueSetGroup: true, StoreCatalogueUpdateDeclaration: true, StoreCatalogueUpdateMetadata: true, StoreDefinitionsLatestAppliedPlan: true,
-	StoreDefinitionsPlanApply: true, StoreDefinitionsPlanCountOpen: true, StoreDefinitionsPlanCreate: true, StoreDefinitionsPlanGet: true,
-	StoreDefinitionsPlanPrune: true, StoreEnvironmentsCount: true, StoreEnvironmentsCreate: true, StoreEnvironmentsDelete: true,
-	StoreEnvironmentsGet: true, StoreEnvironmentsGetSettings: true, StoreEnvironmentsList: true, StoreEnvironmentsListProtection: true,
-	StoreEnvironmentsNextOrder: true, StoreEnvironmentsRename: true, StoreEnvironmentsSetOrder: true, StoreEnvironmentsSetSettings: true,
-	StoreEnvironmentsUpdateNote: true, StoreFoldersCreate: true, StoreFoldersDelete: true, StoreFoldersGet: true,
-	StoreFoldersList: true, StoreFoldersRename: true, StoreKeysAcquireHierarchyGeneration: true, StoreKeysActiveMasterWrappers: true,
-	StoreKeysActiveTier3: true, StoreKeysAllOpenableTier3: true, StoreKeysAssertActiveDEKVersion: true, StoreKeysInsertMaster: true,
-	StoreKeysInsertScopeGeneration: true, StoreKeysInsertTier3: true, StoreKeysRetireRetiringTier3: true, StoreKeysRootRotateFinalize: true,
-	StoreKeysRootRotatePrepare: true, StoreKeysRotateDEK: true, StoreKeysRotateMasterKey: true, StoreKeysRotateScanningKey: true,
-	StoreKeysRotateTokenKey: true, StoreKeysTier3Versions: true, StoreOrgsCount: true, StoreOrgsCreate: true,
-	StoreOrgsDelete: true, StoreOrgsGet: true, StoreOrgsList: true, StoreOrgsLock: true,
-	StoreOrgsRename: true, StoreOrgsSetRetention: true, StorePendingCountForProjectExcludingCell: true, StorePendingDiscard: true,
-	StorePendingDiscardEnvironment: true, StorePendingDiscardKey: true, StorePendingListForOwner: true, StorePendingListForOwnerInEnvironment: true,
-	StorePendingListForReencrypt: true, StorePendingListMarkers: true, StorePendingReencrypt: true, StorePendingStage: true,
-	StorePinsCountProject: true, StorePinsDelete: true, StorePinsDeleteEnvironment: true, StorePinsGetForWorkload: true,
-	StorePinsInsert: true, StorePinsList: true, StoreProjectsCreate: true, StoreProjectsDelete: true,
-	StoreProjectsGet: true, StoreProjectsList: true, StoreProjectsListAll: true, StoreProjectsLock: true,
-	StoreProjectsRename: true, StoreProjectsSetDefinitionsSource: true, StoreProjectsSetMachineReveal: true, StoreProjectsSetRetention: true,
-	StoreReencryptListOidcProviders: true, StoreReencryptListPasswordCreds: true, StoreReencryptListRecoveryCodes: true, StoreReencryptListRemotes: true,
-	StoreReencryptListSamlKeys: true, StoreReencryptListTotpCreds: true, StoreReencryptOidcProvider: true, StoreReencryptPasswordCred: true,
-	StoreReencryptRecoveryCodes: true, StoreReencryptRemote: true, StoreReencryptSamlKey: true, StoreReencryptTotpCred: true,
-	StoreRemoteSnapshotsFail: true, StoreRemoteSnapshotsGet: true, StoreRemoteSnapshotsList: true, StoreRemoteSnapshotsWrite: true,
-	StoreRemotesCount: true, StoreRemotesCreate: true, StoreRemotesDelete: true, StoreRemotesGet: true,
-	StoreRemotesGetByName: true, StoreRemotesList: true, StoreRemotesRename: true, StoreRemotesSealed: true,
-	StoreRetentionSnapshotLock: true, StoreRetentionDeleteEntries: true, StoreRetentionEligible: true, StoreRetentionLastSuccess: true, StoreRetentionMarkCollected: true,
-	StoreRetentionSetLastSuccess: true, StoreSCIMAddGroupMember: true, StoreSCIMAttention: true, StoreSCIMBinding: true,
-	StoreSCIMBindings: true, StoreSCIMClearAttention: true, StoreSCIMClearGroupMembers: true, StoreSCIMCreateBinding: true,
-	StoreSCIMCreateCredential: true, StoreSCIMCreateGroup: true, StoreSCIMCreateMapping: true, StoreSCIMCreateUser: true,
-	StoreSCIMCredential: true, StoreSCIMCredentials: true, StoreSCIMDeleteAttentionForBinding: true, StoreSCIMDeleteBinding: true,
-	StoreSCIMDeleteCredentialsForBinding: true, StoreSCIMDeleteGroup: true, StoreSCIMDeleteGroupMembersForBinding: true, StoreSCIMDeleteGroupsForBinding: true,
-	StoreSCIMDeleteMapping: true, StoreSCIMDeleteMappingsForBinding: true, StoreSCIMDeleteUser: true, StoreSCIMDeleteUsersForBinding: true,
-	StoreSCIMEnterAttention: true, StoreSCIMGroup: true, StoreSCIMGroupMembers: true, StoreSCIMGroups: true,
-	StoreSCIMGroupsByDisplayName: true, StoreSCIMGroupsByExternalID: true, StoreSCIMLockBinding: true, StoreSCIMMapping: true,
-	StoreSCIMMappings: true, StoreSCIMMappingsForGroup: true, StoreSCIMMembershipsForUser: true, StoreSCIMPageGroups: true,
-	StoreSCIMPageUsers: true, StoreSCIMRemoveGroupMember: true, StoreSCIMRemoveMembershipsForUser: true, StoreSCIMRetireConnection: true,
-	StoreSCIMRevokeCredential: true, StoreSCIMRevokeCredentialsForBinding: true, StoreSCIMSetMappingInert: true, StoreSCIMTouchBinding: true,
-	StoreSCIMUpdateGroup: true, StoreSCIMUpdateMappingTemplate: true, StoreSCIMUpdateUser: true, StoreSCIMUser: true,
-	StoreSCIMUserByAccount: true, StoreSCIMUserBySubject: true, StoreSCIMUserByUserName: true, StoreSCIMUsers: true,
-	StoreSCIMUsersByExternalID: true, StoreScanningDismissalsDeleteAll: true, StoreScanningDismissalsDeleteByKey: true, StoreScanningDismissalsDeleteByProject: true,
-	StoreScanningDismissalsExists: true, StoreScanningDismissalsInsert: true, StoreSnapshotsAtRevision: true, StoreSnapshotsChanges: true,
-	StoreSnapshotsDeleteEnvironment: true, StoreSnapshotsEntries: true, StoreSnapshotsInsert: true, StoreSnapshotsInsertChange: true,
-	StoreSnapshotsInsertEntry: true, StoreSnapshotsInstancePayloadByProject: true, StoreSnapshotsLatest: true, StoreSnapshotsList: true,
-	StoreSnapshotsListForReencrypt: true, StoreSnapshotsPayloadBytesForProject: true, StoreSnapshotsProjectRevisions: true, StoreSnapshotsRecordSecretValueOccurrence: true,
-	StoreSnapshotsReencrypt: true, StoreSnapshotsSecretValueOccurrenceIDs: true, StoreValuesClear: true, StoreValuesClearEnvironment: true,
-	StoreValuesClearKey: true, StoreValuesCountEnvironment: true, StoreValuesEnvironmentsWithValue: true, StoreValuesGet: true,
-	StoreValuesInstancePayloadByProject: true, StoreValuesList: true, StoreValuesListForReencrypt: true, StoreValuesPayloadBytesForProject: true,
-	StoreValuesPut: true, StoreValuesReencrypt: true, StoreValuesSampleSecretEntry: true,
-	StoreApprovalPolicyInsert: true, StoreApprovalPolicyGet: true, StoreApprovalPolicyCovering: true,
-	StoreApprovalPolicyList: true, StoreApprovalPolicyUpdate: true, StoreApprovalPolicyDelete: true,
-	StoreApprovalApproverInsert: true, StoreApprovalApproverList: true, StoreApprovalApproverClear: true,
-	StoreApprovalBypasserInsert: true, StoreApprovalBypasserList: true, StoreApprovalBypasserClear: true,
-	StoreApprovalBypasserGet: true, StoreApprovalRequestInsert: true, StoreApprovalRequestGet: true,
-	StoreApprovalRequestList: true, StoreApprovalRequestUpdateState: true, StoreApprovalRequestSelectExpiry: true,
-	StoreApprovalRequestMarkExpired: true, StoreApprovalVoteInsert: true, StoreApprovalVoteGet: true,
-	StoreApprovalVoteList: true, StoreApprovalRequestCounts: true,
-	StoreBackupStateGet: true, StoreBackupStateSetExportSuccess: true, StoreBackupStateSetExportFailure: true,
-	StoreBackupStateSetPruneSuccess: true, StoreBackupStateSetDrill: true,
-	StoreDynamicProvidersCreate: true, StoreDynamicProvidersGet: true, StoreDynamicProvidersList: true,
-	StoreDynamicProvidersReplaceCredential: true, StoreDynamicProvidersRevokeCredential: true, StoreDynamicProvidersDelete: true,
-	StoreDynamicProvidersCredentialCiphertext: true, StoreDynamicProvidersListForReencrypt: true, StoreDynamicProvidersReencrypt: true,
-	StoreDynamicLeasesActiveIDsForProvider: true,
-	StoreDynamicLeasesCreate:               true, StoreDynamicLeasesGet: true, StoreDynamicLeasesList: true,
-	StoreDynamicLeasesFinishMint: true, StoreDynamicLeasesEnqueueTransition: true,
-}
-
 var readOnlyStoreOps = map[StoreOp]bool{
 	StoreOrgsGet:   true,
 	StoreOrgsList:  true,
@@ -1391,17 +1301,13 @@ func validateSpec(op Operation, spec opSpec) error {
 			return fmt.Errorf("authz registry: operation %q (depth %d) has an atom at deeper level %d", op, spec.level, atom.At)
 		}
 	}
-	// Store ops: presence in the map must mean licensed (no `false` entries), and
-	// every key must be a known store operation. That the method exists on the
-	// store is invariant 6's reflection cross-check, which needs internal/store
-	// and so stays in internal/isolation; the closed catalogue here is the
-	// in-package half.
+	// Store ops: presence in the map must mean licensed (no `false` entries).
+	// That every named StoreOp is a real store method is invariant 6's
+	// reflection cross-check (internal/isolation), which needs internal/store
+	// this package must not import.
 	for so, licensed := range spec.storeOps {
 		if !licensed {
 			return fmt.Errorf("authz registry: operation %q has a false store-op entry %q — presence must mean licensed", op, so)
-		}
-		if !storeOpCatalogue[so] {
-			return fmt.Errorf("authz registry: operation %q names unknown store op %q", op, so)
 		}
 	}
 	if err := validateAuditDisposition(op, spec); err != nil {

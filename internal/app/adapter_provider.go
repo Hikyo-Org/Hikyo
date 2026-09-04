@@ -17,11 +17,6 @@ type adapterModuleFactory struct {
 	providers    map[adapter.Provider]providerConstructor
 }
 
-type adapterModuleWiring struct {
-	worker  adapter.ModuleFactory
-	service adapter.ModuleFactory
-}
-
 func deploymentProviderRegistry() map[adapter.Provider]providerConstructor {
 	return map[adapter.Provider]providerConstructor{
 		adapter.ForgejoProvider: func(config adapter.Config, credential string, allowed []netip.Prefix) (adapter.Module, func(), error) {
@@ -43,11 +38,6 @@ func deploymentProviderRegistry() map[adapter.Provider]providerConstructor {
 
 func newAdapterModuleFactory(egressPolicy map[string][]netip.Prefix) *adapterModuleFactory {
 	return &adapterModuleFactory{egressPolicy: egressPolicy, providers: deploymentProviderRegistry()}
-}
-
-func newAdapterModuleWiring(egressPolicy map[string][]netip.Prefix) adapterModuleWiring {
-	factory := newAdapterModuleFactory(egressPolicy)
-	return adapterModuleWiring{worker: factory.Build, service: factory.Build}
 }
 
 func (f *adapterModuleFactory) Build(provider adapter.Provider, config adapter.Config, credential string) (*adapter.ModuleLease, error) {

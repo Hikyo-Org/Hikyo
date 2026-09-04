@@ -2,7 +2,6 @@ package server
 
 import (
 	"net/http"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -141,70 +140,10 @@ var statusNames = [...]string{
 	statusOther: "other",
 }
 
-// MetricFamily is one immutable-at-runtime registration returned as a copy to
-// conformance tests. Labels maps each closed label key to every value the
-// exporter can emit. MaxSeries includes histogram buckets, sum, and count.
-type MetricFamily struct {
-	Name      string
-	MaxSeries int
-	Labels    map[string][]string
-}
-
-// RegisteredMetricFamilies returns the complete static metric registry. Every
-// map and slice is newly allocated, so callers cannot mutate live exporter
-// state. The scrape test proves this registry and the emitted families agree.
-func RegisteredMetricFamilies() []MetricFamily {
-	classes := metricClassNames()
-	statuses := metricStatusNames()
-	errors := []string{"4xx", "5xx"}
-	buckets := make([]string, 0, len(latencyBucketsSeconds)+1)
-	for _, bucket := range latencyBucketsSeconds {
-		buckets = append(buckets, formatFloat(bucket))
-	}
-	buckets = append(buckets, "+Inf")
-	return []MetricFamily{
-		{Name: MetricLastPruneSuccess, MaxSeries: 1},
-		{Name: MetricPruneStale, MaxSeries: 1},
-		{Name: MetricProjectStoragePeak, MaxSeries: 1},
-		{Name: MetricProjectStorageWarn, MaxSeries: 1},
-		{Name: MetricTLSCertNotAfter, MaxSeries: 1},
-		{Name: MetricTLSReloadFailures, MaxSeries: 1},
-		{Name: MetricAdapterTargetsFailed, MaxSeries: 1},
-		{Name: MetricAdapterTargetsPaused, MaxSeries: 1},
-		{Name: MetricAdapterTargetsAttention, MaxSeries: 1},
-		{Name: MetricAdapterJobsQueued, MaxSeries: 1},
-		{Name: MetricRequestsTotal, MaxSeries: len(classes) * len(statuses), Labels: map[string][]string{"class": classes, "status": statuses}},
-		{Name: MetricRequestErrors, MaxSeries: len(classes) * len(errors), Labels: map[string][]string{"class": classes, "status": errors}},
-		{Name: MetricRequestsInFlight, MaxSeries: 1},
-		{Name: MetricRequestDuration, MaxSeries: len(classes) * (len(buckets) + 2), Labels: map[string][]string{"class": classes, "le": buckets}},
-		{Name: MetricAdmissionConcurrencyLimit, MaxSeries: 1},
-		{Name: MetricAdmissionInFlight, MaxSeries: 1},
-		{Name: MetricAdmissionQueueDepthLimit, MaxSeries: 1},
-		{Name: MetricAdmissionQueueWaiting, MaxSeries: 1},
-		{Name: MetricAdmissionActiveBackoffs, MaxSeries: 1},
-		{Name: MetricHAIsLeader, MaxSeries: 1},
-		{Name: MetricHANodesSeen, MaxSeries: 1},
-		{Name: MetricHALeaseAgeSecond, MaxSeries: 1},
-		{Name: MetricApprovalRequestsOpen, MaxSeries: 1},
-		{Name: MetricApprovalRequestsExpired, MaxSeries: 1},
-		{Name: MetricLastBackupExportSuccess, MaxSeries: 1},
-		{Name: MetricBackupRPOExceeded, MaxSeries: 1},
-		{Name: MetricLastBackupPruneSuccess, MaxSeries: 1},
-		{Name: MetricLastRestoreDrill, MaxSeries: 1},
-		{Name: MetricRestoreDrillOK, MaxSeries: 1},
-		{Name: MetricDynamicLeasesActive, MaxSeries: 1},
-		{Name: MetricDynamicEffectsUnknown, MaxSeries: 1},
-	}
-}
-
 // RequestLatencyBucketsSeconds returns a copy of the fixed histogram grid.
 func RequestLatencyBucketsSeconds() []float64 {
 	return append([]float64(nil), latencyBucketsSeconds[:]...)
 }
-
-func metricClassNames() []string { return append([]string(nil), classNames[:]...) }
-
-func metricStatusNames() []string { return append([]string(nil), statusNames[:]...) }
 
 func bucketForStatus(code int) statusBucket {
 	switch code / 100 {
@@ -515,10 +454,6 @@ func (c *dynamicCollector) Collect(ch chan<- prometheus.Metric) {
 	for i, desc := range c.descs {
 		ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, values[i])
 	}
-}
-
-func formatFloat(f float64) string {
-	return strconv.FormatFloat(f, 'g', -1, 64)
 }
 
 // observe is the outer public-router leg for /api/v1 traffic. Its placement

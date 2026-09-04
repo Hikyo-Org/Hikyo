@@ -69,7 +69,7 @@ func TestDevBootSeparatesPublicAndOperationalRoutes(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
-	go func() { done <- srv.Serve(ctx) }()
+	go func() { done <- srv.ServeWithReady(ctx, nil) }()
 	t.Cleanup(func() { cancel(); <-done })
 
 	for path, want := range map[string]int{"/healthz": 200, "/readyz": 200, "/metrics": 200, "/api/v1/meta": 404} {
@@ -101,7 +101,7 @@ func TestProxyHTTPSOriginEmitsHSTSOnLoopbackBackend(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
-	go func() { done <- srv.Serve(ctx) }()
+	go func() { done <- srv.ServeWithReady(ctx, nil) }()
 	t.Cleanup(func() { cancel(); <-done })
 
 	resp, err := http.Get("http://" + srv.Addr + "/api/v1/meta")
@@ -121,7 +121,7 @@ func TestServeCancellationStopsBothListeners(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
-	go func() { done <- srv.Serve(ctx) }()
+	go func() { done <- srv.ServeWithReady(ctx, nil) }()
 	for _, address := range []string{srv.Addr, srv.OperationalAddr} {
 		conn, err := net.DialTimeout("tcp", address, time.Second)
 		if err != nil {

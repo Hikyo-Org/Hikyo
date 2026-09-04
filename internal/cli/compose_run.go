@@ -19,6 +19,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/compose"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/delivery"
 )
 
 // ---------------------------------------------------------------------------
@@ -132,7 +133,7 @@ func runRun(ctx context.Context, ios IO, args []string) error {
 
 	// Loader-control refusal for the LIVE path (the offline path already checked
 	// pre-append inside serveRunOffline).
-	if refused := compose.RefuseUnacknowledged(slices.Sorted(maps.Keys(fetched)), ack); len(refused) > 0 {
+	if refused, _ := delivery.Unacknowledged(slices.Sorted(maps.Keys(fetched)), ack); len(refused) > 0 {
 		return failf(ExitRefused, "hikyo run: refusing loader-control key(s) %s; acknowledge each by name in the config's `run.acknowledge_loader_control`",
 			strings.Join(refused, ", "))
 	}
@@ -279,7 +280,7 @@ func runHumanSession(ctx context.Context, ios IO, st *State, flags commonFlags, 
 		return failf(ExitRefused, "hikyo run --use-human-session: declined at the confirmation")
 	}
 
-	if refused := compose.RefuseUnacknowledged(slices.Sorted(maps.Keys(fetched)), runLoaderControlAck(cfg)); len(refused) > 0 {
+	if refused, _ := delivery.Unacknowledged(slices.Sorted(maps.Keys(fetched)), runLoaderControlAck(cfg)); len(refused) > 0 {
 		return failf(ExitRefused, "hikyo run: refusing loader-control key(s) %s; acknowledge each by name in the config's `run.acknowledge_loader_control`",
 			strings.Join(refused, ", "))
 	}
@@ -331,7 +332,7 @@ func serveRunOffline(ios IO, cfg *compose.Config, stateDir string, binding crypt
 	}
 	// Loader-control BEFORE any disclosure record is written (finding 6): an
 	// unacknowledged loader-control key is refused even when serving stale.
-	if refused := compose.RefuseUnacknowledged(rowNames(payload.Rows), ack); len(refused) > 0 {
+	if refused, _ := delivery.Unacknowledged(rowNames(payload.Rows), ack); len(refused) > 0 {
 		return nil, failf(ExitRefused, "hikyo run: refusing loader-control key(s) %s; acknowledge each by name in the config's `run.acknowledge_loader_control`",
 			strings.Join(refused, ", "))
 	}

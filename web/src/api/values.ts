@@ -61,7 +61,6 @@ export function useEnvironments(env: EnvRef): UseQueryResult<EnvironmentList> {
     queryKey: ['environments', env.org, env.project] as const,
     queryFn: () =>
       parsed(listEnvironmentsOp, { path: { org: env.org, project: env.project }, ...transport }),
-    retry: false,
   });
 }
 
@@ -79,7 +78,6 @@ export function useValues(env: EnvRef): UseQueryResult<ValueList> {
           },
           ...transport,
         }),
-    retry: false,
   });
 }
 
@@ -132,7 +130,6 @@ export function useRevealWindow(
           ...transport,
         }),
     enabled,
-    retry: false,
   });
 }
 

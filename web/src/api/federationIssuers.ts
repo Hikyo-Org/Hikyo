@@ -41,7 +41,6 @@ export function useFederationIssuers() {
   return useQuery({
     queryKey: issuersKey,
     queryFn: () => parsed(listFederationIssuersOp, {}),
-    retry: false,
   });
 }
 

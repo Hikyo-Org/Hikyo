@@ -35,7 +35,6 @@ export function useSamlProviders() {
   return useQuery({
     queryKey: samlProvidersKey,
     queryFn: () => parsed(listSamlProvidersOp, {}),
-    retry: false,
   });
 }
 
@@ -43,7 +42,6 @@ export function useSamlSpKeys() {
   return useQuery({
     queryKey: samlSpKeysKey,
     queryFn: () => parsed(listSamlSpKeysOp, {}),
-    retry: false,
   });
 }
 

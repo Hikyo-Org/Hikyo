@@ -57,19 +57,11 @@ func (s *State) updates(defaultChannel updatecheck.Channel) (updateState, error)
 	if state.Schema < 0 || state.Schema > updateStateSchema {
 		return updateState{}, fmt.Errorf("update state at %s has unsupported schema %d", s.updatesPath(), state.Schema)
 	}
-	// Schema zero predates artifact-specific defaults and always persisted an
-	// implicit stable channel. It is not a user override: migrate it to the
-	// channel stamped into this binary and force a fresh snapshot.
-	if state.Schema == 0 {
-		channel, err := updatecheck.ParseChannel(string(defaultChannel))
-		if err != nil {
-			return updateState{}, fmt.Errorf("built-in update channel: %w", err)
-		}
-		state.Channel = channel
-		state.ChannelExplicit = false
-		state.CheckedAt = time.Time{}
-		state.Releases = nil
-	} else if (defaultChannel == updatecheck.ChannelOff || !state.ChannelExplicit) && state.Channel != defaultChannel {
+	// A non-explicit channel that no longer matches the artifact default (or any
+	// channel once the artifact is built with updates off) is not a user
+	// override: reset it to the channel stamped into this binary and force a
+	// fresh snapshot.
+	if (defaultChannel == updatecheck.ChannelOff || !state.ChannelExplicit) && state.Channel != defaultChannel {
 		state.Channel = defaultChannel
 		state.ChannelExplicit = false
 		state.CheckedAt = time.Time{}
@@ -202,12 +194,6 @@ func refreshReleaseSnapshot(ctx context.Context, ios IO) error {
 		}
 		releases, err := source.Releases(ctx)
 		if err != nil {
-			// A schema-zero snapshot has no explicit channel provenance or asset
-			// metadata. Leave it untouched on failure so the next invocation
-			// retries migration instead of offering stale, unverified assets.
-			if current.Schema == 0 {
-				return err
-			}
 			// Persist the attempt time even when the public source is unavailable.
 			// Ordinary commands stay best-effort and do not pay the network timeout
 			// repeatedly; `hikyo update check` remains an explicit immediate retry.

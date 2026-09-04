@@ -46,7 +46,6 @@ export function useOidcProviders(): UseQueryResult<OidcProviderList> {
   return useQuery({
     queryKey: oidcProvidersKey,
     queryFn: () => parsed(listOidcProvidersOp, {}),
-    retry: false,
   });
 }
 

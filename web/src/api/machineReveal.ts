@@ -23,7 +23,6 @@ function machineRevealQueryOptions(org: string, project: string) {
     queryKey: machineRevealKey(org, project),
     queryFn: () => parsed(getMachineRevealOp, { path: { org, project } }),
     enabled: org !== '' && project !== '',
-    retry: false,
   };
 }
 

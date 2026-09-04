@@ -92,7 +92,6 @@ export function useRemotes(): UseQueryResult<RemoteList> {
     queryKey: remotesKey,
     queryFn: () => parsed(listRemotesOp, {}),
     refetchInterval: DIRECTORY_POLL_MS,
-    retry: false,
   });
 }
 
@@ -134,7 +133,6 @@ export function useWorkspaceOrigins(): UseQueryResult<z.infer<typeof zWorkspaceO
   return useQuery({
     queryKey: originsKey,
     queryFn: () => parsed(listWorkspaceOriginsOp, {}),
-    retry: false,
   });
 }
 
@@ -179,7 +177,6 @@ export function useConnections(): UseQueryResult<InstanceConnectionList> {
   return useQuery({
     queryKey: connectionsKey,
     queryFn: () => parsed(listInstanceConnectionsOp, {}),
-    retry: false,
   });
 }
 
@@ -264,7 +261,6 @@ export function useSessions(): UseQueryResult<SessionList> {
   return useQuery({
     queryKey: sessionsKey,
     queryFn: () => parsed(listMySessionsOp, {}),
-    retry: false,
   });
 }
 

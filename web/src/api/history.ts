@@ -149,7 +149,6 @@ export function useRevisionHistory(env: EnvRef): UseQueryResult<HistoryRevisionL
         await parsed(listRevisionsOp, { path: { ...env }, ...transport }),
       ),
     enabled: enabledEnv(env),
-    retry: false,
   });
 }
 
@@ -175,7 +174,6 @@ export function useRevisionDetail(
     queryFn: () =>
       parsed(getRevisionOp, { path: { ...env, revision: label }, ...transport }),
     enabled: enabledEnv(env) && revision !== null && payloadPresent,
-    retry: false,
   });
 }
 
@@ -185,7 +183,6 @@ export function useRevisionPins(env: EnvRef): UseQueryResult<RevisionPinList> {
     queryKey: pinsKey(env),
     queryFn: () => parsed(listRevisionPinsOp, { path: { ...env }, ...transport }),
     enabled: enabledEnv(env),
-    retry: false,
   });
 }
 
@@ -203,7 +200,6 @@ export function useProjectRetention(ref: MatrixRef): UseQueryResult<ProjectReten
     queryKey: projectRetentionKey(ref),
     queryFn: () => parsed(getProjectRetentionOp, { path: { ...ref }, ...transport }),
     enabled: ref.org !== '' && ref.project !== '',
-    retry: false,
   });
 }
 

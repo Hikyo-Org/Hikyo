@@ -155,7 +155,7 @@ var scanningCriteria = map[string]scanClause{
 			goTestFixture("internal/crypto", "TestScanningFingerprintScopeSeparation"),
 		}},
 	"SS4.d": {Text: "the encryption ADR's architecture test extended: scanning code imports no hash/HMAC primitive",
-		Fixtures: []fixtureref.FixtureRef{goTestFixture("internal/scanning", "TestNoHashPrimitiveImport")}},
+		Fixtures: []fixtureref.FixtureRef{goTestFixture("internal/boundary", "TestScanningNoHashPrimitives")}},
 	"SS4.e": {Text: "stolen-dump fixture: dismissal rows from a dump plus the planted value yield no match under any unkeyed digest of the value",
 		Fixtures: []fixtureref.FixtureRef{
 			goHelperFixture("internal/conformance", "scenarioScanningDismissals"),

@@ -41,14 +41,13 @@ export type RouteDefinition = SurfaceBase &
     | { readonly mode: 'authenticated'; readonly chrome: 'shell' }
   );
 
-export type RouteCandidate = SurfaceBase & {
-  readonly mode: string;
-  readonly chrome: string;
-  readonly session?: string;
-};
-
-/** Returns every invalid or ambiguous route-policy declaration. */
-export function routeRegistryViolations(routes: readonly RouteCandidate[]): string[] {
+/**
+ * Returns the route-policy violations the RouteDefinition union cannot express:
+ * duplicate ids, duplicate paths, and a chromeless route placed in a navigation
+ * section. Every mode/chrome/session pairing is already enforced at compile
+ * time by the union, so it is not re-checked here.
+ */
+export function routeRegistryViolations(routes: readonly RouteDefinition[]): string[] {
   const problems: string[] = [];
   const ids = new Set<string>();
   const paths = new Set<string>();
@@ -67,41 +66,6 @@ export function routeRegistryViolations(routes: readonly RouteCandidate[]): stri
       problems.push(
         `route "${route.id}" has no chrome but appears in section "${route.section}"`,
       );
-    }
-
-    switch (route.mode) {
-      case 'public':
-        if (route.chrome !== 'none') {
-          problems.push(`route "${route.id}" is public but uses shell chrome`);
-        }
-        if (route.session !== undefined) {
-          problems.push(
-            `route "${route.id}" declares a ceremony session policy outside ceremony mode`,
-          );
-        }
-        break;
-      case 'ceremony':
-        if (route.chrome !== 'none') {
-          problems.push(`route "${route.id}" is a ceremony but uses shell chrome`);
-        }
-        if (route.session !== 'establish-or-reuse' && route.session !== 'required') {
-          problems.push(
-            `route "${route.id}" is a ceremony without an explicit session policy`,
-          );
-        }
-        break;
-      case 'authenticated':
-        if (route.chrome !== 'shell') {
-          problems.push(`route "${route.id}" is authenticated but has no shell chrome`);
-        }
-        if (route.session !== undefined) {
-          problems.push(
-            `route "${route.id}" declares a ceremony session policy outside ceremony mode`,
-          );
-        }
-        break;
-      default:
-        problems.push(`route "${route.id}" has unknown access mode "${route.mode}"`);
     }
   }
 

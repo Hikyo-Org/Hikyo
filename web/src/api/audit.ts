@@ -190,7 +190,6 @@ export function useAuditTrail(
       }),
     getNextPageParam: (last): AuditCursor | undefined =>
       last.exhausted ? undefined : { after: last.next_after_seq, ceiling: last.upper_seq },
-    retry: false,
   });
 }
 

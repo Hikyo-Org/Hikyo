@@ -4,15 +4,12 @@ import (
 	"context"
 	"errors"
 	"net/netip"
-	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/forgejo"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/githubactions"
-	"github.com/Hikyo-Org/hikyo/internal/crypto"
-	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
 func TestAdapterModuleFactoryRegistryIsTotal(t *testing.T) {
@@ -97,32 +94,6 @@ func TestDeploymentModuleNeverInfersProviderFromCredential(t *testing.T) {
 	_, err := newAdapterModuleFactory(nil).Build(adapter.Provider(""), adapter.Config{Origin: "https://api.github.com"}, "github_pat_fine")
 	if err == nil || !strings.Contains(err.Error(), "unsupported") {
 		t.Fatalf("deploymentModule() = %v, want missing persisted provider refusal", err)
-	}
-}
-
-func TestWorkerAndServiceWiringUseEquivalentModulesFromOneFactory(t *testing.T) {
-	wiring := newAdapterModuleWiring(map[string][]netip.Prefix{"https://forgejo.example": {netip.MustParsePrefix("10.42.0.0/16")}})
-	loader := &adapterLoader{
-		moduleFactory: wiring.worker,
-		loadActivation: func(context.Context, adapter.Job) (store.AdapterActivation, error) {
-			return store.AdapterActivation{Provider: string(adapter.ForgejoProvider), Origin: "https://forgejo.example", CredentialCiphertext: []byte("sealed")}, nil
-		},
-		openField: func(crypto.ProjectFieldAAD, []byte) ([]byte, error) {
-			return []byte("scoped-token"), nil
-		},
-	}
-	loaded, err := loader.LoadActivation(t.Context(), adapter.Job{}, &orderedLoaderJournal{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Release()
-	serviceLease, err := wiring.service(adapter.ForgejoProvider, adapter.Config{Origin: "https://forgejo.example"}, "scoped-token")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer serviceLease.Release()
-	if reflect.TypeOf(loaded.Module) != reflect.TypeOf(serviceLease.Module) {
-		t.Fatalf("worker module = %T, service module = %T", loaded.Module, serviceLease.Module)
 	}
 }
 

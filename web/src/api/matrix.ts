@@ -535,13 +535,11 @@ export function useMatrixProject(ref: MatrixRef) {
     queryKey: matrixKeysKey(ref),
     queryFn: () => parsed(listKeysOp, { path: ref, ...transport }),
     enabled: ref.org !== '' && ref.project !== '',
-    retry: false,
   });
   const groups = useQuery({
     queryKey: matrixGroupsKey(ref),
     queryFn: () => parsed(listKeyGroupsOp, { path: ref, ...transport }),
     enabled: ref.org !== '' && ref.project !== '',
-    retry: false,
   });
   const environmentItems = environments.data === undefined ? [] : environments.data.items;
   const values = useQueries({
@@ -553,7 +551,6 @@ export function useMatrixProject(ref: MatrixRef) {
           ...transport,
         }),
       select: (value: MatrixValueList) => ({ environmentId: environment.id, value }),
-      retry: false,
     })),
   });
   const settings = useQueries({
@@ -604,7 +601,6 @@ export function useMatrixProject(ref: MatrixRef) {
       // `false` and the tab holds exactly one events connection, zero
       // periodic signals requests.
       refetchInterval: signalsPollInterval(signalsStream),
-      retry: false,
     })),
   });
   const pendingDrafts = useQueries({
@@ -618,7 +614,6 @@ export function useMatrixProject(ref: MatrixRef) {
           }),
         ),
       select: (value: MatrixPendingDraftList) => ({ environmentId: environment.id, value }),
-      retry: false,
     })),
   });
 
@@ -1069,7 +1064,6 @@ export function useKey(ref: MatrixRef, key: string) {
     queryKey: matrixKeyKey(ref, key),
     queryFn: () => parsed(getKeyOp, { path: { ...ref, key }, ...transport }),
     enabled: ref.org !== '' && ref.project !== '' && key !== '',
-    retry: false,
   });
 }
 

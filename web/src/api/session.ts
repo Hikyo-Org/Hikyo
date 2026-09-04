@@ -64,7 +64,6 @@ export function useOrgs(enabled: boolean): UseQueryResult<MyOrgList> {
     queryKey: orgsKey,
     queryFn: () => parsed(listMyOrgsOp, { ...transport }),
     enabled,
-    retry: false,
   });
 }
 

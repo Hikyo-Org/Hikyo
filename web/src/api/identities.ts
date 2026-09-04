@@ -67,7 +67,6 @@ export function useServiceAccounts(
     queryKey: accountsKey(p),
     queryFn: () =>
       parsed(listServiceAccountsOp, { path: { org: p.org, project: p.project }, ...transport }),
-    retry: false,
   });
 }
 
@@ -85,7 +84,6 @@ export function useProjectGrants(p: ProjectRef): UseQueryResult<z.infer<typeof z
     queryKey: projectGrantsKey(p),
     queryFn: () =>
       parsed(listProjectGrantsOp, { path: { org: p.org, project: p.project } }),
-    retry: false,
   });
 }
 
@@ -104,7 +102,6 @@ export function useKeyCatalogue(p: ProjectRef): UseQueryResult<z.infer<typeof zK
   return useQuery({
     queryKey: ['key-catalogue', p.org, p.project] as const,
     queryFn: () => parsed(listKeysOp, { path: { org: p.org, project: p.project } }),
-    retry: false,
   });
 }
 
@@ -132,7 +129,6 @@ export function useCredentials(
         parsed(listMachineCredentialsOp, {
             path: { org: p.org, project: p.project, serviceAccount: sa.id },
           }),
-      retry: false,
     })),
     combine: (results) => ({
       byAccount: new Map(

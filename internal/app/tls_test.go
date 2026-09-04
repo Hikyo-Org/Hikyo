@@ -131,7 +131,7 @@ func TestNativeTLSBootServesHTTPSAndKeepsOpsPlaintext(t *testing.T) {
 	}
 	serveCtx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
-	go func() { done <- srv.Serve(serveCtx) }()
+	go func() { done <- srv.ServeWithReady(serveCtx, nil) }()
 	defer func() {
 		cancel()
 		if err := <-done; err != nil {
@@ -172,7 +172,7 @@ func TestOperationalListenerFailureStopsWholeLifecycle(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- srv.Serve(ctx) }()
+	go func() { done <- srv.ServeWithReady(ctx, nil) }()
 	if err := srv.operationalLn.Close(); err != nil {
 		t.Fatal(err)
 	}

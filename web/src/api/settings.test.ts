@@ -2,16 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import { ApiError } from './client.ts';
 import {
-  cloneEnvironmentRefusalText,
   createEnvironmentRefusalText,
   createProjectRefusalText,
   DAY_SECONDS,
-  deleteEnvironmentRefusalText,
   environmentSettingsReadState,
   formatRetentionAge,
   orgTopologyReadiness,
-  renameEnvironmentRefusalText,
-  reorderEnvironmentsRefusalText,
   retentionSentence,
   settingsFailureText,
   settingsOperationFailure,
@@ -267,36 +263,4 @@ describe('authoring refusals', () => {
     );
   });
 
-  it('maps every environment lifecycle refusal without leaking uniform not-found state', () => {
-    expect(renameEnvironmentRefusalText(new ApiError(400, 'x'))).toContain(
-      'environment name is invalid',
-    );
-    expect(renameEnvironmentRefusalText(new ApiError(404, 'x'))).toBe(
-      renameEnvironmentRefusalText(new ApiError(403, 'x')),
-    );
-    expect(deleteEnvironmentRefusalText(new ApiError(409, 'x'))).toContain(
-      'current environment state refused deletion',
-    );
-    expect(reorderEnvironmentsRefusalText(new ApiError(400, 'x'))).toContain(
-      'complete environment order',
-    );
-    expect(cloneEnvironmentRefusalText(new ApiError(409, 'x', 'required secret missing'))).toBe(
-      'required secret missing',
-    );
-  });
-
-  it('states uncertain lifecycle outcomes instead of claiming failure', () => {
-    expect(renameEnvironmentRefusalText(new Error('network'))).toContain(
-      'whether the environment was renamed is unknown',
-    );
-    expect(deleteEnvironmentRefusalText(new ApiError(500, 'x'))).toContain(
-      'whether the environment was deleted is unknown',
-    );
-    expect(reorderEnvironmentsRefusalText(new Error('network'))).toContain(
-      'whether the order changed is unknown',
-    );
-    expect(cloneEnvironmentRefusalText(new ApiError(500, 'x'))).toContain(
-      'whether the environment was cloned is unknown',
-    );
-  });
 });

@@ -38,7 +38,6 @@ function useCredentialPolicy() {
   return useQuery({
     queryKey: credentialPolicyKey,
     queryFn: () => parsed(getCredentialPolicyOp, {}),
-    retry: false,
   });
 }
 
@@ -60,7 +59,6 @@ function useInstanceRetentionHealth() {
   return useQuery({
     queryKey: instanceRetentionKey,
     queryFn: () => parsed(getRetentionHealthOp, {}),
-    retry: false,
   });
 }
 

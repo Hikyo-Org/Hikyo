@@ -62,13 +62,6 @@ func (d *Device) SetCounter(c uint32) {
 	d.cred.Counter = c
 }
 
-// Counter reports the current sign counter. It panics with ErrNotEnrolled before
-// enrolment.
-func (d *Device) Counter() uint32 {
-	d.mustBeEnrolled()
-	return d.cred.Counter
-}
-
 // CredentialID is the authenticator-chosen credential id (base64url is the
 // server's, this is the raw bytes). It panics with ErrNotEnrolled before
 // enrolment.

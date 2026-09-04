@@ -11,7 +11,6 @@ describe('definitions settings', () => {
     expect(definitionsSettingsQueryOptions('org_1', 'project_1')).toMatchObject({
       queryKey: ['definitions-settings', 'org_1', 'project_1'],
       enabled: true,
-      retry: false,
     });
     expect(definitionsSettingsQueryOptions('org_1', '').enabled).toBe(false);
   });

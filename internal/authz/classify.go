@@ -873,17 +873,9 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	// class is the verb's, and every sub-verb reaches only those two routes.
 	"cli:run":     {Class: ClassTenant},
 	"cli:compose": {Class: ClassTenant},
-	// `adopt` remains not-yet-implemented: still a stub, still in
-	// app.ClientVerbs.
-	"cli:adopt": {Class: ClassStub},
 	// `definitions` (#70) reaches only the tenant-scoped export/check/plan/apply
 	// routes; server operations own every authorization and audit decision.
 	"cli:definitions": {Class: ClassTenant},
-	// `render` and `sync` are no longer top-level verbs — they are `compose`
-	// sub-verbs — but the scaffolded top-level entries stay stubs until removed
-	// with the help surface, so a bare `hikyo render` still refuses cleanly.
-	"cli:render": {Class: ClassStub},
-	"cli:sync":   {Class: ClassStub},
 	// `import` (#68) reaches the tenant-scoped phase-1 presence route and the
 	// tenant-scoped phase-2 import route, and nothing else. Its class flipped
 	// off ClassStub in the same change that registered its operations — the

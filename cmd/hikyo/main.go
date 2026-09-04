@@ -87,7 +87,7 @@ func run() int {
 		writeMachineVersion(os.Stdout)
 		return 0
 	case cmd == "version":
-		writeVersion(os.Stdout, term.IsTerminal(int(os.Stdout.Fd())))
+		writeVersion(os.Stdout)
 		return 0
 	case cmd == "about":
 		writeAbout(os.Stdout)
@@ -112,9 +112,6 @@ func run() int {
 	case slices.Contains(cli.Verbs, cmd):
 		terminalSession, terminalError := disclose.OpenTerminalSession()
 		return cli.Run(ctx, updateIO(terminalSession, terminalError, builtChannel), os.Args[1:])
-	case slices.Contains(app.ClientVerbs, cmd):
-		fmt.Fprintf(os.Stderr, "hikyo %s: not implemented yet\n", cmd)
-		return 2
 	default:
 		fmt.Fprintf(os.Stderr, "hikyo: unknown command %q\n\n", cmd)
 		usage()
@@ -122,21 +119,12 @@ func run() int {
 	}
 }
 
-func writeVersion(output io.Writer, interactive bool) {
-	if !interactive {
-		fmt.Fprintln(output, legacyVersionString())
-		return
-	}
+// writeVersion prints the readable build summary. `hikyo version` shows this
+// regardless of TTY; the machine contract is `--version` (writeMachineVersion).
+func writeVersion(output io.Writer) {
 	fmt.Fprint(output, console.VersionMessage(console.VersionInfo{
 		Version: version, Commit: commit, BuildDate: buildDate,
 	}))
-}
-
-func legacyVersionString() string {
-	if version == "dev" {
-		return "hikyo dev"
-	}
-	return fmt.Sprintf("hikyo %s (%s, %s)", version, commit, buildDate)
 }
 
 func writeMachineVersion(output io.Writer) {
@@ -228,13 +216,16 @@ func runServer(ctx context.Context, args []string) int {
 		mode = "development"
 	}
 	appURL := serverAppURL(cfg, srv)
-	message := console.ServerStartupMessage(console.ServerInfo{
-		Version:        version,
-		AppURL:         appURL,
-		ListenAddress:  srv.Addr,
-		OperationalURL: "http://" + srv.OperationalAddr,
-		Mode:           mode,
-	}, term.IsTerminal(int(os.Stdout.Fd())))
+	message := ""
+	if term.IsTerminal(int(os.Stdout.Fd())) {
+		message = console.ServerReadyMessage(console.ServerInfo{
+			Version:        version,
+			AppURL:         appURL,
+			ListenAddress:  srv.Addr,
+			OperationalURL: "http://" + srv.OperationalAddr,
+			Mode:           mode,
+		})
+	}
 	stopTLSReload := watchTLSReloadSignal(ctx, srv.ReloadTLS)
 	defer stopTLSReload()
 	if err := srv.ServeWithReady(ctx, func() { fmt.Fprint(os.Stdout, message) }); err != nil {
@@ -256,8 +247,7 @@ func serverAppURL(cfg *config.Config, srv *app.Server) string {
 // runOperatorMode is the `hikyo operator` deployable (k8s-integration ADR): a
 // separate process, not a mode of the running server. It loads no keyring and no
 // root key — configuration is HIKYO_OPERATOR_* env only, read inside
-// internal/operator. It is a real multicall MODE, never a client verb, so it is
-// absent from app.ClientVerbs.
+// internal/operator. It is a real multicall MODE, never a client verb.
 func runOperatorMode(ctx context.Context) int {
 	operator.Version = version
 	log := app.Logger(false)
@@ -367,8 +357,5 @@ local host authority (server host only):
 
 client verbs:
   %v
-
-client verbs not implemented yet:
-  %v
-`, cli.Verbs, app.ClientVerbs)
+`, cli.Verbs)
 }

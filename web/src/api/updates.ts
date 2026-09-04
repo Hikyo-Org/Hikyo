@@ -78,7 +78,6 @@ export function useServerVersion(): UseQueryResult<string> {
     queryFn: async () =>
       (await parsedPick(getMetaOp, {}, { server_version: true })).server_version,
     staleTime: Infinity,
-    retry: false,
   });
 }
 
@@ -107,7 +106,6 @@ export function useUpdateStatus(enabled: boolean): UseQueryResult<UpdateStatus |
     // Re-probe even after a uniform 403/404: an instance-config grant can be
     // added while this long-lived admin shell remains open.
     refetchInterval: updateStatusPollMs,
-    retry: false,
   });
 }
 
@@ -121,7 +119,6 @@ export function useRemoteUpdateStatuses(
       queryFn: () => readStatus(createWorkspaceClient(workspace.origin)),
       staleTime: updateStatusPollMs,
       refetchInterval: updateStatusPollMs,
-      retry: false,
     })),
   });
   return queries.flatMap((query, index) => {
@@ -158,6 +155,5 @@ export function useRemoteUpdateJob(origin: string, job: string | undefined) {
         ? updateJobPollMs
         : false;
     },
-    retry: false,
   });
 }

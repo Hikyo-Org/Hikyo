@@ -65,7 +65,6 @@ export function WorkspaceApprove() {
     queryKey: ['workspace-handoff', state],
     queryFn: () => parsed(showWorkspaceHandoffOp, { path: { state } }),
     enabled: state !== '' && auth.state.status === 'authenticated',
-    retry: false,
   });
 
   const approve = useMutation({
