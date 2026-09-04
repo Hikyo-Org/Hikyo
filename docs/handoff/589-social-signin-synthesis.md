@@ -1,6 +1,6 @@
 # #589: synthesis of social sign-in and open registration (handoff)
 
-Issue: https://github.com/Hikyo-Org/Hikyo/issues/589 (wayfinder task, the destination of map #578). Authored by Claude Fable 5.1 in one autonomous session on 2026-09-03; review routing: Codex `gpt-5.6-sol` high, rounds capped at 3 (reviewed by Codex R1-R3; findings fixed before merge). Stacked on PR #603 (`proto/587-social-signin-surfaces`, the locked prototype), branch `synth/589-social-signin`.
+Issue: https://github.com/Hikyo-Org/Hikyo/issues/589 (wayfinder task, the destination of map #578). Authored by Claude Fable 5.1 in one autonomous session on 2026-09-03; review routing: Codex `gpt-5.6-sol` high, rounds capped at 3 (reviewed by Codex R1-R3; findings fixed or dispositioned before merge, two left for human disposition per section 14.13). Stacked on PR #603 (`proto/587-social-signin-surfaces`, the locked prototype), branch `synth/589-social-signin`.
 
 ## What this PR is
 
