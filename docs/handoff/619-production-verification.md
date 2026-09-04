@@ -37,3 +37,13 @@ in the HTML release reports when available.
 
 The broader #619 cleanup remains a separate maintainability effort. No tests,
 security gates or product features were removed to obtain green results.
+
+## CI integration repair
+
+After MCP PR #639 merged, the core job failed before running tests: Corepack
+selected pnpm 11.25.0 from the repository root, while the new tool package pins
+11.24.0. The `--dir` flag is consumed by pnpm after Corepack chooses its version.
+The workflow now starts in the package directory, and the conformance script
+changes directory before invoking its tools. Frozen installation selects
+11.24.0; real Inspector and all pinned conformance scenarios pass. No version
+check is suppressed and no dependency pin is changed.

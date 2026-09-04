@@ -18,4 +18,4 @@
 <p><strong>Question:</strong> use a host-owned TLS key or container-owned permissions? <strong>Choice:</strong> container-owned permissions. It avoids sudo and mismatched host/container UIDs, works on macOS and Linux, and retains verify-full transport.</p>
 <h2>Review</h2>
 <p>Standards axis: CLEAN. Spec axis R1 found the unreachable test was stopped by egress policy before dialing; explicit loopback allowance fixed it. R2: CLEAN. Parent checks: real TLS run, both-engine audit test, planner fixtures, ShellCheck, actionlint and whitespace validation passed.</p>
-</html>
+<h2>CI integration repair</h2><p>PR #641 first core run exposed a new MCP bootstrap bug from merged #639: Corepack launched pnpm 11.25.0 from the repository root before --dir reached the nested package, which pins 11.24.0. The workflow and runner now change directory first. Frozen installation selects 11.24.0, and Inspector plus all three conformance scenarios pass without weakening the version check.</p></html>
