@@ -48,7 +48,10 @@ func runMCPAuditOriginRollback(t *testing.T, cfg store.Config) {
 		t.Fatal(err)
 	}
 	if err := withProvider(ctx, cfg, func(provider *goose.Provider, _ *sql.DB) error {
-		_, err := provider.Down(ctx)
+		// Roll back through migration 42 specifically. Later migrations must not
+		// turn this targeted compatibility proof into a rollback of the latest
+		// unrelated schema change.
+		_, err := provider.DownTo(ctx, 41)
 		return err
 	}); err != nil {
 		t.Fatalf("rollback MCP audit origin migration: %v", err)

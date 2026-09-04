@@ -192,6 +192,12 @@ type PendingReader interface {
 	// environment are both bound into its SQL predicate; no post-query filter
 	// is trusted with another principal's ciphertext.
 	ListForOwnerInEnvironment(ctx context.Context, p authz.Proof, ownerID string) ([]PendingChange, error)
+	// ListForOwnerInEnvironmentPage is the bounded keyset read (#629): one page
+	// of one owner's drafts in the proof's environment, ordered by the UNIQUE
+	// key_id column, strictly past afterKeyID ("" for the first page). Owner and
+	// environment are bound into the SQL predicate; no post-query filter is
+	// trusted with another principal's ciphertext.
+	ListForOwnerInEnvironmentPage(ctx context.Context, p authz.Proof, ownerID, afterKeyID string, limit int) ([]PendingChange, error)
 	// ListMarkers returns every principal's drafts in the proof's project,
 	// without material.
 	ListMarkers(ctx context.Context, p authz.Proof) ([]PendingMarker, error)
@@ -252,6 +258,11 @@ type SnapshotReader interface {
 	AtRevision(ctx context.Context, p authz.Proof, revision int64) (Snapshot, error)
 	// List returns the environment's revision history, newest first.
 	List(ctx context.Context, p authz.Proof) ([]Snapshot, error)
+	// ListPage is the bounded keyset read (#629): one page of revision history
+	// ordered by the UNIQUE revision column descending, strictly below
+	// beforeRevision (a sentinel above the newest for the first page), fetching
+	// at most limit rows.
+	ListPage(ctx context.Context, p authz.Proof, beforeRevision int64, limit int) ([]Snapshot, error)
 	// Entries returns one snapshot's resolved map, ordered by key name.
 	Entries(ctx context.Context, p authz.Proof, snapshot Snapshot) ([]SnapshotEntry, error)
 	// SecretValueOccurrenceIDs returns the payload-free sticky sensitivity

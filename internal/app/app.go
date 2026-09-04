@@ -499,6 +499,13 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	// storage high-water gauge's shared-door read).
 	metrics.SetApprovalSource(approvalMetricsSource{svc: approvalsSvc})
 	metrics.SetDynamicSource(dynamicGaugeSource{runtime: dynamicRuntime, log: log})
+	// The hierarchy, value, and revision services are named here so the read-only
+	// MCP tools (#629) map onto the SAME instances the REST surface uses: one
+	// keyring, one budget, one authorization path.
+	environmentsSvc := &service.Environments{DB: db, Keyring: kr, Auth: authSvc, Advisory: advisory, Budget: budget, Scan: ruleset}
+	keysSvc := &service.Keys{DB: db, Keyring: kr, Advisory: advisory, Budget: budget, Scan: ruleset}
+	valuesSvc := &service.Values{DB: db, Keyring: kr, Auth: authSvc, Advisory: advisory, Scan: ruleset, Budget: budget}
+	revisionsSvc := &service.Revisions{DB: db, Keyring: kr, Auth: authSvc, Advisory: advisory, Budget: budget}
 	api := &server.API{
 		Auth:     authSvc,
 		SAMLAuth: authSvc,
@@ -508,9 +515,9 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		// every value write re-seal under the project data key, in the
 		// transaction that writes the row. The ruleset (#74) reaches every
 		// surface that writes a config value or a declaration leaf.
-		Environments: &service.Environments{DB: db, Keyring: kr, Auth: authSvc, Advisory: advisory, Budget: budget, Scan: ruleset},
+		Environments: environmentsSvc,
 		Folders:      &service.Folders{DB: db, Keyring: kr, Scan: ruleset},
-		Keys:         &service.Keys{DB: db, Keyring: kr, Advisory: advisory, Budget: budget, Scan: ruleset},
+		Keys:         keysSvc,
 		Definitions:  definitionsService,
 		// The reveal ceremony (#58): the value surface's disclosure routes
 		// consume the SAME reauthentication window machinery the passkey and
@@ -520,8 +527,8 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		// One Advisory across the value and revision surfaces: staging and
 		// publishing both announce on the same channel, and two channels would
 		// mean a subscriber saw half the events.
-		Values:    &service.Values{DB: db, Keyring: kr, Auth: authSvc, Advisory: advisory, Scan: ruleset, Budget: budget},
-		Revisions: &service.Revisions{DB: db, Keyring: kr, Auth: authSvc, Advisory: advisory, Budget: budget},
+		Values:    valuesSvc,
+		Revisions: revisionsSvc,
 		Rotation:  &service.Rotation{DB: db, Keyring: kr, RootKey: rootKeySource{cfg: cfg, log: log}, Budget: budget},
 		Reencrypt: reencryptSvc,
 		Pins:      &service.Pins{DB: db, Keyring: kr, Auth: authSvc},
@@ -578,13 +585,29 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 
 	var mcpHandler http.Handler
 	if cfg.MCPEnabled {
+		registry := mcpserver.NewRegistry()
+		if err := mcpserver.RegisterProductionTools(registry, mcpserver.ProductionServices{
+			Admission:     &service.MCPAdmission{DB: db},
+			Definitions:   keysSvc,
+			Environments:  environmentsSvc,
+			Configuration: valuesSvc,
+			Pending:       revisionsSvc,
+			Revisions:     revisionsSvc,
+		}); err != nil {
+			return nil, fmt.Errorf("boot: refusing to serve: MCP tools: %w", err)
+		}
+		cursorSealer, err := kr.MCPCursorSealer()
+		if err != nil {
+			return nil, fmt.Errorf("boot: refusing to serve: MCP cursor sealer: %w", err)
+		}
 		mcpHandler, err = mcpserver.New(mcpserver.Options{
-			Registry:       mcpserver.NewRegistry(),
+			Registry:       registry,
 			ExternalOrigin: cfg.ExternalOrigin,
 			AllowedOrigins: cfg.MCPAllowedOrigins,
 			TrustedProxies: proxies,
 			Admission:      limiter,
 			Version:        Version,
+			CursorSealer:   cursorSealer,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("boot: refusing to serve: MCP transport: %w", err)

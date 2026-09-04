@@ -3,6 +3,9 @@ package mcpserver
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -95,6 +98,34 @@ func request(method, target, rpcMethod, name string, body []byte) *http.Request 
 	return req
 }
 
+// testSealer is a keyed cursor sealer for tests. It uses SHA-256 (unrestricted
+// by the crypto chokepoint) rather than HMAC, which is confined to
+// internal/crypto; production injects crypto.MCPCursorSealer. It is enough to
+// exercise round-trips and tamper rejection.
+type testSealer struct{ key string }
+
+func (s testSealer) Seal(_ context.Context, payload []byte) (string, error) {
+	sum := sha256.Sum256(append([]byte(s.key), payload...))
+	return base64.RawURLEncoding.EncodeToString(append(slices.Clone(payload), sum[:]...)), nil
+}
+
+func (s testSealer) Open(_ context.Context, token string) ([]byte, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil || len(raw) < sha256.Size {
+		return nil, errors.New("mcpserver: invalid test cursor")
+	}
+	payload := raw[:len(raw)-sha256.Size]
+	presented := raw[len(raw)-sha256.Size:]
+	sum := sha256.Sum256(append([]byte(s.key), payload...))
+	if subtle.ConstantTimeCompare(presented, sum[:]) != 1 {
+		return nil, errors.New("mcpserver: invalid test cursor")
+	}
+	return payload, nil
+}
+
+// testCursorSealer authenticates pagination cursors in tests.
+var testCursorSealer = testSealer{key: "mcp-test-cursor-key"}
+
 func testHandler(t *testing.T, registry *Registry) http.Handler {
 	t.Helper()
 	h, err := New(Options{
@@ -102,6 +133,7 @@ func testHandler(t *testing.T, registry *Registry) http.Handler {
 		ExternalOrigin: "https://hikyo.example.com",
 		AllowedOrigins: []string{"https://assistant.example.com"},
 		Version:        "v-test",
+		CursorSealer:   testCursorSealer,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -270,7 +302,7 @@ func TestTrustedProxyAuthorityIsExact(t *testing.T) {
 	}
 	h, err := New(Options{
 		Registry: registry, ExternalOrigin: "https://hikyo.example.com",
-		TrustedProxies: []*net.IPNet{proxyNet}, Version: "v-test",
+		TrustedProxies: []*net.IPNet{proxyNet}, Version: "v-test", CursorSealer: testCursorSealer,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -365,7 +397,7 @@ func TestDiscoveryAdmissionAndToolConcurrencyAreBounded(t *testing.T) {
 	registry, _ := testRegistry(t, "echo")
 	h, err := New(Options{
 		Registry: registry, ExternalOrigin: "https://hikyo.example.com",
-		Admission: fixedAdmission(false), Version: "v-test", MaxConcurrent: 1,
+		Admission: fixedAdmission(false), Version: "v-test", MaxConcurrent: 1, CursorSealer: testCursorSealer,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -390,7 +422,7 @@ func TestDiscoveryAdmissionAndToolConcurrencyAreBounded(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	h, err = New(Options{Registry: blocking, ExternalOrigin: "https://hikyo.example.com", Version: "v-test", MaxConcurrent: 1})
+	h, err = New(Options{Registry: blocking, ExternalOrigin: "https://hikyo.example.com", Version: "v-test", MaxConcurrent: 1, CursorSealer: testCursorSealer})
 	if err != nil {
 		t.Fatal(err)
 	}

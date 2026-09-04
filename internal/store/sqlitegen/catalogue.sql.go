@@ -315,6 +315,45 @@ func (q *Queries) GetKeyGroup(ctx context.Context, arg GetKeyGroupParams) (KeyGr
 	return i, err
 }
 
+const getKeyInProject = `-- name: GetKeyInProject :one
+SELECT id, org_id, project_id, name, folder_path, classification, description,
+       deprecated, deprecation_note, declaration, required_mode, forbidden_mode,
+       group_id, created_at
+FROM keys WHERE org_id = ?1 AND project_id = ?2
+  AND id = ?3
+`
+
+type GetKeyInProjectParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+	KeyID          string
+}
+
+// GetKeyInProject resolves one key by id under the key.list authorization
+// (StoreCatalogueList), so the MCP pending-change page can attach a page-bounded
+// key name and classification without a JOIN or a whole-catalogue read.
+func (q *Queries) GetKeyInProject(ctx context.Context, arg GetKeyInProjectParams) (Key, error) {
+	row := q.db.QueryRowContext(ctx, getKeyInProject, arg.ChainOrgID, arg.ChainProjectID, arg.KeyID)
+	var i Key
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.ProjectID,
+		&i.Name,
+		&i.FolderPath,
+		&i.Classification,
+		&i.Description,
+		&i.Deprecated,
+		&i.DeprecationNote,
+		&i.Declaration,
+		&i.RequiredMode,
+		&i.ForbiddenMode,
+		&i.GroupID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getProjectSchemaRevision = `-- name: GetProjectSchemaRevision :one
 SELECT revision FROM project_schema_revisions
 WHERE org_id = ? AND project_id = ?
@@ -495,6 +534,52 @@ func (q *Queries) ListKeyPresence(ctx context.Context, arg ListKeyPresenceParams
 	return items, nil
 }
 
+const listKeyPresenceForKey = `-- name: ListKeyPresenceForKey :many
+SELECT org_id, project_id, key_id, environment_id, rule
+FROM key_presence_environments
+WHERE org_id = ?1 AND project_id = ?2
+  AND key_id = ?3
+ORDER BY rule, environment_id
+`
+
+type ListKeyPresenceForKeyParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+	KeyID          string
+}
+
+// ListKeyPresenceForKey reads one key's explicit presence rules, so the MCP
+// definitions page resolves presence per page key instead of listing the whole
+// project's presence rows.
+func (q *Queries) ListKeyPresenceForKey(ctx context.Context, arg ListKeyPresenceForKeyParams) ([]KeyPresenceEnvironment, error) {
+	rows, err := q.db.QueryContext(ctx, listKeyPresenceForKey, arg.ChainOrgID, arg.ChainProjectID, arg.KeyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []KeyPresenceEnvironment
+	for rows.Next() {
+		var i KeyPresenceEnvironment
+		if err := rows.Scan(
+			&i.OrgID,
+			&i.ProjectID,
+			&i.KeyID,
+			&i.EnvironmentID,
+			&i.Rule,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listKeys = `-- name: ListKeys :many
 SELECT id, org_id, project_id, name, folder_path, classification, description,
        deprecated, deprecation_note, declaration, required_mode, forbidden_mode,
@@ -509,6 +594,69 @@ type ListKeysParams struct {
 
 func (q *Queries) ListKeys(ctx context.Context, arg ListKeysParams) ([]Key, error) {
 	rows, err := q.db.QueryContext(ctx, listKeys, arg.OrgID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Key
+	for rows.Next() {
+		var i Key
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.Name,
+			&i.FolderPath,
+			&i.Classification,
+			&i.Description,
+			&i.Deprecated,
+			&i.DeprecationNote,
+			&i.Declaration,
+			&i.RequiredMode,
+			&i.ForbiddenMode,
+			&i.GroupID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listKeysPage = `-- name: ListKeysPage :many
+SELECT id, org_id, project_id, name, folder_path, classification, description,
+       deprecated, deprecation_note, declaration, required_mode, forbidden_mode,
+       group_id, created_at
+FROM keys WHERE org_id = ?1 AND project_id = ?2
+  AND name > ?3
+ORDER BY name LIMIT ?4
+`
+
+type ListKeysPageParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+	AfterName      string
+	PageLimit      int64
+}
+
+// ListKeysPage is the MCP-bounded keyset read (#629). name is UNIQUE per
+// project, so it is a stable single-column cursor: the statement fetches
+// strictly past the last returned name and never materializes the whole
+// catalogue to slice a limit afterwards.
+func (q *Queries) ListKeysPage(ctx context.Context, arg ListKeysPageParams) ([]Key, error) {
+	rows, err := q.db.QueryContext(ctx, listKeysPage,
+		arg.ChainOrgID,
+		arg.ChainProjectID,
+		arg.AfterName,
+		arg.PageLimit,
+	)
 	if err != nil {
 		return nil, err
 	}

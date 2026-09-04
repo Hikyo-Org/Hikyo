@@ -33,7 +33,20 @@ const (
 	IPBucket      = "ip"
 	MetaBucket    = "meta"
 	IssuerBucket  = "issuer"
+
+	// MCP admission is shared across replicas. One token is restored each
+	// second (60/minute), with at most 20 immediately available. In-flight
+	// calls are bounded independently by principal, organization, and instance.
+	MCPRateCapacity       = 20
+	MCPRateRefillInterval = time.Second
+	MCPPrincipalLimit     = 4
+	MCPOrganizationLimit  = 8
+	MCPInstanceLimit      = 64
 )
+
+// ErrMCPAdmissionLimited is the non-distinguishing shared rate/concurrency
+// refusal. The transport translates it to the uniform authenticated 429.
+var ErrMCPAdmissionLimited = errors.New("store: MCP admission limit reached")
 
 func isNoRows(err error) bool {
 	return errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows)
@@ -435,6 +448,161 @@ func (c *Coordination) BumpWindow(ctx context.Context, bucket, subject string, w
 		return 0, fmt.Errorf("store: bump admission window %s/%s: %w", bucket, subject, err)
 	}
 	return count, nil
+}
+
+// The MCP claim lock serializes only the short datastore admission decision.
+// Calls themselves run concurrently after commit and are represented by
+// expiring rows. A crashed replica therefore releases capacity automatically.
+const mcpAdmissionAdvisoryClass = 88
+
+// AcquireMCP atomically charges the principal token bucket and claims all
+// three concurrency dimensions. No rate token is consumed unless every
+// concurrency dimension has room. The PostgreSQL clock is authoritative;
+// SQLite is single-node and uses the process clock like Coordination.Now.
+func (c *Coordination) AcquireMCP(ctx context.Context, callID, principalID, orgID string, ttl time.Duration) error {
+	if callID == "" || principalID == "" || orgID == "" || ttl <= 0 {
+		return errors.New("store: invalid MCP admission claim")
+	}
+	switch c.db.engine {
+	case EnginePostgres:
+		return c.acquireMCPPostgres(ctx, callID, principalID, orgID, ttl)
+	case EngineSQLite:
+		return c.acquireMCPSQLite(ctx, callID, principalID, orgID, ttl)
+	default:
+		return fmt.Errorf("store: MCP admission claim on unknown engine %q", c.db.engine)
+	}
+}
+
+func (c *Coordination) acquireMCPPostgres(ctx context.Context, callID, principalID, orgID string, ttl time.Duration) error {
+	tx, err := c.db.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("store: MCP admission begin: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, $2)`, coordinationAdvisoryNamespace, mcpAdmissionAdvisoryClass); err != nil {
+		return fmt.Errorf("store: MCP admission lock: %w", err)
+	}
+	var now time.Time
+	if err := tx.QueryRow(ctx, `SELECT now()`).Scan(&now); err != nil {
+		return fmt.Errorf("store: MCP admission clock: %w", err)
+	}
+	now = now.UTC()
+	if _, err := tx.Exec(ctx, `DELETE FROM mcp_inflight WHERE expires_at <= $1`, now); err != nil {
+		return fmt.Errorf("store: prune MCP claims: %w", err)
+	}
+	var principalCount, orgCount, instanceCount int64
+	if err := tx.QueryRow(ctx, `SELECT
+		COUNT(*) FILTER (WHERE principal_id = $1),
+		COUNT(*) FILTER (WHERE org_id = $2),
+		COUNT(*)
+		FROM mcp_inflight`, principalID, orgID).Scan(&principalCount, &orgCount, &instanceCount); err != nil {
+		return fmt.Errorf("store: count MCP claims: %w", err)
+	}
+	if principalCount >= MCPPrincipalLimit || orgCount >= MCPOrganizationLimit || instanceCount >= MCPInstanceLimit {
+		return ErrMCPAdmissionLimited
+	}
+
+	nextAt := now
+	err = tx.QueryRow(ctx, `SELECT next_at FROM mcp_rate_buckets WHERE principal_id = $1 FOR UPDATE`, principalID).Scan(&nextAt)
+	if err != nil && !isNoRows(err) {
+		return fmt.Errorf("store: read MCP rate bucket: %w", err)
+	}
+	if nextAt.After(now.Add(time.Duration(MCPRateCapacity-1) * MCPRateRefillInterval)) {
+		return ErrMCPAdmissionLimited
+	}
+	if nextAt.Before(now) {
+		nextAt = now
+	}
+	nextAt = nextAt.Add(MCPRateRefillInterval)
+	if _, err := tx.Exec(ctx, `INSERT INTO mcp_rate_buckets (principal_id, next_at) VALUES ($1, $2)
+		ON CONFLICT (principal_id) DO UPDATE SET next_at = EXCLUDED.next_at`, principalID, nextAt); err != nil {
+		return fmt.Errorf("store: update MCP rate bucket: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO mcp_inflight (call_id, principal_id, org_id, expires_at) VALUES ($1, $2, $3, $4)`,
+		callID, principalID, orgID, now.Add(ttl)); err != nil {
+		return fmt.Errorf("store: insert MCP claim: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("store: commit MCP admission: %w", err)
+	}
+	return nil
+}
+
+func (c *Coordination) acquireMCPSQLite(ctx context.Context, callID, principalID, orgID string, ttl time.Duration) error {
+	tx, err := c.db.sqWrite.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("store: MCP admission begin: %w", err)
+	}
+	defer tx.Rollback()
+	now := time.Now().UTC()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM mcp_inflight WHERE expires_at <= ?`, fixedStamp(now)); err != nil {
+		return fmt.Errorf("store: prune MCP claims: %w", err)
+	}
+	var principalCount, orgCount, instanceCount int64
+	if err := tx.QueryRowContext(ctx, `SELECT
+		COALESCE(SUM(CASE WHEN principal_id = ? THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN org_id = ? THEN 1 ELSE 0 END), 0),
+		COUNT(*)
+		FROM mcp_inflight`, principalID, orgID).Scan(&principalCount, &orgCount, &instanceCount); err != nil {
+		return fmt.Errorf("store: count MCP claims: %w", err)
+	}
+	if principalCount >= MCPPrincipalLimit || orgCount >= MCPOrganizationLimit || instanceCount >= MCPInstanceLimit {
+		return ErrMCPAdmissionLimited
+	}
+
+	nextAt := now
+	var nextRaw string
+	err = tx.QueryRowContext(ctx, `SELECT next_at FROM mcp_rate_buckets WHERE principal_id = ?`, principalID).Scan(&nextRaw)
+	switch {
+	case isNoRows(err):
+	case err != nil:
+		return fmt.Errorf("store: read MCP rate bucket: %w", err)
+	default:
+		nextAt, err = parseStamp(nextRaw)
+		if err != nil {
+			return fmt.Errorf("store: parse MCP rate bucket: %w", err)
+		}
+	}
+	if nextAt.After(now.Add(time.Duration(MCPRateCapacity-1) * MCPRateRefillInterval)) {
+		return ErrMCPAdmissionLimited
+	}
+	if nextAt.Before(now) {
+		nextAt = now
+	}
+	nextAt = nextAt.Add(MCPRateRefillInterval)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO mcp_rate_buckets (principal_id, next_at) VALUES (?, ?)
+		ON CONFLICT (principal_id) DO UPDATE SET next_at = excluded.next_at`, principalID, fixedStamp(nextAt)); err != nil {
+		return fmt.Errorf("store: update MCP rate bucket: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO mcp_inflight (call_id, principal_id, org_id, expires_at) VALUES (?, ?, ?, ?)`,
+		callID, principalID, orgID, fixedStamp(now.Add(ttl))); err != nil {
+		return fmt.Errorf("store: insert MCP claim: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store: commit MCP admission: %w", err)
+	}
+	return nil
+}
+
+// ReleaseMCP releases one successful claim. A missing or already-expired id is
+// harmless. Callers still fail closed on datastore errors.
+func (c *Coordination) ReleaseMCP(ctx context.Context, callID string) error {
+	if callID == "" {
+		return errors.New("store: empty MCP admission call id")
+	}
+	var err error
+	switch c.db.engine {
+	case EnginePostgres:
+		_, err = c.db.pool.Exec(ctx, `DELETE FROM mcp_inflight WHERE call_id = $1`, callID)
+	case EngineSQLite:
+		_, err = c.db.sqWrite.ExecContext(ctx, `DELETE FROM mcp_inflight WHERE call_id = ?`, callID)
+	default:
+		return fmt.Errorf("store: MCP admission release on unknown engine %q", c.db.engine)
+	}
+	if err != nil {
+		return fmt.Errorf("store: release MCP claim: %w", err)
+	}
+	return nil
 }
 
 // AccountFailureState reports an account subject's consecutive-failure count,

@@ -630,9 +630,11 @@ const (
 	StoreDefinitionsPlanPrune         StoreOp = "definitions.PruneExpiredPlans"
 	StoreDefinitionsLatestAppliedPlan StoreOp = "definitions.LatestAppliedPlan"
 
-	StoreEnvironmentsCreate     StoreOp = "environments.Create"
-	StoreEnvironmentsGet        StoreOp = "environments.Get"
-	StoreEnvironmentsList       StoreOp = "environments.List"
+	StoreEnvironmentsCreate StoreOp = "environments.Create"
+	StoreEnvironmentsGet    StoreOp = "environments.Get"
+	StoreEnvironmentsList   StoreOp = "environments.List"
+	// StoreEnvironmentsListPage is the MCP-bounded keyset environment read (#629).
+	StoreEnvironmentsListPage   StoreOp = "environments.ListPage"
 	StoreEnvironmentsCount      StoreOp = "environments.Count"
 	StoreEnvironmentsNextOrder  StoreOp = "environments.NextOrder"
 	StoreEnvironmentsUpdateNote StoreOp = "environments.UpdateNote"
@@ -650,9 +652,14 @@ const (
 	// prefix is the KEYRING's (#43, wrapped crypto material), and two unrelated
 	// senses of "key" sharing an operation prefix is how a proof minted for one
 	// would look admissible for the other.
-	StoreCatalogueCreate            StoreOp = "catalogue.Create"
-	StoreCatalogueGet               StoreOp = "catalogue.Get"
-	StoreCatalogueList              StoreOp = "catalogue.List"
+	StoreCatalogueCreate StoreOp = "catalogue.Create"
+	StoreCatalogueGet    StoreOp = "catalogue.Get"
+	StoreCatalogueList   StoreOp = "catalogue.List"
+	// The MCP-bounded catalogue reads (#629): a keyset key page, a single key
+	// resolved under the list authorization, and one key's presence rows.
+	StoreCatalogueListPage          StoreOp = "catalogue.ListPage"
+	StoreCatalogueGetInProject      StoreOp = "catalogue.GetInProject"
+	StoreCataloguePresenceForKey    StoreOp = "catalogue.PresenceForKey"
 	StoreCatalogueCount             StoreOp = "catalogue.Count"
 	StoreCatalogueAdapterPins       StoreOp = "catalogue.AdapterPins"
 	StoreCatalogueRename            StoreOp = "catalogue.Rename"
@@ -766,13 +773,16 @@ const (
 	// its changed-key rows are written in one act and must never drift.
 	StorePendingListForOwner              StoreOp = "pending.ListForOwner"
 	StorePendingListForOwnerInEnvironment StoreOp = "pending.ListForOwnerInEnvironment"
-	StorePendingListMarkers               StoreOp = "pending.ListMarkers"
-	StorePendingStage                     StoreOp = "pending.Stage"
-	StorePendingListForReencrypt          StoreOp = "pending.ListForReencrypt"
-	StorePendingReencrypt                 StoreOp = "pending.Reencrypt"
-	StorePendingDiscard                   StoreOp = "pending.Discard"
-	StorePendingDiscardEnvironment        StoreOp = "pending.DiscardEnvironment"
-	StorePendingDiscardKey                StoreOp = "pending.DiscardKey"
+	// StorePendingListForOwnerInEnvironmentPage is the MCP-bounded keyset draft
+	// read (#629).
+	StorePendingListForOwnerInEnvironmentPage StoreOp = "pending.ListForOwnerInEnvironmentPage"
+	StorePendingListMarkers                   StoreOp = "pending.ListMarkers"
+	StorePendingStage                         StoreOp = "pending.Stage"
+	StorePendingListForReencrypt              StoreOp = "pending.ListForReencrypt"
+	StorePendingReencrypt                     StoreOp = "pending.Reencrypt"
+	StorePendingDiscard                       StoreOp = "pending.Discard"
+	StorePendingDiscardEnvironment            StoreOp = "pending.DiscardEnvironment"
+	StorePendingDiscardKey                    StoreOp = "pending.DiscardKey"
 	// StorePendingCountForProjectExcludingCell is the per-project pending-cap
 	// read taken during a stage: the project's pending total, less the cell
 	// being staged (ops-spec §8, ≤100 pending versions per project).
@@ -781,9 +791,11 @@ const (
 	StoreSnapshotsLatest StoreOp = "snapshots.Latest"
 	// StoreSnapshotsProjectRevisions is the project-scoped per-environment latest
 	// revision behind the definitions plan/apply value-snapshot pin (#70).
-	StoreSnapshotsProjectRevisions            StoreOp = "snapshots.ProjectRevisions"
-	StoreSnapshotsAtRevision                  StoreOp = "snapshots.AtRevision"
-	StoreSnapshotsList                        StoreOp = "snapshots.List"
+	StoreSnapshotsProjectRevisions StoreOp = "snapshots.ProjectRevisions"
+	StoreSnapshotsAtRevision       StoreOp = "snapshots.AtRevision"
+	StoreSnapshotsList             StoreOp = "snapshots.List"
+	// StoreSnapshotsListPage is the MCP-bounded keyset revision-history read (#629).
+	StoreSnapshotsListPage                    StoreOp = "snapshots.ListPage"
 	StoreSnapshotsEntries                     StoreOp = "snapshots.Entries"
 	StoreSnapshotsListForReencrypt            StoreOp = "snapshots.ListForReencrypt"
 	StoreSnapshotsReencrypt                   StoreOp = "snapshots.Reencrypt"
@@ -1041,76 +1053,82 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	// stored credential is not something an unaudited operation may do — the
 	// fetch that presents it rides remote.list/show, which carry their own
 	// events.
-	StoreEnvironmentsGet:                     true,
-	StoreEnvironmentsList:                    true,
-	StoreEnvironmentsCount:                   true,
-	StoreEnvironmentsNextOrder:               true,
-	StoreFoldersGet:                          true,
-	StoreFoldersList:                         true,
-	StoreEnvironmentsGetSettings:             true,
-	StoreCatalogueGet:                        true,
-	StoreCatalogueList:                       true,
-	StoreCatalogueCount:                      true,
-	StoreAdaptersTarget:                      true,
-	StoreAdaptersGet:                         true,
-	StoreAdaptersConfiguration:               true,
-	StoreAdaptersList:                        true,
-	StoreAdaptersListTargets:                 true,
-	StoreAdaptersTargetKeyIDs:                true,
-	StoreAdaptersTargetKeys:                  true,
-	StoreAdaptersHealthCounts:                true,
-	StoreAdaptersMapping:                     true,
-	StoreAdaptersPlanMaterial:                true,
-	StoreAdaptersTargetEnvironments:          true,
-	StoreAdaptersEnvironments:                true,
-	StoreAdaptersConflicts:                   true,
-	StoreAdaptersMove:                        true,
-	StoreCatalogueGroupGet:                   true,
-	StoreCatalogueGroupList:                  true,
-	StoreCatalogueGroupCount:                 true,
-	StoreCataloguePresenceList:               true,
-	StoreCatalogueRevisionGet:                true,
-	StoreKeysActiveMasterWrappers:            true,
-	StoreKeysActiveTier3:                     true,
-	StoreKeysTier3Versions:                   true,
-	StoreKeysAllOpenableTier3:                true,
-	StoreKeysAssertActiveDEKVersion:          true,
-	StoreValuesListForReencrypt:              true,
-	StoreSnapshotsListForReencrypt:           true,
-	StorePendingListForReencrypt:             true,
-	StoreAdaptersListForReencrypt:            true,
-	StoreAdaptersListMovesForReencrypt:       true,
-	StoreReencryptListPasswordCreds:          true,
-	StoreReencryptListTotpCreds:              true,
-	StoreReencryptListRecoveryCodes:          true,
-	StoreReencryptListOidcProviders:          true,
-	StoreReencryptListSamlKeys:               true,
-	StoreReencryptListRemotes:                true,
-	StoreAuditTenantPage:                     true,
-	StoreAuditInstancePage:                   true,
-	StoreAuditTenantMaxSeq:                   true,
-	StoreAuditInstanceMaxSeq:                 true,
-	StoreValuesGet:                           true,
-	StoreValuesList:                          true,
-	StoreValuesEnvironmentsWithValue:         true,
-	StorePendingListForOwner:                 true,
-	StorePendingListForOwnerInEnvironment:    true,
-	StorePendingListMarkers:                  true,
-	StorePendingCountForProjectExcludingCell: true,
-	StoreValuesPayloadBytesForProject:        true,
-	StoreSnapshotsPayloadBytesForProject:     true,
-	StoreValuesInstancePayloadByProject:      true,
-	StoreSnapshotsInstancePayloadByProject:   true,
-	StoreValuesSampleSecretEntry:             true,
-	StoreBackupStateGet:                      true,
-	StoreSnapshotsLatest:                     true,
-	StoreSnapshotsAtRevision:                 true,
-	StoreSnapshotsList:                       true,
-	StoreSnapshotsEntries:                    true,
-	StoreSnapshotsSecretValueOccurrenceIDs:   true,
-	StoreSnapshotsChanges:                    true,
-	StorePinsGetForWorkload:                  true,
-	StorePinsList:                            true,
+	StoreEnvironmentsGet:                      true,
+	StoreEnvironmentsList:                     true,
+	StoreEnvironmentsListPage:                 true,
+	StoreEnvironmentsCount:                    true,
+	StoreEnvironmentsNextOrder:                true,
+	StoreFoldersGet:                           true,
+	StoreFoldersList:                          true,
+	StoreEnvironmentsGetSettings:              true,
+	StoreCatalogueGet:                         true,
+	StoreCatalogueList:                        true,
+	StoreCatalogueListPage:                    true,
+	StoreCatalogueGetInProject:                true,
+	StoreCataloguePresenceForKey:              true,
+	StoreCatalogueCount:                       true,
+	StoreAdaptersTarget:                       true,
+	StoreAdaptersGet:                          true,
+	StoreAdaptersConfiguration:                true,
+	StoreAdaptersList:                         true,
+	StoreAdaptersListTargets:                  true,
+	StoreAdaptersTargetKeyIDs:                 true,
+	StoreAdaptersTargetKeys:                   true,
+	StoreAdaptersHealthCounts:                 true,
+	StoreAdaptersMapping:                      true,
+	StoreAdaptersPlanMaterial:                 true,
+	StoreAdaptersTargetEnvironments:           true,
+	StoreAdaptersEnvironments:                 true,
+	StoreAdaptersConflicts:                    true,
+	StoreAdaptersMove:                         true,
+	StoreCatalogueGroupGet:                    true,
+	StoreCatalogueGroupList:                   true,
+	StoreCatalogueGroupCount:                  true,
+	StoreCataloguePresenceList:                true,
+	StoreCatalogueRevisionGet:                 true,
+	StoreKeysActiveMasterWrappers:             true,
+	StoreKeysActiveTier3:                      true,
+	StoreKeysTier3Versions:                    true,
+	StoreKeysAllOpenableTier3:                 true,
+	StoreKeysAssertActiveDEKVersion:           true,
+	StoreValuesListForReencrypt:               true,
+	StoreSnapshotsListForReencrypt:            true,
+	StorePendingListForReencrypt:              true,
+	StoreAdaptersListForReencrypt:             true,
+	StoreAdaptersListMovesForReencrypt:        true,
+	StoreReencryptListPasswordCreds:           true,
+	StoreReencryptListTotpCreds:               true,
+	StoreReencryptListRecoveryCodes:           true,
+	StoreReencryptListOidcProviders:           true,
+	StoreReencryptListSamlKeys:                true,
+	StoreReencryptListRemotes:                 true,
+	StoreAuditTenantPage:                      true,
+	StoreAuditInstancePage:                    true,
+	StoreAuditTenantMaxSeq:                    true,
+	StoreAuditInstanceMaxSeq:                  true,
+	StoreValuesGet:                            true,
+	StoreValuesList:                           true,
+	StoreValuesEnvironmentsWithValue:          true,
+	StorePendingListForOwner:                  true,
+	StorePendingListForOwnerInEnvironment:     true,
+	StorePendingListForOwnerInEnvironmentPage: true,
+	StorePendingListMarkers:                   true,
+	StorePendingCountForProjectExcludingCell:  true,
+	StoreValuesPayloadBytesForProject:         true,
+	StoreSnapshotsPayloadBytesForProject:      true,
+	StoreValuesInstancePayloadByProject:       true,
+	StoreSnapshotsInstancePayloadByProject:    true,
+	StoreValuesSampleSecretEntry:              true,
+	StoreBackupStateGet:                       true,
+	StoreSnapshotsLatest:                      true,
+	StoreSnapshotsAtRevision:                  true,
+	StoreSnapshotsList:                        true,
+	StoreSnapshotsListPage:                    true,
+	StoreSnapshotsEntries:                     true,
+	StoreSnapshotsSecretValueOccurrenceIDs:    true,
+	StoreSnapshotsChanges:                     true,
+	StorePinsGetForWorkload:                   true,
+	StorePinsList:                             true,
 	// Secret-change approvals (#151): the read-only doors, licensed on the
 	// audited-none request-read operation and the scheduler expiry read.
 	StoreApprovalPolicyGet:           true,
@@ -1694,7 +1712,7 @@ var operationTable = map[Operation]opSpec{
 		class:       ClassTenant,
 		level:       domain.LevelProject,
 		formula:     Formula{{Cap: domain.CapRead, At: domain.LevelProject}},
-		storeOps:    map[StoreOp]bool{StoreEnvironmentsList: true},
+		storeOps:    map[StoreOp]bool{StoreEnvironmentsList: true, StoreEnvironmentsListPage: true},
 		auditedNone: true,
 	},
 	OpEnvRename: {
@@ -1807,6 +1825,9 @@ var operationTable = map[Operation]opSpec{
 		storeOps: map[StoreOp]bool{
 			StoreCatalogueList: true, StoreCataloguePresenceList: true,
 			StoreCatalogueRevisionGet: true,
+			// The MCP-bounded key page (#629) reads the catalogue by keyset and
+			// resolves presence per page key under this same read authorization.
+			StoreCatalogueListPage: true, StoreCataloguePresenceForKey: true,
 		},
 		auditedNone: true,
 	},
@@ -2171,6 +2192,9 @@ var operationTable = map[Operation]opSpec{
 			// clone preflight reads them here to answer "would this leave a
 			// required secret absent?" before anything is written.
 			StoreCataloguePresenceList: true,
+			// The MCP-bounded inspect page (#629) walks the catalogue by keyset
+			// and resolves each page key's cell with Values().Get.
+			StoreCatalogueListPage: true,
 		},
 		auditedNone: true,
 	},
@@ -2727,7 +2751,7 @@ var operationTable = map[Operation]opSpec{
 		class:       ClassTenant,
 		level:       domain.LevelEnv,
 		formula:     Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
-		storeOps:    map[StoreOp]bool{StoreSnapshotsList: true, StoreSnapshotsChanges: true},
+		storeOps:    map[StoreOp]bool{StoreSnapshotsList: true, StoreSnapshotsChanges: true, StoreSnapshotsListPage: true},
 		auditedNone: true,
 	},
 	// `revision show` returns the change token, which is NON-SECRET metadata by
@@ -2754,6 +2778,10 @@ var operationTable = map[Operation]opSpec{
 		formula: Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
 		storeOps: map[StoreOp]bool{
 			StoreCatalogueList: true, StorePendingListForOwnerInEnvironment: true,
+			// The MCP-bounded pending page (#629) reads the caller's drafts by
+			// keyset and resolves each page key's name and classification with
+			// GetInProject, both under this read authorization.
+			StorePendingListForOwnerInEnvironmentPage: true, StoreCatalogueGetInProject: true,
 		},
 		auditedNone: true,
 	},

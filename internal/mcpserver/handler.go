@@ -42,6 +42,13 @@ type Options struct {
 	Admission      discoveryAdmission
 	Version        string
 	MaxConcurrent  int
+	// CursorSealer encrypts and authenticates pagination cursors. Its live key
+	// comes from shared authoritative configuration, so cursors are portable
+	// across replicas and token-key rotation cannot leave a stale cached key.
+	// It is required whenever the registry advertises a paginated tool. New
+	// refuses a non-empty registry without it. The crypto chokepoint confines
+	// the AEAD primitive to internal/crypto.
+	CursorSealer CursorSealer
 }
 
 type handler struct {
@@ -52,6 +59,7 @@ type handler struct {
 	trustedProxies []*net.IPNet
 	admission      discoveryAdmission
 	slots          chan struct{}
+	cursorSealer   CursorSealer
 }
 
 type bearerContextKey struct{}
@@ -91,6 +99,9 @@ func New(options Options) (http.Handler, error) {
 		}
 	}
 	registrations := options.Registry.freeze()
+	if len(registrations) > 0 && options.CursorSealer == nil {
+		return nil, errors.New("mcpserver: a paginated tool registry requires a cursor sealer")
+	}
 	server := mcp.NewServer(&mcp.Implementation{
 		Name: "hikyo", Title: "Hikyo", Description: "Read-only Hikyo configuration tools.", Version: options.Version,
 	}, &mcp.ServerOptions{
@@ -108,6 +119,7 @@ func New(options Options) (http.Handler, error) {
 		allowedOrigins: slices.Clone(options.AllowedOrigins),
 		trustedProxies: slices.Clone(options.TrustedProxies),
 		admission:      options.Admission, slots: make(chan struct{}, concurrency),
+		cursorSealer: options.CursorSealer,
 	}, nil
 }
 
@@ -230,6 +242,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	state := &callState{}
 	ctx = context.WithValue(ctx, callStateContextKey{}, state)
 	ctx = context.WithValue(ctx, bearerContextKey{}, newBearer(bearer))
+	ctx = withCursorSealer(ctx, h.cursorSealer)
 	h.serveSDK(w, r.WithContext(ctx), envelope.Method, envelope.ID, 0, state)
 }
 

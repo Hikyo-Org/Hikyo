@@ -14,6 +14,21 @@ WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id
 SELECT id, org_id, project_id, name, note, created_at, display_order FROM environments
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id) ORDER BY display_order, name;
 
+-- These two bounded reads compose List's display_order/name keyset without an
+-- OR predicate the tenant-isolation analyzer cannot prove. The store reads the
+-- remainder of the cursor's current order first, then later orders.
+-- name: ListEnvironmentsPageAtOrder :many
+SELECT id, org_id, project_id, name, note, created_at, display_order FROM environments
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
+  AND display_order = sqlc.arg(after_display_order) AND name > sqlc.arg(after_name)
+ORDER BY display_order, name LIMIT sqlc.arg(page_limit);
+
+-- name: ListEnvironmentsPageAfterOrder :many
+SELECT id, org_id, project_id, name, note, created_at, display_order FROM environments
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
+  AND display_order > sqlc.arg(after_display_order)
+ORDER BY display_order, name LIMIT sqlc.arg(page_limit);
+
 -- name: CountEnvironments :one
 SELECT COUNT(*) FROM environments WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id);
 
@@ -64,4 +79,3 @@ WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id
 -- name: ListEnvironmentProtection :many
 SELECT id, protected FROM environments
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id) ORDER BY id;
-

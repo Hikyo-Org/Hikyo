@@ -218,6 +218,11 @@ type EnvironmentReader interface {
 	Get(ctx context.Context, p authz.Proof) (Environment, error)
 	// List returns the project's environments in display order.
 	List(ctx context.Context, p authz.Proof) ([]Environment, error)
+	// ListPage is the bounded keyset read (#629): one page of environments in
+	// List's display-order/name order, strictly past the supplied tuple (-1/""
+	// for the first page), fetching at most limit rows. It never materializes
+	// the whole project to slice a limit afterwards.
+	ListPage(ctx context.Context, p authz.Proof, afterDisplayOrder int64, afterName string, limit int) ([]Environment, error)
 	// Count is the environment-count cap's input, read inside the same
 	// transaction as the insert it bounds.
 	Count(ctx context.Context, p authz.Proof) (int64, error)

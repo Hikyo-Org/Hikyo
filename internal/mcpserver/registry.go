@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -97,6 +98,15 @@ func NewRegistry() *Registry {
 
 var toolNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,128}$`)
 
+func inputSchemaOptions() *jsonschema.ForOptions {
+	return &jsonschema.ForOptions{TypeSchemas: map[reflect.Type]*jsonschema.Schema{
+		reflect.TypeFor[pageSizeInput](): {
+			Type: "integer", Minimum: jsonschema.Ptr(float64(PageSizeMin)), Maximum: jsonschema.Ptr(float64(PageSizeMax)),
+		},
+		reflect.TypeFor[cursorInput](): {Type: "string", MaxLength: jsonschema.Ptr(CursorMaxBytes)},
+	}}
+}
+
 // Register adds one typed service-operation mapping to the closed registry.
 func Register[In, Out any](registry *Registry, spec ToolSpec, handler func(context.Context, Bearer, In) (Out, error)) error {
 	if registry == nil {
@@ -134,7 +144,7 @@ func Register[In, Out any](registry *Registry, spec ToolSpec, handler func(conte
 	if !policy.ReadOnly || !policy.AuditedNone {
 		return fmt.Errorf("mcpserver: tool %q authorization operation is not an audited-none read", spec.Name)
 	}
-	inputSchema, err := jsonschema.For[In](nil)
+	inputSchema, err := jsonschema.For[In](inputSchemaOptions())
 	if err != nil {
 		return fmt.Errorf("mcpserver: tool %q input schema: %w", spec.Name, err)
 	}
@@ -187,6 +197,14 @@ func Register[In, Out any](registry *Registry, spec ToolSpec, handler func(conte
 					var zero Out
 					if errors.Is(err, ErrRateLimited) {
 						markRateLimited(ctx)
+					}
+					// Named cursor, bound, and argument errors are tenant-safe,
+					// so their exact token crosses the transport; every other
+					// failure collapses to one indistinguishable safe error, so
+					// an unauthorized read stays indistinguishable from a
+					// nonexistent one.
+					if msg := publicErrorMessage(err); msg != "" {
+						return nil, zero, errors.New(msg)
 					}
 					return nil, zero, errors.New(SafeOperationError)
 				}

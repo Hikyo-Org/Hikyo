@@ -227,6 +227,125 @@ func (q *Queries) ListEnvironments(ctx context.Context, arg ListEnvironmentsPara
 	return items, nil
 }
 
+const listEnvironmentsPageAfterOrder = `-- name: ListEnvironmentsPageAfterOrder :many
+SELECT id, org_id, project_id, name, note, created_at, display_order FROM environments
+WHERE org_id = $1 AND project_id = $2
+  AND display_order > $3
+ORDER BY display_order, name LIMIT $4
+`
+
+type ListEnvironmentsPageAfterOrderParams struct {
+	ChainOrgID        string
+	ChainProjectID    string
+	AfterDisplayOrder int64
+	PageLimit         int32
+}
+
+type ListEnvironmentsPageAfterOrderRow struct {
+	ID           string
+	OrgID        string
+	ProjectID    string
+	Name         string
+	Note         string
+	CreatedAt    pgtype.Timestamptz
+	DisplayOrder int64
+}
+
+func (q *Queries) ListEnvironmentsPageAfterOrder(ctx context.Context, arg ListEnvironmentsPageAfterOrderParams) ([]ListEnvironmentsPageAfterOrderRow, error) {
+	rows, err := q.db.Query(ctx, listEnvironmentsPageAfterOrder,
+		arg.ChainOrgID,
+		arg.ChainProjectID,
+		arg.AfterDisplayOrder,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListEnvironmentsPageAfterOrderRow
+	for rows.Next() {
+		var i ListEnvironmentsPageAfterOrderRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.Name,
+			&i.Note,
+			&i.CreatedAt,
+			&i.DisplayOrder,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEnvironmentsPageAtOrder = `-- name: ListEnvironmentsPageAtOrder :many
+SELECT id, org_id, project_id, name, note, created_at, display_order FROM environments
+WHERE org_id = $1 AND project_id = $2
+  AND display_order = $3 AND name > $4
+ORDER BY display_order, name LIMIT $5
+`
+
+type ListEnvironmentsPageAtOrderParams struct {
+	ChainOrgID        string
+	ChainProjectID    string
+	AfterDisplayOrder int64
+	AfterName         string
+	PageLimit         int32
+}
+
+type ListEnvironmentsPageAtOrderRow struct {
+	ID           string
+	OrgID        string
+	ProjectID    string
+	Name         string
+	Note         string
+	CreatedAt    pgtype.Timestamptz
+	DisplayOrder int64
+}
+
+// These two bounded reads compose List's display_order/name keyset without an
+// OR predicate the tenant-isolation analyzer cannot prove. The store reads the
+// remainder of the cursor's current order first, then later orders.
+func (q *Queries) ListEnvironmentsPageAtOrder(ctx context.Context, arg ListEnvironmentsPageAtOrderParams) ([]ListEnvironmentsPageAtOrderRow, error) {
+	rows, err := q.db.Query(ctx, listEnvironmentsPageAtOrder,
+		arg.ChainOrgID,
+		arg.ChainProjectID,
+		arg.AfterDisplayOrder,
+		arg.AfterName,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListEnvironmentsPageAtOrderRow
+	for rows.Next() {
+		var i ListEnvironmentsPageAtOrderRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.Name,
+			&i.Note,
+			&i.CreatedAt,
+			&i.DisplayOrder,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const nextEnvironmentOrder = `-- name: NextEnvironmentOrder :one
 SELECT CAST(COALESCE(MAX(display_order) + 1, 0) AS BIGINT) FROM environments
 WHERE org_id = $1 AND project_id = $2
