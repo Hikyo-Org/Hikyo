@@ -1,3 +1,4 @@
+import { useIsMutating } from '@tanstack/react-query';
 import { useEffect, useId, useState } from 'react';
 import { generatePath, Link, useNavigate, useParams } from 'react-router';
 
@@ -9,11 +10,18 @@ import {
   type DefinitionsSettings,
 } from '../api/definitions.ts';
 import {
+  cloneEnvironmentRefusalText,
   createEnvironmentRefusalText,
   cryptoFailureText,
+  deleteEnvironmentRefusalText,
+  environmentTopologyMutationKey,
+  renameEnvironmentRefusalText,
+  reorderEnvironmentsRefusalText,
   settingsFailureText,
   settingsOperationFailure,
+  useCloneEnvironment,
   useCreateEnvironment,
+  useDeleteEnvironment,
   useDeleteProject,
   useEnvironmentSettings,
   useEnvironments,
@@ -21,7 +29,9 @@ import {
   useProject,
   useProjectRetention,
   useReencryptProject,
+  useRenameEnvironment,
   useRenameProject,
+  useReorderEnvironments,
   useRotateDek,
   useSetEnvironmentSettings,
   useSetProjectRetention,
@@ -167,6 +177,13 @@ export function ProjectSettings() {
             {environments.data.items.map((environment) => (
               <li className="factor" key={environment.id}>
                 <strong className="mono">{environment.name}</strong>
+                <EnvironmentLifecycleActions
+                  org={org}
+                  project={project}
+                  environment={environment}
+                  environments={environments.data.items}
+                  onDone={feedback.ok}
+                />
               </li>
             ))}
           </ul>
@@ -478,6 +495,11 @@ function NewEnvironment({
   onDone: (text: string) => void;
 }) {
   const create = useCreateEnvironment(org, project);
+  // Any in-flight topology change (a rename/reorder/clone/delete on a row, or
+  // another create) disables creation too: all these writes share one mutation
+  // key, so creating mid-reorder cannot race the ordered set the server holds.
+  const topologyBusy =
+    useIsMutating({ mutationKey: environmentTopologyMutationKey(org, project) }) > 0;
   const nameId = useId();
   const [name, setName] = useState('');
   const [failure, setFailure] = useState<string | null>(null);
@@ -523,19 +545,250 @@ function NewEnvironment({
           className="settings-input settings-input--compact mono"
           value={name}
           placeholder="production"
-          disabled={disabled || create.isPending}
+          disabled={disabled || topologyBusy}
           onChange={(event) => setName(event.target.value)}
         />
         <button
           type="submit"
           className="btn btn--primary"
-          disabled={disabled || create.isPending || trimmed === ''}
+          disabled={disabled || topologyBusy || trimmed === ''}
         >
           Create
         </button>
       </form>
       {failure === null ? null : <Alert>{failure}</Alert>}
     </>
+  );
+}
+
+/**
+ * One environment-lifecycle refusal, tagged with the action that raised it so
+ * the alert renders beside that control rather than once at the top.
+ */
+type LifecycleFailure = {
+  readonly scope: 'rename' | 'order' | 'clone' | 'delete';
+  readonly text: string;
+};
+
+/**
+ * EnvironmentLifecycleActions gathers a project's environment-topology
+ * mutations under one per-row disclosure: rename, whole-set reorder,
+ * clone-at-creation, and typed-name delete. Each keeps its refusal beside the
+ * control that raised it; a success is announced through the page feedback the
+ * query invalidation then fills with the changed list.
+ */
+export function EnvironmentLifecycleActions({
+  org,
+  project,
+  environment,
+  environments,
+  onDone,
+}: {
+  readonly org: string;
+  readonly project: string;
+  readonly environment: { readonly id: string; readonly name: string };
+  readonly environments: readonly { readonly id: string; readonly name: string }[];
+  readonly onDone: (text: string) => void;
+}) {
+  const rename = useRenameEnvironment(org, project);
+  const remove = useDeleteEnvironment(org, project, () =>
+    onDone(`Environment ${environment.name} deleted.`),
+  );
+  const reorder = useReorderEnvironments(org, project);
+  const clone = useCloneEnvironment(org, project);
+  // Shared across every row: any topology write in flight (this row's or a
+  // sibling's) disables all of them, so two open disclosures cannot submit
+  // whole-set reorders from the same stale snapshot and silently undo each
+  // other. All four hooks plus create carry one mutation key for this count.
+  const busy =
+    useIsMutating({ mutationKey: environmentTopologyMutationKey(org, project) }) > 0;
+  const renameId = useId();
+  const cloneId = useId();
+  const [renameName, setRenameName] = useState('');
+  const [cloneName, setCloneName] = useState('');
+  const [failure, setFailure] = useState<LifecycleFailure | null>(null);
+
+  const index = environments.findIndex((candidate) => candidate.id === environment.id);
+  if (index === -1) {
+    throw new Error(`environment ${environment.id} is missing from its project order`);
+  }
+
+  // Reorder is a whole-set replacement: send every id once, with this
+  // environment and its neighbour swapped. A partial list would drop the
+  // environments it omits.
+  const move = (offset: -1 | 1) => {
+    const target = environments[index + offset];
+    if (target === undefined) return;
+    setFailure(null);
+    reorder.mutate(
+      {
+        environmentIds: environments.map((candidate) => {
+          if (candidate.id === environment.id) return target.id;
+          if (candidate.id === target.id) return environment.id;
+          return candidate.id;
+        }),
+      },
+      {
+        onSuccess: () =>
+          onDone(`Environment ${environment.name} moved ${offset === -1 ? 'up' : 'down'}.`),
+        onError: (error) =>
+          setFailure({ scope: 'order', text: reorderEnvironmentsRefusalText(error) }),
+      },
+    );
+  };
+
+  return (
+    <details className="environment-lifecycle">
+      <summary>Manage {environment.name}</summary>
+
+      <form
+        className="settings-row"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const name = renameName.trim();
+          if (name === '' || name === environment.name) return;
+          setFailure(null);
+          rename.mutate(
+            { environment: environment.id, name },
+            {
+              onSuccess: (renamed) => {
+                setRenameName('');
+                onDone(`Environment ${environment.name} renamed to ${renamed.name}.`);
+              },
+              onError: (error) =>
+                setFailure({ scope: 'rename', text: renameEnvironmentRefusalText(error) }),
+            },
+          );
+        }}
+      >
+        <div className="settings-row__copy">
+          <span className="settings-row__title">Rename</span>
+          <span className="settings-row__detail">give {environment.name} a new name</span>
+        </div>
+        <span className="settings-row__spacer" />
+        <label className="visually-hidden" htmlFor={renameId}>
+          New name for {environment.name}
+        </label>
+        <input
+          id={renameId}
+          name="rename-environment"
+          className="settings-input settings-input--compact mono"
+          value={renameName}
+          disabled={busy}
+          onChange={(event) => setRenameName(event.target.value)}
+        />
+        <button
+          type="submit"
+          className="btn"
+          disabled={busy || renameName.trim() === '' || renameName.trim() === environment.name}
+        >
+          Rename environment
+        </button>
+      </form>
+      {failure?.scope === 'rename' ? <Alert>{failure.text}</Alert> : null}
+
+      <div className="settings-row">
+        <div className="settings-row__copy">
+          <span className="settings-row__title">Order</span>
+          <span className="settings-row__detail">
+            move sends the complete project order as one atomic change
+          </span>
+        </div>
+        <span className="settings-row__spacer" />
+        <button
+          type="button"
+          className="btn"
+          aria-label={`Move ${environment.name} up`}
+          disabled={busy || index === 0}
+          onClick={() => move(-1)}
+        >
+          Move up
+        </button>
+        <button
+          type="button"
+          className="btn"
+          aria-label={`Move ${environment.name} down`}
+          disabled={busy || index === environments.length - 1}
+          onClick={() => move(1)}
+        >
+          Move down
+        </button>
+      </div>
+      {failure?.scope === 'order' ? <Alert>{failure.text}</Alert> : null}
+
+      <form
+        className="settings-row"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const name = cloneName.trim();
+          if (name === '') return;
+          setFailure(null);
+          clone.mutate(
+            { sourceEnvironment: environment.id, name },
+            {
+              onSuccess: (result) => {
+                setCloneName('');
+                const copied = result.copied.length;
+                const omitted = result.uncopied_secrets.length;
+                onDone(
+                  `Environment ${environment.name} cloned to ${result.environment.name}. Copied ${copied} ${copied === 1 ? 'value' : 'values'}; ${omitted} ${omitted === 1 ? 'secret' : 'secrets'} could not be copied.`,
+                );
+              },
+              onError: (error) =>
+                setFailure({ scope: 'clone', text: cloneEnvironmentRefusalText(error) }),
+            },
+          );
+        }}
+      >
+        <div className="settings-row__copy">
+          <span className="settings-row__title">Clone</span>
+          <span className="settings-row__detail">
+            copy {environment.name} into a new environment
+          </span>
+        </div>
+        <span className="settings-row__spacer" />
+        <label className="visually-hidden" htmlFor={cloneId}>
+          Clone {environment.name} into
+        </label>
+        <input
+          id={cloneId}
+          name="clone-environment"
+          className="settings-input settings-input--compact mono"
+          value={cloneName}
+          disabled={busy}
+          onChange={(event) => setCloneName(event.target.value)}
+        />
+        <button type="submit" className="btn" disabled={busy || cloneName.trim() === ''}>
+          Clone environment
+        </button>
+      </form>
+      {failure?.scope === 'clone' ? <Alert>{failure.text}</Alert> : null}
+
+      <TypedNameConfirm
+        key={environment.id}
+        label={`Delete ${environment.name}`}
+        expect={environment.name}
+        action="Delete environment"
+        busy={busy}
+        hint={
+          <>
+            This permanently deletes the environment and its values, drafts, revision history,
+            pins, and snapshots. Type its name exactly to continue.
+          </>
+        }
+        onConfirm={() => {
+          setFailure(null);
+          remove.mutate(
+            { environment: environment.id },
+            {
+              onError: (error) =>
+                setFailure({ scope: 'delete', text: deleteEnvironmentRefusalText(error) }),
+            },
+          );
+        }}
+      />
+      {failure?.scope === 'delete' ? <Alert>{failure.text}</Alert> : null}
+    </details>
   );
 }
 

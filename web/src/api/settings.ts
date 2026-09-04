@@ -469,9 +469,22 @@ export function useCreateProject(org: string) {
  * key both this page's `useEnvironments` and the matrix's own read share, so a
  * created environment surfaces in the settings list AND the matrix at once.
  */
+/**
+ * The shared key every environment-topology mutation (create, rename, delete,
+ * reorder, clone) carries, so `useIsMutating` can gate the whole Environments
+ * panel on any one of them being in flight. Reorder replaces the complete
+ * ordered set, so two topology writes racing on the same stale snapshot would
+ * let the later response silently undo part of the earlier one; serialising
+ * them behind this key is what prevents that.
+ */
+export function environmentTopologyMutationKey(org: string, project: string) {
+  return ['environment-topology', org, project] as const;
+}
+
 export function useCreateEnvironment(org: string, project: string) {
   const queries = useQueryClient();
   return useMutation({
+    mutationKey: environmentTopologyMutationKey(org, project),
     mutationFn: (input: { name: string }) =>
       parsed(createEnvironmentOp, { path: { org, project }, body: { name: input.name } }),
     onSuccess: () => queries.invalidateQueries({ queryKey: environmentsKey(org, project) }),
@@ -497,6 +510,7 @@ function invalidateEnvironmentTopology(
 export function useRenameEnvironment(org: string, project: string) {
   const queries = useQueryClient();
   return useMutation({
+    mutationKey: environmentTopologyMutationKey(org, project),
     mutationFn: (input: { environment: string; name: string }) =>
       parsed(renameEnvironmentOp, {
         path: { org, project, environment: input.environment },
@@ -514,6 +528,7 @@ export function useDeleteEnvironment(
 ) {
   const queries = useQueryClient();
   return useMutation({
+    mutationKey: environmentTopologyMutationKey(org, project),
     mutationFn: (input: { environment: string }) =>
       ok(deleteEnvironmentOp, { path: { org, project, environment: input.environment } }),
     // The list invalidation unmounts the deleted row. Run its durable parent
@@ -530,6 +545,7 @@ export function useDeleteEnvironment(
 export function useReorderEnvironments(org: string, project: string) {
   const queries = useQueryClient();
   return useMutation({
+    mutationKey: environmentTopologyMutationKey(org, project),
     mutationFn: (input: { environmentIds: readonly string[] }) =>
       parsed(reorderEnvironmentsOp, {
         path: { org, project },
@@ -543,6 +559,7 @@ export function useReorderEnvironments(org: string, project: string) {
 export function useCloneEnvironment(org: string, project: string) {
   const queries = useQueryClient();
   return useMutation({
+    mutationKey: environmentTopologyMutationKey(org, project),
     mutationFn: (input: { sourceEnvironment: string; name: string }) =>
       parsed(cloneEnvironmentOp, {
         path: { org, project },
@@ -582,28 +599,101 @@ export function createProjectRefusalText(error: unknown): string {
 }
 
 /**
- * createEnvironmentRefusalText is the environment counterpart: the same uniform
- * 403/404, and the capability it names is `definitions-edit` on the project.
+ * Every environment lifecycle refusal (create, rename, delete, reorder, clone)
+ * needs `definitions-edit` on the project and keeps the same uniform 403/404,
+ * so the status mapping lives once here. Each caller supplies only the four
+ * sentences the shared status codes cannot know: the capability act it names,
+ * and the invalid/conflict/uncertain fallbacks for when the server sends no
+ * caller-safe detail of its own.
  */
-export function createEnvironmentRefusalText(error: unknown): string {
+function environmentLifecyclePermission(action: string): string {
+  return `You are not permitted to ${action} — that needs definitions-edit on the project.`;
+}
+
+type EnvironmentLifecycleRefusal = {
+  readonly action: string;
+  readonly invalid: string;
+  readonly conflict: string;
+  readonly uncertain: string;
+};
+
+function environmentLifecycleRefusalText(
+  error: unknown,
+  refusal: EnvironmentLifecycleRefusal,
+): string {
   if (error instanceof ApiError) {
     switch (error.status) {
       case 400:
-        return error.detail ?? 'The environment name is invalid.';
+        return error.detail ?? refusal.invalid;
       case 401:
         return 'Your session ended. Sign in again to continue.';
       case 403:
       case 404:
-        return 'You are not permitted to create an environment here — that needs definitions-edit on the project.';
+        return environmentLifecyclePermission(refusal.action);
       case 409:
-        return error.detail ?? 'This environment name is already in use.';
+        return error.detail ?? refusal.conflict;
       case 429:
         return 'Too many attempts right now. Wait a moment and try again.';
-      default:
-        return 'The server failed; whether the environment was created is unknown — reload to check.';
     }
   }
-  return 'The server failed; whether the environment was created is unknown — reload to check.';
+  return refusal.uncertain;
+}
+
+/**
+ * createEnvironmentRefusalText is the project counterpart of the create-project
+ * mapper: the same uniform 403/404, naming `definitions-edit` on the project.
+ */
+export function createEnvironmentRefusalText(error: unknown): string {
+  return environmentLifecycleRefusalText(error, {
+    action: 'create an environment here',
+    invalid: 'The environment name is invalid.',
+    conflict: 'This environment name is already in use.',
+    uncertain:
+      'The server failed; whether the environment was created is unknown — reload to check.',
+  });
+}
+
+/** Refusal text for environment rename, including uncertain network outcomes. */
+export function renameEnvironmentRefusalText(error: unknown): string {
+  return environmentLifecycleRefusalText(error, {
+    action: 'rename this environment',
+    invalid: 'The environment name is invalid.',
+    conflict: 'This environment name is already in use.',
+    uncertain:
+      'The server failed; whether the environment was renamed is unknown — reload to check.',
+  });
+}
+
+/** Refusal text for environment deletion, including uncertain network outcomes. */
+export function deleteEnvironmentRefusalText(error: unknown): string {
+  return environmentLifecycleRefusalText(error, {
+    action: 'delete this environment',
+    invalid: 'The environment cannot be deleted from this request.',
+    conflict: 'The current environment state refused deletion. Reload before retrying.',
+    uncertain:
+      'The server failed; whether the environment was deleted is unknown — reload to check.',
+  });
+}
+
+/** Refusal text for whole-set reorder, including uncertain network outcomes. */
+export function reorderEnvironmentsRefusalText(error: unknown): string {
+  return environmentLifecycleRefusalText(error, {
+    action: 'reorder these environments',
+    invalid: 'The complete environment order is invalid. Reload before retrying.',
+    conflict: 'The current environment state refused reordering. Reload before retrying.',
+    uncertain: 'The server failed; whether the order changed is unknown — reload to check.',
+  });
+}
+
+/** Refusal text for clone-at-creation, including uncertain network outcomes. */
+export function cloneEnvironmentRefusalText(error: unknown): string {
+  return environmentLifecycleRefusalText(error, {
+    action: 'clone this environment',
+    invalid: 'The cloned environment name or source is invalid.',
+    conflict: 'The clone conflicts with the current environment state.',
+    uncertain:
+      'The server failed; whether the environment was cloned is unknown — reload to check.',
+  });
 }
 
 /**
