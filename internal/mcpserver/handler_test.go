@@ -393,6 +393,21 @@ func TestProtocolMirrorHeadersAreRequiredAndExact(t *testing.T) {
 	}
 }
 
+func TestMissingModernRequestMetadataUsesInvalidParams(t *testing.T) {
+	registry, _ := testRegistry(t, "echo")
+	h := testHandler(t, registry)
+	for _, body := range [][]byte{
+		[]byte(`{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{}}`),
+		[]byte(`{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/clientCapabilities":{}}}}`),
+	} {
+		req := request(http.MethodPost, "https://hikyo.example.com/mcp", "server/discover", "", body)
+		rec := serve(t, h, req)
+		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"code":-32602`) {
+			t.Fatalf("missing metadata = %d %q", rec.Code, rec.Body.String())
+		}
+	}
+}
+
 func TestDiscoveryAdmissionAndToolConcurrencyAreBounded(t *testing.T) {
 	registry, _ := testRegistry(t, "echo")
 	h, err := New(Options{

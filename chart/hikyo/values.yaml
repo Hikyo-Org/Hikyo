@@ -56,6 +56,14 @@ rootKey:
 # Hikyo's, because Hikyo deliberately sends neither directive.
 externalOrigin: ""
 
+# Controlled-bearer MCP endpoint. Disabled unless explicitly enabled. Tokens
+# stay in MCP client secret stores and never belong in chart values.
+mcp:
+  enabled: false
+  # Exact browser origins accepted by the request-origin guard. Non-browser
+  # clients omit Origin and do not need an entry.
+  allowedOrigins: []
+
 tls:
   # Optional Secret containing tls.crt and tls.key. Configure this or trusted
   # proxy CIDRs. A rootless same-image helper stages and watches an owner-mode

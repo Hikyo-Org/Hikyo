@@ -1,0 +1,3 @@
+allowBuilds:
+  # The pinned Inspector package installs its equally pinned bundled clients.
+  '@modelcontextprotocol/inspector': true

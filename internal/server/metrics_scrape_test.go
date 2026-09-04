@@ -1,7 +1,9 @@
 package server_test
 
 import (
+	"bytes"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/admission"
+	"github.com/Hikyo-Org/hikyo/internal/mcpserver"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 )
 
@@ -148,6 +151,74 @@ func TestMetricsExposeREDCountersAndAdmissionGauges(t *testing.T) {
 	}
 	// The full family/label/series-count pinning against a live scrape is
 	// conformance.TestMetricRegistryIsPinned (ops-spec §10 / invariant 3).
+}
+
+func TestMCPMetricsAndAccessLogsUseOnlyClosedLabels(t *testing.T) {
+	metrics := server.NewMetrics(nil)
+	var logs bytes.Buffer
+	log := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	handler := metrics.ObserveMCP(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), log, []string{"hikyo_list_definitions"})
+
+	for _, request := range []struct {
+		method string
+		tool   string
+	}{
+		{method: "server/discover"},
+		{method: "tools/call", tool: "hikyo_list_definitions"},
+		{method: "tools/call", tool: "CANARY-SECRET-TOOL"},
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+		req.Header.Set("Mcp-Method", request.method)
+		if request.tool != "" {
+			req.Header.Set("Mcp-Name", request.tool)
+		}
+		req.Header.Set("Authorization", "Bearer CANARY-BEARER")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+	}
+
+	operational := httptest.NewRecorder()
+	server.NewOperational(nil, stubRetentionHealth{}, metrics).ServeHTTP(operational,
+		httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := operational.Body.String()
+	mustContain(t, body, "# TYPE "+server.MetricMCPRequestsTotal+" counter")
+	mustContain(t, body, "# TYPE "+server.MetricMCPRequestsInFlight+" gauge")
+	mustContain(t, body, "# TYPE "+server.MetricMCPRequestDuration+" histogram")
+	mustContain(t, body, server.MetricMCPRequestsTotal+`{method="server/discover",status="2xx",tool="none"} 1`)
+	mustContain(t, body, server.MetricMCPRequestsTotal+`{method="tools/call",status="2xx",tool="hikyo_list_definitions"} 1`)
+	mustContain(t, body, server.MetricMCPRequestsTotal+`{method="tools/call",status="2xx",tool="other"} 1`)
+	if strings.Contains(body, "CANARY") || strings.Contains(logs.String(), "CANARY") {
+		t.Fatalf("MCP telemetry leaked request-controlled or bearer material\nmetrics:\n%s\nlogs:\n%s", body, logs.String())
+	}
+}
+
+func TestMCPMetricsRecoverAndRecordPanicsWithoutLoggingPanicValue(t *testing.T) {
+	metrics := server.NewMetrics(nil)
+	var logs bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	handler := metrics.ObserveMCP(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic("Bearer tenant-secret-value")
+	}), log, mcpserver.ProductionToolNames())
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	request.Header.Set("Mcp-Method", "tools/call")
+	request.Header.Set("Mcp-Name", mcpserver.ToolListDefinitions)
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("panic response = %d, want 500", recorder.Code)
+	}
+
+	operational := httptest.NewRecorder()
+	server.NewOperational(nil, stubRetentionHealth{}, metrics).ServeHTTP(operational,
+		httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := operational.Body.String()
+	mustContain(t, body, server.MetricMCPRequestsTotal+`{method="tools/call",status="5xx",tool="hikyo_list_definitions"} 1`)
+	if strings.Contains(logs.String(), "tenant-secret-value") {
+		t.Fatal("MCP panic value reached the access log")
+	}
 }
 
 func mustContain(t *testing.T, body, want string) {

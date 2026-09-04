@@ -612,6 +612,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		if err != nil {
 			return nil, fmt.Errorf("boot: refusing to serve: MCP transport: %w", err)
 		}
+		mcpHandler = metrics.ObserveMCP(mcpHandler, log, mcpserver.ProductionToolNames())
 	}
 
 	log.Info("boot complete", "version", Version, "engine", sc.Engine, "external_origin", cfg.ExternalOrigin,
@@ -764,14 +765,93 @@ func parseCIDRs(raw []string) ([]*net.IPNet, error) {
 // read, request read, idle keep-alive, and header size. WriteTimeout stays
 // deliberately unset — long-lived streamed responses (SSE) arrive later.
 // Tuned values belong to the ops spec.
-func newHTTPServer(h http.Handler) *http.Server {
-	return &http.Server{
-		Handler:           h,
+type managedHTTPServer struct {
+	*http.Server
+	cancelActive context.CancelFunc
+	requests     *requestTracker
+}
+
+type requestTracker struct {
+	handler http.Handler
+	mu      sync.Mutex
+	active  sync.WaitGroup
+	stopped bool
+}
+
+func (t *requestTracker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	t.mu.Lock()
+	if t.stopped {
+		t.mu.Unlock()
+		http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
+		return
+	}
+	t.active.Add(1)
+	t.mu.Unlock()
+	defer t.active.Done()
+	t.handler.ServeHTTP(w, r)
+}
+
+func (t *requestTracker) stop() {
+	t.mu.Lock()
+	t.stopped = true
+	t.mu.Unlock()
+}
+
+func newHTTPServer(h http.Handler) *managedHTTPServer {
+	activeContext, cancelActive := context.WithCancel(context.Background())
+	requests := &requestTracker{handler: h}
+	return &managedHTTPServer{Server: &http.Server{
+		Handler:           requests,
+		BaseContext:       func(net.Listener) context.Context { return activeContext },
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 		MaxHeaderBytes:    64 << 10,
+	}, cancelActive: cancelActive, requests: requests}
+}
+
+// shutdownHTTPServers gives every active request the same drain window. If the
+// window expires, Close tears down the connections so request contexts are
+// cancelled instead of leaving handlers running after Serve returns.
+func shutdownHTTPServers(grace time.Duration, servers ...*managedHTTPServer) error {
+	ctx, cancel := context.WithTimeout(context.Background(), grace)
+	defer cancel()
+	for _, httpServer := range servers {
+		httpServer.requests.stop()
 	}
+
+	errs := make(chan error, len(servers))
+	var shutdownWG sync.WaitGroup
+	for _, httpServer := range servers {
+		shutdownWG.Add(1)
+		go func() {
+			defer shutdownWG.Done()
+			errs <- httpServer.Shutdown(ctx)
+		}()
+	}
+	shutdownWG.Wait()
+	close(errs)
+	var joined error
+	for err := range errs {
+		joined = errors.Join(joined, err)
+	}
+	if ctx.Err() != nil {
+		for _, httpServer := range servers {
+			httpServer.cancelActive()
+			joined = errors.Join(joined, httpServer.Close())
+		}
+	} else {
+		for _, httpServer := range servers {
+			httpServer.cancelActive()
+		}
+	}
+	// Shutdown waits for graceful completions. After forced cancellation,
+	// Close only tears down connections, so explicitly wait for deferred
+	// request cleanup before the caller releases shared stores and services.
+	for _, httpServer := range servers {
+		httpServer.requests.active.Wait()
+	}
+	return joined
 }
 
 // Serve blocks until ctx is cancelled, then shuts down gracefully.
@@ -881,9 +961,7 @@ func (s *Server) serve(ctx context.Context, ready func()) error {
 	case serveErr = <-errCh:
 	case <-ctx.Done():
 	}
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	shutdownErr := errors.Join(publicServer.Shutdown(shutdownCtx), operationalServer.Shutdown(shutdownCtx))
-	cancel()
+	shutdownErr := shutdownHTTPServers(5*time.Second, publicServer, operationalServer)
 	serveWG.Wait()
 	if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 		return serveErr

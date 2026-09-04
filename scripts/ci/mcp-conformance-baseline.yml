@@ -1,0 +1,5 @@
+server:
+  # Phase 1 advertises tools only. Prompts and resources are explicitly absent.
+  - caching:sep-2549-prompts-list-caching-hints
+  - caching:sep-2549-resources-list-caching-hints
+  - caching:sep-2549-resources-templates-list-caching-hints
