@@ -11,20 +11,15 @@ import (
 )
 
 const clampCredentialExpiry = `-- name: ClampCredentialExpiry :execrows
-UPDATE machine_credentials SET expires_at = ?
-WHERE revoked_at IS NULL AND lifetime = 'finite' AND expires_at > ?
+UPDATE machine_credentials SET expires_at = ?1
+WHERE revoked_at IS NULL AND lifetime = 'finite' AND expires_at > ?1
 `
-
-type ClampCredentialExpiryParams struct {
-	ExpiresAt   sql.NullString
-	ExpiresAt_2 sql.NullString
-}
 
 // The clamp itself. It moves expiry DOWN to the new ceiling and never up: a
 // credential already inside the ceiling is untouched.
 // hikyo:authn-resolution
-func (q *Queries) ClampCredentialExpiry(ctx context.Context, arg ClampCredentialExpiryParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, clampCredentialExpiry, arg.ExpiresAt, arg.ExpiresAt_2)
+func (q *Queries) ClampCredentialExpiry(ctx context.Context, ceiling sql.NullString) (int64, error) {
+	result, err := q.db.ExecContext(ctx, clampCredentialExpiry, ceiling)
 	if err != nil {
 		return 0, err
 	}

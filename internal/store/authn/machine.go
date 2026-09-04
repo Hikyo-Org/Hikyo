@@ -844,9 +844,7 @@ func (r *Resolver) ClampIndefiniteCredentials(ctx context.Context, ceiling time.
 // resurrect the window this clamp took away.
 func (r *Resolver) ClampCredentialExpiry(ctx context.Context, ceiling time.Time) (int64, error) {
 	if r.sq != nil {
-		return r.sq.ClampCredentialExpiry(ctx, sqlitegen.ClampCredentialExpiryParams{
-			ExpiresAt: nullString(encodeTime(ceiling)), ExpiresAt_2: nullString(encodeTime(ceiling)),
-		})
+		return r.sq.ClampCredentialExpiry(ctx, nullString(encodeTime(ceiling)))
 	}
 	return r.pg.ClampCredentialExpiry(ctx, nullPGTime(ceiling))
 }

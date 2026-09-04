@@ -1587,7 +1587,7 @@
     "engine": "sqlite",
     "name": "ClampCredentialExpiry",
     "annotation": "authn-resolution",
-    "hash": "62a23c1691fe31f92c0663b3769cdd7e66a2263995e7003202928cb56b355347"
+    "hash": "ed703941013bc663185b53f60243d9fd6e1d77d7678d113d089098975e80b74e"
   },
   {
     "engine": "sqlite",

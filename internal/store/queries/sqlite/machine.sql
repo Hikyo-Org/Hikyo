@@ -152,8 +152,8 @@ ORDER BY id;
 -- credential already inside the ceiling is untouched.
 -- hikyo:authn-resolution
 -- name: ClampCredentialExpiry :execrows
-UPDATE machine_credentials SET expires_at = ?
-WHERE revoked_at IS NULL AND lifetime = 'finite' AND expires_at > ?;
+UPDATE machine_credentials SET expires_at = sqlc.arg(ceiling)
+WHERE revoked_at IS NULL AND lifetime = 'finite' AND expires_at > sqlc.arg(ceiling);
 
 -- The policy row lock. A mint reads the ceiling and the cap and then
 -- inserts; a tightening reads the affected set and then clamps. Without a
