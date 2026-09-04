@@ -45,26 +45,8 @@ but it is not a substitute for this signature.
 
   The hook checks every commit between `origin/main` and each branch being
   pushed. Keep the hook installed; do not bypass it with `--no-verify`.
-- After a reboot, restart, or GPG-agent timeout, GPG may be installed and
-  configured but still locked. Before the first commit, verify non-interactive
-  signing works:
-
-  ```sh
-  printf test | gpg --batch --pinentry-mode loopback \
-    --local-user 30CC8A404B41D6AE2B11596FEA4208DC5ABEB135 --sign >/dev/null
-  ```
-
-- If that command fails with `No pinentry`, `can't get input`, or another
-  locked-agent error, stop before committing, rebasing, or pushing. Ask the
-  user to unlock GPG. The user can trigger the pinentry prompt with:
-
-  ```sh
-  printf unlock | gpg \
-    --local-user 30CC8A404B41D6AE2B11596FEA4208DC5ABEB135 --sign >/dev/null
-  ```
-
-  Re-run the non-interactive check after the user unlocks GPG. Do not bypass
-  signing to keep working.
+- Commit normally with signing enabled. If `git commit -s` itself fails to
+  sign, stop and report the exact error. Never disable or bypass signing.
 - Before every push, verify the complete pull-request range:
 
   ```sh
