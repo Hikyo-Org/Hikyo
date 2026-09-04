@@ -27,7 +27,7 @@ func TestRegistryRefusesInvalidDuplicateAndLateRows(t *testing.T) {
 	if err := Register(registry, valid, handler); err == nil || !strings.Contains(err.Error(), "duplicate") {
 		t.Fatalf("duplicate registration error = %v", err)
 	}
-	if _, err := New(Options{Registry: registry, ExternalOrigin: "https://hikyo.example.com"}); err != nil {
+	if _, err := New(Options{Registry: registry, ExternalOrigin: "https://hikyo.example.com", CursorSealer: testCursorSealer}); err != nil {
 		t.Fatal(err)
 	}
 	late := valid

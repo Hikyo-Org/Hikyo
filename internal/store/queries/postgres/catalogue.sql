@@ -57,6 +57,28 @@ SELECT id, org_id, project_id, name, folder_path, classification, description,
        group_id, created_at
 FROM keys WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id) ORDER BY name;
 
+-- ListKeysPage is the MCP-bounded keyset read (#629). name is UNIQUE per
+-- project, so it is a stable single-column cursor: the statement fetches
+-- strictly past the last returned name and never materializes the whole
+-- catalogue to slice a limit afterwards.
+-- name: ListKeysPage :many
+SELECT id, org_id, project_id, name, folder_path, classification, description,
+       deprecated, deprecation_note, declaration, required_mode, forbidden_mode,
+       group_id, created_at
+FROM keys WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
+  AND name > sqlc.arg(after_name)
+ORDER BY name LIMIT sqlc.arg(page_limit);
+
+-- GetKeyInProject resolves one key by id under the key.list authorization
+-- (StoreCatalogueList), so the MCP pending-change page can attach a page-bounded
+-- key name and classification without a JOIN or a whole-catalogue read.
+-- name: GetKeyInProject :one
+SELECT id, org_id, project_id, name, folder_path, classification, description,
+       deprecated, deprecation_note, declaration, required_mode, forbidden_mode,
+       group_id, created_at
+FROM keys WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
+  AND id = sqlc.arg(key_id);
+
 -- name: CountKeys :one
 SELECT COUNT(*) FROM keys
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id);
@@ -119,6 +141,16 @@ SELECT org_id, project_id, key_id, environment_id, rule
 FROM key_presence_environments
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
 ORDER BY key_id, rule, environment_id;
+
+-- ListKeyPresenceForKey reads one key's explicit presence rules, so the MCP
+-- definitions page resolves presence per page key instead of listing the whole
+-- project's presence rows.
+-- name: ListKeyPresenceForKey :many
+SELECT org_id, project_id, key_id, environment_id, rule
+FROM key_presence_environments
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
+  AND key_id = sqlc.arg(key_id)
+ORDER BY rule, environment_id;
 
 -- DeleteKeyPresence clears one key's explicit sets so a declaration save can
 -- rewrite them whole. Zero rows is the ordinary case (a key whose modes were

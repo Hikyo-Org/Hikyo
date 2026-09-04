@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -212,4 +213,110 @@ func runCoordinationInvariants(t *testing.T, db *store.DB) {
 			t.Fatalf("cleanup prune: %v", err)
 		}
 	})
+
+	t.Run("mcp_admission_is_shared_and_bounded", func(t *testing.T) {
+		const ttl = time.Minute
+		seedMCPSubject(t, db, "mcp-rate-principal", "mcp-rate-org")
+		leases := make([]string, 0, store.MCPPrincipalLimit)
+		for i := range store.MCPPrincipalLimit {
+			id := fmt.Sprintf("mcp-principal-call-%d", i)
+			if err := c.AcquireMCP(ctx, id, "mcp-rate-principal", "mcp-rate-org", ttl); err != nil {
+				t.Fatalf("principal claim %d: %v", i+1, err)
+			}
+			leases = append(leases, id)
+		}
+		if err := db.Coordination().AcquireMCP(ctx, "mcp-principal-overflow", "mcp-rate-principal", "mcp-rate-org", ttl); !errors.Is(err, store.ErrMCPAdmissionLimited) {
+			t.Fatalf("principal overflow = %v, want ErrMCPAdmissionLimited", err)
+		}
+		for _, id := range leases {
+			if err := c.ReleaseMCP(ctx, id); err != nil {
+				t.Fatalf("release %s: %v", id, err)
+			}
+		}
+
+		// The rejected concurrency claim did not consume a token: 16 more
+		// admitted calls fill the capacity after the 4 successful claims.
+		for i := store.MCPPrincipalLimit; i < store.MCPRateCapacity; i++ {
+			id := fmt.Sprintf("mcp-rate-call-%d", i)
+			if err := c.AcquireMCP(ctx, id, "mcp-rate-principal", "mcp-rate-org", ttl); err != nil {
+				t.Fatalf("rate fill %d: %v", i+1, err)
+			}
+			if err := c.ReleaseMCP(ctx, id); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := db.Coordination().AcquireMCP(ctx, "mcp-rate-overflow", "mcp-rate-principal", "mcp-rate-org", ttl); !errors.Is(err, store.ErrMCPAdmissionLimited) {
+			t.Fatalf("rate overflow = %v, want ErrMCPAdmissionLimited", err)
+		}
+
+		orgLeases := make([]string, 0, store.MCPOrganizationLimit)
+		for i := range store.MCPOrganizationLimit + 1 {
+			principal := fmt.Sprintf("mcp-org-principal-%d", i)
+			seedMCPSubject(t, db, principal, "mcp-shared-org")
+			id := fmt.Sprintf("mcp-org-call-%d", i)
+			err := db.Coordination().AcquireMCP(ctx, id, principal, "mcp-shared-org", ttl)
+			if i == store.MCPOrganizationLimit {
+				if !errors.Is(err, store.ErrMCPAdmissionLimited) {
+					t.Fatalf("org overflow = %v, want ErrMCPAdmissionLimited", err)
+				}
+				break
+			}
+			if err != nil {
+				t.Fatalf("org claim %d: %v", i+1, err)
+			}
+			orgLeases = append(orgLeases, id)
+		}
+		for _, id := range orgLeases {
+			if err := c.ReleaseMCP(ctx, id); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		instanceLeases := make([]string, 0, store.MCPInstanceLimit)
+		for i := range store.MCPInstanceLimit + 1 {
+			principal := fmt.Sprintf("mcp-instance-principal-%d", i)
+			org := fmt.Sprintf("mcp-instance-org-%d", i/store.MCPOrganizationLimit)
+			seedMCPSubject(t, db, principal, org)
+			id := fmt.Sprintf("mcp-instance-call-%d", i)
+			err := db.Coordination().AcquireMCP(ctx, id, principal, org, ttl)
+			if i == store.MCPInstanceLimit {
+				if !errors.Is(err, store.ErrMCPAdmissionLimited) {
+					t.Fatalf("instance overflow = %v, want ErrMCPAdmissionLimited", err)
+				}
+				break
+			}
+			if err != nil {
+				t.Fatalf("instance claim %d: %v", i+1, err)
+			}
+			instanceLeases = append(instanceLeases, id)
+		}
+		for _, id := range instanceLeases {
+			if err := c.ReleaseMCP(ctx, id); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+}
+
+func seedMCPSubject(t *testing.T, db *store.DB, principalID, orgID string) {
+	t.Helper()
+	now := time.Now().UTC()
+	var err error
+	switch db.Engine() {
+	case store.EngineSQLite:
+		_, err = db.SQLiteWrite().ExecContext(t.Context(), `INSERT OR IGNORE INTO orgs (id, name, active, metadata, created_at) VALUES (?, ?, 1, '{}', ?)`, orgID, orgID, now)
+		if err == nil {
+			_, err = db.SQLiteWrite().ExecContext(t.Context(), `INSERT OR IGNORE INTO principals (id, kind, created_at) VALUES (?, 'machine', ?)`, principalID, now)
+		}
+	case store.EnginePostgres:
+		_, err = db.PG().Exec(t.Context(), `INSERT INTO orgs (id, name, active, metadata, created_at) VALUES ($1, $2, TRUE, '{}', $3) ON CONFLICT (id) DO NOTHING`, orgID, orgID, now)
+		if err == nil {
+			_, err = db.PG().Exec(t.Context(), `INSERT INTO principals (id, kind, created_at) VALUES ($1, 'machine', $2) ON CONFLICT (id) DO NOTHING`, principalID, now)
+		}
+	default:
+		err = fmt.Errorf("unknown engine %q", db.Engine())
+	}
+	if err != nil {
+		t.Fatalf("seed MCP subject %s/%s: %v", principalID, orgID, err)
+	}
 }

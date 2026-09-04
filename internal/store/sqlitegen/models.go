@@ -640,6 +640,18 @@ type MasterKey struct {
 	CreatedAt    string
 }
 
+type McpInflight struct {
+	CallID      string
+	PrincipalID string
+	OrgID       string
+	ExpiresAt   string
+}
+
+type McpRateBucket struct {
+	PrincipalID string
+	NextAt      string
+}
+
 type OfflineRecord struct {
 	PrincipalID string
 	RecordID    string

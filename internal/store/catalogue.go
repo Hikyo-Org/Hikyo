@@ -122,6 +122,17 @@ const (
 type CatalogueReader interface {
 	Get(ctx context.Context, p authz.Proof, id string) (CatalogueKey, error)
 	List(ctx context.Context, p authz.Proof) ([]CatalogueKey, error)
+	// ListPage is the bounded keyset read (#629): one page of keys ordered by
+	// the UNIQUE name column, strictly past afterName ("" for the first page),
+	// fetching at most limit rows.
+	ListPage(ctx context.Context, p authz.Proof, afterName string, limit int) ([]CatalogueKey, error)
+	// GetInProject resolves one key by id under the key.list store authorization
+	// (StoreCatalogueList), so a page-bounded caller can attach a key's name and
+	// classification without a whole-catalogue read. ErrNotFound when absent.
+	GetInProject(ctx context.Context, p authz.Proof, id string) (CatalogueKey, error)
+	// PresenceForKey returns one key's explicit presence rows, so a bounded page
+	// resolves presence per page key instead of listing the project's rows.
+	PresenceForKey(ctx context.Context, p authz.Proof, keyID string) ([]KeyPresence, error)
 	// Count is the per-project key cap's input, read inside the same
 	// transaction as the insert it bounds.
 	Count(ctx context.Context, p authz.Proof) (int64, error)

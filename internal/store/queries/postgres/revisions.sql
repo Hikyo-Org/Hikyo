@@ -80,6 +80,19 @@ ORDER BY key_id;
 -- collision check's read. It returns NO ciphertext: what another principal's
 -- draft may disclose is write-presence and nothing else, and the cheapest way
 -- to hold that rule is a statement that cannot carry the material.
+-- ListPendingChangesForOwnerInEnvironmentPage is the MCP-bounded keyset read
+-- (#629). (env, key, owner) is UNIQUE, so key_id is a stable single-column
+-- cursor for one owner's drafts in one environment. No JOIN: the caller resolves
+-- each page key's name and classification under the same key.list authorization.
+-- name: ListPendingChangesForOwnerInEnvironmentPage :many
+SELECT id, org_id, project_id, environment_id, key_id, owner_id,
+       operation, ciphertext, staged_from_revision, staged_from_entry, created_at, source, secret, material_secret
+FROM pending_changes
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
+  AND environment_id = sqlc.arg(chain_env_id) AND owner_id = sqlc.arg(owner_id)
+  AND key_id > sqlc.arg(after_key_id)
+ORDER BY key_id LIMIT sqlc.arg(page_limit);
+
 -- name: ListPendingMarkers :many
 SELECT id, environment_id, key_id, owner_id, operation
 FROM pending_changes
@@ -129,6 +142,19 @@ FROM snapshots
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
   AND environment_id = sqlc.arg(chain_env_id)
 ORDER BY revision DESC;
+
+-- ListSnapshotsPage is the MCP-bounded keyset read (#629). revision is UNIQUE
+-- and monotonic per environment, so it is a stable single-column cursor in
+-- descending order: the statement fetches strictly below the last returned
+-- revision and never materializes the whole history to slice a limit afterwards.
+-- name: ListSnapshotsPage :many
+SELECT id, org_id, project_id, environment_id, revision, schema_revision,
+       published_by, published_at, payload_present, collected_at, collected_policy
+FROM snapshots
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
+  AND environment_id = sqlc.arg(chain_env_id)
+  AND revision < sqlc.arg(before_revision)
+ORDER BY revision DESC LIMIT sqlc.arg(page_limit);
 
 -- name: DeleteSnapshotsForEnvironment :execrows
 DELETE FROM snapshots

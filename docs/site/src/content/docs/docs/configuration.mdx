@@ -64,11 +64,12 @@ CORS response headers, so it is an additional request check rather than a
 cross-origin browser API grant.
 
 Treat every configured MCP client and its model provider as a recipient of MCP
-tool results. When the read tools are installed by the next MCP release, results
-may include non-secret configuration plaintext and caller-owned non-secret
-draft plaintext. Secret values and secret draft material are never returned.
-Enabling the endpoint in this release exposes only the empty, tenant-free tool
-catalog until those tools are installed.
+tool results. The five read tools expose bounded key definitions, environments,
+configuration cells, caller-owned pending changes, and revision metadata.
+Results may include non-secret configuration plaintext and caller-owned
+non-secret draft plaintext. Secret values and secret draft material are never
+returned. Tool calls accept only an existing workload or automation
+service-account bearer and repeat current authorization on every page.
 
 ## Security response headers
 

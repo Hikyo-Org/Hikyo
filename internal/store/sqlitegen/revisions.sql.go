@@ -716,6 +716,78 @@ func (q *Queries) ListPendingChangesForOwnerInEnvironment(ctx context.Context, a
 	return items, nil
 }
 
+const listPendingChangesForOwnerInEnvironmentPage = `-- name: ListPendingChangesForOwnerInEnvironmentPage :many
+SELECT id, org_id, project_id, environment_id, key_id, owner_id,
+       operation, ciphertext, staged_from_revision, staged_from_entry, created_at, source, secret, material_secret
+FROM pending_changes
+WHERE org_id = ?1 AND project_id = ?2
+  AND environment_id = ?3 AND owner_id = ?4
+  AND key_id > ?5
+ORDER BY key_id LIMIT ?6
+`
+
+type ListPendingChangesForOwnerInEnvironmentPageParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+	ChainEnvID     string
+	OwnerID        string
+	AfterKeyID     string
+	PageLimit      int64
+}
+
+// ListPendingMarkers is the matrix signal's read and the group-closure
+// collision check's read. It returns NO ciphertext: what another principal's
+// draft may disclose is write-presence and nothing else, and the cheapest way
+// to hold that rule is a statement that cannot carry the material.
+// ListPendingChangesForOwnerInEnvironmentPage is the MCP-bounded keyset read
+// (#629). (env, key, owner) is UNIQUE, so key_id is a stable single-column
+// cursor for one owner's drafts in one environment. No JOIN: the caller resolves
+// each page key's name and classification under the same key.list authorization.
+func (q *Queries) ListPendingChangesForOwnerInEnvironmentPage(ctx context.Context, arg ListPendingChangesForOwnerInEnvironmentPageParams) ([]PendingChange, error) {
+	rows, err := q.db.QueryContext(ctx, listPendingChangesForOwnerInEnvironmentPage,
+		arg.ChainOrgID,
+		arg.ChainProjectID,
+		arg.ChainEnvID,
+		arg.OwnerID,
+		arg.AfterKeyID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PendingChange
+	for rows.Next() {
+		var i PendingChange
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.EnvironmentID,
+			&i.KeyID,
+			&i.OwnerID,
+			&i.Operation,
+			&i.Ciphertext,
+			&i.StagedFromRevision,
+			&i.StagedFromEntry,
+			&i.CreatedAt,
+			&i.Source,
+			&i.Secret,
+			&i.MaterialSecret,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPendingForReencrypt = `-- name: ListPendingForReencrypt :many
 SELECT id, environment_id, key_id, ciphertext FROM pending_changes
 WHERE org_id = ? AND project_id = ? AND id > ?
@@ -790,10 +862,6 @@ type ListPendingMarkersRow struct {
 	Operation     string
 }
 
-// ListPendingMarkers is the matrix signal's read and the group-closure
-// collision check's read. It returns NO ciphertext: what another principal's
-// draft may disclose is write-presence and nothing else, and the cheapest way
-// to hold that rule is a statement that cannot carry the material.
 func (q *Queries) ListPendingMarkers(ctx context.Context, arg ListPendingMarkersParams) ([]ListPendingMarkersRow, error) {
 	rows, err := q.db.QueryContext(ctx, listPendingMarkers, arg.OrgID, arg.ProjectID)
 	if err != nil {
@@ -1086,6 +1154,69 @@ type ListSnapshotsParams struct {
 
 func (q *Queries) ListSnapshots(ctx context.Context, arg ListSnapshotsParams) ([]Snapshot, error) {
 	rows, err := q.db.QueryContext(ctx, listSnapshots, arg.OrgID, arg.ProjectID, arg.EnvironmentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Snapshot
+	for rows.Next() {
+		var i Snapshot
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.EnvironmentID,
+			&i.Revision,
+			&i.SchemaRevision,
+			&i.PublishedBy,
+			&i.PublishedAt,
+			&i.PayloadPresent,
+			&i.CollectedAt,
+			&i.CollectedPolicy,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSnapshotsPage = `-- name: ListSnapshotsPage :many
+SELECT id, org_id, project_id, environment_id, revision, schema_revision,
+       published_by, published_at, payload_present, collected_at, collected_policy
+FROM snapshots
+WHERE org_id = ?1 AND project_id = ?2
+  AND environment_id = ?3
+  AND revision < ?4
+ORDER BY revision DESC LIMIT ?5
+`
+
+type ListSnapshotsPageParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+	ChainEnvID     string
+	BeforeRevision int64
+	PageLimit      int64
+}
+
+// ListSnapshotsPage is the MCP-bounded keyset read (#629). revision is UNIQUE
+// and monotonic per environment, so it is a stable single-column cursor in
+// descending order: the statement fetches strictly below the last returned
+// revision and never materializes the whole history to slice a limit afterwards.
+func (q *Queries) ListSnapshotsPage(ctx context.Context, arg ListSnapshotsPageParams) ([]Snapshot, error) {
+	rows, err := q.db.QueryContext(ctx, listSnapshotsPage,
+		arg.ChainOrgID,
+		arg.ChainProjectID,
+		arg.ChainEnvID,
+		arg.BeforeRevision,
+		arg.PageLimit,
+	)
 	if err != nil {
 		return nil, err
 	}

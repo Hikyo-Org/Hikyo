@@ -231,5 +231,14 @@ func (c *countingGroupIndexCatalogue) ListPresence(context.Context, authz.Proof)
 func (c *countingGroupIndexCatalogue) SchemaRevision(context.Context, authz.Proof) (int64, error) {
 	return 0, errors.New("unexpected SchemaRevision")
 }
+func (c *countingGroupIndexCatalogue) ListPage(context.Context, authz.Proof, string, int) ([]store.CatalogueKey, error) {
+	return nil, errors.New("unexpected ListPage")
+}
+func (c *countingGroupIndexCatalogue) GetInProject(context.Context, authz.Proof, string) (store.CatalogueKey, error) {
+	return store.CatalogueKey{}, errors.New("unexpected GetInProject")
+}
+func (c *countingGroupIndexCatalogue) PresenceForKey(context.Context, authz.Proof, string) ([]store.KeyPresence, error) {
+	return nil, errors.New("unexpected PresenceForKey")
+}
 
 var _ store.CatalogueReader = (*countingGroupIndexCatalogue)(nil)

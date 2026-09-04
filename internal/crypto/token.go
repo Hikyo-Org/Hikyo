@@ -1,8 +1,10 @@
 package crypto
 
 import (
+	"context"
 	"crypto/hkdf"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 )
 
@@ -41,6 +43,49 @@ func (k *Keyring) deriveScopedTokenKey(label, orgID, projectID, envID string) ([
 const occurrenceInfoLabel = "hikyo/import-occurrence/v1"
 
 const publishPreviewInfoLabel = "hikyo/publish-preview/v1"
+
+// mcpCursorInfoLabel domain-separates the MCP pagination cursor key (#629) from
+// every other derived token key.
+const mcpCursorInfoLabel = "hikyo/mcp-cursor/v1"
+
+// MCPCursorSealer builds the instance-wide sealer that encrypts and authenticates
+// MCP pagination cursors. It derives from the live root token key on each Seal
+// and Open, so rotate-token-key invalidates old cursors atomically instead of a
+// boot-time cached key splitting this process from a restarted replica. The
+// cursor payload binds the tool and exact scope ids, so one instance-wide key
+// suffices and every replica derives the same key from shared key material.
+func (k *Keyring) MCPCursorSealer() (*MCPCursorSealer, error) {
+	if k == nil {
+		return nil, errors.New("crypto: cursor sealer requires a keyring")
+	}
+	return &MCPCursorSealer{derive: func(ctx context.Context) ([]byte, error) {
+		if err := k.refreshTokenKey(ctx); err != nil {
+			return nil, err
+		}
+		return k.deriveScopedTokenKey(mcpCursorInfoLabel, "", "", "")
+	}}, nil
+}
+
+// refreshTokenKey makes cursor operations observe a rotation committed by any
+// replica. The shared active row is checked under the caller's tool deadline;
+// a newer row is unwrapped and adopted monotonically before cursor crypto runs.
+func (k *Keyring) refreshTokenKey(ctx context.Context) error {
+	row, err := k.ks.ActiveTier3(ctx, PurposeToken, "", "")
+	if err != nil {
+		return fmt.Errorf("crypto: refresh token key: %w", err)
+	}
+	if row.Version <= k.token.get().version {
+		return nil
+	}
+	next, err := k.unwrapTier3(row)
+	if err != nil {
+		return fmt.Errorf("crypto: refresh token key: %w", err)
+	}
+	if !k.token.adopt(next) {
+		Zero(next.key)
+	}
+	return nil
+}
 
 // OccurrenceToken is HMAC-SHA256(scoped occurrence key, encoding), base64url,
 // prefixed — the server-minted opaque token an import's phase 1 records per

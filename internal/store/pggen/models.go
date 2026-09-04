@@ -642,6 +642,18 @@ type MasterKey struct {
 	CreatedAt    pgtype.Timestamptz
 }
 
+type McpInflight struct {
+	CallID      string
+	PrincipalID string
+	OrgID       string
+	ExpiresAt   pgtype.Timestamptz
+}
+
+type McpRateBucket struct {
+	PrincipalID string
+	NextAt      pgtype.Timestamptz
+}
+
 type OfflineRecord struct {
 	PrincipalID string
 	RecordID    string

@@ -336,6 +336,28 @@ func TestScanningNoHashPrimitives(t *testing.T) {
 	}
 }
 
+// TestMCPTelemetryBoundary keeps the secret-bearing MCP adapter away from log,
+// trace, and metric sinks. The seeded-canary E2E test covers wire, audit, log,
+// and metric outputs; this import boundary proves there is no hidden tracing
+// path beside those observed surfaces.
+func TestMCPTelemetryBoundary(t *testing.T) {
+	const mcpPackage = module + "/internal/mcpserver"
+	for _, p := range loadPackages(t) {
+		if p.ImportPath != mcpPackage {
+			continue
+		}
+		for _, imp := range allImports(p) {
+			for _, forbiddenPrefix := range []string{"log/slog", "go.opentelemetry.io/", "github.com/prometheus/"} {
+				if imp == strings.TrimSuffix(forbiddenPrefix, "/") || strings.HasPrefix(imp, forbiddenPrefix) {
+					t.Errorf("%s imports telemetry sink %s: MCP secret boundary must stay sink-free", p.ImportPath, imp)
+				}
+			}
+		}
+		return
+	}
+	t.Fatal("internal/mcpserver package missing")
+}
+
 func TestForbiddenEdges(t *testing.T) {
 	for _, p := range loadPackages(t) {
 		for _, rule := range forbidden {
