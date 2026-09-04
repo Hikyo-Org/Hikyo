@@ -16,11 +16,8 @@ import (
 // in one place — the mint gate, display-once, overlap rotation, revocation
 // biting at the NEXT request, the lifetime ceiling, and indefinite refused
 // while the instance has not opted in.
-func TestSCIMCredentialLifecycleSQLite(t *testing.T) {
-	runSCIMCredentialLifecycle(t, seededDB(t, openSQLite))
-}
-func TestSCIMCredentialLifecyclePostgres(t *testing.T) {
-	runSCIMCredentialLifecycle(t, seededDB(t, openPostgres))
+func TestSCIMCredentialLifecycle(t *testing.T) {
+	forEngines(t, runSCIMCredentialLifecycle)
 }
 
 func runSCIMCredentialLifecycle(t *testing.T, db *store.DB) {

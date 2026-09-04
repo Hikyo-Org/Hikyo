@@ -204,8 +204,9 @@ func runOIDCMixup(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestOIDCMixupSQLite(t *testing.T)   { runOIDCMixup(t, seededDB(t, openSQLite)) }
-func TestOIDCMixupPostgres(t *testing.T) { runOIDCMixup(t, seededDB(t, openPostgres)) }
+func TestOIDCMixup(t *testing.T) {
+	forEngines(t, runOIDCMixup)
+}
 
 // runOIDCByteExactSubject: two subjects differing only in case are two distinct
 // identities, both loginable, never merged.
@@ -231,11 +232,8 @@ func runOIDCByteExactSubject(t *testing.T, db *store.DB) {
 	_ = password
 }
 
-func TestOIDCByteExactSubjectSQLite(t *testing.T) {
-	runOIDCByteExactSubject(t, seededDB(t, openSQLite))
-}
-func TestOIDCByteExactSubjectPostgres(t *testing.T) {
-	runOIDCByteExactSubject(t, seededDB(t, openPostgres))
+func TestOIDCByteExactSubject(t *testing.T) {
+	forEngines(t, runOIDCByteExactSubject)
 }
 
 func oidcRefusedCount(t *testing.T, db *store.DB, cause string) int64 {
@@ -305,8 +303,9 @@ func runOIDCBinding(t *testing.T, db *store.DB) {
 	_ = admin
 }
 
-func TestOIDCBindingSQLite(t *testing.T)   { runOIDCBinding(t, seededDB(t, openSQLite)) }
-func TestOIDCBindingPostgres(t *testing.T) { runOIDCBinding(t, seededDB(t, openPostgres)) }
+func TestOIDCBinding(t *testing.T) {
+	forEngines(t, runOIDCBinding)
+}
 
 // runOIDCReauthRefusals: OIDC reauth refuses when the environment is missing,
 // when the provider has no assurance policy (A5), and when the returned token
@@ -428,11 +427,8 @@ func runOIDCReauthZeroWindow(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestOIDCReauthZeroWindowSQLite(t *testing.T) {
-	runOIDCReauthZeroWindow(t, seededDB(t, openSQLite))
-}
-func TestOIDCReauthZeroWindowPostgres(t *testing.T) {
-	runOIDCReauthZeroWindow(t, seededDB(t, openPostgres))
+func TestOIDCReauthZeroWindow(t *testing.T) {
+	forEngines(t, runOIDCReauthZeroWindow)
 }
 
 // runOIDCBrowserOverloadMetadata proves admission refusal happens before any
@@ -480,18 +476,12 @@ func runOIDCBrowserOverloadMetadata(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestOIDCBrowserOverloadMetadataSQLite(t *testing.T) {
-	runOIDCBrowserOverloadMetadata(t, seededDB(t, openSQLite))
-}
-func TestOIDCBrowserOverloadMetadataPostgres(t *testing.T) {
-	runOIDCBrowserOverloadMetadata(t, seededDB(t, openPostgres))
+func TestOIDCBrowserOverloadMetadata(t *testing.T) {
+	forEngines(t, runOIDCBrowserOverloadMetadata)
 }
 
-func TestOIDCReauthRefusalsSQLite(t *testing.T) {
-	runOIDCReauthRefusals(t, seededDB(t, openSQLite))
-}
-func TestOIDCReauthRefusalsPostgres(t *testing.T) {
-	runOIDCReauthRefusals(t, seededDB(t, openPostgres))
+func TestOIDCReauthRefusals(t *testing.T) {
+	forEngines(t, runOIDCReauthRefusals)
 }
 
 func runOIDCDisclosureAndCLIHandoff(t *testing.T, db *store.DB) {
@@ -564,12 +554,8 @@ func runOIDCDisclosureAndCLIHandoff(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestOIDCDisclosureAndCLIHandoffSQLite(t *testing.T) {
-	runOIDCDisclosureAndCLIHandoff(t, seededDB(t, openSQLite))
-}
-
-func TestOIDCDisclosureAndCLIHandoffPostgres(t *testing.T) {
-	runOIDCDisclosureAndCLIHandoff(t, seededDB(t, openPostgres))
+func TestOIDCDisclosureAndCLIHandoff(t *testing.T) {
+	forEngines(t, runOIDCDisclosureAndCLIHandoff)
 }
 
 // runOIDCIssuerImmutable: a provider's issuer cannot change on update (A3).
@@ -601,11 +587,8 @@ func runOIDCIssuerImmutable(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestOIDCIssuerImmutableSQLite(t *testing.T) {
-	runOIDCIssuerImmutable(t, seededDB(t, openSQLite))
-}
-func TestOIDCIssuerImmutablePostgres(t *testing.T) {
-	runOIDCIssuerImmutable(t, seededDB(t, openPostgres))
+func TestOIDCIssuerImmutable(t *testing.T) {
+	forEngines(t, runOIDCIssuerImmutable)
 }
 
 // runOIDCProviderChangeSweeps: reconfiguring a provider deletes sessions
@@ -634,11 +617,8 @@ func runOIDCProviderChangeSweeps(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestOIDCProviderChangeSweepsSQLite(t *testing.T) {
-	runOIDCProviderChangeSweeps(t, seededDB(t, openSQLite))
-}
-func TestOIDCProviderChangeSweepsPostgres(t *testing.T) {
-	runOIDCProviderChangeSweeps(t, seededDB(t, openPostgres))
+func TestOIDCProviderChangeSweeps(t *testing.T) {
+	forEngines(t, runOIDCProviderChangeSweeps)
 }
 
 // --- reauth assurance fixtures (#54 cross-model review R1) ---
@@ -747,11 +727,8 @@ func runOIDCReauthPossession(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestOIDCReauthPossessionSQLite(t *testing.T) {
-	runOIDCReauthPossession(t, seededDB(t, openSQLite))
-}
-func TestOIDCReauthPossessionPostgres(t *testing.T) {
-	runOIDCReauthPossession(t, seededDB(t, openPostgres))
+func TestOIDCReauthPossession(t *testing.T) {
+	forEngines(t, runOIDCReauthPossession)
 }
 
 // runOIDCReauthEpochInert: an epoch-inert (restored) identity is terminally
@@ -782,11 +759,8 @@ func runOIDCReauthEpochInert(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestOIDCReauthEpochInertSQLite(t *testing.T) {
-	runOIDCReauthEpochInert(t, seededDB(t, openSQLite))
-}
-func TestOIDCReauthEpochInertPostgres(t *testing.T) {
-	runOIDCReauthEpochInert(t, seededDB(t, openPostgres))
+func TestOIDCReauthEpochInert(t *testing.T) {
+	forEngines(t, runOIDCReauthEpochInert)
 }
 
 // runOIDCReauthProviderRebind: after a provider is replaced for the same
@@ -843,11 +817,8 @@ func runOIDCReauthProviderRebind(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestOIDCReauthProviderRebindSQLite(t *testing.T) {
-	runOIDCReauthProviderRebind(t, seededDB(t, openSQLite))
-}
-func TestOIDCReauthProviderRebindPostgres(t *testing.T) {
-	runOIDCReauthProviderRebind(t, seededDB(t, openPostgres))
+func TestOIDCReauthProviderRebind(t *testing.T) {
+	forEngines(t, runOIDCReauthProviderRebind)
 }
 
 // runOIDCReauthDowngrade: a reauth must be same-or-stronger than the session it
@@ -889,11 +860,8 @@ func runOIDCReauthDowngrade(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestOIDCReauthDowngradeSQLite(t *testing.T) {
-	runOIDCReauthDowngrade(t, seededDB(t, openSQLite))
-}
-func TestOIDCReauthDowngradePostgres(t *testing.T) {
-	runOIDCReauthDowngrade(t, seededDB(t, openPostgres))
+func TestOIDCReauthDowngrade(t *testing.T) {
+	forEngines(t, runOIDCReauthDowngrade)
 }
 
 // runOIDCReauthProviderRace: a provider reconfigure that lands during the code
@@ -937,11 +905,8 @@ func runOIDCReauthProviderRace(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestOIDCReauthProviderRaceSQLite(t *testing.T) {
-	runOIDCReauthProviderRace(t, seededDB(t, openSQLite))
-}
-func TestOIDCReauthProviderRacePostgres(t *testing.T) {
-	runOIDCReauthProviderRace(t, seededDB(t, openPostgres))
+func TestOIDCReauthProviderRace(t *testing.T) {
+	forEngines(t, runOIDCReauthProviderRace)
 }
 
 // runOIDCLoginProviderRace: a provider reconfigure that lands during a login's
@@ -996,11 +961,8 @@ func runOIDCLoginProviderRace(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestOIDCLoginProviderRaceSQLite(t *testing.T) {
-	runOIDCLoginProviderRace(t, seededDB(t, openSQLite))
-}
-func TestOIDCLoginProviderRacePostgres(t *testing.T) {
-	runOIDCLoginProviderRace(t, seededDB(t, openPostgres))
+func TestOIDCLoginProviderRace(t *testing.T) {
+	forEngines(t, runOIDCLoginProviderRace)
 }
 
 // runOIDCLoginProviderDeleteRace: deleting a provider during a login's code
@@ -1058,11 +1020,8 @@ func runOIDCLoginProviderDeleteRace(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestOIDCLoginProviderDeleteRaceSQLite(t *testing.T) {
-	runOIDCLoginProviderDeleteRace(t, seededDB(t, openSQLite))
-}
-func TestOIDCLoginProviderDeleteRacePostgres(t *testing.T) {
-	runOIDCLoginProviderDeleteRace(t, seededDB(t, openPostgres))
+func TestOIDCLoginProviderDeleteRace(t *testing.T) {
+	forEngines(t, runOIDCLoginProviderDeleteRace)
 }
 
 // runOIDCProviderDeleteCascade proves the FK cascade (A14) is the atomic
@@ -1096,11 +1055,8 @@ func runOIDCProviderDeleteCascade(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestOIDCProviderDeleteCascadeSQLite(t *testing.T) {
-	runOIDCProviderDeleteCascade(t, seededDB(t, openSQLite))
-}
-func TestOIDCProviderDeleteCascadePostgres(t *testing.T) {
-	runOIDCProviderDeleteCascade(t, seededDB(t, openPostgres))
+func TestOIDCProviderDeleteCascade(t *testing.T) {
+	forEngines(t, runOIDCProviderDeleteCascade)
 }
 
 // runOIDCIATRejected: an ID token whose iat is in the future beyond the skew is
@@ -1146,5 +1102,6 @@ func runOIDCIATRejected(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestOIDCIATRejectedSQLite(t *testing.T)   { runOIDCIATRejected(t, seededDB(t, openSQLite)) }
-func TestOIDCIATRejectedPostgres(t *testing.T) { runOIDCIATRejected(t, seededDB(t, openPostgres)) }
+func TestOIDCIATRejected(t *testing.T) {
+	forEngines(t, runOIDCIATRejected)
+}

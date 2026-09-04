@@ -11,12 +11,8 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
-func TestWorkloadRevealHistoryPinSQLite(t *testing.T) {
-	runWorkloadRevealHistoryPin(t, seededDB(t, openSQLite))
-}
-
-func TestWorkloadRevealHistoryPinPostgres(t *testing.T) {
-	runWorkloadRevealHistoryPin(t, seededDB(t, openPostgres))
+func TestWorkloadRevealHistoryPin(t *testing.T) {
+	forEngines(t, runWorkloadRevealHistoryPin)
 }
 
 // runWorkloadRevealHistoryPin exercises the grant and delivery seams together:

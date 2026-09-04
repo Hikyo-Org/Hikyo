@@ -22,11 +22,8 @@ import (
 // TestSCIMOriginTupleIsExact is SC3.a: every expanded capability row carries a
 // `scim` origin whose FULL (binding, mapping row, group) tuple is exact. A
 // substring match on the mapping id proved only that something mentioned it.
-func TestSCIMOriginTupleIsExactSQLite(t *testing.T) {
-	runSCIMOriginTupleIsExact(t, seededDB(t, openSQLite))
-}
-func TestSCIMOriginTupleIsExactPostgres(t *testing.T) {
-	runSCIMOriginTupleIsExact(t, seededDB(t, openPostgres))
+func TestSCIMOriginTupleIsExact(t *testing.T) {
+	forEngines(t, runSCIMOriginTupleIsExact)
 }
 
 func runSCIMOriginTupleIsExact(t *testing.T, db *store.DB) {
@@ -82,9 +79,8 @@ func runSCIMOriginTupleIsExact(t *testing.T, db *store.DB) {
 
 // TestSCIMMultiGroupUnion is SC3.c: a user in several mapped groups gets the
 // additive UNION, and losing one group leaves the other's grants standing.
-func TestSCIMMultiGroupUnionSQLite(t *testing.T) { runSCIMMultiGroupUnion(t, seededDB(t, openSQLite)) }
-func TestSCIMMultiGroupUnionPostgres(t *testing.T) {
-	runSCIMMultiGroupUnion(t, seededDB(t, openPostgres))
+func TestSCIMMultiGroupUnion(t *testing.T) {
+	forEngines(t, runSCIMMultiGroupUnion)
 }
 
 func runSCIMMultiGroupUnion(t *testing.T, db *store.DB) {
@@ -152,11 +148,8 @@ func runSCIMMultiGroupUnion(t *testing.T, db *store.DB) {
 // TestSCIMMappingWidenAndNarrow is SC3.e and SC3.f: widening grants the newly
 // covered capabilities in the AUTHORING transaction, and narrowing releases the
 // no-longer-covered part — both without any sync in between.
-func TestSCIMMappingWidenAndNarrowSQLite(t *testing.T) {
-	runSCIMMappingWidenAndNarrow(t, seededDB(t, openSQLite))
-}
-func TestSCIMMappingWidenAndNarrowPostgres(t *testing.T) {
-	runSCIMMappingWidenAndNarrow(t, seededDB(t, openPostgres))
+func TestSCIMMappingWidenAndNarrow(t *testing.T) {
+	forEngines(t, runSCIMMappingWidenAndNarrow)
 }
 
 func runSCIMMappingWidenAndNarrow(t *testing.T, db *store.DB) {
@@ -244,12 +237,8 @@ func runSCIMMappingWidenAndNarrow(t *testing.T, db *store.DB) {
 // conditional half of the release settlement policy. Narrowing can release an
 // origin without changing effective authority when another mapping still holds
 // every affected grant row; that must not kill the user's sessions.
-func TestSCIMMappingNarrowingWithoutAuthorityDeltaDoesNotAdvanceSQLite(t *testing.T) {
-	runSCIMMappingNarrowingWithoutAuthorityDeltaDoesNotAdvance(t, seededDB(t, openSQLite))
-}
-
-func TestSCIMMappingNarrowingWithoutAuthorityDeltaDoesNotAdvancePostgres(t *testing.T) {
-	runSCIMMappingNarrowingWithoutAuthorityDeltaDoesNotAdvance(t, seededDB(t, openPostgres))
+func TestSCIMMappingNarrowingWithoutAuthorityDeltaDoesNotAdvance(t *testing.T) {
+	forEngines(t, runSCIMMappingNarrowingWithoutAuthorityDeltaDoesNotAdvance)
 }
 
 func runSCIMMappingNarrowingWithoutAuthorityDeltaDoesNotAdvance(t *testing.T, db *store.DB) {
@@ -514,11 +503,8 @@ func auditCount(t *testing.T, db *store.DB, typ string) int64 {
 
 // TestSCIMStalenessThreshold is SC4.a: staleness raises AND clears, and it is a
 // THRESHOLD — a binding is not stale the moment it exists.
-func TestSCIMStalenessThresholdSQLite(t *testing.T) {
-	runSCIMStalenessThreshold(t, seededDB(t, openSQLite))
-}
-func TestSCIMStalenessThresholdPostgres(t *testing.T) {
-	runSCIMStalenessThreshold(t, seededDB(t, openPostgres))
+func TestSCIMStalenessThreshold(t *testing.T) {
+	forEngines(t, runSCIMStalenessThreshold)
 }
 
 func runSCIMStalenessThreshold(t *testing.T, db *store.DB) {
@@ -583,11 +569,8 @@ func runSCIMStalenessThreshold(t *testing.T, db *store.DB) {
 // TestSCIMAttentionStatePairs is SC4.i: EVERY attention state is entered and
 // cleared with its audit pair. A state that can be entered and not left is a
 // permanent warning nobody can act on.
-func TestSCIMAttentionStatePairsSQLite(t *testing.T) {
-	runSCIMAttentionStatePairs(t, seededDB(t, openSQLite))
-}
-func TestSCIMAttentionStatePairsPostgres(t *testing.T) {
-	runSCIMAttentionStatePairs(t, seededDB(t, openPostgres))
+func TestSCIMAttentionStatePairs(t *testing.T) {
+	forEngines(t, runSCIMAttentionStatePairs)
 }
 
 func runSCIMAttentionStatePairs(t *testing.T, db *store.DB) {
@@ -986,11 +969,8 @@ func sampleFor(f audit.FieldSpec) any {
 // TestSCIMRedactsIdPStrings is SC4.m: an identity-provider-supplied string that
 // happens to look like a bearer token must be REDACTED before it lands in the
 // trail. The identity provider is an attacker-influencable source.
-func TestSCIMRedactsIdPStringsSQLite(t *testing.T) {
-	runSCIMRedactsIdPStrings(t, seededDB(t, openSQLite))
-}
-func TestSCIMRedactsIdPStringsPostgres(t *testing.T) {
-	runSCIMRedactsIdPStrings(t, seededDB(t, openPostgres))
+func TestSCIMRedactsIdPStrings(t *testing.T) {
+	forEngines(t, runSCIMRedactsIdPStrings)
 }
 
 func runSCIMRedactsIdPStrings(t *testing.T, db *store.DB) {

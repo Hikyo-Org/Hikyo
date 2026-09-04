@@ -304,12 +304,8 @@ func runSAMLLoginReplay(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestSAMLLoginReplaySQLite(t *testing.T) {
-	runSAMLLoginReplay(t, seededDB(t, openSQLite))
-}
-
-func TestSAMLLoginReplayPostgres(t *testing.T) {
-	runSAMLLoginReplay(t, seededDB(t, openPostgres))
+func TestSAMLLoginReplay(t *testing.T) {
+	forEngines(t, runSAMLLoginReplay)
 }
 
 func runSAMLProviderRecreation(t *testing.T, db *store.DB) {
@@ -370,12 +366,8 @@ func runSAMLProviderRecreation(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestSAMLProviderRecreationSQLite(t *testing.T) {
-	runSAMLProviderRecreation(t, seededDB(t, openSQLite))
-}
-
-func TestSAMLProviderRecreationPostgres(t *testing.T) {
-	runSAMLProviderRecreation(t, seededDB(t, openPostgres))
+func TestSAMLProviderRecreation(t *testing.T) {
+	forEngines(t, runSAMLProviderRecreation)
 }
 
 func runSAMLSPKeyLifecycle(t *testing.T, db *store.DB) {
@@ -442,10 +434,6 @@ func runSAMLSPKeyLifecycle(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestSAMLSPKeyLifecycleSQLite(t *testing.T) {
-	runSAMLSPKeyLifecycle(t, seededDB(t, openSQLite))
-}
-
-func TestSAMLSPKeyLifecyclePostgres(t *testing.T) {
-	runSAMLSPKeyLifecycle(t, seededDB(t, openPostgres))
+func TestSAMLSPKeyLifecycle(t *testing.T) {
+	forEngines(t, runSAMLSPKeyLifecycle)
 }

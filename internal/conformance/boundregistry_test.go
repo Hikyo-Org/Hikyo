@@ -112,7 +112,7 @@ var Registry = []Bound{
 
 	// §5 machine identities.
 	bound("machine-credentials-per-sa", "Machine credentials per SA", "ops-spec §5", "service.ErrCredentialCap", "isolation identities_e2e", StatusEnforced,
-		goTest("internal/isolation", "TestMachineCredentialCapSQLite")),
+		goTest("internal/isolation", "TestMachineCredentialCap")),
 
 	// §8 structural bounds.
 	bound("environments-per-project", "Environments per project", "ops-spec §8", "domain.ErrLimitExceeded (MaxEnvironmentsPerProject)", "conformance scenarioDeleteRefusesChildren / env cap", StatusEnforced,
@@ -138,17 +138,17 @@ var Registry = []Bound{
 	bound("per-target-render-total", "Per-target render total", "ops-spec §8", "domain.ErrLimitExceeded (MaxRenderBytesPerTarget)", "service.TestRenderTotalRefusesAnOversizedTarget", StatusEnforced,
 		goTest("internal/service", "TestRenderTotalRefusesAnOversizedTarget")),
 	bound("pending-versions-per-project", "Pending versions per project", "ops-spec §8", "domain.ErrLimitExceeded (MaxPendingPerProject)", "isolation.TestPendingPerProjectCap", StatusEnforced,
-		goTest("internal/isolation", "TestPendingPerProjectCapSQLite")),
+		goTest("internal/isolation", "TestPendingPerProjectCap")),
 	bound("bundle-bytes-entries", "Bundle bytes / entries", "ops-spec §8", "definitions.ErrLimitExceeded (MaxBundle*)", "definitions bundle_test", StatusEnforced,
 		goTest("internal/definitions", "TestParseBoundsRefused")),
 	bound("open-plans-per-project", "Open plans per project", "ops-spec §8", "domain.ErrLimitExceeded (MaxOpenPlansPerProject)", "isolation definitions_e2e", StatusEnforced,
-		goTest("internal/isolation", "TestDefinitionsSQLite")),
+		goTest("internal/isolation", "TestDefinitions")),
 	bound("pins-quota-per-project", "Pins quota per project", "ops-spec §8", "invalidDetail (PinQuota)", "conformance revisions_test", StatusEnforced,
 		goHelper("internal/conformance", "scenarioPinLifecycle")),
 	bound("grants-per-org", "Grants per org", "ops-spec §8", "domain.ErrLimitExceeded (MaxGrantsPerOrg)", "isolation.TestGrantPerOrgCap", StatusEnforced,
-		goTest("internal/isolation", "TestGrantPerOrgCapSQLite")),
+		goTest("internal/isolation", "TestGrantPerOrgCap")),
 	bound("project-storage-high-water", "Per-project storage high-water (warn 1 GiB / refuse 4 GiB)", "ops-spec §8 (§141)", "domain.ErrLimitExceeded (MaxProjectStorageBytes) at publish + doctor/metric/UI-banner warn (ProjectStorageWarnBytes)", "isolation.TestProjectStorageHighWater", StatusEnforced,
-		goTest("internal/isolation", "TestProjectStorageHighWaterSQLite")),
+		goTest("internal/isolation", "TestProjectStorageHighWater")),
 	bound("schema-revision-rate", "Schema-revision rate 60/h per project", "ops-spec §8 (§151)", "admission.ErrOverloaded (uniform 429) via service.Budget", "conformance scenarioSchemaRevisionRateLimit + service.TestBudgetRateWindowSlides", StatusEnforced,
 		goHelper("internal/conformance", "scenarioSchemaRevisionRateLimit")),
 
@@ -182,7 +182,7 @@ var Registry = []Bound{
 	bound("saml-document-bounds", "SAML document bytes / depth / tokens", "ops-catalogue §SAML", "samlsp.ErrDocument* ", "samlsp xml_test", StatusEnforced,
 		goTest("internal/samlsp", "TestParseXMLRefusesPreparseThreats")),
 	bound("scim-wire-body-cap", "SCIM wire body cap", "ops-catalogue §SCIM", "scimproto.ErrBodyTooLarge (api.SCIMBodyBound)", "isolation scim_provider_sequence_test", StatusEnforced,
-		goTest("internal/isolation", "TestSCIMWireAdmissionOverHTTPSQLite")),
+		goTest("internal/isolation", "TestSCIMWireAdmissionOverHTTP")),
 
 	// §6 compose client.
 	bound("run-arg-max-preflight", "run-- ARG_MAX preflight", "ops-spec §6 / inv.8", "composite _SC_ARG_MAX refusal", "compose argmax_test", StatusEnforced,
@@ -190,7 +190,7 @@ var Registry = []Bound{
 
 	// §5 reveal / reauth.
 	bound("protected-environment-reauth-window", "Protected-environment reauth window cap", "ops-spec §5", "service.ErrProtectedWindowCap", "isolation grants_e2e (ErrProtectedWindowCap)", StatusEnforced,
-		goTest("internal/isolation", "TestProtectedEnvironmentSQLite")),
+		goTest("internal/isolation", "TestProtectedEnvironment")),
 }
 
 func TestBoundRegistryIsWellFormed(t *testing.T) {

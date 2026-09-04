@@ -11,11 +11,8 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
-func TestPendingPerProjectCapSQLite(t *testing.T) {
-	runPendingPerProjectCap(t, seededDB(t, openSQLite))
-}
-func TestPendingPerProjectCapPostgres(t *testing.T) {
-	runPendingPerProjectCap(t, seededDB(t, openPostgres))
+func TestPendingPerProjectCap(t *testing.T) {
+	forEngines(t, runPendingPerProjectCap)
 }
 
 // runPendingPerProjectCap: the ops-spec § 8 loud cap on pending versions per

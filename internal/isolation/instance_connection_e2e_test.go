@@ -63,14 +63,8 @@ func mintInstanceConnection(t *testing.T, db *store.DB, id string) string {
 	return value
 }
 
-func TestInstanceConnectionCredentialEndToEndSQLite(t *testing.T) {
-	db := seededDB(t, openSQLite)
-	runInstanceConnectionE2E(t, db)
-}
-
-func TestInstanceConnectionCredentialEndToEndPostgres(t *testing.T) {
-	db := seededDB(t, openPostgres)
-	runInstanceConnectionE2E(t, db)
+func TestInstanceConnectionCredentialEndToEnd(t *testing.T) {
+	forEngines(t, runInstanceConnectionE2E)
 }
 
 func runInstanceConnectionE2E(t *testing.T, db *store.DB) {
@@ -147,7 +141,7 @@ func scopeAtDepth(l domain.Level) domain.Scope {
 // A revoked credential stops authenticating at the very next presentation,
 // uncached — revocation is read in the authenticating transaction, so it bites
 // on the next request rather than at some expiry.
-func TestInstanceConnectionRevocationBitesImmediatelySQLite(t *testing.T) {
+func TestInstanceConnectionRevocationBitesImmediately(t *testing.T) {
 	db := seededDB(t, openSQLite)
 	value := mintInstanceConnection(t, db, "rev")
 

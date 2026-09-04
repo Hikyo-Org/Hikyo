@@ -141,20 +141,12 @@ func targetedAdapterReauthIntent(t *testing.T, operation authz.Operation, enviro
 	return intent
 }
 
-func TestAdapterReauthWindowExactBindingSQLite(t *testing.T) {
-	runAdapterReauthWindowExactBinding(t, seededDB(t, openSQLite))
+func TestAdapterReauthWindowExactBinding(t *testing.T) {
+	forEngines(t, runAdapterReauthWindowExactBinding)
 }
 
-func TestAdapterReauthWindowExactBindingPostgres(t *testing.T) {
-	runAdapterReauthWindowExactBinding(t, seededDB(t, openPostgres))
-}
-
-func TestInvalidReauthWindowBindingSQLite(t *testing.T) {
-	runInvalidReauthWindowBinding(t, seededDB(t, openSQLite))
-}
-
-func TestInvalidReauthWindowBindingPostgres(t *testing.T) {
-	runInvalidReauthWindowBinding(t, seededDB(t, openPostgres))
+func TestInvalidReauthWindowBinding(t *testing.T) {
+	forEngines(t, runInvalidReauthWindowBinding)
 }
 
 func runInvalidReauthWindowBinding(t *testing.T, db *store.DB) {
@@ -190,28 +182,16 @@ func runInvalidReauthWindowBinding(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestAdapterReauthTOTPMixedPolicySQLite(t *testing.T) {
-	runAdapterReauthTOTPMixedPolicy(t, seededDB(t, openSQLite))
+func TestAdapterReauthTOTPMixedPolicy(t *testing.T) {
+	forEngines(t, runAdapterReauthTOTPMixedPolicy)
 }
 
-func TestAdapterReauthTOTPMixedPolicyPostgres(t *testing.T) {
-	runAdapterReauthTOTPMixedPolicy(t, seededDB(t, openPostgres))
+func TestAdapterReauthWebAuthnBindsFullEnvironmentSet(t *testing.T) {
+	forEngines(t, runAdapterReauthWebAuthnBindsFullEnvironmentSet)
 }
 
-func TestAdapterReauthWebAuthnBindsFullEnvironmentSetSQLite(t *testing.T) {
-	runAdapterReauthWebAuthnBindsFullEnvironmentSet(t, seededDB(t, openSQLite))
-}
-
-func TestAdapterReauthWebAuthnBindsFullEnvironmentSetPostgres(t *testing.T) {
-	runAdapterReauthWebAuthnBindsFullEnvironmentSet(t, seededDB(t, openPostgres))
-}
-
-func TestCLIAdapterReauthHandoffSQLite(t *testing.T) {
-	runCLIAdapterReauthHandoff(t, seededDB(t, openSQLite))
-}
-
-func TestCLIAdapterReauthHandoffPostgres(t *testing.T) {
-	runCLIAdapterReauthHandoff(t, seededDB(t, openPostgres))
+func TestCLIAdapterReauthHandoff(t *testing.T) {
+	forEngines(t, runCLIAdapterReauthHandoff)
 }
 
 func runCLIAdapterReauthHandoff(t *testing.T, db *store.DB) {
@@ -357,8 +337,7 @@ func runAdapterReauthWebAuthnBindsFullEnvironmentSet(t *testing.T, db *store.DB)
 	auth.ReauthHardCap = 10 * time.Minute
 	ctx := t.Context()
 	device := webauthntest.New(waRPID, waOrigin)
-	token = enrolPasskey(t, auth, ctx, token, waPassword, device)
-	token = stepUpPasskey(t, auth, ctx, token, device)
+	token = enrolPasskeyAndStepUp(t, auth, ctx, token, waPassword, device)
 	execRaw(t, db, `INSERT INTO environments (id, org_id, project_id, name, note, protected, reauth_window_seconds, created_at, display_order) VALUES ('env_adapter_zero', 'org_a', 'prj_a1', 'adapter-zero', '', TRUE, 0, `+ts+`, 2)`)
 	environments := []string{"env_prod", "env_adapter_zero"}
 	options, err := auth.ReauthPasskeyStart(ctx, token, targetedAdapterReauthIntent(t, authz.OpAdapterConfigure, "env_adapter_zero", environments))
@@ -484,11 +463,8 @@ func runAdapterReauthWindowExactBinding(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestReauthConsumeSingleDecisionSQLite(t *testing.T) {
-	runReauthConsumeSingleDecision(t, seededDB(t, openSQLite))
-}
-func TestReauthConsumeSingleDecisionPostgres(t *testing.T) {
-	runReauthConsumeSingleDecision(t, seededDB(t, openPostgres))
+func TestReauthConsumeSingleDecision(t *testing.T) {
+	forEngines(t, runReauthConsumeSingleDecision)
 }
 
 // runReauthConsumeSingleDecision: a 0-effective-window WebAuthn ceremony opens a
@@ -545,11 +521,8 @@ func runReauthConsumeSingleDecision(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestReauthConsumeSlidingHardCapSQLite(t *testing.T) {
-	runReauthConsumeSlidingHardCap(t, seededDB(t, openSQLite))
-}
-func TestReauthConsumeSlidingHardCapPostgres(t *testing.T) {
-	runReauthConsumeSlidingHardCap(t, seededDB(t, openPostgres))
+func TestReauthConsumeSlidingHardCap(t *testing.T) {
+	forEngines(t, runReauthConsumeSlidingHardCap)
 }
 
 // runReauthConsumeSlidingHardCap: at a non-zero effective window a WebAuthn reauth
@@ -566,8 +539,7 @@ func runReauthConsumeSlidingHardCap(t *testing.T, db *store.DB) {
 	auth.ReauthHardCap = 10 * time.Minute
 	ctx := t.Context()
 	dev := webauthntest.New(waRPID, waOrigin)
-	token = enrolPasskey(t, auth, ctx, token, waPassword, dev)
-	token = stepUpPasskey(t, auth, ctx, token, dev)
+	token = enrolPasskeyAndStepUp(t, auth, ctx, token, waPassword, dev)
 
 	ropts, err := auth.ReauthPasskeyStart(ctx, token, disclosureReauthIntent(t, service.PurposeReveal, "env_prod", []string{"key_a"}))
 	if err != nil {
@@ -617,11 +589,8 @@ func runReauthConsumeSlidingHardCap(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestReauthWebAuthnOpenClampsHardCapSQLite(t *testing.T) {
-	runReauthWebAuthnOpenClampsHardCap(t, seededDB(t, openSQLite))
-}
-func TestReauthWebAuthnOpenClampsHardCapPostgres(t *testing.T) {
-	runReauthWebAuthnOpenClampsHardCap(t, seededDB(t, openPostgres))
+func TestReauthWebAuthnOpenClampsHardCap(t *testing.T) {
+	forEngines(t, runReauthWebAuthnOpenClampsHardCap)
 }
 
 // runReauthWebAuthnOpenClampsHardCap (A2 residual): the WebAuthn opener clamps
@@ -636,8 +605,7 @@ func runReauthWebAuthnOpenClampsHardCap(t *testing.T, db *store.DB) {
 	auth.ReauthHardCap = 10 * time.Minute
 	ctx := t.Context()
 	dev := webauthntest.New(waRPID, waOrigin)
-	token = enrolPasskey(t, auth, ctx, token, waPassword, dev)
-	token = stepUpPasskey(t, auth, ctx, token, dev)
+	token = enrolPasskeyAndStepUp(t, auth, ctx, token, waPassword, dev)
 
 	ropts, err := auth.ReauthPasskeyStart(ctx, token, disclosureReauthIntent(t, service.PurposeReveal, "env_prod", []string{"key_a"}))
 	if err != nil {
@@ -665,11 +633,8 @@ func runReauthWebAuthnOpenClampsHardCap(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestReauthSlideUsesEffectiveWindowSQLite(t *testing.T) {
-	runReauthSlideUsesEffectiveWindow(t, seededDB(t, openSQLite))
-}
-func TestReauthSlideUsesEffectiveWindowPostgres(t *testing.T) {
-	runReauthSlideUsesEffectiveWindow(t, seededDB(t, openPostgres))
+func TestReauthSlideUsesEffectiveWindow(t *testing.T) {
+	forEngines(t, runReauthSlideUsesEffectiveWindow)
 }
 
 // runReauthSlideUsesEffectiveWindow (NEW HIGH): the slide amount is resolved
@@ -688,8 +653,7 @@ func runReauthSlideUsesEffectiveWindow(t *testing.T, db *store.DB) {
 	auth.ReauthHardCap = 30 * time.Minute
 	ctx := t.Context()
 	dev := webauthntest.New(waRPID, waOrigin)
-	token = enrolPasskey(t, auth, ctx, token, waPassword, dev)
-	token = stepUpPasskey(t, auth, ctx, token, dev)
+	token = enrolPasskeyAndStepUp(t, auth, ctx, token, waPassword, dev)
 
 	ropts, err := auth.ReauthPasskeyStart(ctx, token, disclosureReauthIntent(t, service.PurposeReveal, "env_prod", []string{"key_a"}))
 	if err != nil {
@@ -730,11 +694,8 @@ func runReauthSlideUsesEffectiveWindow(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestReauthConsumeInvalidationFailsClosedSQLite(t *testing.T) {
-	runReauthConsumeInvalidationFailsClosed(t, seededDB(t, openSQLite))
-}
-func TestReauthConsumeInvalidationFailsClosedPostgres(t *testing.T) {
-	runReauthConsumeInvalidationFailsClosed(t, seededDB(t, openPostgres))
+func TestReauthConsumeInvalidationFailsClosed(t *testing.T) {
+	forEngines(t, runReauthConsumeInvalidationFailsClosed)
 }
 
 // runReauthConsumeInvalidationFailsClosed (A1): a disclosure that reads a live
@@ -756,8 +717,7 @@ func runReauthConsumeInvalidationFailsClosed(t *testing.T, db *store.DB) {
 	auth.ReauthHardCap = 10 * time.Minute
 	ctx := t.Context()
 	dev := webauthntest.New(waRPID, waOrigin)
-	token = enrolPasskey(t, auth, ctx, token, waPassword, dev)
-	token = stepUpPasskey(t, auth, ctx, token, dev)
+	token = enrolPasskeyAndStepUp(t, auth, ctx, token, waPassword, dev)
 
 	ropts, err := auth.ReauthPasskeyStart(ctx, token, disclosureReauthIntent(t, service.PurposeReveal, "env_prod", []string{"key_a"}))
 	if err != nil {
@@ -781,11 +741,8 @@ func runReauthConsumeInvalidationFailsClosed(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestReauthTOTPZeroWindowSQLite(t *testing.T) {
-	runReauthTOTPZeroWindow(t, seededDB(t, openSQLite))
-}
-func TestReauthTOTPZeroWindowPostgres(t *testing.T) {
-	runReauthTOTPZeroWindow(t, seededDB(t, openPostgres))
+func TestReauthTOTPZeroWindow(t *testing.T) {
+	forEngines(t, runReauthTOTPZeroWindow)
 }
 
 // runReauthTOTPZeroWindow: TOTP cannot bind the enumerated unit, so at a 0
@@ -837,11 +794,8 @@ func runReauthTOTPZeroWindow(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestLowerEffectiveWindowStrandingSQLite(t *testing.T) {
-	runLowerEffectiveWindowStranding(t, seededDB(t, openSQLite))
-}
-func TestLowerEffectiveWindowStrandingPostgres(t *testing.T) {
-	runLowerEffectiveWindowStranding(t, seededDB(t, openPostgres))
+func TestLowerEffectiveWindowStranding(t *testing.T) {
+	forEngines(t, runLowerEffectiveWindowStranding)
 }
 
 // runLowerEffectiveWindowStranding (finding B6): lowering an environment's
@@ -888,11 +842,8 @@ func runLowerEffectiveWindowStranding(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestCredentialResetNetworkSQLite(t *testing.T) {
-	runCredentialResetNetwork(t, seededDB(t, openSQLite))
-}
-func TestCredentialResetNetworkPostgres(t *testing.T) {
-	runCredentialResetNetwork(t, seededDB(t, openPostgres))
+func TestCredentialResetNetwork(t *testing.T) {
+	forEngines(t, runCredentialResetNetwork)
 }
 
 // grantInstanceCapability seeds a capability the bootstrap template no longer
@@ -927,25 +878,7 @@ func runCredentialResetNetwork(t *testing.T, db *store.DB) {
 	ctx := t.Context()
 
 	// Step the admin up to multi-factor: credential-reset is MFA-mandatory.
-	login, err := auth.LocalLogin(ctx, "factor-admin", password, service.ArtifactCLI)
-	if err != nil {
-		t.Fatal(err)
-	}
-	uri, err := auth.EnrolTOTPStart(ctx, login.SessionToken, password)
-	if err != nil {
-		t.Fatalf("enrol start: %v", err)
-	}
-	clk = base.Add(30 * time.Second)
-	confirmed, err := auth.EnrolTOTPConfirm(ctx, login.SessionToken, totpCode(t, uri, clk))
-	if err != nil {
-		t.Fatalf("enrol confirm: %v", err)
-	}
-	clk = base.Add(60 * time.Second)
-	stepped, err := auth.StepUpTOTP(ctx, confirmed.SessionToken, totpCode(t, uri, clk))
-	if err != nil {
-		t.Fatalf("step-up: %v", err)
-	}
-	adminToken := stepped.SessionToken
+	adminToken := enrolTOTPAndStepUp(t, auth, ctx, base, &clk, password)
 
 	// An org-bounded target: grants within org_a, no instance capability.
 	execRaw(t, db, "INSERT INTO principals (id, kind, created_at) VALUES ('usr_target', 'human', "+ts+")")
@@ -998,11 +931,8 @@ func runCredentialResetNetwork(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestCredentialResetMFAMandatorySQLite(t *testing.T) {
-	runCredentialResetMFAMandatory(t, seededDB(t, openSQLite))
-}
-func TestCredentialResetMFAMandatoryPostgres(t *testing.T) {
-	runCredentialResetMFAMandatory(t, seededDB(t, openPostgres))
+func TestCredentialResetMFAMandatory(t *testing.T) {
+	forEngines(t, runCredentialResetMFAMandatory)
 }
 
 // runCredentialResetMFAMandatory (B1/B3): the network reset route authorizes
@@ -1087,12 +1017,8 @@ func blobLit(db *store.DB, b []byte) string {
 	return `x'` + string(sb) + `'`
 }
 
-func TestCLIDisclosureReauthHandoffSQLite(t *testing.T) {
-	runCLIDisclosureReauthHandoff(t, seededDB(t, openSQLite))
-}
-
-func TestCLIDisclosureReauthHandoffPostgres(t *testing.T) {
-	runCLIDisclosureReauthHandoff(t, seededDB(t, openPostgres))
+func TestCLIDisclosureReauthHandoff(t *testing.T) {
+	forEngines(t, runCLIDisclosureReauthHandoff)
 }
 
 // runCLIDisclosureReauthHandoff: the handoff carries a DISCLOSURE purpose
@@ -1208,12 +1134,8 @@ func runCLIDisclosureReauthHandoff(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestCLIDisclosureHandoffPasskeyBindingSQLite(t *testing.T) {
-	runCLIDisclosureHandoffPasskeyBinding(t, seededDB(t, openSQLite))
-}
-
-func TestCLIDisclosureHandoffPasskeyBindingPostgres(t *testing.T) {
-	runCLIDisclosureHandoffPasskeyBinding(t, seededDB(t, openPostgres))
+func TestCLIDisclosureHandoffPasskeyBinding(t *testing.T) {
+	forEngines(t, runCLIDisclosureHandoffPasskeyBinding)
 }
 
 // runCLIDisclosureHandoffPasskeyBinding is the 0-window handoff, the case the

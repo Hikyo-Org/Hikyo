@@ -32,11 +32,8 @@ func barrier(n int) (start chan struct{}, done *sync.WaitGroup) {
 // TestSCIMBindingUniquenessRace is SC1.m: two concurrent creates for one
 // (org, provider) resolve to ONE row, and the loser is refused with the named
 // conflict rather than being reconciled in application code.
-func TestSCIMBindingUniquenessRaceSQLite(t *testing.T) {
-	runSCIMBindingUniquenessRace(t, seededDB(t, openSQLite))
-}
-func TestSCIMBindingUniquenessRacePostgres(t *testing.T) {
-	runSCIMBindingUniquenessRace(t, seededDB(t, openPostgres))
+func TestSCIMBindingUniquenessRace(t *testing.T) {
+	forEngines(t, runSCIMBindingUniquenessRace)
 }
 
 func runSCIMBindingUniquenessRace(t *testing.T, db *store.DB) {
@@ -88,11 +85,8 @@ func runSCIMBindingUniquenessRace(t *testing.T, db *store.DB) {
 // identity at once yield ONE account. §5.2's constraint arbitrates and "the
 // loser retries and attaches" — so BOTH calls must succeed, and both resources
 // must point at one account.
-func TestSCIMConcurrentDuplicateCreateSQLite(t *testing.T) {
-	runSCIMConcurrentDuplicateCreate(t, seededDB(t, openSQLite))
-}
-func TestSCIMConcurrentDuplicateCreatePostgres(t *testing.T) {
-	runSCIMConcurrentDuplicateCreate(t, seededDB(t, openPostgres))
+func TestSCIMConcurrentDuplicateCreate(t *testing.T) {
+	forEngines(t, runSCIMConcurrentDuplicateCreate)
 }
 
 func runSCIMConcurrentDuplicateCreate(t *testing.T, db *store.DB) {
@@ -241,11 +235,8 @@ func scimBindingInOrg(t *testing.T, db *store.DB, org domain.OrgID, slug string)
 // released, then the connection retired, then the directory and the binding
 // gone. An end-state assertion cannot tell a correct order from a wrong one
 // that happens to converge, so the order itself is observed.
-func TestSCIMTeardownPhaseOrderSQLite(t *testing.T) {
-	runSCIMTeardownPhaseOrder(t, seededDB(t, openSQLite))
-}
-func TestSCIMTeardownPhaseOrderPostgres(t *testing.T) {
-	runSCIMTeardownPhaseOrder(t, seededDB(t, openPostgres))
+func TestSCIMTeardownPhaseOrder(t *testing.T) {
+	forEngines(t, runSCIMTeardownPhaseOrder)
 }
 
 func runSCIMTeardownPhaseOrder(t *testing.T, db *store.DB) {
@@ -443,11 +434,8 @@ func runSCIMTeardownPhaseOrder(t *testing.T, db *store.DB) {
 // hypothetically unserialized second transaction has a wide window to enter and
 // be caught. Without it the race would have to lose a coin flip to fail, and a
 // fixture that only sometimes sees the defect is not a fixture.
-func TestSCIMPerBindingSerializationOrderSQLite(t *testing.T) {
-	runSCIMPerBindingSerializationOrder(t, seededDB(t, openSQLite))
-}
-func TestSCIMPerBindingSerializationOrderPostgres(t *testing.T) {
-	runSCIMPerBindingSerializationOrder(t, seededDB(t, openPostgres))
+func TestSCIMPerBindingSerializationOrder(t *testing.T) {
+	forEngines(t, runSCIMPerBindingSerializationOrder)
 }
 
 func runSCIMPerBindingSerializationOrder(t *testing.T, db *store.DB) {
@@ -617,11 +605,8 @@ func runSCIMPerBindingSerializationOrder(t *testing.T, db *store.DB) {
 // same serialized phase as the wire surface. The operations are exercised one
 // at a time so a missing pair names the exact caller that escaped the common
 // preamble.
-func TestSCIMAdminMutationsMarkSerializedPhaseSQLite(t *testing.T) {
-	runSCIMAdminMutationsMarkSerializedPhase(t, seededDB(t, openSQLite))
-}
-func TestSCIMAdminMutationsMarkSerializedPhasePostgres(t *testing.T) {
-	runSCIMAdminMutationsMarkSerializedPhase(t, seededDB(t, openPostgres))
+func TestSCIMAdminMutationsMarkSerializedPhase(t *testing.T) {
+	forEngines(t, runSCIMAdminMutationsMarkSerializedPhase)
 }
 
 func runSCIMAdminMutationsMarkSerializedPhase(t *testing.T, db *store.DB) {
@@ -689,11 +674,8 @@ func runSCIMAdminMutationsMarkSerializedPhase(t *testing.T, db *store.DB) {
 // TestSCIMSyncInvalidatesSessions is SC4.d: "being granted anything logs you
 // out, and a sync is a granter". A group-driven grant advances the affected
 // human's session generation and sweeps their sessions.
-func TestSCIMSyncInvalidatesSessionsSQLite(t *testing.T) {
-	runSCIMSyncInvalidatesSessions(t, seededDB(t, openSQLite))
-}
-func TestSCIMSyncInvalidatesSessionsPostgres(t *testing.T) {
-	runSCIMSyncInvalidatesSessions(t, seededDB(t, openPostgres))
+func TestSCIMSyncInvalidatesSessions(t *testing.T) {
+	forEngines(t, runSCIMSyncInvalidatesSessions)
 }
 
 func runSCIMSyncInvalidatesSessions(t *testing.T, db *store.DB) {

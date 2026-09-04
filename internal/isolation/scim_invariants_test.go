@@ -105,11 +105,8 @@ func TestSCIMWireIsNotMFAMandatory(t *testing.T) {
 // operation". A provisioning credential authenticates the IdP's wire and
 // nothing else: presented as a human session artifact it must be refused, and
 // refused UNIFORMLY — indistinguishable from a value that names nothing.
-func TestSCIMCredentialIsRejectedOnNonSCIMOperationsSQLite(t *testing.T) {
-	runSCIMCredentialRejected(t, seededDB(t, openSQLite))
-}
-func TestSCIMCredentialIsRejectedOnNonSCIMOperationsPostgres(t *testing.T) {
-	runSCIMCredentialRejected(t, seededDB(t, openPostgres))
+func TestSCIMCredentialIsRejectedOnNonSCIMOperations(t *testing.T) {
+	forEngines(t, runSCIMCredentialRejected)
 }
 
 func runSCIMCredentialRejected(t *testing.T, db *store.DB) {
@@ -280,11 +277,8 @@ func TestSCIMOriginKindsAreNotHumanReleasable(t *testing.T) {
 // identity link), which is why the assertion is on the RESOLUTION path — the
 // lookup that decides between them — and not on the whole transaction: the
 // branch is what must be indistinguishable, not the work each branch does.
-func TestSCIMCreateIsOneQueryPathSQLite(t *testing.T) {
-	runSCIMCreateIsOneQueryPath(t, seededDB(t, openSQLite))
-}
-func TestSCIMCreateIsOneQueryPathPostgres(t *testing.T) {
-	runSCIMCreateIsOneQueryPath(t, seededDB(t, openPostgres))
+func TestSCIMCreateIsOneQueryPath(t *testing.T) {
+	forEngines(t, runSCIMCreateIsOneQueryPath)
 }
 
 func runSCIMCreateIsOneQueryPath(t *testing.T, db *store.DB) {
@@ -440,11 +434,8 @@ func removeRun(trace, run []string) ([]string, bool) {
 // initial push emits 500 `scim.user_provisioned` events plus their grant
 // events, per-event, durably". The aggregation licence covers
 // authentication-failure floods only.
-func TestSCIMPushEmitsPerEventSQLite(t *testing.T) {
-	runSCIMPushEmitsPerEvent(t, seededDB(t, openSQLite))
-}
-func TestSCIMPushEmitsPerEventPostgres(t *testing.T) {
-	runSCIMPushEmitsPerEvent(t, seededDB(t, openPostgres))
+func TestSCIMPushEmitsPerEvent(t *testing.T) {
+	forEngines(t, runSCIMPushEmitsPerEvent)
 }
 
 func runSCIMPushEmitsPerEvent(t *testing.T, db *store.DB) {

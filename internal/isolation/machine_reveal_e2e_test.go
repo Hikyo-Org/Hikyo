@@ -28,9 +28,8 @@ import (
 //     administrator without `reveal` cannot enable it, and both directions are
 //     audited.
 
-func TestMachineRevealOptInSQLite(t *testing.T) { runMachineRevealOptIn(t, seededDB(t, openSQLite)) }
-func TestMachineRevealOptInPostgres(t *testing.T) {
-	runMachineRevealOptIn(t, seededDB(t, openPostgres))
+func TestMachineRevealOptIn(t *testing.T) {
+	forEngines(t, runMachineRevealOptIn)
 }
 
 func runMachineRevealOptIn(t *testing.T, db *store.DB) {

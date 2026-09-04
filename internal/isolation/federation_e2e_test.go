@@ -288,12 +288,8 @@ func pinsOf(t *testing.T, s oidctest.Shape) []service.ClaimPin {
 // default must be refused.
 const hikyoAudience = "hikyo://instance"
 
-func TestFederationAgainstEachIssuerTypeSQLite(t *testing.T) {
-	runFederationPerIssuerType(t, seededDB(t, openSQLite))
-}
-
-func TestFederationAgainstEachIssuerTypePostgres(t *testing.T) {
-	runFederationPerIssuerType(t, seededDB(t, openPostgres))
+func TestFederationAgainstEachIssuerType(t *testing.T) {
+	forEngines(t, runFederationPerIssuerType)
 }
 
 // runFederationPerIssuerType is mvp-boundary M1's "[E2E] federation against a
@@ -454,12 +450,8 @@ func engineOpener(db *store.DB) func(*testing.T) *store.DB {
 	return openSQLite
 }
 
-func TestFederationRefusesPullRequestEventsSQLite(t *testing.T) {
-	runPullRequestRefusal(t, seededDB(t, openSQLite))
-}
-
-func TestFederationRefusesPullRequestEventsPostgres(t *testing.T) {
-	runPullRequestRefusal(t, seededDB(t, openPostgres))
+func TestFederationRefusesPullRequestEvents(t *testing.T) {
+	forEngines(t, runPullRequestRefusal)
 }
 
 // runPullRequestRefusal is mvp-boundary M1's "`pull_request` /
@@ -552,12 +544,8 @@ func runPullRequestRefusal(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestFederationJWKSStalenessBoundSQLite(t *testing.T) {
-	runJWKSStalenessBound(t, seededDB(t, openSQLite))
-}
-
-func TestFederationJWKSStalenessBoundPostgres(t *testing.T) {
-	runJWKSStalenessBound(t, seededDB(t, openPostgres))
+func TestFederationJWKSStalenessBound(t *testing.T) {
+	forEngines(t, runJWKSStalenessBound)
 }
 
 // runJWKSStalenessBound is mvp-boundary M1's "JWKS staleness bound under induced
@@ -638,7 +626,7 @@ func runJWKSStalenessBound(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestFederationUnknownKIDRefreshIsRateLimitedSQLite(t *testing.T) {
+func TestFederationUnknownKIDRefreshIsRateLimited(t *testing.T) {
 	runUnknownKIDRateLimit(t, seededDB(t, openSQLite))
 }
 
@@ -709,12 +697,8 @@ func runUnknownKIDRateLimit(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestFederationStaticJWKSSQLite(t *testing.T) {
-	runFederationStaticJWKS(t, seededDB(t, openSQLite))
-}
-
-func TestFederationStaticJWKSPostgres(t *testing.T) {
-	runFederationStaticJWKS(t, seededDB(t, openPostgres))
+func TestFederationStaticJWKS(t *testing.T) {
+	forEngines(t, runFederationStaticJWKS)
 }
 
 func runFederationStaticJWKS(t *testing.T, db *store.DB) {
@@ -762,12 +746,8 @@ func runFederationStaticJWKS(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestFederationKeySourceRoundTripSQLite(t *testing.T) {
-	runFederationKeySourceRoundTrip(t, seededDB(t, openSQLite))
-}
-
-func TestFederationKeySourceRoundTripPostgres(t *testing.T) {
-	runFederationKeySourceRoundTrip(t, seededDB(t, openPostgres))
+func TestFederationKeySourceRoundTrip(t *testing.T) {
+	forEngines(t, runFederationKeySourceRoundTrip)
 }
 
 func runFederationKeySourceRoundTrip(t *testing.T, db *store.DB) {
@@ -828,12 +808,8 @@ func runFederationKeySourceRoundTrip(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestFederationRestorePredicateSQLite(t *testing.T) {
-	runRestorePredicate(t, seededDB(t, openSQLite))
-}
-
-func TestFederationRestorePredicatePostgres(t *testing.T) {
-	runRestorePredicate(t, seededDB(t, openPostgres))
+func TestFederationRestorePredicate(t *testing.T) {
+	forEngines(t, runRestorePredicate)
 }
 
 // runRestorePredicate is the ADR's § Restore `iat` rule: a token presented
@@ -967,7 +943,7 @@ func runRestorePredicate(t *testing.T, db *store.DB) {
 // The hole it closes: a binding pinning only `event_name=push` was accepted, so
 // renaming `acme/prod` and letting someone else claim the path produced the same
 // subject and inherited the Hikyo principal.
-func TestFederationRequiresImmutableIdentifiersSQLite(t *testing.T) {
+func TestFederationRequiresImmutableIdentifiers(t *testing.T) {
 	db := seededDB(t, openSQLite)
 	r := newFedRig(t, db)
 	github := oidctest.GitHubActionsShape("acme/service", 4242, 77, "refs/heads/main", "push")
@@ -1038,7 +1014,7 @@ func TestFederationRequiresImmutableIdentifiersSQLite(t *testing.T) {
 // `/kubernetes.io/serviceaccount/uid` and NOWHERE else. Without JSON-Pointer pins
 // the ADR's requirement is unsatisfiable against a real token and the only
 // writable bindings are the name-based ones it forbids.
-func TestFederationPinsNestedKubernetesUIDSQLite(t *testing.T) {
+func TestFederationPinsNestedKubernetesUID(t *testing.T) {
 	db := seededDB(t, openSQLite)
 	r := newFedRig(t, db)
 	shape := oidctest.KubernetesShape("prod", "deployer", "9f2c-uid", "https://kubernetes.default.svc")
@@ -1109,7 +1085,7 @@ func TestFederationPinsNestedKubernetesUIDSQLite(t *testing.T) {
 // `iss`/`sub`/audience/claims authenticate. Both halves are covered — the scheme
 // check on the document-supplied `jwks_uri`, and the redirect policy, because a
 // scheme check alone is defeated by an HTTPS url that 302s to `http://`.
-func TestFederationRefusesPlaintextJWKSSQLite(t *testing.T) {
+func TestFederationRefusesPlaintextJWKS(t *testing.T) {
 	db := seededDB(t, openSQLite)
 	r := newFedRig(t, db)
 	shape := oidctest.KubernetesShape("prod", "plain", "uid-p", "https://kubernetes.default.svc")
@@ -1170,7 +1146,7 @@ func TestFederationRefusesPlaintextJWKSSQLite(t *testing.T) {
 // a dead issuer must not block validation for a HEALTHY one (per-issuer locking,
 // not one process-wide mutex held across the network call); and the outbound
 // fetch count must stay bounded however many requests arrive.
-func TestFederationOutageDoesNotSerializeIssuersSQLite(t *testing.T) {
+func TestFederationOutageDoesNotSerializeIssuers(t *testing.T) {
 	db := seededDB(t, openSQLite)
 	r := newFedRig(t, db)
 
@@ -1316,7 +1292,7 @@ func multiCAClient(idps ...*oidctest.IdP) *http.Client {
 // Without it, an administrator who adds a refused audience while a slow
 // verification is in flight has that request complete under the superseded
 // policy — after the update committed.
-func TestFederationIssuerPolicyCannotGoStaleSQLite(t *testing.T) {
+func TestFederationIssuerPolicyCannotGoStale(t *testing.T) {
 	db := seededDB(t, openSQLite)
 	r := newFedRig(t, db)
 	shape := oidctest.KubernetesShape("prod", "racer", "uid-r", "https://kubernetes.default.svc")
@@ -1355,12 +1331,8 @@ func TestFederationIssuerPolicyCannotGoStaleSQLite(t *testing.T) {
 	}
 }
 
-func TestFederationBindingImmutabilitySQLite(t *testing.T) {
-	runBindingImmutability(t, seededDB(t, openSQLite))
-}
-
-func TestFederationBindingImmutabilityPostgres(t *testing.T) {
-	runBindingImmutability(t, seededDB(t, openPostgres))
+func TestFederationBindingImmutability(t *testing.T) {
+	forEngines(t, runBindingImmutability)
 }
 
 // runBindingImmutability rides both engines because its subject IS storage
@@ -1432,7 +1404,7 @@ func runBindingImmutability(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestFederationClaimTypeIsNotFoldedSQLite(t *testing.T) {
+func TestFederationClaimTypeIsNotFolded(t *testing.T) {
 	db := seededDB(t, openSQLite)
 	r := newFedRig(t, db)
 	shape := oidctest.GitHubActionsShape("acme/service", 4242, 77, "refs/heads/main", "push")
@@ -1476,7 +1448,7 @@ func TestFederationClaimTypeIsNotFoldedSQLite(t *testing.T) {
 	}
 }
 
-func TestFederationTokenCapsSQLite(t *testing.T) {
+func TestFederationTokenCaps(t *testing.T) {
 	db := seededDB(t, openSQLite)
 	r := newFedRig(t, db)
 	shape := oidctest.KubernetesShape("prod", "capped", "uid-c", "https://kubernetes.default.svc")
@@ -1526,12 +1498,8 @@ func TestFederationTokenCapsSQLite(t *testing.T) {
 	}
 }
 
-func TestFederationTokenAgeCannotExpireMidFlightSQLite(t *testing.T) {
-	runFederationTokenAgeCannotExpireMidFlight(t, seededDB(t, openSQLite))
-}
-
-func TestFederationTokenAgeCannotExpireMidFlightPostgres(t *testing.T) {
-	runFederationTokenAgeCannotExpireMidFlight(t, seededDB(t, openPostgres))
+func TestFederationTokenAgeCannotExpireMidFlight(t *testing.T) {
+	forEngines(t, runFederationTokenAgeCannotExpireMidFlight)
 }
 
 // runFederationTokenAgeCannotExpireMidFlight proves the authoritative,
@@ -1570,12 +1538,8 @@ func runFederationTokenAgeCannotExpireMidFlight(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestFederationIssuerDeleteGuardSQLite(t *testing.T) {
-	runIssuerDeleteGuard(t, seededDB(t, openSQLite))
-}
-
-func TestFederationIssuerDeleteGuardPostgres(t *testing.T) {
-	runIssuerDeleteGuard(t, seededDB(t, openPostgres))
+func TestFederationIssuerDeleteGuard(t *testing.T) {
+	forEngines(t, runIssuerDeleteGuard)
 }
 
 // runIssuerDeleteGuard rides both engines because the guard it tests is half
@@ -1693,12 +1657,8 @@ func runFederationLifecycle(t *testing.T, db *store.DB) {
 	r.idp.SetOffline(false)
 }
 
-func TestFederationBindingIsListedWithItsIdentitySQLite(t *testing.T) {
-	runBindingListedWithIdentity(t, seededDB(t, openSQLite))
-}
-
-func TestFederationBindingIsListedWithItsIdentityPostgres(t *testing.T) {
-	runBindingListedWithIdentity(t, seededDB(t, openPostgres))
+func TestFederationBindingIsListedWithItsIdentity(t *testing.T) {
+	forEngines(t, runBindingListedWithIdentity)
 }
 
 // runBindingListedWithIdentity pins what the credential LISTING carries for a

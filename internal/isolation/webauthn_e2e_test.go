@@ -80,6 +80,15 @@ func enrolPasskey(t *testing.T, auth *service.Auth, ctx context.Context, token, 
 	return res.SessionToken
 }
 
+// enrolPasskeyAndStepUp enrols a passkey (proof = the current password) and
+// immediately steps the resulting session up through the device, returning the
+// stepped-up token — the prologue every passkey reauth ceremony shares before
+// its own ReauthPasskeyStart intent.
+func enrolPasskeyAndStepUp(t *testing.T, auth *service.Auth, ctx context.Context, token, password string, dev *webauthntest.Device) string {
+	t.Helper()
+	return stepUpPasskey(t, auth, ctx, enrolPasskey(t, auth, ctx, token, password, dev), dev)
+}
+
 // discoverableLogin runs a full passkey login with the device.
 func discoverableLogin(t *testing.T, auth *service.Auth, ctx context.Context, dev *webauthntest.Device) (service.LoginResult, error) {
 	t.Helper()
@@ -94,8 +103,9 @@ func discoverableLogin(t *testing.T, auth *service.Auth, ctx context.Context, de
 	return auth.PasskeyLoginFinish(ctx, assertion)
 }
 
-func TestWebAuthnRoundtripSQLite(t *testing.T)   { runWebAuthnRoundtrip(t, seededDB(t, openSQLite)) }
-func TestWebAuthnRoundtripPostgres(t *testing.T) { runWebAuthnRoundtrip(t, seededDB(t, openPostgres)) }
+func TestWebAuthnRoundtrip(t *testing.T) {
+	forEngines(t, runWebAuthnRoundtrip)
+}
 
 // runWebAuthnRoundtrip: enrol a passkey (proof = the pre-existing password),
 // then log in with one gesture. The session carries method local-passkey and a
@@ -169,8 +179,9 @@ func runWebAuthnRoundtrip(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestWebAuthnUVRefusedSQLite(t *testing.T)   { runWebAuthnUVRefused(t, seededDB(t, openSQLite)) }
-func TestWebAuthnUVRefusedPostgres(t *testing.T) { runWebAuthnUVRefused(t, seededDB(t, openPostgres)) }
+func TestWebAuthnUVRefused(t *testing.T) {
+	forEngines(t, runWebAuthnUVRefused)
+}
 
 // runWebAuthnUVRefused: an assertion whose UV bit is not set is refused. UV is
 // required on every ceremony and re-asserted server-side.
@@ -195,8 +206,9 @@ func runWebAuthnUVRefused(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestWebAuthnCloneSQLite(t *testing.T)   { runWebAuthnClone(t, seededDB(t, openSQLite)) }
-func TestWebAuthnClonePostgres(t *testing.T) { runWebAuthnClone(t, seededDB(t, openPostgres)) }
+func TestWebAuthnClone(t *testing.T) {
+	forEngines(t, runWebAuthnClone)
+}
 
 // runWebAuthnClone: a sign-count regression on a non-backup credential disables
 // it, sweeps every session it minted and audits passkey_cloned, before refusing
@@ -240,11 +252,8 @@ func runWebAuthnClone(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestWebAuthnSyncedNotFlaggedSQLite(t *testing.T) {
-	runWebAuthnSyncedNotFlagged(t, seededDB(t, openSQLite))
-}
-func TestWebAuthnSyncedNotFlaggedPostgres(t *testing.T) {
-	runWebAuthnSyncedNotFlagged(t, seededDB(t, openPostgres))
+func TestWebAuthnSyncedNotFlagged(t *testing.T) {
+	forEngines(t, runWebAuthnSyncedNotFlagged)
 }
 
 // runWebAuthnSyncedNotFlagged: a backup-eligible (synced) credential whose
@@ -332,9 +341,8 @@ func runWebAuthnPasskeyOnly(t *testing.T, open func(*testing.T) *store.DB) {
 	})
 }
 
-func TestWebAuthnEnrolProofSQLite(t *testing.T) { runWebAuthnEnrolProof(t, seededDB(t, openSQLite)) }
-func TestWebAuthnEnrolProofPostgres(t *testing.T) {
-	runWebAuthnEnrolProof(t, seededDB(t, openPostgres))
+func TestWebAuthnEnrolProof(t *testing.T) {
+	forEngines(t, runWebAuthnEnrolProof)
 }
 
 // runWebAuthnEnrolProof: a new passkey cannot authorize its own enrolment — the
@@ -362,11 +370,8 @@ func runWebAuthnEnrolProof(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestWebAuthnStepUpReauthSQLite(t *testing.T) {
-	runWebAuthnStepUpReauth(t, seededDB(t, openSQLite))
-}
-func TestWebAuthnStepUpReauthPostgres(t *testing.T) {
-	runWebAuthnStepUpReauth(t, seededDB(t, openPostgres))
+func TestWebAuthnStepUpReauth(t *testing.T) {
+	forEngines(t, runWebAuthnStepUpReauth)
 }
 
 // runWebAuthnStepUpReauth: a passkey elevates a password session in place
@@ -433,11 +438,8 @@ func runWebAuthnStepUpReauth(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestWebAuthnReauthBindingMismatchSQLite(t *testing.T) {
-	runWebAuthnReauthBindingMismatch(t, seededDB(t, openSQLite))
-}
-func TestWebAuthnReauthBindingMismatchPostgres(t *testing.T) {
-	runWebAuthnReauthBindingMismatch(t, seededDB(t, openPostgres))
+func TestWebAuthnReauthBindingMismatch(t *testing.T) {
+	forEngines(t, runWebAuthnReauthBindingMismatch)
 }
 
 // runWebAuthnReauthBindingMismatch is the reauth-binding regression (A3): a
@@ -473,11 +475,8 @@ func runWebAuthnReauthBindingMismatch(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestWebAuthnDeleteAccountScopedSQLite(t *testing.T) {
-	runWebAuthnDeleteAccountScoped(t, seededDB(t, openSQLite))
-}
-func TestWebAuthnDeleteAccountScopedPostgres(t *testing.T) {
-	runWebAuthnDeleteAccountScoped(t, seededDB(t, openPostgres))
+func TestWebAuthnDeleteAccountScoped(t *testing.T) {
+	forEngines(t, runWebAuthnDeleteAccountScoped)
 }
 
 // runWebAuthnDeleteAccountScoped is the IDOR regression (B1): the credential
@@ -521,11 +520,8 @@ func runWebAuthnDeleteAccountScoped(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestWebAuthnLoginNoAccountThrottleSQLite(t *testing.T) {
-	runWebAuthnLoginNoAccountThrottle(t, seededDB(t, openSQLite))
-}
-func TestWebAuthnLoginNoAccountThrottlePostgres(t *testing.T) {
-	runWebAuthnLoginNoAccountThrottle(t, seededDB(t, openPostgres))
+func TestWebAuthnLoginNoAccountThrottle(t *testing.T) {
+	forEngines(t, runWebAuthnLoginNoAccountThrottle)
 }
 
 // runWebAuthnLoginNoAccountThrottle is the login-DoS regression (A2): a bad
@@ -559,11 +555,8 @@ func runWebAuthnLoginNoAccountThrottle(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestWebAuthnLoginHandleMismatchSQLite(t *testing.T) {
-	runWebAuthnLoginHandleMismatch(t, seededDB(t, openSQLite))
-}
-func TestWebAuthnLoginHandleMismatchPostgres(t *testing.T) {
-	runWebAuthnLoginHandleMismatch(t, seededDB(t, openPostgres))
+func TestWebAuthnLoginHandleMismatch(t *testing.T) {
+	forEngines(t, runWebAuthnLoginHandleMismatch)
 }
 
 // runWebAuthnLoginHandleMismatch: the lookup resolves the account from the
@@ -587,11 +580,8 @@ func runWebAuthnLoginHandleMismatch(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestWebAuthnStepUpThrottleSQLite(t *testing.T) {
-	runWebAuthnStepUpThrottle(t, seededDB(t, openSQLite))
-}
-func TestWebAuthnStepUpThrottlePostgres(t *testing.T) {
-	runWebAuthnStepUpThrottle(t, seededDB(t, openPostgres))
+func TestWebAuthnStepUpThrottle(t *testing.T) {
+	forEngines(t, runWebAuthnStepUpThrottle)
 }
 
 // runWebAuthnStepUpThrottle proves step-up no longer bypasses admission (A2):
@@ -630,11 +620,8 @@ func runWebAuthnStepUpThrottle(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestWebAuthnCeremonyExpirySQLite(t *testing.T) {
-	runWebAuthnCeremonyExpiry(t, seededDB(t, openSQLite))
-}
-func TestWebAuthnCeremonyExpiryPostgres(t *testing.T) {
-	runWebAuthnCeremonyExpiry(t, seededDB(t, openPostgres))
+func TestWebAuthnCeremonyExpiry(t *testing.T) {
+	forEngines(t, runWebAuthnCeremonyExpiry)
 }
 
 // runWebAuthnCeremonyExpiry is the ceremony-lifetime regression (A3): a login
@@ -667,11 +654,8 @@ func runWebAuthnCeremonyExpiry(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestRecoveryLastCodePasswordlessSQLite(t *testing.T) {
-	runRecoveryLastCodePasswordless(t, seededDB(t, openSQLite))
-}
-func TestRecoveryLastCodePasswordlessPostgres(t *testing.T) {
-	runRecoveryLastCodePasswordless(t, seededDB(t, openPostgres))
+func TestRecoveryLastCodePasswordless(t *testing.T) {
+	forEngines(t, runRecoveryLastCodePasswordless)
 }
 
 // runRecoveryLastCodePasswordless is the recovery-floor regression (A1):

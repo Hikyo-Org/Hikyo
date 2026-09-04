@@ -539,32 +539,19 @@ func runCorruptSnapshot(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestRemoteCorruptSnapshotFailsLoudSQLite(t *testing.T) {
-	runCorruptSnapshot(t, seededDB(t, openSQLite))
+func TestRemoteCorruptSnapshotFailsLoud(t *testing.T) {
+	forEngines(t, runCorruptSnapshot)
 }
 
-func TestRemoteCorruptSnapshotFailsLoudPostgres(t *testing.T) {
-	runCorruptSnapshot(t, seededDB(t, openPostgres))
+func TestRemoteCoalescingIsScoped(t *testing.T) {
+	forEngines(t, runScopedCoalescing)
 }
 
-func TestRemoteCoalescingIsScopedSQLite(t *testing.T) {
-	runScopedCoalescing(t, seededDB(t, openSQLite))
-}
-
-func TestRemoteCoalescingIsScopedPostgres(t *testing.T) {
-	runScopedCoalescing(t, seededDB(t, openPostgres))
-}
-
-func TestRemoteLifecycleSQLite(t *testing.T) {
-	db := seededDB(t, openSQLite)
-	runRemoteLifecycle(t, db)
-	assertRemoteEventsEmitted(t, db)
-}
-
-func TestRemoteLifecyclePostgres(t *testing.T) {
-	db := seededDB(t, openPostgres)
-	runRemoteLifecycle(t, db)
-	assertRemoteEventsEmitted(t, db)
+func TestRemoteLifecycle(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		runRemoteLifecycle(t, db)
+		assertRemoteEventsEmitted(t, db)
+	})
 }
 
 // assertRemoteEventsEmitted is the per-engine half of the closure invariant.

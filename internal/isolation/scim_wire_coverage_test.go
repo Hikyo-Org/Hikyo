@@ -19,8 +19,9 @@ import (
 
 // TestSCIMWirePaging is SC1.d: the RFC ListResponse fields, 1-based paging, and
 // an out-of-range page answering an EMPTY resource list with a TRUTHFUL total.
-func TestSCIMWirePagingSQLite(t *testing.T)   { runSCIMWirePaging(t, seededDB(t, openSQLite)) }
-func TestSCIMWirePagingPostgres(t *testing.T) { runSCIMWirePaging(t, seededDB(t, openPostgres)) }
+func TestSCIMWirePaging(t *testing.T) {
+	forEngines(t, runSCIMWirePaging)
+}
 
 func runSCIMWirePaging(t *testing.T, db *store.DB) {
 	s := scimSvc(db)
@@ -87,8 +88,9 @@ func runSCIMWirePaging(t *testing.T, db *store.DB) {
 
 // TestSCIMWireAdmission is SC4.c: bounded page and body refusals by name, and
 // the uniform unknown-versus-revoked answer.
-func TestSCIMWireAdmissionSQLite(t *testing.T)   { runSCIMWireAdmission(t, seededDB(t, openSQLite)) }
-func TestSCIMWireAdmissionPostgres(t *testing.T) { runSCIMWireAdmission(t, seededDB(t, openPostgres)) }
+func TestSCIMWireAdmission(t *testing.T) {
+	forEngines(t, runSCIMWireAdmission)
+}
 
 func runSCIMWireAdmission(t *testing.T, db *store.DB) {
 	s := scimSvc(db)
@@ -153,11 +155,8 @@ func probeSCIMCredential(t *testing.T, s *service.SCIM, token, bindingID string)
 // TestSCIMPatchAtomicityOverTheWire is SC1.f through the SERVICE, not only the
 // parser: a request whose first operation is valid and whose second is not must
 // commit NOTHING.
-func TestSCIMPatchAtomicityOverTheWireSQLite(t *testing.T) {
-	runSCIMPatchAtomicityOverTheWire(t, seededDB(t, openSQLite))
-}
-func TestSCIMPatchAtomicityOverTheWirePostgres(t *testing.T) {
-	runSCIMPatchAtomicityOverTheWire(t, seededDB(t, openPostgres))
+func TestSCIMPatchAtomicityOverTheWire(t *testing.T) {
+	forEngines(t, runSCIMPatchAtomicityOverTheWire)
 }
 
 func runSCIMPatchAtomicityOverTheWire(t *testing.T, db *store.DB) {
@@ -215,9 +214,8 @@ func runSCIMPatchAtomicityOverTheWire(t *testing.T, db *store.DB) {
 // TestSCIMTransitionTable is SC2.g: every §5.4 row with a real POSTCONDITION.
 // The earlier fixtures walked the transitions with nothing mapped, so update,
 // reactivate and delete were no-ops that could not fail.
-func TestSCIMTransitionTableSQLite(t *testing.T) { runSCIMTransitionTable(t, seededDB(t, openSQLite)) }
-func TestSCIMTransitionTablePostgres(t *testing.T) {
-	runSCIMTransitionTable(t, seededDB(t, openPostgres))
+func TestSCIMTransitionTable(t *testing.T) {
+	forEngines(t, runSCIMTransitionTable)
 }
 
 func runSCIMTransitionTable(t *testing.T, db *store.DB) {
@@ -341,11 +339,8 @@ func scimOriginCount(t *testing.T, db *store.DB, p domain.PrincipalID) int64 {
 // TestSCIMZeroAuthorityOnCreate is SC2.c: a provisioned account has NO session,
 // NO assurance and NO credential — asserted by ATTEMPTING authenticated
 // operations, not by counting rows.
-func TestSCIMZeroAuthorityOnCreateSQLite(t *testing.T) {
-	runSCIMZeroAuthorityOnCreate(t, seededDB(t, openSQLite))
-}
-func TestSCIMZeroAuthorityOnCreatePostgres(t *testing.T) {
-	runSCIMZeroAuthorityOnCreate(t, seededDB(t, openPostgres))
+func TestSCIMZeroAuthorityOnCreate(t *testing.T) {
+	forEngines(t, runSCIMZeroAuthorityOnCreate)
 }
 
 func runSCIMZeroAuthorityOnCreate(t *testing.T, db *store.DB) {
@@ -408,11 +403,8 @@ func runSCIMZeroAuthorityOnCreate(t *testing.T, db *store.DB) {
 // TestSCIMProvisionThenLoginSAMLEmailCarve is the other half of SC2.b: the
 // Entra shape admitted under the `emailAddress` NameID carve, proving the
 // carve COMPOSES with the subject derivation unchanged.
-func TestSCIMProvisionThenLoginSAMLEmailCarveSQLite(t *testing.T) {
-	runSCIMProvisionThenLoginSAMLEmailCarve(t, seededDB(t, openSQLite))
-}
-func TestSCIMProvisionThenLoginSAMLEmailCarvePostgres(t *testing.T) {
-	runSCIMProvisionThenLoginSAMLEmailCarve(t, seededDB(t, openPostgres))
+func TestSCIMProvisionThenLoginSAMLEmailCarve(t *testing.T) {
+	forEngines(t, runSCIMProvisionThenLoginSAMLEmailCarve)
 }
 
 const samlEmailFormat = "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
@@ -515,11 +507,8 @@ func samlLoginAsFormat(t *testing.T, auth *service.Auth, idp *samltest.IdP, name
 // TestSCIMManualRemainderWording is SC2.i's other half: the attention state is
 // not enough — the surface must carry the HONEST wording the ADR insists on,
 // that the manual grants remain usable including after a fresh login.
-func TestSCIMManualRemainderWordingSQLite(t *testing.T) {
-	runSCIMManualRemainderWording(t, seededDB(t, openSQLite))
-}
-func TestSCIMManualRemainderWordingPostgres(t *testing.T) {
-	runSCIMManualRemainderWording(t, seededDB(t, openPostgres))
+func TestSCIMManualRemainderWording(t *testing.T) {
+	forEngines(t, runSCIMManualRemainderWording)
 }
 
 func runSCIMManualRemainderWording(t *testing.T, db *store.DB) {

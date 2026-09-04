@@ -15,52 +15,28 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
-func TestRetentionGCC6SQLite(t *testing.T) {
-	runRetentionGCC6(t, seededDB(t, openSQLite))
+func TestRetentionGCC6(t *testing.T) {
+	forEngines(t, runRetentionGCC6)
 }
 
-func TestRetentionGCC6Postgres(t *testing.T) {
-	runRetentionGCC6(t, seededDB(t, openPostgres))
+func TestRetentionPinSubsecondBoundary(t *testing.T) {
+	forEngines(t, runRetentionPinSubsecondBoundary)
 }
 
-func TestRetentionPinSubsecondBoundarySQLite(t *testing.T) {
-	runRetentionPinSubsecondBoundary(t, seededDB(t, openSQLite))
+func TestPinReleaseRetentionConsequence(t *testing.T) {
+	forEngines(t, runPinReleaseRetentionConsequence)
 }
 
-func TestRetentionPinSubsecondBoundaryPostgres(t *testing.T) {
-	runRetentionPinSubsecondBoundary(t, seededDB(t, openPostgres))
+func TestPinReleaseConcurrentGC(t *testing.T) {
+	forEngines(t, runPinReleaseConcurrentGC)
 }
 
-func TestPinReleaseRetentionConsequenceSQLite(t *testing.T) {
-	runPinReleaseRetentionConsequence(t, seededDB(t, openSQLite))
+func TestRetentionFailedSweepAudit(t *testing.T) {
+	forEngines(t, runRetentionFailedSweepAudit)
 }
 
-func TestPinReleaseRetentionConsequencePostgres(t *testing.T) {
-	runPinReleaseRetentionConsequence(t, seededDB(t, openPostgres))
-}
-
-func TestPinReleaseConcurrentGCPostgres(t *testing.T) {
-	runPinReleaseConcurrentGC(t, seededDB(t, openPostgres))
-}
-
-func TestPinReleaseConcurrentGCSQLite(t *testing.T) {
-	runPinReleaseConcurrentGC(t, seededDB(t, openSQLite))
-}
-
-func TestRetentionFailedSweepAuditSQLite(t *testing.T) {
-	runRetentionFailedSweepAudit(t, seededDB(t, openSQLite))
-}
-
-func TestRetentionFailedSweepAuditPostgres(t *testing.T) {
-	runRetentionFailedSweepAudit(t, seededDB(t, openPostgres))
-}
-
-func TestRetentionFailedSweepCountsObservedCandidatesSQLite(t *testing.T) {
-	runRetentionFailedSweepCountsObservedCandidates(t, seededDB(t, openSQLite))
-}
-
-func TestRetentionFailedSweepCountsObservedCandidatesPostgres(t *testing.T) {
-	runRetentionFailedSweepCountsObservedCandidates(t, seededDB(t, openPostgres))
+func TestRetentionFailedSweepCountsObservedCandidates(t *testing.T) {
+	forEngines(t, runRetentionFailedSweepCountsObservedCandidates)
 }
 
 func runRetentionFailedSweepAudit(t *testing.T, db *store.DB) {

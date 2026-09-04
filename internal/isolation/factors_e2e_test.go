@@ -40,6 +40,33 @@ func totpCode(t *testing.T, otpauthURI string, at time.Time) string {
 	return code
 }
 
+// enrolTOTPAndStepUp runs the full first-factor ceremony for the "factor-admin"
+// account: log in over the CLI artifact, enrol TOTP, confirm it 30s later, and
+// step the session up 60s later. It advances the caller's clock (which auth.Now
+// closes over) through the ceremony and returns the stepped-up session token.
+func enrolTOTPAndStepUp(t *testing.T, auth *service.Auth, ctx context.Context, base time.Time, clk *time.Time, password string) string {
+	t.Helper()
+	login, err := auth.LocalLogin(ctx, "factor-admin", password, service.ArtifactCLI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uri, err := auth.EnrolTOTPStart(ctx, login.SessionToken, password)
+	if err != nil {
+		t.Fatalf("enrol start: %v", err)
+	}
+	*clk = base.Add(30 * time.Second)
+	confirmed, err := auth.EnrolTOTPConfirm(ctx, login.SessionToken, totpCode(t, uri, *clk))
+	if err != nil {
+		t.Fatalf("enrol confirm: %v", err)
+	}
+	*clk = base.Add(60 * time.Second)
+	stepped, err := auth.StepUpTOTP(ctx, confirmed.SessionToken, totpCode(t, uri, *clk))
+	if err != nil {
+		t.Fatalf("step-up: %v", err)
+	}
+	return stepped.SessionToken
+}
+
 // bootstrapFactorAdmin adds the environment read needed by factor
 // reauthentication flows to the shared first-administrator fixture. One Auth
 // (one root key) drives the whole flow so sealed material stays readable.
@@ -109,24 +136,16 @@ func runFactorLifecycle(t *testing.T, auth *service.Auth, ctx context.Context, u
 	}
 }
 
-func TestRecoveryCompleteFlowSQLite(t *testing.T) { runRecoveryFlow(t, seededDB(t, openSQLite)) }
-
-func TestRecoveryCompleteFlowPostgres(t *testing.T) { runRecoveryFlow(t, seededDB(t, openPostgres)) }
-
-func TestPasswordReauthEvidenceRejectsReplacedCredentialSQLite(t *testing.T) {
-	runPasswordReauthEvidenceRejectsReplacedCredential(t, seededDB(t, openSQLite))
+func TestRecoveryCompleteFlow(t *testing.T) {
+	forEngines(t, runRecoveryFlow)
 }
 
-func TestPasswordReauthEvidenceRejectsReplacedCredentialPostgres(t *testing.T) {
-	runPasswordReauthEvidenceRejectsReplacedCredential(t, seededDB(t, openPostgres))
+func TestPasswordReauthEvidenceRejectsReplacedCredential(t *testing.T) {
+	forEngines(t, runPasswordReauthEvidenceRejectsReplacedCredential)
 }
 
-func TestRecoveryCodeRegenerationTOTPReplaySQLite(t *testing.T) {
-	runRecoveryCodeRegenerationTOTPReplay(t, seededDB(t, openSQLite))
-}
-
-func TestRecoveryCodeRegenerationTOTPReplayPostgres(t *testing.T) {
-	runRecoveryCodeRegenerationTOTPReplay(t, seededDB(t, openPostgres))
+func TestRecoveryCodeRegenerationTOTPReplay(t *testing.T) {
+	forEngines(t, runRecoveryCodeRegenerationTOTPReplay)
 }
 
 func runPasswordReauthEvidenceRejectsReplacedCredential(t *testing.T, db *store.DB) {
@@ -264,12 +283,8 @@ func runRecoveryFlow(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestAccountSecurityCannotSelfAuthorizeSQLite(t *testing.T) {
-	runSelfAuthorize(t, seededDB(t, openSQLite))
-}
-
-func TestAccountSecurityCannotSelfAuthorizePostgres(t *testing.T) {
-	runSelfAuthorize(t, seededDB(t, openPostgres))
+func TestAccountSecurityCannotSelfAuthorize(t *testing.T) {
+	forEngines(t, runSelfAuthorize)
 }
 
 // runSelfAuthorize asserts an account-security mutation cannot authorize itself:
@@ -316,9 +331,9 @@ func runSelfAuthorize(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestStepUpElevatesSQLite(t *testing.T) { runStepUpElevates(t, seededDB(t, openSQLite)) }
-
-func TestStepUpElevatesPostgres(t *testing.T) { runStepUpElevates(t, seededDB(t, openPostgres)) }
+func TestStepUpElevates(t *testing.T) {
+	forEngines(t, runStepUpElevates)
+}
 
 // runStepUpElevates asserts a password-only session is refused an MFA-mandatory
 // operation and that a TOTP step-up unlocks it.
@@ -364,12 +379,8 @@ func runStepUpElevates(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestTOTPConfirmSameStepSQLite(t *testing.T) {
-	runConfirmSameStep(t, seededDB(t, openSQLite))
-}
-
-func TestTOTPConfirmSameStepPostgres(t *testing.T) {
-	runConfirmSameStep(t, seededDB(t, openPostgres))
+func TestTOTPConfirmSameStep(t *testing.T) {
+	forEngines(t, runConfirmSameStep)
 }
 
 // runConfirmSameStep asserts the code shown in the SAME time step as enrolment
@@ -408,12 +419,8 @@ func runConfirmSameStep(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestTOTPStepUpReplaySQLite(t *testing.T) {
-	runStepUpReplay(t, seededDB(t, openSQLite))
-}
-
-func TestTOTPStepUpReplayPostgres(t *testing.T) {
-	runStepUpReplay(t, seededDB(t, openPostgres))
+func TestTOTPStepUpReplay(t *testing.T) {
+	forEngines(t, runStepUpReplay)
 }
 
 // runStepUpReplay asserts single-use per (account, step): a code that stepped a

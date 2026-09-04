@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -685,12 +684,8 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 	})
 }
 
-func TestAuditCoreSQLite(t *testing.T) {
-	runAuditSuite(t, seededDB(t, openSQLite))
-}
-
-func TestAuditCorePostgres(t *testing.T) {
-	runAuditSuite(t, seededDB(t, openPostgres))
+func TestAuditCore(t *testing.T) {
+	forEngines(t, runAuditSuite)
 }
 
 // TestPostgresAuditExportCommitOrder is #84's regression: sequence allocation
@@ -929,13 +924,7 @@ type exportLineForTest struct {
 // boot. (The fsync leg needs a server restart and is unit-tested through
 // the querier seam in internal/store.)
 func TestPostgresDurabilityBootRefusal(t *testing.T) {
-	dsn := os.Getenv("HIKYO_TEST_POSTGRES_DSN")
-	if dsn == "" {
-		if os.Getenv("CI") != "" {
-			t.Fatal("CI run without HIKYO_TEST_POSTGRES_DSN: the postgres durability leg must not silently skip in CI")
-		}
-		t.Skip("HIKYO_TEST_POSTGRES_DSN not set")
-	}
+	dsn := postgresTestDSN(t)
 	derived := derivedDatabase(t, dsn, "_durability")
 	u, err := url.Parse(derived)
 	if err != nil {

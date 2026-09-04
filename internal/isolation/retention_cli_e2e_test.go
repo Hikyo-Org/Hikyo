@@ -273,14 +273,7 @@ func retentionAppConfig(t *testing.T, engine store.Engine) *config.Config {
 
 	storeCfg := config.Datastore{Engine: config.EngineSQLite, Path: filepath.Join(t.TempDir(), "retention-cli.db")}
 	if engine == store.EnginePostgres {
-		dsn := os.Getenv("HIKYO_TEST_POSTGRES_DSN")
-		if dsn == "" {
-			if os.Getenv("CI") != "" {
-				t.Fatal("CI run without HIKYO_TEST_POSTGRES_DSN: the postgres retention CLI leg must not silently skip in CI")
-			}
-			t.Skip("HIKYO_TEST_POSTGRES_DSN not set")
-		}
-		dsn = derivedDatabase(t, dsn, "_retention_cli")
+		dsn := derivedDatabase(t, postgresTestDSN(t), "_retention_cli")
 		reset, err := store.Open(t.Context(), store.Config{Engine: store.EnginePostgres, DSN: dsn})
 		if err != nil {
 			t.Fatal(err)

@@ -147,8 +147,9 @@ func planMatrix(
 	return plans, problems
 }
 
-func TestFormulaMatrixSQLite(t *testing.T)   { runFormulaMatrix(t, seededDB(t, openSQLite)) }
-func TestFormulaMatrixPostgres(t *testing.T) { runFormulaMatrix(t, seededDB(t, openPostgres)) }
+func TestFormulaMatrix(t *testing.T) {
+	forEngines(t, runFormulaMatrix)
+}
 
 // runFormulaMatrix executes the generated matrix against a real datastore
 // through the real chokepoint. It is E2E in the sense that matters for A2: the
@@ -313,11 +314,8 @@ func TestMatrixCoversEveryProofMintingOperation(t *testing.T) {
 // the chokepoint: a principal authorized a moment ago is refused on the very
 // next call once the grant row is gone, with no invalidation step anywhere —
 // because there is nothing to invalidate.
-func TestRevocationIsImmediateSQLite(t *testing.T) {
-	runRevocationIsImmediate(t, seededDB(t, openSQLite))
-}
-func TestRevocationIsImmediatePostgres(t *testing.T) {
-	runRevocationIsImmediate(t, seededDB(t, openPostgres))
+func TestRevocationIsImmediate(t *testing.T) {
+	forEngines(t, runRevocationIsImmediate)
 }
 
 func runRevocationIsImmediate(t *testing.T, db *store.DB) {

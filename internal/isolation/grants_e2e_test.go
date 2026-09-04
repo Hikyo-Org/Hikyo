@@ -84,8 +84,9 @@ func originCount(t *testing.T, db *store.DB, p domain.PrincipalID, c domain.Capa
 	return n
 }
 
-func TestGrantAuthoritySQLite(t *testing.T)   { runGrantAuthority(t, seededDB(t, openSQLite)) }
-func TestGrantAuthorityPostgres(t *testing.T) { runGrantAuthority(t, seededDB(t, openPostgres)) }
+func TestGrantAuthority(t *testing.T) {
+	forEngines(t, runGrantAuthority)
+}
 
 // runGrantAuthority: `manage-members` at ORG scope may grant a capability the
 // grantor does not hold; the same capability at PROJECT scope may not. This is
@@ -120,8 +121,9 @@ func runGrantAuthority(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestGrantPerOrgCapSQLite(t *testing.T)   { runGrantPerOrgCap(t, seededDB(t, openSQLite)) }
-func TestGrantPerOrgCapPostgres(t *testing.T) { runGrantPerOrgCap(t, seededDB(t, openPostgres)) }
+func TestGrantPerOrgCap(t *testing.T) {
+	forEngines(t, runGrantPerOrgCap)
+}
 
 // runGrantPerOrgCap: the ops-spec § 8 loud sanity cap. Once an org holds
 // MaxGrantsPerOrg grant rows, a new grant is refused by name — the cap exists
@@ -153,8 +155,9 @@ func runGrantPerOrgCap(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestGrantDedupSQLite(t *testing.T)   { runGrantDedup(t, seededDB(t, openSQLite)) }
-func TestGrantDedupPostgres(t *testing.T) { runGrantDedup(t, seededDB(t, openPostgres)) }
+func TestGrantDedup(t *testing.T) {
+	forEngines(t, runGrantDedup)
+}
 
 // runGrantDedup: the table carries no uniqueness over the triple on purpose,
 // so dedup is the API's job. Two grantors granting the same triple leave ONE
@@ -204,11 +207,8 @@ func runGrantDedup(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestGrantRevokeReleasesOneOriginSQLite(t *testing.T) {
-	runGrantRevokeOrigins(t, seededDB(t, openSQLite))
-}
-func TestGrantRevokeReleasesOneOriginPostgres(t *testing.T) {
-	runGrantRevokeOrigins(t, seededDB(t, openPostgres))
+func TestGrantRevokeReleasesOneOrigin(t *testing.T) {
+	forEngines(t, runGrantRevokeOrigins)
 }
 
 // runGrantRevokeOrigins: a revoke releases the origins this surface owns and
@@ -237,8 +237,9 @@ func runGrantRevokeOrigins(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestLockoutInvariantSQLite(t *testing.T)   { runLockoutInvariant(t, seededDB(t, openSQLite)) }
-func TestLockoutInvariantPostgres(t *testing.T) { runLockoutInvariant(t, seededDB(t, openPostgres)) }
+func TestLockoutInvariant(t *testing.T) {
+	forEngines(t, runLockoutInvariant)
+}
 
 // runLockoutInvariant: removing the LAST `manage-members` holder is refused at
 // org scope and at instance scope. An unadministrable org is a support incident
@@ -271,8 +272,9 @@ func runLockoutInvariant(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestMachineAllowlistSQLite(t *testing.T)   { runMachineAllowlist(t, seededDB(t, openSQLite)) }
-func TestMachineAllowlistPostgres(t *testing.T) { runMachineAllowlist(t, seededDB(t, openPostgres)) }
+func TestMachineAllowlist(t *testing.T) {
+	forEngines(t, runMachineAllowlist)
+}
 
 // runMachineAllowlist: the allowlists are NORMATIVE — the grant API refuses,
 // it does not merely document. No machine principal holds `manage-members`,
@@ -330,8 +332,9 @@ func runMachineAllowlist(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestTemplateExpansionSQLite(t *testing.T)   { runTemplateExpansion(t, seededDB(t, openSQLite)) }
-func TestTemplateExpansionPostgres(t *testing.T) { runTemplateExpansion(t, seededDB(t, openPostgres)) }
+func TestTemplateExpansion(t *testing.T) {
+	forEngines(t, runTemplateExpansion)
+}
 
 // runTemplateExpansion: a template expands AT GRANT TIME into independent
 // rows. Nothing stores "the grantee is an admin"; what is stored is the
@@ -415,8 +418,9 @@ func runTemplateExpansion(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestMembershipListingSQLite(t *testing.T)   { runMembershipListing(t, seededDB(t, openSQLite)) }
-func TestMembershipListingPostgres(t *testing.T) { runMembershipListing(t, seededDB(t, openPostgres)) }
+func TestMembershipListing(t *testing.T) {
+	forEngines(t, runMembershipListing)
+}
 
 // runMembershipListing: the surface answers per CAPABILITY LINE with its
 // origin chips, which is what makes "who can read production secrets?"
@@ -455,8 +459,9 @@ func runMembershipListing(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestBreakGlassGrantSQLite(t *testing.T)   { runBreakGlassGrant(t, seededDB(t, openSQLite)) }
-func TestBreakGlassGrantPostgres(t *testing.T) { runBreakGlassGrant(t, seededDB(t, openPostgres)) }
+func TestBreakGlassGrant(t *testing.T) {
+	forEngines(t, runBreakGlassGrant)
+}
 
 // runBreakGlassGrant: the local-host recovery path names its grantee principal
 // and capability explicitly, writes a durable recovery record, and carries a
@@ -501,11 +506,8 @@ func runBreakGlassGrant(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestProtectedEnvironmentSQLite(t *testing.T) {
-	runProtectedEnvironment(t, seededDB(t, openSQLite))
-}
-func TestProtectedEnvironmentPostgres(t *testing.T) {
-	runProtectedEnvironment(t, seededDB(t, openPostgres))
+func TestProtectedEnvironment(t *testing.T) {
+	forEngines(t, runProtectedEnvironment)
 }
 
 // runProtectedEnvironment: marking an environment protected CAPS its window at
@@ -592,9 +594,8 @@ func runProtectedEnvironment(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestRevokeKillsSessionSQLite(t *testing.T) { runRevokeKillsSession(t, seededDB(t, openSQLite)) }
-func TestRevokeKillsSessionPostgres(t *testing.T) {
-	runRevokeKillsSession(t, seededDB(t, openPostgres))
+func TestRevokeKillsSession(t *testing.T) {
+	forEngines(t, runRevokeKillsSession)
 }
 
 // runRevokeKillsSession IS the acceptance demo, in the order the criterion
@@ -737,8 +738,9 @@ func TestBreakGlassGrantHasNoNetworkRoute(t *testing.T) {
 	}
 }
 
-func TestLockoutCensusSQLite(t *testing.T)   { runLockoutCensus(t, seededDB(t, openSQLite)) }
-func TestLockoutCensusPostgres(t *testing.T) { runLockoutCensus(t, seededDB(t, openPostgres)) }
+func TestLockoutCensus(t *testing.T) {
+	forEngines(t, runLockoutCensus)
+}
 
 // runLockoutCensus is the regression for the two ways the org census got the
 // lockout invariant wrong, both of which the ordinary fixture cannot show:
@@ -832,9 +834,8 @@ func manageMembersHolders(t *testing.T, db *store.DB, org string) []domain.Princ
 	return out
 }
 
-func TestMachineScopeBoundsSQLite(t *testing.T) { runMachineScopeBounds(t, seededDB(t, openSQLite)) }
-func TestMachineScopeBoundsPostgres(t *testing.T) {
-	runMachineScopeBounds(t, seededDB(t, openPostgres))
+func TestMachineScopeBounds(t *testing.T) {
+	forEngines(t, runMachineScopeBounds)
 }
 
 // runMachineScopeBounds is F1's regression: the normative machine rules bound
@@ -940,11 +941,8 @@ func runMachineScopeBounds(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestGrantLifecycleEventsSQLite(t *testing.T) {
-	runGrantLifecycleEvents(t, seededDB(t, openSQLite))
-}
-func TestGrantLifecycleEventsPostgres(t *testing.T) {
-	runGrantLifecycleEvents(t, seededDB(t, openPostgres))
+func TestGrantLifecycleEvents(t *testing.T) {
+	forEngines(t, runGrantLifecycleEvents)
 }
 
 // runGrantLifecycleEvents is F5's regression: the lifecycle event must match
@@ -1032,11 +1030,8 @@ func runGrantLifecycleEvents(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestOriginAddKeepsSessionAliveSQLite(t *testing.T) {
-	runOriginAddKeepsSessionAlive(t, seededDB(t, openSQLite))
-}
-func TestOriginAddKeepsSessionAlivePostgres(t *testing.T) {
-	runOriginAddKeepsSessionAlive(t, seededDB(t, openPostgres))
+func TestOriginAddKeepsSessionAlive(t *testing.T) {
+	forEngines(t, runOriginAddKeepsSessionAlive)
 }
 
 // runOriginAddKeepsSessionAlive is F5's remaining arm: a SECOND origin joining

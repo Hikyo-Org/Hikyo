@@ -149,14 +149,7 @@ func sqliteTarget(t *testing.T, backupDir, recipient string) drillTarget {
 
 func postgresTarget(t *testing.T, backupDir, recipient string) drillTarget {
 	t.Helper()
-	base := os.Getenv("HIKYO_TEST_POSTGRES_DSN")
-	if base == "" {
-		if os.Getenv("CI") != "" {
-			t.Fatal("CI run without HIKYO_TEST_POSTGRES_DSN: the postgres backup drill must not silently skip in CI")
-		}
-		t.Skip("HIKYO_TEST_POSTGRES_DSN not set")
-	}
-	dsn := derivedDatabase(t, base, "_drill")
+	dsn := derivedDatabase(t, postgresTestDSN(t), "_drill")
 	drop := func(t *testing.T) {
 		t.Helper()
 		db, err := store.Open(t.Context(), store.Config{Engine: store.EnginePostgres, DSN: dsn})

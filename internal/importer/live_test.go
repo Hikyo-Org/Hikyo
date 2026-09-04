@@ -19,6 +19,18 @@ import (
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
+// writeKubeconfig writes a kubeconfig body to path (0600) and points the
+// KUBECONFIG environment variable at it for the duration of the test. The YAML
+// bodies themselves stay at the call sites: each live-import case exercises a
+// distinct kubeconfig shape, and only this write-and-point scaffold is shared.
+func writeKubeconfig(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("KUBECONFIG", path)
+}
+
 func TestK8sLiveFixtureImportsSecretPages(t *testing.T) {
 	var requests int
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -63,10 +75,7 @@ users:
   user:
     token: fixture-token
 `, server.URL, contextName, contextName)
-	if err := os.WriteFile(kubeconfig, []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("KUBECONFIG", kubeconfig)
+	writeKubeconfig(t, kubeconfig, config)
 
 	result, err := RunLive(t.Context(), k8sSource, LiveInput{Namespace: "demo"})
 	if err != nil {
@@ -130,10 +139,7 @@ users:
 - name: fixture-user
   user: {token: fixture-token}
 `, server.URL)
-	if err := os.WriteFile(kubeconfig, []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("KUBECONFIG", kubeconfig)
+	writeKubeconfig(t, kubeconfig, config)
 
 	_, err := RunLive(t.Context(), k8sSource, LiveInput{Namespace: "demo"})
 	if err == nil {
@@ -202,10 +208,7 @@ users:
       - name: EXPECTED_CLUSTER
         value: %q
 `, wrong.URL, selected.URL, helper, selected.URL)
-	if err := os.WriteFile(kubeconfig, []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("KUBECONFIG", kubeconfig)
+	writeKubeconfig(t, kubeconfig, config)
 
 	result, err := RunLive(t.Context(), k8sSource,
 		LiveInput{Context: "selected", Namespace: "demo", Name: "app"})
@@ -256,10 +259,7 @@ users:
       - -c
       - 'if env | grep -q "^HIKYO_"; then exit 71; fi; printf %%s "$KUBERNETES_EXEC_INFO" | grep -q ''"interactive":false'' || exit 72; printf ''{"apiVersion":"client.authentication.k8s.io/v1","kind":"ExecCredential","status":{"token":"exec-fixture-token"}}'''
 `, server.URL)
-	if err := os.WriteFile(kubeconfig, []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("KUBECONFIG", kubeconfig)
+	writeKubeconfig(t, kubeconfig, config)
 	t.Setenv("HIKYO_TOKEN", "hikyo_token_must_not_reach_exec_plugin")
 
 	result, err := RunLive(t.Context(), k8sSource, LiveInput{Namespace: "demo", Name: "app"})
@@ -333,10 +333,7 @@ users:
       command: /bin/sh
       args: [-c, %q]
 `, "touch "+marker)
-	if err := os.WriteFile(kubeconfig, []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("KUBECONFIG", kubeconfig)
+	writeKubeconfig(t, kubeconfig, config)
 	_, err := RunLive(t.Context(), k8sSource, LiveInput{Namespace: "demo", Name: "app"})
 	wantCode(t, err, CodeProvenance, marker)
 	if _, statErr := os.Stat(marker); !errors.Is(statErr, os.ErrNotExist) {
@@ -375,10 +372,7 @@ users:
       command: /bin/sh
       args: [-c, %q]
 `, server.URL, "touch "+marker+"; exit 72")
-	if err := os.WriteFile(kubeconfig, []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("KUBECONFIG", kubeconfig)
+	writeKubeconfig(t, kubeconfig, config)
 
 	if _, err := RunLive(t.Context(), k8sSource, LiveInput{Namespace: "demo", Name: "app"}); err != nil {
 		t.Fatal(err)
@@ -438,10 +432,7 @@ users:
       interactiveMode: Never
       command: %q
 `, server.URL, helper)
-	if err := os.WriteFile(kubeconfig, []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("KUBECONFIG", kubeconfig)
+	writeKubeconfig(t, kubeconfig, config)
 
 	result, err := RunLive(t.Context(), k8sSource, LiveInput{Namespace: "demo", Name: "app"})
 	if err != nil {
@@ -510,10 +501,7 @@ users:
       interactiveMode: Never
       command: %q
 `, server.URL, helper)
-	if err := os.WriteFile(kubeconfig, []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("KUBECONFIG", kubeconfig)
+	writeKubeconfig(t, kubeconfig, config)
 
 	result, err := RunLive(t.Context(), k8sSource, LiveInput{Namespace: "demo"})
 	if err != nil {
@@ -545,10 +533,7 @@ users:
       apiVersion: client.authentication.k8s.io/v1
       command: /bin/true
 `
-	if err := os.WriteFile(kubeconfig, []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("KUBECONFIG", kubeconfig)
+	writeKubeconfig(t, kubeconfig, config)
 	_, err := RunLive(t.Context(), k8sSource, LiveInput{Namespace: "demo", Name: "app"})
 	if err == nil {
 		t.Fatal("v1 exec credential without interactiveMode was accepted")
@@ -581,10 +566,7 @@ users:
       command: /bin/sh
       args: [-c, "sleep 1"]
 `, server.URL)
-	if err := os.WriteFile(kubeconfig, []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("KUBECONFIG", kubeconfig)
+	writeKubeconfig(t, kubeconfig, config)
 	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 	defer cancel()
 	_, err := RunLive(ctx, k8sSource, LiveInput{Namespace: "demo"})
@@ -614,10 +596,7 @@ users:
       command: /bin/sh
       args: [-c, "while :; do printf 0123456789; done"]
 `
-	if err := os.WriteFile(kubeconfig, []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("KUBECONFIG", kubeconfig)
+	writeKubeconfig(t, kubeconfig, config)
 	_, err := RunLive(t.Context(), k8sSource, LiveInput{Namespace: "demo"})
 	wantCode(t, err, CodeBound)
 	if !strings.Contains(err.Error(), "response exceeds") {
@@ -646,10 +625,7 @@ users:
 - name: fixture-user
   user: {token: fixture-token}
 `, server.URL)
-	if err := os.WriteFile(kubeconfig, []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("KUBECONFIG", kubeconfig)
+	writeKubeconfig(t, kubeconfig, config)
 
 	_, err := RunLive(t.Context(), k8sSource, LiveInput{Namespace: "demo", Name: "app"})
 	if err == nil {
