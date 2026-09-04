@@ -163,34 +163,6 @@ func TestSourceBuildCannotEnableAnUpdaterItCannotTrust(t *testing.T) {
 	}
 }
 
-func TestLegacyImplicitStableStateMigratesToTheArtifactDefault(t *testing.T) {
-	source := updateSourceFunc(func(context.Context) ([]updatecheck.Release, error) {
-		return []updatecheck.Release{{
-			Version:    "1.1.0-nightly.20260824.42.gbbbbbbbb",
-			Prerelease: true,
-		}}, nil
-	})
-	ios, stdout, stderr := updateIO(t, source)
-	ios.DefaultUpdateChannel = updatecheck.ChannelNightly
-	state, err := NewState(ios.Env)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := state.writeJSON(state.updatesPath(), updateState{
-		Channel:   updatecheck.ChannelStable,
-		CheckedAt: ios.now(),
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	if code := Run(t.Context(), ios, []string{"update", "check"}); code != ExitOK {
-		t.Fatalf("check exit = %d: %s", code, stderr.String())
-	}
-	if !strings.Contains(stdout.String(), "nightly") {
-		t.Fatalf("stdout = %q, want migrated nightly default", stdout.String())
-	}
-}
-
 func TestImplicitSnapshotFollowsAnArtifactChannelChange(t *testing.T) {
 	stateDir := t.TempDir()
 	state := &State{dir: stateDir}
@@ -208,32 +180,6 @@ func TestImplicitSnapshotFollowsAnArtifactChannelChange(t *testing.T) {
 	}
 	if current.Channel != updatecheck.ChannelNightly || !current.CheckedAt.IsZero() || len(current.Releases) != 0 {
 		t.Fatalf("migrated state = %+v, want fresh implicit nightly state", current)
-	}
-}
-
-func TestLegacyStateDoesNotEnableChecksForSourceBuilds(t *testing.T) {
-	source := updateSourceFunc(func(context.Context) ([]updatecheck.Release, error) {
-		t.Fatal("source-build legacy migration reached release network")
-		return nil, nil
-	})
-	ios, stdout, stderr := updateIO(t, source)
-	ios.DefaultUpdateChannel = updatecheck.ChannelOff
-	state, err := NewState(ios.Env)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := state.writeJSON(state.updatesPath(), updateState{
-		Channel:   updatecheck.ChannelStable,
-		CheckedAt: ios.now(),
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	if code := Run(t.Context(), ios, []string{"update", "check"}); code != ExitOK {
-		t.Fatalf("check exit = %d: %s", code, stderr.String())
-	}
-	if got := stdout.String(); got != "Update checks are off.\n" {
-		t.Fatalf("stdout = %q, want source-build checks off", got)
 	}
 }
 
@@ -339,80 +285,6 @@ func TestNotifyUpdateUsesFreshSnapshotWithoutNetwork(t *testing.T) {
 		!strings.Contains(stderr.String(), "Installed  1.0.0") ||
 		!strings.Contains(stderr.String(), "Latest     1.0.1") {
 		t.Fatalf("stderr = %q, want update notice", stderr.String())
-	}
-}
-
-func TestNotifyUpdateRefreshesLegacySnapshotsBeforeOfferingInstallation(t *testing.T) {
-	calls := 0
-	source := updateSourceFunc(func(context.Context) ([]updatecheck.Release, error) {
-		calls++
-		return []updatecheck.Release{{
-			Version: "1.0.1",
-			Assets:  []updatecheck.Asset{{Name: "checksums.txt"}},
-		}}, nil
-	})
-	ios, _, stderr := updateIO(t, source)
-	ios.TerminalSession, _ = updateTerminal(t, "yes\n")
-	state, err := NewState(ios.Env)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := state.writeJSON(state.updatesPath(), updateState{
-		Channel:   updatecheck.ChannelStable,
-		CheckedAt: ios.now(),
-		Releases:  []updatecheck.Release{{Version: "1.0.1"}},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	ios.BinaryUpdater = binaryUpdaterFunc(func(_ context.Context, status updatecheck.Status) error {
-		if len(status.Assets) != 1 {
-			t.Fatalf("offered assets = %+v, want refreshed release assets", status.Assets)
-		}
-		return nil
-	})
-
-	NotifyUpdate(t.Context(), ios)
-	if calls != 1 {
-		t.Fatalf("release source calls = %d, want one legacy-cache refresh", calls)
-	}
-	if !strings.Contains(stderr.String(), "Hikyo 1.0.1 is verified and updated in place") {
-		t.Fatalf("stderr = %q, want successful update", stderr.String())
-	}
-}
-
-func TestNotifyUpdateLeavesLegacyStateUnmigratedWhenRefreshFails(t *testing.T) {
-	calls := 0
-	source := updateSourceFunc(func(context.Context) ([]updatecheck.Release, error) {
-		calls++
-		return nil, errors.New("offline")
-	})
-	ios, _, stderr := updateIO(t, source)
-	state, err := NewState(ios.Env)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := state.writeJSON(state.updatesPath(), updateState{
-		Channel:   updatecheck.ChannelStable,
-		CheckedAt: ios.now(),
-		Releases:  []updatecheck.Release{{Version: "9.9.9"}},
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	NotifyUpdate(t.Context(), ios)
-	NotifyUpdate(t.Context(), ios)
-	if calls != 2 {
-		t.Fatalf("release source calls = %d, want legacy migration retried", calls)
-	}
-	raw, err := os.ReadFile(state.updatesPath())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(raw), `"schema": 1`) {
-		t.Fatalf("legacy state was marked migrated after failed refresh: %s", raw)
-	}
-	if stderr.Len() != 0 {
-		t.Fatalf("stderr = %q, want best-effort failure silence", stderr.String())
 	}
 }
 

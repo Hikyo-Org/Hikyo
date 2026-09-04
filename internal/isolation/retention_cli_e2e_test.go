@@ -391,7 +391,7 @@ func serveRetentionApp(t *testing.T, srv *app.Server) func() {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
-	go func() { done <- srv.Serve(ctx) }()
+	go func() { done <- srv.ServeWithReady(ctx, nil) }()
 	stopped := false
 	stop := func() {
 		if stopped {

@@ -50,7 +50,6 @@ export function definitionsSettingsQueryOptions(
     queryFn: () =>
       parsed(getDefinitionsSettingsOp, { path: { org, project }, ...transport }),
     enabled: org !== '' && project !== '',
-    retry: false,
   };
 }
 

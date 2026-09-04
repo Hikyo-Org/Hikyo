@@ -156,7 +156,6 @@ export function useFolders(ref: MatrixRef): UseQueryResult<z.infer<typeof zFolde
     queryKey: foldersKey(ref),
     queryFn: () => parsed(listFoldersOp, { path: ref, ...transport }),
     enabled: ref.org !== '' && ref.project !== '',
-    retry: false,
   });
 }
 
@@ -166,7 +165,6 @@ export function useKeyGroups(ref: MatrixRef): UseQueryResult<z.infer<typeof zKey
     queryKey: matrixGroupsKey(ref),
     queryFn: () => parsed(listKeyGroupsOp, { path: ref, ...transport }),
     enabled: ref.org !== '' && ref.project !== '',
-    retry: false,
   });
 }
 

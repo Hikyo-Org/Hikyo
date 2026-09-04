@@ -90,7 +90,6 @@ export function useOrg(org: string): UseQueryResult<Org> {
     queryKey: orgKey(org),
     queryFn: () => parsed(getOrgOp, { path: { org } }),
     enabled: org !== '',
-    retry: false,
   });
 }
 
@@ -99,7 +98,6 @@ export function useProject(org: string, project: string): UseQueryResult<Project
     queryKey: projectKey(org, project),
     queryFn: () => parsed(getProjectOp, { path: { org, project } }),
     enabled: org !== '' && project !== '',
-    retry: false,
   });
 }
 
@@ -116,7 +114,6 @@ function environmentListQueryOptions(org: string, project: string, client?: Clie
     queryKey: environmentsKey(org, project),
     queryFn: () => parsed(listEnvironmentsOp, { path: { org, project }, client }),
     enabled: org !== '' && project !== '',
-    retry: false,
   } as const;
 }
 
@@ -127,7 +124,6 @@ export function useProjects(org: string): UseQueryResult<z.infer<typeof zProject
     queryKey: projectsKey(org),
     queryFn: () => parsed(listProjectsOp, { path: { org }, ...transport }),
     enabled: org !== '',
-    retry: false,
   });
 }
 
@@ -136,7 +132,6 @@ export function useOrgRetention(org: string): UseQueryResult<RetentionPolicy> {
     queryKey: orgRetentionKey(org),
     queryFn: () => parsed(getOrgRetentionOp, { path: { org } }),
     enabled: org !== '',
-    retry: false,
   });
 }
 
@@ -149,7 +144,6 @@ export function useProjectRetention(
     queryFn: () =>
       parsed(getProjectRetentionOp, { path: { org, project } }),
     enabled: org !== '' && project !== '',
-    retry: false,
   });
 }
 
@@ -169,7 +163,6 @@ export function useProjectRetentions(
       queryFn: () =>
         parsed(getProjectRetentionOp, { path: { org, project: project.id } }),
       enabled: org !== '',
-      retry: false,
     })),
   });
 
@@ -253,7 +246,6 @@ export function environmentSettingsQueryOptions(
     queryFn: () =>
       parsed(getEnvironmentSettingsOp, { path: { org, project, environment }, client }),
     enabled: org !== '' && project !== '' && environment !== '',
-    retry: false,
   } as const;
 }
 
@@ -399,7 +391,6 @@ export function useInstanceOrgs(enabled = true): UseQueryResult<OrgList> {
     queryKey: orgsListKey,
     queryFn: () => parsed(listOrgsOp, {}),
     enabled,
-    retry: false,
   });
 }
 
@@ -613,82 +604,6 @@ export function createEnvironmentRefusalText(error: unknown): string {
     }
   }
   return 'The server failed; whether the environment was created is unknown — reload to check.';
-}
-
-function environmentLifecyclePermission(action: string): string {
-  return `You are not permitted to ${action} — that needs definitions-edit on the project.`;
-}
-
-type EnvironmentLifecycleRefusal = {
-  readonly action: string;
-  readonly invalid: string;
-  readonly conflict: string;
-  readonly uncertain: string;
-};
-
-function environmentLifecycleRefusalText(
-  error: unknown,
-  refusal: EnvironmentLifecycleRefusal,
-): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return error.detail ?? refusal.invalid;
-      case 401:
-        return 'Your session ended. Sign in again to continue.';
-      case 403:
-      case 404:
-        return environmentLifecyclePermission(refusal.action);
-      case 409:
-        return error.detail ?? refusal.conflict;
-      case 429:
-        return 'Too many attempts right now. Wait a moment and try again.';
-    }
-  }
-  return refusal.uncertain;
-}
-
-/** Refusal text for environment rename, including uncertain network outcomes. */
-export function renameEnvironmentRefusalText(error: unknown): string {
-  return environmentLifecycleRefusalText(error, {
-    action: 'rename this environment',
-    invalid: 'The environment name is invalid.',
-    conflict: 'This environment name is already in use.',
-    uncertain:
-      'The server failed; whether the environment was renamed is unknown — reload to check.',
-  });
-}
-
-/** Refusal text for deliberate environment deletion. */
-export function deleteEnvironmentRefusalText(error: unknown): string {
-  return environmentLifecycleRefusalText(error, {
-    action: 'delete this environment',
-    invalid: 'The environment cannot be deleted from this request.',
-    conflict: 'The current environment state refused deletion. Reload before retrying.',
-    uncertain:
-      'The server failed; whether the environment was deleted is unknown — reload to check.',
-  });
-}
-
-/** Refusal text for a complete-set environment reorder. */
-export function reorderEnvironmentsRefusalText(error: unknown): string {
-  return environmentLifecycleRefusalText(error, {
-    action: 'reorder these environments',
-    invalid: 'The complete environment order is invalid. Reload before retrying.',
-    conflict: 'The current environment state refused reordering. Reload before retrying.',
-    uncertain: 'The server failed; whether the order changed is unknown — reload to check.',
-  });
-}
-
-/** Refusal text for atomic clone-at-creation. */
-export function cloneEnvironmentRefusalText(error: unknown): string {
-  return environmentLifecycleRefusalText(error, {
-    action: 'clone this environment',
-    invalid: 'The cloned environment name or source is invalid.',
-    conflict: 'The clone conflicts with the current environment state.',
-    uncertain:
-      'The server failed; whether the environment was cloned is unknown — reload to check.',
-  });
 }
 
 /**

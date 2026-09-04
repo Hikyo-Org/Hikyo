@@ -18,7 +18,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/Hikyo-Org/hikyo/internal/app"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
 	"github.com/Hikyo-Org/hikyo/internal/lint"
@@ -65,14 +64,12 @@ func TestInvariant01ClassificationTotality(t *testing.T) {
 	}
 
 	// CLI verbs: server and migrate are system entry points, version (#46)
-	// is a local unauthenticated print; client verbs are stubs (declared
-	// not-yet-operations).
+	// is a local unauthenticated print.
 	// `backup` and `restore` join the local-host-authority group (#76): same
 	// binary, server host only, no network route — which is exactly what the
 	// system-class probe contract asserts by finding none below.
 	verbs := []string{"server", "migrate", "version", "about", "welcome", "admin", "backup", "restore"}
 	verbs = append(verbs, cli.Verbs...)
-	verbs = append(verbs, app.ClientVerbs...)
 	for _, verb := range verbs {
 		key := "cli:" + verb
 		seen[key] = true

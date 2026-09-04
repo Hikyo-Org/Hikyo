@@ -68,7 +68,6 @@ export function useApprovalPolicies(ref: MatrixRef): UseQueryResult<{ items: App
     queryKey: approvalPoliciesKey(ref),
     queryFn: () => parsed(listApprovalPoliciesOp, { path: ref, ...transport }),
     enabled: ref.org !== '' && ref.project !== '',
-    retry: false,
   });
 }
 
@@ -82,7 +81,6 @@ export function useApprovalRequests(
     queryFn: () =>
       parsed(listApprovalRequestsOp, { path: { ...ref, environment }, ...transport }),
     enabled: ref.org !== '' && ref.project !== '' && environment !== '',
-    retry: false,
   });
 }
 

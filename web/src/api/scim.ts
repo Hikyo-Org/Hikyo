@@ -72,7 +72,6 @@ export function useScimBindings(org: string): UseQueryResult<ScimBindingList> {
   return useQuery({
     queryKey: scimBindingsKey(org),
     queryFn: () => parsed(listScimBindingsOp, { path: { org } }),
-    retry: false,
   });
 }
 
@@ -125,7 +124,6 @@ export function useScimMappings(org: string, binding: string): UseQueryResult<Sc
     queryKey: scimMappingsKey(org, binding),
     queryFn: () => parsed(listScimMappingsOp, { path: { org, binding } }),
     enabled: binding !== '',
-    retry: false,
   });
 }
 
@@ -221,7 +219,6 @@ export function useScimCredentials(
     queryKey: scimCredentialsKey(org, binding),
     queryFn: () => parsed(listScimCredentialsOp, { path: { org, binding } }),
     enabled: binding !== '',
-    retry: false,
   });
 }
 
@@ -298,7 +295,6 @@ export function useScimDirectoryUsers(
     queryKey: scimDirectoryUsersKey(org, binding),
     queryFn: () => parsed(listScimDirectoryUsersOp, { path: { org, binding } }),
     enabled: binding !== '',
-    retry: false,
   });
 }
 
@@ -310,7 +306,6 @@ export function useScimDirectoryGroups(
     queryKey: scimDirectoryGroupsKey(org, binding),
     queryFn: () => parsed(listScimDirectoryGroupsOp, { path: { org, binding } }),
     enabled: binding !== '',
-    retry: false,
   });
 }
 

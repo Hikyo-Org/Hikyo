@@ -64,7 +64,6 @@ export function useLeases(
           path: { org: p.org, project: p.project, environment: env.id },
           ...transport,
         }),
-      retry: false,
     })),
     combine: (results): LeasesView => ({
       rows: environments.flatMap((env, index) =>
@@ -113,7 +112,6 @@ export function useDynamicProviders(
         ...transport,
       }),
     enabled: p.org !== '' && p.project !== '',
-    retry: false,
   });
 }
 

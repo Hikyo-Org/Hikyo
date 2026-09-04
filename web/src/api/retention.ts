@@ -46,7 +46,6 @@ export function useRetentionHealth(enabled: boolean): UseQueryResult<RetentionHe
     },
     enabled,
     refetchInterval: (query) => retentionHealthRefetchInterval(query.state.data?.health),
-    retry: false,
   });
 }
 

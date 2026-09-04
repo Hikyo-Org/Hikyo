@@ -40,14 +40,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/webui"
 )
 
-// ClientVerbs are the fixed not-yet-implemented client-side subcommands from
-// the system-architecture component set. Implemented verbs move to cli.Verbs;
-// both lists are enumerated by the classification-totality invariant.
-// `run` moved to cli.Verbs with #63; `render`/`sync` are now `compose`
-// sub-verbs but keep their scaffolded top-level stubs until the help surface
-// retires them.
-var ClientVerbs = []string{"render", "sync", "adopt", "definitions"}
-
 // Version is the build's version string, set from main's linker-stamped
 // value. It is what /api/v1/meta advertises, so a client that refuses an
 // operation above the server's API revision can name the version it refused.
@@ -476,19 +468,19 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 			return err
 		})
 	})
-	moduleWiring := newAdapterModuleWiring(cfg.AdapterEgressPolicy)
+	var moduleFactory adapter.ModuleFactory = newAdapterModuleFactory(cfg.AdapterEgressPolicy).Build
 	if cfg.Dev && cfg.DevAdapterFakeProvider {
 		// The browser flow suite's stand-in provider (#157): config.Load has
 		// already refused this switch on anything but a --dev server.
 		fake := newDevFakeProvider()
-		moduleWiring = adapterModuleWiring{worker: fake.factory, service: fake.factory}
+		moduleFactory = fake.factory
 		log.Warn("deployment adapters use the in-process development fake provider; no provider is contacted")
 	}
 	adapterWorker := &adapter.Worker{
-		Store: adapterRuntime, Loader: &adapterLoader{runtime: adapterRuntime, keyring: kr, moduleFactory: moduleWiring.worker},
+		Store: adapterRuntime, Loader: &adapterLoader{runtime: adapterRuntime, keyring: kr, moduleFactory: moduleFactory},
 		ID: "adapter-worker-" + uuid.Must(uuid.NewV7()).String(), Poll: time.Second, Log: log,
 	}
-	adapterService := &service.Adapters{DB: db, Auth: authSvc, Keyring: kr, Budget: budget, ModuleFactory: moduleWiring.service}
+	adapterService := &service.Adapters{DB: db, Auth: authSvc, Keyring: kr, Budget: budget, ModuleFactory: moduleFactory}
 	definitionsService := &service.Definitions{DB: db, Keyring: kr, Advisory: advisory, Budget: budget, Scan: ruleset}
 	dynamicRuntime := store.NewDynamicRuntime(db)
 	dynamicService := &service.Dynamic{
@@ -743,13 +735,10 @@ func newHTTPServer(h http.Handler) *http.Server {
 }
 
 // Serve blocks until ctx is cancelled, then shuts down gracefully.
-func (s *Server) Serve(ctx context.Context) error {
-	return s.serve(ctx, nil)
-}
-
-// ServeWithReady behaves like Serve and calls ready after both HTTP serving
-// goroutines have started. The command uses it to present an accurate startup
-// summary without teaching the application package about terminal output.
+// ServeWithReady runs both HTTP serving goroutines and calls ready (when
+// non-nil) after they have started. The command uses the ready hook to present
+// an accurate startup summary without teaching the application package about
+// terminal output; tests pass nil.
 func (s *Server) ServeWithReady(ctx context.Context, ready func()) error {
 	return s.serve(ctx, ready)
 }

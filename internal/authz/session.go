@@ -95,23 +95,6 @@ var MFAMandatory = map[domain.Capability]bool{
 	domain.CapInstanceDirector: true,
 }
 
-// AssuranceEnforced reports whether the chokepoint refuses an MFA-mandatory
-// operation from a single-factor session.
-//
-// ENFORCED (#54): the factor endpoints have landed, so a session that presented
-// only a password is refused an MFA-mandatory operation and must step up. The
-// gate is consulted in assuranceInadequate AFTER the grant check, so only a
-// capability-holder ever learns a step-up is required; session-less local host
-// authority (bootstrap, break-glass, `hikyo admin`) presents no session and is
-// exempt. Enrolment and step-up endpoints are themselves never MFA-gated (they
-// are the path out), so a freshly bootstrapped administrator can always reach
-// them.
-//
-// isolation.TestAssuranceEnforcementCannotBeForgotten held the flip to the
-// registration of the first factor audit event, which has now happened. See
-// docs/handoff/54-human-auth-full.md.
-const AssuranceEnforced = true
-
 // WorkspaceArtifact is the value a WORKSPACE session's `artifact` column
 // stores. It is NOT crypto.ArtifactWorkspaceSession ("ws"), which is the bearer
 // grammar's type: the two are different strings on purpose, and a rule keyed on

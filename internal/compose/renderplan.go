@@ -1,6 +1,10 @@
 package compose
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/Hikyo-Org/hikyo/internal/delivery"
+)
 
 // AbsentKeyPolicy tells the pure planner what a configured key missing from the
 // source means. Live and snapshot adapters name their refusal independently;
@@ -142,7 +146,8 @@ func BuildRenderPlan(in RenderInput) (RenderPlan, error) {
 			names = append(names, row.Name)
 		}
 
-		for _, name := range RefuseUnacknowledged(names, target.AcknowledgeLoaderControl) {
+		refused, _ := delivery.Unacknowledged(names, target.AcknowledgeLoaderControl)
+		for _, name := range refused {
 			plan.Refusals = append(plan.Refusals, RenderRefusal{Target: target.Name, Key: name, Kind: RenderRefusalLoaderControl})
 		}
 		content, encodingRefusals, err := EncodeRaw(rows)

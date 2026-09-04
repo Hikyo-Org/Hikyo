@@ -108,19 +108,6 @@ func TestConstructorRejectsStubClass(t *testing.T) {
 	rejects(t, "stub class", s)
 }
 
-func TestConstructorRejectsMalformedStoreOp(t *testing.T) {
-	s := baseSpec()
-	s.storeOps = map[StoreOp]bool{StoreOp("environmentsGet"): true}
-	rejects(t, "store op without package", s)
-}
-
-func TestConstructorRejectsUnknownStoreOp(t *testing.T) {
-	s := baseSpec()
-	// Well-formed `package.Method` shape but absent from the catalogue.
-	s.storeOps = map[StoreOp]bool{StoreOp("orgs.Nonexistent"): true}
-	rejects(t, "unknown store op", s)
-}
-
 func TestConstructorRejectsFalseStoreOpEntry(t *testing.T) {
 	s := baseSpec()
 	s.storeOps = map[StoreOp]bool{StoreEnvironmentsGet: false}

@@ -4,7 +4,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"slices"
 	"strings"
 	"testing"
 
@@ -147,71 +146,8 @@ func TestMetricsExposeREDCountersAndAdmissionGauges(t *testing.T) {
 	if strings.Contains(body, "/api/") || strings.Contains(body, "org_") {
 		t.Fatalf("metrics leaked a raw path or ID into a label:\n%s", body)
 	}
-	assertMetricRegistryMatchesScrape(t, body)
-}
-
-func assertMetricRegistryMatchesScrape(t *testing.T, body string) {
-	t.Helper()
-	registry := map[string]server.MetricFamily{}
-	for _, family := range server.RegisteredMetricFamilies() {
-		registry[family.Name] = family
-	}
-	types := map[string]bool{}
-	series := map[string]int{}
-	for _, line := range strings.Split(body, "\n") {
-		if strings.HasPrefix(line, "# TYPE ") {
-			fields := strings.Fields(line)
-			if len(fields) == 4 {
-				types[fields[2]] = true
-			}
-			continue
-		}
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		seriesToken := strings.Fields(line)[0]
-		name := seriesToken
-		labels := ""
-		if open := strings.IndexByte(seriesToken, '{'); open >= 0 {
-			name = seriesToken[:open]
-			labels = seriesToken[open+1 : len(seriesToken)-1]
-		}
-		family := name
-		if _, ok := registry[family]; !ok {
-			for _, suffix := range []string{"_bucket", "_sum", "_count"} {
-				if strings.HasSuffix(name, suffix) {
-					family = strings.TrimSuffix(name, suffix)
-					break
-				}
-			}
-		}
-		if _, ok := registry[family]; !ok {
-			t.Fatalf("scrape emitted unregistered series %q", name)
-		}
-		for _, pair := range strings.Split(labels, ",") {
-			if pair == "" {
-				continue
-			}
-			parts := strings.SplitN(pair, "=", 2)
-			if len(parts) != 2 {
-				t.Fatalf("invalid label pair %q in %q", pair, line)
-			}
-			allowed, ok := registry[family].Labels[parts[0]]
-			value := strings.Trim(parts[1], `"`)
-			if !ok || !slices.Contains(allowed, value) {
-				t.Fatalf("family %q emitted unregistered label %s=%q", family, parts[0], value)
-			}
-		}
-		series[family]++
-	}
-	if len(types) != len(registry) {
-		t.Fatalf("TYPE families = %d, registry = %d: %v", len(types), len(registry), types)
-	}
-	for name, family := range registry {
-		if !types[name] || series[name] != family.MaxSeries {
-			t.Errorf("family %q: TYPE=%v series=%d, want %d", name, types[name], series[name], family.MaxSeries)
-		}
-	}
+	// The full family/label/series-count pinning against a live scrape is
+	// conformance.TestMetricRegistryIsPinned (ops-spec §10 / invariant 3).
 }
 
 func mustContain(t *testing.T, body, want string) {

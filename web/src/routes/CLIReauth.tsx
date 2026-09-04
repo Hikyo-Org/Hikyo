@@ -32,7 +32,6 @@ export function CLIReauth() {
     queryKey: ['cli-reauth', state] as const,
     queryFn: () => loadCLIReauthTransaction(state),
     enabled: state !== '' && auth.state.status === 'authenticated',
-    retry: false,
   });
   const approve = useMutation({
     mutationFn: async (strategy: 'factor' | 'oidc') => {

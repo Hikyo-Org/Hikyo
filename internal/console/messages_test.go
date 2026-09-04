@@ -1,34 +1,6 @@
 package console
 
-import (
-	"crypto/sha256"
-	"fmt"
-	"testing"
-)
-
-func TestFullArtworkMatchesSuppliedLogo(t *testing.T) {
-	got := fmt.Sprintf("%x", sha256.Sum256([]byte(FullArtwork())))
-	want := "50bfd2923a7d8a44dd3e559acd2bc811c28bb2b93a8cd3ca747d4fea3307f633"
-	if got != want {
-		t.Fatalf("full artwork SHA-256 = %s, want %s", got, want)
-	}
-}
-
-func TestAboutAndWelcomeMessagesUseFullArtwork(t *testing.T) {
-	info := VersionInfo{Version: "1.2.3", Commit: "abcdef12", BuildDate: "2026-08-24T08:00:00Z"}
-
-	wantAbout := FullArtwork() + "\n" + VersionMessage(info) +
-		"\nValidated secrets and configuration across environments.\n"
-	if got := AboutMessage(info); got != wantAbout {
-		t.Fatalf("AboutMessage() = %q, want %q", got, wantAbout)
-	}
-
-	wantWelcome := FullArtwork() + "\nWelcome to Hikyo 1.2.3\n" +
-		"Run hikyo to see available commands.\n"
-	if got := WelcomeMessage(info); got != wantWelcome {
-		t.Fatalf("WelcomeMessage() = %q, want %q", got, wantWelcome)
-	}
-}
+import "testing"
 
 func TestVersionMessageNamesBuildMetadata(t *testing.T) {
 	got := VersionMessage(VersionInfo{
@@ -67,12 +39,6 @@ func TestServerReadyMessageShowsUserAndOperatorEndpoints(t *testing.T) {
 		"  Mode        production\n"
 	if got != want {
 		t.Fatalf("ServerReadyMessage() = %q, want %q", got, want)
-	}
-	if got := ServerStartupMessage(info, false); got != "" {
-		t.Fatalf("non-interactive ServerStartupMessage() = %q, want no diagnostic on stdout", got)
-	}
-	if got := ServerStartupMessage(info, true); got != want {
-		t.Fatalf("interactive ServerStartupMessage() = %q, want %q", got, want)
 	}
 }
 

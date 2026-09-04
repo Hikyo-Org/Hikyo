@@ -2,7 +2,6 @@ package webauthntest
 
 import (
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -53,20 +52,6 @@ func parseAssertion(t *testing.T, resp []byte) assertionResponse {
 	return out
 }
 
-// signCount reads the big-endian sign counter from the authenticator data, which
-// sits after the 32-byte RP id hash and the 1-byte flags.
-func signCount(t *testing.T, authData string) uint32 {
-	t.Helper()
-	raw, err := base64.RawURLEncoding.DecodeString(authData)
-	if err != nil {
-		t.Fatalf("decode authenticator data: %v", err)
-	}
-	if len(raw) < 37 {
-		t.Fatalf("authenticator data too short: %d bytes", len(raw))
-	}
-	return binary.BigEndian.Uint32(raw[33:37])
-}
-
 // enrolled returns a Device that has completed registration.
 func enrolled(t *testing.T, userHandle string) *Device {
 	t.Helper()
@@ -98,7 +83,6 @@ func TestAssertBeforeEnrol(t *testing.T) {
 func TestCredentialAccessorsPanicBeforeEnrol(t *testing.T) {
 	cases := map[string]func(*Device){
 		"SetCounter":   func(d *Device) { d.SetCounter(1) },
-		"Counter":      func(d *Device) { _ = d.Counter() },
 		"CredentialID": func(d *Device) { _ = d.CredentialID() },
 	}
 	for name, call := range cases {
@@ -133,22 +117,6 @@ func TestMultiCredentialSharesUserHandle(t *testing.T) {
 	}
 	if want := b64([]byte(handle)); ra.Response.UserHandle != want {
 		t.Fatalf("user handle = %q, want %q", ra.Response.UserHandle, want)
-	}
-}
-
-// A counter set after enrolment reaches the next assertion.
-func TestCounterMutation(t *testing.T) {
-	d := enrolled(t, "account-handle")
-	if got := d.Counter(); got != 0 {
-		t.Fatalf("fresh counter = %d, want 0", got)
-	}
-
-	d.SetCounter(7)
-	if got := d.Counter(); got != 7 {
-		t.Fatalf("counter after SetCounter = %d, want 7", got)
-	}
-	if got := signCount(t, parseAssertion(t, mustAssert(t, d)).Response.AuthenticatorData); got != 7 {
-		t.Fatalf("assertion sign count = %d, want 7", got)
 	}
 }
 

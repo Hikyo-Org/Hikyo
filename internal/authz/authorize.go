@@ -119,9 +119,10 @@ func ContractArtifactClass(caller Identity) string {
 // assuranceInadequate reports whether an MFA-mandatory operation must be
 // refused for want of session assurance. It is evaluated only after the grant
 // check succeeds, so a caller who does not hold the capability never learns a
-// step-up is what they lack.
+// step-up is what they lack. A session-less caller (local host authority) is
+// never gated, since it presents no session assurance to inspect.
 func (a *TxAuthorizer) assuranceInadequate(caller Identity, op Operation) bool {
-	return AssuranceEnforced && caller.SessionID != "" && FormulaDemandsMFA(op) && !AdequateAssurance(caller.Assurance)
+	return caller.SessionID != "" && FormulaDemandsMFA(op) && !AdequateAssurance(caller.Assurance)
 }
 
 func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op Operation, spec authorizationSpec, scope domain.Scope) (Proof, error) {

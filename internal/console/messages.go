@@ -59,14 +59,6 @@ func ServerReadyMessage(info ServerInfo) string {
 	return message.String()
 }
 
-// ServerStartupMessage keeps readiness diagnostics on interactive terminals.
-func ServerStartupMessage(info ServerInfo, interactive bool) string {
-	if !interactive {
-		return ""
-	}
-	return ServerReadyMessage(info)
-}
-
 // UpdateInfo describes the installed and selected Hikyo release.
 type UpdateInfo struct {
 	Current    string

@@ -92,7 +92,6 @@ export function useProjectEnvironments(
     enabled,
     queryKey: environmentsKey(ref),
     queryFn: () => parsed(listEnvironmentsOp, { path: ref }),
-    retry: false,
   });
 }
 
@@ -101,7 +100,6 @@ export function useProjectKeys(ref: ProjectRef): UseQueryResult<z.infer<typeof z
   return useQuery({
     queryKey: keysKey(ref),
     queryFn: () => parsed(listKeysOp, { path: ref }),
-    retry: false,
   });
 }
 
@@ -109,7 +107,6 @@ export function useAdapters(ref: ProjectRef): UseQueryResult<AdapterList> {
   return useQuery({
     queryKey: adaptersKey(ref),
     queryFn: () => parsed(listAdaptersOp, { path: ref }),
-    retry: false,
   });
 }
 
@@ -124,7 +121,6 @@ export function useAdapterTarget(ref: ProjectRef, target: string): UseQueryResul
     queryKey: adapterTargetKey(ref, target),
     queryFn: () => parsed(showAdapterTargetOp, { path: { ...ref, target } }),
     enabled: target !== '',
-    retry: false,
     refetchInterval: (query) => {
       const status = query.state.data?.target.sync_status;
       return status === 'pending' || status === 'converging' ? 2_000 : false;

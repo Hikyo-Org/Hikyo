@@ -67,7 +67,6 @@ export function usePasskeys(): UseQueryResult<PasskeyList> {
   return useQuery({
     queryKey: passkeysKey,
     queryFn: () => parsed(listPasskeysOp, {}),
-    retry: false,
   });
 }
 
@@ -81,7 +80,6 @@ export function useTotpStatus(): UseQueryResult<TotpStatus> {
   return useQuery({
     queryKey: totpStatusKey,
     queryFn: () => parsed(getTotpStatusOp, {}),
-    retry: false,
   });
 }
 
@@ -89,7 +87,6 @@ export function useIdentities(): UseQueryResult<IdentityList> {
   return useQuery({
     queryKey: identitiesKey,
     queryFn: () => parsed(listIdentitiesOp, {}),
-    retry: false,
   });
 }
 

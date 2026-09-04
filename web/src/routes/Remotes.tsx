@@ -1131,7 +1131,6 @@ function useWorkspaceLiveness(bearer: WorkspaceBearer | undefined, onEnded: () =
     enabled: bearer !== undefined,
     refetchInterval: livenessPollMs,
     staleTime: 0,
-    retry: false,
   });
 }
 
