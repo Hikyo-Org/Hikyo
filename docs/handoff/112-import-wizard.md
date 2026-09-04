@@ -96,22 +96,20 @@ still enforces one identity/type/classification/folder per key in the bundle, an
 which is the "refused in replay" half of the acceptance criterion. Future work: record per-environment
 scope in the template to author true multi-source reconciliation interactively.
 
-## Codex review R1 → fixes applied (this branch)
+## Review outcome
 
-R1 (gpt-5.6-sol high) returned CHANGES; all findings fixed:
-- CRITICAL: `--overwrite` refused for a created-environment (tokenless) values file, before any
-  server contact; wizard refuses `create <existing-env-name>`.
-- HIGH: multi-env replay no longer imports one source's values into every environment (the wizard
-  now uses the one-source-fan model above, so replay reproduces it).
-- HIGH: `values import` requires the target environment to be named in the manifest before slicing
-  its precondition.
-- HIGH: the wizard records an existing non-default declaration (config, or a non-string type) as
-  reviewed consent, so a declared key no longer hits a spurious incompatible refusal.
-- HIGH: folder-conflict-prompt corruption is mooted (one source cannot conflict); the planner keeps
-  the folder-conflict refusal as the safety net for hand-edited templates.
-- MEDIUM: mixed definitions revisions across the session are refused; partial multi-values-file
-  writes are fully cleaned up (no orphan plaintext); the session deadline is checked before emission.
-- The plaintext-on-disk warning now names the wizard's source export file alongside the values files.
+Reviewed by Codex (`gpt-5.6-sol` high), R1 returned CHANGES; findings fixed
+before merge. The CRITICAL: `--overwrite` is refused for a created-environment
+(tokenless) values file before any server contact, and the wizard refuses
+`create <existing-env-name>`. The load-bearing behavioural fixes that survived:
+multi-env replay uses the one-source-fan model (no importing one source's values
+into every environment); `values import` requires the target environment named
+in the manifest before slicing; an existing non-default declaration is recorded
+as reviewed consent so a declared key no longer hits a spurious incompatible
+refusal; mixed definitions revisions across a session are refused and partial
+multi-values-file writes are fully cleaned up (no orphan plaintext) with the
+session deadline checked before emission; the plaintext-on-disk warning names
+the wizard's source export file alongside the values files.
 
 ## Note: ops-catalogue vs code bound divergence (pre-existing, do not fix here)
 

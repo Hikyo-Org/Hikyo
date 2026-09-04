@@ -1,7 +1,6 @@
 # #568 — Member invitation: local-credential invite at org and instance scope (handoff)
 
-Spec: `docs/superpowers/specs/2026-09-01-chrome-settings-invite-design.md` (PR2 section).
-Plan: `docs/superpowers/plans/2026-09-02-member-invitation.md`.
+Spec: `docs/superpowers/specs/2026-09-01-chrome-settings-invite-design.md` (PR2 section). The implementation plan was executed and removed after merge; the spec remains the design record.
 Stacks on #567 (PR #569, merged).
 
 ## Decision (locked 2026-09-01)

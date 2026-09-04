@@ -368,12 +368,13 @@ because a merge gate reads this file, not the progress notes.
    post-authentication, so nothing is disclosed; the trade is the name, not an
    oracle.
 
-## Cross-model review (Codex, R1)
+## Cross-model review
 
-86 findings. 57 fixed, 1 refuted with evidence, 28 carried to R2. The full
-per-finding table is in `.specs/73-progress.md` § Round 3; the four changes
-that were REDESIGNS rather than patches are worth restating here because they
-moved architecture:
+Reviewed by Codex R1-R3; findings fixed before merge. R1 returned 86 findings
+(57 fixed, 1 refuted with evidence, 28 carried to R2); the rest were resolved or
+dispositioned across R2 and R3, with the declared deviations recorded in the
+sections below. The four changes that were REDESIGNS rather than patches are
+restated here because they moved architecture:
 
 1. **Credential administration is proof-carrying.** `scim_credentials` gained
    `org_id`; mint/show/list/revoke/delete are `SCIMRepo` methods binding it

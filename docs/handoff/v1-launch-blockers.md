@@ -1,8 +1,8 @@
 # v1 launch blockers — handoff (option A of the readiness audit)
 
 Branch `t3code/v1-release-readiness`, stacked on `main` @ `59e31b6b` (#192
-merged). Plan: `docs/handoff/v1-launch-blockers-plan.md`; audit that
-motivated it: `docs/handoff/v1-readiness-audit.md`.
+merged). The implementation plan (rows A1-A6) was executed and its file removed;
+the audit that motivated it is `docs/handoff/v1-readiness-audit.md`.
 
 ## What landed
 
@@ -19,8 +19,8 @@ motivated it: `docs/handoff/v1-readiness-audit.md`.
 
 - `go build ./... && go vet ./... && gofmt -l . && go test ./...` green (41 packages, sqlite engine; Postgres variants skipped locally — CI runs them).
 - `pnpm --dir web typecheck` and `pnpm --dir web test` green (17 files, 224 tests).
-- End-to-end on a fresh `--dev` instance (`/tmp/hikyo-journey2.sh`, not committed): enrolment-step TOTP accepted; scaffold → plan → apply → `values import --from-dotenv` → `values export --format dotenv`; `values get --reveal` prompts once, opens a 900 s window, second reveal needs no prompt; `project-settings machine-reveal set --enabled true` → `access grant add … reveal --env` runs the widening ceremony inline → `hikyo run` delivers the secret; `--enabled false` → next `run` refuses naming the act.
-- Browser: password login → step-up banner → code accepted → instance administration reachable → organisation created from the UI (screenshot `v1-readiness-audit-screens/09-stepup-banner.png`).
+- End-to-end on a fresh `--dev` instance, driven by an ad-hoc journey script (not committed): enrolment-step TOTP accepted; scaffold → plan → apply → `values import --from-dotenv` → `values export --format dotenv`; `values get --reveal` prompts once, opens a 900 s window, second reveal needs no prompt; `project-settings machine-reveal set --enabled true` → `access grant add … reveal --env` runs the widening ceremony inline → `hikyo run` delivers the secret; `--enabled false` → next `run` refuses naming the act.
+- Browser: password login → step-up banner → code accepted → instance administration reachable → organisation created from the UI (captured on PR #194).
 
 ## Decisions surfaced for the owner
 

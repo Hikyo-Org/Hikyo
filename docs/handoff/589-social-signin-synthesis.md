@@ -1,6 +1,6 @@
 # #589: synthesis of social sign-in and open registration (handoff)
 
-Issue: https://github.com/Hikyo-Org/Hikyo/issues/589 (wayfinder task, the destination of map #578). Authored by Claude Fable 5.1 in one autonomous session on 2026-09-03; review routing: Codex `gpt-5.6-sol` high, rounds capped at 3 (transcripts under `.xreview/589-r*.md`, gitignored). Stacked on PR #603 (`proto/587-social-signin-surfaces`, the locked prototype), branch `synth/589-social-signin`.
+Issue: https://github.com/Hikyo-Org/Hikyo/issues/589 (wayfinder task, the destination of map #578). Authored by Claude Fable 5.1 in one autonomous session on 2026-09-03; review routing: Codex `gpt-5.6-sol` high, rounds capped at 3 (reviewed by Codex R1-R3; findings fixed or dispositioned before merge, two left for human disposition per section 14.13). Stacked on PR #603 (`proto/587-social-signin-surfaces`, the locked prototype), branch `synth/589-social-signin`.
 
 ## What this PR is
 
@@ -33,4 +33,4 @@ Read `docs/spec/social-signin.md` § 13 and the nine `ready-for-agent` tickets a
 - Every ticket resolution on the map read in full through its dated amendment lines (final state bound, not first state).
 - Every quoted ADR clause and every DDL/registry/contract fact extracted from the files at HEAD (`docs/adr/*`, `internal/store/migrations/*`, `internal/audit/registry.go`, `api/openapi.yaml`, `api/parity.yaml`, `internal/authz/registry.go`, `internal/config/config.go`).
 - No em-dash in new text (AGENTS.md rule); existing corpus text untouched.
-- Codex cross-model review (`gpt-5.6-sol`, high, cap 3): R1 OBJECTIONS (24 findings, 5 blocking) all fixed or dispositioned; R2 verified 21, left 3; R3 after fixes: exact migration SQL closed one, two remain for human disposition (spec section 14.13): the audit-model body's intent-outcome licence is widened by banner only (corpus rule: banner wins), and the policy entry values-iff-claim rule is writer-enforced with a conformance pin rather than a database guard. Transcripts `.xreview/589-r1.md`, `-r2.md`, `-r3.md`.
+- Codex cross-model review (`gpt-5.6-sol`, high, cap 3): R1 OBJECTIONS (24 findings, 5 blocking) all fixed or dispositioned; R2 verified 21, left 3; R3 after fixes: exact migration SQL closed one, two remain for human disposition (spec section 14.13): the audit-model body's intent-outcome licence is widened by banner only (corpus rule: banner wins), and the policy entry values-iff-claim rule is writer-enforced with a conformance pin rather than a database guard.

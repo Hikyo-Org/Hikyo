@@ -47,4 +47,4 @@ Operator: enabled
 Operator: disabled
 {{- end }}
 
-values land in native Secrets, plaintext at rest by default on K3s — enable --secrets-encryption; see the docs runbook
+Hikyo values land in native Kubernetes Secrets, which are plaintext at rest by default on K3s. Enable --secrets-encryption to encrypt them, and see the docs runbook.

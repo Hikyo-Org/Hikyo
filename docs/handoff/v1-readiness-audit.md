@@ -9,7 +9,7 @@ fresh instance, `scripts/compose-demo.sh`, a distroless image built from
 `Dockerfile.release` and run with a SQLite volume, `helm lint/template`, and a
 Playwright walkthrough of the SPA at 1200px and 390px.
 
-Screenshots: `docs/handoff/v1-readiness-audit-screens/` (untracked).
+Screenshots from the Playwright walkthrough were captured for review on PR #194 (issue #79); see that PR for the images.
 
 ## Verdict table
 
@@ -128,7 +128,7 @@ Broken / blocking:
   is 2FA-gated as above). Matrix empty state says "Declare a key…" with nothing
   to click. All hierarchy authoring is CLI-only.
 - Row editor → "History for DATABASE_URL" opens the history drawer **behind**
-  the still-open modal (screenshot `06-history-desktop.png`).
+  the still-open modal (see the audit screenshots on PR #194).
 - Matrix overflows horizontally at 1200px with only three environments
   (production header clipped).
 - Minor: every page logs a console 401 on `/auth/whoami` before login and a

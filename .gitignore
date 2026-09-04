@@ -60,4 +60,3 @@ web/e2e/.auth/
 web/e2e/.runs/
 internal/webui/dist/
 .specs/
-.xreview/

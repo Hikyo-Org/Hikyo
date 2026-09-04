@@ -313,7 +313,7 @@ added to `scripts/ci/classify-changed-paths.sh` AND `ci-required.needs`.
 | stamp length / version | 128 bit, `v1:` | k8s ADR |
 | `acknowledged_keys` max items | 64 | this ticket |
 
-### 0.10 Amendments from review round 1 (orchestrator decisions)
+### 0.10 Amendments (orchestrator decisions from cross-model review)
 
 - **Secrets are never informer-cached.** `Owns(Secret)` was dropped; every
   Secret read (managed, bootstrap, stamp root, post-write verify, Orphan
@@ -469,10 +469,15 @@ See §0.9; additionally TokenRequest expiry 600 s, expiry warning 7 days,
 
 ## Open items
 
-- #63 (Compose) must rebase onto this branch / main and consume the values
-  surface; the loader-control baseline in `internal/delivery` is shared.
-- #17/#58 machine-`reveal` opt-in: once it exists it must move a cursor
-  component (the projection already does when implemented as a grant).
-- Pi-class measurement of the operator resources (#77).
+- Pi-class measurement of the operator resources (#77), tracked as
+  `OBL-OPERATOR-PI-FIT`. Still open.
 - Push/webhook sync, ESO provider, in-cluster operator-pod E2E: deferred per
   the ADR.
+
+Done since:
+
+- #63 (Compose) rebased and consumed the values surface — see
+  `docs/handoff/63-compose-delivery.md`.
+- #17/#58 machine-`reveal` opt-in landed as v1 blocker A1 — see
+  `docs/handoff/v1-launch-blockers.md`; the projection moves the cursor
+  component as designed.

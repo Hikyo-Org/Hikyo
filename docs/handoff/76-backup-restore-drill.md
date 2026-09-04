@@ -96,9 +96,10 @@ Issue: https://github.com/Hikyo-Org/Hikyo/issues/76 (parent #41). ADRs on the
 | O1 (export) | pre-migration export with recipients / loud skip without | `internal/app/premigration_test.go` |
 | CI | the K3 job | `.github/workflows/ci.yml` job `headline-guarantee` (required) |
 
-## Review hardening (cross-model R1, gpt-5.6-sol high)
+## Review outcome
 
-The adversarial pass found five things; all fixed in this PR:
+Reviewed by Codex R1-R3 (`gpt-5.6-sol` high), reaching R3 CLEAN; findings fixed
+before merge. The security invariants the review drove:
 
 - **Restore trusts nothing about the archive's epoch bookkeeping.** An archive
   is forgeable by anyone holding the PUBLIC recipient, so the restore's new
@@ -128,7 +129,7 @@ The adversarial pass found five things; all fixed in this PR:
   presented through the native recovery flow; the dump-presence check is per
   verifier class instead of first-hit.
 
-## Review hardening, round 2 (Claude spec + standards axes, Codex R2)
+### Further hardening (spec + standards axes)
 
 - **Passkey leg added to the drill** (spec axis: the K2 row names passkeys and
   it was neither exercised nor disclosed). The fixture enrols a real
