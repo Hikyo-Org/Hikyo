@@ -72,7 +72,7 @@ func TestReauthIntentDerivesCanonicalBinding(t *testing.T) {
 		{
 			name: "copy",
 			make: func(t *testing.T) ReauthIntent {
-				intent, err := NewCopyReauthIntent("env_prod", []string{"key_b", "key_a"})
+				intent, err := NewDisclosureReauthIntent(PurposeCopy, []string{"env_prod"}, []string{"key_b", "key_a"})
 				return mustReauthIntent(t, intent, err)
 			},
 			wantPurpose:          PurposeCopy,

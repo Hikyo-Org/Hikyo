@@ -123,10 +123,7 @@ type Grants struct {
 }
 
 func (s *Grants) now() time.Time {
-	if s.Now == nil {
-		return time.Now().UTC()
-	}
-	return s.Now().UTC()
+	return nowOr(s.Now)
 }
 
 // GrantSpec names one grant: who gets what, where.
@@ -197,11 +194,7 @@ func (s *Grants) Create(ctx context.Context, actor Actor, spec GrantSpec) (Grant
 		if err != nil {
 			return err
 		}
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, ops.create, spec.Scope)
+		caller, p, err := authorize(ctx, az, actor, ops.create, spec.Scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -849,11 +842,7 @@ func (s *Grants) Revoke(ctx context.Context, actor Actor, spec GrantSpec) error 
 		if err != nil {
 			return err
 		}
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, ops.revoke, spec.Scope)
+		caller, p, err := authorize(ctx, az, actor, ops.revoke, spec.Scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -1090,11 +1079,7 @@ func (s *Grants) ApplyTemplate(ctx context.Context, actor Actor, template domain
 		if err != nil {
 			return err
 		}
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, ops.template, scope)
+		caller, p, err := authorize(ctx, az, actor, ops.template, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -1213,11 +1198,7 @@ func (s *Grants) List(ctx context.Context, actor Actor, scope domain.Scope) ([]M
 		if ops.list == "" {
 			return fmt.Errorf("%w: the membership surface is listed at org, project or instance scope", domain.ErrInvalid)
 		}
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, ops.list, scope)
+		caller, p, err := authorize(ctx, az, actor, ops.list, scope, s.now())
 		if err != nil {
 			return err
 		}

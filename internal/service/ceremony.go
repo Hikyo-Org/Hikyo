@@ -102,21 +102,12 @@ func requireCeremony(ctx context.Context, auth *Auth, az *authz.TxAuthorizer, ca
 
 type disclosureIntentBuilder func(keyIDs []string) (ReauthIntent, error)
 
-func revealIntentBuilder(environmentID string) disclosureIntentBuilder {
+// disclosureIntent builds the reauth-intent constructor for a single-environment
+// disclosure of the given purpose. It replaces the per-purpose reveal/copy/
+// publish builder closures, which differed only by purpose.
+func disclosureIntent(purpose ReauthPurpose, environmentID string) disclosureIntentBuilder {
 	return func(keyIDs []string) (ReauthIntent, error) {
-		return NewRevealReauthIntent(environmentID, keyIDs)
-	}
-}
-
-func copyIntentBuilder(environmentID string) disclosureIntentBuilder {
-	return func(keyIDs []string) (ReauthIntent, error) {
-		return NewCopyReauthIntent(environmentID, keyIDs)
-	}
-}
-
-func publishIntentBuilder(environmentID string) disclosureIntentBuilder {
-	return func(keyIDs []string) (ReauthIntent, error) {
-		return NewPublishReauthIntent(environmentID, keyIDs)
+		return NewDisclosureReauthIntent(purpose, []string{environmentID}, keyIDs)
 	}
 }
 

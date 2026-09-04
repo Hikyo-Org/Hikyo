@@ -165,10 +165,7 @@ type Auth struct {
 }
 
 func (s *Auth) now() time.Time {
-	if s.Now == nil {
-		return time.Now().UTC()
-	}
-	return s.Now().UTC()
+	return nowOr(s.Now)
 }
 
 // verifierAAD binds a sealed verifier to the row that owns it, so a verifier

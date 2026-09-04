@@ -39,10 +39,7 @@ type Pins struct {
 }
 
 func (s *Pins) now() time.Time {
-	if s.Now == nil {
-		return time.Now().UTC()
-	}
-	return s.Now().UTC()
+	return nowOr(s.Now)
 }
 
 type SetPinRequest struct {
@@ -190,11 +187,7 @@ func (s *Pins) Set(ctx context.Context, actor Actor, scope domain.Scope, request
 	var validationRefusal error
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		validationRefusal = nil
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpPinSet, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpPinSet, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -489,11 +482,7 @@ func (s *Pins) List(ctx context.Context, actor Actor, scope domain.Scope) ([]Pin
 	now := s.now()
 	var out []PinView
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpPinList, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpPinList, scope, now)
 		if err != nil {
 			return err
 		}

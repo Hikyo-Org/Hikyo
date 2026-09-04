@@ -37,10 +37,7 @@ type Dynamic struct {
 }
 
 func (s *Dynamic) now() time.Time {
-	if s.Now == nil {
-		return time.Now().UTC()
-	}
-	return s.Now().UTC()
+	return nowOr(s.Now)
 }
 
 var (
@@ -125,8 +122,8 @@ type CreateDynamicProviderRequest struct {
 }
 
 func (s *Dynamic) Configure(ctx context.Context, actor Actor, scope domain.Scope, req CreateDynamicProviderRequest) (DynamicProviderView, error) {
-	if scope.Project == "" || scope.Env != "" {
-		return DynamicProviderView{}, fmt.Errorf("%w: dynamic provider create requires project scope", domain.ErrInvalid)
+	if err := requireProjectScope(scope, "dynamic provider create requires project scope"); err != nil {
+		return DynamicProviderView{}, err
 	}
 	kind, err := dynamic.ParseKind(req.Kind)
 	if err != nil {
@@ -172,11 +169,7 @@ func (s *Dynamic) Configure(ctx context.Context, actor Actor, scope domain.Scope
 	now := store.CanonTime(s.now())
 	var out DynamicProviderView
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpDynamicProviderConfigure, scope)
+		caller, proof, err := authorize(ctx, az, actor, authz.OpDynamicProviderConfigure, scope, now)
 		if err != nil {
 			return err
 		}
@@ -204,17 +197,13 @@ func (s *Dynamic) Configure(ctx context.Context, actor Actor, scope domain.Scope
 }
 
 func (s *Dynamic) List(ctx context.Context, actor Actor, scope domain.Scope) ([]DynamicProviderView, error) {
-	if scope.Project == "" || scope.Env != "" {
-		return nil, fmt.Errorf("%w: dynamic provider list requires project scope", domain.ErrInvalid)
+	if err := requireProjectScope(scope, "dynamic provider list requires project scope"); err != nil {
+		return nil, err
 	}
 	var out []DynamicProviderView
 	now := store.CanonTime(s.now())
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpDynamicProviderInspect, scope)
+		caller, proof, err := authorize(ctx, az, actor, authz.OpDynamicProviderInspect, scope, now)
 		if err != nil {
 			return err
 		}
@@ -226,7 +215,7 @@ func (s *Dynamic) List(ctx context.Context, actor Actor, scope domain.Scope) ([]
 		for _, row := range rows {
 			out = append(out, DynamicProviderView{DynamicProviderRecord: row})
 		}
-		return insertInspected(ctx, r, proof, caller.Principal, "dynamic-provider-list", int64(len(rows)))
+		return insertInspected(ctx, r, proof, caller.Principal, audit.EventDynamicProviderInspected, audit.Object{Type: "dynamic-provider", ID: "dynamic-provider-list"}, int64(len(rows)))
 	})
 	return out, err
 }
@@ -234,27 +223,14 @@ func (s *Dynamic) List(ctx context.Context, actor Actor, scope domain.Scope) ([]
 // insertInspected records the manage-identities-gated read of provider
 // metadata, mirroring adapter.inspect. A privileged read audits; only a
 // bare-read lease inspect is auditedNone.
-func insertInspected(ctx context.Context, r store.Repos, proof authz.Proof, principal domain.PrincipalID, objectID string, rowCount int64) error {
-	ev, err := domainEvent(ctx, audit.EventDynamicProviderInspected, principal,
-		audit.Object{Type: "dynamic-provider", ID: objectID}, audit.Payload{"row_count": rowCount})
-	if err != nil {
-		return err
-	}
-	return r.Audit().InsertTenant(ctx, proof, ev)
-}
-
 func (s *Dynamic) Get(ctx context.Context, actor Actor, scope domain.Scope, providerID string) (DynamicProviderView, error) {
-	if scope.Project == "" || scope.Env != "" || providerID == "" {
-		return DynamicProviderView{}, fmt.Errorf("%w: dynamic provider show requires project scope and provider id", domain.ErrInvalid)
+	if err := requireProjectScope(scope, "dynamic provider show requires project scope and provider id", providerID); err != nil {
+		return DynamicProviderView{}, err
 	}
 	var out DynamicProviderView
 	now := store.CanonTime(s.now())
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpDynamicProviderInspect, scope)
+		caller, proof, err := authorize(ctx, az, actor, authz.OpDynamicProviderInspect, scope, now)
 		if err != nil {
 			return err
 		}
@@ -263,7 +239,7 @@ func (s *Dynamic) Get(ctx context.Context, actor Actor, scope domain.Scope, prov
 			return err
 		}
 		out = DynamicProviderView{DynamicProviderRecord: record}
-		return insertInspected(ctx, r, proof, caller.Principal, providerID, 1)
+		return insertInspected(ctx, r, proof, caller.Principal, audit.EventDynamicProviderInspected, audit.Object{Type: "dynamic-provider", ID: providerID}, 1)
 	})
 	return out, err
 }
@@ -274,11 +250,7 @@ func (s *Dynamic) Get(ctx context.Context, actor Actor, scope domain.Scope, prov
 func (s *Dynamic) providerMetadata(ctx context.Context, actor Actor, scope domain.Scope, providerID string) (store.DynamicProviderRecord, error) {
 	var out store.DynamicProviderRecord
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpDynamicProviderCredentialSet, scope)
+		_, proof, err := authorize(ctx, az, actor, authz.OpDynamicProviderCredentialSet, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -321,11 +293,7 @@ func (s *Dynamic) ReplaceCredential(ctx context.Context, actor Actor, scope doma
 	}
 	now := store.CanonTime(s.now())
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpDynamicProviderCredentialSet, scope)
+		caller, proof, err := authorize(ctx, az, actor, authz.OpDynamicProviderCredentialSet, scope, now)
 		if err != nil {
 			return err
 		}
@@ -347,16 +315,12 @@ func (s *Dynamic) ReplaceCredential(ctx context.Context, actor Actor, scope doma
 }
 
 func (s *Dynamic) RevokeCredential(ctx context.Context, actor Actor, scope domain.Scope, providerID string) error {
-	if scope.Project == "" || scope.Env != "" || providerID == "" {
-		return fmt.Errorf("%w: credential revocation requires project scope and provider id", domain.ErrInvalid)
+	if err := requireProjectScope(scope, "credential revocation requires project scope and provider id", providerID); err != nil {
+		return err
 	}
 	now := store.CanonTime(s.now())
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpDynamicProviderCredentialRevoke, scope)
+		caller, proof, err := authorize(ctx, az, actor, authz.OpDynamicProviderCredentialRevoke, scope, now)
 		if err != nil {
 			return err
 		}
@@ -379,18 +343,14 @@ type DeleteResult struct {
 }
 
 func (s *Dynamic) Delete(ctx context.Context, actor Actor, scope domain.Scope, providerID string, revokeAll bool) (DeleteResult, error) {
-	if scope.Project == "" || scope.Env != "" || providerID == "" {
-		return DeleteResult{}, fmt.Errorf("%w: dynamic provider delete requires project scope and provider id", domain.ErrInvalid)
+	if err := requireProjectScope(scope, "dynamic provider delete requires project scope and provider id", providerID); err != nil {
+		return DeleteResult{}, err
 	}
 	now := store.CanonTime(s.now())
 	var out DeleteResult
 	out.ProviderID = providerID
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpDynamicProviderDelete, scope)
+		caller, proof, err := authorize(ctx, az, actor, authz.OpDynamicProviderDelete, scope, now)
 		if err != nil {
 			return err
 		}
@@ -483,11 +443,7 @@ func (s *Dynamic) MintLease(ctx context.Context, actor Actor, scope domain.Scope
 	)
 	now := store.CanonTime(s.now())
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpLeaseMint, scope)
+		caller, proof, err := authorize(ctx, az, actor, authz.OpLeaseMint, scope, now)
 		if err != nil {
 			return err
 		}
@@ -569,11 +525,7 @@ func (s *Dynamic) MintLease(ctx context.Context, actor Actor, scope domain.Scope
 		disclosed   bool
 	)
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, settleNow)
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpLeaseMint, scope)
+		caller, proof, err := authorize(ctx, az, actor, authz.OpLeaseMint, scope, settleNow)
 		if err != nil {
 			return err
 		}
@@ -691,11 +643,7 @@ func (s *Dynamic) ListLeases(ctx context.Context, actor Actor, scope domain.Scop
 	}
 	var out []DynamicLeaseView
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpLeaseInspect, scope)
+		_, proof, err := authorize(ctx, az, actor, authz.OpLeaseInspect, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -717,11 +665,7 @@ func (s *Dynamic) GetLease(ctx context.Context, actor Actor, scope domain.Scope,
 	}
 	var out DynamicLeaseView
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpLeaseInspect, scope)
+		_, proof, err := authorize(ctx, az, actor, authz.OpLeaseInspect, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -754,11 +698,7 @@ func (s *Dynamic) enqueueLeaseTransition(ctx context.Context, actor Actor, scope
 	now := store.CanonTime(s.now())
 	var out DynamicLeaseView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, op, scope)
+		caller, proof, err := authorize(ctx, az, actor, op, scope, now)
 		if err != nil {
 			return err
 		}

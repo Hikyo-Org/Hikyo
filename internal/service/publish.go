@@ -95,10 +95,7 @@ type PublishConformanceProbe interface {
 }
 
 func (s *Revisions) now() time.Time {
-	if s.Now == nil {
-		return time.Now().UTC()
-	}
-	return s.Now().UTC()
+	return nowOr(s.Now)
 }
 
 // PublishedEnvironment is one environment a materialization advanced.
@@ -287,14 +284,10 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 		// take real time, and a credential expiring during it must be refused
 		// by the authentication this publish actually rides.
 		now := s.now()
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
 		// The addressed environment is authorized FIRST: a caller who may not
 		// publish here learns nothing from the selection read, and the uniform
 		// nonexistent answer is the only thing they see.
-		p, err := az.Authorize(ctx, caller, authz.OpValuePublish, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpValuePublish, scope, now)
 		if err != nil {
 			return err
 		}

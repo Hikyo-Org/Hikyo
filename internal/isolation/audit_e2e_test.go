@@ -73,6 +73,9 @@ func (c *auditUpdateControl) Submit(_ context.Context, req updater.Request) (upd
 }
 func (c *auditUpdateControl) Job(context.Context, string) (updater.Job, error) { return c.job, nil }
 func (c *auditUpdateControl) AcknowledgeOutcome(context.Context, string) error { return nil }
+func (c *auditUpdateControl) PendingOutcomes(context.Context) ([]updater.Job, error) {
+	return nil, nil
+}
 
 func runAuditSuite(t *testing.T, db *store.DB) {
 	audits := &service.Audits{DB: db}

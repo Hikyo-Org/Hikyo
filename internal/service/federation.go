@@ -132,10 +132,7 @@ type Federation struct {
 }
 
 func (s *Federation) now() time.Time {
-	if s.Now == nil {
-		return time.Now().UTC()
-	}
-	return s.Now().UTC()
+	return nowOr(s.Now)
 }
 
 // IssuerView is one issuer configuration. The API renders only KeySource.Mode;
@@ -177,11 +174,7 @@ func (s *Federation) CreateIssuer(ctx context.Context, actor Actor, req IssuerRe
 	now := s.now()
 	var out IssuerView
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpFederationIssuerCreate, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpFederationIssuerCreate, domain.Scope{}, now)
 		if err != nil {
 			return err
 		}
@@ -216,11 +209,7 @@ func (s *Federation) UpdateIssuer(ctx context.Context, actor Actor, id string, s
 	now := s.now()
 	var out IssuerView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpFederationIssuerUpdate, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpFederationIssuerUpdate, domain.Scope{}, now)
 		if err != nil {
 			return err
 		}
@@ -260,11 +249,7 @@ func (s *Federation) ListIssuers(ctx context.Context, actor Actor) ([]IssuerView
 	now := s.now()
 	var out []IssuerView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpFederationIssuerList, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpFederationIssuerList, domain.Scope{}, now)
 		if err != nil {
 			return err
 		}
@@ -307,11 +292,7 @@ func (s *Federation) ListIssuers(ctx context.Context, actor Actor) ([]IssuerView
 func (s *Federation) DeleteIssuer(ctx context.Context, actor Actor, id string) error {
 	now := s.now()
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpFederationIssuerDelete, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpFederationIssuerDelete, domain.Scope{}, now)
 		if err != nil {
 			return err
 		}
@@ -433,11 +414,7 @@ func (s *Federation) CreateBinding(ctx context.Context, actor Actor, scope domai
 	now := s.now()
 	var out BindingView
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpBindingCreate, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpBindingCreate, scope, now)
 		if err != nil {
 			return err
 		}
@@ -521,7 +498,7 @@ func (s *Federation) CreateBinding(ctx context.Context, actor Actor, scope domai
 		if s.Auth == nil {
 			return errors.New("service: the federation surface has no reauthentication seam wired")
 		}
-		current, historical := sortedKeys(reach.Current), sortedKeys(reach.Historical)
+		current, historical := slices.Sorted(maps.Keys(reach.Current)), slices.Sorted(maps.Keys(reach.Historical))
 		if err := s.Auth.RequireDisclosureAuthority(ctx, az, caller, actorGrants, scope, current, historical, now); err != nil {
 			return err
 		}
@@ -619,14 +596,10 @@ func (s *Federation) Reactivate(ctx context.Context, actor Actor, scope domain.S
 	now := s.now()
 	var at time.Time
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
 		// Re-activation NARROWS: it can only refuse tokens the binding would
 		// otherwise have accepted. So it rides the plain capability, like every
 		// other narrowing, with no disclosure gate.
-		p, err := az.Authorize(ctx, caller, authz.OpCredentialRevoke, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpCredentialRevoke, scope, now)
 		if err != nil {
 			return err
 		}

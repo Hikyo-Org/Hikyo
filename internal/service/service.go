@@ -193,6 +193,46 @@ func (a Actor) resolve(ctx context.Context, az *authz.TxAuthorizer, now time.Tim
 	return identity, nil
 }
 
+// insertInspected records a read/inspect audit event carrying a row_count
+// payload and inserts it under the caller's proof. It is the shared tail of the
+// adapter and dynamic-provider read methods.
+func insertInspected(ctx context.Context, r store.Repos, proof authz.Proof, principal domain.PrincipalID, typ audit.EventType, obj audit.Object, rowCount int64) error {
+	ev, err := domainEvent(ctx, typ, principal, obj, audit.Payload{"row_count": rowCount})
+	if err != nil {
+		return err
+	}
+	return r.Audit().InsertTenant(ctx, proof, ev)
+}
+
+// nowOr returns fn().UTC(), or time.Now().UTC() when fn is nil. It is the shared
+// body of every service's now() clock accessor: an injected clock in tests, the
+// real UTC wall clock in production.
+func nowOr(fn func() time.Time) time.Time {
+	if fn == nil {
+		return time.Now().UTC()
+	}
+	return fn().UTC()
+}
+
+// authorize is the resolve->Authorize prelude every tenant operation runs at
+// the top of its transaction: resolve the caller's live Identity, then mint an
+// operation-bound Proof for the addressed scope. It is a pure extraction of the
+// copy-pasted prelude and preserves the chokepoint exactly — it runs inside the
+// caller's transaction (via the passed authorizer), holds no state, and caches
+// nothing, so "no authorization cache" and "re-authorize before every step"
+// stay mechanical.
+// Named results + bare returns keep any nil out of the authz.Proof position:
+// the proof-forgery analyzer bans a nil literal there, and a bare return yields
+// the zero interface without writing one.
+func authorize(ctx context.Context, az *authz.TxAuthorizer, actor Actor, op authz.Operation, scope domain.Scope, now time.Time) (caller authz.Identity, proof authz.Proof, err error) {
+	caller, err = actor.resolve(ctx, az, now)
+	if err != nil {
+		return
+	}
+	proof, err = az.Authorize(ctx, caller, op, scope)
+	return
+}
+
 // resolveSelf is resolve for the SELF-SCOPED surface (the caller's own session
 // listing and revoke). AuthenticateSelfSurface resolves every HTTP bearer class
 // and applies the request's OpenAPI artifact declaration before narrowing the

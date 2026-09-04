@@ -79,11 +79,7 @@ func (s *SCIM) CreateBinding(ctx context.Context, actor Actor, org domain.OrgID,
 	var out SCIMBindingView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		scope := domain.Scope{Org: org}
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpSCIMBindingCreate, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpSCIMBindingCreate, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -264,11 +260,7 @@ func (s *SCIM) ListBindings(ctx context.Context, actor Actor, org domain.OrgID) 
 	var out []SCIMBindingView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		scope := domain.Scope{Org: org}
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpSCIMBindingList, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpSCIMBindingList, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -304,11 +296,7 @@ func (s *SCIM) GetBinding(ctx context.Context, actor Actor, org domain.OrgID, id
 	var out SCIMBindingView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		scope := domain.Scope{Org: org}
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpSCIMBindingGet, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpSCIMBindingGet, scope, s.now())
 		if err != nil {
 			return err
 		}

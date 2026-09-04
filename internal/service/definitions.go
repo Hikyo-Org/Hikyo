@@ -52,10 +52,7 @@ type Definitions struct {
 }
 
 func (s *Definitions) now() time.Time {
-	if s.Now == nil {
-		return time.Now().UTC()
-	}
-	return s.Now().UTC()
+	return nowOr(s.Now)
 }
 
 // scanSnapshot is the ruleset snapshot version a plan is scanned under, recorded
@@ -169,11 +166,7 @@ func (s *Definitions) Export(ctx context.Context, actor Actor, scope domain.Scop
 	defer release()
 	var out []byte
 	err = tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpDefinitionsExport, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpDefinitionsExport, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -205,11 +198,7 @@ func (s *Definitions) Check(ctx context.Context, actor Actor, scope domain.Scope
 	defer release()
 	var res CheckResult
 	err = tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpDefinitionsCheck, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpDefinitionsCheck, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -246,11 +235,7 @@ func (s *Definitions) Check(ctx context.Context, actor Actor, scope domain.Scope
 func (s *Definitions) GetSettings(ctx context.Context, actor Actor, scope domain.Scope) (DefinitionsSettings, error) {
 	var out DefinitionsSettings
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpDefinitionsSettingsGet, scope)
+		_, p, err := authorize(ctx, az, actor, authz.OpDefinitionsSettingsGet, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -280,11 +265,7 @@ func (s *Definitions) SetSettings(ctx context.Context, actor Actor, scope domain
 	}
 	var out DefinitionsSettings
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpDefinitionsSettingsSet, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpDefinitionsSettingsSet, scope, s.now())
 		if err != nil {
 			return err
 		}

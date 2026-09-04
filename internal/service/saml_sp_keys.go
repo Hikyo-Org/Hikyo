@@ -43,11 +43,7 @@ func generatedSPKeyInput(key generatedSAMLSPKey) authz.NewSAMLSPKey {
 func (s *SAMLProviders) ListSPKeys(ctx context.Context, actor Actor) ([]SAMLSPKeyView, error) {
 	var output []SAMLSPKeyView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpSAMLSPKeyList, domain.Scope{})
+		caller, proof, err := authorize(ctx, az, actor, authz.OpSAMLSPKeyList, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}
@@ -97,11 +93,7 @@ func (s *SAMLProviders) RotateSPKey(ctx context.Context, actor Actor) (SAMLSPKey
 	}
 	var output SAMLSPKeyView
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpSAMLSPKeyRotate, domain.Scope{})
+		caller, proof, err := authorize(ctx, az, actor, authz.OpSAMLSPKeyRotate, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}
@@ -130,11 +122,7 @@ func (s *SAMLProviders) RotateSPKey(ctx context.Context, actor Actor) (SAMLSPKey
 
 func (s *SAMLProviders) RetireSPKey(ctx context.Context, actor Actor, fingerprint string) error {
 	return tx.Write(ctx, s.DB, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpSAMLSPKeyRetire, domain.Scope{})
+		caller, proof, err := authorize(ctx, az, actor, authz.OpSAMLSPKeyRetire, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}
@@ -166,11 +154,7 @@ func (s *SAMLProviders) CompromiseRetireSPKey(ctx context.Context, actor Actor, 
 	}
 	var output SAMLSPKeyView
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpSAMLSPKeyCompromiseRetire, domain.Scope{})
+		caller, proof, err := authorize(ctx, az, actor, authz.OpSAMLSPKeyCompromiseRetire, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}

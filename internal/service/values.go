@@ -291,10 +291,6 @@ func sealerFor(ctx context.Context, db *store.DB, kr *crypto.Keyring, actor Acto
 }
 
 // sealer is sealerFor bound to this service's datastore and keyring.
-func (s *Values) sealer(ctx context.Context, actor Actor, op authz.Operation, scope domain.Scope) (*crypto.ProjectSealer, error) {
-	return sealerFor(ctx, s.DB, s.Keyring, actor, op, scope)
-}
-
 // valueAAD binds a ciphertext to exactly one row: org, project, environment,
 // key, THIS row id, and the column. Every component is a column on the row
 // being decrypted, so a ciphertext lifted anywhere else stops opening.
@@ -484,7 +480,7 @@ func (s *Values) stage(ctx context.Context, actor Actor, scope domain.Scope, key
 	if scope.Env == "" {
 		return StagedChange{}, fmt.Errorf("%w: a value addresses an environment", domain.ErrInvalid)
 	}
-	sealer, err := s.sealer(ctx, actor, authz.OpValueStage, scope)
+	sealer, err := sealerFor(ctx, s.DB, s.Keyring, actor, authz.OpValueStage, scope)
 	if err != nil {
 		return StagedChange{}, err
 	}
@@ -644,7 +640,7 @@ func (s *Values) declare(ctx context.Context, actor Actor, scope domain.Scope, e
 	// Gated on the FIRST destination: a caller who cannot write there cannot
 	// write anywhere in this call, because the whole declare is all-or-nothing.
 	first := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(envIDs[0])}
-	sealer, err := s.sealer(ctx, actor, authz.OpValueSet, first)
+	sealer, err := sealerFor(ctx, s.DB, s.Keyring, actor, authz.OpValueSet, first)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -767,7 +763,7 @@ func (s *Values) read(ctx context.Context, actor Actor, scope domain.Scope, keyN
 	case keyName != "":
 		op = authz.OpValueRead
 	}
-	sealer, err := s.sealer(ctx, actor, op, scope)
+	sealer, err := sealerFor(ctx, s.DB, s.Keyring, actor, op, scope)
 	if err != nil {
 		return nil, err
 	}
@@ -783,7 +779,7 @@ func (s *Values) read(ctx context.Context, actor Actor, scope domain.Scope, keyN
 				return nil, err
 			}
 			cells, err := readCells(ctx, r.Catalogue(), r.Values(), p, sealer, keyName, true,
-				ceremonyGate(ctx, s.Auth, az, caller, revealIntentBuilder(string(scope.Env))))
+				ceremonyGate(ctx, s.Auth, az, caller, disclosureIntent(PurposeReveal, string(scope.Env))))
 			if err != nil {
 				return nil, err
 			}
@@ -794,11 +790,7 @@ func (s *Values) read(ctx context.Context, actor Actor, scope domain.Scope, keyN
 		})
 	} else {
 		err = tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-			caller, err := actor.resolve(ctx, az, time.Now().UTC())
-			if err != nil {
-				return err
-			}
-			p, err := az.Authorize(ctx, caller, op, scope)
+			_, p, err := authorize(ctx, az, actor, op, scope, time.Now().UTC())
 			if err != nil {
 				return err
 			}
@@ -951,7 +943,7 @@ func (s *Values) Diff(ctx context.Context, actor Actor, scope domain.Scope, left
 	if reveal {
 		gate = authz.OpValueReveal
 	}
-	sealer, err := s.sealer(ctx, actor, gate, leftScope)
+	sealer, err := sealerFor(ctx, s.DB, s.Keyring, actor, gate, leftScope)
 	if err != nil {
 		return nil, err
 	}
@@ -979,7 +971,7 @@ func (s *Values) Diff(ctx context.Context, actor Actor, scope domain.Scope, left
 			// per-environment: a window open on staging authorizes nothing in
 			// production, which is the whole point of capping production at 0.
 			cells, err := readCells(ctx, cat, vals, p, sealer, "", reveal,
-				ceremonyGate(ctx, s.Auth, az, caller, revealIntentBuilder(envID)))
+				ceremonyGate(ctx, s.Auth, az, caller, disclosureIntent(PurposeReveal, envID)))
 			if err != nil {
 				return nil, err
 			}
@@ -1098,7 +1090,7 @@ func (s *Values) Copy(ctx context.Context, actor Actor, scope domain.Scope, req 
 	}
 	// Gated on the source read, which every copy needs whatever it carries.
 	sourceScope := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(req.SourceEnvironmentID)}
-	sealer, err := s.sealer(ctx, actor, authz.OpValueList, sourceScope)
+	sealer, err := sealerFor(ctx, s.DB, s.Keyring, actor, authz.OpValueList, sourceScope)
 	if err != nil {
 		return CopyResult{}, err
 	}
@@ -1136,7 +1128,7 @@ func (s *Values) Copy(ctx context.Context, actor Actor, scope domain.Scope, req 
 			destScope := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(destID)}
 			if err := authorizeDestination(ctx, r, az, caller, destScope,
 				req.ConfirmProtected, plan.hasConfig, len(plan.secretKeyIDs) > 0, plan.keyIDs,
-				ceremonyGate(ctx, s.Auth, az, caller, publishIntentBuilder(destID))); err != nil {
+				ceremonyGate(ctx, s.Auth, az, caller, disclosureIntent(PurposePublish, destID))); err != nil {
 				return copyWriteResult{}, err
 			}
 		}
@@ -1145,7 +1137,7 @@ func (s *Values) Copy(ctx context.Context, actor Actor, scope domain.Scope, req 
 		// does — including copy-without-display, which discloses to a
 		// destination rather than to a screen and is a disclosure either way.
 		material, err := openCopySourcePlan(ctx, r, az, caller, sealer, sourceScope, plan, copyOpCopy,
-			ceremonyGate(ctx, s.Auth, az, caller, copyIntentBuilder(req.SourceEnvironmentID)))
+			ceremonyGate(ctx, s.Auth, az, caller, disclosureIntent(PurposeCopy, req.SourceEnvironmentID)))
 		if err != nil {
 			return copyWriteResult{}, err
 		}

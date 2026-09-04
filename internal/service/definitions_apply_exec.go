@@ -57,11 +57,7 @@ func (s *Definitions) Apply(ctx context.Context, actor Actor, scope domain.Scope
 	var rateCharged bool
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		now := s.now()
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpDefinitionsApply, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpDefinitionsApply, scope, now)
 		if err != nil {
 			return err
 		}
@@ -206,11 +202,7 @@ func (s *Definitions) scanApplySkew(ctx context.Context, actor Actor, scope doma
 	var compiled *definitions.CompiledBundle
 	var overrides []overrideAck
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpDefinitionsApply, scope)
+		caller, p, err := authorize(ctx, az, actor, authz.OpDefinitionsApply, scope, s.now())
 		if err != nil {
 			return err
 		}

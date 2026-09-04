@@ -62,10 +62,7 @@ func NewSAMLProviders(db *store.DB, keyring *wencrypto.Keyring, externalOrigin s
 }
 
 func (s *SAMLProviders) now() time.Time {
-	if s.Now == nil {
-		return time.Now().UTC()
-	}
-	return s.Now().UTC()
+	return nowOr(s.Now)
 }
 
 type SAMLProviderInput struct {
@@ -215,11 +212,7 @@ func (s *SAMLProviders) Put(ctx context.Context, actor Actor, slug string, input
 
 	var output SAMLProviderView
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpSAMLProviderPut, domain.Scope{})
+		caller, proof, err := authorize(ctx, az, actor, authz.OpSAMLProviderPut, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}
@@ -332,11 +325,7 @@ func (s *SAMLProviders) authorize(ctx context.Context, actor Actor, operation au
 func (s *SAMLProviders) Patch(ctx context.Context, actor Actor, slug string, patch SAMLProviderPatch) (SAMLProviderView, error) {
 	var output SAMLProviderView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpSAMLProviderPatch, domain.Scope{})
+		caller, proof, err := authorize(ctx, az, actor, authz.OpSAMLProviderPatch, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}
@@ -408,11 +397,7 @@ func (s *SAMLProviders) Patch(ctx context.Context, actor Actor, slug string, pat
 func (s *SAMLProviders) Get(ctx context.Context, actor Actor, slug string) (SAMLProviderView, error) {
 	var output SAMLProviderView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpSAMLProviderGet, domain.Scope{})
+		caller, proof, err := authorize(ctx, az, actor, authz.OpSAMLProviderGet, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}
@@ -438,11 +423,7 @@ func (s *SAMLProviders) Get(ctx context.Context, actor Actor, slug string) (SAML
 func (s *SAMLProviders) List(ctx context.Context, actor Actor) ([]SAMLProviderView, error) {
 	var output []SAMLProviderView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpSAMLProviderList, domain.Scope{})
+		caller, proof, err := authorize(ctx, az, actor, authz.OpSAMLProviderList, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}
@@ -468,11 +449,7 @@ func (s *SAMLProviders) List(ctx context.Context, actor Actor) ([]SAMLProviderVi
 
 func (s *SAMLProviders) Delete(ctx context.Context, actor Actor, slug string) error {
 	return tx.Write(ctx, s.DB, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpSAMLProviderDelete, domain.Scope{})
+		caller, proof, err := authorize(ctx, az, actor, authz.OpSAMLProviderDelete, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}
@@ -543,11 +520,7 @@ func (s *SAMLProviders) RefreshMetadata(ctx context.Context, actor Actor, slug s
 	}
 	var output SAMLProviderView
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpSAMLProviderRefreshMetadata, domain.Scope{})
+		caller, proof, err := authorize(ctx, az, actor, authz.OpSAMLProviderRefreshMetadata, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}
@@ -1255,11 +1228,7 @@ func (s *SAMLProviders) recordProviderFailure(ctx context.Context, actor Actor, 
 	confirmedCopy := slices.Clone(confirmed)
 	slices.Sort(confirmedCopy)
 	auditErr := tx.Write(ctx, s.DB, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		proof, err := az.Authorize(ctx, caller, operation, domain.Scope{})
+		caller, proof, err := authorize(ctx, az, actor, operation, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}

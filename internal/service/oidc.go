@@ -229,10 +229,7 @@ type Providers struct {
 }
 
 func (s *Providers) now() time.Time {
-	if s.Now == nil {
-		return time.Now().UTC()
-	}
-	return s.Now().UTC()
+	return nowOr(s.Now)
 }
 
 // ProviderView is a provider as returned to an administrator. The client secret
@@ -280,10 +277,6 @@ func (s *Providers) redirectURI(slug string) string {
 func (s *Providers) Put(ctx context.Context, actor Actor, slug string, in ProviderInput) (ProviderView, error) {
 	var out ProviderView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
 		// Authorize BEFORE discovery closes an SSRF: only an instance-config
 		// holder may make the server fetch an arbitrary issuer URL. Discovery
 		// then validates the issuer (byte-exact) before anything is written.
@@ -293,7 +286,7 @@ func (s *Providers) Put(ctx context.Context, actor Actor, slug string, in Provid
 		// Acceptable here where login is not: provider configuration is a rare
 		// operator action, not a hot path. If provider churn ever matters, split
 		// it read/discover/write like the login path.
-		p, err := az.Authorize(ctx, caller, authz.OpProviderPut, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpProviderPut, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}
@@ -413,11 +406,7 @@ func (s *Providers) update(ctx context.Context, r store.Repos, az *authz.TxAutho
 func (s *Providers) Get(ctx context.Context, actor Actor, slug string) (ProviderView, error) {
 	var out ProviderView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpProviderGet, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpProviderGet, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}
@@ -438,11 +427,7 @@ func (s *Providers) Get(ctx context.Context, actor Actor, slug string) (Provider
 func (s *Providers) List(ctx context.Context, actor Actor) ([]ProviderView, error) {
 	var out []ProviderView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpProviderList, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpProviderList, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}
@@ -465,11 +450,7 @@ func (s *Providers) List(ctx context.Context, actor Actor) ([]ProviderView, erro
 // can race the delete.
 func (s *Providers) Delete(ctx context.Context, actor Actor, slug string) error {
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, err := actor.resolve(ctx, az, s.now())
-		if err != nil {
-			return err
-		}
-		p, err := az.Authorize(ctx, caller, authz.OpProviderDelete, domain.Scope{})
+		caller, p, err := authorize(ctx, az, actor, authz.OpProviderDelete, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}
