@@ -269,7 +269,10 @@ func (l *Limiter) allowShared(bucket, subject string, allowance int) bool {
 	window := l.now().UTC().Truncate(time.Minute)
 	count, err := l.shared.BumpWindow(ctx, bucket, subject, window)
 	if err != nil {
-		l.logger().Error("admission: shared counter unreachable, refusing", "bucket", bucket, "err", err)
+		// A backend error may echo subject, which is derived from an untrusted
+		// request header on proxy-aware discovery paths. Keep the failure visible
+		// without copying attacker-controlled or credential material into logs.
+		l.logger().Error("admission: shared counter unreachable, refusing", "bucket", bucket)
 		return false
 	}
 	return count <= int64(allowance)

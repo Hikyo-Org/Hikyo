@@ -14,11 +14,11 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/operation"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 )
@@ -172,7 +172,7 @@ func (a Actor) resolve(ctx context.Context, az *authz.TxAuthorizer, now time.Tim
 	} else if a.scimToken != "" {
 		if crypto.ParseArtifact(a.scimToken, crypto.ArtifactSCIM) == nil {
 			identity, err = resolveSCIMCredential(ctx, az, a, now)
-		} else if _, wire := api.OperationFromContext(ctx); wire {
+		} else if operation.IsNetwork(ctx) {
 			// A valid bearer of another class must reach the exact SCIM
 			// operation's admission row, not fail early on SCIM grammar.
 			identity, err = az.AuthenticateCaller(ctx, a.scimToken, now)

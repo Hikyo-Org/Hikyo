@@ -5,22 +5,25 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/operation"
 )
 
-// AdmitOperation enforces the artifact classes declared by the exact OpenAPI
-// operation attached to an HTTP request. Authentication still resolves the
+// AdmitOperation enforces the artifact classes declared by the exact network
+// operation attached to a request. Authentication still resolves the
 // live identity inside this transaction; this check then refuses a resolved
 // bearer whose class the contract excludes before handler logic can use it.
 //
-// An absent operation means an in-process caller. HTTP validation attaches an
-// operation to every contract route before dispatch, so there is no HTTP
-// fallback table and a new declaration takes effect without a second edit.
+// An absent operation means an in-process caller. Each network adapter attaches
+// a compiled contract before dispatch, so there is no request-derived fallback
+// table and a new declaration takes effect without a second edit.
 func (a *TxAuthorizer) AdmitOperation(ctx context.Context, caller Identity) error {
-	op, ok := api.OperationFromContext(ctx)
+	op, ok := operation.FromContext(ctx)
 	if !ok {
+		if operation.IsNetwork(ctx) {
+			return domain.ErrNotFound
+		}
 		return nil
 	}
 	class := ContractArtifactClass(caller)

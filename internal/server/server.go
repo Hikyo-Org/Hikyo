@@ -29,6 +29,8 @@ type PublicOptions struct {
 	// ExternalOrigin is the config-validated canonical public origin. CORS uses
 	// it to identify same-origin requests without trusting the Host header.
 	ExternalOrigin string
+	// MCP is nil while the independently gated MCP surface is disabled.
+	MCP http.Handler
 }
 
 // TLSMetrics reports the label-free native TLS gauges served operationally.
@@ -114,6 +116,10 @@ func NewPublic(ready ReadyChecker, a *API, ui fs.FS, publicOptions PublicOptions
 	// before anything tries to resolve one. Requests without an `Origin` header
 	// pass through untouched, so nothing else on the router changes.
 	r.Use(workspaceCORS(workspaceOriginCheck(a, publicOptions.ExternalOrigin)))
+
+	if publicOptions.MCP != nil {
+		r.Handle("/mcp", publicOptions.MCP)
+	}
 
 	if a != nil {
 		r.Group(func(g chi.Router) {

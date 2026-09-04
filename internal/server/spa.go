@@ -184,7 +184,7 @@ func cspOrigin(raw string) (string, bool) {
 // reservedRoots are the surfaces that own their own vocabulary. Each covers
 // itself and everything beneath it. `/api` subsumes ContractPrefix, so the
 // version prefix needs no entry of its own.
-var reservedRoots = []string{"/api", "/metrics", "/healthz", "/readyz",
+var reservedRoots = []string{"/api", "/mcp", "/metrics", "/healthz", "/readyz",
 	strings.TrimSuffix(assetPrefix, "/")}
 
 // reservedFromFallback reports whether a path is withheld from the SPA

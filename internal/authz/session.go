@@ -6,10 +6,10 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/operation"
 	"github.com/Hikyo-Org/hikyo/internal/store/authn"
 )
 
@@ -235,7 +235,7 @@ func (a *TxAuthorizer) AuthenticateCaller(ctx context.Context, presented string,
 	if crypto.ParseArtifact(presented, crypto.ArtifactWorkload) == nil ||
 		crypto.ParseArtifact(presented, crypto.ArtifactAutomation) == nil {
 		identity, err = a.authenticateMachine(ctx, presented, now)
-	} else if _, wire := api.OperationFromContext(ctx); wire && crypto.ParseArtifact(presented, crypto.ArtifactSCIM) == nil {
+	} else if operation.IsNetwork(ctx) && crypto.ParseArtifact(presented, crypto.ArtifactSCIM) == nil {
 		identity, _, err = a.AuthenticateSCIMCaller(ctx, presented, now)
 	} else if crypto.ParseArtifact(presented, crypto.ArtifactInstanceConn) == nil {
 		// The instance-connection credential (#71). It is a machine artifact with
@@ -319,7 +319,7 @@ func (a *TxAuthorizer) authenticateSessionSurface(
 	admitsWorkspace bool,
 	inProcessArtifacts ...crypto.ArtifactType,
 ) (Identity, error) {
-	if _, wire := api.OperationFromContext(ctx); wire {
+	if operation.IsNetwork(ctx) {
 		identity, err := a.AuthenticateCaller(ctx, presented, now)
 		if err != nil {
 			return Identity{}, err

@@ -29,6 +29,8 @@ import (
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/getkin/kin-openapi/routers"
 	"github.com/getkin/kin-openapi/routers/gorillamux"
+
+	"github.com/Hikyo-Org/hikyo/internal/operation"
 )
 
 // SpecYAML is the contract as authored. Exported so tooling (the oasdiff
@@ -187,12 +189,12 @@ type Operation struct {
 }
 
 const (
-	ArtifactNone               = "none"
-	ArtifactHumanSession       = "human-session"
-	ArtifactMachineCredential  = "machine-credential"
-	ArtifactSCIMCredential     = "scim-credential"
-	ArtifactInstanceCredential = "instance-credential"
-	ArtifactLocal              = "local"
+	ArtifactNone               = operation.ArtifactNone
+	ArtifactHumanSession       = operation.ArtifactHumanSession
+	ArtifactMachineCredential  = operation.ArtifactMachineCredential
+	ArtifactSCIMCredential     = operation.ArtifactSCIMCredential
+	ArtifactInstanceCredential = operation.ArtifactInstanceCredential
+	ArtifactLocal              = operation.ArtifactLocal
 )
 
 // AdmitsArtifact reports whether the operation's OpenAPI declaration admits
@@ -253,7 +255,19 @@ func withOperation(ctx context.Context, op Operation) context.Context {
 	if op.ID == "" {
 		return ctx
 	}
-	return context.WithValue(ctx, operationContextKey{}, op)
+	ctx = context.WithValue(ctx, operationContextKey{}, op)
+	ctx = operation.WithNetwork(ctx)
+	var contract operation.Contract
+	var err error
+	if op.AuthzOp == "" {
+		contract, err = operation.NewArtifactContract(op.ID, op.artifacts)
+	} else {
+		contract, err = operation.NewContract(op.ID, op.AuthzOp, op.formula, op.artifacts)
+	}
+	if err != nil {
+		panic(err)
+	}
+	return operation.WithContract(ctx, contract)
 }
 
 // Operations returns every operation in the contract, keyed by operationId.

@@ -10,6 +10,8 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/routers"
+
+	"github.com/Hikyo-Org/hikyo/internal/operation"
 )
 
 // countingRouter counts contract route lookups. The admission path's cost is
@@ -83,6 +85,13 @@ func TestMatchRequestResolvesTheContractRouteExactlyOnce(t *testing.T) {
 	}
 	if attached.ID != op.ID {
 		t.Fatalf("attached operation = %q, want %q", attached.ID, op.ID)
+	}
+	shared, ok := operation.FromContext(admitted.Context())
+	if !ok {
+		t.Fatal("transport-independent operation contract was not attached")
+	}
+	if shared.ID != op.ID || shared.AuthorizationOperation != op.AuthzOp {
+		t.Fatalf("shared contract = %#v, want %q/%q", shared, op.ID, op.AuthzOp)
 	}
 
 	if counting.calls != 1 {

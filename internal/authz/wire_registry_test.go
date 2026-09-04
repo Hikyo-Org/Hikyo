@@ -19,9 +19,10 @@ func rejectsWireRegistry(t *testing.T, name string, entry wireEntry) {
 func TestWireRegistrySnapshot(t *testing.T) {
 	facts := RegistryFacts{}
 	// #568 added member invitations, #147 added dynamic providers and leases,
-	// #151 added change approvals, and #157 added adapter pause and resume.
-	if got := len(facts.Wire()); got != 315 {
-		t.Fatalf("wire entries = %d, want 315", got)
+	// #151 added change approvals, #157 added adapter pause and resume, and
+	// #628 added the two unauthenticated MCP metadata methods.
+	if got := len(facts.Wire()); got != 317 {
+		t.Fatalf("wire entries = %d, want 317", got)
 	}
 	if got := len(facts.WireRoutes()); got != 225 {
 		t.Fatalf("operation-linked entries = %d, want 225", got)
