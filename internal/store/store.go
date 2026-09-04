@@ -1135,7 +1135,7 @@ func openPostgres(ctx context.Context, dsn string, configuredMax int32) (*DB, er
 // engine shape on every host.
 const (
 	postgresPoolDefaultMaxConnections int32 = 10
-	sqliteReadPoolMaxConnections            = 4
+	sqliteReadPoolMaxConnections      int   = 4
 )
 
 func postgresDSNHasPoolMax(dsn string) bool {

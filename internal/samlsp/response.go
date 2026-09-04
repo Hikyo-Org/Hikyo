@@ -114,11 +114,6 @@ func ParseResponse(raw []byte) (*Response, error) {
 	return &Response{document: document, root: root, assertion: assertion}, nil
 }
 
-func (r *Response) AssertionID() string {
-	id, _ := plainAttr(r.assertion, "ID")
-	return id
-}
-
 func validateSignatureProfile(signature *etree.Element, targetID string) error {
 	signedInfos := directChildren(signature, XMLDSIGNamespace, "SignedInfo")
 	if len(signedInfos) != 1 {

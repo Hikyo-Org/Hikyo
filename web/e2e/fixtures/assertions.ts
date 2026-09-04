@@ -86,7 +86,7 @@ export async function expectStatusIsTextAndAria(page: Page, status: Locator): Pr
  * palette: a ring that only exists as an author colour disappears there, and
  * that is precisely the user who most needs it.
  */
-export async function expectVisibleFocusIndicator(page: Page, target: Locator): Promise<void> {
+async function expectVisibleFocusIndicator(page: Page, target: Locator): Promise<void> {
   // Establish keyboard modality first. Chrome only matches `:focus-visible` on
   // a scripted focus when the last interaction was a key press, so focusing
   // straight from a click-driven test would measure the wrong state and report
@@ -191,7 +191,7 @@ export async function expectVisibleFocusIndicator(page: Page, target: Locator): 
  * and the elements come from a discovered set, so there is no line number to
  * work back from either.
  */
-export async function expectEveryFocusIndicator(page: Page, targets: Locator[]): Promise<void> {
+async function expectEveryFocusIndicator(page: Page, targets: Locator[]): Promise<void> {
   for (const target of targets) {
     try {
       await expectVisibleFocusIndicator(page, target);
@@ -329,7 +329,7 @@ export async function expectContrast(page: Page, target: Locator, minimum = 4.5)
   ).toBeGreaterThanOrEqual(minimum);
 }
 
-export async function expectEveryContrast(
+async function expectEveryContrast(
   page: Page,
   targets: Locator[],
   minimum = 4.5,
@@ -367,7 +367,7 @@ export async function expectBoundaryContrast(
 // --- 5. touch targets ------------------------------------------------------
 
 /** The floor DESIGN.md fixes for touch: ~44px targets on mobile. */
-export const TOUCH_TARGET_PX = 44;
+const TOUCH_TARGET_PX = 44;
 
 /**
  * expectTouchTargets enforces the 44px floor where DESIGN.md actually sets it
@@ -402,7 +402,7 @@ export async function expectTouchTargets(page: Page, targets: Locator[]): Promis
 // --- 6. DESIGN.md token conformance ---------------------------------------
 
 /** The CSS properties DESIGN.md fixes a palette token for. */
-export type ColourProp = 'color' | 'backgroundColor' | 'borderTopColor' | 'borderLeftColor';
+type ColourProp = 'color' | 'backgroundColor' | 'borderTopColor' | 'borderLeftColor';
 
 /**
  * expectColourToken checks a component's rendered colour against a DESIGN.md
@@ -415,7 +415,7 @@ export type ColourProp = 'color' | 'backgroundColor' | 'borderTopColor' | 'borde
  * failure that matters — a component that hard-coded a hex which happens to
  * look close.
  */
-export async function expectColourToken(
+async function expectColourToken(
   page: Page,
   target: Locator,
   prop: ColourProp,
@@ -439,7 +439,7 @@ export async function expectColourToken(
  * design language, and on a phone it is also the thing that makes a dense
  * layout feel noisy.
  */
-export async function expectHairline(target: Locator): Promise<void> {
+async function expectHairline(target: Locator): Promise<void> {
   const width = await target.evaluate((el) => getComputedStyle(el).borderTopWidth);
   expect(width, 'DESIGN.md fixes hairline borders at 1px').toBe('1px');
 }
@@ -450,15 +450,15 @@ export async function expectHairline(target: Locator): Promise<void> {
  * The token is read live, so the assertion tracks DESIGN.md rather than
  * restating it.
  */
-export async function expectDensity(page: Page, target: Locator, token: string): Promise<void> {
+async function expectDensity(page: Page, target: Locator, token: string): Promise<void> {
   const want = Number.parseFloat(await tokenValue(page, token));
   const box = await target.boundingBox();
   expect(box, 'a component with no box has no density').not.toBeNull();
   expect(Math.round(box?.height ?? 0), `height against DESIGN.md's ${token}`).toBe(Math.round(want));
 }
 
-export type RadiusRole = 'container' | 'control' | 'badge' | 'pill';
-export type FontRole = 'ui' | 'mono';
+type RadiusRole = 'container' | 'control' | 'badge' | 'pill';
+type FontRole = 'ui' | 'mono';
 
 const RADIUS_TOKEN: Record<RadiusRole, string> = {
   container: '--radius-container',
@@ -485,7 +485,7 @@ async function tokenValue(page: Page, name: string): Promise<string> {
  * the assertion tracks DESIGN.md through one edit instead of two — and a
  * component that hard-codes `border-radius: 8px` fails whatever the token says.
  */
-export async function expectRadiusRole(
+async function expectRadiusRole(
   page: Page,
   target: Locator,
   role: RadiusRole,
@@ -503,7 +503,7 @@ export async function expectRadiusRole(
 }
 
 /** Checks that UI uses Instrument Sans and keys/values use IBM Plex Mono. */
-export async function expectFontRole(page: Page, target: Locator, role: FontRole): Promise<void> {
+async function expectFontRole(page: Page, target: Locator, role: FontRole): Promise<void> {
   const want = await tokenValue(page, FONT_TOKEN[role]);
   const got = await target.evaluate((el) => getComputedStyle(el).fontFamily);
   const first = (list: string) => (list.split(',')[0] ?? '').trim().replace(/^['"]|['"]$/g, '');
@@ -521,7 +521,7 @@ export async function expectFontRole(page: Page, target: Locator, role: FontRole
  * exists nowhere, so keeping the allowance would license a shape nothing in the
  * design language asks for any more.
  */
-export async function expectNoStrayPills(page: Page): Promise<void> {
+async function expectNoStrayPills(page: Page): Promise<void> {
   const stray = await page.evaluate(() => {
     const allowed = ['avatar', 'count'];
     const offenders: string[] = [];
@@ -578,7 +578,7 @@ export const INTERACTIVE_ELEMENT_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(', ');
 
-export async function interactiveElements(page: Page): Promise<Locator[]> {
+async function interactiveElements(page: Page): Promise<Locator[]> {
   // The native focusable set, not just the four obvious tags: `summary`,
   // editable regions and media controls are keyboard stops too, and a surface
   // that grows one should be asserted the day it renders.

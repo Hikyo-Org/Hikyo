@@ -3,6 +3,7 @@ package crypto
 import (
 	"encoding/binary"
 	"math"
+	"slices"
 )
 
 // Associated-data encoding, per the encryption-model ADR § Envelope format:
@@ -39,7 +40,7 @@ type AAD interface {
 // appendAAD builds the full associated data for a record: the authenticated
 // header bytes followed by the kind's length-prefixed field sequence.
 func appendAAD(header []byte, a AAD) []byte {
-	out := append([]byte(nil), header...)
+	out := slices.Clone(header)
 	for _, f := range a.fields() {
 		out = appendLP(out, f)
 	}

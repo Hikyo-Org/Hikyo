@@ -1,7 +1,6 @@
 package api
 
 import (
-	"errors"
 	"fmt"
 	"sort"
 
@@ -163,9 +162,6 @@ func CheckFreeze(base, revised []byte) ([]Violation, error) {
 	})
 	return violations, nil
 }
-
-// ErrFrozen reports that the gate refused a change.
-var ErrFrozen = errors.New("api: change refused by the freeze gate")
 
 // specInfo parses a document into the shape oasdiff wants, with references
 // resolved (it expects them resolved and does not resolve them itself).

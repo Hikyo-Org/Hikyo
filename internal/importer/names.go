@@ -224,9 +224,7 @@ func recordPath(r Record) string {
 		return quoteName(r.SourceName)
 	}
 	parts := make([]string, 0, len(r.Folder)+1)
-	for _, seg := range r.Folder {
-		parts = append(parts, seg)
-	}
+	parts = append(parts, r.Folder...)
 	parts = append(parts, r.SourceName)
 	return quoteName(strings.Join(parts, "/"))
 }

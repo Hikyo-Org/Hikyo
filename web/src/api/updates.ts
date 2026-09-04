@@ -60,9 +60,9 @@ export type RemoteUpdateProbe = {
   error: Error | null;
 };
 
-export const updateStatusKey = ['update-status'];
-export const serverVersionKey = ['server-version'];
-export const updateStatusPollMs = 6 * 60 * 60 * 1_000;
+const updateStatusKey = ['update-status'];
+const serverVersionKey = ['server-version'];
+const updateStatusPollMs = 6 * 60 * 60 * 1_000;
 const updateJobPollMs = 2_000;
 
 /**

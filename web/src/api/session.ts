@@ -6,7 +6,7 @@ import {
   beginRecoveryOp,
   establishCredentialOp,
 } from '@hikyo/operations';
-import { zLoginResult, zMyOrgList } from '@hikyo/zod';
+import { zMyOrgList } from '@hikyo/zod';
 import { useMutation, useQuery, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
@@ -40,10 +40,9 @@ export function loginFailureText(error: unknown): string {
 }
 
 export type { WhoAmI } from '../app/AuthProvider.tsx';
-export type LoginResult = z.infer<typeof zLoginResult>;
 export type MyOrgList = z.infer<typeof zMyOrgList>;
 
-export const orgsKey = ['orgs'] as const;
+const orgsKey = ['orgs'] as const;
 
 /**
  * useOrgs is the rail's data source: the organisations the caller's OWN grants

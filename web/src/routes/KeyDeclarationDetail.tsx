@@ -26,8 +26,8 @@ import {
   useUpdateKeyMetadata,
   type KeyImpact,
   type MatrixKey,
-  type MatrixRef,
 } from '../api/matrix.ts';
+import type { MatrixRef } from '../api/keys.ts';
 import { ApiError, type RefusalFinding } from '../api/client.ts';
 import { useWorkspaceContext, withRemote } from '../api/transport.tsx';
 import type { EnvironmentList } from '../api/values.ts';

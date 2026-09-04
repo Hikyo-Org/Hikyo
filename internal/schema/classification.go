@@ -2,7 +2,8 @@ package schema
 
 import (
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 )
 
 // checkDeclarationClassification enforces the source-of-truth ADR's
@@ -43,11 +44,7 @@ func valueLiteralKeyword(node any) (string, bool) {
 				return keyword, true
 			}
 		}
-		names := make([]string, 0, len(value))
-		for name := range value {
-			names = append(names, name)
-		}
-		sort.Strings(names)
+		names := slices.Sorted(maps.Keys(value))
 		for _, name := range names {
 			child := value[name]
 			if keyword, ok := valueLiteralKeyword(child); ok {

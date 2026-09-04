@@ -67,13 +67,13 @@ import { seedTenant, totpCode } from './seed.ts';
  * directory card owes a human.
  */
 
-export const HOST = 'localhost';
-export const PORT = Number(process.env['HIKYO_E2E_PORT'] ?? 45789);
+const HOST = 'localhost';
+const PORT = Number(process.env['HIKYO_E2E_PORT'] ?? 45789);
 export const BASE_URL = `http://${HOST}:${PORT}`;
 
 /** The serving instance: a different loopback NAME, hence a different origin. */
 export const HOST_B = '127.0.0.1';
-export const PORT_B = Number(process.env['HIKYO_E2E_PORT_B'] ?? 45790);
+const PORT_B = Number(process.env['HIKYO_E2E_PORT_B'] ?? 45790);
 export const BASE_URL_B = `http://${HOST_B}:${PORT_B}`;
 
 /** The TLS front that exists only so `remote add` can be performed for real. */
@@ -147,7 +147,7 @@ export const SEEDED = fileURLToPath(new URL('../.auth/seed.json', import.meta.ur
  * authenticator keeps the ceremonies real without any flow mutating the
  * account.
  */
-export const PASSKEY = fileURLToPath(new URL('../.auth/passkey.json', import.meta.url));
+const PASSKEY = fileURLToPath(new URL('../.auth/passkey.json', import.meta.url));
 
 /** One authenticator contract for setup and every passkey-bearing flow page. */
 const VIRTUAL_AUTHENTICATOR = Object.freeze({
@@ -1336,17 +1336,17 @@ export type VirtualCredential = z.infer<typeof zVirtualCredential>;
  * project's authenticator has to start where the first one stopped — exactly
  * as one physical key carried between two machines would.
  */
-export function writePasskey(credential: VirtualCredential): void {
+function writePasskey(credential: VirtualCredential): void {
   writeFileSync(PASSKEY, JSON.stringify(credential));
 }
 
 /** readPasskey returns the credential every flow's authenticator is loaded with. */
-export function readPasskey(): VirtualCredential {
+function readPasskey(): VirtualCredential {
   return zVirtualCredential.parse(JSON.parse(readFileSync(PASSKEY, 'utf8')));
 }
 
 /** parseCredential checks a CDP credential rather than asserting its shape. */
-export function parseCredential(value: unknown): VirtualCredential {
+function parseCredential(value: unknown): VirtualCredential {
   return zVirtualCredential.parse(value);
 }
 

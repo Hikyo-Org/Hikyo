@@ -144,7 +144,7 @@ func publishValue(t *testing.T, values *service.Values, actor service.Actor,
 		t.Fatalf("stage %s: %v", keyName, err)
 	}
 	revisions := &service.Revisions{DB: values.DB, Keyring: values.Keyring}
-	if _, err := revisions.Publish(ctx, actor, scope, []string{staged.VersionID}); err != nil {
+	if _, err := revisions.PublishPlanned(ctx, actor, scope, service.PublishRequest{VersionIDs: []string{staged.VersionID}}); err != nil {
 		t.Fatalf("publish %s: %v", keyName, err)
 	}
 }

@@ -3,7 +3,8 @@ package schema
 import (
 	"bytes"
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -281,11 +282,7 @@ func (w *profileWalk) schema(node any, ptr string, depth int) error {
 
 	// Sorted so a document with several violations always names the same one:
 	// a refusal that changes between runs is a refusal nobody can test.
-	names := make([]string, 0, len(obj))
-	for name := range obj {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(obj))
 
 	for _, name := range names {
 		value := obj[name]
@@ -324,11 +321,7 @@ func (w *profileWalk) schema(node any, ptr string, depth int) error {
 			if !ok {
 				return declErr("`json_schema`: keyword %q must hold an object of schemas", name)
 			}
-			memberNames := make([]string, 0, len(members))
-			for member := range members {
-				memberNames = append(memberNames, member)
-			}
-			sort.Strings(memberNames)
+			memberNames := slices.Sorted(maps.Keys(members))
 			for _, member := range memberNames {
 				sub := child + "/" + escapePointer(member)
 				w.edges[ptr] = append(w.edges[ptr], sub)
@@ -387,8 +380,7 @@ func (w *profileWalk) checkAcyclic() error {
 			return nil
 		}
 		colour[node] = grey
-		targets := append([]string(nil), w.edges[node]...)
-		sort.Strings(targets)
+		targets := slices.Sorted(slices.Values(w.edges[node]))
 		for _, target := range targets {
 			if err := visit(target); err != nil {
 				return err
@@ -397,11 +389,7 @@ func (w *profileWalk) checkAcyclic() error {
 		colour[node] = black
 		return nil
 	}
-	nodes := make([]string, 0, len(w.nodes))
-	for node := range w.nodes {
-		nodes = append(nodes, node)
-	}
-	sort.Strings(nodes)
+	nodes := slices.Sorted(maps.Keys(w.nodes))
 	for _, node := range nodes {
 		if err := visit(node); err != nil {
 			return err

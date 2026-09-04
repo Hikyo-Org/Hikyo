@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"sort"
 	"strconv"
 	"time"
 
@@ -352,7 +351,7 @@ func (s *Adapters) Create(ctx context.Context, actor Actor, scope domain.Scope, 
 	if err != nil {
 		return AdapterView{}, err
 	}
-	plain := append([]byte(nil), request.Credential...)
+	plain := slices.Clone(request.Credential)
 	defer crypto.Zero(plain)
 	sealed, err := sealer.SealField(adapter.CredentialAAD(string(scope.Org), string(scope.Project), adapterID), plain)
 	if err != nil {
@@ -744,8 +743,7 @@ func (s *Adapters) applyTargetUpdate(ctx context.Context, r store.Repos, az *aut
 		return store.AdapterTarget{}, err
 	}
 	slices.Sort(oldIDs)
-	newIDs := append([]string(nil), request.Target.KeyIDs...)
-	slices.Sort(newIDs)
+	newIDs := slices.Sorted(slices.Values(request.Target.KeyIDs))
 	widened := false
 	for _, id := range newIDs {
 		if !slices.Contains(oldIDs, id) {
@@ -951,7 +949,7 @@ func (s *Adapters) MoveOrigin(ctx context.Context, actor Actor, scope domain.Sco
 	if err != nil {
 		return store.AdapterRouteMoveBatch{}, err
 	}
-	plain := append([]byte(nil), credential...)
+	plain := slices.Clone(credential)
 	defer crypto.Zero(plain)
 	lease, err := s.buildModule(provider, origin, string(plain))
 	if err != nil {
@@ -1175,7 +1173,7 @@ func (s *Adapters) ResumeOriginMove(ctx context.Context, actor Actor, scope doma
 	if err != nil {
 		return store.AdapterMove{}, err
 	}
-	plain := append([]byte(nil), credential...)
+	plain := slices.Clone(credential)
 	defer crypto.Zero(plain)
 	lease, err := s.buildModule(provider, origin, string(plain))
 	if err != nil {
@@ -1545,7 +1543,7 @@ func (s *Adapters) ReplaceCredential(ctx context.Context, actor Actor, scope dom
 	if err != nil {
 		return store.AdapterCredentialResult{}, err
 	}
-	plain := append([]byte(nil), credential...)
+	plain := slices.Clone(credential)
 	defer crypto.Zero(plain)
 	sealed, err := sealer.SealField(adapter.CredentialAAD(string(scope.Org), string(scope.Project), adapterID), plain)
 	if err != nil {
@@ -1897,7 +1895,7 @@ func (s *Adapters) Adopt(ctx context.Context, actor Actor, scope domain.Scope, r
 		for _, entry := range request.Entries {
 			entryNames = append(entryNames, entry.Surface+":"+entry.EffectiveName)
 		}
-		sort.Strings(entryNames)
+		slices.Sort(entryNames)
 		ev, err := domainEvent(ctx, audit.EventAdapterAdopt, caller.Principal, audit.Object{Type: "adapter-target", ID: request.TargetID}, audit.Payload{
 			"artifact_id": request.ArtifactID, "target_generation": target.Generation, "entries": entryNames,
 		})
@@ -2001,7 +1999,7 @@ func (s *Adapters) Delete(ctx context.Context, actor Actor, scope domain.Scope, 
 	for _, target := range batch.Targets {
 		out.Orphaned = append(out.Orphaned, target.Orphaned...)
 	}
-	sort.Strings(out.Orphaned)
+	slices.Sort(out.Orphaned)
 	return out, nil
 }
 

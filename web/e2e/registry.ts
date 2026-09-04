@@ -225,7 +225,7 @@ export function surfacesForFlow(flowID: string): readonly Surface[] {
 // still refused by global teardown — it fragments the flows without the
 // positional-filter marker the skip is keyed on.
 
-export const RUN_LOG = fileURLToPath(new URL('.runs/pinned.log', import.meta.url));
+const RUN_LOG = fileURLToPath(new URL('.runs/pinned.log', import.meta.url));
 
 /** recordPinnedRun notes that the pinned set executed on one surface. */
 export function recordPinnedRun(entry: {

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -237,7 +238,7 @@ func TestRunMergeCollisionAndAllowOverride(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("allow-override exit=%d, want ExitOK; stderr=%s", code, stderr2)
 	}
-	if !hasEnv(gotEnv, "HIKYO_TEST_COLLIDE=fetched") {
+	if !slices.Contains(gotEnv, "HIKYO_TEST_COLLIDE=fetched") {
 		t.Fatalf("fetched value did not win: %v", envFilter(gotEnv, "HIKYO_TEST_COLLIDE"))
 	}
 	_ = st
@@ -421,7 +422,7 @@ func TestRunStaleLineOnOfflineServe(t *testing.T) {
 	if !strings.Contains(stderr.String(), "serving stale from ") || !strings.Contains(stderr.String(), "generation v1-") {
 		t.Fatalf("stale line missing/wrong: %s", stderr)
 	}
-	if !hasEnv(captured, "DATABASE_URL=postgres://cached") {
+	if !slices.Contains(captured, "DATABASE_URL=postgres://cached") {
 		t.Fatalf("offline value not delivered to child env: %v", captured)
 	}
 }
@@ -545,10 +546,10 @@ func TestRunStripsTokenFromChildEnv(t *testing.T) {
 			t.Fatalf("HIKYO_TOKEN leaked into the child environment: %q", e)
 		}
 	}
-	if !hasEnv(gotEnv, "HIKYO_RUN_MARKER=kept") {
+	if !slices.Contains(gotEnv, "HIKYO_RUN_MARKER=kept") {
 		t.Fatalf("a non-credential env var was dropped: %v", envFilter(gotEnv, "HIKYO_RUN_MARKER"))
 	}
-	if !hasEnv(gotEnv, "APP_CONFIG=v") {
+	if !slices.Contains(gotEnv, "APP_CONFIG=v") {
 		t.Fatalf("delivered value missing from child env: %v", envFilter(gotEnv, "APP_CONFIG"))
 	}
 }
@@ -1455,15 +1456,6 @@ func seedRunSnapshot(t *testing.T, stateDir, origin, token string) {
 	if err := compose.SaveSnapshot(keys, binding, payload); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func hasEnv(env []string, want string) bool {
-	for _, e := range env {
-		if e == want {
-			return true
-		}
-	}
-	return false
 }
 
 func envFilter(env []string, prefix string) []string {

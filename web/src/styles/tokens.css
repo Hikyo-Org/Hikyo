@@ -36,7 +36,6 @@
      only per-theme part, because a 14% wash that reads correctly on a dark
      surface is too heavy on paper. */
   --accent-soft: color-mix(in oklch, var(--accent) 14%, transparent);
-  --danger-soft: color-mix(in oklch, var(--danger) 14%, transparent);
   --changed-soft: color-mix(in oklch, var(--changed) 14%, transparent);
 
   /* Shape — radius carries a role (DESIGN.md, app-chrome iteration 8). */
@@ -79,7 +78,6 @@
     --danger: oklch(0.48 0.14 30);
     --changed: oklch(0.45 0.08 250);
     --accent-soft: color-mix(in oklch, var(--accent) 10%, transparent);
-    --danger-soft: color-mix(in oklch, var(--danger) 10%, transparent);
     --changed-soft: color-mix(in oklch, var(--changed) 12%, transparent);
   }
 }
@@ -101,7 +99,6 @@
   --danger: oklch(0.48 0.14 30);
   --changed: oklch(0.45 0.08 250);
   --accent-soft: color-mix(in oklch, var(--accent) 10%, transparent);
-  --danger-soft: color-mix(in oklch, var(--danger) 10%, transparent);
   --changed-soft: color-mix(in oklch, var(--changed) 12%, transparent);
 }
 

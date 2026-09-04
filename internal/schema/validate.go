@@ -158,14 +158,14 @@ const (
 //     which is the one thing the bound exists to prevent.
 //   - The result channel is buffered, so an abandoned goroutine always
 //     completes its send and exits rather than blocking forever.
-func runWithDeadline(run func() error, d time.Duration) (error, evalOutcome) {
+func runWithDeadline(run func() error, d time.Duration) (evalOutcome, error) {
 	// Try-acquire, and nothing else: the clock is never consulted here. A
 	// caller that waits for a slot IS the queue this bound exists to prevent,
 	// and it makes admission race the timer besides.
 	select {
 	case evaluationSlots <- struct{}{}:
 	default:
-		return nil, evalRefused
+		return evalRefused, nil
 	}
 
 	done := make(chan error, 1)
@@ -181,14 +181,14 @@ func runWithDeadline(run func() error, d time.Duration) (error, evalOutcome) {
 	// cases, so without this a zero deadline would sometimes report success.
 	select {
 	case <-timer.C:
-		return nil, evalOverran
+		return evalOverran, nil
 	default:
 	}
 	select {
 	case err := <-done:
-		return err, evalCompleted
+		return evalCompleted, err
 	case <-timer.C:
-		return nil, evalOverran
+		return evalOverran, nil
 	}
 }
 
@@ -410,7 +410,7 @@ func canonicalInteger(v string) string {
 // not the localized message (the library's `additionalProperties` message
 // names the offending instance properties), not the instance location.
 func jsonSchemaFailures(sch *jsonschema.Schema, doc any, cls Classification, alt int) []Failure {
-	err, outcome := runWithDeadline(func() error { return sch.Validate(doc) }, evaluationDeadline)
+	outcome, err := runWithDeadline(func() error { return sch.Validate(doc) }, evaluationDeadline)
 	switch outcome {
 	case evalOverran:
 		// Loud, never "assume valid".

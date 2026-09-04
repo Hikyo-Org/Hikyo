@@ -14,20 +14,23 @@
 package v1alpha1
 
 import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"sigs.k8s.io/controller-runtime/pkg/scheme"
 )
 
 // GroupVersion is hikyo.dev/v1alpha1 (§ 0.2).
 var GroupVersion = schema.GroupVersion{Group: "hikyo.dev", Version: "v1alpha1"}
 
 // SchemeBuilder registers the operator's types with a runtime scheme.
-var SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}
+var SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
 
 // AddToScheme adds the operator's types to a scheme. The manager wiring and the
 // tests both call it.
 var AddToScheme = SchemeBuilder.AddToScheme
 
-func init() {
-	SchemeBuilder.Register(&HikyoInstance{}, &HikyoInstanceList{}, &HikyoSecret{}, &HikyoSecretList{})
+func addKnownTypes(s *runtime.Scheme) error {
+	s.AddKnownTypes(GroupVersion, &HikyoInstance{}, &HikyoInstanceList{}, &HikyoSecret{}, &HikyoSecretList{})
+	metav1.AddToGroupVersion(s, GroupVersion)
+	return nil
 }

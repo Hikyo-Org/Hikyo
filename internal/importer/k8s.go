@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -165,11 +166,7 @@ func (k8sConnector) ReadLive(ctx context.Context, in LiveInput, b *Budget) (Resu
 		}
 		seenNames[secret.Name] = struct{}{}
 		names = append(names, secret.Name)
-		keys := make([]string, 0, len(secret.Data))
-		for key := range secret.Data {
-			keys = append(keys, key)
-		}
-		slices.Sort(keys)
+		keys := slices.Sorted(maps.Keys(secret.Data))
 		for _, key := range keys {
 			where := fmt.Sprintf("namespace %s secret %s key %s",
 				quoteName(in.Namespace), quoteName(secret.Name), quoteName(key))
@@ -463,7 +460,7 @@ func (k8sConnector) Read(ctx context.Context, in Input, b *Budget) (Result, erro
 		// sorted order so the record list is deterministic — a map range would
 		// make the emitted artifacts differ run to run for identical input.
 		merged := map[string]string{}
-		for _, name := range sortedKeys(secret.Data) {
+		for _, name := range slices.Sorted(maps.Keys(secret.Data)) {
 			keyWhere := fmt.Sprintf("%s secret %s key %s", in.Path, quoteName(secret.Metadata.Name), quoteName(name))
 			raw, err := base64.StdEncoding.DecodeString(secret.Data[name])
 			if err != nil {
@@ -475,7 +472,7 @@ func (k8sConnector) Read(ctx context.Context, in Input, b *Budget) (Result, erro
 			}
 			merged[name] = string(raw)
 		}
-		for _, name := range sortedKeys(secret.StringData) {
+		for _, name := range slices.Sorted(maps.Keys(secret.StringData)) {
 			keyWhere := fmt.Sprintf("%s secret %s key %s", in.Path, quoteName(secret.Metadata.Name), quoteName(name))
 			if err := b.Bytes(keyWhere, len(secret.StringData[name])); err != nil {
 				return Result{}, err
@@ -486,7 +483,7 @@ func (k8sConnector) Read(ctx context.Context, in Input, b *Budget) (Result, erro
 			merged[name] = secret.StringData[name]
 		}
 
-		for _, name := range sortedKeys(merged) {
+		for _, name := range slices.Sorted(maps.Keys(merged)) {
 			keyWhere := fmt.Sprintf("%s secret %s key %s", in.Path, quoteName(secret.Metadata.Name), quoteName(name))
 			if err := b.Record(keyWhere); err != nil {
 				return Result{}, err
@@ -581,11 +578,3 @@ func checkNoDuplicateKeys(b *Budget, where string, n *yaml.Node, depth int) erro
 }
 
 // sortedKeys is the deterministic walk order for a source map.
-func sortedKeys(m map[string]string) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	slices.Sort(out)
-	return out
-}

@@ -310,19 +310,6 @@ func (a *ackSet) match(kr *crypto.Keyring, kind, locator, ruleDigest, snapshot s
 	return "", false
 }
 
-// unconsumed reports the count of tokens no finding claimed — surplus, stale,
-// version-skewed, or expired. The caller rejects them by name (ADR §4: a
-// standing pre-authorization is structurally impossible).
-func (a *ackSet) unconsumed() int {
-	n := 0
-	for _, entry := range a.entries {
-		if !entry.used {
-			n++
-		}
-	}
-	return n
-}
-
 // classifyRejections names every unconsumed token against the findings that
 // exist now (ADR §4 / SS3: rejection BY NAME, with a structural reason). The
 // precedence is deterministic so the message is stable: a token that does not

@@ -31,8 +31,6 @@ import {
 } from './keys.ts';
 import { useTransport } from './transport.tsx';
 
-export { valuesKey, windowKey, type EnvRef } from './keys.ts';
-
 /**
  * The value surface and the reveal ceremony, as the SPA sees them (#58).
  *

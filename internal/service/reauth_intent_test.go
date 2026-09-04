@@ -144,7 +144,7 @@ func TestReauthIntentDerivesCanonicalBinding(t *testing.T) {
 		{
 			name: "adapter configure",
 			make: func(t *testing.T) ReauthIntent {
-				intent, err := NewAdapterConfigureReauthIntent([]string{"env_prod", "env_dev", "env_prod"})
+				intent, err := NewAdapterReauthIntent(string(authz.OpAdapterConfigure), []string{"env_prod", "env_dev", "env_prod"})
 				return mustReauthIntent(t, intent, err)
 			},
 			targetEnvironment:    "env_prod",
@@ -157,7 +157,7 @@ func TestReauthIntentDerivesCanonicalBinding(t *testing.T) {
 		{
 			name: "adapter credential set",
 			make: func(t *testing.T) ReauthIntent {
-				intent, err := NewAdapterCredentialSetReauthIntent([]string{"env_prod", "env_dev"})
+				intent, err := NewAdapterReauthIntent(string(authz.OpAdapterCredentialSet), []string{"env_prod", "env_dev"})
 				return mustReauthIntent(t, intent, err)
 			},
 			targetEnvironment:    "env_prod",
@@ -170,7 +170,7 @@ func TestReauthIntentDerivesCanonicalBinding(t *testing.T) {
 		{
 			name: "adapter adopt",
 			make: func(t *testing.T) ReauthIntent {
-				intent, err := NewAdapterAdoptReauthIntent([]string{"env_prod", "env_dev"})
+				intent, err := NewAdapterReauthIntent(string(authz.OpAdapterAdopt), []string{"env_prod", "env_dev"})
 				return mustReauthIntent(t, intent, err)
 			},
 			targetEnvironment:    "env_prod",
@@ -183,7 +183,7 @@ func TestReauthIntentDerivesCanonicalBinding(t *testing.T) {
 		{
 			name: "adapter sync",
 			make: func(t *testing.T) ReauthIntent {
-				intent, err := NewAdapterSyncReauthIntent([]string{"env_prod", "env_dev"})
+				intent, err := NewAdapterReauthIntent(string(authz.OpAdapterSync), []string{"env_prod", "env_dev"})
 				return mustReauthIntent(t, intent, err)
 			},
 			targetEnvironment:    "env_prod",

@@ -116,20 +116,6 @@ func newClient(cfg ClientConfig, resolver netpolicy.Resolver, dialer netpolicy.D
 	}, nil
 }
 
-// NewTestClient permits a test transport while retaining the production
-// request construction, response cap, no-variable-read registry, and error
-// sanitization. Production callers use NewClient.
-func NewTestClient(origin, credential string, client *http.Client) (*Client, error) {
-	canonical, err := canonicalOrigin(origin)
-	if err != nil {
-		return nil, err
-	}
-	if credential == "" || client == nil {
-		return nil, errors.New("forgejo: test client requires credential and HTTP client")
-	}
-	return &Client{origin: canonical, token: credential, http: client}, nil
-}
-
 func canonicalOrigin(raw string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil {

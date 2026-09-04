@@ -35,7 +35,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -330,7 +330,7 @@ func topoSort(tables []string, parents map[string]map[string]bool) ([]string, er
 					stuck = append(stuck, t)
 				}
 			}
-			sort.Strings(stuck)
+			slices.Sort(stuck)
 			return nil, fmt.Errorf("store: foreign-key cycle among %s — no restore order exists", strings.Join(stuck, ", "))
 		}
 	}

@@ -3,6 +3,7 @@ package importer
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -127,11 +128,7 @@ func sopsWalk(ctx context.Context, path string, node map[string]any, folder []st
 	if err := b.Depth(where, len(folder)); err != nil {
 		return err
 	}
-	names := make([]string, 0, len(node))
-	for name := range node {
-		names = append(names, name)
-	}
-	slices.Sort(names)
+	names := slices.Sorted(maps.Keys(node))
 
 	for _, name := range names {
 		child := node[name]

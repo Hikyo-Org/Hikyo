@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -553,7 +552,7 @@ func newlyReachable(before, after map[domain.EnvID]bool) []domain.EnvID {
 			out = append(out, env)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	slices.Sort(out)
 	return out
 }
 
@@ -566,7 +565,7 @@ func union(a, b []domain.EnvID) []domain.EnvID {
 			out = append(out, e)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	slices.Sort(out)
 	return out
 }
 
@@ -1010,7 +1009,7 @@ func remainingMemberManagers(
 	// two concurrent revocations of the last two holders serialize instead of
 	// each seeing the other as the remaining one. Sorted order is what makes
 	// the pairwise lock acquisition deadlock-free.
-	sort.Slice(holders, func(i, j int) bool { return holders[i] < holders[j] })
+	slices.Sort(holders)
 	for _, h := range holders {
 		if err := az.LockTargetPrincipal(ctx, h); errors.Is(err, domain.ErrNotFound) {
 			continue // the holder's principal row went away; the re-read below is authoritative

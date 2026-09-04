@@ -164,7 +164,7 @@ func rejectShadowedPlaywrightBindings(tokens []tsToken, bindings playwrightBindi
 			next = tokens[i+1].value
 		}
 		if previous == "function" || previous == "class" || previous == "const" || previous == "let" || previous == "var" || next != "(" && next != "." {
-			return fmt.Errorf("Playwright test binding %q is shadowed or used indirectly", current.value)
+			return fmt.Errorf("test binding %q from Playwright is shadowed or used indirectly", current.value)
 		}
 	}
 	return nil

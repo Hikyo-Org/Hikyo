@@ -1,7 +1,7 @@
 package compose
 
 import (
-	"sort"
+	"slices"
 
 	"github.com/Hikyo-Org/hikyo/internal/delivery"
 )
@@ -39,6 +39,6 @@ func RefuseUnacknowledged(names []string, acknowledged []string) []string {
 		}
 		refused = append(refused, n)
 	}
-	sort.Strings(refused)
+	slices.Sort(refused)
 	return refused
 }

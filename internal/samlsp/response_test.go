@@ -83,3 +83,9 @@ func TestParseResponseRefusesAlgorithmsOutsideClosedAllowlist(t *testing.T) {
 		})
 	}
 }
+
+// AssertionID reads the parsed assertion's ID; only the structure tests need it.
+func (r *Response) AssertionID() string {
+	id, _ := plainAttr(r.assertion, "ID")
+	return id
+}

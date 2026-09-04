@@ -166,7 +166,7 @@ func scenarioPublishEnqueuesAdapterSync(t *testing.T, db *store.DB) {
 	}
 	canonicalNow := time.Date(2026, 8, 17, 12, 34, 56, 0, time.UTC)
 	revisions := &service.Revisions{DB: db, Keyring: sharedKeyring(t, db), Now: func() time.Time { return canonicalNow }}
-	if _, err := revisions.Publish(t.Context(), actor, dev, []string{staged.VersionID}); err != nil {
+	if _, err := revisions.PublishPlanned(t.Context(), actor, dev, service.PublishRequest{VersionIDs: []string{staged.VersionID}}); err != nil {
 		t.Fatal(err)
 	}
 	assertAdapterPublishState(t, db, "tgt_publish_dev", 2, 1, string(who), canonicalNow)
@@ -785,7 +785,7 @@ func scenarioRestoreSupersededSecret(t *testing.T, db *store.DB) {
 	for _, change := range restored.Changes {
 		versions = append(versions, change.VersionID)
 	}
-	if _, err := revisions.Publish(t.Context(), actor, dev, versions); !errors.Is(err, service.ErrStalePreview) {
+	if _, err := revisions.PublishPlanned(t.Context(), actor, dev, service.PublishRequest{VersionIDs: versions}); !errors.Is(err, service.ErrStalePreview) {
 		t.Fatalf("restore publish without preview = %v, want ErrStalePreview", err)
 	}
 	seed(t, db, []string{fmt.Sprintf("UPDATE environments SET protected = TRUE WHERE id = '%s'", dev.Env)})
@@ -1000,7 +1000,7 @@ func scenarioPublishSerialization(t *testing.T, db *store.DB) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, results[i] = revisions.Publish(t.Context(), actor, dev, []string{versionID})
+			_, results[i] = revisions.PublishPlanned(t.Context(), actor, dev, service.PublishRequest{VersionIDs: []string{versionID}})
 		}()
 	}
 	if db.Engine() == store.EnginePostgres {
@@ -1176,7 +1176,7 @@ func scenarioSelectivePublish(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = revisionSvc(t, db).Publish(t.Context(), actor, dev, []string{mine.VersionID})
+	_, err = revisionSvc(t, db).PublishPlanned(t.Context(), actor, dev, service.PublishRequest{VersionIDs: []string{mine.VersionID}})
 	if !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("a group member held by another principal did not refuse the publish: %v", err)
 	}
@@ -1195,7 +1195,7 @@ func scenarioSelectivePublish(t *testing.T, db *store.DB) {
 	if _, err := values.Set(t.Context(), service.LocalPrincipal(other), dev, "DB_PASSWORD", "theirs-too", nil); err != nil {
 		t.Fatal(err)
 	}
-	_, err = revisionSvc(t, db).Publish(t.Context(), actor, dev, []string{mine.VersionID})
+	_, err = revisionSvc(t, db).PublishPlanned(t.Context(), actor, dev, service.PublishRequest{VersionIDs: []string{mine.VersionID}})
 	if !errors.Is(err, domain.ErrInvalid) || !strings.Contains(err.Error(), "DB_PASSWORD") {
 		t.Fatalf("another owner on the selected grouped cell did not refuse by name: %v", err)
 	}
@@ -1261,7 +1261,7 @@ func scenarioRevisionCiphertextBinding(t *testing.T, db *store.DB) {
 	execConformance(t, db, `UPDATE pending_changes SET environment_id = $1,
 		key_id = (SELECT id FROM keys WHERE name = $2) WHERE id = $3`,
 		string(prod.Env), "TARGET", draft.VersionID)
-	_, err = revisionSvc(t, db).Publish(t.Context(), actor, prod, []string{draft.VersionID})
+	_, err = revisionSvc(t, db).PublishPlanned(t.Context(), actor, prod, service.PublishRequest{VersionIDs: []string{draft.VersionID}})
 	if !errors.Is(err, crypto.ErrDecrypt) {
 		t.Fatalf("relocated pending ciphertext opened under changed environment/key metadata: %v", err)
 	}
@@ -1308,14 +1308,14 @@ func scenarioAdvisoryAuthorization(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := revisions.Publish(t.Context(), actor, prod, []string{prodDraft.VersionID}); err != nil {
+	if _, err := revisions.PublishPlanned(t.Context(), actor, prod, service.PublishRequest{VersionIDs: []string{prodDraft.VersionID}}); err != nil {
 		t.Fatal(err)
 	}
 	devDraft, err := values.Set(t.Context(), actor, dev, "NOTICE", "visible", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := revisions.Publish(t.Context(), actor, dev, []string{devDraft.VersionID}); err != nil {
+	if _, err := revisions.PublishPlanned(t.Context(), actor, dev, service.PublishRequest{VersionIDs: []string{devDraft.VersionID}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1633,7 +1633,7 @@ func scenarioRequiredInVeto(t *testing.T, db *store.DB) {
 
 	// PUBLISH IS THE AUTHORITY, and the veto names both.
 	revisionBefore := latestRevisionOf(t, db, string(dev.Env))
-	_, err = revisionSvc(t, db).Publish(t.Context(), actor, dev, []string{staged.VersionID})
+	_, err = revisionSvc(t, db).PublishPlanned(t.Context(), actor, dev, service.PublishRequest{VersionIDs: []string{staged.VersionID}})
 	if !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("publishing a clear of a `required_in` key was accepted: %v", err)
 	}

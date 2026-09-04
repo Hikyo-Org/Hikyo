@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -197,7 +198,7 @@ func assertMetricRegistryMatchesScrape(t *testing.T, body string) {
 			}
 			allowed, ok := registry[family].Labels[parts[0]]
 			value := strings.Trim(parts[1], `"`)
-			if !ok || !containsString(allowed, value) {
+			if !ok || !slices.Contains(allowed, value) {
 				t.Fatalf("family %q emitted unregistered label %s=%q", family, parts[0], value)
 			}
 		}
@@ -211,15 +212,6 @@ func assertMetricRegistryMatchesScrape(t *testing.T, body string) {
 			t.Errorf("family %q: TYPE=%v series=%d, want %d", name, types[name], series[name], family.MaxSeries)
 		}
 	}
-}
-
-func containsString(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
 }
 
 func mustContain(t *testing.T, body, want string) {

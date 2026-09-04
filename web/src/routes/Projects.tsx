@@ -1,8 +1,7 @@
 import { useId, useState, type FormEvent } from 'react';
 import { generatePath, Link, useOutletContext } from 'react-router';
 
-import { useProjects } from '../api/matrix.ts';
-import { createProjectRefusalText, useCreateProject } from '../api/settings.ts';
+import { createProjectRefusalText, useCreateProject, useProjects } from '../api/settings.ts';
 import { surfaceById } from '../app/navigation.ts';
 
 /** Projects is a real data surface; keeping it out of Placeholder preserves the chrome skeleton seam. */

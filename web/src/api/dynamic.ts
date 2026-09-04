@@ -32,7 +32,7 @@ export type DynamicProvider = z.infer<typeof zDynamicProvider>;
 export type ProjectRef = { readonly org: string; readonly project: string };
 
 /** A lease paired with the name of the environment it belongs to. */
-export type LeaseRow = { readonly environmentName: string; readonly lease: DynamicLease };
+type LeaseRow = { readonly environmentName: string; readonly lease: DynamicLease };
 
 export type LeasesView = {
   readonly rows: readonly LeaseRow[];

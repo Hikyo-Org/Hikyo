@@ -5,7 +5,6 @@ import { z } from 'zod';
 import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
 import { BrowserApiError, browserApi } from '../fixtures/api.ts';
 import {
-  ADMIN,
   countDisclosureEvents,
   establishSession,
   nextTotpCode,

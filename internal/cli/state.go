@@ -20,8 +20,6 @@ import (
 // without mutating the test process.
 type Env struct {
 	Getenv func(string) string
-	Home   string
-	StateD string
 }
 
 // State locates the client state directory.

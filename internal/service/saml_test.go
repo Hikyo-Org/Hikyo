@@ -569,37 +569,6 @@ func TestSAMLMetadataURLRefusesPrivateNetworkTargets(t *testing.T) {
 	}
 }
 
-func TestSAMLMetadataIPClassifierAllowsOnlyPublicAddresses(t *testing.T) {
-	for _, test := range []struct {
-		address   string
-		nonPublic bool
-	}{
-		{"8.8.8.8", false},
-		{"2606:4700:4700::1111", false},
-		{"127.0.0.1", true},
-		{"10.0.0.1", true},
-		{"169.254.169.254", true},
-		{"100.64.0.1", true},
-		{"192.0.2.1", true},
-		{"198.51.100.1", true},
-		{"203.0.113.1", true},
-		{"::1", true},
-		{"fd00::1", true},
-		{"64:ff9b:1::1", true},
-		{"100::1", true},
-		{"2001:2::1", true},
-		{"2001:db8::1", true},
-		{"2002::1", true},
-		{"3fff::1", true},
-		{"5f00::1", true},
-	} {
-		address := netip.MustParseAddr(test.address)
-		if got := metadataIPIsNonPublic(address); got != test.nonPublic {
-			t.Errorf("metadataIPIsNonPublic(%s) = %v, want %v", address, got, test.nonPublic)
-		}
-	}
-}
-
 func TestSAMLMetadataTransportPinsPublicIPThroughConfiguredProxy(t *testing.T) {
 	proxyURL, err := url.Parse("https://proxy.internal:8443")
 	if err != nil {
@@ -872,4 +841,27 @@ func TestSAMLSessionsInvalidatedOnlyBySecurityRelevantProviderChanges(t *testing
 			}
 		})
 	}
+}
+
+// prepare pins the first resolved destination the way RoundTrip does for one
+// address, so tests can inspect the pinned request and transport.
+func (t *publicMetadataRoundTripper) prepare(request *http.Request) (*http.Request, *http.Transport, error) {
+	addresses, proxyURL, err := t.destinations(request)
+	if err != nil {
+		return nil, nil, err
+	}
+	pinned, transport := t.prepareAddress(request, addresses[0], proxyURL)
+	return pinned, transport, nil
+}
+
+func (t *publicMetadataRoundTripper) destinations(request *http.Request) ([]netip.Addr, *url.URL, error) {
+	addresses, err := t.resolveAddresses(request)
+	if err != nil {
+		return nil, nil, err
+	}
+	proxyURL, err := t.proxyURL(request)
+	if err != nil {
+		return nil, nil, err
+	}
+	return addresses, proxyURL, nil
 }

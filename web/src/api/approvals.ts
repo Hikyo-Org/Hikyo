@@ -57,7 +57,7 @@ export type PolicyDraft = {
   readonly bypassers: readonly string[];
 };
 
-export const approvalPoliciesKey = (ref: MatrixRef) =>
+const approvalPoliciesKey = (ref: MatrixRef) =>
   ['approval-policies', ref.org, ref.project] as const;
 export const approvalRequestsKey = (ref: MatrixRef, environment: string) =>
   ['approval-requests', ref.org, ref.project, environment] as const;

@@ -3,7 +3,7 @@ package conformance
 import (
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 
@@ -132,7 +132,7 @@ func TestBudgetClassificationIsTotal(t *testing.T) {
 		}
 	}
 	if len(missing) > 0 {
-		sort.Strings(missing)
+		slices.Sort(missing)
 		t.Fatalf("%d operation(s) not classified in the §179 budget totality map (classify in internal/service/budget_classification.go):\n%s",
 			len(missing), strings.Join(missing, "\n"))
 	}

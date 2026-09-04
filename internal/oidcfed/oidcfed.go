@@ -26,7 +26,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -522,7 +522,7 @@ func CheckBinding(iss Issuer, b Binding, c Claims, now time.Time) error {
 		// "any audience".
 		return fmt.Errorf("%w: binding names no audience", ErrAudience)
 	}
-	if !containsString(c.Audience, b.Audience) {
+	if !slices.Contains(c.Audience, b.Audience) {
 		return fmt.Errorf("%w: token audiences do not include the bound audience", ErrAudience)
 	}
 	// The issuer's DEFAULT audience is refused even when the bound one is also
@@ -531,7 +531,7 @@ func CheckBinding(iss Issuer, b Binding, c Claims, now time.Time) error {
 	// and Forgejo's `<instance>/<owner>` default is shared across every
 	// repository that owner has.
 	for _, refused := range iss.RefusedAudiences {
-		if containsString(c.Audience, refused) {
+		if slices.Contains(c.Audience, refused) {
 			return fmt.Errorf("%w: token carries the issuer's default audience %q", ErrAudience, refused)
 		}
 	}
@@ -864,7 +864,7 @@ func MissingRequiredPins(t domain.IssuerType, pinned map[string]json.RawMessage)
 			missing = append(missing, name)
 		}
 	}
-	sort.Strings(missing)
+	slices.Sort(missing)
 	return missing
 }
 
@@ -896,15 +896,6 @@ func isJSONScalar(v json.RawMessage) bool {
 // rule exists to forbid.
 func sameJSONScalar(want, got json.RawMessage) bool {
 	return strings.TrimSpace(string(want)) == strings.TrimSpace(string(got))
-}
-
-func containsString(list []string, want string) bool {
-	for _, v := range list {
-		if v == want {
-			return true
-		}
-	}
-	return false
 }
 
 // keysFor returns the key set a validation should use, refreshing the cache

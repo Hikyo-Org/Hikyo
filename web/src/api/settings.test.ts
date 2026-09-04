@@ -10,15 +10,11 @@ import {
   environmentSettingsReadState,
   formatRetentionAge,
   orgTopologyReadiness,
-  projectRetentionInherited,
   renameEnvironmentRefusalText,
   reorderEnvironmentsRefusalText,
-  retentionBoundsPayload,
-  retentionDayState,
   retentionSentence,
   settingsFailureText,
   settingsOperationFailure,
-  validatePositiveInteger,
 } from './settings.ts';
 
 const ORG_CAP = {
@@ -118,45 +114,6 @@ describe('retention values', () => {
     expect(formatRetentionAge(90)).toBe('90 seconds');
   });
 
-  it('keeps day-aligned, exact, and absent ages as distinct editor states', () => {
-    expect(retentionDayState(3 * DAY_SECONDS)).toEqual({ kind: 'days', days: '3' });
-    expect(retentionDayState(60)).toEqual({ kind: 'exact', seconds: 60 });
-    expect(retentionDayState(null)).toEqual({ kind: 'absent' });
-  });
-
-  it('assembles both retention bounds once with exact day conversion', () => {
-    expect(retentionBoundsPayload('30', '5')).toEqual({
-      ok: true,
-      maxAgeSeconds: 30 * DAY_SECONDS,
-      lastRevisions: 5,
-    });
-    expect(retentionBoundsPayload('', '5')).toEqual({
-      ok: false,
-      message: 'Maximum age in days must be a whole number of at least 1.',
-    });
-    expect(retentionBoundsPayload('30', '0')).toEqual({
-      ok: false,
-      message: 'Revision count must be a whole number of at least 1.',
-    });
-  });
-
-  it('validates positive integer input without coercing invalid values', () => {
-    expect(validatePositiveInteger('12', 'Revision count')).toEqual({ ok: true, value: 12 });
-    for (const value of ['', '0', '-1', '1.5', 'not-a-number', 'Infinity']) {
-      expect(validatePositiveInteger(value, 'Revision count')).toEqual({
-        ok: false,
-        message: 'Revision count must be a whole number of at least 1.',
-      });
-    }
-  });
-
-  it('refuses an unknown project retention selector value', () => {
-    expect(projectRetentionInherited('inherit')).toBe(true);
-    expect(projectRetentionInherited('override')).toBe(false);
-    expect(() => projectRetentionInherited('surprise')).toThrow(
-      'unknown project retention mode surprise',
-    );
-  });
 });
 
 describe('the retention sentence', () => {

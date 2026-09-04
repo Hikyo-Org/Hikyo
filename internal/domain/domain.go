@@ -7,7 +7,7 @@ package domain
 import (
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 )
 
 // Tenant identifiers. Distinct types so the proof-signature analyzer can ban
@@ -116,7 +116,7 @@ func Capabilities() []Capability {
 	for c := range capabilityLevels {
 		out = append(out, c)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	slices.Sort(out)
 	return out
 }
 

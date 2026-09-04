@@ -1,7 +1,7 @@
 package audit
 
 import (
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/internal/delivery"
@@ -3220,6 +3220,6 @@ func Types() []EventType {
 	for t := range registry {
 		out = append(out, t)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	slices.Sort(out)
 	return out
 }

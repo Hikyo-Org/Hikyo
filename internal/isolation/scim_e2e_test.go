@@ -4,7 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -803,11 +804,7 @@ func present(ok bool) string {
 
 // attributeShape names every key and the JSON type of its value, sorted.
 func attributeShape(attrs map[string]any) string {
-	keys := make([]string, 0, len(attrs))
-	for k := range attrs {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
+	keys := slices.Sorted(maps.Keys(attrs))
 	out := make([]string, 0, len(keys))
 	for _, k := range keys {
 		out = append(out, k+":"+jsonTypeOf(attrs[k]))

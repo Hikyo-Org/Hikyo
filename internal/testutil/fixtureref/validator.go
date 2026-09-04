@@ -9,10 +9,11 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -89,11 +90,7 @@ func Validate(root string, refs []FixtureRef) error {
 		packages[ref.Package] = append(packages[ref.Package], ref)
 	}
 
-	packagePaths := make([]string, 0, len(packages))
-	for packagePath := range packages {
-		packagePaths = append(packagePaths, packagePath)
-	}
-	sort.Strings(packagePaths)
+	packagePaths := slices.Sorted(maps.Keys(packages))
 	for _, packagePath := range packagePaths {
 		packageRefs := packages[packagePath]
 		metadata, err := loadPackage(root, packagePath)

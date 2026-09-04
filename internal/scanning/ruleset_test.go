@@ -5,7 +5,7 @@ import (
 	"context"
 	"os"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 
@@ -41,9 +41,8 @@ func TestRuleCountUnderCeiling(t *testing.T) {
 // generated manifest lists exactly the committed allowlist rule ids.
 func TestManifestEqualsAllowlist(t *testing.T) {
 	allow := readAllowlistFile(t)
-	got := append([]string(nil), generatedManifest...)
-	sort.Strings(allow)
-	sort.Strings(got)
+	got := slices.Sorted(slices.Values(generatedManifest))
+	slices.Sort(allow)
 	if strings.Join(allow, ",") != strings.Join(got, ",") {
 		t.Fatalf("manifest != allowlist\n  allowlist: %v\n  manifest:  %v", allow, got)
 	}

@@ -22,7 +22,6 @@ import {
   updateAdapterTargetOp,
 } from '@hikyo/operations';
 import type {
-  AdapterKeySelection,
   AdapterTargetInput,
   UpdateAdapterTargetRequest,
 } from '@hikyo/client';
@@ -33,10 +32,8 @@ import {
   zAdapterList,
   zAdapterMove,
   zAdapterPlan,
-  zAdapterResume,
   zAdapterTarget,
   zAdapterTargetDetail,
-  zAdapterTeardown,
   zEnvironmentList,
   zKeyList,
 } from '@hikyo/zod';
@@ -51,10 +48,8 @@ export type AdapterTarget = z.infer<typeof zAdapterTarget>;
 export type AdapterTargetDetail = z.infer<typeof zAdapterTargetDetail>;
 // Request shapes come from the generated client, not the response zod: the
 // two disagree on int64 (bigint in a parsed response, number on the wire).
-export type { AdapterKeySelection, AdapterTargetInput };
+export type { AdapterTargetInput };
 export type AdapterConflictArtifact = z.infer<typeof zAdapterConflictArtifact>;
-export type AdapterTeardown = z.infer<typeof zAdapterTeardown>;
-export type AdapterResume = z.infer<typeof zAdapterResume>;
 export type AdapterMove = z.infer<typeof zAdapterMove>;
 export type AdapterPlan = z.infer<typeof zAdapterPlan>;
 export type AdapterConnection = z.infer<typeof zAdapterConnection>;
@@ -73,13 +68,13 @@ type KeysKey = readonly ['adapter-keys', string, string];
 // aggregate, and a target detail keys on its own id beneath it so a mutation
 // on one target invalidates exactly its detail and the list that renders it.
 export const adaptersKey = (ref: ProjectRef): AdaptersKey => ['adapters', ref.org, ref.project];
-export const adapterTargetKey = (ref: ProjectRef, target: string): AdapterTargetKey => [
+const adapterTargetKey = (ref: ProjectRef, target: string): AdapterTargetKey => [
   'adapter-target',
   ref.org,
   ref.project,
   target,
 ];
-export const adapterMoveKey = (ref: ProjectRef, move: string): AdapterMoveKey => [
+const adapterMoveKey = (ref: ProjectRef, move: string): AdapterMoveKey => [
   'adapter-move',
   ref.org,
   ref.project,
@@ -136,17 +131,6 @@ export function useAdapterTarget(ref: ProjectRef, target: string): UseQueryResul
     },
   });
 }
-
-/** The closed health vocabulary, in the order the contract declares it. */
-export const ADAPTER_HEALTH: readonly AdapterHealth[] = [
-  'never',
-  'pending',
-  'converging',
-  'converged',
-  'degraded',
-  'failed',
-  'paused',
-];
 
 /**
  * healthLabel is the operator's word for each state. Text carries the meaning;

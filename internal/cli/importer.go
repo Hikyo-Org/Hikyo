@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
@@ -797,7 +796,7 @@ func runValuesImport(ctx context.Context, ios IO, args []string) error {
 	}
 	if len(result.Skipped) > 0 {
 		sorted := append([]string{}, result.Skipped...)
-		sort.Strings(sorted)
+		slices.Sort(sorted)
 		fmt.Fprintf(ios.Stderr,
 			"skipped (already set; pass --overwrite to replace): %s\n", strings.Join(sorted, ", "))
 	}
@@ -859,7 +858,7 @@ func runValuesImportDotenv(ctx context.Context, ios IO, st *State, flags commonF
 	warnFindings(ios, result.Findings)
 	if len(result.Skipped) > 0 {
 		sorted := append([]string{}, result.Skipped...)
-		sort.Strings(sorted)
+		slices.Sort(sorted)
 		fmt.Fprintf(ios.Stderr, "skipped (already set): %s\n", strings.Join(sorted, ", "))
 	}
 	fmt.Fprintf(ios.Stderr,

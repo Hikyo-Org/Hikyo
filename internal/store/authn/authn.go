@@ -15,11 +15,12 @@
 package authn
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"sync/atomic"
 
 	"github.com/jackc/pgx/v5"
@@ -345,7 +346,7 @@ func (r *Resolver) OrgsForPrincipal(ctx context.Context, p domain.PrincipalID) (
 		}
 		out = append(out, row)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	slices.SortFunc(out, func(a, b OrgIdentity) int { return cmp.Compare(a.Name, b.Name) })
 	return out, nil
 }
 

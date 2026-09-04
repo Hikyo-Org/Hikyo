@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -150,13 +151,9 @@ func RunInternalSubprocess(args []string, stdout io.Writer) (bool, int) {
 
 func replaceEnv(env []string, name, value string) []string {
 	prefix := name + "="
-	out := make([]string, 0, len(env)+1)
-	for _, item := range env {
-		if !strings.HasPrefix(item, prefix) {
-			out = append(out, item)
-		}
-	}
-	return append(out, prefix+value)
+	// Clone first: DeleteFunc compacts in place and would zero the caller's tail.
+	kept := slices.DeleteFunc(slices.Clone(env), func(item string) bool { return strings.HasPrefix(item, prefix) })
+	return append(kept, prefix+value)
 }
 
 func boundedSubprocessExit(err error) (int, bool) {

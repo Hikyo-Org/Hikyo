@@ -6,8 +6,9 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"maps"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -61,11 +62,7 @@ func TestKnownEnvCoversEveryGetenv(t *testing.T) {
 		}
 	}
 
-	keys := make([]string, 0, len(missing))
-	for key := range missing {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
+	keys := slices.Sorted(maps.Keys(missing))
 	for _, key := range keys {
 		t.Errorf("knownEnv is missing %s, consumed at %s", key, strings.Join(missing[key], ", "))
 	}

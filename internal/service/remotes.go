@@ -1,11 +1,12 @@
 package service
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 
@@ -773,11 +774,11 @@ func snapshotOf(remoteID string, l remotefetch.Listing, now time.Time) (store.Re
 	// bytes — a snapshot that churned on map order would look like change.
 	orgs := make([]remotefetch.OrgEntry, len(l.Orgs))
 	copy(orgs, l.Orgs)
-	sort.Slice(orgs, func(i, j int) bool { return orgs[i].Name < orgs[j].Name })
+	slices.SortFunc(orgs, func(a, b remotefetch.OrgEntry) int { return cmp.Compare(a.Name, b.Name) })
 	for i := range orgs {
 		ps := make([]string, len(orgs[i].Projects))
 		copy(ps, orgs[i].Projects)
-		sort.Strings(ps)
+		slices.Sort(ps)
 		orgs[i].Projects = ps
 	}
 	raw, err := json.Marshal(orgs)

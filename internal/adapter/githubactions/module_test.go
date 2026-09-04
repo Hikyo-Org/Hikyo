@@ -420,7 +420,7 @@ func (f *fakeAPI) ReplaceSelectedRepositories(_ context.Context, _ adapter.Desti
 	return f.replaceSelectedErr
 }
 func (f *fakeAPI) ListSecretNames(context.Context, adapter.Destination) ([]string, error) {
-	return append([]string(nil), f.secretNames...), nil
+	return slices.Clone(f.secretNames), nil
 }
 func (f *fakeAPI) PublicKey(context.Context, adapter.Destination) (PublicKey, error) {
 	f.publicKeyCalls++

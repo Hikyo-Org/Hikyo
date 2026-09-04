@@ -821,65 +821,6 @@ export type RetentionDayState =
   | { readonly kind: 'exact'; readonly seconds: number }
   | { readonly kind: 'absent' };
 
-/** Preserve whether a day-only editor can represent the persisted value. */
-export function retentionDayState(seconds: number | null | undefined): RetentionDayState {
-  if (seconds === null || seconds === undefined) {
-    return { kind: 'absent' };
-  }
-  if (seconds % DAY_SECONDS !== 0) {
-    return { kind: 'exact', seconds };
-  }
-  return { kind: 'days', days: String(seconds / DAY_SECONDS) };
-}
-
-type PositiveIntegerValidation =
-  | { readonly ok: true; readonly value: number }
-  | { readonly ok: false; readonly message: string };
-
-/** Validate without coercing blank, fractional, negative or non-finite input. */
-export function validatePositiveInteger(
-  input: string,
-  label: string,
-): PositiveIntegerValidation {
-  const value = Number(input);
-  if (input.trim() === '' || !Number.isFinite(value) || !Number.isSafeInteger(value) || value < 1) {
-    return { ok: false, message: `${label} must be a whole number of at least 1.` };
-  }
-  return { ok: true, value };
-}
-
-type RetentionBoundsPayload =
-  | { readonly ok: true; readonly maxAgeSeconds: number; readonly lastRevisions: number }
-  | { readonly ok: false; readonly message: string };
-
-/** Validate and assemble the two bounded-retention payload dimensions once. */
-export function retentionBoundsPayload(age: string, count: string): RetentionBoundsPayload {
-  const validAge = validatePositiveInteger(age, 'Maximum age in days');
-  if (!validAge.ok) {
-    return validAge;
-  }
-  const validCount = validatePositiveInteger(count, 'Revision count');
-  if (!validCount.ok) {
-    return validCount;
-  }
-  const maxAgeSeconds = validAge.value * DAY_SECONDS;
-  if (!Number.isSafeInteger(maxAgeSeconds)) {
-    return { ok: false, message: 'Maximum age in days is too large to save exactly.' };
-  }
-  return { ok: true, maxAgeSeconds, lastRevisions: validCount.value };
-}
-
-/** Parse the project policy selector without treating an unknown value as override. */
-export function projectRetentionInherited(value: string): boolean {
-  if (value === 'inherit') {
-    return true;
-  }
-  if (value === 'override') {
-    return false;
-  }
-  throw new Error(`unknown project retention mode ${value}`);
-}
-
 /** retentionSentence is the effective policy in one readable line. */
 export function retentionSentence(policy: RetentionPolicy): string {
   if (policy.mode === 'unlimited') {

@@ -4,9 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -674,15 +675,11 @@ func memberTable(list apigen.GrantList) Table {
 		byPrincipal[g.PrincipalId] = append(byPrincipal[g.PrincipalId],
 			g.Capability+"@"+renderGrantScope(g.Scope))
 	}
-	principals := make([]string, 0, len(byPrincipal))
-	for p := range byPrincipal {
-		principals = append(principals, p)
-	}
-	sort.Strings(principals)
+	principals := slices.Sorted(maps.Keys(byPrincipal))
 	rows := make([][]string, 0, len(principals))
 	for _, p := range principals {
 		caps := byPrincipal[p]
-		sort.Strings(caps)
+		slices.Sort(caps)
 		rows = append(rows, []string{p, strings.Join(caps, ",")})
 	}
 	return Table{Columns: memberColumns, Rows: rows, JSON: list}

@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -131,7 +131,7 @@ func (s *Workspace) Serve(ctx context.Context, actor Actor) (remotefetch.Listing
 		out = remotefetch.Listing{Identity: identity, Version: s.Version}
 		for _, o := range orgs {
 			names := byOrg[o.ID]
-			sort.Strings(names)
+			slices.Sort(names)
 			out.Orgs = append(out.Orgs, remotefetch.OrgEntry{Name: o.Name, Projects: names})
 		}
 		// Derived here, once, from the names being sent — never counted
@@ -1421,7 +1421,7 @@ func withFactor(factors []string, class string) []string {
 			return factors
 		}
 	}
-	return append(append([]string(nil), factors...), class)
+	return append(slices.Clone(factors), class)
 }
 
 // splitKeySet reverses the transport's newline join. The wire carries a list;

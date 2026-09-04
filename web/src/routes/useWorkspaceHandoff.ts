@@ -7,13 +7,13 @@ import {
   type StepUpParams,
 } from '../api/workspace.ts';
 
-export type HandoffPhase =
+type HandoffPhase =
   | { readonly kind: 'contacting' }
   | { readonly kind: 'ready'; readonly prepared: PreparedWorkspace }
   | { readonly kind: 'authorising'; readonly prepared: PreparedWorkspace }
   | { readonly kind: 'failed'; readonly message: string };
 
-export type HandoffFailureStage = 'prepare' | 'authorise';
+type HandoffFailureStage = 'prepare' | 'authorise';
 
 export type WorkspaceHandoffPreparation =
   | { readonly kind: 'establishment' }

@@ -41,9 +41,6 @@ import (
 //     after confirmation, `--output-file` (O_EXCL, 0600), or an explicit
 //     `--dangerously-print` — never to stdout by accident. `config` values are
 //     not secret and print normally; the triad guards `secret` disclosure.
-//
-// valuesSetUsage is the one spelling of where a value may come from.
-const valuesSetUsage = "usage: hikyo values set <KEY> (--stdin | --value-file PATH | interactive prompt) [--clear]"
 
 var valueColumns = []string{"KEY", "CLASS", "PRESENCE", "VALUE"}
 

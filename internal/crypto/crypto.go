@@ -60,9 +60,7 @@ var ErrDecrypt = errors.New("crypto: decryption failed")
 // Zero overwrites b. Best effort only — Go's GC gives no wipe guarantee, and
 // the encryption-model ADR makes no memory-secrecy claim.
 func Zero(b []byte) {
-	for i := range b {
-		b[i] = 0
-	}
+	clear(b)
 }
 
 // RootKeyFingerprint is a stable, non-reversible identifier for a root key,

@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -224,14 +223,4 @@ func statefulSetProgressed(s *appsv1.StatefulSet) bool {
 
 func daemonSetProgressed(d *appsv1.DaemonSet) bool {
 	return d.Status.ObservedGeneration >= d.Generation && d.Status.NumberUnavailable == 0
-}
-
-// controllerRefUID is a small accessor used by tests to assert ownership.
-func controllerRefUID(refs []metav1.OwnerReference) string {
-	for _, ref := range refs {
-		if ref.Controller != nil && *ref.Controller {
-			return string(ref.UID)
-		}
-	}
-	return ""
 }

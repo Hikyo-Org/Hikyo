@@ -1,6 +1,7 @@
 package service
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -8,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -233,7 +233,7 @@ func readOccurrences(ctx context.Context, cat store.CatalogueReader, vals store.
 		}
 		out.Keys = append(out.Keys, ImportOccurrence{Name: candidate.Name, Token: token})
 	}
-	sort.Slice(out.Keys, func(i, j int) bool { return out.Keys[i].Name < out.Keys[j].Name })
+	slices.SortFunc(out.Keys, func(a, b ImportOccurrence) int { return cmp.Compare(a.Name, b.Name) })
 	return out, nil
 }
 
@@ -387,7 +387,7 @@ func (s *Values) Import(ctx context.Context, actor Actor, scope domain.Scope, re
 			}
 		}
 		if len(undeclared) > 0 {
-			sort.Strings(undeclared)
+			slices.Sort(undeclared)
 			return fmt.Errorf("%w: %d key(s) are not declared in this project: %s — "+
 				"apply the definitions bundle first",
 				domain.ErrInvalid, len(undeclared), strings.Join(undeclared, ", "))
@@ -454,8 +454,8 @@ func (s *Values) Import(ctx context.Context, actor Actor, scope domain.Scope, re
 			result.Findings = append(result.Findings, f...)
 			result.Imported = append(result.Imported, entry.Key)
 		}
-		sort.Strings(result.Imported)
-		sort.Strings(result.Skipped)
+		slices.Sort(result.Imported)
+		slices.Sort(result.Skipped)
 		// Import is an immediate, publish-authorized bulk write, like declare and
 		// copy. Materialize its final state once, after every cell has landed, so
 		// delivery and revision history advance atomically with the import rather
@@ -588,7 +588,7 @@ func (s *Values) checkPrecondition(ctx context.Context, r store.Repos, az *authz
 		}
 	}
 	if len(moved) > 0 {
-		sort.Strings(moved)
+		slices.Sort(moved)
 		return fmt.Errorf("%w: %s — %d key(s) rejected by name: %s; re-run `hikyo import` and review again",
 			domain.ErrConflict, movedTokenRefusal, len(moved), strings.Join(moved, ", "))
 	}

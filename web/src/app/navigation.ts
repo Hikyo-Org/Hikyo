@@ -12,9 +12,7 @@
  * login page is reached by not being signed in, never by choosing it).
  */
 
-export type RouteMode = 'public' | 'ceremony' | 'authenticated';
-export type ChromeMode = 'none' | 'shell';
-export type CeremonySessionPolicy = 'establish-or-reuse' | 'required';
+type CeremonySessionPolicy = 'establish-or-reuse' | 'required';
 
 /**
  * The four sidebar sections. `project` and `instance` are CONTEXT blocks: they

@@ -1,8 +1,6 @@
 package adapter
 
 import (
-	"context"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -54,7 +52,7 @@ func TestValidateManifestRefusesLossyForgejoNamesAndValues(t *testing.T) {
 }
 
 func TestWorkflowUsesCanonicalNamesAtRuntime(t *testing.T) {
-	got, err := Workflow("PROD_", []ManifestEntry{
+	got, err := WorkflowForProvider(string(ForgejoProvider), "PROD_", []ManifestEntry{
 		{CanonicalName: "DATABASE_URL", Classification: SecretClassification},
 		{CanonicalName: "LOG_LEVEL", Classification: ConfigClassification},
 	})
@@ -63,7 +61,7 @@ func TestWorkflowUsesCanonicalNamesAtRuntime(t *testing.T) {
 	}
 	want := "env:\n  DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}\n  LOG_LEVEL: ${{ vars.PROD_LOG_LEVEL }}\n"
 	if got != want {
-		t.Fatalf("Workflow() =\n%s\nwant:\n%s", got, want)
+		t.Fatalf("WorkflowForProvider() =\n%s\nwant:\n%s", got, want)
 	}
 }
 
@@ -179,30 +177,4 @@ func TestProviderKindsAreClosedAndRejectUnknownValues(t *testing.T) {
 			t.Fatalf("ParseProvider(%q) accepted unknown provider", raw)
 		}
 	}
-}
-
-func TestModuleSeamHasExactlyFourOperations(t *testing.T) {
-	typeOf := reflect.TypeOf((*Module)(nil)).Elem()
-	got := make([]string, 0, typeOf.NumMethod())
-	for i := range typeOf.NumMethod() {
-		got = append(got, typeOf.Method(i).Name)
-	}
-	want := []string{"Plan", "Sync", "TestConnection", "ValidateConfig"}
-	if !slices.Equal(got, want) {
-		t.Fatalf("Module operations = %v, want exactly %v", got, want)
-	}
-	var _ Module = stubModule{}
-}
-
-// stubModule is intentional compile-time conformance coverage for Module's
-// complete method signatures; deadcode cannot observe the type assertion.
-type stubModule struct{}
-
-func (stubModule) ValidateConfig(Config) error { return nil }
-func (stubModule) TestConnection(context.Context, ConnectionRequest) (Connection, error) {
-	return Connection{}, nil
-}
-func (stubModule) Plan(context.Context, PlanRequest) (Plan, error) { return Plan{}, nil }
-func (stubModule) Sync(context.Context, SyncRequest, Journal) (SyncResult, error) {
-	return SyncResult{}, nil
 }

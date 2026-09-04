@@ -24,7 +24,7 @@ function isTheme(value: string | null): value is Theme {
   return value === 'dark' || value === 'light';
 }
 
-export function readThemeChoice(): ThemeChoice {
+function readThemeChoice(): ThemeChoice {
   const stored = globalThis.localStorage?.getItem(STORAGE_KEY) ?? null;
   return isTheme(stored) ? stored : 'system';
 }
@@ -71,7 +71,7 @@ function subscribe(onChange: () => void): () => void {
 /** setThemeChoice is the only writer: it paints the DOM and wakes every
  *  in-document subscriber, so a change in the header shows in Preferences and
  *  the reverse, with no page reload. */
-export function setThemeChoice(choice: ThemeChoice): void {
+function setThemeChoice(choice: ThemeChoice): void {
   applyTheme(choice);
   for (const notify of listeners) {
     notify();

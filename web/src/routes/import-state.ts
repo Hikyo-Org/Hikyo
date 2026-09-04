@@ -12,10 +12,10 @@ import type { ValueOccurrence } from '@hikyo/client';
  */
 
 /** A single KEY=value assignment, with its 1-based source line for the preview. */
-export type ParsedEntry = { readonly key: string; readonly value: string; readonly line: number };
+type ParsedEntry = { readonly key: string; readonly value: string; readonly line: number };
 
 /** A line the strict grammar refused, named for the preview — never its value. */
-export type ParseError = { readonly line: number; readonly reason: string };
+type ParseError = { readonly line: number; readonly reason: string };
 
 export type ParseResult = {
   readonly entries: readonly ParsedEntry[];

@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"slices"
-	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -1109,11 +1109,7 @@ func DecodeClaimPins(raw string) ([]ClaimPin, error) {
 	if err != nil {
 		return nil, err
 	}
-	names := make([]string, 0, len(parsed))
-	for name := range parsed {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(parsed))
 	out := make([]ClaimPin, 0, len(names))
 	for _, name := range names {
 		pin := ClaimPin{Claim: name}
@@ -1145,7 +1141,7 @@ func pinnedClaimNames(pins []ClaimPin) []string {
 	for _, pin := range pins {
 		out = append(out, pin.Claim)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 

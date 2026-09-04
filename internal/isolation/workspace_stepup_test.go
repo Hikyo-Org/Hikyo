@@ -543,7 +543,7 @@ func runShowHandoffReturnsBoundPolicy(t *testing.T, db *store.DB) {
 	}
 	// The whole key set comes back, split — the reason the endpoint exists is to
 	// carry a set a URL could not.
-	if got := append([]string(nil), view.KeySet...); len(got) != 2 ||
+	if got := slices.Clone(view.KeySet); len(got) != 2 ||
 		!slices.Contains(got, "key_one") || !slices.Contains(got, "key_two") {
 		t.Errorf("key set = %v, want both key_one and key_two", view.KeySet)
 	}
@@ -622,8 +622,8 @@ func runStepUpRevealIsSpentByValuePath(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatalf("seed workspace reveal value: %v", err)
 	}
-	if _, err := revisionSvc(t, db).Publish(ctx, service.LocalPrincipal(custodian),
-		valueScope, []string{staged.VersionID}); err != nil {
+	if _, err := revisionSvc(t, db).PublishPlanned(ctx, service.LocalPrincipal(custodian),
+		valueScope, service.PublishRequest{VersionIDs: []string{staged.VersionID}}); err != nil {
 		t.Fatalf("publish workspace reveal value: %v", err)
 	}
 

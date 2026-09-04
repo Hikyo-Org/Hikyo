@@ -4,7 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 	"testing"
 
@@ -77,11 +78,7 @@ func planMatrix(
 	var plans []matrixPlan
 	var problems []string
 
-	ops := make([]authz.Operation, 0, len(classes))
-	for op := range classes {
-		ops = append(ops, op)
-	}
-	sort.Slice(ops, func(i, j int) bool { return ops[i] < ops[j] })
+	ops := slices.Sorted(maps.Keys(classes))
 
 	for _, op := range ops {
 		class := classes[op]

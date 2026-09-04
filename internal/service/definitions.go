@@ -1,10 +1,11 @@
 package service
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
@@ -452,7 +453,7 @@ func protectedPins(prot []store.EnvironmentProtection, names map[string]string) 
 			pins = append(pins, protectedEnvironmentPin{ID: e.ID, Name: names[e.ID]})
 		}
 	}
-	sort.Slice(pins, func(i, j int) bool { return pins[i].ID < pins[j].ID })
+	slices.SortFunc(pins, func(a, b protectedEnvironmentPin) int { return cmp.Compare(a.ID, b.ID) })
 	return pins
 }
 
@@ -461,7 +462,7 @@ func protectedPinNames(pins []protectedEnvironmentPin) []string {
 	for _, pin := range pins {
 		names = append(names, pin.Name)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	return names
 }
 
@@ -470,6 +471,6 @@ func protectedPinIDs(pins []protectedEnvironmentPin) []string {
 	for _, pin := range pins {
 		ids = append(ids, pin.ID)
 	}
-	sort.Strings(ids)
+	slices.Sort(ids)
 	return ids
 }

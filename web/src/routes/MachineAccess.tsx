@@ -1,5 +1,4 @@
 import {
-  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -11,7 +10,7 @@ import { useParams } from 'react-router';
 
 import type { FederatedClaimPin, GrantResult } from '@hikyo/client';
 
-import { grantOutcomeSummary } from '../api/access.ts';
+import { grantFailureText, grantOutcomeSummary } from '../api/access.ts';
 import {
   BINDING_LIFETIMES,
   bindingFailureText,
@@ -20,7 +19,6 @@ import {
   deleteServiceAccountFailureText,
   expiryLabel,
   FEDERATION_PRESETS,
-  grantFailureText,
   grantWideningReach,
   identityRefusalText,
   isoDay,

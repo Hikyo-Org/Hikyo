@@ -785,8 +785,7 @@ func runAdapterAdopt(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
-	names := append([]string(nil), flags.positionals...)
-	slices.Sort(names)
+	names := slices.Sorted(slices.Values(flags.positionals))
 	if target == "" || len(names) == 0 {
 		return failf(ExitUsage, "adapter adopt requires --target and one or more exact names")
 	}

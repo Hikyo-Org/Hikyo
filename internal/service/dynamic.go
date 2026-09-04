@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -162,7 +163,7 @@ func (s *Dynamic) Configure(ctx context.Context, actor Actor, scope domain.Scope
 	if err != nil {
 		return DynamicProviderView{}, err
 	}
-	plain := append([]byte(nil), req.Credential...)
+	plain := slices.Clone(req.Credential)
 	defer crypto.Zero(plain)
 	sealed, err := sealer.SealField(providerCredentialAAD(string(scope.Org), string(scope.Project), providerID), plain)
 	if err != nil {
@@ -312,7 +313,7 @@ func (s *Dynamic) ReplaceCredential(ctx context.Context, actor Actor, scope doma
 	if err != nil {
 		return err
 	}
-	plain := append([]byte(nil), credential...)
+	plain := slices.Clone(credential)
 	defer crypto.Zero(plain)
 	sealed, err := sealer.SealField(providerCredentialAAD(string(scope.Org), string(scope.Project), providerID), plain)
 	if err != nil {

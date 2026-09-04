@@ -10,13 +10,13 @@ import {
   matrixPublishValidation,
   matrixMutationError,
   forgetRestorePreviews,
-  parseMatrixEnvironmentSignals,
-  parseMatrixPendingDrafts,
   pendingConfigPreview,
   rememberRestorePreview,
   restorePreviewFor,
   revisionAdvanced,
   signalsRequireValuesRefresh,
+  zMatrixEnvironmentSignals,
+  zMatrixPendingDraftList,
 } from './matrix.ts';
 
 const envDev = 'env_01989abc-def0-7123-8123-123456789abc';
@@ -108,7 +108,7 @@ describe('restore preview lifecycle', () => {
 describe('matrix signal boundary', () => {
   it('refuses a pending version without its operation', () => {
     expect(() =>
-      parseMatrixEnvironmentSignals({
+      zMatrixEnvironmentSignals.parse({
         environment_id: envDev,
         revision: 2,
         cells: [
@@ -126,7 +126,7 @@ describe('matrix signal boundary', () => {
 
   it('accepts complete pending and absent-pending cells', () => {
     expect(
-      parseMatrixEnvironmentSignals({
+      zMatrixEnvironmentSignals.parse({
         environment_id: envDev,
         revision: 2,
         cells: [
@@ -394,7 +394,7 @@ describe('pending draft preview boundary', () => {
   };
 
   it('accepts a revealed config preview and binds it to the signal by version id', () => {
-    const drafts = parseMatrixPendingDrafts({
+    const drafts = zMatrixPendingDraftList.parse({
       items: [{ ...draft, revealed: true, value: 'debug' }],
       count: 1,
     });
@@ -420,19 +420,19 @@ describe('pending draft preview boundary', () => {
 
   it('accepts a hidden config set whose material originated as secret', () => {
     expect(
-      parseMatrixPendingDrafts({ items: [{ ...draft, revealed: false }], count: 1 }).items[0],
+      zMatrixPendingDraftList.parse({ items: [{ ...draft, revealed: false }], count: 1 }).items[0],
     ).toMatchObject({ classification: 'config', operation: 'set', revealed: false });
   });
 
   it('rejects a revealed draft without a value', () => {
     expect(() =>
-      parseMatrixPendingDrafts({ items: [{ ...draft, revealed: true }], count: 1 }),
+      zMatrixPendingDraftList.parse({ items: [{ ...draft, revealed: true }], count: 1 }),
     ).toThrow('pending draft value must appear if and only if revealed is true');
   });
 
   it('rejects secret material on the preview seam', () => {
     expect(() =>
-      parseMatrixPendingDrafts({
+      zMatrixPendingDraftList.parse({
         items: [{ ...draft, classification: 'secret', revealed: true, value: 'secret' }],
         count: 1,
       }),

@@ -3,7 +3,6 @@ import {
   createScimMappingOp,
   deleteScimBindingOp,
   deleteScimMappingOp,
-  getScimBindingOp,
   listScimBindingsOp,
   listScimCredentialsOp,
   listScimDirectoryGroupsOp,
@@ -20,7 +19,6 @@ import {
   zScimBlastWarning,
   zScimCredential,
   zScimCredentialList,
-  zScimDirectoryGroup,
   zScimDirectoryGroupList,
   zScimDirectoryUser,
   zScimDirectoryUserList,
@@ -44,10 +42,9 @@ export type ScimMappingResult = z.infer<typeof zScimMappingResult>;
 export type ScimBlastWarning = z.infer<typeof zScimBlastWarning>;
 export type ScimCredential = z.infer<typeof zScimCredential>;
 export type ScimCredentialList = z.infer<typeof zScimCredentialList>;
-export type ScimMintResult = z.infer<typeof zScimMintResult>;
+type ScimMintResult = z.infer<typeof zScimMintResult>;
 export type ScimDirectoryUser = z.infer<typeof zScimDirectoryUser>;
 export type ScimDirectoryUserList = z.infer<typeof zScimDirectoryUserList>;
-export type ScimDirectoryGroup = z.infer<typeof zScimDirectoryGroup>;
 export type ScimDirectoryGroupList = z.infer<typeof zScimDirectoryGroupList>;
 
 /**
@@ -61,35 +58,20 @@ export type MintedScimCredential = Pick<ScimMintResult, 'credential' | 'token' |
 // Query keys are addressed by (org, binding) so switching binding never reads
 // another binding's cached mappings, credentials or directory. The bindings
 // list keys on the org alone.
-export const scimBindingsKey = (org: string) => ['scim-bindings', org] as const;
-export const scimBindingKey = (org: string, binding: string) =>
-  ['scim-binding', org, binding] as const;
-export const scimMappingsKey = (org: string, binding: string) =>
+const scimBindingsKey = (org: string) => ['scim-bindings', org] as const;
+const scimMappingsKey = (org: string, binding: string) =>
   ['scim-mappings', org, binding] as const;
-export const scimCredentialsKey = (org: string, binding: string) =>
+const scimCredentialsKey = (org: string, binding: string) =>
   ['scim-credentials', org, binding] as const;
-export const scimDirectoryUsersKey = (org: string, binding: string) =>
+const scimDirectoryUsersKey = (org: string, binding: string) =>
   ['scim-directory-users', org, binding] as const;
-export const scimDirectoryGroupsKey = (org: string, binding: string) =>
+const scimDirectoryGroupsKey = (org: string, binding: string) =>
   ['scim-directory-groups', org, binding] as const;
 
 export function useScimBindings(org: string): UseQueryResult<ScimBindingList> {
   return useQuery({
     queryKey: scimBindingsKey(org),
     queryFn: () => parsed(listScimBindingsOp, { path: { org } }),
-    retry: false,
-  });
-}
-
-/**
- * useScimBinding reads ONE binding with its live attention states. Enabled only
- * when a binding is selected — the surface renders the list until one is.
- */
-export function useScimBinding(org: string, binding: string): UseQueryResult<ScimBinding> {
-  return useQuery({
-    queryKey: scimBindingKey(org, binding),
-    queryFn: () => parsed(getScimBindingOp, { path: { org, binding } }),
-    enabled: binding !== '',
     retry: false,
   });
 }

@@ -566,17 +566,6 @@ select {
   color: var(--on-accent);
 }
 
-.rail__mobile-context {
-  display: none;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--tx-dim);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .rail__spacer {
   flex: 1;
 }
@@ -4184,10 +4173,6 @@ select {
   font-size: 12.5px;
 }
 
-.settings-input--confirm {
-  width: 180px;
-}
-
 .settings-input--retention {
   width: 60px;
 }
@@ -4663,7 +4648,6 @@ select {
 
 /* --- settings ------------------------------------------------------------ */
 
-.retention__current,
 .danger-zone__state {
   margin: 0;
   color: var(--tx);
@@ -4749,33 +4733,6 @@ select {
 
 .project-retention-list h3 {
   margin: 4px 0 0;
-}
-
-.project-retention-list__items {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.project-retention-list__items li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-container);
-  background: var(--bg);
-}
-
-.project-retention-list__items li > div {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
 }
 
 /* --- account & instance -------------------------------------------------- */
@@ -5742,10 +5699,6 @@ select {
 
 .adapters__health--degraded,
 .adapters__health--failed {
-  border-color: color-mix(in oklch, var(--danger) 45%, var(--line));
-}
-
-.adapters__attention {
   border-color: color-mix(in oklch, var(--danger) 45%, var(--line));
 }
 

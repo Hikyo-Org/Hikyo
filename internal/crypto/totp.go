@@ -6,6 +6,7 @@ import (
 	"encoding/base32"
 	"fmt"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/pquerna/otp"
@@ -59,8 +60,8 @@ func TOTPProvisioningURI(issuer, account string, seed []byte) string {
 	v.Set("secret", secret)
 	v.Set("issuer", issuer)
 	v.Set("algorithm", "SHA1")
-	v.Set("digits", fmt.Sprintf("%d", totpDigits))
-	v.Set("period", fmt.Sprintf("%d", totpPeriod))
+	v.Set("digits", strconv.Itoa(totpDigits))
+	v.Set("period", strconv.Itoa(totpPeriod))
 	label := url.PathEscape(issuer) + ":" + url.PathEscape(account)
 	return "otpauth://totp/" + label + "?" + v.Encode()
 }

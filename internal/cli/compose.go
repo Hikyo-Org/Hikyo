@@ -11,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -338,7 +338,7 @@ func renderAcknowledged(cfg *compose.Config) []string {
 			out = append(out, k)
 		}
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 
@@ -681,7 +681,7 @@ func allTargetKeyIDs(cfg *compose.Config) []string {
 	for id := range set {
 		out = append(out, id)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 

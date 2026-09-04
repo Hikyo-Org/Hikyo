@@ -735,7 +735,7 @@ func publishDefinitionValue(t *testing.T, db *store.DB, f definitionsFixture, na
 		t.Fatal(err)
 	}
 	revisions := &service.Revisions{DB: db, Keyring: probeKeyring(t, db)}
-	if _, err := revisions.Publish(t.Context(), service.LocalPrincipal(custodian), f.envScope(), []string{staged.VersionID}); err != nil {
+	if _, err := revisions.PublishPlanned(t.Context(), service.LocalPrincipal(custodian), f.envScope(), service.PublishRequest{VersionIDs: []string{staged.VersionID}}); err != nil {
 		t.Fatal(err)
 	}
 }

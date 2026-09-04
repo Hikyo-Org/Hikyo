@@ -36,7 +36,7 @@ func runProjectStorageHighWater(t *testing.T, db *store.DB) {
 		t.Fatalf("stage first value: %v", err)
 	}
 	base := &service.Revisions{DB: db, Keyring: kr}
-	if _, err := base.Publish(t.Context(), actor, scope, []string{staged.VersionID}); err != nil {
+	if _, err := base.PublishPlanned(t.Context(), actor, scope, service.PublishRequest{VersionIDs: []string{staged.VersionID}}); err != nil {
 		t.Fatalf("first publish must succeed on an empty project: %v", err)
 	}
 
@@ -56,7 +56,7 @@ func runProjectStorageHighWater(t *testing.T, db *store.DB) {
 		t.Fatalf("stage second value: %v", err)
 	}
 	atWater := &service.Revisions{DB: db, Keyring: kr, ProjectStorageHighWater: int64(stored)}
-	_, err = atWater.Publish(t.Context(), actor, scope, []string{second.VersionID})
+	_, err = atWater.PublishPlanned(t.Context(), actor, scope, service.PublishRequest{VersionIDs: []string{second.VersionID}})
 	if !errors.Is(err, domain.ErrLimitExceeded) {
 		t.Fatalf("publish into a project at the storage high-water must be refused with ErrLimitExceeded: %v", err)
 	}
@@ -71,7 +71,7 @@ func runProjectStorageHighWater(t *testing.T, db *store.DB) {
 	// One byte of headroom lets the same staged change through: the boundary is
 	// `>=`, so below the water publishes normally.
 	belowWater := &service.Revisions{DB: db, Keyring: kr, ProjectStorageHighWater: int64(stored) + 1}
-	if _, err := belowWater.Publish(t.Context(), actor, scope, []string{second.VersionID}); err != nil {
+	if _, err := belowWater.PublishPlanned(t.Context(), actor, scope, service.PublishRequest{VersionIDs: []string{second.VersionID}}); err != nil {
 		t.Fatalf("publish below the high-water must succeed: %v", err)
 	}
 }

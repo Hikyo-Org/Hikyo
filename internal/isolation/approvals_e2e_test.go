@@ -359,7 +359,7 @@ func runApprovalEdges(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatalf("stage copy source: %v", err)
 	}
-	if _, err := revisions.Publish(ctx, service.LocalPrincipal(alice), sourceScope, []string{staged.VersionID}); err != nil {
+	if _, err := revisions.PublishPlanned(ctx, service.LocalPrincipal(alice), sourceScope, service.PublishRequest{VersionIDs: []string{staged.VersionID}}); err != nil {
 		t.Fatalf("publish copy source: %v", err)
 	}
 	if _, err := approvals.CreatePolicy(ctx, service.LocalPrincipal(orgAdmin), projectScope, service.ApprovalPolicyInput{
@@ -406,7 +406,7 @@ func runApprovalEdges(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatalf("stage first restore value: %v", err)
 	}
-	firstPublished, err := revisions.Publish(ctx, service.LocalPrincipal(alice), restoreScope, []string{first.VersionID})
+	firstPublished, err := revisions.PublishPlanned(ctx, service.LocalPrincipal(alice), restoreScope, service.PublishRequest{VersionIDs: []string{first.VersionID}})
 	if err != nil {
 		t.Fatalf("publish first restore value: %v", err)
 	}
@@ -414,7 +414,7 @@ func runApprovalEdges(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatalf("stage second restore value: %v", err)
 	}
-	if _, err := revisions.Publish(ctx, service.LocalPrincipal(alice), restoreScope, []string{second.VersionID}); err != nil {
+	if _, err := revisions.PublishPlanned(ctx, service.LocalPrincipal(alice), restoreScope, service.PublishRequest{VersionIDs: []string{second.VersionID}}); err != nil {
 		t.Fatalf("publish second restore value: %v", err)
 	}
 	restored, err := revisions.Restore(ctx, service.LocalPrincipal(alice), restoreScope, firstPublished.Environments[0].Revision, "EDGE_RESTORE")

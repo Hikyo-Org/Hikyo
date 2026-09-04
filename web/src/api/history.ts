@@ -31,13 +31,6 @@ import {
 } from './keys.ts';
 import { useTransport } from './transport.tsx';
 
-export {
-  pinsKey,
-  projectRetentionKey,
-  revisionDetailKey,
-  revisionsKey,
-} from './keys.ts';
-
 /**
  * The revision-history API boundary (#59).
  *
@@ -86,8 +79,6 @@ export const zHistoryRevisionList = zRevisionList.superRefine((list, context) =>
     refineCollectionBit(item, context, ['items', index]);
   });
 });
-
-export const zHistoryRevisionDetail = zRevisionDetail;
 
 export const zHistoryRollbackResult = zRollbackResult.superRefine((result, context) => {
   result.preview.environments.forEach((environment, environmentIndex) => {

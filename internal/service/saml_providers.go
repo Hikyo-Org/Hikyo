@@ -950,11 +950,7 @@ func metadataHostIsNonPublic(host string) bool {
 		return true
 	}
 	address, err := netip.ParseAddr(host)
-	return err == nil && metadataIPIsNonPublic(address)
-}
-
-func metadataIPIsNonPublic(address netip.Addr) bool {
-	return netpolicy.IsNonPublic(address)
+	return err == nil && netpolicy.IsNonPublic(address)
 }
 
 type metadataTransportPrimitives struct {
@@ -1051,27 +1047,6 @@ func (t *publicMetadataRoundTripper) RoundTrip(request *http.Request) (*http.Res
 	return nil, errors.Join(attempts...)
 }
 
-func (t *publicMetadataRoundTripper) prepare(request *http.Request) (*http.Request, *http.Transport, error) {
-	addresses, proxyURL, err := t.destinations(request)
-	if err != nil {
-		return nil, nil, err
-	}
-	pinned, transport := t.prepareAddress(request, addresses[0], proxyURL)
-	return pinned, transport, nil
-}
-
-func (t *publicMetadataRoundTripper) destinations(request *http.Request) ([]netip.Addr, *url.URL, error) {
-	addresses, err := t.resolveAddresses(request)
-	if err != nil {
-		return nil, nil, err
-	}
-	proxyURL, err := t.proxyURL(request)
-	if err != nil {
-		return nil, nil, err
-	}
-	return addresses, proxyURL, nil
-}
-
 func (t *publicMetadataRoundTripper) resolveAddresses(request *http.Request) ([]netip.Addr, error) {
 	host := request.URL.Hostname()
 	addresses, err := t.resolver.LookupNetIP(request.Context(), "ip", host)
@@ -1079,7 +1054,7 @@ func (t *publicMetadataRoundTripper) resolveAddresses(request *http.Request) ([]
 		return nil, errors.New("service: SAML metadata host did not resolve")
 	}
 	for _, resolved := range addresses {
-		if metadataIPIsNonPublic(resolved) {
+		if netpolicy.IsNonPublic(resolved) {
 			return nil, errors.New("service: SAML metadata host resolved to a non-public address")
 		}
 	}
