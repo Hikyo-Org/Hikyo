@@ -311,6 +311,64 @@ test.describe('project settings', () => {
     await expect(page).toHaveURL(before);
   });
 
+  test('creates, renames, clones, reorders, and deletes an environment through the SPA', async () => {
+    // The four lifecycle operations driven entirely through the rendered
+    // "Manage" disclosure, against the real server (#623 restores this surface).
+    // Every environment here is created and destroyed within the test, so the
+    // shared `staging` drill environment the other tests depend on is untouched.
+    await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
+    const panel = page.locator('#project-environments');
+    const created = 'lifecycle';
+    const renamed = 'lifecycle-renamed';
+    const clone = 'lifecycle-clone';
+
+    // Create through the SPA form.
+    await panel.getByLabel('New environment name').fill(created);
+    await panel.getByRole('button', { name: 'Create' }).click();
+    await expect(
+      page.locator('.notice').filter({ hasText: `Environment ${created} created.` }),
+    ).toBeVisible();
+
+    // Open its disclosure once. The id is stable across rename and clone, so the
+    // same <details> stays open for all three actions below the summary.
+    await panel.locator('summary', { hasText: `Manage ${created}` }).click();
+    const open = panel.locator('details.environment-lifecycle[open]');
+
+    await open.getByLabel(`New name for ${created}`).fill(renamed);
+    await open.getByRole('button', { name: 'Rename environment' }).click();
+    await expect(
+      page.locator('.notice').filter({ hasText: `renamed to ${renamed}` }),
+    ).toBeVisible();
+
+    await open.getByLabel(`Clone ${renamed} into`).fill(clone);
+    await open.getByRole('button', { name: 'Clone environment' }).click();
+    await expect(page.locator('.notice').filter({ hasText: `cloned to ${clone}` })).toBeVisible();
+
+    // Reorder: the renamed row is not first (staging precedes it), so Move up is
+    // live and sends the whole ordered set.
+    await open.getByRole('button', { name: `Move ${renamed} up` }).click();
+    await expect(
+      page.locator('.notice').filter({ hasText: `Environment ${renamed} moved up` }),
+    ).toBeVisible();
+
+    // Typed-name delete of both environments this test created, through the SPA.
+    // The renamed row's disclosure is still open from the actions above, so
+    // delete it in place; the clone's is closed, so open it first.
+    await open.getByLabel(`Delete ${renamed}`).fill(renamed);
+    await open.getByRole('button', { name: 'Delete environment' }).click();
+    await expect(
+      page.locator('.notice').filter({ hasText: `Environment ${renamed} deleted.` }),
+    ).toBeVisible();
+
+    await panel.locator('summary', { hasText: `Manage ${clone}` }).click();
+    const cloneRow = panel.locator('details.environment-lifecycle[open]');
+    await cloneRow.getByLabel(`Delete ${clone}`).fill(clone);
+    await cloneRow.getByRole('button', { name: 'Delete environment' }).click();
+    await expect(
+      page.locator('.notice').filter({ hasText: `Environment ${clone} deleted.` }),
+    ).toBeVisible();
+  });
+
   test('rotates the project DEK and re-encrypts, resuming across a reload', async () => {
     // The project-scoped half of remote cryptographic maintenance (#503),
     // against the real server. Both jobs are content-invisible: they re-wrap

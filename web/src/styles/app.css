@@ -4302,6 +4302,26 @@ select {
   border-top: 0;
 }
 
+/* The per-environment lifecycle disclosure sits on its own line inside the
+   flex factor row (its name shares the first line), so it spans the width and
+   stacks its actions with the panel's own spacing. */
+.environment-lifecycle {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Keep the native disclosure marker: `display: flex`/`block` on a summary drops
+   it in most browsers, so leave the default list-item display and only pad it
+   up to the touch target. */
+.environment-lifecycle > summary {
+  min-height: var(--touch);
+  padding: 10px 0;
+  cursor: pointer;
+  font-weight: 650;
+}
+
 .page--chrome .factor__meta {
   color: var(--tx-dim);
   font-family: var(--font-mono);
