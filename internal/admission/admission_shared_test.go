@@ -1,10 +1,12 @@
 package admission
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -154,13 +156,18 @@ func TestSharedCounterErrorsFailClosed(t *testing.T) {
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 	store := newFakeShared()
 	l := sharedLimiter(t, store, &now)
-	store.setErr(errors.New("datastore unreachable"))
+	var logs bytes.Buffer
+	l.UseShared(store, slog.New(slog.NewTextHandler(&logs, nil)))
+	store.setErr(errors.New("datastore unreachable with CANARY-HEADER-VALUE"))
 
 	if l.allowIP("1.2.3.4") {
 		t.Fatal("allowIP admitted while the shared counter was unreachable (must fail closed)")
 	}
 	if l.AllowDiscovery("1.2.3.4") {
 		t.Fatal("AllowDiscovery admitted while the shared counter was unreachable")
+	}
+	if strings.Contains(logs.String(), "CANARY-HEADER-VALUE") {
+		t.Fatalf("shared counter error leaked request-derived data: %q", logs.String())
 	}
 	if l.AllowIssuerRefresh("https://issuer.example") {
 		t.Fatal("AllowIssuerRefresh admitted while the shared counter was unreachable")
