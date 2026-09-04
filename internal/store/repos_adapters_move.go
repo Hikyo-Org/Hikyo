@@ -727,16 +727,13 @@ func beginAdapterTargetMove(ctx context.Context, db adapterDB, chain domain.Scop
 		}
 		return AdapterRouteMoveResult{}, ErrConflict
 	}
-	insertTarget := db.SQL(
-		`INSERT INTO adapter_route_move_targets (move_id,org_id,project_id,environment_id,target_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,orphaned_names) VALUES (?,?,?,?,?,?,?,?,0,?,?)`,
-		`INSERT INTO adapter_route_move_targets (move_id,org_id,project_id,environment_id,target_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,orphaned_names) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,0,$9,$10)`)
 	pendingOrphans := []string{}
 	if mutation.KeepRemote {
 		pendingOrphans = orphaned
 	}
 	pendingOrphanJSON, _ := json.Marshal(pendingOrphans)
 	selectedJSON, _ := json.Marshal(mutation.Target.SelectedRepositoryIDs)
-	insertTarget = db.SQL(
+	insertTarget := db.SQL(
 		`INSERT INTO adapter_route_move_targets (move_id,org_id,project_id,environment_id,target_id,destination_kind,destination_owner,destination_name,destination_environment,destination_id,repository_id,visibility,selected_repository_ids,name_prefix,orphaned_names) VALUES (?,?,?,?,?,?,?,?,?,0,?,?,?,?,?)`,
 		`INSERT INTO adapter_route_move_targets (move_id,org_id,project_id,environment_id,target_id,destination_kind,destination_owner,destination_name,destination_environment,destination_id,repository_id,visibility,selected_repository_ids,name_prefix,orphaned_names) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11,$12,$13,$14)`)
 	if rows, err := db.Exec(ctx, insertTarget, mutation.MoveID, chain.Org, chain.Project, mutation.Target.EnvironmentID, mutation.Target.ID, mutation.Target.DestinationKind, mutation.Target.DestinationOwner, mutation.Target.DestinationName, mutation.Target.DestinationEnvironment, mutation.Target.RepositoryID, mutation.Target.Visibility, selectedJSON, mutation.Target.NamePrefix, string(pendingOrphanJSON)); err != nil || rows != 1 {

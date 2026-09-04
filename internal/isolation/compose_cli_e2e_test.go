@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 
@@ -111,11 +112,7 @@ func publishComposeValues(t *testing.T, db *store.DB, values map[string]string) 
 	t.Helper()
 	actor := service.LocalPrincipal(domain.PrincipalID(cAdmin))
 	scope := domain.Scope{Org: cOrg, Project: cPrj, Env: cEnv}
-	names := make([]string, 0, len(values))
-	for name := range values {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(values))
 	versions := make([]string, 0, len(names))
 	for _, name := range names {
 		staged, err := valueSvc(t, db).Set(t.Context(), actor, scope, name, values[name], nil)
@@ -241,7 +238,7 @@ func runComposeCLIDelivery(t *testing.T, engine store.Engine) {
 	if code != cli.ExitOK {
 		t.Fatalf("config-only run exit=%d, want ExitOK; stderr=%s", code, stderr)
 	}
-	if !hasKV(cfgEnv, "DATABASE_URL=postgres://dev") {
+	if !slices.Contains(cfgEnv, "DATABASE_URL=postgres://dev") {
 		t.Fatalf("config-only did not deliver the config value byte-exact: %v", filterKV(cfgEnv, "DATABASE_URL"))
 	}
 	if len(filterKV(cfgEnv, "DATABASE_PASSWORD=")) != 0 {
@@ -260,7 +257,7 @@ func runComposeCLIDelivery(t *testing.T, engine store.Engine) {
 	if code != cli.ExitOK {
 		t.Fatalf("reveal run exit=%d, want ExitOK; stderr=%s", code, stderr)
 	}
-	if !hasKV(revealEnv, "DATABASE_URL=postgres://dev") || !hasKV(revealEnv, "DATABASE_PASSWORD=dev-secret") {
+	if !slices.Contains(revealEnv, "DATABASE_URL=postgres://dev") || !slices.Contains(revealEnv, "DATABASE_PASSWORD=dev-secret") {
 		t.Fatalf("reveal run did not deliver both values byte-exact: %v", filterKV(revealEnv, "DATABASE"))
 	}
 
@@ -315,7 +312,7 @@ func runComposeCLIRenderAndDoctor(t *testing.T, engine store.Engine) {
 	// doctor with EMPTY services FAILS the structural check with a specific code
 	// (finding 4): the required `api` service is missing entirely.
 	dockerEmpty := fakeDockerEmptyServices(t, "2.30.0")
-	code, stdout, stderr = rig.runCLIDocker(t, work, dockerEmpty, "compose", "doctor", "--token-file", tokenFile, "-o", "json")
+	code, stdout, _ = rig.runCLIDocker(t, work, dockerEmpty, "compose", "doctor", "--token-file", tokenFile, "-o", "json")
 	if code != cli.ExitRefused {
 		t.Fatalf("doctor with empty services exit=%d, want ExitRefused; stdout=%s", code, stdout)
 	}
@@ -329,7 +326,7 @@ func runComposeCLIRenderAndDoctor(t *testing.T, engine store.Engine) {
 	// doctor fails CLOSED when `docker compose config` fails: a nil config used to
 	// silently disable the service checks (finding 12).
 	dockerCfgFail := fakeDockerConfigFails(t, "2.30.0")
-	code, stdout, stderr = rig.runCLIDocker(t, work, dockerCfgFail, "compose", "doctor", "--token-file", tokenFile, "-o", "json")
+	code, stdout, _ = rig.runCLIDocker(t, work, dockerCfgFail, "compose", "doctor", "--token-file", tokenFile, "-o", "json")
 	if code != cli.ExitRefused {
 		t.Fatalf("doctor with failing config exit=%d, want ExitRefused; stdout=%s", code, stdout)
 	}
@@ -774,15 +771,6 @@ func assertNoPlaintextUnder(t *testing.T, dir, plaintext string) {
 		}
 		return nil
 	})
-}
-
-func hasKV(env []string, want string) bool {
-	for _, e := range env {
-		if e == want {
-			return true
-		}
-	}
-	return false
 }
 
 func filterKV(env []string, prefix string) []string {

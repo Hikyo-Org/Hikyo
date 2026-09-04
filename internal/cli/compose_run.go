@@ -1,18 +1,19 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
@@ -131,7 +132,7 @@ func runRun(ctx context.Context, ios IO, args []string) error {
 
 	// Loader-control refusal for the LIVE path (the offline path already checked
 	// pre-append inside serveRunOffline).
-	if refused := compose.RefuseUnacknowledged(mapKeys(fetched), ack); len(refused) > 0 {
+	if refused := compose.RefuseUnacknowledged(slices.Sorted(maps.Keys(fetched)), ack); len(refused) > 0 {
 		return failf(ExitRefused, "hikyo run: refusing loader-control key(s) %s; acknowledge each by name in the config's `run.acknowledge_loader_control`",
 			strings.Join(refused, ", "))
 	}
@@ -267,8 +268,7 @@ func runHumanSession(ctx context.Context, ios IO, st *State, flags commonFlags, 
 	fetched := deliveredValues(resp.Keys)
 
 	// (3) Enumerated confirmation on the controlling terminal.
-	names := mapKeys(fetched)
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(fetched))
 	prompt := fmt.Sprintf("About to inject %d value(s) into environment %s and exec %q:\n  %s\nProceed",
 		len(names), env, childArgs[0], strings.Join(names, "\n  "))
 	ok, err := terminalSession.ConfirmEnumerated(prompt)
@@ -279,7 +279,7 @@ func runHumanSession(ctx context.Context, ios IO, st *State, flags commonFlags, 
 		return failf(ExitRefused, "hikyo run --use-human-session: declined at the confirmation")
 	}
 
-	if refused := compose.RefuseUnacknowledged(mapKeys(fetched), runLoaderControlAck(cfg)); len(refused) > 0 {
+	if refused := compose.RefuseUnacknowledged(slices.Sorted(maps.Keys(fetched)), runLoaderControlAck(cfg)); len(refused) > 0 {
 		return failf(ExitRefused, "hikyo run: refusing loader-control key(s) %s; acknowledge each by name in the config's `run.acknowledge_loader_control`",
 			strings.Join(refused, ", "))
 	}
@@ -390,7 +390,7 @@ func unrevealedSecrets(keys []apigen.DeliveredKey) []string {
 			missing = append(missing, k.Name)
 		}
 	}
-	sort.Strings(missing)
+	slices.Sort(missing)
 	return missing
 }
 
@@ -437,18 +437,8 @@ func rowsToValues(rows []compose.SnapshotRow) map[string]string {
 	return out
 }
 
-func mapKeys(m map[string]string) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
-
 func canonicalRows(rows []compose.SnapshotRow) []byte {
-	sorted := append([]compose.SnapshotRow(nil), rows...)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
+	sorted := slices.SortedFunc(slices.Values(rows), func(a, b compose.SnapshotRow) int { return cmp.Compare(a.Name, b.Name) })
 	data, _ := json.Marshal(sorted)
 	return data
 }

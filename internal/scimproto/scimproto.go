@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -458,7 +457,7 @@ func SchemasFor(attributes map[string]any, declared []ExtensionDecl) []string {
 			out = append(out, ext.URN)
 		}
 	}
-	sort.Strings(out[1:])
+	slices.Sort(out[1:])
 	return out
 }
 
@@ -472,7 +471,7 @@ func UndeclaredExtension(attributes map[string]any, declared []ExtensionDecl) st
 	for k := range attributes {
 		names = append(names, k)
 	}
-	sort.Strings(names) // a deterministic refusal names the same schema every time
+	slices.Sort(names) // a deterministic refusal names the same schema every time
 	for _, k := range names {
 		if strings.HasPrefix(strings.ToLower(k), "urn:") && !Declares(declared, k) {
 			return k

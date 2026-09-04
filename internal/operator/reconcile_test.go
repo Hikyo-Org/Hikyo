@@ -767,3 +767,13 @@ func indexOf(s []string, v string) int {
 	}
 	return -1
 }
+
+// controllerRefUID is a small accessor used by tests to assert ownership.
+func controllerRefUID(refs []metav1.OwnerReference) string {
+	for _, ref := range refs {
+		if ref.Controller != nil && *ref.Controller {
+			return string(ref.UID)
+		}
+	}
+	return ""
+}

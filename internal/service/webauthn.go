@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"sort"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
@@ -1427,8 +1426,7 @@ func operationBinding(op ReauthPurpose, environmentID string, keyIDs []string) (
 	if !op.Valid() {
 		return "", fmt.Errorf("%w: unknown reauthentication purpose %q", domain.ErrInvalid, op)
 	}
-	sorted := append([]string(nil), keyIDs...)
-	sort.Strings(sorted)
+	sorted := slices.Sorted(slices.Values(keyIDs))
 	b, err := json.Marshal(struct {
 		Operation     string   `json:"operation"`
 		EnvironmentID string   `json:"environment_id"`

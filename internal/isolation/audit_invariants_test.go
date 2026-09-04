@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 
@@ -283,8 +283,8 @@ func TestInvariantAuditNoAggregates(t *testing.T) {
 		"authority_id", "object_type", "object_id", "outcome", "correlation_id",
 		"source_ip", "user_agent", "origin", "payload",
 	}
-	sort.Strings(wantTenant)
-	sort.Strings(wantInstance)
+	slices.Sort(wantTenant)
+	slices.Sort(wantInstance)
 	for _, engine := range []string{"sqlite", "postgres"} {
 		bodies := tableBodies(t, filepath.Join("..", "store", "migrations", engine))
 		for table, want := range map[string][]string{
@@ -292,7 +292,7 @@ func TestInvariantAuditNoAggregates(t *testing.T) {
 			"audit_instance_events": wantInstance,
 		} {
 			got := columnNames(bodies[table])
-			sort.Strings(got)
+			slices.Sort(got)
 			if strings.Join(got, ",") != strings.Join(want, ",") {
 				t.Errorf("%s: %s columns drifted from the pinned envelope:\n got %v\nwant %v", engine, table, got, want)
 			}

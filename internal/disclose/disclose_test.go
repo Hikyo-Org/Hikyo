@@ -11,20 +11,6 @@ import (
 	"testing"
 )
 
-type fakeTTY struct {
-	bytes.Buffer
-	closed     bool
-	closeCount int
-}
-
-// Close is reached through io.WriteCloser by TerminalSession. deadcode cannot
-// resolve this test-only interface dispatch, but removing it breaks the seam.
-func (f *fakeTTY) Close() error {
-	f.closed = true
-	f.closeCount++
-	return nil
-}
-
 func mustTerminalSession(t *testing.T, terminal io.WriteCloser) *TerminalSession {
 	t.Helper()
 	session, err := NewTerminalSession(terminal)
@@ -595,8 +581,7 @@ func TestPrepareReservesBeforeAnythingIsMinted(t *testing.T) {
 }
 
 // scriptedTTY is a terminal whose reads come from a script and whose writes go
-// somewhere else, which is what a real terminal is. fakeTTY cannot serve here:
-// it reads back its own prompt.
+// somewhere else, which is what a real terminal is.
 type scriptedTTY struct {
 	in         *strings.Reader
 	out        bytes.Buffer

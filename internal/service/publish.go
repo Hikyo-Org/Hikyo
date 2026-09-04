@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -249,10 +249,6 @@ type resolvedCell struct {
 // the last published state plus the SELECTED versions only. The publisher's
 // unselected drafts and every other principal's are invisible to it, so the
 // materialized snapshot always corresponds to a state the publisher previewed.
-func (s *Revisions) Publish(ctx context.Context, actor Actor, scope domain.Scope, versionIDs []string) (PublishResult, error) {
-	return s.PublishPlanned(ctx, actor, scope, PublishRequest{VersionIDs: versionIDs})
-}
-
 // PublishPlanned commits a selection after checking its bound preview and any
 // protected-environment confirmation inside the same serialized transaction.
 func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domain.Scope, request PublishRequest) (PublishResult, error) {
@@ -357,7 +353,7 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 				envs = append(envs, change.EnvironmentID)
 			}
 		}
-		sort.Strings(envs)
+		slices.Sort(envs)
 		proofs := make(map[string]authz.Proof, len(envs))
 		for _, envID := range envs {
 			envScope := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(envID)}
@@ -397,7 +393,7 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 		for envID := range selection {
 			envs = append(envs, envID)
 		}
-		sort.Strings(envs)
+		slices.Sort(envs)
 
 		// Restore drafts carry a one-shot impact-preview token. Validate it before
 		// approvalGate can persist a request and return 202. A later merge names
@@ -457,7 +453,7 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 		}
 		if skipsCeremony(caller) {
 			confirmed := slices.Clone(request.ConfirmedProtectedEnvironments)
-			sort.Strings(confirmed)
+			slices.Sort(confirmed)
 			if dup, ok := firstDuplicate(confirmed); ok {
 				return invalidDetail("protected environment %q is confirmed more than once", dup)
 			}
@@ -601,11 +597,7 @@ func publishPreviewToken(ctx context.Context, r store.Repos, proofs map[string]a
 		return "", err
 	}
 	input := previewTokenInput{PrincipalGeneration: generation}
-	envs := make([]string, 0, len(selection))
-	for envID := range selection {
-		envs = append(envs, envID)
-	}
-	sort.Strings(envs)
+	envs := slices.Sorted(maps.Keys(selection))
 	for _, envID := range envs {
 		p := proofs[envID]
 		base, err := currentRevision(ctx, r, p)

@@ -313,13 +313,6 @@ func ValidateProviderManifest(provider, prefix string, entries []ManifestEntry, 
 
 // Workflow renders names only. Prefixing is provider wiring; applications
 // continue to receive canonical names in every environment.
-func Workflow(prefix string, entries []ManifestEntry) (string, error) {
-	if err := ValidateManifest(prefix, entries); err != nil {
-		return "", err
-	}
-	return renderWorkflow(prefix, entries), nil
-}
-
 func WorkflowForProvider(provider, prefix string, entries []ManifestEntry) (string, error) {
 	if err := ValidateProviderManifest(provider, prefix, entries, false); err != nil {
 		return "", err
@@ -331,10 +324,8 @@ func WorkflowForProvider(provider, prefix string, entries []ManifestEntry) (stri
 // Only all->private, all->selected, and removal from an unchanged selected
 // set may skip the full recipient-set authorization ceremony.
 func RecipientSetNeedsCeremony(oldVisibility string, oldIDs []int64, newVisibility string, newIDs []int64) bool {
-	oldSet := append([]int64(nil), oldIDs...)
-	newSet := append([]int64(nil), newIDs...)
-	slices.Sort(oldSet)
-	slices.Sort(newSet)
+	oldSet := slices.Sorted(slices.Values(oldIDs))
+	newSet := slices.Sorted(slices.Values(newIDs))
 	if oldVisibility == newVisibility {
 		if oldVisibility != "selected" || slices.Equal(oldSet, newSet) {
 			return false

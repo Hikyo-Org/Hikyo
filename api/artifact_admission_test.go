@@ -18,10 +18,11 @@ func TestOperationForDerivesArtifactEligibilityFromEmbeddedContract(t *testing.T
 			"env_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fcc/values"},
 		Header: http.Header{},
 	}
-	op, ok := OperationFor(req)
-	if !ok {
-		t.Fatal("embedded contract did not resolve the values-list operation")
+	matched, err := MatchRequest(req)
+	if err != nil {
+		t.Fatalf("embedded contract did not resolve the values-list operation: %v", err)
 	}
+	op := matched.Operation()
 	if op.ID != "listValues" {
 		t.Fatalf("operation id = %q, want listValues", op.ID)
 	}

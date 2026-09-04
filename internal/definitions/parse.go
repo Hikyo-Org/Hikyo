@@ -1,8 +1,9 @@
 package definitions
 
 import (
+	"cmp"
 	"errors"
-	"sort"
+	"slices"
 
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 )
@@ -137,9 +138,9 @@ func compileCanonical(b Bundle) (CompiledBundle, error) {
 	out := Bundle{
 		FormatVersion: FormatVersion,
 		BaseRevision:  b.BaseRevision,
-		Environments:  append([]Environment(nil), b.Environments...),
-		KeyGroups:     append([]KeyGroup(nil), b.KeyGroups...),
-		Keys:          append([]Key(nil), b.Keys...),
+		Environments:  slices.Clone(b.Environments),
+		KeyGroups:     slices.Clone(b.KeyGroups),
+		Keys:          slices.Clone(b.Keys),
 	}
 	declarations := make(map[string]*schema.Compiled, len(out.Keys))
 	if out.Environments == nil {
@@ -151,9 +152,9 @@ func compileCanonical(b Bundle) (CompiledBundle, error) {
 	if out.Keys == nil {
 		out.Keys = []Key{}
 	}
-	sort.SliceStable(out.Environments, func(i, j int) bool { return out.Environments[i].Name < out.Environments[j].Name })
-	sort.SliceStable(out.KeyGroups, func(i, j int) bool { return out.KeyGroups[i].Name < out.KeyGroups[j].Name })
-	sort.SliceStable(out.Keys, func(i, j int) bool { return out.Keys[i].Name < out.Keys[j].Name })
+	slices.SortStableFunc(out.Environments, func(a, b Environment) int { return cmp.Compare(a.Name, b.Name) })
+	slices.SortStableFunc(out.KeyGroups, func(a, b KeyGroup) int { return cmp.Compare(a.Name, b.Name) })
+	slices.SortStableFunc(out.Keys, func(a, b Key) int { return cmp.Compare(a.Name, b.Name) })
 
 	for i := range out.Keys {
 		k := out.Keys[i]
@@ -192,8 +193,7 @@ func compileCanonical(b Bundle) (CompiledBundle, error) {
 // normalizePresence validates a bundle presence rule's mode/shape and returns
 // it with a sorted, always-present environment list.
 func normalizePresence(what, keyName string, p Presence) (Presence, error) {
-	envs := append([]string(nil), p.Environments...)
-	sort.Strings(envs)
+	envs := slices.Sorted(slices.Values(p.Environments))
 	switch schema.PresenceMode(p.Mode) {
 	case schema.PresenceNone, schema.PresenceAll:
 		if len(envs) > 0 {

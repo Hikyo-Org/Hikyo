@@ -116,7 +116,7 @@ func unpublishValue(t *testing.T, db *store.DB, values *service.Values, actor se
 func publishVersions(t *testing.T, db *store.DB, actor service.Actor,
 	env domain.Scope, versionIDs ...string) service.PublishResult {
 	t.Helper()
-	out, err := revisionSvc(t, db).Publish(t.Context(), actor, env, versionIDs)
+	out, err := revisionSvc(t, db).PublishPlanned(t.Context(), actor, env, service.PublishRequest{VersionIDs: versionIDs})
 	if err != nil {
 		t.Fatalf("publish %v in %s: %v", versionIDs, env.Env, err)
 	}
@@ -287,7 +287,7 @@ func scenarioValueDelivery(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatalf("staging an over-budget value was refused; saving is free: %v", err)
 	}
-	if _, err := revisionSvc(t, db).Publish(t.Context(), actor, dev, []string{oversized.VersionID}); !errors.Is(err, domain.ErrInvalid) {
+	if _, err := revisionSvc(t, db).PublishPlanned(t.Context(), actor, dev, service.PublishRequest{VersionIDs: []string{oversized.VersionID}}); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("publishing an over-budget value was accepted: %v", err)
 	}
 }

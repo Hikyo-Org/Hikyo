@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -56,7 +56,7 @@ func CheckReencryptCoverage(sqliteMigrationsDir string) []string {
 			findings = append(findings, fmt.Sprintf("reencrypt-coverage: covered column %s no longer exists in the schema", tc))
 		}
 	}
-	sort.Strings(findings)
+	slices.Sort(findings)
 	return findings
 }
 
@@ -171,6 +171,6 @@ func scanBlobColumns(dir string) ([]string, error) {
 	for tc := range seen {
 		out = append(out, tc)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out, nil
 }

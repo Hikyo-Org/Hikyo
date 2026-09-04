@@ -3,7 +3,6 @@ package service
 import (
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
@@ -166,8 +165,7 @@ func newReauthIntentForOperation(operation authz.Operation, environmentID string
 }
 
 func newDisclosureReauthIntent(variant reauthIntentVariant, environmentIDs, keyIDs []string) (ReauthIntent, error) {
-	canonicalEnvironments := append([]string(nil), environmentIDs...)
-	sort.Strings(canonicalEnvironments)
+	canonicalEnvironments := slices.Sorted(slices.Values(environmentIDs))
 	canonicalEnvironments = slices.Compact(canonicalEnvironments)
 	if len(canonicalEnvironments) == 0 {
 		return ReauthIntent{}, fmt.Errorf("%w: reauthentication intent requires an environment", domain.ErrInvalid)
@@ -180,29 +178,12 @@ func newDisclosureReauthIntent(variant reauthIntentVariant, environmentIDs, keyI
 	if len(canonicalEnvironments) != 1 {
 		return ReauthIntent{}, fmt.Errorf("%w: disclosure reauthentication covers exactly one environment", domain.ErrInvalid)
 	}
-	canonicalKeys := append([]string(nil), keyIDs...)
-	sort.Strings(canonicalKeys)
+	canonicalKeys := slices.Sorted(slices.Values(keyIDs))
 	return ReauthIntent{
 		variant: variant, environmentID: canonicalEnvironments[0],
 		environmentIDs: canonicalEnvironments, keyIDs: canonicalKeys,
-		keySet: strings.Join(canonicalKeys, "\n"), environmentSet: strings.Join(canonicalEnvironments, "\n"),
+		keySet: CanonicalKeySet(keyIDs), environmentSet: strings.Join(canonicalEnvironments, "\n"),
 	}, nil
-}
-
-func NewAdapterConfigureReauthIntent(environmentIDs []string) (ReauthIntent, error) {
-	return NewAdapterReauthIntent(string(authz.OpAdapterConfigure), environmentIDs)
-}
-
-func NewAdapterCredentialSetReauthIntent(environmentIDs []string) (ReauthIntent, error) {
-	return NewAdapterReauthIntent(string(authz.OpAdapterCredentialSet), environmentIDs)
-}
-
-func NewAdapterAdoptReauthIntent(environmentIDs []string) (ReauthIntent, error) {
-	return NewAdapterReauthIntent(string(authz.OpAdapterAdopt), environmentIDs)
-}
-
-func NewAdapterSyncReauthIntent(environmentIDs []string) (ReauthIntent, error) {
-	return NewAdapterReauthIntent(string(authz.OpAdapterSync), environmentIDs)
 }
 
 // NewAdapterReauthIntent parses the wire adapter operation into one of four
@@ -243,8 +224,7 @@ func newReauthIntentFromBinding(purpose ReauthPurpose, operation authz.Operation
 }
 
 func newAdapterReauthIntent(variant reauthIntentVariant, environmentIDs []string) (ReauthIntent, error) {
-	canonical := append([]string(nil), environmentIDs...)
-	sort.Strings(canonical)
+	canonical := slices.Sorted(slices.Values(environmentIDs))
 	canonical = slices.Compact(canonical)
 	if len(canonical) == 0 {
 		return ReauthIntent{}, fmt.Errorf("%w: adapter reauthentication intent requires environments", domain.ErrInvalid)

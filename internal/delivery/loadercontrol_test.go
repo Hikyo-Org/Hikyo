@@ -23,9 +23,8 @@ func TestLoaderControlBaselinePinned(t *testing.T) {
 	for k := range loaderControlExact {
 		got = append(got, k)
 	}
-	want := append([]string(nil), loaderControlPinnedExact...)
+	want := slices.Sorted(slices.Values(loaderControlPinnedExact))
 	slices.Sort(got)
-	slices.Sort(want)
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("exact baseline drifted.\n got: %v\nwant: %v", got, want)
 	}

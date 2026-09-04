@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"sort"
+	"slices"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
@@ -249,7 +249,7 @@ func (s *Definitions) persistPlan(ctx context.Context, r store.Repos, az *authz.
 		for _, id := range envs {
 			names = append(names, envNameByID[id])
 		}
-		sort.Strings(names)
+		slices.Sort(names)
 		planDiff.KeyDeletions = append(planDiff.KeyDeletions, KeyDeletion{Name: del.Name, LiveIn: names})
 	}
 	// Concrete environment deletions with their live-occurrence counts.

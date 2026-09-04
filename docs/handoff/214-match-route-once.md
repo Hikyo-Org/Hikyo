@@ -40,9 +40,11 @@ Immutability and injection boundaries:
 - Malformed request: unchanged `ValidationError.Member` → 400 naming member.
 - Matched route without an operation/registry row: fail-loud internal error →
   uniform 500. It is an impossible contract invariant, never a public 404.
-- `OperationFor` remains for registry inspection. The unvalidated
-  `WithRequestOperation` compatibility helper was removed; its isolation
-  consumer now validates before attaching the row.
+- `OperationFor` was kept for registry inspection at the time; it had no
+  production caller and was removed in #619 (tests use
+  `MatchRequest(req).Operation()`). The unvalidated `WithRequestOperation`
+  compatibility helper was removed; its isolation consumer now validates before
+  attaching the row.
 
 ## Changed files
 

@@ -1100,7 +1100,7 @@ func runValueLifecycle(t *testing.T, db *store.DB, actor service.Actor, who doma
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := revisions.Publish(ctx, actor, sourceScope, []string{staged.VersionID}); err != nil {
+	if _, err := revisions.PublishPlanned(ctx, actor, sourceScope, service.PublishRequest{VersionIDs: []string{staged.VersionID}}); err != nil {
 		t.Fatal(err)
 	}
 	// Rollback and pin lifecycle (#52): restore stages ordinary drafts; pin
@@ -1158,7 +1158,7 @@ func runValueLifecycle(t *testing.T, db *store.DB, actor service.Actor, who doma
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := revisions.Publish(ctx, actor, env, []string{cleared.VersionID}); err != nil {
+		if _, err := revisions.PublishPlanned(ctx, actor, env, service.PublishRequest{VersionIDs: []string{cleared.VersionID}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1246,7 +1246,7 @@ func runValueLifecycle(t *testing.T, db *store.DB, actor service.Actor, who doma
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := revisions.Publish(ctx, actor, sourceScope, []string{cleared.VersionID}); err != nil {
+	if _, err := revisions.PublishPlanned(ctx, actor, sourceScope, service.PublishRequest{VersionIDs: []string{cleared.VersionID}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := keys.Delete(ctx, actor, scope, key.ID); err != nil {

@@ -318,25 +318,6 @@ func newClient(cfg ClientConfig, resolver netpolicy.Resolver, dialer netpolicy.D
 	}}, nil
 }
 
-func NewTestClient(origin, credential string, client *http.Client) (*Client, error) {
-	return newTestClientAt(origin, credential, client, func() time.Time { return time.Now().UTC() })
-}
-
-func newTestClientAt(origin, credential string, client *http.Client, now func() time.Time) (*Client, error) {
-	canonical, err := canonicalOrigin(origin)
-	if err != nil {
-		return nil, err
-	}
-	if err := validateCredential(credential); err != nil {
-		return nil, err
-	}
-	if client == nil || now == nil {
-		return nil, errors.New("github-actions: test client requires HTTP client and clock")
-	}
-	state := &credentialState{pacer: &serialPacer{now: now}, lastUsed: now().UTC()}
-	return &Client{origin: canonical, token: credential, http: client, now: now, credentialState: state}, nil
-}
-
 func canonicalOrigin(raw string) (string, error) {
 	if raw == "" {
 		raw = "https://api.github.com"

@@ -23,7 +23,7 @@ import (
 type staticNetworkResolver []netip.Addr
 
 func (r staticNetworkResolver) LookupNetIP(context.Context, string, string) ([]netip.Addr, error) {
-	return append([]netip.Addr(nil), r...), nil
+	return slices.Clone(r), nil
 }
 
 type recordingNetworkDialer struct{ attempts []string }
@@ -521,4 +521,23 @@ func TestHeaderlessRateExponentSurvivesClientReloadAndSuccessResetsIt(t *testing
 	} else if at, ok := adapter.ProviderRetryAt(err); !ok || !at.Equal(now.Add(time.Minute)) {
 		t.Fatalf("post-success retry=%s,%v want reset +1m", at, ok)
 	}
+}
+
+func NewTestClient(origin, credential string, client *http.Client) (*Client, error) {
+	return newTestClientAt(origin, credential, client, func() time.Time { return time.Now().UTC() })
+}
+
+func newTestClientAt(origin, credential string, client *http.Client, now func() time.Time) (*Client, error) {
+	canonical, err := canonicalOrigin(origin)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateCredential(credential); err != nil {
+		return nil, err
+	}
+	if client == nil || now == nil {
+		return nil, errors.New("github-actions: test client requires HTTP client and clock")
+	}
+	state := &credentialState{pacer: &serialPacer{now: now}, lastUsed: now().UTC()}
+	return &Client{origin: canonical, token: credential, http: client, now: now, credentialState: state}, nil
 }

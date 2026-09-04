@@ -40,7 +40,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -204,7 +204,7 @@ func (c *Config) TargetNames() []string {
 	for n := range c.Targets {
 		names = append(names, n)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	return names
 }
 

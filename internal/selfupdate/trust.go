@@ -99,10 +99,11 @@ type releaseCandidate struct {
 	PublicKey string `json:"public_key"`
 }
 
+// legacySignatureBundle is the cosign `--new-bundle-format=false` bundle the
+// release ceremony emits. Only the signature is read; the certificate and Rekor
+// entry it also carries are not consulted.
 type legacySignatureBundle struct {
-	Base64Signature string          `json:"base64Signature"`
-	Cert            string          `json:"cert,omitempty"`
-	RekorBundle     json.RawMessage `json:"rekorBundle,omitempty"`
+	Base64Signature string `json:"base64Signature"`
 }
 
 type verificationState struct {

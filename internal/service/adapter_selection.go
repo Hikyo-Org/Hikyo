@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"maps"
 	"path"
 	"slices"
 
@@ -82,11 +83,7 @@ func resolveKeySelection(catalogue []store.CatalogueKey, explicit []string, sele
 			chosen[key.ID] = struct{}{}
 		}
 	}
-	out := make([]string, 0, len(chosen))
-	for id := range chosen {
-		out = append(out, id)
-	}
-	slices.Sort(out)
+	out := slices.Sorted(maps.Keys(chosen))
 	if len(out) == 0 {
 		return nil, fmt.Errorf("%w: key selection resolved to no keys; a target needs an explicit non-empty subset", domain.ErrInvalid)
 	}

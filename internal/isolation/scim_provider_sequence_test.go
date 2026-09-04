@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 
@@ -404,12 +405,12 @@ func assertDiscoveryTrio(t *testing.T, call scimCall) {
 			t.Fatalf("schema %s carries no attribute definitions; the document is the closed truth, not a URI list", id)
 		}
 	}
-	sort.Strings(ids)
+	slices.Sort(ids)
 	// The two core schemas plus the enterprise extension ResourceTypes declares
 	// on User — a binding may name an extension attribute as its subject source,
 	// and this document is the only place a connector can read that it exists.
 	want := []string{scimproto.SchemaGroup, scimproto.SchemaUser, scimproto.SchemaEnterpriseExt}
-	sort.Strings(want)
+	slices.Sort(want)
 	if strings.Join(ids, " ") != strings.Join(want, " ") {
 		t.Fatalf("Schemas must be exactly %v, got %v", want, ids)
 	}
@@ -1224,11 +1225,7 @@ func jsonShape(v any) string {
 func writeJSONShape(b *strings.Builder, v any) {
 	switch t := v.(type) {
 	case map[string]any:
-		keys := make([]string, 0, len(t))
-		for k := range t {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
+		keys := slices.Sorted(maps.Keys(t))
 		b.WriteByte('{')
 		for i, k := range keys {
 			if i > 0 {
@@ -1335,7 +1332,7 @@ func runSCIMDeclaredExtensions(t *testing.T, db *store.DB) {
 	for _, v := range got {
 		names = append(names, v.(string))
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	if len(names) != 2 || names[0] != acme || names[1] != scimproto.SchemaUser {
 		t.Fatalf("the rendered schemas must be the core one plus the declared extension, got %v", names)
 	}

@@ -305,8 +305,9 @@ func runOperator(ctx context.Context, name string, args []string,
 		log.Warn(w)
 	}
 	terminalSession, terminalError := disclose.OpenTerminalSession()
-	defer terminalSession.Close()
-	if err := run(ctx, cfg, log, args, os.Stderr, terminalSession, terminalError); err != nil {
+	err = run(ctx, cfg, log, args, os.Stderr, terminalSession, terminalError)
+	_ = terminalSession.Close()
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "hikyo %s: %v\n", name, err)
 		return 1
 	}

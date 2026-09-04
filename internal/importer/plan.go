@@ -1,9 +1,10 @@
 package importer
 
 import (
+	"cmp"
 	"fmt"
+	"maps"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
@@ -125,27 +126,6 @@ type Plan struct {
 	AlreadyDeclared []string
 }
 
-// PlannedNames is the rename half of the plan, run on its own.
-//
-// It exists because phase 1 has a chicken-and-egg: the server mints an
-// occurrence token per (key, environment) INCLUDING for keys it does not
-// declare yet, and it cannot do that without knowing which names the run will
-// propose — while the names come from a transform that happens client-side.
-// So the transform runs first, its output is what the presence read asks
-// about, and BuildPlan runs the same pass again over the answer. One function,
-// called twice, rather than two that have to agree.
-func PlannedNames(in PlanInput) ([]string, error) {
-	candidates, err := PlannedCandidates(in)
-	if err != nil {
-		return nil, err
-	}
-	names := make([]string, 0, len(candidates))
-	for _, candidate := range candidates {
-		names = append(names, candidate.Name)
-	}
-	return names, nil
-}
-
 // PlannedCandidates performs the pre-presence half of planning. Keeping the
 // declaration choice here and in BuildPlan behind desiredDeclaration prevents
 // the token intent from drifting from the bundle it binds.
@@ -231,8 +211,8 @@ func mapRecords(source string, records []Record, template *Template) ([]mappedRe
 			"%d post-transform collision(s); resolve each with an explicit rename in the mapping template: %s",
 			len(collisions), strings.Join(collisions, "; "))
 	}
-	sort.SliceStable(rows, func(i, j int) bool { return rows[i].target < rows[j].target })
-	sort.SliceStable(renames, func(i, j int) bool { return renames[i].From < renames[j].From })
+	slices.SortStableFunc(rows, func(a, b mappedRecord) int { return cmp.Compare(a.target, b.target) })
+	slices.SortStableFunc(renames, func(a, b Rename) int { return cmp.Compare(a.From, b.From) })
 	return rows, renames, nil
 }
 
@@ -456,7 +436,7 @@ func BuildProjectPlan(in ProjectPlanInput) (*ProjectPlan, error) {
 			}
 		}
 	}
-	sort.SliceStable(renames, func(i, j int) bool { return renames[i].From < renames[j].From })
+	slices.SortStableFunc(renames, func(a, b Rename) int { return cmp.Compare(a.From, b.From) })
 
 	// The project pass: one reconciled decision per key, in sorted target order.
 	// Folder is computed per environment (root-collapse is a per-source fact) and
@@ -507,11 +487,7 @@ func BuildProjectPlan(in ProjectPlanInput) (*ProjectPlan, error) {
 		}
 	}
 
-	sortedDeclared := make([]string, 0, len(declaredNames))
-	for name := range declaredNames {
-		sortedDeclared = append(sortedDeclared, name)
-	}
-	slices.Sort(sortedDeclared)
+	sortedDeclared := slices.Sorted(maps.Keys(declaredNames))
 	plan.NearMisses = NearMisses(importedNames, sortedDeclared)
 
 	// The per-environment pass: buckets, values, occurrences and trim preflight.
@@ -1000,7 +976,7 @@ func folderRows(m map[string]string) []FolderMapping {
 	for source, target := range m {
 		out = append(out, FolderMapping{SourcePath: source, TargetPath: target})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].SourcePath < out[j].SourcePath })
+	slices.SortFunc(out, func(a, b FolderMapping) int { return cmp.Compare(a.SourcePath, b.SourcePath) })
 	return out
 }
 

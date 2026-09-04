@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -855,6 +855,6 @@ func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 	current.SyncStatus = "converging"
 	current.FailureNames = nil
 	current.AuthorityPrincipalID = m.AuthorityPrincipalID
-	sort.Strings(m.Target.KeyIDs)
+	slices.Sort(m.Target.KeyIDs)
 	return AdapterTargetUpdateResult{Target: current, Enqueue: enqueued[0], PreviousAuthorityPrincipalID: previousAuthority, AuthorityPrincipalID: m.AuthorityPrincipalID}, nil
 }

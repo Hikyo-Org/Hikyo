@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"flag"
 	"fmt"
@@ -107,7 +108,7 @@ func runProviderCreate(ctx context.Context, ios IO, args []string) error {
 
 	input := apigen.SamlProviderInput{
 		AllowEmailNameid:  allowEmailNameID,
-		DisplayName:       firstNonEmpty(displayName, name),
+		DisplayName:       cmp.Or(displayName, name),
 		Enabled:           true,
 		EntityId:          entityID,
 		ForceSignRequests: forceSignRequests,

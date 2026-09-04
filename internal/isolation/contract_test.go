@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
-	"sort"
 	"strings"
 	"testing"
 
@@ -116,8 +115,8 @@ func TestContractFormulasMatchTheOperationRegistry(t *testing.T) {
 			want = append(want, string(atom.Cap)+"@"+levelNames[atom.At])
 		}
 		got := op.Formula()
-		sort.Strings(got)
-		sort.Strings(want)
+		slices.Sort(got)
+		slices.Sort(want)
 		if strings.Join(got, ",") != strings.Join(want, ",") {
 			t.Errorf("%s: contract records formula %v, the operation registry evaluates %v — the freeze promise covers behaviour, and this is where the two would silently diverge",
 				id, got, want)

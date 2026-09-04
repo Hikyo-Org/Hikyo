@@ -8,9 +8,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
-	"sort"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -172,11 +173,7 @@ func publishDeliveryValues(t *testing.T, db *store.DB, env domain.EnvID, values 
 	t.Helper()
 	actor := service.LocalPrincipal(identAdmin)
 	scope := scopeEnv(orgA, prjA1, env)
-	names := make([]string, 0, len(values))
-	for name := range values {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(values))
 	versions := make([]string, 0, len(names))
 	for _, name := range names {
 		staged, err := valueSvc(t, db).Set(t.Context(), actor, scope, name, values[name], nil)

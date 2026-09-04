@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -595,7 +596,7 @@ func establish(ios IO, st *State, target, name, trustFile string) (TrustEntry, e
 	// channel as the credential. No terminal is involved and none is needed —
 	// an attacker who cannot read that channel cannot redirect the credential,
 	// and one who can already holds it.
-	if bundlePath := firstNonEmpty(trustFile, ios.Env.Getenv("HIKYO_TRUST_BUNDLE")); bundlePath != "" {
+	if bundlePath := cmp.Or(trustFile, ios.Env.Getenv("HIKYO_TRUST_BUNDLE")); bundlePath != "" {
 		raw, err := os.ReadFile(bundlePath)
 		if err != nil {
 			return TrustEntry{}, failf(ExitRefused, "reading the trust bundle: %v", err)
@@ -608,7 +609,7 @@ func establish(ios IO, st *State, target, name, trustFile string) (TrustEntry, e
 		if err != nil {
 			return TrustEntry{}, err
 		}
-		entry := TrustEntry{Name: firstNonEmpty(name, bundle.Name), Origin: origin, SPKIPin: bundle.SPKIPin}
+		entry := TrustEntry{Name: cmp.Or(name, bundle.Name), Origin: origin, SPKIPin: bundle.SPKIPin}
 		if entry.Name == "" {
 			return TrustEntry{}, failf(ExitRefused, "trust bundle %s names no instance reference", bundlePath)
 		}
@@ -937,7 +938,7 @@ func runEstablishCredential(ctx context.Context, ios IO, args []string) error {
 	// failure.
 	fmt.Fprintf(ios.Stderr,
 		"credential established at %s. It creates no session: log in with\n    hikyo login %s --local --as %s\n",
-		entry.Origin, entry.Origin, firstNonEmpty(as, "<username>"))
+		entry.Origin, entry.Origin, cmp.Or(as, "<username>"))
 	return nil
 }
 
@@ -1257,7 +1258,7 @@ func runContext(_ context.Context, ios IO, args []string) error {
 		if err != nil {
 			return err
 		}
-		names := sortedKeys(all)
+		names := slices.Sorted(maps.Keys(all))
 		rows := make([][]string, 0, len(names))
 		list := make([]Context, 0, len(names))
 		for _, n := range names {
@@ -1685,15 +1686,6 @@ func first(vs []string) string {
 	return vs[0]
 }
 
-func firstNonEmpty(vs ...string) string {
-	for _, v := range vs {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
-}
-
 func boolString(b bool) string {
 	if b {
 		return "yes"
@@ -1704,6 +1696,3 @@ func boolString(b bool) string {
 // sortedKeys gives list output a stable order, which is what makes the
 // golden fixtures meaningful: map iteration order would make the same state
 // render differently on every run.
-func sortedKeys[V any](m map[string]V) []string {
-	return slices.Sorted(maps.Keys(m))
-}

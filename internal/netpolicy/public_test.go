@@ -18,7 +18,7 @@ type staticResolver struct {
 
 func (r *staticResolver) LookupNetIP(context.Context, string, string) ([]netip.Addr, error) {
 	r.calls++
-	return append([]netip.Addr(nil), r.addresses...), r.err
+	return slices.Clone(r.addresses), r.err
 }
 
 type sequenceResolver struct {
@@ -29,7 +29,7 @@ type sequenceResolver struct {
 func (r *sequenceResolver) LookupNetIP(context.Context, string, string) ([]netip.Addr, error) {
 	answer := r.answers[r.calls]
 	r.calls++
-	return append([]netip.Addr(nil), answer...), nil
+	return slices.Clone(answer), nil
 }
 
 type recordingDialer struct {

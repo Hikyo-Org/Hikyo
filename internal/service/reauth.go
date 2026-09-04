@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -249,8 +248,7 @@ func CanonicalKeySet(keyIDs []string) string {
 	if len(keyIDs) == 0 {
 		return ""
 	}
-	sorted := append([]string(nil), keyIDs...)
-	sort.Strings(sorted)
+	sorted := slices.Sorted(slices.Values(keyIDs))
 	return strings.Join(sorted, "\n")
 }
 
@@ -260,8 +258,7 @@ func CanonicalEnvironmentSet(environmentIDs []string) string {
 	if len(environmentIDs) == 0 {
 		return ""
 	}
-	sorted := append([]string(nil), environmentIDs...)
-	sort.Strings(sorted)
+	sorted := slices.Sorted(slices.Values(environmentIDs))
 	sorted = slices.Compact(sorted)
 	return strings.Join(sorted, "\n")
 }

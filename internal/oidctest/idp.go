@@ -9,6 +9,7 @@
 package oidctest
 
 import (
+	"cmp"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
@@ -205,13 +206,6 @@ func (p *IdP) Issuer() string {
 // Close shuts the server down.
 func (p *IdP) Close() { p.Server.Close() }
 
-// MintCode registers an authorization code the token endpoint will honour.
-func (p *IdP) MintCode(code string, c Code) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.codes[code] = c
-}
-
 // RegisterRedirectURI adds one exact callback URI to the fake provider's
 // server-side client registration. Keeping this explicit makes the fixture
 // exercise the same anti-open-redirect boundary as a real provider.
@@ -365,13 +359,15 @@ func (p *IdP) authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	code := randomToken()
-	p.MintCode(code, Code{
+	p.mu.Lock()
+	p.codes[code] = Code{
 		ClientID:      q.Get("client_id"),
 		RedirectURI:   redirectURI,
 		Nonce:         q.Get("nonce"),
 		CodeChallenge: q.Get("code_challenge"),
-		Claims:        map[string]any{"sub": firstNonEmpty(q.Get("sub"), "user")},
-	})
+		Claims:        map[string]any{"sub": cmp.Or(q.Get("sub"), "user")},
+	}
+	p.mu.Unlock()
 	rq := u.Query()
 	rq.Set("code", code)
 	rq.Set("state", q.Get("state"))
@@ -476,15 +472,6 @@ func (p *IdP) signJWT(claims map[string]any) (string, error) {
 		return "", err
 	}
 	return signing + "." + sig, nil
-}
-
-func firstNonEmpty(vals ...string) string {
-	for _, v := range vals {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }
 
 func oauthError(w http.ResponseWriter, code string) {

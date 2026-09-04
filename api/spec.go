@@ -500,23 +500,12 @@ func ValidateResponse(r *http.Request, status int, header http.Header, body []by
 		},
 		Status: status,
 		Header: header,
-		Body:   readCloser(body),
+		Body:   io.NopCloser(bytes.NewReader(body)),
 		Options: &openapi3filter.Options{
 			AuthenticationFunc:    openapi3filter.NoopAuthenticationFunc,
 			IncludeResponseStatus: true,
 		},
 	})
-}
-
-// OperationFor reports the full contract row for the request. Artifact
-// admission consumes this row at runtime, so the same embedded OpenAPI bytes
-// drive both request validation and bearer-class eligibility.
-func OperationFor(r *http.Request) (Operation, bool) {
-	resolved, err := resolveRequest(r)
-	if err != nil {
-		return Operation{}, false
-	}
-	return resolved.op, true
 }
 
 // jsonPointerInReason recovers the offending member from a schema error.

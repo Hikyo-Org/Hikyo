@@ -4,7 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
@@ -404,11 +405,7 @@ func sameRevisionKeys(a, b map[string]int64) bool {
 }
 
 func changedRevision(a, b map[string]int64) (string, bool) {
-	ids := make([]string, 0, len(a))
-	for id := range a {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
+	ids := slices.Sorted(maps.Keys(a))
 	for _, id := range ids {
 		if a[id] != b[id] {
 			return id, true

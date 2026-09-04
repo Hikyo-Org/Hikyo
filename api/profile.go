@@ -3,7 +3,8 @@ package api
 import (
 	"errors"
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -82,11 +83,7 @@ func walkSchemaRules(node any) []error {
 					"profile: %s declares %s and `enum` together — an open enum must not constrain its values, or a newer server's value is rejected",
 					path, ExtOpenEnum))
 			}
-			keys := make([]string, 0, len(v))
-			for k := range v {
-				keys = append(keys, k)
-			}
-			sort.Strings(keys)
+			keys := slices.Sorted(maps.Keys(v))
 			for _, k := range keys {
 				walk(v[k], path+"."+k)
 			}

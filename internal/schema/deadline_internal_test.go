@@ -21,7 +21,7 @@ func TestRunWithDeadlineAbandonsAnOverrun(t *testing.T) {
 	defer close(block) // let the abandoned goroutine finish before the test ends
 
 	start := time.Now()
-	err, outcome := runWithDeadline(func() error {
+	outcome, err := runWithDeadline(func() error {
 		<-block
 		return nil
 	}, time.Millisecond)
@@ -35,9 +35,9 @@ func TestRunWithDeadlineAbandonsAnOverrun(t *testing.T) {
 
 func TestRunWithDeadlineReturnsTheResultWhenItFits(t *testing.T) {
 	want := errors.New("verdict")
-	err, outcome := runWithDeadline(func() error { return want }, time.Minute)
+	outcome, err := runWithDeadline(func() error { return want }, time.Minute)
 	if outcome != evalCompleted || !errors.Is(err, want) {
-		t.Fatalf("runWithDeadline = (%v, %v), want the evaluation's own error", err, outcome)
+		t.Fatalf("runWithDeadline = (%v, %v), want the evaluation's own error", outcome, err)
 	}
 }
 
@@ -79,7 +79,7 @@ func saturateEvaluationSlots(t *testing.T) func() {
 		drainEvaluationSlots(t)
 	}
 	for i := range MaxConcurrentJSONSchemaEvaluations {
-		if _, outcome := runWithDeadline(func() error { <-block; return nil }, time.Millisecond); outcome != evalOverran {
+		if outcome, _ := runWithDeadline(func() error { <-block; return nil }, time.Millisecond); outcome != evalOverran {
 			release()
 			t.Fatalf("saturating evaluation %d ended as %v, want an overrun", i, outcome)
 		}
@@ -99,7 +99,7 @@ func TestEvaluationConcurrencyIsBounded(t *testing.T) {
 	// to answer; try-acquire answers now. Every slot is provably still held
 	// while this runs — nothing has released `block` yet.
 	start := time.Now()
-	_, outcome := runWithDeadline(func() error { return nil }, time.Minute)
+	outcome, _ := runWithDeadline(func() error { return nil }, time.Minute)
 	waited := time.Since(start)
 	if outcome != evalRefused {
 		release()
@@ -112,7 +112,7 @@ func TestEvaluationConcurrencyIsBounded(t *testing.T) {
 	}
 	// A slot frees only when the evaluation FINISHES.
 	release()
-	if _, outcome := runWithDeadline(func() error { return nil }, time.Second); outcome != evalCompleted {
+	if outcome, _ := runWithDeadline(func() error { return nil }, time.Second); outcome != evalCompleted {
 		t.Fatalf("slots were never released after the evaluations completed: %v", outcome)
 	}
 	drainEvaluationSlots(t)

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -329,7 +329,7 @@ func (r *HikyoSecretReconciler) deliver(
 	// All-or-nothing: any mapped key arriving presence-only refuses the whole
 	// sync — no partial write (§ 0.4 refusal). Retain the existing Secret.
 	if len(presenceOnly) > 0 {
-		sort.Strings(presenceOnly)
+		slices.Sort(presenceOnly)
 		msg := fmt.Sprintf("undelivered (presence-only) mapped keys: %s. Enable the project's machine-reveal opt-in (hikyo project-settings machine-reveal set --enabled true) and grant the machine principal `reveal` on the environment to deliver their values, or set projection: config-only",
 			strings.Join(presenceOnly, ", "))
 		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonUndeliveredSecrets, "%s", msg)
@@ -339,12 +339,12 @@ func (r *HikyoSecretReconciler) deliver(
 
 	// KeysMissing is informational: converge with what is present, drop the rest.
 	if len(missing) > 0 {
-		sort.Strings(missing)
+		slices.Sort(missing)
 		msg := fmt.Sprintf("mapped source keys absent from the manifest (dropped): %s", strings.Join(missing, ", "))
 		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonKeysMissing, "%s", msg)
 		r.setCond(cr, hikyov1.ConditionDelivery, metav1.ConditionFalse, hikyov1.ReasonKeysMissing, msg)
 	} else if len(envSkip) > 0 {
-		sort.Strings(envSkip)
+		slices.Sort(envSkip)
 		msg := fmt.Sprintf("delivered, but these data keys are not valid env identifiers and envFrom will skip them: %s", strings.Join(envSkip, ", "))
 		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonEnvFromSkip, "%s", msg)
 		// Warning, Synced still True — a delivered caveat, not a refusal.

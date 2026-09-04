@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -155,7 +155,7 @@ func Pending(stateDir string) (records []OfflineRecord, handles []string, err er
 		}
 		names = append(names, e.Name())
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 
 	for _, n := range names {
 		b, err := os.ReadFile(filepath.Join(dir, n))

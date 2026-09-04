@@ -92,12 +92,12 @@ func TestWizardSingleEnvMatchesFlagRun(t *testing.T) {
 	flagState := ServerState{Project: "prj_1", Environment: "env_prod", DefinitionsRevision: 7}
 	flagIn := PlanInput{Source: k8sSource, Records: res.Records, Skipped: res.Skipped,
 		Scope: res.Scope, FileDigest: digest, State: flagState}
-	cands, err := PlannedNames(flagIn)
+	cands, err := PlannedCandidates(flagIn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range cands {
-		flagIn.State.Keys = append(flagIn.State.Keys, KeyState{Name: name, Token: "v1:undeclared-" + name})
+	for _, candidate := range cands {
+		flagIn.State.Keys = append(flagIn.State.Keys, KeyState{Name: candidate.Name, Token: "v1:undeclared-" + candidate.Name})
 	}
 	flag, err := BuildPlan(flagIn)
 	if err != nil {

@@ -1,13 +1,13 @@
 package compose
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
@@ -167,12 +167,6 @@ func (r PublishResult) CandidateActive() bool {
 	return r.Phase == PublishPhaseCollecting || r.Phase == PublishPhaseComplete
 }
 
-// NeedsCleanup reports whether the next lock holder must run the normal
-// Recover/GC path before relying on unreferenced candidates being gone.
-func (r PublishResult) NeedsCleanup() bool {
-	return r.Phase != PublishPhaseComplete
-}
-
 // errLockReleased is returned by every RenderLock verb — including a second
 // Close — once the lock has been released: the capability is spent and using it
 // would mutate the runtime dir without holding the serialization it stands for.
@@ -244,7 +238,7 @@ func (rl *RenderLock) Publish(plan PublishPlan) (PublishResult, error) {
 		targets = append(targets, target)
 		stamps[target] = TargetStamp(plan.Keys, target, content)
 	}
-	sort.Strings(targets)
+	slices.Sort(targets)
 
 	active, err := CurrentStamps(rl.projectDir)
 	if err != nil {
@@ -525,11 +519,7 @@ func (rl *RenderLock) CommitStamps(stamps map[string]string) error {
 // renderManagedBlock builds the managed block bytes (LF line endings), targets
 // sorted for determinism.
 func renderManagedBlock(stamps map[string]string) []byte {
-	targets := make([]string, 0, len(stamps))
-	for t := range stamps {
-		targets = append(targets, t)
-	}
-	sort.Strings(targets)
+	targets := slices.Sorted(maps.Keys(stamps))
 
 	var b strings.Builder
 	b.WriteString(managedBegin)
@@ -647,7 +637,7 @@ func spliceManagedBlock(raw, block []byte) ([]byte, error) {
 func splitKeepEnds(b []byte) [][]byte {
 	var lines [][]byte
 	start := 0
-	for i := 0; i < len(b); i++ {
+	for i := range b {
 		if b[i] == '\n' {
 			lines = append(lines, b[start:i+1])
 			start = i + 1
@@ -773,7 +763,7 @@ func (rl *RenderLock) GC(runtimeDir string, keep int) error {
 		superseded[target] = append(superseded[target], gen{name: name, mtime: info.ModTime().UnixNano()})
 	}
 	for _, generations := range superseded {
-		sort.Slice(generations, func(i, j int) bool { return generations[i].mtime > generations[j].mtime })
+		slices.SortFunc(generations, func(a, b gen) int { return cmp.Compare(b.mtime, a.mtime) })
 		for i, g := range generations {
 			if i < keep {
 				continue

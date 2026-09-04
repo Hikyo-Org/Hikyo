@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"sort"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
@@ -944,7 +943,7 @@ func requestView(req store.ApprovalRequest) ApprovalRequestView {
 // sortedUnique returns the sorted, de-duplicated set.
 func sortedUnique(in []string) []string {
 	out := slices.Clone(in)
-	sort.Strings(out)
+	slices.Sort(out)
 	return slices.Compact(out)
 }
 

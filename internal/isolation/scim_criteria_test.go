@@ -3,7 +3,7 @@ package isolation
 import (
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -207,7 +207,7 @@ func TestSCIMCriteriaMatrixIsComplete(t *testing.T) {
 			}
 		}
 	}
-	sort.Strings(missing)
+	slices.Sort(missing)
 	for _, m := range missing {
 		t.Errorf("acceptance clause %s has no fixture; the ADR makes that a CI failure of the matrix itself", m)
 	}

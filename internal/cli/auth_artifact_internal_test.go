@@ -210,7 +210,6 @@ func TestAuthenticatedTargetReturnsExplicitMachineCredential(t *testing.T) {
 		t.Fatal(err)
 	}
 	ios := IO{Env: Env{
-		StateD: stateDir,
 		Getenv: func(key string) string {
 			if key == "HIKYO_TOKEN" {
 				return "hik_1_machine-secret"
@@ -289,7 +288,6 @@ func authTargetFixture(t *testing.T) (*State, IO) {
 		t.Fatal(err)
 	}
 	ios := IO{Env: Env{
-		StateD: stateDir,
 		Getenv: func(key string) string {
 			if key == "HIKYO_TOKEN" {
 				return "hik_1_machine-secret"
@@ -309,7 +307,7 @@ func TestHumanOnlyVerbRefusesMachineCredentialBeforeNetwork(t *testing.T) {
 	var stderr bytes.Buffer
 	ios := IO{
 		Stdin: strings.NewReader(""), Stdout: &bytes.Buffer{}, Stderr: &stderr, Workdir: t.TempDir(),
-		Env: Env{StateD: stateDir, Getenv: func(key string) string {
+		Env: Env{Getenv: func(key string) string {
 			if key == "HIKYO_STATE_DIR" {
 				return stateDir
 			}
@@ -341,7 +339,7 @@ func TestAdapterReauthRefusesMachineCredentialBeforeNetwork(t *testing.T) {
 	var stderr bytes.Buffer
 	ios := IO{
 		Stdin: strings.NewReader(""), Stdout: &bytes.Buffer{}, Stderr: &stderr, Workdir: t.TempDir(),
-		Env: Env{StateD: stateDir, Getenv: func(key string) string {
+		Env: Env{Getenv: func(key string) string {
 			if key == "HIKYO_STATE_DIR" {
 				return stateDir
 			}

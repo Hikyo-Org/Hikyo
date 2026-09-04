@@ -419,7 +419,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	guard.add(func() error { return resources.closeListener(operationalLn) })
 
 	var tlsReloader *certReloader
-	var publicLn net.Listener = ln
+	publicLn := ln
 	if cfg.TLSCertFile != "" {
 		tlsReloader, err = newCertReloader(cfg.TLSCertFile, cfg.TLSKeyFile, log, 10*time.Second)
 		if err != nil {

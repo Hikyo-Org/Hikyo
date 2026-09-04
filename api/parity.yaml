@@ -262,7 +262,7 @@ operations:
   # scim
   listScimBindings:            {webui: scim}
   createScimBinding:           {webui: scim}
-  getScimBinding:              {webui: scim}
+  getScimBinding:              {webui: scim, via: [listScimBindings]}
   deleteScimBinding:           {webui: scim}
   listScimMappings:            {webui: scim}
   createScimMapping:           {webui: scim}

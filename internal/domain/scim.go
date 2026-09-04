@@ -2,7 +2,7 @@ package domain
 
 import (
 	"errors"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -54,7 +54,7 @@ func SCIMAttentionStates() []SCIMAttention {
 		AttentionManualGrantsRemain, AttentionInertMapping,
 		AttentionStale, AttentionPostRestore,
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	slices.Sort(out)
 	return out
 }
 
@@ -82,7 +82,7 @@ func SCIMCauses() []SCIMCause {
 		CauseGroupDeleted, CauseMappingDelete, CauseBindingDelete,
 		CauseReactivation,
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	slices.Sort(out)
 	return out
 }
 

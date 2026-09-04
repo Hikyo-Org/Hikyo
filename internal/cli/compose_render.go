@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -355,6 +355,6 @@ func renderRefusalMessages(refusals []compose.RenderRefusal) []string {
 		}
 		messages = append(messages, fmt.Sprintf("%s: %s: %s", refusal.Target, refusal.Key, detail))
 	}
-	sort.Strings(messages)
+	slices.Sort(messages)
 	return messages
 }

@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
-	"sort"
+	"slices"
 )
 
 // Client-side key material for the Compose delivery path (compose-integration
@@ -227,13 +227,5 @@ func CanonicalStringSet(items []string) []string {
 	if len(items) == 0 {
 		return nil
 	}
-	cp := append([]string(nil), items...)
-	sort.Strings(cp)
-	out := cp[:0]
-	for i, s := range cp {
-		if i == 0 || s != cp[i-1] {
-			out = append(out, s)
-		}
-	}
-	return out
+	return slices.Compact(slices.Sorted(slices.Values(items)))
 }

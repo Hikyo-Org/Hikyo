@@ -138,23 +138,6 @@ func TestPublishMaterializesCommitsAndCollects(t *testing.T) {
 	}
 }
 
-func TestPublishResultNeedsCleanupFollowsPhase(t *testing.T) {
-	for _, phase := range []PublishPhase{
-		PublishPhaseMaterializing,
-		PublishPhaseSwitching,
-		PublishPhaseCollecting,
-		PublishPhaseComplete,
-	} {
-		t.Run(string(phase), func(t *testing.T) {
-			result := PublishResult{Phase: phase}
-			want := phase != PublishPhaseComplete
-			if got := result.NeedsCleanup(); got != want {
-				t.Fatalf("NeedsCleanup() = %t, want %t", got, want)
-			}
-		})
-	}
-}
-
 func TestWriteGenerationRejectsBadTarget(t *testing.T) {
 	_, rt := dirs(t)
 	keys := testKeys(t)
@@ -990,4 +973,10 @@ func countOccur(s, sub string) int {
 		}
 	}
 	return n
+}
+
+// NeedsCleanup reports whether the next lock holder must run the normal
+// Recover/GC path before relying on unreferenced candidates being gone.
+func (r PublishResult) NeedsCleanup() bool {
+	return r.Phase != PublishPhaseComplete
 }

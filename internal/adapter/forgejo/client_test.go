@@ -23,7 +23,7 @@ import (
 type staticNetworkResolver []netip.Addr
 
 func (r staticNetworkResolver) LookupNetIP(context.Context, string, string) ([]netip.Addr, error) {
-	return append([]netip.Addr(nil), r...), nil
+	return slices.Clone(r), nil
 }
 
 type recordingNetworkDialer struct{ attempts []string }
@@ -213,4 +213,18 @@ func TestSecretPaginationRefusesAtLedgerSafetyBound(t *testing.T) {
 	if requests != 200 {
 		t.Fatalf("page requests = %d, want 200", requests)
 	}
+}
+
+// NewTestClient permits a test transport while retaining the production
+// request construction, response cap, no-variable-read registry, and error
+// sanitization. Production callers use NewClient.
+func NewTestClient(origin, credential string, client *http.Client) (*Client, error) {
+	canonical, err := canonicalOrigin(origin)
+	if err != nil {
+		return nil, err
+	}
+	if credential == "" || client == nil {
+		return nil, errors.New("forgejo: test client requires credential and HTTP client")
+	}
+	return &Client{origin: canonical, token: credential, http: client}, nil
 }

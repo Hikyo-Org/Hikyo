@@ -3,7 +3,7 @@
 // drift between producer and consumer.
 package bench
 
-import "sort"
+import "slices"
 
 // HarnessVersion is bumped when the measurement method or the artifact schema
 // changes, so a stale artifact fails the version match in the validation test.
@@ -36,8 +36,7 @@ func Percentile(millis []float64, p float64) float64 {
 	if len(millis) == 0 {
 		return 0
 	}
-	sorted := append([]float64(nil), millis...)
-	sort.Float64s(sorted)
+	sorted := slices.Sorted(slices.Values(millis))
 	if p <= 0 {
 		return sorted[0]
 	}

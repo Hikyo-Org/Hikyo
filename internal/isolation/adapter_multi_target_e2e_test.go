@@ -196,7 +196,7 @@ func runMultiTargetSync(t *testing.T, db *store.DB) {
 		if err != nil {
 			t.Fatalf("stage: %v", err)
 		}
-		if _, err := revisions.Publish(ctx, publisher, envScope, []string{staged.VersionID}); err != nil {
+		if _, err := revisions.PublishPlanned(ctx, publisher, envScope, service.PublishRequest{VersionIDs: []string{staged.VersionID}}); err != nil {
 			t.Fatalf("publish: %v", err)
 		}
 	}

@@ -105,7 +105,7 @@ func planFrom(t *testing.T, fixture string, st ServerState, tmpl *Template) (*Pl
 		Source: k8sSource, Records: res.Records, Skipped: res.Skipped,
 		Scope: res.Scope, FileDigest: "sha256:fixture", State: st, Template: tmpl,
 	}
-	candidates, err := PlannedNames(in)
+	candidates, err := PlannedCandidates(in)
 	if err != nil {
 		return nil, err
 	}
@@ -113,9 +113,9 @@ func planFrom(t *testing.T, fixture string, st ServerState, tmpl *Template) (*Pl
 	for _, k := range st.Keys {
 		declared[k.Name] = true
 	}
-	for _, name := range candidates {
-		if !declared[name] {
-			in.State.Keys = append(in.State.Keys, KeyState{Name: name, Token: "v1:undeclared-" + name})
+	for _, candidate := range candidates {
+		if !declared[candidate.Name] {
+			in.State.Keys = append(in.State.Keys, KeyState{Name: candidate.Name, Token: "v1:undeclared-" + candidate.Name})
 		}
 	}
 	return BuildPlan(in)
@@ -133,7 +133,7 @@ func envFrom(t *testing.T, fixture, envID string, keys []KeyState, tmpl *Templat
 		t.Fatal(err)
 	}
 	in := PlanInput{Source: k8sSource, Records: res.Records, Template: tmpl}
-	candidates, err := PlannedNames(in)
+	candidates, err := PlannedCandidates(in)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,8 @@ func envFrom(t *testing.T, fixture, envID string, keys []KeyState, tmpl *Templat
 		declared[k.Name] = true
 	}
 	state := append([]KeyState{}, keys...)
-	for _, name := range candidates {
+	for _, candidate := range candidates {
+		name := candidate.Name
 		if !declared[name] {
 			state = append(state, KeyState{Name: name, Token: "v1:undeclared-" + envID + "-" + name})
 		}
@@ -610,12 +611,12 @@ func TestRootCollapseIsTheK8sProvisionOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	in := PlanInput{Source: sopsSource, Records: res.Records, Scope: res.Scope, State: state()}
-	names, err := PlannedNames(in)
+	candidates, err := PlannedCandidates(in)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range names {
-		in.State.Keys = append(in.State.Keys, KeyState{Name: name, Token: "v1:u-" + name})
+	for _, candidate := range candidates {
+		in.State.Keys = append(in.State.Keys, KeyState{Name: candidate.Name, Token: "v1:u-" + candidate.Name})
 	}
 	plan, err := BuildPlan(in)
 	if err != nil {

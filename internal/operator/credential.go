@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/utils/ptr"
 
 	hikyov1 "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1"
 )
@@ -36,7 +37,7 @@ func (m clientsetMinter) Mint(ctx context.Context, namespace, serviceAccount, au
 			// (ADR § Identity). No boundObjectRef: the operator holds the token in
 			// memory for one fetch, and the server-side caps on token age bound it.
 			Audiences:         []string{audience},
-			ExpirationSeconds: ptrInt64(tokenExpirationSeconds),
+			ExpirationSeconds: ptr.To[int64](tokenExpirationSeconds),
 		},
 	}
 	out, err := m.cs.CoreV1().ServiceAccounts(namespace).CreateToken(ctx, serviceAccount, tr, metav1.CreateOptions{})
@@ -45,8 +46,6 @@ func (m clientsetMinter) Mint(ctx context.Context, namespace, serviceAccount, au
 	}
 	return out.Status.Token, nil
 }
-
-func ptrInt64(v int64) *int64 { return &v }
 
 // bootstrapToken extracts the bearer credential from a designated bootstrap
 // Secret's data. A missing or empty hikyo-token key means the Secret is not a

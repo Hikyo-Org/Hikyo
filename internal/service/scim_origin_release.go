@@ -4,7 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
@@ -434,11 +435,7 @@ func hasManualOrigin(origins []authz.Origin) bool {
 }
 
 func joinSorted(set map[string]bool) string {
-	out := make([]string, 0, len(set))
-	for k := range set {
-		out = append(out, k)
-	}
-	sort.Strings(out)
+	out := slices.Sorted(maps.Keys(set))
 	joined := ""
 	for i, s := range out {
 		if i > 0 {

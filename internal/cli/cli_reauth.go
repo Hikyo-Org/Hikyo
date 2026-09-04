@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -134,11 +135,7 @@ func runCLIReauthHandoff(ctx context.Context, client *Client, state *State, arti
 }
 
 func exactCallbackQuery(values url.Values, state string) bool {
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	slices.Sort(keys)
+	keys := slices.Sorted(maps.Keys(values))
 	return slices.Equal(keys, []string{"code", "state"}) && len(values["code"]) == 1 && values.Get("code") != "" && len(values["state"]) == 1 && values.Get("state") == state
 }
 

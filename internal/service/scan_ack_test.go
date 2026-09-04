@@ -464,3 +464,16 @@ func TestFindingCapFailsClosed(t *testing.T) {
 		t.Errorf("the cap refusal does not name the cap: %v", err)
 	}
 }
+
+// unconsumed reports the count of tokens no finding claimed — surplus, stale,
+// version-skewed, or expired. The caller rejects them by name (ADR §4: a
+// standing pre-authorization is structurally impossible).
+func (a *ackSet) unconsumed() int {
+	n := 0
+	for _, entry := range a.entries {
+		if !entry.used {
+			n++
+		}
+	}
+	return n
+}

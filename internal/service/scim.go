@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -758,7 +758,7 @@ func sanitizedList(in []string, max int) []string {
 	for _, v := range in {
 		out = append(out, audit.SanitizeFreeText(v))
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	if len(out) > max {
 		out = out[:max]
 	}

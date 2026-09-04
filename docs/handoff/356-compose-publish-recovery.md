@@ -12,6 +12,7 @@ Implementation base: `9a60a39055b4cb6f3b2c5460f70369d346acc130`.
   map means the selection could not be inspected after an uncertain switch
   failure; the contradictory `ActiveKnown` flag is removed.
 - `NeedsCleanup()` derives entirely from `Phase != PublishPhaseComplete`.
+  (Since #619 it lives in the package's test file: no production caller.)
   `CandidateActive()` remains phase-derived, and the redundant `GCComplete()`
   method is removed.
 - Materialization, atomic stamp switching, post-commit recovery, and bounded GC

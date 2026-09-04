@@ -1,8 +1,10 @@
 package importer
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/internal/schema"
@@ -389,7 +391,7 @@ func wizardRenames(host WizardHost, source string, envs []wizardEnv, tmpl *Templ
 			tmpl.Renames = append(tmpl.Renames, Rename{From: from, To: targetOf[from], Transform: TransformAuto})
 		}
 	}
-	sort.Slice(tmpl.Renames, func(i, j int) bool { return tmpl.Renames[i].From < tmpl.Renames[j].From })
+	slices.SortFunc(tmpl.Renames, func(a, b Rename) int { return cmp.Compare(a.From, b.From) })
 	return valuesByKey, manual, nil
 }
 
@@ -439,11 +441,7 @@ func wizardDeclaredSet(host WizardHost, source string, envs []wizardEnv) (map[st
 // byte-identical to a flag run (which records nothing for it).
 func wizardClassType(host WizardHost, valuesByKey map[string][]string, declared map[string]KeyState,
 	tmpl *Template) error {
-	keys := make([]string, 0, len(valuesByKey))
-	for k := range valuesByKey {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
+	keys := slices.Sorted(maps.Keys(valuesByKey))
 	for _, key := range keys {
 		if existing, ok := declared[key]; ok {
 			host.Notice(fmt.Sprintf("%s is already declared (%s %s); keeping the existing declaration.",
@@ -569,11 +567,7 @@ func wizardCollisions(host WizardHost, envs []wizardEnv, tmpl *Template) error {
 		if len(setKeys) == 0 {
 			continue
 		}
-		names := make([]string, 0, len(setKeys))
-		for n := range setKeys {
-			names = append(names, n)
-		}
-		sort.Strings(names)
+		names := slices.Sorted(maps.Keys(setKeys))
 		for _, name := range names {
 			ok, err := host.Confirm(fmt.Sprintf("%s is already set in %s; overwrite it?",
 				quoteName(name), quoteName(e.name)), false)

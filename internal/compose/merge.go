@@ -2,7 +2,7 @@ package compose
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -46,7 +46,7 @@ func MergeEnv(inherited []string, fetched map[string]string, allowOverride []str
 	out := make([]string, 0, len(inherited)+len(fetched))
 
 	for _, kv := range inherited {
-		key, val, ok := cutEnv(kv)
+		key, val, ok := strings.Cut(kv, "=")
 		if !ok {
 			// Preserve malformed inherited entries verbatim (e.g. a bare name);
 			// they are not ours to normalize.
@@ -78,26 +78,16 @@ func MergeEnv(inherited []string, fetched map[string]string, allowOverride []str
 			extra = append(extra, k)
 		}
 	}
-	sort.Strings(extra)
+	slices.Sort(extra)
 	for _, k := range extra {
 		out = append(out, k+"="+fetched[k])
 	}
 
 	if len(hardErrors) > 0 {
-		sort.Strings(hardErrors)
+		slices.Sort(hardErrors)
 		return nil, nil, fmt.Errorf("refusing to run: inherited environment and fetched values disagree on %s; "+
 			"the values differ. Add each key to --allow-override to accept the fetched value",
 			strings.Join(hardErrors, ", "))
 	}
 	return out, collisions, nil
-}
-
-// cutEnv splits a "K=V" entry on its first '='. A entry with no '=' is not a
-// well-formed assignment.
-func cutEnv(kv string) (key, val string, ok bool) {
-	i := strings.IndexByte(kv, '=')
-	if i < 0 {
-		return "", "", false
-	}
-	return kv[:i], kv[i+1:], true
 }

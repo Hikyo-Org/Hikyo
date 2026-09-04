@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -119,7 +120,7 @@ func TestMatchedOperationCarriesTheResolvedRow(t *testing.T) {
 	ctx := validated.Request().Context()
 	originalRegistryRow := operations[matched.ID]
 	changedRegistryRow := originalRegistryRow
-	changedRegistryRow.artifacts = append([]string(nil), originalRegistryRow.artifacts...)
+	changedRegistryRow.artifacts = slices.Clone(originalRegistryRow.artifacts)
 	changedRegistryRow.artifacts[0] = "registry-forged"
 	operations[matched.ID] = changedRegistryRow
 	t.Cleanup(func() { operations[matched.ID] = originalRegistryRow })

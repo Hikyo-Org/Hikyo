@@ -205,10 +205,7 @@ func (r *Resolver) CreateServiceAccountAggregate(ctx context.Context, sa NewServ
 	if err := serviceAccountConstraint(err); err != nil {
 		return ServiceAccountCreation{}, err
 	}
-	return ServiceAccountCreation{Account: ServiceAccount{
-		ID: sa.ID, PrincipalID: sa.PrincipalID, Org: sa.Org, Project: sa.Project,
-		Name: sa.Name, Kind: sa.Kind, CreatedAt: sa.CreatedAt, CreatedBy: sa.CreatedBy,
-	}}, nil
+	return ServiceAccountCreation{Account: ServiceAccount(sa)}, nil
 }
 
 // serviceAccountConstraint maps a duplicate name onto the one cross-engine

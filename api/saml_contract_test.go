@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -54,11 +55,7 @@ func TestSAMLContractSurfaceIsLocked(t *testing.T) {
 		}
 	}
 	slices.Sort(gotIDs)
-	wantIDs := make([]string, 0, len(want))
-	for id := range want {
-		wantIDs = append(wantIDs, id)
-	}
-	slices.Sort(wantIDs)
+	wantIDs := slices.Sorted(maps.Keys(want))
 	if !slices.Equal(gotIDs, wantIDs) {
 		t.Errorf("SAML operation IDs = %v, want exact locked surface %v", gotIDs, wantIDs)
 	}

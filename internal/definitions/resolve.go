@@ -2,7 +2,7 @@ package definitions
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 )
@@ -174,7 +174,7 @@ func resolve(b Bundle, cur CurrentState, strict bool) (Resolution, error) {
 		}
 	}
 	res.KeyDeletes = refsFor(cur.Keys, keyMatch.deletes, func(k CurrentKey) string { return k.ID }, func(k CurrentKey) string { return k.Name })
-	sort.Strings(res.RevealKeys)
+	slices.Sort(res.RevealKeys)
 
 	return res, nil
 }

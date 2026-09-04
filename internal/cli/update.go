@@ -240,7 +240,7 @@ func NotifyUpdate(ctx context.Context, ios IO) bool {
 	}
 	age := ios.now().Sub(current.CheckedAt)
 	if current.Schema != updateStateSchema || current.CheckedAt.IsZero() || age < 0 || age >= releaseSnapshotTTL {
-		if err := refreshReleaseSnapshot(ctx, ios); err == nil {
+		if refreshErr := refreshReleaseSnapshot(ctx, ios); refreshErr == nil {
 			current, err = state.updates(ios.DefaultUpdateChannel)
 		}
 	}
