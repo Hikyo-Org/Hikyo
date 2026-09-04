@@ -179,6 +179,10 @@ func writeOnce(ctx context.Context, db *store.DB, fn WriteFn) error {
 	if err != nil {
 		return err
 	}
+	if err := store.GuardSQLiteSingletonLease(ctx, sqtx); err != nil {
+		_ = sqtx.Rollback()
+		return err
+	}
 	az := authz.NewTxAuthorizer(authn.NewSQLite(sqtx), tok)
 	err = fn(ctx, store.SQLiteTxRepos(sqtx, tok), az)
 	if err != nil {
@@ -204,6 +208,10 @@ func writePostgresOnce(ctx context.Context, db *store.DB, beginner postgresBegin
 func runPostgresTransaction(ctx context.Context, beginner postgresBeginner, tok *authz.TxToken, fn WriteFn) (*authz.TxAuthorizer, error) {
 	pgtx, err := beginner.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
+		return nil, err
+	}
+	if err := store.GuardPGSingletonLease(ctx, pgtx); err != nil {
+		_ = pgtx.Rollback(ctx)
 		return nil, err
 	}
 	az := authz.NewTxAuthorizer(authn.NewPG(pgtx), tok)
