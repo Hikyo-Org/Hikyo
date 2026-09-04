@@ -47,16 +47,27 @@ const purposeInstance = "instance"
 
 // timeLayout is fixed-width microsecond UTC on sqlite: lexicographic order is
 // time order, so a future range predicate works, and every row is the same
-// width whatever the sub-second value.
+// width whatever the sub-second value. It is a deliberate 6-line duplicate of
+// the store package's fixedStampLayout/fixedStamp/parseStamp: the resolution
+// surface may not import the store package (the boundary allowlist), so the one
+// canonical codec is mirrored here rather than referenced. WRITE fixed-width
+// (encodeTime), PARSE with RFC3339Nano (decodeTime), which accepts both this
+// form and any variable-width fraction.
 const timeLayout = "2006-01-02T15:04:05.000000Z"
 
 func encodeTime(t time.Time) string { return t.UTC().Truncate(time.Microsecond).Format(timeLayout) }
 
-func decodeTime(s string) (time.Time, error) { return time.Parse(timeLayout, s) }
+func decodeTime(s string) (time.Time, error) { return time.Parse(time.RFC3339Nano, s) }
 
 func canon(t time.Time) time.Time { return t.UTC().Truncate(time.Microsecond) }
 
-func pgTime(t time.Time) pgtype.Timestamptz {
+// isNoRows reports the cross-engine "no such row" (sqlite and pgx use distinct
+// sentinels). authn cannot import the store package's copy.
+func isNoRows(err error) bool {
+	return errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows)
+}
+
+func pgTimestamp(t time.Time) pgtype.Timestamptz {
 	return pgtype.Timestamptz{Time: canon(t), Valid: true}
 }
 
@@ -427,7 +438,7 @@ func (r *Resolver) CreatePrincipal(ctx context.Context, id domain.PrincipalID, k
 		})
 	}
 	return r.pg.InsertPrincipal(ctx, pggen.InsertPrincipalParams{
-		ID: string(id), Kind: kind, CreatedAt: pgTime(at),
+		ID: string(id), Kind: kind, CreatedAt: pgTimestamp(at),
 	})
 }
 
@@ -444,7 +455,7 @@ func (r *Resolver) CreateAccount(ctx context.Context, a Account) error {
 	}
 	return accountConstraint(r.pg.InsertAccount(ctx, pggen.InsertAccountParams{
 		ID: a.ID, PrincipalID: string(a.PrincipalID), Username: a.Username,
-		DisplayName: a.DisplayName, CreatedAt: pgTime(a.CreatedAt),
+		DisplayName: a.DisplayName, CreatedAt: pgTimestamp(a.CreatedAt),
 	}))
 }
 
@@ -497,7 +508,7 @@ func (r *Resolver) CreateGrant(ctx context.Context, id string, p domain.Principa
 		OrgID:     pgText(string(g.Scope.Org)),
 		ProjectID: pgText(string(g.Scope.Project)),
 		EnvID:     pgText(string(g.Scope.Env)),
-		CreatedAt: pgTime(at),
+		CreatedAt: pgTimestamp(at),
 	})
 }
 
@@ -512,7 +523,7 @@ func (r *Resolver) CreateCredentialAuthority(ctx context.Context, a NewCredentia
 	return r.pg.InsertCredentialAuthority(ctx, pggen.InsertCredentialAuthorityParams{
 		ID: a.ID, Verifier: a.Verifier, AccountID: a.AccountID, Purpose: a.Purpose,
 		IssuedBy: a.IssuedBy, CredentialEpoch: a.CredentialEpoch,
-		ExpiresAt: pgTime(a.ExpiresAt), CreatedAt: pgTime(a.CreatedAt),
+		ExpiresAt: pgTimestamp(a.ExpiresAt), CreatedAt: pgTimestamp(a.CreatedAt),
 	})
 }
 
@@ -527,7 +538,7 @@ func (r *Resolver) ConsumeCredentialAuthority(ctx context.Context, id string, at
 		return n == 1, err
 	}
 	n, err := r.pg.ConsumeCredentialAuthority(ctx, pggen.ConsumeCredentialAuthorityParams{
-		ConsumedAt: pgTime(at), ID: id,
+		ConsumedAt: pgTimestamp(at), ID: id,
 	})
 	return n == 1, err
 }
@@ -545,7 +556,7 @@ func (r *Resolver) CreatePasswordCredential(ctx context.Context, c PasswordCrede
 		AccountID: c.AccountID, Verifier: c.Verifier,
 		KdfMemoryKib: int64(c.KDF.MemoryKiB), KdfTime: int64(c.KDF.Time),
 		KdfParallelism: int64(c.KDF.Parallelism), DekVersion: c.DEKVersion,
-		CredentialEpoch: c.CredentialEpoch, UpdatedAt: pgTime(at),
+		CredentialEpoch: c.CredentialEpoch, UpdatedAt: pgTimestamp(at),
 	})
 }
 
@@ -566,7 +577,7 @@ func (r *Resolver) UpdatePasswordCredential(ctx context.Context, c PasswordCrede
 	n, err := r.pg.UpdatePasswordCredentialCAS(ctx, pggen.UpdatePasswordCredentialCASParams{
 		Verifier: c.Verifier, KdfMemoryKib: int64(c.KDF.MemoryKiB), KdfTime: int64(c.KDF.Time),
 		KdfParallelism: int64(c.KDF.Parallelism), DekVersion: c.DEKVersion,
-		CredentialEpoch: c.CredentialEpoch, UpdatedAt: pgTime(at),
+		CredentialEpoch: c.CredentialEpoch, UpdatedAt: pgTimestamp(at),
 		AccountID: c.AccountID, RowVersion: c.RowVersion,
 	})
 	return n == 1, err
@@ -596,7 +607,7 @@ func (r *Resolver) AssertActiveInstanceDEKVersion(ctx context.Context, version i
 			Purpose: purposeInstance, Version: version,
 		})
 	}
-	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
+	if isNoRows(err) {
 		return fmt.Errorf("%w: instance DEK version %d is no longer active", domain.ErrConflict, version)
 	}
 	if err != nil {
@@ -627,9 +638,9 @@ func (r *Resolver) CreateSession(ctx context.Context, s NewSession) error {
 		ID: s.ID, PrincipalID: string(s.PrincipalID), Verifier: s.Verifier,
 		Artifact: s.Artifact, SessionGeneration: s.SessionGeneration,
 		CredentialEpoch: s.CredentialEpoch, AuthMethod: s.AuthMethod, Factors: s.Factors,
-		AuthenticatedAt: pgTime(s.AuthenticatedAt), CeremonyID: pgText(s.CeremonyID),
-		CreatedAt: pgTime(s.CreatedAt), LastSeenAt: pgTime(s.CreatedAt),
-		IdleExpiresAt: pgTime(s.IdleExpiresAt), AbsoluteExpiresAt: pgTime(s.AbsoluteExpiresAt),
+		AuthenticatedAt: pgTimestamp(s.AuthenticatedAt), CeremonyID: pgText(s.CeremonyID),
+		CreatedAt: pgTimestamp(s.CreatedAt), LastSeenAt: pgTimestamp(s.CreatedAt),
+		IdleExpiresAt: pgTimestamp(s.IdleExpiresAt), AbsoluteExpiresAt: pgTimestamp(s.AbsoluteExpiresAt),
 		SourceIp: s.SourceIP, UserAgent: s.UserAgent, ProviderID: pgText(s.ProviderID),
 		CsrfVerifier:     s.CSRFVerifier,
 		RequestingOrigin: pgText(s.RequestingOrigin),
@@ -646,7 +657,7 @@ func (r *Resolver) TouchSession(ctx context.Context, id string, seen, idleExpire
 		})
 	}
 	return r.pg.TouchSession(ctx, pggen.TouchSessionParams{
-		LastSeenAt: pgTime(seen), IdleExpiresAt: pgTime(idleExpires), ID: id,
+		LastSeenAt: pgTimestamp(seen), IdleExpiresAt: pgTimestamp(idleExpires), ID: id,
 	})
 }
 

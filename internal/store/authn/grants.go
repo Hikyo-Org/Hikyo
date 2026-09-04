@@ -104,7 +104,7 @@ func (r *Resolver) AddGrantOrigin(ctx context.Context, id, grantID string, p dom
 	}
 	return r.pg.InsertGrantOrigin(ctx, pggen.InsertGrantOriginParams{
 		ID: id, GrantID: grantID, Kind: string(o.Kind), Subject: o.Subject,
-		CreatedAt: pgTime(at),
+		CreatedAt: pgTimestamp(at),
 	})
 }
 

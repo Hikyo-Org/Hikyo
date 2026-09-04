@@ -334,11 +334,11 @@ func (r scimRepo) LockBinding(ctx context.Context, p authz.Proof, id string) err
 	}
 	if r.sq != nil {
 		return affected(r.sq.LockSCIMBinding(ctx, sqlitegen.LockSCIMBindingParams{
-			OrgID: string(chain.Org), ID: id, // chain column: proof-bound
+			OrgID: string(chain.Org), ID: id,
 		}))
 	}
 	return affected(r.pg.LockSCIMBinding(ctx, pggen.LockSCIMBindingParams{
-		ChainOrgID: string(chain.Org), ID: id, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), ID: id,
 	}))
 }
 
@@ -350,7 +350,7 @@ func (r scimRepo) CreateBinding(ctx context.Context, p authz.Proof, b NewSCIMBin
 	if r.sq != nil {
 		return constraint(r.sq.CreateSCIMBinding(ctx, sqlitegen.CreateSCIMBindingParams{
 			ID:                       b.ID,
-			OrgID:                    string(chain.Org), // chain column: proof-bound
+			OrgID:                    string(chain.Org),
 			ProviderKind:             b.ProviderKind,
 			ProviderID:               b.ProviderID,
 			ProviderSlug:             b.ProviderSlug,
@@ -367,7 +367,7 @@ func (r scimRepo) CreateBinding(ctx context.Context, p authz.Proof, b NewSCIMBin
 	}
 	return constraint(r.pg.CreateSCIMBinding(ctx, pggen.CreateSCIMBindingParams{
 		ID:                       b.ID,
-		ChainOrgID:               string(chain.Org), // chain column: proof-bound
+		ChainOrgID:               string(chain.Org),
 		ProviderKind:             b.ProviderKind,
 		ProviderID:               b.ProviderID,
 		ProviderSlug:             b.ProviderSlug,
@@ -390,7 +390,7 @@ func (r scimRepo) Binding(ctx context.Context, p authz.Proof, id string) (SCIMBi
 	}
 	if r.sq != nil {
 		row, err := r.sq.GetSCIMBinding(ctx, sqlitegen.GetSCIMBindingParams{
-			OrgID: string(chain.Org), ID: id, // chain column: proof-bound
+			OrgID: string(chain.Org), ID: id,
 		})
 		if errors.Is(err, sql.ErrNoRows) {
 			return SCIMBinding{}, ErrNotFound
@@ -401,7 +401,7 @@ func (r scimRepo) Binding(ctx context.Context, p authz.Proof, id string) (SCIMBi
 		return sqliteBinding(row)
 	}
 	row, err := r.pg.GetSCIMBinding(ctx, pggen.GetSCIMBindingParams{
-		ChainOrgID: string(chain.Org), ID: id, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), ID: id,
 	})
 	if noRows(err) {
 		return SCIMBinding{}, ErrNotFound
@@ -419,7 +419,7 @@ func (r scimRepo) Bindings(ctx context.Context, p authz.Proof) ([]SCIMBinding, e
 	}
 	out := []SCIMBinding{}
 	if r.sq != nil {
-		rows, err := r.sq.ListSCIMBindings(ctx, string(chain.Org)) // chain column: proof-bound
+		rows, err := r.sq.ListSCIMBindings(ctx, string(chain.Org))
 		if err != nil {
 			return nil, err
 		}
@@ -432,7 +432,7 @@ func (r scimRepo) Bindings(ctx context.Context, p authz.Proof) ([]SCIMBinding, e
 		}
 		return out, nil
 	}
-	rows, err := r.pg.ListSCIMBindings(ctx, string(chain.Org)) // chain column: proof-bound
+	rows, err := r.pg.ListSCIMBindings(ctx, string(chain.Org))
 	if err != nil {
 		return nil, err
 	}
@@ -450,13 +450,13 @@ func (r scimRepo) TouchBinding(ctx context.Context, p authz.Proof, id string, at
 	if r.sq != nil {
 		return affected(r.sq.TouchSCIMBinding(ctx, sqlitegen.TouchSCIMBindingParams{
 			LastContactAt: sql.NullString{String: CanonTime(at).Format(timeFormat), Valid: true},
-			OrgID:         string(chain.Org), // chain column: proof-bound
+			OrgID:         string(chain.Org),
 			ID:            id,
 		}))
 	}
 	return affected(r.pg.TouchSCIMBinding(ctx, pggen.TouchSCIMBindingParams{
 		LastContactAt: pgtype.Timestamptz{Time: CanonTime(at), Valid: true},
-		ChainOrgID:    string(chain.Org), // chain column: proof-bound
+		ChainOrgID:    string(chain.Org),
 		ID:            id,
 	}))
 }
@@ -486,11 +486,11 @@ func (r scimRepo) DeleteBinding(ctx context.Context, p authz.Proof, id string) e
 	}
 	if r.sq != nil {
 		return affected(r.sq.DeleteSCIMBinding(ctx, sqlitegen.DeleteSCIMBindingParams{
-			OrgID: string(chain.Org), ID: id, // chain column: proof-bound
+			OrgID: string(chain.Org), ID: id,
 		}))
 	}
 	return affected(r.pg.DeleteSCIMBinding(ctx, pggen.DeleteSCIMBindingParams{
-		ChainOrgID: string(chain.Org), ID: id, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), ID: id,
 	}))
 }
 
@@ -506,7 +506,7 @@ func (r scimRepo) CreateMapping(ctx context.Context, p authz.Proof, m NewSCIMMap
 	if r.sq != nil {
 		return constraint(r.sq.CreateSCIMMapping(ctx, sqlitegen.CreateSCIMMappingParams{
 			ID:             m.ID,
-			OrgID:          string(chain.Org), // chain column: proof-bound
+			OrgID:          string(chain.Org),
 			BindingID:      m.BindingID,
 			GroupID:        m.GroupID,
 			Template:       m.Template,
@@ -518,7 +518,7 @@ func (r scimRepo) CreateMapping(ctx context.Context, p authz.Proof, m NewSCIMMap
 	}
 	return constraint(r.pg.CreateSCIMMapping(ctx, pggen.CreateSCIMMappingParams{
 		ID:             m.ID,
-		ChainOrgID:     string(chain.Org), // chain column: proof-bound
+		ChainOrgID:     string(chain.Org),
 		BindingID:      m.BindingID,
 		GroupID:        m.GroupID,
 		Template:       m.Template,
@@ -536,7 +536,7 @@ func (r scimRepo) Mapping(ctx context.Context, p authz.Proof, id string) (SCIMMa
 	}
 	if r.sq != nil {
 		row, err := r.sq.GetSCIMMapping(ctx, sqlitegen.GetSCIMMappingParams{
-			OrgID: string(chain.Org), ID: id, // chain column: proof-bound
+			OrgID: string(chain.Org), ID: id,
 		})
 		if errors.Is(err, sql.ErrNoRows) {
 			return SCIMMapping{}, ErrNotFound
@@ -547,7 +547,7 @@ func (r scimRepo) Mapping(ctx context.Context, p authz.Proof, id string) (SCIMMa
 		return sqliteMapping(row)
 	}
 	row, err := r.pg.GetSCIMMapping(ctx, pggen.GetSCIMMappingParams{
-		ChainOrgID: string(chain.Org), ID: id, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), ID: id,
 	})
 	if noRows(err) {
 		return SCIMMapping{}, ErrNotFound
@@ -566,7 +566,7 @@ func (r scimRepo) Mappings(ctx context.Context, p authz.Proof, bindingID string)
 	out := []SCIMMapping{}
 	if r.sq != nil {
 		rows, err := r.sq.ListSCIMMappings(ctx, sqlitegen.ListSCIMMappingsParams{
-			OrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID,
 		})
 		if err != nil {
 			return nil, err
@@ -581,7 +581,7 @@ func (r scimRepo) Mappings(ctx context.Context, p authz.Proof, bindingID string)
 		return out, nil
 	}
 	rows, err := r.pg.ListSCIMMappings(ctx, pggen.ListSCIMMappingsParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID,
 	})
 	if err != nil {
 		return nil, err
@@ -600,7 +600,7 @@ func (r scimRepo) MappingsForGroup(ctx context.Context, p authz.Proof, bindingID
 	out := []SCIMMapping{}
 	if r.sq != nil {
 		rows, err := r.sq.ListSCIMMappingsForGroup(ctx, sqlitegen.ListSCIMMappingsForGroupParams{
-			OrgID: string(chain.Org), BindingID: bindingID, GroupID: groupID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID, GroupID: groupID,
 		})
 		if err != nil {
 			return nil, err
@@ -615,7 +615,7 @@ func (r scimRepo) MappingsForGroup(ctx context.Context, p authz.Proof, bindingID
 		return out, nil
 	}
 	rows, err := r.pg.ListSCIMMappingsForGroup(ctx, pggen.ListSCIMMappingsForGroupParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, GroupID: groupID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID, GroupID: groupID,
 	})
 	if err != nil {
 		return nil, err
@@ -634,12 +634,12 @@ func (r scimRepo) SetMappingInert(ctx context.Context, p authz.Proof, bindingID,
 	if r.sq != nil {
 		return r.sq.SetSCIMMappingInert(ctx, sqlitegen.SetSCIMMappingInertParams{
 			Inert: boolInt(inert),
-			OrgID: string(chain.Org), BindingID: bindingID, GroupID: groupID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID, GroupID: groupID,
 		})
 	}
 	return r.pg.SetSCIMMappingInert(ctx, pggen.SetSCIMMappingInertParams{
 		Inert:      inert,
-		ChainOrgID: string(chain.Org), BindingID: bindingID, GroupID: groupID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID, GroupID: groupID,
 	})
 }
 
@@ -651,12 +651,12 @@ func (r scimRepo) UpdateMappingTemplate(ctx context.Context, p authz.Proof, id, 
 	if r.sq != nil {
 		return affected(r.sq.UpdateSCIMMappingTemplate(ctx, sqlitegen.UpdateSCIMMappingTemplateParams{
 			Template: template,
-			OrgID:    string(chain.Org), ID: id, // chain column: proof-bound
+			OrgID:    string(chain.Org), ID: id,
 		}))
 	}
 	return affected(r.pg.UpdateSCIMMappingTemplate(ctx, pggen.UpdateSCIMMappingTemplateParams{
 		Template:   template,
-		ChainOrgID: string(chain.Org), ID: id, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), ID: id,
 	}))
 }
 
@@ -667,11 +667,11 @@ func (r scimRepo) DeleteMapping(ctx context.Context, p authz.Proof, id string) e
 	}
 	if r.sq != nil {
 		return affected(r.sq.DeleteSCIMMapping(ctx, sqlitegen.DeleteSCIMMappingParams{
-			OrgID: string(chain.Org), ID: id, // chain column: proof-bound
+			OrgID: string(chain.Org), ID: id,
 		}))
 	}
 	return affected(r.pg.DeleteSCIMMapping(ctx, pggen.DeleteSCIMMappingParams{
-		ChainOrgID: string(chain.Org), ID: id, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), ID: id,
 	}))
 }
 
@@ -682,12 +682,12 @@ func (r scimRepo) DeleteMappingsForBinding(ctx context.Context, p authz.Proof, b
 	}
 	if r.sq != nil {
 		_, err := r.sq.DeleteSCIMMappingsForBinding(ctx, sqlitegen.DeleteSCIMMappingsForBindingParams{
-			OrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID,
 		})
 		return err
 	}
 	_, err = r.pg.DeleteSCIMMappingsForBinding(ctx, pggen.DeleteSCIMMappingsForBindingParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID,
 	})
 	return err
 }
@@ -704,7 +704,7 @@ func (r scimRepo) CreateUser(ctx context.Context, p authz.Proof, u NewSCIMUser) 
 	if r.sq != nil {
 		return constraint(r.sq.CreateSCIMUser(ctx, sqlitegen.CreateSCIMUserParams{
 			ID:            u.ID,
-			OrgID:         string(chain.Org), // chain column: proof-bound
+			OrgID:         string(chain.Org),
 			BindingID:     u.BindingID,
 			AccountID:     u.AccountID,
 			UserName:      u.UserName,
@@ -719,7 +719,7 @@ func (r scimRepo) CreateUser(ctx context.Context, p authz.Proof, u NewSCIMUser) 
 	}
 	return constraint(r.pg.CreateSCIMUser(ctx, pggen.CreateSCIMUserParams{
 		ID:            u.ID,
-		ChainOrgID:    string(chain.Org), // chain column: proof-bound
+		ChainOrgID:    string(chain.Org),
 		BindingID:     u.BindingID,
 		AccountID:     u.AccountID,
 		UserName:      u.UserName,
@@ -740,12 +740,12 @@ func (r scimRepo) User(ctx context.Context, p authz.Proof, bindingID, id string)
 	}
 	if r.sq != nil {
 		row, err := r.sq.GetSCIMUser(ctx, sqlitegen.GetSCIMUserParams{
-			OrgID: string(chain.Org), BindingID: bindingID, ID: id, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID, ID: id,
 		})
 		return sqliteUserOrNotFound(row, err)
 	}
 	row, err := r.pg.GetSCIMUser(ctx, pggen.GetSCIMUserParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, ID: id, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID, ID: id,
 	})
 	return pgUserOrNotFound(row, err)
 }
@@ -757,12 +757,12 @@ func (r scimRepo) UserByUserName(ctx context.Context, p authz.Proof, bindingID, 
 	}
 	if r.sq != nil {
 		row, err := r.sq.GetSCIMUserByUserName(ctx, sqlitegen.GetSCIMUserByUserNameParams{
-			OrgID: string(chain.Org), BindingID: bindingID, UserNameLower: folded, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID, UserNameLower: folded,
 		})
 		return sqliteUserOrNotFound(row, err)
 	}
 	row, err := r.pg.GetSCIMUserByUserName(ctx, pggen.GetSCIMUserByUserNameParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, UserNameLower: folded, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID, UserNameLower: folded,
 	})
 	return pgUserOrNotFound(row, err)
 }
@@ -775,7 +775,7 @@ func (r scimRepo) UsersByExternalID(ctx context.Context, p authz.Proof, bindingI
 	out := []SCIMUser{}
 	if r.sq != nil {
 		rows, err := r.sq.ListSCIMUsersByExternalID(ctx, sqlitegen.ListSCIMUsersByExternalIDParams{
-			OrgID: string(chain.Org), BindingID: bindingID, ExternalID: externalID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID, ExternalID: externalID,
 		})
 		if err != nil {
 			return nil, err
@@ -790,7 +790,7 @@ func (r scimRepo) UsersByExternalID(ctx context.Context, p authz.Proof, bindingI
 		return out, nil
 	}
 	rows, err := r.pg.ListSCIMUsersByExternalID(ctx, pggen.ListSCIMUsersByExternalIDParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, ExternalID: externalID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID, ExternalID: externalID,
 	})
 	if err != nil {
 		return nil, err
@@ -808,12 +808,12 @@ func (r scimRepo) UserBySubject(ctx context.Context, p authz.Proof, bindingID, s
 	}
 	if r.sq != nil {
 		row, err := r.sq.GetSCIMUserBySubject(ctx, sqlitegen.GetSCIMUserBySubjectParams{
-			OrgID: string(chain.Org), BindingID: bindingID, Subject: subject, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID, Subject: subject,
 		})
 		return sqliteUserOrNotFound(row, err)
 	}
 	row, err := r.pg.GetSCIMUserBySubject(ctx, pggen.GetSCIMUserBySubjectParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, Subject: subject, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID, Subject: subject,
 	})
 	return pgUserOrNotFound(row, err)
 }
@@ -825,12 +825,12 @@ func (r scimRepo) UserByAccount(ctx context.Context, p authz.Proof, bindingID, a
 	}
 	if r.sq != nil {
 		row, err := r.sq.GetSCIMUserByAccount(ctx, sqlitegen.GetSCIMUserByAccountParams{
-			OrgID: string(chain.Org), BindingID: bindingID, AccountID: accountID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID, AccountID: accountID,
 		})
 		return sqliteUserOrNotFound(row, err)
 	}
 	row, err := r.pg.GetSCIMUserByAccount(ctx, pggen.GetSCIMUserByAccountParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, AccountID: accountID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID, AccountID: accountID,
 	})
 	return pgUserOrNotFound(row, err)
 }
@@ -843,7 +843,7 @@ func (r scimRepo) Users(ctx context.Context, p authz.Proof, bindingID string) ([
 	out := []SCIMUser{}
 	if r.sq != nil {
 		rows, err := r.sq.ListSCIMUsers(ctx, sqlitegen.ListSCIMUsersParams{
-			OrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID,
 		})
 		if err != nil {
 			return nil, err
@@ -858,7 +858,7 @@ func (r scimRepo) Users(ctx context.Context, p authz.Proof, bindingID string) ([
 		return out, nil
 	}
 	rows, err := r.pg.ListSCIMUsers(ctx, pggen.ListSCIMUsersParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID,
 	})
 	if err != nil {
 		return nil, err
@@ -877,13 +877,13 @@ func (r scimRepo) PageUsers(ctx context.Context, p authz.Proof, bindingID string
 	out := []SCIMUser{}
 	if r.sq != nil {
 		total, err := r.sq.CountSCIMUsers(ctx, sqlitegen.CountSCIMUsersParams{
-			OrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID,
 		})
 		if err != nil {
 			return nil, 0, err
 		}
 		rows, err := r.sq.PageSCIMUsers(ctx, sqlitegen.PageSCIMUsersParams{
-			OrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID,
 			Limit: limit, Offset: offset,
 		})
 		if err != nil {
@@ -899,13 +899,13 @@ func (r scimRepo) PageUsers(ctx context.Context, p authz.Proof, bindingID string
 		return out, total, nil
 	}
 	total, err := r.pg.CountSCIMUsers(ctx, pggen.CountSCIMUsersParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID,
 	})
 	if err != nil {
 		return nil, 0, err
 	}
 	rows, err := r.pg.PageSCIMUsers(ctx, pggen.PageSCIMUsersParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID,
 		PageLimit: int32(limit), PageOffset: int32(offset),
 	})
 	if err != nil {
@@ -925,13 +925,13 @@ func (r scimRepo) PageGroups(ctx context.Context, p authz.Proof, bindingID strin
 	out := []SCIMGroup{}
 	if r.sq != nil {
 		total, err := r.sq.CountSCIMGroups(ctx, sqlitegen.CountSCIMGroupsParams{
-			OrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID,
 		})
 		if err != nil {
 			return nil, 0, err
 		}
 		rows, err := r.sq.PageSCIMGroups(ctx, sqlitegen.PageSCIMGroupsParams{
-			OrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID,
 			Limit: limit, Offset: offset,
 		})
 		if err != nil {
@@ -947,13 +947,13 @@ func (r scimRepo) PageGroups(ctx context.Context, p authz.Proof, bindingID strin
 		return out, total, nil
 	}
 	total, err := r.pg.CountSCIMGroups(ctx, pggen.CountSCIMGroupsParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID,
 	})
 	if err != nil {
 		return nil, 0, err
 	}
 	rows, err := r.pg.PageSCIMGroups(ctx, pggen.PageSCIMGroupsParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID,
 		PageLimit: int32(limit), PageOffset: int32(offset),
 	})
 	if err != nil {
@@ -975,14 +975,14 @@ func (r scimRepo) UpdateUser(ctx context.Context, p authz.Proof, u SCIMUserUpdat
 			UserName: u.UserName, UserNameLower: u.UserNameLower, ExternalID: u.ExternalID,
 			Active: boolInt(u.Active), Attributes: u.Attributes,
 			UpdatedAt: CanonTime(u.UpdatedAt).Format(timeFormat),
-			OrgID:     string(chain.Org), BindingID: u.BindingID, ID: u.ID, // chain column: proof-bound
+			OrgID:     string(chain.Org), BindingID: u.BindingID, ID: u.ID,
 		}))
 	}
 	return affected(r.pg.UpdateSCIMUser(ctx, pggen.UpdateSCIMUserParams{
 		UserName: u.UserName, UserNameLower: u.UserNameLower, ExternalID: u.ExternalID,
 		Active: u.Active, Attributes: u.Attributes,
 		UpdatedAt:  pgtype.Timestamptz{Time: CanonTime(u.UpdatedAt), Valid: true},
-		ChainOrgID: string(chain.Org), BindingID: u.BindingID, ID: u.ID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: u.BindingID, ID: u.ID,
 	}))
 }
 
@@ -993,11 +993,11 @@ func (r scimRepo) DeleteUser(ctx context.Context, p authz.Proof, bindingID, id s
 	}
 	if r.sq != nil {
 		return affected(r.sq.DeleteSCIMUser(ctx, sqlitegen.DeleteSCIMUserParams{
-			OrgID: string(chain.Org), BindingID: bindingID, ID: id, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID, ID: id,
 		}))
 	}
 	return affected(r.pg.DeleteSCIMUser(ctx, pggen.DeleteSCIMUserParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, ID: id, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID, ID: id,
 	}))
 }
 
@@ -1008,12 +1008,12 @@ func (r scimRepo) DeleteUsersForBinding(ctx context.Context, p authz.Proof, bind
 	}
 	if r.sq != nil {
 		_, err := r.sq.DeleteSCIMUsersForBinding(ctx, sqlitegen.DeleteSCIMUsersForBindingParams{
-			OrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID,
 		})
 		return err
 	}
 	_, err = r.pg.DeleteSCIMUsersForBinding(ctx, pggen.DeleteSCIMUsersForBindingParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID,
 	})
 	return err
 }
@@ -1030,7 +1030,7 @@ func (r scimRepo) CreateGroup(ctx context.Context, p authz.Proof, g NewSCIMGroup
 	if r.sq != nil {
 		return constraint(r.sq.CreateSCIMGroup(ctx, sqlitegen.CreateSCIMGroupParams{
 			ID:        g.ID,
-			OrgID:     string(chain.Org), // chain column: proof-bound
+			OrgID:     string(chain.Org),
 			BindingID: g.BindingID, DisplayName: g.DisplayName,
 			DisplayNameLower: g.DisplayNameLower, ExternalID: g.ExternalID,
 			CreatedAt: CanonTime(g.CreatedAt).Format(timeFormat),
@@ -1039,7 +1039,7 @@ func (r scimRepo) CreateGroup(ctx context.Context, p authz.Proof, g NewSCIMGroup
 	}
 	return constraint(r.pg.CreateSCIMGroup(ctx, pggen.CreateSCIMGroupParams{
 		ID:         g.ID,
-		ChainOrgID: string(chain.Org), // chain column: proof-bound
+		ChainOrgID: string(chain.Org),
 		BindingID:  g.BindingID, DisplayName: g.DisplayName,
 		DisplayNameLower: g.DisplayNameLower, ExternalID: g.ExternalID,
 		CreatedAt: pgtype.Timestamptz{Time: CanonTime(g.CreatedAt), Valid: true},
@@ -1054,12 +1054,12 @@ func (r scimRepo) Group(ctx context.Context, p authz.Proof, bindingID, id string
 	}
 	if r.sq != nil {
 		row, err := r.sq.GetSCIMGroup(ctx, sqlitegen.GetSCIMGroupParams{
-			OrgID: string(chain.Org), BindingID: bindingID, ID: id, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID, ID: id,
 		})
 		return sqliteGroupOrNotFound(row, err)
 	}
 	row, err := r.pg.GetSCIMGroup(ctx, pggen.GetSCIMGroupParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, ID: id, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID, ID: id,
 	})
 	return pgGroupOrNotFound(row, err)
 }
@@ -1072,7 +1072,7 @@ func (r scimRepo) GroupsByDisplayName(ctx context.Context, p authz.Proof, bindin
 	out := []SCIMGroup{}
 	if r.sq != nil {
 		rows, err := r.sq.ListSCIMGroupsByDisplayName(ctx, sqlitegen.ListSCIMGroupsByDisplayNameParams{
-			OrgID: string(chain.Org), BindingID: bindingID, DisplayNameLower: folded, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID, DisplayNameLower: folded,
 		})
 		if err != nil {
 			return nil, err
@@ -1087,7 +1087,7 @@ func (r scimRepo) GroupsByDisplayName(ctx context.Context, p authz.Proof, bindin
 		return out, nil
 	}
 	rows, err := r.pg.ListSCIMGroupsByDisplayName(ctx, pggen.ListSCIMGroupsByDisplayNameParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, DisplayNameLower: folded, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID, DisplayNameLower: folded,
 	})
 	if err != nil {
 		return nil, err
@@ -1106,7 +1106,7 @@ func (r scimRepo) GroupsByExternalID(ctx context.Context, p authz.Proof, binding
 	out := []SCIMGroup{}
 	if r.sq != nil {
 		rows, err := r.sq.ListSCIMGroupsByExternalID(ctx, sqlitegen.ListSCIMGroupsByExternalIDParams{
-			OrgID: string(chain.Org), BindingID: bindingID, ExternalID: externalID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID, ExternalID: externalID,
 		})
 		if err != nil {
 			return nil, err
@@ -1121,7 +1121,7 @@ func (r scimRepo) GroupsByExternalID(ctx context.Context, p authz.Proof, binding
 		return out, nil
 	}
 	rows, err := r.pg.ListSCIMGroupsByExternalID(ctx, pggen.ListSCIMGroupsByExternalIDParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, ExternalID: externalID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID, ExternalID: externalID,
 	})
 	if err != nil {
 		return nil, err
@@ -1140,7 +1140,7 @@ func (r scimRepo) Groups(ctx context.Context, p authz.Proof, bindingID string) (
 	out := []SCIMGroup{}
 	if r.sq != nil {
 		rows, err := r.sq.ListSCIMGroups(ctx, sqlitegen.ListSCIMGroupsParams{
-			OrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID,
 		})
 		if err != nil {
 			return nil, err
@@ -1155,7 +1155,7 @@ func (r scimRepo) Groups(ctx context.Context, p authz.Proof, bindingID string) (
 		return out, nil
 	}
 	rows, err := r.pg.ListSCIMGroups(ctx, pggen.ListSCIMGroupsParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID,
 	})
 	if err != nil {
 		return nil, err
@@ -1176,14 +1176,14 @@ func (r scimRepo) UpdateGroup(ctx context.Context, p authz.Proof, g SCIMGroupUpd
 			DisplayName: g.DisplayName, DisplayNameLower: g.DisplayNameLower,
 			ExternalID: g.ExternalID,
 			UpdatedAt:  CanonTime(g.UpdatedAt).Format(timeFormat),
-			OrgID:      string(chain.Org), BindingID: g.BindingID, ID: g.ID, // chain column: proof-bound
+			OrgID:      string(chain.Org), BindingID: g.BindingID, ID: g.ID,
 		}))
 	}
 	return affected(r.pg.UpdateSCIMGroup(ctx, pggen.UpdateSCIMGroupParams{
 		DisplayName: g.DisplayName, DisplayNameLower: g.DisplayNameLower,
 		ExternalID: g.ExternalID,
 		UpdatedAt:  pgtype.Timestamptz{Time: CanonTime(g.UpdatedAt), Valid: true},
-		ChainOrgID: string(chain.Org), BindingID: g.BindingID, ID: g.ID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: g.BindingID, ID: g.ID,
 	}))
 }
 
@@ -1194,11 +1194,11 @@ func (r scimRepo) DeleteGroup(ctx context.Context, p authz.Proof, bindingID, id 
 	}
 	if r.sq != nil {
 		return affected(r.sq.DeleteSCIMGroup(ctx, sqlitegen.DeleteSCIMGroupParams{
-			OrgID: string(chain.Org), BindingID: bindingID, ID: id, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID, ID: id,
 		}))
 	}
 	return affected(r.pg.DeleteSCIMGroup(ctx, pggen.DeleteSCIMGroupParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, ID: id, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID, ID: id,
 	}))
 }
 
@@ -1209,12 +1209,12 @@ func (r scimRepo) DeleteGroupsForBinding(ctx context.Context, p authz.Proof, bin
 	}
 	if r.sq != nil {
 		_, err := r.sq.DeleteSCIMGroupsForBinding(ctx, sqlitegen.DeleteSCIMGroupsForBindingParams{
-			OrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID,
 		})
 		return err
 	}
 	_, err = r.pg.DeleteSCIMGroupsForBinding(ctx, pggen.DeleteSCIMGroupsForBindingParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID,
 	})
 	return err
 }
@@ -1231,14 +1231,14 @@ func (r scimRepo) AddGroupMember(ctx context.Context, p authz.Proof, m SCIMGroup
 	if r.sq != nil {
 		return constraint(r.sq.AddSCIMGroupMember(ctx, sqlitegen.AddSCIMGroupMemberParams{
 			ID:        m.ID,
-			OrgID:     string(chain.Org), // chain column: proof-bound
+			OrgID:     string(chain.Org),
 			BindingID: m.BindingID, GroupID: m.GroupID, UserID: m.UserID,
 			CreatedAt: CanonTime(m.CreatedAt).Format(timeFormat),
 		}))
 	}
 	return constraint(r.pg.AddSCIMGroupMember(ctx, pggen.AddSCIMGroupMemberParams{
 		ID:         m.ID,
-		ChainOrgID: string(chain.Org), // chain column: proof-bound
+		ChainOrgID: string(chain.Org),
 		BindingID:  m.BindingID, GroupID: m.GroupID, UserID: m.UserID,
 		CreatedAt: pgtype.Timestamptz{Time: CanonTime(m.CreatedAt), Valid: true},
 	}))
@@ -1252,7 +1252,7 @@ func (r scimRepo) GroupMembers(ctx context.Context, p authz.Proof, bindingID, gr
 	out := []SCIMGroupMember{}
 	if r.sq != nil {
 		rows, err := r.sq.ListSCIMGroupMembers(ctx, sqlitegen.ListSCIMGroupMembersParams{
-			OrgID: string(chain.Org), BindingID: bindingID, GroupID: groupID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID, GroupID: groupID,
 		})
 		if err != nil {
 			return nil, err
@@ -1267,7 +1267,7 @@ func (r scimRepo) GroupMembers(ctx context.Context, p authz.Proof, bindingID, gr
 		return out, nil
 	}
 	rows, err := r.pg.ListSCIMGroupMembers(ctx, pggen.ListSCIMGroupMembersParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, GroupID: groupID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID, GroupID: groupID,
 	})
 	if err != nil {
 		return nil, err
@@ -1286,7 +1286,7 @@ func (r scimRepo) MembershipsForUser(ctx context.Context, p authz.Proof, binding
 	out := []SCIMGroupMember{}
 	if r.sq != nil {
 		rows, err := r.sq.ListSCIMGroupMembershipsForUser(ctx, sqlitegen.ListSCIMGroupMembershipsForUserParams{
-			OrgID: string(chain.Org), BindingID: bindingID, UserID: userID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID, UserID: userID,
 		})
 		if err != nil {
 			return nil, err
@@ -1301,7 +1301,7 @@ func (r scimRepo) MembershipsForUser(ctx context.Context, p authz.Proof, binding
 		return out, nil
 	}
 	rows, err := r.pg.ListSCIMGroupMembershipsForUser(ctx, pggen.ListSCIMGroupMembershipsForUserParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, UserID: userID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID, UserID: userID,
 	})
 	if err != nil {
 		return nil, err
@@ -1319,12 +1319,12 @@ func (r scimRepo) RemoveGroupMember(ctx context.Context, p authz.Proof, bindingI
 	}
 	if r.sq != nil {
 		_, err := r.sq.DeleteSCIMGroupMember(ctx, sqlitegen.DeleteSCIMGroupMemberParams{
-			OrgID: string(chain.Org), BindingID: bindingID, GroupID: groupID, UserID: userID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID, GroupID: groupID, UserID: userID,
 		})
 		return err
 	}
 	_, err = r.pg.DeleteSCIMGroupMember(ctx, pggen.DeleteSCIMGroupMemberParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, GroupID: groupID, UserID: userID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID, GroupID: groupID, UserID: userID,
 	})
 	return err
 }
@@ -1336,12 +1336,12 @@ func (r scimRepo) ClearGroupMembers(ctx context.Context, p authz.Proof, bindingI
 	}
 	if r.sq != nil {
 		_, err := r.sq.ClearSCIMGroupMembers(ctx, sqlitegen.ClearSCIMGroupMembersParams{
-			OrgID: string(chain.Org), BindingID: bindingID, GroupID: groupID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID, GroupID: groupID,
 		})
 		return err
 	}
 	_, err = r.pg.ClearSCIMGroupMembers(ctx, pggen.ClearSCIMGroupMembersParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, GroupID: groupID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID, GroupID: groupID,
 	})
 	return err
 }
@@ -1353,12 +1353,12 @@ func (r scimRepo) RemoveMembershipsForUser(ctx context.Context, p authz.Proof, b
 	}
 	if r.sq != nil {
 		_, err := r.sq.DeleteSCIMGroupMembershipsForUser(ctx, sqlitegen.DeleteSCIMGroupMembershipsForUserParams{
-			OrgID: string(chain.Org), BindingID: bindingID, UserID: userID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID, UserID: userID,
 		})
 		return err
 	}
 	_, err = r.pg.DeleteSCIMGroupMembershipsForUser(ctx, pggen.DeleteSCIMGroupMembershipsForUserParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, UserID: userID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID, UserID: userID,
 	})
 	return err
 }
@@ -1370,12 +1370,12 @@ func (r scimRepo) DeleteGroupMembersForBinding(ctx context.Context, p authz.Proo
 	}
 	if r.sq != nil {
 		_, err := r.sq.DeleteSCIMGroupMembersForBinding(ctx, sqlitegen.DeleteSCIMGroupMembersForBindingParams{
-			OrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID,
 		})
 		return err
 	}
 	_, err = r.pg.DeleteSCIMGroupMembersForBinding(ctx, pggen.DeleteSCIMGroupMembersForBindingParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID,
 	})
 	return err
 }
@@ -1392,14 +1392,14 @@ func (r scimRepo) EnterAttention(ctx context.Context, p authz.Proof, a SCIMAtten
 	if r.sq != nil {
 		return constraint(r.sq.EnterSCIMAttention(ctx, sqlitegen.EnterSCIMAttentionParams{
 			ID:        a.ID,
-			OrgID:     string(chain.Org), // chain column: proof-bound
+			OrgID:     string(chain.Org),
 			BindingID: a.BindingID, State: a.State, SubjectRef: a.SubjectRef, Cause: a.Cause,
 			EnteredAt: CanonTime(a.EnteredAt).Format(timeFormat),
 		}))
 	}
 	return constraint(r.pg.EnterSCIMAttention(ctx, pggen.EnterSCIMAttentionParams{
 		ID:         a.ID,
-		ChainOrgID: string(chain.Org), // chain column: proof-bound
+		ChainOrgID: string(chain.Org),
 		BindingID:  a.BindingID, State: a.State, SubjectRef: a.SubjectRef, Cause: a.Cause,
 		EnteredAt: pgtype.Timestamptz{Time: CanonTime(a.EnteredAt), Valid: true},
 	}))
@@ -1413,7 +1413,7 @@ func (r scimRepo) Attention(ctx context.Context, p authz.Proof, bindingID string
 	out := []SCIMAttentionRow{}
 	if r.sq != nil {
 		rows, err := r.sq.ListSCIMAttention(ctx, sqlitegen.ListSCIMAttentionParams{
-			OrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID,
 		})
 		if err != nil {
 			return nil, err
@@ -1431,7 +1431,7 @@ func (r scimRepo) Attention(ctx context.Context, p authz.Proof, bindingID string
 		return out, nil
 	}
 	rows, err := r.pg.ListSCIMAttention(ctx, pggen.ListSCIMAttentionParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID,
 	})
 	if err != nil {
 		return nil, err
@@ -1453,12 +1453,12 @@ func (r scimRepo) ClearAttention(ctx context.Context, p authz.Proof, bindingID, 
 	}
 	if r.sq != nil {
 		return r.sq.ClearSCIMAttention(ctx, sqlitegen.ClearSCIMAttentionParams{
-			OrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID,
 			State: state, SubjectRef: subjectRef,
 		})
 	}
 	return r.pg.ClearSCIMAttention(ctx, pggen.ClearSCIMAttentionParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID,
 		State: state, SubjectRef: subjectRef,
 	})
 }
@@ -1470,12 +1470,12 @@ func (r scimRepo) DeleteAttentionForBinding(ctx context.Context, p authz.Proof, 
 	}
 	if r.sq != nil {
 		_, err := r.sq.DeleteSCIMAttentionForBinding(ctx, sqlitegen.DeleteSCIMAttentionForBindingParams{
-			OrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID,
 		})
 		return err
 	}
 	_, err = r.pg.DeleteSCIMAttentionForBinding(ctx, pggen.DeleteSCIMAttentionForBindingParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+		ChainOrgID: string(chain.Org), BindingID: bindingID,
 	})
 	return err
 }
@@ -1491,7 +1491,7 @@ func (r scimRepo) CreateCredential(ctx context.Context, p authz.Proof, c NewSCIM
 	}
 	if r.sq != nil {
 		return constraint(r.sq.InsertSCIMCredential(ctx, sqlitegen.InsertSCIMCredentialParams{
-			ID: c.ID, OrgID: string(chain.Org), // chain column: proof-bound
+			ID: c.ID, OrgID: string(chain.Org),
 			BindingID: c.BindingID, PrincipalID: c.PrincipalID, Verifier: c.Verifier,
 			CredentialEpoch: c.CredentialEpoch,
 			CreatedAt:       CanonTime(c.CreatedAt).Format(scimCredentialTime),
@@ -1499,7 +1499,7 @@ func (r scimRepo) CreateCredential(ctx context.Context, p authz.Proof, c NewSCIM
 		}))
 	}
 	return constraint(r.pg.InsertSCIMCredential(ctx, pggen.InsertSCIMCredentialParams{
-		ID: c.ID, OrgID: string(chain.Org), // chain column: proof-bound
+		ID: c.ID, OrgID: string(chain.Org),
 		BindingID: c.BindingID, PrincipalID: c.PrincipalID, Verifier: c.Verifier,
 		CredentialEpoch: c.CredentialEpoch,
 		CreatedAt:       pgtype.Timestamptz{Time: CanonTime(c.CreatedAt), Valid: true},
@@ -1514,7 +1514,7 @@ func (r scimRepo) Credential(ctx context.Context, p authz.Proof, bindingID, id s
 	}
 	if r.sq != nil {
 		row, err := r.sq.GetSCIMCredential(ctx, sqlitegen.GetSCIMCredentialParams{
-			OrgID: string(chain.Org), BindingID: bindingID, ID: id, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID, ID: id,
 		})
 		if errors.Is(err, sql.ErrNoRows) {
 			return SCIMCredential{}, ErrNotFound
@@ -1525,7 +1525,7 @@ func (r scimRepo) Credential(ctx context.Context, p authz.Proof, bindingID, id s
 		return sqliteCredential(row)
 	}
 	row, err := r.pg.GetSCIMCredential(ctx, pggen.GetSCIMCredentialParams{
-		OrgID: string(chain.Org), BindingID: bindingID, ID: id, // chain column: proof-bound
+		OrgID: string(chain.Org), BindingID: bindingID, ID: id,
 	})
 	if noRows(err) {
 		return SCIMCredential{}, ErrNotFound
@@ -1544,7 +1544,7 @@ func (r scimRepo) Credentials(ctx context.Context, p authz.Proof, bindingID stri
 	out := []SCIMCredential{}
 	if r.sq != nil {
 		rows, err := r.sq.ListSCIMCredentials(ctx, sqlitegen.ListSCIMCredentialsParams{
-			OrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID,
 		})
 		if err != nil {
 			return nil, err
@@ -1559,7 +1559,7 @@ func (r scimRepo) Credentials(ctx context.Context, p authz.Proof, bindingID stri
 		return out, nil
 	}
 	rows, err := r.pg.ListSCIMCredentials(ctx, pggen.ListSCIMCredentialsParams{
-		OrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+		OrgID: string(chain.Org), BindingID: bindingID,
 	})
 	if err != nil {
 		return nil, err
@@ -1578,13 +1578,13 @@ func (r scimRepo) RevokeCredential(ctx context.Context, p authz.Proof, bindingID
 	if r.sq != nil {
 		n, err := r.sq.RevokeSCIMCredential(ctx, sqlitegen.RevokeSCIMCredentialParams{
 			RevokedAt: nullTimeString(at),
-			OrgID:     string(chain.Org), BindingID: bindingID, ID: id, // chain column: proof-bound
+			OrgID:     string(chain.Org), BindingID: bindingID, ID: id,
 		})
 		return n == 1, err
 	}
 	n, err := r.pg.RevokeSCIMCredential(ctx, pggen.RevokeSCIMCredentialParams{
 		RevokedAt: pgNullTimestamp(at),
-		OrgID:     string(chain.Org), BindingID: bindingID, ID: id, // chain column: proof-bound
+		OrgID:     string(chain.Org), BindingID: bindingID, ID: id,
 	})
 	return n == 1, err
 }
@@ -1597,12 +1597,12 @@ func (r scimRepo) RevokeCredentialsForBinding(ctx context.Context, p authz.Proof
 	if r.sq != nil {
 		return r.sq.RevokeSCIMCredentialsForBinding(ctx, sqlitegen.RevokeSCIMCredentialsForBindingParams{
 			RevokedAt: nullTimeString(at),
-			OrgID:     string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+			OrgID:     string(chain.Org), BindingID: bindingID,
 		})
 	}
 	return r.pg.RevokeSCIMCredentialsForBinding(ctx, pggen.RevokeSCIMCredentialsForBindingParams{
 		RevokedAt: pgNullTimestamp(at),
-		OrgID:     string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+		OrgID:     string(chain.Org), BindingID: bindingID,
 	})
 }
 
@@ -1613,11 +1613,11 @@ func (r scimRepo) DeleteCredentialsForBinding(ctx context.Context, p authz.Proof
 	}
 	if r.sq != nil {
 		return r.sq.DeleteSCIMCredentialsForBinding(ctx, sqlitegen.DeleteSCIMCredentialsForBindingParams{
-			OrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+			OrgID: string(chain.Org), BindingID: bindingID,
 		})
 	}
 	return r.pg.DeleteSCIMCredentialsForBinding(ctx, pggen.DeleteSCIMCredentialsForBindingParams{
-		OrgID: string(chain.Org), BindingID: bindingID, // chain column: proof-bound
+		OrgID: string(chain.Org), BindingID: bindingID,
 	})
 }
 
@@ -1625,12 +1625,12 @@ func (r scimRepo) DeleteCredentialsForBinding(ctx context.Context, p authz.Proof
 // timestamps a credential carries: an indefinite one has no ceiling, a live one
 // no revocation. The zero time is the absent value, so "never revoked" cannot
 // be confused with "revoked at the epoch".
-// scimCredentialTime is the layout the AUTHN resolver parses this table with
-// (internal/store/authn's fixed-width `timeLayout`). The credential row is read
-// pre-auth by that resolver and written post-auth by this repository, so the
-// two must agree — RFC3339Nano's variable-width fraction does not parse under a
-// fixed-width layout, and the mismatch only shows up once a fraction happens to
-// be short.
+// scimCredentialTime is the fixed-width layout this table is written with
+// (matching internal/store/authn's `timeLayout`). The credential row is read
+// pre-auth by the authn resolver and written post-auth by this repository. The
+// resolver's decodeTime now parses RFC3339Nano (which accepts this fixed form
+// too), so a short fraction no longer breaks the read; writes stay fixed-width
+// as the canonical, lexicographically ordered form (bug #619).
 const scimCredentialTime = "2006-01-02T15:04:05.000000Z"
 
 func nullTimeString(t time.Time) sql.NullString {

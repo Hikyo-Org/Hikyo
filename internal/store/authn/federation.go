@@ -122,7 +122,7 @@ func (r *Resolver) CreateFederationIssuer(ctx context.Context, iss NewFederation
 		ID: iss.ID, Issuer: iss.Issuer, IssuerType: string(iss.Type),
 		JwksMode: string(mode), StaticJwks: pgText(staticJWKS),
 		RefusedAudiences: joinAudiences(iss.RefusedAudiences),
-		CreatedAt:        pgTime(iss.CreatedAt), CreatedBy: string(iss.CreatedBy),
+		CreatedAt:        pgTimestamp(iss.CreatedAt), CreatedBy: string(iss.CreatedBy),
 	}))
 }
 
@@ -249,7 +249,7 @@ func (r *Resolver) UpdateFederationIssuer(ctx context.Context, id string, source
 		n, err = r.pg.UpdateFederationIssuer(ctx, pggen.UpdateFederationIssuerParams{
 			JwksMode: string(mode), StaticJwks: pgText(staticJWKS),
 			RefusedAudiences: joinAudiences(refused),
-			UpdatedAt:        pgTime(at), UpdatedBy: pgText(string(actor)), ID: id,
+			UpdatedAt:        pgTimestamp(at), UpdatedBy: pgText(string(actor)), ID: id,
 		})
 	}
 	return n > 0, err
@@ -350,7 +350,7 @@ func (r *Resolver) ReactivateBinding(ctx context.Context, id string, at time.Tim
 		})
 	} else {
 		n, err = r.pg.ReactivateFederatedBinding(ctx, pggen.ReactivateFederatedBindingParams{
-			ReactivatedAt: pgTime(at), ID: id,
+			ReactivatedAt: pgTimestamp(at), ID: id,
 		})
 	}
 	return n > 0, err

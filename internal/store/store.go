@@ -906,9 +906,6 @@ type AdapterCredentialResult struct {
 	TargetCount                  int
 }
 
-// ErrNotFound is the canonical cross-engine "no such row" — aliased from
-// domain so every layer shares one sentinel for the unauthorized ≡
-// nonexistent rule without importing the store.
 // ErrRetrySerialization marks an error a caller has classified as a TRANSIENT
 // race that the bounded retry loop should re-run the whole transaction for.
 //
@@ -919,6 +916,9 @@ type AdapterCredentialResult struct {
 // aborted the transaction.
 var ErrRetrySerialization = errors.New("store: transient race; retry the transaction")
 
+// ErrNotFound is the canonical cross-engine "no such row" — aliased from
+// domain so every layer shares one sentinel for the unauthorized ≡
+// nonexistent rule without importing the store.
 var ErrNotFound = domain.ErrNotFound
 
 // ErrConflict is the canonical cross-engine constraint refusal — a duplicate
@@ -977,6 +977,11 @@ func (d *DB) AuditExportSnapshotTime(ctx context.Context) (time.Time, error) {
 	switch d.engine {
 	case EnginePostgres:
 		var now time.Time
+		// clock_timestamp() (the true statement-execution instant), NOT now()
+		// deliberately: now()/transaction_timestamp() is frozen at BEGIN, which
+		// Coordination.Now() wants for stable lease comparisons but which here
+		// would place the cutoff before writers that started after this tx and
+		// let the export chase them. The two datastore clocks differ on purpose.
 		if err := d.pool.QueryRow(ctx, "SELECT clock_timestamp()").Scan(&now); err != nil {
 			return time.Time{}, fmt.Errorf("store: postgres audit export snapshot time: %w", err)
 		}
@@ -984,7 +989,7 @@ func (d *DB) AuditExportSnapshotTime(ctx context.Context) (time.Time, error) {
 	case EngineSQLite:
 		return CanonTime(time.Now()), nil
 	default:
-		return time.Time{}, fmt.Errorf("store: audit export snapshot time for unknown engine %q", d.engine)
+		return time.Time{}, fmt.Errorf("store: audit export snapshot time: unknown engine %q", d.engine)
 	}
 }
 
@@ -1001,9 +1006,10 @@ func (d *DB) AwaitAuditExportWriters(ctx context.Context) error {
 		}
 		return nil
 	case EngineSQLite:
+		// sqlite's single writer needs no extra barrier.
 		return nil
 	default:
-		return fmt.Errorf("store: audit export writer barrier for unknown engine %q", d.engine)
+		return fmt.Errorf("store: audit export writer barrier: unknown engine %q", d.engine)
 	}
 }
 

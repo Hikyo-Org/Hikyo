@@ -11,15 +11,16 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
+// TestEmbeddedMigrationVersionsAreUnique is a build-time guard: goose also
+// rejects duplicate versions at provider construction, but this names the exact
+// colliding files instead of surfacing an opaque runtime error.
 func TestEmbeddedMigrationVersionsAreUnique(t *testing.T) {
 	for _, dialect := range []string{"sqlite", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {
-			dir := "migrations/" + dialect
-			entries, err := fs.ReadDir(store.MigrationsFS, dir)
+			entries, err := fs.ReadDir(store.MigrationsFS, "migrations/"+dialect)
 			if err != nil {
 				t.Fatal(err)
 			}
-
 			versions := make(map[int64]string, len(entries))
 			for _, entry := range entries {
 				prefix, _, ok := strings.Cut(entry.Name(), "_")

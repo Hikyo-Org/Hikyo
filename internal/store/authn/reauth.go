@@ -97,7 +97,7 @@ func (r *Resolver) SlideReauthWindow(ctx context.Context, id string, windowExpir
 		return n == 1, err
 	}
 	n, err := r.pg.SlideReauthWindow(ctx, pggen.SlideReauthWindowParams{
-		WindowExpiresAt: pgTime(windowExpires), ID: id,
+		WindowExpiresAt: pgTimestamp(windowExpires), ID: id,
 	})
 	return n == 1, err
 }
@@ -112,7 +112,7 @@ func (r *Resolver) ConsumeSingleDecisionWindow(ctx context.Context, id string, a
 		return n == 1, err
 	}
 	n, err := r.pg.ConsumeSingleDecisionWindow(ctx, pggen.ConsumeSingleDecisionWindowParams{
-		ConsumedAt: pgTime(at), ID: id,
+		ConsumedAt: pgTimestamp(at), ID: id,
 	})
 	return n == 1, err
 }

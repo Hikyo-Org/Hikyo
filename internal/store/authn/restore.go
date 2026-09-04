@@ -133,8 +133,8 @@ func (r *Resolver) AdvanceRestoreEpoch(ctx context.Context, now time.Time) error
 	if err := r.pg.AdvanceRestoreEpoch(ctx, pggen.AdvanceRestoreEpochParams{
 		CredentialEpoch: next,
 		RestoreEpoch:    next,
-		ReactivatedAt:   pgTime(now),
-		UpdatedAt:       pgTime(now),
+		ReactivatedAt:   pgTimestamp(now),
+		UpdatedAt:       pgTimestamp(now),
 	}); err != nil {
 		return fmt.Errorf("authn: advance restore epoch: %w", err)
 	}
@@ -184,7 +184,7 @@ func (r *Resolver) InvalidateRestoredDynamicProviderCredentials(ctx context.Cont
 // restore refuses it by name instead of wrapping around it.
 const maxSaneEpoch = int64(1) << 32
 
-// nextEpoch parses the MAX() aggregate (sqlc types it interface{} because an
+// nextEpoch parses the MAX() aggregate (sqlc types it any because an
 // aggregate is nullable) and refuses shapes it does not recognise rather than
 // defaulting: a wrong default here is a live pre-restore credential.
 func nextEpoch(maxEpoch any) (int64, error) {

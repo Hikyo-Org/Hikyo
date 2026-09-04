@@ -175,7 +175,7 @@ func (r *Resolver) CreateMachinePrincipal(ctx context.Context, id domain.Princip
 		})
 	}
 	return r.pg.InsertMachinePrincipal(ctx, pggen.InsertMachinePrincipalParams{
-		ID: string(id), Class: pgText(string(class)), CreatedAt: pgTime(at),
+		ID: string(id), Class: pgText(string(class)), CreatedAt: pgTimestamp(at),
 	})
 }
 
@@ -199,7 +199,7 @@ func (r *Resolver) CreateServiceAccountAggregate(ctx context.Context, sa NewServ
 		err = r.pg.InsertServiceAccount(ctx, pggen.InsertServiceAccountParams{
 			ID: sa.ID, PrincipalID: string(sa.PrincipalID), OrgID: string(sa.Org),
 			ProjectID: string(sa.Project), Name: sa.Name, Kind: string(sa.Kind),
-			CreatedAt: pgTime(sa.CreatedAt), CreatedBy: string(sa.CreatedBy),
+			CreatedAt: pgTimestamp(sa.CreatedAt), CreatedBy: string(sa.CreatedBy),
 		})
 	}
 	if err := serviceAccountConstraint(err); err != nil {
@@ -434,7 +434,7 @@ func (r *Resolver) CreateMachineCredential(ctx context.Context, c NewMachineCred
 		ID: c.ID, ServiceAccountID: c.ServiceAccountID, Kind: string(c.Kind),
 		Verifier: c.Verifier, PrefixHint: pgText(c.PrefixHint), Lifetime: string(c.Lifetime),
 		ExpiresAt: nullPGTime(c.ExpiresAt), CredentialEpoch: c.CredentialEpoch,
-		CreatedAt: pgTime(c.CreatedAt), CreatedBy: string(c.CreatedBy),
+		CreatedAt: pgTimestamp(c.CreatedAt), CreatedBy: string(c.CreatedBy),
 		IssuerID: pgText(c.Binding.IssuerID), Subject: pgText(c.Binding.Subject),
 		Audience: pgText(c.Binding.Audience), RequiredClaims: pgText(c.Binding.RequiredClaimsJSON),
 	}))
@@ -690,7 +690,7 @@ func (r *Resolver) LiveMachineCredentialCount(ctx context.Context, serviceAccoun
 		})
 	}
 	return r.pg.CountLiveMachineCredentials(ctx, pggen.CountLiveMachineCredentialsParams{
-		ServiceAccountID: serviceAccountID, CredentialEpoch: epoch, Now: pgTime(now),
+		ServiceAccountID: serviceAccountID, CredentialEpoch: epoch, Now: pgTimestamp(now),
 	})
 }
 
@@ -713,7 +713,7 @@ func (r *Resolver) LiveMachineCredentialCounts(ctx context.Context, scope domain
 	}
 	rows, err := r.pg.CountLiveMachineCredentialsInProject(ctx, pggen.CountLiveMachineCredentialsInProjectParams{
 		OrgID: string(scope.Org), ProjectID: string(scope.Project),
-		CredentialEpoch: epoch, Now: pgTime(now),
+		CredentialEpoch: epoch, Now: pgTimestamp(now),
 	})
 	if err != nil {
 		return nil, err
@@ -900,10 +900,7 @@ func (r *Resolver) CredentialPolicy(ctx context.Context) (CredentialPolicy, erro
 // SetCredentialPolicy writes it, naming the acting principal and the instant.
 func (r *Resolver) SetCredentialPolicy(ctx context.Context, p CredentialPolicy, actor domain.PrincipalID, at time.Time) error {
 	if r.sq != nil {
-		allow := int64(0)
-		if p.AllowIndefinite {
-			allow = 1
-		}
+		allow := boolInt(p.AllowIndefinite)
 		return r.sq.SetCredentialPolicy(ctx, sqlitegen.SetCredentialPolicyParams{
 			MaxFiniteLifetimeSeconds: int64(p.MaxFiniteLifetime / time.Second),
 			AllowIndefinite:          allow,
@@ -916,7 +913,7 @@ func (r *Resolver) SetCredentialPolicy(ctx context.Context, p CredentialPolicy, 
 		MaxFiniteLifetimeSeconds: int64(p.MaxFiniteLifetime / time.Second),
 		AllowIndefinite:          p.AllowIndefinite,
 		MaxLiveCredentials:       p.MaxLiveCredentials,
-		UpdatedAt:                pgTime(at),
+		UpdatedAt:                pgTimestamp(at),
 		UpdatedBy:                pgText(string(actor)),
 	})
 }
@@ -1032,7 +1029,7 @@ func nullPGTime(t time.Time) pgtype.Timestamptz {
 	if t.IsZero() {
 		return pgtype.Timestamptz{}
 	}
-	return pgTime(t)
+	return pgTimestamp(t)
 }
 
 // nullTimeString renders an optional instant for sqlite: the zero time is

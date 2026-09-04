@@ -225,7 +225,6 @@ func (a sqliteAudit) InsertTenant(ctx context.Context, p authz.Proof, e audit.Ev
 	if err != nil {
 		return err
 	}
-	// Chain columns: proof-bound, never caller input.
 	row, err := audit.BuildRow(e, audit.TrailTenant, chain, time.Now())
 	if err != nil {
 		return err
@@ -460,7 +459,6 @@ func (a pgAudit) InsertTenant(ctx context.Context, p authz.Proof, e audit.Event)
 	if err != nil {
 		return err
 	}
-	// Chain columns: proof-bound, never caller input.
 	row, err := audit.BuildRow(e, audit.TrailTenant, chain, time.Time{})
 	if err != nil {
 		return err

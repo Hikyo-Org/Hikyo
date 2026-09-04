@@ -811,14 +811,8 @@ func (r sqlitePins) Insert(ctx context.Context, p authz.Proof, pin NewRevisionPi
 	if err != nil {
 		return err
 	}
-	override := int64(0)
-	if pin.SchemaOverride {
-		override = 1
-	}
-	historyAuthorized := int64(0)
-	if pin.HistoryAuthorized {
-		historyAuthorized = 1
-	}
+	override := boolInt(pin.SchemaOverride)
+	historyAuthorized := boolInt(pin.HistoryAuthorized)
 	return constraint(r.q.InsertRevisionPin(ctx, sqlitegen.InsertRevisionPinParams{
 		ID: pin.ID, OrgID: string(chain.Org), ProjectID: string(chain.Project), EnvironmentID: env,
 		WorkloadPrincipalID: pin.WorkloadPrincipalID, SnapshotID: pin.SnapshotID,

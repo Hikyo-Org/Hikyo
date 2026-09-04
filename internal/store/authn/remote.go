@@ -264,7 +264,7 @@ func (r *Resolver) MintInstanceConnection(ctx context.Context, n NewInstanceConn
 		Lifetime:        string(n.Lifetime),
 		ExpiresAt:       nullPGTime(n.ExpiresAt),
 		CredentialEpoch: n.CredentialEpoch,
-		CreatedAt:       pgTime(n.CreatedAt), CreatedBy: string(n.CreatedBy),
+		CreatedAt:       pgTimestamp(n.CreatedAt), CreatedBy: string(n.CreatedBy),
 	})
 }
 
