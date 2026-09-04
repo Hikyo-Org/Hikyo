@@ -439,15 +439,25 @@ func openSQLite(t *testing.T) *store.DB {
 	return db
 }
 
-func openPostgres(t *testing.T) *store.DB {
+// postgresTestDSN returns the configured base DSN, failing loudly in CI when
+// it is unset (the postgres leg must never vacuously skip there) and skipping
+// locally otherwise. Callers derive their own sibling database from it with
+// derivedDatabase; the raw DSN is returned so the suffix stays at the call site.
+func postgresTestDSN(t *testing.T) string {
 	t.Helper()
 	dsn := os.Getenv("HIKYO_TEST_POSTGRES_DSN")
 	if dsn == "" {
 		if os.Getenv("CI") != "" {
-			t.Fatal("CI run without HIKYO_TEST_POSTGRES_DSN: the postgres isolation leg must not silently skip in CI")
+			t.Fatal("CI run without HIKYO_TEST_POSTGRES_DSN: the postgres leg must not silently skip in CI")
 		}
 		t.Skip("HIKYO_TEST_POSTGRES_DSN not set")
 	}
+	return dsn
+}
+
+func openPostgres(t *testing.T) *store.DB {
+	t.Helper()
+	dsn := postgresTestDSN(t)
 	// This harness derives its own database from the configured one:
 	// `go test ./...` runs package binaries in parallel, and sharing one
 	// database with the conformance harness (same tables, drop + migrate +
@@ -514,6 +524,16 @@ func derivedDatabase(t *testing.T, dsn, suffix string) string {
 
 // pq quotes an identifier defensively; derived names come from the DSN.
 func pq(ident string) string { return `"` + strings.ReplaceAll(ident, `"`, `""`) + `"` }
+
+// forEngines runs a probe body on sqlite (always) and on postgres (via
+// HIKYO_TEST_POSTGRES_DSN; CI-fatal when unset, local-skip otherwise — the skip
+// semantics live in openPostgres). The two legs are subtests, so a collapsed
+// TestX matched by the CI planner's ^TestX$ pattern still executes both.
+func forEngines(t *testing.T, run func(t *testing.T, db *store.DB)) {
+	t.Helper()
+	t.Run("sqlite", func(t *testing.T) { run(t, seededDB(t, openSQLite)) })
+	t.Run("postgres", func(t *testing.T) { run(t, seededDB(t, openPostgres)) })
+}
 
 func seededDB(t *testing.T, open func(*testing.T) *store.DB) *store.DB {
 	t.Helper()

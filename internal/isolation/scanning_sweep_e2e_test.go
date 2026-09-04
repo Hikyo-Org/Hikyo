@@ -214,12 +214,8 @@ type sweepEnv struct {
 // already consumed the first-admin slot). It emits its own scanning events, so
 // it does not need the audit closure gate to give those types an emitter —
 // runScanningLifecycle already does that.
-func TestScanningCanarySweepSQLite(t *testing.T) {
-	runScanningCanarySweep(t, seededDB(t, openSQLite))
-}
-
-func TestScanningCanarySweepPostgres(t *testing.T) {
-	runScanningCanarySweep(t, seededDB(t, openPostgres))
+func TestScanningCanarySweep(t *testing.T) {
+	forEngines(t, runScanningCanarySweep)
 }
 
 // runScanningCanarySweep is SS4.a made real: it plants the canary, drives every

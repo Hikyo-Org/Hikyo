@@ -10,8 +10,9 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
-func TestMemberInviteSQLite(t *testing.T)   { runMemberInvite(t, seededDB(t, openSQLite)) }
-func TestMemberInvitePostgres(t *testing.T) { runMemberInvite(t, seededDB(t, openPostgres)) }
+func TestMemberInvite(t *testing.T) {
+	forEngines(t, runMemberInvite)
+}
 
 // runMemberInvite (#568, human-auth ADR § Identity linking): a manage-members
 // holder invites a human at organisation or instance scope; the account, the
@@ -32,25 +33,7 @@ func runMemberInvite(t *testing.T, db *store.DB) {
 	// The bootstrap administrator holds `operator` (manage-members at instance
 	// scope), which covers org_a by inheritance. Step up: membership writes
 	// are administrative.
-	login, err := auth.LocalLogin(ctx, "factor-admin", password, service.ArtifactCLI)
-	if err != nil {
-		t.Fatal(err)
-	}
-	uri, err := auth.EnrolTOTPStart(ctx, login.SessionToken, password)
-	if err != nil {
-		t.Fatalf("enrol start: %v", err)
-	}
-	clk = base.Add(30 * time.Second)
-	confirmed, err := auth.EnrolTOTPConfirm(ctx, login.SessionToken, totpCode(t, uri, clk))
-	if err != nil {
-		t.Fatalf("enrol confirm: %v", err)
-	}
-	clk = base.Add(60 * time.Second)
-	stepped, err := auth.StepUpTOTP(ctx, confirmed.SessionToken, totpCode(t, uri, clk))
-	if err != nil {
-		t.Fatalf("step-up: %v", err)
-	}
-	admin := service.Bearer(stepped.SessionToken)
+	admin := service.Bearer(enrolTOTPAndStepUp(t, auth, ctx, base, &clk, password))
 
 	// Organisation invite with a template: account + grants + authority.
 	inv, err := grants.InviteMember(ctx, admin, service.InviteSpec{

@@ -85,11 +85,8 @@ func newSCIMBinding(t *testing.T, db *store.DB, slug string) (string, string) {
 }
 
 // TestSCIMBindingLifecycle proves §1's tenancy rules and §7's structural grant.
-func TestSCIMBindingLifecycleSQLite(t *testing.T) {
-	runSCIMBindingLifecycle(t, seededDB(t, openSQLite))
-}
-func TestSCIMBindingLifecyclePostgres(t *testing.T) {
-	runSCIMBindingLifecycle(t, seededDB(t, openPostgres))
+func TestSCIMBindingLifecycle(t *testing.T) {
+	forEngines(t, runSCIMBindingLifecycle)
 }
 
 func runSCIMBindingLifecycle(t *testing.T, db *store.DB) {
@@ -160,8 +157,9 @@ func runSCIMBindingLifecycle(t *testing.T, db *store.DB) {
 
 // TestSCIMUserLifecycle walks §5.4's transition table: create, attribute
 // update, deactivate, reactivate, delete, re-create.
-func TestSCIMUserLifecycleSQLite(t *testing.T)   { runSCIMUserLifecycle(t, seededDB(t, openSQLite)) }
-func TestSCIMUserLifecyclePostgres(t *testing.T) { runSCIMUserLifecycle(t, seededDB(t, openPostgres)) }
+func TestSCIMUserLifecycle(t *testing.T) {
+	forEngines(t, runSCIMUserLifecycle)
+}
 
 func runSCIMUserLifecycle(t *testing.T, db *store.DB) {
 	s := scimSvc(db)
@@ -301,11 +299,8 @@ func runSCIMUserLifecycle(t *testing.T, db *store.DB) {
 
 // TestSCIMMappingReconciliation proves §2's overlap rules, §3's immediate
 // application and blast warnings, and §4's hand-mutation refusal.
-func TestSCIMMappingReconciliationSQLite(t *testing.T) {
-	runSCIMMappingReconciliation(t, seededDB(t, openSQLite))
-}
-func TestSCIMMappingReconciliationPostgres(t *testing.T) {
-	runSCIMMappingReconciliation(t, seededDB(t, openPostgres))
+func TestSCIMMappingReconciliation(t *testing.T) {
+	forEngines(t, runSCIMMappingReconciliation)
 }
 
 func runSCIMMappingReconciliation(t *testing.T, db *store.DB) {
@@ -416,11 +411,8 @@ func runSCIMMappingReconciliation(t *testing.T, db *store.DB) {
 
 // TestSCIMLockoutRetention proves §2.4: the SCIM-side release CONVERTS rather
 // than refusing, and the cure releases the retention deterministically.
-func TestSCIMLockoutRetentionSQLite(t *testing.T) {
-	runSCIMLockoutRetention(t, seededDB(t, openSQLite))
-}
-func TestSCIMLockoutRetentionPostgres(t *testing.T) {
-	runSCIMLockoutRetention(t, seededDB(t, openPostgres))
+func TestSCIMLockoutRetention(t *testing.T) {
+	forEngines(t, runSCIMLockoutRetention)
 }
 
 func runSCIMLockoutRetention(t *testing.T, db *store.DB) {
@@ -505,11 +497,8 @@ func runSCIMLockoutRetention(t *testing.T, db *store.DB) {
 // TestSCIMProviderFailClosed proves §1: while the referenced provider is
 // disabled or removed, the binding's ENTIRE wire surface refuses — read and
 // write alike — state is preserved, and the attention state names it.
-func TestSCIMProviderFailClosedSQLite(t *testing.T) {
-	runSCIMProviderFailClosed(t, seededDB(t, openSQLite))
-}
-func TestSCIMProviderFailClosedPostgres(t *testing.T) {
-	runSCIMProviderFailClosed(t, seededDB(t, openPostgres))
+func TestSCIMProviderFailClosed(t *testing.T) {
+	forEngines(t, runSCIMProviderFailClosed)
 }
 
 func runSCIMProviderFailClosed(t *testing.T, db *store.DB) {
@@ -834,11 +823,8 @@ func jsonTypeOf(v any) string {
 // TestSCIMPutReplacementSemantics is SC1's PUT clause (§8): omitted mutable
 // attributes clear to their defaults, an omitted `active` REACTIVATES, the
 // subject source is EXEMPT from replacement, and `groups` is ignored on input.
-func TestSCIMPutReplacementSemanticsSQLite(t *testing.T) {
-	runSCIMPutReplacementSemantics(t, seededDB(t, openSQLite))
-}
-func TestSCIMPutReplacementSemanticsPostgres(t *testing.T) {
-	runSCIMPutReplacementSemantics(t, seededDB(t, openPostgres))
+func TestSCIMPutReplacementSemantics(t *testing.T) {
+	forEngines(t, runSCIMPutReplacementSemantics)
 }
 
 func runSCIMPutReplacementSemantics(t *testing.T, db *store.DB) {
@@ -1017,9 +1003,8 @@ func runSCIMPutReplacementSemantics(t *testing.T, db *store.DB) {
 // are delivery/display metadata ONLY — never matched, never a linking key
 // (§5.2). A pushed email equal to an existing unrelated account's email must
 // NOT attach to it.
-func TestSCIMEmailNeverLinksSQLite(t *testing.T) { runSCIMEmailNeverLinks(t, seededDB(t, openSQLite)) }
-func TestSCIMEmailNeverLinksPostgres(t *testing.T) {
-	runSCIMEmailNeverLinks(t, seededDB(t, openPostgres))
+func TestSCIMEmailNeverLinks(t *testing.T) {
+	forEngines(t, runSCIMEmailNeverLinks)
 }
 
 func runSCIMEmailNeverLinks(t *testing.T, db *store.DB) {
@@ -1063,11 +1048,8 @@ func runSCIMEmailNeverLinks(t *testing.T, db *store.DB) {
 // unique and the ADR's closed uniqueness mapping names only `userName` and a
 // subject-source collision, so two same-named groups coexist and the
 // `displayName eq` probe answers with both.
-func TestSCIMGroupDisplayNameIsNotUniqueSQLite(t *testing.T) {
-	runSCIMGroupDisplayNameIsNotUnique(t, seededDB(t, openSQLite))
-}
-func TestSCIMGroupDisplayNameIsNotUniquePostgres(t *testing.T) {
-	runSCIMGroupDisplayNameIsNotUnique(t, seededDB(t, openPostgres))
+func TestSCIMGroupDisplayNameIsNotUnique(t *testing.T) {
+	forEngines(t, runSCIMGroupDisplayNameIsNotUnique)
 }
 
 func runSCIMGroupDisplayNameIsNotUnique(t *testing.T, db *store.DB) {
@@ -1108,11 +1090,8 @@ func runSCIMGroupDisplayNameIsNotUnique(t *testing.T, db *store.DB) {
 // other identity provider's assertion, and nothing about it needs a human
 // decision. Widening the flag to cover it would send an operator looking for a
 // manual grant that does not exist.
-func TestSCIMManualRemainsMeansManualSQLite(t *testing.T) {
-	runSCIMManualRemainsMeansManual(t, seededDB(t, openSQLite))
-}
-func TestSCIMManualRemainsMeansManualPostgres(t *testing.T) {
-	runSCIMManualRemainsMeansManual(t, seededDB(t, openPostgres))
+func TestSCIMManualRemainsMeansManual(t *testing.T) {
+	forEngines(t, runSCIMManualRemainsMeansManual)
 }
 
 func runSCIMManualRemainsMeansManual(t *testing.T, db *store.DB) {

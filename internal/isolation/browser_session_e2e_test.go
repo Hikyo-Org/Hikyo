@@ -22,12 +22,8 @@ import (
 // that `VerifyBrowserCSRF` actually consults that verifier rather than
 // believing whatever the caller presented.
 
-func TestBrowserLoginMintsACSRFBoundSessionSQLite(t *testing.T) {
-	runBrowserSessionFlow(t, seededDB(t, openSQLite))
-}
-
-func TestBrowserLoginMintsACSRFBoundSessionPostgres(t *testing.T) {
-	runBrowserSessionFlow(t, seededDB(t, openPostgres))
+func TestBrowserLoginMintsACSRFBoundSession(t *testing.T) {
+	forEngines(t, runBrowserSessionFlow)
 }
 
 func runBrowserSessionFlow(t *testing.T, db *store.DB) {
@@ -133,12 +129,8 @@ func TestUnknownLoginArtifactIsRefusedBeforeVerification(t *testing.T) {
 // The transport half is asserted in internal/server; what needs a datastore is
 // that the SERVICE mints the right grammar, the right clocks and a live CSRF
 // verifier on each of these paths.
-func TestAccountSecurityMutationsPreserveTheBrowserArtifactSQLite(t *testing.T) {
-	runBrowserMutationFlow(t, seededDB(t, openSQLite))
-}
-
-func TestAccountSecurityMutationsPreserveTheBrowserArtifactPostgres(t *testing.T) {
-	runBrowserMutationFlow(t, seededDB(t, openPostgres))
+func TestAccountSecurityMutationsPreserveTheBrowserArtifact(t *testing.T) {
+	forEngines(t, runBrowserMutationFlow)
 }
 
 // browserSessionCheck returns the assertion every reissued browser session
@@ -235,12 +227,8 @@ func runBrowserMutationFlow(t *testing.T, db *store.DB) {
 // this ticket. The existing OIDC lifecycle tests drive them with a CLI session,
 // so a regression there would be invisible — these drive the same two
 // operations from a browser session and assert the artifact survives.
-func TestBrowserFederationPreservesTheArtifactSQLite(t *testing.T) {
-	runBrowserFederationFlow(t, seededDB(t, openSQLite))
-}
-
-func TestBrowserFederationPreservesTheArtifactPostgres(t *testing.T) {
-	runBrowserFederationFlow(t, seededDB(t, openPostgres))
+func TestBrowserFederationPreservesTheArtifact(t *testing.T) {
+	forEngines(t, runBrowserFederationFlow)
 }
 
 func runBrowserFederationFlow(t *testing.T, db *store.DB) {
@@ -293,12 +281,8 @@ func runBrowserFederationFlow(t *testing.T, db *store.DB) {
 // `instance-config` — MFA-mandatory, correct for an operator, absurd in front
 // of a sidebar. So the properties that matter are: a member sees their own
 // orgs, sees nobody else's, and reaches it with an ordinary password session.
-func TestListMineProjectsOnlyTheCallersOwnOrgsSQLite(t *testing.T) {
-	runListMineProjection(t, seededDB(t, openSQLite))
-}
-
-func TestListMineProjectsOnlyTheCallersOwnOrgsPostgres(t *testing.T) {
-	runListMineProjection(t, seededDB(t, openPostgres))
+func TestListMineProjectsOnlyTheCallersOwnOrgs(t *testing.T) {
+	forEngines(t, runListMineProjection)
 }
 
 func runListMineProjection(t *testing.T, db *store.DB) {
@@ -348,12 +332,8 @@ func runListMineProjection(t *testing.T, db *store.DB) {
 // The rail's real caller: an ordinary password session, no second factor. The
 // projection above is exercised through LocalPrincipal; this proves the same
 // answer arrives over a browser session that could not pass `org.list`.
-func TestListMineNeedsNoSecondFactorSQLite(t *testing.T) {
-	runListMineFromABrowserSession(t, seededDB(t, openSQLite))
-}
-
-func TestListMineNeedsNoSecondFactorPostgres(t *testing.T) {
-	runListMineFromABrowserSession(t, seededDB(t, openPostgres))
+func TestListMineNeedsNoSecondFactor(t *testing.T) {
+	forEngines(t, runListMineFromABrowserSession)
 }
 
 func runListMineFromABrowserSession(t *testing.T, db *store.DB) {

@@ -25,11 +25,8 @@ import (
 
 // TestSCIMProvisionThenLoginOIDC is the OKTA-SHAPED fixture: the subject source
 // value IS the OIDC `sub`, consumed as opaque bytes.
-func TestSCIMProvisionThenLoginOIDCSQLite(t *testing.T) {
-	runSCIMProvisionThenLoginOIDC(t, seededDB(t, openSQLite))
-}
-func TestSCIMProvisionThenLoginOIDCPostgres(t *testing.T) {
-	runSCIMProvisionThenLoginOIDC(t, seededDB(t, openPostgres))
+func TestSCIMProvisionThenLoginOIDC(t *testing.T) {
+	forEngines(t, runSCIMProvisionThenLoginOIDC)
 }
 
 func runSCIMProvisionThenLoginOIDC(t *testing.T, db *store.DB) {
@@ -109,11 +106,8 @@ func runSCIMProvisionThenLoginOIDC(t *testing.T, db *store.DB) {
 // encoder-equality test: get the profile wrong — a qualifier declared absent
 // that the assertion carries, say — and the two subjects differ and the login
 // finds nothing.
-func TestSCIMProvisionThenLoginSAMLSQLite(t *testing.T) {
-	runSCIMProvisionThenLoginSAML(t, seededDB(t, openSQLite))
-}
-func TestSCIMProvisionThenLoginSAMLPostgres(t *testing.T) {
-	runSCIMProvisionThenLoginSAML(t, seededDB(t, openPostgres))
+func TestSCIMProvisionThenLoginSAML(t *testing.T) {
+	forEngines(t, runSCIMProvisionThenLoginSAML)
 }
 
 const samlSPEntityID = "https://hikyo.test/api/v1/auth/saml"
@@ -198,9 +192,8 @@ func samlLoginAs(t *testing.T, auth *service.Auth, idp *samltest.IdP, nameID str
 
 // TestSCIMTwoBindingRace is SC3's named fixture: two bindings contending on ONE
 // shared grant row. No lost origin, no premature revocation.
-func TestSCIMTwoBindingRaceSQLite(t *testing.T) { runSCIMTwoBindingRace(t, seededDB(t, openSQLite)) }
-func TestSCIMTwoBindingRacePostgres(t *testing.T) {
-	runSCIMTwoBindingRace(t, seededDB(t, openPostgres))
+func TestSCIMTwoBindingRace(t *testing.T) {
+	forEngines(t, runSCIMTwoBindingRace)
 }
 
 func runSCIMTwoBindingRace(t *testing.T, db *store.DB) {
@@ -334,11 +327,8 @@ func runSCIMTwoBindingRace(t *testing.T, db *store.DB) {
 // concurrent pushes". The property asserted is the observable one: concurrent
 // pushes to ONE binding lose no write. Every wire transaction takes the binding
 // row's write lock as its first act (`wireTx`), so they serialize behind it.
-func TestSCIMPerBindingSerializationSQLite(t *testing.T) {
-	runSCIMPerBindingSerialization(t, seededDB(t, openSQLite))
-}
-func TestSCIMPerBindingSerializationPostgres(t *testing.T) {
-	runSCIMPerBindingSerialization(t, seededDB(t, openPostgres))
+func TestSCIMPerBindingSerialization(t *testing.T) {
+	forEngines(t, runSCIMPerBindingSerialization)
 }
 
 func runSCIMPerBindingSerialization(t *testing.T, db *store.DB) {
@@ -404,11 +394,8 @@ func runSCIMPerBindingSerialization(t *testing.T, db *store.DB) {
 // §9.1's sentence is precise about this: re-assertion "rebuilds exactly what
 // the IdP currently asserts". Reconciliation refuses archived truth; it does
 // not get to destroy live truth.
-func TestSCIMReconcileKeepsFreshOriginsSQLite(t *testing.T) {
-	runSCIMReconcileKeepsFreshOrigins(t, seededDB(t, openSQLite))
-}
-func TestSCIMReconcileKeepsFreshOriginsPostgres(t *testing.T) {
-	runSCIMReconcileKeepsFreshOrigins(t, seededDB(t, openPostgres))
+func TestSCIMReconcileKeepsFreshOrigins(t *testing.T) {
+	forEngines(t, runSCIMReconcileKeepsFreshOrigins)
 }
 
 func runSCIMReconcileKeepsFreshOrigins(t *testing.T, db *store.DB) {
@@ -525,8 +512,9 @@ func runSCIMReconcileKeepsFreshOrigins(t *testing.T, db *store.DB) {
 // dropped at reconciliation commit" — is blocked on #76's quarantine/commit
 // flow and is pinned by TestSCIMRestoreOriginDropIsBlockedOn76 below, which
 // fails loudly the day that flow exists.
-func TestSCIMRestoreDrillSQLite(t *testing.T)   { runSCIMRestoreDrill(t, seededDB(t, openSQLite)) }
-func TestSCIMRestoreDrillPostgres(t *testing.T) { runSCIMRestoreDrill(t, seededDB(t, openPostgres)) }
+func TestSCIMRestoreDrill(t *testing.T) {
+	forEngines(t, runSCIMRestoreDrill)
+}
 
 func runSCIMRestoreDrill(t *testing.T, db *store.DB) {
 	ctx := t.Context()

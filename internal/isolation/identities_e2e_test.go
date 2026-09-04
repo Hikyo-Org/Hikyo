@@ -108,19 +108,12 @@ func seedMachineReveal(t *testing.T, db *store.DB, id string, p domain.Principal
 	seedOrigins(t, db)
 }
 
-func TestMachineIdentityLifecycleSQLite(t *testing.T) {
-	runMachineIdentityLifecycle(t, seededDB(t, openSQLite))
-}
-func TestMachineIdentityLifecyclePostgres(t *testing.T) {
-	runMachineIdentityLifecycle(t, seededDB(t, openPostgres))
+func TestMachineIdentityLifecycle(t *testing.T) {
+	forEngines(t, runMachineIdentityLifecycle)
 }
 
-func TestServiceAccountCreateAggregateSQLite(t *testing.T) {
-	runServiceAccountCreateAggregate(t, seededDB(t, openSQLite))
-}
-
-func TestServiceAccountCreateAggregatePostgres(t *testing.T) {
-	runServiceAccountCreateAggregate(t, seededDB(t, openPostgres))
+func TestServiceAccountCreateAggregate(t *testing.T) {
+	forEngines(t, runServiceAccountCreateAggregate)
 }
 
 func runServiceAccountCreateAggregate(t *testing.T, db *store.DB) {
@@ -150,12 +143,8 @@ func runServiceAccountCreateAggregate(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestServiceAccountDeleteAggregateSQLite(t *testing.T) {
-	runServiceAccountDeleteAggregate(t, seededDB(t, openSQLite))
-}
-
-func TestServiceAccountDeleteAggregatePostgres(t *testing.T) {
-	runServiceAccountDeleteAggregate(t, seededDB(t, openPostgres))
+func TestServiceAccountDeleteAggregate(t *testing.T) {
+	forEngines(t, runServiceAccountDeleteAggregate)
 }
 
 func runServiceAccountDeleteAggregate(t *testing.T, db *store.DB) {
@@ -224,12 +213,8 @@ func runServiceAccountDeleteAggregate(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestServiceAccountAggregateRollbackSQLite(t *testing.T) {
-	runServiceAccountAggregateRollback(t, seededDB(t, openSQLite))
-}
-
-func TestServiceAccountAggregateRollbackPostgres(t *testing.T) {
-	runServiceAccountAggregateRollback(t, seededDB(t, openPostgres))
+func TestServiceAccountAggregateRollback(t *testing.T) {
+	forEngines(t, runServiceAccountAggregateRollback)
 }
 
 func runServiceAccountAggregateRollback(t *testing.T, db *store.DB) {
@@ -311,12 +296,8 @@ func assertRowCountsEqual(t *testing.T, db *store.DB, want map[string]int64) {
 	}
 }
 
-func TestServiceAccountDeleteSerializesMintSQLite(t *testing.T) {
-	runServiceAccountDeleteSerializesMint(t, seededDB(t, openSQLite))
-}
-
-func TestServiceAccountDeleteSerializesMintPostgres(t *testing.T) {
-	runServiceAccountDeleteSerializesMint(t, seededDB(t, openPostgres))
+func TestServiceAccountDeleteSerializesMint(t *testing.T) {
+	forEngines(t, runServiceAccountDeleteSerializesMint)
 }
 
 func runServiceAccountDeleteSerializesMint(t *testing.T, db *store.DB) {
@@ -508,11 +489,8 @@ func runMachineIdentityLifecycle(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestMachineCredentialEpochSQLite(t *testing.T) {
-	runMachineCredentialEpoch(t, seededDB(t, openSQLite))
-}
-func TestMachineCredentialEpochPostgres(t *testing.T) {
-	runMachineCredentialEpoch(t, seededDB(t, openPostgres))
+func TestMachineCredentialEpoch(t *testing.T) {
+	forEngines(t, runMachineCredentialEpoch)
 }
 
 // runMachineCredentialEpoch is the restore mechanism, propagated onto
@@ -545,11 +523,8 @@ func runMachineCredentialEpoch(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestMachineLifetimeControlsSQLite(t *testing.T) {
-	runMachineLifetimeControls(t, seededDB(t, openSQLite))
-}
-func TestMachineLifetimeControlsPostgres(t *testing.T) {
-	runMachineLifetimeControls(t, seededDB(t, openPostgres))
+func TestMachineLifetimeControls(t *testing.T) {
+	forEngines(t, runMachineLifetimeControls)
 }
 
 // runMachineLifetimeControls exercises both instance controls and the
@@ -692,11 +667,8 @@ func runMachineLifetimeControls(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestMachineCredentialCapSQLite(t *testing.T) {
-	runMachineCredentialCap(t, seededDB(t, openSQLite))
-}
-func TestMachineCredentialCapPostgres(t *testing.T) {
-	runMachineCredentialCap(t, seededDB(t, openPostgres))
+func TestMachineCredentialCap(t *testing.T) {
+	forEngines(t, runMachineCredentialCap)
 }
 
 // runMachineCredentialCap: overlap rotation needs room, a mint loop does not.
@@ -737,11 +709,8 @@ func runMachineCredentialCap(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestMintDisclosureGateSQLite(t *testing.T) {
-	runMintDisclosureGate(t, seededDB(t, openSQLite))
-}
-func TestMintDisclosureGatePostgres(t *testing.T) {
-	runMintDisclosureGate(t, seededDB(t, openPostgres))
+func TestMintDisclosureGate(t *testing.T) {
+	forEngines(t, runMintDisclosureGate)
 }
 
 // runMintDisclosureGate is the acceptance criteria's "manage identities
@@ -852,11 +821,8 @@ func runMintDisclosureGate(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestMachineGrantWideningSQLite(t *testing.T) {
-	runMachineGrantWidening(t, seededDB(t, openSQLite))
-}
-func TestMachineGrantWideningPostgres(t *testing.T) {
-	runMachineGrantWidening(t, seededDB(t, openPostgres))
+func TestMachineGrantWidening(t *testing.T) {
+	forEngines(t, runMachineGrantWidening)
 }
 
 // runMachineGrantWidening is the ADR's third authorization row — the one an
@@ -933,11 +899,8 @@ func runMachineGrantWidening(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestMachineAuthIsUniformSQLite(t *testing.T) {
-	runMachineAuthIsUniform(t, seededDB(t, openSQLite))
-}
-func TestMachineAuthIsUniformPostgres(t *testing.T) {
-	runMachineAuthIsUniform(t, seededDB(t, openPostgres))
+func TestMachineAuthIsUniform(t *testing.T) {
+	forEngines(t, runMachineAuthIsUniform)
 }
 
 // runMachineAuthIsUniform is the tenant-isolation propagation's timing half:
@@ -1008,11 +971,8 @@ func runMachineAuthIsUniform(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestMachineSubtreeConfinementSQLite(t *testing.T) {
-	runMachineSubtreeConfinement(t, seededDB(t, openSQLite))
-}
-func TestMachineSubtreeConfinementPostgres(t *testing.T) {
-	runMachineSubtreeConfinement(t, seededDB(t, openPostgres))
+func TestMachineSubtreeConfinement(t *testing.T) {
+	forEngines(t, runMachineSubtreeConfinement)
 }
 
 // runMachineSubtreeConfinement: "its grants are confined to its owning
@@ -1066,11 +1026,8 @@ func runMachineSubtreeConfinement(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestMachineIdentityIsolationSQLite(t *testing.T) {
-	runMachineIdentityIsolation(t, seededDB(t, openSQLite))
-}
-func TestMachineIdentityIsolationPostgres(t *testing.T) {
-	runMachineIdentityIsolation(t, seededDB(t, openPostgres))
+func TestMachineIdentityIsolation(t *testing.T) {
+	forEngines(t, runMachineIdentityIsolation)
 }
 
 // runMachineIdentityIsolation: a service-account id from another project is

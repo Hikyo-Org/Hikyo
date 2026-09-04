@@ -31,9 +31,9 @@ import (
 // test process has no controlling terminal — which is itself the behaviour
 // the non-TTY refusals assert elsewhere.
 
-func TestDemoFlowSQLite(t *testing.T) { runDemoFlow(t, seededDB(t, openSQLite)) }
-
-func TestDemoFlowPostgres(t *testing.T) { runDemoFlow(t, seededDB(t, openPostgres)) }
+func TestDemoFlow(t *testing.T) {
+	forEngines(t, runDemoFlow)
+}
 
 func runDemoFlow(t *testing.T, db *store.DB) {
 	auth := authService(t, db)

@@ -444,8 +444,9 @@ func assertSCIM501(t *testing.T, body map[string]any) {
 // creates, and for every group runs `displayName eq` before it creates or
 // updates — so the probe-then-write pairs here are the connector's own control
 // flow, not a test's convenience.
-func TestSCIMOktaSequenceSQLite(t *testing.T)   { runSCIMOktaSequence(t, seededDB(t, openSQLite)) }
-func TestSCIMOktaSequencePostgres(t *testing.T) { runSCIMOktaSequence(t, seededDB(t, openPostgres)) }
+func TestSCIMOktaSequence(t *testing.T) {
+	forEngines(t, runSCIMOktaSequence)
+}
 
 func runSCIMOktaSequence(t *testing.T, db *store.DB) {
 	_, _, call := scimWireServer(t, db, "okta")
@@ -669,11 +670,8 @@ func runSCIMOktaSequence(t *testing.T, db *store.DB) {
 // contract-layer constraint on a SCIM parameter would answer an unauthenticated
 // caller with a Hikyo 400 — telling them their request was malformed before they
 // proved they may ask — instead of the uniform 401.
-func TestSCIMWireRefusesNothingBeforeAuthenticatingSQLite(t *testing.T) {
-	runSCIMWireAuthBeforeValidation(t, seededDB(t, openSQLite))
-}
-func TestSCIMWireRefusesNothingBeforeAuthenticatingPostgres(t *testing.T) {
-	runSCIMWireAuthBeforeValidation(t, seededDB(t, openPostgres))
+func TestSCIMWireRefusesNothingBeforeAuthenticating(t *testing.T) {
+	forEngines(t, runSCIMWireAuthBeforeValidation)
 }
 
 func runSCIMWireAuthBeforeValidation(t *testing.T, db *store.DB) {
@@ -746,8 +744,9 @@ func runSCIMWireAuthBeforeValidation(t *testing.T, db *store.DB) {
 // rather than `userName`, it sends `active` as the STRINGS "True"/"False", and
 // it sends pathless PATCH value objects rather than attribute paths. Each of
 // those is a fixture here, driven over the wire.
-func TestSCIMEntraSequenceSQLite(t *testing.T)   { runSCIMEntraSequence(t, seededDB(t, openSQLite)) }
-func TestSCIMEntraSequencePostgres(t *testing.T) { runSCIMEntraSequence(t, seededDB(t, openPostgres)) }
+func TestSCIMEntraSequence(t *testing.T) {
+	forEngines(t, runSCIMEntraSequence)
+}
 
 func runSCIMEntraSequence(t *testing.T, db *store.DB) {
 	_, _, call := scimWireServer(t, db, "entra")
@@ -886,11 +885,8 @@ func runSCIMEntraSequence(t *testing.T, db *store.DB) {
 // parse fixtures in internal/scimproto prove the parser; this proves the
 // transport carries the parser's verdict out unaltered, which is a different
 // claim and the one an identity provider actually experiences.
-func TestSCIMPatchMatrixOverTheWireSQLite(t *testing.T) {
-	runSCIMPatchMatrixOverTheWire(t, seededDB(t, openSQLite))
-}
-func TestSCIMPatchMatrixOverTheWirePostgres(t *testing.T) {
-	runSCIMPatchMatrixOverTheWire(t, seededDB(t, openPostgres))
+func TestSCIMPatchMatrixOverTheWire(t *testing.T) {
+	forEngines(t, runSCIMPatchMatrixOverTheWire)
 }
 
 func runSCIMPatchMatrixOverTheWire(t *testing.T, db *store.DB) {
@@ -1164,11 +1160,8 @@ func runSCIMPatchMatrixOverTheWire(t *testing.T, db *store.DB) {
 // the bytes an identity provider actually receives, canonicalized so that
 // legitimately-differing VALUES (ids, timestamps, names) collapse to their
 // types and any difference in the field SET survives.
-func TestSCIMWireAttachIsIndistinguishableSQLite(t *testing.T) {
-	runSCIMWireAttachIsIndistinguishable(t, seededDB(t, openSQLite))
-}
-func TestSCIMWireAttachIsIndistinguishablePostgres(t *testing.T) {
-	runSCIMWireAttachIsIndistinguishable(t, seededDB(t, openPostgres))
+func TestSCIMWireAttachIsIndistinguishable(t *testing.T) {
+	forEngines(t, runSCIMWireAttachIsIndistinguishable)
 }
 
 func runSCIMWireAttachIsIndistinguishable(t *testing.T, db *store.DB) {
@@ -1269,11 +1262,8 @@ func writeJSONShape(b *strings.Builder, v any) {
 // and a binding that declared nothing of the sort refuses that same URN by
 // name. Before this, any URN was a valid subject source, discovery advertised
 // only the enterprise extension, and the renderer echoed whatever arrived.
-func TestSCIMDeclaredExtensionsAreTheClosedTruthSQLite(t *testing.T) {
-	runSCIMDeclaredExtensions(t, seededDB(t, openSQLite))
-}
-func TestSCIMDeclaredExtensionsAreTheClosedTruthPostgres(t *testing.T) {
-	runSCIMDeclaredExtensions(t, seededDB(t, openPostgres))
+func TestSCIMDeclaredExtensionsAreTheClosedTruth(t *testing.T) {
+	forEngines(t, runSCIMDeclaredExtensions)
 }
 
 func runSCIMDeclaredExtensions(t *testing.T, db *store.DB) {
@@ -1403,11 +1393,8 @@ func runSCIMDeclaredExtensions(t *testing.T, db *store.DB) {
 // NO-OP: an identity provider re-asserting current truth on every
 // reconciliation cycle must not bump `meta.lastModified` or emit an update
 // event. A trail full of updates that updated nothing is a trail nobody reads.
-func TestSCIMPresenceAndNoOpSQLite(t *testing.T) {
-	runSCIMPresenceAndNoOp(t, seededDB(t, openSQLite))
-}
-func TestSCIMPresenceAndNoOpPostgres(t *testing.T) {
-	runSCIMPresenceAndNoOp(t, seededDB(t, openPostgres))
+func TestSCIMPresenceAndNoOp(t *testing.T) {
+	forEngines(t, runSCIMPresenceAndNoOp)
 }
 
 func runSCIMPresenceAndNoOp(t *testing.T, db *store.DB) {
@@ -1516,11 +1503,8 @@ func runSCIMPresenceAndNoOp(t *testing.T, db *store.DB) {
 // RESPONSES: exact status and exact body bytes for a revoked credential versus
 // one that names nothing, the page bound answered as a clamp rather than a
 // refusal, and the body bound answered by name.
-func TestSCIMWireAdmissionOverHTTPSQLite(t *testing.T) {
-	runSCIMWireAdmissionOverHTTP(t, seededDB(t, openSQLite))
-}
-func TestSCIMWireAdmissionOverHTTPPostgres(t *testing.T) {
-	runSCIMWireAdmissionOverHTTP(t, seededDB(t, openPostgres))
+func TestSCIMWireAdmissionOverHTTP(t *testing.T) {
+	forEngines(t, runSCIMWireAdmissionOverHTTP)
 }
 
 func runSCIMWireAdmissionOverHTTP(t *testing.T, db *store.DB) {
@@ -1671,11 +1655,8 @@ func randomUserName(t *testing.T) string {
 //  3. and the annotation did not leak: a real directory read still emits its
 //     `scim.directory_read`, so this is an exemption for the manual, not for
 //     the tenant data beside it.
-func TestSCIMDiscoveryIsAnnotatedNotSilentSQLite(t *testing.T) {
-	runSCIMDiscoveryIsAnnotatedNotSilent(t, seededDB(t, openSQLite))
-}
-func TestSCIMDiscoveryIsAnnotatedNotSilentPostgres(t *testing.T) {
-	runSCIMDiscoveryIsAnnotatedNotSilent(t, seededDB(t, openPostgres))
+func TestSCIMDiscoveryIsAnnotatedNotSilent(t *testing.T) {
+	forEngines(t, runSCIMDiscoveryIsAnnotatedNotSilent)
 }
 
 // TestSCIMWireMismatchOverDiscovery is SC1.l over the WIRE: a credential
@@ -1688,11 +1669,8 @@ func TestSCIMDiscoveryIsAnnotatedNotSilentPostgres(t *testing.T) {
 // any operation authorizes, is its ENTIRE audit linkage. Nothing else exercises
 // the mismatch path over a route whose operation carries no audit declaration,
 // so nothing else would notice if narrowing that declaration broke the refusal.
-func TestSCIMWireMismatchOverDiscoverySQLite(t *testing.T) {
-	runSCIMWireMismatchOverDiscovery(t, seededDB(t, openSQLite))
-}
-func TestSCIMWireMismatchOverDiscoveryPostgres(t *testing.T) {
-	runSCIMWireMismatchOverDiscovery(t, seededDB(t, openPostgres))
+func TestSCIMWireMismatchOverDiscovery(t *testing.T) {
+	forEngines(t, runSCIMWireMismatchOverDiscovery)
 }
 
 func runSCIMWireMismatchOverDiscovery(t *testing.T, db *store.DB) {

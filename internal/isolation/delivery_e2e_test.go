@@ -27,12 +27,8 @@ import (
 // held — because a test that changed two at once would pass even if the
 // implementation ignored one of them.
 
-func TestDeliveryCursorRoundTripSQLite(t *testing.T) {
-	runDeliveryCursorRoundTrip(t, seededDB(t, openSQLite))
-}
-
-func TestDeliveryCursorRoundTripPostgres(t *testing.T) {
-	runDeliveryCursorRoundTrip(t, seededDB(t, openPostgres))
+func TestDeliveryCursorRoundTrip(t *testing.T) {
+	forEngines(t, runDeliveryCursorRoundTrip)
 }
 
 // runDeliveryCursorRoundTrip is the base behaviour: a first fetch delivers, its
@@ -142,12 +138,8 @@ func runDeliveryCursorRoundTrip(t *testing.T, db *store.DB) {
 	// config-only and emits identity.disclosure per delivered value.
 }
 
-func TestOfflineRecordReconciliationSQLite(t *testing.T) {
-	runOfflineRecordReconciliation(t, seededDB(t, openSQLite))
-}
-
-func TestOfflineRecordReconciliationPostgres(t *testing.T) {
-	runOfflineRecordReconciliation(t, seededDB(t, openPostgres))
+func TestOfflineRecordReconciliation(t *testing.T) {
+	forEngines(t, runOfflineRecordReconciliation)
 }
 
 func runOfflineRecordReconciliation(t *testing.T, db *store.DB) {
@@ -198,12 +190,8 @@ func runOfflineRecordReconciliation(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestDeliveryCursorFalsificationSQLite(t *testing.T) {
-	runDeliveryCursorFalsification(t, seededDB(t, openSQLite))
-}
-
-func TestDeliveryCursorFalsificationPostgres(t *testing.T) {
-	runDeliveryCursorFalsification(t, seededDB(t, openPostgres))
+func TestDeliveryCursorFalsification(t *testing.T) {
+	forEngines(t, runDeliveryCursorFalsification)
 }
 
 // runDeliveryCursorFalsification falsifies EACH cursor component
@@ -344,12 +332,8 @@ func runDeliveryCursorFalsification(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestDeliveryAuthorizationMovementInvalidatesCursorSQLite(t *testing.T) {
-	runAuthorizationMovementInvalidatesCursor(t, seededDB(t, openSQLite))
-}
-
-func TestDeliveryAuthorizationMovementInvalidatesCursorPostgres(t *testing.T) {
-	runAuthorizationMovementInvalidatesCursor(t, seededDB(t, openPostgres))
+func TestDeliveryAuthorizationMovementInvalidatesCursor(t *testing.T) {
+	forEngines(t, runAuthorizationMovementInvalidatesCursor)
 }
 
 // runAuthorizationMovementInvalidatesCursor is the same rule from the other
@@ -430,12 +414,8 @@ func runAuthorizationMovementInvalidatesCursor(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestDeliveryUnauthorizedIsIndistinguishableSQLite(t *testing.T) {
-	runDeliveryUnauthorized(t, seededDB(t, openSQLite))
-}
-
-func TestDeliveryUnauthorizedIsIndistinguishablePostgres(t *testing.T) {
-	runDeliveryUnauthorized(t, seededDB(t, openPostgres))
+func TestDeliveryUnauthorizedIsIndistinguishable(t *testing.T) {
+	forEngines(t, runDeliveryUnauthorized)
 }
 
 // runDeliveryUnauthorized is the ADR's "authorization is evaluated on the
@@ -502,7 +482,7 @@ func runDeliveryUnauthorized(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestDeliveryChangeTokenTracksTheManifestSQLite(t *testing.T) {
+func TestDeliveryChangeTokenTracksTheManifest(t *testing.T) {
 	db := seededDB(t, openSQLite)
 	identityFixtures(t, db)
 	seedDeliveryCatalogue(t, db)
@@ -655,12 +635,8 @@ func advancePinGeneration(t *testing.T, db *store.DB, p domain.PrincipalID, env 
 // Audit attribution). A fetch now delivers PLAINTEXT where the caller is
 // authorized, and records one disclosure per delivered value.
 
-func TestDeliveryDeliversValuesUnderAuthoritySQLite(t *testing.T) {
-	runDeliveryDeliversValues(t, seededDB(t, openSQLite))
-}
-
-func TestDeliveryDeliversValuesUnderAuthorityPostgres(t *testing.T) {
-	runDeliveryDeliversValues(t, seededDB(t, openPostgres))
+func TestDeliveryDeliversValuesUnderAuthority(t *testing.T) {
+	forEngines(t, runDeliveryDeliversValues)
 }
 
 // runDeliveryDeliversValues is the per-key value rule made empirical: a config
@@ -764,12 +740,8 @@ func runDeliveryDeliversValues(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestDeliveryConfigOnlyProjectionSQLite(t *testing.T) {
-	runDeliveryConfigOnlyProjection(t, seededDB(t, openSQLite))
-}
-
-func TestDeliveryConfigOnlyProjectionPostgres(t *testing.T) {
-	runDeliveryConfigOnlyProjection(t, seededDB(t, openPostgres))
+func TestDeliveryConfigOnlyProjection(t *testing.T) {
+	forEngines(t, runDeliveryConfigOnlyProjection)
 }
 
 // runDeliveryConfigOnlyProjection pins the server-side authorized term:
@@ -834,12 +806,8 @@ func runDeliveryConfigOnlyProjection(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestDeliveryAcknowledgedKeysAreRecordedSQLite(t *testing.T) {
-	runDeliveryAcknowledgedKeys(t, seededDB(t, openSQLite))
-}
-
-func TestDeliveryAcknowledgedKeysAreRecordedPostgres(t *testing.T) {
-	runDeliveryAcknowledgedKeys(t, seededDB(t, openPostgres))
+func TestDeliveryAcknowledgedKeysAreRecorded(t *testing.T) {
+	forEngines(t, runDeliveryAcknowledgedKeys)
 }
 
 // runDeliveryAcknowledgedKeys pins the loader-control acknowledgement's two
@@ -895,12 +863,8 @@ func runDeliveryAcknowledgedKeys(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestDeliveryCredentialExpiryIsFiniteOrAbsentSQLite(t *testing.T) {
-	runDeliveryCredentialExpiry(t, seededDB(t, openSQLite))
-}
-
-func TestDeliveryCredentialExpiryIsFiniteOrAbsentPostgres(t *testing.T) {
-	runDeliveryCredentialExpiry(t, seededDB(t, openPostgres))
+func TestDeliveryCredentialExpiryIsFiniteOrAbsent(t *testing.T) {
+	forEngines(t, runDeliveryCredentialExpiry)
 }
 
 // runDeliveryCredentialExpiry pins the presenting credential's expiry surfacing:
@@ -972,12 +936,8 @@ func deliveredByName(keys []service.DeliveredKey) map[string]service.DeliveredKe
 	return out
 }
 
-func TestDeliveryPinnedNonCurrentRequiresRevealHistorySQLite(t *testing.T) {
-	runDeliveryPinnedNonCurrent(t, seededDB(t, openSQLite))
-}
-
-func TestDeliveryPinnedNonCurrentRequiresRevealHistoryPostgres(t *testing.T) {
-	runDeliveryPinnedNonCurrent(t, seededDB(t, openPostgres))
+func TestDeliveryPinnedNonCurrentRequiresRevealHistory(t *testing.T) {
+	forEngines(t, runDeliveryPinnedNonCurrent)
 }
 
 // runDeliveryPinnedNonCurrent pins the reveal-history branch of the value rule:
@@ -1072,12 +1032,8 @@ func runDeliveryPinnedNonCurrent(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestDeliveryPinnedCurrentBecomingHistoricalInvalidatesCursorSQLite(t *testing.T) {
-	runDeliveryPinnedCurrentBecomingHistorical(t, seededDB(t, openSQLite))
-}
-
-func TestDeliveryPinnedCurrentBecomingHistoricalInvalidatesCursorPostgres(t *testing.T) {
-	runDeliveryPinnedCurrentBecomingHistorical(t, seededDB(t, openPostgres))
+func TestDeliveryPinnedCurrentBecomingHistoricalInvalidatesCursor(t *testing.T) {
+	forEngines(t, runDeliveryPinnedCurrentBecomingHistorical)
 }
 
 // runDeliveryPinnedCurrentBecomingHistorical is the #64 P1: a pin that WAS

@@ -1025,10 +1025,6 @@ func runSuite(t *testing.T, db *store.DB) {
 	t.Run("read_snapshot_stability", func(t *testing.T) { runReadSnapshotStability(t, db) })
 }
 
-func TestIsolationSQLite(t *testing.T) {
-	runSuite(t, seededDB(t, openSQLite))
-}
-
-func TestIsolationPostgres(t *testing.T) {
-	runSuite(t, seededDB(t, openPostgres))
+func TestIsolation(t *testing.T) {
+	forEngines(t, runSuite)
 }

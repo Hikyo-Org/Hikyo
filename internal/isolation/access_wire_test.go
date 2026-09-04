@@ -161,19 +161,12 @@ func (e accessWireEnv) callAs(t *testing.T, token, method, path string, body any
 	return resp.StatusCode, out
 }
 
-func TestAccessWireUniformitySQLite(t *testing.T) {
-	runAccessWireUniformity(t, seededDB(t, openSQLite))
-}
-func TestAccessWireUniformityPostgres(t *testing.T) {
-	runAccessWireUniformity(t, seededDB(t, openPostgres))
+func TestAccessWireUniformity(t *testing.T) {
+	forEngines(t, runAccessWireUniformity)
 }
 
-func TestSessionClockResolutionReuseSQLite(t *testing.T) {
-	runSessionClockResolutionReuse(t, seededDB(t, openSQLite))
-}
-
-func TestSessionClockResolutionReusePostgres(t *testing.T) {
-	runSessionClockResolutionReuse(t, seededDB(t, openPostgres))
+func TestSessionClockResolutionReuse(t *testing.T) {
+	forEngines(t, runSessionClockResolutionReuse)
 }
 
 // runSessionClockResolutionReuse pins the HTTP seam #512 changes: the
@@ -419,11 +412,8 @@ func runAccessWireUniformity(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestAccessWireQueryTraceSQLite(t *testing.T) {
-	runAccessWireQueryTrace(t, seededDB(t, openSQLite))
-}
-func TestAccessWireQueryTracePostgres(t *testing.T) {
-	runAccessWireQueryTrace(t, seededDB(t, openPostgres))
+func TestAccessWireQueryTrace(t *testing.T) {
+	forEngines(t, runAccessWireQueryTrace)
 }
 
 // runAccessWireQueryTrace is the STRUCTURAL timing control for the new
@@ -536,11 +526,8 @@ func stripMemberManagement(t *testing.T, db *store.DB, p domain.PrincipalID) {
 	execRaw(t, db, `DELETE FROM grants WHERE principal_id = '`+string(p)+`' AND capability = 'manage-members'`)
 }
 
-func TestProjectListingDoesNotReadSiblingsSQLite(t *testing.T) {
-	runProjectListingDoesNotReadSiblings(t, seededDB(t, openSQLite))
-}
-func TestProjectListingDoesNotReadSiblingsPostgres(t *testing.T) {
-	runProjectListingDoesNotReadSiblings(t, seededDB(t, openPostgres))
+func TestProjectListingDoesNotReadSiblings(t *testing.T) {
+	forEngines(t, runProjectListingDoesNotReadSiblings)
 }
 
 // runProjectListingDoesNotReadSiblings catches the overfetch directly: a

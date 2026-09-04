@@ -379,12 +379,8 @@ func assertReauthWindow(t *testing.T, db *store.DB, sessionID, envID string) {
 	}
 }
 
-func TestWorkspaceAssuranceAndStepUpSQLite(t *testing.T) {
-	runWorkspaceAssuranceAndStepUp(t, seededDB(t, openSQLite))
-}
-
-func TestWorkspaceAssuranceAndStepUpPostgres(t *testing.T) {
-	runWorkspaceAssuranceAndStepUp(t, seededDB(t, openPostgres))
+func TestWorkspaceAssuranceAndStepUp(t *testing.T) {
+	forEngines(t, runWorkspaceAssuranceAndStepUp)
 }
 
 // The bounds this path opens its window under are the human-auth service's own,
@@ -493,12 +489,8 @@ func runStepUpBindingIsConsumed(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestStepUpBindingIsConsumedSQLite(t *testing.T) {
-	runStepUpBindingIsConsumed(t, seededDB(t, openSQLite))
-}
-
-func TestStepUpBindingIsConsumedPostgres(t *testing.T) {
-	runStepUpBindingIsConsumed(t, seededDB(t, openPostgres))
+func TestStepUpBindingIsConsumed(t *testing.T) {
+	forEngines(t, runStepUpBindingIsConsumed)
 }
 
 // The approve page reads the transaction purpose and any step-up binding back
@@ -587,12 +579,8 @@ func runShowHandoffReturnsBoundPolicy(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestShowHandoffReturnsBoundPolicySQLite(t *testing.T) {
-	runShowHandoffReturnsBoundPolicy(t, seededDB(t, openSQLite))
-}
-
-func TestShowHandoffReturnsBoundPolicyPostgres(t *testing.T) {
-	runShowHandoffReturnsBoundPolicy(t, seededDB(t, openPostgres))
+func TestShowHandoffReturnsBoundPolicy(t *testing.T) {
+	forEngines(t, runShowHandoffReturnsBoundPolicy)
 }
 
 // A workspace step-up for the reveal operation must be spendable by the real
@@ -654,12 +642,8 @@ func runStepUpRevealIsSpentByValuePath(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestStepUpRevealIsSpentByValuePathSQLite(t *testing.T) {
-	runStepUpRevealIsSpentByValuePath(t, seededDB(t, openSQLite))
-}
-
-func TestStepUpRevealIsSpentByValuePathPostgres(t *testing.T) {
-	runStepUpRevealIsSpentByValuePath(t, seededDB(t, openPostgres))
+func TestStepUpRevealIsSpentByValuePath(t *testing.T) {
+	forEngines(t, runStepUpRevealIsSpentByValuePath)
 }
 
 // The fresh-ceremony gate, driven through a REAL factor verification rather

@@ -380,10 +380,6 @@ func runMultiTargetSync(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestAdapterMultiTargetSyncSQLite(t *testing.T) {
-	runMultiTargetSync(t, seededDB(t, openSQLite))
-}
-
-func TestAdapterMultiTargetSyncPostgres(t *testing.T) {
-	runMultiTargetSync(t, seededDB(t, openPostgres))
+func TestAdapterMultiTargetSync(t *testing.T) {
+	forEngines(t, runMultiTargetSync)
 }

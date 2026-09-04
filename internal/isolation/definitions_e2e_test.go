@@ -16,9 +16,9 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
-func TestDefinitionsSQLite(t *testing.T) { runDefinitions(t, seededDB(t, openSQLite)) }
-
-func TestDefinitionsPostgres(t *testing.T) { runDefinitions(t, seededDB(t, openPostgres)) }
+func TestDefinitions(t *testing.T) {
+	forEngines(t, runDefinitions)
+}
 
 func runDefinitions(t *testing.T, db *store.DB) {
 	t.Run("export plan apply round trip", func(t *testing.T) { definitionsRoundTrip(t, db) })

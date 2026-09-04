@@ -10,11 +10,8 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
-func TestProjectStorageHighWaterSQLite(t *testing.T) {
-	runProjectStorageHighWater(t, seededDB(t, openSQLite))
-}
-func TestProjectStorageHighWaterPostgres(t *testing.T) {
-	runProjectStorageHighWater(t, seededDB(t, openPostgres))
+func TestProjectStorageHighWater(t *testing.T) {
+	forEngines(t, runProjectStorageHighWater)
 }
 
 // runProjectStorageHighWater is the ops-spec § 8 / § 141 per-project storage

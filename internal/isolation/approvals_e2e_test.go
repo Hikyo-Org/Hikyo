@@ -488,12 +488,8 @@ func runApprovalEdges(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestApprovalEdgesSQLite(t *testing.T) {
-	runApprovalEdges(t, seededDB(t, openSQLite))
-}
-
-func TestApprovalEdgesPostgres(t *testing.T) {
-	runApprovalEdges(t, seededDB(t, openPostgres))
+func TestApprovalEdges(t *testing.T) {
+	forEngines(t, runApprovalEdges)
 }
 
 // runProtectedApprovalBypass proves a protected bypass spends only its bound
@@ -545,12 +541,8 @@ func runProtectedApprovalBypass(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestProtectedApprovalBypassSQLite(t *testing.T) {
-	runProtectedApprovalBypass(t, seededDB(t, openSQLite))
-}
-
-func TestProtectedApprovalBypassPostgres(t *testing.T) {
-	runProtectedApprovalBypass(t, seededDB(t, openPostgres))
+func TestProtectedApprovalBypass(t *testing.T) {
+	forEngines(t, runProtectedApprovalBypass)
 }
 
 // policyIDForEnv returns the current env policy's id via the admin surface.
@@ -618,12 +610,8 @@ func mintReauthedSession(t *testing.T, db *store.DB, principal domain.PrincipalI
 // TestApprovalsLifecycle runs the whole engine end to end. It is the acceptance
 // driver; the audit suite calls runApprovalLifecycle again for the emitter
 // obligation.
-func TestApprovalsLifecycleSQLite(t *testing.T) {
-	runApprovalLifecycle(t, seededDB(t, openSQLite))
-}
-
-func TestApprovalsLifecyclePostgres(t *testing.T) {
-	runApprovalLifecycle(t, seededDB(t, openPostgres))
+func TestApprovalsLifecycle(t *testing.T) {
+	forEngines(t, runApprovalLifecycle)
 }
 
 func runConcurrentApprovalVotes(t *testing.T, db *store.DB) {
@@ -702,12 +690,8 @@ func runConcurrentApprovalVotes(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestConcurrentApprovalVotesSQLite(t *testing.T) {
-	runConcurrentApprovalVotes(t, seededDB(t, openSQLite))
-}
-
-func TestConcurrentApprovalVotesSharedPostgres(t *testing.T) {
-	runConcurrentApprovalVotes(t, seededDB(t, openPostgres))
+func TestConcurrentApprovalVotes(t *testing.T) {
+	forEngines(t, runConcurrentApprovalVotes)
 }
 
 func runApprovalExpiryBatches(t *testing.T, db *store.DB) {
@@ -762,10 +746,6 @@ func runApprovalExpiryBatches(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestApprovalExpiryBatchesSQLite(t *testing.T) {
-	runApprovalExpiryBatches(t, seededDB(t, openSQLite))
-}
-
-func TestApprovalExpiryBatchesPostgres(t *testing.T) {
-	runApprovalExpiryBatches(t, seededDB(t, openPostgres))
+func TestApprovalExpiryBatches(t *testing.T) {
+	forEngines(t, runApprovalExpiryBatches)
 }

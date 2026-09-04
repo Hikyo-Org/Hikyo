@@ -177,11 +177,8 @@ func disclosureRows(t *testing.T, db *store.DB) int64 {
 	return queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'disclosure.value_revealed'")
 }
 
-func TestTOTPOpensARevealWindowSQLite(t *testing.T) {
-	runTOTPOpensARevealWindow(t, seededDB(t, openSQLite))
-}
-func TestTOTPOpensARevealWindowPostgres(t *testing.T) {
-	runTOTPOpensARevealWindow(t, seededDB(t, openPostgres))
+func TestTOTPOpensARevealWindow(t *testing.T) {
+	forEngines(t, runTOTPOpensARevealWindow)
 }
 
 // runTOTPOpensARevealWindow is the possession-factor SUCCESS path.
@@ -274,11 +271,8 @@ func ceremonyCode(t *testing.T, otpauthURI string, at time.Time) string {
 	return code
 }
 
-func TestRevealNeedsACeremonySQLite(t *testing.T) {
-	runRevealNeedsACeremony(t, seededDB(t, openSQLite))
-}
-func TestRevealNeedsACeremonyPostgres(t *testing.T) {
-	runRevealNeedsACeremony(t, seededDB(t, openPostgres))
+func TestRevealNeedsACeremony(t *testing.T) {
+	forEngines(t, runRevealNeedsACeremony)
 }
 
 // runRevealNeedsACeremony: the sliding half. A disclosure with no window is
@@ -368,11 +362,8 @@ func runRevealNeedsACeremony(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestZeroWindowForcesAPasskeyPerDisclosureSQLite(t *testing.T) {
-	runZeroWindowForcesAPasskeyPerDisclosure(t, seededDB(t, openSQLite))
-}
-func TestZeroWindowForcesAPasskeyPerDisclosurePostgres(t *testing.T) {
-	runZeroWindowForcesAPasskeyPerDisclosure(t, seededDB(t, openPostgres))
+func TestZeroWindowForcesAPasskeyPerDisclosure(t *testing.T) {
+	forEngines(t, runZeroWindowForcesAPasskeyPerDisclosure)
 }
 
 // runZeroWindowForcesAPasskeyPerDisclosure is mvp-boundary A5's [E2E] line:
@@ -434,11 +425,8 @@ func runZeroWindowForcesAPasskeyPerDisclosure(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestProtectedEnvironmentCapsTheWindowAtZeroSQLite(t *testing.T) {
-	runProtectedEnvironmentCapsTheWindow(t, seededDB(t, openSQLite))
-}
-func TestProtectedEnvironmentCapsTheWindowAtZeroPostgres(t *testing.T) {
-	runProtectedEnvironmentCapsTheWindow(t, seededDB(t, openPostgres))
+func TestProtectedEnvironmentCapsTheWindowAtZero(t *testing.T) {
+	forEngines(t, runProtectedEnvironmentCapsTheWindow)
 }
 
 // runProtectedEnvironmentCapsTheWindow: the protected flag is not a second
@@ -500,11 +488,8 @@ func runProtectedEnvironmentCapsTheWindow(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestCopySourceTakesTheCeremonySQLite(t *testing.T) {
-	runCopySourceTakesTheCeremony(t, seededDB(t, openSQLite))
-}
-func TestCopySourceTakesTheCeremonyPostgres(t *testing.T) {
-	runCopySourceTakesTheCeremony(t, seededDB(t, openPostgres))
+func TestCopySourceTakesTheCeremony(t *testing.T) {
+	forEngines(t, runCopySourceTakesTheCeremony)
 }
 
 // runCopySourceTakesTheCeremony: copy is a disclosure by proxy — the material
@@ -565,12 +550,8 @@ func runCopySourceTakesTheCeremony(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestRestorePinAndProtectedPublishTakeCeremoniesSQLite(t *testing.T) {
-	runRestorePinAndProtectedPublishTakeCeremonies(t, seededDB(t, openSQLite))
-}
-
-func TestRestorePinAndProtectedPublishTakeCeremoniesPostgres(t *testing.T) {
-	runRestorePinAndProtectedPublishTakeCeremonies(t, seededDB(t, openPostgres))
+func TestRestorePinAndProtectedPublishTakeCeremonies(t *testing.T) {
+	forEngines(t, runRestorePinAndProtectedPublishTakeCeremonies)
 }
 
 func runRestorePinAndProtectedPublishTakeCeremonies(t *testing.T, db *store.DB) {
@@ -647,11 +628,8 @@ func runRestorePinAndProtectedPublishTakeCeremonies(t *testing.T, db *store.DB) 
 	}
 }
 
-func TestAMachineNeverReauthenticatesSQLite(t *testing.T) {
-	runAMachineNeverReauthenticates(t, seededDB(t, openSQLite))
-}
-func TestAMachineNeverReauthenticatesPostgres(t *testing.T) {
-	runAMachineNeverReauthenticates(t, seededDB(t, openPostgres))
+func TestAMachineNeverReauthenticates(t *testing.T) {
+	forEngines(t, runAMachineNeverReauthenticates)
 }
 
 // runAMachineNeverReauthenticates: "the token IS the credential and there is
@@ -729,11 +707,8 @@ func runAMachineNeverReauthenticates(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestProtectedDestinationRefusesAConfirmationFlagSQLite(t *testing.T) {
-	runProtectedDestinationRefusesAConfirmationFlag(t, seededDB(t, openSQLite))
-}
-func TestProtectedDestinationRefusesAConfirmationFlagPostgres(t *testing.T) {
-	runProtectedDestinationRefusesAConfirmationFlag(t, seededDB(t, openPostgres))
+func TestProtectedDestinationRefusesAConfirmationFlag(t *testing.T) {
+	forEngines(t, runProtectedDestinationRefusesAConfirmationFlag)
 }
 
 // runProtectedDestinationRefusesAConfirmationFlag (review R1 finding 1): a
@@ -787,11 +762,8 @@ func runProtectedDestinationRefusesAConfirmationFlag(t *testing.T, db *store.DB)
 	}
 }
 
-func TestACeremonyIsBoundToItsPurposeSQLite(t *testing.T) {
-	runACeremonyIsBoundToItsPurpose(t, seededDB(t, openSQLite))
-}
-func TestACeremonyIsBoundToItsPurposePostgres(t *testing.T) {
-	runACeremonyIsBoundToItsPurpose(t, seededDB(t, openPostgres))
+func TestACeremonyIsBoundToItsPurpose(t *testing.T) {
+	forEngines(t, runACeremonyIsBoundToItsPurpose)
 }
 
 // runACeremonyIsBoundToItsPurpose (review R1 finding 3): "purpose-bound" has to
@@ -834,11 +806,8 @@ func runACeremonyIsBoundToItsPurpose(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestTheTOTPRouteIsNotAnEnvironmentOracleSQLite(t *testing.T) {
-	runTheTOTPRouteIsNotAnEnvironmentOracle(t, seededDB(t, openSQLite))
-}
-func TestTheTOTPRouteIsNotAnEnvironmentOraclePostgres(t *testing.T) {
-	runTheTOTPRouteIsNotAnEnvironmentOracle(t, seededDB(t, openPostgres))
+func TestTheTOTPRouteIsNotAnEnvironmentOracle(t *testing.T) {
+	forEngines(t, runTheTOTPRouteIsNotAnEnvironmentOracle)
 }
 
 // runTheTOTPRouteIsNotAnEnvironmentOracle (review R1 finding 4): the route
@@ -873,11 +842,8 @@ func runTheTOTPRouteIsNotAnEnvironmentOracle(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestConcurrentCeremoniesSupersedeSQLite(t *testing.T) {
-	runConcurrentCeremoniesSupersede(t, seededDB(t, openSQLite))
-}
-func TestConcurrentCeremoniesSupersedePostgres(t *testing.T) {
-	runConcurrentCeremoniesSupersede(t, seededDB(t, openPostgres))
+func TestConcurrentCeremoniesSupersede(t *testing.T) {
+	forEngines(t, runConcurrentCeremoniesSupersede)
 }
 
 // runConcurrentCeremoniesSupersede (review R1 finding 6): two tabs finishing a
@@ -955,11 +921,8 @@ func runConcurrentCeremoniesSupersede(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestAWindowExpiringDuringACopyIsNotSpentSQLite(t *testing.T) {
-	runAWindowExpiringDuringACopyIsNotSpent(t, seededDB(t, openSQLite))
-}
-func TestAWindowExpiringDuringACopyIsNotSpentPostgres(t *testing.T) {
-	runAWindowExpiringDuringACopyIsNotSpent(t, seededDB(t, openPostgres))
+func TestAWindowExpiringDuringACopyIsNotSpent(t *testing.T) {
+	forEngines(t, runAWindowExpiringDuringACopyIsNotSpent)
 }
 
 // runAWindowExpiringDuringACopyIsNotSpent (review R1 finding 2): consumption
@@ -1028,11 +991,8 @@ func runAWindowExpiringDuringACopyIsNotSpent(t *testing.T, db *store.DB) {
 	}
 }
 
-func TestThePasskeyRouteIsNotAnEnvironmentOracleSQLite(t *testing.T) {
-	runThePasskeyRouteIsNotAnEnvironmentOracle(t, seededDB(t, openSQLite))
-}
-func TestThePasskeyRouteIsNotAnEnvironmentOraclePostgres(t *testing.T) {
-	runThePasskeyRouteIsNotAnEnvironmentOracle(t, seededDB(t, openPostgres))
+func TestThePasskeyRouteIsNotAnEnvironmentOracle(t *testing.T) {
+	forEngines(t, runThePasskeyRouteIsNotAnEnvironmentOracle)
 }
 
 // runThePasskeyRouteIsNotAnEnvironmentOracle (review R2): the passkey reauth

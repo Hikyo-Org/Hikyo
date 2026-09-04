@@ -268,7 +268,7 @@ func runComposeCLIDelivery(t *testing.T, engine store.Engine) {
 	}
 }
 
-func TestComposeCLIRenderAndDoctorSQLite(t *testing.T) {
+func TestComposeCLIRenderAndDoctor(t *testing.T) {
 	runComposeCLIRenderAndDoctor(t, store.EngineSQLite)
 }
 
@@ -351,7 +351,7 @@ func runComposeCLIRenderAndDoctor(t *testing.T, engine store.Engine) {
 	assertNoPlaintextUnder(t, work, "postgres://dev")
 }
 
-func TestComposeCLISyncBlastRadiusSQLite(t *testing.T) {
+func TestComposeCLISyncBlastRadius(t *testing.T) {
 	rig := bootComposeRig(t, store.EngineSQLite)
 	_, tokenFile := rig.mintWorkload(t)
 	work := t.TempDir()
@@ -404,7 +404,7 @@ func TestComposeCLISyncBlastRadiusSQLite(t *testing.T) {
 // docker up — the env_file vanished with the tmpfs and the stack is running
 // against nothing (R1-10). `docker compose up -d` is idempotent on an unchanged
 // config hash, so a needless up is harmless; a skipped one is a broken stack.
-func TestComposeCLISyncRematerializesWipedRuntimeSQLite(t *testing.T) {
+func TestComposeCLISyncRematerializesWipedRuntime(t *testing.T) {
 	rig := bootComposeRig(t, store.EngineSQLite)
 	_, tokenFile := rig.mintWorkload(t)
 	work := t.TempDir()
@@ -439,7 +439,7 @@ func TestComposeCLISyncRematerializesWipedRuntimeSQLite(t *testing.T) {
 // TestComposeCLISyncApplyPendingRetry: a sync whose `docker compose up -d` FAILS
 // leaves an apply-pending marker, so the NEXT sync — even with nothing to move —
 // retries the apply and, on success, clears the marker (finding 10).
-func TestComposeCLISyncApplyPendingRetrySQLite(t *testing.T) {
+func TestComposeCLISyncApplyPendingRetry(t *testing.T) {
 	rig := bootComposeRig(t, store.EngineSQLite)
 	_, tokenFile := rig.mintWorkload(t)
 	work := t.TempDir()
@@ -477,7 +477,7 @@ func TestComposeCLISyncApplyPendingRetrySQLite(t *testing.T) {
 	}
 }
 
-func TestComposeCLIReconcileSQLite(t *testing.T) {
+func TestComposeCLIReconcile(t *testing.T) {
 	rig := bootComposeRig(t, store.EngineSQLite)
 	_, tokenFile := rig.mintWorkload(t)
 	work := t.TempDir()

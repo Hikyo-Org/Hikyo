@@ -11,12 +11,8 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
-func TestArtifactClassAdmissionWireSQLite(t *testing.T) {
-	runArtifactClassAdmissionWire(t, seededDB(t, openSQLite))
-}
-
-func TestArtifactClassAdmissionWirePostgres(t *testing.T) {
-	runArtifactClassAdmissionWire(t, seededDB(t, openPostgres))
+func TestArtifactClassAdmissionWire(t *testing.T) {
+	forEngines(t, runArtifactClassAdmissionWire)
 }
 
 func runArtifactClassAdmissionWire(t *testing.T, db *store.DB) {
