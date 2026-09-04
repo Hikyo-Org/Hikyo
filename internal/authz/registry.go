@@ -4215,6 +4215,34 @@ var systemSiteEvents = map[SystemSite][]audit.EventType{
 // exposing mutation. Production code has no business calling these.
 type RegistryFacts struct{}
 
+// NetworkOperationPolicy is the narrow immutable projection used by network
+// adapters to prove that their compiled contract matches the authorization
+// registry. It contains no handler or datastore authority.
+type NetworkOperationPolicy struct {
+	Formula     []string
+	AuditedNone bool
+	ReadOnly    bool
+}
+
+// LookupNetworkOperationPolicy returns the registered formula and successful
+// audit disposition for one authorization operation.
+func LookupNetworkOperationPolicy(name string) (NetworkOperationPolicy, bool) {
+	spec, ok := registry.ops[Operation(name)]
+	if !ok {
+		return NetworkOperationPolicy{}, false
+	}
+	policy := NetworkOperationPolicy{AuditedNone: spec.auditedNone, ReadOnly: true}
+	for _, atom := range spec.formula {
+		policy.Formula = append(policy.Formula, string(atom.Cap)+"@"+levelNames[atom.At])
+	}
+	for storeOp := range spec.storeOps {
+		if !readOnlyStoreOps[storeOp] {
+			policy.ReadOnly = false
+		}
+	}
+	return policy, true
+}
+
 // Operations lists every registered operation and its class.
 func (RegistryFacts) Operations() map[Operation]Class {
 	out := make(map[Operation]Class, len(registry.ops))

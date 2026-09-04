@@ -55,7 +55,9 @@
     "http:GET /readyz": "unauthenticated readiness probe: same contract as /healthz",
     "http:POST /api/v1/auth/webauthn/login/start": "opens a discoverable-credential ceremony and returns opaque options; no proof is validated, no credential or account is resolved, and no state a probe could distinguish is created \u2014 the login lands at login/finish, which carries the events",
     "http:POST /api/v1/auth/webauthn/reauth/start": "opens a ceremony bound to the operation unit and returns opaque options; validates no proof and changes no state \u2014 the window opens at reauth/finish, which carries the events",
-    "http:POST /api/v1/auth/webauthn/step-up/start": "opens a ceremony scoped to the acting account's credentials and returns opaque options; validates no proof and changes no state \u2014 the elevation lands at step-up/finish, which carries the events"
+    "http:POST /api/v1/auth/webauthn/step-up/start": "opens a ceremony scoped to the acting account's credentials and returns opaque options; validates no proof and changes no state \u2014 the elevation lands at step-up/finish, which carries the events",
+    "mcp:server/discover": "unauthenticated static MCP protocol metadata: no principal, tenant data, or state change",
+    "mcp:tools/list": "unauthenticated static MCP tool metadata: one compiled tenant-free catalogue, no principal, tenant data, or state change"
   },
   "operations": {
     "definitions.plan.get": "reads an immutable definitions plan under definitions-edit authority and changes no state; plan creation and apply carry the auditable acts, so polling the plan would only duplicate those records",

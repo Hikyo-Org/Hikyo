@@ -8,6 +8,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/operation"
 	"github.com/Hikyo-Org/hikyo/internal/store/authn"
 )
 
@@ -72,7 +73,7 @@ func (a *TxAuthorizer) Authorize(ctx context.Context, caller Identity, op Operat
 	// through a view derived from the same embedded OpenAPI registry. Other
 	// in-process actors intentionally retain service-level semantics that may be
 	// broader than today's public wire declarations (for example machine reveal).
-	if _, exactWireOperation := api.OperationFromContext(ctx); !exactWireOperation && caller.Class == domain.ClassInstanceConn {
+	if !operation.IsNetwork(ctx) && caller.Class == domain.ClassInstanceConn {
 		artifact := api.ArtifactInstanceCredential
 		admitted, described := api.AuthorizationOperationAdmitsArtifact(string(op), artifact)
 		if !described || !admitted {
@@ -102,15 +103,15 @@ func (a *TxAuthorizer) Authorize(ctx context.Context, caller Identity, op Operat
 func ContractArtifactClass(caller Identity) string {
 	switch {
 	case caller.Class == "":
-		return api.ArtifactLocal
+		return operation.ArtifactLocal
 	case caller.Class == domain.ClassHuman:
-		return api.ArtifactHumanSession
+		return operation.ArtifactHumanSession
 	case caller.Class == domain.ClassInstanceConn:
-		return api.ArtifactInstanceCredential
+		return operation.ArtifactInstanceCredential
 	case caller.Class == domain.ClassProvisioning:
-		return api.ArtifactSCIMCredential
+		return operation.ArtifactSCIMCredential
 	case domain.IsServiceAccountKind(caller.Class):
-		return api.ArtifactMachineCredential
+		return operation.ArtifactMachineCredential
 	default:
 		return ""
 	}

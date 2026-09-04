@@ -72,6 +72,13 @@ type Config struct {
 	// header. Defaults to http://<Listen> when unset.
 	ExternalOrigin string
 
+	// MCPEnabled gates the separately versioned MCP protocol endpoint. It is
+	// off unless the operator explicitly enables it. MCPAllowedOrigins is the
+	// exact allowlist for requests that carry a browser Origin header; an empty
+	// list still permits non-browser clients that omit Origin.
+	MCPEnabled        bool
+	MCPAllowedOrigins []string
+
 	// Root-key source descriptor — never the key material itself; the crypto
 	// package reads and validates it at boot. Only `hikyo server` consults it.
 	RootKeyFile    string // --root-key-file (also covers systemd LoadCredential paths)
@@ -175,6 +182,8 @@ var knownEnv = map[string]bool{
 	"HIKYO_TLS_CERT_FILE":              true,
 	"HIKYO_TLS_KEY_FILE":               true,
 	"HIKYO_EXTERNAL_ORIGIN":            true,
+	"HIKYO_MCP_ENABLED":                true,
+	"HIKYO_MCP_ALLOWED_ORIGINS":        true,
 	"HIKYO_TRUSTED_PROXY_CIDRS":        true,
 	"HIKYO_ROOT_KEY":                   true,
 	"HIKYO_NEW_ROOT_KEY_FILE":          true,
@@ -440,6 +449,29 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 		cfg.ExternalOrigin != origin.Scheme+"://"+origin.Host {
 		return nil, nil, fmt.Errorf("HIKYO_EXTERNAL_ORIGIN must be an exact canonical HTTP(S) origin without credentials, path, query, or fragment")
 	}
+	if subcommand == "server" {
+		rawEnabled := strings.TrimSpace(getenv("HIKYO_MCP_ENABLED"))
+		if rawEnabled != "" {
+			enabled, err := strconv.ParseBool(rawEnabled)
+			if err != nil {
+				return nil, nil, fmt.Errorf("HIKYO_MCP_ENABLED: %q is not a boolean", rawEnabled)
+			}
+			cfg.MCPEnabled = enabled
+		}
+		rawOrigins := strings.TrimSpace(getenv("HIKYO_MCP_ALLOWED_ORIGINS"))
+		if rawOrigins != "" && !cfg.MCPEnabled {
+			return nil, nil, errors.New("HIKYO_MCP_ALLOWED_ORIGINS requires HIKYO_MCP_ENABLED=true")
+		}
+		if cfg.MCPEnabled {
+			if origin.Scheme != "https" && (!cfg.Dev || !isLoopbackHost(origin.Hostname())) {
+				return nil, nil, errors.New("MCP requires an https HIKYO_EXTERNAL_ORIGIN; plaintext is allowed only for a loopback origin in development mode")
+			}
+			cfg.MCPAllowedOrigins, err = parseMCPAllowedOrigins(rawOrigins)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
+	}
 
 	if err := loadBackupPolicy(cfg, getenv); err != nil {
 		return nil, nil, err
@@ -474,6 +506,30 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 		}
 	}
 	return cfg, warnings, nil
+}
+
+func parseMCPAllowedOrigins(raw string) ([]string, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	seen := make(map[string]bool)
+	var origins []string
+	for _, part := range strings.Split(raw, ",") {
+		candidate := strings.TrimSpace(part)
+		parsed, err := url.Parse(candidate)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
+			parsed.Host == "" || parsed.User != nil || parsed.Path != "" ||
+			parsed.RawQuery != "" || parsed.Fragment != "" ||
+			candidate != parsed.Scheme+"://"+parsed.Host {
+			return nil, fmt.Errorf("HIKYO_MCP_ALLOWED_ORIGINS: %q is not an exact HTTP(S) origin", candidate)
+		}
+		if candidate == "null" || candidate == "*" || seen[candidate] {
+			return nil, fmt.Errorf("HIKYO_MCP_ALLOWED_ORIGINS: %q is not a unique exact origin", candidate)
+		}
+		seen[candidate] = true
+		origins = append(origins, candidate)
+	}
+	return origins, nil
 }
 
 // loadHAConfig parses and validates the multi-node HA switch. Every

@@ -62,6 +62,13 @@ const corsMaxAge = "600"
 func workspaceCORS(allowed func(context.Context, string) bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// MCP has its own exact Origin admission and deliberately emits no
+			// browser CORS grant. Keep the workspace tier off that surface even
+			// when the same origin is allowed to read /api/v1.
+			if r.URL.Path == "/mcp" {
+				next.ServeHTTP(w, r)
+				return
+			}
 			// VARY IS SET ON EVERY BRANCH, BEFORE THE DECISION. It is a
 			// cache-control statement, not an allowlist grant: it says "this
 			// response depends on the Origin header", which is true whether the

@@ -47,6 +47,29 @@ Proxy mode requires trusted CIDRs when the plaintext public listener is not
 loopback. The list names proxies, not browser client networks. Operational
 routes never exist on the public router; keep the operational bind private.
 
+## MCP endpoint
+
+The MCP endpoint is disabled by default. These settings control its exact
+public exposure:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `HIKYO_MCP_ENABLED` | `false` | Enables the stateless JSON `POST /mcp` endpoint. |
+| `HIKYO_MCP_ALLOWED_ORIGINS` | empty | Comma-separated, exact browser origins admitted at `/mcp`. Wildcards, `null`, paths, queries, fragments, and credentials are rejected. |
+
+Production requires an HTTPS `HIKYO_EXTERNAL_ORIGIN`. Development permits
+plain HTTP only on a loopback origin. Requests without an `Origin` header are
+accepted for non-browser MCP clients. An allowed browser origin does not enable
+CORS response headers, so it is an additional request check rather than a
+cross-origin browser API grant.
+
+Treat every configured MCP client and its model provider as a recipient of MCP
+tool results. When the read tools are installed by the next MCP release, results
+may include non-secret configuration plaintext and caller-owned non-secret
+draft plaintext. Secret values and secret draft material are never returned.
+Enabling the endpoint in this release exposes only the empty, tenant-free tool
+catalog until those tools are installed.
+
 ## Security response headers
 
 Every public response carries the same set, refusals and API errors included:

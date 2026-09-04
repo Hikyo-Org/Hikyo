@@ -82,6 +82,7 @@ const (
 	OriginWeb           Origin = "web"
 	OriginCLI           Origin = "cli"
 	OriginAPI           Origin = "api"
+	OriginMCP           Origin = "mcp"
 	OriginOperatorFetch Origin = "operator-fetch"
 	OriginAdapterJob    Origin = "adapter-job"
 	OriginOfflineRecon  Origin = "offline-reconciled"
@@ -185,7 +186,7 @@ func Validate(e Event, trail Trail, scope domain.Scope) error {
 		return fmt.Errorf("audit: %s: unknown actor class %q", e.Type, e.Actor.Class)
 	}
 	switch e.Origin {
-	case OriginWeb, OriginCLI, OriginAPI, OriginOperatorFetch, OriginAdapterJob, OriginOfflineRecon, OriginSystem:
+	case OriginWeb, OriginCLI, OriginAPI, OriginMCP, OriginOperatorFetch, OriginAdapterJob, OriginOfflineRecon, OriginSystem:
 	default:
 		return fmt.Errorf("audit: %s: unknown origin %q", e.Type, e.Origin)
 	}

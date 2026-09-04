@@ -2,6 +2,7 @@ package migrate
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/url"
 	"os"
@@ -9,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/pressly/goose/v3"
 
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
@@ -28,6 +31,37 @@ func TestUpgradeOldToNewPostgres(t *testing.T) {
 	// A dedicated scratch database so the partial-schema (N-1) state never
 	// collides with other postgres legs sharing the server.
 	runUpgradeOldToNew(t, postgresTestConfig(t, "upgrade"))
+}
+
+func TestMCPAuditOriginMigrationRollsBackSQLite(t *testing.T) {
+	runMCPAuditOriginRollback(t, store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "rollback.db")})
+}
+
+func TestMCPAuditOriginMigrationRollsBackPostgres(t *testing.T) {
+	runMCPAuditOriginRollback(t, postgresTestConfig(t, "mcp_origin_rollback"))
+}
+
+func runMCPAuditOriginRollback(t *testing.T, cfg store.Config) {
+	t.Helper()
+	ctx := t.Context()
+	if err := Run(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := withProvider(ctx, cfg, func(provider *goose.Provider, _ *sql.DB) error {
+		_, err := provider.Down(ctx)
+		return err
+	}); err != nil {
+		t.Fatalf("rollback MCP audit origin migration: %v", err)
+	}
+	if err := insertMCPAuditOrigin(t, cfg, "evt_mcp_rollback_refused"); err == nil {
+		t.Fatal("rolled-back schema still accepted the mcp audit origin")
+	}
+	if err := Run(ctx, cfg); err != nil {
+		t.Fatalf("reapply MCP audit origin migration: %v", err)
+	}
+	if err := insertMCPAuditOrigin(t, cfg, "evt_mcp_rollback_reapplied"); err != nil {
+		t.Fatalf("reapplied schema refused the mcp audit origin: %v", err)
+	}
 }
 
 // postgresTestConfig provisions a throwaway postgres database for a migration
@@ -99,6 +133,12 @@ func runUpgradeOldToNew(t *testing.T, cfg store.Config) {
 	if err := Check(ctx, cfg); err != nil {
 		t.Fatalf("after the upgrade the schema check must pass: %v", err)
 	}
+	// The new closed origin member is accepted on both audit trails' shared
+	// envelope shape. This catches a Go-only vocabulary change with no matching
+	// engine migration.
+	execUpgrade(t, cfg, "INSERT INTO audit_instance_events "+
+		"(id, type, schema_version, occurred_at, occurred_asserted, recorded_at, actor_class, outcome, origin, payload) "+
+		"VALUES ('evt_mcp_upgrade', 'grant.denied', 1, '2026-01-01T00:00:00Z', FALSE, '2026-01-01T00:00:00Z', 'unauthenticated', 'denied', 'mcp', '{}')")
 	// Data survived old→new.
 	if n := countUpgrade(t, cfg, "SELECT COUNT(*) FROM orgs WHERE id = '"+seed+"'"); n != 1 {
 		t.Fatalf("the org seeded on the old schema did not survive the upgrade: count=%d", n)
@@ -141,4 +181,22 @@ func countUpgrade(t *testing.T, cfg store.Config, query string) int {
 		t.Fatalf("count query: %v", err)
 	}
 	return n
+}
+
+func insertMCPAuditOrigin(t *testing.T, cfg store.Config, id string) error {
+	t.Helper()
+	db, err := store.Open(t.Context(), cfg)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	query := "INSERT INTO audit_instance_events " +
+		"(id, type, schema_version, occurred_at, occurred_asserted, recorded_at, actor_class, outcome, origin, payload) " +
+		"VALUES ('" + id + "', 'grant.denied', 1, '2026-01-01T00:00:00Z', FALSE, '2026-01-01T00:00:00Z', 'unauthenticated', 'denied', 'mcp', '{}')"
+	if db.Engine() == store.EnginePostgres {
+		_, err = db.PG().Exec(t.Context(), query)
+		return err
+	}
+	_, err = db.SQLiteWrite().ExecContext(t.Context(), query)
+	return err
 }

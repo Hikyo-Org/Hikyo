@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -144,9 +145,9 @@ func TestPostgresRemoteVerifiedTLSAllowed(t *testing.T) {
 
 func TestPostgresHostParamCannotBypassTLSCheck(t *testing.T) {
 	for _, dsn := range []string{
-		"postgres:///hikyo?host=remote.example.com",          // libpq-style host param
-		"postgres://u:p@/hikyo?host=10.0.0.5&sslmode=prefer", // empty authority + host param
-		"postgres:///hikyo", // no host at all (implicit PGHOST)
+		"postgres:///hikyo?host=remote.example.com",              // libpq-style host param
+		"postgres://u:p@/hikyo?host=10.0.0.5&sslmode=prefer",     // empty authority + host param
+		"postgres:///hikyo",                                      // no host at all (implicit PGHOST)
 		"postgres://u:p@localhost/hikyo?host=remote.example.com", // conflicting hosts
 		"postgres:///hikyo?host=a,b",                             // multi-host
 	} {
@@ -319,6 +320,102 @@ func TestExternalOriginMustBeCanonicalAndCannotContainCredentials(t *testing.T) 
 				t.Fatalf("Load() error = %v, want HIKYO_EXTERNAL_ORIGIN refusal", err)
 			}
 		})
+	}
+}
+
+func TestMCPIsFeatureGatedAndRequiresItsPinnedPublicOriginProfile(t *testing.T) {
+	base := []string{"HIKYO_DB", "sqlite:/data/hikyo.db"}
+
+	disabled, warnings, err := Load("server", nil, env(base...), environFrom(base...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("warnings = %v", warnings)
+	}
+	if disabled.MCPEnabled {
+		t.Fatal("MCP enabled without HIKYO_MCP_ENABLED")
+	}
+
+	enabled, warnings, err := Load("server", nil, env(append(base,
+		"HIKYO_EXTERNAL_ORIGIN", "https://hikyo.example.com",
+		"HIKYO_MCP_ENABLED", "true",
+		"HIKYO_MCP_ALLOWED_ORIGINS", "https://assistant.example.com,http://localhost:4310",
+	)...), environFrom(
+		"HIKYO_MCP_ENABLED", "true",
+		"HIKYO_MCP_ALLOWED_ORIGINS", "https://assistant.example.com,http://localhost:4310",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("MCP settings must be recognized, got warnings %v", warnings)
+	}
+	if !enabled.MCPEnabled {
+		t.Fatal("HIKYO_MCP_ENABLED=true did not enable MCP")
+	}
+	wantOrigins := []string{"https://assistant.example.com", "http://localhost:4310"}
+	if !slices.Equal(enabled.MCPAllowedOrigins, wantOrigins) {
+		t.Fatalf("MCPAllowedOrigins = %v, want %v", enabled.MCPAllowedOrigins, wantOrigins)
+	}
+
+	for _, tc := range []struct {
+		name string
+		args []string
+		env  []string
+		want string
+	}{
+		{
+			name: "malformed enable",
+			env:  append(base, "HIKYO_MCP_ENABLED", "sometimes"),
+			want: "HIKYO_MCP_ENABLED",
+		},
+		{
+			name: "production plaintext",
+			env: append(base,
+				"HIKYO_EXTERNAL_ORIGIN", "http://localhost:8080",
+				"HIKYO_MCP_ENABLED", "true"),
+			want: "requires an https HIKYO_EXTERNAL_ORIGIN",
+		},
+		{
+			name: "development public plaintext",
+			args: []string{"--dev"},
+			env: []string{
+				"HIKYO_EXTERNAL_ORIGIN", "http://hikyo.example.com",
+				"HIKYO_MCP_ENABLED", "true",
+			},
+			want: "loopback",
+		},
+		{
+			name: "wildcard origin",
+			env: append(base,
+				"HIKYO_EXTERNAL_ORIGIN", "https://hikyo.example.com",
+				"HIKYO_MCP_ENABLED", "true",
+				"HIKYO_MCP_ALLOWED_ORIGINS", "*"),
+			want: "HIKYO_MCP_ALLOWED_ORIGINS",
+		},
+		{
+			name: "unused allowlist",
+			env: append(base,
+				"HIKYO_EXTERNAL_ORIGIN", "https://hikyo.example.com",
+				"HIKYO_MCP_ALLOWED_ORIGINS", "https://assistant.example.com"),
+			want: "HIKYO_MCP_ENABLED",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := Load("server", tc.args, env(tc.env...), environFrom(tc.env...))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Load() error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+
+	dev, _, err := Load("server", []string{"--dev"}, env("HIKYO_MCP_ENABLED", "true"), nil)
+	if err != nil {
+		t.Fatalf("development loopback MCP was refused: %v", err)
+	}
+	if !dev.MCPEnabled {
+		t.Fatal("development loopback MCP was not enabled")
 	}
 }
 

@@ -26,6 +26,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/mcpserver"
 	"github.com/Hikyo-Org/hikyo/internal/oidcfed"
 	"github.com/Hikyo-Org/hikyo/internal/remotefetch"
 	"github.com/Hikyo-Org/hikyo/internal/scanning"
@@ -575,9 +576,24 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		TrustedProxies: proxies,
 	}
 
+	var mcpHandler http.Handler
+	if cfg.MCPEnabled {
+		mcpHandler, err = mcpserver.New(mcpserver.Options{
+			Registry:       mcpserver.NewRegistry(),
+			ExternalOrigin: cfg.ExternalOrigin,
+			AllowedOrigins: cfg.MCPAllowedOrigins,
+			TrustedProxies: proxies,
+			Admission:      limiter,
+			Version:        Version,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("boot: refusing to serve: MCP transport: %w", err)
+		}
+	}
+
 	log.Info("boot complete", "version", Version, "engine", sc.Engine, "external_origin", cfg.ExternalOrigin,
 		"addr", ln.Addr().String(), "operational_addr", operationalLn.Addr().String(), "dev", cfg.Dev, "update_channel", cfg.UpdateChannel,
-		"argon2_memory_kib", cfg.Argon2MemoryKiB, "auth_concurrency", limiter.Concurrency())
+		"argon2_memory_kib", cfg.Argon2MemoryKiB, "auth_concurrency", limiter.Concurrency(), "mcp_enabled", cfg.MCPEnabled)
 	// The operational readiness check is the datastore-and-schema probe, plus
 	// an optional HA lease-datastore probe attached below when HA is enabled so
 	// /readyz fails closed if the lease table becomes unreachable.
@@ -594,6 +610,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		publicHandler: server.NewPublic(&service.System{DB: db, Store: sc}, api, webui.Assets(), server.PublicOptions{
 			HSTS:           config.EmitHSTS(cfg.ExternalOrigin),
 			ExternalOrigin: cfg.ExternalOrigin,
+			MCP:            mcpHandler,
 		}),
 		operationalHandler: server.NewOperational(readyChk, operationalHealth{retention: retentionSvc, tls: tlsReloader}, metrics),
 		tlsReloader:        tlsReloader,
