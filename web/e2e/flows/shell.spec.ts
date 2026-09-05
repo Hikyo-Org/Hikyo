@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { zRetentionHealth } from '@hikyo/zod';
+import { zRetentionHealth, zWhoAmI } from '@hikyo/zod';
 
 import type { RetentionHealth } from '../../src/api/retention.ts';
 import {
@@ -367,40 +367,56 @@ test.describe('app chrome', () => {
   // outage: the server briefly going unreachable for a whoami re-read must not
   // latch the global reload wall over the working UI (#440).
   test('holds a still-valid session through a background revalidation outage', async ({ page }) => {
-    await page.goto('/projects');
-    const heading = page.getByRole('heading', { name: 'Projects', level: 1 });
-    const wall = page.getByText('Could not reach the server. Reload once it is back.');
-    await expect(heading).toBeVisible();
-
+    await page.clock.install();
+    let firstIdentity = true;
     let whoamiDown = true;
     await page.route('**/api/v1/auth/whoami', async (route) => {
+      if (firstIdentity) {
+        firstIdentity = false;
+        const response = await route.fetch();
+        const identity = zWhoAmI.parse(await response.json());
+        await route.fulfill({ response, json: {
+          ...identity,
+          session: {
+            ...identity.session,
+            idle_expires_at: new Date(Date.now() + 30_000).toISOString(),
+          },
+        } });
+        return;
+      }
       if (whoamiDown) {
         await route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
         return;
       }
       await route.continue();
     });
+    await page.goto('/projects');
+    const heading = page.getByRole('heading', { name: 'Projects', level: 1 });
+    const wall = page.getByText('Could not reach the server. Reload once it is back.');
+    await expect(heading).toBeVisible();
 
-    // A peer-tab "session changed" broadcast forces a BLOCKING revalidate — the
-    // path that used to promote the transport error into the latching wall.
-    const failed = page.waitForResponse('**/api/v1/auth/whoami');
-    await page.evaluate(() =>
-      new BroadcastChannel('hikyo-root-auth').postMessage('session-changed'),
+    // Idle expiry requests a blocking identity refresh with the same cookie.
+    // A peer replacement notification is deliberately different: ownership is
+    // unknown then, so the security boundary must discard the previous owner.
+    const failed = page.waitForResponse((response) =>
+      response.url().endsWith('/api/v1/auth/whoami') && response.status() === 503,
     );
+    await page.clock.fastForward(31_000);
     await failed;
 
-    // The last-known-good session keeps painting; no reload wall. `heading`
-    // returns only once the failed blocking check has committed back to the
-    // authenticated shell — a reverted fix latches the wall, the heading never
-    // comes back, and this visibility poll times out.
+    // A passed idle deadline is not definitive expiry. A failed revalidation
+    // must retain the known owner while the absolute deadline remains valid.
     await expect(heading).toBeVisible();
     await expect(wall).toHaveCount(0);
 
-    // When the server returns, the next revalidation recovers cleanly.
+    // Recovery uses the provider's own retry, without a replacement broadcast
+    // or a manual reload. Observe a real successful whoami before asserting UI.
     whoamiDown = false;
-    await page.evaluate(() =>
-      new BroadcastChannel('hikyo-root-auth').postMessage('session-changed'),
+    const recovered = page.waitForResponse((response) =>
+      response.url().endsWith('/api/v1/auth/whoami') && response.status() === 200,
     );
+    await page.clock.fastForward(1_100);
+    await recovered;
     await expect(heading).toBeVisible();
     await expect(wall).toHaveCount(0);
     await page.unrouteAll({ behavior: 'ignoreErrors' });

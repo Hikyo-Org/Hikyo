@@ -1,7 +1,13 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { z } from 'zod';
 
-import { assertCompatible, prepareWorkspace, WorkspaceError } from './workspace.ts';
+import {
+  assertCompatible,
+  forgetWorkspace,
+  prepareWorkspace,
+  rememberWorkspace,
+  WorkspaceError,
+} from './workspace.ts';
 
 const ORIGIN = 'https://b.example';
 
@@ -18,11 +24,19 @@ const startBody = (init?: RequestInit): Record<string, unknown> =>
   zStartBody.parse(JSON.parse(String(init?.body)));
 
 afterEach(() => {
+  forgetWorkspace(ORIGIN);
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
 test('a step-up prepare binds the decision only into server-owned transaction state', async () => {
+  rememberWorkspace({
+    origin: ORIGIN,
+    value: 'hik_ws_initial',
+    session: 'ses_1',
+    idleExpiresAt: '2099-01-01T00:00:00Z',
+    absoluteExpiresAt: '2099-01-01T00:00:00Z',
+  });
   vi.stubGlobal('location', { origin: 'https://a.example' });
   const starts: Array<Record<string, unknown>> = [];
   vi.stubGlobal(

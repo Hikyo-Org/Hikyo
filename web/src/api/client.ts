@@ -1,8 +1,33 @@
+import {
+  enrolPasskeyFinishOp, enrolTotpConfirmOp, regenerateRecoveryCodesOp,
+  removePasskeyOp, removeTotpOp, unlinkIdentityOp, whoamiOp,
+} from '@hikyo/operations';
+import { assertSessionEpoch, captureSessionEpoch, checkSessionRefusal, reconcileSessionResponse, sessionEpochSignal } from './sessionEpoch.ts';
+
 import type { ScanFinding } from '@hikyo/client';
 import type { BodylessOperation, BodyOperation, Options, TDataShape } from '@hikyo/operations';
 import { client } from '@hikyo/runtime';
-import { zError } from '@hikyo/zod';
+import { zError, zLoginResult, zRecoveryCodesResult } from '@hikyo/zod';
 import type { z, ZodObject, ZodRawShape, ZodType } from 'zod';
+
+import type { ExpectedSessionRotation } from './sessionEpoch.ts';
+
+// These authenticated security changes remint the acting session. Login and
+// logout never establish continuity with a previous logical session owner.
+const ACCOUNT_SESSION_ROTATIONS = new Set<object>([
+  enrolPasskeyFinishOp, enrolTotpConfirmOp, removePasskeyOp, removeTotpOp, unlinkIdentityOp,
+]);
+
+function expectedAccountRotation<T>(operation: object, data: T): ExpectedSessionRotation | undefined {
+  const recovered = operation === regenerateRecoveryCodesOp
+    ? zRecoveryCodesResult.safeParse(data) : undefined;
+  const rotated = ACCOUNT_SESSION_ROTATIONS.has(operation) ? zLoginResult.safeParse(data) : undefined;
+  const login = recovered?.success ? recovered.data.login : rotated?.success ? rotated.data : undefined;
+  // A malformed proof grants no continuity. Still reconcile the cookie before
+  // the operation's normal parser reports its contract error to the caller.
+  if (login === undefined || login.session.artifact !== 'browser') return undefined;
+  return { session: login.session.id, principal: login.principal.id };
+}
 
 /**
  * A redacted secret-scanning finding as it rides a REFUSAL body (#74, #183).
@@ -30,6 +55,27 @@ export type RefusalFinding = ScanFinding;
  *    readable `__Host-hikyo-csrf` cookie and is echoed on `X-Hikyo-CSRF`;
  *    without it the server refuses a state-changing cookie request (#56).
  */
+
+function ownedOptions<TData extends TDataShape>(
+  options: Options<TData, false>,
+  epoch: number | undefined,
+): Options<TData, false> {
+  if (epoch === undefined) return options;
+  const signal = sessionEpochSignal(epoch);
+  return {
+    ...options,
+    signal: options.signal == null ? signal : AbortSignal.any([options.signal, signal]),
+    fetch: (input, init) => {
+      // SDK preparation is asynchronous. Fence the actual network dispatch too.
+      assertSessionEpoch(epoch);
+      return (options.fetch ?? globalThis.fetch)(input, init);
+    },
+  };
+}
+
+function isIdentityCheck(operation: object): boolean {
+  return operation === whoamiOp;
+}
 
 const CSRF_COOKIE = '__Host-hikyo-csrf';
 const CSRF_HEADER = 'X-Hikyo-CSRF';
@@ -164,9 +210,19 @@ export async function parsed<TData extends TDataShape, TSchema extends ZodType>(
   operation: BodyOperation<TData, TSchema>,
   options: Options<TData, false>,
 ): Promise<z.infer<TSchema>> {
-  const result = await operation.call(options);
+  // whoami is the authority that reopens the fence.
+  const epoch = isIdentityCheck(operation) ? undefined : captureSessionEpoch();
+  const result = await operation.call(ownedOptions(options, epoch));
+  if (epoch !== undefined) {
+    await reconcileSessionResponse(epoch, options.client === undefined && result.response !== undefined &&
+      result.response.ok && operation.successStatuses.includes(result.response.status)
+      ? expectedAccountRotation(operation, result.data) : undefined);
+  }
   const response = requireResponse(result);
   if (!response.ok) {
+    if (response.status === 401 && !isIdentityCheck(operation) && options.client === undefined) {
+      checkSessionRefusal();
+    }
     throw refusal(response, result.error);
   }
   if (!operation.successStatuses.includes(response.status)) {
@@ -192,9 +248,19 @@ export async function parsedPick<
   options: Options<TData, false>,
   mask: TMask & Record<Exclude<keyof TMask, keyof TShape>, never>,
 ) {
-  const result = await operation.call(options);
+  // whoami is the authority that reopens the fence.
+  const epoch = isIdentityCheck(operation) ? undefined : captureSessionEpoch();
+  const result = await operation.call(ownedOptions(options, epoch));
+  if (epoch !== undefined) {
+    await reconcileSessionResponse(epoch, options.client === undefined && result.response !== undefined &&
+      result.response.ok && operation.successStatuses.includes(result.response.status)
+      ? expectedAccountRotation(operation, result.data) : undefined);
+  }
   const response = requireResponse(result);
   if (!response.ok) {
+    if (response.status === 401 && !isIdentityCheck(operation) && options.client === undefined) {
+      checkSessionRefusal();
+    }
     throw refusal(response, result.error);
   }
   if (!operation.successStatuses.includes(response.status)) {
@@ -218,9 +284,15 @@ export async function ok<TData extends TDataShape>(
   operation: BodylessOperation<TData>,
   options: Options<TData, false>,
 ): Promise<void> {
-  const result = await operation.call(options);
+  // whoami is the authority that reopens the fence.
+  const epoch = isIdentityCheck(operation) ? undefined : captureSessionEpoch();
+  const result = await operation.call(ownedOptions(options, epoch));
+  if (epoch !== undefined) await reconcileSessionResponse(epoch);
   const response = requireResponse(result);
   if (!response.ok) {
+    if (response.status === 401 && !isIdentityCheck(operation) && options.client === undefined) {
+      checkSessionRefusal();
+    }
     throw refusal(response, result.error);
   }
   if (!operation.successStatuses.includes(response.status)) {

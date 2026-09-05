@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { OIDCDone } from './OIDCDone.tsx';
 
@@ -26,8 +26,14 @@ class TestBroadcastChannel {
 
 beforeEach(() => {
   channels.length = 0;
+  vi.spyOn(globalThis.location, 'replace').mockImplementation(() => undefined);
   vi.stubGlobal('BroadcastChannel', TestBroadcastChannel);
   vi.stubGlobal('close', vi.fn());
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('OIDC done page', () => {
@@ -87,4 +93,18 @@ describe('OIDC done page', () => {
     expect(container.textContent).toContain('Return to account security');
     await act(async () => root.unmount());
   });
+});
+
+
+it('announces a successful OIDC login to other tabs before returning home', async () => {
+  globalThis.history.replaceState({}, '', '/auth/oidc/done?state=login-state&purpose=login');
+  const container = document.createElement('div');
+  const root = createRoot(container);
+  await act(async () => root.render(<OIDCDone />));
+  expect(channels).toContainEqual({
+    name: 'hikyo-root-auth',
+    message: { type: 'session-changed', sender: expect.any(String) },
+    closed: true,
+  });
+  await act(async () => root.unmount());
 });

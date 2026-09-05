@@ -4,6 +4,7 @@ import { act, useState } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { authenticatedIdentity } from '../testkit/identity.ts';
 import { AuthProvider } from '../app/AuthProvider.tsx';
 import { created, renderForm, settleTask, typeInto } from '../testkit/renderForm.tsx';
 import { EnvironmentLifecycleActions, ProjectSettings } from './ProjectSettings.tsx';
@@ -19,7 +20,9 @@ describe('ProjectSettings', () => {
       const request = input instanceof Request ? input : new Request(input);
       const path = new URL(request.url, 'http://localhost').pathname;
       if (request.method === 'GET' && path === '/api/v1/auth/whoami') {
-        return Promise.resolve(new Response(null, { status: 401 }));
+        return Promise.resolve(new Response(JSON.stringify(authenticatedIdentity), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        }));
       }
       if (request.method === 'DELETE' && path === '/api/v1/orgs/org_1/projects/project_1') {
         return Promise.resolve(new Response(null, { status: 204 }));
@@ -87,7 +90,9 @@ describe('definitions policy', () => {
       const request = input instanceof Request ? input : new Request(input);
       const path = new URL(request.url, 'http://localhost').pathname;
       if (request.method === 'GET' && path === '/api/v1/auth/whoami') {
-        return Promise.resolve(new Response(null, { status: 401 }));
+        return Promise.resolve(new Response(JSON.stringify(authenticatedIdentity), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        }));
       }
       if (
         request.method === 'PUT' &&
@@ -150,7 +155,9 @@ describe('environment creation', () => {
       const request = input instanceof Request ? input : new Request(input);
       const path = new URL(request.url, 'http://localhost').pathname;
       if (request.method === 'GET' && path === '/api/v1/auth/whoami') {
-        return Promise.resolve(new Response(null, { status: 401 }));
+        return Promise.resolve(new Response(JSON.stringify(authenticatedIdentity), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        }));
       }
       if (
         request.method === 'POST' &&
@@ -224,7 +231,9 @@ describe('project crypto maintenance', () => {
       const request = input instanceof Request ? input : new Request(input);
       const path = new URL(request.url, 'http://localhost').pathname;
       if (request.method === 'GET' && path === '/api/v1/auth/whoami') {
-        return Promise.resolve(new Response(null, { status: 401 }));
+        return Promise.resolve(new Response(JSON.stringify(authenticatedIdentity), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        }));
       }
       if (request.method === 'POST' && path === '/api/v1/instance/rotate-dek') {
         return Promise.resolve(

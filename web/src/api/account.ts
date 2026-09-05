@@ -1,3 +1,4 @@
+import { assertSessionEpoch, captureSessionEpoch } from './sessionEpoch.ts';
 import {
   authMethodsOp,
   enrolPasskeyFinishOp,
@@ -227,10 +228,12 @@ export function useEnrolPasskey() {
   const after = useAfterAccountMutation();
   return useMutation({
     mutationFn: async (input: { password: string }) => {
+      const epoch = captureSessionEpoch();
       const options = await parsed(enrolPasskeyStartOp, { body: { password: input.password } });
       const credential = await navigator.credentials.create({
         publicKey: passkeyCreationOptions(options),
       });
+      assertSessionEpoch(epoch);
       if (credential === null || !(credential instanceof PublicKeyCredential)) {
         throw new Error('the authenticator produced no credential');
       }

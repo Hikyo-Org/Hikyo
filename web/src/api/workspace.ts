@@ -2,6 +2,8 @@ import { zMeta, zSessionList, zWorkspaceHandoffStarted, zWorkspaceSession } from
 import { useSyncExternalStore } from 'react';
 import type { ZodType } from 'zod';
 
+import { assertSessionEpoch, captureSessionEpoch } from './sessionEpoch.ts';
+
 /**
  * The workspace tier's CROSS-ORIGIN half (#71, multi-instance ADR § The handoff
  * and the workspace session).
@@ -61,6 +63,7 @@ const workspaceSessions = new Map<string, WorkspaceSessionState>();
 const listeners = new Set<() => void>();
 let snapshot: readonly WorkspaceBearer[] = [];
 let nextWorkspaceEpoch = 0;
+let workspaceOwnerEpoch = 0;
 let workspaceOwnerKnown = false;
 let workspaceOwnerSession: string | undefined;
 
@@ -122,6 +125,7 @@ export function transitionWorkspaceOwner(sessionID: string | undefined): void {
     return;
   }
   workspaceOwnerKnown = true;
+  workspaceOwnerEpoch += 1;
   workspaceOwnerSession = sessionID;
   forgetAllWorkspaces();
 }
@@ -436,6 +440,26 @@ export type PreparedWorkspace = {
   readonly approveURL: string;
 };
 
+type HandoffOwner = {
+  readonly epoch: number;
+  readonly sessionEpoch: number;
+  readonly stepUpSession: WorkspaceSessionReference | undefined;
+};
+
+// Keep ownership internal so a stale prepared handoff cannot be relabelled with
+// the current owner. Epochs distinguish A -> signed out -> A from continuity.
+const handoffOwners = new WeakMap<PreparedWorkspace, HandoffOwner>();
+
+function assertHandoffOwner(owner: HandoffOwner): void {
+  assertSessionEpoch(owner.sessionEpoch);
+  if (
+    owner.epoch !== workspaceOwnerEpoch ||
+    (owner.stepUpSession !== undefined && !isCurrentWorkspaceSession(owner.stepUpSession))
+  ) {
+    throw new WorkspaceError('The session changed during workspace sign-in. Try again.');
+  }
+}
+
 /**
  * StepUpParams turns a `prepareWorkspace` into an elevation rather than an
  * establishment (#71, multi-instance ADR § The handoff and the workspace
@@ -468,7 +492,14 @@ export async function prepareWorkspace(
   origin: string,
   stepUp?: StepUpParams,
 ): Promise<PreparedWorkspace> {
+  const stepUpSession = stepUp === undefined ? undefined : workspaceSession(origin);
+  if (stepUp !== undefined && stepUpSession?.bearer.session !== stepUp.session) {
+    throw new WorkspaceError('The workspace session changed. Reconnect before trying again.');
+  }
+  const sessionEpoch = captureSessionEpoch();
+  const owner: HandoffOwner = { epoch: workspaceOwnerEpoch, sessionEpoch, stepUpSession };
   await assertCompatible(origin);
+  assertHandoffOwner(owner);
 
   const verifier = newVerifier();
   const base = {
@@ -476,6 +507,7 @@ export async function prepareWorkspace(
     redirect_uri: globalThis.location.origin + CALLBACK_PATH,
     pkce_challenge: await challengeFor(verifier),
   };
+  assertHandoffOwner(owner);
   const body =
     stepUp === undefined
       ? { ...base, purpose: 'establishment' as const }
@@ -490,6 +522,7 @@ export async function prepareWorkspace(
   const started = await remoteJSON(origin, '/api/v1/auth/workspace/start', zWorkspaceHandoffStarted, {
     body,
   });
+  assertHandoffOwner(owner);
   // The approve URL carries only STATE. Purpose, operation, environment and the
   // enumerated key set are bound in the remote's own transaction row and read
   // back by state (`showWorkspaceHandoff`). Putting a second purpose copy here
@@ -497,14 +530,16 @@ export async function prepareWorkspace(
   // cap reveal-all at the browser's URL length.
   const approve = new URL(`${origin}${APPROVE_PATH}`);
   approve.searchParams.set('state', started.state);
-  return { origin, state: started.state, verifier, approveURL: approve.toString() };
+  const prepared = { origin, state: started.state, verifier, approveURL: approve.toString() };
+  handoffOwners.set(prepared, owner);
+  return prepared;
 }
 
 /**
  * openPrepared opens the popup and completes the ceremony.
  *
- * It MUST be called straight from a click handler: the `window.open` below is
- * the first statement for that reason, and everything asynchronous happens
+ * It MUST be called straight from a click handler: the `window.open` below
+ * runs before any await for that reason, and everything asynchronous happens
  * after it. `noopener` is the ADR's requirement — a hostile or compromised
  * remote must not be able to navigate the opener into a phishing page — which
  * is why this returns no handle and why the popup closes itself from the
@@ -515,9 +550,16 @@ export async function prepareWorkspace(
  * there.
  */
 export async function openPrepared(prepared: PreparedWorkspace): Promise<WorkspaceBearer> {
+  const owner = handoffOwners.get(prepared);
+  if (owner === undefined) {
+    throw new WorkspaceError('This workspace sign-in is no longer available. Try again.');
+  }
+  assertHandoffOwner(owner);
+  handoffOwners.delete(prepared);
   const waiting = awaitFrontChannel(prepared.state, CEREMONY_TIMEOUT_MS);
   globalThis.open(prepared.approveURL, '_blank', 'noopener,popup=yes,width=520,height=680');
   const { code } = await waiting;
+  assertHandoffOwner(owner);
 
   const session = await remoteJSON(
     prepared.origin,
@@ -532,8 +574,31 @@ export async function openPrepared(prepared: PreparedWorkspace): Promise<Workspa
     idleExpiresAt: session.idle_expires_at,
     absoluteExpiresAt: session.absolute_expires_at,
   };
+  try {
+    assertHandoffOwner(owner);
+  } catch (error) {
+    // Redemption can finish after logout or replacement. Never install or
+    // return its credential, and retire the remote session when reachable.
+    void revokeDiscardedWorkspace(bearer);
+    throw error;
+  }
   rememberWorkspace(bearer);
   return bearer;
+}
+
+async function revokeDiscardedWorkspace(bearer: WorkspaceBearer): Promise<void> {
+  try {
+    await fetch(`${bearer.origin}/api/v1/me/sessions/${encodeURIComponent(bearer.session)}`, {
+      method: 'DELETE',
+      mode: 'cors',
+      credentials: 'omit',
+      headers: { Authorization: `Bearer ${bearer.value}` },
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    });
+  } catch {
+    // Local rejection is unconditional; remote cleanup is best effort because
+    // a disconnected or de-allowlisting remote cannot be reached by this shell.
+  }
 }
 
 /**

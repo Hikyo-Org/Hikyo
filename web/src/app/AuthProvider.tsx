@@ -10,9 +10,24 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { flushSync } from 'react-dom';
 import type { z } from 'zod';
 
-import { ApiError, parsed } from '../api/client.ts';
+import {
+  announceSessionChange,
+  blockSessionEpoch,
+  checkSessionCookie,
+  installSessionFence,
+  isSessionStorageEvent,
+  isSessionEpochBlocked,
+  isPeerSessionMessage,
+  settleSessionEpoch,
+  SessionChangedError,
+  SESSION_CHANNEL,
+  type ExpectedSessionRotation,
+} from '../api/sessionEpoch.ts';
+
+import { ApiError, parsed, readCsrfToken } from '../api/client.ts';
 import { transitionWorkspaceOwner } from '../api/workspace.ts';
 import { makeQueryClient } from './queryClient.ts';
 
@@ -58,9 +73,15 @@ type SessionTransitionGuard = {
   readonly revision: number;
 };
 
-type SessionCheckMode = 'blocking' | 'blocking-and-publish' | 'refresh-and-publish';
+type SessionCheckMode =
+  | 'blocking'
+  | 'blocking-and-publish'
+  | 'refresh-and-publish'
+  | 'rotation-and-publish';
 
 type Snapshot = {
+  readonly epoch: number;
+  readonly checkingRotation: boolean;
   readonly state: AuthState;
   readonly identity: WhoAmI | null;
   readonly failure: Error | null;
@@ -69,8 +90,6 @@ type Snapshot = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-const CHANNEL_NAME = 'hikyo-root-auth';
-const CHANNEL_MESSAGE = 'session-changed';
 const MAX_TIMEOUT_MS = 2_147_483_647;
 const FOCUS_CHECK_INTERVAL_MS = 1_000;
 const DEGRADED_RETRY_BASE_MS = 1_000;
@@ -78,9 +97,13 @@ const DEGRADED_RETRY_MAX_MS = 30_000;
 
 /** Read root identity without putting it in a session-owned query cache. */
 async function readIdentity(): Promise<WhoAmI | null> {
+  const cookie = readCsrfToken();
   try {
-    return await parsed(whoamiOp, {});
+    const identity = await parsed(whoamiOp, {});
+    if (cookie !== readCsrfToken()) throw new SessionChangedError();
+    return identity;
   } catch (error) {
+    if (cookie !== readCsrfToken()) throw new SessionChangedError();
     if (error instanceof ApiError && error.status === 401) {
       return null;
     }
@@ -136,11 +159,14 @@ function identityVersion(identity: WhoAmI | null): string | null {
  * uncached, and every TanStack entry below this provider belongs to exactly one
  * browser session epoch (or to the anonymous pre-session epoch). A new session
  * id, logout, or expiry cancels old work and destroys every cached query and
- * mutation before the new epoch renders. A same-id assurance refresh preserves
- * entries and invalidates their answers for re-evaluation.
+ * mutation before the new epoch renders. A same-id assurance refresh or a
+ * verified account-security remint preserves entries and invalidates their
+ * answers for re-evaluation.
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [snapshot, setSnapshot] = useState<Snapshot>(() => ({
+    epoch: 0,
+    checkingRotation: false,
     state: { status: 'checking' },
     identity: null,
     failure: null,
@@ -148,9 +174,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queries: makeQueryClient(),
   }));
   const snapshotRef = useRef(snapshot);
+  const mountedRef = useRef(true);
   const requestRef = useRef(0);
   const transitionRevisionRef = useRef(0);
-  const channelRef = useRef<BroadcastChannel | null>(null);
   const lastFocusCheckRef = useRef(0);
   const degradedRetriesRef = useRef(0);
 
@@ -162,46 +188,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const destroySessionCache = useCallback((current: Snapshot): Snapshot => {
     void current.queries.cancelQueries();
     current.queries.clear();
-    return current;
+    return { ...current, epoch: current.epoch + 1, queries: makeQueryClient() };
   }, []);
 
   const publishChange = useCallback(() => {
-    channelRef.current?.postMessage(CHANNEL_MESSAGE);
+    announceSessionChange();
   }, []);
 
   const settleIdentity = useCallback(
-    (identity: WhoAmI | null, publish: boolean) => {
+    (identity: WhoAmI | null, publish: boolean, expectedRotation?: ExpectedSessionRotation) => {
       const current = snapshotRef.current;
       const sameSession =
         identity !== null &&
         current.identity !== null &&
-        identity.session.id === current.identity.session.id;
+        identity.session.id === current.identity.session.id &&
+        identity.principal.id === current.identity.principal.id;
+      const expectedRemint =
+        expectedRotation !== undefined &&
+        identity !== null &&
+        current.identity !== null &&
+        identity.session.id === expectedRotation.session &&
+        identity.principal.id === expectedRotation.principal &&
+        current.identity.principal.id === expectedRotation.principal;
+      // A verified account-security result continues the initiating logical
+      // epoch. An unrelated login, including the same principal, still resets.
+      const sameOwner = expectedRotation === undefined ? sameSession : expectedRemint;
       if (identityVersion(identity) !== identityVersion(current.identity)) {
         transitionRevisionRef.current += 1;
       }
+      if (!sameOwner) blockSessionEpoch();
       transitionWorkspaceOwner(identity?.session.id);
+      settleSessionEpoch();
       // A successful settle is the single point that clears a degraded session
       // and resets its retry backoff.
       degradedRetriesRef.current = 0;
 
-      if (sameSession) {
+      if (sameOwner) {
         commit({
           ...current,
           state: stateFor(identity),
           identity,
           failure: null,
           degraded: null,
+          checkingRotation: false,
         });
         void current.queries.invalidateQueries();
       } else {
         const fresh = destroySessionCache(current);
-        commit({
+        flushSync(() => commit({
           ...fresh,
           state: stateFor(identity),
           identity,
           failure: null,
           degraded: null,
-        });
+          checkingRotation: false,
+        }));
       }
       if (publish) {
         publishChange();
@@ -210,13 +251,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [commit, destroySessionCache, publishChange],
   );
 
+  const invalidateIdentity = useCallback(() => {
+    transitionRevisionRef.current += 1;
+    blockSessionEpoch();
+    transitionWorkspaceOwner(undefined);
+    const current = destroySessionCache(snapshotRef.current);
+    commit({ ...current, identity: null, state: { status: 'checking' }, failure: null, degraded: null, checkingRotation: false });
+  }, [commit, destroySessionCache]);
+
   const checkSession = useCallback(
-    async (mode: SessionCheckMode) => {
+    async function checkSession(
+      mode: SessionCheckMode, expectedRotation?: ExpectedSessionRotation,
+    ): Promise<void> {
       const blocking = mode === 'blocking' || mode === 'blocking-and-publish';
-      const publish = mode === 'blocking-and-publish' || mode === 'refresh-and-publish';
+      const publish = mode === 'blocking-and-publish' || mode === 'refresh-and-publish' || mode === 'rotation-and-publish';
       const request = requestRef.current + 1;
       requestRef.current = request;
       const current = snapshotRef.current;
+      if (mode === 'rotation-and-publish') {
+        // Hide disclosures while preserving component state until whoami proves
+        // whether this was an in-place rotation or a replacement owner.
+        flushSync(() => commit({ ...current, checkingRotation: true }));
+      }
       if (blocking) {
         commit({
           ...current,
@@ -228,17 +284,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       try {
         const identity = await readIdentity();
-        if (requestRef.current === request) {
-          settleIdentity(identity, publish);
+        if (mountedRef.current && requestRef.current === request) {
+          settleIdentity(identity, publish, expectedRotation);
         }
       } catch (error) {
         if (requestRef.current !== request) {
           return;
         }
+        if (error instanceof SessionChangedError) {
+          invalidateIdentity();
+          return checkSession(mode);
+        }
         const latest = snapshotRef.current;
         const problem =
           error instanceof Error ? error : new Error('root authentication check failed');
-        if (latest.identity !== null && !isDefinitivelyExpired(latest.identity)) {
+        if (!isSessionEpochBlocked() && latest.identity !== null && !isDefinitivelyExpired(latest.identity)) {
           // A still-valid session must not be buried under the global reload
           // wall by a transient background revalidation blip. Keep painting the
           // last-known-good session and surface the transport error only as the
@@ -256,19 +316,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // whose ABSOLUTE deadline has passed, which is dead regardless of the
           // server. The blocking reload wall is the correct answer; a definitively
           // expired session must never keep painting authenticated chrome.
+          blockSessionEpoch();
+          transitionWorkspaceOwner(undefined);
           commit({
-            ...latest,
-            state: blocking ? stateFor(latest.identity) : latest.state,
+            ...destroySessionCache(latest),
+            identity: null,
+            state: { status: 'anonymous' },
             failure: problem,
             degraded: null,
+            checkingRotation: false,
           });
         }
       }
     },
-    [commit, settleIdentity],
+    [commit, destroySessionCache, invalidateIdentity, settleIdentity],
   );
 
   const revalidate = useCallback(() => checkSession('blocking'), [checkSession]);
+
+  const replaceFromPeer = useCallback(() => {
+    // Remove component disclosures before the replacement cookie is usable.
+    flushSync(invalidateIdentity);
+    void checkSession('blocking');
+  }, [checkSession, invalidateIdentity]);
+
+  useEffect(() => installSessionFence(
+    replaceFromPeer,
+    () => {
+      if (snapshotRef.current.identity !== null) void checkSession('refresh-and-publish');
+    },
+    (expected) => checkSession('rotation-and-publish', expected),
+  ), [checkSession, replaceFromPeer]);
+
   const refreshSession = useCallback(
     () => {
       // Operation completion must stale the affected session answers now, not
@@ -313,7 +392,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let identity: WhoAmI | null;
     try {
       identity = await readIdentity();
-    } catch {
+    } catch (error) {
+      if (error instanceof SessionChangedError) {
+        replaceFromPeer();
+        return;
+      }
       // A focus-time network blip must not blank the app or drop the session;
       // the expiry timer and the next user action remain the authoritative
       // checks. (A whoami 401 is not a blip — it is an authoritative end of
@@ -322,7 +405,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     const latest = snapshotRef.current;
-    if (latest.identity !== baseline.identity) {
+    if (!mountedRef.current || latest.identity !== baseline.identity) {
       // An authoritative check (mount, refresh, expiry, or a peer tab) settled
       // while we were reading. Defer to it rather than overwrite with a
       // possibly-staler read.
@@ -332,7 +415,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     settleIdentity(identity, true);
-  }, [settleIdentity]);
+  }, [replaceFromPeer, settleIdentity]);
 
   const captureTransition = useCallback(
     (): SessionTransitionGuard => ({ revision: transitionRevisionRef.current }),
@@ -362,7 +445,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const current = snapshotRef.current;
       commit({ ...current, state: { status: 'transitioning' }, failure: null });
       queueMicrotask(() => {
-        if (requestRef.current === request) {
+        if (mountedRef.current && requestRef.current === request) {
           settleIdentity(hydrated, true);
           if (hydrateCapabilities) {
             void refreshSession();
@@ -385,7 +468,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const current = snapshotRef.current;
       commit({ ...current, state: { status: 'transitioning' }, failure: null });
       queueMicrotask(() => {
-        if (requestRef.current === request) {
+        if (mountedRef.current && requestRef.current === request) {
           settleIdentity(null, true);
         }
       });
@@ -394,7 +477,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
+    mountedRef.current = true;
     void revalidate();
+    return () => {
+      mountedRef.current = false;
+      requestRef.current += 1;
+    };
   }, [revalidate]);
 
   useEffect(
@@ -407,26 +495,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (isSessionStorageEvent(event)) replaceFromPeer();
+    };
+    globalThis.addEventListener('storage', onStorage);
+    return () => globalThis.removeEventListener('storage', onStorage);
+  }, [replaceFromPeer]);
+
+  useEffect(() => {
     if (typeof BroadcastChannel !== 'function') {
       return;
     }
-    const channel = new BroadcastChannel(CHANNEL_NAME);
-    channelRef.current = channel;
+    const channel = new BroadcastChannel(SESSION_CHANNEL);
     channel.addEventListener('message', (event) => {
-      if (event.data === CHANNEL_MESSAGE) {
-        void revalidate();
+      if (isPeerSessionMessage(event)) {
+        replaceFromPeer();
       }
     });
     return () => {
-      channelRef.current = null;
       channel.close();
     };
-  }, [revalidate]);
+  }, [replaceFromPeer]);
 
   useEffect(() => {
-    const onFocus = () => void revalidateOnFocus();
+    const onFocus = () => {
+      checkSessionCookie();
+      void revalidateOnFocus();
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') onFocus(); };
+    document.addEventListener('visibilitychange', onVisible);
     globalThis.addEventListener?.('focus', onFocus);
-    return () => globalThis.removeEventListener?.('focus', onFocus);
+    return () => {
+      globalThis.removeEventListener?.('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [revalidateOnFocus]);
 
   // A degraded (still-authenticated) session recovers on its own: a background
@@ -481,9 +583,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <QueryClientProvider client={snapshot.queries}>
-      <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-    </QueryClientProvider>
+    <div className="session-owner" hidden={snapshot.checkingRotation}>
+      <QueryClientProvider key={snapshot.epoch} client={snapshot.queries}>
+        <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+      </QueryClientProvider>
+    </div>
   );
 }
 

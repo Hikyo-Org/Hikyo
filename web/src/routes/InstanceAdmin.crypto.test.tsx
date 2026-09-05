@@ -3,6 +3,7 @@ import { act } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { authenticatedIdentity } from '../testkit/identity.ts';
 import { AuthProvider } from '../app/AuthProvider.tsx';
 import { renderForm, settleTask } from '../testkit/renderForm.tsx';
 import { InstanceAdmin } from './InstanceAdmin.tsx';
@@ -26,8 +27,12 @@ function mountInstanceAdmin(
     const path = new URL(request.url, 'http://localhost').pathname;
     const specific = handler(request, path);
     if (specific !== null) return Promise.resolve(specific);
-    // whoami and every other GET: refuse, so no panel crashes and none of the
-    // crypto controls depends on a disclosed directory.
+    if (path === '/api/v1/auth/whoami') {
+      return Promise.resolve(new Response(JSON.stringify(authenticatedIdentity), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      }));
+    }
+    // Directory GETs may be refused independently of the authenticated owner.
     return Promise.resolve(new Response(null, { status: 404 }));
   });
   vi.stubGlobal('fetch', fetchMock);

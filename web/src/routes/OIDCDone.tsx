@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { announceSessionChange } from '../api/sessionEpoch.ts';
 import { oidcChannelName, takeOIDCReturn } from '../api/oidcChannel.ts';
 
 /** Same-origin return page for browser-started OIDC login/link/reauth flows. */
@@ -22,6 +23,7 @@ export function OIDCDone() {
         setFailure('Your identity provider refused this sign-in. Return to sign in and try again.');
         return;
       }
+      announceSessionChange();
       globalThis.location.replace('/');
       return;
     }

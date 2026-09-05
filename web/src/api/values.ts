@@ -1,3 +1,4 @@
+import { assertSessionEpoch, captureSessionEpoch, reconcileSessionResponse } from './sessionEpoch.ts';
 import {
   copyValuesOp,
   getRevealWindowOp,
@@ -189,6 +190,7 @@ export type PasskeyCeremonyInput = {
  * keys below" exists to prevent.
  */
 export async function runPasskeyCeremony(input: PasskeyCeremonyInput): Promise<void> {
+  const epoch = captureSessionEpoch();
   const options = await parsed(reauthPasskeyStartOp, {
       body: {
         operation: input.operation,
@@ -198,6 +200,7 @@ export async function runPasskeyCeremony(input: PasskeyCeremonyInput): Promise<v
     });
   const request = requestOptions(options);
   const assertion = await navigator.credentials.get({ publicKey: request });
+  assertSessionEpoch(epoch);
   if (assertion === null || !(assertion instanceof PublicKeyCredential)) {
     throw new Error('the authenticator returned no assertion');
   }
@@ -226,6 +229,7 @@ export async function runAdapterPasskeyCeremony(input: {
   environmentId: string;
   environmentIds: readonly string[];
 }): Promise<void> {
+  const epoch = captureSessionEpoch();
   const options = await parsed(reauthPasskeyStartOp, {
       body: {
         operation: 'adapter',
@@ -237,6 +241,7 @@ export async function runAdapterPasskeyCeremony(input: {
     });
   const request = requestOptions(options);
   const assertion = await navigator.credentials.get({ publicKey: request });
+  assertSessionEpoch(epoch);
   if (assertion === null || !(assertion instanceof PublicKeyCredential)) {
     throw new Error('the authenticator returned no assertion');
   }
@@ -334,6 +339,7 @@ class OIDCCeremonyError extends Error {
 
 /** Re-run the current OIDC provider in a popup and await its same-origin return. */
 export async function runOIDCCeremony(providerSlug: string, environmentId: string): Promise<void> {
+  const epoch = captureSessionEpoch();
   // Open synchronously while the click still carries user activation. A
   // window opened with the `noopener` feature must return null even when it
   // succeeds, which makes it indistinguishable from a blocked popup. Opening
@@ -389,6 +395,7 @@ export async function runOIDCCeremony(providerSlug: string, environmentId: strin
       }
     };
   });
+  await reconcileSessionResponse(epoch);
 }
 
 /**

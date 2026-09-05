@@ -744,6 +744,11 @@ jobs:
       # Positional specs, one group per leg. A positional spec filter makes the
       # teardown SKIP its per-run execution-closure check (it is a partial run by
       # design); the `web-closure` job re-checks closure over the merged log.
+      - name: Cross-tab session ownership regression
+        if: matrix.project == 'desktop' && matrix.group == 1
+        working-directory: web
+        run: pnpm exec playwright test --config e2e/session-epoch.config.ts
+
       - name: Flow suite (${{ matrix.project }} group ${{ matrix.group }})
         working-directory: web
         env:

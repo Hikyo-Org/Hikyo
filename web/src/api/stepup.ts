@@ -1,3 +1,4 @@
+import { assertSessionEpoch, captureSessionEpoch } from './sessionEpoch.ts';
 import {
   passkeyLoginFinishOp,
   passkeyLoginStartOp,
@@ -80,8 +81,10 @@ export function useStepUpPasskey() {
   return useMutation({
     onMutate: auth.captureTransition,
     mutationFn: async () => {
+      const epoch = captureSessionEpoch();
       const options = await parsed(stepUpPasskeyStartOp, {});
       const body = await assert(options);
+      assertSessionEpoch(epoch);
       const result = await parsed(stepUpPasskeyFinishOp, { body });
       if (result.session.artifact === 'browser' && result.session_token !== undefined) {
         throw new Error('the server returned a browser session token in the response body');
@@ -102,8 +105,10 @@ export function usePasskeyLogin() {
   return useMutation({
     onMutate: auth.captureTransition,
     mutationFn: async () => {
+      const epoch = captureSessionEpoch();
       const options = await parsed(passkeyLoginStartOp, {});
       const body = await assert(options);
+      assertSessionEpoch(epoch);
       const result = await parsed(passkeyLoginFinishOp, { body });
       if (result.session.artifact === 'browser' && result.session_token !== undefined) {
         throw new Error('the server returned a browser session token in the response body');

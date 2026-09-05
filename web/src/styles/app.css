@@ -21,6 +21,11 @@ body,
   height: 100%;
 }
 
+/* The ownership boundary adds no layout box; hidden still removes disclosures. */
+.session-owner:not([hidden]) {
+  display: contents;
+}
+
 body {
   margin: 0;
   background: var(--bg);

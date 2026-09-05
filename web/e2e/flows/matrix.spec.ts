@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from '@playwright/test';
+import { expect, type BrowserContext, type Locator, type Page } from '@playwright/test';
 import {
   zApprovalPolicy,
   zApprovalPolicyList,
@@ -1184,12 +1184,21 @@ test.describe('change approvals', () => {
   const CA_PATH = `/orgs/${seed.org}/projects/${seed.project}/change-approvals`;
   const projectBase = `/api/v1/orgs/${seed.org}/projects/${seed.project}`;
 
+  const policyIDs = new Set<string>();
+
+  test.afterAll(async () => {
+    const token = await fixtureBearer('approvals cleanup');
+    for (const id of policyIDs) {
+      await fixtureApiCall(token, 'DELETE', `${projectBase}/approval-policies/${id}`, z.strictObject({}));
+    }
+  });
+
   // ensurePolicy binds a min-1, self-approvable policy to dev, tolerating the
   // UNIQUE conflict when a prior test in the same instance already created it.
   const ensurePolicy = async (label: string) => {
     const token = await fixtureBearer(label);
     try {
-      await fixtureApiCall(token, 'POST', `${projectBase}/approval-policies`, zApprovalPolicy, {
+      const policy = await fixtureApiCall(token, 'POST', `${projectBase}/approval-policies`, zApprovalPolicy, {
         environment_id: seed.dev,
         min_approvals: 1,
         allow_self_approval: true,
@@ -1197,6 +1206,7 @@ test.describe('change approvals', () => {
         enabled: true,
         approvers: [{ kind: 'principal', subject_id: seed.principal }],
       });
+      policyIDs.add(policy.id);
     } catch (error) {
       if (!(error instanceof Error) || !error.message.includes('409')) {
         throw error;
@@ -1254,53 +1264,73 @@ test.describe('change approvals', () => {
     expect(established.status).toBe(204);
 
     const grantPath = `${projectBase}/grants`;
-    for (const capability of ['read', 'publish']) {
-      await browserApi(adminPage, 'POST', grantPath, zGrantResult, {
-        principal: invitation.principal_id,
-        capability,
+    const grantedCapabilities: string[] = [];
+    let reviewerContext: BrowserContext | undefined;
+    try {
+      for (const capability of ['read', 'publish']) {
+        await browserApi(adminPage, 'POST', grantPath, zGrantResult, {
+          principal: invitation.principal_id,
+          capability,
+        });
+        grantedCapabilities.push(capability);
+      }
+
+      const reviewerLoginResponse = await fetch(`${BASE_URL}/api/v1/auth/local/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, artifact: 'cli' }),
       });
-    }
+      expect(reviewerLoginResponse.status).toBe(200);
+      const reviewerLogin = zLoginResult.parse(await reviewerLoginResponse.json());
+      const enrolled = await fixtureApiCall(
+        reviewerLogin.session_token ?? '',
+        'POST',
+        '/api/v1/auth/totp/enrol/start',
+        zTotpEnrolStartResult,
+        { password },
+      );
+      await fixtureApiCall(
+        reviewerLogin.session_token ?? '',
+        'POST',
+        '/api/v1/auth/totp/enrol/confirm',
+        zLoginResult,
+        { code: totpCode(enrolled.otpauth_uri) },
+      );
 
-    const reviewerLoginResponse = await fetch(`${BASE_URL}/api/v1/auth/local/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, artifact: 'cli' }),
-    });
-    expect(reviewerLoginResponse.status).toBe(200);
-    const reviewerLogin = zLoginResult.parse(await reviewerLoginResponse.json());
-    const enrolled = await fixtureApiCall(
-      reviewerLogin.session_token ?? '',
-      'POST',
-      '/api/v1/auth/totp/enrol/start',
-      zTotpEnrolStartResult,
-      { password },
-    );
-    await fixtureApiCall(
-      reviewerLogin.session_token ?? '',
-      'POST',
-      '/api/v1/auth/totp/enrol/confirm',
-      zLoginResult,
-      { code: totpCode(enrolled.otpauth_uri) },
-    );
+      const reviewerBrowserLogin = await fetch(`${BASE_URL}/api/v1/auth/local/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, artifact: 'browser' }),
+      });
+      expect(reviewerBrowserLogin.status).toBe(200);
 
-    const reviewerBrowserLogin = await fetch(`${BASE_URL}/api/v1/auth/local/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, artifact: 'browser' }),
-    });
-    expect(reviewerBrowserLogin.status).toBe(200);
-
-    const policies = await fixtureApiCall(
-      adminToken,
-      'GET',
-      `${projectBase}/approval-policies`,
-      zApprovalPolicyList,
-    );
-    const policy = policies.items.find((candidate) => candidate.environment_id === seed.dev) ??
+      const policies = await fixtureApiCall(
+        adminToken,
+        'GET',
+        `${projectBase}/approval-policies`,
+        zApprovalPolicyList,
+      );
+      const policy = policies.items.find((candidate) => candidate.environment_id === seed.dev) ??
+        await fixtureApiCall(
+          adminToken,
+          'POST',
+          `${projectBase}/approval-policies`,
+          zApprovalPolicy,
+          {
+            environment_id: seed.dev,
+            min_approvals: 1,
+            allow_self_approval: false,
+            request_ttl_seconds: 3600,
+            enabled: true,
+            approvers: [{ kind: 'principal', subject_id: invitation.principal_id }],
+            bypassers: [seed.principal],
+          },
+        );
+      policyIDs.add(policy.id);
       await fixtureApiCall(
         adminToken,
-        'POST',
-        `${projectBase}/approval-policies`,
+        'PUT',
+        `${projectBase}/approval-policies/${policy.id}`,
         zApprovalPolicy,
         {
           environment_id: seed.dev,
@@ -1312,57 +1342,41 @@ test.describe('change approvals', () => {
           bypassers: [seed.principal],
         },
       );
-    await fixtureApiCall(
-      adminToken,
-      'PUT',
-      `${projectBase}/approval-policies/${policy.id}`,
-      zApprovalPolicy,
-      {
-        environment_id: seed.dev,
-        min_approvals: 1,
-        allow_self_approval: false,
-        request_ttl_seconds: 3600,
-        enabled: true,
-        approvers: [{ kind: 'principal', subject_id: invitation.principal_id }],
-        bypassers: [seed.principal],
-      },
-    );
 
-    const stageRequest = async (value: string) => {
-      const staged = await fixtureApiCall(
-        adminToken,
-        'PUT',
-        `${projectBase}/environments/${seed.dev}/values/${seed.config}`,
-        zPendingChange,
-        { value },
-      );
-      return fixtureApiCall(
-        adminToken,
-        'POST',
-        `${projectBase}/environments/${seed.dev}/publish`,
-        zApprovalRequestSummary,
-        { version_ids: [staged.version_id] },
-      );
-    };
+      const stageRequest = async (value: string) => {
+        const staged = await fixtureApiCall(
+          adminToken,
+          'PUT',
+          `${projectBase}/environments/${seed.dev}/values/${seed.config}`,
+          zPendingChange,
+          { value },
+        );
+        return fixtureApiCall(
+          adminToken,
+          'POST',
+          `${projectBase}/environments/${seed.dev}/publish`,
+          zApprovalRequestSummary,
+          { version_ids: [staged.version_id] },
+        );
+      };
 
-    const reviewerContext = await browser.newContext({ storageState: { cookies: [], origins: [] } });
-    await reviewerContext.addCookies(
-      reviewerBrowserLogin.headers.getSetCookie().map((header) => {
-        const [pair = ''] = header.split(';', 1);
-        const equals = pair.indexOf('=');
-        return {
-          name: pair.slice(0, equals),
-          value: pair.slice(equals + 1),
-          domain: 'localhost',
-          path: '/',
-          secure: true,
-          httpOnly: /;\s*httponly/i.test(header),
-          sameSite: /;\s*samesite=strict/i.test(header) ? ('Strict' as const) : ('Lax' as const),
-        };
-      }),
-    );
-    const reviewerPage = await reviewerContext.newPage();
-    try {
+      reviewerContext = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+      await reviewerContext.addCookies(
+        reviewerBrowserLogin.headers.getSetCookie().map((header) => {
+          const [pair = ''] = header.split(';', 1);
+          const equals = pair.indexOf('=');
+          return {
+            name: pair.slice(0, equals),
+            value: pair.slice(equals + 1),
+            domain: 'localhost',
+            path: '/',
+            secure: true,
+            httpOnly: /;\s*httponly/i.test(header),
+            sameSite: /;\s*samesite=strict/i.test(header) ? ('Strict' as const) : ('Lax' as const),
+          };
+        }),
+      );
+      const reviewerPage = await reviewerContext.newPage();
       const approved = await stageRequest(`approval-${suffix}`);
       await reviewerPage.goto(CA_PATH);
       await reviewerPage.locator('#ca-review-env').selectOption(seed.dev);
@@ -1416,7 +1430,12 @@ test.describe('change approvals', () => {
       expect(requests.items.find((request) => request.id === stale.id)?.state).toBe('invalidated');
       expect(requests.items.find((request) => request.id === bypass.id)?.state).toBe('bypassed');
     } finally {
-      await reviewerContext.close();
+      await reviewerContext?.close();
+      // Grant administration requires the passkey-backed browser session.
+      for (const capability of grantedCapabilities) {
+        const query = new URLSearchParams({ principal: invitation.principal_id, capability });
+        await browserApi(adminPage, 'DELETE', `${grantPath}?${query}`, z.null());
+      }
     }
   });
 

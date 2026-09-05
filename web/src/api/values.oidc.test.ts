@@ -40,10 +40,9 @@ function oidcStartResponse(): Response {
 
 async function startedCeremony(): Promise<{ pending: Promise<void> }> {
   const pending = runOIDCCeremony('strict', 'env-production');
-  for (let round = 0; round < 10 && TestBroadcastChannel.latest === undefined; round += 1) {
-    await Promise.resolve();
-  }
-  expect(TestBroadcastChannel.latest?.name).toBe('hikyo-oidc:state-195');
+  await vi.waitFor(() => {
+    expect(TestBroadcastChannel.latest?.name).toBe('hikyo-oidc:state-195');
+  });
   return { pending };
 }
 
