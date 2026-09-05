@@ -11,16 +11,13 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/pressly/goose/v3"
 	"github.com/pressly/goose/v3/database"
-
-	"github.com/Hikyo-Org/hikyo/internal/store/authn"
 )
 
-func TestRestoreSQLiteDirectoryDurabilityPreservesRecoveryState(t *testing.T) {
-	archive, originalEpoch := recoveryStateArchive(t)
+func TestRestoreSQLiteDirectoryDurabilityPreservesCommittedMutations(t *testing.T) {
+	archive := publicationMutationArchive(t)
 	for _, test := range []struct {
 		name   string
 		failAt int
@@ -70,7 +67,7 @@ func TestRestoreSQLiteDirectoryDurabilityPreservesRecoveryState(t *testing.T) {
 					return err
 				}
 				defer tx.Rollback()
-				if err := authn.NewSQLite(tx).AdvanceRestoreEpoch(ctx, time.Now().UTC()); err != nil {
+				if _, err := tx.ExecContext(ctx, "UPDATE restore_publication_probe SET value = 'recovered' WHERE id = 1"); err != nil {
 					return err
 				}
 				return tx.Commit()
@@ -102,27 +99,20 @@ func TestRestoreSQLiteDirectoryDurabilityPreservesRecoveryState(t *testing.T) {
 				}
 			}
 			assertNoRestoreStaging(t, target)
-			// Even on post-publication failure, the actual restored database
-			// keeps the committed epoch bump and cannot reactivate old grants.
+			// Storage must preserve the callback's committed mutations even
+			// when publication durability fails. The isolation drill suite owns
+			// the real credential-epoch and reconciliation contract.
 			db, err := Open(t.Context(), Config{Engine: EngineSQLite, Path: target})
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer db.Close()
-			resolver := authn.NewSQLite(db.sqRead)
-			state, err := resolver.RestoreState(t.Context())
-			if err != nil {
+			var value string
+			if err := db.sqRead.QueryRowContext(t.Context(), "SELECT value FROM restore_publication_probe WHERE id = 1").Scan(&value); err != nil {
 				t.Fatal(err)
 			}
-			if state.CredentialEpoch != originalEpoch+1 || state.RestoreEpoch != state.CredentialEpoch {
-				t.Fatalf("retained restore lost epoch mutation: %+v, original %d", state, originalEpoch)
-			}
-			pending, err := resolver.UnreconciledPrincipals(t.Context())
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(pending) != 1 || string(pending[0].ID) != "restore-operator" {
-				t.Fatalf("restored principal should remain unreconciled: %+v", pending)
+			if value != "recovered" {
+				t.Fatalf("retained target lost the committed mutation: %q", value)
 			}
 			if _, err := RestoreSQLite(t.Context(), bytes.NewReader(archive), target, nil); !errors.Is(err, ErrTargetNotEmpty) {
 				t.Fatalf("retry must not overwrite retained target: %v", err)
@@ -132,8 +122,8 @@ func TestRestoreSQLiteDirectoryDurabilityPreservesRecoveryState(t *testing.T) {
 }
 
 // Use the real embedded schema and VACUUM export, rather than a synthetic file,
-// so the failure path proves recovery mutations survive publication intact.
-func recoveryStateArchive(t *testing.T) ([]byte, int64) {
+// so the failure path proves committed mutations survive publication intact.
+func publicationMutationArchive(t *testing.T) []byte {
 	t.Helper()
 	db, err := Open(t.Context(), Config{Engine: EngineSQLite, Path: filepath.Join(t.TempDir(), "source.db")})
 	if err != nil {
@@ -151,16 +141,12 @@ func recoveryStateArchive(t *testing.T) ([]byte, int64) {
 	if _, err := provider.Up(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.sqWrite.ExecContext(t.Context(), "INSERT INTO principals(id,kind,created_at) VALUES ('restore-operator','human','2026-09-05T00:00:00Z')"); err != nil {
-		t.Fatal(err)
-	}
-	state, err := authn.NewSQLite(db.sqRead).RestoreState(t.Context())
-	if err != nil {
+	if _, err := db.sqWrite.ExecContext(t.Context(), "CREATE TABLE restore_publication_probe(id INTEGER PRIMARY KEY, value TEXT NOT NULL); INSERT INTO restore_publication_probe VALUES (1, 'original')"); err != nil {
 		t.Fatal(err)
 	}
 	var archive bytes.Buffer
 	if _, err := Export(t.Context(), db, &archive, t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
-	return archive.Bytes(), state.CredentialEpoch
+	return archive.Bytes()
 }
