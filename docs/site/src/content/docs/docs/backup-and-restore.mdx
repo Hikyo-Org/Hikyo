@@ -124,6 +124,15 @@ recipient set.
 Verify the reported path, byte count, engine, and schema version. Move a copy to
 storage that does not share the instance's failure domain.
 
+An export reports success only after syncing the complete encrypted file and
+its destination directory ancestry. The destination filesystem must support
+these durability operations. If directory sync fails after publication, the
+command names the retained archive and reports `backup artifact published but
+durability unconfirmed`. Inspect that artifact and fix the storage error; the
+failed export does not advance the successful recovery point or permit a
+configured pre-migration export to continue. Retrying preserves the earlier
+artifact and repeats the durability checks.
+
 ## 4. Restore into an empty target
 
 Stop the server. Configure `HIKYO_DB` for a new SQLite path or an empty
@@ -178,7 +187,7 @@ For a passphrase-encrypted archive, pass `--passphrase-file PATH` instead of
 `--identity-file` (they are mutually exclusive, as for `restore run`). For a
 PostgreSQL scratch target, pass `--target-postgres-dsn-file PATH` (a file
 holding an empty database's DSN) instead of `--target-sqlite`; `--cleanup`
-removes a sqlite scratch file but leaves a PostgreSQL scratch database for you
+removes a SQLite scratch file after a successful drill but leaves a PostgreSQL scratch database for you
 to drop, since dropping a database is a DB-admin task, not something the server
 does through a datastore handle.
 
@@ -195,8 +204,13 @@ The drill records the archive identity and digest, binary and schema versions,
 elapsed time and RTO verdict on the live instance's audit trail and health row.
 The root key and backup identity are read from files, used for the drill's
 duration only, and never persisted or logged. The scratch target is left for
-inspection unless `--cleanup`.
+inspection unless `--cleanup` was requested and the drill passed.
 
 Include the root-key escrow unwrap proof in the quarterly runbook: the drill's
 `--root-key-file` IS that proof when the file is fetched fresh from escrow. An
 export job alone is not a recovery test.
+
+With `--cleanup`, SQLite scratch files are removed only after every drill step
+and its recovery-time check pass. A failed or refused drill retains the target
+for inspection, including any pre-existing database. PostgreSQL scratch cleanup
+remains an explicit database-administrator action.
