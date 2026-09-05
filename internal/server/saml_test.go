@@ -42,7 +42,7 @@ func TestSAMLStartSetsCrossSitePathScopedInitiatorCookie(t *testing.T) {
 	}}
 	api := &API{SAMLAuth: stub}
 	response, err := api.SamlStart(context.Background(), apigen.SamlStartRequestObject{
-		Provider: "corp", Body: &apigen.SamlStartRequest{Purpose: apigen.SamlStartRequestPurposeLogin},
+		Provider: "corp", Body: &apigen.SamlStartRequest{Purpose: "login"},
 	})
 	if err != nil {
 		t.Fatal(err)

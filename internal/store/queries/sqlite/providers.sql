@@ -9,21 +9,21 @@
 -- name: CreateOIDCProvider :exec
 INSERT INTO oidc_providers
     (id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
-     redirect_uri, jit_policy, assurance_policy, enabled, dek_version, row_version,
+     redirect_uri, assurance_policy, enabled, dek_version, row_version,
      created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?);
 
 -- hikyo:authn-resolution
 -- name: GetOIDCProviderBySlug :one
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
-       redirect_uri, jit_policy, assurance_policy, enabled, dek_version, row_version,
+       redirect_uri, assurance_policy, enabled, dek_version, row_version,
        created_at, updated_at
 FROM oidc_providers WHERE slug = ?;
 
 -- hikyo:authn-resolution
 -- name: ListOIDCProviders :many
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
-       redirect_uri, jit_policy, assurance_policy, enabled, dek_version, row_version,
+       redirect_uri, assurance_policy, enabled, dek_version, row_version,
        created_at, updated_at
 FROM oidc_providers ORDER BY slug;
 
@@ -34,7 +34,7 @@ FROM oidc_providers ORDER BY slug;
 -- name: UpdateOIDCProviderCAS :execrows
 UPDATE oidc_providers
 SET display_name = ?, client_id = ?, client_secret = ?, scopes = ?,
-    redirect_uri = ?, jit_policy = ?, assurance_policy = ?, enabled = ?,
+    redirect_uri = ?, assurance_policy = ?, enabled = ?,
     dek_version = ?, row_version = row_version + 1, updated_at = ?
 WHERE id = ? AND row_version = ?;
 

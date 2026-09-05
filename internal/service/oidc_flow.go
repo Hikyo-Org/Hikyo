@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"crypto/subtle"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -455,8 +454,8 @@ func (s *Auth) revalidateProvider(ctx context.Context, az *authz.TxAuthorizer, s
 }
 
 // completeLogin resolves the identity three ways (live / epoch-inert / unknown,
-// A8) and mints a browser session, provisions via JIT policy, or refuses
-// uniformly. An epoch-inert identity is terminal and never a JIT input.
+// A8) and mints a browser session or refuses
+// uniformly. An epoch-inert identity is terminal and never provisioned.
 func (s *Auth) completeLogin(ctx context.Context, prov authz.OIDCProvider, txn authz.OIDCTransaction, claims oidcrp.Claims) (OIDCCallbackResult, error) {
 	attempt, err := writeCommittedSessionAttempt(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer, attempt *sessionCompletionAttempt) error {
 		now := s.now()
@@ -477,23 +476,17 @@ func (s *Auth) completeLogin(ctx context.Context, prov authz.OIDCProvider, txn a
 		identity, e := az.ExternalIdentityByKey(ctx, OIDCKind, txn.Issuer, claims.Subject)
 		switch {
 		case errors.Is(e, domain.ErrNotFound):
-			// Unknown: JIT or uniform refusal.
-			acc, cause, jerr := s.jitProvision(ctx, az, prov, claims, now)
-			if jerr != nil {
-				return jerr
+			// Login never creates accounts. Invitation and explicit linking are
+			// required before this identity may authenticate.
+			if aerr := s.stageOIDCRefuse(ctx, az, causeUnknownIdentity, prov.ID); aerr != nil {
+				return aerr
 			}
-			if cause != "" {
-				if aerr := s.stageOIDCRefuse(ctx, az, cause, prov.ID); aerr != nil {
-					return aerr
-				}
-				attempt.refused = sessionRefusedUnauthenticated
-				return nil
-			}
-			account = acc
+			attempt.refused = sessionRefusedUnauthenticated
+			return nil
 		case e != nil:
 			return e
 		default:
-			// A8: epoch-inert is terminal, never JIT.
+			// A8: epoch-inert is terminal, never provisioned.
 			if identity.CredentialEpoch != epoch {
 				if aerr := s.stageOIDCRefuse(ctx, az, causeEpoch, prov.ID); aerr != nil {
 					return aerr
@@ -531,84 +524,6 @@ func (s *Auth) completeLogin(ctx context.Context, prov authz.OIDCProvider, txn a
 		return OIDCCallbackResult{}, refused
 	}
 	return OIDCCallbackResult{Login: attempt.result, Purpose: purposeLogin}, nil
-}
-
-// jitProvision creates a zero-grant account for an unknown identity when the
-// provider's JIT policy admits it, naming the verified claim. It returns a
-// refusal cause when the policy is absent or the claim does not match; the
-// created account can authenticate and see nothing until granted.
-func (s *Auth) jitProvision(ctx context.Context, az *authz.TxAuthorizer, prov authz.OIDCProvider, claims oidcrp.Claims, now time.Time) (authz.Account, string, error) {
-	if prov.JITPolicy == nil {
-		return authz.Account{}, causeUnknownIdentity, nil
-	}
-	var policy jitPolicy
-	if err := json.Unmarshal([]byte(*prov.JITPolicy), &policy); err != nil {
-		return authz.Account{}, "", err
-	}
-	if policy.Claim == "" {
-		return authz.Account{}, causeJITRefused, nil
-	}
-	raw, ok := claims.Raw[policy.Claim]
-	if !ok {
-		return authz.Account{}, causeJITRefused, nil
-	}
-	var value string
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return authz.Account{}, causeJITRefused, nil
-	}
-	matched := false
-	for _, v := range policy.Values {
-		if value == v {
-			matched = true
-			break
-		}
-	}
-	if !matched {
-		return authz.Account{}, causeJITRefused, nil
-	}
-
-	epoch, err := az.CredentialEpoch(ctx)
-	if err != nil {
-		return authz.Account{}, "", err
-	}
-	principalID, err := newID("usr")
-	if err != nil {
-		return authz.Account{}, "", err
-	}
-	accountID, err := newID("acc")
-	if err != nil {
-		return authz.Account{}, "", err
-	}
-	identityID, err := newID("eid")
-	if err != nil {
-		return authz.Account{}, "", err
-	}
-	// A generated handle, never the email or a provider-supplied username, so a
-	// JIT account cannot collide with or impersonate a local handle.
-	username := "oidc-" + accountID
-	if err := az.CreateHumanPrincipal(ctx, domain.PrincipalID(principalID), now); err != nil {
-		return authz.Account{}, "", err
-	}
-	account := authz.Account{ID: accountID, PrincipalID: domain.PrincipalID(principalID), Username: username, DisplayName: username, CreatedAt: now}
-	if err := az.CreateAccount(ctx, account); err != nil {
-		return authz.Account{}, "", err
-	}
-	if err := az.CreateExternalIdentity(ctx, authz.NewExternalIdentity{
-		ID: identityID, AccountID: accountID, Kind: OIDCKind, Issuer: prov.Issuer,
-		Subject: claims.Subject, ProviderID: prov.ID, CredentialEpoch: epoch, CreatedAt: now,
-	}); err != nil {
-		return authz.Account{}, "", err
-	}
-	e, err := newAuditEvent(ctx, audit.EventJITProvisioned, domain.PrincipalID(principalID),
-		audit.Object{Type: "account", ID: accountID}, audit.OutcomeSuccess, "",
-		audit.Payload{"account_id": accountID, "provider_id": prov.ID, "claim": policy.Claim})
-	if err != nil {
-		return authz.Account{}, "", err
-	}
-	if err := az.RecordAuthEvent(ctx, e); err != nil {
-		return authz.Account{}, "", err
-	}
-	return account, "", nil
 }
 
 // completeLink binds a new identity to the transaction's account as an

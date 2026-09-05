@@ -27,7 +27,7 @@ import { ApiError, ok, parsed } from './client.ts';
  *  - the issuer is IMMUTABLE after create (A3), so a reconfigure that changes it
  *    is refused as a field error client-side rather than sent to a 400 that
  *    could not name which field it meant;
- *  - the JIT and assurance policies are parsed as JSON objects before they ride.
+ *  - the assurance policy is parsed as JSON objects before they ride.
  *
  * The one thing the WebUI cannot hold and must not pretend to: the client secret
  * is envelope-encrypted and NEVER returned. Every PUT re-seals whatever secret
@@ -56,7 +56,6 @@ export type OidcProviderInput = {
   readonly clientId: string;
   readonly clientSecret: string;
   readonly scopes: string;
-  readonly jitPolicy: string | null;
   readonly assurancePolicy: string | null;
   readonly enabled: boolean;
 };
@@ -81,7 +80,6 @@ export async function putOidcProvider(
       client_id: input.clientId,
       client_secret: input.clientSecret,
       scopes: input.scopes,
-      jit_policy: input.jitPolicy,
       assurance_policy: input.assurancePolicy,
       enabled: input.enabled,
     },
@@ -115,7 +113,6 @@ export type OidcProviderField =
   | 'client_id'
   | 'client_secret'
   | 'scopes'
-  | 'jit_policy'
   | 'assurance_policy';
 
 /** The contract's own slug pattern (ProviderSlugPath), enforced before submit. */
@@ -176,7 +173,6 @@ export type OidcProviderDraft = {
   readonly clientId: string;
   readonly clientSecret: string;
   readonly scopes: string;
-  readonly jitPolicy: string;
   readonly assurancePolicy: string;
   readonly enabled: boolean;
 };
@@ -246,10 +242,6 @@ export function validateProviderDraft(
       };
     }
   }
-  const jit = validatePolicyJson(draft.jitPolicy, 'The JIT policy');
-  if (!jit.ok) {
-    return { ok: false, field: 'jit_policy', message: jit.message };
-  }
   const assurance = validatePolicyJson(draft.assurancePolicy, 'The assurance policy');
   if (!assurance.ok) {
     return { ok: false, field: 'assurance_policy', message: assurance.message };
@@ -263,7 +255,6 @@ export function validateProviderDraft(
       clientId: draft.clientId,
       clientSecret: draft.clientSecret,
       scopes: draft.scopes,
-      jitPolicy: jit.value,
       assurancePolicy: assurance.value,
       enabled: draft.enabled,
     },

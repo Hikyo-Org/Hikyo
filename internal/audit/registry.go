@@ -115,9 +115,6 @@ const (
 	// bound to or removed from an account - account-security mutations both.
 	EventIdentityLinked   EventType = "auth.identity_linked"
 	EventIdentityUnlinked EventType = "auth.identity_unlinked"
-	// auth.jit_provisioned records a JIT account creation, naming the verified
-	// claim that admitted it - the evidence, never an email allowlist.
-	EventJITProvisioned EventType = "auth.jit_provisioned"
 	// auth.provider_changed records a provider configuration change and the
 	// count of federated sessions it swept (A3/A4). auth.provider_read records
 	// the instance-scoped provider reads (audit-model default-deny refuses
@@ -1107,7 +1104,7 @@ var registry = map[EventType]TypeSpec{
 			"cause": {Kind: KindString, Required: true, Enum: []string{
 				"mixup", "nonce", "purpose", "state", "issuer", "audience", "signature", "epoch",
 				"idp-error", "expired", "unknown-identity", "no-assurance-policy", "no-auth-time", "binding",
-				"jit-refused", "reconciliation", "window-zero", "no-possession", "downgrade",
+				"reconciliation", "window-zero", "no-possession", "downgrade",
 			}},
 			"provider_id": {Kind: KindString},
 		},
@@ -1137,17 +1134,7 @@ var registry = map[EventType]TypeSpec{
 			"authorizing_credential": {Kind: KindString, Required: true},
 		},
 	},
-	EventJITProvisioned: {
-		SchemaVersion: 1,
-		Retention:     RetentionSecurity,
-		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
-		Trails:        map[Trail]bool{TrailInstance: true},
-		Schema: Schema{
-			"account_id":  {Kind: KindString, Required: true},
-			"provider_id": {Kind: KindString, Required: true},
-			"claim":       {Kind: KindString, Required: true}, // the verified claim name
-		},
-	},
+
 	EventOIDCProviderChanged: {
 		SchemaVersion: 1,
 		Retention:     RetentionSecurity,

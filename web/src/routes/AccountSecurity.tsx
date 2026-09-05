@@ -488,7 +488,7 @@ export function AccountSecurity() {
               disabled={link.isPending || methods.data?.providers[0] === undefined}
               onClick={() => {
                 const provider = methods.data?.providers[0];
-                if (provider !== undefined) setProof({ kind: 'link', provider: provider.slug, providerKind: provider.kind });
+                if (provider !== undefined && (provider.kind === 'oidc' || provider.kind === 'saml')) setProof({ kind: 'link', provider: provider.slug, providerKind: provider.kind });
               }}
             >link…</button>
           </div>
@@ -538,14 +538,15 @@ export function AccountSecurity() {
                   type="button"
                   className="btn"
                   key={provider.slug}
-                  disabled={link.isPending}
-                  onClick={() =>
+                  disabled={link.isPending || (provider.kind !== 'oidc' && provider.kind !== 'saml')}
+                  onClick={() => {
+                    if (provider.kind !== 'oidc' && provider.kind !== 'saml') return;
                     setProof({
                       kind: 'link',
                       provider: provider.slug,
                       providerKind: provider.kind,
-                    })
-                  }
+                    });
+                  }}
                 >
                   Link {provider.display_name}
                 </button>

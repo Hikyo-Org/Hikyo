@@ -192,9 +192,8 @@ var tenantProbes = []tenantProbe{
 	// refusals that merely look alike.
 	// ---------------------------------------------------------------------
 
-	// Organization. Read is `read(org)`; rename and delete are
-	// instance-config, so even an org administrator is refused — and cannot
-	// tell the org apart from one that does not exist.
+	// Organisation: read requires read@org; rename requires manage-members@org.
+	// Delete remains instance-config. Refusals never disclose existence.
 	{
 		name: "org_get_cross_org", axis: axisCrossOrgHuman,
 		run: func(t *testing.T, db *store.DB) error {
@@ -209,7 +208,7 @@ var tenantProbes = []tenantProbe{
 		},
 	},
 	{
-		name: "org_rename_org_admin_refused", axis: axisCapabilityDenial, mutation: true,
+		name: "org_rename_without_manage_members_refused", axis: axisCapabilityDenial, mutation: true,
 		run: func(t *testing.T, db *store.DB) error {
 			orgs, _, _ := services(t, db)
 			_, err := orgs.Rename(tctx(t), service.LocalPrincipal(alice), orgA, "pwned")

@@ -1,5 +1,8 @@
 # Hikyo MVP boundary & acceptance criteria (ADR, locked 2026-08-06)
 
+> **Operative pre-freeze amendment (2026-09-05, #617, implementing #589 and its release-scope decision):** The breaking prerequisites of social registration ship before 1.0: retire OIDC automatic account creation, change organisation rename to `manage-members@org`, and open the existing wire enums registration will grow. Social sign-in and registration remain post-1.0. The A7 policy-fold fixture is superseded: migration 00044 already removes that policy, so future registration has no legacy fold. Existing authenticated login, explicit linking, SCIM and org deletion retain their contracts.
+
+
 > **Amended by the flat-model ADR ([flat-model.md](./flat-model.md), 2026-08-06, [#40](https://github.com/Hikyo-Org/Hikyo/issues/40)):** the inheritance-model interim state recorded below is discharged — #40 is locked; C1 and C2 carry their final criterion text (per that ADR's Propagations).
 
 > **Amended 2026-08-07 ([#22](https://github.com/Hikyo-Org/Hikyo/issues/22) reopened per the [oss-mechanics](./oss-mechanics.md) governance procedure):** S1's "spec-first OpenAPI 3.0.3" reads **OpenAPI 3.1**; S1's [CI] negative-fixture set exercises the 3.1 semantic profile bound in [system-architecture.md](./system-architecture.md)'s operative banner (nullable prohibition, dialect fail-closed, webhooks prohibition, oasdiff 3.1 breakage fixtures). The criterion is otherwise unchanged.
