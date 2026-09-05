@@ -1,0 +1,30 @@
+[
+  {
+    "viewport": "desktop",
+    "groupCollapse": true,
+    "multiEnvironmentDisclosure": true,
+    "definitionsModes": [
+      "db",
+      "git"
+    ],
+    "historyDetail": true,
+    "sidebar": {
+      "headingPadding": "30px",
+      "linkBorder": "1px"
+    }
+  },
+  {
+    "viewport": "mobile",
+    "groupCollapse": true,
+    "multiEnvironmentDisclosure": true,
+    "definitionsModes": [
+      "db",
+      "git"
+    ],
+    "historyDetail": true,
+    "sidebar": {
+      "headingPadding": "30px",
+      "linkBorder": "1px"
+    }
+  }
+]

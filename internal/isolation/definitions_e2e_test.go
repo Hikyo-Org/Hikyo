@@ -802,3 +802,61 @@ func safeError(err error) string {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// Browser bundle workflows leave immutable plans behind. They must not make
+// an otherwise empty project undeletable; explicit deletion retains its audit.
+func TestDefinitionsProjectDeletion(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		for _, apply := range []bool{false, true} {
+			t.Run(fmt.Sprintf("applied=%v", apply), func(t *testing.T) {
+				f := seedDefinitionsProject(t, db, fmt.Sprintf("delete_%v", apply), false)
+				svc := definitionsService(t, db)
+				projects := &service.Projects{DB: db}
+				plan := planDefinitions(t, svc, f, []byte(`{"format_version":1,"environments":[{"name":"preview"}],"key_groups":[],"keys":[]}`))
+				if apply {
+					if _, err := svc.Apply(t.Context(), service.LocalPrincipal(alice), f.scope(), plan.ID, service.ApplyOptions{}); err != nil {
+						t.Fatal(err)
+					}
+					// Content still refuses deletion, and the attempted ledger
+					// cleanup rolls back along with the project delete.
+					if err := projects.Delete(t.Context(), service.LocalPrincipal(alice), f.scope()); !errors.Is(err, domain.ErrConflict) {
+						t.Fatalf("nonempty project deletion = %v, want conflict", err)
+					}
+					envID := queryString(t, db, "SELECT id FROM environments WHERE project_id = '"+string(f.project)+"'")
+					if err := (&service.Environments{DB: db, Keyring: probeKeyring(t, db)}).Delete(t.Context(), service.LocalPrincipal(alice), scopeEnv(orgA, f.project, domain.EnvID(envID))); err != nil {
+						t.Fatal(err)
+					}
+				}
+				planRows := "SELECT COUNT(*) FROM definitions_plans WHERE org_id = 'org_a' AND project_id = '" + string(f.project) + "'"
+				for _, refusedScope := range []domain.Scope{f.scope(), scopeProject(orgB, f.project)} {
+					if err := projects.Delete(t.Context(), service.LocalPrincipal(bob), refusedScope); !errors.Is(err, domain.ErrNotFound) {
+						t.Fatalf("foreign project deletion = %v, want masked not-found", err)
+					}
+					if got := queryInt(t, db, planRows); got != 1 {
+						t.Fatalf("refusal changed plan ledger: %d", got)
+					}
+				}
+				auditRows := "SELECT COUNT(*) FROM audit_tenant_events WHERE object_id = '" + plan.ID + "'"
+				beforeAudit := queryInt(t, db, auditRows)
+				if beforeAudit == 0 {
+					t.Fatal("plan has no audit history")
+				}
+				if err := projects.Delete(t.Context(), service.LocalPrincipal(alice), f.scope()); err != nil {
+					t.Fatal(err)
+				}
+				if got := queryInt(t, db, planRows); got != 0 {
+					t.Fatalf("deleted project retained %d plans", got)
+				}
+				if got := queryInt(t, db, "SELECT COUNT(*) FROM projects WHERE id = '"+string(f.project)+"'"); got != 0 {
+					t.Fatal("project still exists")
+				}
+				if got := queryInt(t, db, auditRows); got != beforeAudit {
+					t.Fatalf("deletion changed plan audit: %d -> %d", beforeAudit, got)
+				}
+				if got := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE object_id = '"+string(f.project)+"' AND type = 'settings.project_deleted'"); got != 1 {
+					t.Fatalf("project deletion audit = %d", got)
+				}
+			})
+		}
+	})
+}

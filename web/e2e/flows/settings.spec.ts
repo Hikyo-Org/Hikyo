@@ -1,7 +1,10 @@
+import { readFile } from 'node:fs/promises';
 import { expect, type Page } from '@playwright/test';
 import {
   zDefinitionsSettings,
+  zDefinitionsBundle,
   zEnvironment,
+  zEnvironmentList,
   zEnvironmentSettings,
   zOrg,
   zProject,
@@ -11,7 +14,7 @@ import {
 import { generatePath } from 'react-router';
 import { z } from 'zod';
 
-import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
+import { expectNoSeriousAxeViolations, expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
 import { BrowserApiError, browserApi } from '../fixtures/api.ts';
 import {
   establishSession,
@@ -294,6 +297,82 @@ test.describe('project settings', () => {
       });
     } finally {
       await context.close();
+    }
+  });
+
+  test('definitions bundle exports, checks, plans and applies without the CLI', async ({}, testInfo) => {
+    await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByRole('link', { name: 'Download definitions bundle', exact: true }).click();
+    const download = await downloadPromise;
+    const path = await download.path();
+    if (path === null) throw new Error('No bundle was downloaded');
+    const content = await readFile(path, 'utf8');
+    const exported = zDefinitionsBundle.parse(JSON.parse(content));
+    expect(exported.environments.some((env) => env.name === 'staging')).toBe(true);
+    const portable = page.getByRole('link', { name: 'Download portable bundle', exact: true });
+    await expect(portable).toHaveAttribute('href', `${base()}/definitions/export?portable=true`);
+    await page.getByRole('button', { name: 'Check a bundle', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Definitions bundle', exact: true });
+    const upload = dialog.getByLabel('Definitions bundle file (JSON, up to 1 MiB)');
+    await upload.setInputFiles({ name: 'definitions.json', mimeType: 'application/json', buffer: Buffer.from(content) });
+    await dialog.getByRole('button', { name: 'Check bundle', exact: true }).click();
+    await expect(dialog.getByRole('status').filter({ hasText: 'Equal:' })).toBeVisible();
+    // New additive environment is an observable schema publish, not a no-op.
+    await upload.setInputFiles({ name: 'portable.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ format_version: 1, environments: [{ name: 'bundle-preview' }], key_groups: [], keys: [] })) });
+    await dialog.getByRole('button', { name: 'Check bundle', exact: true }).click();
+    await expect(dialog.getByRole('status').filter({ hasText: 'File ahead:' })).toBeVisible();
+    await dialog.getByRole('button', { name: 'Create impact plan' }).click();
+    await expect(dialog.getByRole('heading', { name: 'Immutable impact plan' })).toBeVisible();
+    expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await dialog.getByRole('button', { name: 'Review and apply' }).scrollIntoViewIfNeeded();
+    for (const colorScheme of ['dark', 'light']) {
+      await page.emulateMedia({ colorScheme: colorScheme === 'dark' ? 'dark' : 'light', reducedMotion: 'reduce' });
+      await expectNoSeriousAxeViolations(page);
+      await page.screenshot({ path: testInfo.outputPath(`definitions-plan-${colorScheme}.png`), fullPage: true });
+    }
+    await page.screenshot({ path: testInfo.outputPath('definitions-plan.png'), fullPage: true });
+    await dialog.getByRole('button', { name: 'Review and apply' }).click();
+    await page.getByRole('dialog', { name: 'Apply definitions and publish' }).getByRole('button', { name: 'Apply and publish' }).click();
+    await expect(dialog.getByRole('status').filter({ hasText: 'Definitions applied at revision' })).toBeVisible();
+    await dialog.getByRole('button', { name: 'Close definitions bundle' }).click();
+    await expect(page.locator('#project-environments').getByText('bundle-preview', { exact: true })).toBeVisible();
+    const environments = await browserApi(page, 'GET', `${base()}/environments`, zEnvironmentList);
+    const created = environments.items.find((environment) => environment.name === 'bundle-preview');
+    if (created === undefined) throw new Error('Applied environment is missing');
+    await browserApi(page, 'DELETE', `${base()}/environments/${created.id}`, z.null());
+  });
+
+  test('definitions bundle shows stale-base, Git governance and publish refusals', async () => {
+    const makeFile = (baseRevision?: number) => ({ name: 'definitions.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ format_version: 1, base_revision: baseRevision, environments: [], key_groups: [], keys: [] })) });
+    await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
+    await page.getByRole('button', { name: 'Check a bundle', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Definitions bundle', exact: true });
+    const upload = dialog.getByLabel('Definitions bundle file (JSON, up to 1 MiB)');
+    await upload.setInputFiles(makeFile(0));
+    await dialog.getByRole('button', { name: 'Check bundle', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Create impact plan' }).click();
+    await expect(dialog.getByRole('alert').filter({ hasText: 're-export and rebase' })).toBeVisible();
+    await upload.setInputFiles(makeFile());
+    await dialog.getByRole('button', { name: 'Check bundle', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Create impact plan' }).click();
+    await page.route(`**${base()}/definitions/plans/*/apply`, (route) => route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'not found' } } }));
+    await dialog.getByRole('button', { name: 'Review and apply' }).click();
+    await page.getByRole('dialog', { name: 'Apply definitions and publish' }).getByRole('button', { name: 'Apply and publish' }).click();
+    await expect(dialog.getByRole('alert').filter({ hasText: 'publish on every affected environment' })).toBeVisible();
+    await page.unroute(`**${base()}/definitions/plans/*/apply`);
+    await dialog.getByRole('button', { name: 'Close definitions bundle' }).click();
+    try {
+      await browserApi(page, 'PUT', `${base()}/definitions/settings`, zDefinitionsSettings, { definitions_source: 'git' });
+      await page.reload();
+      await page.getByRole('button', { name: 'Check a bundle', exact: true }).click();
+      await expect(dialog.getByRole('alert').filter({ hasText: 'Browser apply is refused' })).toBeVisible();
+      await upload.setInputFiles(makeFile());
+      await dialog.getByRole('button', { name: 'Check bundle', exact: true }).click();
+      await dialog.getByRole('button', { name: 'Create impact plan' }).click();
+      await expect(dialog.getByRole('button', { name: 'Review and apply' })).toBeDisabled();
+    } finally {
+      await browserApi(page, 'PUT', `${base()}/definitions/settings`, zDefinitionsSettings, { definitions_source: 'db' });
     }
   });
 

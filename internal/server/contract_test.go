@@ -1153,7 +1153,9 @@ func testDefinitionsPlan() service.PlanView {
 	return service.PlanView{
 		ID: testDefinitionsPlanID, Digest: strings.Repeat("0", 64), CurrentRevision: 7,
 		Additive: true, ExpiresAt: time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC),
-		ProtectedEnvironments: []string{}, DeletionsPresent: false, RevealRequired: []string{},
+		// The real service may produce nil for an empty reveal set. The wire
+		// adapter must still emit required arrays; allocated fixtures hid #575.
+		ProtectedEnvironments: nil, DeletionsPresent: false, RevealRequired: nil,
 		Diff: service.PlanDiff{
 			Environments: emptyDefinitionsKindDiff(), KeyGroups: emptyDefinitionsKindDiff(),
 			Keys: emptyDefinitionsKindDiff(), KeyDeletions: []service.KeyDeletion{},

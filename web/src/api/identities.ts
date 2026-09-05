@@ -479,7 +479,7 @@ export function isoDay(timestamp: string): string {
   return timestamp.slice(0, 10);
 }
 
-type JourneyState = 'done' | 'next' | 'unavailable';
+type JourneyState = 'done' | 'next' | 'blocked';
 
 export type JourneyStep = {
   readonly title: string;
@@ -491,14 +491,11 @@ export type JourneyStep = {
  * setupJourney is the five-step workload-integration journey (#18, the locked
  * prototype's rail), told against what this build can actually do.
  *
- * Steps 4 and 5 are `unavailable` rather than `next`, and that is the honest
- * rendering: the per-project machine-reveal opt-in has no server surface yet,
- * and the permission model's machine allowlist admits `read` and nothing else
- * on a workload principal — so a "grant reveal" button would be a control that
- * is refused every time it is pressed. The prototype's verbatim delivery
- * refusal is left out for the same reason: this build's delivery never refuses,
- * it delivers configuration and secret presence, and rendering a refusal would
- * describe a state the server does not produce.
+ * The journey describes permission readiness, not observed delivery health.
+ * A read grant permits configuration and secret-presence delivery, but does not
+ * prove that a workload fetched successfully. Reveal remains blocked until the
+ * project's machine-reveal opt-in is enabled; this is an available capability
+ * with an unmet prerequisite, not an unimplemented feature.
  *
  * `null` for an automation principal: automation never delivers to a workload,
  * so it has no setup journey at all.
@@ -531,9 +528,9 @@ export function setupJourney(
     {
       title:
         read.length === 0
-          ? 'First delivery'
-          : 'First delivery succeeds — configuration and secret presence',
-      note: 'a fetch that delivers no values is still an audited access record',
+          ? 'Allow configuration delivery'
+          : 'Read grant permits configuration delivery',
+      note: 'Permission state only; a successful fetch has not been verified here. Each fetch is audited.',
       state: read.length === 0 ? 'next' : 'done',
     },
     {
@@ -553,7 +550,7 @@ export function setupJourney(
       note: machineReveal
         ? 'secret plaintext is delivered on the next fetch; the widening ceremony names the environments it reaches'
         : 'refused by the grant API until the opt-in above is on',
-      state: revealed.length > 0 ? 'done' : machineReveal ? 'next' : 'unavailable',
+      state: !machineReveal ? 'blocked' : revealed.length > 0 ? 'done' : 'next',
     },
   ];
 }

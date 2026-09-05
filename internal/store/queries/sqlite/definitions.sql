@@ -48,3 +48,11 @@ WHERE org_id = ? AND project_id = ? AND id = ? AND applied = ?;
 -- hikyo:instance-scoped
 -- name: PruneExpiredPlans :execrows
 DELETE FROM definitions_plans WHERE applied = 0 AND expires_at <= ?;
+
+
+-- DeleteProjectDefinitionsPlans removes project-owned plan/provenance state
+-- only inside the authorized project deletion transaction. Tenant audit is
+-- independent and retained. If content still blocks deletion, rollback keeps
+-- every plan, including applied provenance; there is no standalone purge API.
+-- name: DeleteProjectDefinitionsPlans :exec
+DELETE FROM definitions_plans WHERE org_id = ? AND project_id = ?;

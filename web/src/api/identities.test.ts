@@ -168,10 +168,10 @@ describe('setupJourney', () => {
 
   it('waits on the read grant before anything else', () => {
     const steps = setupJourney('workload', scopeOf([], 'mp_a', ENVS), false) ?? [];
-    expect(steps.map((s) => s.state)).toEqual(['done', 'next', 'next', 'next', 'unavailable']);
+    expect(steps.map((s) => s.state)).toEqual(['done', 'next', 'next', 'next', 'blocked']);
   });
 
-  it('marks delivery done once read is granted, and gates reveal on the opt-in', () => {
+  it('states delivery permission without claiming a successful fetch and gates reveal on opt-in', () => {
     const scope = scopeOf([grant('mp_a', 'read', { environment_id: 'env_dev' })], 'mp_a', ENVS);
     const steps = setupJourney('workload', scope, false) ?? [];
     expect(steps[1]?.title).toBe('read granted — development');
@@ -179,7 +179,9 @@ describe('setupJourney', () => {
     // With the opt-in off the grant API refuses reveal, so the step says so
     // rather than offering a control the server refuses every time.
     expect(steps[3]?.state).toBe('next');
-    expect(steps[4]?.state).toBe('unavailable');
+    expect(steps[4]?.state).toBe('blocked');
+    expect(steps[2]?.title).toBe('Read grant permits configuration delivery');
+    expect(steps[2]?.note).toContain('a successful fetch has not been verified here');
   });
 
   it('offers the reveal grant once the project has opted in, and closes it once held', () => {
@@ -198,6 +200,9 @@ describe('setupJourney', () => {
     const held = setupJourney('workload', revealing, true) ?? [];
     expect(held[4]?.state).toBe('done');
     expect(held[4]?.title).toBe('reveal granted — development');
+    const withdrawn = setupJourney('workload', revealing, false) ?? [];
+    expect(withdrawn[4]?.state).toBe('blocked');
+    expect(withdrawn[4]?.note).toContain('until the opt-in above is on');
   });
 });
 

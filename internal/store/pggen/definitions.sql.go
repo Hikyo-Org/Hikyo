@@ -92,6 +92,24 @@ func (q *Queries) CreatePlan(ctx context.Context, arg CreatePlanParams) error {
 	return err
 }
 
+const deleteProjectDefinitionsPlans = `-- name: DeleteProjectDefinitionsPlans :exec
+DELETE FROM definitions_plans WHERE org_id = $1 AND project_id = $2
+`
+
+type DeleteProjectDefinitionsPlansParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+}
+
+// DeleteProjectDefinitionsPlans removes project-owned plan/provenance state
+// only inside the authorized project deletion transaction. Tenant audit is
+// independent and retained. If content still blocks deletion, rollback keeps
+// every plan, including applied provenance; there is no standalone purge API.
+func (q *Queries) DeleteProjectDefinitionsPlans(ctx context.Context, arg DeleteProjectDefinitionsPlansParams) error {
+	_, err := q.db.Exec(ctx, deleteProjectDefinitionsPlans, arg.ChainOrgID, arg.ChainProjectID)
+	return err
+}
+
 const getLatestAppliedPlan = `-- name: GetLatestAppliedPlan :one
 SELECT id, org_id, project_id, created_by, created_at, expires_at,
        bundle, digest, base_schema_revision, env_revisions, protected_envs, diff, additive, applied,

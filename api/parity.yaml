@@ -138,15 +138,12 @@ operations:
   voteApprovalRequest:         {webui: change-approvals}
 
   # definitions
-  # The bundle verbs are the repository's path into the same catalogue the
-  # key-detail editor writes directly (source-of-truth ADR § Git-governed
-  # projects: db mode edits through the UI as normal; git mode renders the UI
-  # read-only by design and accepts writes only through apply).
-  exportDefinitions:           {webui: key-detail, via: [listKeys, getKey, listFolders, listKeyGroups]}
-  checkDefinitions:            {webui: key-detail, via: [listKeys, getKey, listFolders, listKeyGroups]}
-  createDefinitionsPlan:       {webui: key-detail, via: [createKey, updateKeyDeclaration, deleteKey]}
-  getDefinitionsPlan:          {webui: key-detail, via: [createKey, updateKeyDeclaration, deleteKey]}
-  applyDefinitionsPlan:        {webui: key-detail, via: [createKey, updateKeyDeclaration, deleteKey]}
+  # Browser bundle workflow uses each operation directly (#575).
+  exportDefinitions:           {webui: project-settings, reach: path}
+  checkDefinitions:            {webui: project-settings}
+  createDefinitionsPlan:       {webui: project-settings}
+  getDefinitionsPlan:          {webui: project-settings}
+  applyDefinitionsPlan:        {webui: project-settings}
   getDefinitionsSettings:      {webui: project-settings}
   setDefinitionsSettings:      {webui: project-settings}
 
@@ -301,7 +298,7 @@ operations:
   # instance
   # The directory a connected instance pulls is this instance's own org and
   # project names and counts, which the shell already lists.
-  serveDirectory:              {webui: remotes, via: [listOrgs, listProjects]}
+  serveDirectory:              {webui: remotes}
   listRemotes:                 {webui: remotes}
   addRemote:                   {webui: remotes}
   showRemote:                  {webui: remotes, via: [listRemotes]}

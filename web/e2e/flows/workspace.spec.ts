@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
+import { expectNoSeriousAxeViolations, expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
 import {
   ADMIN,
   BASE_URL,
@@ -102,6 +102,28 @@ async function revokeConnectionByLabel(page: Page, label: string): Promise<void>
 
 test.describe('multi-instance', () => {
   test.use({ storageState: STORAGE_STATE });
+
+  test('This instance directory shows identity, metadata and scoped refusal', async ({ page }, testInfo) => {
+    await page.goto('/remotes');
+    const panel = page.getByRole('region', { name: 'This instance', exact: true });
+    await expect(panel.getByText('Identity', { exact: true })).toBeVisible();
+    await expect(panel.locator('dd').first()).not.toBeEmpty();
+    await expect(panel.getByText('Version', { exact: true })).toBeVisible();
+    await expect(panel.getByText('Organisations', { exact: true })).toBeVisible();
+    await expect(panel.getByText('Projects', { exact: true })).toBeVisible();
+    await panel.scrollIntoViewIfNeeded();
+    expect(await panel.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    for (const colorScheme of ['dark', 'light']) {
+      await page.emulateMedia({ colorScheme: colorScheme === 'dark' ? 'dark' : 'light', reducedMotion: 'reduce' });
+      await expectNoSeriousAxeViolations(page);
+      await page.screenshot({ path: testInfo.outputPath(`this-instance-${colorScheme}.png`), fullPage: true });
+    }
+    await page.screenshot({ path: testInfo.outputPath('this-instance.png'), fullPage: true });
+    await page.route('**/api/v1/instance/directory', (route) => route.fulfill({ status: 403, json: { error: { code: 'forbidden', message: 'forbidden' } } }));
+    await page.reload();
+    await expect(panel.getByRole('alert')).toContainText('You do not hold instance-directory');
+    await expect(panel.locator('dd')).toHaveCount(0);
+  });
 
   test('keeps anonymous ceremony URLs intact and outside shell chrome', async ({ page, context }) => {
     await context.clearCookies();

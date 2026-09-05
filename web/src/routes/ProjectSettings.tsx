@@ -40,6 +40,7 @@ import {
   type SettingsOperation,
 } from '../api/settings.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { DefinitionsBundlePanel } from './DefinitionsBundlePanel.tsx';
 import { ChromeIdentityControls } from './ChromeIdentityControls.tsx';
 import { Alert, ConsequencesDialog, Done, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback } from './useModalDialog.ts';
@@ -232,6 +233,9 @@ export function ProjectSettings() {
               })
             }
           />
+        )}
+        {definitionsSettings.data === undefined || prototypeMode ? null : (
+          <DefinitionsBundlePanel key={`${org}/${project}`} org={org} project={project} settings={definitionsSettings.data} />
         )}
         <div id="project-retention">
         {orgRetention.isPending ? <p role="status">Loading the organisation cap…</p> : null}

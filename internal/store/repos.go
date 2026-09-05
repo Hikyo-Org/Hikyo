@@ -531,6 +531,13 @@ func (r sqliteProjects) Delete(ctx context.Context, p authz.Proof) error {
 	// not content: a project holding keys or groups is refused by THEIR foreign
 	// keys, which is the non-empty-parent refusal, and this row must not add a
 	// second refusal for an empty one.
+	// Plans are immutable while their project exists. Explicit project deletion
+	// removes its plan ledger atomically; audit history remains independent.
+	if err := constraint(r.q.DeleteProjectDefinitionsPlans(ctx, sqlitegen.DeleteProjectDefinitionsPlansParams{
+		OrgID: string(chain.Org), ProjectID: string(chain.Project),
+	})); err != nil {
+		return err
+	}
 	if err := constraint(r.q.DeleteProjectSchemaRevision(ctx, sqlitegen.DeleteProjectSchemaRevisionParams{
 		OrgID:     string(chain.Org),
 		ProjectID: string(chain.Project),
@@ -1177,6 +1184,11 @@ func (r pgProjects) Delete(ctx context.Context, p authz.Proof) error {
 		return err
 	}
 	// See the sqlite copy: the revision row dies with the project.
+	if err := constraint(r.q.DeleteProjectDefinitionsPlans(ctx, pggen.DeleteProjectDefinitionsPlansParams{
+		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project),
+	})); err != nil {
+		return err
+	}
 	if err := constraint(r.q.DeleteProjectSchemaRevision(ctx, pggen.DeleteProjectSchemaRevisionParams{
 		ChainOrgID:     string(chain.Org),
 		ChainProjectID: string(chain.Project),

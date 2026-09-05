@@ -1,0 +1,72 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hikyo 1.0 locked prototype comparison</title><style>
+:root{color-scheme:dark;--bg:#10191c;--panel:#182428;--text:#edf5f4;--muted:#b3c4c8;--accent:#7bd2d0}body{background:var(--bg);color:var(--text);font:16px/1.55 system-ui;margin:0 auto;max-width:1440px;padding:28px}a{color:var(--accent)}h1{font-size:28px}h2{margin-top:34px;font-size:21px}p{max-width:95ch}.status,section,aside{background:var(--panel);padding:18px;border:1px solid #455a61;border-radius:6px}.status{border-color:var(--accent)}table{border-collapse:collapse;width:100%}td,th{text-align:left;vertical-align:top;padding:12px;border-bottom:1px solid #455a61}label{display:inline-flex;align-items:center;gap:10px;margin-right:20px}select{font:inherit;padding:7px;background:var(--panel);color:var(--text)}.pair{display:grid;grid-template-columns:1fr 1fr;gap:16px}.pair img{display:block;width:100%;height:auto;border:1px solid #455a61}.pair figure{margin:0}.pair figcaption{margin-bottom:6px;color:var(--muted)}.surface{margin-block:20px}.mobile .pair img{max-width:393px}.mobile .pair figure{display:flex;flex-direction:column;align-items:center}code{font-size:.9em}small{color:var(--muted)}@media(max-width:700px){body{padding:12px}.pair{grid-template-columns:1fr}}
+</style>
+<h1>Locked prototypes against the real embedded application</h1>
+<p class="status">Five assigned families compared at desktop 1280×800 and mobile 393×851, dark and light. All 32 paired real-app views passed axe serious/critical=0 and page-width containment. Three additional app detail captures and interaction checks passed. Machine setup copy needed correction; six focused desktop/mobile cases including display-once mint passed in 2.8 minutes. Final claim-label wrap replay passed at desktop and mobile (2.8 minutes).</p>
+<p>Baseline: <code>1b5c04cf1241343c556a2c662e988aeca846a20e</code>. Real Go binary serving its embedded SPA, disposable SQLite instances and genuine authenticated tenant. App ports47789/47790, reference server47780. Frozen prototype files were rendered directly and remained unchanged. Different fixture records/counts are expected; the comparison assesses structure and interaction, while current DESIGN.md controls visual tokens and the owning ADR controls semantics.</p>
+<h2>Decisions and findings</h2><table><thead><tr><th>Family</th><th>Evidence and disposition</th></tr></thead><tbody>
+<tr><td>Environment matrix31</td><td>Rail plus sidebar, grouped rows, plain monospaced config values, masked secrets, named absence/problem states, environment visibility, draft entry and protected labels match the locked shape. Actual group collapse/expand and explicit multi-environment editor disclosure passed at both viewport sizes. The table may scroll internally on a phone; the page itself never overflows.</td></tr>
+<tr><td>Reveal/edit6, ceremony modal</td><td>Centered cell modal and nested purpose-bound ceremony enumerate the protected environment and one key, offer a passkey, and explain why TOTP cannot authorize the protected disclosure. Write-only replacement stays blank; no secret was revealed to create this evidence. Desktop single-environment editor leaves spare grid space. Recommendation: retain current layout for 1.0; this is density polish, not a canonical behavior failure.</td></tr>
+<tr><td>App chrome15+16+18e</td><td>Project/org settings retain h1, lede, jump index and panels. Both db/git source options exist. Project retention and org default/per-project retention state remain in settings. Sidebar treatment e measured exactly 30px inter-section heading padding and 1px left rule at desktop/mobile; the active segment is teal. Mobile Escape closes navigation and restores Menu focus.</td></tr>
+<tr><td>Revision history6</td><td>Right drawer preserves list/detail structure, current and pinned indicators, revision metadata, restore/pin controls and named settings retention entry. Mobile detail is an explicit drill-in with a back action. Opening a historical revision worked at both viewports. Historical secrets remain presence-only.</td></tr>
+<tr><td>Machine access3</td><td>Tabbed inventory and expanded credentials/bindings, targets/actions, then full-width setup journey match the locked anatomy; mobile stacks the expansion. Two later tabs are supported additions. Found stale statements treating available features as absent and a grant as delivery proof. Corrected below. Focused replay also exercises real display-once mint and confirmation-gated dismissal.</td></tr>
+</tbody></table>
+<h2>Questions resolved with recommended choices</h2><table><thead><tr><th>Question</th><th>Options</th><th>Choice and reason</th></tr></thead><tbody>
+<tr><td>How should a reveal grant waiting on opt-in read?</td><td>A: blocked until prerequisite; B: not in this build; C: hide the step.</td><td>A. The backend supports it. The five-step journey should explain the next operator action without misrepresenting availability.</td></tr>
+<tr><td>Does a read grant prove the first delivery succeeded?</td><td>A: label permission readiness; B: claim success; C: invent telemetry.</td><td>A. The view has grant data, not a successful-fetch receipt. It now says the read grant permits configuration delivery and explicitly distinguishes that from observed success.</td></tr>
+<tr><td>How should absent Kubernetes status be explained?</td><td>A: no status in this view, check HikyoSecret conditions with kubectl; B: claim the operator is unimplemented; C: show healthy.</td><td>A. The separate operator exists. Absence of displayed status supports neither a build-availability nor a health claim.</td></tr>
+<tr><td>Should snapshots be pixel-identical despite different seeded tenants?</td><td>A: compare canonical structure plus current tokens and semantics; B: change the app to static demo records; C: edit frozen references.</td><td>A. ui-spec explicitly assigns structure to prototypes, current visual language to DESIGN.md, semantics to ADRs.</td></tr>
+<tr><td>Can a long federation claim name overlap its value?</td><td>A: wrap the label within its column; B: truncate the exact claim; C: widen the entire card.</td><td>A. Final screenshot review found /kubernetes.io/serviceaccount/uid overflowing the 140px desktop label column despite axe passing. The label now wraps, preserves every byte and leaves the locked expansion geometry intact. The browser regression checks rendered scrollWidth against clientWidth.</td></tr></tbody></table>
+<aside><strong>Deferred cosmetic controls:</strong> Project/org icon and image customization and project description retain explicit disabled/API-unavailable explanations. Options considered: A defer cosmetic API support; B implement a branding subsystem before1.0; C enable controls without storage. Chose A: operational settings are live, and disabled cosmetic controls introduce no security or operational blocker. Their visual presence alone is not a claim of implemented customization.</aside>
+<h2>Measured visual language</h2><p>Actual dark page is <code>oklch(0.19 0.012 220)</code>, light page <code>oklch(0.965 0.008 200)</code>; chrome uses the current panel token rather than the brighter light raised token. Instrument Sans Variable includes the specified Instrument Sans family; keys and values use IBM Plex Mono. Capture metadata records computed fonts, colors, radii, control geometry and sidebar rules. The old prototypes contain their own earlier token values, so raw CSS-string equality to every frozen file is not the contract.</p>
+<p><a href="observations-app.json">Actual computed styles and axe records</a> · <a href="observations-ref.json">Frozen reference computed styles</a> · <a href="interactions.json">Actual interaction assertions</a></p>
+<h2>Paired browser evidence</h2><p>Frozen reference left, actual embedded application right. Baseline machine images retain the discovered wording so the defect remains reviewable; final corrected journey evidence follows below.</p>
+<label>Viewport<select id="viewport"><option value="desktop">Desktop</option><option value="mobile">Mobile</option></select></label><label>Theme<select id="theme"><option value="dark">Dark</option><option value="light">Light</option></select></label><div id="comparisons"></div>
+<h2>Corrected machine journey</h2><p>The supported grant now says blocked until its prerequisite is met. Permission readiness is explicitly separated from observed delivery; existing reveal grants also become blocked when the project opt-in is withdrawn. These final screenshots include the wrapping correction.</p><div class="pair"><figure><figcaption>Desktop, dark</figcaption><a href="evidence/desktop-machine-journey-dark.png"><img loading="lazy" alt="Corrected desktop setup journey" src="evidence/desktop-machine-journey-dark.png"></a></figure><figure><figcaption>Mobile, light</figcaption><a href="evidence/mobile-machine-journey-light.png"><img loading="lazy" alt="Corrected mobile setup journey" src="evidence/mobile-machine-journey-light.png"></a></figure></div><p><a href="evidence/desktop-machine-journey-light.png">Desktop light</a> · <a href="evidence/mobile-machine-journey-dark.png">Mobile dark</a></p>
+<h2>Validation and limits</h2><p>TypeScript check, production build, all 83 web test files/677 tests and the focused 39 identity derivation tests pass after the copy change. Six focused desktop/mobile machine cases passed, including all five tabs, expansion and real display-once mint. Final desktop/mobile label-wrapping replay also passed (2.8 minutes). Parent retains exact combined-head replay, review, CI and merge. This local browser evidence is not a deployed-production claim. The sixth locked social-signin/2 family is explicitly post-1.0 in its owning scope. The existing real login was inspected: username/password, passkey, configured identity provider, setup-authority establishment and recovery; no registration or JIT door was falsely advertised. Its <a href="evidence/login-closed-registration-app.png">current login capture</a> is retained.</p>
+<script>
+const surfaces = [
+  ['matrix', 'Environment matrix31'],
+  ['cell-editor', 'Single-cell editor'],
+  ['reveal-ceremony', 'Protected disclosure ceremony'],
+  ['project-settings', 'Project settings15'],
+  ['org-retention', 'Organisation retention16'],
+  ['sidebar-e', 'Sidebar18 treatment e'],
+  ['history-list', 'Revision history6'],
+  ['machine-expanded', 'Machine access3'],
+];
+function render() {
+  const viewport = document.querySelector('#viewport').value === 'mobile' ? 'mobile' : 'desktop';
+  const theme = document.querySelector('#theme').value === 'light' ? 'light' : 'dark';
+  document.body.classList.toggle('mobile', viewport === 'mobile');
+  const comparisons = document.querySelector('#comparisons');
+  comparisons.replaceChildren();
+  for (const [key, title] of surfaces) {
+    const section = document.createElement('section');
+    section.className = 'surface';
+    const heading = document.createElement('h3');
+    heading.textContent = title;
+    const pair = document.createElement('div');
+    pair.className = 'pair';
+    for (const [kind, label] of [['ref', 'Frozen reference'], ['app', 'Actual application']]) {
+      const figure = document.createElement('figure');
+      const caption = document.createElement('figcaption');
+      caption.textContent = label;
+      const link = document.createElement('a');
+      const source = `evidence/${viewport}-${theme}-${key}-${kind}.png`;
+      link.href = source;
+      const screenshot = document.createElement('img');
+      screenshot.loading = 'lazy';
+      screenshot.alt = `${label}: ${title}, ${viewport}, ${theme}`;
+      screenshot.src = source;
+      link.append(screenshot);
+      figure.append(caption, link);
+      pair.append(figure);
+    }
+    section.append(heading, pair);
+    comparisons.append(section);
+  }
+}
+document.querySelectorAll('select').forEach(element => element.addEventListener('change', render));
+render();
+</script></html>
