@@ -15,9 +15,9 @@ const createOIDCProvider = `-- name: CreateOIDCProvider :exec
 
 INSERT INTO oidc_providers
     (id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
-     redirect_uri, jit_policy, assurance_policy, enabled, dek_version, row_version,
+     redirect_uri, assurance_policy, enabled, dek_version, row_version,
      created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 1, $14, $15)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 1, $13, $14)
 `
 
 type CreateOIDCProviderParams struct {
@@ -30,7 +30,6 @@ type CreateOIDCProviderParams struct {
 	ClientSecret    []byte
 	Scopes          string
 	RedirectUri     string
-	JitPolicy       pgtype.Text
 	AssurancePolicy pgtype.Text
 	Enabled         int64
 	DekVersion      int64
@@ -56,7 +55,6 @@ func (q *Queries) CreateOIDCProvider(ctx context.Context, arg CreateOIDCProvider
 		arg.ClientSecret,
 		arg.Scopes,
 		arg.RedirectUri,
-		arg.JitPolicy,
 		arg.AssurancePolicy,
 		arg.Enabled,
 		arg.DekVersion,
@@ -78,7 +76,7 @@ func (q *Queries) DeleteOIDCProvider(ctx context.Context, id string) error {
 
 const getOIDCProviderBySlug = `-- name: GetOIDCProviderBySlug :one
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
-       redirect_uri, jit_policy, assurance_policy, enabled, dek_version, row_version,
+       redirect_uri, assurance_policy, enabled, dek_version, row_version,
        created_at, updated_at
 FROM oidc_providers WHERE slug = $1
 `
@@ -97,7 +95,6 @@ func (q *Queries) GetOIDCProviderBySlug(ctx context.Context, slug string) (OidcP
 		&i.ClientSecret,
 		&i.Scopes,
 		&i.RedirectUri,
-		&i.JitPolicy,
 		&i.AssurancePolicy,
 		&i.Enabled,
 		&i.DekVersion,
@@ -138,7 +135,7 @@ func (q *Queries) GuardOIDCProviderForMint(ctx context.Context, arg GuardOIDCPro
 
 const listOIDCProviders = `-- name: ListOIDCProviders :many
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
-       redirect_uri, jit_policy, assurance_policy, enabled, dek_version, row_version,
+       redirect_uri, assurance_policy, enabled, dek_version, row_version,
        created_at, updated_at
 FROM oidc_providers ORDER BY slug
 `
@@ -163,7 +160,6 @@ func (q *Queries) ListOIDCProviders(ctx context.Context) ([]OidcProvider, error)
 			&i.ClientSecret,
 			&i.Scopes,
 			&i.RedirectUri,
-			&i.JitPolicy,
 			&i.AssurancePolicy,
 			&i.Enabled,
 			&i.DekVersion,
@@ -201,9 +197,9 @@ func (q *Queries) LockOIDCProviderForDelete(ctx context.Context, id string) (str
 const updateOIDCProviderCAS = `-- name: UpdateOIDCProviderCAS :execrows
 UPDATE oidc_providers
 SET display_name = $1, client_id = $2, client_secret = $3, scopes = $4,
-    redirect_uri = $5, jit_policy = $6, assurance_policy = $7, enabled = $8,
-    dek_version = $9, row_version = row_version + 1, updated_at = $10
-WHERE id = $11 AND row_version = $12
+    redirect_uri = $5, assurance_policy = $6, enabled = $7,
+    dek_version = $8, row_version = row_version + 1, updated_at = $9
+WHERE id = $10 AND row_version = $11
 `
 
 type UpdateOIDCProviderCASParams struct {
@@ -212,7 +208,6 @@ type UpdateOIDCProviderCASParams struct {
 	ClientSecret    []byte
 	Scopes          string
 	RedirectUri     string
-	JitPolicy       pgtype.Text
 	AssurancePolicy pgtype.Text
 	Enabled         int64
 	DekVersion      int64
@@ -232,7 +227,6 @@ func (q *Queries) UpdateOIDCProviderCAS(ctx context.Context, arg UpdateOIDCProvi
 		arg.ClientSecret,
 		arg.Scopes,
 		arg.RedirectUri,
-		arg.JitPolicy,
 		arg.AssurancePolicy,
 		arg.Enabled,
 		arg.DekVersion,

@@ -105,7 +105,7 @@ func wireMemberships(lines []service.Membership) apigen.GrantList {
 		origins := make([]apigen.GrantOrigin, 0, len(l.Origins))
 		for _, o := range l.Origins {
 			origins = append(origins, apigen.GrantOrigin{
-				Kind: apigen.GrantOriginKind(o.Kind), Subject: o.Subject,
+				Kind: string(o.Kind), Subject: o.Subject,
 			})
 		}
 		items = append(items, apigen.Grant{

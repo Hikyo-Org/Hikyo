@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hikyo 1.0: approval acceptance decisions</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; line-height: 1.6; }
+    body { max-width: 72rem; margin: 3rem auto; padding: 0 1.25rem; }
+    h1, h2 { line-height: 1.2; } h2 { margin-top: 2.5rem; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; vertical-align: top; border: 1px solid #8888; padding: .8rem; }
+    th { background: #8882; } code { overflow-wrap: anywhere; }
+    .status { border-left: .3rem solid #278f75; padding: .7rem 1rem; background: #278f7512; }
+    @media (max-width: 42rem) { table, tbody, tr, td, th { display: block; } thead { display: none; } tr { margin-bottom: 1rem; } }
+  </style>
+</head>
+<body>
+  <h1>Approval acceptance for 1.0</h1>
+  <p>Decision date: 2026-09-05. Scope: <a href="https://github.com/Hikyo-Org/Hikyo/issues/616">#616</a>, following
+    <a href="../../handoff/151-change-approvals.md">#151's immutable handoff</a> and
+    <a href="../../adr/mvp-boundary.md">C-APV</a>. Base: <code>e114b56e2423a0996fa266fafbb59b561712d35d</code>.</p>
+  <p class="status">Required for 1.0: approvals already protect production publishing. A stale scheduler leader must not mutate
+    requests after takeover, and reviewed changes must fail closed when their target moves. Implementation and local validation passed;
+    parent release work owns review, CI, PR, and merge.</p>
+
+  <h2>Finding and fix</h2>
+  <p>The scheduler previously fenced lease claim and renewal, then relied on heartbeat cancellation to stop jobs. The expiry transaction
+    did not inspect the lease. A paused leader could resume after takeover and expire requests before its next heartbeat observed the loss.</p>
+  <p>The scheduler now attaches its lease name, owner, and monotonic fence to every leadership-term context. Each write transaction checks
+    and locks the matching, unexpired lease row before executing its closure. The lock remains through commit, so takeover cannot interleave
+    between validation and a tenant mutation. Retries recheck the fence. PostgreSQL uses its current datastore clock; SQLite uses its process clock.
+    Request state and audit remain in one transaction. Ordinary requests and single-node jobs carry no lease context.</p>
+  <p>This guard covers all scheduler jobs that use the common write boundary, including approval expiry. It adds no tenant permissions,
+    bypass path, schema migration, or public API. SQLite's separate-pool test is concurrency parity evidence; HA deployment still requires PostgreSQL.</p>
+
+  <h2>Delegated decisions</h2>
+  <p>The user authorized recommended choices without questions. These are the questions, alternatives, and choices that would otherwise
+    have required disposition. They can be revisited without reconstructing this session.</p>
+  <table>
+    <thead><tr><th>Question</th><th>Options</th><th>Choice and reason</th></tr></thead>
+    <tbody>
+      <tr><td>Should 1.0 introduce folder-scoped approval policies?</td><td>A. Keep environment policies and project-wide defaults.<br>B. Add folder authority.</td>
+        <td><strong>A, accepted.</strong> The locked boundary already names folders as organizational, outside authorization. Environment scopes match actual publish targets.
+          Folder authority would introduce a new security domain, not close an acceptance gap.</td></tr>
+      <tr><td>Can a designated approver or bypasser publish another user's request?</td><td>A. Keep requester-only merge and bypass.<br>B. Add cross-owner draft publishing.</td>
+        <td><strong>A, accepted.</strong> The existing publish path materializes only the caller's staged drafts. The requester must separately hold publish authority;
+          emergency bypass also requires policy membership, a current ceremony, and a reason. Cross-owner publishing requires an independently specified ownership model.</td></tr>
+      <tr><td>Must policy updates eagerly rewrite every pending request?</td><td>A. Keep lazy, fail-closed invalidation.<br>B. Fan policy writes out to environment request rows.</td>
+        <td><strong>A, accepted.</strong> A pinned policy mismatch commits invalidation and its audit before refusing a vote or merge. A stale queue row can remain visible
+          until an action checks it, but cannot authorize publishing. This preserves scoped policy and environment authority.</td></tr>
+      <tr><td>Should reading a request require publish permission?</td><td>A. Retain <code>read@env</code>.<br>B. Require <code>publish@env</code>.</td>
+        <td><strong>A, accepted.</strong> The queue contains request, key identifier, and vote metadata, with no value plaintext. Environment readers may inspect it;
+          voting, ceremonies, merge, and bypass still enforce their own publish and eligibility checks. Read stays audited-none under the existing read contract.</td></tr>
+      <tr><td>How should stale scheduler writes be stopped?</td><td>A. Validate and lock the fence inside the mutation transaction.<br>B. Check the lease before starting work.<br>C. Rely on heartbeat cancellation.</td>
+        <td><strong>A, implemented.</strong> B has a check-to-write race; C leaves a pause/resume window. A serializes takeover with the actual commit and refuses expired,
+          superseded, and reused-owner terms without depending on cancellation.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Acceptance evidence</h2>
+  <p>New tests live in <a href="../../../internal/isolation/approval_acceptance_test.go"><code>internal/isolation/approval_acceptance_test.go</code></a>.
+    All run on SQLite and PostgreSQL using independently opened pools and independently loaded keyrings under the same root key.</p>
+  <table>
+    <thead><tr><th>Test</th><th>Contract checked</th></tr></thead>
+    <tbody>
+      <tr><td><code>TestApprovalVoteRetryAcrossNodes</code></td><td>Duplicate concurrent vote delivery does not reach a two-person quorum or duplicate audit.
+        Distinct voters reach quorum; a retry on another replica stays idempotent. Racing merge delivery produces one committed merge and one refusal.</td></tr>
+      <tr><td><code>TestApprovalTargetMovementInvalidation</code></td><td>A separately approved publish advances the same environment. Merging the older approved request
+        twice refuses, persists <code>env_advanced</code>, emits one <code>approval.invalidated</code>, and does not change value, draft, or revision row counts.</td></tr>
+      <tr><td><code>TestApprovalExpirySchedulerTakeover</code></td><td>Real scheduler terms advance the persisted fence across independent nodes. An uncancelled old term
+        cannot expire a request created on the first node. The successor expires it once despite concurrent stale delivery and a retry.</td></tr>
+      <tr><td><code>TestApprovalFenceSerializesTakeover</code></td><td>A takeover waits for an admitted transaction to commit. The prior fence is refused afterwards,
+        proving the guard is held through the mutation boundary.</td></tr>
+      <tr><td><code>TestApprovalExpiryRejectsExpiredAndReusedOwner</code></td><td>An expired lease fails even with no successor. Reusing a node name does not revive
+        its old fence; only the new generation can expire and audit the request.</td></tr>
+    </tbody>
+  </table>
+  <p id="validation">Local validation passed: the complete approval suite on both engines (30 top-level and engine subtests), scheduler and transaction retry
+    tests (15), and proof/predicate/driver/result confinement invariants (5). All five new acceptance tests also passed three repetitions under the Go
+    race detector on both engines (45 top-level and engine subtests). Scoped <code>go vet</code> and <code>git diff --check</code> passed.
+    The initial fixture-only peer root-key mismatch was corrected by loading independent keyrings under the same retained root.
+    The scratch PostgreSQL base was <code>hikyo_616</code>; the isolation harness reset only <code>hikyo_616_isolation</code>.</p>
+
+  <h2>Evidence hygiene</h2>
+  <p>The original handoff remains unchanged. Its migration reference is corrected here: approval tables shipped in
+    <code>00041_change_approvals.sql</code>, not 00040. A new <a href="../../handoff/616-approval-acceptance.md">#616 handoff</a>
+    records this work. The release-wide status ledger belongs to the parent 1.0 inventory; this focused change does not independently expand that ledger.</p>
+</body>
+</html>

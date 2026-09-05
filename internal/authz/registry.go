@@ -1472,13 +1472,8 @@ var operationTable = map[Operation]opSpec{
 		storeOps:    map[StoreOp]bool{StoreOrgsGet: true},
 		auditedNone: true,
 	},
-	// Renaming and deleting an org is instance operator work: the permission
-	// ADR's closed atom set has no org-lifecycle capability (`manage-projects`
-	// is explicitly "create and delete projects"), and inventing one would
-	// reopen that ADR. The atom therefore sits at instance scope while the
-	// operation addresses org depth — legal, and the honest reading: an org
-	// administrator cannot rename or delete the org they administer, and
-	// learns nothing from trying.
+	// Renaming follows organisation membership administration (#617). Deleting
+	// remains instance operator work. Both retain tenant-scoped audit trails.
 	// Rename and Delete read the row first, in the same transaction, so the
 	// trail records the transition that actually happened rather than only the
 	// value the caller asked for. That read is part of the operation, hence the
@@ -1486,7 +1481,7 @@ var operationTable = map[Operation]opSpec{
 	OpOrgRename: {
 		class:    ClassTenant,
 		level:    domain.LevelOrg,
-		formula:  Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}},
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelOrg}},
 		storeOps: map[StoreOp]bool{StoreOrgsGet: true, StoreOrgsRename: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventOrgRenamed}, // org names not scanned (#74)
 	},

@@ -2018,7 +2018,7 @@ func TestWorkspaceStepUpBoundaryRejectsMixedIntentVariants(t *testing.T) {
 // the declared 403 with the uniform body, not a 404 and not a 500.
 //
 // The org rename is the route under test because its formula atom
-// `instance-config` is in authz.MFAMandatory. That a tenant route declares 403
+// `manage-members` is in authz.MFAMandatory. That a tenant route declares 403
 // IF AND ONLY IF its formula is MFA-mandatory is asserted against the registry
 // in internal/isolation/contract_test.go, which can see both.
 func TestAssuranceRefusalOnATenantRouteIsForbidden(t *testing.T) {

@@ -33,7 +33,7 @@ func runSCIMProvisionThenLoginOIDC(t *testing.T, db *store.DB) {
 	ctx := t.Context()
 	oidcAdministrator := oidcAdmin(t, db)
 	auth, admin := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID
-	// No JIT policy: an unmatched subject must NOT be provisioned into
+	// An unmatched subject must NOT be provisioned into
 	// existence, or "the provisioned identity reached the known-identity path"
 	// would be unfalsifiable.
 	_, _ = configureProvider(t, auth, ctx, admin, "okta", service.ProviderInput{
@@ -75,7 +75,7 @@ func runSCIMProvisionThenLoginOIDC(t *testing.T, db *store.DB) {
 		t.Fatalf("the login created an account: %d -> %d", accountsBefore, after)
 	}
 
-	// BYTE-EXACT: a case variant is a DIFFERENT identity. With no JIT policy it
+	// BYTE-EXACT: a case variant is a DIFFERENT identity. It
 	// matches nothing and is refused, which is the observable form of "consumed
 	// as opaque bytes".
 	start, err := auth.OIDCStart(ctx, "okta", "login", "", "", "", false)

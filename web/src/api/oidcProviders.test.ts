@@ -17,7 +17,6 @@ const provider: OidcProvider = {
   client_id: 'client',
   scopes: 'openid',
   redirect_uri: 'https://hikyo.example/api/v1/auth/oidc/acme/callback',
-  jit_policy: null,
   assurance_policy: null,
   enabled: true,
 };
@@ -29,7 +28,6 @@ const goodDraft: OidcProviderDraft = {
   clientId: 'client',
   clientSecret: 'shhh',
   scopes: 'openid',
-  jitPolicy: '',
   assurancePolicy: '',
   enabled: true,
 };
@@ -78,7 +76,6 @@ describe('validateProviderDraft', () => {
     if (result.ok) {
       expect(result.slug).toBe('acme');
       expect(result.input.enabled).toBe(true);
-      expect(result.input.jitPolicy).toBeNull();
     }
   });
 

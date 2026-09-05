@@ -1141,51 +1141,6 @@ func (e ErrorCode) Valid() bool {
 	}
 }
 
-// Defines values for GrantOriginKind.
-const (
-	GrantOriginKindBreakGlass       GrantOriginKind = "break-glass"
-	GrantOriginKindLockoutRetention GrantOriginKind = "lockout-retention"
-	GrantOriginKindManual           GrantOriginKind = "manual"
-	GrantOriginKindScim             GrantOriginKind = "scim"
-	GrantOriginKindStructural       GrantOriginKind = "structural"
-)
-
-// Valid indicates whether the value is a known member of the GrantOriginKind enum.
-func (e GrantOriginKind) Valid() bool {
-	switch e {
-	case GrantOriginKindBreakGlass:
-		return true
-	case GrantOriginKindLockoutRetention:
-		return true
-	case GrantOriginKindManual:
-		return true
-	case GrantOriginKindScim:
-		return true
-	case GrantOriginKindStructural:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for IdentityProviderKind.
-const (
-	IdentityProviderKindOidc IdentityProviderKind = "oidc"
-	IdentityProviderKindSaml IdentityProviderKind = "saml"
-)
-
-// Valid indicates whether the value is a known member of the IdentityProviderKind enum.
-func (e IdentityProviderKind) Valid() bool {
-	switch e {
-	case IdentityProviderKindOidc:
-		return true
-	case IdentityProviderKindSaml:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for ImpactChangeOperation.
 const (
 	ImpactChangeOperationSet   ImpactChangeOperation = "set"
@@ -1438,27 +1393,6 @@ func (e LocalLoginRequestArtifact) Valid() bool {
 	case LocalLoginRequestArtifactBrowser:
 		return true
 	case LocalLoginRequestArtifactCli:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for OidcStartRequestPurpose.
-const (
-	OidcStartRequestPurposeLink   OidcStartRequestPurpose = "link"
-	OidcStartRequestPurposeLogin  OidcStartRequestPurpose = "login"
-	OidcStartRequestPurposeReauth OidcStartRequestPurpose = "reauth"
-)
-
-// Valid indicates whether the value is a known member of the OidcStartRequestPurpose enum.
-func (e OidcStartRequestPurpose) Valid() bool {
-	switch e {
-	case OidcStartRequestPurposeLink:
-		return true
-	case OidcStartRequestPurposeLogin:
-		return true
-	case OidcStartRequestPurposeReauth:
 		return true
 	default:
 		return false
@@ -1906,27 +1840,6 @@ func (e SamlSpKeyState) Valid() bool {
 	case SamlSpKeyStateActive:
 		return true
 	case SamlSpKeyStateRetiring:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SamlStartRequestPurpose.
-const (
-	SamlStartRequestPurposeLink   SamlStartRequestPurpose = "link"
-	SamlStartRequestPurposeLogin  SamlStartRequestPurpose = "login"
-	SamlStartRequestPurposeReauth SamlStartRequestPurpose = "reauth"
-)
-
-// Valid indicates whether the value is a known member of the SamlStartRequestPurpose enum.
-func (e SamlStartRequestPurpose) Valid() bool {
-	switch e {
-	case SamlStartRequestPurposeLink:
-		return true
-	case SamlStartRequestPurposeLogin:
-		return true
-	case SamlStartRequestPurposeReauth:
 		return true
 	default:
 		return false
@@ -3305,7 +3218,7 @@ type AuthMethod = string
 type AuthMethodProvider struct {
 	DisplayName string `json:"display_name"`
 
-	// Kind Closed protocol discriminator in the byte-exact external-identity key.
+	// Kind OPEN protocol discriminator in the byte-exact external-identity key.
 	Kind IdentityProviderKind `json:"kind"`
 	Slug string               `json:"slug"`
 }
@@ -3592,7 +3505,7 @@ type CreateAdapterRequest struct {
 
 // CreateBindingRequest A binding names exactly one service account, matched byte-for-byte on
 // `(issuer, subject)`. There are no wildcards, no namespace patterns, no
-// path prefixes, no case folding and no JIT provisioning: a pattern rule
+// path prefixes, no case folding and no automatic provisioning: a pattern rule
 // such as "any ServiceAccount in namespace prod" would hand a Hikyo
 // principal to anyone holding `create serviceaccount` in that namespace, a
 // far wider group than cluster-admin.
@@ -4416,7 +4329,9 @@ type Error struct {
 // ErrorCode Closed set — never grows. Clients branch on this, not on prose.
 type ErrorCode string
 
-// EstablishCredentialRequest defines model for EstablishCredentialRequest.
+// EstablishCredentialRequest Accepts a credential-establishment authority issued by bootstrap,
+// invitation, credential-reset, break-glass, or recovery. The issuer is
+// server-owned metadata, not a request discriminator.
 type EstablishCredentialRequest struct {
 	// Authority The single-use credential-establishment authority, exactly as
 	// delivered. Never logged, never audited, never echoed.
@@ -4478,7 +4393,7 @@ type ExternalIdentity struct {
 	Id     ID     `json:"id"`
 	Issuer string `json:"issuer"`
 
-	// Kind Closed protocol discriminator in the byte-exact external-identity key.
+	// Kind OPEN protocol discriminator in the byte-exact external-identity key.
 	Kind       IdentityProviderKind `json:"kind"`
 	ProviderId string               `json:"provider_id"`
 	Subject    string               `json:"subject"`
@@ -4669,16 +4584,13 @@ type GrantList struct {
 // authorization: authority is the bare (principal, capability, scope)
 // triple.
 type GrantOrigin struct {
-	Kind GrantOriginKind `json:"kind"`
+	Kind string `json:"kind"`
 
 	// Subject The origin's holder identity, discriminated by kind: the granting
 	// principal for `manual`, the fixed local-host marker for
 	// `break-glass`, the binding id for `scim`/`structural`.
 	Subject string `json:"subject"`
 }
-
-// GrantOriginKind defines model for GrantOrigin.Kind.
-type GrantOriginKind string
 
 // GrantResult defines model for GrantResult.
 type GrantResult struct {
@@ -4731,8 +4643,8 @@ type IdentityList struct {
 	Identities []ExternalIdentity `json:"identities"`
 }
 
-// IdentityProviderKind Closed protocol discriminator in the byte-exact external-identity key.
-type IdentityProviderKind string
+// IdentityProviderKind OPEN protocol discriminator in the byte-exact external-identity key.
+type IdentityProviderKind = string
 
 // IdentityUnlinkRequest defines model for IdentityUnlinkRequest.
 type IdentityUnlinkRequest struct {
@@ -5478,7 +5390,6 @@ type OidcProvider struct {
 	DisplayName     string  `json:"display_name"`
 	Enabled         bool    `json:"enabled"`
 	Issuer          string  `json:"issuer"`
-	JitPolicy       *string `json:"jit_policy,omitempty"`
 	RedirectUri     string  `json:"redirect_uri"`
 	Scopes          string  `json:"scopes"`
 	Slug            string  `json:"slug"`
@@ -5497,10 +5408,7 @@ type OidcProviderInput struct {
 
 	// Issuer Byte-exact, immutable after create (A3).
 	Issuer string `json:"issuer"`
-
-	// JitPolicy JSON `{claim, values[]}`; absent means no JIT.
-	JitPolicy *string `json:"jit_policy,omitempty"`
-	Scopes    string  `json:"scopes"`
+	Scopes string `json:"scopes"`
 }
 
 // OidcProviderList defines model for OidcProviderList.
@@ -5517,12 +5425,9 @@ type OidcStartRequest struct {
 	EnvironmentId *string `json:"environment_id,omitempty"`
 
 	// Proof Required for link; the pre-existing password.
-	Proof   *string                 `json:"proof,omitempty"`
-	Purpose OidcStartRequestPurpose `json:"purpose"`
+	Proof   *string `json:"proof,omitempty"`
+	Purpose string  `json:"purpose"`
 }
-
-// OidcStartRequestPurpose defines model for OidcStartRequest.Purpose.
-type OidcStartRequestPurpose string
 
 // OidcStartResult defines model for OidcStartResult.
 type OidcStartResult struct {
@@ -6418,7 +6323,7 @@ type SamlProviderKind string
 
 // SamlProviderInput SAML authentication configuration. Exactly one of `metadata_document`
 // and `metadata_url` must match `metadata_source`; the service enforces
-// that conditional before fetching or parsing. No JIT member exists:
+// that conditional before fetching or parsing. No provisioning member exists:
 // SAML never provisions accounts.
 type SamlProviderInput struct {
 	// AllowEmailNameid Explicit opt-in to opaque emailAddress NameID values; never email linking.
@@ -6521,12 +6426,9 @@ type SamlStartRequest struct {
 	EnvironmentId *string `json:"environment_id,omitempty"`
 
 	// Proof Required for link; the pre-existing account-security proof.
-	Proof   *string                 `json:"proof,omitempty"`
-	Purpose SamlStartRequestPurpose `json:"purpose"`
+	Proof   *string `json:"proof,omitempty"`
+	Purpose string  `json:"purpose"`
 }
-
-// SamlStartRequestPurpose defines model for SamlStartRequest.Purpose.
-type SamlStartRequestPurpose string
 
 // SamlStartResult defines model for SamlStartResult.
 type SamlStartResult struct {

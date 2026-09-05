@@ -148,7 +148,7 @@ paths:
         authorize its own enrolment" (human-auth ADR § Credential-establishment
         authority). The authority is target-bound, purpose-bound, single-use,
         expiring, and issued only by the bootstrap path, `credential-reset`,
-        a member invitation, or local break-glass.
+        a member invitation, local break-glass, or recovery.
 
         Consuming it establishes exactly one initial credential, atomically,
         and nothing more: **no session is created, no assurance is carried,
@@ -789,15 +789,14 @@ paths:
       tags: [hierarchy]
       summary: Rename an organisation.
       description: |
-        Instance operator work: the permission model's closed capability set
-        holds no org-lifecycle atom (`manage-projects` is explicitly "create
-        and delete projects"), so the formula sits at instance scope while the
-        operation addresses org depth. An organisation administrator therefore
-        cannot rename the organisation they administer, and learns nothing from
-        trying — the refusal is the uniform `404`.
+        Requires manage-members at the addressed organisation. Organisation
+        administrators can rename their own organisation; instance-level
+        manage-members grants satisfy this by inheritance. A bare
+        instance-config grant does not authorize renaming. Refusal is the
+        uniform 404. Deleting remains an instance-config operation.
       x-hikyo-class: tenant
       x-hikyo-operation: org.rename
-      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-formula: [manage-members@org]
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       requestBody:
@@ -4767,7 +4766,7 @@ paths:
         immutable after create. File and one-shot URL sources enter the same
         diff-and-confirm ceremony;
         certificate, endpoint and assurance-policy changes sweep this
-        provider's sessions. SAML never provisions accounts, so no JIT member
+        provider's sessions. SAML never provisions accounts, so no provisioning member
         exists in this request schema.
       x-hikyo-class: instance
       x-hikyo-operation: saml-provider.put
@@ -11253,6 +11252,10 @@ components:
         - webauthn
 
     EstablishCredentialRequest:
+      description: |
+        Accepts a credential-establishment authority issued by bootstrap,
+        invitation, credential-reset, break-glass, or recovery. The issuer is
+        server-owned metadata, not a request discriminator.
       type: object
       additionalProperties: false
       required: [authority, password]
@@ -13834,7 +13837,7 @@ components:
       description: |
         A binding names exactly one service account, matched byte-for-byte on
         `(issuer, subject)`. There are no wildcards, no namespace patterns, no
-        path prefixes, no case folding and no JIT provisioning: a pattern rule
+        path prefixes, no case folding and no automatic provisioning: a pattern rule
         such as "any ServiceAccount in namespace prod" would hand a Hikyo
         principal to anyone holding `create serviceaccount` in that namespace, a
         far wider group than cluster-admin.
@@ -14192,7 +14195,7 @@ components:
       properties:
         kind:
           type: string
-          enum: [manual, break-glass, scim, structural, lockout-retention]
+          x-extensible-enum: [manual, break-glass, scim, structural, lockout-retention]
         subject:
           type: string
           description: |
@@ -14846,7 +14849,7 @@ components:
       properties:
         purpose:
           type: string
-          enum: [login, link, reauth]
+          x-extensible-enum: [login, link, reauth]
         environment_id:
           type: string
           maxLength: 64
@@ -14876,7 +14879,7 @@ components:
       properties:
         purpose:
           type: string
-          enum: [login, link, reauth]
+          x-extensible-enum: [login, link, reauth]
         environment_id:
           type: string
           maxLength: 64
@@ -14987,10 +14990,6 @@ components:
         scopes:
           type: string
           maxLength: 1024
-        jit_policy:
-          type: [string, "null"]
-          maxLength: 4096
-          description: JSON `{claim, values[]}`; absent means no JIT.
         assurance_policy:
           type: [string, "null"]
           maxLength: 4096
@@ -15015,8 +15014,6 @@ components:
           type: string
         redirect_uri:
           type: string
-        jit_policy:
-          type: [string, "null"]
         assurance_policy:
           type: [string, "null"]
         enabled:
@@ -15034,8 +15031,8 @@ components:
 
     IdentityProviderKind:
       type: string
-      description: Closed protocol discriminator in the byte-exact external-identity key.
-      enum: [oidc, saml]
+      description: OPEN protocol discriminator in the byte-exact external-identity key.
+      x-extensible-enum: [oidc, saml]
 
     SamlMetadataSource:
       type: string
@@ -15048,7 +15045,7 @@ components:
       description: |
         SAML authentication configuration. Exactly one of `metadata_document`
         and `metadata_url` must match `metadata_source`; the service enforces
-        that conditional before fetching or parsing. No JIT member exists:
+        that conditional before fetching or parsing. No provisioning member exists:
         SAML never provisions accounts.
       required:
         - display_name
@@ -15658,6 +15655,13 @@ components:
             - inert_mapping
             - stale
             - post_restore
+          x-enum-varnames:
+            - ScimAttentionStateProviderUnavailable
+            - ScimAttentionStateLockoutRetention
+            - ScimAttentionStateManualGrantsRemain
+            - ScimAttentionStateInertMapping
+            - ScimAttentionStateStale
+            - ScimAttentionStatePostRestore
         subject_ref:
           type: string
           description: Which object the state is about; empty for a binding-wide state.

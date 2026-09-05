@@ -5,6 +5,10 @@ import {
   zCreateOrgRequest,
   zErrorCode,
   zGrantResult,
+  zGrantOrigin,
+  zIdentityProviderKind,
+  zOidcStartRequest,
+  zSamlStartRequest,
   zMeta,
   zProtocolCapability,
   zTotpReauthRequest,
@@ -102,4 +106,18 @@ test('TOTP reauthentication accepts only one canonical intent variant', () => {
       environment_ids: [environment],
     }),
   );
+});
+
+// These fixtures mirror api/pre_freeze_test.go and the Go client's decoder.
+test('pre-freeze identity provider kind accepts a future protocol', () => {
+  assert.equal(zIdentityProviderKind.parse('future-kind'), 'future-kind');
+});
+test('pre-freeze OIDC purpose accepts a future purpose', () => {
+  assert.equal(zOidcStartRequest.parse({ purpose: 'future-purpose' }).purpose, 'future-purpose');
+});
+test('pre-freeze SAML purpose accepts a future purpose', () => {
+  assert.equal(zSamlStartRequest.parse({ purpose: 'future-purpose' }).purpose, 'future-purpose');
+});
+test('pre-freeze grant origin accepts a future origin', () => {
+  assert.equal(zGrantOrigin.parse({ kind: 'future-origin', subject: 'holder' }).kind, 'future-origin');
 });

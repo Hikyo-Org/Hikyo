@@ -6,6 +6,11 @@ import { clearNotification, notifyFailure, ToastViewport } from '../app/notifica
 import { renderForm, settle } from '../testkit/renderForm.tsx';
 import { AccountSecurity } from './AccountSecurity.tsx';
 
+const authProviders = vi.hoisted(() => {
+  const values: { kind: string; slug: string; display_name: string }[] = [];
+  return { values };
+});
+
 vi.mock('../app/AuthProvider.tsx', () => ({
   useAuth: () => ({
     identity: {
@@ -25,7 +30,7 @@ vi.mock('../api/account.ts', async (importActual) => {
       isPending: false,
       isError: false,
       isSuccess: true,
-      data: { providers: [] },
+      data: { providers: authProviders.values },
     }),
     useConfirmTotp: mutation,
     useEnrolPasskey: mutation,
@@ -84,6 +89,7 @@ let unmount: (() => Promise<void>) | undefined;
 
 beforeEach(() => {
   clearNotification();
+  authProviders.values.length = 0;
 });
 
 afterEach(async () => {
@@ -128,4 +134,20 @@ describe('AccountSecurity mutation feedback', () => {
       'A later security failure.',
     );
   });
+});
+
+it('preserves unknown provider kinds without starting an unsupported link flow', async () => {
+  authProviders.values.push(
+    { kind: 'future-kind', slug: 'future', display_name: 'Future provider' },
+    { kind: 'oidc', slug: 'known', display_name: 'Known provider' },
+  );
+  const rendered = await renderForm(<AccountSecurity />);
+  unmount = rendered.unmount;
+  const buttons = [...rendered.container.querySelectorAll('button')];
+  const future = buttons.find((button) => button.textContent?.trim() === 'Link Future provider');
+  const known = buttons.find((button) => button.textContent?.trim() === 'Link Known provider');
+  expect(future?.disabled).toBe(true);
+  expect(known?.disabled).toBe(false);
+  await act(async () => future?.click());
+  expect(rendered.container.querySelector('[role="dialog"]')).toBeNull();
 });

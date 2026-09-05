@@ -39,7 +39,7 @@ export const getMeta = <ThrowOnError extends boolean = false>(options?: Options<
  * authorize its own enrolment" (human-auth ADR § Credential-establishment
  * authority). The authority is target-bound, purpose-bound, single-use,
  * expiring, and issued only by the bootstrap path, `credential-reset`,
- * a member invitation, or local break-glass.
+ * a member invitation, local break-glass, or recovery.
  *
  * Consuming it establishes exactly one initial credential, atomically,
  * and nothing more: **no session is created, no assurance is carried,
@@ -415,12 +415,11 @@ export const getOrg = <ThrowOnError extends boolean = false>(options: Options<Ge
 /**
  * Rename an organisation.
  *
- * Instance operator work: the permission model's closed capability set
- * holds no org-lifecycle atom (`manage-projects` is explicitly "create
- * and delete projects"), so the formula sits at instance scope while the
- * operation addresses org depth. An organisation administrator therefore
- * cannot rename the organisation they administer, and learns nothing from
- * trying — the refusal is the uniform `404`.
+ * Requires manage-members at the addressed organisation. Organisation
+ * administrators can rename their own organisation; instance-level
+ * manage-members grants satisfy this by inheritance. A bare
+ * instance-config grant does not authorize renaming. Refusal is the
+ * uniform 404. Deleting remains an instance-config operation.
  *
  */
 export const renameOrg = <ThrowOnError extends boolean = false>(options: Options<RenameOrgData, ThrowOnError>) => (options.client ?? client).patch<RenameOrgResponses, RenameOrgErrors, ThrowOnError>({
@@ -2225,7 +2224,7 @@ export const patchSamlProvider = <ThrowOnError extends boolean = false>(options:
  * immutable after create. File and one-shot URL sources enter the same
  * diff-and-confirm ceremony;
  * certificate, endpoint and assurance-policy changes sweep this
- * provider's sessions. SAML never provisions accounts, so no JIT member
+ * provider's sessions. SAML never provisions accounts, so no provisioning member
  * exists in this request schema.
  *
  */

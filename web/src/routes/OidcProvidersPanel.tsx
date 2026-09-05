@@ -41,7 +41,6 @@ const emptyDraft: OidcProviderDraft = {
   clientId: '',
   clientSecret: '',
   scopes: 'openid',
-  jitPolicy: '',
   assurancePolicy: '',
   enabled: true,
 };
@@ -55,7 +54,6 @@ function draftFrom(provider: OidcProvider): OidcProviderDraft {
     // The secret is never returned, so it starts blank and must be re-entered.
     clientSecret: '',
     scopes: provider.scopes,
-    jitPolicy: provider.jit_policy ?? '',
     assurancePolicy: provider.assurance_policy ?? '',
     enabled: provider.enabled,
   };
@@ -248,7 +246,6 @@ function ProviderEditor({
     clientId: useId(),
     clientSecret: useId(),
     scopes: useId(),
-    jit: useId(),
     assurance: useId(),
   };
 
@@ -382,17 +379,6 @@ function ProviderEditor({
           value={draft.scopes}
           aria-invalid={invalid('scopes')}
           onChange={(event) => set('scopes', event.target.value)}
-        />
-      </div>
-
-      <div className="field">
-        <label htmlFor={ids.jit}>JIT policy (JSON, optional)</label>
-        <textarea
-          id={ids.jit}
-          className="mono"
-          value={draft.jitPolicy}
-          aria-invalid={invalid('jit_policy')}
-          onChange={(event) => set('jitPolicy', event.target.value)}
         />
       </div>
 

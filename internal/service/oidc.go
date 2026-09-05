@@ -24,7 +24,7 @@ import (
 // The OIDC transaction). The relying-party wire mechanics live behind
 // internal/oidcrp; every product decision the library does not make - mix-up
 // defence, byte-exact linking, purpose walls, the browser binding, assurance
-// evaluation, JIT policy - lives here.
+// evaluation - lives here.
 
 const (
 	// OIDCKind is the identity-key discriminator. Only 'oidc' exists in v1; the
@@ -63,7 +63,6 @@ const (
 	causeNoPolicy        = "no-assurance-policy"
 	causeNoAuthTime      = "no-auth-time"
 	causeBinding         = "binding"
-	causeJITRefused      = "jit-refused"
 	causeReconciliation  = "reconciliation"
 	causeWindowClosed    = "window-zero"
 	causeNoPossession    = "no-possession"
@@ -105,9 +104,6 @@ var (
 	ErrProviderRace = errors.New("service: provider row changed underneath this write")
 	// ErrProviderDiscovery reports a discovery failure at provider write time.
 	ErrProviderDiscovery = errors.New("service: provider discovery failed")
-	// ErrNoInvitationPath names the invitation-claim seam #55 owns: an unknown
-	// identity with no JIT policy has nowhere to land.
-	ErrNoInvitationPath = errors.New("service: unknown identity and no JIT policy; invitation claiming is #55")
 	// ErrLastCredential refuses unlinking the last remaining credential.
 	ErrLastCredential = errors.New("service: cannot unlink the last remaining credential")
 	// ErrIdentityNotFound reports an unknown identity id on unlink.
@@ -150,14 +146,6 @@ func (s *Auth) discover(ctx context.Context, issuer string) (*oidcrp.Provider, e
 type assurancePolicy struct {
 	ACRValues []string   `json:"acr_values"`
 	AMRSets   [][]string `json:"amr_sets"`
-}
-
-// jitPolicy is the parsed JIT provisioning policy: the issuer-specific verified
-// claim and its accepted values. Off by default (nil), names its evidence, and
-// the account it creates holds zero grants.
-type jitPolicy struct {
-	Claim  string   `json:"claim"`
-	Values []string `json:"values"`
 }
 
 // evaluateAssurance reports whether the provider's policy was satisfied by the
@@ -241,7 +229,6 @@ type ProviderView struct {
 	ClientID        string
 	Scopes          string
 	RedirectURI     string
-	JITPolicy       *string
 	AssurancePolicy *string
 	Enabled         bool
 }
@@ -249,7 +236,7 @@ type ProviderView struct {
 func providerView(p authz.OIDCProvider) ProviderView {
 	return ProviderView{
 		Slug: p.Slug, DisplayName: p.DisplayName, Issuer: p.Issuer, ClientID: p.ClientID,
-		Scopes: p.Scopes, RedirectURI: p.RedirectURI, JITPolicy: p.JITPolicy,
+		Scopes: p.Scopes, RedirectURI: p.RedirectURI,
 		AssurancePolicy: p.AssurancePolicy, Enabled: p.Enabled,
 	}
 }
@@ -261,7 +248,6 @@ type ProviderInput struct {
 	ClientID        string
 	ClientSecret    string
 	Scopes          string
-	JITPolicy       *string
 	AssurancePolicy *string
 	Enabled         bool
 }
@@ -339,7 +325,7 @@ func (s *Providers) create(ctx context.Context, r store.Repos, az *authz.TxAutho
 	prov := authz.NewProvider{
 		ID: id, Slug: slug, DisplayName: in.DisplayName, Kind: OIDCKind, Issuer: in.Issuer,
 		ClientID: in.ClientID, ClientSecret: sealed, Scopes: in.Scopes, RedirectURI: s.redirectURI(slug),
-		JITPolicy: in.JITPolicy, AssurancePolicy: in.AssurancePolicy, Enabled: in.Enabled,
+		AssurancePolicy: in.AssurancePolicy, Enabled: in.Enabled,
 		DEKVersion: dek, CreatedAt: now, UpdatedAt: now,
 	}
 	// Writer fence (invariant 7): refuse if a rotate-dek --instance retired the
@@ -355,7 +341,7 @@ func (s *Providers) create(ctx context.Context, r store.Repos, az *authz.TxAutho
 	}
 	*out = providerView(authz.OIDCProvider{
 		Slug: slug, DisplayName: in.DisplayName, Issuer: in.Issuer, ClientID: in.ClientID,
-		Scopes: in.Scopes, RedirectURI: prov.RedirectURI, JITPolicy: in.JITPolicy,
+		Scopes: in.Scopes, RedirectURI: prov.RedirectURI,
 		AssurancePolicy: in.AssurancePolicy, Enabled: in.Enabled,
 	})
 	return nil
@@ -369,7 +355,7 @@ func (s *Providers) update(ctx context.Context, r store.Repos, az *authz.TxAutho
 	upd := authz.ProviderUpdate{
 		ID: existing.ID, DisplayName: in.DisplayName, ClientID: in.ClientID, ClientSecret: sealed,
 		Scopes: in.Scopes, RedirectURI: s.redirectURI(existing.Slug),
-		JITPolicy: in.JITPolicy, AssurancePolicy: in.AssurancePolicy, Enabled: in.Enabled,
+		AssurancePolicy: in.AssurancePolicy, Enabled: in.Enabled,
 		DEKVersion: dek, RowVersion: existing.RowVersion, UpdatedAt: s.now(),
 	}
 	// Writer fence (invariant 7): refuse a secret sealed under a version a
@@ -396,7 +382,7 @@ func (s *Providers) update(ctx context.Context, r store.Repos, az *authz.TxAutho
 	}
 	*out = providerView(authz.OIDCProvider{
 		Slug: existing.Slug, DisplayName: in.DisplayName, Issuer: existing.Issuer, ClientID: in.ClientID,
-		Scopes: in.Scopes, RedirectURI: upd.RedirectURI, JITPolicy: in.JITPolicy,
+		Scopes: in.Scopes, RedirectURI: upd.RedirectURI,
 		AssurancePolicy: in.AssurancePolicy, Enabled: in.Enabled,
 	})
 	return nil

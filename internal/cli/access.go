@@ -35,8 +35,8 @@ import (
 //     scope, mint the credential-establishment authority and deliver it
 //     display-once under the print triad — the same delivery `account
 //     reset-credential` uses. Org or instance scope only: a project has no
-//     accounts of its own. (The OIDC-claim seam, service.ErrNoInvitationPath,
-//     is a different decision and stays named.)
+//     accounts of its own. External invitation claiming is a separate
+//     post-1.0 registration feature.
 //
 // Scope is addressed the ordinary way — `--org`/`--project`/`--env` through the
 // same per-dimension precedence every other verb uses — and the DEEPEST
@@ -632,7 +632,7 @@ func renderGrantScope(s apigen.GrantScope) string {
 func renderOrigins(origins []apigen.GrantOrigin) string {
 	chips := make([]string, 0, len(origins))
 	for _, o := range origins {
-		if o.Kind == apigen.GrantOriginKindManual {
+		if o.Kind == "manual" {
 			chips = append(chips, "manual("+o.Subject+")")
 			continue
 		}

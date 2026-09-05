@@ -539,6 +539,12 @@ export type Meta = {
  */
 export type ProtocolCapability = string;
 
+/**
+ * Accepts a credential-establishment authority issued by bootstrap,
+ * invitation, credential-reset, break-glass, or recovery. The issuer is
+ * server-owned metadata, not a request discriminator.
+ *
+ */
 export type EstablishCredentialRequest = {
     /**
      * The single-use credential-establishment authority, exactly as
@@ -2337,7 +2343,7 @@ export type FederatedClaimPin = {
 /**
  * A binding names exactly one service account, matched byte-for-byte on
  * `(issuer, subject)`. There are no wildcards, no namespace patterns, no
- * path prefixes, no case folding and no JIT provisioning: a pattern rule
+ * path prefixes, no case folding and no automatic provisioning: a pattern rule
  * such as "any ServiceAccount in namespace prod" would hand a Hikyo
  * principal to anyone holding `create serviceaccount` in that namespace, a
  * far wider group than cluster-admin.
@@ -2592,7 +2598,7 @@ export type ApplyTemplateRequest = {
  *
  */
 export type GrantOrigin = {
-    kind: 'manual' | 'break-glass' | 'scim' | 'structural' | 'lockout-retention';
+    kind: string;
     /**
      * The origin's holder identity, discriminated by kind: the granting
      * principal for `manual`, the fixed local-host marker for
@@ -3030,7 +3036,7 @@ export type AuthMethodProvider = {
 };
 
 export type OidcStartRequest = {
-    purpose: 'login' | 'link' | 'reauth';
+    purpose: string;
     /**
      * Required for reauth; the window scope.
      */
@@ -3053,7 +3059,7 @@ export type OidcStartResult = {
 };
 
 export type SamlStartRequest = {
-    purpose: 'login' | 'link' | 'reauth';
+    purpose: string;
     /**
      * Required for reauth; the reveal-window scope.
      */
@@ -3121,10 +3127,6 @@ export type OidcProviderInput = {
     client_secret: string;
     scopes: string;
     /**
-     * JSON `{claim, values[]}`; absent means no JIT.
-     */
-    jit_policy?: string | null;
-    /**
      * JSON `{acr_values[], amr_sets[][]}`; absent means single-factor.
      */
     assurance_policy?: string | null;
@@ -3138,7 +3140,6 @@ export type OidcProvider = {
     client_id: string;
     scopes: string;
     redirect_uri: string;
-    jit_policy?: string | null;
     assurance_policy?: string | null;
     enabled: boolean;
 };
@@ -3148,9 +3149,9 @@ export type OidcProviderList = {
 };
 
 /**
- * Closed protocol discriminator in the byte-exact external-identity key.
+ * OPEN protocol discriminator in the byte-exact external-identity key.
  */
-export type IdentityProviderKind = 'oidc' | 'saml';
+export type IdentityProviderKind = string;
 
 /**
  * Closed source set; URL means one-shot admin-initiated fetch, never a poller.
@@ -3160,7 +3161,7 @@ export type SamlMetadataSource = 'file' | 'url';
 /**
  * SAML authentication configuration. Exactly one of `metadata_document`
  * and `metadata_url` must match `metadata_source`; the service enforces
- * that conditional before fetching or parsing. No JIT member exists:
+ * that conditional before fetching or parsing. No provisioning member exists:
  * SAML never provisions accounts.
  *
  */

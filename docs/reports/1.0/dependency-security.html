@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>1.0 dependency security decisions</title>
+<style>body{font:16px/1.6 system-ui;max-width:1000px;margin:40px auto;padding:0 24px;background:#101820;color:#eaf1f5}h1,h2{color:#a8dfbf}table{border-collapse:collapse;width:100%}td,th{border:1px solid #53606a;padding:12px;text-align:left}code{color:#ffc985}a{color:#9bd9ff}</style>
+<h1>1.0 dependency security: docs toolchain</h1>
+<p>Base: <code>f4175a5d</code>. Decision owner: Codex under explicit unattended production-readiness authorization. Four open high-severity Dependabot alerts, #9 through #12, identify <code>fast-uri@3.1.5</code> in <code>docs/site/pnpm-lock.yaml</code>.</p>
+<h2>Decision record</h2>
+<table>
+<tr><th>Question</th><th>Options</th><th>Recommended choice and why</th></tr>
+<tr><td>Address before 1.0?</td><td>Defer because docs-only; update the vulnerable transitive dependency.</td><td>Update. Enterprise self-hosting readiness includes a maintained build toolchain. The observed dependency path is docs development/build tooling through Ajv, not evidence of a remotely exploitable Go server.</td></tr>
+<tr><td>Which version?</td><td>First patched 3.1.6; current compatible 3.1.7; major upgrade to 4.x.</td><td>3.1.7. It satisfies existing Ajv constraints, fixes the four reported advisories, and the upstream security release fixes two additional high-severity parser issues. No major upgrade or direct dependency was needed.</td></tr>
+<tr><td>Keep unrelated lockfile churn?</td><td>Keep pnpm's optional-peer metadata refresh; retain only generated package, dependency edge and snapshot changes.</td><td>Retain the three exact pnpm-generated fast-uri hunks. Four lines change. No integrity hash was invented or edited; the npm registry reports the same integrity. Frozen installation and peer validation prove the retained graph is installable.</td></tr>
+</table>
+<h2>Primary evidence</h2>
+<table>
+<tr><th>Advisory</th><th>Issue addressed</th></tr>
+<tr><td><a href="https://github.com/fastify/fast-uri/security/advisories/GHSA-5jgf-p345-68v8">GHSA-5jgf-p345-68v8</a></td><td>Scheme-relative IDN host canonicalization.</td></tr>
+<tr><td><a href="https://github.com/fastify/fast-uri/security/advisories/GHSA-f65p-4m7j-42xc">GHSA-f65p-4m7j-42xc</a></td><td>Malformed IPv6 host normalization.</td></tr>
+<tr><td><a href="https://github.com/fastify/fast-uri/security/advisories/GHSA-fph4-wmhf-6fwf">GHSA-fph4-wmhf-6fwf</a></td><td>Repeated hostname percent-decoding.</td></tr>
+<tr><td><a href="https://github.com/fastify/fast-uri/security/advisories/GHSA-jqff-g426-hqxp">GHSA-jqff-g426-hqxp</a></td><td>Percent-encoded scheme normalization.</td></tr>
+</table>
+<p>The four advisories identify 3.1.6 as the first patched v3 release. The <a href="https://github.com/fastify/fast-uri/releases/tag/v3.1.7">upstream 3.1.7 release</a> adds fixes for GHSA-qw65-cvwx-89v3 and GHSA-58mr-gqgx-xq4g. Current registry integrity: <code>sha512-dOvZVzjdZdz7phd9v6jCbwxrBW3fK6n8Rc0CtdmM4bumzMnxywBYhuph6J819RRw/ku+rLbelwfMunktuzVVHg==</code>.</p>
+<h2>Verification</h2>
+<p>Node 26.7.0 and pinned pnpm 11.24.0. Frozen install passes; peer check reports no issues; <code>pnpm audit --json</code> reports zero vulnerabilities at every severity across 955 total dependencies. <code>pnpm why fast-uri</code> finds one version, 3.1.7, through Ajv 8.20.0 in Workbox and Astro's checker toolchain.</p>
+<p id="docs-verification">Canonical <code>scripts/ci/verify-docs.sh</code> passed with <code>POSTHOG_REQUIRED=true</code> and repository-configured public analytics variables. Astro check: 18 files, zero errors, warnings or hints. Static build generated 39 pages and precached 98 files. OSS policy, PWA manifest/assets, required PostHog events, real-browser offline navigation, governance/disclosure/package-manager fixtures, live-docs fixture and fallback-channel fixture all passed. Log: <code>/tmp/hikyo-dependency-docs.log</code>.</p>
+<p>Parent owns signed commit, review, exact-head CI and merge. Dependabot alert closure must be confirmed after the lockfile reaches the default branch; this report does not claim remote alerts are already closed.</p>
+</html>

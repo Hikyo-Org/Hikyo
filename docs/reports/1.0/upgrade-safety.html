@@ -76,5 +76,12 @@
   <p>Follow <a href="https://hikyo.app/docs/upgrades/">manual upgrades</a> and <a href="https://hikyo.app/docs/installation/">signed artifact verification</a>.
     The helper retirement does not change current automatic-migration behavior or provide the proposed generation fence. Those broader #638 requirements remain
     separately governed. See the <a href="../../handoff/638-legacy-updater-retirement.md">implementation handoff</a>.</p>
+  <h2>Merge after the pre-freeze changes</h2>
+  <p>On 5 September 2026, main <code>9827af64962a36e2e31906b48906fd59c7a36c1c</code> was merged without committing for parent review.
+    The sole conflict placed the #638 upgrade amendment and #617 pre-freeze amendment at the same document location.
+    Choice: retain both verbatim, rather than discard either independent contract. No code conflict or new behavior was introduced.</p>
+  <p>Both-engine approval fencing, OIDC unknown-identity refusal, scoped rename and core audit checks pass together with updater refusal.
+    Generated clients reproduce cleanly; client typecheck and 17 tests pass; web typecheck and all 667 tests pass.
+    Main's migration 00044 and the disabled legacy apply boundary are preserved. Parent owns the signed merge commit, exact-head CI and PR merge.</p>
 </body>
 </html>

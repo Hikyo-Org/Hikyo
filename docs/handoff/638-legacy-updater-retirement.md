@@ -100,3 +100,24 @@ Parent retains final combined review and exact-head CI.
 Parent targeted Go verification passed independently. Spec review found exported protocol Client.Submit/Capability could still contact an old helper. Both now refuse locally; a compatible legacy transport regression proves zero requests while journal reads/acknowledgement remain. Full updater suite passed. Final Spec/security review CLEAN; parent Standards/security review CLEAN.
 
 Exact-head CI found config importing updater violated the architectural leaf boundary. The shared refusal vocabulary now belongs to config, with updater preserving its exported error alias. No boundary exception was added. Parent reran architecture plus config/updater/app tests after the fix.
+
+## Merge of main after #646
+
+Merged `origin/main` at `9827af64962a36e2e31906b48906fd59c7a36c1c` into
+`a69b37cc` with `git merge --no-commit`. The only conflict was adjacent amendment
+banners at the top of `docs/adr/mvp-boundary.md`. Both the #638 upgrade-safety
+banner and the operative #617 pre-freeze banner remain verbatim. No code
+conflict or behavioral compromise was needed. Main's #616 transaction fencing
+and #617 OIDC retirement, scoped rename, open enums and migration 00044 remain.
+The updater refusal and governance contract remain unchanged.
+
+Combined merge validation: full API/config/updater/audit/migrate/tx packages
+passed; targeted boot refusal, service refusal/audit/history and unsupported HTTP
+response tests passed. Dual-engine approval vote/target/takeover/fence/expiry,
+unknown OIDC identity, scoped rename and core audit checks passed in 16.365s on
+dedicated scratch PostgreSQL base `hikyo_645_merge`. Generated Go and TypeScript
+clients reproduce without any worktree delta. Client typecheck and all 17 tests
+passed. Web typecheck and all 82 files / 667 tests passed. The merge remains
+uncommitted for parent review and configured signed/DCO commit.
+The complete `TestInvariant` subset also passed (11.676s), including merged
+registry, formula and import-boundary checks. Cached diff-check is clean.
