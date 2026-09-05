@@ -957,6 +957,8 @@ jobs:
           xargs go test -count=1 <"$packages"
       - name: MCP 2026-07-28 upstream conformance
         run: ./scripts/ci/check-mcp-conformance.sh
+      - name: Verify dynamic-secret target port discovery refusals
+        run: ./scripts/ci/start-dynamic-pg_test.sh
       - name: Start TLS PostgreSQL dynamic-secret target
         run: ./scripts/ci/start-dynamic-pg.sh
       - name: Prove dynamic-secret PostgreSQL lifecycle over verified TLS
