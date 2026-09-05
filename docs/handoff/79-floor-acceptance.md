@@ -23,3 +23,5 @@ Configure secrets `FLOOR_BACKUP_CUSTODY` (JSON identity plus matching recipient)
 The controller-under-load128MiB gate is separate, coordinated with agent approval_acceptance; OBL-OPERATOR-PI-FIT stays open until that evidence passes. No CPU derating factor has been invented. The existing committed scanner Pi4 artifact only proves its own scanner measurements. This work does not close #79 or cut a release tag.
 
 Parent Standards review and independent Spec/security review: CLEAN. Both verified separate dedicated TEST custody, native architecture plus effective cgroup checks, runtime backup/restore evidence and the honest boundary excluding operator/performance claims. Parent selects merge commits for reviewed stacks to preserve signed ancestry and avoid unnecessary exact-head CI reruns; every PR still requires its own green gate.
+
+CI integration: the cache policy originally refused every runner except ubuntu-latest. The two explicit manual floor workflows now use ubuntu-24.04-arm without shared caches. Parent positive checks and independent negative cache, trigger, and runner mutations passed; this preserves the ordinary runner/cache restrictions.
