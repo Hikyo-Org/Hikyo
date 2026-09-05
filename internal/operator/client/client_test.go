@@ -3,11 +3,42 @@ package client
 import (
 	"context"
 	"encoding/pem"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestFetchReleasesPerReconcileConnections(t *testing.T) {
+	closed := make(chan struct{}, 1)
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"current":true,"cursor":"c","change_token":"t","schema_revision":1,"pin_expired":false,"keys":[]}`))
+	}))
+	srv.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateClosed {
+			select {
+			case closed <- struct{}{}:
+			default:
+			}
+		}
+	}
+	srv.StartTLS()
+	defer srv.Close()
+	c, err := NewClient(srv.URL, caPEM(t, srv), "operator-floor-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := c.Fetch(t.Context(), FetchRequest{Org: "o", Project: "p", Environment: "e", Bearer: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("completed reconcile retained its private idle TLS connection")
+	}
+}
 
 // caPEM PEM-encodes a TLS test server's self-signed certificate so the client
 // can be pointed at it with an explicit CA bundle (the instance-caBundle path).

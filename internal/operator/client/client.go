@@ -237,6 +237,10 @@ func decodeDelivery(payload []byte) (*DeliveryResponse, error) {
 // only on OutcomeOK; the other outcomes carry a descriptive error for the CR
 // condition and event, and a nil response.
 func (c *Client) Fetch(ctx context.Context, r FetchRequest) (*DeliveryResponse, Outcome, error) {
+	// The reconciler creates a private client for each fetch. Release its idle
+	// socket goroutines after the response body closes, instead of retaining
+	// one transport per CR on every resync indefinitely.
+	defer c.http.CloseIdleConnections()
 	endpoint := c.origin + pathPrefix +
 		"/orgs/" + url.PathEscape(r.Org) +
 		"/projects/" + url.PathEscape(r.Project) +

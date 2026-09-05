@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>1.0 operator floor acceptance</title>
+<style>body{font:16px/1.6 system-ui;max-width:1100px;margin:3rem auto;padding:0 1rem;color:#172d35;background:#f5f7f6}table{border-collapse:collapse;width:100%}th,td{padding:1rem;border:1px solid #bac8c9;text-align:left;vertical-align:top}code{overflow-wrap:anywhere}a{color:#125d69}</style>
+<h1>Operator floor acceptance</h1>
+<p>Scope: <code>OBL-OPERATOR-PI-FIT</code>, <a href="https://github.com/Hikyo-Org/Hikyo/issues/79">#79</a>. The
+<a href="https://github.com/Hikyo-Org/Hikyo/issues/79#issuecomment-5354009024">maintainer's August 20 disposition</a>
+allows native arm64 cgroup CI evidence; a physical Pi is optional calibration.</p>
+<h2>Decision record</h2>
+<table><tr><th>Question</th><th>Options</th><th>Recommended choice and reason</th></tr>
+<tr><td>What process must be measured?</td><td>A: production <code>hikyo operator</code> pod. B: scanner benchmark or direct reconciler with fake Kubernetes.</td><td>A. The real manager, cache, TLS client, watches, leader election and RBAC consume resources together. Existing fake-client and kind tests remain unchanged.</td></tr>
+<tr><td>What limits apply?</td><td>A: entire kind node at 4 CPUs / 4 GiB, operator at shipped 200m / 128 MiB. B: only the outer node cap.</td><td>A. ops-spec section 7 explicitly fixes requests 50m / 64 MiB and limits 200m / 128 MiB. The harness renders the chart and checks those exact values. Both cgroups must disable swap.</td></tr>
+<tr><td>What load is meaningful?</td><td>A: 50 distinct CRs and credentials, each mapping 64 keys of 1 KiB, across five phases. B: one idle CR. C: claim every possible fleet fits.</td><td>A. This exercises 3.125 MiB of managed payload and repeated full/current/error paths. No maximum fleet size is specified by the ADR; this names the measured envelope without inventing an unlimited capacity guarantee.</td></tr>
+<tr><td>How long may the fleet take?</td><td>A: every phase completes within the default 5-minute fetch cadence. B: no deadline. C: change existing E2E assertion deadlines.</td><td>A. This is a new bounded acceptance workload using the documented cadence as the chosen operational bound. It is not a new promised reconciliation SLO. Existing 60-second E2E assertions remain unchanged.</td></tr>
+<tr><td>How should the delivery source run?</td><td>A: a synthetic TLS fixture sidecar within the same node cap. B: a production instance or production cluster.</td><td>A. This measures operator fit independently of server performance. Kubernetes and the operator are real; the delivery API is explicitly synthetic. Values and credentials are test-only. Server fit and custody drills have separate gates.</td></tr>
+</table>
+<h2>Pass criteria</h2>
+<p>All 50 CRs must produce correctly owned Secrets with all 64 exact values, accept an updated value set,
+perform an unchanged conditional fetch without rewriting Secrets, retain unchanged Secrets under HTTP 503,
+and recover. Status must record a fresh fetch in every phase. Missing CRs, stale status, changed retained
+values or ownership cannot satisfy the evidence checker. Each phase has a 300-second deadline.</p>
+<p>The operator must remain ready with zero restarts and zero cgroup OOM events. Its measured peak must be
+at most 134217728 bytes under an observed 20000/100000 CPU quota; outer node limits must be observed as
+400000/100000 and 4294967296 bytes. The harness refuses unsupported architecture or cgroup versions.</p>
+<h2>Evidence and remaining work</h2>
+<p><strong>Local native arm64 run passed on September 5, 2026.</strong> Peak operator memory was
+76185600 bytes (72.66 MiB) under the exact 128 MiB / 200m cap, with zero swap, OOM events and restarts.
+The five fleet phases completed in 2.60, 3.64, 3.78, 3.73 and 3.68 seconds. The enclosing node had the
+exact 4 CPU / 4 GiB cap. Docker's Linux VM had only 2.35 GiB of physical memory available; this local
+run is supplementary evidence, not a claim of physical Pi calibration or a completed GitHub CI gate.</p>
+<p><a href="evidence/operator-floor/result.json">Result and binary identity</a>,
+<a href="evidence/operator-floor/operator-cgroup.txt">operator cgroup</a>,
+<a href="evidence/operator-floor/node-cgroup.txt">node cgroup</a>,
+<a href="evidence/operator-floor/operator.log">startup and acquired leader lease</a>.</p>
+<p>The status ledger remains open until a reviewed release-candidate run produces the passing CI
+artifact. No resource limit or prior acceptance test has been relaxed. Full operator and evidence-checker
+tests, scoped vet, ShellCheck and actionlint pass.</p>
+<h2>Production defect found by measurement</h2>
+<p>The operator creates a private HTTP client on every reconcile, but kept its idle TLS connections
+indefinitely. The real-connection regression test failed before the fix. Fetch now closes idle
+connections after its response body closes, preserving TLS and authorization behavior. Before this
+fix the non-invasive load run reached 134328320 bytes and 64 memory-limit pressure events; after the
+fix it reached 76185600 bytes. The shipped memory and CPU limits remain unchanged.</p>
+<p>The harness also received two evidence fixes before the result above was accepted: read the target
+cgroup from the node so the measuring process does not consume operator memory, and clear prior
+resource files before each run so a failed lookup cannot reuse an older result. Cleanup preserves the
+single measured snapshot rather than overwriting it after validation.</p>
+<p>Run <code>scripts/ci/operator-floor.sh</code>. Manual workflow <code>operator-floor</code> uses
+<code>ubuntu-24.04-arm</code>, pinned kind and Helm, and uploads the resource report, phase timings, chart-derived
+deployment, pod restart state, operator logs, binary/image identity, source commit and source diff.
+The script owns and deletes only its newly created uniquely named cluster.</p>
+</html>
