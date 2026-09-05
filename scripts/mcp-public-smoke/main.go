@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/mcpserver"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 )
@@ -199,8 +200,8 @@ func requireStateless(operation, sessionID string) error {
 }
 
 func validateDiscovery(result json.RawMessage) error {
-	var fields map[string]json.RawMessage
-	if json.Unmarshal(result, &fields) != nil || len(fields) != 2 ||
+	fields, err := profileResultFields(result, true)
+	if err != nil || len(fields) != 2 ||
 		fields["supportedVersions"] == nil || fields["capabilities"] == nil {
 		return errors.New("result did not match the exact discovery profile")
 	}
@@ -226,8 +227,8 @@ func validateDiscovery(result json.RawMessage) error {
 }
 
 func validateCatalog(result json.RawMessage) error {
-	var fields map[string]json.RawMessage
-	if json.Unmarshal(result, &fields) != nil || len(fields) != 1 || fields["tools"] == nil {
+	fields, err := profileResultFields(result, true)
+	if err != nil || len(fields) != 1 || fields["tools"] == nil {
 		return errors.New("result did not match the exact tool catalog profile")
 	}
 	var catalog struct {
@@ -326,6 +327,9 @@ func invoke(client *http.Client, endpoint, method, tool string, arguments map[st
 }
 
 func decodeRPCResponse(encoded []byte) (rpcResponse, error) {
+	if definitions.RejectDuplicateMembers(encoded) != nil {
+		return rpcResponse{}, errors.New("response contained ambiguous JSON members")
+	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(encoded, &fields); err != nil {
 		return rpcResponse{}, errors.New("response was not JSON-RPC")
@@ -349,8 +353,8 @@ func decodeRPCResponse(encoded []byte) (rpcResponse, error) {
 }
 
 func safeToolError(result json.RawMessage) string {
-	var fields map[string]json.RawMessage
-	if json.Unmarshal(result, &fields) != nil || len(fields) != 2 || fields["isError"] == nil || fields["content"] == nil {
+	fields, err := profileResultFields(result, false)
+	if err != nil || len(fields) != 2 || fields["isError"] == nil || fields["content"] == nil {
 		return ""
 	}
 	var toolResult struct {
@@ -374,8 +378,8 @@ func safeToolError(result json.RawMessage) string {
 }
 
 func successfulToolResult(result json.RawMessage, orgID, projectID string) bool {
-	var fields map[string]json.RawMessage
-	if json.Unmarshal(result, &fields) != nil || len(fields) != 2 || fields["content"] == nil || fields["structuredContent"] == nil {
+	fields, err := profileResultFields(result, false)
+	if err != nil || len(fields) != 2 || fields["content"] == nil || fields["structuredContent"] == nil {
 		return false
 	}
 	var content []struct {
@@ -434,6 +438,45 @@ func successfulToolResult(result json.RawMessage, orgID, projectID string) bool 
 		}
 	}
 	return true
+}
+
+// profileResultFields validates the modern SDK's public transport envelope
+// before the operation-specific checker examines its closed payload. Dropping
+// arbitrary _meta fields would hide a tenant disclosure in discovery/errors.
+func profileResultFields(result json.RawMessage, cacheable bool) (map[string]json.RawMessage, error) {
+	invalid := errors.New("result did not match the modern public transport profile")
+	if definitions.RejectDuplicateMembers(result) != nil {
+		return nil, invalid
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(result, &fields) != nil || string(fields["resultType"]) != `"complete"` {
+		return nil, invalid
+	}
+	var metadata map[string]json.RawMessage
+	if json.Unmarshal(fields["_meta"], &metadata) != nil || len(metadata) != 1 {
+		return nil, invalid
+	}
+	var info struct {
+		Name        string `json:"name"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Version     string `json:"version"`
+	}
+	if strictJSON(metadata["io.modelcontextprotocol/serverInfo"], &info) != nil ||
+		info.Name != "hikyo" || info.Title != "Hikyo" ||
+		info.Description != "Read-only Hikyo configuration tools." || info.Version == "" || len(info.Version) > 256 {
+		return nil, invalid
+	}
+	delete(fields, "_meta")
+	delete(fields, "resultType")
+	if cacheable {
+		if string(fields["ttlMs"]) != "0" || string(fields["cacheScope"]) != `"public"` {
+			return nil, invalid
+		}
+		delete(fields, "ttlMs")
+		delete(fields, "cacheScope")
+	}
+	return fields, nil
 }
 
 func strictJSON(raw []byte, into any) error {

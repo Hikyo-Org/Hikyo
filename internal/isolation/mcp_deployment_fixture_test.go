@@ -1,0 +1,194 @@
+package isolation
+
+import (
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
+	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/schema"
+	"github.com/Hikyo-Org/hikyo/internal/service"
+	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
+)
+
+// TestMCPDeploymentFixture prepares only an explicitly owned disposable
+// database for external real-process probes. Ordinary suites do not run it.
+func TestMCPDeploymentFixture(t *testing.T) {
+	dir := os.Getenv("HIKYO_MCP_PROOF_DIR")
+	if dir == "" {
+		t.Skip("explicit disposable deployment fixture only")
+	}
+	info, err := os.Stat(dir)
+	if err != nil || !filepath.IsAbs(dir) || !info.IsDir() || info.Mode().Perm() != 0700 {
+		t.Fatal("fixture requires an absolute owner-only runtime directory")
+	}
+	var settings struct {
+		DSN string `json:"dsn"`
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(b, &settings); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateMCPFixtureDSN(settings.DSN); err != nil {
+		t.Fatal(err)
+	}
+	cfg := store.Config{Engine: store.EnginePostgres, DSN: settings.DSN}
+	if err := migrate.Run(t.Context(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.Open(t.Context(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	type credential struct {
+		Token        string
+		AccountID    string
+		CredentialID string
+	}
+	credentials := map[string]credential{}
+	if os.Getenv("HIKYO_MCP_PROOF_REVOKE") != "" {
+		b, err := os.ReadFile(filepath.Join(dir, "credentials.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(b, &credentials); err != nil {
+			t.Fatal(err)
+		}
+		root, err := crypto.ReadRootKey(filepath.Join(dir, "root.key"), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		kr := loadAndRegisterKeyring(t, db, root)
+		auth := authServiceForKeyring(t, db, kr)
+		name := os.Getenv("HIKYO_MCP_PROOF_REVOKE")
+		refreshRotating := name == "refresh-rotating"
+		if refreshRotating {
+			name = "rotating"
+		}
+		if name != "live" && name != "rotating" {
+			t.Fatal("unknown fixture revocation target")
+		}
+		c := credentials[name]
+		identities := &service.Identities{DB: db, Auth: auth}
+		if !refreshRotating {
+			if err := identities.RevokeCredential(t.Context(), service.LocalPrincipal(custodian), scopeProject(orgA, prjA1), c.AccountID, c.CredentialID); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if name == "live" || refreshRotating {
+			minted, err := identities.MintCredential(t.Context(), service.LocalPrincipal(custodian), scopeProject(orgA, prjA1), c.AccountID, service.MintRequest{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			credentials[name] = credential{Token: minted.Value, AccountID: c.AccountID, CredentialID: minted.Credential.ID}
+			b, err := json.Marshal(credentials)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "credentials.json"), b, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return
+	}
+	var exists bool
+	if err := db.PG().QueryRow(t.Context(), "SELECT EXISTS (SELECT 1 FROM orgs)").Scan(&exists); err != nil {
+		t.Fatal(err)
+	}
+	if exists {
+		t.Fatal("refusing nonempty fixture database")
+	}
+	root, err := crypto.GenerateRootKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "root.key"), []byte(hex.EncodeToString(root)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	kr := loadAndRegisterKeyring(t, db, root)
+	seededDB(t, func(*testing.T) *store.DB { return db })
+	auth := authServiceForKeyring(t, db, kr)
+	keys := &service.Keys{DB: db, Keyring: kr}
+	values := &service.Values{DB: db, Keyring: kr, Auth: auth}
+	revisions := &service.Revisions{DB: db, Keyring: kr, Auth: auth}
+	projectScope, envScope := scopeProject(orgA, prjA1), scopeEnv(orgA, prjA1, envA1)
+	execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_mcp_proof_manage','usr_custodian','manage-identities','org_a',NULL,NULL,`+ts+`)`)
+	versionIDs := []string{}
+	for _, entry := range []struct {
+		name, value string
+		class       schema.Classification
+	}{{"CANARY_SECRET", mcpCanaryPlaintext, schema.Secret}, {"PUBLIC_CFG", "synthetic-config-value", schema.Config}, {"SECOND_CFG", "second-synthetic-value", schema.Config}} {
+		mustCreateKey(t, keys, projectScope, entry.name, entry.class)
+		v, err := values.Set(t.Context(), service.LocalPrincipal(custodian), envScope, entry.name, entry.value, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		versionIDs = append(versionIDs, v.VersionID)
+	}
+	if _, err := revisions.PublishPlanned(t.Context(), service.LocalPrincipal(custodian), envScope, service.PublishRequest{VersionIDs: versionIDs}); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"live", "rotating", "ungranted"} {
+		c := mintWorkload(t, db, auth, projectScope, "proof-"+name)
+		if name != "ungranted" {
+			execRaw(t, db, `INSERT INTO grants(id,principal_id,capability,org_id,project_id,created_at) VALUES ('g_proof_`+name+`','`+string(c.Principal)+`','read','org_a','prj_a1',`+ts+`)`)
+			execRaw(t, db, `INSERT INTO grant_origins(id,grant_id,kind,subject,created_at) VALUES ('gor_proof_`+name+`','g_proof_`+name+`','manual','`+string(c.Principal)+`',`+ts+`)`)
+		}
+		credentials[name] = credential{Token: c.token, AccountID: c.AccountID, CredentialID: c.CredentialID}
+	}
+	b, err = json.Marshal(credentials)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "credentials.json"), b, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Reject every datastore outside this rehearsal's dedicated loopback database
+// before migration can write its version table. The caller creates that owned
+// container; ordinary application DSNs are deliberately not supported.
+func validateMCPFixtureDSN(dsn string) error {
+	u, err := url.Parse(dsn)
+	if err != nil {
+		return fmt.Errorf("invalid fixture DSN")
+	}
+	port, err := strconv.Atoi(u.Port())
+	query, queryErr := url.ParseQuery(u.RawQuery)
+	if err != nil || port < 1024 || port > 65535 || u.Scheme != "postgres" ||
+		u.Hostname() != "127.0.0.1" || u.Path != "/hikyo_mcp_651" || u.Fragment != "" ||
+		u.User == nil || u.User.Username() != "hikyo" || queryErr != nil || len(query) != 1 ||
+		len(query["sslmode"]) != 1 || query.Get("sslmode") != "disable" {
+		return fmt.Errorf("fixture requires the dedicated hikyo_mcp_651 database on a loopback container port")
+	}
+	return nil
+}
+
+func TestMCPFixtureRefusesNonScratchDatastores(t *testing.T) {
+	if err := validateMCPFixtureDSN("postgres://hikyo:synthetic@127.0.0.1:15432/hikyo_mcp_651?sslmode=disable"); err != nil {
+		t.Fatal(err)
+	}
+	for _, dsn := range []string{
+		"postgres://hikyo:synthetic@db.example:15432/hikyo_mcp_651?sslmode=disable",
+		"postgres://hikyo:synthetic@127.0.0.1:15432/hikyo?sslmode=disable",
+		"postgres://hikyo:synthetic@127.0.0.1:543/hikyo_mcp_651?sslmode=disable",
+		"postgres://hikyo:synthetic@127.0.0.1:15432/hikyo_mcp_651?sslmode=require",
+		"postgres://hikyo:synthetic@127.0.0.1:15432/hikyo_mcp_651?sslmode=disable&host=db.example",
+		"postgres://hikyo:synthetic@127.0.0.1:15432/hikyo_mcp_651?sslmode=disable&dbname=hikyo",
+		"host=127.0.0.1 dbname=hikyo_mcp_651",
+	} {
+		if validateMCPFixtureDSN(dsn) == nil {
+			t.Fatal("accepted a datastore outside the disposable fixture contract")
+		}
+	}
+}
