@@ -61,3 +61,9 @@ tests and resource limits remain unchanged; the server and backup floor gate
 are separate acceptance work. No production clusters were read or changed.
 
 CI integration correction: the existing cache policy allowed only ubuntu-latest and rejected native arm64. The policy now names only the two manual floor workflows as ubuntu-24.04-arm exceptions, forbids shared cache actions there, and retains ordinary GitHub-hosted runner restrictions. Both positive and injected wrong-runner/cache/trigger cases are checked before push.
+
+## Exact-head CI repair, 5 September 2026
+
+At head `b1c8eee30f57fee777bc8413ed1466bac1125096`, test_core job 101219751343 passed all Go tests but failed MCP conformance when Corepack chose newly available pnpm 11.25.0 outside the package pinned to 11.24.0. The workflow now installs inside scripts/mcp-conformance; the launcher enters that package before invoking pnpm. Strict pins and baselines remain unchanged. The launcher builds and owns its server executable directly so failure cleanup does not leave go-run children behind.
+
+Original version mismatch reproduced. Fixed frozen installation and all three conformance scenarios passed under the same Corepack default 11.25.0. An injected tool failure returned 23 and closed the server port; successful completion also closed it. ShellCheck, actionlint, cache-policy fixture and whitespace checks passed. [Decision report](../reports/1.0/mcp-conformance-ci.html) and [evidence](../reports/1.0/mcp-conformance-ci.json). Parent owns review, signing, push and exact-head CI.
