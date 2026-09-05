@@ -74,6 +74,10 @@ App chrome (prototypes app-chrome/15, 16, 18)
   the ease token is ease-out-quart.
 - Diagnostics banners are `role="status"` with `data-severity`; warnings are neutral, errors red,
   unmeasured dashed.
+- Header identity on a phone: the chrome auditor asked to keep the name visible at every width.
+  Rejected. Below 960px the label hides and the avatar stays; below 700px the whole identity
+  control hides because the fixed account avatar already names the holder there. Do not
+  re-litigate.
 - Dead controls removed: the permanently disabled identity swatches, glyphs and upload; the
   read-only "Description is not available in the API" field; the fake prototype-only slug rename;
   the "not exposed by this API" sentence. Prototype-mode delete hints now tell the truth (never
@@ -116,8 +120,8 @@ Surfaces without a prototype
 - Workspace: refused OIDC reauthentication stays on screen with a Back link; "Session expired on
   {origin}" reconnect page; polling stated; approval failure named; CLI reauth loading uses the
   card shell.
-- Login: SAML providers listed, per-provider busy label, loading line, fields stay enabled, quiet
-  secondary links.
+- Login: SAML providers listed, per-provider busy label, loading line, fields disabled while a
+  ceremony runs (the busy label says why), quiet secondary links.
 - Copy: every user-visible em-dash in `web/src` replaced (visible strings by hand; comments by a
   mechanical pass).
 
@@ -145,31 +149,39 @@ Test infrastructure
 
 ## Verification
 
-- `node --run typecheck` and `node --run test`: 101 files, 878 tests green.
-- `go build ./...`, `go test ./internal/server/ ./internal/service/` green.
+- `node --run typecheck` and `node --run test`: 101 files, 883 tests green.
+- `go build ./...`, `go test ./internal/server/ ./internal/service/ ./internal/isolation/` green.
 - Real embedded server, seeded tenant: every route captured at 1280, 820 and 393 wide; no
   horizontal overflow; no console errors except the pre-existing cross-origin `/meta` probe from
   the Remotes page against the sibling instance.
-- Playwright, real embedded instances: the desktop project ran in full (216 flows) and the mobile
-  project ran in full (213 flows). Each surfaced one pin that had to move to the new truth (the
-  history retention line now carries a link; that link needed the 44px touch floor on a phone);
-  the touched specs were re-run green after each fix. The e2e pins changed in this work:
-  `matrix.spec` editor row radius role (control to container, the row is a card),
-  `shell.spec` well border token (panel line, the surfaces now use the settings anatomy),
-  `history.spec` heading name (glyph is decorative) and retention link, `login.spec` unchanged
-  (fields stay disabled during a ceremony, the busy label is the reason), `machine-access.spec`
-  read-grant sentence and unique journey label, `reveal.spec` audited copy label.
+- Playwright, real embedded instances, one uninterrupted `pnpm run e2e` on the final tree (build,
+  desktop project, then mobile project): desktop 225 passed, 4 skipped; mobile 227 passed,
+  2 skipped; exit 0. The skips are the project-scoped cases: mobile-only (the short-key
+  touch floor, the history mobile matrix, the two mobile drawer flows) and desktop-only (the
+  locked chrome composition, the instance context stacking). Earlier full runs during the work each surfaced pins that had to move to the
+  new truth; the e2e pins changed in this work: `matrix.spec` editor row radius role (control to
+  container, the row is a card), `shell.spec` well border token (panel line, the surfaces now use
+  the settings anatomy), `history.spec` heading name (glyph is decorative) and retention link,
+  `login.spec` unchanged (fields stay disabled during a ceremony, the busy label is the reason),
+  `machine-access.spec` read-grant sentence and unique journey label, `reveal.spec` audited copy
+  label.
+- `go test ./internal/isolation/` green (its definitions e2e test carries the Git-mode refusal
+  copy that lost its em-dash).
 - Cross-model review (Codex, high effort, three rounds): round one raised ten findings, all
   addressed in the third commit (reveal gating fails closed in Values, Members treats 403 as the
   second-factor refusal and blanks cached rows on any refusal, reveal blast lists secrets only,
   stale grant choices fold back when the opt-in is withdrawn, the sensitivity inventory now
   detects `useSensitiveMutation`, one-line key rows by construction, remote badge state name,
   provenance styling, DESIGN.md wording); round two verified all ten closed with no new critical
-  findings; round three is the recorded verdict in the pull request.
+  findings; round three returned CLEAN with one residual minor (the reveal grant's empty state on a
+  config-only catalogue), fixed in the fourth commit. A later self-review caught a specificity
+  regression from the one-line key row (`min-width: 0` beat the phone touch floor on short keys)
+  and restored the 44px floor after the shrink rule, fifth commit, with a mobile-only
+  `matrix.spec` case that mints `PORT` and measures the link (31px before the fix, 44px after).
 
 ## Handoff
 
-Branch `t3code/d9eb5a95`, three signed commits on top of `3700a0ef`. Nothing is pushed. To pick
+Branch `t3code/d9eb5a95`, five signed commits on top of `3700a0ef`. Nothing is pushed. To pick
 this up: `pnpm --dir web install`, `node --run typecheck && node --run test` in `web/`, and
 `pnpm --dir web e2e` for the flow suite (boots two instances from source, needs Go). The prototype
 mock (`pnpm --dir web prototype`) now serves clean chrome without a 501 banner. The API gaps table

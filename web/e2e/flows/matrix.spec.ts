@@ -664,6 +664,44 @@ test.describe('catalogue declaration detail', () => {
     );
   });
 
+  test('keeps a short key name a full touch target on a phone', async ({ page }, testInfo) => {
+    // The one-line key row lets a long name shrink (min-width: 0) so it can
+    // ellipsise. That shrink rule once outranked the coarse-pointer floor, and
+    // the seeded names are all wide enough to hide it: PORT is the shortest
+    // name the catalogue accepts that is narrower than 44px in mono.
+    test.skip(testInfo.project.name !== 'mobile', 'the touch floor is a coarse-pointer rule');
+    const token = await fixtureBearer('short key fixture');
+    const created = await fixtureApiCall(
+      token,
+      'POST',
+      `/api/v1/orgs/${seed.org}/projects/${seed.project}/keys`,
+      zCreatedKey,
+      {
+        name: 'PORT',
+        classification: 'config',
+        folder_path: 'catalogue',
+        description: '',
+        declaration: { rule: { type: 'string' } },
+      },
+    );
+    try {
+      await page.goto(MATRIX_PATH);
+      const link = page.getByRole('link', { name: 'Declaration of PORT' });
+      await expect(link).toBeVisible();
+      const box = await link.boundingBox();
+      expect(box).not.toBeNull();
+      expect(Math.round(box?.width ?? 0)).toBeGreaterThanOrEqual(44);
+      expect(Math.round(box?.height ?? 0)).toBeGreaterThanOrEqual(44);
+    } finally {
+      await fixtureApiCall(
+        token,
+        'DELETE',
+        `/api/v1/orgs/${seed.org}/projects/${seed.project}/keys/${created.id}`,
+        z.object({}),
+      );
+    }
+  });
+
   test('opens from the key name, inspects, edits, and survives reload', async ({
     page,
   }, testInfo) => {

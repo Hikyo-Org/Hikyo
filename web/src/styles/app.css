@@ -6011,6 +6011,14 @@ select {
   min-width: 0;
 }
 
+/* On a phone the floor is the touch size, or a short key like PORT becomes a
+   32px target. Same specificity as the shrink rule above, later in source. */
+@media (pointer: coarse) {
+  .matrix__key-cell > .matrix__key {
+    min-width: var(--touch);
+  }
+}
+
 .matrix__key-cell > .matrix__linked-keys,
 .matrix__key-cell > .matrix__required {
   flex: none;
