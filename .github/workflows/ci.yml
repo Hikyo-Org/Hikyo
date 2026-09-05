@@ -947,14 +947,8 @@ jobs:
         # Compile from restored GOCACHE, but never replay results: PostgreSQL
         # conformance must exercise this run's fresh service container.
         run: |
-          isolation_package=$(go list ./internal/isolation)
-          packages="$RUNNER_TEMP/test-core-packages"
-          go list ./... | grep -Fvx "$isolation_package" >"$packages"
-          if [ ! -s "$packages" ] || grep -Fx "$isolation_package" "$packages"; then
-            echo 'test core: isolation package exclusion failed' >&2
-            exit 1
-          fi
-          xargs go test -count=1 <"$packages"
+          ./scripts/ci/test-core-packages_test.sh
+          ./scripts/ci/test-core-packages.sh
       - name: MCP 2026-07-28 upstream conformance
         run: ./scripts/ci/check-mcp-conformance.sh
       - name: Verify dynamic-secret target port discovery refusals
