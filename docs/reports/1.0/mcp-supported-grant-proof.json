@@ -1,0 +1,231 @@
+{
+  "recorded_at_utc": "2026-09-05T10:16:38.512752+00:00",
+  "status": "passed bounded local acceptance; wider release/client gates remain open",
+  "source_commit": "987e0a4f00735e0697b0c841a825aa084669d7ca",
+  "runtime_sources_match": true,
+  "image_id": "sha256:b8bc752cb48adb6d8ed71278ae7dffc988db92c410237edbd4ca24e4a8bd68e6",
+  "binary_sha256": "96016eb8cf0f5b06a3dd9c5a1bc66cb5a4be05642964f0074635a66b6eb2bd60",
+  "identity_kind": "local synthetic production-profile rehearsal; not official production trust or published OCI digest",
+  "fixture_base_commit": "be83e27a0a0588fcb0f27f6af0b4dd27adf51202",
+  "fixture_patch_sha256": "26b0bfddc1cb93245c0a1e405e559a29209336009484a6747e25e627445135e1",
+  "fixture_provisioning": {
+    "class": "automation",
+    "accounts_created_through": "service.Identities.CreateServiceAccount",
+    "read_grants_created_through": "service.Grants.Create",
+    "grant_scope": "project",
+    "verified_automation_accounts": 3,
+    "ungranted_negative_control": true,
+    "production_permission_rules_unchanged": true
+  },
+  "deployment": {
+    "replicas": [
+      {
+        "replica": 0,
+        "running": true,
+        "image_id": "sha256:b8bc752cb48adb6d8ed71278ae7dffc988db92c410237edbd4ca24e4a8bd68e6",
+        "nonroot": true,
+        "readonly_rootfs": true
+      },
+      {
+        "replica": 1,
+        "running": true,
+        "image_id": "sha256:b8bc752cb48adb6d8ed71278ae7dffc988db92c410237edbd4ca24e4a8bd68e6",
+        "nonroot": true,
+        "readonly_rootfs": true
+      }
+    ],
+    "database": "owned PostgreSQL18 container",
+    "trust_domain": "production",
+    "trust_authority": "ephemeral synthetic public signatures and build stamps; no official release authority",
+    "maintenance": 0,
+    "public_transport": "existing local verified private-CA HTTPS proxy, round-robin and buffered",
+    "cancellation_transport": "direct verified TLS to selected actual application process with configured canonical Host"
+  },
+  "tools": {
+    "source_commit": "987e0a4f00735e0697b0c841a825aa084669d7ca",
+    "protocol": "2026-07-28",
+    "tls_verified": true,
+    "production_tools": [
+      "hikyo_inspect_configuration",
+      "hikyo_list_definitions",
+      "hikyo_list_environments",
+      "hikyo_list_pending_changes",
+      "hikyo_list_revisions"
+    ],
+    "all_five_calls_passed": true,
+    "configuration_nonvacuous": true,
+    "revision_nonvacuous": true,
+    "pending_result": "authenticated empty result; automation identity owns no pending draft",
+    "secret_canary_absent": true,
+    "cross_replica_cursor_passed": true,
+    "wrong_scope_and_ungranted_and_invalid_refused": true,
+    "rotating_token_proved_live": true,
+    "at": 1788603153.605361
+  },
+  "sdk_protocol_probe": {
+    "client": "official-go-sdk",
+    "passed": true,
+    "production_tools_called": 5,
+    "protocol": "2026-07-28",
+    "secret_canary_absent": true,
+    "version": "v1.7.0"
+  },
+  "token_revocation": {
+    "existing_public_checker": "passed against local verified HTTPS, not public deployment",
+    "rotating_previously_live": true,
+    "revocation_service_committed_at": 1788603156.3212512,
+    "first_post_commit_per_replica_denied": true,
+    "replacement_works": true,
+    "inflight_claims_remaining": 0,
+    "observations": [
+      {
+        "replica": "1",
+        "status": 200,
+        "rpc_error": null,
+        "tool_error": true,
+        "after_commit": true
+      },
+      {
+        "replica": "0",
+        "status": 200,
+        "rpc_error": null,
+        "tool_error": true,
+        "after_commit": true
+      },
+      {
+        "replica": "1",
+        "status": 200,
+        "rpc_error": null,
+        "tool_error": false,
+        "after_commit": true
+      }
+    ],
+    "stdout": "MCP public smoke passed: discovery, catalog, authorized read, invalid token, and revoked token",
+    "passed": true
+  },
+  "grant_mutation": {
+    "passed": true,
+    "mutation": "service.Grants.Revoke and service.Grants.Create under the existing org member-manager; both changes committed and audited",
+    "same_credential_throughout": true,
+    "before": [
+      {
+        "replica": 0,
+        "status": 200,
+        "authorized": true,
+        "rpc_error": null,
+        "tool_error": false
+      },
+      {
+        "replica": 1,
+        "status": 200,
+        "authorized": true,
+        "rpc_error": null,
+        "tool_error": false
+      }
+    ],
+    "grant_removal_committed_at": 1788603051.413557,
+    "first_post_commit_request_per_replica": [
+      {
+        "replica": 0,
+        "status": 200,
+        "authorized": false,
+        "rpc_error": null,
+        "tool_error": true
+      },
+      {
+        "replica": 1,
+        "status": 200,
+        "authorized": false,
+        "rpc_error": null,
+        "tool_error": true
+      }
+    ],
+    "after_restoration": [
+      {
+        "replica": 0,
+        "status": 200,
+        "authorized": true,
+        "rpc_error": null,
+        "tool_error": false
+      },
+      {
+        "replica": 1,
+        "status": 200,
+        "authorized": true,
+        "rpc_error": null,
+        "tool_error": false
+      }
+    ],
+    "inflight_claims_remaining": 0,
+    "tls_verified": true,
+    "routing": "direct verified HTTPS to each exact process with canonical Host; proxy unchanged"
+  },
+  "request_cancellation": {
+    "passed": true,
+    "mechanism": "direct verified TLS HTTP client disconnect during a real admitted catalogue read; no buffering proxy participates",
+    "streaming_cancellation": "not claimed",
+    "observations": [
+      {
+        "replica": 0,
+        "real_inflight_claim_and_blocked_catalogue_query_observed": true,
+        "claim_released_before_blocker_release": true,
+        "claim_release_ms": 52.93,
+        "client_error_class": "BrokenPipeError",
+        "server_remained_running": true
+      },
+      {
+        "replica": 1,
+        "real_inflight_claim_and_blocked_catalogue_query_observed": true,
+        "claim_released_before_blocker_release": true,
+        "claim_release_ms": 52.97,
+        "client_error_class": "BrokenPipeError",
+        "server_remained_running": true
+      }
+    ]
+  },
+  "graceful_shutdown": {
+    "passed": true,
+    "replica": 0,
+    "real_inflight_claim_and_blocked_catalogue_query_observed": true,
+    "remained_running_with_claim_after_SIGTERM": true,
+    "response_completed_successfully_inside_grace": true,
+    "response_status": 200,
+    "elapsed_ms": 601.82,
+    "process_exit_code": 0,
+    "inflight_claims_remaining": 0,
+    "production_grace_unchanged_seconds": 5,
+    "peer_remained_running": true,
+    "original_container_restarted_and_both_replicas_authorized": true
+  },
+  "remaining_prerequisites": [
+    "Streaming cancellation needs a nonbuffering deployment and a client exercising an actually open MCP stream; this run proves direct inflight HTTP request cancellation only.",
+    "Publicly trusted remote HTTPS and required named-client profiles (Codex, Claude Code, Inspector, Responses API) remain separately unverified.",
+    "Official production release signatures and published OCI digest require the real release ceremony."
+  ],
+  "historical_evidence_qualification": "Previous reports seeded workload read@project through raw SQL, which the supported writer refuses. Those historical transport observations are not complete supported provisioning proof. Original evidence retained with an additive qualification; this run replaces its grant-model claim.",
+  "decisions": [
+    "Revoke and restore the same credential grant through the real application writer, not a database-only mutation.",
+    "Correct the test identity class to automation; keep workload environment-scope rules unchanged.",
+    "Restore original synthetic row before backing up/recreating only the owned fixture datastore. Keep all credentials, root/TLS custody and database dumps private.",
+    "Use a real blocked catalogue query plus visible shared claim as proof that cancellation and SIGTERM occur during an admitted operation. Release lock in finally; restart the original container with unchanged configuration."
+  ],
+  "validation": {
+    "canonical_supported_fixture_seed": "passed",
+    "mcp_e2e_race_sqlite_postgresql": "passed; final supported automation and refused workload project-scope regression",
+    "docs_astro_check": "0 errors, 0 warnings, 0 hints",
+    "go_vet": "passed on final Go fixture/test changes; parent independent go vet also passed",
+    "repository_tracked_changes": "fixture/tests, MCP docs and additive historical qualifications only; production code unchanged",
+    "git_diff_check": "passed"
+  },
+  "protected_replay_directory": "/tmp/hikyo-mcp-651-runtime/rehearsal-987e0a4f-valid-grants",
+  "secrets_or_tenant_bodies_in_report": false,
+  "external_provider_or_public_tunnel_calls": 0,
+  "fixture_patch_hash_scope": {
+    "method": "SHA-256 of git diff --no-ext-diff --binary HEAD -- followed by listed files, at fixture_base_commit",
+    "files": [
+      "internal/isolation/mcp_deployment_fixture_test.go",
+      "internal/isolation/mcp_e2e_test.go"
+    ],
+    "excludes": "Documentation and reports, avoiding a self-referential report hash"
+  }
+}

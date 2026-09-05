@@ -141,5 +141,6 @@
     "git_diff_check": "passed",
     "exact_head_ci": "not run by implementation agent"
   },
-  "independent_parent_replay": "passed all five tools, cross-replica cursor, refusals and committed credential revocation on both replicas"
+  "independent_parent_replay": "passed all five tools, cross-replica cursor, refusals and committed credential revocation on both replicas",
+  "superseded_grant_model_qualification": "Superseded provisioning evidence: this historical run seeded a workload read grant at project scope through raw SQL. The supported grant writer forbids that class/scope pair. Transport, canary and revocation observations remain historical observations, but this run does not prove supported identity provisioning. The corrected fixture uses an automation identity and service.Grants.Create; permission rules are unchanged."
 }

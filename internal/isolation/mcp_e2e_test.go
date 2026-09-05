@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -98,7 +99,7 @@ func mustCreateKey(t *testing.T, keys *service.Keys, scope domain.Scope, name st
 	}
 }
 
-type workloadCredential struct {
+type machineCredential struct {
 	Principal    domain.PrincipalID
 	AccountID    string
 	CredentialID string
@@ -107,7 +108,7 @@ type workloadCredential struct {
 
 // mintWorkload creates a workload service account and mints one credential for
 // it. custodian is granted machine-identity administration so it can act.
-func mintWorkload(t *testing.T, db *store.DB, auth *service.Auth, scope domain.Scope, name string) workloadCredential {
+func mintWorkload(t *testing.T, db *store.DB, auth *service.Auth, scope domain.Scope, name string) machineCredential {
 	t.Helper()
 	identities := &service.Identities{DB: db, Auth: auth}
 	sa, err := identities.CreateServiceAccount(t.Context(), service.LocalPrincipal(custodian), scope, name, domain.ClassWorkload)
@@ -118,10 +119,34 @@ func mintWorkload(t *testing.T, db *store.DB, auth *service.Auth, scope domain.S
 	if err != nil {
 		t.Fatalf("mint credential %s: %v", name, err)
 	}
-	return workloadCredential{
+	return machineCredential{
 		Principal: sa.Principal, AccountID: sa.ID,
 		CredentialID: minted.Credential.ID, token: minted.Value,
 	}
+}
+
+// Project-level MCP listing requires automation. Workload grants remain
+// environment-scoped; raw SQL must not invent a wider workload permission.
+func mintMCPAutomation(t *testing.T, db *store.DB, auth *service.Auth, scope domain.Scope, name string, read bool) machineCredential {
+	t.Helper()
+	identities := &service.Identities{DB: db, Auth: auth}
+	sa, err := identities.CreateServiceAccount(t.Context(), service.LocalPrincipal(custodian), scope, name, domain.ClassAutomation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read {
+		grants := &service.Grants{DB: db, Auth: auth}
+		if _, err := grants.Create(t.Context(), service.LocalPrincipal(domain.PrincipalID("usr_orgadmin")), service.GrantSpec{
+			Target: sa.Principal, Capability: domain.CapRead, Scope: scope,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	minted, err := identities.MintCredential(t.Context(), service.LocalPrincipal(custodian), scope, sa.ID, service.MintRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return machineCredential{Principal: sa.Principal, AccountID: sa.ID, CredentialID: minted.Credential.ID, token: minted.Value}
 }
 
 func extractNextCursor(t *testing.T, body []byte) string {
@@ -173,14 +198,16 @@ func TestMCPToolsEndToEndCanaryAndDenial(t *testing.T) {
 			t.Fatalf("publish: %v", err)
 		}
 
-		// A workload service account granted read across the project, and a
-		// second with no grants at all.
-		granted := mintWorkload(t, db, auth, projectScope, "mcp-granted")
-		execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES (`+
-			`'g_mcp_sa_read', '`+string(granted.Principal)+`', 'read', 'org_a', 'prj_a1', NULL, `+ts+`)`)
-		execRaw(t, db, `INSERT INTO grant_origins (id, grant_id, kind, subject, created_at) VALUES (`+
-			`'gor_mcp_sa_read', 'g_mcp_sa_read', 'manual', '`+string(granted.Principal)+`', `+ts+`)`)
-		ungranted := mintWorkload(t, db, auth, projectScope, "mcp-ungranted")
+		// Both identities use a supported project-scoped class. Only one
+		// receives read, through the same grant writer operators use.
+		granted := mintMCPAutomation(t, db, auth, projectScope, "mcp-granted", true)
+		ungranted := mintMCPAutomation(t, db, auth, projectScope, "mcp-ungranted", false)
+		workload := mintWorkload(t, db, auth, projectScope, "mcp-workload")
+		if _, err := (&service.Grants{DB: db, Auth: auth}).Create(ctx,
+			service.LocalPrincipal(domain.PrincipalID("usr_orgadmin")),
+			service.GrantSpec{Target: workload.Principal, Capability: domain.CapRead, Scope: projectScope}); !errors.Is(err, service.ErrMachineScope) {
+			t.Fatal("workload unexpectedly accepted project-level MCP listing authority")
+		}
 
 		sealer, err := kr.MCPCursorSealer()
 		if err != nil {
@@ -350,6 +377,44 @@ func TestMCPToolsEndToEndCanaryAndDenial(t *testing.T) {
 		}
 		if inflight := queryInt(t, db, `SELECT COUNT(*) FROM mcp_inflight`); inflight != 0 {
 			t.Fatalf("completed MCP calls left %d shared concurrency claims", inflight)
+		}
+
+		// Keep the credential live while changing only its grant. Both
+		// independently wired replicas must use the committed authority.
+		grants := &service.Grants{DB: db, Auth: auth}
+		grantActor := service.LocalPrincipal(domain.PrincipalID("usr_orgadmin"))
+		grantSpec := service.GrantSpec{Target: granted.Principal, Capability: domain.CapRead, Scope: projectScope}
+		if err := grants.Revoke(ctx, grantActor, grantSpec); err != nil {
+			t.Fatal(err)
+		}
+		for _, replica := range []http.Handler{handler, other} {
+			denied := mcpCall(t, replica, granted.token, mcpserver.ToolListDefinitions, `{"org_id":"org_a","project_id":"prj_a1"}`)
+			if denied.Code != http.StatusOK || !strings.Contains(denied.Body.String(), mcpserver.SafeOperationError) {
+				t.Fatal("replica accepted a credential whose project read grant was removed")
+			}
+		}
+		if _, err := grants.Create(ctx, grantActor, grantSpec); err != nil {
+			t.Fatal(err)
+		}
+		for _, replica := range []http.Handler{handler, other} {
+			restored := mcpCall(t, replica, granted.token, mcpserver.ToolListDefinitions, `{"org_id":"org_a","project_id":"prj_a1"}`)
+			var response struct {
+				Error  json.RawMessage
+				Result struct {
+					IsError           bool
+					StructuredContent struct {
+						Definitions []struct{ Name string }
+					}
+				}
+			}
+			decodeErr := json.Unmarshal(restored.Body.Bytes(), &response)
+			found := false
+			for _, definition := range response.Result.StructuredContent.Definitions {
+				found = found || definition.Name == "PUBLIC_CFG"
+			}
+			if restored.Code != http.StatusOK || decodeErr != nil || len(response.Error) != 0 || response.Result.IsError || !found {
+				t.Fatal("replica refused the same credential after its supported grant was restored")
+			}
 		}
 
 		// Revocation is uncached. The credential that just succeeded through both

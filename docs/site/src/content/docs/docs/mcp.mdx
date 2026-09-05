@@ -109,8 +109,10 @@ needed.
 
 ## Provision least privilege
 
-Use a dedicated workload or automation identity. `read` at project scope is
-enough for the five phase-1 tools and does not grant secret reveal:
+Use a dedicated automation identity for all five phase-1 tools. Its project-level
+`read` grant covers project listings and does not grant secret reveal. Workload
+identities retain environment-only grant scope; an environment grant does not
+authorize the project listing tools.
 
 ```bash
 hikyo sa create --org <org-id> --project <project-id> \

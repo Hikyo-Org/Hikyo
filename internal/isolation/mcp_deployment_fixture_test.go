@@ -13,6 +13,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
 	"github.com/Hikyo-Org/hikyo/internal/buildcompat"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -130,6 +131,23 @@ func TestMCPDeploymentFixture(t *testing.T) {
 		kr := loadAndRegisterKeyring(t, db, root)
 		auth := authServiceForKeyring(t, db, kr)
 		name := os.Getenv("HIKYO_MCP_PROOF_REVOKE")
+		if name == "grant-remove" || name == "grant-restore" {
+			var principal string
+			if err := db.PG().QueryRow(t.Context(), "SELECT principal_id FROM service_accounts WHERE id=$1", credentials["live"].AccountID).Scan(&principal); err != nil {
+				t.Fatal(err)
+			}
+			grants := &service.Grants{DB: db, Auth: auth}
+			actor := service.LocalPrincipal(domain.PrincipalID("usr_orgadmin"))
+			spec := service.GrantSpec{Target: domain.PrincipalID(principal), Capability: domain.CapRead, Scope: scopeProject(orgA, prjA1)}
+			if name == "grant-remove" {
+				if err := grants.Revoke(t.Context(), actor, spec); err != nil {
+					t.Fatal(err)
+				}
+			} else if _, err := grants.Create(t.Context(), actor, spec); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
 		refreshRotating := name == "refresh-rotating"
 		if refreshRotating {
 			name = "rotating"
@@ -191,11 +209,7 @@ func TestMCPDeploymentFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"live", "rotating", "ungranted"} {
-		c := mintWorkload(t, db, auth, projectScope, "proof-"+name)
-		if name != "ungranted" {
-			execRaw(t, db, `INSERT INTO grants(id,principal_id,capability,org_id,project_id,created_at) VALUES ('g_proof_`+name+`','`+string(c.Principal)+`','read','org_a','prj_a1',`+ts+`)`)
-			execRaw(t, db, `INSERT INTO grant_origins(id,grant_id,kind,subject,created_at) VALUES ('gor_proof_`+name+`','g_proof_`+name+`','manual','`+string(c.Principal)+`',`+ts+`)`)
-		}
+		c := mintMCPAutomation(t, db, auth, projectScope, "proof-"+name, name != "ungranted")
 		credentials[name] = credential{Token: c.token, AccountID: c.AccountID, CredentialID: c.CredentialID}
 	}
 	b, err = json.Marshal(credentials)
