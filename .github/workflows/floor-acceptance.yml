@@ -1,0 +1,35 @@
+name: floor-acceptance
+
+# Manual release-candidate evidence, not a multiplier on every pull request.
+# Never run untrusted PR code with custody secrets. Dispatch the reviewed branch.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  floor-backup-restore:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Run constrained SQLite recovery from separate test custody sources
+        env:
+          FLOOR_BACKUP_CUSTODY: ${{ secrets.FLOOR_BACKUP_CUSTODY }}
+          FLOOR_ROOT_CUSTODY: ${{ secrets.FLOOR_ROOT_CUSTODY }}
+        run: ./scripts/ci/floor-acceptance.sh "$RUNNER_TEMP/floor-evidence"
+      - name: Preserve exact-head floor evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: floor-backup-restore-${{ github.sha }}
+          path: ${{ runner.temp }}/floor-evidence/
+          if-no-files-found: error
+          retention-days: 90
