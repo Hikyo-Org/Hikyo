@@ -59,8 +59,8 @@ confirmation flow immediately.
 
 The legacy `hikyo updater` helper and its Compose, systemd, and Flux adapters are
 retired. They could automatically restore a database after schema writes had
-started; the Flux adapter also used ambient Git credentials. No replacement
-platform apply path or migration-generation gate is implemented by this change.
+started; the Flux adapter also used ambient Git credentials. Replacement platform application remains disabled. Manual installation and
+migration use the same mandatory signed-release gate as server startup.
 
 `HIKYO_UPDATER_SOCKET` now prevents server startup. Remove that setting to start
 the server with release notifications. `hikyo updater` refuses before reading
@@ -86,43 +86,73 @@ fleet deployment credentials.
 For stable artifacts, use the [installation and release-verification instructions](/docs/installation/)
 to obtain and verify the signed bundle before the maintenance window.
 
+## Required upgrade inputs
+
+Every production boot and `hikyo migrate` needs `HIKYO_UPGRADE_BUNDLE`, naming
+a complete authenticated offline release bundle, and the installation's public
+operator pin and persistent custody state. A binary, image digest, ordinary
+release download directory or successful backup upload alone is insufficient.
+
+The complete executable [manual deployment runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/manual-upgrades.md)
+covers bundle layout, native commands, Compose and Helm PVC wiring. The
+[release artifact ceremony](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/upgrade-artifacts.md)
+produces the compatibility declaration and recovery-signed trust catalog.
+Official production bundle publication remains a release-owner obligation;
+unsigned evaluation artifacts cannot replace it.
+
 ## Before the change
 
-1. Read the release notes and support status.
-2. Record the running binary version and datastore engine.
-3. Confirm the root key and backup identity are available through separate paths.
-4. Run `hikyo backup export` and copy the archive off-host.
-5. Verify recent restore-drill evidence.
+1. Verify all release manifests and exact binary/image artifacts for every route hop.
+2. Stop all writers, including every pre-gate process on the first legacy hop.
+3. Run `hikyo backup upgrade-export` to produce ciphertext and a bound public receipt.
+4. Run `hikyo backup upgrade-drill` on the operator custody host against an empty scratch target.
+5. Stage only its public receipt, signed attestation and encrypted archive for the target gate.
 
-Do not begin when you can create an archive but cannot prove which root key will
-boot it.
-
-## Automatic migration
-
-`hikyo server` applies pending migrations by default. When backup recipients and
-a destination are configured, it exports the old schema before changing it.
-
-A configured export failure stops startup. An unconfigured policy records a loud
-skip and continues, leaving no rollback archive.
+The private operator signing key, age identity and separate root escrow stay on
+the drill host. Missing recipients, failed decryption, wrong root custody,
+unsuccessful reconciliation or stale evidence cannot authorize a populated
+upgrade. A receipt and attestation bind the exact instance, source, epoch,
+recovery incarnation, route, target, generation and ciphertext bytes. Attestations
+last at most 24 hours and their nonces are consumed atomically.
 
 ## Controlled migration
 
-For a maintenance window:
+Configure the public inputs and retain durable installation state outside DB
+backups. After every writer has stopped, run one verified target migrator:
 
-1. Stop the server.
-2. Take and retain a manual export.
-3. Install the new reviewed binary.
-4. Run `hikyo migrate` with the production `HIKYO_DB`.
-5. Start `hikyo server --auto-migrate=false` and check both probes.
+```sh
+export HIKYO_UPGRADE_BUNDLE=/srv/hikyo-public/bundle
+export HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY=/srv/hikyo-public/operator.pub
+export HIKYO_UPGRADE_STATE_DIR=/var/lib/hikyo-installation
+export HIKYO_UPGRADE_EVIDENCE=/srv/hikyo-public/evidence
+export HIKYO_UPGRADE_BACKUP=/srv/hikyo-public/backup.age
+hikyo migrate
+hikyo server --auto-migrate=false --root-key-file=/run/hikyo-root/root-key
+```
 
-With automatic migration disabled, the server refuses to serve when a migration
-is pending or the database schema is newer than the binary.
+For the first pre-gate hop, set `HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED=true` only
+after verifying every old process exited. This assertion does not retroactively
+fence legacy binaries. HA uses full stop by default; ordinary rolling replacement
+is not a migration procedure.
+
+`migrate` completes DDL at `schema-applied` and retains maintenance. Only the
+same verified target boot can complete candidate configuration/key checks and
+admit serving. A failed post-write health check requires explicit recovery.
+For multiple hops keep `HIKYO_UPGRADE_TARGET_MANIFEST` set to the final verified
+manifest SHA-256, execute each required binary in order, and retain maintenance
+between hops.
+
+A genuinely fresh empty installation omits evidence and backup paths. Ordinary
+healthy same-release restarts need no new receipt; remove the evidence, backup
+and legacy-stop environment settings after the final healthy boot. Startup with
+automatic migrations enabled still uses this gate; there is no missing-backup
+skip for populated upgrades.
 
 ## Verify the upgrade
 
 ```bash
-curl --fail http://127.0.0.1:8080/healthz
-curl --fail http://127.0.0.1:8080/readyz
+curl --fail http://127.0.0.1:8081/healthz
+curl --fail http://127.0.0.1:8081/readyz
 hikyo doctor --instance hikyo.example.com
 hikyo whoami --instance hikyo.example.com
 ```

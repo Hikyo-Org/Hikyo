@@ -103,6 +103,16 @@ you:
 4. Configure encrypted exports and run a restore drill.
 5. Record the exact source commit used to build the binary.
 
+Production boot also requires the authenticated offline release bundle, the
+separately pinned operator public key and durable installation state. The
+installer places verified binaries; it does not supply instance-specific backup
+proof or operator private custody. Follow the
+[manual installation runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/manual-upgrades.md)
+for native, Compose and Helm inputs. Helm requires separate prepopulated public
+artifact and writable installation-state PVCs. These are retained across pod
+replacement and database recovery. Official signed bundle publication is still
+required before the first production release can start.
+
 Hikyo fails closed when these boundaries are missing. Continue with the
 [self-hosting baseline](/docs/self-hosting/) and
 [server configuration](/docs/configuration/).

@@ -3,6 +3,7 @@ package upgrade
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"net/url"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/gofrs/flock"
+	"github.com/jackc/pgx/v5"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3/lock"
 	_ "modernc.org/sqlite"
@@ -30,10 +32,12 @@ type Session struct {
 	engine releaseidentity.Engine
 	active bool
 	path   string
+	dsn    string
 	file   os.FileInfo
 	// Test-only fault points are inaccessible to application callers.
-	beforeCommit func() error
-	afterCommit  func() error
+	beforeCommit        func() error
+	afterCommit         func() error
+	wrapMigrationDriver func(driver.Conn) driver.Conn
 }
 
 func (s *Session) check() error {
@@ -50,6 +54,52 @@ func (s *Session) check() error {
 		}
 	}
 	return nil
+}
+
+// operatorDrainLock is separate from goose's exclusive admission lock. A new
+// owner drains transactions inherited from a terminated owner before proceeding.
+const operatorDrainLock int64 = 0x48494b594f4452
+
+// checkPostgresOwner probes the original reserved connection, never a pool that
+// could reconnect after backend termination. The lock query also rejects an
+// explicitly released owner. Transaction fencing below closes the probe/commit gap.
+func (s *Session) checkPostgresOwner(ctx context.Context) error {
+	if err := s.check(); err != nil {
+		return err
+	}
+	if s.engine != releaseidentity.Postgres {
+		return ErrConflict
+	}
+	var owned bool
+	err := s.conn.QueryRowContext(ctx, `SELECT EXISTS (
+ SELECT 1 FROM pg_locks WHERE locktype='advisory' AND pid=pg_backend_pid()
+ AND database=(SELECT oid FROM pg_database WHERE datname=current_database())
+ AND classid=($1::bigint >> 32)::oid AND objid=($1::bigint & 4294967295)::oid
+ AND objsubid=1 AND mode='ExclusiveLock' AND granted)`, lock.DefaultLockID).Scan(&owned)
+	if err != nil {
+		return err
+	}
+	if !owned {
+		return ErrConflict
+	}
+	return nil
+}
+
+// guardPostgresOperator retains exclusion in the transaction itself. A probe
+// alone would race backend termination immediately before COMMIT. The next
+// migration owner must drain this shared lock even if the old session dies.
+func (s *Session) guardPostgresOperator(ctx context.Context, tx pgx.Tx) error {
+	if err := s.checkPostgresOwner(ctx); err != nil {
+		return err
+	}
+	var held bool
+	if err := tx.QueryRow(ctx, "SELECT pg_try_advisory_xact_lock_shared($1)", operatorDrainLock).Scan(&held); err != nil {
+		return err
+	}
+	if !held {
+		return ErrConflict
+	}
+	return s.checkPostgresOwner(ctx)
 }
 
 // WithLock uses the existing migration lock namespace. PostgreSQL's private
@@ -96,7 +146,7 @@ func WithLock(ctx context.Context, cfg Config, fn func(*Session) error) (err err
 		return err
 	}
 	defer func() { err = errors.Join(err, conn.Close()) }()
-	session := &Session{conn: conn, engine: cfg.Engine, active: true, path: cfg.Path}
+	session := &Session{conn: conn, engine: cfg.Engine, active: true, path: cfg.Path, dsn: cfg.DSN}
 	defer func() { session.active = false }()
 	if cfg.Engine == releaseidentity.SQLite {
 		session.file, err = checkedFile(cfg.Path)
@@ -115,6 +165,32 @@ func WithLock(ctx context.Context, cfg Config, fn func(*Session) error) (err err
 			unlockCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			err = errors.Join(err, locker.SessionUnlock(unlockCtx, conn))
+		}()
+		// Only a goose owner reaches this barrier. Take exclusive first to drain
+		// any transaction whose previous owner died, then keep shared custody
+		// that the owner's bounded recovery/import transactions can join.
+		if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", operatorDrainLock); err != nil {
+			return err
+		}
+		if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock_shared($1)", operatorDrainLock); err != nil {
+			return err
+		}
+		var unlocked bool
+		if err := conn.QueryRowContext(ctx, "SELECT pg_advisory_unlock($1)", operatorDrainLock).Scan(&unlocked); err != nil {
+			return err
+		}
+		if !unlocked {
+			return ErrConflict
+		}
+		defer func() {
+			cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			var released bool
+			releaseErr := conn.QueryRowContext(cleanup, "SELECT pg_advisory_unlock_shared($1)", operatorDrainLock).Scan(&released)
+			if releaseErr == nil && !released {
+				releaseErr = ErrConflict
+			}
+			err = errors.Join(err, releaseErr)
 		}()
 	}
 	return fn(session)

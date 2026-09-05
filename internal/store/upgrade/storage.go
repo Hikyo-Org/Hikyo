@@ -179,6 +179,9 @@ func (s *Session) persist(ctx context.Context, state State, insert bool) error {
 	if err := state.Validate(); err != nil {
 		return err
 	}
+	if err := s.invalidateSingletonLeases(ctx, state); err != nil {
+		return err
+	}
 	applied, err := json.Marshal(state.Applied)
 	if err != nil {
 		return err

@@ -17,7 +17,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 )
 
 // The two-instance harness (#71, M6's recast of acceptance criterion 6).
@@ -54,10 +53,7 @@ func newInstance(t *testing.T, name string) *instanceUnderTest {
 	// A distinct file per instance: t.TempDir() is per-test, so two instances
 	// sharing the default name would share a datastore and prove nothing.
 	cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), name+".db")}
-	if err := migrate.Run(t.Context(), cfg); err != nil {
-		t.Fatal(err)
-	}
-	db, err := store.Open(t.Context(), cfg)
+	db, err := openIsolationFixture(t, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -23,6 +23,8 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
+	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 )
 
 type Engine string
@@ -935,7 +937,8 @@ var ErrConflict = domain.ErrConflict
 // (pool of one) and a separate read pool, per the boot-enforced connection
 // policy; postgres uses one pgx pool.
 type DB struct {
-	engine Engine
+	admission upgrade.Admission
+	engine    Engine
 
 	sqWrite *sql.DB // sqlite only, MaxOpenConns(1), BEGIN IMMEDIATE via _txlock
 	sqRead  *sql.DB // sqlite only
@@ -1005,18 +1008,26 @@ func (d *DB) AuditExportSnapshotTime(ctx context.Context) (time.Time, error) {
 // committed. The autocommit statement releases the transaction lock after it
 // establishes that barrier. sqlite's single writer needs no extra barrier.
 func (d *DB) AwaitAuditExportWriters(ctx context.Context) error {
-	switch d.engine {
-	case EnginePostgres:
-		if _, err := d.pool.Exec(ctx, "SELECT pg_advisory_xact_lock(1464159830, 85)"); err != nil {
-			return fmt.Errorf("store: postgres audit export writer barrier: %w", err)
+	if d.engine == EngineSQLite {
+		tx, err := d.BeginSQLite(ctx, true)
+		if err != nil {
+			return err
 		}
-		return nil
-	case EngineSQLite:
-		// sqlite's single writer needs no extra barrier.
-		return nil
-	default:
+		defer tx.Rollback()
+		return tx.Commit()
+	}
+	if d.engine != EnginePostgres {
 		return fmt.Errorf("store: audit export writer barrier: unknown engine %q", d.engine)
 	}
+	tx, err := d.BeginPostgres(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(1464159830, 85)"); err != nil {
+		return fmt.Errorf("store: postgres audit export writer barrier: %w", err)
+	}
+	return tx.Commit(ctx)
 }
 
 // sqlitePragmas is the boot-enforced connection policy
@@ -1040,13 +1051,29 @@ func SQLiteDSN(path string) string {
 // held read transaction would take sqlite's write intent and starve the
 // single writer through its whole busy_timeout.
 func sqliteReadDSN(path string) string {
-	return "file:" + url.PathEscape(path) + "?" + sqlitePragmas
+	return "file:" + url.PathEscape(path) + "?mode=ro&" + sqlitePragmas + "&_pragma=query_only(1)"
 }
 
 // Open opens the datastore and, for sqlite, verifies the pragma policy took
 // effect — if any pragma cannot be established, boot refuses (no silent
 // downgrade).
-func Open(ctx context.Context, cfg Config) (*DB, error) {
+func Open(ctx context.Context, cfg Config, admission upgrade.Admission) (*DB, error) {
+	if err := admission.CheckTarget(releaseidentity.Engine(cfg.Engine), cfg.Path); err != nil {
+		return nil, err
+	}
+	db, err := openConfigured(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	db.admission = admission
+	if err := db.CheckAdmission(ctx); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return db, nil
+}
+
+func openConfigured(ctx context.Context, cfg Config) (*DB, error) {
 	switch cfg.Engine {
 	case EngineSQLite:
 		return openSQLite(ctx, cfg.Path, cfg.SQLiteDriver)
@@ -1082,11 +1109,24 @@ func openSQLite(ctx context.Context, path, driverName string) (*DB, error) {
 	// connections that can retain WAL snapshots.
 	read.SetMaxOpenConns(sqliteReadPoolMaxConnections)
 	d := &DB{engine: EngineSQLite, sqWrite: write, sqRead: read}
-	for name, pool := range map[string]*sql.DB{"write": write, "read": read} {
-		if err := verifySQLitePragmas(ctx, pool); err != nil {
+	// Establish WAL on the writer before opening the read-only connection.
+	for _, entry := range []struct {
+		name string
+		pool *sql.DB
+	}{{"write", write}, {"read", read}} {
+		if err := verifySQLitePragmas(ctx, entry.pool); err != nil {
 			d.Close()
-			return nil, fmt.Errorf("store: sqlite %s pool: %w", name, err)
+			return nil, fmt.Errorf("store: sqlite %s pool: %w", entry.name, err)
 		}
+	}
+	var queryOnly int
+	if err := read.QueryRowContext(ctx, "PRAGMA query_only").Scan(&queryOnly); err != nil {
+		d.Close()
+		return nil, err
+	}
+	if queryOnly != 1 {
+		d.Close()
+		return nil, errors.New("store: SQLite read pool must enforce query_only")
 	}
 	return d, nil
 }

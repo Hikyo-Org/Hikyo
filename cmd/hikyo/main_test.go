@@ -2,13 +2,18 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"io"
+	"log/slog"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/app"
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/console"
+	"github.com/Hikyo-Org/hikyo/internal/disclose"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 )
 
@@ -97,15 +102,50 @@ func TestBuiltUpdateChannelDefaultsOffAndRejectsInvalidMetadata(t *testing.T) {
 	}
 }
 
-func TestOperationalCommandsCheckForUpdates(t *testing.T) {
-	for _, command := range []string{"server", "operator", "updater", "migrate", "admin", "backup", "restore", "run", "unknown"} {
+func TestOnlyClientCommandsMayCheckForUpdatesBeforeDispatch(t *testing.T) {
+	for _, command := range []string{"run", "login"} {
 		if !shouldCheckForUpdate(command) {
 			t.Errorf("shouldCheckForUpdate(%q) = false, want true", command)
 		}
 	}
-	for _, command := range []string{"update", "version", "--version", "about", "welcome"} {
+	for _, command := range []string{"server", "operator", "updater", "migrate", "admin", "backup", "restore", "unknown", "update", "version", "--version", "about", "welcome"} {
 		if shouldCheckForUpdate(command) {
-			t.Errorf("shouldCheckForUpdate(%q) = true, want side-effect-free information command", command)
+			t.Errorf("shouldCheckForUpdate(%q) = true, want no optional executable mutation before the command gate", command)
+		}
+	}
+}
+
+func TestHostCommandDevelopmentOptInIsOnlyLeadingGroupFlag(t *testing.T) {
+	t.Setenv("HIKYO_DB", "sqlite:"+filepath.Join(t.TempDir(), "host.db"))
+	// This unsupported environment key must not select a weaker trust domain.
+	t.Setenv("HIKYO_DEV", "true")
+	for _, group := range []struct{ name, verb string }{{"admin", "create"}, {"backup", "export"}, {"restore", "status"}} {
+		for _, leading := range []bool{false, true} {
+			label := "production"
+			if leading {
+				label = "explicit-development"
+			}
+			t.Run(group.name+"/"+label, func(t *testing.T) {
+				verbArgs := []string{group.verb, "--display-name", "--dev"}
+				arguments := slices.Clone(verbArgs)
+				if leading {
+					arguments = append([]string{"--dev"}, arguments...)
+				}
+				called := false
+				code := runOperator(t.Context(), group.name, arguments, func(_ context.Context, cfg *config.Config, _ *slog.Logger, args []string, _ io.Writer, _ *disclose.TerminalSession, _ error) error {
+					called = true
+					if cfg.Dev != leading {
+						t.Fatalf("development mode=%v want %v", cfg.Dev, leading)
+					}
+					if !slices.Equal(args, verbArgs) {
+						t.Fatalf("verb data changed: %q", args)
+					}
+					return nil
+				})
+				if code != 0 || !called {
+					t.Fatalf("host command dispatch failed: code=%d called=%v", code, called)
+				}
+			})
 		}
 	}
 }

@@ -25,6 +25,8 @@ func nextOperation(state State) Operation {
 	op := operation(state.Applied, emptyManifest(releaseidentity.SQLite))
 	op.SourceMigrationDigest = state.MigrationDigest
 	op.SourceSchemaDigest = state.SchemaDigest
+	op.TargetMigrationDigest = state.MigrationDigest
+	op.TargetSchemaDigest = state.SchemaDigest
 	op.Target = target(state.Applied.Release.Sequence + 1)
 	op.Generation = state.Generation + 1
 	op.RecoveryIncarnation = state.RecoveryIncarnation

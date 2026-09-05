@@ -64,6 +64,30 @@ refute 'external origin env missing' \
 	templates/deployment.yaml \
 	'/- name: HIKYO_EXTERNAL_ORIGIN/,+1d'
 
+refute 'mandatory public bundle env missing' \
+	templates/deployment.yaml \
+	'/- name: HIKYO_UPGRADE_BUNDLE/,+1d'
+
+refute 'public artifacts mount writable' \
+	templates/deployment.yaml \
+	'/mountPath: \/run\/hikyo-upgrade/{n;s/readOnly: true/readOnly: false/;}'
+
+refute 'installation state replaced by temporary volume' \
+	templates/deployment.yaml \
+	's/claimName: {{ .Values.upgrade.stateExistingClaim }}/claimName: wrong-installation-state/'
+
+refute 'installation custody placed on fsGroup volume root' \
+	templates/deployment.yaml \
+	's|value: /var/lib/hikyo-upgrade/operator-custody|value: /var/lib/hikyo-upgrade|'
+
+refute 'recursive fsGroup permission changes enabled' \
+	templates/deployment.yaml \
+	's/fsGroupChangePolicy: OnRootMismatch/fsGroupChangePolicy: Always/'
+
+refute 'rolling replacement enabled' \
+	templates/deployment.yaml \
+	's/type: Recreate/type: RollingUpdate/'
+
 # Leak database configuration into the operator pod.
 refute 'operator database env leak' \
 	templates/operator-deployment.yaml \

@@ -21,6 +21,17 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | quote }}
 {{- define "hikyo.server.validate" -}}
 {{- $databaseSecret := required "database.existingSecret is required" .Values.database.existingSecret -}}
 {{- $rootKeySecret := required "rootKey.existingSecret is required" .Values.rootKey.existingSecret -}}
+{{- $upgradeClaim := required "upgrade.existingClaim is required" .Values.upgrade.existingClaim -}}
+{{- $upgradeStateClaim := required "upgrade.stateExistingClaim is required" .Values.upgrade.stateExistingClaim -}}
+{{- if eq $upgradeClaim $upgradeStateClaim -}}
+  {{- fail "upgrade public artifacts and writable installation state require separate claims" -}}
+{{- end -}}
+{{- if and .Values.upgrade.targetManifestSHA256 (not (regexMatch "^[0-9a-f]{64}$" .Values.upgrade.targetManifestSHA256)) -}}
+  {{- fail "upgrade.targetManifestSHA256 must be an exact lowercase SHA-256" -}}
+{{- end -}}
+{{- if and .Values.upgrade.legacyWritersStopped (not .Values.upgrade.evidence) -}}
+  {{- fail "upgrade.legacyWritersStopped requires public upgrade evidence" -}}
+{{- end -}}
 {{- $rootKeyName := required "rootKey.key is required" .Values.rootKey.key -}}
 {{- if or (eq $rootKeyName ".") (eq $rootKeyName "..") (not (regexMatch "^[A-Za-z0-9._-]+$" $rootKeyName)) -}}
   {{- fail "rootKey.key must be one Secret key name using only letters, digits, dot, underscore, or hyphen" -}}

@@ -31,16 +31,16 @@ import (
 // SQLiteTxRepos and PGTxRepos bind repositories to an open transaction and
 // its identity token; they exist for internal/store/tx, which owns the
 // transactional boundary.
-func SQLiteTxRepos(tx *sql.Tx, tok *authz.TxToken) Repos { return sqliteRepos{db: tx, tok: tok} }
-func PGTxRepos(tx pgx.Tx, tok *authz.TxToken) Repos      { return pgRepos{db: tx, tok: tok} }
+func SQLiteTxRepos(tx sqlitegen.DBTX, tok *authz.TxToken) Repos { return sqliteRepos{db: tx, tok: tok} }
+func PGTxRepos(tx pggen.DBTX, tok *authz.TxToken) Repos         { return pgRepos{db: tx, tok: tok} }
 
 // SQLiteTxReadRepos and PGTxReadRepos narrow to the read side for read
 // transactions, so the compiler — not convention — keeps writes off the
 // read pool.
-func SQLiteTxReadRepos(tx *sql.Tx, tok *authz.TxToken) ReadRepos {
+func SQLiteTxReadRepos(tx sqlitegen.DBTX, tok *authz.TxToken) ReadRepos {
 	return sqliteReadRepos{sqliteRepos{db: tx, tok: tok}}
 }
-func PGTxReadRepos(tx pgx.Tx, tok *authz.TxToken) ReadRepos {
+func PGTxReadRepos(tx pggen.DBTX, tok *authz.TxToken) ReadRepos {
 	return pgReadRepos{pgRepos{db: tx, tok: tok}}
 }
 

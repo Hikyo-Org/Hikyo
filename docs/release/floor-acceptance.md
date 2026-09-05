@@ -26,7 +26,17 @@ The same script runs locally with those two environment variables and a new evid
 - `cli-drill.json`: the real binary's report including archive digest, schema version, value readability, per-principal reconciliation, machine credential mint/revoke, and RTO verdict.
 - `tests.log` and `container-state.json`: full named fixture results and container exit/OOM status. A failed run can upload diagnostics but cannot produce a passing verdict.
 
-The existing K2/K3 fixture seeds every named credential class and secret data, exports, explicitly destroys, restores, and verifies credential refusal, surviving data, truncation refusal, custody separation and individual reconciliation. A separate disposable database runs actual `hikyo backup export`, `restore drill`, `restore run`, `restore status`, and `restore reconcile` commands. The rehearsal checks decrypt and mint/revoke; the destructive restore leaves every other principal unreconciled.
+The existing K2/K3 fixture seeds every named credential class and secret data, exports, explicitly destroys, restores, and verifies credential refusal, surviving data, truncation refusal, custody separation and individual reconciliation. A separate disposable database runs actual `hikyo backup --dev export`, `restore --dev drill`, `restore --dev run`, `restore --dev status`, and `restore --dev reconcile` commands. This source-built test binary explicitly uses the isolated development trust domain and the seeded instance's durable signed development bundle. It does not prove production release authentication or replace production stamp checks. The rehearsal checks decrypt and mint/revoke; the destructive restore leaves every other principal unreconciled and keeps runtime maintenance active until fresh authenticated recovery evidence is supplied.
+
+For a local CLI-only regression check, build the source binary and run the separately named tagged test:
+
+```sh
+go build -o /tmp/hikyo-floor-cli ./cmd/hikyo
+HIKYO_FLOOR_CLI_BINARY=/tmp/hikyo-floor-cli go test -tags flooracceptance \
+  ./internal/isolation -run '^TestFloorCLIRunbookWithoutResourceClaim$' -count=1
+```
+
+This local check generates separate disposable test custody and writes its drill report only beneath the test temporary directory. It does not call or relax the native ARM64/cgroup acceptance checks and produces no floor acceptance verdict.
 
 ## Separate evidence still required
 

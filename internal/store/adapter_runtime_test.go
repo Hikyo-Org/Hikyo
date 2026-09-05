@@ -14,20 +14,13 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 	storetx "github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
 func adapterRuntimeDB(t *testing.T) *store.DB {
 	t.Helper()
 	cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "adapter-runtime.db")}
-	if err := migrate.Run(t.Context(), cfg); err != nil {
-		t.Fatal(err)
-	}
-	db, err := store.Open(t.Context(), cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db := openKeyTestDB(t, cfg)
 	t.Cleanup(func() { _ = db.Close() })
 	statements := []string{
 		`INSERT INTO orgs (id,name,active,metadata,created_at) VALUES ('org_adapter','Adapter',1,'{}','2026-08-17T00:00:00Z')`,

@@ -431,11 +431,8 @@ func runSCIMReconcileKeepsFreshOrigins(t *testing.T, db *store.DB) {
 
 	// THE RESTORE. Every principal goes inert; the archived rows are exactly as
 	// the backup left them.
-	if err := runRestoreClosure(ctx, db, store.Manifest{
-		Format: "hikyo-backup/1", Engine: db.Engine(), SchemaVersion: 18, CreatedAt: time.Now().UTC(),
-	}); err != nil {
-		t.Fatalf("restore: %v", err)
-	}
+	db = restoreIsolationFixture(t, db)
+	s.DB = db
 
 	// The operator reconciles the binding's provisioning CONNECTION and
 	// re-mints, which is the only way the identity provider gets back on the
@@ -663,11 +660,8 @@ func runSCIMRestoreDrill(t *testing.T, db *store.DB) {
 	// (every verifier, session and identity link becomes inert by predicate)
 	// and strips every principal's reconciliation stamp, so nothing authorizes
 	// until an operator commits it back one principal at a time.
-	if err := runRestoreClosure(ctx, db, store.Manifest{
-		Format: "hikyo-backup/1", Engine: db.Engine(), SchemaVersion: 17, CreatedAt: time.Now().UTC(),
-	}); err != nil {
-		t.Fatalf("restore: %v", err)
-	}
+	db = restoreIsolationFixture(t, db)
+	s.DB, auth.DB, projects.DB = db, db, db
 
 	if _, err := s.GetUser(ctx, wire, orgA, binding.ID, stays.ID); !errors.Is(err, domain.ErrUnauthenticated) {
 		t.Fatalf("a restored credential verifier must be permanently dead, got %v", err)

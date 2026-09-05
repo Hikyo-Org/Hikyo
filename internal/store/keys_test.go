@@ -14,9 +14,12 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 	storetx "github.com/Hikyo-Org/hikyo/internal/store/tx"
+	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
+	gatefixture "github.com/Hikyo-Org/hikyo/internal/upgradegate/testfixture"
+	"github.com/jackc/pgx/v5"
 )
 
 var errRollbackKeyTest = errors.New("rollback key-store test fixture")
@@ -35,6 +38,34 @@ func TestKeyRotationInvariantsPostgres(t *testing.T) {
 
 func runKeyRotationInvariants(t *testing.T, db *store.DB) {
 	t.Helper()
+	// Rotation repository cases supply deliberately incomplete synthetic key
+	// rows. Admit the genuine initialized database first, then replace only this
+	// test's key fixture inside a guarded transaction.
+	if db.Engine() == store.EnginePostgres {
+		transaction, err := db.BeginPostgres(t.Context(), pgx.TxOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer transaction.Rollback(t.Context())
+		if _, err := transaction.Exec(t.Context(), "DELETE FROM tier3_keys; DELETE FROM master_keys; DELETE FROM key_generations WHERE scope <> 'hierarchy'"); err != nil {
+			t.Fatal(err)
+		}
+		if err := transaction.Commit(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		transaction, err := db.BeginSQLite(t.Context(), false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer transaction.Rollback()
+		if _, err := transaction.ExecContext(t.Context(), "DELETE FROM tier3_keys; DELETE FROM master_keys; DELETE FROM key_generations WHERE scope <> 'hierarchy'"); err != nil {
+			t.Fatal(err)
+		}
+		if err := transaction.Commit(); err != nil {
+			t.Fatal(err)
+		}
+	}
 	seedKeyTestOperator(t, db)
 
 	for _, purpose := range []crypto.Purpose{crypto.PurposeToken, crypto.PurposeScanning} {
@@ -269,10 +300,12 @@ func keyTestTime() time.Time {
 
 func openKeyTestDB(t *testing.T, cfg store.Config) *store.DB {
 	t.Helper()
-	if err := migrate.Run(t.Context(), cfg); err != nil {
-		t.Fatalf("migrate key-store database: %v", err)
+	root, err := crypto.GenerateRootKey()
+	if err != nil {
+		t.Fatal(err)
 	}
-	db, err := store.Open(t.Context(), cfg)
+	admission := gatefixture.Prepare(t, upgrade.Config{Engine: releaseidentity.Engine(cfg.Engine), Path: cfg.Path, DSN: cfg.DSN}, store.MigrationsFS, "migrations/"+string(cfg.Engine), root)
+	db, err := store.Open(t.Context(), cfg, admission)
 	if err != nil {
 		t.Fatalf("open key-store database: %v", err)
 	}
@@ -280,7 +313,7 @@ func openKeyTestDB(t *testing.T, cfg store.Config) *store.DB {
 	return db
 }
 
-func postgresKeyTestConfig(t *testing.T, dsn string) (*store.DB, store.Config) {
+func postgresKeyTestConfig(t *testing.T, dsn string) (*pgx.Conn, store.Config) {
 	t.Helper()
 	parsed := mustParseURL(t, dsn)
 	base := strings.TrimPrefix(parsed.Path, "/")
@@ -288,12 +321,12 @@ func postgresKeyTestConfig(t *testing.T, dsn string) (*store.DB, store.Config) {
 		t.Fatal("postgres test DSN has no database name")
 	}
 	database := fmt.Sprintf("%s_store_keys_%d", base, time.Now().UnixNano())
-	admin, err := store.Open(t.Context(), store.Config{Engine: store.EnginePostgres, DSN: dsn})
+	admin, err := pgx.Connect(t.Context(), dsn)
 	if err != nil {
 		t.Fatalf("open postgres admin database: %v", err)
 	}
-	if _, err := admin.PG().Exec(t.Context(), `CREATE DATABASE "`+strings.ReplaceAll(database, `"`, ``)+`"`); err != nil {
-		admin.Close()
+	if _, err := admin.Exec(t.Context(), `CREATE DATABASE "`+strings.ReplaceAll(database, `"`, ``)+`"`); err != nil {
+		admin.Close(context.Background())
 		t.Fatalf("create postgres key-store database: %v", err)
 	}
 	parsed.Path = "/" + database
@@ -323,9 +356,9 @@ func postgresTestDB(t *testing.T) *store.DB {
 	}
 	admin, cfg := postgresKeyTestConfig(t, dsn)
 	t.Cleanup(func() {
-		_, _ = admin.PG().Exec(context.Background(), `DROP DATABASE IF EXISTS "`+
+		_, _ = admin.Exec(context.Background(), `DROP DATABASE IF EXISTS "`+
 			strings.ReplaceAll(strings.TrimPrefix(mustParseURL(t, cfg.DSN).Path, "/"), `"`, ``)+`" WITH (FORCE)`)
-		admin.Close()
+		admin.Close(context.Background())
 	})
 	return openKeyTestDB(t, cfg)
 }

@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,7 +29,7 @@ func TestRestoreSQLiteConcurrentAttemptsOwnDistinctStaging(t *testing.T) {
 	}()
 
 	restore := func() {
-		_, err := RestoreSQLite(t.Context(), bytes.NewReader(archive), target, func(ctx context.Context, db *DB) error {
+		_, err := RestoreSQLite(t.Context(), bytes.NewReader(archive), target, func(ctx context.Context, db *sql.Tx) error {
 			staging, err := sqliteDatabasePath(ctx, db)
 			if err != nil {
 				return err
@@ -94,7 +95,7 @@ func TestRestoreSQLiteCleansOwnedStagingOnFailure(t *testing.T) {
 		payload           []byte
 		archive           func(t *testing.T, payload []byte) []byte
 		configure         func(*sqliteRestoreOperations)
-		mutate            func(target string) func(context.Context, *DB) error
+		mutate            func(target string) func(context.Context, *sql.Tx) error
 		wantError         error
 		wantErrorText     string
 		wantTargetContent []byte
@@ -126,27 +127,27 @@ func TestRestoreSQLiteCleansOwnedStagingOnFailure(t *testing.T) {
 		{
 			name:    "database open",
 			payload: []byte("not a sqlite database"),
-			mutate: func(string) func(context.Context, *DB) error {
-				return func(context.Context, *DB) error { return nil }
+			mutate: func(string) func(context.Context, *sql.Tx) error {
+				return func(context.Context, *sql.Tx) error { return nil }
 			},
 			wantErrorText: "open restored snapshot",
 		},
 		{
 			name: "mutation",
-			mutate: func(string) func(context.Context, *DB) error {
-				return func(context.Context, *DB) error { return mutationFailure }
+			mutate: func(string) func(context.Context, *sql.Tx) error {
+				return func(context.Context, *sql.Tx) error { return mutationFailure }
 			},
 			wantError: mutationFailure,
 		},
 		{
 			name: "database close",
 			configure: func(operations *sqliteRestoreOperations) {
-				operations.closeDatabase = func(db *DB) error {
+				operations.closeDatabase = func(db *sql.DB) error {
 					return errors.Join(db.Close(), databaseCloseFailure)
 				}
 			},
-			mutate: func(string) func(context.Context, *DB) error {
-				return func(context.Context, *DB) error { return nil }
+			mutate: func(string) func(context.Context, *sql.Tx) error {
+				return func(context.Context, *sql.Tx) error { return nil }
 			},
 			wantError: databaseCloseFailure,
 		},
@@ -159,8 +160,8 @@ func TestRestoreSQLiteCleansOwnedStagingOnFailure(t *testing.T) {
 		},
 		{
 			name: "publication conflict",
-			mutate: func(target string) func(context.Context, *DB) error {
-				return func(context.Context, *DB) error {
+			mutate: func(target string) func(context.Context, *sql.Tx) error {
+				return func(context.Context, *sql.Tx) error {
 					return os.WriteFile(target, []byte("existing database"), 0o600)
 				}
 			},
@@ -203,7 +204,7 @@ func TestRestoreSQLiteCleansOwnedStagingOnFailure(t *testing.T) {
 			if tt.configure != nil {
 				tt.configure(&operations)
 			}
-			var mutate func(context.Context, *DB) error
+			var mutate func(context.Context, *sql.Tx) error
 			if tt.mutate != nil {
 				mutate = tt.mutate(target)
 			}
@@ -259,11 +260,11 @@ func pathsShareDirectory(first, second string) (bool, error) {
 	return os.SameFile(firstDirectory, secondDirectory), nil
 }
 
-func sqliteDatabasePath(ctx context.Context, db *DB) (string, error) {
+func sqliteDatabasePath(ctx context.Context, db *sql.Tx) (string, error) {
 	var sequence int
 	var name string
 	var path string
-	if err := db.sqRead.QueryRowContext(ctx, "PRAGMA database_list").Scan(&sequence, &name, &path); err != nil {
+	if err := db.QueryRowContext(ctx, "PRAGMA database_list").Scan(&sequence, &name, &path); err != nil {
 		return "", fmt.Errorf("read sqlite database path: %w", err)
 	}
 	return path, nil

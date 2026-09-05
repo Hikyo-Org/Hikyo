@@ -8,14 +8,17 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/authn"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 )
 
 func TestSAMLArtifactsAreSingleUseAndDurable(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	cfg := store.Config{Engine: store.EngineSQLite, Path: t.TempDir() + "/saml.db"}
-	if err := migrate.Run(ctx, cfg); err != nil {
+	admitted, err := openIsolationFixture(t, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := admitted.Close(); err != nil {
 		t.Fatal(err)
 	}
 	db, err := sql.Open("sqlite", store.SQLiteDSN(cfg.Path))

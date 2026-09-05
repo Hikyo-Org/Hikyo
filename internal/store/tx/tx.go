@@ -171,18 +171,20 @@ func writeOnce(ctx context.Context, db *store.DB, fn WriteFn) error {
 	defer tok.Invalidate() // the proof dies with the attempt, success or not
 
 	if db.Engine() == store.EnginePostgres {
-		return writePostgresOnce(ctx, db, db.PG(), tok, fn)
+		return writePostgresOnce(ctx, db, tok, fn)
 	}
 	// sqlite: the write pool's DSN carries _txlock=immediate, so BeginTx
 	// opens BEGIN IMMEDIATE — write intent acquired before reads.
-	sqtx, err := db.SQLiteWrite().BeginTx(ctx, nil)
+	sqtx, err := db.BeginSQLite(ctx, false)
 	if err != nil {
 		return err
 	}
+	defer sqtx.Rollback()
 	if err := store.GuardSQLiteSingletonLease(ctx, sqtx); err != nil {
 		_ = sqtx.Rollback()
 		return err
 	}
+	defer sqtx.Rollback()
 	az := authz.NewTxAuthorizer(authn.NewSQLite(sqtx), tok)
 	err = fn(ctx, store.SQLiteTxRepos(sqtx, tok), az)
 	if err != nil {
@@ -193,29 +195,26 @@ func writeOnce(ctx context.Context, db *store.DB, fn WriteFn) error {
 	return settleDenials(ctx, db, az, err)
 }
 
-type postgresBeginner interface {
-	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
-}
-
-func writePostgresOnce(ctx context.Context, db *store.DB, beginner postgresBeginner, tok *authz.TxToken, fn WriteFn) error {
-	az, err := runPostgresTransaction(ctx, beginner, tok, fn)
+func writePostgresOnce(ctx context.Context, db *store.DB, tok *authz.TxToken, fn WriteFn) error {
+	pgtx, err := db.BeginPostgres(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	if err != nil {
+		return err
+	}
+	az, err := runPostgresTransaction(ctx, pgtx, tok, fn)
 	if az == nil {
 		return err
 	}
 	return settleDenials(ctx, db, az, err)
 }
 
-func runPostgresTransaction(ctx context.Context, beginner postgresBeginner, tok *authz.TxToken, fn WriteFn) (*authz.TxAuthorizer, error) {
-	pgtx, err := beginner.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
-	if err != nil {
-		return nil, err
-	}
+func runPostgresTransaction(ctx context.Context, pgtx *store.PostgresTransaction, tok *authz.TxToken, fn WriteFn) (*authz.TxAuthorizer, error) {
+	defer pgtx.Rollback(ctx)
 	if err := store.GuardPGSingletonLease(ctx, pgtx); err != nil {
 		_ = pgtx.Rollback(ctx)
 		return nil, err
 	}
 	az := authz.NewTxAuthorizer(authn.NewPG(pgtx), tok)
-	err = fn(ctx, store.PGTxRepos(pgtx, tok), az)
+	err := fn(ctx, store.PGTxRepos(pgtx, tok), az)
 	if err != nil {
 		_ = pgtx.Rollback(ctx)
 	} else {
@@ -225,64 +224,17 @@ func runPostgresTransaction(ctx context.Context, beginner postgresBeginner, tok 
 }
 
 func writePostgresSerializedOnce(ctx context.Context, db *store.DB, key int32, fn WriteFn) error {
-	conn, err := db.PG().Acquire(ctx)
+	pgtx, err := db.BeginPostgresSerialized(ctx, serializationLockNamespace, key)
 	if err != nil {
 		return err
 	}
-	locked, released := false, false
-	discard := func() {
-		raw := conn.Hijack()
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		_ = raw.Close(cleanupCtx)
-		released = true
-	}
-	release := func() {
-		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
-		defer cancel()
-		var unlocked bool
-		unlockErr := conn.QueryRow(cleanupCtx,
-			"SELECT pg_advisory_unlock($1, $2)", serializationLockNamespace, key).Scan(&unlocked)
-		if unlockErr == nil && unlocked {
-			conn.Release()
-			released = true
-			return
-		}
-		// A session lock survives transaction rollback. If explicit unlock is
-		// unavailable, discard the physical connection so postgres releases it
-		// instead of poisoning a pooled session.
-		discard()
-	}
-	defer func() {
-		if released {
-			return
-		}
-		if locked {
-			release()
-			return
-		}
-		conn.Release()
-	}()
-
-	if _, err := conn.Exec(ctx,
-		"SELECT pg_advisory_lock($1, $2)", serializationLockNamespace, key); err != nil {
-		// The server may have acquired the session lock before the client saw an
-		// error. Never return that session to the pool on an ambiguous result.
-		discard()
-		return err
-	}
-	locked = true
-
 	tok := authz.NewTxToken()
 	defer tok.Invalidate()
-	az, err := runPostgresTransaction(ctx, conn, tok, fn)
-	release()
+	az, err := runPostgresTransaction(ctx, pgtx, tok, fn)
 	if az == nil {
 		return err
 	}
-	// Denial audit settlement may acquire another pool connection. Release the
-	// admission lock and its connection first so queued creators cannot exhaust
-	// the pool while the lock holder waits to record its refusal.
+	// Commit/rollback already released the named owner before denial flushing.
 	return settleDenials(ctx, db, az, err)
 }
 
@@ -298,13 +250,14 @@ func readOnce(ctx context.Context, db *store.DB, fn ReadFn) error {
 		// grant lookup and the store query would leave the minted proof
 		// certifying a policy no single snapshot ever held. It also matches
 		// sqlite's WAL reader snapshot, so the engines agree.
-		pgtx, err := db.PG().BeginTx(ctx, pgx.TxOptions{
+		pgtx, err := db.BeginPostgres(ctx, pgx.TxOptions{
 			IsoLevel:   pgx.RepeatableRead,
 			AccessMode: pgx.ReadOnly,
 		})
 		if err != nil {
 			return err
 		}
+		defer pgtx.Rollback(ctx)
 		az := authz.NewTxAuthorizer(authn.NewPG(pgtx), tok)
 		err = fn(ctx, store.PGTxReadRepos(pgtx, tok), az)
 		if err != nil {
@@ -318,10 +271,11 @@ func readOnce(ctx context.Context, db *store.DB, fn ReadFn) error {
 	// _txlock=immediate, so a held read transaction never takes write
 	// intent); the narrowed ReadRepos interface keeps writes out at compile
 	// time.
-	sqtx, err := db.SQLiteRead().BeginTx(ctx, nil)
+	sqtx, err := db.BeginSQLite(ctx, true)
 	if err != nil {
 		return err
 	}
+	defer sqtx.Rollback()
 	az := authz.NewTxAuthorizer(authn.NewSQLite(sqtx), tok)
 	err = fn(ctx, store.SQLiteTxReadRepos(sqtx, tok), az)
 	if err != nil {
@@ -346,7 +300,11 @@ func readOnce(ctx context.Context, db *store.DB, fn ReadFn) error {
 //     record is exactly what fail-closed forbids (the A4 induced-commit-
 //     failure criterion).
 func settleDenials(ctx context.Context, db *store.DB, az *authz.TxAuthorizer, attemptErr error) error {
-	if attemptErr != nil && retryable(db.Engine(), attemptErr) {
+	return settleDenialResult(ctx, db.Engine(), az, attemptErr, func(ctx context.Context, denials []authz.Denial) error { return flushOnce(ctx, db, denials) })
+}
+
+func settleDenialResult(ctx context.Context, engine store.Engine, az *authz.TxAuthorizer, attemptErr error, flush func(context.Context, []authz.Denial) error) error {
+	if attemptErr != nil && retryable(engine, attemptErr) {
 		return attemptErr // the retry re-runs authorize() and re-captures
 	}
 	if cerr := az.DenialCaptureError(); cerr != nil {
@@ -358,8 +316,8 @@ func settleDenials(ctx context.Context, db *store.DB, az *authz.TxAuthorizer, at
 	if len(denials) == 0 {
 		return attemptErr
 	}
-	flushErr := retryLoop(ctx, db.Engine(), func(ctx context.Context) error {
-		return flushOnce(ctx, db, denials)
+	flushErr := retryLoop(ctx, engine, func(ctx context.Context) error {
+		return flush(ctx, denials)
 	})
 	if flushErr != nil {
 		// The suppressed outcome is reported as TEXT (%v), deliberately not
@@ -375,10 +333,11 @@ func settleDenials(ctx context.Context, db *store.DB, az *authz.TxAuthorizer, at
 // pinned write paths (authn.WriteDenial) in one dedicated transaction.
 func flushOnce(ctx context.Context, db *store.DB, denials []authz.Denial) error {
 	if db.Engine() == store.EnginePostgres {
-		pgtx, err := db.PG().BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+		pgtx, err := db.BeginPostgres(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 		if err != nil {
 			return err
 		}
+		defer pgtx.Rollback(ctx)
 		w := authn.NewPG(pgtx)
 		for _, d := range denials {
 			if err := w.WriteDenial(ctx, d.Event, d.Trail, d.Scope); err != nil {
@@ -388,10 +347,11 @@ func flushOnce(ctx context.Context, db *store.DB, denials []authz.Denial) error 
 		}
 		return pgtx.Commit(ctx)
 	}
-	sqtx, err := db.SQLiteWrite().BeginTx(ctx, nil)
+	sqtx, err := db.BeginSQLite(ctx, false)
 	if err != nil {
 		return err
 	}
+	defer sqtx.Rollback()
 	w := authn.NewSQLite(sqtx)
 	for _, d := range denials {
 		if err := w.WriteDenial(ctx, d.Event, d.Trail, d.Scope); err != nil {

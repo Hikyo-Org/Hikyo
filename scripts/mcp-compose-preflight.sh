@@ -40,5 +40,21 @@ require_owner_only_file HIKYO_ROOT_KEY_FILE "${HIKYO_ROOT_KEY_FILE:-}"
 require_regular_file HIKYO_TLS_CERT_FILE "${HIKYO_TLS_CERT_FILE:-}"
 require_owner_only_file HIKYO_TLS_KEY_FILE "${HIKYO_TLS_KEY_FILE:-}"
 
+for directory in "${HIKYO_UPGRADE_PUBLIC_DIR:-}" "${HIKYO_UPGRADE_INSTALLATION_DIR:-}"; do
+	if [ ! -d "$directory" ] || [ -L "$directory" ]; then
+		fail "upgrade public and installation paths must be existing directories, not symlinks"
+	fi
+done
+require_regular_file operator.pub "$HIKYO_UPGRADE_PUBLIC_DIR/operator.pub"
+require_regular_file bundle/index.json "$HIKYO_UPGRADE_PUBLIC_DIR/bundle/index.json"
+# The gate authenticates the complete bundle and checks runtime ownership. This
+# preflight rejects obvious unsafe custody before Docker can create bind paths.
+if mode=$(stat -f '%Lp' "$HIKYO_UPGRADE_INSTALLATION_DIR" 2>/dev/null); then
+	:
+else
+	mode=$(stat -c '%a' "$HIKYO_UPGRADE_INSTALLATION_DIR")
+fi
+[ "$mode" = 700 ] || fail "installation custody directory must have mode 0700"
+
 docker compose -f "$compose" config --quiet
-printf 'MCP Compose preflight: immutable image, private keys, and Compose configuration passed\n'
+printf 'MCP Compose preflight: immutable image, private keys, upgrade paths, and Compose configuration passed\n'

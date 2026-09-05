@@ -10,16 +10,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/store"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
+	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
+	"github.com/Hikyo-Org/hikyo/internal/upgradegate/testfixture"
+	"github.com/jackc/pgx/v5"
 )
 
 // TestSchedulerHAThreeNodesOnePostgres boots three schedulers sharing one real
 // PostgreSQL lease and asserts the multi-node invariants against the datastore:
 // exactly one leader runs jobs, and losing the leader hands leadership to
 // another node (automatic failover). It also exercises three concurrent
-// migrate.Run calls against one DSN, the empirical check of goose's session
-// lock serializing migrators.
+// runtime admission and guarded coordination against a real signed gate.
 func TestSchedulerHAThreeNodesOnePostgres(t *testing.T) {
 	dsn := os.Getenv("HIKYO_TEST_POSTGRES_DSN")
 	if dsn == "" {
@@ -117,24 +119,27 @@ func openSchedulerHAPostgres(t *testing.T, dsn string) *store.DB {
 	}
 	base := strings.TrimPrefix(parsed.Path, "/")
 	database := fmt.Sprintf("%s_ha_sched_%d", base, time.Now().UnixNano())
-	admin, err := store.Open(t.Context(), store.Config{Engine: store.EnginePostgres, DSN: dsn})
+	admin, err := pgx.Connect(t.Context(), dsn)
 	if err != nil {
 		t.Fatalf("open admin: %v", err)
 	}
-	if _, err := admin.PG().Exec(t.Context(), `CREATE DATABASE "`+strings.ReplaceAll(database, `"`, ``)+`"`); err != nil {
-		admin.Close()
+	if _, err := admin.Exec(t.Context(), `CREATE DATABASE "`+strings.ReplaceAll(database, `"`, ``)+`"`); err != nil {
+		admin.Close(context.Background())
 		t.Fatalf("create database: %v", err)
 	}
 	parsed.Path = "/" + database
 	cfg := store.Config{Engine: store.EnginePostgres, DSN: parsed.String()}
 	t.Cleanup(func() {
-		_, _ = admin.PG().Exec(context.Background(), `DROP DATABASE IF EXISTS "`+strings.ReplaceAll(database, `"`, ``)+`" WITH (FORCE)`)
-		admin.Close()
+		_, _ = admin.Exec(context.Background(), `DROP DATABASE IF EXISTS "`+strings.ReplaceAll(database, `"`, ``)+`" WITH (FORCE)`)
+		admin.Close(context.Background())
 	})
-	if err := migrate.Run(t.Context(), cfg); err != nil {
-		t.Fatalf("migrate: %v", err)
+	root, err := crypto.GenerateRootKey()
+	if err != nil {
+		t.Fatal(err)
 	}
-	db, err := store.Open(t.Context(), cfg)
+	defer crypto.Zero(root)
+	admission := testfixture.Prepare(t, upgrade.Config{Engine: "postgres", DSN: cfg.DSN}, store.MigrationsFS, "migrations/postgres", root)
+	db, err := store.Open(t.Context(), cfg, admission)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}

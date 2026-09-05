@@ -83,12 +83,25 @@ export HIKYO_COMPOSE_SUBNET='<dedicated-compose-network-cidr>'
 export HIKYO_ROOT_KEY_FILE=/run/credentials/hikyo-root-key
 export HIKYO_TLS_CERT_FILE=/run/credentials/hikyo-tls-cert
 export HIKYO_TLS_KEY_FILE=/run/credentials/hikyo-tls-key
+export HIKYO_UPGRADE_PUBLIC_DIR=/srv/hikyo-public
+export HIKYO_UPGRADE_INSTALLATION_DIR=/srv/hikyo-installation
 ./scripts/mcp-compose-preflight.sh
+docker compose -f deploy/mcp/compose.yaml up -d root-key-stage
+docker compose -f deploy/mcp/compose.yaml run --rm --no-deps hikyo migrate
 docker compose -f deploy/mcp/compose.yaml up -d
 ```
 
 Replace `secret-store read` with the deployment secret store's non-logging
 read mechanism. Do not put its result in shell history or a committed env file.
+
+Prepare the verified public bundle and `operator.pub` using the
+[manual upgrade procedure](/docs/upgrades/). Provision the separate installation
+directory mode `0700`, owned by runtime UID `65532`; preserve it across database
+restores. Public artifacts mount read-only. The preflight checks paths and modes;
+the migration and boot gate authenticates signatures. Existing installations
+must stop every writer and provide fresh public restore evidence before the
+explicit migration. The server starts with automatic migration disabled. Never
+substitute fixture trust or development mode for production release artifacts.
 
 Compose does not add replicas to one Hikyo installation safely by itself. Use
 the Helm HA shape or an equivalent orchestrator when multiple replicas are

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // ErrSingletonLeaseLost refuses work from an expired or superseded leadership
@@ -35,7 +35,9 @@ func WithSingletonLease(ctx context.Context, name, owner string, fence int64) co
 // takeover, an old SERIALIZABLE snapshot retries and checks the new fence.
 // clock_timestamp, rather than the transaction's start time, also refuses a
 // term that expired while this transaction waited for the lease row.
-func GuardPGSingletonLease(ctx context.Context, transaction pgx.Tx) error {
+func GuardPGSingletonLease(ctx context.Context, transaction interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}) error {
 	lease, present := ctx.Value(singletonLeaseKey{}).(singletonLease)
 	if !present {
 		return nil
@@ -54,7 +56,9 @@ func GuardPGSingletonLease(ctx context.Context, transaction pgx.Tx) error {
 
 // GuardSQLiteSingletonLease is the SQLite counterpart. BEGIN IMMEDIATE holds
 // write admission through commit; SQLite's process clock is authoritative.
-func GuardSQLiteSingletonLease(ctx context.Context, transaction *sql.Tx) error {
+func GuardSQLiteSingletonLease(ctx context.Context, transaction interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}) error {
 	lease, present := ctx.Value(singletonLeaseKey{}).(singletonLease)
 	if !present {
 		return nil

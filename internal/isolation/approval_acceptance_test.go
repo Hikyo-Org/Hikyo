@@ -33,7 +33,7 @@ func approvalPeer(t *testing.T, db *store.DB) *store.DB {
 			t.Fatal(err)
 		}
 	}
-	peer, err := store.Open(t.Context(), cfg)
+	peer, err := store.Open(t.Context(), cfg, isolationAdmission(t, db))
 	if err != nil {
 		t.Fatal(err)
 	}

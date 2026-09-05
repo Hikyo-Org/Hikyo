@@ -48,7 +48,7 @@ key makes the encrypted data unrecoverable.
 Check the server from another terminal:
 
 ```bash
-curl --fail http://127.0.0.1:8080/healthz
+curl --fail http://127.0.0.1:8081/healthz
 ```
 
 ## 3. Create the first administrator
@@ -56,12 +56,14 @@ curl --fail http://127.0.0.1:8080/healthz
 Run this on the same host and from the same directory as the development server:
 
 ```bash
-HIKYO_DB=sqlite:hikyo-dev.db \
-HIKYO_ROOT_KEY="$(tr -d '\n' < hikyo-dev.rootkey)" \
-./bin/hikyo admin create \
+./bin/hikyo admin --dev create \
   --username admin \
   --output-file ./hikyo-admin-authority
 ```
+
+The leading group-level `--dev` selects the same development datastore and root
+key defaults as the server. Use the same prefix for `backup` and `restore` when
+working with an evaluation instance. Production remains the default without it.
 
 The output file is created with mode `0600`. The authority is single-use and
 expiring; it establishes a password but creates no session.

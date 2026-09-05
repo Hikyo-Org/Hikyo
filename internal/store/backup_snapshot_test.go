@@ -4,8 +4,10 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,14 +20,11 @@ import (
 )
 
 func TestExportSQLiteManifestUsesArchivedSchemaDuringMigration(t *testing.T) {
-	db, err := Open(t.Context(), Config{Engine: EngineSQLite, Path: filepath.Join(t.TempDir(), "source.db")})
+	db, err := admittedStoreFixture(t, Config{Engine: EngineSQLite, Path: filepath.Join(t.TempDir(), "source.db")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if _, err := db.sqWrite.ExecContext(t.Context(), "CREATE TABLE goose_db_version(version_id INTEGER); INSERT INTO goose_db_version VALUES(44)"); err != nil {
-		t.Fatal(err)
-	}
 	held, err := db.sqWrite.Conn(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -49,7 +48,7 @@ func TestExportSQLiteManifestUsesArchivedSchemaDuringMigration(t *testing.T) {
 		case <-time.After(time.Millisecond):
 		}
 	}
-	if _, err := held.ExecContext(ctx, "INSERT INTO goose_db_version VALUES(45)"); err != nil {
+	if _, err := held.ExecContext(ctx, "INSERT INTO goose_db_version(version_id,is_applied) VALUES(45,true)"); err != nil {
 		t.Fatal(err)
 	}
 	if err := held.Close(); err != nil {
@@ -66,13 +65,13 @@ func TestExportSQLiteManifestUsesArchivedSchemaDuringMigration(t *testing.T) {
 	if _, err := RestoreSQLite(ctx, bytes.NewReader(archive.Bytes()), restored, nil); err != nil {
 		t.Fatal(err)
 	}
-	copy, err := Open(ctx, Config{Engine: EngineSQLite, Path: restored})
+	copy, err := sql.Open("sqlite", "file:"+restored+"?mode=ro")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer copy.Close()
-	version, err := SchemaVersion(ctx, copy)
-	if err != nil {
+	var version int64
+	if err := copy.QueryRowContext(ctx, "SELECT max(version_id) FROM goose_db_version").Scan(&version); err != nil {
 		t.Fatal(err)
 	}
 	if version != 45 || manifest.SchemaVersion != version {
@@ -134,17 +133,27 @@ func TestExportPostgresManifestUsesCopySnapshotDuringMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer writer.Close(context.Background())
-	if _, err := writer.Exec(ctx, "CREATE TABLE goose_db_version(version_id BIGINT); INSERT INTO goose_db_version VALUES(44)"); err != nil {
+	targetURL, err := url.Parse(dsn)
+	if err != nil {
 		t.Fatal(err)
 	}
+	targetURL.Path = "/" + name
+	targetConfig := Config{Engine: EnginePostgres, DSN: targetURL.String()}
+	admitted, err := admittedStoreFixture(t, targetConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admitted.Close()
 	var changeErr error
-	cfg.ConnConfig.Tracer = &schemaChangeTracer{change: func() { _, changeErr = writer.Exec(ctx, "INSERT INTO goose_db_version VALUES(45)") }}
+	cfg.ConnConfig.Tracer = &schemaChangeTracer{change: func() {
+		_, changeErr = writer.Exec(ctx, "INSERT INTO goose_db_version(version_id,is_applied) VALUES(45,true)")
+	}}
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	db := &DB{engine: EnginePostgres, pool: pool}
+	db := &DB{engine: EnginePostgres, pool: pool, admission: admitted.admission}
 	var archive bytes.Buffer
 	manifest, err := Export(ctx, db, &archive, t.TempDir())
 	if err != nil {
@@ -173,7 +182,7 @@ func TestExportPostgresManifestUsesCopySnapshotDuringMigration(t *testing.T) {
 	}
 	// The schema change commits immediately after the version read. Both the
 	// version and COPY must remain on that transaction's original snapshot.
-	if manifest.SchemaVersion != 44 || strings.TrimSpace(payload) != "44" {
+	if manifest.SchemaVersion != 44 || !strings.Contains(payload, "\t44\tt\t") || strings.Contains(payload, "\t45\tt\t") {
 		t.Fatalf("manifest=%d COPY=%q; want consistent original schema44", manifest.SchemaVersion, payload)
 	}
 	var live int64

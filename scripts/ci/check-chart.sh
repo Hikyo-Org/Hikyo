@@ -31,12 +31,16 @@ render_mode() {
 	helm lint "$chart" \
 		--set database.existingSecret=fixture \
 		--set rootKey.existingSecret=fixture-root-key \
+		--set upgrade.existingClaim=fixture-upgrade-public \
+		--set upgrade.stateExistingClaim=fixture-upgrade-state \
 		--set externalOrigin=https://hikyo.example.com \
 		--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
 		"$@" >/dev/null
 	helm template fixture "$chart" \
 		--set database.existingSecret=fixture \
 		--set rootKey.existingSecret=fixture-root-key \
+		--set upgrade.existingClaim=fixture-upgrade-public \
+		--set upgrade.stateExistingClaim=fixture-upgrade-state \
 		--set externalOrigin=https://hikyo.example.com \
 		--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
 		"$@" >"$tmp/$name.yaml"
@@ -56,6 +60,10 @@ render_mode native-tls \
 render_mode mcp-enabled \
 	--set mcp.enabled=true \
 	--set 'mcp.allowedOrigins={https://assistant.example.com,http://localhost:6274}'
+render_mode populated-upgrade \
+	--set upgrade.evidence=true \
+	--set upgrade.legacyWritersStopped=true \
+	--set-string upgrade.targetManifestSHA256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
 python3 - "$tmp/cluster-wide.yaml" "$tmp/namespaced.yaml" "$tmp/no-rollouts.yaml" "$tmp/native-tls.yaml" "$tmp/mcp-enabled.yaml" <<'PY' || exit 1
 import sys, yaml
@@ -242,6 +250,18 @@ def assert_server_network(docs, mode, tls):
     }:
         fail(f"{mode}: startup probe = {startup}")
     env_names = {e["name"] for e in server.get("env", [])}
+    env = {e["name"]: e.get("value") for e in server.get("env", [])}
+    for name, path in {
+        "HIKYO_UPGRADE_BUNDLE": "/run/hikyo-upgrade/bundle",
+        "HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY": "/run/hikyo-upgrade/operator.pub",
+        "HIKYO_UPGRADE_STATE_DIR": "/var/lib/hikyo-upgrade/operator-custody",
+    }.items():
+        if env.get(name) != path:
+            fail(f"{mode}: mandatory public upgrade input {name} differs")
+    if deployment["spec"].get("strategy") != {"type": "Recreate"}:
+        fail(f"{mode}: upgrade strategy must retain full-stop default")
+    if "HIKYO_UPGRADE_EVIDENCE" in env_names or "HIKYO_UPGRADE_BACKUP" in env_names:
+        fail(f"{mode}: fresh/restart fixture unexpectedly requires populated evidence")
     if "HIKYO_EXTERNAL_ORIGIN" not in env_names or "HIKYO_ROOT_KEY" in env_names:
         fail(f"{mode}: server origin/root-key env boundary = {env_names}")
     if ("HIKYO_TRUSTED_PROXY_CIDRS" in env_names) == tls:
@@ -253,6 +273,14 @@ def assert_server_network(docs, mode, tls):
         fail(f"{mode}: writable tmp mount = {mounts.get('tmp')}")
     pod = deployment["spec"]["template"]["spec"]
     volumes = {v["name"]: v for v in pod.get("volumes", [])}
+    if mounts.get("upgrade-public") != {"name": "upgrade-public", "mountPath": "/run/hikyo-upgrade", "readOnly": True}:
+        fail(f"{mode}: public upgrade artifacts must mount read-only")
+    if mounts.get("upgrade-state") != {"name": "upgrade-state", "mountPath": "/var/lib/hikyo-upgrade"}:
+        fail(f"{mode}: installation state must mount separately writable")
+    if volumes.get("upgrade-public", {}).get("persistentVolumeClaim") != {"claimName": "fixture-upgrade-public", "readOnly": True}:
+        fail(f"{mode}: public upgrade PVC differs")
+    if volumes.get("upgrade-state", {}).get("persistentVolumeClaim") != {"claimName": "fixture-upgrade-state"}:
+        fail(f"{mode}: installation state must survive pod replacement")
     root_source = volumes.get("root-key-source", {}).get("secret", {})
     if root_source.get("secretName") != "fixture-root-key" or root_source.get("defaultMode") != 0o400:
         fail(f"{mode}: root-key source volume = {root_source}")
@@ -264,6 +292,8 @@ def assert_server_network(docs, mode, tls):
         fail(f"{mode}: writable tmp emptyDir = {volumes.get('tmp')}")
     if pod.get("securityContext", {}).get("fsGroup") != 65532:
         fail(f"{mode}: Secret sources are not readable through fsGroup")
+    if pod.get("securityContext", {}).get("fsGroupChangePolicy") != "OnRootMismatch":
+        fail(f"{mode}: recursive fsGroup changes can invalidate private installation custody")
     root_init = {c["name"]: c for c in pod.get("initContainers", [])}.get("root-key-stage", {})
     if root_init.get("args") != ["__hikyo-stage-root-key"]:
         fail(f"{mode}: root-key staging init args = {root_init.get('args')}")
@@ -386,13 +416,52 @@ if mcp_env.get("HIKYO_MCP_ALLOWED_ORIGINS") != "https://assistant.example.com,ht
 print("Chart check: every RBAC rule set, TokenRequest scope, stamp-root grant, hardening, MCP config, args and the exact env allowlist asserted")
 PY
 
-if grep -Eh '[0-9a-f]{64}' "$tmp"/*.yaml | grep -Ev 'sha256:[0-9a-f]{64}' >/dev/null; then
-	fail 'rendered chart contains a raw 64-hex value outside an image digest'
-fi
+python3 - "$tmp/populated-upgrade.yaml" <<'PY'
+import sys, yaml
+with open(sys.argv[1]) as source:
+    documents = list(yaml.safe_load_all(source))
+deployment = next(d for d in documents if d and d.get("kind") == "Deployment" and d["metadata"]["name"] == "fixture-hikyo")
+server = next(c for c in deployment["spec"]["template"]["spec"]["containers"] if c["name"] == "server")
+env = {e["name"]: e.get("value") for e in server["env"]}
+expected = {
+    "HIKYO_UPGRADE_EVIDENCE": "/run/hikyo-upgrade/evidence",
+    "HIKYO_UPGRADE_BACKUP": "/run/hikyo-upgrade/backup.age",
+    "HIKYO_UPGRADE_TARGET_MANIFEST": "a" * 64,
+    "HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED": "true",
+}
+for name, value in expected.items():
+    if env.get(name) != value:
+        raise SystemExit(f"Chart check: populated upgrade {name} differs")
+PY
+
+python3 - "$tmp" <<'PY'
+import pathlib, re, sys, yaml
+
+def check(value):
+    if isinstance(value, dict):
+        if value.get("name") == "HIKYO_UPGRADE_TARGET_MANIFEST" and set(value) == {"name", "value"}:
+            if not re.fullmatch("[0-9a-f]{64}", str(value["value"])):
+                raise SystemExit("Chart check: invalid public manifest digest")
+            return
+        for member in value.values():
+            check(member)
+    elif isinstance(value, list):
+        for member in value:
+            check(member)
+    elif isinstance(value, str):
+        without_image_digests = re.sub("sha256:[0-9a-f]{64}", "", value)
+        if re.search("[0-9a-f]{64}", without_image_digests):
+            raise SystemExit("Chart check: unexpected raw 64-hex value outside a public digest")
+
+for path in pathlib.Path(sys.argv[1]).glob("*.yaml"):
+    with path.open() as source:
+        for document in yaml.safe_load_all(source):
+            check(document)
+PY
 
 # Refusal fixtures: the server listener is invalid without a database Secret and
 # without either a native TLS Secret or explicit trusted proxy CIDRs.
-required_server_values='--set database.existingSecret=fixture --set rootKey.existingSecret=fixture-root-key --set externalOrigin=https://hikyo.example.com'
+required_server_values='--set database.existingSecret=fixture --set rootKey.existingSecret=fixture-root-key --set upgrade.existingClaim=fixture-upgrade-public --set upgrade.stateExistingClaim=fixture-upgrade-state --set externalOrigin=https://hikyo.example.com'
 
 # shellcheck disable=SC2086 # Deliberately expand fixed test flags into argv.
 if helm template fixture "$chart" $required_server_values >/dev/null 2>&1; then
@@ -406,6 +475,8 @@ if helm template fixture "$chart" $required_server_values \
 fi
 if helm template fixture "$chart" \
 	--set rootKey.existingSecret=fixture-root-key \
+		--set upgrade.existingClaim=fixture-upgrade-public \
+		--set upgrade.stateExistingClaim=fixture-upgrade-state \
 	--set externalOrigin=https://hikyo.example.com \
 	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' >/dev/null 2>&1; then
 	fail 'chart accepted a server without database.existingSecret'
@@ -413,11 +484,15 @@ fi
 if helm template fixture "$chart" \
 	--set database.existingSecret=fixture \
 	--set rootKey.existingSecret=fixture-root-key \
+		--set upgrade.existingClaim=fixture-upgrade-public \
+		--set upgrade.stateExistingClaim=fixture-upgrade-state \
 	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' >/dev/null 2>&1; then
 	fail 'chart accepted a server without externalOrigin'
 fi
 if helm template fixture "$chart" \
 	--set rootKey.existingSecret=fixture-root-key \
+		--set upgrade.existingClaim=fixture-upgrade-public \
+		--set upgrade.stateExistingClaim=fixture-upgrade-state \
 	--set externalOrigin=https://hikyo.example.com \
 	--set tls.existingSecret=fixture-tls >/dev/null 2>&1; then
 	fail 'chart accepted native TLS without database.existingSecret'
@@ -425,6 +500,8 @@ fi
 if helm template fixture "$chart" \
 	--set database.existingSecret=fixture \
 	--set rootKey.existingSecret=fixture-root-key \
+		--set upgrade.existingClaim=fixture-upgrade-public \
+		--set upgrade.stateExistingClaim=fixture-upgrade-state \
 	--set externalOrigin=http://hikyo.example.com \
 	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' >/dev/null 2>&1; then
 	fail 'chart accepted plaintext externalOrigin without network.allowPlaintextOrigin'
@@ -432,6 +509,8 @@ fi
 if helm template fixture "$chart" \
 	--set database.existingSecret=fixture \
 	--set rootKey.existingSecret=fixture-root-key \
+		--set upgrade.existingClaim=fixture-upgrade-public \
+		--set upgrade.stateExistingClaim=fixture-upgrade-state \
 	--set externalOrigin=http://hikyo.example.com \
 	--set network.allowPlaintextOrigin=true \
 	--set mcp.enabled=true \
@@ -449,6 +528,8 @@ for invalid_origin in \
 	if helm template fixture "$chart" \
 		--set database.existingSecret=fixture \
 		--set rootKey.existingSecret=fixture-root-key \
+		--set upgrade.existingClaim=fixture-upgrade-public \
+		--set upgrade.stateExistingClaim=fixture-upgrade-state \
 		--set-json externalOrigin="$origin_json" \
 		--set 'network.trustedProxyCIDRs={10.42.0.0/16}' >/dev/null 2>&1; then
 		fail "chart accepted noncanonical externalOrigin $invalid_origin"
@@ -457,6 +538,8 @@ done
 if helm template fixture "$chart" \
 	--set database.existingSecret=fixture \
 	--set rootKey.existingSecret=fixture-root-key \
+		--set upgrade.existingClaim=fixture-upgrade-public \
+		--set upgrade.stateExistingClaim=fixture-upgrade-state \
 	--set externalOrigin=https://hikyo.example.com \
 	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
 	--set 'mcp.allowedOrigins={https://assistant.example.com}' >/dev/null 2>&1; then
@@ -465,6 +548,8 @@ fi
 if helm template fixture "$chart" \
 	--set database.existingSecret=fixture \
 	--set rootKey.existingSecret=fixture-root-key \
+		--set upgrade.existingClaim=fixture-upgrade-public \
+		--set upgrade.stateExistingClaim=fixture-upgrade-state \
 	--set externalOrigin=https://hikyo.example.com \
 	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
 	--set mcp.enabled=true \
@@ -474,6 +559,8 @@ fi
 if helm template fixture "$chart" \
 	--set database.existingSecret=fixture \
 	--set rootKey.existingSecret=fixture-root-key \
+		--set upgrade.existingClaim=fixture-upgrade-public \
+		--set upgrade.stateExistingClaim=fixture-upgrade-state \
 	--set externalOrigin=https://hikyo.example.com \
 	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
 	--set mcp.enabled=true \
@@ -487,6 +574,8 @@ for invalid_mcp_origin in \
 	if helm template fixture "$chart" \
 		--set database.existingSecret=fixture \
 		--set rootKey.existingSecret=fixture-root-key \
+		--set upgrade.existingClaim=fixture-upgrade-public \
+		--set upgrade.stateExistingClaim=fixture-upgrade-state \
 		--set externalOrigin=https://hikyo.example.com \
 		--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
 		--set mcp.enabled=true \
@@ -498,6 +587,8 @@ done
 if helm template fixture "$chart" \
 	--set database.existingSecret=fixture \
 	--set rootKey.existingSecret=fixture-root-key \
+		--set upgrade.existingClaim=fixture-upgrade-public \
+		--set upgrade.stateExistingClaim=fixture-upgrade-state \
 	--set externalOrigin=https://hikyo.example.com \
 	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
 	--set 'operator.namespaces={ns-a}' \
@@ -510,6 +601,8 @@ fi
 ha_render=$(helm template fixture "$chart" \
 	--set database.existingSecret=fixture \
 	--set rootKey.existingSecret=fixture-root-key \
+		--set upgrade.existingClaim=fixture-upgrade-public \
+		--set upgrade.stateExistingClaim=fixture-upgrade-state \
 	--set externalOrigin=https://hikyo.example.com \
 	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
 	--set ha.enabled=true 2>/dev/null)
@@ -527,6 +620,8 @@ done
 default_render=$(helm template fixture "$chart" \
 	--set database.existingSecret=fixture \
 	--set rootKey.existingSecret=fixture-root-key \
+		--set upgrade.existingClaim=fixture-upgrade-public \
+		--set upgrade.stateExistingClaim=fixture-upgrade-state \
 	--set externalOrigin=https://hikyo.example.com \
 	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' 2>/dev/null)
 for unwanted in 'name: HIKYO_HA' 'kind: PodDisruptionBudget'; do
@@ -540,6 +635,8 @@ ha_config_refused() {
 	if helm template fixture "$chart" \
 		--set database.existingSecret=fixture \
 		--set rootKey.existingSecret=fixture-root-key \
+		--set upgrade.existingClaim=fixture-upgrade-public \
+		--set upgrade.stateExistingClaim=fixture-upgrade-state \
 		--set externalOrigin=https://hikyo.example.com \
 		--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
 		--set ha.enabled=true "$@" >/dev/null 2>&1; then

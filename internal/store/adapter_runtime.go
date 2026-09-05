@@ -76,123 +76,123 @@ func NewAdapterRuntime(db *DB, authorize AdapterAuthorizer) *AdapterRuntime {
 	return &AdapterRuntime{db: db, authorize: authorize}
 }
 
-func (r *AdapterRuntime) readDB() adapterDB { return readDB(r.db) }
-
 // LoadExecution reads only the immutable inputs named by a leased job. The
 // caller must Gate immediately before this method; every query repeats the
 // complete job chain and generation fence. Ciphertexts remain sealed here.
 func (r *AdapterRuntime) LoadExecution(ctx context.Context, job adapter.Job) (AdapterExecution, error) {
-	db := r.readDB()
-	var out AdapterExecution
-	var kind string
-	query := db.SQL(
-		`SELECT a.provider,a.origin,a.id,a.credential_ciphertext,t.destination_kind,t.destination_owner,t.destination_name,t.destination_environment,t.destination_id,t.repository_id,t.visibility,t.selected_repository_ids,t.name_prefix,t.generation FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id JOIN adapter_outbox j ON j.id=? AND j.target_id=t.id AND j.org_id=t.org_id AND j.project_id=t.project_id AND j.environment_id=t.environment_id WHERE t.id=? AND t.org_id=? AND t.project_id=? AND t.environment_id=? AND t.generation=? AND j.state='running' AND j.lease_owner=?`,
-	)
-	args := []any{job.ID, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID, job.Generation, job.LeaseOwner}
-	var credential, selectedRaw []byte
-	if err := db.QueryRow(ctx, query, args...).Scan(&out.Provider, &out.Origin, &out.CredentialOwnerID, &credential, &kind, &out.Target.Destination.Owner, &out.Target.Destination.Name, &out.Target.Destination.Environment, &out.Target.Destination.NumericID, &out.Target.Destination.RepositoryID, &out.Target.Destination.Visibility, &selectedRaw, &out.Target.NamePrefix, &out.Target.Generation); err != nil {
-		if isNoRows(err) {
-			return AdapterExecution{}, ErrNotFound
+	return dbReadResult(ctx, r.db, func(db adapterDB) (AdapterExecution, error) {
+		var out AdapterExecution
+		var kind string
+		query := db.SQL(
+			`SELECT a.provider,a.origin,a.id,a.credential_ciphertext,t.destination_kind,t.destination_owner,t.destination_name,t.destination_environment,t.destination_id,t.repository_id,t.visibility,t.selected_repository_ids,t.name_prefix,t.generation FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id JOIN adapter_outbox j ON j.id=? AND j.target_id=t.id AND j.org_id=t.org_id AND j.project_id=t.project_id AND j.environment_id=t.environment_id WHERE t.id=? AND t.org_id=? AND t.project_id=? AND t.environment_id=? AND t.generation=? AND j.state='running' AND j.lease_owner=?`,
+		)
+		args := []any{job.ID, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID, job.Generation, job.LeaseOwner}
+		var credential, selectedRaw []byte
+		if err := db.QueryRow(ctx, query, args...).Scan(&out.Provider, &out.Origin, &out.CredentialOwnerID, &credential, &kind, &out.Target.Destination.Owner, &out.Target.Destination.Name, &out.Target.Destination.Environment, &out.Target.Destination.NumericID, &out.Target.Destination.RepositoryID, &out.Target.Destination.Visibility, &selectedRaw, &out.Target.NamePrefix, &out.Target.Generation); err != nil {
+			if isNoRows(err) {
+				return AdapterExecution{}, ErrNotFound
+			}
+			return AdapterExecution{}, err
 		}
-		return AdapterExecution{}, err
-	}
-	if len(credential) == 0 {
-		return AdapterExecution{}, fmt.Errorf("%w: adapter credential is absent", adapter.ErrProviderAuth)
-	}
-	out.CredentialCiphertext = append([]byte(nil), credential...)
-	out.Target.ID = job.TargetID
-	out.Target.Environment = job.EnvironmentID
-	out.Target.Destination.Kind = adapter.DestinationKind(kind)
-	if err := json.Unmarshal(selectedRaw, &out.Target.Destination.SelectedRepositoryIDs); err != nil {
-		return AdapterExecution{}, fmt.Errorf("store: adapter selected repository ids: %w", err)
-	}
+		if len(credential) == 0 {
+			return AdapterExecution{}, fmt.Errorf("%w: adapter credential is absent", adapter.ErrProviderAuth)
+		}
+		out.CredentialCiphertext = append([]byte(nil), credential...)
+		out.Target.ID = job.TargetID
+		out.Target.Environment = job.EnvironmentID
+		out.Target.Destination.Kind = adapter.DestinationKind(kind)
+		if err := json.Unmarshal(selectedRaw, &out.Target.Destination.SelectedRepositoryIDs); err != nil {
+			return AdapterExecution{}, fmt.Errorf("store: adapter selected repository ids: %w", err)
+		}
 
-	ledgerQuery := db.SQL(
-		`SELECT surface,effective_name,state,missing FROM adapter_ledger WHERE target_id=? AND org_id=? AND project_id=? AND environment_id=? AND state<>'released' ORDER BY surface,normalized_name`,
-	)
-	ledgerRows, err := db.Query(ctx, ledgerQuery, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID)
-	if err != nil {
-		return AdapterExecution{}, err
-	}
-	defer closeAdapterRows(ledgerRows)
-	for ledgerRows.Next() {
-		entry, err := scanAdapterLedgerEntry(ledgerRows)
+		ledgerQuery := db.SQL(
+			`SELECT surface,effective_name,state,missing FROM adapter_ledger WHERE target_id=? AND org_id=? AND project_id=? AND environment_id=? AND state<>'released' ORDER BY surface,normalized_name`,
+		)
+		ledgerRows, err := db.Query(ctx, ledgerQuery, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID)
 		if err != nil {
 			return AdapterExecution{}, err
 		}
-		out.Ledger = append(out.Ledger, entry)
-	}
-	if err := ledgerRows.Err(); err != nil {
-		return AdapterExecution{}, err
-	}
-	if job.Kind == adapter.Scrub {
-		return out, nil
-	}
-
-	snapshotQuery := db.SQLPerEngine(
-		`SELECT id,revision FROM snapshots WHERE org_id=? AND project_id=? AND environment_id=? AND payload_present=1 ORDER BY revision DESC LIMIT 1`,
-		`SELECT id,revision FROM snapshots WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND payload_present=true ORDER BY revision DESC LIMIT 1`)
-	var snapshotID string
-	if err := db.QueryRow(ctx, snapshotQuery, job.OrgID, job.ProjectID, job.EnvironmentID).Scan(&snapshotID, &out.Revision); err != nil {
-		if isNoRows(err) {
-			return out, nil
+		defer closeAdapterRows(ledgerRows)
+		for ledgerRows.Next() {
+			entry, err := scanAdapterLedgerEntry(ledgerRows)
+			if err != nil {
+				return AdapterExecution{}, err
+			}
+			out.Ledger = append(out.Ledger, entry)
 		}
-		return AdapterExecution{}, err
-	}
-	entryQuery := db.SQL(
-		`SELECT e.id,e.snapshot_id,e.key_id,e.key_name,e.classification,e.ciphertext FROM snapshot_entries e JOIN adapter_target_keys k ON k.key_id=e.key_id AND k.target_id=? AND k.org_id=e.org_id AND k.project_id=e.project_id AND k.environment_id=e.environment_id WHERE e.snapshot_id=? AND e.org_id=? AND e.project_id=? AND e.environment_id=? ORDER BY e.key_name`,
-	)
-	entryRows, err := db.Query(ctx, entryQuery, job.TargetID, snapshotID, job.OrgID, job.ProjectID, job.EnvironmentID)
-	if err != nil {
-		return AdapterExecution{}, err
-	}
-	defer closeAdapterRows(entryRows)
-	for entryRows.Next() {
-		var entry AdapterSnapshotEntry
-		if err := entryRows.Scan(&entry.ID, &entry.SnapshotID, &entry.KeyID, &entry.KeyName, &entry.Classification, &entry.Ciphertext); err != nil {
+		if err := ledgerRows.Err(); err != nil {
 			return AdapterExecution{}, err
 		}
-		out.Entries = append(out.Entries, entry)
-	}
-	if err := entryRows.Err(); err != nil {
-		return AdapterExecution{}, err
-	}
-	return out, nil
+		if job.Kind == adapter.Scrub {
+			return out, nil
+		}
+
+		snapshotQuery := db.SQLPerEngine(
+			`SELECT id,revision FROM snapshots WHERE org_id=? AND project_id=? AND environment_id=? AND payload_present=1 ORDER BY revision DESC LIMIT 1`,
+			`SELECT id,revision FROM snapshots WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND payload_present=true ORDER BY revision DESC LIMIT 1`)
+		var snapshotID string
+		if err := db.QueryRow(ctx, snapshotQuery, job.OrgID, job.ProjectID, job.EnvironmentID).Scan(&snapshotID, &out.Revision); err != nil {
+			if isNoRows(err) {
+				return out, nil
+			}
+			return AdapterExecution{}, err
+		}
+		entryQuery := db.SQL(
+			`SELECT e.id,e.snapshot_id,e.key_id,e.key_name,e.classification,e.ciphertext FROM snapshot_entries e JOIN adapter_target_keys k ON k.key_id=e.key_id AND k.target_id=? AND k.org_id=e.org_id AND k.project_id=e.project_id AND k.environment_id=e.environment_id WHERE e.snapshot_id=? AND e.org_id=? AND e.project_id=? AND e.environment_id=? ORDER BY e.key_name`,
+		)
+		entryRows, err := db.Query(ctx, entryQuery, job.TargetID, snapshotID, job.OrgID, job.ProjectID, job.EnvironmentID)
+		if err != nil {
+			return AdapterExecution{}, err
+		}
+		defer closeAdapterRows(entryRows)
+		for entryRows.Next() {
+			var entry AdapterSnapshotEntry
+			if err := entryRows.Scan(&entry.ID, &entry.SnapshotID, &entry.KeyID, &entry.KeyName, &entry.Classification, &entry.Ciphertext); err != nil {
+				return AdapterExecution{}, err
+			}
+			out.Entries = append(out.Entries, entry)
+		}
+		if err := entryRows.Err(); err != nil {
+			return AdapterExecution{}, err
+		}
+		return out, nil
+	})
 }
 
 // LoadActivation resolves only the pending route and its outbound credential.
 // It never assembles snapshot plaintext. Caller must Gate immediately before
 // this read; Activate later rechecks the exact leased job and move identity.
 func (r *AdapterRuntime) LoadActivation(ctx context.Context, job adapter.Job) (AdapterActivation, error) {
-	if job.Kind != adapter.Activate || job.RouteMoveID == "" {
-		return AdapterActivation{}, fmt.Errorf("%w: job is not a route activation", domain.ErrInvalid)
-	}
-	db := r.readDB()
-	query := db.SQL(
-		`SELECT a.provider,COALESCE(m.pending_origin,a.origin),a.id,COALESCE(m.pending_credential_ciphertext,a.credential_ciphertext),mt.environment_id,mt.destination_kind,mt.destination_owner,mt.destination_name,mt.destination_environment,mt.destination_id,mt.repository_id,mt.visibility,mt.selected_repository_ids,mt.name_prefix,t.generation FROM adapter_outbox j JOIN adapter_targets t ON t.id=j.target_id AND t.org_id=j.org_id AND t.project_id=j.project_id AND t.environment_id=j.environment_id JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id JOIN adapter_route_moves m ON m.id=j.route_move_id AND m.org_id=j.org_id AND m.project_id=j.project_id AND m.adapter_id=a.id JOIN adapter_route_move_targets mt ON mt.move_id=m.id AND mt.target_id=t.id AND mt.org_id=t.org_id AND mt.project_id=t.project_id WHERE j.id=? AND j.route_move_id=? AND j.target_id=? AND j.org_id=? AND j.project_id=? AND j.environment_id=? AND j.generation=? AND j.kind='activate' AND j.state='running' AND j.lease_owner=? AND m.state='activating' AND t.state='moving'`,
-	)
-	var out AdapterActivation
-	var credential, selectedRaw []byte
-	var kind string
-	args := []any{job.ID, job.RouteMoveID, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID, job.Generation, job.LeaseOwner}
-	if err := db.QueryRow(ctx, query, args...).Scan(&out.Provider, &out.Origin, &out.CredentialOwnerID, &credential, &out.Target.Environment, &kind,
-		&out.Target.Destination.Owner, &out.Target.Destination.Name, &out.Target.Destination.Environment, &out.Target.Destination.NumericID, &out.Target.Destination.RepositoryID, &out.Target.Destination.Visibility, &selectedRaw,
-		&out.Target.NamePrefix, &out.Target.Generation); err != nil {
-		if isNoRows(err) {
-			return AdapterActivation{}, ErrNotFound
+	return dbReadResult(ctx, r.db, func(db adapterDB) (AdapterActivation, error) {
+		if job.Kind != adapter.Activate || job.RouteMoveID == "" {
+			return AdapterActivation{}, fmt.Errorf("%w: job is not a route activation", domain.ErrInvalid)
 		}
-		return AdapterActivation{}, err
-	}
-	if len(credential) == 0 {
-		return AdapterActivation{}, fmt.Errorf("%w: adapter credential is absent", adapter.ErrProviderAuth)
-	}
-	out.CredentialCiphertext = append([]byte(nil), credential...)
-	out.Target.ID = job.TargetID
-	out.Target.Destination.Kind = adapter.DestinationKind(kind)
-	if err := json.Unmarshal(selectedRaw, &out.Target.Destination.SelectedRepositoryIDs); err != nil {
-		return AdapterActivation{}, fmt.Errorf("store: adapter selected repository ids: %w", err)
-	}
-	return out, nil
+		query := db.SQL(
+			`SELECT a.provider,COALESCE(m.pending_origin,a.origin),a.id,COALESCE(m.pending_credential_ciphertext,a.credential_ciphertext),mt.environment_id,mt.destination_kind,mt.destination_owner,mt.destination_name,mt.destination_environment,mt.destination_id,mt.repository_id,mt.visibility,mt.selected_repository_ids,mt.name_prefix,t.generation FROM adapter_outbox j JOIN adapter_targets t ON t.id=j.target_id AND t.org_id=j.org_id AND t.project_id=j.project_id AND t.environment_id=j.environment_id JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id JOIN adapter_route_moves m ON m.id=j.route_move_id AND m.org_id=j.org_id AND m.project_id=j.project_id AND m.adapter_id=a.id JOIN adapter_route_move_targets mt ON mt.move_id=m.id AND mt.target_id=t.id AND mt.org_id=t.org_id AND mt.project_id=t.project_id WHERE j.id=? AND j.route_move_id=? AND j.target_id=? AND j.org_id=? AND j.project_id=? AND j.environment_id=? AND j.generation=? AND j.kind='activate' AND j.state='running' AND j.lease_owner=? AND m.state='activating' AND t.state='moving'`,
+		)
+		var out AdapterActivation
+		var credential, selectedRaw []byte
+		var kind string
+		args := []any{job.ID, job.RouteMoveID, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID, job.Generation, job.LeaseOwner}
+		if err := db.QueryRow(ctx, query, args...).Scan(&out.Provider, &out.Origin, &out.CredentialOwnerID, &credential, &out.Target.Environment, &kind,
+			&out.Target.Destination.Owner, &out.Target.Destination.Name, &out.Target.Destination.Environment, &out.Target.Destination.NumericID, &out.Target.Destination.RepositoryID, &out.Target.Destination.Visibility, &selectedRaw,
+			&out.Target.NamePrefix, &out.Target.Generation); err != nil {
+			if isNoRows(err) {
+				return AdapterActivation{}, ErrNotFound
+			}
+			return AdapterActivation{}, err
+		}
+		if len(credential) == 0 {
+			return AdapterActivation{}, fmt.Errorf("%w: adapter credential is absent", adapter.ErrProviderAuth)
+		}
+		out.CredentialCiphertext = append([]byte(nil), credential...)
+		out.Target.ID = job.TargetID
+		out.Target.Destination.Kind = adapter.DestinationKind(kind)
+		if err := json.Unmarshal(selectedRaw, &out.Target.Destination.SelectedRepositoryIDs); err != nil {
+			return AdapterActivation{}, fmt.Errorf("store: adapter selected repository ids: %w", err)
+		}
+		return out, nil
+	})
 }
 
 type adapterRow = interface{ Scan(...any) error }
@@ -209,7 +209,7 @@ type adapterDBTX interface {
 
 type sqliteAdapterTx struct {
 	sqliteDialect
-	tx *sql.Tx
+	tx sqliteTransaction
 }
 type sqliteAdapterRows struct{ rows *sql.Rows }
 
@@ -240,7 +240,7 @@ func (s sqliteAdapterTx) Rollback(context.Context) error { return s.tx.Rollback(
 
 type pgAdapterTx struct {
 	pgDialect
-	tx pgx.Tx
+	tx postgresTransaction
 }
 
 func (p pgAdapterTx) Exec(ctx context.Context, query string, args ...any) (int64, error) {
@@ -272,35 +272,29 @@ func (r *AdapterRuntime) transaction(ctx context.Context, fn func(adapterDBTX) e
 // ErrProviderBusy).
 func dbTransaction(ctx context.Context, db *DB, fn func(adapterDBTX) error) error {
 	if db.Engine() == EnginePostgres {
-		tx, err := db.PG().BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+		tx, err := db.BeginPostgres(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 		if err != nil {
 			return err
 		}
 		wrapped := pgAdapterTx{tx: tx}
+		defer wrapped.Rollback(ctx)
 		if err := fn(wrapped); err != nil {
 			_ = wrapped.Rollback(ctx)
 			return err
 		}
 		return wrapped.Commit(ctx)
 	}
-	tx, err := db.SQLiteWrite().BeginTx(ctx, nil)
+	tx, err := db.BeginSQLite(ctx, false)
 	if err != nil {
 		return err
 	}
 	wrapped := sqliteAdapterTx{tx: tx}
+	defer wrapped.Rollback(ctx)
 	if err := fn(wrapped); err != nil {
 		_ = wrapped.Rollback(ctx)
 		return err
 	}
 	return wrapped.Commit(ctx)
-}
-
-// readDB selects the read-side adapterDB shim for the datastore engine.
-func readDB(db *DB) adapterDB {
-	if db.Engine() == EnginePostgres {
-		return pgAdoptDB{db: db.PG()}
-	}
-	return sqliteAdoptDB{db: db.SQLiteRead()}
 }
 
 // Enqueue fences the previous goal and installs the newest target goal in one
@@ -557,19 +551,20 @@ func (j *adapterJournal) Gate(ctx context.Context, effect adapter.Effect) error 
 	if err := j.runtime.authorize(ctx, j.job, effect); err != nil {
 		return fmt.Errorf("%w", adapter.ErrUnauthorized)
 	}
-	db := j.runtime.readDB()
-	query := db.SQL(
-		`SELECT COUNT(*) FROM adapter_targets t JOIN adapter_outbox j ON j.target_id=t.id AND j.org_id=t.org_id AND j.project_id=t.project_id AND j.environment_id=t.environment_id WHERE t.id=? AND t.org_id=? AND t.project_id=? AND t.environment_id=? AND t.generation=? AND j.id=? AND j.state='running' AND j.lease_owner=? AND j.lease_expires_at>?`,
-	)
-	var count int
-	now := db.Stamp(time.Now().UTC())
-	if err := db.QueryRow(ctx, query, j.job.TargetID, j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID, j.job.Generation, j.job.ID, j.job.LeaseOwner, now).Scan(&count); err != nil {
-		return err
-	}
-	if count != 1 {
-		return adapter.ErrSuperseded
-	}
-	return nil
+	return dbRead(ctx, j.runtime.db, func(db adapterDB) error {
+		query := db.SQL(
+			`SELECT COUNT(*) FROM adapter_targets t JOIN adapter_outbox j ON j.target_id=t.id AND j.org_id=t.org_id AND j.project_id=t.project_id AND j.environment_id=t.environment_id WHERE t.id=? AND t.org_id=? AND t.project_id=? AND t.environment_id=? AND t.generation=? AND j.id=? AND j.state='running' AND j.lease_owner=? AND j.lease_expires_at>?`,
+		)
+		var count int
+		now := db.Stamp(time.Now().UTC())
+		if err := db.QueryRow(ctx, query, j.job.TargetID, j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID, j.job.Generation, j.job.ID, j.job.LeaseOwner, now).Scan(&count); err != nil {
+			return err
+		}
+		if count != 1 {
+			return adapter.ErrSuperseded
+		}
+		return nil
+	})
 }
 
 func adapterEffectKey(effect adapter.Effect) string {

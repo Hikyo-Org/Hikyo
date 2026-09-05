@@ -22,16 +22,21 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
+	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
@@ -81,9 +86,11 @@ func (s *Backup) now() time.Time {
 
 // ExportResult describes a durably published artifact.
 type ExportResult struct {
-	Path     string
-	Bytes    int64
-	Manifest store.Manifest
+	ReceiptPath string
+	Receipt     *backupreceipt.Receipt
+	Path        string
+	Bytes       int64
+	Manifest    store.Manifest
 }
 
 // Export writes one age-encrypted archive into dir and returns where it
@@ -91,6 +98,17 @@ type ExportResult struct {
 // datastore whose schema is about to change, and the record of it belongs
 // after the migration that follows. RecordExport is the other half.
 func (s *Backup) Export(ctx context.Context, dir string) (ExportResult, error) {
+	if s.DB == nil {
+		return ExportResult{}, errors.New("backup export requires admitted database")
+	}
+	return s.export(ctx, dir, false, func(ctx context.Context, writer io.Writer, work string) (store.Manifest, error) {
+		return store.Export(ctx, s.DB, writer, work)
+	})
+}
+
+type archiveWriter func(context.Context, io.Writer, string) (store.Manifest, error)
+
+func (s *Backup) export(ctx context.Context, dir string, upgrade bool, write archiveWriter) (ExportResult, error) {
 	if dir == "" {
 		return ExportResult{}, errors.New("backup export needs a destination directory")
 	}
@@ -133,7 +151,7 @@ func (s *Backup) Export(ctx context.Context, dir string) (ExportResult, error) {
 	if err := f.Chmod(0o600); err != nil {
 		return ExportResult{}, fmt.Errorf("backup staging file mode: %w", err)
 	}
-	result, err := s.writeArchive(ctx, f, work)
+	result, err := s.writeArchive(ctx, f, work, upgrade, write)
 	if err != nil {
 		return ExportResult{}, err
 	}
@@ -150,7 +168,7 @@ func (s *Backup) Export(ctx context.Context, dir string) (ExportResult, error) {
 	if err != nil {
 		return ExportResult{}, fmt.Errorf("backup artifact stat: %w", err)
 	}
-	final, err := s.publish(dir, partial)
+	final, err := s.publish(dir, partial, result.Manifest.Engine)
 	if err != nil {
 		return ExportResult{}, err
 	}
@@ -164,6 +182,12 @@ func (s *Backup) Export(ctx context.Context, dir string) (ExportResult, error) {
 		}
 	}
 	result.Path, result.Bytes = final, info.Size()
+	if result.Receipt != nil {
+		result.ReceiptPath, err = s.publishUpgradeReceipt(final, *result.Receipt, syncPaths)
+		if err != nil {
+			return ExportResult{}, err
+		}
+	}
 	return result, nil
 }
 
@@ -172,8 +196,8 @@ func (s *Backup) Export(ctx context.Context, dir string) (ExportResult, error) {
 // silently overwrite last night's backup. Same-second collisions get a
 // numeric suffix; more than a handful in one second is not an export cadence,
 // it is a bug, and it fails loudly.
-func (s *Backup) publish(dir, partial string) (string, error) {
-	base := fmt.Sprintf("hikyo-%s-%s", s.DB.Engine(), s.now().UTC().Format("20060102T150405Z"))
+func (s *Backup) publish(dir, partial string, engine store.Engine) (string, error) {
+	base := fmt.Sprintf("hikyo-%s-%s", engine, s.now().UTC().Format("20060102T150405Z"))
 	for n := range 10 {
 		name := base + ".age"
 		if n > 0 {
@@ -196,12 +220,13 @@ func (s *Backup) publish(dir, partial string) (string, error) {
 
 // writeArchive is the container-around-archive composition, kept separate so
 // every failure above unwinds the partial file exactly once.
-func (s *Backup) writeArchive(ctx context.Context, f *os.File, work string) (ExportResult, error) {
-	w, err := backup.Encrypt(f, s.Options)
+func (s *Backup) writeArchive(ctx context.Context, f *os.File, work string, upgrade bool, write archiveWriter) (ExportResult, error) {
+	hash := sha256.New()
+	w, err := backup.Encrypt(io.MultiWriter(f, hash), s.Options)
 	if err != nil {
 		return ExportResult{}, err
 	}
-	manifest, err := store.Export(ctx, s.DB, w, work)
+	manifest, err := write(ctx, w, work)
 	if err != nil {
 		w.Close()
 		return ExportResult{}, err
@@ -212,7 +237,25 @@ func (s *Backup) writeArchive(ctx context.Context, f *os.File, work string) (Exp
 	if err := w.Close(); err != nil {
 		return ExportResult{}, fmt.Errorf("seal backup container: %w", err)
 	}
-	return ExportResult{Manifest: manifest}, nil
+	result := ExportResult{Manifest: manifest}
+	if upgrade {
+		if manifest.Upgrade == nil {
+			return ExportResult{}, errors.New("upgrade export omitted snapshot authority")
+		}
+		digest, err := store.ManifestDigest(manifest)
+		if err != nil {
+			return ExportResult{}, err
+		}
+		position, err := f.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return ExportResult{}, err
+		}
+		result.Receipt = &backupreceipt.Receipt{Format: backupreceipt.ReceiptFormat, CiphertextSHA256: releaseidentity.Digest(hex.EncodeToString(hash.Sum(nil))), CiphertextBytes: position, ManifestSHA256: digest, Snapshot: manifest.Upgrade.Clone()}
+		if err := result.Receipt.Validate(); err != nil {
+			return ExportResult{}, err
+		}
+	}
+	return result, nil
 }
 
 // RecordExport writes the export's audit event. It is separate from Export

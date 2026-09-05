@@ -58,7 +58,7 @@ func bootComposeRig(t *testing.T, engine store.Engine) *composeRig {
 	_ = serveRetentionApp(t, srv)
 	waitHTTP(t, "http://"+srv.OperationalAddr+"/healthz")
 
-	db, err := store.Open(t.Context(), retentionStoreConfig(cfg))
+	db, err := openBootedIsolationFixture(t, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

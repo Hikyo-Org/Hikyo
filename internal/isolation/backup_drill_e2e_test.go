@@ -28,10 +28,10 @@ package isolation
 
 import (
 	"bytes"
-	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"io"
 	"log/slog"
 	"net/url"
@@ -53,8 +53,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
-	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 	"github.com/Hikyo-Org/hikyo/internal/webauthntest"
 )
 
@@ -152,15 +150,15 @@ func postgresTarget(t *testing.T, backupDir, recipient string) drillTarget {
 	dsn := derivedDatabase(t, postgresTestDSN(t), "_drill")
 	drop := func(t *testing.T) {
 		t.Helper()
-		db, err := store.Open(t.Context(), store.Config{Engine: store.EnginePostgres, DSN: dsn})
+		db, err := pgx.Connect(t.Context(), dsn)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer db.Close()
+		defer db.Close(t.Context())
 		// Drop the whole schema rather than an enumerated table list: this is
 		// the drill's "the instance is gone" step, and a list that drifted
 		// from the migrations would leave the restore merging into debris.
-		if _, err := db.PG().Exec(t.Context(), "DROP SCHEMA public CASCADE; CREATE SCHEMA public"); err != nil {
+		if _, err := db.Exec(t.Context(), "DROP SCHEMA public CASCADE; CREATE SCHEMA public"); err != nil {
 			t.Fatalf("destroy postgres instance: %v", err)
 		}
 	}
@@ -186,12 +184,23 @@ func (d drillTarget) storeConfig() store.Config {
 
 func (d drillTarget) open(t *testing.T) *store.DB {
 	t.Helper()
-	db, err := store.Open(t.Context(), d.storeConfig())
+	db, err := openBootedIsolationFixture(t, d.cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
 	return db
+}
+
+// configureCustody keeps the actual signed development bundle stable across
+// export, destruction and explicit recovery. Root escrow remains separate.
+func (d drillTarget) configureCustody(t *testing.T, c custody) {
+	t.Helper()
+	d.cfg.Dev = true
+	d.cfg.RootKeyFile = filepath.Join(c.rootStore, "rootkey")
+	if d.cfg.Upgrade.StateDirectory == "" {
+		d.cfg.Upgrade.StateDirectory = isolationCustodyDirectory(t)
+	}
 }
 
 // artifacts are every credential value the drill holds in its hand before the
@@ -248,9 +257,7 @@ func authWithRoot(t *testing.T, db *store.DB, root []byte) *service.Auth {
 // that merely looks inert is not the same claim.
 func buildInstance(t *testing.T, target drillTarget, c custody) (*store.DB, artifacts) {
 	t.Helper()
-	if err := migrate.Run(t.Context(), target.storeConfig()); err != nil {
-		t.Fatal(err)
-	}
+	target.configureCustody(t, c)
 	db := target.open(t)
 	for _, stmt := range fixtureSQL {
 		execRaw(t, db, stmt)
@@ -543,6 +550,7 @@ func runBackupRestoreDrill(t *testing.T, target drillTarget, c custody) {
 		io.Discard, nil, nil); err != nil {
 		t.Fatalf("restore: %v", err)
 	}
+	recoverRestoredTarget(t, target, c)
 	restored := target.open(t)
 
 	t.Run("the_instance_actually_came_back", func(t *testing.T) {
@@ -761,12 +769,14 @@ func assertTargetUntouched(t *testing.T, target drillTarget) {
 		}
 		return
 	}
-	db, err := store.Open(t.Context(), sc)
+	db, err := pgx.Connect(t.Context(), sc.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
-	empty, err := store.PostgresIsEmpty(t.Context(), db)
+	defer db.Close(t.Context())
+	var count int
+	err = db.QueryRow(t.Context(), "SELECT COUNT(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind IN ('r','p','v','m','S','f')").Scan(&count)
+	empty := count == 0
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1023,22 +1033,22 @@ func TestNoBulkAcceptInTheAPISurface(t *testing.T) {
 	}
 }
 
-// runBackupLifecycle drives every backup.* and restore.* event type through a
-// real emitter, so the audit suite's "declaration without an emitter" check
-// has something behind each registration.
-//
-// It advances the restore epoch on the shared fixture datastore and then
-// reconciles the principals it made inert — ONE CALL PER PRINCIPAL, through
-// the same per-principal surface an operator uses. That loop is a test walking
-// a list, not a bulk-accept path: there is no call that reconciles a set, and
-// TestNoBulkAcceptInTheAPISurface asserts there is none.
-func runBackupLifecycle(t *testing.T, db *store.DB) {
+// runBackupLifecycle uses a separate genuine instance because the shared audit
+// corpus deliberately contains malformed ciphertext. Every event still comes
+// from its real emitter; no audit rows are copied. Recovery advances its own
+// epoch and reconciles one principal per operation, without resetting authority.
+func runBackupLifecycle(t *testing.T, engine store.Engine) *store.DB {
 	t.Helper()
 	ctx := t.Context()
-	_, recipient, err := backup.GenerateIdentity()
-	if err != nil {
-		t.Fatal(err)
+	c := newCustody(t)
+	var target drillTarget
+	if engine == store.EnginePostgres {
+		target = postgresTarget(t, t.TempDir(), c.recipient(t))
+	} else {
+		target = sqliteTarget(t, t.TempDir(), c.recipient(t))
 	}
+	db, _ := buildInstance(t, target, c)
+	recipient := c.recipient(t)
 	svc := &service.Backup{DB: db, Options: backup.Options{Recipients: []string{recipient}}}
 	result, err := svc.Export(ctx, t.TempDir())
 	if err != nil {
@@ -1065,11 +1075,18 @@ func runBackupLifecycle(t *testing.T, db *store.DB) {
 		t.Fatalf("restore.drill_completed: %v", err)
 	}
 
-	// restore.completed is the restore transaction's own closure. Running it
-	// here against the fixture datastore is the same act it performs there.
-	if err := runRestoreClosure(ctx, db, result.Manifest); err != nil {
-		t.Fatalf("restore.completed: %v", err)
+	// Use a real archive restore so the ledger invalidation and restore audit
+	// closure execute together. A fresh proof is then required before reopening.
+	archive := exportArchive(t, target)
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
 	}
+	target.destroy(t)
+	if err := app.RunRestore(ctx, target.cfg, drillLogger(), []string{"run", "--from", archive, "--identity-file", c.identityFile()}, io.Discard, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	recoverRestoredTarget(t, target, c)
+	db = target.open(t)
 	restore := &service.Restore{DB: db}
 	status, err := restore.Status(ctx)
 	if err != nil {
@@ -1088,19 +1105,7 @@ func runBackupLifecycle(t *testing.T, db *store.DB) {
 		t.Fatalf("%d principals remain inert after the lifecycle", len(final.Pending))
 	}
 
-	// Put the shared fixture datastore back the way it was found. This
-	// function exists to prove every registered event type has a real emitter,
-	// not to leave the suites that run after it testing a restored instance:
-	// they seed principals with raw SQL, which bypasses the born-reconciled
-	// stamp, and would then be silently unauthorized for reasons that have
-	// nothing to do with what they are asserting. The real restore semantics
-	// are the drill's subject, on a datastore of its own.
-	execRaw(t, db, "UPDATE auth_instance_state SET credential_epoch = 1, restore_epoch = 0, reactivated_at = NULL WHERE id = 1")
-	execRaw(t, db, "UPDATE principals SET reconciled_epoch = 0")
-}
-
-func runRestoreClosure(ctx context.Context, db *store.DB, m store.Manifest) error {
-	return tx.Reconcile(ctx, db, service.CompleteRestore(time.Now().UTC(), m))
+	return db
 }
 
 // MaxKnownCredentialEpoch is a curated table list, and a curated list's
@@ -1111,10 +1116,7 @@ func runRestoreClosure(ctx context.Context, db *store.DB, m store.Manifest) erro
 // named in BOTH engines' query text.
 func TestMaxKnownCredentialEpochCoversEveryEpochColumn(t *testing.T) {
 	cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "epoch.db")}
-	if err := migrate.Run(t.Context(), cfg); err != nil {
-		t.Fatal(err)
-	}
-	db, err := store.Open(t.Context(), cfg)
+	db, err := openIsolationFixture(t, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1150,16 +1152,15 @@ func TestMaxKnownCredentialEpochCoversEveryEpochColumn(t *testing.T) {
 func TestRestoreRefusesImplausibleEpochStamps(t *testing.T) {
 	c := newCustody(t)
 	target := sqliteTarget(t, t.TempDir(), c.recipient(t))
-	if err := migrate.Run(t.Context(), target.storeConfig()); err != nil {
-		t.Fatal(err)
-	}
+	target.configureCustody(t, c)
 	db := target.open(t)
 	for _, stmt := range fixtureSQL {
 		execRaw(t, db, stmt)
 	}
 	seedOrigins(t, db)
-	execRaw(t, db, `UPDATE auth_instance_state SET restore_epoch = 9223372036854775807 WHERE id = 1`)
-	archive := exportArchive(t, target)
+	original := exportArchive(t, target)
+	execRaw(t, db, `UPDATE auth_instance_state SET credential_epoch = 9223372036854775807 WHERE id = 1`)
+	archive := forgeFixtureArchive(t, db, c, original)
 	target.destroy(t)
 	err := app.RunRestore(t.Context(), target.cfg, drillLogger(),
 		[]string{"run", "--from", archive, "--identity-file", c.identityFile()},
@@ -1192,35 +1193,40 @@ func TestRestoreDistrustsArchiveEpochStampsPostgres(t *testing.T) {
 }
 
 func runRestoreEpochForgery(t *testing.T, target drillTarget, c custody) {
-	if err := migrate.Run(t.Context(), target.storeConfig()); err != nil {
-		t.Fatal(err)
-	}
+	target.configureCustody(t, c)
 	db := target.open(t)
 	for _, stmt := range fixtureSQL {
 		execRaw(t, db, stmt)
 	}
 	seedOrigins(t, db)
+	identityFixtures(t, db)
 
-	// The forgery: a session stamped ahead of the instance epoch, the instance
-	// row claiming a restore epoch chosen so that "archive counter + 1" would
-	// bring the planted stamps to life, and every principal marked reconciled
-	// against a far-future restore epoch.
+	original := exportArchive(t, target)
+
+	// The forgery: sessions stamped ahead of the instance credential counter
+	// and every principal marked reconciled against a far-future restore epoch.
+	// The release ledger and archived restore epoch remain internally consistent.
 	verifier := "X'666f7267656421'"
 	if target.cfg.Store.Engine == config.EnginePostgres {
 		verifier = `'\x666f7267656421'`
 	}
 	execRaw(t, db, `INSERT INTO sessions (id, principal_id, verifier, artifact, session_generation, credential_epoch, auth_method, factors, authenticated_at, created_at, last_seen_at, idle_expires_at, absolute_expires_at, source_ip, user_agent) `+
 		`VALUES ('ses_forged', 'usr_alice', `+verifier+`, 'cli', 1, 50, 'password', '[]', `+ts+`, `+ts+`, `+ts+`, '2030-01-01T00:00:00.000000Z', '2030-01-01T00:00:00.000000Z', '127.0.0.1', 'forge')`)
-	execRaw(t, db, `UPDATE auth_instance_state SET credential_epoch = 3, restore_epoch = 9999 WHERE id = 1`)
+	// Preserve valid archived restore/ledger binding while planting the largest
+	// stamp in a separate credential row. The original forged-50 session remains.
+	execRaw(t, db, `INSERT INTO sessions (id, principal_id, verifier, artifact, session_generation, credential_epoch, auth_method, factors, authenticated_at, created_at, last_seen_at, idle_expires_at, absolute_expires_at, source_ip, user_agent) `+
+		`VALUES ('ses_epoch_outlier', 'usr_alice', `+strings.Replace(verifier, "666f7267656421", "666f7267656422", 1)+`, 'cli', 1, 9999, 'password', '[]', `+ts+`, `+ts+`, `+ts+`, '2030-01-01T00:00:00.000000Z', '2030-01-01T00:00:00.000000Z', '127.0.0.1', 'forge')`)
+	execRaw(t, db, `UPDATE auth_instance_state SET credential_epoch = 3 WHERE id = 1`)
 	execRaw(t, db, `UPDATE principals SET reconciled_epoch = 100000`)
 
-	archive := exportArchive(t, target)
+	archive := forgeFixtureArchive(t, db, c, original)
 	target.destroy(t)
 	if err := app.RunRestore(t.Context(), target.cfg, drillLogger(),
 		[]string{"run", "--from", archive, "--identity-file", c.identityFile()},
 		io.Discard, nil, nil); err != nil {
 		t.Fatalf("restore: %v", err)
 	}
+	recoverRestoredTarget(t, target, c)
 	restored := target.open(t)
 
 	// One past the largest stamp anywhere in the archive (the forged 9999),
@@ -1258,14 +1264,14 @@ func drillScratch(t *testing.T, target drillTarget) store.Config {
 		return store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "scratch.db")}
 	case store.EnginePostgres:
 		dsn := derivedDatabase(t, target.cfg.Store.DSN, "scratch")
-		db, err := store.Open(t.Context(), store.Config{Engine: store.EnginePostgres, DSN: dsn})
+		db, err := pgx.Connect(t.Context(), dsn)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.PG().Exec(t.Context(), "DROP SCHEMA public CASCADE; CREATE SCHEMA public"); err != nil {
+		if _, err := db.Exec(t.Context(), "DROP SCHEMA public CASCADE; CREATE SCHEMA public"); err != nil {
 			t.Fatalf("empty drill scratch: %v", err)
 		}
-		db.Close()
+		db.Close(t.Context())
 		return store.Config{Engine: store.EnginePostgres, DSN: dsn}
 	default:
 		t.Fatalf("unknown engine %q", target.cfg.Store.Engine)

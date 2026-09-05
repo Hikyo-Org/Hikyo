@@ -7,10 +7,12 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
+	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
+	"github.com/Hikyo-Org/hikyo/internal/upgradegate/testfixture"
 )
 
 // scheduleFixture is a fully migrated sqlite instance with a real export
@@ -19,9 +21,12 @@ func scheduleFixture(t *testing.T) (*config.Config, *service.Backup, string) {
 	t.Helper()
 	dir := t.TempDir()
 	sc := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(dir, "hikyo.db")}
-	if err := migrate.Run(t.Context(), sc); err != nil {
+	root, err := crypto.GenerateRootKey()
+	if err != nil {
 		t.Fatal(err)
 	}
+	defer crypto.Zero(root)
+	admission := testfixture.Prepare(t, upgrade.Config{Engine: "sqlite", Path: sc.Path}, store.MigrationsFS, "migrations/sqlite", root)
 	_, recipient, err := backup.GenerateIdentity()
 	if err != nil {
 		t.Fatal(err)
@@ -37,7 +42,7 @@ func scheduleFixture(t *testing.T) (*config.Config, *service.Backup, string) {
 		BackupRetainDays:  config.DefaultBackupRetainDays,
 		BackupRTOTarget:   config.DefaultBackupRTOTarget,
 	}
-	db, err := store.Open(t.Context(), sc)
+	db, err := store.Open(t.Context(), sc, admission)
 	if err != nil {
 		t.Fatal(err)
 	}

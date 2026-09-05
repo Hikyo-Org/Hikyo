@@ -49,6 +49,9 @@ func (s *Session) ApplyMigrations(ctx context.Context, expected State, source em
 	if digest != expected.Pending.TargetMigrationDigest {
 		return errors.New("upgrade: embedded migration digest differs from prepared target")
 	}
+	if err := s.checkMigrationHistory(ctx, expected, manifest); err != nil {
+		return err
+	}
 	migrations, err := fs.Sub(source, directory)
 	if err != nil {
 		return err
@@ -57,6 +60,10 @@ func (s *Session) ApplyMigrations(ctx context.Context, expected State, source em
 }
 
 func (s *Session) applyEmbedded(ctx context.Context, migrations fs.FS) error {
+	return s.applyEmbeddedThrough(ctx, migrations, 0)
+}
+
+func (s *Session) applyEmbeddedThrough(ctx context.Context, migrations fs.FS, version int64) error {
 	err := s.conn.Raw(func(value any) error {
 		var borrowed driver.Conn
 		var valid func() bool
@@ -78,7 +85,12 @@ func (s *Session) applyEmbedded(ctx context.Context, migrations fs.FS) error {
 		default:
 			return errors.New("upgrade: unknown migration engine")
 		}
-		if err := runBorrowedMigrations(ctx, borrowed, s.engine, migrations); err != nil {
+		// Private fixture seam wraps the real driver, never replaces goose or
+		// the owned connection. Production sessions leave it nil.
+		if s.wrapMigrationDriver != nil {
+			borrowed = s.wrapMigrationDriver(borrowed)
+		}
+		if err := runBorrowedMigrationsThrough(ctx, borrowed, s.engine, migrations, version); err != nil {
 			// Returning exactly ErrBadConn makes database/sql discard the owned physical
 			// connection. The caller retains the durable post-write marker regardless.
 			if !valid() {
@@ -147,6 +159,10 @@ type migrationSQLiteConn struct{ migrationSQLiteDriver }
 func (*migrationSQLiteConn) Close() error { return nil }
 
 func runBorrowedMigrations(ctx context.Context, borrowed driver.Conn, engine releaseidentity.Engine, migrations fs.FS) (err error) {
+	return runBorrowedMigrationsThrough(ctx, borrowed, engine, migrations, 0)
+}
+
+func runBorrowedMigrationsThrough(ctx context.Context, borrowed driver.Conn, engine releaseidentity.Engine, migrations fs.FS, version int64) (err error) {
 	connector := &migrationConnector{conn: borrowed, active: true}
 	inner := sql.OpenDB(connector)
 	inner.SetMaxOpenConns(1)
@@ -173,6 +189,10 @@ func runBorrowedMigrations(ctx context.Context, borrowed driver.Conn, engine rel
 	if err != nil {
 		return err
 	}
-	_, err = provider.Up(ctx)
+	if version > 0 {
+		_, err = provider.UpTo(ctx, version)
+	} else {
+		_, err = provider.Up(ctx)
+	}
 	return err
 }

@@ -15,7 +15,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 )
 
 const corsQueryDriverName = "hikyo-cors-query-counter"
@@ -60,11 +59,7 @@ func (c *queryCountingConn) QueryContext(ctx context.Context, query string, args
 
 func TestCORSRequestsIssueNoAllowlistQueriesAfterSnapshot(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "cors-query-count.db")
-	migrationConfig := store.Config{Engine: store.EngineSQLite, Path: path}
-	if err := migrate.Run(t.Context(), migrationConfig); err != nil {
-		t.Fatal(err)
-	}
-	db, err := store.Open(t.Context(), store.Config{
+	db, err := openIsolationFixture(t, store.Config{
 		Engine: store.EngineSQLite, Path: path, SQLiteDriver: corsQueryDriverName,
 	})
 	if err != nil {

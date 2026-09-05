@@ -366,11 +366,15 @@ var ErrNoSecretToProve = errors.New("restored instance holds no secret value to 
 // to decrypt the container, root key now) reconstitutes plaintext. It never
 // returns, prints or logs the plaintext: the boolean is the whole answer.
 func (s *Backup) ProveValuesReadable(ctx context.Context, kr *crypto.Keyring) (bool, error) {
+	return proveValuesReadable(ctx, func(ctx context.Context, fn tx.ReadFn) error { return tx.Read(ctx, s.DB, fn) }, kr)
+}
+
+func proveValuesReadable(ctx context.Context, read func(context.Context, tx.ReadFn) error, kr *crypto.Keyring) (bool, error) {
 	if kr == nil {
 		return false, errors.New("service: proving values readable needs the root keyring")
 	}
 	var entry store.ValueEntry
-	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
+	err := read(ctx, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
 		p, err := authz.SystemAuthority(authz.SiteScheduler, az.Token())
 		if err != nil {
 			return err

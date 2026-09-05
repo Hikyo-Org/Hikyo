@@ -17,9 +17,14 @@ REGISTRY_PORT=5001
 IMAGE_REPOSITORY="localhost:$REGISTRY_PORT/hikyo-chart-e2e"
 IMAGE_TAG="$IMAGE_REPOSITORY:local"
 BINARY=${HIKYO_CHART_KIND_BINARY:-}
+PUBLIC_DIR=${HIKYO_CHART_KIND_PUBLIC_DIR:-}
 
 if [[ -z "$BINARY" || ! -f "$BINARY" ]]; then
 	echo "chart-kind: HIKYO_CHART_KIND_BINARY must name the candidate Linux binary" >&2
+	exit 2
+fi
+if [[ -z "$PUBLIC_DIR" || ! -f "$PUBLIC_DIR/bundle/index.json" || ! -f "$PUBLIC_DIR/operator.pub" ]]; then
+	echo "chart-kind: HIKYO_CHART_KIND_PUBLIC_DIR must name the matching signed fixture bundle and operator public key" >&2
 	exit 2
 fi
 for command in kind kubectl helm docker jq openssl curl; do
@@ -81,6 +86,17 @@ export KUBECONFIG="$kubeconfig"
 docker network connect kind "$REGISTRY_NAME"
 registry_dir="/etc/containerd/certs.d/localhost:$REGISTRY_PORT"
 while IFS= read -r node; do
+	# Copy regular public files into this run's disposable node; projected
+	# ConfigMap symlinks deliberately do not bypass the gate's filesystem checks.
+	docker exec "$node" mkdir -p /var/lib/hikyo-chart-public /var/lib/hikyo-chart-state
+	docker cp "$PUBLIC_DIR/." "$node:/var/lib/hikyo-chart-public/"
+	docker exec "$node" chown 65532:65532 /var/lib/hikyo-chart-state
+	# Match kubelet's fsGroup root check, including setgid, so a CSI mount
+	# never recursively loosens the private custody child's permissions.
+	docker exec "$node" chmod 2770 /var/lib/hikyo-chart-state
+	docker exec "$node" mkdir -p /var/lib/hikyo-chart-state/operator-custody
+	docker exec "$node" chown 65532:65532 /var/lib/hikyo-chart-state/operator-custody
+	docker exec "$node" chmod 0700 /var/lib/hikyo-chart-state/operator-custody
 	docker exec "$node" mkdir -p "$registry_dir"
 	cat <<EOF | docker exec --interactive "$node" sh -c "cat >'$registry_dir/hosts.toml'"
 [host."http://$REGISTRY_NAME:5000"]
@@ -136,6 +152,34 @@ openssl rand -hex 32 >"$work/root-key"
 chmod 0400 "$work/root-key"
 
 kubectl create namespace "$NAMESPACE" >/dev/null
+for custody in public state; do
+	cat <<EOF | kubectl apply --filename - >/dev/null
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: hikyo-chart-upgrade-$custody
+spec:
+  capacity: {storage: 1Gi}
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: hikyo-chart-kind
+  hostPath:
+    path: /var/lib/hikyo-chart-$custody
+    type: Directory
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hikyo-upgrade-$custody
+  namespace: $NAMESPACE
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: hikyo-chart-kind
+  volumeName: hikyo-chart-upgrade-$custody
+  resources:
+    requests: {storage: 1Gi}
+EOF
+done
 kubectl --namespace "$NAMESPACE" create secret generic postgres-auth \
 	--from-literal=username=hikyo \
 	--from-literal=password=hikyo \
@@ -249,6 +293,8 @@ chart_values=(
 	--set database.existingSecret=hikyo-database \
 	--set database.tls.existingSecret=hikyo-database-ca \
 	--set rootKey.existingSecret=hikyo-root-key \
+	--set upgrade.existingClaim=hikyo-upgrade-public \
+	--set upgrade.stateExistingClaim=hikyo-upgrade-state \
 	--set externalOrigin=http://127.0.0.1:18080 \
 	--set network.allowPlaintextOrigin=true \
 	--set 'network.trustedProxyCIDRs={10.0.0.0/8}'

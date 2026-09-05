@@ -57,3 +57,10 @@ Operator: disabled
 {{- end }}
 
 Hikyo values land in native Kubernetes Secrets, which are plaintext at rest by default on K3s. Enable --secrets-encryption to encrypt them, and see the docs runbook.
+Manual upgrade artifacts:
+  Public bundle and operator key: PVC {{ .Values.upgrade.existingClaim }} (read-only)
+  Persistent installation custody: PVC {{ .Values.upgrade.stateExistingClaim }}
+  State volume root: gid 65532 mode 2770; operator-custody child: uid 65532 mode 0700.
+  Keep these available on every boot; never restore installation custody from a DB backup.
+  Stop all writers and run one verified migrator before replacing an existing release.
+  Runbook: https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/manual-upgrades.md

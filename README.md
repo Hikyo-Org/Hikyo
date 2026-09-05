@@ -138,10 +138,10 @@ One binary handles both operator and day-to-day client workflows.
 ```bash
 # Operate the instance
 hikyo server [--dev] [--listen ADDR] [--root-key-file PATH]
-hikyo migrate
-hikyo admin create --username admin
-hikyo backup export
-hikyo restore run --from <archive> --identity-file <path>
+hikyo migrate [--dev]
+hikyo admin [--dev] create --username admin
+hikyo backup [--dev] export
+hikyo restore [--dev] run --from <archive> --identity-file <path>
 hikyo update channel stable|nightly|off
 hikyo update check
 

@@ -86,6 +86,15 @@ func inspectCatalogWith(ctx context.Context, queryRows catalogQuery, engine rele
 	if err != nil {
 		return Catalog{}, err
 	}
+	c.Applied, err = inspectAppliedWith(ctx, queryRows, engine)
+	if err != nil {
+		return Catalog{}, err
+	}
+	return c, nil
+}
+
+func inspectAppliedWith(ctx context.Context, queryRows catalogQuery, engine releaseidentity.Engine) ([]int64, error) {
+	var err error
 	var rows catalogRows
 	var hasGoose bool
 	if engine == releaseidentity.SQLite {
@@ -94,44 +103,45 @@ func inspectCatalogWith(ctx context.Context, queryRows catalogQuery, engine rele
 		rows, err = queryRows(ctx, `SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='goose_db_version' AND c.relkind='r'`)
 	}
 	if err != nil {
-		return Catalog{}, err
+		return nil, err
 	}
 	hasGoose = rows.Next()
 	err = rows.Err()
 	rows.Close()
 	if err != nil {
-		return Catalog{}, err
+		return nil, err
 	}
 	if !hasGoose {
-		return c, nil
+		return []int64{}, nil
 	}
 	// Canonical legacy goose history is one applied row per version, including
 	// exactly one zero bookkeeping row. Down/duplicate/unknown history refuses.
 	rows, err = queryRows(ctx, `SELECT version_id,is_applied FROM goose_db_version ORDER BY id`)
 	if err != nil {
-		return Catalog{}, err
+		return nil, err
 	}
 	defer rows.Close()
+	var applied []int64
 	var previous int64 = -1
 	for rows.Next() {
 		var version int64
-		var applied bool
-		if err := rows.Scan(&version, &applied); err != nil {
-			return Catalog{}, err
+		var isApplied bool
+		if err := rows.Scan(&version, &isApplied); err != nil {
+			return nil, err
 		}
-		if !applied || version <= previous || (previous == -1 && version != 0) {
-			return Catalog{}, ErrGenesis
+		if !isApplied || version <= previous || (previous == -1 && version != 0) {
+			return nil, ErrGenesis
 		}
 		previous = version
-		c.Applied = append(c.Applied, version)
+		applied = append(applied, version)
 	}
 	if err := rows.Err(); err != nil {
-		return Catalog{}, err
+		return nil, err
 	}
-	if len(c.Applied) == 0 {
-		return Catalog{}, ErrGenesis
+	if len(applied) == 0 {
+		return nil, ErrGenesis
 	}
-	return c, nil
+	return applied, nil
 }
 
 const sqliteCatalogSQL = `SELECT json_array(type,name,tbl_name,sql) FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name`

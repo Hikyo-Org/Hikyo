@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/pressly/goose/v3"
 
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -86,15 +87,15 @@ func postgresTestConfig(t *testing.T, label string) store.Config {
 	}
 	base := strings.TrimPrefix(parsed.Path, "/")
 	database := fmt.Sprintf("%s_%s_%d", base, label, time.Now().UnixNano())
-	admin, err := store.Open(t.Context(), store.Config{Engine: store.EnginePostgres, DSN: dsn})
+	admin, err := pgx.Connect(t.Context(), dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_, _ = admin.PG().Exec(context.Background(), `DROP DATABASE IF EXISTS "`+strings.ReplaceAll(database, `"`, ``)+`" WITH (FORCE)`)
-		admin.Close()
+		_, _ = admin.Exec(context.Background(), `DROP DATABASE IF EXISTS "`+strings.ReplaceAll(database, `"`, ``)+`" WITH (FORCE)`)
+		admin.Close(context.Background())
 	})
-	if _, err := admin.PG().Exec(t.Context(), `CREATE DATABASE "`+strings.ReplaceAll(database, `"`, ``)+`"`); err != nil {
+	if _, err := admin.Exec(t.Context(), `CREATE DATABASE "`+strings.ReplaceAll(database, `"`, ``)+`"`); err != nil {
 		t.Fatal(err)
 	}
 	parsed.Path = "/" + database
@@ -148,58 +149,40 @@ func runUpgradeOldToNew(t *testing.T, cfg store.Config) {
 	}
 }
 
-func execUpgrade(t *testing.T, cfg store.Config, stmt string) {
+// Historical schema fixtures deliberately own native SQL connections. They do
+// not construct runtime stores for schemas a signed candidate would refuse.
+func migrationFixtureSQL(t *testing.T, cfg store.Config) *sql.DB {
 	t.Helper()
-	db, err := store.Open(t.Context(), cfg)
+	driver, dsn := "sqlite", store.SQLiteDSN(cfg.Path)
+	if cfg.Engine == store.EnginePostgres {
+		driver, dsn = "pgx", cfg.DSN
+	}
+	db, err := sql.Open(driver, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
-	if db.Engine() == store.EnginePostgres {
-		if _, err := db.PG().Exec(t.Context(), stmt); err != nil {
-			t.Fatalf("seed exec: %v", err)
-		}
-		return
-	}
-	if _, err := db.SQLiteWrite().ExecContext(t.Context(), stmt); err != nil {
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+func execUpgrade(t *testing.T, cfg store.Config, stmt string) {
+	t.Helper()
+	if _, err := migrationFixtureSQL(t, cfg).ExecContext(t.Context(), stmt); err != nil {
 		t.Fatalf("seed exec: %v", err)
 	}
 }
-
 func countUpgrade(t *testing.T, cfg store.Config, query string) int {
 	t.Helper()
-	db, err := store.Open(t.Context(), cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
 	var n int
-	if db.Engine() == store.EnginePostgres {
-		if err := db.PG().QueryRow(t.Context(), query).Scan(&n); err != nil {
-			t.Fatalf("count query: %v", err)
-		}
-		return n
-	}
-	if err := db.SQLiteWrite().QueryRowContext(t.Context(), query).Scan(&n); err != nil {
+	if err := migrationFixtureSQL(t, cfg).QueryRowContext(t.Context(), query).Scan(&n); err != nil {
 		t.Fatalf("count query: %v", err)
 	}
 	return n
 }
-
 func insertMCPAuditOrigin(t *testing.T, cfg store.Config, id string) error {
 	t.Helper()
-	db, err := store.Open(t.Context(), cfg)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
 	query := "INSERT INTO audit_instance_events " +
 		"(id, type, schema_version, occurred_at, occurred_asserted, recorded_at, actor_class, outcome, origin, payload) " +
 		"VALUES ('" + id + "', 'grant.denied', 1, '2026-01-01T00:00:00Z', FALSE, '2026-01-01T00:00:00Z', 'unauthenticated', 'denied', 'mcp', '{}')"
-	if db.Engine() == store.EnginePostgres {
-		_, err = db.PG().Exec(t.Context(), query)
-		return err
-	}
-	_, err = db.SQLiteWrite().ExecContext(t.Context(), query)
+	_, err := migrationFixtureSQL(t, cfg).ExecContext(t.Context(), query)
 	return err
 }

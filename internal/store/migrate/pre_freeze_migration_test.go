@@ -2,10 +2,21 @@ package migrate
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
+	"encoding/json"
+	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
+	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
+	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
+	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
+	bundlefixture "github.com/Hikyo-Org/hikyo/internal/upgradebundle/testfixture"
+	"github.com/Hikyo-Org/hikyo/internal/upgradecompat"
+	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/pressly/goose/v3"
@@ -81,13 +92,10 @@ func testRetiredProviderPolicy(t *testing.T, cfg store.Config) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	source, err := store.Open(ctx, cfg)
+	authenticated, plan := historicalPreparedArchive(t, cfg)
+	defer authenticated.Close()
+	archive, err := authenticated.Open()
 	if err != nil {
-		t.Fatal(err)
-	}
-	defer source.Close()
-	var archive bytes.Buffer
-	if _, err := store.Export(ctx, source, &archive, t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
 	restored := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "restored.db")}
@@ -98,17 +106,26 @@ func testRetiredProviderPolicy(t *testing.T, cfg store.Config) {
 		if err := Run(ctx, restored); err != nil {
 			t.Fatal(err)
 		}
-		target, err := store.Open(ctx, restored)
+		err = upgrade.WithLock(ctx, upgrade.Config{Engine: releaseidentity.Postgres, DSN: restored.DSN}, func(session *upgrade.Session) error {
+			authority, err := session.ValidateRestoreDestination(ctx, authenticated, plan)
+			if err != nil {
+				return err
+			}
+			target, err := store.OpenRestoreDestination(ctx, restored, authority, authenticated, plan)
+			if err != nil {
+				return err
+			}
+			defer target.Close()
+			_, err = target.RestorePostgres(ctx, nil)
+			return err
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer target.Close()
-		if _, err := store.RestorePostgres(ctx, target, &archive, nil); err != nil {
-			t.Fatal(err)
-		}
-	} else if _, err := store.RestoreSQLite(ctx, &archive, restored.Path, nil); err != nil {
+	} else if _, err := store.RestoreUpgradeSQLite(ctx, archive, restored.Path, plan, func(context.Context, *sql.Tx) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
+
 	if after := retainedIdentityRows(t, restored); !reflect.DeepEqual(before, after) {
 		t.Fatalf("backup restore changed retained identity rows: before=%#v after=%#v", before, after)
 	}
@@ -171,4 +188,90 @@ func retainedIdentityRows(t *testing.T, cfg store.Config) map[string][][]any {
 		t.Fatal(err)
 	}
 	return snapshot
+}
+
+// Historical migration compatibility uses the genuine signed legacy
+// preparation/export protocol, never an unrestricted runtime store.
+func historicalPreparedArchive(t *testing.T, cfg store.Config) (*backupreceipt.AuthenticatedArchive, upgradecompat.Plan) {
+	t.Helper()
+	engine := releaseidentity.Engine(cfg.Engine)
+	sourceConfig := upgrade.Config{Engine: engine, Path: cfg.Path, DSN: cfg.DSN}
+	manifest, err := upgrade.PinnedLegacyManifest(engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installed, err := upgrade.InspectInstalled(t.Context(), sourceConfig, manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle := bundlefixture.Write(t, upgradecompat.InstalledSource{Identity: installed.Source, Migrations: manifest, SchemaSHA256: installed.SchemaDigest}, []bundlefixture.Target{{Version: "1.0.0", Sequence: 1, Commit: strings.Repeat("a", 40), Migrations: manifest, SchemaSHA256: installed.SchemaDigest}})
+	proposal, err := backupreceipt.NewLegacyProposal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	nonce, err := backupreceipt.NewNonce()
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, recipient, err := backup.GenerateIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := backup.Options{Recipients: []string{recipient}}
+	fingerprints, err := options.UpgradeRecipientFingerprints()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plain bytes.Buffer
+	var archived store.Manifest
+	err = upgrade.WithLock(t.Context(), sourceConfig, func(session *upgrade.Session) error {
+		admission, err := session.PrepareExport(t.Context(), bundle.Plan)
+		if err != nil {
+			return err
+		}
+		source, err := store.OpenPreparation(t.Context(), cfg, admission)
+		if err != nil {
+			return err
+		}
+		defer source.Close()
+		archived, err = source.ExportUpgrade(t.Context(), &plain, t.TempDir(), store.UpgradeExportRequest{Plan: bundle.Plan, Recipients: fingerprints, LegacyProposal: &proposal, BackupID: nonce, CreatedAt: time.Now().UTC().Truncate(time.Second)})
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ciphertext bytes.Buffer
+	encrypt, err := backup.Encrypt(&ciphertext, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := encrypt.Write(plain.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+	if err := encrypt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	digest, err := store.ManifestDigest(archived)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt := backupreceipt.Receipt{Format: backupreceipt.ReceiptFormat, CiphertextSHA256: releaseidentity.Hash(ciphertext.Bytes()), CiphertextBytes: int64(ciphertext.Len()), ManifestSHA256: digest, Snapshot: archived.Upgrade.Clone()}
+	raw, err := json.Marshal(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "backup.age")
+	if err := os.WriteFile(path, ciphertext.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	pinned, err := backupreceipt.PinCiphertext(t.Context(), path, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pinned.Close()
+	authenticated, err := backupreceipt.AuthenticateArchive(t.Context(), pinned, raw, bundle.Plan, backup.Unlock{Identity: identity}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return authenticated, bundle.Plan
 }

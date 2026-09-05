@@ -225,8 +225,12 @@ func runCoordinationInvariants(t *testing.T, db *store.DB) {
 			}
 			leases = append(leases, id)
 		}
+		beforeRefusal := mcpBucketDeadline(t, db, "mcp-rate-principal")
 		if err := db.Coordination().AcquireMCP(ctx, "mcp-principal-overflow", "mcp-rate-principal", "mcp-rate-org", ttl); !errors.Is(err, store.ErrMCPAdmissionLimited) {
 			t.Fatalf("principal overflow = %v, want ErrMCPAdmissionLimited", err)
+		}
+		if after := mcpBucketDeadline(t, db, "mcp-rate-principal"); !after.Equal(beforeRefusal) {
+			t.Fatalf("rejected concurrency claim changed token bucket: %v -> %v", beforeRefusal, after)
 		}
 		for _, id := range leases {
 			if err := c.ReleaseMCP(ctx, id); err != nil {
@@ -244,6 +248,18 @@ func runCoordinationInvariants(t *testing.T, db *store.DB) {
 			if err := c.ReleaseMCP(ctx, id); err != nil {
 				t.Fatal(err)
 			}
+		}
+		// The real clock may refill while a loaded CI machine runs the
+		// preceding calls. Seed an explicitly exhausted bucket for the
+		// overflow assertion; do not make correctness depend on 20 database
+		// transactions completing within one refill interval.
+		exhausted := time.Now().UTC().Add(time.Duration(store.MCPRateCapacity+1) * store.MCPRateRefillInterval)
+		if db.Engine() == store.EnginePostgres {
+			if _, err := db.PG().Exec(ctx, "UPDATE mcp_rate_buckets SET next_at=$1 WHERE principal_id=$2", exhausted, "mcp-rate-principal"); err != nil {
+				t.Fatal(err)
+			}
+		} else if _, err := db.SQLiteWrite().ExecContext(ctx, "UPDATE mcp_rate_buckets SET next_at=? WHERE principal_id=?", exhausted.Format(time.RFC3339Nano), "mcp-rate-principal"); err != nil {
+			t.Fatal(err)
 		}
 		if err := db.Coordination().AcquireMCP(ctx, "mcp-rate-overflow", "mcp-rate-principal", "mcp-rate-org", ttl); !errors.Is(err, store.ErrMCPAdmissionLimited) {
 			t.Fatalf("rate overflow = %v, want ErrMCPAdmissionLimited", err)
@@ -319,4 +335,24 @@ func seedMCPSubject(t *testing.T, db *store.DB, principalID, orgID string) {
 	if err != nil {
 		t.Fatalf("seed MCP subject %s/%s: %v", principalID, orgID, err)
 	}
+}
+
+func mcpBucketDeadline(t *testing.T, db *store.DB, principal string) time.Time {
+	t.Helper()
+	if db.Engine() == store.EnginePostgres {
+		var deadline time.Time
+		if err := db.PG().QueryRow(t.Context(), "SELECT next_at FROM mcp_rate_buckets WHERE principal_id=$1", principal).Scan(&deadline); err != nil {
+			t.Fatal(err)
+		}
+		return deadline
+	}
+	var raw string
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), "SELECT next_at FROM mcp_rate_buckets WHERE principal_id=?", principal).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	deadline, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return deadline
 }

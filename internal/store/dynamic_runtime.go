@@ -56,8 +56,6 @@ type LeaseProviderMaterial struct {
 	CredentialCiphertext []byte
 }
 
-func (r *DynamicRuntime) readDB() adapterDB { return readDB(r.db) }
-
 // transaction runs fn in a SERIALIZABLE (postgres) write transaction, unified
 // with the adapter runtime via dbTransaction. Bug fix (#619): the previous
 // dynamicTransaction opened postgres with the pool default (READ COMMITTED)
@@ -132,23 +130,24 @@ func (r *DynamicRuntime) ClaimDueLease(ctx context.Context, worker string, now, 
 // LoadProviderMaterial reads the lease's provider row (origin, grant role, TLS
 // mode, sealed admin credential), re-asserting the lease crash fence.
 func (r *DynamicRuntime) LoadProviderMaterial(ctx context.Context, lease ClaimedLease) (LeaseProviderMaterial, error) {
-	db := r.readDB()
-	query := db.SQL(
-		`SELECT p.kind,p.origin,p.tls_mode,p.grant_role,p.id,p.admin_credential_ciphertext FROM dynamic_providers p JOIN dynamic_leases l ON l.provider_id=p.id AND l.org_id=p.org_id AND l.project_id=p.project_id WHERE l.id=? AND l.org_id=? AND l.project_id=? AND l.lease_owner=? AND l.lease_expires_at>? AND l.lease_claim_token=?`,
-	)
-	var out LeaseProviderMaterial
-	var credential []byte
-	if err := db.QueryRow(ctx, query, lease.ID, lease.OrgID, lease.ProjectID, lease.LeaseOwner, db.Stamp(time.Now().UTC()), lease.ClaimToken).Scan(&out.Kind, &out.Origin, &out.TLSMode, &out.GrantRole, &out.CredentialOwnerID, &credential); err != nil {
-		if isNoRows(err) {
-			return LeaseProviderMaterial{}, ErrNotFound
+	return dbReadResult(ctx, r.db, func(db adapterDB) (LeaseProviderMaterial, error) {
+		query := db.SQL(
+			`SELECT p.kind,p.origin,p.tls_mode,p.grant_role,p.id,p.admin_credential_ciphertext FROM dynamic_providers p JOIN dynamic_leases l ON l.provider_id=p.id AND l.org_id=p.org_id AND l.project_id=p.project_id WHERE l.id=? AND l.org_id=? AND l.project_id=? AND l.lease_owner=? AND l.lease_expires_at>? AND l.lease_claim_token=?`,
+		)
+		var out LeaseProviderMaterial
+		var credential []byte
+		if err := db.QueryRow(ctx, query, lease.ID, lease.OrgID, lease.ProjectID, lease.LeaseOwner, db.Stamp(time.Now().UTC()), lease.ClaimToken).Scan(&out.Kind, &out.Origin, &out.TLSMode, &out.GrantRole, &out.CredentialOwnerID, &credential); err != nil {
+			if isNoRows(err) {
+				return LeaseProviderMaterial{}, ErrNotFound
+			}
+			return LeaseProviderMaterial{}, err
 		}
-		return LeaseProviderMaterial{}, err
-	}
-	if len(credential) == 0 {
-		return LeaseProviderMaterial{}, ErrNoProviderCredential
-	}
-	out.CredentialCiphertext = append([]byte(nil), credential...)
-	return out, nil
+		if len(credential) == 0 {
+			return LeaseProviderMaterial{}, ErrNoProviderCredential
+		}
+		out.CredentialCiphertext = append([]byte(nil), credential...)
+		return out, nil
+	})
 }
 
 // fenceRows turns a settling UPDATE's affected-row count into the fence
@@ -175,11 +174,13 @@ var ErrNoProviderCredential = errors.New("store: dynamic provider has no admin c
 // number of currently usable leases and the number of effects stuck unknown.
 // Proof-free like the rest of the runtime; it is a scrape-time system read.
 func (r *DynamicRuntime) Gauges(ctx context.Context) (activeLeases, unknownEffects int64, err error) {
-	db := r.readDB()
-	if err := db.QueryRow(ctx, `SELECT COUNT(*) FROM dynamic_leases WHERE state='active'`).Scan(&activeLeases); err != nil {
-		return 0, 0, err
-	}
-	if err := db.QueryRow(ctx, `SELECT COUNT(*) FROM dynamic_effects WHERE outcome='unknown'`).Scan(&unknownEffects); err != nil {
+	err = dbRead(ctx, r.db, func(db adapterDB) error {
+		if err := db.QueryRow(ctx, `SELECT COUNT(*) FROM dynamic_leases WHERE state='active'`).Scan(&activeLeases); err != nil {
+			return err
+		}
+		return db.QueryRow(ctx, `SELECT COUNT(*) FROM dynamic_effects WHERE outcome='unknown'`).Scan(&unknownEffects)
+	})
+	if err != nil {
 		return 0, 0, err
 	}
 	return activeLeases, unknownEffects, nil
@@ -189,18 +190,19 @@ func (r *DynamicRuntime) Gauges(ctx context.Context) (activeLeases, unknownEffec
 // reconcile of an `unknown` lease can resume the exact transition that went
 // ambiguous rather than guessing.
 func (r *DynamicRuntime) LatestEffectKind(ctx context.Context, lease ClaimedLease) (string, error) {
-	db := r.readDB()
-	query := db.SQL(
-		`SELECT kind FROM dynamic_effects WHERE lease_id=? AND org_id=? ORDER BY created_at DESC,id DESC LIMIT 1`,
-	)
-	var kind string
-	if err := db.QueryRow(ctx, query, lease.ID, lease.OrgID).Scan(&kind); err != nil {
-		if isNoRows(err) {
-			return "", ErrNotFound
+	return dbReadResult(ctx, r.db, func(db adapterDB) (string, error) {
+		query := db.SQL(
+			`SELECT kind FROM dynamic_effects WHERE lease_id=? AND org_id=? ORDER BY created_at DESC,id DESC LIMIT 1`,
+		)
+		var kind string
+		if err := db.QueryRow(ctx, query, lease.ID, lease.OrgID).Scan(&kind); err != nil {
+			if isNoRows(err) {
+				return "", ErrNotFound
+			}
+			return "", err
 		}
-		return "", err
-	}
-	return kind, nil
+		return kind, nil
+	})
 }
 
 // leaseTransitionPayload is the audit payload for dynamic lease transition

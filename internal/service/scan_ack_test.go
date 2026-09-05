@@ -12,7 +12,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/scanning"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 )
 
 // Secret-scanning acknowledgement token security (#74, ADR §4, SS4). These
@@ -23,18 +22,12 @@ import (
 func ackTestKeyring(t testing.TB) *crypto.Keyring {
 	t.Helper()
 	cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "ack.db")}
-	if err := migrate.Run(t.Context(), cfg); err != nil {
-		t.Fatal(err)
-	}
-	db, err := store.Open(t.Context(), cfg)
+	db, err := openServiceFixture(t, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	root, err := crypto.GenerateRootKey()
-	if err != nil {
-		t.Fatal(err)
-	}
+	root := serviceFixtureRoot(t, db)
 	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
 	if err != nil {
 		t.Fatal(err)

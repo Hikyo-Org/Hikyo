@@ -34,10 +34,11 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
+	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 	"github.com/Hikyo-Org/hikyo/internal/updater"
+	"github.com/Hikyo-Org/hikyo/internal/upgradegate"
 	"github.com/Hikyo-Org/hikyo/internal/webui"
 )
 
@@ -64,44 +65,20 @@ func storeConfig(cfg *config.Config) store.Config {
 }
 
 // RunMigrate is `hikyo migrate`: explicit migration application. Loads no
-// keyring (DDL only).
+// keyring (DDL only). Signed public evidence authorizes schema application;
+// maintenance remains until the exact candidate boot proves hierarchy health.
 func RunMigrate(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
-	sc := storeConfig(cfg)
-	log.Info("applying migrations", "engine", sc.Engine)
-	rec, err := beforeMigration(ctx, cfg, log, sc)
+	result, err := databaseGate(ctx, cfg, nil, upgradegate.Migrate)
 	if err != nil {
 		return err
 	}
-	if err := migrate.Run(ctx, sc); err != nil {
-		return err
-	}
-	recordPreMigration(ctx, cfg, log, rec)
-	log.Info("migrations current")
+	log.Info("verified schema application complete", "phase", result.State.Pending.Phase, "maintenance", result.State.Maintenance)
 	return nil
-}
-
-// beforeMigration runs the automatic pre-migration export, but only when this
-// binary actually has a migration to apply: an export per ordinary restart is
-// a backup policy nobody asked for.
-func beforeMigration(ctx context.Context, cfg *config.Config, log *slog.Logger, sc store.Config) (preMigrationRecord, error) {
-	pending, err := migrate.HasPending(ctx, sc)
-	if err != nil {
-		// Fail TOWARD the backup: a check that errors while the migration
-		// then succeeds would silently skip the one export standing between
-		// a bad migration and a rebuilt instance. Attempting the export costs
-		// at worst one unneeded artifact; if the store is truly down, the
-		// export preflight and the migration both say so.
-		log.Warn("pre-migration pending check failed; attempting the export anyway", "err", err)
-		return preMigrationExport(ctx, cfg, log)
-	}
-	if !pending {
-		return preMigrationRecord{}, nil
-	}
-	return preMigrationExport(ctx, cfg, log)
 }
 
 // Server is a booted, listening server that has not started serving yet.
 type Server struct {
+	Maintenance        bool
 	Addr               string
 	OperationalAddr    string
 	db                 *store.DB
@@ -127,6 +104,9 @@ func devRootKeyPath(cfg *config.Config) string {
 	if cfg.Store.Engine == config.EngineSQLite && cfg.Store.Path != "" {
 		return filepath.Join(filepath.Dir(cfg.Store.Path), devRootKeyName)
 	}
+	if cfg.Store.Engine == config.EnginePostgres && cfg.Upgrade.StateDirectory != "" {
+		return filepath.Join(cfg.Upgrade.StateDirectory, devRootKeyName)
+	}
 	return devRootKeyName
 }
 
@@ -144,20 +124,16 @@ func devRootKeyPath(cfg *config.Config) string {
 func resolveRootKey(cfg *config.Config, log *slog.Logger) ([]byte, error) {
 	file := cfg.RootKeyFile
 	if file == "" && !cfg.RootKeyFromEnv && cfg.Dev {
+		if cfg.Store.Engine == config.EnginePostgres && cfg.Upgrade.StateDirectory == "" {
+			return nil, errors.New("development PostgreSQL requires HIKYO_UPGRADE_STATE_DIR before root-key creation")
+		}
 		devPath := devRootKeyPath(cfg)
-		if _, err := os.Stat(devPath); errors.Is(err, os.ErrNotExist) {
-			key, err := crypto.GenerateRootKey()
-			if err != nil {
-				return nil, err
-			}
-			defer crypto.Zero(key)
-			if err := os.WriteFile(devPath, []byte(crypto.EncodeRootKey(key)+"\n"), 0o600); err != nil {
-				return nil, fmt.Errorf("write dev root key: %w", err)
-			}
-			log.Warn("generated development root key — evaluation only, back it up with the dev database or lose the data",
-				"path", devPath)
-		} else if err != nil {
-			return nil, fmt.Errorf("dev root key: %w", err)
+		created, err := ensureDevRootKey(devPath)
+		if err != nil {
+			return nil, err
+		}
+		if created {
+			log.Warn("generated development root key; evaluation only, back it up with the dev database", "path", devPath)
 		} else {
 			log.Warn("using development root key", "path", devPath)
 		}
@@ -212,7 +188,8 @@ type bootGuard struct {
 // replace only these functions to pin ordering, inject failures at ownership
 // boundaries, and count releases.
 type bootResources struct {
-	openDatabase       func(context.Context, store.Config) (*store.DB, error)
+	openDatabase       func(context.Context, store.Config, upgrade.Admission) (*store.DB, error)
+	databaseGate       func(context.Context, *config.Config, []byte, upgradegate.Mode) (upgradegate.Result, error)
 	closeDatabase      func(*store.DB) error
 	warmOpenAPI        func() error
 	listen             func(string, string) (net.Listener, error)
@@ -222,7 +199,10 @@ type bootResources struct {
 
 func defaultBootResources() bootResources {
 	return bootResources{
-		openDatabase: store.Open,
+		openDatabase: func(ctx context.Context, cfg store.Config, admission upgrade.Admission) (*store.DB, error) {
+			return store.Open(ctx, cfg, admission)
+		},
+		databaseGate: databaseGate,
 		closeDatabase: func(db *store.DB) error {
 			return db.Close()
 		},
@@ -273,29 +253,16 @@ func openKeyed(ctx context.Context, cfg *config.Config, log *slog.Logger, sc sto
 		return nil, nil, err
 	}
 
-	var migrationRecord preMigrationRecord
-	if cfg.AutoMigrate {
-		var err error
-		if migrationRecord, err = beforeMigration(ctx, cfg, log, sc); err != nil {
-			return nil, nil, err
-		}
-		if err := migrate.Run(ctx, sc); err != nil {
-			return nil, nil, err
-		}
-	}
-	// Always verify exact schema match — with auto-migrate off this catches
-	// pending migrations; in both modes it catches a database migrated by a
-	// newer binary (Run applies nothing there and the schema stays ahead).
-	if err := migrate.Check(ctx, sc); err != nil {
-		return nil, nil, err
-	}
-	recordPreMigration(ctx, cfg, log, migrationRecord)
-
 	root, err := resolveRootKey(cfg, log)
 	if err != nil {
 		return nil, nil, err
 	}
-	db, err := resources.openDatabase(ctx, sc)
+	admitted, err := resources.databaseGate(ctx, cfg, root, upgradegate.Boot)
+	if err != nil {
+		crypto.Zero(root)
+		return nil, nil, err
+	}
+	db, err := resources.openDatabase(ctx, sc, admitted.Admission)
 	if err != nil {
 		crypto.Zero(root)
 		return nil, nil, err
@@ -356,6 +323,9 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 
 	db, kr, err := openKeyed(ctx, cfg, log, sc, resources, guard)
 	if err != nil {
+		if errors.Is(err, upgradegate.ErrRestoreRequired) || errors.Is(err, upgradegate.ErrNextBinary) {
+			return bootMaintenance(cfg, log, resources)
+		}
 		return nil, fmt.Errorf("boot: refusing to serve: %w", err)
 	}
 
@@ -863,6 +833,9 @@ func (s *Server) ServeWithReady(ctx context.Context, ready func()) error {
 }
 
 func (s *Server) serve(ctx context.Context, ready func()) error {
+	if s.Maintenance {
+		return s.serveMaintenance(ctx, ready)
+	}
 	defer s.db.Close()
 	schedulerCtx, stopScheduler := context.WithCancel(ctx)
 	var schedulerDone chan struct{}
@@ -978,6 +951,9 @@ func (s *Server) ReloadTLS() error {
 
 // Close releases resources for a booted server that never served.
 func (s *Server) Close() error {
+	if s.Maintenance {
+		return s.operationalLn.Close()
+	}
 	return errors.Join(s.publicLn.Close(), s.operationalLn.Close(), s.db.Close())
 }
 

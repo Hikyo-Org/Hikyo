@@ -8,47 +8,21 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
-	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
-	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
-func TestAdminAuthRunsPreMigrationExport(t *testing.T) {
+func TestAdminAuthRefusesUnverifiedLegacySchema(t *testing.T) {
 	cfg := devConfig(t)
 	fixture := &storeFixture{sc: storeConfig(cfg), dir: filepath.Dir(cfg.Store.Path)}
-	pendingMigration(t, fixture)
-
-	_, recipient, err := backup.GenerateIdentity()
-	if err != nil {
-		t.Fatal(err)
-	}
-	backupDir := filepath.Join(fixture.dir, "backups")
-	cfg.BackupDir = backupDir
-	cfg.BackupRecipients = []string{recipient}
-
+	legacySchema(t, fixture)
+	cfg.BackupDir = filepath.Join(fixture.dir, "backups")
 	_, closeDB, err := adminAuth(t.Context(), cfg, testLogger())
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		closeDB()
+		t.Fatal("admin authentication admitted a legacy database without signed upgrade proof")
 	}
-	closeDB()
-
-	if n := archiveCount(t, backupDir); n != 1 {
-		t.Fatalf("admin pre-migration export published %d archives, want 1", n)
-	}
-	db, err := store.Open(t.Context(), fixture.sc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	var recorded int64
-	if err := db.SQLiteRead().QueryRowContext(t.Context(), `
-		SELECT COUNT(*) FROM audit_instance_events
-		WHERE type = ? AND json_extract(payload, '$.trigger') = ?`,
-		"backup.exported", string(service.TriggerPreMigration)).Scan(&recorded); err != nil {
-		t.Fatal(err)
-	}
-	if recorded != 1 {
-		t.Fatalf("admin pre-migration backup.exported events = %d, want 1", recorded)
+	if n := archiveCount(t, cfg.BackupDir); n != 0 {
+		t.Fatalf("refused admin published %d archives", n)
 	}
 }
 
@@ -94,7 +68,7 @@ func TestAdminAuthWarnsWhenRootRotationPending(t *testing.T) {
 }
 
 func TestAdminAuthResourceOwnership(t *testing.T) {
-	t.Run("failure after database acquisition closes it", func(t *testing.T) {
+	t.Run("invalid candidate configuration opens no runtime database", func(t *testing.T) {
 		record := &bootResourceRecord{}
 		cfg := devConfig(t)
 		cfg.Argon2MemoryKiB = 1
@@ -103,8 +77,8 @@ func TestAdminAuthResourceOwnership(t *testing.T) {
 		if err == nil {
 			t.Fatal("admin auth with invalid password parameters succeeded")
 		}
-		if record.databaseCloses != 1 {
-			t.Fatalf("database closes = %d, want 1", record.databaseCloses)
+		if record.databaseCloses != 0 || record.database != nil {
+			t.Fatalf("invalid candidate acquired a runtime database; closes=%d", record.databaseCloses)
 		}
 	})
 

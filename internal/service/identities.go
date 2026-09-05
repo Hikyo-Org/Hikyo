@@ -198,6 +198,10 @@ type MintResult struct {
 // no grants, so it reaches nothing; the gate fires when a grant lands on it
 // (grants.go's widening rule) or when a credential is minted for it.
 func (s *Identities) CreateServiceAccount(ctx context.Context, actor Actor, scope domain.Scope, name string, kind domain.PrincipalClass) (ServiceAccountView, error) {
+	return s.createServiceAccount(ctx, func(ctx context.Context, fn tx.WriteFn) error { return tx.Write(ctx, s.DB, fn) }, actor, scope, name, kind)
+}
+
+func (s *Identities) createServiceAccount(ctx context.Context, write func(context.Context, tx.WriteFn) error, actor Actor, scope domain.Scope, name string, kind domain.PrincipalClass) (ServiceAccountView, error) {
 	if name == "" || len(name) > 64 {
 		return ServiceAccountView{}, ErrServiceAccountName
 	}
@@ -214,7 +218,7 @@ func (s *Identities) CreateServiceAccount(ctx context.Context, actor Actor, scop
 	}
 	now := s.now()
 	var out ServiceAccountView
-	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+	err = write(ctx, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, p, err := authorize(ctx, az, actor, authz.OpServiceAccountCreate, scope, now)
 		if err != nil {
 			return err
@@ -299,8 +303,12 @@ func (s *Identities) ListServiceAccounts(ctx context.Context, actor Actor, scope
 // requiring `reveal` to deprovision a compromised workload would be a
 // self-inflicted incident-response delay.
 func (s *Identities) DeleteServiceAccount(ctx context.Context, actor Actor, scope domain.Scope, id string) error {
+	return s.deleteServiceAccount(ctx, func(ctx context.Context, fn tx.WriteFn) error { return tx.Write(ctx, s.DB, fn) }, actor, scope, id)
+}
+
+func (s *Identities) deleteServiceAccount(ctx context.Context, write func(context.Context, tx.WriteFn) error, actor Actor, scope domain.Scope, id string) error {
 	now := s.now()
-	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+	return write(ctx, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, p, err := authorize(ctx, az, actor, authz.OpServiceAccountDelete, scope, now)
 		if err != nil {
 			return err
@@ -342,6 +350,10 @@ func (s *Identities) DeleteServiceAccount(ctx context.Context, actor Actor, scop
 // a mint that succeeds and a revoke that fails leaves the operator with two
 // live credentials — the safe direction — rather than none.
 func (s *Identities) MintCredential(ctx context.Context, actor Actor, scope domain.Scope, saID string, req MintRequest) (MintResult, error) {
+	return s.mintCredential(ctx, func(ctx context.Context, fn tx.WriteFn) error { return tx.Write(ctx, s.DB, fn) }, actor, scope, saID, req)
+}
+
+func (s *Identities) mintCredential(ctx context.Context, write func(context.Context, tx.WriteFn) error, actor Actor, scope domain.Scope, saID string, req MintRequest) (MintResult, error) {
 	if req.Lifetime < 0 {
 		return MintResult{}, ErrCredentialLifetime
 	}
@@ -351,7 +363,7 @@ func (s *Identities) MintCredential(ctx context.Context, actor Actor, scope doma
 	}
 	now := s.now()
 	var out MintResult
-	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+	err = write(ctx, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, p, err := authorize(ctx, az, actor, authz.OpCredentialMint, scope, now)
 		if err != nil {
 			return err

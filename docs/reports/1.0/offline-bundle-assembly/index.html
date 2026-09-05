@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>1.0 public upgrade bundle assembly</title>
+<style>body{max-width:880px;margin:48px auto;padding:0 24px;font:17px/1.6 system-ui;color:#172238;background:#f5f7fa}code{background:#e5eaf0;padding:2px 5px}h1,h2{line-height:1.2}li{margin:9px 0}a{color:#175daf}</style>
+<h1>Public upgrade bundle assembly</h1>
+<p>Implemented an offline, fail-closed assembler at <code>scripts/release/assemble-upgrade</code>. It uses caller-pinned root/recovery public material and existing maintained signature verification. It never signs or generates production custody.</p>
+<h2>Decisions</h2>
+<ol>
+<li><strong>Input scope:</strong> accept closed directories containing public snapshot, key, stable release and bridge proofs. Refuse extra members, missing proofs, symlinks, FIFOs, escaping locators and duplicate releases. Keep executable verification in the existing release/install process; copying arbitrary downloaded payloads into a public proof bundle would add a second artifact inventory.</li>
+<li><strong>Publication:</strong> preserve exact signed bytes, generate only the unsigned locator index, authenticate the staged result through the production <code>upgradebundle.Load</code> reader, sync files/directories, then atomically publish with a no-replace rename. Existing and concurrently created outputs survive unchanged. Bounded inputs and aggregate staging limit remain enforced.</li>
+<li><strong>Remaining signing dependency:</strong> assembly is now executable. Real production metadata/catalog/release signatures still require the release owner's signing ceremony. This tool does not supply that authority or implement platform apply.</li>
+<li><strong>Kubernetes custody:</strong> state PVC root must have gid 65532 and mode 2770; its <code>operator-custody</code> child has uid 65532 and mode 0700. The chart points the gate at that child and pins <code>OnRootMismatch</code>. Kubelet's <a href="https://github.com/kubernetes/kubernetes/blob/master/pkg/volume/volume_linux.go#L174">root permission check</a> requires the setgid bit as well as group permissions. Native/Compose custody remains mode 0700 without Kubernetes permission mutation.</li>
+</ol>
+<h2>Actual validation</h2>
+<ul>
+<li><code>go test -race ./scripts/release/assemble-upgrade</code>: passed 20 tests/subtests using real ephemeral signatures. Includes exact-byte preservation, wrong recovery trust, altered proofs, incomplete/extra inventory, symlink with trailing slash, FIFO, signed traversal, catalog bridge omission, rollback floor, cancellation and concurrent publication.</li>
+<li><code>go vet ./scripts/release/assemble-upgrade</code>: passed. Linux amd64 test binary cross-compiled successfully; runtime tests above executed on macOS.</li>
+<li><code>bash scripts/ci/check-chart_test.sh</code>: valid chart accepted and all 18 targeted mutations refused, including custody-on-volume-root and recursive fsGroup permissions.</li>
+<li>ShellCheck passed for chart-kind, chart checks and chart mutation fixtures. <code>git diff --check</code> passed.</li>
+</ul>
+<p>Real CSI remount behavior and the complete kind deployment are not claimed by these local checks. The runbook requires a driver preserving private child permissions and shared POSIX lock/durability semantics. The parent workflow owns final integration checks, independent review, CI and merge.</p>
+</html>
