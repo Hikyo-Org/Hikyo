@@ -150,4 +150,27 @@ Test infrastructure
 - Real embedded server, seeded tenant: every route captured at 1280, 820 and 393 wide; no
   horizontal overflow; no console errors except the pre-existing cross-origin `/meta` probe from
   the Remotes page against the sibling instance.
-- Playwright desktop project run recorded below.
+- Playwright, real embedded instances: the desktop project ran in full (216 flows) and the mobile
+  project ran in full (213 flows). Each surfaced one pin that had to move to the new truth (the
+  history retention line now carries a link; that link needed the 44px touch floor on a phone);
+  the touched specs were re-run green after each fix. The e2e pins changed in this work:
+  `matrix.spec` editor row radius role (control to container, the row is a card),
+  `shell.spec` well border token (panel line, the surfaces now use the settings anatomy),
+  `history.spec` heading name (glyph is decorative) and retention link, `login.spec` unchanged
+  (fields stay disabled during a ceremony, the busy label is the reason), `machine-access.spec`
+  read-grant sentence and unique journey label, `reveal.spec` audited copy label.
+- Cross-model review (Codex, high effort, three rounds): round one raised ten findings, all
+  addressed in the third commit (reveal gating fails closed in Values, Members treats 403 as the
+  second-factor refusal and blanks cached rows on any refusal, reveal blast lists secrets only,
+  stale grant choices fold back when the opt-in is withdrawn, the sensitivity inventory now
+  detects `useSensitiveMutation`, one-line key rows by construction, remote badge state name,
+  provenance styling, DESIGN.md wording); round two verified all ten closed with no new critical
+  findings; round three is the recorded verdict in the pull request.
+
+## Handoff
+
+Branch `t3code/d9eb5a95`, three signed commits on top of `3700a0ef`. Nothing is pushed. To pick
+this up: `pnpm --dir web install`, `node --run typecheck && node --run test` in `web/`, and
+`pnpm --dir web e2e` for the flow suite (boots two instances from source, needs Go). The prototype
+mock (`pnpm --dir web prototype`) now serves clean chrome without a 501 banner. The API gaps table
+above is the follow-up list; each row names the field the client needs.

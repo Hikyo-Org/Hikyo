@@ -2746,7 +2746,9 @@ function GrantBody({
         <>
           <p className="ceremony__scope">
             {reachable.length === 0
-              ? 'This project declares no keys, so the grant reaches an empty catalogue today, and every key declared later.'
+              ? capability === 'reveal' && catalogue.length > 0
+                ? 'This project declares no secrets today, so the grant decrypts nothing yet, and every secret declared later.'
+                : 'This project declares no keys, so the grant reaches an empty catalogue today, and every key declared later.'
               : capability === 'read'
                 ? 'Newly reachable: every key below, by name and classification. A read grant delivers configuration values and secret presence; plaintext needs reveal.'
                 : 'Newly decryptable: every secret below, as standing authority over its value wherever it is set. Configuration keys are not listed: read already reaches them.'}
