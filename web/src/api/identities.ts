@@ -347,11 +347,15 @@ export function useCreateBinding(p: ProjectRef) {
             ...(input.replaces === undefined ? {} : { replaces: input.replaces }),
           },
         }),
-    onSuccess: (_result, input) => {
-      void queries.invalidateQueries({ queryKey: credentialsKey(p, input.serviceAccount) });
-      // A binding IS a live credential, so the account's `live_credentials` —
-      // the number the grant warning quotes — moved too.
-      void queries.invalidateQueries({ queryKey: accountsKey(p) });
+    onSuccess: async (_result, input) => {
+      // Keep the dialog pending until the successor replaces the cached row.
+      // Otherwise its success notice exposes a still-clickable predecessor,
+      // so an immediate revoke targets the credential just retired by the server.
+      await Promise.all([
+        queries.invalidateQueries({ queryKey: credentialsKey(p, input.serviceAccount) }),
+        // A binding changes the live count used by the grant warning too.
+        queries.invalidateQueries({ queryKey: accountsKey(p) }),
+      ]);
     },
   });
 }
