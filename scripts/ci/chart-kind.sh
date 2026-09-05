@@ -448,8 +448,12 @@ if [[ "$ready" != "False" ]]; then
 	echo "chart-kind: database outage did not remove pod readiness within 30 seconds" >&2
 	exit 1
 fi
-ready_status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
-	http://127.0.0.1:18081/readyz)
+if ! ready_status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+	http://127.0.0.1:18081/readyz); then
+	echo "chart-kind: /readyz during database outage failed before returning an HTTP status" >&2
+	cat "$work/port-forward.log" >&2
+	exit 1
+fi
 if [[ "$ready_status" != 503 ]]; then
 	echo "chart-kind: /readyz during database outage returned $ready_status, want 503" >&2
 	exit 1

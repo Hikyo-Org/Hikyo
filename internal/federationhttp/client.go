@@ -155,7 +155,10 @@ func (t *transport) RoundTrip(request *http.Request) (*http.Response, error) {
 	// Read before handing the response to protocol libraries. A LimitReader
 	// alone can hide trailing bytes after a valid JSON value; cap+1 rejects them.
 	payload, err := io.ReadAll(io.LimitReader(response.Body, t.maxBytes+1))
-	if err != nil || int64(len(payload)) > t.maxBytes {
+	// Cancellation can race a clean EOF (for example when the peer finishes
+	// its response after observing cancellation). A successful body read does
+	// not prove the request is still within its deadline.
+	if err != nil || ctx.Err() != nil || int64(len(payload)) > t.maxBytes {
 		return nil, ErrTransport
 	}
 	response.Body = io.NopCloser(bytes.NewReader(payload))

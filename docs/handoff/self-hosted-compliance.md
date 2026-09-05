@@ -92,3 +92,27 @@ including setup). The original default application ports were occupied by
 another local test service, which was left running. The new regression also
 checks real provider discovery with the old IdP port occupied, explicit-port
 refusal, persisted issuer reads, permissions and cleanup.
+
+## PR 679 deadline repairs
+
+The next CI run exposed two existing deadline failures. Federation transport
+could publish a successful response when cancellation coincided with clean body
+EOF. It now checks the request context after the bounded body read. A real
+close-delimited HTTP regression cancels synchronously before network EOF is
+returned; it failed before the guard and passed 100 repetitions afterward.
+The original slow-header/body regression also passed 100 repetitions, and the
+full federation package passed the race detector. Body limits and deadlines
+remain unchanged.
+
+The kind database-outage probe received an empty reply instead of HTTP 503.
+Readiness passed an unbounded context into datastore/HA admission; the HTTP
+write deadline could expire before that work returned. A real HTTP regression
+reproduced EOF, then passed after adding a two-second total readiness budget.
+Tests verify deadline cancellation, rejection of a canceled successful checker,
+and concurrent `/healthz` success. The kind script now reports transport errors
+explicitly. The public self-hosting guide documents the readiness budget.
+
+Both repairs have independent CLEAN reviews. Federation/OIDC dependent checks,
+readiness/operational race checks, Go vet, ShellCheck and the rebuilt public docs
+verification passed. No retries or test deadlines were increased. Exact-head CI
+must confirm the original kind outage scenario before merge.

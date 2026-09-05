@@ -89,6 +89,10 @@ curl --fail http://127.0.0.1:8081/healthz
 curl --fail http://127.0.0.1:8081/readyz
 ```
 
+Readiness gives the complete datastore and optional HA check a two-second budget.
+An unavailable or stalled datastore returns HTTP 503; `/healthz` remains independent
+so a database outage removes traffic without triggering a process restart.
+
 The same private listener serves `/metrics` in Prometheus text format —
 RED-style request counters and latency per surface class, in-flight and
 admission-pressure gauges, plus the retention and TLS gauges — with no external
