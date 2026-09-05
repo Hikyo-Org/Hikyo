@@ -533,7 +533,9 @@ func (s *Approvals) Vote(ctx context.Context, actor Actor, scope domain.Scope, r
 
 // ExpireDue is one bounded scheduler batch. It resolves up to 100 active
 // requests past expiry and emits a per-request event under scoped scheduler
-// authority. Repeated calls drain a backlog with committed progress.
+// authority. Repeated calls drain a backlog with committed progress. Under HA,
+// tx.WriteResult validates the scheduler context's lease in this transaction,
+// fencing expiry and its audit event together against stale leadership terms.
 func (s *Approvals) ExpireDue(ctx context.Context) error {
 	now := store.CanonTime(s.now())
 	_, err := tx.WriteResult(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) (int, error) {
