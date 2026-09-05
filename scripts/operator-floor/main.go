@@ -46,6 +46,9 @@ func main() {
 }
 
 func run() error {
+	if len(os.Args) == 4 && os.Args[1] == "verify-resources" {
+		return verifyResources(os.Args[2], os.Args[3])
+	}
 	if len(os.Args) == 2 && os.Args[1] == "serve" {
 		return serve()
 	}
