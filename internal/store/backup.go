@@ -29,10 +29,12 @@ package store
 import (
 	"archive/tar"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -96,14 +98,19 @@ var ErrNoSchema = errors.New("store: datastore has no schema (goose version tabl
 
 // SchemaVersion reports the highest applied goose migration.
 func SchemaVersion(ctx context.Context, db *DB) (int64, error) {
-	const q = "SELECT COALESCE(MAX(version_id), 0) FROM goose_db_version"
 	var v int64
 	var err error
 	if db.engine == EnginePostgres {
-		err = db.pool.QueryRow(ctx, q).Scan(&v)
+		err = db.pool.QueryRow(ctx, schemaVersionQuery).Scan(&v)
 	} else {
-		err = db.sqRead.QueryRowContext(ctx, q).Scan(&v)
+		err = db.sqRead.QueryRowContext(ctx, schemaVersionQuery).Scan(&v)
 	}
+	return schemaVersionResult(v, err)
+}
+
+const schemaVersionQuery = "SELECT COALESCE(MAX(version_id), 0) FROM goose_db_version"
+
+func schemaVersionResult(v int64, err error) (int64, error) {
 	if err != nil {
 		if isMissingGooseTable(err) {
 			return 0, fmt.Errorf("%w: %v", ErrNoSchema, err)
@@ -134,17 +141,13 @@ func isMissingGooseTable(err error) bool {
 // travels with it. That is what makes a backup readable only by someone
 // holding BOTH the backup identity and the root key.
 func Export(ctx context.Context, db *DB, w io.Writer, workDir string) (Manifest, error) {
-	version, err := SchemaVersion(ctx, db)
-	if err != nil {
-		return Manifest{}, err
-	}
 	m := Manifest{
-		Format:        ArchiveFormat,
-		Engine:        db.engine,
-		SchemaVersion: version,
-		CreatedAt:     CanonTime(time.Now()),
+		Format:    ArchiveFormat,
+		Engine:    db.engine,
+		CreatedAt: CanonTime(time.Now()),
 	}
 	tw := tar.NewWriter(w)
+	var err error
 	switch db.engine {
 	case EngineSQLite:
 		err = exportSQLite(ctx, db, tw, &m, workDir)
@@ -170,6 +173,19 @@ func exportSQLite(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, work
 	// a stale snapshot must never be framed as this one.
 	if _, err := db.sqWrite.ExecContext(ctx, "VACUUM INTO ?", snapshot); err != nil {
 		return fmt.Errorf("store: sqlite snapshot: %w", err)
+	}
+	// Read the archived database itself. Reading the live version before
+	// VACUUM can attach an older schema version to a newer snapshot.
+	archived, err := sql.Open("sqlite", "file:"+url.PathEscape(snapshot)+"?mode=ro")
+	if err != nil {
+		return fmt.Errorf("store: open snapshot schema: %w", err)
+	}
+	var version int64
+	scanErr := archived.QueryRowContext(ctx, schemaVersionQuery).Scan(&version)
+	closeErr := archived.Close()
+	m.SchemaVersion, err = schemaVersionResult(version, scanErr)
+	if err := errors.Join(err, closeErr); err != nil {
+		return fmt.Errorf("store: read snapshot schema: %w", err)
 	}
 	// The manifest is written first, so a reader knows the engine before it
 	// meets the payload. The snapshot exists by now, so the manifest cannot
@@ -199,6 +215,12 @@ func exportPostgres(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, wo
 		return fmt.Errorf("store: begin export snapshot: %w", err)
 	}
 	defer tx.Rollback(ctx)
+	var version int64
+	scanErr := tx.QueryRow(ctx, schemaVersionQuery).Scan(&version)
+	m.SchemaVersion, err = schemaVersionResult(version, scanErr)
+	if err != nil {
+		return err
+	}
 
 	tables, err := pgTableOrder(ctx, tx)
 	if err != nil {
