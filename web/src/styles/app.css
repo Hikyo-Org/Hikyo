@@ -3001,6 +3001,7 @@ select {
 
 .kv dt {
   color: var(--tx-dim);
+  overflow-wrap: anywhere;
 }
 
 .kv dd {
@@ -3033,7 +3034,7 @@ select {
   border-left-color: var(--accent);
 }
 
-.journey__step--unavailable {
+.journey__step--blocked {
   border-left-style: dashed;
 }
 

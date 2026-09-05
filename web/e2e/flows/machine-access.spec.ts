@@ -122,6 +122,8 @@ test.describe('machine access', () => {
     await page.getByRole('tab', { name: 'Kubernetes targets' }).click();
     const empty = page.getByRole('status').filter({ hasText: 'No delivery targets are reported' });
     await expect(empty).toContainText('never that everything is healthy');
+    await expect(empty).toContainText('Check HikyoSecret conditions with kubectl');
+    await expect(empty).not.toContainText('not part of this build');
     await expectStatusIsTextAndAria(page, empty);
 
     // The Providers tab is empty on a fresh project and says so.
@@ -175,7 +177,7 @@ test.describe('machine access', () => {
     await expect(dialog).toBeHidden();
   });
 
-  test('expanding a row shows credentials, bindings, targets and the journey below', async () => {
+  test('expanding a row shows credentials, bindings, targets and the journey below', async ({}, testInfo) => {
     const toggle = accountRow(page, seed.machine.workload);
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await toggle.click();
@@ -196,6 +198,23 @@ test.describe('machine access', () => {
     await expect(steps.nth(3)).toContainText('Enable the project machine-reveal opt-in');
     await expect(steps.nth(3)).toContainText('next');
     await expect(steps.nth(4)).toContainText('refused by the grant API until the opt-in above is on');
+    await expect(steps.nth(4).locator('.journey__state')).toHaveText('blocked');
+    await expect(steps.nth(2)).toContainText('Read grant permits configuration delivery');
+    await expect(steps.nth(2)).toContainText('a successful fetch has not been verified here');
+    await expect(expansion).not.toContainText('not in this build');
+    const overflowingClaimNames = await expansion.locator('.kv dt').evaluateAll((terms) =>
+      terms.filter((term) => term.scrollWidth > term.clientWidth).map((term) => term.textContent),
+    );
+    expect(overflowingClaimNames, 'federation claim names must not overlap their values').toEqual([]);
+    for (const colorScheme of COLOR_SCHEMES) {
+      await page.emulateMedia({ colorScheme });
+      await page.evaluate((theme) => {
+        localStorage.setItem('hikyo.theme', theme);
+        window.dispatchEvent(new StorageEvent('storage', { key: 'hikyo.theme' }));
+      }, colorScheme);
+      await expansion.locator('.journey').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath(`machine-journey-${colorScheme}.png`) });
+    }
 
     // An automation principal has no journey at all: it never delivers to a
     // workload.

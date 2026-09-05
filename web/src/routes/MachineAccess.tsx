@@ -110,12 +110,12 @@ import { useModalDialog } from './useModalDialog.ts';
  *    value exactly once, with a stored-confirmation checkbox gating dismiss.
  *    Rotation is the same flow: the prior value is never returned.
  *
- * Where the prototype is ahead of the server this surface says so instead of
- * pretending. The three places, each recorded in `docs/handoff/67-machine-access.md`:
- * the per-project reveal opt-in has no server surface, Kubernetes delivery
- * targets have no operator reporting them, and restore reconciliation has no
- * recovery-mode signal — only the binding's own quarantine field, which IS
- * rendered because it is real.
+ * Permission readiness is distinct from observed delivery health. The
+ * per-project reveal opt-in is actionable here; grants remain a separate act.
+ * Kubernetes condition state is unavailable in this view, so operators are
+ * directed to kubectl rather than shown an invented health result. Binding
+ * quarantine is rendered from its actual recovery metadata.
+
  */
 
 type Tab = 'accounts' | 'federation' | 'kubernetes' | 'providers' | 'leases';
@@ -594,13 +594,11 @@ export function MachineAccess() {
           <>
             <h2>Kubernetes delivery targets</h2>
             <p className="machine__lede">
-              One managed Secret per delivery target, each reporting its state as a condition that
-              reads the same in kubectl and here.
+              One managed Secret per delivery target. Inspect each HikyoSecret condition with kubectl.
             </p>
             <p role="status">
-              No delivery targets are reported. The Kubernetes operator that reconciles them and
-              publishes their conditions is not part of this build, so this instance holds no target
-              state to show — an empty list here means nothing is reporting, never that everything
+              No delivery targets are reported in this view. Check HikyoSecret conditions with
+              kubectl; an empty list here means no status is available here, never that everything
               is healthy.
             </p>
           </>
@@ -1383,8 +1381,8 @@ function ExpansionBody({
         <div>
           <h2 className="machine__subhead">Delivery targets</h2>
           <p role="status" className="machine__none">
-            No Kubernetes delivery targets are reported for this account. The operator that publishes
-            them is not part of this build.
+            No Kubernetes delivery targets are reported for this account in this view. Check its
+            HikyoSecret conditions with kubectl.
           </p>
           {ready ? null : (
             <p className="machine__none" role="status">
@@ -1436,7 +1434,7 @@ function ExpansionBody({
                   ? 'done'
                   : step.state === 'next'
                     ? 'next'
-                    : 'not in this build'}
+                    : 'blocked'}
               </span>
               <span className="journey__body">
                 <span className="journey__title">{step.title}</span>
