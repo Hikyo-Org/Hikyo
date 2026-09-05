@@ -1212,6 +1212,7 @@ jobs:
       - changes
     if: ${{ fromJSON(needs.changes.outputs.plan).race }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -1268,7 +1269,10 @@ jobs:
             echo "race: shard $RACE_SHARD has no packages" >&2
             exit 1
           fi
-          xargs go test -race -vet=off -count=1 <"$packages"
+          # Authenticated boot fixtures repeat real, durable migrations. The
+          # 10-minute Go default limits the whole package, not each test.
+          # Bound package contention and cumulative race runtime separately.
+          xargs go test -race -p 2 -timeout=20m -vet=off -count=1 <"$packages"
       - name: Save race Go cache (main push only)
         if: >-
           success() && steps.race-go-cache.outputs.cache-hit != 'true' &&

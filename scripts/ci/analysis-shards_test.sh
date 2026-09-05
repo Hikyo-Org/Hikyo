@@ -9,6 +9,7 @@ trap 'rm -rf "$fixture_dir"' EXIT HUP INT TERM
 
 mkdir -p \
 	"$fixture_dir/extra" \
+	"$fixture_dir/internal/app" \
 	"$fixture_dir/internal/crypto" \
 	"$fixture_dir/internal/isolation" \
 	"$fixture_dir/internal/service" \
@@ -16,7 +17,7 @@ mkdir -p \
 
 printf '%s\n' 'module example.com/shards' 'go 1.27.0' >"$fixture_dir/go.mod"
 
-for package in extra internal/crypto internal/isolation internal/service internal/store; do
+for package in extra internal/app internal/crypto internal/isolation internal/service internal/store; do
 	package_name=${package##*/}
 	printf 'package %s\n' "$package_name" >"$fixture_dir/$package/$package_name.go"
 done
@@ -100,11 +101,21 @@ fi
 cut -f2 "$race_actual" | sort >"$fixture_dir/race-packages"
 cat >"$fixture_dir/race-expected" <<'EOF'
 example.com/shards/extra
+example.com/shards/internal/app
 example.com/shards/internal/crypto
 example.com/shards/internal/service
 example.com/shards/internal/store
 EOF
 cmp "$fixture_dir/race-expected" "$fixture_dir/race-packages"
+
+# The cumulative app/service race timeout came from co-locating the largest
+# authenticated datastore fixtures. Keep all three on independent runners.
+heavy_shards=$(awk -F '\t' '$2 ~ /^example.com\/shards\/internal\/(app|service|store)$/ { print $1 }' \
+	"$race_actual" | sort -u | wc -l | tr -d ' ')
+[ "$heavy_shards" -eq 3 ] || {
+	printf 'analysis shard fixture failed: heavy race packages share a runner\n' >&2
+	exit 1
+}
 
 cut -f2- "$fuzz_actual" | sort >"$fixture_dir/fuzz-targets"
 cat >"$fixture_dir/fuzz-expected" <<'EOF'
