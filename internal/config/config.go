@@ -17,9 +17,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/Hikyo-Org/hikyo/internal/updater"
 )
+
+// Remote apply is retired at configuration admission as well as runtime. Keep
+// the shared refusal vocabulary here: config is a leaf package.
+const RemoteApplyDisabledReason = "Remote apply is disabled: the legacy updater cannot prove migration-safe rollback. Use the manual signed-bundle upgrade procedure at https://hikyo.app/docs/upgrades/."
+
+var ErrRemoteApplyDisabled = errors.New(RemoteApplyDisabledReason)
 
 type Engine string
 
@@ -278,7 +282,7 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 	if subcommand == "server" {
 		cfg.UpdaterSocket = strings.TrimSpace(getenv("HIKYO_UPDATER_SOCKET"))
 		if cfg.UpdaterSocket != "" {
-			return nil, nil, fmt.Errorf("HIKYO_UPDATER_SOCKET: %w; remove this setting to start the server", updater.ErrRemoteApplyDisabled)
+			return nil, nil, fmt.Errorf("HIKYO_UPDATER_SOCKET: %w; remove this setting to start the server", ErrRemoteApplyDisabled)
 		}
 	}
 	updateChannel := getenv("HIKYO_UPDATE_CHANNEL")

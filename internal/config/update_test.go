@@ -2,7 +2,6 @@ package config
 
 import (
 	"errors"
-	"github.com/Hikyo-Org/hikyo/internal/updater"
 	"strings"
 	"testing"
 )
@@ -39,7 +38,7 @@ func TestUpdaterSocketCannotEnableLegacyApply(t *testing.T) {
 			}
 			return ""
 		}, nil)
-		if !errors.Is(err, updater.ErrRemoteApplyDisabled) || !strings.Contains(err.Error(), "HIKYO_UPDATER_SOCKET") {
+		if !errors.Is(err, ErrRemoteApplyDisabled) || !strings.Contains(err.Error(), "HIKYO_UPDATER_SOCKET") {
 			t.Fatalf("socket %q error=%v, want named disabled refusal", socket, err)
 		}
 	}

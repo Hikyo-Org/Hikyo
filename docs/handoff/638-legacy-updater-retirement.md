@@ -98,3 +98,5 @@ subset passed (20 tests across `internal/cli`, `internal/updatecheck`, and
 Parent retains final combined review and exact-head CI.
 
 Parent targeted Go verification passed independently. Spec review found exported protocol Client.Submit/Capability could still contact an old helper. Both now refuse locally; a compatible legacy transport regression proves zero requests while journal reads/acknowledgement remain. Full updater suite passed. Final Spec/security review CLEAN; parent Standards/security review CLEAN.
+
+Exact-head CI found config importing updater violated the architectural leaf boundary. The shared refusal vocabulary now belongs to config, with updater preserving its exported error alias. No boundary exception was added. Parent reran architecture plus config/updater/app tests after the fix.

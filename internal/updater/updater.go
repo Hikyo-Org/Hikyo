@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/config"
 )
 
 type Backend string
@@ -42,9 +44,9 @@ func (s State) Terminal() bool {
 	return s == StateSucceeded || s == StateFailed || s == StateRolledBack || s == StateRollbackFailed
 }
 
-const RemoteApplyDisabledReason = "Remote apply is disabled: the legacy updater cannot prove migration-safe rollback. Use the manual signed-bundle upgrade procedure at https://hikyo.app/docs/upgrades/."
+const RemoteApplyDisabledReason = config.RemoteApplyDisabledReason
 
-var ErrRemoteApplyDisabled = errors.New(RemoteApplyDisabledReason)
+var ErrRemoteApplyDisabled = config.ErrRemoteApplyDisabled
 
 var (
 	ErrStableOnly       = errors.New("updater: remote apply admits stable releases only")
