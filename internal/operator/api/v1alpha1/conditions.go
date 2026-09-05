@@ -27,6 +27,9 @@ const (
 	ConditionRollout = "Rollout"
 	// ConditionCredentialExpiry surfaces credential_expires_at ahead of time.
 	ConditionCredentialExpiry = "CredentialExpiry"
+	// ConditionPinExpired warns that the delivered revision's pin has expired.
+	// Delivery continues while the revision remains available.
+	ConditionPinExpired = "PinExpired"
 	// ConditionUnreconciled reports a cluster-wide install seeing a CR in a
 	// namespace excluded from authority.
 	ConditionUnreconciled = "Unreconciled"
@@ -65,6 +68,9 @@ const (
 	// CredentialExpiry.
 	ReasonExpiresSoon = "ExpiresSoon" // within 7 days
 	ReasonExpired     = "Expired"     // passed
+
+	// PinExpired.
+	ReasonPinExpired = "PinExpired"
 
 	// Unreconciled.
 	ReasonNamespaceNotBound = "NamespaceNotBound" // cluster-wide install, namespace excluded from authority

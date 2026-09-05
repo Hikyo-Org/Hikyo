@@ -508,6 +508,9 @@ func (s *Reencrypt) retireInstance(ctx context.Context, actor Actor, moved int, 
 		if _, err := r.Keys().RetireRetiringTier3(ctx, p, crypto.PurposeInstance, "", ""); err != nil {
 			return err
 		}
+		if err := r.Retention().RecordReencryptSuccess(ctx, p, s.now()); err != nil {
+			return err
+		}
 		ev, err := domainEvent(ctx, audit.EventReencryptCompleted, caller.Principal,
 			audit.Object{Type: "instance", ID: "instance"},
 			audit.Payload{"scope": "instance", "rows_moved": int64(moved)})
@@ -663,6 +666,9 @@ func (s *Reencrypt) retireProject(ctx context.Context, actor Actor, scope domain
 			}
 		}
 		if _, err := r.Keys().RetireRetiringTier3(ctx, p, crypto.PurposeProject, string(scope.Org), string(scope.Project)); err != nil {
+			return err
+		}
+		if err := r.Retention().RecordReencryptSuccess(ctx, p, s.now()); err != nil {
 			return err
 		}
 		ev, err := domainEvent(ctx, audit.EventReencryptCompleted, caller.Principal,

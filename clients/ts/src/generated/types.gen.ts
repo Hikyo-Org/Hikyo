@@ -2691,7 +2691,17 @@ export type RetentionPolicy = {
     last_revisions?: number | null;
 };
 
+export type OpsDiagnosticFinding = {
+    code: string;
+    severity: 'ok' | 'warn' | 'error' | 'unknown';
+    message: string;
+};
+
 export type RetentionHealth = {
+    /**
+     * Instance operational findings. Unknown means the signal is not authoritatively measured, never healthy by default. No private custody or tenant identities.
+     */
+    diagnostics?: Array<OpsDiagnosticFinding>;
     last_prune_success: string | null;
     stale: boolean;
     stale_after_seconds: 86400;

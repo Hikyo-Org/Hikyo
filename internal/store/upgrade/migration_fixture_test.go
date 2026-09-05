@@ -1,6 +1,7 @@
 package upgrade
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"testing"
@@ -40,6 +41,24 @@ func migrateFixture(t *testing.T, cfg Config) error {
 	if err != nil {
 		return err
 	}
-	_, err = provider.Up(t.Context())
+	// This helper models the immutable pre-gate installation, not whatever
+	// migrations a later candidate appends. Verify its prefix bytes before use.
+	legacy, err := PinnedLegacyManifest(cfg.Engine)
+	if err != nil {
+		return err
+	}
+	current, err := releaseidentity.BuildMigrationManifest(os.DirFS(".."), "migrations/"+string(cfg.Engine), cfg.Engine)
+	if err != nil {
+		return err
+	}
+	if len(current.Entries) < len(legacy.Entries) || len(legacy.Entries) == 0 {
+		return fmt.Errorf("legacy fixture migration prefix missing")
+	}
+	for i, expected := range legacy.Entries {
+		if current.Entries[i] != expected {
+			return fmt.Errorf("legacy fixture migration prefix changed at %d", i)
+		}
+	}
+	_, err = provider.UpTo(t.Context(), int64(legacy.Entries[len(legacy.Entries)-1].Version))
 	return err
 }

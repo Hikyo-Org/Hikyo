@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  diagnosticWarnings,
   retentionBanner,
   retentionHealthPollMs,
   retentionHealthRefetchInterval,
@@ -87,5 +88,30 @@ describe('storageBanner', () => {
     expect(
       storageBanner(health({ storage_warn: true, peak_project_bytes: 1_500_000_000 })),
     ).toEqual({ kind: 'storage', peakProjectBytes: 1_500_000_000 });
+  });
+});
+
+describe('diagnosticWarnings', () => {
+  it('preserves unmeasured, warning, and error findings while hiding healthy findings', () => {
+    const findings: NonNullable<RetentionHealth['diagnostics']> = [
+      { code: 'data-volume', severity: 'unknown', message: 'Remote database capacity is not measured.' },
+      { code: 'root-escrow', severity: 'warn', message: 'Verify the current root escrow.' },
+      { code: 'database-durability', severity: 'error', message: 'Database durability settings failed validation.' },
+      { code: 'pin-expiry', severity: 'ok', message: 'No expired pins.' },
+    ];
+    expect(diagnosticWarnings(health({ diagnostics: findings }))).toEqual(findings.slice(0, 3));
+    expect(diagnosticWarnings(health({ diagnostics: [] }))).toEqual([]);
+    expect(diagnosticWarnings(health({}))).toEqual([]);
+    expect(diagnosticWarnings(null)).toEqual([]);
+    expect(diagnosticWarnings(undefined)).toEqual([]);
+  });
+
+  it('preserves existing prune and project storage warnings beside diagnostics', () => {
+    const result = health({ stale: true, storage_warn: true, diagnostics: [
+      { code: 'pin-expiry', severity: 'warn', message: 'A revision pin expired.' },
+    ] });
+    expect(retentionBanner(result)?.kind).toBe('stale');
+    expect(storageBanner(result)?.kind).toBe('storage');
+    expect(diagnosticWarnings(result).map((finding) => finding.code)).toEqual(['pin-expiry']);
   });
 });

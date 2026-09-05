@@ -50,7 +50,7 @@ async function mockRetentionHealth(
   await page.route('**/api/v1/instance/retention-health', async (route) => {
     const response = await route.fetch();
     const health = zRetentionHealth.parse(await response.json());
-    await route.fulfill({ response, json: { ...health, ...overrides } });
+    await route.fulfill({ response, json: { ...health, diagnostics: [], ...overrides } });
   });
 }
 
@@ -258,6 +258,36 @@ test.describe('app chrome', () => {
     await expect(page.getByText(/choose a project/i)).toHaveCount(0);
     // And no step-up wall: nothing on the navigation surface asks for one.
     await expect(page.getByText(/second factor/i)).toHaveCount(0);
+  });
+
+  test('keeps content and every diagnostic reachable with seven mobile warnings', async ({ page }) => {
+    await page.setViewportSize({ width: 393, height: 851 });
+    await mockRetentionHealth(page, {
+      stale: true, last_prune_success: null, storage_warn: true, peak_project_bytes: 1_500_000_000,
+      diagnostics: [
+        { code: 'data-volume', severity: 'error', message: 'Datastore volume 96.5% used; 33700000000 bytes available; at or above the 90% critical storage threshold' },
+        { code: 'root-escrow', severity: 'warn', message: 'Current root escrow has not been verified for this recovery incarnation; recover the separate custody copy and run hikyo escrow verify' },
+        { code: 'pin-expiry', severity: 'warn', message: 'Pins: 2 expired, 1 expire within 1 day, 3 within 7 days, 4 within 30 days (disjoint tiers); expired pins deliver only while their payload survives' },
+        { code: 'root-rotation', severity: 'warn', message: 'Root key remains dual-wrapped; complete the verified root rotation' },
+        { code: 'reencrypt', severity: 'warn', message: '3 key scopes have retiring versions; no successful reencrypt completion recorded' },
+      ],
+    });
+    await page.reload();
+    const region = page.getByRole('region', { name: 'Operational diagnostics', exact: true });
+    await expect(region.getByRole('alert')).toHaveCount(5);
+    await expect(page.locator('.retention-warning')).toHaveCount(7);
+    await expect(region).toHaveAttribute('tabindex', '0');
+    await expect.poll(() => page.locator('.content').evaluate((element) => element.clientHeight)).toBeGreaterThanOrEqual(240);
+    await region.focus();
+    await page.keyboard.press('End');
+    const last = region.getByRole('alert').filter({ hasText: '3 key scopes' });
+    await expect.poll(async () => {
+      const outer = await region.boundingBox();
+      const inner = await last.boundingBox();
+      return outer !== null && inner !== null && inner.y >= outer.y && inner.y + inner.height <= outer.y + outer.height + 1;
+    }).toBe(true);
+    await page.locator('.content').focus();
+    await expect(page.locator('.content')).toBeFocused();
   });
 
   test('shows stale pruning health in the persistent app chrome', async ({ page }) => {

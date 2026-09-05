@@ -27,12 +27,23 @@ if [[ -z "$PUBLIC_DIR" || ! -f "$PUBLIC_DIR/bundle/index.json" || ! -f "$PUBLIC_
 	echo "chart-kind: HIKYO_CHART_KIND_PUBLIC_DIR must name the matching signed fixture bundle and operator public key" >&2
 	exit 2
 fi
-for command in kind kubectl helm docker jq openssl curl; do
+for command in kind kubectl helm docker jq openssl curl go; do
 	if ! command -v "$command" >/dev/null 2>&1; then
 		echo "chart-kind: $command not found on PATH" >&2
 		exit 2
 	fi
 done
+target_arch=$(docker info --format '{{.Architecture}}')
+case "$target_arch" in
+	aarch64 | arm64) target_arch=arm64 ;;
+	x86_64 | amd64) target_arch=amd64 ;;
+	*) echo "chart-kind: unsupported Docker node architecture $target_arch" >&2; exit 2 ;;
+esac
+binary_arch=$(go version -m "$BINARY" | awk '$1 == "build" && $2 ~ /^GOARCH=/ {sub(/^GOARCH=/,"",$2); print $2}')
+if [[ "$binary_arch" != "$target_arch" ]]; then
+	echo "chart-kind: candidate binary architecture $binary_arch does not match Docker/kind node $target_arch" >&2
+	exit 2
+fi
 if kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; then
 	echo "chart-kind: cluster '$CLUSTER' already exists; refusing to reuse or delete it" >&2
 	exit 1
@@ -115,13 +126,13 @@ data:
     help: "https://kind.sigs.k8s.io/docs/user/local-registry/"
 EOF
 
-mkdir -p "$work/build/image-root/amd64"
-cp "$BINARY" "$work/build/image-root/amd64/hikyo"
+mkdir -p "$work/build/image-root/$target_arch"
+cp "$BINARY" "$work/build/image-root/$target_arch/hikyo"
 cp Dockerfile.release "$work/build/Dockerfile.release"
-chmod 0755 "$work/build/image-root/amd64/hikyo"
+chmod 0755 "$work/build/image-root/$target_arch/hikyo"
 echo "chart-kind: building candidate image"
-docker buildx build --load --platform linux/amd64 \
-	--build-arg TARGETARCH=amd64 \
+docker buildx build --load --platform "linux/$target_arch" \
+	--build-arg TARGETARCH="$target_arch" \
 	--metadata-file "$work/image-metadata.json" \
 	--tag "$IMAGE_TAG" \
 	--file "$work/build/Dockerfile.release" "$work/build" >/dev/null
@@ -325,6 +336,8 @@ done
 if ! grep -Fq 'no root key configured' <<<"$broken_log"; then
 	echo "chart-kind: broken-shape fixture failed for an unexpected reason" >&2
 	echo "$broken_log" >&2
+	kubectl --namespace "$NAMESPACE" get pods --selector app.kubernetes.io/instance=broken -o json |
+		jq '[.items[] | {phase:.status.phase,init:[.status.initContainerStatuses[]? | {name,state}]}]' >&2
 	exit 1
 fi
 helm uninstall broken --namespace "$NAMESPACE" --wait >/dev/null
@@ -353,6 +366,61 @@ for _ in {1..30}; do
 done
 curl --fail --silent http://127.0.0.1:18081/readyz >/dev/null
 curl --fail --silent http://127.0.0.1:18081/healthz >/dev/null
+
+# Bootstrap actual chart authority through the supported local-admin command.
+# Reuse the candidate image, datastore, and protected mounts in short-lived
+# Jobs. admin takes the existing root source through a Secret reference; no
+# root value or establishment authority appears in command arguments or logs.
+doctor_private="$work/doctor-private"
+mkdir -m 0700 "$doctor_private"
+kubectl --namespace "$NAMESPACE" get deployment "$RELEASE-hikyo" -o json >"$work/doctor-deployment.json"
+chart_admin() {
+	local name=$1 args=$2
+	jq --arg name "$name" --arg namespace "$NAMESPACE" --argjson args "$args" '
+		.spec.template as $template |
+		{apiVersion:"batch/v1",kind:"Job",metadata:{name:$name,namespace:$namespace},
+		 spec:{backoffLimit:0,activeDeadlineSeconds:90,template:($template |
+			.metadata={labels:{app:"hikyo-chart-doctor"}} |
+			.spec.restartPolicy="Never" |
+			del(.spec.initContainers) |
+			.spec.containers |= map(select(.name=="server") |
+				.args=$args |
+				.env += [{name:"HIKYO_ROOT_KEY",valueFrom:{secretKeyRef:{name:"hikyo-root-key",key:"root-key"}}}] |
+				del(.ports,.livenessProbe,.readinessProbe,.startupProbe)))}}
+	' "$work/doctor-deployment.json" >"$work/$name.json"
+	kubectl apply --filename "$work/$name.json" >/dev/null
+	if ! kubectl --namespace "$NAMESPACE" wait --for=condition=Complete "job/$name" --timeout=100s >/dev/null; then
+		kubectl --namespace "$NAMESPACE" logs "job/$name" >"$doctor_private/$name.log" 2>&1 || true
+		echo "chart-kind: supported admin bootstrap job $name failed" >&2
+		return 1
+	fi
+	kubectl --namespace "$NAMESPACE" logs "job/$name" >"$doctor_private/$name.log" 2>&1
+}
+chart_admin chart-doctor-create \
+	'["admin","create","--username","chart-doctor","--display-name","Chart Doctor","--output-file","/var/lib/hikyo-upgrade/operator-custody/chart-doctor-authority"]'
+doctor_principal=$(sed -n 's/.*principal \([^)]*\)).*/\1/p' "$doctor_private/chart-doctor-create.log")
+if [[ -z "$doctor_principal" ]]; then
+	echo 'chart-kind: admin bootstrap did not report a principal' >&2
+	exit 1
+fi
+chart_admin chart-doctor-grant "$(jq -cn --arg principal "$doctor_principal" \
+	'["admin","grant","--principal",$principal,"--capability","instance-config"]')"
+# The authority was written 0600 into this run's owned node-backed private
+# custody directory. Copy it privately; the distroless image needs no shell.
+doctor_node=$(kind get nodes --name "$CLUSTER")
+umask 077
+docker exec "$doctor_node" cat /var/lib/hikyo-chart-state/operator-custody/chart-doctor-authority \
+	>"$doctor_private/authority"
+go build -trimpath -o "$work/hikyo-cli" ./cmd/hikyo
+go run ./scripts/ci/chartdoctor --origin http://127.0.0.1:18080 \
+	--private-dir "$doctor_private" --binary "$work/hikyo-cli"
+if ! jq -e --arg engine postgres --arg volume_severity unknown -f scripts/ci/assert-doctor-findings.jq "$doctor_private/doctor.json" >/dev/null; then
+	echo 'chart-kind: instance doctor did not report the complete measured finding set' >&2
+	jq '{status,findings:[.findings[]|{code,severity}]}' "$doctor_private/doctor.json" >&2
+	exit 1
+fi
+echo 'chart-kind: authenticated instance doctor reported all 12 operational finding families'
+
 if ! document=$(curl --fail --silent --show-error \
 	--header 'Accept: text/html' http://127.0.0.1:18080/); then
 	echo "chart-kind: UI document request failed" >&2

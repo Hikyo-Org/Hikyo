@@ -206,9 +206,15 @@ The root key and backup identity are read from files, used for the drill's
 duration only, and never persisted or logged. The scratch target is left for
 inspection unless `--cleanup` was requested and the drill passed.
 
-Include the root-key escrow unwrap proof in the quarterly runbook: the drill's
-`--root-key-file` IS that proof when the file is fetched fresh from escrow. An
-export job alone is not a recovery test.
+Include both readable restore and current root escrow verification in the quarterly runbook. A successful drill proves the archived hierarchy can be opened. To record verification against the current installation, recover a separate private root file from escrow and run this host-local command with the server's datastore, public upgrade bundle and operator pin configuration:
+
+```sh
+HIKYO_ROOT_KEY_FILE=/run/hikyo-root/root-key \
+  hikyo escrow verify --root-key-file /separate-custody/recovered-root \
+  --assert-separate-custody
+```
+
+`HIKYO_ROOT_KEY_FILE` identifies the actual configured server root file and is also supported by `hikyo server`; the server flag takes precedence. Verification refuses an unidentified or environment-only server root source. The command refuses the configured server root file, hardlink aliases, symlinks and files that are not private and operator-owned. It verifies the complete current key hierarchy and atomically binds the public timestamp to the finalized root epoch, installation and recovery incarnation. Root rotation or restore makes the old record stale; dual-wrapped root rotation must finish before verification. Private key bytes never enter an API or audit payload. The flag records the operator's separate-custody assertion: software cannot prove that a copy was physically offline. An export job alone is not a recovery test.
 
 With `--cleanup`, SQLite scratch files are removed only after every drill step
 and its recovery-time check pass. A failed or refused drill retains the target

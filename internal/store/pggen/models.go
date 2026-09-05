@@ -700,6 +700,15 @@ type OidcTransaction struct {
 	Browser                bool
 }
 
+type OpsDiagnostic struct {
+	Singleton            int32
+	EscrowVerifiedAt     pgtype.Timestamptz
+	EscrowInstanceID     string
+	EscrowIncarnation    string
+	EscrowRootEpoch      int64
+	LastReencryptSuccess pgtype.Timestamptz
+}
+
 type Org struct {
 	ID                     string
 	Name                   string

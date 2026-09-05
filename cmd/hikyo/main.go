@@ -113,6 +113,8 @@ func run() int {
 		return runAdmin(ctx, args)
 	case cmd == "backup":
 		return runOperator(ctx, "backup", args, app.RunBackup)
+	case cmd == "escrow":
+		return runOperator(ctx, "escrow", args, app.RunEscrow)
 	case cmd == "restore":
 		return runOperator(ctx, "restore", args, app.RunRestore)
 	case slices.Contains(cli.Verbs, cmd):

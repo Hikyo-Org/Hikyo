@@ -698,6 +698,15 @@ type OidcTransaction struct {
 	Browser                int64
 }
 
+type OpsDiagnostic struct {
+	Singleton            int64
+	EscrowVerifiedAt     sql.NullString
+	EscrowInstanceID     string
+	EscrowIncarnation    string
+	EscrowRootEpoch      int64
+	LastReencryptSuccess sql.NullString
+}
+
 type Org struct {
 	ID                     string
 	Name                   string

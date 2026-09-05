@@ -265,6 +265,40 @@ expect eof
 catch wait result
 exit [lindex $result 3]
 EOF
+# Read real instance diagnostics using the ordinary, stepped-up human session.
+# A new fixture has no scheduled backup, restore drill, or verified root escrow;
+# those remain visible warnings rather than fabricated healthy prerequisites.
+# Independently measure the actual SQLite parent filesystem. A full developer
+# disk may correctly produce a critical finding; prove that refusal while
+# continuing the functional deployment check, without claiming healthy capacity.
+volume_severity=$(python3 - "$work_dir" <<'PY'
+import os
+import sys
+
+capacity = os.statvfs(sys.argv[1])
+if capacity.f_blocks <= 0 or not 0 <= capacity.f_bavail <= capacity.f_blocks:
+    raise SystemExit("compose demo: invalid filesystem capacity measurement")
+used = (capacity.f_blocks - capacity.f_bavail) / capacity.f_blocks * 100
+print("error" if used >= 90 else "warn" if used >= 80 else "ok")
+PY
+)
+set +e
+"$binary" doctor --context demo --auth=human -o json >"$work_dir/instance-doctor.json"
+instance_doctor_exit=$?
+set -e
+expected_doctor_exit=0
+[[ "$volume_severity" == error ]] && expected_doctor_exit=4
+[[ "$instance_doctor_exit" -eq "$expected_doctor_exit" ]] || fail "instance doctor exited $instance_doctor_exit, want $expected_doctor_exit for measured capacity"
+jq -e --arg engine sqlite --arg volume_severity "$volume_severity" -f "$repo_root/scripts/ci/assert-doctor-findings.jq" \
+	"$work_dir/instance-doctor.json" >/dev/null || {
+	jq . "$work_dir/instance-doctor.json" >&2
+	fail 'instance doctor did not report the complete measured finding set'
+}
+if [[ "$volume_severity" != ok ]]; then
+	printf 'compose demo: datastore capacity is %s; functional proof does not assert healthy capacity\n' "$volume_severity"
+	jq '.findings[] | select(.code == "data-volume") | {code,severity,message}' "$work_dir/instance-doctor.json"
+fi
+
 org_json=$("$binary" org create --context demo --name compose-demo -o json)
 org_id=$(printf '%s' "$org_json" | jq -er '.id')
 
@@ -478,3 +512,4 @@ grep -F "GREETING=$updated" "$work_dir/sync.log" >/dev/null || fail 'sync did no
 printf 'compose demo passed: %s stored values including GREETING delivered byte-exactly; surrounding whitespace proved trim-only transformation\n' "$(wc -l <"$representable" | tr -d ' ')"
 printf 'compose demo passed: embedded newline refused by name with exit 4 and no generation/stamp change\n'
 printf 'compose demo passed: doctor returned only allowed findings; sync moved the stamp and restarted app\n'
+printf 'compose demo passed: authenticated instance doctor reported all 12 operational finding families\n'

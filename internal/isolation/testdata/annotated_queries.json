@@ -553,6 +553,12 @@
   },
   {
     "engine": "postgres",
+    "name": "GetOpsDiagnostics",
+    "annotation": "instance-scoped",
+    "hash": "a802e9ed5095b702172266766e4e06b874a5533c361ae6482cbd8fadcb9f44c3"
+  },
+  {
+    "engine": "postgres",
     "name": "GetPasswordCredential",
     "annotation": "authn-resolution",
     "hash": "b9305f60d3277b60befea01d7a8cf3271d3cd152ebead1a361e85c2e2017208a"
@@ -1405,6 +1411,12 @@
   },
   {
     "engine": "postgres",
+    "name": "SetEscrowVerification",
+    "annotation": "instance-scoped",
+    "hash": "d15379edfb3528a14e2e932b4bedf0e6ad6628452b900ce2d7c055b9cca03e3d"
+  },
+  {
+    "engine": "postgres",
     "name": "SetLastPruneSuccess",
     "annotation": "instance-scoped",
     "hash": "3b599545e7a9a08201f81a936d4fc5e367e48b10d92af38ffe32771bdcc54829"
@@ -1414,6 +1426,12 @@
     "name": "SetPinGeneration",
     "annotation": "authn-resolution",
     "hash": "0a3b09284d40d19d206619372f70f922ae3cfdafcb438107cfe7a0fb35dab133"
+  },
+  {
+    "engine": "postgres",
+    "name": "SetReencryptSuccess",
+    "annotation": "instance-scoped",
+    "hash": "0cb3b76dab7924222237f7d25a2aaa6784fc6fc52fe6fa666ab3771aba057e12"
   },
   {
     "engine": "postgres",
@@ -2074,6 +2092,12 @@
     "name": "GetOIDCTransactionByState",
     "annotation": "authn-resolution",
     "hash": "39ce25c1dc42fceac7529b2bb91ea748b05b6c05c6efc1eab0acef3b9e8d00c3"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetOpsDiagnostics",
+    "annotation": "instance-scoped",
+    "hash": "02e196d1a8a8e6e0deaba49cd10fe2169a6fd1d83eb44a2c69bd258413afc2f6"
   },
   {
     "engine": "sqlite",
@@ -2929,6 +2953,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "SetEscrowVerification",
+    "annotation": "instance-scoped",
+    "hash": "d15379edfb3528a14e2e932b4bedf0e6ad6628452b900ce2d7c055b9cca03e3d"
+  },
+  {
+    "engine": "sqlite",
     "name": "SetLastPruneSuccess",
     "annotation": "instance-scoped",
     "hash": "1b78ff9bee6fb9fbe18c261cf61c3a9feec8a917136a2e3de35e863d404c7432"
@@ -2938,6 +2968,12 @@
     "name": "SetPinGeneration",
     "annotation": "authn-resolution",
     "hash": "1f2113f9be15d76853483b2bb34e0fa2f627c04278308180ff7f600bbb5f686e"
+  },
+  {
+    "engine": "sqlite",
+    "name": "SetReencryptSuccess",
+    "annotation": "instance-scoped",
+    "hash": "0cb3b76dab7924222237f7d25a2aaa6784fc6fc52fe6fa666ab3771aba057e12"
   },
   {
     "engine": "sqlite",

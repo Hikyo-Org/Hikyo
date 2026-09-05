@@ -25,12 +25,25 @@ import (
 // Metric family names. Exported so the conformance drift-guard can pin them:
 // a rename here fails that test rather than silently breaking a dashboard.
 const (
-	MetricLastPruneSuccess   = "hikyo_last_prune_success_timestamp_seconds"
-	MetricPruneStale         = "hikyo_prune_stale"
-	MetricProjectStoragePeak = "hikyo_project_storage_peak_bytes"
-	MetricProjectStorageWarn = "hikyo_project_storage_warn"
-	MetricTLSCertNotAfter    = "hikyo_tls_cert_not_after_timestamp_seconds"
-	MetricTLSReloadFailures  = "hikyo_tls_reload_failures_total"
+	MetricLastPruneSuccess       = "hikyo_last_prune_success_timestamp_seconds"
+	MetricPruneStale             = "hikyo_prune_stale"
+	MetricProjectStoragePeak     = "hikyo_project_storage_peak_bytes"
+	MetricProjectStorageWarn     = "hikyo_project_storage_warn"
+	MetricDataVolumeKnown        = "hikyo_data_volume_capacity_known"
+	MetricDataVolumeUsedPercent  = "hikyo_data_volume_used_percent"
+	MetricDataVolumeWarn         = "hikyo_data_volume_warn"
+	MetricDataVolumeCritical     = "hikyo_data_volume_critical"
+	MetricRootEscrowVerified     = "hikyo_root_escrow_verified"
+	MetricRootEscrowVerifiedAt   = "hikyo_root_escrow_verified_timestamp_seconds"
+	MetricRootRotationPending    = "hikyo_root_rotation_pending"
+	MetricReencryptPendingScopes = "hikyo_reencrypt_pending_scopes"
+	MetricLastReencryptSuccess   = "hikyo_last_reencrypt_success_timestamp_seconds"
+	MetricPinsExpired            = "hikyo_pins_expired"
+	MetricPinsExpiringDay        = "hikyo_pins_expiring_day"
+	MetricPinsExpiringWeek       = "hikyo_pins_expiring_week"
+	MetricPinsExpiringMonth      = "hikyo_pins_expiring_month"
+	MetricTLSCertNotAfter        = "hikyo_tls_cert_not_after_timestamp_seconds"
+	MetricTLSReloadFailures      = "hikyo_tls_reload_failures_total"
 
 	// Deployment-adapter health (#157). Label-free by construction: they
 	// count targets and jobs instance-wide and never name a tenant.

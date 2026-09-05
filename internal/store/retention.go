@@ -33,6 +33,7 @@ const (
 // RetentionReader exposes persisted scheduler health.
 type RetentionReader interface {
 	LastPruneSuccess(ctx context.Context, p authz.Proof) (time.Time, bool, error)
+	Diagnostics(ctx context.Context, p authz.Proof, now time.Time) (OpsMetadata, error)
 }
 
 // RetentionRepo owns scheduler GC plus the snapshot lock that makes the
@@ -44,4 +45,22 @@ type RetentionRepo interface {
 	MarkCollected(ctx context.Context, p authz.Proof, snapshotID, policy string, now time.Time) (bool, error)
 	DeleteCollectedEntries(ctx context.Context, p authz.Proof, snapshotID string) (int64, error)
 	SetLastPruneSuccess(ctx context.Context, p authz.Proof, at time.Time) error
+	RecordEscrow(ctx context.Context, p authz.Proof, record EscrowRecord) error
+	RecordReencryptSuccess(ctx context.Context, p authz.Proof, at time.Time) error
+}
+
+// OpsMetadata contains aggregate public operational state, never key material
+// or tenant identifiers. Instance/incarnation are internal attestation bindings.
+type OpsMetadata struct {
+	EscrowVerifiedAt                                         time.Time
+	EscrowInstanceID, EscrowIncarnation                      string
+	EscrowRootEpoch, RootEpoch, RootWrappers, RetiringScopes int64
+	PinsExpired, PinsDay, PinsWeek, PinsMonth                int64
+	LastReencryptSuccess                                     time.Time
+}
+
+type EscrowRecord struct {
+	At                      time.Time
+	InstanceID, Incarnation string
+	RootEpoch               int64
 }

@@ -15,7 +15,7 @@ warning, while malformed security settings stop startup.
 | `--operational-listen ADDR` | `127.0.0.1:8081` | Plaintext health, readiness, and metrics listener. |
 | `--tls-cert-file PATH` | none | PEM certificate chain; configure with the key file. |
 | `--tls-key-file PATH` | none | Matching PEM private key; mode `0400` or `0600`. |
-| `--root-key-file PATH` | none | Mode-`0600`, 64-hex-character root key. |
+| `--root-key-file PATH` | `HIKYO_ROOT_KEY_FILE` | Mode-`0600`, 64-hex-character root key; flag takes precedence. The environment path also supplies host-local custody commands. |
 | `--auto-migrate=BOOL` | `true` | Apply pending migrations before serving. |
 | `--dev` | off | Evaluation datastore, root key, and text logs. |
 
@@ -178,7 +178,7 @@ when connecting.
 
 Choose exactly one source:
 
-- `--root-key-file PATH`, including a service-manager credential path.
+- `--root-key-file PATH` or `HIKYO_ROOT_KEY_FILE`, including a service-manager credential path.
 - `HIKYO_ROOT_KEY`, the weakest delivery tier.
 
 The key must be 64 hexadecimal characters. Keep it outside the datastore and

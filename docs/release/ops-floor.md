@@ -17,20 +17,20 @@ Compilation happens outside the measured container. The source-built non-race CL
 
 ## Exact measured scope
 
-This is the currently implemented doctor checklist subset. The locked operations ADR also names disk usage at 80/90 percent, unverified root escrow and expiring pins. Those categories are not emitted by the current doctor and remain separate O2 release gaps until explicitly resolved; passing this lane alone cannot close O2.
+The doctor checklist now includes all twelve baseline families: retention, project storage, backup RPO, restore drill, adapters, datastore volume, current root escrow, pin expiry, root rotation, re-encryption, database durability and Argon2 policy. The fixture runs the actual local escrow verification command with a distinct private custody copy before its healthy state. Both-engine isolation tests additionally prove escrow epoch/incarnation invalidation, pin tier boundaries and actual re-encryption completion. Passing this lane alone does not close the remaining deployment and bound-registry evidence requirements.
 
 `TestOpsFloorDoctor` boots the actual application using its existing signed development fixture and invokes the real `hikyo doctor` binary with a genuine privately persisted human session. It uses the production Argon2 floor, admission budget and backup policy defaults. The following states come from persisted service data, not mocked HTTP responses:
 
 | State | Required finding | Severity and CLI result |
 |---|---|---|
-| Healthy | All five baseline finding families | All `ok`, exit 0 |
+| Healthy | All twelve baseline finding families | All `ok`, exit 0 |
 | Stale prune | `retention-prune` | `warn`, exit 0 |
 | Backup beyond the default 26-hour RPO | `backup-rpo` | `error`, exit 4 |
 | Failed restore drill | `restore-drill` | `warn`, exit 0 |
 | Failed adapter target | `adapter-targets` | `warn`, exit 0 |
 | Expired SAML metadata | `metadata_expired` | `error`, exit 4 |
 | Project payload at the real 1 GiB threshold | `project-storage` | `warn`, exit 0 |
-| Recovered | All five baseline finding families | All `ok`, exit 0 |
+| Recovered | All twelve baseline finding families | All `ok`, exit 0 |
 
 The SQLite instance-wide aggregates project byte lengths before grouping. `LIMIT -1 OFFSET 0` preserves every row and prevents SQLite from flattening that projection into a sorter carrying whole ciphertext blobs ([SQLite optimizer rule 14](https://www.sqlite.org/optoverview.html#flattening)). The pinned SQLC parser cannot generate `AS MATERIALIZED`; the projection barrier keeps generation reproducible. Tenant grouping, totals, PostgreSQL queries and transaction deadlines remain unchanged.
 
@@ -40,7 +40,7 @@ The 1 GiB state uses 16,384 synthetic 64 KiB accounting rows, inserted in bounde
 
 ## Review the artifact
 
-`ops-floor-<architecture>-<commit>` contains `provenance.json`, `result.json`, `doctor.json`, named test logs, runner diagnostics and container exit/OOM state. Provenance records the checked-out commit, source-dirty marker, binary hashes, image identity, native architecture, storage medium and workflow run URL. The result records effective limits, peak memory, elapsed time and every selected test/state. The verifier checks individual finding severities and requires complete healthy recovery; an aggregate status alone is insufficient.
+`ops-floor-<architecture>-<commit>` contains `provenance.json`, `result.json`, `doctor.json`, named test logs, runner diagnostics and container exit/OOM state. Provenance records the checked-out commit, source-dirty marker, binary hashes, image identity, native architecture, storage medium and workflow run URL. The result records effective limits, peak memory, elapsed time and every selected test/state. The verifier checks individual finding severities and requires every mutable fixture state to recover; an aggregate status alone is insufficient. It independently measures the actual SQLite filesystem. A local host already above 80/90 percent retains its real volume warning/error and corresponding CLI result, even after fixture recovery. Such a run proves correct degraded-host behavior and cannot be presented as healthy capacity. No threshold is lowered and PostgreSQL capacity remains explicitly unknown in its separate deployment check.
 
 Only a clean-source successful hosted run at the exact reviewed candidate is release acceptance. A local dirty-tree run is a harness rehearsal even when its cgroup checks pass. Failed runs may upload diagnostics but cannot produce a successful result. No credentials, database or custody files belong in the artifact.
 

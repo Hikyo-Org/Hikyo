@@ -820,6 +820,9 @@ const (
 	StoreRetentionDeleteEntries  StoreOp = "retention.DeleteCollectedEntries"
 	StoreRetentionLastSuccess    StoreOp = "retention.LastPruneSuccess"
 	StoreRetentionSetLastSuccess StoreOp = "retention.SetLastPruneSuccess"
+	StoreOpsDiagnosticsRead      StoreOp = "retention.Diagnostics"
+	StoreEscrowVerificationWrite StoreOp = "retention.RecordEscrow"
+	StoreReencryptSuccessWrite   StoreOp = "retention.RecordReencryptSuccess"
 
 	// Disaster-recovery health row (#145, ops-spec section 11). Instance
 	// operational state, no tenant chain: the scheduler's export and prune
@@ -2691,6 +2694,7 @@ var operationTable = map[Operation]opSpec{
 			StoreDynamicProvidersReencrypt:        true,
 			StoreKeysAssertActiveDEKVersion:       true,
 			StoreKeysRetireRetiringTier3:          true,
+			StoreReencryptSuccessWrite:            true,
 			StoreAuditTenantInsert:                true,
 		},
 		events: []audit.EventType{audit.EventReencryptCompleted},
@@ -2709,6 +2713,7 @@ var operationTable = map[Operation]opSpec{
 			StoreReencryptListRemotes: true, StoreReencryptRemote: true,
 			StoreKeysAssertActiveDEKVersion: true,
 			StoreKeysRetireRetiringTier3:    true,
+			StoreReencryptSuccessWrite:      true,
 			StoreAuditInstanceInsert:        true,
 		},
 		events: []audit.EventType{audit.EventReencryptCompleted},
@@ -3323,6 +3328,7 @@ var operationTable = map[Operation]opSpec{
 		formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}},
 		storeOps: map[StoreOp]bool{
 			StoreRetentionLastSuccess: true,
+			StoreOpsDiagnosticsRead:   true,
 			StoreAuditInstanceInsert:  true,
 			// Adapter health counts (#157): the same operator read feeds
 			// `hikyo doctor` and the label-free adapter gauges.
@@ -4161,6 +4167,7 @@ var scimGroupMutationEvents = []audit.EventType{
 type SystemSite string
 
 const (
+	SiteEscrow            SystemSite = "local-escrow-verification"
 	SiteBoot              SystemSite = "boot"
 	SiteMigration         SystemSite = "migration"
 	SiteRecoveryReconcile SystemSite = "recovery-mode-reconciliation"
@@ -4176,12 +4183,14 @@ const (
 // and recovery reconciliation and break-glass arrive with #54/#55 — for
 // those three an empty set is the fail-closed default.
 var systemSites = map[SystemSite]map[StoreOp]bool{
+	SiteEscrow:            {StoreKeysActiveMasterWrappers: true, StoreKeysAllOpenableTier3: true, StoreKeysAcquireHierarchyGeneration: true, StoreEscrowVerificationWrite: true, StoreAuditInstanceInsert: true},
 	SiteBoot:              bootKeyringOps,
 	SiteMigration:         {},
 	SiteRecoveryReconcile: {},
 	SiteBreakGlass:        {},
 	SiteScheduler: {
-		StoreRetentionEligible: true, StoreRetentionMarkCollected: true,
+		StoreOpsDiagnosticsRead: true,
+		StoreRetentionEligible:  true, StoreRetentionMarkCollected: true,
 		StoreRetentionDeleteEntries: true, StoreRetentionLastSuccess: true,
 		StoreRetentionSetLastSuccess: true, StoreAuditTenantInsert: true,
 		StoreAuditInstanceInsert: true,
@@ -4221,6 +4230,7 @@ var systemSites = map[SystemSite]map[StoreOp]bool{
 }
 
 var systemSiteEvents = map[SystemSite][]audit.EventType{
+	SiteEscrow: {audit.EventRootEscrowVerified},
 	SiteScheduler: {
 		audit.EventRetentionPayloadGC,
 		audit.EventRetentionPruneRun,

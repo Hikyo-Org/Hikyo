@@ -1381,6 +1381,30 @@ func (e LocalLoginRequestArtifact) Valid() bool {
 	}
 }
 
+// Defines values for OpsDiagnosticFindingSeverity.
+const (
+	OpsDiagnosticFindingSeverityError   OpsDiagnosticFindingSeverity = "error"
+	OpsDiagnosticFindingSeverityOk      OpsDiagnosticFindingSeverity = "ok"
+	OpsDiagnosticFindingSeverityUnknown OpsDiagnosticFindingSeverity = "unknown"
+	OpsDiagnosticFindingSeverityWarn    OpsDiagnosticFindingSeverity = "warn"
+)
+
+// Valid indicates whether the value is a known member of the OpsDiagnosticFindingSeverity enum.
+func (e OpsDiagnosticFindingSeverity) Valid() bool {
+	switch e {
+	case OpsDiagnosticFindingSeverityError:
+		return true
+	case OpsDiagnosticFindingSeverityOk:
+		return true
+	case OpsDiagnosticFindingSeverityUnknown:
+		return true
+	case OpsDiagnosticFindingSeverityWarn:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PendingChangeOperation.
 const (
 	PendingChangeOperationSet   PendingChangeOperation = "set"
@@ -1509,31 +1533,31 @@ func (e ReencryptResultScope) Valid() bool {
 
 // Defines values for RemoteState.
 const (
-	CredentialRejected RemoteState = "credential-rejected"
-	IdentityConflict   RemoteState = "identity-conflict"
-	Ok                 RemoteState = "ok"
-	PinMismatch        RemoteState = "pin-mismatch"
-	RedirectRefused    RemoteState = "redirect-refused"
-	SelfConnected      RemoteState = "self-connected"
-	Unreachable        RemoteState = "unreachable"
+	RemoteStateCredentialRejected RemoteState = "credential-rejected"
+	RemoteStateIdentityConflict   RemoteState = "identity-conflict"
+	RemoteStateOk                 RemoteState = "ok"
+	RemoteStatePinMismatch        RemoteState = "pin-mismatch"
+	RemoteStateRedirectRefused    RemoteState = "redirect-refused"
+	RemoteStateSelfConnected      RemoteState = "self-connected"
+	RemoteStateUnreachable        RemoteState = "unreachable"
 )
 
 // Valid indicates whether the value is a known member of the RemoteState enum.
 func (e RemoteState) Valid() bool {
 	switch e {
-	case CredentialRejected:
+	case RemoteStateCredentialRejected:
 		return true
-	case IdentityConflict:
+	case RemoteStateIdentityConflict:
 		return true
-	case Ok:
+	case RemoteStateOk:
 		return true
-	case PinMismatch:
+	case RemoteStatePinMismatch:
 		return true
-	case RedirectRefused:
+	case RemoteStateRedirectRefused:
 		return true
-	case SelfConnected:
+	case RemoteStateSelfConnected:
 		return true
-	case Unreachable:
+	case RemoteStateUnreachable:
 		return true
 	default:
 		return false
@@ -5397,6 +5421,16 @@ type OidcStartResult struct {
 	AuthorizationUrl string `json:"authorization_url"`
 }
 
+// OpsDiagnosticFinding defines model for OpsDiagnosticFinding.
+type OpsDiagnosticFinding struct {
+	Code     string                       `json:"code"`
+	Message  string                       `json:"message"`
+	Severity OpsDiagnosticFindingSeverity `json:"severity"`
+}
+
+// OpsDiagnosticFindingSeverity defines model for OpsDiagnosticFinding.Severity.
+type OpsDiagnosticFindingSeverity string
+
 // Org defines model for Org.
 type Org struct {
 	Active bool `json:"active"`
@@ -5968,8 +6002,11 @@ type RetentionHealth struct {
 	AdapterTargetsPaused int `json:"adapter_targets_paused"`
 
 	// Backup Disaster-recovery health: the latest successful export, its age against the configured recovery point objective, the latest failure, and the latest restore drill. Names archives and versions only; never a recipient, an identity or a key.
-	Backup           BackupHealth `json:"backup"`
-	LastPruneSuccess *time.Time   `json:"last_prune_success"`
+	Backup BackupHealth `json:"backup"`
+
+	// Diagnostics Instance operational findings. Unknown means the signal is not authoritatively measured, never healthy by default. No private custody or tenant identities.
+	Diagnostics      *[]OpsDiagnosticFinding `json:"diagnostics,omitempty"`
+	LastPruneSuccess *time.Time              `json:"last_prune_success"`
 
 	// PeakProjectBytes Largest per-project stored payload across the instance, in bytes (ciphertext of value cells plus published snapshot entries). The per-project storage high-water surface.
 	PeakProjectBytes  int                              `json:"peak_project_bytes"`

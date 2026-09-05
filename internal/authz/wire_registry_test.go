@@ -21,14 +21,15 @@ func TestWireRegistrySnapshot(t *testing.T) {
 	// #568 added member invitations, #147 added dynamic providers and leases,
 	// #151 added change approvals, #157 added adapter pause and resume, and
 	// #628 added the two unauthenticated MCP metadata methods.
-	if got := len(facts.Wire()); got != 317 {
-		t.Fatalf("wire entries = %d, want 317", got)
+	// Ops diagnostics adds the CLI-only escrow verification event.
+	if got := len(facts.Wire()); got != 318 {
+		t.Fatalf("wire entries = %d, want 318", got)
 	}
 	if got := len(facts.WireRoutes()); got != 225 {
 		t.Fatalf("operation-linked entries = %d, want 225", got)
 	}
-	if got := len(facts.WireEvents()); got != 67 {
-		t.Fatalf("direct-event entries = %d, want 67", got)
+	if got := len(facts.WireEvents()); got != 68 {
+		t.Fatalf("direct-event entries = %d, want 68", got)
 	}
 }
 

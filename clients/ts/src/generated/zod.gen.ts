@@ -1669,6 +1669,17 @@ export const zRetentionPolicy = z.object({
     last_revisions: z.int().gte(1).nullish()
 });
 
+export const zOpsDiagnosticFinding = z.object({
+    code: z.string(),
+    severity: z.enum([
+        'ok',
+        'warn',
+        'error',
+        'unknown'
+    ]),
+    message: z.string()
+});
+
 /**
  * Disaster-recovery health: the latest successful export, its age against the configured recovery point objective, the latest failure, and the latest restore drill. Names archives and versions only; never a recipient, an identity or a key.
  */
@@ -1687,6 +1698,7 @@ export const zBackupHealth = z.object({
 });
 
 export const zRetentionHealth = z.object({
+    diagnostics: z.array(zOpsDiagnosticFinding).optional(),
     last_prune_success: z.iso.datetime().nullable(),
     stale: z.boolean(),
     stale_after_seconds: z.literal(86400),

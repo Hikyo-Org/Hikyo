@@ -17,10 +17,13 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/cli"
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/storagehealth"
 )
 
 type opsDoctorReport struct {
-	Status   string `json:"status"`
+	Status   string                 `json:"status"`
+	Volume   storagehealth.Capacity `json:"measured_volume"`
+	ExitCode int                    `json:"exit_code"`
 	Findings []struct {
 		Code     string `json:"code"`
 		Severity string `json:"severity"`
@@ -84,9 +87,43 @@ func TestOpsFloorDoctor(t *testing.T) {
 	if err := state.PutSession(cli.SessionArtifact{Instance: "floor", Origin: origin, Token: token, SessionID: identity.SessionID, Principal: string(identity.Principal), ExpiresAt: identity.AbsoluteExpiresAt.Format(time.RFC3339Nano)}); err != nil {
 		t.Fatal(err)
 	}
+	// Recover a distinct private custody file and exercise the actual local
+	// command before claiming that the current root escrow is verified.
+	escrowPath := filepath.Join(t.TempDir(), "recovered-root")
+	recoveredRoot := c.rootKey(t)
+	if err := os.WriteFile(escrowPath, []byte(crypto.EncodeRootKey(recoveredRoot)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	crypto.Zero(recoveredRoot)
+	var escrowOutput bytes.Buffer
+	if err := app.RunEscrow(t.Context(), target.cfg, drillLogger(), []string{"verify", "--root-key-file", escrowPath, "--assert-separate-custody"}, &escrowOutput, nil, nil); err != nil {
+		t.Fatal(err)
+	}
 	results := map[string]opsDoctorReport{}
 	check := func(name, status string, exit int, code, severity string) {
 		t.Helper()
+		// Measure the real datastore volume independently. A degraded local host
+		// may prove fixture recovery, but cannot be represented as healthy storage.
+		capacity, err := storagehealth.Read(filepath.Dir(target.cfg.Store.Path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		volume := storagehealth.FromCapacity(capacity)
+		if !volume.Known {
+			t.Fatal("actual SQLite volume capacity unavailable")
+		}
+		expectedVolume := "ok"
+		fixtureHealthy := status == "ok"
+		if volume.UsedPercent >= 90 {
+			expectedVolume = "error"
+			status = "error"
+			exit = cli.ExitRefused
+		} else if volume.UsedPercent >= 80 {
+			expectedVolume = "warn"
+			if status == "ok" {
+				status = "warning"
+			}
+		}
 		cmd := exec.CommandContext(t.Context(), binary, "doctor", "--instance", "floor", "-o", "json")
 		cmd.Env = []string{"HIKYO_STATE_DIR=" + stateDir}
 		var stderr bytes.Buffer
@@ -102,7 +139,9 @@ func TestOpsFloorDoctor(t *testing.T) {
 		}
 		if gotExit != exit {
 			var diagnostic struct {
-				Status   string `json:"status"`
+				Status   string                 `json:"status"`
+				Volume   storagehealth.Capacity `json:"measured_volume"`
+				ExitCode int                    `json:"exit_code"`
 				Findings []struct {
 					Code     string `json:"code"`
 					Severity string `json:"severity"`
@@ -123,7 +162,7 @@ func TestOpsFloorDoctor(t *testing.T) {
 		for _, finding := range report.Findings {
 			codes[finding.Code] = finding.Severity
 		}
-		for _, required := range []string{"retention-prune", "project-storage", "backup-rpo", "restore-drill", "adapter-targets"} {
+		for _, required := range []string{"retention-prune", "project-storage", "backup-rpo", "restore-drill", "adapter-targets", "data-volume", "root-escrow", "pin-expiry", "root-rotation", "reencrypt", "database-durability", "argon2-floor"} {
 			if codes[required] == "" {
 				t.Fatalf("%s: doctor omitted %s", name, required)
 			}
@@ -131,13 +170,18 @@ func TestOpsFloorDoctor(t *testing.T) {
 		if code != "" && codes[code] != severity {
 			t.Fatalf("%s: %s severity %q, want %q", name, code, codes[code], severity)
 		}
-		if status == "ok" {
+		if codes["data-volume"] != expectedVolume {
+			t.Fatalf("actual volume %.1f%%: got %s want %s", volume.UsedPercent, codes["data-volume"], expectedVolume)
+		}
+		if fixtureHealthy {
 			for name, severity := range codes {
-				if severity != "ok" {
+				if severity != "ok" && name != "data-volume" {
 					t.Fatalf("healthy checklist retained %s=%s", name, severity)
 				}
 			}
 		}
+		report.Volume = capacity
+		report.ExitCode = gotExit
 		results[name] = report
 		t.Logf("doctor state %s: status=%s exit=%d", name, report.Status, gotExit)
 	}
@@ -189,7 +233,7 @@ func TestOpsFloorDoctor(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	t.Log(fmt.Sprintf("doctor checklist: %d states, authenticated real CLI and server, synthetic SQLite health", len(results)))
+	t.Log(fmt.Sprintf("doctor checklist: %d states, authenticated real CLI and server, real volume plus synthetic persisted health states", len(results)))
 }
 
 func TestOpsFloorStorageRefusal(t *testing.T) { runProjectStorageHighWater(t, seededDB(t, openSQLite)) }
