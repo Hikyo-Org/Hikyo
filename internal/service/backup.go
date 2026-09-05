@@ -15,7 +15,8 @@ package service
 //  2. The artifact is published ATOMICALLY. It is written under a `.partial`
 //     name, closed (age's Close is what writes the final chunk that
 //     distinguishes a complete archive from a prefix), fsynced, and only then
-//     renamed. A partially written backup must never be mistakable for a
+//     linked without overwrite and its directory fsynced. A partially written
+//     backup must never be mistakable for a
 //     complete one — the failure mode where an operator discovers at restore
 //     time that last night's file stops half-way.
 
@@ -30,6 +31,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
+	"github.com/Hikyo-Org/hikyo/internal/filedurability"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
@@ -59,7 +61,16 @@ type Backup struct {
 	// unlink without needing an unwritable directory (which fails every
 	// unlink and cannot distinguish stop-on-first from delete-all-fail).
 	removeFile func(string) error
+	// syncDirectory defaults to filedurability.SyncDirectory. The seam lets tests fail
+	// after publication, proving the recoverable artifact is retained without
+	// reporting success when its directory entry may not survive a crash.
+	syncDirectory func(string) error
 }
+
+// ErrBackupDurabilityUnconfirmed means publication succeeded but syncing its
+// directory failed. The named artifact is retained for operator inspection;
+// callers must not record a successful export from this result.
+var ErrBackupDurabilityUnconfirmed = errors.New("backup artifact published but durability unconfirmed")
 
 func (s *Backup) now() time.Time {
 	if s.Now != nil {
@@ -68,7 +79,7 @@ func (s *Backup) now() time.Time {
 	return time.Now()
 }
 
-// ExportResult describes a published artifact.
+// ExportResult describes a durably published artifact.
 type ExportResult struct {
 	Path     string
 	Bytes    int64
@@ -89,6 +100,10 @@ func (s *Backup) Export(ctx context.Context, dir string) (ExportResult, error) {
 		return ExportResult{}, err
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return ExportResult{}, fmt.Errorf("backup destination %s: %w", dir, err)
+	}
+	syncPaths, err := filedurability.DirectoryAncestry(dir)
+	if err != nil {
 		return ExportResult{}, fmt.Errorf("backup destination %s: %w", dir, err)
 	}
 	work, err := os.MkdirTemp(dir, ".export-")
@@ -139,6 +154,15 @@ func (s *Backup) Export(ctx context.Context, dir string) (ExportResult, error) {
 	if err != nil {
 		return ExportResult{}, err
 	}
+	syncDirectory := s.syncDirectory
+	if syncDirectory == nil {
+		syncDirectory = filedurability.SyncDirectory
+	}
+	for _, path := range syncPaths {
+		if err := syncDirectory(path); err != nil {
+			return ExportResult{}, fmt.Errorf("%w: %s (sync directory %s): %w", ErrBackupDurabilityUnconfirmed, final, path, err)
+		}
+	}
 	result.Path, result.Bytes = final, info.Size()
 	return result, nil
 }
@@ -159,7 +183,8 @@ func (s *Backup) publish(dir, partial string) (string, error) {
 		err := os.Link(partial, final)
 		if err == nil {
 			// The staged name is removed by Export's deferred cleanup; the
-			// link above is what made the artifact durable.
+			// link above publishes atomically; Export then syncs its directory
+			// before reporting durable success.
 			return final, nil
 		}
 		if !errors.Is(err, os.ErrExist) {

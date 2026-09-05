@@ -1,0 +1,33 @@
+{
+  "base": "353e724d9b09e418fc3fd8ce665fe6307813dec3",
+  "code_sha256": {
+    "internal/filedurability/directory.go": "9645dc1effc0a0ed4d761ddb0f3ae9f717309e2c41c223b52d70eaf89423bafc",
+    "internal/store/backup.go": "dd5d227de58601a00cdaa5a7d039a78bb7238e36fadde98c20489a7229265b92",
+    "internal/store/backup_durability_test.go": "f907a6f229f0bf56ce581cc0d33af98e73dd9e0993269c6ce024fccb376dad94",
+    "internal/service/backup.go": "6dfb94badc23ec9f63bf744781f7a48b39678d6337262e57fb260d4b003fb7d0",
+    "internal/service/backup_publication_test.go": "acf5d76e4bd1f7317a1a6df40f25a801717f6e627598e1c6de46d6e95a5c8b09"
+  },
+  "focused": {
+    "packages": [
+      "internal/store",
+      "internal/service"
+    ],
+    "passed_cases": 23
+  },
+  "full": {
+    "command": "go test -p 2 ./internal/store ./internal/app ./internal/service ./internal/lint -count=1",
+    "passed_cases": 596
+  },
+  "both_engine_drills": {
+    "top_level_cases": 6,
+    "skipped": 0,
+    "seconds": 16.633,
+    "engines": [
+      "sqlite",
+      "postgres"
+    ]
+  },
+  "vet": "passed",
+  "independent_review": "Standards and Spec CLEAN; independent focused replay passed 10 cases",
+  "old_behavior_overlay": "all four new cases failed when only the directory sync loop was removed; worktree unchanged"
+}

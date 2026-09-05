@@ -1,0 +1,54 @@
+=== RUN   TestBackupRestoreDrillSQLite
+=== RUN   TestBackupRestoreDrillSQLite/truncated_backup_refused_before_any_state_is_committed
+=== RUN   TestBackupRestoreDrillSQLite/truncated_backup_refused_before_any_state_is_committed/chunk_boundary
+=== RUN   TestBackupRestoreDrillSQLite/truncated_backup_refused_before_any_state_is_committed/mid-chunk
+=== RUN   TestBackupRestoreDrillSQLite/custody_separation_is_two_distinct_identities
+=== RUN   TestBackupRestoreDrillSQLite/the_instance_actually_came_back
+=== RUN   TestBackupRestoreDrillSQLite/unbootable_with_the_age_identity_alone
+=== RUN   TestBackupRestoreDrillSQLite/every_recoverable_credential_is_dead_by_presentation
+=== RUN   TestBackupRestoreDrillSQLite/grants_are_inert_until_the_operator_commits_them
+=== RUN   TestBackupRestoreDrillSQLite/re_establishment_through_the_credential_authority_works
+=== RUN   TestBackupRestoreDrillSQLite/reconciliation_names_one_principal_and_only_one
+--- PASS: TestBackupRestoreDrillSQLite (2.04s)
+    --- PASS: TestBackupRestoreDrillSQLite/truncated_backup_refused_before_any_state_is_committed (0.01s)
+        --- PASS: TestBackupRestoreDrillSQLite/truncated_backup_refused_before_any_state_is_committed/chunk_boundary (0.00s)
+        --- PASS: TestBackupRestoreDrillSQLite/truncated_backup_refused_before_any_state_is_committed/mid-chunk (0.01s)
+    --- PASS: TestBackupRestoreDrillSQLite/custody_separation_is_two_distinct_identities (0.00s)
+    --- PASS: TestBackupRestoreDrillSQLite/the_instance_actually_came_back (0.00s)
+    --- PASS: TestBackupRestoreDrillSQLite/unbootable_with_the_age_identity_alone (0.00s)
+    --- PASS: TestBackupRestoreDrillSQLite/every_recoverable_credential_is_dead_by_presentation (0.08s)
+    --- PASS: TestBackupRestoreDrillSQLite/grants_are_inert_until_the_operator_commits_them (0.00s)
+    --- PASS: TestBackupRestoreDrillSQLite/re_establishment_through_the_credential_authority_works (0.50s)
+    --- PASS: TestBackupRestoreDrillSQLite/reconciliation_names_one_principal_and_only_one (0.00s)
+=== RUN   TestBackupRestoreDrillPostgres
+=== RUN   TestBackupRestoreDrillPostgres/truncated_backup_refused_before_any_state_is_committed
+=== RUN   TestBackupRestoreDrillPostgres/truncated_backup_refused_before_any_state_is_committed/chunk_boundary
+=== RUN   TestBackupRestoreDrillPostgres/truncated_backup_refused_before_any_state_is_committed/mid-chunk
+=== RUN   TestBackupRestoreDrillPostgres/custody_separation_is_two_distinct_identities
+=== RUN   TestBackupRestoreDrillPostgres/the_instance_actually_came_back
+=== RUN   TestBackupRestoreDrillPostgres/unbootable_with_the_age_identity_alone
+=== RUN   TestBackupRestoreDrillPostgres/every_recoverable_credential_is_dead_by_presentation
+=== RUN   TestBackupRestoreDrillPostgres/grants_are_inert_until_the_operator_commits_them
+=== RUN   TestBackupRestoreDrillPostgres/re_establishment_through_the_credential_authority_works
+=== RUN   TestBackupRestoreDrillPostgres/reconciliation_names_one_principal_and_only_one
+--- PASS: TestBackupRestoreDrillPostgres (4.98s)
+    --- PASS: TestBackupRestoreDrillPostgres/truncated_backup_refused_before_any_state_is_committed (1.18s)
+        --- PASS: TestBackupRestoreDrillPostgres/truncated_backup_refused_before_any_state_is_committed/chunk_boundary (1.13s)
+        --- PASS: TestBackupRestoreDrillPostgres/truncated_backup_refused_before_any_state_is_committed/mid-chunk (0.05s)
+    --- PASS: TestBackupRestoreDrillPostgres/custody_separation_is_two_distinct_identities (0.00s)
+    --- PASS: TestBackupRestoreDrillPostgres/the_instance_actually_came_back (0.02s)
+    --- PASS: TestBackupRestoreDrillPostgres/unbootable_with_the_age_identity_alone (0.00s)
+    --- PASS: TestBackupRestoreDrillPostgres/every_recoverable_credential_is_dead_by_presentation (0.12s)
+    --- PASS: TestBackupRestoreDrillPostgres/grants_are_inert_until_the_operator_commits_them (0.02s)
+    --- PASS: TestBackupRestoreDrillPostgres/re_establishment_through_the_credential_authority_works (0.35s)
+    --- PASS: TestBackupRestoreDrillPostgres/reconciliation_names_one_principal_and_only_one (0.00s)
+=== RUN   TestRestoreDistrustsArchiveEpochStampsSQLite
+--- PASS: TestRestoreDistrustsArchiveEpochStampsSQLite (0.23s)
+=== RUN   TestRestoreDistrustsArchiveEpochStampsPostgres
+--- PASS: TestRestoreDistrustsArchiveEpochStampsPostgres (2.31s)
+=== RUN   TestRestoreDrillVerbSQLite
+--- PASS: TestRestoreDrillVerbSQLite (0.79s)
+=== RUN   TestRestoreDrillVerbPostgres
+--- PASS: TestRestoreDrillVerbPostgres (4.97s)
+PASS
+ok  	github.com/Hikyo-Org/[redacted]/internal/isolation	16.633s

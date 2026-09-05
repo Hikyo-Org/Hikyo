@@ -1,0 +1,12 @@
+--- FAIL: TestRestoreSQLiteDirectoryDurabilityPreservesRecoveryState (0.18s)
+    --- FAIL: TestRestoreSQLiteDirectoryDurabilityPreservesRecoveryState/success (0.02s)
+        backup_durability_test.go:101: directory sync ancestry = []
+    --- FAIL: TestRestoreSQLiteDirectoryDurabilityPreservesRecoveryState/destination (0.01s)
+        backup_durability_test.go:81: error = <nil>, want named retained target and durability failure
+    --- FAIL: TestRestoreSQLiteDirectoryDurabilityPreservesRecoveryState/parent (0.01s)
+        backup_durability_test.go:81: error = <nil>, want named retained target and durability failure
+    --- FAIL: TestRestoreSQLiteDirectoryDurabilityPreservesRecoveryState/ancestor (0.01s)
+        backup_durability_test.go:81: error = <nil>, want named retained target and durability failure
+FAIL
+FAIL	github.com/Hikyo-Org/hikyo/internal/store	0.847s
+FAIL

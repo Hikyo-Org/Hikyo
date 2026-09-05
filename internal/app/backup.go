@@ -617,7 +617,9 @@ func runRestoreDrill(ctx context.Context, cfg *config.Config, log *slog.Logger, 
 		report.FailedStep = "rto"
 	}
 
-	if *cleanup {
+	// A refused or failed drill does not establish ownership of the target.
+	// Preserve it for inspection, including any pre-existing database.
+	if *cleanup && drillErr == nil && report.OK() {
 		switch scratch.Engine {
 		case store.EngineSQLite:
 			if err := removeDrillSQLite(scratch.Path); err != nil {
