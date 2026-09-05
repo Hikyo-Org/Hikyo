@@ -298,7 +298,7 @@ func definitionsGitMode(t *testing.T, db *store.DB) {
 	for _, check := range checks {
 		t.Run(check.name, func(t *testing.T) {
 			err := check.call()
-			assertSafeDetail(t, err, "Definitions for this project are managed in Git — changes arrive through `definitions plan` / `definitions apply`.")
+			assertSafeDetail(t, err, "Definitions for this project are managed in Git: changes arrive through `definitions plan` / `definitions apply`.")
 			if got := captureDefinitionsState(t, db, f.project); !reflect.DeepEqual(got, baseline) {
 				t.Fatalf("guarded write changed state\nbefore=%+v\nafter=%+v", baseline, got)
 			}

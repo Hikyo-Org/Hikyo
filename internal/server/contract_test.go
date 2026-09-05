@@ -694,6 +694,7 @@ func TestWhoamiCarriesOnlyOIDCProviderProvenance(t *testing.T) {
 			identity := liveIdentity
 			identity.Assurance.Method = tc.method
 			identity.Assurance.Provider = tc.provider
+			identity.DisplayName = "Alex Lee"
 			srv := newTestServer(t, stubAuth{identity: func(context.Context, string) (service.Identity, error) {
 				return identity, nil
 			}}, stubOrgs{})
@@ -701,6 +702,11 @@ func TestWhoamiCarriesOnlyOIDCProviderProvenance(t *testing.T) {
 			var body apigen.WhoAmI
 			if err := json.Unmarshal(payload, &body); err != nil {
 				t.Fatal(err)
+			}
+			// The chrome names its holder from whoami after a reload, so the
+			// display name travels here exactly as it does on the login result.
+			if body.Principal.DisplayName == nil || *body.Principal.DisplayName != identity.DisplayName {
+				t.Fatalf("whoami display_name = %v, want %q", body.Principal.DisplayName, identity.DisplayName)
 			}
 			if tc.want == "" {
 				if body.Session.Assurance.Provider != nil {
