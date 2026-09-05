@@ -116,3 +116,12 @@ Both repairs have independent CLEAN reviews. Federation/OIDC dependent checks,
 readiness/operational race checks, Go vet, ShellCheck and the rebuilt public docs
 verification passed. No retries or test deadlines were increased. Exact-head CI
 must confirm the original kind outage scenario before merge.
+
+## Current main integration
+
+Main PR 678 added a trusted race scheduler and the shared federation body-buffer
+fix while this PR was running. The branch includes main commit 0e1ff3c4 so CI can
+load that scheduler from its trusted base. Merge resolution preserves main's
+`bufferResponse` implementation and unit tests, plus this PR's real-network
+cancellation-at-EOF regression. Federation/OIDC race tests, vet, ShellCheck,
+race scheduling fixtures and trusted-CI fixtures passed after integration.

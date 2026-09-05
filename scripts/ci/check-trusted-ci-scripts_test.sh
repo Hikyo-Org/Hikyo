@@ -39,6 +39,12 @@ require_line "$workflow" 'ISOLATION_SHARD_RESULT: ${{ needs.isolation_shard.resu
 require_line "$workflow" './scripts/ci/test-core-packages_test.sh'
 require_line "$workflow" './scripts/ci/test-core-packages.sh'
 "$script_dir/test-core-packages_test.sh"
+# Race dispatch retains the base-controlled coverage boundary while isolating
+# app cleanup from peer package migrations. Its behavior is checked directly.
+require_line "$workflow" "git show \"\$BASE_SHA:scripts/ci/test-race-packages.sh\" >\"\$scheduler\""
+# shellcheck disable=SC2016
+require_line "$workflow" 'bash "$scheduler" "$packages"'
+"$script_dir/test-race-packages_test.sh"
 require_line "$workflow" 'name: Upload shard fuzz reproducers'
 require_line "$workflow" 'name: Download shard fuzz reproducers'
 require_line "$workflow" 'name: Upload minimized fuzz reproducers'

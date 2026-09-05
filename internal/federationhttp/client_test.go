@@ -218,6 +218,78 @@ func TestDeadlineClosesSlowHeaderAndBodyRequests(t *testing.T) {
 	}
 }
 
+// finalEOFBody models a successful final body read racing cancellation: io.ReadAll
+// discards EOF and returns the complete payload with a nil read error.
+type finalEOFBody struct {
+	payload string
+	finish  func()
+	closed  bool
+}
+
+func (b *finalEOFBody) Read(p []byte) (int, error) {
+	n := copy(p, b.payload)
+	b.payload = b.payload[n:]
+	if len(b.payload) == 0 {
+		b.finish()
+		return n, io.EOF
+	}
+	return n, nil
+}
+
+func (b *finalEOFBody) Close() error {
+	b.closed = true
+	return nil
+}
+
+func TestBufferedResponseRefusesCancellationAtSuccessfulEOF(t *testing.T) {
+	for _, completion := range []string{"live", "canceled-at-eof", "deadline-at-eof"} {
+		t.Run(completion, func(t *testing.T) {
+			var ctx context.Context
+			var cancel context.CancelFunc
+			if completion == "deadline-at-eof" {
+				ctx, cancel = context.WithTimeout(t.Context(), time.Millisecond)
+			} else {
+				ctx, cancel = context.WithCancel(t.Context())
+			}
+			defer cancel()
+			const payload = `{"issuer":"https://issuer.example"}`
+			body := &finalEOFBody{payload: payload, finish: func() {
+				switch completion {
+				case "canceled-at-eof":
+					cancel()
+				case "deadline-at-eof":
+					<-ctx.Done()
+				}
+			}}
+			response, err := bufferResponse(ctx, &http.Response{StatusCode: http.StatusOK, ContentLength: -1, Body: body}, 128)
+			if !body.closed {
+				t.Fatal("buffering retained the original upstream body")
+			}
+			if completion != "live" {
+				want := context.Canceled
+				if completion == "deadline-at-eof" {
+					want = context.DeadlineExceeded
+				}
+				if !errors.Is(ctx.Err(), want) {
+					t.Fatal("fixture did not cancel at EOF", ctx.Err())
+				}
+				if !errors.Is(err, ErrTransport) || response != nil {
+					t.Fatal("cancellation at successful EOF delivered a provider response")
+				}
+				return
+			}
+			if err != nil || response == nil {
+				t.Fatal("live complete response refused", err)
+			}
+			defer response.Body.Close()
+			got, err := io.ReadAll(response.Body)
+			if err != nil || string(got) != payload || response.ContentLength != int64(len(payload)) {
+				t.Fatal("live buffered response was altered")
+			}
+		})
+	}
+}
+
 // A close-delimited response reaches EOF only when the upstream connection
 // closes. Cancel synchronously before returning that EOF to the real HTTP body
 // reader, so cancellation is ordered before the completed body is published.
