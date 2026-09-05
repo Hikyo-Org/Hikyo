@@ -670,7 +670,6 @@ type OidcProvider struct {
 	ClientSecret    []byte
 	Scopes          string
 	RedirectUri     string
-	JitPolicy       pgtype.Text
 	AssurancePolicy pgtype.Text
 	Enabled         int64
 	DekVersion      int64

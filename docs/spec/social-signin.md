@@ -1,5 +1,7 @@
 # Hikyo: social sign-in and open registration (handoff spec, synthesis 2026-09-03)
 
+> **Pre-1.0 amendment (2026-09-05, #617):** Automatic OIDC account creation is retired before the API freeze. Migration `00044_retire_oidc_provisioning.sql` removes its provider policy on both engines. Section 2.3 is now a no-op. Organisation rename already uses `manage-members@org`; delete remains instance administration. Existing protocol-kind, OIDC/SAML-purpose and grant-origin wire enums are open without adding future values. Migration numbers 00042 and 00043 below are historical planning placeholders already consumed by MCP; implementation tickets must allocate the next available pair.
+
 The destination of wayfinder map [#578](https://github.com/Hikyo-Org/Hikyo/issues/578), produced at [#589](https://github.com/Hikyo-Org/Hikyo/issues/589). Google, Microsoft Entra and GitHub sign-in beside local credentials and generic OIDC, plus operator-enabled open registration, designed as the seam a hosted deployment could later use. Self-hosted first; positioning unchanged.
 
 **How this document works.** Every decision lives in exactly one ticket resolution (linked below) and is bound into the ADRs by the 2026-09-03 amendment banners in [human-auth](../adr/human-auth.md), [tenant-isolation](../adr/tenant-isolation.md), [audit-model](../adr/audit-model.md), [permission-model](../adr/permission-model.md), [threat-model](../adr/threat-model.md), [ops-spec](../adr/ops-spec.md), [mvp-boundary](../adr/mvp-boundary.md) (declared amendment 4, criterion A7) and [api-cli-surface](../adr/api-cli-surface.md). This document indexes those decisions and discharges what they delegated to synthesis: DDL on both engines, wire spellings, ceremony order, UI references, mailer configuration, e2e pitfalls, and the sequenced implementation tickets. Where wording here diverges from a banner or a ticket resolution, the banner wins and the contradiction reopens [#589](https://github.com/Hikyo-Org/Hikyo/issues/589). Read every ticket through its dated amendment lines; the final state is what binds. Section 14 lists the clarifications the synthesis itself had to make (each posted as a dated amendment line on the owning ticket).
@@ -8,7 +10,7 @@ The destination of wayfinder map [#578](https://github.com/Hikyo-Org/Hikyo/issue
 
 | Area | Ticket | Gist |
 |---|---|---|
-| Registration policy | [#579](https://github.com/Hikyo-Org/Hikyo/issues/579) | One row per scope (0..1 org, 0..1 instance), subsumes JIT, landing by scope, standing delegation with an authority principal, preconditions at write and use, `signup` budget, `registration.*` audit, reauth-gated mutations, editor on Members |
+| Registration policy | [#579](https://github.com/Hikyo-Org/Hikyo/issues/579) | One row per scope (0..1 org, 0..1 instance), replaces retired automatic provisioning, landing by scope, standing delegation with an authority principal, preconditions at write and use, `signup` budget, `registration.*` audit, reauth-gated mutations, editor on Members |
 | OAuth2 kind (GitHub) | [#580](https://github.com/Hikyo-Org/Hikyo/issues/580) | Third kind `oauth2` with profile enum, key `(oauth2, origin, numeric id)`, own tables and package, PKCE always, per-provider callback, `primary && verified` email on sign-up only, always single-factor, never reauth, purpose `establish` |
 | Provider facts | [#581](https://github.com/Hikyo-Org/Hikyo/issues/581) | [social-providers.md](../research/social-providers.md) |
 | Invitation claim | [#582](https://github.com/Hikyo-Org/Hikyo/issues/582) | Purpose `claim` spends the credential-establishment authority through a federated round-trip; token first on the establish page; atomic consume + bind + session; first credential only; no provider pin; `identity-exists` leaves the authority unspent |
@@ -27,7 +29,7 @@ The destination of wayfinder map [#578](https://github.com/Hikyo-Org/Hikyo/issue
 Two migrations, each present on both engines and following the existing rebuild discipline (sqlite recreates a table whose CHECK changes and carries rows across; postgres mirrors every rebuild that carries a `hikyo:table` directive, and may `ALTER` where the sqlite side also alters). Historical migration files are never edited; corrected commentary lives in the new files' headers and in this document.
 
 - **`00042_social_signin.sql`** (ticket T1): purely **additive and backward-compatible**. New tables; nullable new columns; widened CHECKs that admit the old values; no column drops; no CHECK that today's code would violate. Existing OIDC login keeps working with this migration applied and no other change.
-- **`00043_registration_switch.sql`** (ticket T3, deployed with the code that honours it): the JIT fold, `DROP COLUMN jit_policy`, the `intent`-required CHECK on `oidc_transactions`, and the live-transaction purge.
+- **`00043_registration_switch.sql`** (ticket T3, deployed with the code that honours it): the `intent`-required CHECK on `oidc_transactions`, and the live-transaction purge.
 
 Column types follow the file conventions. Every new table carries its `hikyo:table … class=… chain=…` directive on both engines. Both dialects are given for the new tables; for altered tables the per-engine form is stated in the table.
 
@@ -42,7 +44,7 @@ sqlite:
 CREATE TABLE registration_policies (
     id TEXT PRIMARY KEY,
     org_id TEXT REFERENCES orgs (id) ON DELETE CASCADE,        -- NULL = instance scope
-    authority_principal_id TEXT REFERENCES principals (id),     -- NULL only for the JIT-fold row
+    authority_principal_id TEXT REFERENCES principals (id),     -- NULL only for the historical fold row
     landing TEXT NOT NULL CHECK (landing IN ('org-template', 'none', 'fresh-org')),
     template TEXT,
     local_enabled INTEGER NOT NULL CHECK (local_enabled IN (0, 1)),
@@ -404,39 +406,7 @@ ALTER TABLE oidc_transactions_new RENAME TO oidc_transactions;
 
 **`oidc_transactions` (00043, both engines):** `DELETE FROM oidc_transactions;` then the identical rebuild statements above (table `oidc_transactions_new`, same columns, same `INSERT … SELECT` copying `intent` and `signup_scope_org_id` through instead of NULL) with the `login` arm of the purpose CHECK reading `(purpose = 'login' AND binding_kind = 'browser-cookie' AND intent IS NOT NULL AND …)`.
 
-**`oidc_providers` (00043):**
-
-```sql
--- sqlite
-CREATE TABLE oidc_providers_new (
-    id TEXT PRIMARY KEY,
-    slug TEXT NOT NULL UNIQUE,
-    display_name TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK (kind IN ('oidc')),
-    issuer TEXT NOT NULL,
-    client_id TEXT NOT NULL,
-    client_secret BLOB NOT NULL,
-    scopes TEXT NOT NULL,
-    redirect_uri TEXT NOT NULL,
-    assurance_policy TEXT,
-    enabled INTEGER NOT NULL,
-    dek_version INTEGER NOT NULL,
-    row_version INTEGER NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-INSERT INTO oidc_providers_new
-    (id, slug, display_name, kind, issuer, client_id, client_secret, scopes, redirect_uri, assurance_policy, enabled, dek_version, row_version, created_at, updated_at)
-SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes, redirect_uri, assurance_policy, enabled, dek_version, row_version, created_at, updated_at
-FROM oidc_providers;
-DROP TABLE oidc_providers;
-ALTER TABLE oidc_providers_new RENAME TO oidc_providers;
-CREATE UNIQUE INDEX oidc_providers_issuer_enabled ON oidc_providers (kind, issuer) WHERE enabled = 1;
--- postgres (no transient hikyo:table directive on the sqlite side would exist if postgres also rebuilt; the 00032 precedent applies)
-ALTER TABLE oidc_providers DROP COLUMN jit_policy;
-```
-
-The sqlite rebuild carries a `hikyo:table oidc_providers_new` directive, so postgres mirrors it with the same `CREATE … INSERT … DROP … RENAME` block (`BYTEA`/`BIGINT`/`TIMESTAMPTZ`) rather than the single `ALTER`, exactly as 00037 did; the `ALTER` form is shown only to name the alternative that the parity lint refuses.
+**`oidc_providers`: no registration-switch migration.** Issue #617 already removed the retired provider policy with migration 00044. Do not rebuild this table, drop any column, or recreate the issuer index for that retirement. The provider and its existing identity/session references remain in place.
 
 **`external_identities` (00042):**
 
@@ -622,9 +592,9 @@ Migration order inside 00042: `oauth2_providers` before `sessions` (FK), `regist
 
 Commentary corrections (recorded in the 00042 header, never by editing 00005/00007): "there is no self-registration, ever, and none is representable here" is superseded by the registration policy; "there is no email column, ever" is superseded by `accounts.email` as a login identifier for verified local sign-up only; email is still never a linking key.
 
-### 2.3 JIT fold (00043, fail-closed)
+### 2.3 Retired automatic-provisioning fold: no-op
 
-If any `oidc_providers` row, enabled or not, has a non-null `jit_policy`: insert one instance-scope `registration_policies` row (`landing = 'none'`, `authority_principal_id = NULL`, `local_enabled = 0`) and one entry per such provider carrying its claim and values. The policy is `inactive: authority-unassigned` until an instance administrator re-saves it (the saver becomes authority); an entry whose provider is disabled keeps the policy `inactive: precondition` until the provider is re-enabled or the entry removed. Release-note item. `auth.jit_provisioned` and the `jit-refused` cause leave the registry with this migration's code.
+Issue #617 removes the provider policy before this feature ships. The registration switch must not read or drop the retired column, create a folded policy, or remove audit entries again. Existing provisioned accounts and explicit identity links remain intact; only the provider policy is retired. Allocate fresh migration numbers because MCP already uses 00042 and 00043.
 
 ### 2.4 Go domain additions
 
@@ -688,7 +658,7 @@ The admission gate before the charge is a synthesis reorder of [#604](https://gi
 
 ## 5. Audit registry deltas
 
-New types (all `security` class): `registration.policy_created | policy_updated | policy_deleted` (tenant or instance trail by scope; payload `policy_id`, `landing`, `authority_principal_id`, `previous_authority_principal_id?`), `registration.signup_admitted`, `registration.signup_refused` (cause enum in the audit-model banner; the token causes are `malformed | unknown | expired | epoch-superseded`), `registration.signup_completed`, `registration.signup_expired {cause: expired | policy-deleted}`, `registration.mail_intent {kind: verification | existing-address | test, recipient, policy_id?}` (outcome `intent`, joining the intent-outcome licence beside `adapter.push_intent` and `audit.export_started`) and `registration.mail_outcome {intent_id, outcome}` (the durable INTENT/OUTCOME pair around every SMTP dial; outcomes `success | failure`); `signup_admitted` carries no `delivery` field (it is written before the dial); `auth.oauth2_login`, `auth.oauth2_refused` (cause enum per #580 d9 minus `no-verified-email`, plus `identity-exists`), `auth.credential_establish`, `auth.password_changed`. Field additions: `intent`, `signup_org?` and `purpose` on `auth.oidc_login|oidc_refused|oauth2_login|oauth2_refused`; `established_credential_kind`, `identity_id`, `provider_id`, `kind` on `auth.credential_established`; `origin` (required), `policy_id` on `settings.org_created`; `authorizing_credential` gains `establish` on `auth.factor_enrolled`, `auth.passkey_added`, `auth.recovery_codes_generated`. Removed (00043): `auth.jit_provisioned`; `auth.oidc_refused` cause `jit-refused`. `auth.oidc_refused` cause `identity-exists` added; `issuer` narrowed to the row-versus-transaction check (an ID-token issuer mismatch audits as `signature`, the callback's default token-validation cause; accepted name, no new cause). Every row lands with a real emitter, asserted by `every_registered_type_is_actually_emitted`.
+New types (all `security` class): `registration.policy_created | policy_updated | policy_deleted` (tenant or instance trail by scope; payload `policy_id`, `landing`, `authority_principal_id`, `previous_authority_principal_id?`), `registration.signup_admitted`, `registration.signup_refused` (cause enum in the audit-model banner; the token causes are `malformed | unknown | expired | epoch-superseded`), `registration.signup_completed`, `registration.signup_expired {cause: expired | policy-deleted}`, `registration.mail_intent {kind: verification | existing-address | test, recipient, policy_id?}` (outcome `intent`, joining the intent-outcome licence beside `adapter.push_intent` and `audit.export_started`) and `registration.mail_outcome {intent_id, outcome}` (the durable INTENT/OUTCOME pair around every SMTP dial; outcomes `success | failure`); `signup_admitted` carries no `delivery` field (it is written before the dial); `auth.oauth2_login`, `auth.oauth2_refused` (cause enum per #580 d9 minus `no-verified-email`, plus `identity-exists`), `auth.credential_establish`, `auth.password_changed`. Field additions: `intent`, `signup_org?` and `purpose` on `auth.oidc_login|oidc_refused|oauth2_login|oauth2_refused`; `established_credential_kind`, `identity_id`, `provider_id`, `kind` on `auth.credential_established`; `origin` (required), `policy_id` on `settings.org_created`; `authorizing_credential` gains `establish` on `auth.factor_enrolled`, `auth.passkey_added`, `auth.recovery_codes_generated`. Provider-provisioning audit removal already shipped in #617. `auth.oidc_refused` cause `identity-exists` added; `issuer` narrowed to the row-versus-transaction check (an ID-token issuer mismatch audits as `signature`, the callback's default token-validation cause; accepted name, no new cause). Every row lands with a real emitter, asserted by `every_registered_type_is_actually_emitted`.
 
 ## 6. UI surfaces
 
@@ -705,7 +675,7 @@ Catalogued in [ops-catalogue.md](./ops-catalogue.md): `signup` 20/h instance-wid
 ## 9. e2e and implementation pitfalls
 
 - **Two engines for every CHECK**: sqlite rebuilds; postgres mirrors when a `hikyo:table` directive is involved; run `go test ./internal/store/...` and the isolation suite on both.
-- **00042 must ship alone safely**: no CHECK it adds may be violated by today's writers (`intent` stays nullable until 00043); `jit_policy` survives until 00043.
+- **00042 must ship alone safely**: no CHECK it adds may be violated by today's writers (`intent` stays nullable until 00043); the retired provider policy is already absent (#617).
 - **Live transactions across 00043**: delete `oidc_transactions` rows in the migration rather than backfill (minutes-lived), and say so in the migration comment.
 - **`sessions` rebuild** deletes `reauth_windows` as 00020 did; sessions survive; every open reauth window closes. Release note.
 - **Order inside the federated sign-up write**: identity row before org row, or an `identity-exists` refusal leaks an org; `WriteSerialized` on the fresh-org branch only.
@@ -752,11 +722,11 @@ Routing scheme, as evidenced by the label set and prior handoffs: `model:opus-4.
 | # | Ticket | Label | Blocked by |
 |---|---|---|---|
 | T1 [#605](https://github.com/Hikyo-Org/Hikyo/issues/605) | Migration **00042** (additive only) + domain types: section 2.1 tables, nullable columns, widened CHECKs, `accounts.email`, `orgs.origin`, `grant_origins.registration`, `su` artifact, `ArtifactType` + redaction pin, 2.5 canonicalizer, 2.6 provider reference; directive parity; existing OIDC login unchanged with only this applied | `model:fable-5` | none |
-| T2 [#606](https://github.com/Hikyo-Org/Hikyo/issues/606) | Registration policy service + API + CLI + Members editor: standing delegation with authority re-check, preconditions at write and use (mailer predicate stubbed to "unconfigured"), `signup` budget category, `registration.policy_*` events, `AuthMethods.signup_open/signup_methods` incl. `?org=`, inactive-with-cause, `n / cap`, org sign-up link; JIT-fold re-save path (fold itself lands in T3) | `model:opus-4.8` | T1 [#605](https://github.com/Hikyo-Org/Hikyo/issues/605) |
-| T3 [#607](https://github.com/Hikyo-Org/Hikyo/issues/607) | Migration **00043** + federated sign-up on the OIDC kind: `intent` + `signup_org` on start/transaction, `completeLogin` branch (unknown-by-intent, admission gate, budget, verified-email assertion for `oidc`, allowlist, write with landing incl. fresh org under the authority principal, `org-<id>`), JIT fold + `jit_policy` drop + `jitProvision` removal, `registration.signup_*` events, tenant-isolation third member + fixture pin, `settings.org_created` widening, `OpOrgRename` formula change + org rename surface, org list origin filter, staged login entry + sign-up door + confirmation copy (prototype iteration 2), Google bare-`iss` belt deletion, reauth refused at start for a NULL policy, pairwise `client_id` guard | `model:fable-5` | T2 [#606](https://github.com/Hikyo-Org/Hikyo/issues/606) |
+| T2 [#606](https://github.com/Hikyo-Org/Hikyo/issues/606) | Registration policy service + API + CLI + Members editor: standing delegation with authority re-check, preconditions at write and use (mailer predicate stubbed to "unconfigured"), `signup` budget category, `registration.policy_*` events, `AuthMethods.signup_open/signup_methods` incl. `?org=`, inactive-with-cause, `n / cap`, org sign-up link; no legacy policy fold or re-save path (#617) | `model:opus-4.8` | T1 [#605](https://github.com/Hikyo-Org/Hikyo/issues/605) |
+| T3 [#607](https://github.com/Hikyo-Org/Hikyo/issues/607) | Migration **00043** + federated sign-up on the OIDC kind: `intent` + `signup_org` on start/transaction, `completeLogin` branch (unknown-by-intent, admission gate, budget, verified-email assertion for `oidc`, allowlist, write with landing incl. fresh org under the authority principal, `org-<id>`), `registration.signup_*` events, tenant-isolation third member + fixture pin, `settings.org_created` widening, org rename formula and surface already shipped in #617, org list origin filter, staged login entry + sign-up door + confirmation copy (prototype iteration 2), Google bare-`iss` belt deletion, reauth refused at start for a NULL policy, pairwise `client_id` guard | `model:fable-5` | T2 [#606](https://github.com/Hikyo-Org/Hikyo/issues/606) |
 | T4 [#608](https://github.com/Hikyo-Org/Hikyo/issues/608) | Mailer + local sign-up: `internal/mail` with the posture test, `HIKYO_MAIL_*`, static predicate wired into T2's precondition, `internal/mailtest`, `POST /auth/signup` (+ `org`), `/auth/signup/verify`, pending row (replace expired, resend), reaper, mail intent/outcome events, fragment-driven verification page with `org_name`, check-your-mail (under T3's staged door), `email-exists` mail, `accounts.email` login resolution (`@` rules), instance mailer line + test send with its `mail-test` budget, no-egress second run | `model:fable-5` | T3 [#607](https://github.com/Hikyo-Org/Hikyo/issues/607) |
 | T5 [#609](https://github.com/Hikyo-Org/Hikyo/issues/609) | OAuth2 kind (GitHub): `internal/oauth2rp`, provider + transaction service, start/callback, admin API + CLI + WebUI (mirror SAML), `sessions.oauth2_provider_id`, single-factor assurance, reauth refused at start, `/user/emails` on sign-up only, `auth.oauth2_*` events, login button with brand rules, `CLIReauth.tsx` and `AccountSecurity.tsx` kind widening, GHES write-time refusal | `model:fable-5` | T3 [#607](https://github.com/Hikyo-Org/Hikyo/issues/607) |
-| T6 [#610](https://github.com/Hikyo-Org/Hikyo/issues/610) | Claim: purpose `claim` on both kinds, `authority_id`, phase-1 reuse without consumption, recovery-issued authority refused, atomic consume + bind + session, `established_credential_kind` recording, `identity-exists` without consumption, establish page provider buttons and single refusal sentence, `ErrNoInvitationPath` removal, `auth.credential_established` widening, `EstablishCredentialRequest` doc fix | `model:fable-5` | T5 [#609](https://github.com/Hikyo-Org/Hikyo/issues/609) |
+| T6 [#610](https://github.com/Hikyo-Org/Hikyo/issues/610) | Claim: purpose `claim` on both kinds, `authority_id`, phase-1 reuse without consumption, recovery-issued authority refused, atomic consume + bind + session, `established_credential_kind` recording, `identity-exists` without consumption, establish page provider buttons and single refusal sentence, `auth.credential_established` widening, `EstablishCredentialRequest` doc fix | `model:fable-5` | T5 [#609](https://github.com/Hikyo-Org/Hikyo/issues/609) |
 | T7 [#611](https://github.com/Hikyo-Org/Hikyo/issues/611) | Establish + local factors for social-only accounts: purpose `establish` on both kinds, session stamp (5 min), empty-proof acceptance with the live precondition, `PUT /auth/password` + CLI verb + Security panel, unlink predicate fix, `proofSelection` on link/unlink, `oauth2` link via its own start, provider picker, `auth.credential_establish` + `auth.password_changed`, `authorizing_credential: establish`, step-up refusal copy (browser + CLI) | `model:fable-5` | T5 [#609](https://github.com/Hikyo-Org/Hikyo/issues/609) |
 | T8 [#612](https://github.com/Hikyo-Org/Hikyo/issues/612) | Login handoff + device flow (api-cli-surface § Login transports; pre-existing debt): RFC 8252 loopback listener, `hikyo login <url>` and `--device`, approval page, hidden sign-up door + `sign-in` under a handoff, `--provider <kind>:<slug>` preselect, CLI session snapshot with issuing handoff id, `meta.protocol_capabilities` transports | `model:opus-4.8` | T3 [#607](https://github.com/Hikyo-Org/Hikyo/issues/607) |
 | T9 [#613](https://github.com/Hikyo-Org/Hikyo/issues/613) | A7 acceptance closure: S3 Playwright flows, bound-registry rows with fixtures, `runRegistrationLifecycle` in the audit e2e, both-engine full run, parity rows verified, docs site pages (operator runbooks, mailer), release notes; status ledger evidence | `model:opus-4.8` | T2 to T8 |
@@ -774,7 +744,7 @@ Ticket bodies (the `ready-for-agent` shape of #151) are filed: T1 #605, T2 #606,
 7. **Provider references are `{kind, slug}`** (#587, #596): section 2.6.
 8. **Grant origin subject** (#584 d7, #585): the authority principal id; the policy id rides the org row and the trail.
 9. **Migrations split** (T1/T3): 00042 additive, 00043 the switch; historical files untouched.
-10. **JIT fold covers disabled providers** (#579 d11): the policy stays inactive while any entry's provider is disabled.
+10. **No legacy policy fold** (#617): policy retirement predates registration for enabled and disabled providers alike.
 11. **Test send bound**: 5/h per principal, 1 concurrent per instance, own category.
 12. **Issuer-mismatch cause name** (#588 d3): `signature`.
 13. **Policy allowlists are child rows** (#579 d5): `registration_policy_domains` and `registration_policy_entry_values` replace JSON arrays, so the database refuses empty, duplicate and non-text values. **Left for human disposition after Codex round 3:** the cross-table cardinality rule (values iff claim) is writer-enforced with a conformance pin, not a database guard; and the audit-model *body*'s two-member intent-outcome licence is widened by the banner only (the corpus rule that banner text wins over the body, never by editing the locked body).

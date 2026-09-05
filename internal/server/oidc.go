@@ -256,7 +256,7 @@ func (a *API) UnlinkIdentity(ctx context.Context, req apigen.UnlinkIdentityReque
 func providerViewWire(v service.ProviderView) apigen.OidcProvider {
 	return apigen.OidcProvider{
 		Slug: v.Slug, DisplayName: v.DisplayName, Issuer: v.Issuer, ClientId: v.ClientID,
-		Scopes: v.Scopes, RedirectUri: v.RedirectURI, JitPolicy: v.JITPolicy,
+		Scopes: v.Scopes, RedirectUri: v.RedirectURI,
 		AssurancePolicy: v.AssurancePolicy, Enabled: v.Enabled,
 	}
 }
@@ -288,7 +288,7 @@ func (a *API) PutOidcProvider(ctx context.Context, req apigen.PutOidcProviderReq
 	in := service.ProviderInput{
 		DisplayName: req.Body.DisplayName, Issuer: req.Body.Issuer, ClientID: req.Body.ClientId,
 		ClientSecret: req.Body.ClientSecret, Scopes: req.Body.Scopes,
-		JITPolicy: req.Body.JitPolicy, AssurancePolicy: req.Body.AssurancePolicy, Enabled: req.Body.Enabled,
+		AssurancePolicy: req.Body.AssurancePolicy, Enabled: req.Body.Enabled,
 	}
 	v, err := a.Providers.Put(ctx, service.Bearer(bearer(ctx)), string(req.Slug), in)
 	if err != nil {

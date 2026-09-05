@@ -682,7 +682,7 @@ func (q *Queries) GetCredentialEpoch(ctx context.Context) (int64, error) {
 const getEnabledProviderByIssuer = `-- name: GetEnabledProviderByIssuer :one
 
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
-       redirect_uri, jit_policy, assurance_policy, enabled, dek_version, row_version,
+       redirect_uri, assurance_policy, enabled, dek_version, row_version,
        created_at, updated_at
 FROM oidc_providers WHERE kind = $1 AND issuer = $2 AND enabled = 1
 `
@@ -711,7 +711,6 @@ func (q *Queries) GetEnabledProviderByIssuer(ctx context.Context, arg GetEnabled
 		&i.ClientSecret,
 		&i.Scopes,
 		&i.RedirectUri,
-		&i.JitPolicy,
 		&i.AssurancePolicy,
 		&i.Enabled,
 		&i.DekVersion,
@@ -724,7 +723,7 @@ func (q *Queries) GetEnabledProviderByIssuer(ctx context.Context, arg GetEnabled
 
 const getEnabledProviderBySlug = `-- name: GetEnabledProviderBySlug :one
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
-       redirect_uri, jit_policy, assurance_policy, enabled, dek_version, row_version,
+       redirect_uri, assurance_policy, enabled, dek_version, row_version,
        created_at, updated_at
 FROM oidc_providers WHERE slug = $1 AND enabled = 1
 `
@@ -745,7 +744,6 @@ func (q *Queries) GetEnabledProviderBySlug(ctx context.Context, slug string) (Oi
 		&i.ClientSecret,
 		&i.Scopes,
 		&i.RedirectUri,
-		&i.JitPolicy,
 		&i.AssurancePolicy,
 		&i.Enabled,
 		&i.DekVersion,
@@ -968,7 +966,7 @@ func (q *Queries) GetPrincipalKind(ctx context.Context, id string) (string, erro
 
 const getProviderForCallback = `-- name: GetProviderForCallback :one
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
-       redirect_uri, jit_policy, assurance_policy, enabled, dek_version, row_version,
+       redirect_uri, assurance_policy, enabled, dek_version, row_version,
        created_at, updated_at
 FROM oidc_providers WHERE id = $1
 `
@@ -989,7 +987,6 @@ func (q *Queries) GetProviderForCallback(ctx context.Context, id string) (OidcPr
 		&i.ClientSecret,
 		&i.Scopes,
 		&i.RedirectUri,
-		&i.JitPolicy,
 		&i.AssurancePolicy,
 		&i.Enabled,
 		&i.DekVersion,

@@ -245,7 +245,7 @@ func (s *SCIM) CreateUser(ctx context.Context, actor Actor, org domain.OrgID, bi
 			}
 			// Grants come ONLY from group mappings. A pushed user with no
 			// mapped groups authenticates and sees nothing — the same
-			// zero-grant posture as JIT.
+			// zero-grant posture as an invitation without a template.
 			principal, err := principalForAccount(ctx, az, accountID)
 			if err != nil {
 				return nil, err

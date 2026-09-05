@@ -306,7 +306,7 @@ WHERE account_id = ? AND consumed_at IS NULL;
 -- hikyo:authn-resolution
 -- name: GetEnabledProviderByIssuer :one
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
-       redirect_uri, jit_policy, assurance_policy, enabled, dek_version, row_version,
+       redirect_uri, assurance_policy, enabled, dek_version, row_version,
        created_at, updated_at
 FROM oidc_providers WHERE kind = ? AND issuer = ? AND enabled = 1;
 
@@ -315,7 +315,7 @@ FROM oidc_providers WHERE kind = ? AND issuer = ? AND enabled = 1;
 -- hikyo:authn-resolution
 -- name: GetProviderForCallback :one
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
-       redirect_uri, jit_policy, assurance_policy, enabled, dek_version, row_version,
+       redirect_uri, assurance_policy, enabled, dek_version, row_version,
        created_at, updated_at
 FROM oidc_providers WHERE id = ?;
 
@@ -437,7 +437,7 @@ ON CONFLICT (session_id, environment_id) DO UPDATE SET
 -- hikyo:authn-resolution
 -- name: GetEnabledProviderBySlug :one
 SELECT id, slug, display_name, kind, issuer, client_id, client_secret, scopes,
-       redirect_uri, jit_policy, assurance_policy, enabled, dek_version, row_version,
+       redirect_uri, assurance_policy, enabled, dek_version, row_version,
        created_at, updated_at
 FROM oidc_providers WHERE slug = ? AND enabled = 1;
 

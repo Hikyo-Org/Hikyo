@@ -76,7 +76,7 @@ func runOIDCLifecycle(t *testing.T, auth *service.Auth, ctx context.Context, adm
 	t.Helper()
 	providers, idp := configureProvider(t, auth, ctx, admin, "lifecycle-idp", service.ProviderInput{
 		DisplayName: "Lifecycle IdP", ClientID: "client", ClientSecret: "secret", Scopes: "openid",
-		JITPolicy: strptr(`{"claim":"sub","values":["jit-user"]}`), Enabled: true,
+		Enabled: true,
 	})
 	// provider_read (get + list).
 	if _, err := providers.Get(ctx, service.LocalPrincipal(admin), "lifecycle-idp"); err != nil {
@@ -102,8 +102,6 @@ func runOIDCLifecycle(t *testing.T, auth *service.Auth, ctx context.Context, adm
 
 	// OIDC login as that identity (oidc_login + session_created).
 	oidcLogin(t, auth, ctx, "lifecycle-idp", "lifecycle-subject")
-	// JIT provisioning (jit_provisioned + oidc_login + session_created).
-	oidcLogin(t, auth, ctx, "lifecycle-idp", "jit-user")
 
 	// A refusal (oidc_refused): a malformed state matches no transaction.
 	if _, err := auth.OIDCCallback(ctx, "lifecycle-idp", "code", "not-a-state", "", "", "", ""); !isUnauth(err) {
@@ -216,9 +214,11 @@ func runOIDCByteExactSubject(t *testing.T, db *store.DB) {
 	auth, admin, password := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID, oidcAdministrator.password
 	configureProvider(t, auth, ctx, admin, "idp", service.ProviderInput{
 		DisplayName: "IdP", ClientID: "c", ClientSecret: "s", Scopes: "openid",
-		JITPolicy: strptr(`{"claim":"sub","values":["alice","Alice"]}`), Enabled: true,
+		Enabled: true,
 	})
-	// JIT-provision two accounts for case-variant subjects.
+	// Invite and link distinct accounts for case-variant subjects.
+	inviteOIDCIdentity(t, auth, ctx, admin, "idp", "alice", "lower-subject")
+	inviteOIDCIdentity(t, auth, ctx, admin, "idp", "Alice", "upper-subject")
 	lower := oidcLogin(t, auth, ctx, "idp", "alice")
 	upper := oidcLogin(t, auth, ctx, "idp", "Alice")
 	if lower.AccountID == upper.AccountID {
@@ -253,8 +253,9 @@ func runOIDCBinding(t *testing.T, db *store.DB) {
 	auth, admin, password := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID, oidcAdministrator.password
 	configureProvider(t, auth, ctx, admin, "idp", service.ProviderInput{
 		DisplayName: "IdP", ClientID: "c", ClientSecret: "s", Scopes: "openid",
-		JITPolicy: strptr(`{"claim":"sub","values":["user"]}`), Enabled: true,
+		Enabled: true,
 	})
+	linkOn(t, auth, ctx, "idp", "user", oidcAdministrator.password)
 
 	// Anonymous login is browser-cookie-bound (A2): a callback with the absent ob
 	// cookie is refused, audited cause=binding.
@@ -382,8 +383,9 @@ func runOIDCReauthRefusals(t *testing.T, db *store.DB) {
 	// A provider with NO assurance policy refuses reauth by name at start (A5).
 	_, loose := configureProvider(t, auth, ctx, admin, "loose", service.ProviderInput{
 		DisplayName: "Loose", ClientID: "c", ClientSecret: "s", Scopes: "openid",
-		JITPolicy: strptr(`{"claim":"sub","values":["loose-user"]}`), Enabled: true,
+		Enabled: true,
 	})
+	linkOn(t, auth, ctx, "loose", "loose-user", password)
 	loose.AuthTime = time.Now()
 	loose.AMR = []string{"mfa", "otp"}
 	looseSession := oidcLogin(t, auth, ctx, "loose", "loose-user")
@@ -599,8 +601,9 @@ func runOIDCProviderChangeSweeps(t *testing.T, db *store.DB) {
 	auth, admin := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID
 	providers, idp := configureProvider(t, auth, ctx, admin, "idp", service.ProviderInput{
 		DisplayName: "IdP", ClientID: "c", ClientSecret: "s", Scopes: "openid",
-		JITPolicy: strptr(`{"claim":"sub","values":["user"]}`), Enabled: true,
+		Enabled: true,
 	})
+	linkOn(t, auth, ctx, "idp", "user", oidcAdministrator.password)
 	session := oidcLogin(t, auth, ctx, "idp", "user")
 	if _, err := auth.Identity(ctx, session.SessionToken); err != nil {
 		t.Fatalf("federated session should be live before the change: %v", err)
@@ -920,8 +923,9 @@ func runOIDCLoginProviderRace(t *testing.T, db *store.DB) {
 	auth, admin := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID
 	providers, idp := configureProvider(t, auth, ctx, admin, "race-login", service.ProviderInput{
 		DisplayName: "race-login", ClientID: "c", ClientSecret: "s", Scopes: "openid",
-		JITPolicy: strptr(`{"claim":"sub","values":["race-login-user"]}`), Enabled: true,
+		Enabled: true,
 	})
+	linkOn(t, auth, ctx, "race-login", "race-login-user", oidcAdministrator.password)
 	// A live federated session that the mid-exchange sweep must delete.
 	victim := oidcLogin(t, auth, ctx, "race-login", "race-login-user")
 	if _, err := auth.Identity(ctx, victim.SessionToken); err != nil {
@@ -937,7 +941,7 @@ func runOIDCLoginProviderRace(t *testing.T, db *store.DB) {
 		fired = true
 		if _, err := providers.Put(ctx, service.LocalPrincipal(admin), "race-login", service.ProviderInput{
 			DisplayName: "race-login", Issuer: idp.Issuer(), ClientID: "c2", ClientSecret: "s", Scopes: "openid",
-			JITPolicy: strptr(`{"claim":"sub","values":["race-login-user"]}`), Enabled: true,
+			Enabled: true,
 		}); err != nil {
 			t.Errorf("mid-exchange provider Put: %v", err)
 		}
@@ -977,8 +981,9 @@ func runOIDCLoginProviderDeleteRace(t *testing.T, db *store.DB) {
 	auth, admin := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID
 	providers, idp := configureProvider(t, auth, ctx, admin, "race-del", service.ProviderInput{
 		DisplayName: "race-del", ClientID: "c", ClientSecret: "s", Scopes: "openid",
-		JITPolicy: strptr(`{"claim":"sub","values":["race-del-user"]}`), Enabled: true,
+		Enabled: true,
 	})
+	linkOn(t, auth, ctx, "race-del", "race-del-user", oidcAdministrator.password)
 	// A live federated session the mid-exchange delete's cascade must remove.
 	victim := oidcLogin(t, auth, ctx, "race-del", "race-del-user")
 	if _, err := auth.Identity(ctx, victim.SessionToken); err != nil {
@@ -1036,8 +1041,9 @@ func runOIDCProviderDeleteCascade(t *testing.T, db *store.DB) {
 	auth, admin := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID
 	configureProvider(t, auth, ctx, admin, "cascade", service.ProviderInput{
 		DisplayName: "cascade", ClientID: "c", ClientSecret: "s", Scopes: "openid",
-		JITPolicy: strptr(`{"claim":"sub","values":["cascade-user"]}`), Enabled: true,
+		Enabled: true,
 	})
+	linkOn(t, auth, ctx, "cascade", "cascade-user", oidcAdministrator.password)
 	sess := oidcLogin(t, auth, ctx, "cascade", "cascade-user")
 	if _, err := auth.Identity(ctx, sess.SessionToken); err != nil {
 		t.Fatalf("federated session should be live: %v", err)
@@ -1067,7 +1073,7 @@ func runOIDCIATRejected(t *testing.T, db *store.DB) {
 	auth, admin := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID
 	_, idp := configureProvider(t, auth, ctx, admin, "idp", service.ProviderInput{
 		DisplayName: "IdP", ClientID: "c", ClientSecret: "s", Scopes: "openid",
-		JITPolicy: strptr(`{"claim":"sub","values":["iat-user"]}`), Enabled: true,
+		Enabled: true,
 	})
 	// (a) iat far beyond the 2m skew.
 	idp.IAT = time.Now().Add(time.Hour)
@@ -1104,4 +1110,68 @@ func runOIDCIATRejected(t *testing.T, db *store.DB) {
 
 func TestOIDCIATRejected(t *testing.T) {
 	forEngines(t, runOIDCIATRejected)
+}
+
+// inviteOIDCIdentity provisions through the invitation service and then links
+// through the real authenticated ceremony. Login itself has no write authority.
+func inviteOIDCIdentity(t *testing.T, auth *service.Auth, ctx context.Context, admin domain.PrincipalID, slug, subject, username string) {
+	t.Helper()
+	grants := &service.Grants{DB: auth.DB, Auth: auth}
+	invitation, err := grants.InviteMember(ctx, service.LocalPrincipal(admin), service.InviteSpec{Username: username, Delivery: "response"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const password = "invited subject password long enough"
+	if err := auth.EstablishCredential(ctx, invitation.Authority, password); err != nil {
+		t.Fatal(err)
+	}
+	login, err := auth.LocalLogin(ctx, username, password, service.ArtifactCLI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, err := auth.OIDCStart(ctx, slug, "link", "", login.SessionToken, password, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, state := driveIdP(t, start.AuthURL+"&sub="+url.QueryEscape(subject))
+	if _, err := auth.OIDCCallback(ctx, slug, code, state, "", "", "", login.SessionToken); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOIDCUnknownIdentityNeverCreatesAccount(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		administrator := oidcAdmin(t, db)
+		auth := administrator.auth
+		ctx := t.Context()
+		configureProvider(t, auth, ctx, administrator.boot.PrincipalID, "known-provider", service.ProviderInput{
+			DisplayName: "Known provider", ClientID: "c", ClientSecret: "s", Scopes: "openid", Enabled: true,
+		})
+		accounts := queryInt(t, db, "SELECT COUNT(*) FROM accounts")
+		identities := queryInt(t, db, "SELECT COUNT(*) FROM external_identities")
+		principals := queryInt(t, db, "SELECT COUNT(*) FROM principals")
+		sessions := queryInt(t, db, "SELECT COUNT(*) FROM sessions")
+		for _, subject := range []string{"unknown-user", "oidc-admin", "Unknown-User"} {
+			before := oidcRefusedCount(t, db, "unknown-identity")
+			start, err := auth.OIDCStart(ctx, "known-provider", "login", "", "", "", false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			code, state := driveIdP(t, start.AuthURL+"&sub="+subject)
+			if _, err := auth.OIDCCallback(ctx, "known-provider", code, state, "", "", start.BindingCookie, ""); !isUnauth(err) {
+				t.Fatalf("unknown identity %q: want uniform refusal, got %v", subject, err)
+			}
+			if got := oidcRefusedCount(t, db, "unknown-identity"); got != before+1 {
+				t.Fatalf("unknown identity refusal audit count = %d, want %d", got, before+1)
+			}
+		}
+		for _, check := range []struct {
+			table string
+			count int64
+		}{{"accounts", accounts}, {"external_identities", identities}, {"principals", principals}, {"sessions", sessions}} {
+			if got := queryInt(t, db, "SELECT COUNT(*) FROM "+check.table); got != check.count {
+				t.Fatalf("refusal mutated %s: %d -> %d", check.table, check.count, got)
+			}
+		}
+	})
 }
