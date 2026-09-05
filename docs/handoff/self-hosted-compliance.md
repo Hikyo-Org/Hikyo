@@ -74,3 +74,21 @@ must be kept outside backups and reapplied before reopening a restored service.
 Customer content, project metadata, storage/WAL, downstream systems and legal
 retention decisions remain explicit operator responsibilities. Environment deletion
 is destructive and coarse; there is no selective historical-key erasure claim.
+
+## PR 679 CI fixture repair
+
+The first exact-head CI run found an unrelated mobile setup collision: the
+second fake OIDC provider required fixed port 45795. A regression reproduced
+that exact refusal with the port occupied. Both fake providers now use
+OS-assigned ports by default; explicit occupied-port overrides still refuse.
+The second provider's validated issuer is stored in a file for browser workers,
+permissions are tightened to 0600 even on rewrite, and teardown removes it.
+No production authentication behavior or test timeout changed.
+
+Independent review is CLEAN. All 804 web tests, TypeScript checking and the web
+build passed. A real mobile provider configuration/login-advertisement/disable/
+delete flow passed with separate local application ports (1 test, 2.4 minutes
+including setup). The original default application ports were occupied by
+another local test service, which was left running. The new regression also
+checks real provider discovery with the old IdP port occupied, explicit-port
+refusal, persisted issuer reads, permissions and cleanup.
