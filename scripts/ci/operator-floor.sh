@@ -11,7 +11,7 @@ done
 output=${HIKYO_OPERATOR_FLOOR_OUTPUT:-artifacts/operator-floor}
 mkdir -p "$output"
 output=$(cd "$output" && pwd)
-rm -f "$output/result.json" "$output/load.json" "$output/operator-cgroup.txt" "$output/node-cgroup.txt" "$output/pods.json"
+rm -f "$output/result.json" "$output/load.json" "$output/operator-cgroup.txt" "$output/node-cgroup.txt" "$output/pods.json" "$output/operator-process.txt" "$output/operator-memory-stat.txt" "$output/resource-verification.json"
 work=$(mktemp -d)
 cluster="hikyo-operator-floor-$$"
 node="$cluster-control-plane"
@@ -36,6 +36,8 @@ capture() {
 		cgroup=$(docker exec "$node" find /sys/fs/cgroup -type d -name "cri-containerd-$id.scope") || return 0
 		[[ "$cgroup" == /sys/fs/cgroup/* && "$cgroup" != *$'\n'* && "$cgroup" != *..* ]] || { echo 'operator-floor: exact container cgroup unavailable' >&2; return 0; }
 		docker exec "$node" sh -c 'for file in cpu.max memory.max memory.swap.max memory.peak memory.events; do cat "$1/$file"; done' sh "$cgroup" >"$output/operator-cgroup.txt" 2>/dev/null || true
+		docker exec "$node" sh -c 'cat "$1/memory.stat"; cat "$1/memory.current"' sh "$cgroup" >"$output/operator-memory-stat.txt" 2>/dev/null || true
+		docker exec -i "$node" sh -s -- "$cgroup" "$id" <scripts/ci/operator-process-capture.sh >"$output/operator-process.txt" 2>/dev/null || true
 	fi
 }
 cleanup() {
@@ -98,20 +100,9 @@ kubectl --kubeconfig "$kubeconfig" -n operator-floor rollout status deployment/f
 kubectl --kubeconfig "$kubeconfig" -n operator-floor exec deployment/floor-hikyo-operator -c fixture -- cat /tmp/ca.pem >"$work/ca.pem"
 "$work/driver" "$kubeconfig" "$work/ca.pem" "$output/load.json"
 capture
-read -r quota period <"$output/operator-cgroup.txt"
-[[ "$quota" == 20000 && "$period" == 100000 ]] || { echo 'operator-floor: wrong operator CPU quota' >&2; exit 1; }
-[[ $(sed -n '2p' "$output/operator-cgroup.txt") == 134217728 ]] || { echo 'operator-floor: wrong operator memory limit' >&2; exit 1; }
-[[ $(sed -n '3p' "$output/operator-cgroup.txt") == 0 ]] || { echo 'operator-floor: operator swap enabled' >&2; exit 1; }
-peak=$(sed -n '4p' "$output/operator-cgroup.txt")
-[[ "$peak" =~ ^[0-9]+$ && "$peak" -le 134217728 ]] || { echo 'operator-floor: peak exceeds128MiB' >&2; exit 1; }
-if ! awk '$1 == "oom" || $1 == "oom_kill" {if ($2 != 0) exit 1}' "$output/operator-cgroup.txt"; then
-	echo 'operator-floor: OOM events observed' >&2; exit 1
-fi
-if ! awk '$1 == "oom" || $1 == "oom_kill" {if ($2 != 0) exit 1}' "$output/node-cgroup.txt"; then
-	echo 'operator-floor: outer node OOM events observed' >&2; exit 1
-fi
-read -r quota period <"$output/node-cgroup.txt"
-[[ "$quota" == 400000 && "$period" == 100000 && $(sed -n '2p' "$output/node-cgroup.txt") == 4294967296 && $(sed -n '3p' "$output/node-cgroup.txt") == 0 ]] || { echo 'operator-floor: wrong outer floor limits' >&2; exit 1; }
-jq -e '[.items[].status.containerStatuses[] | select(.name == "operator")] | length == 1 and all(.[]; .ready and .restartCount == 0)' "$output/pods.json" >/dev/null
-jq -n --arg commit "$(git rev-parse HEAD)" --arg binary "$binary_sha" --arg diff "$(shasum -a 256 "$output/source.patch" | awk '{print $1}')" --arg image "$(docker image inspect "$image" --format '{{.Id}}')" --arg node "$node_image" --argjson peak "$peak" --slurpfile load "$output/load.json" '{schema:"hikyo.dev/operator-floor-evidence/v1",source_commit:$commit,source_diff_sha256:$diff,operator_binary_sha256:$binary,operator_image:$image,node_image:$node,architecture:"arm64",outer_cpu:4,outer_memory_bytes:4294967296,operator_cpu_millicores:200,operator_memory_limit_bytes:134217728,operator_memory_peak_bytes:$peak,swap_bytes:0,load:$load[0],passed:true}' >"$output/result.json"
-echo "operator-floor: passed; peak $peak bytes; evidence $output/result.json"
+"$work/driver" verify-resources "$output" "$binary_sha"
+peak=$(jq -er '.operator_memory_peak_bytes' "$output/resource-verification.json")
+rss_peak=$(jq -er '.process.rss_peak_bytes' "$output/resource-verification.json")
+
+jq -n --arg commit "$(git rev-parse HEAD)" --arg binary "$binary_sha" --arg diff "$(shasum -a 256 "$output/source.patch" | awk '{print $1}')" --arg image "$(docker image inspect "$image" --format '{{.Id}}')" --arg node "$node_image" --argjson peak "$peak" --argjson rss_peak "$rss_peak" --slurpfile resources "$output/resource-verification.json" --slurpfile load "$output/load.json" '{schema:"hikyo.dev/operator-floor-evidence/v1",source_commit:$commit,source_diff_sha256:$diff,operator_binary_sha256:$binary,operator_image:$image,node_image:$node,architecture:"arm64",outer_cpu:4,outer_memory_bytes:4294967296,operator_cpu_millicores:200,operator_memory_limit_bytes:134217728,operator_memory_peak_bytes:$peak,operator_rss_peak_bytes:$rss_peak,rss_measurement:{source:"kind node /proc/PID/status VmHWM (kB converted to bytes)",reader_location:"outside operator cgroup",process:$resources[0].process},swap_bytes:0,load:$load[0],passed:true}' >"$output/result.json"
+echo "operator-floor: passed; operator peak RSS $rss_peak bytes, cgroup peak $peak bytes; evidence $output/result.json"
