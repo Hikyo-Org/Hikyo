@@ -1244,6 +1244,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -1271,6 +1272,8 @@ jobs:
           HIKYO_TEST_POSTGRES_DSN: postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test
           RACE_PLAN: ${{ needs.analysis_shards.outputs.race_plan }}
           RACE_SHARD: ${{ matrix.shard }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           packages="$RUNNER_TEMP/race-packages"
           printf '%s\n' "$RACE_PLAN" |
@@ -1279,10 +1282,16 @@ jobs:
             echo "race: shard $RACE_SHARD has no packages" >&2
             exit 1
           fi
-          # Authenticated boot fixtures repeat real, durable migrations. The
-          # 10-minute Go default limits the whole package, not each test.
-          # Bound package contention and cumulative race runtime separately.
-          xargs go test -race -p 2 -timeout=20m -vet=off -count=1 <"$packages"
+          # Keep dispatch trusted, like the package plan: PR code must not
+          # replace the scheduler to omit assigned coverage. App database-drop
+          # cleanup runs after peer packages finish their durable migrations.
+          scheduler="$RUNNER_TEMP/test-race-packages.sh"
+          if [ "$EVENT_NAME" = push ]; then
+            cp ./scripts/ci/test-race-packages.sh "$scheduler"
+          else
+            git show "$BASE_SHA:scripts/ci/test-race-packages.sh" >"$scheduler"
+          fi
+          bash "$scheduler" "$packages"
       - name: Save race Go cache (main push only)
         if: >-
           success() && steps.race-go-cache.outputs.cache-hit != 'true' &&
