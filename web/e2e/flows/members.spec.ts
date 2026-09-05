@@ -975,7 +975,7 @@ test.describe('audit trail', () => {
     // A filter that cannot match anything is an explicit empty state, never a
     // silent blank. `operation` is a free string, so an unknown one is not a
     // 400 — it simply matches nothing (contract: unknown type returns empty).
-    await page.getByLabel('Operation').fill('nonexistent.operation.e2e');
+    await page.getByRole('textbox', { name: 'Operation', exact: true }).fill('nonexistent.operation.e2e');
     await page.getByRole('button', { name: 'Apply filter' }).click();
     await expect(page.locator('.audit__row')).toHaveCount(0);
     await expect(page.locator('.audit__empty')).toBeVisible();
@@ -1023,7 +1023,7 @@ test.describe('audit trail', () => {
           // focuses, measures and contrast-checks EVERY interactive element, so
           // a full unfiltered page of rows would blow the per-test budget. The
           // break-glass grants make `grant.created` a small, always-present set.
-          await page.getByLabel('Operation').fill('grant.created');
+          await page.getByRole('textbox', { name: 'Operation', exact: true }).fill('grant.created');
           await page.getByRole('button', { name: 'Apply filter' }).click();
           await expect(page.locator('.audit__row').first()).toBeVisible();
 

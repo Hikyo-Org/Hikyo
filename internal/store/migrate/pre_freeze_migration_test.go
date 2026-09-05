@@ -60,7 +60,9 @@ func testRetiredProviderPolicy(t *testing.T, cfg store.Config) {
 		t.Fatal(err)
 	}
 	before := retainedIdentityRows(t, cfg)
-	if err := Run(ctx, cfg); err != nil {
+	// Migration 44 retires the provider policy. Its archive is deliberately
+	// verified against the immutable legacy genesis at that same version.
+	if err := RunUpTo(ctx, cfg, 44); err != nil {
 		t.Fatal(err)
 	}
 	if after := retainedIdentityRows(t, cfg); !reflect.DeepEqual(before, after) {
@@ -103,7 +105,7 @@ func testRetiredProviderPolicy(t *testing.T, cfg store.Config) {
 		restored = postgresTestConfig(t, "retirement_restore")
 		// A fresh canonical schema catches positional COPY incompatibility
 		// with the schema obtained by upgrading a populated database.
-		if err := Run(ctx, restored); err != nil {
+		if err := RunUpTo(ctx, restored, 44); err != nil {
 			t.Fatal(err)
 		}
 		err = upgrade.WithLock(ctx, upgrade.Config{Engine: releaseidentity.Postgres, DSN: restored.DSN}, func(session *upgrade.Session) error {

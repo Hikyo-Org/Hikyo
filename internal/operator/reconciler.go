@@ -270,6 +270,7 @@ func (r *HikyoSecretReconciler) deliver(
 	resp *opclient.DeliveryResponse, existing *corev1.Secret, existed bool, root []byte,
 ) (ctrl.Result, error) {
 	r.applyCredentialExpiry(cr, resp.CredentialExpiresAt)
+	r.applyPinExpiry(cr, resp.PinExpired)
 
 	if resp.Current {
 		// Cursor answered current: no plaintext, no write. Its eligibility was

@@ -32,6 +32,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/scanning"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
+	"github.com/Hikyo-Org/hikyo/internal/storagehealth"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -418,7 +419,11 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	if err != nil {
 		return nil, fmt.Errorf("boot: outbound directory client: %w", err)
 	}
-	retentionSvc := &service.Retention{DB: db, Backup: backupPolicy(cfg)}
+	diagnostics := &service.Diagnostics{Passwords: &kdf}
+	if cfg.Store.Engine == config.EngineSQLite {
+		diagnostics.Volume = func() (storagehealth.Capacity, error) { return storagehealth.Read(filepath.Dir(cfg.Store.Path)) }
+	}
+	retentionSvc := &service.Retention{DB: db, Backup: backupPolicy(cfg), Diagnostics: diagnostics}
 	backupSvc := &service.Backup{DB: db, Options: backup.Options{Recipients: cfg.BackupRecipients}}
 	approvalsSvc := &service.Approvals{DB: db, Auth: authSvc, Keyring: kr}
 	updateHTTP, err := updatecheck.NewHTTPClient(3 * time.Second)

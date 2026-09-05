@@ -62,6 +62,18 @@ func gateConfig(t *testing.T, engine releaseidentity.Engine) upgrade.Config {
 	return upgrade.Config{Engine: engine, DSN: u.String()}
 }
 
+// GateCurrentSchemaForTest derives the current-target fixture catalog from the
+// embedded migrations, never the immutable historical genesis pin.
+// The separate scratch database leaves the gate's fresh source untouched.
+func GateCurrentSchemaForTest(t *testing.T, engine releaseidentity.Engine) releaseidentity.Digest {
+	t.Helper()
+	_, catalog, err := upgrade.BuildScratchSchema(t.Context(), gateConfig(t, engine), store.MigrationsFS, "migrations/"+string(engine))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return catalog.Digest()
+}
+
 func signedFreshGate(t *testing.T, engine releaseidentity.Engine) (Request, []byte, func(upgradecompat.VerifiedNode) error) {
 	t.Helper()
 	cfg := gateConfig(t, engine)
@@ -74,10 +86,7 @@ func signedFreshGate(t *testing.T, engine releaseidentity.Engine) (Request, []by
 	if err != nil {
 		t.Fatal(err)
 	}
-	schema, err := upgrade.PinnedLegacySchemaDigest(engine)
-	if err != nil {
-		t.Fatal(err)
-	}
+	schema := GateCurrentSchemaForTest(t, engine)
 	source := upgradecompat.InstalledSource{Identity: releaseidentity.Source{Genesis: releaseidentity.FreshGenesisV1}, Migrations: empty, SchemaSHA256: inspected.CatalogDigest}
 	fixture := testfixture.Write(t, source, []testfixture.Target{{Version: "1.0.1", Sequence: 1, Commit: strings.Repeat("a", 40), Migrations: manifest, SchemaSHA256: schema}})
 	claim, err := os.ReadFile(filepath.Join(fixture.Directory, "releases", string(fixture.Target.ManifestSHA256), "upgrade-compatibility.json"))

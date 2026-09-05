@@ -963,6 +963,18 @@ var migrationSeededTables = map[string]bool{
 // that the target holds nothing but the rows the migrations seed.
 func assertOnlyMigrationSeeds(ctx context.Context, tx pgx.Tx, tables []string) error {
 	for _, table := range tables {
+		if table == "ops_diagnostics" {
+			// Only the migration's untouched public metadata row is replaceable.
+			// A later escrow verification or reencrypt completion is real state.
+			var occupied bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM ops_diagnostics WHERE escrow_verified_at IS NOT NULL OR escrow_instance_id<>'' OR escrow_incarnation<>'' OR escrow_root_epoch<>0 OR last_reencrypt_success IS NOT NULL)`).Scan(&occupied); err != nil {
+				return fmt.Errorf("store: check restore diagnostics seed: %w", err)
+			}
+			if occupied {
+				return fmt.Errorf("%w: %s has non-seed metadata", ErrTargetNotEmpty, table)
+			}
+			continue
+		}
 		if migrationSeededTables[table] {
 			continue
 		}

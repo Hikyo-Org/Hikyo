@@ -446,6 +446,7 @@ func (a *API) GetRetentionHealth(ctx context.Context, _ apigen.GetRetentionHealt
 		last = &at
 	}
 	return apigen.GetRetentionHealth200JSONResponse{
+		Diagnostics:             wireDiagnostics(health.Diagnostics.Findings),
 		LastPruneSuccess:        last,
 		Stale:                   health.Stale,
 		StaleAfterSeconds:       apigen.RetentionHealthStaleAfterSeconds(service.PruneStaleAfter / time.Second),
@@ -457,6 +458,14 @@ func (a *API) GetRetentionHealth(ctx context.Context, _ apigen.GetRetentionHealt
 		AdapterTargetsAttention: int(health.Adapters.TargetsAttention),
 		AdapterJobsQueued:       int(health.Adapters.JobsQueued),
 	}, nil
+}
+
+func wireDiagnostics(findings []service.DiagnosticFinding) *[]apigen.OpsDiagnosticFinding {
+	out := make([]apigen.OpsDiagnosticFinding, 0, len(findings))
+	for _, f := range findings {
+		out = append(out, apigen.OpsDiagnosticFinding{Code: f.Code, Severity: apigen.OpsDiagnosticFindingSeverity(f.Severity), Message: f.Message})
+	}
+	return &out
 }
 
 // wireBackupHealth projects the DR verdicts (#145). Zero times become null

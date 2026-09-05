@@ -775,6 +775,7 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	// The operator lifecycle (#76). `backup` writes its export record;
 	// `restore` writes the reconstruction and one event per principal the
 	// operator reconciles afterwards.
+	"cli:escrow":  {Class: ClassSystem, Events: []audit.EventType{audit.EventRootEscrowVerified}},
 	"cli:backup":  {Class: ClassSystem, Events: []audit.EventType{audit.EventBackupExported, audit.EventBackupExportSkipped}},
 	"cli:restore": {Class: ClassSystem, Events: []audit.EventType{audit.EventRestoreCompleted, audit.EventRestorePrincipalReconciled, audit.EventRestoreDrillCompleted}},
 

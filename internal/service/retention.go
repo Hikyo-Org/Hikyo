@@ -37,6 +37,7 @@ type ProjectRetention struct {
 
 // PruneHealth is the persisted payload-pruner health state.
 type PruneHealth struct {
+	Diagnostics DiagnosticHealth
 	LastSuccess time.Time
 	Recorded    bool
 	Stale       bool
@@ -85,8 +86,9 @@ func peakProjectStorage(ctx context.Context, values store.ValueReader, snapshots
 
 // Retention owns tenant policy settings and the scheduler's payload sweep.
 type Retention struct {
-	DB  *store.DB
-	Now func() time.Time
+	DB          *store.DB
+	Diagnostics *Diagnostics
+	Now         func() time.Time
 	// AfterMarkCollected is a deterministic race-test seam. It runs inside the
 	// collection transaction after the snapshot row is marked and locked, but
 	// before value rows are deleted and the transaction commits.
@@ -521,6 +523,8 @@ func (s *Retention) health(at time.Time, recorded bool, peakStorage int64, backu
 // (doctor, /metrics). One transaction under scheduler authority reads both the
 // last-prune timestamp and the per-project storage high-water (#185).
 func (s *Retention) OperationalHealth(ctx context.Context) (PruneHealth, error) {
+	var metadata store.OpsMetadata
+	var instance, incarnation string
 	var at time.Time
 	var recorded bool
 	var peak int64
@@ -545,12 +549,22 @@ func (s *Retention) OperationalHealth(ctx context.Context) (PruneHealth, error) 
 			return err
 		}
 		adapters, err = r.Adapters().HealthCounts(ctx, p)
+		if err != nil {
+			return err
+		}
+		metadata, err = r.Retention().Diagnostics(ctx, p, s.now())
+		if err != nil {
+			return err
+		}
+		instance, incarnation, err = s.DB.RecoveryIdentity()
 		return err
 	})
 	if err != nil {
 		return PruneHealth{}, err
 	}
-	return s.health(at, recorded, peak, backup, adapters), nil
+	out := s.health(at, recorded, peak, backup, adapters)
+	out.Diagnostics = s.diagnosticHealth(metadata, instance, incarnation)
+	return out, nil
 }
 
 // GetHealth authorizes and audits the instance API read in one transaction.
@@ -582,6 +596,15 @@ func (s *Retention) GetHealth(ctx context.Context, actor Actor) (PruneHealth, er
 			return err
 		}
 		out = s.health(at, recorded, peak, backup, adapters)
+		metadata, err := r.Retention().Diagnostics(ctx, proof, now)
+		if err != nil {
+			return err
+		}
+		instance, incarnation, err := s.DB.RecoveryIdentity()
+		if err != nil {
+			return err
+		}
+		out.Diagnostics = s.diagnosticHealth(metadata, instance, incarnation)
 		ev, err := domainEvent(ctx, audit.EventRetentionHealthRead, caller.Principal,
 			audit.Object{Type: "retention_health", ID: "payload_gc"}, audit.Payload{
 				"recorded": out.Recorded, "stale": out.Stale,

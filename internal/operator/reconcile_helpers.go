@@ -275,6 +275,18 @@ func (r *HikyoSecretReconciler) applyCredentialExpiry(cr *hikyov1.HikyoSecret, e
 	}
 }
 
+// applyPinExpiry records the last successful fetch's pin state, including
+// conditional current responses. Expiry warns without refusing delivery.
+func (r *HikyoSecretReconciler) applyPinExpiry(cr *hikyov1.HikyoSecret, expired bool) {
+	if !expired {
+		meta.RemoveStatusCondition(&cr.Status.Conditions, hikyov1.ConditionPinExpired)
+		return
+	}
+	const msg = "revision pin expired; delivery continues while the revision remains available but retention may collect it; renew the pin, re-pin, or unpin"
+	r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonPinExpired, "%s", msg)
+	r.setCond(cr, hikyov1.ConditionPinExpired, metav1.ConditionTrue, hikyov1.ReasonPinExpired, msg)
+}
+
 // setCond sets a status condition with the CR's generation as observedGeneration.
 func (r *HikyoSecretReconciler) setCond(cr *hikyov1.HikyoSecret, condType string, status metav1.ConditionStatus, reason, msg string) {
 	meta.SetStatusCondition(&cr.Status.Conditions, metav1.Condition{

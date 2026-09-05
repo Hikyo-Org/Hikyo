@@ -937,8 +937,9 @@ var ErrConflict = domain.ErrConflict
 // (pool of one) and a separate read pool, per the boot-enforced connection
 // policy; postgres uses one pgx pool.
 type DB struct {
-	admission upgrade.Admission
-	engine    Engine
+	admission          upgrade.Admission
+	engine             Engine
+	durabilityVerified bool
 
 	sqWrite *sql.DB // sqlite only, MaxOpenConns(1), BEGIN IMMEDIATE via _txlock
 	sqRead  *sql.DB // sqlite only
@@ -953,6 +954,14 @@ func (d *DB) Engine() Engine       { return d.engine }
 func (d *DB) SQLiteWrite() *sql.DB { return d.sqWrite }
 func (d *DB) SQLiteRead() *sql.DB  { return d.sqRead }
 func (d *DB) PG() *pgxpool.Pool    { return d.pool }
+
+// RecoveryIdentity is immutable admitted metadata. The caller's transaction
+// guard pins it against restore before any diagnostic record is read or written.
+func (d *DB) RecoveryIdentity() (string, string, error) { return d.admission.RecoveryIdentity() }
+
+// DurabilityVerified reports successful actual boot checks, not configuration
+// defaults. A zero or partially opened datastore cannot claim verification.
+func (d *DB) DurabilityVerified() bool { return d.durabilityVerified }
 
 // ConnectionPoolLimits reports the effective datastore-owned limits without
 // requiring callers to reach through the raw driver accessors. Primary is the
@@ -1128,6 +1137,7 @@ func openSQLite(ctx context.Context, path, driverName string) (*DB, error) {
 		d.Close()
 		return nil, errors.New("store: SQLite read pool must enforce query_only")
 	}
+	d.durabilityVerified = true
 	return d, nil
 }
 
@@ -1195,7 +1205,7 @@ func openPostgres(ctx context.Context, dsn string, configuredMax int32) (*DB, er
 		pool.Close()
 		return nil, err
 	}
-	return &DB{engine: EnginePostgres, pool: pool}, nil
+	return &DB{engine: EnginePostgres, pool: pool, durabilityVerified: true}, nil
 }
 
 // Locked by ops-spec §10: larger PostgreSQL deployments use explicit

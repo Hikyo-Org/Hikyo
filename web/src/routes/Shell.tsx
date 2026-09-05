@@ -40,6 +40,7 @@ import {
 } from './chrome-identity.ts';
 import { isLinkActive, sidebarModel, type SidebarBlock, type SidebarLink } from './sidebar-model.ts';
 import { StepUpBanner } from './StepUpBanner.tsx';
+import { OpsDiagnosticBanners } from './OpsDiagnosticBanners.tsx';
 
 type ProjectSidebarGroup = {
   readonly id: string;
@@ -618,6 +619,7 @@ export function Shell({ session }: { session: WhoAmI }) {
             </span>
           </p>
         ) : null}
+        <OpsDiagnosticBanners health={isInstanceOperator ? visibleRetentionHealth : undefined} />
         {storageWarning !== null ? (
           <p className="retention-warning" role="alert">
             <span className="alert__glyph" aria-hidden="true">

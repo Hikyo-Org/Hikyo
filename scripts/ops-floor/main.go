@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/storagehealth"
 )
 
 type limits struct {
@@ -44,8 +46,10 @@ type doctorFinding struct {
 	Severity string `json:"severity"`
 }
 type doctorState struct {
-	Status   string          `json:"status"`
-	Findings []doctorFinding `json:"findings"`
+	Status   string                 `json:"status"`
+	Volume   storagehealth.Capacity `json:"measured_volume"`
+	ExitCode int                    `json:"exit_code"`
+	Findings []doctorFinding        `json:"findings"`
 }
 
 var expectedFindings = map[string]doctorFinding{
@@ -78,6 +82,27 @@ func verifyDoctor(data []byte) error {
 				wantStatus = "error"
 			}
 		}
+		volume := storagehealth.FromCapacity(state.Volume)
+		if !volume.Known {
+			return fmt.Errorf("doctor state %s lacks independently measured volume", name)
+		}
+		volumeSeverity := "ok"
+		if volume.UsedPercent >= 90 {
+			volumeSeverity = "error"
+			wantStatus = "error"
+		} else if volume.UsedPercent >= 80 {
+			volumeSeverity = "warn"
+			if wantStatus == "ok" {
+				wantStatus = "warning"
+			}
+		}
+		wantExit := 0
+		if wantStatus == "error" {
+			wantExit = 4
+		}
+		if state.ExitCode != wantExit {
+			return fmt.Errorf("doctor state %s exit differs", name)
+		}
 		if state.Status != wantStatus {
 			return fmt.Errorf("doctor state %s verdict differs", name)
 		}
@@ -91,11 +116,14 @@ func verifyDoctor(data []byte) error {
 			if negative && f.Code == expected.Code {
 				want = expected.Severity
 			}
+			if f.Code == "data-volume" {
+				want = volumeSeverity
+			}
 			if f.Severity != want {
 				return fmt.Errorf("doctor state %s finding %s severity differs", name, f.Code)
 			}
 		}
-		for _, code := range []string{"retention-prune", "project-storage", "backup-rpo", "restore-drill", "adapter-targets"} {
+		for _, code := range []string{"retention-prune", "project-storage", "backup-rpo", "restore-drill", "adapter-targets", "data-volume", "root-escrow", "pin-expiry", "root-rotation", "reencrypt", "database-durability", "argon2-floor"} {
 			if codes[code] == "" {
 				return fmt.Errorf("doctor state %s omitted %s", name, code)
 			}
@@ -198,18 +226,29 @@ func run() error {
 	if err != nil || peakBytes <= 0 || peakBytes > 4294967296 {
 		return errors.New("invalid floor peak memory")
 	}
+	var recorded map[string]doctorState
+	if err := json.Unmarshal(doctor, &recorded); err != nil {
+		return err
+	}
+	healthyCapacity := true
+	for _, state := range recorded {
+		if storagehealth.FromCapacity(state.Volume).UsedPercent >= 80 {
+			healthyCapacity = false
+		}
+	}
 	result := struct {
-		Schema       string    `json:"schema"`
-		Status       string    `json:"status"`
-		Limits       limits    `json:"limits"`
-		Started      time.Time `json:"started_at"`
-		ElapsedMS    int64     `json:"elapsed_ms"`
-		Peak         int64     `json:"memory_peak_bytes"`
-		Checks       []check   `json:"checks"`
-		DoctorStates []string  `json:"doctor_states"`
-		Trust        string    `json:"trust_domain"`
-		Scope        string    `json:"scope"`
-	}{"hikyo.dev/ops-floor/v1", "pass", l, started, time.Since(started).Milliseconds(), peakBytes, checks, doctorStates, "local-development", "implemented doctor checklist subset, SQLite storage refusal and selected admission bounds; remaining doctor categories require separate O2 evidence and other registry fixtures remain ordinary CI evidence"}
+		Schema          string    `json:"schema"`
+		Status          string    `json:"status"`
+		Limits          limits    `json:"limits"`
+		Started         time.Time `json:"started_at"`
+		ElapsedMS       int64     `json:"elapsed_ms"`
+		Peak            int64     `json:"memory_peak_bytes"`
+		Checks          []check   `json:"checks"`
+		DoctorStates    []string  `json:"doctor_states"`
+		Trust           string    `json:"trust_domain"`
+		Scope           string    `json:"scope"`
+		HealthyCapacity bool      `json:"healthy_capacity"`
+	}{"hikyo.dev/ops-floor/v1", "pass", l, started, time.Since(started).Milliseconds(), peakBytes, checks, doctorStates, "local-development", "complete doctor checklist, independently measured real SQLite volume, storage refusal and selected admission bounds; degraded host capacity retains its actual verdict and is not healthy capacity acceptance; other registry fixtures remain ordinary CI evidence", healthyCapacity}
 	raw, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		return err

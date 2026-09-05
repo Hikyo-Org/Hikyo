@@ -1201,6 +1201,9 @@ func runValueLifecycle(t *testing.T, db *store.DB, actor service.Actor, who doma
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := (&service.Escrow{DB: revisions.DB}).Verify(ctx, append([]byte(nil), curRoot...), true); err != nil {
+		t.Fatal(err)
+	}
 	rootSrc := &mutableRootSource{current: curRoot, next: newRoot}
 	rootRotation := &service.Rotation{DB: revisions.DB, Keyring: revisions.Keyring, RootKey: rootSrc}
 	if _, err := rootRotation.RotateRootKey(ctx, service.LocalPrincipal(root), service.RootRotatePrepare); err != nil {

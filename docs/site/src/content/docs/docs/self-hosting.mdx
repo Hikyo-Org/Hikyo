@@ -132,3 +132,30 @@ remains in the process environment.
 
 Continue with [server configuration](/docs/configuration/) and
 [backup and restore](/docs/backup-and-restore/).
+
+## Operational checklist
+
+Run `hikyo doctor --instance NAME -o json` using an authenticated human operator
+session. The CLI and operator-only web banners include the existing backup,
+restore, retention, project storage and adapter checks, plus:
+
+- SQLite datastore volume: warning at 80% used and critical at 90%, based on
+  space available to the process on the actual datastore filesystem. PostgreSQL
+  reports **unknown** because the application cannot measure remote database
+  storage; configure capacity alerts on the database host.
+- Current root escrow verification, bound to the finalized root epoch and
+  recovery incarnation. Follow the [backup runbook](./backup-and-restore/) to
+  verify a separately recovered root copy. Root rotation and restore invalidate
+  the previous claim.
+- Expired pins and disjoint 1-day, 7-day and 30-day expiry tiers. Expiry removes
+  retention protection; delivery continues only while the pinned payload exists.
+- Dual root wrappers, key scopes with retiring versions and the timestamp of the
+  last successfully completed re-encryption scope.
+- The actual boot-validated database durability policy and Argon2id parameters.
+
+Unknown findings remain explicit and produce a warning result. Critical findings
+produce doctor exit code 4. Diagnostics do not change admission or readiness.
+The existing public operational metrics expose bounded aggregate counts without
+identities or labels. `hikyo_data_volume_capacity_known` must be checked before
+using volume gauges; an unknown percentage is `NaN`, not zero. Escrow timestamp
+and verification gauges expose public metadata only.

@@ -78,7 +78,9 @@ func TestPreparationExportUsesLiveSessionWithoutRuntimeAdmission(t *testing.T) {
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			cfg := preparationDatabase(t, engine)
-			if err := migrate.Run(t.Context(), cfg); err != nil {
+			// This case exercises preparation of the immutable legacy genesis,
+			// not an unadmitted database at the current candidate schema.
+			if err := migrate.RunUpTo(t.Context(), cfg, 44); err != nil {
 				t.Fatal(err)
 			}
 			manifest, err := upgrade.PinnedLegacyManifest(releaseidentity.Engine(engine))

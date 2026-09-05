@@ -1,0 +1,9 @@
+# Operational diagnostics handoff
+
+Adds seven metadata-only findings to authorized retention health and doctor, thirteen label-free metrics, typed web/client support, additive migration45 for SQLite/PostgreSQL, actual filesystem capacity and validated boot settings. PostgreSQL disk capacity stays explicitly unknown. Operator pin expiry warns without changing valid delivery. The mobile warning region stays keyboard-scrollable with usable application content.
+
+`hikyo escrow verify --root-key-file <separate-copy> --assert-separate-custody` is a host-local command under narrow escrow authority. The configured primary source comes from `HIKYO_ROOT_KEY_FILE`. Verification requires a private distinct file, unwraps the live hierarchy, and atomically binds metadata to current root epoch and recovery incarnation. Same-file/hardlink and stale proof refuse. Physical offline custody is asserted by the operator, not proven by software.
+
+Decision and validation report: [operational diagnostics](../reports/1.0/ops-diagnostics.html). Parent owns signed delivery and green exact-head CI. Hosted acceptance at cec5de68 passed both native doctor architectures, recovery and operator load; ordinary CI exposed stale historical test fixtures, now corrected without changing production trust. New-head acceptance remains required. Historical archive tests explicitly use immutable44; current-target signed fixtures derive the actual scratch schema. The original declared genesis is never relabeled.
+
+Required delivery lanes: trusted-ci, ops-floor (both architectures), floor-acceptance and operator-floor. Existing web typecheck687tests/client20tests and authenticated shell46pass4viewportskips passed;32 prototype captures have zero serious/critical axe violations and document overflow. Later fixture changes do not change UI/runtime code. Do not close79 or claim official release while production signing and external acceptance remain incomplete.

@@ -204,6 +204,7 @@ var knownEnv = map[string]bool{
 	"HIKYO_MCP_ENABLED":                    true,
 	"HIKYO_MCP_ALLOWED_ORIGINS":            true,
 	"HIKYO_TRUSTED_PROXY_CIDRS":            true,
+	"HIKYO_ROOT_KEY_FILE":                  true,
 	"HIKYO_ROOT_KEY":                       true,
 	"HIKYO_UPGRADE_BUNDLE":                 true,
 	"HIKYO_UPGRADE_STATE_DIR":              true,
@@ -267,13 +268,14 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 	dev := fs.Bool("dev", false, "development mode: zero-config sqlite, text logs")
 	listen, operationalListen, tlsCertFile, tlsKeyFile, autoMigrate, rootKeyFile := new(string), new(string), new(string), new(string), new(bool), new(string)
 	*autoMigrate = true
+	*rootKeyFile = getenv("HIKYO_ROOT_KEY_FILE")
 	if subcommand == "server" {
 		listen = fs.String("listen", "", "listen address (default 127.0.0.1:8080, env HIKYO_LISTEN)")
 		operationalListen = fs.String("operational-listen", "", "operational listen address (default 127.0.0.1:8081, env HIKYO_OPERATIONAL_LISTEN)")
 		tlsCertFile = fs.String("tls-cert-file", "", "TLS certificate chain file (env HIKYO_TLS_CERT_FILE)")
 		tlsKeyFile = fs.String("tls-key-file", "", "TLS private key file (env HIKYO_TLS_KEY_FILE)")
 		autoMigrate = fs.Bool("auto-migrate", true, "apply pending migrations at boot")
-		rootKeyFile = fs.String("root-key-file", "", "path to the 64-hex-char root key file (mode 0600)")
+		rootKeyFile = fs.String("root-key-file", *rootKeyFile, "path to the 64-hex-char root key file (mode 0600)")
 	}
 	if err := fs.Parse(args); err != nil {
 		return nil, nil, err

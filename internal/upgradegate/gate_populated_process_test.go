@@ -97,10 +97,7 @@ func TestGatePopulatedProcessCrashRoutes(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				schema, err := upgrade.PinnedLegacySchemaDigest(engine)
-				if err != nil {
-					t.Fatal(err)
-				}
+				schema := upgradegate.GateCurrentSchemaForTest(t, engine)
 				source := upgradecompat.InstalledSource{Identity: releaseidentity.Source{Genesis: releaseidentity.FreshGenesisV1}, Migrations: empty, SchemaSHA256: inspected.CatalogDigest}
 				fixture := bundlefixture.Write(t, source, []bundlefixture.Target{
 					{Version: "1.0.1", Sequence: 1, Commit: strings.Repeat("a", 40), Migrations: manifest, SchemaSHA256: schema},

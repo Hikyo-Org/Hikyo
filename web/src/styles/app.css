@@ -982,6 +982,20 @@ select {
   display: none;
 }
 
+/* Keep all operational findings reachable without consuming the content well
+   on a phone. The named region is keyboard-scrollable when warnings overflow. */
+.ops-diagnostic-warnings {
+  flex-shrink: 0;
+  max-block-size: min(32dvh, 20rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.ops-diagnostic-warnings:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .retention-warning {
   display: flex;
   gap: 8px;

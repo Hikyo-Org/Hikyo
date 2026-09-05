@@ -25,6 +25,11 @@ func TestExportSQLiteManifestUsesArchivedSchemaDuringMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	var originalVersion int64
+	if err := db.sqWrite.QueryRowContext(t.Context(), "SELECT COALESCE(MAX(version_id), 0) FROM goose_db_version").Scan(&originalVersion); err != nil {
+		t.Fatal(err)
+	}
+	nextVersion := originalVersion + 1
 	held, err := db.sqWrite.Conn(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -48,7 +53,7 @@ func TestExportSQLiteManifestUsesArchivedSchemaDuringMigration(t *testing.T) {
 		case <-time.After(time.Millisecond):
 		}
 	}
-	if _, err := held.ExecContext(ctx, "INSERT INTO goose_db_version(version_id,is_applied) VALUES(45,true)"); err != nil {
+	if _, err := held.ExecContext(ctx, "INSERT INTO goose_db_version(version_id,is_applied) VALUES(?,true)", nextVersion); err != nil {
 		t.Fatal(err)
 	}
 	if err := held.Close(); err != nil {
@@ -74,8 +79,8 @@ func TestExportSQLiteManifestUsesArchivedSchemaDuringMigration(t *testing.T) {
 	if err := copy.QueryRowContext(ctx, "SELECT max(version_id) FROM goose_db_version").Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 45 || manifest.SchemaVersion != version {
-		t.Fatalf("manifest schema %d, archived schema %d; want both45", manifest.SchemaVersion, version)
+	if version != nextVersion || manifest.SchemaVersion != version {
+		t.Fatalf("manifest schema %d, archived schema %d; want both %d", manifest.SchemaVersion, version, nextVersion)
 	}
 }
 
@@ -144,9 +149,14 @@ func TestExportPostgresManifestUsesCopySnapshotDuringMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer admitted.Close()
+	var originalVersion int64
+	if err := writer.QueryRow(ctx, "SELECT COALESCE(MAX(version_id), 0) FROM goose_db_version").Scan(&originalVersion); err != nil {
+		t.Fatal(err)
+	}
+	nextVersion := originalVersion + 1
 	var changeErr error
 	cfg.ConnConfig.Tracer = &schemaChangeTracer{change: func() {
-		_, changeErr = writer.Exec(ctx, "INSERT INTO goose_db_version(version_id,is_applied) VALUES(45,true)")
+		_, changeErr = writer.Exec(ctx, "INSERT INTO goose_db_version(version_id,is_applied) VALUES($1,true)", nextVersion)
 	}}
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
@@ -182,14 +192,14 @@ func TestExportPostgresManifestUsesCopySnapshotDuringMigration(t *testing.T) {
 	}
 	// The schema change commits immediately after the version read. Both the
 	// version and COPY must remain on that transaction's original snapshot.
-	if manifest.SchemaVersion != 44 || !strings.Contains(payload, "\t44\tt\t") || strings.Contains(payload, "\t45\tt\t") {
-		t.Fatalf("manifest=%d COPY=%q; want consistent original schema44", manifest.SchemaVersion, payload)
+	if manifest.SchemaVersion != originalVersion || !strings.Contains(payload, fmt.Sprintf("\t%d\tt\t", originalVersion)) || strings.Contains(payload, fmt.Sprintf("\t%d\tt\t", nextVersion)) {
+		t.Fatalf("manifest=%d COPY=%q; want consistent original schema %d", manifest.SchemaVersion, payload, originalVersion)
 	}
 	var live int64
 	if err := writer.QueryRow(ctx, "SELECT COALESCE(MAX(version_id), 0) FROM goose_db_version").Scan(&live); err != nil {
 		t.Fatal(err)
 	}
-	if live != 45 {
+	if live != nextVersion {
 		t.Fatalf("concurrent schema change did not commit: %d", live)
 	}
 }

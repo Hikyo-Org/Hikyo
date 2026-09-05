@@ -438,6 +438,7 @@ const (
 	// protocol — prepare stores the dual wrapper at the new epoch, verify
 	// confirms the operator installed the new root at the primary source,
 	// finalize retires the old wrapper. Payload the epoch only, never key bytes.
+	EventRootEscrowVerified       EventType = "crypto.root_escrow_verified"
 	EventRootKeyRotationPrepared  EventType = "crypto.root_key_rotation_prepared"
 	EventRootKeyRotationVerified  EventType = "crypto.root_key_rotation_verified"
 	EventRootKeyRotationFinalized EventType = "crypto.root_key_rotation_finalized"
@@ -1580,6 +1581,11 @@ var registry = map[EventType]TypeSpec{
 			"scope":      {Kind: KindString, Required: true},
 			"rows_moved": {Kind: KindInt, Required: true},
 		},
+	},
+	EventRootEscrowVerified: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true}, Trails: map[Trail]bool{TrailInstance: true},
+		Schema: Schema{"root_key_epoch": {Kind: KindInt, Required: true}, "separate_custody_asserted": {Kind: KindBool, Required: true}},
 	},
 	EventRootKeyRotationPrepared: {
 		SchemaVersion: 1,

@@ -14335,11 +14335,29 @@ components:
           minimum: 1
           description: Required for keep-if-either; absent for unlimited.
 
+    OpsDiagnosticFinding:
+      type: object
+      additionalProperties: false
+      required: [code, severity, message]
+      properties:
+        code:
+          type: string
+        severity:
+          type: string
+          enum: [ok, warn, error, unknown]
+        message:
+          type: string
+
     RetentionHealth:
       type: object
       additionalProperties: false
       required: [last_prune_success, stale, stale_after_seconds, peak_project_bytes, storage_warn, backup, adapter_targets_failed, adapter_targets_paused, adapter_targets_attention, adapter_jobs_queued]
       properties:
+        diagnostics:
+          type: array
+          description: Instance operational findings. Unknown means the signal is not authoritatively measured, never healthy by default. No private custody or tenant identities.
+          items:
+            $ref: "#/components/schemas/OpsDiagnosticFinding"
         last_prune_success:
           type: [string, "null"]
           format: date-time

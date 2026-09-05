@@ -18,14 +18,15 @@ func TestDoctorResultsUseServerWarningsWithoutRecalculation(t *testing.T) {
 		}},
 	}}}, apigen.RetentionHealth{LastPruneSuccess: &lastPrune, Stale: false, StaleAfterSeconds: 86400, Backup: healthyBackup(effectiveAt)}, effectiveAt)
 	// Findings: [0] retention-prune, [1] project-storage, [2] backup-rpo,
-	// [3] restore-drill, [4] adapter-targets, [5] the provider error.
-	if result.Status != "error" || len(result.Findings) != 6 {
+	// [3] restore-drill, [4] adapter-targets, [5] unavailable diagnostics,
+	// [6] the provider error.
+	if result.Status != "error" || len(result.Findings) != 7 {
 		t.Fatalf("doctor result = %#v", result)
 	}
-	if got := result.Findings[5]; got.Provider != "corp" || got.Code != "metadata_expired" || got.Message != "server message" {
+	if got := result.Findings[6]; got.Provider != "corp" || got.Code != "metadata_expired" || got.Message != "server message" {
 		t.Fatalf("doctor finding = %#v", got)
 	}
-	if len(rows) != 6 || rows[5][4] != "server message" {
+	if len(rows) != 7 || rows[6][4] != "server message" {
 		t.Fatalf("doctor rows = %#v", rows)
 	}
 }

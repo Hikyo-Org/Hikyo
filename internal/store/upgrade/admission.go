@@ -26,6 +26,20 @@ type admissionState struct {
 
 func (a Admission) Valid() bool { return a.state != nil }
 
+// RecoveryIdentity returns detached public identity metadata from this exact
+// admission. Domain callers use it only inside a guarded transaction, which
+// refuses if a restore has changed the admitted incarnation.
+func (a Admission) RecoveryIdentity() (instance, incarnation string, err error) {
+	if !a.Valid() {
+		return "", "", ErrConflict
+	}
+	incarnationBytes, err := a.state.expected.RecoveryIncarnation.MarshalText()
+	if err != nil {
+		return "", "", err
+	}
+	return a.state.expected.InstanceID, string(incarnationBytes), nil
+}
+
 // Admit does not replace build/trust-domain verification at the application
 // gate. It binds that gate's real authenticated node to the actual database,
 // complete migration inventory and schema under the same migration exclusion.

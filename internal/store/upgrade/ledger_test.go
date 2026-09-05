@@ -158,7 +158,7 @@ func TestLegacyGenesisAndMigrationTamper(t *testing.T) {
 		if err := migrateFixture(t, cfg); err != nil {
 			t.Fatal(err)
 		}
-		manifest, err := releaseidentity.BuildMigrationManifest(os.DirFS(".."), "migrations/"+string(cfg.Engine), cfg.Engine)
+		manifest, err := PinnedLegacyManifest(cfg.Engine)
 		if err != nil {
 			t.Fatal(err)
 		}

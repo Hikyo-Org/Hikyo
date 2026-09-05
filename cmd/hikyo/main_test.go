@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/app"
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/console"
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 )
@@ -146,6 +148,38 @@ func TestHostCommandDevelopmentOptInIsOnlyLeadingGroupFlag(t *testing.T) {
 					t.Fatalf("host command dispatch failed: code=%d called=%v", code, called)
 				}
 			})
+		}
+	}
+}
+
+func TestEscrowDispatchPreservesServerRootIdentity(t *testing.T) {
+	primary := filepath.Join(t.TempDir(), "server-root")
+	if err := os.WriteFile(primary, []byte(crypto.EncodeRootKey(bytes.Repeat([]byte{85}, 32))), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HIKYO_DB", "sqlite:"+filepath.Join(t.TempDir(), "must-not-open.db"))
+	t.Setenv("HIKYO_ROOT_KEY_FILE", primary)
+	t.Setenv("HIKYO_ROOT_KEY", "")
+	for _, path := range []string{primary, filepath.Join(t.TempDir(), "alias")} {
+		if path != primary {
+			if err := os.Link(primary, path); err != nil {
+				t.Fatal(err)
+			}
+		}
+		called := false
+		code := runOperator(t.Context(), "escrow", []string{"verify", "--root-key-file", path, "--assert-separate-custody"}, func(ctx context.Context, cfg *config.Config, log *slog.Logger, args []string, out io.Writer, term *disclose.TerminalSession, termErr error) error {
+			called = true
+			if cfg.RootKeyFile != primary {
+				t.Fatal("actual dispatcher lost configured root identity")
+			}
+			err := app.RunEscrow(ctx, cfg, log, args, out, term, termErr)
+			if err == nil || !strings.Contains(err.Error(), "server root source") {
+				t.Fatalf("same-file refusal: %v", err)
+			}
+			return err
+		})
+		if !called || code == 0 {
+			t.Fatal("actual dispatch accepted same-file custody")
 		}
 	}
 }

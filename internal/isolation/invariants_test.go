@@ -68,7 +68,7 @@ func TestInvariant01ClassificationTotality(t *testing.T) {
 	// `backup` and `restore` join the local-host-authority group (#76): same
 	// binary, server host only, no network route — which is exactly what the
 	// system-class probe contract asserts by finding none below.
-	verbs := []string{"server", "migrate", "version", "about", "welcome", "admin", "backup", "restore"}
+	verbs := []string{"server", "migrate", "version", "about", "welcome", "admin", "backup", "restore", "escrow"}
 	verbs = append(verbs, cli.Verbs...)
 	for _, verb := range verbs {
 		key := "cli:" + verb
@@ -179,6 +179,7 @@ func TestInvariant06OperationRegistryCompleteness(t *testing.T) {
 		authz.StoreAuditTenantInsert:    true,
 		authz.StoreAuditInstanceInsert:  true,
 		authz.StoreRetentionLastSuccess: true,
+		authz.StoreOpsDiagnosticsRead:   true,
 		// The storage high-water instance sums are dual-use like the health read:
 		// the audited operator read reaches them via retention.health-read, the
 		// unauthenticated /metrics scrape via the scheduler mint site (#185).
@@ -202,7 +203,7 @@ func TestInvariant06OperationRegistryCompleteness(t *testing.T) {
 			t.Errorf("store method %q has no registered operation and no system mint site — it is unreachable and unauthorized by construction, register or remove it", method)
 		}
 		if viaOperation && viaSite {
-			if systemRegistered[op] != authz.SiteScheduler || !sharedSchedulerOps[op] {
+			if (systemRegistered[op] != authz.SiteScheduler || !sharedSchedulerOps[op]) && !(systemRegistered[op] == authz.SiteEscrow && op == authz.StoreAuditInstanceInsert) {
 				t.Errorf("store method %q is registered both to an operation and to system site %q without a reviewed shared-door pin", method, systemRegistered[op])
 			} else {
 				seenShared[op] = true
@@ -315,6 +316,7 @@ func TestInvariant09bTransactionResultsAreDetached(t *testing.T) {
 func TestInvariant11SystemProofEnumeration(t *testing.T) {
 	sites := facts.SystemSites()
 	want := map[authz.SystemSite]bool{
+		authz.SiteEscrow:            true,
 		authz.SiteBoot:              true,
 		authz.SiteMigration:         true,
 		authz.SiteRecoveryReconcile: true,
@@ -339,6 +341,7 @@ func TestInvariant11SystemProofEnumeration(t *testing.T) {
 		authz.StoreKeysInsertScopeGeneration:      true,
 	}
 	wantScheduler := map[authz.StoreOp]bool{
+		authz.StoreOpsDiagnosticsRead:      true,
 		authz.StoreRetentionEligible:       true,
 		authz.StoreRetentionMarkCollected:  true,
 		authz.StoreRetentionDeleteEntries:  true,
@@ -376,9 +379,24 @@ func TestInvariant11SystemProofEnumeration(t *testing.T) {
 		// a reviewed widening, pinned beside the storage high-water.
 		authz.StoreAdaptersHealthCounts: true,
 	}
+	wantEscrow := map[authz.StoreOp]bool{
+		authz.StoreKeysActiveMasterWrappers: true, authz.StoreKeysAllOpenableTier3: true,
+		authz.StoreKeysAcquireHierarchyGeneration: true, authz.StoreEscrowVerificationWrite: true, authz.StoreAuditInstanceInsert: true,
+	}
 	for site, ops := range sites {
 		if !want[site] {
 			t.Errorf("unregistered system mint site %q", site)
+		}
+		if site == authz.SiteEscrow {
+			if len(ops) != len(wantEscrow) {
+				t.Errorf("escrow site has unexpected operations: %v", ops)
+			}
+			for _, op := range ops {
+				if !wantEscrow[op] {
+					t.Errorf("escrow site gained %q", op)
+				}
+			}
+			continue
 		}
 		if site == authz.SiteBoot {
 			if len(ops) != len(wantBoot) {

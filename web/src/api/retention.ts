@@ -67,3 +67,8 @@ export function storageBanner(health: RetentionHealth | null | undefined) {
   }
   return null;
 }
+
+/** Keep unmeasured diagnostics visible; absence never asserts healthy state. */
+export function diagnosticWarnings(health: RetentionHealth | null | undefined) {
+  return health?.diagnostics?.filter((finding) => finding.severity !== 'ok') ?? [];
+}

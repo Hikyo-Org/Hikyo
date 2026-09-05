@@ -78,7 +78,7 @@ go test -count=1 -tags k8se2e -run 'TestK8sOperator' ./internal/isolation/ -time
 kind delete cluster --name "$CLUSTER" >/dev/null
 created=false
 
-echo "k8s-e2e: building release-shaped UI binary for Helm chart gate"
+echo "k8s-e2e: building release-shaped UI binary for Helm readiness and authenticated doctor gate"
 if [ "$(uname -s)" = Linux ]; then
 	# This compatibility bridge runs inside the existing base-controlled job,
 	# which predates setup-node/setup-helm for the chart gate. Install both
@@ -113,7 +113,7 @@ HIKYO_CHART_FIXTURE_OUTPUT="$image_root/chart-fixture" \
 	HIKYO_CHART_FIXTURE_COMMIT="$(git rev-parse HEAD)" \
 	go test -count=1 -run '^TestWriteChartFixture$' ./scripts/ci/chartfixture
 chart_ldflags=$(cat "$image_root/chart-fixture/ldflags")
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -tags ui \
+CGO_ENABLED=0 GOOS=linux go build -trimpath -tags ui \
 	-ldflags "$chart_ldflags" \
 	-o "$image_root/hikyo-ui" ./cmd/hikyo
 HIKYO_CHART_KIND_BINARY="$image_root/hikyo-ui" \

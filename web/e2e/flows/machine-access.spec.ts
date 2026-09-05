@@ -1135,7 +1135,7 @@ test.describe('project audit', () => {
         try {
           // Narrow before the sweep, as the org audit flow does: the pinned set
           // focuses and measures every interactive element on the page.
-          await page.getByLabel('Operation').fill('grant.created');
+          await page.getByRole('textbox', { name: 'Operation', exact: true }).fill('grant.created');
           await page.getByRole('button', { name: 'Apply filter' }).click();
           await expect(page.locator('.audit__row').first()).toBeVisible();
 
@@ -1483,7 +1483,7 @@ test.describe('browser-only lifecycle', () => {
       // 9. AUDIT: the organisation's trail is readable and names the publish.
       await page.goto(`/orgs/${org.id}/audit`);
       await expect(page.locator('.audit__row').first()).toBeVisible();
-      await page.getByLabel('Operation').fill('revision.published');
+      await page.getByRole('textbox', { name: 'Operation', exact: true }).fill('revision.published');
       await page.getByRole('button', { name: 'Apply filter' }).click();
       await expect(page.locator('.audit__row').first()).toBeVisible();
       await expectAbsentFromPage(page, secretValue, 'the secret value');

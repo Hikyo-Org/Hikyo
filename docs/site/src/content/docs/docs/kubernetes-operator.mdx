@@ -330,7 +330,14 @@ The operator uses this closed reason set:
 | `Rollout=False` | `Stalled` | An opted-in workload did not progress after its stamp patch. |
 | `CredentialExpiry=True` | `ExpiresSoon` | The finite credential expires within seven days. |
 | `CredentialExpiry=True` | `Expired` | The finite credential expiry has passed. |
+| `PinExpired=True` | `PinExpired` | The revision pin has expired. Delivery continues while the revision remains available, but retention may collect it. Renew the pin, re-pin, or unpin. |
 | `Unreconciled=True` | `NamespaceNotBound` | A cluster-wide watcher saw a CR outside its RBAC authority. |
+
+`PinExpired` emits a Warning event and does not make a successful delivery
+unready. Every successful response, including a conditional `current` response
+that leaves the Secret unchanged, refreshes the warning. A successful response
+with a fresh pin or no pin clears it. Fetch failures retain the last known pin
+condition.
 
 The managed Secret has three distinct lifecycle outcomes:
 

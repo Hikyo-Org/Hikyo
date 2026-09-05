@@ -159,6 +159,7 @@ func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy
 	for _, table := range []string{"upgrade_pending", "upgrade_nonces", "upgrade_control"} {
 		drillExec(t, db, "DROP TABLE "+table)
 	}
+	removePostLegacyDiagnosticsFixture(t, db)
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -215,6 +216,38 @@ func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy
 		request.Scope = domain.Scope{Org: "org_drill", Project: "prj_drill"}
 	}
 	return upgradeDrillFixture{cfg: cfg, bundle: bundle, request: request, source: inspected, proposal: proposal, signer: bundle.Signer, archive: exported.Path, root: root}
+}
+
+// The runtime-created fixture includes candidate migration 45, while the sole
+// admitted legacy genesis ends at 44. Model that historical archive by removing
+// only this known, untouched metadata addition. The pinned catalog inspection
+// below still rejects every other shape change; no runtime downgrade is added.
+func removePostLegacyDiagnosticsFixture(t *testing.T, db *store.DB) {
+	t.Helper()
+	engine := releaseidentity.Engine(db.Engine())
+	legacy, err := upgrade.PinnedLegacyManifest(engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := releaseidentity.BuildMigrationManifest(store.MigrationsFS, "migrations/"+string(engine), engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(current.Entries) != len(legacy.Entries)+1 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) || current.Entries[len(legacy.Entries)].Version != 45 {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus diagnostics migration 45 only")
+	}
+	const pristine = `SELECT COUNT(*) FROM ops_diagnostics WHERE singleton=1 AND escrow_verified_at IS NULL AND escrow_instance_id='' AND escrow_incarnation='' AND escrow_root_epoch=0 AND last_reencrypt_success IS NULL`
+	var untouched int
+	if db.Engine() == store.EngineSQLite {
+		err = db.SQLiteRead().QueryRowContext(t.Context(), pristine).Scan(&untouched)
+	} else {
+		err = db.PG().QueryRow(t.Context(), pristine).Scan(&untouched)
+	}
+	if err != nil || untouched != 1 {
+		t.Fatal("legacy drill fixture cannot discard diagnostic evidence", err)
+	}
+	drillExec(t, db, "DROP TABLE ops_diagnostics")
+	drillExec(t, db, "DELETE FROM goose_db_version WHERE version_id=45")
 }
 
 func TestUpgradeDrillActualBothEngineRecoveryAndConfigOnlyEscrow(t *testing.T) {

@@ -7,6 +7,7 @@ package server
 import (
 	"context"
 	"io/fs"
+	"math"
 	"net/http"
 	"time"
 
@@ -251,6 +252,31 @@ func NewOperational(ready ReadyChecker, healthService OperationalRetentionHealth
 			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricAdapterTargetsAttention, Help: "Active deployment-adapter targets whose destination drifted from the ownership ledger and need an operator."}, func() float64 { return float64(health.Adapters.TargetsAttention) }),
 			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricAdapterJobsQueued, Help: "Deployment-adapter outbox jobs waiting to be claimed."}, func() float64 { return float64(health.Adapters.JobsQueued) }),
 		)
+		diagnostics := health.Diagnostics
+		volumePercent := math.NaN()
+		if diagnostics.Volume.Known {
+			volumePercent = diagnostics.Volume.UsedPercent
+		}
+		for _, gauge := range []struct {
+			name, help string
+			value      float64
+		}{
+			{MetricDataVolumeKnown, "Whether datastore volume capacity was authoritatively measured.", flag(diagnostics.Volume.Known)},
+			{MetricDataVolumeUsedPercent, "Measured datastore volume utilization; NaN when unknown.", volumePercent},
+			{MetricDataVolumeWarn, "Measured datastore volume at or above 80 percent; check capacity_known.", flag(diagnostics.Volume.Known && volumePercent >= 80)},
+			{MetricDataVolumeCritical, "Measured datastore volume at or above 90 percent; check capacity_known.", flag(diagnostics.Volume.Known && volumePercent >= 90)},
+			{MetricRootEscrowVerified, "Whether escrow verification matches the current root and recovery incarnation.", flag(diagnostics.EscrowCurrent)},
+			{MetricRootEscrowVerifiedAt, "Last recorded root escrow verification timestamp; validity is reported separately.", unix(diagnostics.Metadata.EscrowVerifiedAt)},
+			{MetricRootRotationPending, "Whether multiple active root wrappers remain.", flag(diagnostics.Metadata.RootWrappers > 1)},
+			{MetricReencryptPendingScopes, "Number of key scopes with retiring versions.", float64(diagnostics.Metadata.RetiringScopes)},
+			{MetricLastReencryptSuccess, "Last successful scope reencrypt completion; zero when never recorded.", unix(diagnostics.Metadata.LastReencryptSuccess)},
+			{MetricPinsExpired, "Number of expired pins, which no longer protect retention.", float64(diagnostics.Metadata.PinsExpired)},
+			{MetricPinsExpiringDay, "Pins expiring within one day.", float64(diagnostics.Metadata.PinsDay)},
+			{MetricPinsExpiringWeek, "Pins expiring after one day and within seven days.", float64(diagnostics.Metadata.PinsWeek)},
+			{MetricPinsExpiringMonth, "Pins expiring after seven days and within thirty days.", float64(diagnostics.Metadata.PinsMonth)},
+		} {
+			snapshot.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: gauge.name, Help: gauge.help}, func() float64 { return gauge.value }))
+		}
 		gatherers := prometheus.Gatherers{snapshot}
 		if metrics != nil {
 			gatherers = append(gatherers, metrics.registry)

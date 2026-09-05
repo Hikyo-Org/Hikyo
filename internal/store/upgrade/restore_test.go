@@ -28,7 +28,7 @@ func TestSameArchiveRestoresNewIncarnationsBeforePublication(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		manifest, err := upgrade.PinnedLegacyManifest(cfg.Engine)
+		manifest, err := releaseidentity.BuildMigrationManifest(store.MigrationsFS, "migrations/"+string(cfg.Engine), cfg.Engine)
 		if err != nil {
 			t.Fatal(err)
 		}

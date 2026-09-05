@@ -97,6 +97,18 @@ func doctorResults(providers apigen.SamlProviderList, health apigen.RetentionHea
 	if adapters.Severity == "warn" && result.Status == "ok" {
 		result.Status = "warning"
 	}
+	for _, finding := range doctorDiagnosticFindings(health) {
+		result.Findings = append(result.Findings, finding)
+		rows = append(rows, []string{finding.Severity, finding.Provider, finding.Code, finding.EffectiveAt, finding.Message})
+		switch finding.Severity {
+		case "error":
+			result.Status = "error"
+		case "warn", "unknown":
+			if result.Status == "ok" {
+				result.Status = "warning"
+			}
+		}
+	}
 	providerRowStart := len(rows)
 	for _, provider := range providers.Providers {
 		for _, warning := range provider.Warnings {
@@ -117,6 +129,21 @@ func doctorResults(providers apigen.SamlProviderList, health apigen.RetentionHea
 		rows = append(rows, []string{"ok", "-", "saml-providers", "-", "no provider warnings"})
 	}
 	return result, rows
+}
+
+// doctorDiagnosticFindings preserves server verdicts, including explicit unknown
+// measurements. Older servers omit the optional field: absence is not health.
+func doctorDiagnosticFindings(health apigen.RetentionHealth) []doctorFinding {
+	if health.Diagnostics == nil || len(*health.Diagnostics) == 0 {
+		return []doctorFinding{{Provider: "-", Code: "diagnostics", Severity: "unknown", EffectiveAt: "-",
+			Message: "operational diagnostics are unavailable from this server; upgrade the server to measure data volume, root escrow, pin expiry, root rotation, re-encryption, database durability, and Argon2 floor"}}
+	}
+	findings := make([]doctorFinding, 0, len(*health.Diagnostics))
+	for _, diagnostic := range *health.Diagnostics {
+		findings = append(findings, doctorFinding{Provider: "-", Code: diagnostic.Code,
+			Severity: string(diagnostic.Severity), Message: diagnostic.Message, EffectiveAt: "-"})
+	}
+	return findings
 }
 
 func doctorPruneFinding(health apigen.RetentionHealth, now time.Time) doctorFinding {
