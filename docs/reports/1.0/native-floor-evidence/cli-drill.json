@@ -1,0 +1,15 @@
+{
+  "archive": "hikyo-sqlite-20260905T020559Z.age",
+  "archive_digest": "sha256:eb2073adcfe4ead2dfbecdc600ab37fc95d98a1189ba3bb41e4fceeeede85943",
+  "binary_version": "dev",
+  "credential": true,
+  "elapsed_ms": 29,
+  "engine": "sqlite",
+  "failed_step": "",
+  "ok": true,
+  "principal": "usr_ident",
+  "rto_met": true,
+  "rto_target_ms": 1800000,
+  "schema_version": 44,
+  "values_readable": true
+}

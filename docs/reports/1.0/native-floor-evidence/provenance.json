@@ -1,0 +1,15 @@
+{
+  "commit": "c88d43a95e7f646097cdd344894b565b406b8348",
+  "run_url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33937704353",
+  "image": "sha256:580a9c556d7f23eae527e4f53c240e3c72c905a49e5aee4b199a36c6db6b4feb",
+  "source_dirty": false,
+  "custody_sources": [
+    "FLOOR_BACKUP_CUSTODY",
+    "FLOOR_ROOT_CUSTODY"
+  ],
+  "limits": {
+    "cpus": 4,
+    "memory_bytes": 4294967296,
+    "swap_bytes": 0
+  }
+}

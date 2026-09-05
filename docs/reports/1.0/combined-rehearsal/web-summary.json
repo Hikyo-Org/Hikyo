@@ -1,0 +1,14 @@
+{
+  "typecheck": {
+    "exit_code": 0,
+    "seconds": 1.16
+  },
+  "tests": {
+    "exit_code": 0,
+    "seconds": 5.35
+  },
+  "passed_tests": 683,
+  "failed_tests": 0,
+  "pending_tests": 0,
+  "test_files": 84
+}

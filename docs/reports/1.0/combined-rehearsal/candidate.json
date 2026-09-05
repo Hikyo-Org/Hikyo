@@ -1,0 +1,27 @@
+{
+  "base": "693f68fa3329907b83af1349a6f30ece050ad2cd",
+  "requested_reviewed_heads": {
+    "644": "06528e67d5b894d8a5b87cf746e03fc80ba33978",
+    "645": "4273c1039330d7fb160ed8b6dcfffda535981516",
+    "648": "1c7230cf3ba8bf27d957b8b9b65700583c2063a5",
+    "652": "81504e128306b1637ae8ba95909e3ac39a09f3c5",
+    "653": "57571932b11544ebf4c9222ffa026d00b78898b9",
+    "655": "b3fb04eb87d4a3598e60c071563e47a6ff126264",
+    "656": "bf751efe68cf50a662164c0f63880a85e8fc5dc3"
+  },
+  "merge_heads": [
+    "06528e67d5b894d8a5b87cf746e03fc80ba33978",
+    "4273c1039330d7fb160ed8b6dcfffda535981516",
+    "1c7230cf3ba8bf27d957b8b9b65700583c2063a5",
+    "81504e128306b1637ae8ba95909e3ac39a09f3c5",
+    "57571932b11544ebf4c9222ffa026d00b78898b9",
+    "bf751efe68cf50a662164c0f63880a85e8fc5dc3"
+  ],
+  "combined_tree": "6bdb09c880ef6a3f4a9c01e10713cecb7dcc0579",
+  "conflicts": [],
+  "unstaged": [],
+  "untracked": [],
+  "resolution": "automatic octopus merge; no manual resolution",
+  "commit_created": false,
+  "published": false
+}

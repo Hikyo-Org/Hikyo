@@ -1,0 +1,27 @@
+{
+  "checkedAt": "2026-09-05T02:20:45.610761+00:00",
+  "origin": "https://hikyo.app",
+  "liveDocsGate": "passed",
+  "checks": [
+    "root and documentation assets",
+    "PWA manifest, icons and service worker",
+    "published security and support policy",
+    "governance and licensing",
+    "security.txt expiry",
+    "fallback MX route"
+  ],
+  "fallbackEvidenceValidation": "passed",
+  "fallbackReceipt": {
+    "schema": "hikyo.dev/fallback-channel-test/v1",
+    "address": "security@developwent.io",
+    "status": "passed",
+    "sent_at": "2026-08-13T07:09:44Z",
+    "received_at": "2026-08-13T07:09:54Z",
+    "message_id_sha256": "b032cf8e5302aa852305cf9aadd8b24cfeb8b6e90811b918692a7c5c8b6a8093",
+    "note": "Externally sent self-report received through the fallback channel; exact Message-ID retained only as its SHA-256 hash."
+  },
+  "fallbackReceiptSHA256": "159adfcc4797325aff6b2fd875e3abd6e10553ce08294bb3f3fe93015f70ce84",
+  "scheduledGateRun": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33398969196",
+  "newMessageSent": false,
+  "finalCandidateRecheckRequired": true
+}
