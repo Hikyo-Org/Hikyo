@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -37,6 +38,10 @@ type Client struct {
 	// lastStatus records the most recent response's 2xx status for DoStatus. A
 	// client serves one command at a time, so this needs no synchronization.
 	lastStatus int
+	// Capability metadata is scoped to this command's origin-bound client.
+	// It contains no authorization state; grants are still checked server-side.
+	meta       *apigen.Meta
+	metaOrigin string
 }
 
 // NewClient builds a client bound to a trust entry.
@@ -162,6 +167,9 @@ func (c *Client) Do(ctx context.Context, method, path string, body, out any) err
 	if err != nil {
 		return err
 	}
+	if err := c.requireRevision(ctx, req); err != nil {
+		return err
+	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -272,11 +280,41 @@ func exitForStatus(status int) int {
 // before any session exists, and every verb uses its API revision for the
 // skew check below.
 func (c *Client) Meta(ctx context.Context) (apigen.Meta, error) {
+	origin := c.Entry.Origin
 	var meta apigen.Meta
 	if err := c.Do(ctx, http.MethodGet, api.PathPrefix+"/meta", nil, &meta); err != nil {
 		return apigen.Meta{}, err
 	}
+	c.meta = &meta
+	c.metaOrigin = origin
 	return meta, nil
+}
+
+// requireRevision runs before the requested operation reaches the server.
+// Discovery itself must work against an older server, so it is the
+// sole described-operation exception. Raw non-API transport callers do not
+// participate in the versioned API contract.
+func (c *Client) requireRevision(ctx context.Context, request *http.Request) error {
+	if !strings.HasPrefix(request.URL.Path, api.PathPrefix+"/") {
+		return nil
+	}
+	matched, err := api.MatchRequest(request)
+	if err != nil {
+		if errors.Is(err, api.ErrNoRoute) {
+			return failf(ExitInternal, "this client has no contract entry for %s %s", request.Method, request.URL.Path)
+		}
+		return err
+	}
+	op := matched.Operation()
+	if op.ID == "getMeta" {
+		return nil
+	}
+	if c.meta == nil || c.metaOrigin != c.Entry.Origin {
+		if _, err := c.Meta(ctx); err != nil {
+			return err
+		}
+	}
+	return CheckRevision(*c.meta, op.ID)
 }
 
 // CheckRevision refuses an operation the server is too old to serve, NAMING

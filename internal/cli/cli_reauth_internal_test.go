@@ -7,7 +7,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"strings"
 	"sync"
@@ -29,7 +28,7 @@ func TestAdapterCreateCeremonyPrecedesSecretInputAndMutationDispatch(t *testing.
 		order = append(order, step)
 	}
 	var callbackURI string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newRevisionAwareFixtureServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/api/v1/auth/cli-reauth/start":
@@ -118,7 +117,7 @@ func TestAdapterCreateCeremonyPrecedesSecretInputAndMutationDispatch(t *testing.
 func TestAdapterTargetNarrowingSkipsCeremonyAndUsesSynchronousTargetResponse(t *testing.T) {
 	const bearer = "session-secret"
 	var getCount, patchCount, openCount int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newRevisionAwareFixtureServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+bearer {
 			t.Errorf("authorization=%q", r.Header.Get("Authorization"))
 		}
@@ -197,7 +196,7 @@ func TestAdapterTargetMutationCLIAPIParity(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var patchCount int
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := newRevisionAwareFixtureServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				switch {
 				case r.Method == http.MethodGet && r.URL.Path == "/api/v1/orgs/org_one/projects/prj_one/adapter-targets/tgt_one":
@@ -256,7 +255,7 @@ func TestRunCLIAdapterReauthBindsExactLoopbackStateAndSilentlyRotatesBearer(t *t
 		code      = "hik_1_hc_single-use-code"
 	)
 	var redirect, challenge string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newRevisionAwareFixtureServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+oldBearer {
 			t.Fatalf("authorization=%q", r.Header.Get("Authorization"))
 		}
@@ -368,7 +367,7 @@ func TestRedeemCLIReauthSilentlyReplacesStoredBearer(t *testing.T) {
 		newBearer = "rotated-session-secret"
 		verifier  = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newRevisionAwareFixtureServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer "+oldBearer {
 			t.Fatalf("authorization=%q", got)
 		}

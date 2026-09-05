@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PostgreSQL UTC timestamp correction</title>
+<style>body{font:17px/1.6 system-ui,sans-serif;max-width:900px;margin:3rem auto;padding:0 1rem;color:#18232b}table{border-collapse:collapse;width:100%}td,th{text-align:left;vertical-align:top;padding:.7rem;border:1px solid #ccd5db}th{background:#eef3f6}code{background:#eef3f6;padding:.15rem .3rem}</style>
+<h1>PostgreSQL UTC timestamp correction</h1>
+<p>5 September 2026. The frozen generated-client acceptance harness found that PostgreSQL-backed <code>whoami</code> returned offset-bearing session timestamps. Its unchanged Zod datetime validators rejected these responses. SQLite returned canonical UTC timestamps.</p>
+<h2>Cause and correction</h2>
+<p>The store contract already requires UTC timestamps. In the pinned pgx v5.10.0 implementation, binary <code>timestamptz</code> decoding uses Go's local timezone unless a scan location is configured; text decoding preserves the PostgreSQL session's offset. Setting the database session timezone alone does not correct binary decoding.</p>
+<p>Every new store pool connection now registers pgx's supported <code>TimestamptzCodec{ScanLocation: time.UTC}</code>. Timestamp arrays receive the same element codec because pgx's default array codec retains its own element-type pointer. This changes the returned location and JSON representation while preserving the stored instant and microsecond precision. Generated query wrappers, direct scans and nullable values use the same boundary.</p>
+<h2>Decision recorded</h2>
+<table><thead><tr><th>Question</th><th>Options</th><th>Recommended choice and reason</th></tr></thead><tbody>
+<tr><td>Where should UTC normalization live?</td><td>Permit offsets in frozen validators; normalize individual API handlers; set PostgreSQL session timezone; configure the database decoding boundary.</td><td>Configure the decoding boundary. It implements the existing store contract uniformly, covers both protocols and every pool connection, and keeps frozen compatibility validators intact.</td></tr>
+</tbody></table>
+<h2>Evidence</h2>
+<p>The real PostgreSQL regression runs in a subprocess with <code>TZ=Pacific/Auckland</code>, while two simultaneously held physical database connections use <code>Asia/Kathmandu</code>. Binary and simple-text queries cover winter and summer timestamps, positive and negative input offsets, date crossings, <code>time.Time</code>, generated <code>pgtype.Timestamptz</code> wrappers, arrays and nulls. Every decoded value must preserve the exact instant, use UTC and serialize with <code>Z</code>.</p>
+<p>Before the fix, all eight connection/protocol/input cases failed UTC/JSON assertions. After the fix, the regression passed. Full store and race validation results are recorded in the accompanying handoff. The test uses a uniquely created scratch database and leaves existing databases unchanged.</p>
+<p>No schema migration, HTTP timestamp rewriting or validator change is involved. Parent delivery owns the combined frozen-client acceptance, review, CI and merge; this report does not claim those gates completed.</p>
+</html>

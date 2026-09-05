@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
 )
@@ -971,7 +972,14 @@ func TestPinReleasePrintsServerRetentionConsequence(t *testing.T) {
 
 func definitionsTestIO(t *testing.T, handler http.Handler) (cli.IO, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
-	server := httptest.NewServer(handler)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == api.PathPrefix+"/meta" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
+			return
+		}
+		handler.ServeHTTP(w, r)
+	}))
 	t.Cleanup(server.Close)
 	ios, stdout, stderr := testIO(t, nil)
 	state, err := cli.NewState(ios.Env)

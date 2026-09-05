@@ -1,0 +1,13 @@
+# Client compatibility before 1.0
+
+Ordinary CLI requests now resolve their operation in the shipped contract and fetch capability metadata before dispatch. A subminimum server is refused with its version and the required revision. Discovery is the sole described-operation exception. Metadata is cached within one command and keyed to the current origin; changing the exported trust entry cannot reuse another server's revision. Authentication, certificate pins, redirect refusal and server authorization remain authoritative.
+
+The generated-client CI lane now runs an archived, unmodified SDK and Zod validators against actual current-server HTTP endpoints on SQLite and PostgreSQL. After the immutable v1.0.0 tag exists, that tag supplies the old client. Before it exists, the committed candidate client is an explicitly named rehearsal, not frozen-client certification. The wrapper never regenerates the archived baseline, installs its exact lockfile without lifecycle scripts, and requires passing root and both-engine JSON events. Empty, skipped, renamed and failing executions refuse.
+
+The real flow covers discovery, password login, identity decoding, logout, authenticated organization creation, grant-triggered session revocation, fresh login, scoped organization reads, member navigation, and typed refusal of the MFA-only instance-wide list. Organization creation intentionally invalidates existing sessions when its grants change; the test respects that policy. It does not claim every API operation is exercised by this representative flow. The existing specification freeze and broader conformance suites remain required.
+
+The rehearsal exposed PostgreSQL timestamps inheriting the process timezone. The shared pool now decodes scalar and array timestamptz values in UTC without changing their instants. See [UTC evidence](postgres-utc.md). Frozen validators were not weakened to hide the mismatch.
+
+Validation: full CLI suite passed; the final full dual-engine isolation suite passed in 418.862 seconds. The demo now asserts exact discovery, project GET and DELETE ordering after metadata discovery was added. Generated SDK rehearsal passes both engines; the UTC full store suite, repeated race regression and vet pass. Planner, ShellCheck and actionlint pass. Independent review found and verified the origin-cache, typed-refusal and non-vacuous execution fixes. A deliberately incompatible archived validator was also refused by both actual server engines. Exact committed-head CI remains required before merge.
+
+Decision: retain API revision 2 and operation-specific minima. Resetting to revision 1 would misrepresent already delivered revision-2 operations. No fake v1.0.0 tag is created for this rehearsal.

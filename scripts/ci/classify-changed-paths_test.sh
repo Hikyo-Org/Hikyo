@@ -42,7 +42,7 @@ expect_plan 'docs-only' '["docs"]' \
 	'docs/site/src/content/docs/docs/getting-started.mdx' 'README.md'
 expect_plan 'web-only' '["release-snapshot","web","web-go"]' 'web/src/routes/Values.tsx'
 expect_plan 'core' \
-	'["fuzz","generated","headline-guarantee","race","release-snapshot","test","web-go"]' \
+	'["client","fuzz","generated","headline-guarantee","race","release-snapshot","test","web-go"]' \
 	'internal/service/values.go'
 expect_plan 'API' \
 	'["client","compose-demo","freeze-guard","generated","headline-guarantee","release-snapshot","test","web-go"]' \
@@ -130,7 +130,7 @@ expect_plan 'generated CRD' \
 expect_plan 'k8s e2e runner' '["k8s-e2e","lint"]' 'scripts/ci/k8s-e2e.sh'
 expect_plan 'chart kind runner' '["k8s-e2e","lint"]' 'scripts/ci/chart-kind.sh'
 expect_plan 'root-key staging runtime' \
-	'["fuzz","generated","headline-guarantee","k8s-e2e","race","release-snapshot","test","web-go"]' \
+	'["client","fuzz","generated","headline-guarantee","k8s-e2e","race","release-snapshot","test","web-go"]' \
 	'internal/crypto/rootkey_stage.go'
 
 for non_web_app_path in \
