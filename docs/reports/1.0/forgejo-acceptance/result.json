@@ -1,0 +1,114 @@
+{
+  "recorded_at": "2026-09-05T00:59:39.111944+00:00",
+  "base_commit": "54c58bbdbf7abb90228482718a8bf4f0844f6ea4",
+  "baseline": {
+    "source": "exact base commit, fixture restored via Go overlay",
+    "test": "TestForgejoRealLifecycle",
+    "result": "PASS",
+    "duration_seconds": 0.57,
+    "engines": [
+      "sqlite"
+    ],
+    "test_binary_sha256": "a98dd308127c55b0628629138c0dcae089f7f271a0cda84c9d43cfb9d564f7de"
+  },
+  "extended": {
+    "source": "base commit plus uncommitted provider transport cleanup and dual-engine harness patch",
+    "patch_sha256": "2df98192aeddf929ec9d8bfd4c967aa7f4066d8404f6650e143bdf59f1c6c961",
+    "fixture_sha256": "12fc9b014c6b09aac399f57b7784407607a7344fb0b815314809370112ce2105",
+    "test_binary_sha256": "e51b8af9ec0d92fa27b140d2e11acbf8b6144b83006b16f199fe1a5ad70e2544",
+    "result": "PASS",
+    "engines": {
+      "sqlite": {
+        "result": "PASS",
+        "duration_seconds": 0.75
+      },
+      "postgres": {
+        "result": "PASS",
+        "duration_seconds": 1.13
+      }
+    },
+    "skipped_legs": 0
+  },
+  "provider": {
+    "version": "16.0.3+gitea-1.22.0",
+    "image": {
+      "Id": "sha256:7c4e1db440be7b2ca685b49d0d7864cdd78e92431f531bf7893659def8200fc5",
+      "RepoDigests": [
+        "codeberg.org/forgejo/forgejo@sha256:7c4e1db440be7b2ca685b49d0d7864cdd78e92431f531bf7893659def8200fc5"
+      ],
+      "Architecture": "arm64",
+      "Os": "linux"
+    },
+    "account_admin": false,
+    "delivery_token_scopes": [
+      "write:repository"
+    ],
+    "fixture_provisioning_token_scopes": [
+      "write:user",
+      "write:repository"
+    ],
+    "provisioning_credential_passed_to_adapter": false,
+    "repository_private": true,
+    "repository_id": 1
+  },
+  "runtime": {
+    "postgres_version": "18.6",
+    "postgres_image": {
+      "Id": "sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2",
+      "RepoDigests": [
+        "postgres@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2"
+      ],
+      "Architecture": "arm64",
+      "Os": "linux"
+    },
+    "runner_image": {
+      "Id": "sha256:0ecdc2a9f6156af6451080bfe3d8382a662fcc4e209608c6f919e643453514c1",
+      "RepoDigests": [
+        "golang@sha256:0ecdc2a9f6156af6451080bfe3d8382a662fcc4e209608c6f919e643453514c1"
+      ],
+      "Architecture": "arm64",
+      "Os": "linux"
+    },
+    "compiler": "go1.27.0 darwin/arm64 cross-compile GOOS=linux GOARCH=arm64 CGO_ENABLED=0",
+    "execution": "native linux/arm64 Docker VM",
+    "canonical_test_filter": "^TestForgejoRealLifecycle$",
+    "timeout": "5m",
+    "CI": true
+  },
+  "tls": {
+    "method": "fresh private CA and hostname-valid leaf, SSL_CERT_FILE in isolated Linux test process; ordinary TLS verification enabled",
+    "system_trust_store_modified": false,
+    "leaf_sans": [
+      "forgejo",
+      "localhost",
+      "127.0.0.1"
+    ],
+    "validity_days": 2,
+    "private_network_allowance": "172.19.0.0/16"
+  },
+  "post_run_cleanup": {
+    "provider_secret_rows": 0,
+    "provider_action_variable_rows": 0,
+    "fixture_retained_for_final_candidate_replay": true,
+    "owned_names": [
+      "hikyo-forgejo-acceptance-5405",
+      "hikyo-forgejo-acceptance-5405-server",
+      "hikyo-forgejo-acceptance-5405-postgres",
+      "hikyo-forgejo-acceptance-5405-data"
+    ],
+    "existing_provider_resources_touched": false
+  },
+  "github": "EXTERNAL-PENDING: seven distinct fine-grained PATs and dedicated provider targets remain unavailable",
+  "transport_regression": {
+    "before_fix": "Both TestForgetClosesPrivateIdleConnections tests failed after a real TLS request: released module lease retained its private idle TLS connection",
+    "after_fix": "Both complete provider packages pass under ordinary and race testing",
+    "implementation": "Existing Forget methods close private idle HTTP connections while preserving credential cleanup and GitHub release-once state semantics"
+  },
+  "validation": {
+    "go_test_provider_packages": "PASS",
+    "go_race_provider_packages": "PASS",
+    "go_vet_provider_and_isolation_packages": "PASS",
+    "structural_lint_five_checks": "PASS",
+    "git_diff_check": "PASS"
+  }
+}

@@ -265,9 +265,11 @@ func (c *Client) captureCredentialExpiry(header http.Header) {
 	}
 }
 
+// Forget releases this module lease's private transport and credential state.
 func (c *Client) Forget() {
 	c.forgetOnce.Do(func() {
 		c.token = ""
+		c.http.CloseIdleConnections()
 		if c.releaseCredentialState != nil {
 			c.releaseCredentialState()
 		}

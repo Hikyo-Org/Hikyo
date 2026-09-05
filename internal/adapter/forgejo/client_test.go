@@ -3,6 +3,7 @@ package forgejo
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -227,4 +228,47 @@ func NewTestClient(origin, credential string, client *http.Client) (*Client, err
 		return nil, errors.New("forgejo: test client requires credential and HTTP client")
 	}
 	return &Client{origin: canonical, token: credential, http: client}, nil
+}
+
+// A module lease owns this client's transport. Releasing the lease must close
+// its idle sockets, not leave one set of HTTP goroutines per outbox attempt.
+func TestForgetClosesPrivateIdleConnections(t *testing.T) {
+	closed := make(chan struct{}, 1)
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"version":"16.0.3"}`))
+	}))
+	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateClosed {
+			select {
+			case closed <- struct{}{}:
+			default:
+			}
+		}
+	}
+	server.StartTLS()
+	defer server.Close()
+	client, err := NewClient(ClientConfig{
+		Origin: server.URL, Credential: "fixture-token", Deadline: time.Second,
+		AllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Forget()
+	roots := x509.NewCertPool()
+	roots.AddCert(server.Certificate())
+	client.http.Transport.(*http.Transport).TLSClientConfig.RootCAs = roots
+	if _, err := client.Version(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	client.Forget()
+	client.Forget()
+	if client.token != "" {
+		t.Fatal("lease release retained credential")
+	}
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("released module lease retained its private idle TLS connection")
+	}
 }

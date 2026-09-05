@@ -3,12 +3,14 @@ package githubactions
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"reflect"
 	"slices"
@@ -540,4 +542,47 @@ func newTestClientAt(origin, credential string, client *http.Client, now func() 
 	}
 	state := &credentialState{pacer: &serialPacer{now: now}, lastUsed: now().UTC()}
 	return &Client{origin: canonical, token: credential, http: client, now: now, credentialState: state}, nil
+}
+
+// A module lease owns this client's transport. Releasing the lease must close
+// its idle sockets, not leave one set of HTTP goroutines per outbox attempt.
+func TestForgetClosesPrivateIdleConnections(t *testing.T) {
+	closed := make(chan struct{}, 1)
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"id":1}`))
+	}))
+	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateClosed {
+			select {
+			case closed <- struct{}{}:
+			default:
+			}
+		}
+	}
+	server.StartTLS()
+	defer server.Close()
+	client, err := NewClient(ClientConfig{
+		Origin: server.URL, Credential: "github_pat_fixture_connection_cleanup", Deadline: time.Second,
+		AllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Forget()
+	roots := x509.NewCertPool()
+	roots.AddCert(server.Certificate())
+	client.http.Transport.(*http.Transport).TLSClientConfig.RootCAs = roots
+	if _, err := client.ResolveDestination(t.Context(), adapter.Destination{Kind: adapter.Repository, Owner: "fixture", Name: "repository"}); err != nil {
+		t.Fatal(err)
+	}
+	client.Forget()
+	client.Forget()
+	if client.token != "" {
+		t.Fatal("lease release retained credential")
+	}
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("released module lease retained its private idle TLS connection")
+	}
 }
