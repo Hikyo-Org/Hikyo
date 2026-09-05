@@ -31,6 +31,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
+	"github.com/Hikyo-Org/hikyo/internal/filedurability"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
@@ -60,7 +61,7 @@ type Backup struct {
 	// unlink without needing an unwritable directory (which fails every
 	// unlink and cannot distinguish stop-on-first from delete-all-fail).
 	removeFile func(string) error
-	// syncDirectory defaults to syncBackupDirectory. The seam lets tests fail
+	// syncDirectory defaults to filedurability.SyncDirectory. The seam lets tests fail
 	// after publication, proving the recoverable artifact is retained without
 	// reporting success when its directory entry may not survive a crash.
 	syncDirectory func(string) error
@@ -101,7 +102,7 @@ func (s *Backup) Export(ctx context.Context, dir string) (ExportResult, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return ExportResult{}, fmt.Errorf("backup destination %s: %w", dir, err)
 	}
-	syncPaths, err := backupDirectorySyncPaths(dir)
+	syncPaths, err := filedurability.DirectoryAncestry(dir)
 	if err != nil {
 		return ExportResult{}, fmt.Errorf("backup destination %s: %w", dir, err)
 	}
@@ -155,7 +156,7 @@ func (s *Backup) Export(ctx context.Context, dir string) (ExportResult, error) {
 	}
 	syncDirectory := s.syncDirectory
 	if syncDirectory == nil {
-		syncDirectory = syncBackupDirectory
+		syncDirectory = filedurability.SyncDirectory
 	}
 	for _, path := range syncPaths {
 		if err := syncDirectory(path); err != nil {
@@ -164,37 +165,6 @@ func (s *Backup) Export(ctx context.Context, dir string) (ExportResult, error) {
 	}
 	result.Path, result.Bytes = final, info.Size()
 	return result, nil
-}
-
-// Sync the complete resolved ancestry, including on retries. An existing
-// directory may come from an earlier or concurrent export whose parent sync
-// failed; existence alone cannot establish its durability.
-func backupDirectorySyncPaths(dir string) ([]string, error) {
-	path, err := filepath.Abs(dir)
-	if err != nil {
-		return nil, err
-	}
-	path, err = filepath.EvalSymlinks(path)
-	if err != nil {
-		return nil, err
-	}
-	var paths []string
-	for {
-		paths = append(paths, path)
-		parent := filepath.Dir(path)
-		if parent == path {
-			return paths, nil
-		}
-		path = parent
-	}
-}
-
-func syncBackupDirectory(path string) error {
-	directory, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	return errors.Join(directory.Sync(), directory.Close())
 }
 
 // publish gives the staged artifact its final name without ever replacing an

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
+	"github.com/Hikyo-Org/hikyo/internal/filedurability"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
@@ -44,7 +45,7 @@ func TestExportDirectorySyncFailurePreservesPublishedArtifact(t *testing.T) {
 					failedDirectory = path
 					return injected
 				}
-				return syncBackupDirectory(path)
+				return filedurability.SyncDirectory(path)
 			}
 			result, err := svc.Export(t.Context(), dir)
 			if !errors.Is(err, ErrBackupDurabilityUnconfirmed) || !errors.Is(err, injected) || !strings.Contains(err.Error(), published) {
@@ -66,7 +67,7 @@ func TestExportDirectorySyncFailurePreservesPublishedArtifact(t *testing.T) {
 			var retrySynced []string
 			svc.syncDirectory = func(path string) error {
 				retrySynced = append(retrySynced, path)
-				return syncBackupDirectory(path)
+				return filedurability.SyncDirectory(path)
 			}
 			retry, err := svc.Export(t.Context(), dir)
 			if err != nil {
@@ -97,7 +98,7 @@ func TestExportSyncsDirectoryAncestryWithoutOverwriting(t *testing.T) {
 		Now: func() time.Time { return time.Date(2026, 9, 5, 0, 0, 0, 0, time.UTC) },
 		syncDirectory: func(path string) error {
 			synced = append(synced, path)
-			return syncBackupDirectory(path)
+			return filedurability.SyncDirectory(path)
 		},
 	}
 	first, err := svc.Export(t.Context(), dir)

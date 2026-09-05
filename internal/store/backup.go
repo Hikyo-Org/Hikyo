@@ -39,6 +39,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/filedurability"
 	"github.com/Hikyo-Org/hikyo/internal/pathutil"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -446,12 +447,18 @@ func RestoreSQLite(ctx context.Context, archive io.Reader, path string, mutate f
 	return restoreSQLite(ctx, archive, path, mutate, defaultSQLiteRestoreOperations())
 }
 
+// ErrRestoreDurabilityUnconfirmed means the restored target was published but
+// its directory durability could not be confirmed. The target and its recovery
+// epoch changes are retained; callers must not roll forward or clean it up.
+var ErrRestoreDurabilityUnconfirmed = errors.New("restored database published but durability unconfirmed")
+
 type sqliteRestoreOperations struct {
 	createTemp    func(string, string) (*os.File, error)
 	closeFile     func(*os.File) error
 	openDatabase  func(context.Context, Config) (*DB, error)
 	closeDatabase func(*DB) error
 	fsyncFile     func(string) error
+	syncDirectory func(string) error
 	link          func(string, string) error
 	remove        func(string) error
 }
@@ -463,6 +470,7 @@ func defaultSQLiteRestoreOperations() sqliteRestoreOperations {
 		openDatabase:  Open,
 		closeDatabase: func(db *DB) error { return db.Close() },
 		fsyncFile:     fsyncFile,
+		syncDirectory: filedurability.SyncDirectory,
 		link:          os.Link,
 		remove:        os.Remove,
 	}
@@ -480,6 +488,11 @@ func restoreSQLite(ctx context.Context, archive io.Reader, path string, mutate f
 		return Manifest{}, fmt.Errorf("%w: %s already exists", ErrTargetNotEmpty, path)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return Manifest{}, fmt.Errorf("store: check restore target: %w", err)
+	}
+
+	syncPaths, err := filedurability.DirectoryAncestry(filepath.Dir(path))
+	if err != nil {
+		return Manifest{}, fmt.Errorf("store: resolve restore destination: %w", err)
 	}
 
 	staging, err := createSQLiteRestoreStaging(path, operations)
@@ -525,6 +538,11 @@ func restoreSQLite(ctx context.Context, archive io.Reader, path string, mutate f
 			return Manifest{}, fmt.Errorf("%w: %s appeared during the restore", ErrTargetNotEmpty, path)
 		}
 		return Manifest{}, fmt.Errorf("store: publish restored database: %w", err)
+	}
+	for _, directory := range syncPaths {
+		if err := operations.syncDirectory(directory); err != nil {
+			return Manifest{}, fmt.Errorf("%w: %s (sync directory %s): %w", ErrRestoreDurabilityUnconfirmed, path, directory, err)
+		}
 	}
 	return m, nil
 }
