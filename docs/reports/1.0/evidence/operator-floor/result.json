@@ -1,0 +1,50 @@
+{
+  "schema": "hikyo.dev/operator-floor-evidence/v1",
+  "source_commit": "f4175a5dbffc63a5d1e34bf450a7a52956a54668",
+  "source_diff_sha256": "37838ddaaad6a07ce8d629dd4b3689628619f314100ba3aee5e2c6b36956b3ea",
+  "operator_binary_sha256": "dc3480b930bc6c37ec1fde993d7a84852b74ae47cd3ded37ee6f184acecff149",
+  "operator_image": "sha256:55eac9787ba409e8e7762f88709c355b2f43a31b746bc5adaac4d956278fdf68",
+  "node_image": "kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5",
+  "architecture": "arm64",
+  "outer_cpu": 4,
+  "outer_memory_bytes": 4294967296,
+  "operator_cpu_millicores": 200,
+  "operator_memory_limit_bytes": 134217728,
+  "operator_memory_peak_bytes": 76185600,
+  "swap_bytes": 0,
+  "load": {
+    "schema": "hikyo.dev/operator-floor/v1",
+    "crs": 50,
+    "keys_per_cr": 64,
+    "value_bytes": 1024,
+    "phase_limit_seconds": 300,
+    "phases": [
+      {
+        "name": "initial",
+        "seconds": 2.599136209,
+        "objects": 50
+      },
+      {
+        "name": "updated",
+        "seconds": 3.64360625,
+        "objects": 50
+      },
+      {
+        "name": "conditional-current",
+        "seconds": 3.780227375,
+        "objects": 50
+      },
+      {
+        "name": "unavailable-retained",
+        "seconds": 3.726004625,
+        "objects": 50
+      },
+      {
+        "name": "recovered",
+        "seconds": 3.684627875,
+        "objects": 50
+      }
+    ]
+  },
+  "passed": true
+}

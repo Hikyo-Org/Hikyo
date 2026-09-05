@@ -1,0 +1,3 @@
+{"time":"2026-09-05T00:29:22.294363554Z","level":"INFO","msg":"hikyo operator starting","namespaces":["operator-floor"],"triggerRollouts":true,"ownNamespace":"operator-floor","version":"dev"}
+I0905 00:29:22.294670       1 leaderelection.go:258] "Attempting to acquire leader lease..." lock="operator-floor/hikyo-operator.hikyo.dev"
+I0905 00:29:22.302624       1 leaderelection.go:272] "Successfully acquired lease" lock="operator-floor/hikyo-operator.hikyo.dev"

@@ -10,6 +10,7 @@ tool_dir=$repo_root/scripts/mcp-conformance
 baseline=$repo_root/scripts/ci/mcp-conformance-baseline.yml
 log_file=$(mktemp "${TMPDIR:-/tmp}/hikyo-mcp-conformance.XXXXXX")
 inspector_config=$(mktemp "${TMPDIR:-/tmp}/hikyo-mcp-inspector.XXXXXX")
+server_binary=$(mktemp "${TMPDIR:-/tmp}/hikyo-mcp-conformance-server.XXXXXX")
 server_pid=
 
 cleanup() {
@@ -17,12 +18,14 @@ cleanup() {
 		kill "$server_pid" 2>/dev/null || true
 		wait "$server_pid" 2>/dev/null || true
 	fi
-	rm -f "$log_file" "$inspector_config"
+	rm -f "$log_file" "$inspector_config" "$server_binary"
 }
 trap cleanup EXIT HUP INT TERM
 
+# Own the serving process directly: killing `go run` can leave its child alive.
 cd "$repo_root"
-HIKYO_MCP_CONFORMANCE_ADDR=$addr go run ./scripts/ci/mcp-conformance-server >"$log_file" 2>&1 &
+go build -o "$server_binary" ./scripts/ci/mcp-conformance-server
+HIKYO_MCP_CONFORMANCE_ADDR=$addr "$server_binary" >"$log_file" 2>&1 &
 server_pid=$!
 
 ready=false
@@ -49,7 +52,8 @@ fi
 # production bearer belongs only in Inspector's transient header field; the
 # operations runbook explains why it must not be saved in a catalog.
 printf '{"mcpServers":{"hikyo":{"type":"streamable-http","url":"http://%s/mcp","protocolEra":"modern"}}}\n' "$addr" >"$inspector_config"
-# Corepack resolves packageManager from cwd before pnpm can process --dir.
+# Corepack resolves packageManager from its working directory before pnpm sees
+# --dir. Enter the owning package so the registry's latest pnpm cannot win.
 cd "$tool_dir"
 pnpm exec mcp-inspector --cli \
 	--config "$inspector_config" --server hikyo --method tools/list >/dev/null

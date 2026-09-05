@@ -1,0 +1,14 @@
+{
+  "default_pnpm_outside_package": "11.25.0",
+  "owning_package_pnpm": "11.24.0",
+  "original_command_failed": true,
+  "pinned_frozen_install_exit": 0,
+  "fixed_conformance_exit": 0,
+  "conformance_baseline_scenarios_passed": 3,
+  "baseline_unchanged": true,
+  "injected_tool_failure_exit": 23,
+  "server_released_after_success": true,
+  "server_released_after_failure": true,
+  "source_head": "b1c8eee30f57fee777bc8413ed1466bac1125096",
+  "scope": "uncommitted patch; local proof, no candidate CI claim"
+}
