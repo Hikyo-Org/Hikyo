@@ -1,6 +1,5 @@
-// Package updater owns the privileged deployment-helper seam. The Hikyo
-// server never receives host, Docker, Git, or cluster credentials; it can only
-// submit a versioned job to this separately configured local process.
+// Package updater preserves legacy deployment journal/protocol compatibility
+// while refusing every apply entry point. It executes no deployment commands.
 package updater
 
 import (
@@ -10,13 +9,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
-
-	"golang.org/x/mod/semver"
 )
 
 type Backend string
@@ -45,6 +41,10 @@ const (
 func (s State) Terminal() bool {
 	return s == StateSucceeded || s == StateFailed || s == StateRolledBack || s == StateRollbackFailed
 }
+
+const RemoteApplyDisabledReason = "Remote apply is disabled: the legacy updater cannot prove migration-safe rollback. Use the manual signed-bundle upgrade procedure at https://hikyo.app/docs/upgrades/."
+
+var ErrRemoteApplyDisabled = errors.New(RemoteApplyDisabledReason)
 
 var (
 	ErrStableOnly       = errors.New("updater: remote apply admits stable releases only")
@@ -188,36 +188,17 @@ type Runner interface {
 
 type CommandRunner struct{}
 
-func (CommandRunner) Run(ctx context.Context, command Command, request Request) error {
-	argv := make([]string, len(command.Argv))
-	for i, arg := range command.Argv {
-		argv[i] = substitute(arg, request)
-	}
-	cmd := exec.CommandContext(ctx, command.Name, argv...)
-	cmd.Stdin = nil
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("updater: command %q failed: %w", command.Name, err)
-	}
-	return nil
-}
-
-func substitute(value string, request Request) string {
-	replacer := strings.NewReplacer(
-		"{version}", request.Version,
-		"{release_url}", request.ReleaseURL,
-		"{job_id}", request.ID,
-	)
-	return replacer.Replace(value)
+// Run refuses even direct calls from a queued legacy phase.
+func (CommandRunner) Run(context.Context, Command, Request) error {
+	return ErrRemoteApplyDisabled
 }
 
 type Executor struct {
 	Config Config
 	Runner Runner
 	Now    func() time.Time
-	// Progress durably records the phase before its privileged command starts.
-	// A persistence failure refuses further execution.
+	// Progress is a legacy callback. Retired execution never invokes it or
+	// rewrites historical journal state.
 	Progress func(Job) error
 }
 
@@ -228,89 +209,16 @@ func (e Executor) now() time.Time {
 	return e.Now().UTC()
 }
 
-func (e Executor) Execute(ctx context.Context, request Request) (Job, error) {
-	version := "v" + request.Version
-	if !semver.IsValid(version) || semver.Prerelease(version) != "" {
-		return Job{}, ErrStableOnly
-	}
-	if err := e.Config.Validate(); err != nil {
-		return Job{}, err
-	}
-	runner := e.Runner
-	if runner == nil {
-		runner = CommandRunner{}
-	}
+// Execute cannot resume or roll back a legacy job. Historical journals remain
+// readable; retirement never guesses whether a prior process changed schema.
+func (e Executor) Execute(_ context.Context, request Request) (Job, error) {
 	now := e.now()
-	job := Job{
+	return Job{
 		ID: request.ID, Backend: e.Config.Backend, Version: request.Version,
 		ReleaseURL: request.ReleaseURL, RequestedBy: request.RequestedBy,
-		State: StateRunning, Phase: PhasePlan, RequestedAt: now, StartedAt: now,
-	}
-	phases := []struct {
-		name    Phase
-		command Command
-	}{
-		{PhasePlan, e.Config.Commands.Plan},
-		{PhaseBackup, e.Config.Commands.Backup},
-		{PhaseVerify, e.Config.Commands.Verify},
-		{PhaseApply, e.Config.Commands.Apply},
-		{PhaseHealth, e.Config.Commands.Health},
-	}
-	applied := false
-	for _, phase := range phases {
-		job.Phase = phase.name
-		if e.Progress != nil {
-			if err := e.Progress(job); err != nil {
-				job.State = StateFailed
-				job.FailureCode = "journal-write-failed"
-				job.FinishedAt = e.now()
-				return job, err
-			}
-		}
-		phaseCtx, cancel := context.WithTimeout(ctx, time.Duration(phase.command.TimeoutSeconds)*time.Second)
-		err := runner.Run(phaseCtx, phase.command, request)
-		cancel()
-		if err != nil {
-			job.FailureCode = string(phase.name) + "-failed"
-			job.FinishedAt = e.now()
-			// An apply command can mutate the deployment and then return an
-			// error. Treat entering apply as the rollback boundary; waiting for
-			// a zero exit code would strand a partial rollout.
-			if applied || phase.name == PhaseApply {
-				job.Phase = PhaseRollback
-				if e.Progress != nil {
-					if progressErr := e.Progress(job); progressErr != nil {
-						job.State = StateRollbackFailed
-						job.FailureCode = "journal-write-failed"
-						return job, errors.Join(err, progressErr)
-					}
-				}
-				// Cancellation stops the active command, then rollback gets its own
-				// bounded cleanup context so helper shutdown cannot strand a partial apply.
-				rollbackCtx, cancelRollback := context.WithTimeout(context.WithoutCancel(ctx), time.Duration(e.Config.Commands.Rollback.TimeoutSeconds)*time.Second)
-				rollbackErr := runner.Run(rollbackCtx, e.Config.Commands.Rollback, request)
-				cancelRollback()
-				if rollbackErr != nil {
-					job.State = StateRollbackFailed
-					job.FailureCode = "rollback-failed"
-					job.FinishedAt = e.now()
-					return job, errors.Join(err, rollbackErr)
-				}
-				job.State = StateRolledBack
-				job.FinishedAt = e.now()
-				return job, err
-			}
-			job.State = StateFailed
-			return job, err
-		}
-		if phase.name == PhaseApply {
-			applied = true
-		}
-	}
-	job.State = StateSucceeded
-	job.Phase = PhaseComplete
-	job.FinishedAt = e.now()
-	return job, nil
+		State: StateFailed, Phase: PhasePlan, FailureCode: "remote-apply-disabled",
+		RequestedAt: now, FinishedAt: now,
+	}, ErrRemoteApplyDisabled
 }
 
 type journalFile struct {

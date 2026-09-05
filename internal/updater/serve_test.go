@@ -1,25 +1,38 @@
 package updater
 
 import (
+	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
-func TestPrepareSocketRefusesToReplaceRegularFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "updater.sock")
-	if err := os.WriteFile(path, []byte("operator data"), 0o600); err != nil {
+func TestHelperStartupRefusesBeforeTouchingConfigSocketOrQueuedJournal(t *testing.T) {
+	dir := t.TempDir()
+	journal := &Journal{Path: filepath.Join(dir, "jobs.json")}
+	if err := journal.Create(Job{ID: "upd_old", State: StateQueued, Phase: PhaseQueued}); err != nil {
 		t.Fatal(err)
 	}
-	if err := prepareSocket(path); err == nil || !strings.Contains(err.Error(), "refuse to replace non-socket") {
-		t.Fatalf("error = %v, want regular-file refusal", err)
-	}
-	b, err := os.ReadFile(path)
+	before, err := os.ReadFile(journal.Path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(b) != "operator data" {
-		t.Fatalf("regular file changed to %q", b)
+	socket := filepath.Join(dir, "updater.sock")
+	if err := os.WriteFile(socket, []byte("operator data"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{nil, {"--config", filepath.Join(dir, "missing.json")}} {
+		if err := Run(t.Context(), args, nil); !errors.Is(err, ErrRemoteApplyDisabled) {
+			t.Fatalf("helper entry error=%v, want disabled before reading config", err)
+		}
+	}
+	after, err := os.ReadFile(journal.Path)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatalf("historical journal changed: %v", err)
+	}
+	data, err := os.ReadFile(socket)
+	if err != nil || string(data) != "operator data" {
+		t.Fatalf("socket path changed: %v", err)
 	}
 }

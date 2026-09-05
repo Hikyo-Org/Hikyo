@@ -7191,10 +7191,10 @@ type UpdateKeyMetadataRequest struct {
 type UpdateStatus struct {
 	ApplyBackend *InstanceUpdateBackend `json:"apply_backend,omitempty"`
 
-	// ApplyError Operator-safe reason a configured helper cannot currently apply.
+	// ApplyError Operator-safe reason remote apply is unsupported; manual upgrades remain available.
 	ApplyError *string `json:"apply_error,omitempty"`
 
-	// ApplySupported True only while a configured local updater helper answers.
+	// ApplySupported Always false while legacy remote apply is retired for migration safety.
 	ApplySupported bool                `json:"apply_supported"`
 	Available      bool                `json:"available"`
 	Channel        UpdateStatusChannel `json:"channel"`
@@ -9017,7 +9017,7 @@ type ServerInterface interface {
 	// CompromiseRetireSamlSpKey Immediately erase and replace a compromised active SAML SP key.
 	// (POST /api/v1/instance/saml-sp-keys/{fingerprint}/compromise-retire)
 	CompromiseRetireSamlSpKey(w http.ResponseWriter, r *http.Request, fingerprint string)
-	// RequestInstanceUpdate Ask this instance's local updater helper to apply a stable release.
+	// RequestInstanceUpdate Refuse legacy remote apply while preserving authenticated audit evidence.
 	// (POST /api/v1/instance/update)
 	RequestInstanceUpdate(w http.ResponseWriter, r *http.Request)
 	// GetUpdateStatus Read the configured release channel and available update.
@@ -10073,7 +10073,7 @@ func (_ Unimplemented) CompromiseRetireSamlSpKey(w http.ResponseWriter, r *http.
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// RequestInstanceUpdate Ask this instance's local updater helper to apply a stable release.
+// RequestInstanceUpdate Refuse legacy remote apply while preserving authenticated audit evidence.
 // (POST /api/v1/instance/update)
 func (_ Unimplemented) RequestInstanceUpdate(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -47756,7 +47756,7 @@ type StrictServerInterface interface {
 	// CompromiseRetireSamlSpKey Immediately erase and replace a compromised active SAML SP key.
 	// (POST /api/v1/instance/saml-sp-keys/{fingerprint}/compromise-retire)
 	CompromiseRetireSamlSpKey(ctx context.Context, request CompromiseRetireSamlSpKeyRequestObject) (CompromiseRetireSamlSpKeyResponseObject, error)
-	// RequestInstanceUpdate Ask this instance's local updater helper to apply a stable release.
+	// RequestInstanceUpdate Refuse legacy remote apply while preserving authenticated audit evidence.
 	// (POST /api/v1/instance/update)
 	RequestInstanceUpdate(ctx context.Context, request RequestInstanceUpdateRequestObject) (RequestInstanceUpdateResponseObject, error)
 	// GetUpdateStatus Read the configured release channel and available update.

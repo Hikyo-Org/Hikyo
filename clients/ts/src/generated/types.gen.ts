@@ -613,12 +613,12 @@ export type UpdateStatus = {
     prerelease: boolean;
     published_at?: string;
     /**
-     * True only while a configured local updater helper answers.
+     * Always false while legacy remote apply is retired for migration safety.
      */
     apply_supported: boolean;
     apply_backend?: InstanceUpdateBackend;
     /**
-     * Operator-safe reason a configured helper cannot currently apply.
+     * Operator-safe reason remote apply is unsupported; manual upgrades remain available.
      */
     apply_error?: string;
 };

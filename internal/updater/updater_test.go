@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -25,105 +24,35 @@ func (r *recordingRunner) Run(_ context.Context, command Command, _ Request) err
 	return nil
 }
 
-func TestExecutorRunsEveryBackendThroughTheSameSafePhases(t *testing.T) {
+func TestExecutorRefusesEveryLegacyBackendWithoutCommandsOrJournalMutation(t *testing.T) {
 	for _, backend := range []Backend{BackendFlux, BackendCompose, BackendSystemd} {
-		t.Run(string(backend), func(t *testing.T) {
-			runner := &recordingRunner{}
-			executor := Executor{Config: fixtureConfig(t, backend), Runner: runner}
-			got, err := executor.Execute(t.Context(), Request{ID: "upd_1", Version: "1.2.3", ReleaseURL: "https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.2.3"})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got.State != StateSucceeded {
-				t.Fatalf("state = %q, want %q", got.State, StateSucceeded)
-			}
-			want := []string{"plan", "backup", "verify", "apply", "health"}
-			if !slices.Equal(runner.calls, want) {
-				t.Fatalf("calls = %v, want %v", runner.calls, want)
-			}
-		})
-	}
-}
-
-func TestExecutorRollsBackAnAppliedUpdateWhoseHealthCheckFails(t *testing.T) {
-	runner := &recordingRunner{failAt: "health"}
-	executor := Executor{Config: fixtureConfig(t, BackendCompose), Runner: runner}
-	got, err := executor.Execute(t.Context(), Request{ID: "upd_1", Version: "1.2.3", ReleaseURL: "https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.2.3"})
-	if err == nil {
-		t.Fatal("health failure succeeded")
-	}
-	if got.State != StateRolledBack {
-		t.Fatalf("state = %q, want %q", got.State, StateRolledBack)
-	}
-	want := []string{"plan", "backup", "verify", "apply", "health", "rollback"}
-	if !slices.Equal(runner.calls, want) {
-		t.Fatalf("calls = %v, want %v", runner.calls, want)
-	}
-}
-
-func TestExecutorRollsBackWhenApplyPartiallyMutatesThenFails(t *testing.T) {
-	runner := &recordingRunner{failAt: "apply"}
-	executor := Executor{Config: fixtureConfig(t, BackendSystemd), Runner: runner}
-	job, err := executor.Execute(t.Context(), Request{ID: "upd_1", Version: "1.2.3"})
-	if err == nil || job.State != StateRolledBack {
-		t.Fatalf("job = %#v, error = %v", job, err)
-	}
-	want := []string{"plan", "backup", "verify", "apply", "rollback"}
-	if !slices.Equal(runner.calls, want) {
-		t.Fatalf("calls = %v, want %v", runner.calls, want)
-	}
-}
-
-func TestExecutorRefusesNightlyAndPrereleaseApplyBeforeAnyCommand(t *testing.T) {
-	runner := &recordingRunner{}
-	executor := Executor{Config: fixtureConfig(t, BackendSystemd), Runner: runner}
-	for _, version := range []string{"1.2.3-nightly.20260824.1.gabcdef12", "1.2.3-alpha.1", "dev"} {
-		if _, err := executor.Execute(t.Context(), Request{ID: "upd_1", Version: version}); !errors.Is(err, ErrStableOnly) {
-			t.Fatalf("version %q error = %v, want ErrStableOnly", version, err)
+		for _, version := range []string{"1.2.3", "1.2.3-nightly.1", "dev"} {
+			t.Run(string(backend)+"/"+version, func(t *testing.T) {
+				runner := &recordingRunner{}
+				progress := false
+				executor := Executor{Config: fixtureConfig(t, backend), Runner: runner,
+					Progress: func(Job) error { progress = true; return nil },
+				}
+				job, err := executor.Execute(t.Context(), Request{ID: "upd_legacy", Version: version})
+				if !errors.Is(err, ErrRemoteApplyDisabled) || job.State != StateFailed || job.FailureCode != "remote-apply-disabled" {
+					t.Fatalf("job=%+v error=%v, want disabled failure", job, err)
+				}
+				if len(runner.calls) != 0 || progress {
+					t.Fatalf("retired job ran commands=%v or changed journal=%v", runner.calls, progress)
+				}
+			})
 		}
 	}
-	if len(runner.calls) != 0 {
-		t.Fatalf("commands ran for refused versions: %v", runner.calls)
-	}
 }
 
-type blockingRunner struct{}
-
-func (blockingRunner) Run(ctx context.Context, _ Command, _ Request) error {
-	<-ctx.Done()
-	return ctx.Err()
-}
-
-func TestExecutorBoundsEveryPrivilegedPhase(t *testing.T) {
-	config := fixtureConfig(t, BackendFlux)
-	config.Commands.Plan.TimeoutSeconds = 1
-	started := time.Now()
-	job, err := (Executor{Config: config, Runner: blockingRunner{}}).Execute(t.Context(), Request{
-		ID: "upd_1", Version: "1.2.3", ReleaseURL: "https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.2.3",
-	})
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("error = %v, want context deadline exceeded", err)
+func TestDirectLegacyCommandRunnerRefusesWithoutStartingProcess(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "deployment-mutated")
+	err := (CommandRunner{}).Run(t.Context(), Command{Name: "/usr/bin/touch", Argv: []string{marker}}, Request{})
+	if !errors.Is(err, ErrRemoteApplyDisabled) {
+		t.Fatalf("direct phase error=%v, want disabled", err)
 	}
-	if job.FailureCode != "plan-failed" || job.State != StateFailed {
-		t.Fatalf("job = %#v, want bounded plan failure", job)
-	}
-	if elapsed := time.Since(started); elapsed > 2*time.Second {
-		t.Fatalf("bounded phase took %s", elapsed)
-	}
-}
-
-func TestExecutorRefusesPrivilegedCommandWhenPhaseCannotBePersisted(t *testing.T) {
-	runner := &recordingRunner{}
-	executor := Executor{
-		Config: fixtureConfig(t, BackendFlux), Runner: runner,
-		Progress: func(Job) error { return errors.New("journal unavailable") },
-	}
-	job, err := executor.Execute(t.Context(), Request{ID: "upd_1", Version: "1.2.3"})
-	if err == nil || job.FailureCode != "journal-write-failed" {
-		t.Fatalf("job = %#v, error = %v", job, err)
-	}
-	if len(runner.calls) != 0 {
-		t.Fatalf("commands ran without durable phase: %v", runner.calls)
+	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("legacy phase touched deployment: %v", err)
 	}
 }
 

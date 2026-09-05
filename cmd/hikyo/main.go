@@ -258,8 +258,8 @@ func runOperatorMode(ctx context.Context) int {
 	return 0
 }
 
-// runUpdaterMode is a separately privileged local deployment helper. It loads
-// no Hikyo datastore, root key, or keyring; only its explicit JSON profile.
+// runUpdaterMode preserves the legacy command name but refuses execution before
+// reading a profile, datastore, root key, or deployment credentials.
 func runUpdaterMode(ctx context.Context, args []string) int {
 	log := app.Logger(false)
 	if err := updater.Run(ctx, args, log); err != nil {

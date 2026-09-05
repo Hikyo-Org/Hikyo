@@ -90,21 +90,33 @@ func TestUpdateRequestRequiresRecentHumanAuthenticationBeforeHelperContact(t *te
 	}
 }
 
-func TestUpdateRequestCommitsIntentThenSubmitsNewestStableRelease(t *testing.T) {
+func TestUpdateRequestRefusesAndAuditsWithoutHelperContact(t *testing.T) {
 	now := time.Date(2026, 8, 24, 4, 0, 0, 0, time.UTC)
 	db, artifact := updateServiceDB(t, now)
 	control := &updateControlStub{}
 	updates := fixtureUpdates(db, control, now)
-
-	job, err := updates.Request(t.Context(), Bearer(artifact), "1.1.0")
-	if err != nil {
-		t.Fatal(err)
+	status, err := updates.GetStatus(t.Context(), Bearer(artifact))
+	if err != nil || !status.Available || status.LatestVersion != "1.1.0" || status.ApplySupported || status.ApplyError != updater.RemoteApplyDisabledReason {
+		t.Fatalf("release metadata or disabled capability: status=%+v err=%v", status, err)
 	}
-	if job.State != updater.StateQueued || len(control.submitted) != 1 {
-		t.Fatalf("job = %#v, submitted = %#v", job, control.submitted)
+	for _, configured := range []updater.Control{nil, control} {
+		updates.Control = configured
+		_, err := updates.Request(t.Context(), Bearer(artifact), "1.1.0")
+		if !errors.Is(err, updater.ErrRemoteApplyDisabled) || !errors.Is(err, domain.ErrConflict) {
+			t.Fatalf("apply error=%v, want disabled conflict", err)
+		}
 	}
-	if control.submitted[0].RequestedBy != "usr_update" || control.submitted[0].ReleaseURL == "" {
-		t.Fatalf("helper request = %#v", control.submitted[0])
+	if len(control.submitted) != 0 {
+		t.Fatalf("retired helper received requests: %+v", control.submitted)
+	}
+	for _, event := range []string{"system.update_requested", "system.update_outcome"} {
+		var count int
+		if err := db.SQLiteRead().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM audit_instance_events WHERE type = ?", event).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 2 {
+			t.Fatalf("%s count=%d, want 2 refused attempts", event, count)
+		}
 	}
 }
 

@@ -4632,16 +4632,16 @@ paths:
     post:
       operationId: requestInstanceUpdate
       tags: [instance]
-      summary: Ask this instance's local updater helper to apply a stable release.
+      summary: Refuse legacy remote apply while preserving authenticated audit evidence.
       description: |
-        Human sessions only, including an origin-bound workspace session used
-        directly from another Hikyo UI. The caller must hold instance-config,
-        have multi-factor assurance, and have authenticated within the last five
-        minutes. The server never receives deployment credentials: it submits a
-        fixed version and release URL to a separately configured local helper.
-
-        Stable releases only. Nightly and other prerelease builds remain
-        notification-only. One update may be active at a time.
+        Remote apply is disabled because the legacy updater cannot prove safe
+        rollback after schema writes. No job is submitted or resumed. An
+        authorized request returns 409 with an explicit unsupported reason.
+        The caller must still hold instance-config, have multi-factor assurance,
+        and have authenticated within the last five minutes. This endpoint
+        remains present for older clients; release metadata and manual verified
+        downloads remain available. The 202 shape is retained for wire
+        compatibility with historical helper responses, not current enablement.
       x-hikyo-class: instance
       x-hikyo-operation: update.request
       x-hikyo-formula: [instance-config@instance]
@@ -11372,12 +11372,12 @@ components:
           format: date-time
         apply_supported:
           type: boolean
-          description: True only while a configured local updater helper answers.
+          description: Always false while legacy remote apply is retired for migration safety.
         apply_backend:
           $ref: "#/components/schemas/InstanceUpdateBackend"
         apply_error:
           type: string
-          description: Operator-safe reason a configured helper cannot currently apply.
+          description: Operator-safe reason remote apply is unsupported; manual upgrades remain available.
 
     InstanceUpdateBackend:
       type: string

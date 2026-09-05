@@ -117,15 +117,8 @@ func (s *Updates) GetStatus(ctx context.Context, actor Actor) (updatecheck.Statu
 	if err != nil {
 		return updatecheck.Status{}, err
 	}
-	if s.Control != nil {
-		capability, capabilityErr := s.Control.Capability(ctx)
-		if capabilityErr == nil {
-			status.ApplySupported = true
-			status.ApplyBackend = string(capability.Backend)
-		} else {
-			status.ApplyError = "configured updater helper is unavailable"
-		}
-	}
+	status.ApplySupported = false
+	status.ApplyError = updater.RemoteApplyDisabledReason
 
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
 		caller, proof, err := authorize(ctx, az, actor, authz.OpUpdateStatusRead, domain.Scope{}, now())
@@ -144,79 +137,52 @@ func (s *Updates) GetStatus(ctx context.Context, actor Actor) (updatecheck.Statu
 	return status, err
 }
 
-// Request applies the newest stable release through the separately privileged
-// local helper. Intent commits before helper contact; a refused submission
-// appends a correlated failure outcome.
+// Request preserves authenticated refusal evidence but cannot contact the
+// retired deployment helper. Release discovery remains independently available.
 func (s *Updates) Request(ctx context.Context, actor Actor, version string) (updater.Job, error) {
-	if s.Control == nil {
-		return updater.Job{}, fmt.Errorf("%w: remote update helper is not configured", domain.ErrConflict)
-	}
-	status, err := s.GetStatus(ctx, actor)
-	if err != nil {
-		return updater.Job{}, err
-	}
-	if status.Channel != updatecheck.ChannelStable || status.Prerelease || !status.Available || status.LatestVersion != version || status.URL == "" {
-		return updater.Job{}, fmt.Errorf("%w: requested version is not the newest available stable release", domain.ErrConflict)
-	}
-	capability, err := s.Control.Capability(ctx)
-	if err != nil {
-		return updater.Job{}, fmt.Errorf("update helper unavailable: %w", err)
-	}
-	jobID, err := newID("upd")
-	if err != nil {
-		return updater.Job{}, err
-	}
 	now := time.Now
 	if s.Now != nil {
 		now = s.Now
 	}
-	var principal domain.PrincipalID
+	id, err := newID("upd")
+	if err != nil {
+		return updater.Job{}, err
+	}
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
-		caller, resolveErr := actor.resolve(ctx, az, now())
-		if resolveErr != nil {
-			return resolveErr
-		}
-		proof, authorizeErr := az.Authorize(ctx, caller, authz.OpUpdateRequest, domain.Scope{})
-		if authorizeErr != nil {
-			return authorizeErr
+		caller, proof, err := authorize(ctx, az, actor, authz.OpUpdateRequest, domain.Scope{}, now())
+		if err != nil {
+			return err
 		}
 		age := now().Sub(caller.Assurance.AuthenticatedAt)
 		if caller.Assurance.AuthenticatedAt.IsZero() || age < 0 || age > updateRecentAuthentication {
 			return fmt.Errorf("fresh authentication required: %w", domain.ErrUnauthorized)
 		}
-		principal = caller.Principal
-		event, eventErr := newAuditEvent(ctx, audit.EventUpdateRequested, caller.Principal,
-			audit.Object{Type: "instance_update", ID: jobID}, audit.OutcomeIntent, jobID,
-			audit.Payload{"version": version, "backend": string(capability.Backend)})
-		if eventErr != nil {
-			return eventErr
+		version = audit.SanitizeFreeText(version)
+		if version == "" || len(version) > 128 {
+			return domain.ErrInvalid
 		}
-		return repos.Audit().InsertInstance(ctx, proof, event)
+		intent, err := newAuditEvent(ctx, audit.EventUpdateRequested, caller.Principal,
+			audit.Object{Type: "instance_update", ID: id}, audit.OutcomeIntent, id,
+			audit.Payload{"version": version, "backend": "disabled"})
+		if err != nil {
+			return err
+		}
+		if err := repos.Audit().InsertInstance(ctx, proof, intent); err != nil {
+			return err
+		}
+		outcome, err := updateOutcomeEvent(ctx, updater.Job{
+			ID: id, Backend: "disabled", Version: version, RequestedBy: string(caller.Principal),
+			State: updater.StateFailed, FailureCode: "remote-apply-disabled",
+		})
+		if err != nil {
+			return err
+		}
+		return repos.Audit().InsertInstance(ctx, proof, outcome)
 	})
 	if err != nil {
 		return updater.Job{}, err
 	}
-
-	job, submitErr := s.Control.Submit(ctx, updater.Request{
-		ID: jobID, Version: version, ReleaseURL: status.URL, RequestedBy: string(principal),
-	})
-	if submitErr == nil {
-		return job, nil
-	}
-	outcomeErr := s.recordOutcome(ctx, actor, updater.Job{
-		ID: jobID, Backend: capability.Backend, Version: version,
-		RequestedBy: string(principal), State: updater.StateFailed, FailureCode: "submit-failed",
-	})
-	if outcomeErr != nil {
-		submitErr = errors.Join(submitErr, fmt.Errorf("record refused update outcome: %w", outcomeErr))
-	}
-	if errors.Is(submitErr, updater.ErrUpdateActive) {
-		return updater.Job{}, fmt.Errorf("%w: another update is active", domain.ErrConflict)
-	}
-	if errors.Is(submitErr, updater.ErrStableOnly) {
-		return updater.Job{}, fmt.Errorf("%w: remote apply admits stable releases only", domain.ErrConflict)
-	}
-	return updater.Job{}, submitErr
+	return updater.Job{}, fmt.Errorf("%w: %w", domain.ErrConflict, updater.ErrRemoteApplyDisabled)
 }
 
 // GetJob reads helper-owned durable state. The first terminal observation

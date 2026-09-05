@@ -1,31 +1,5 @@
 #!/bin/sh
-set -eu
-# Deployment config chooses one root-owned library path.
-# shellcheck disable=SC1090
-. "${HIKYO_UPDATE_LIB:-/usr/local/libexec/hikyo-update-common}"
-job_dir=
-
-phase=${1:-}; version=${2:-}; third=${3:-}; fourth=${4:-}
-if [ "$phase" = verify ]; then release_url=$third; job_id=$fourth; else job_id=$third; fi
-validate_request "$phase" "$version" "$job_id"
-require_bin HIKYO_SYSTEMCTL_BIN
-require_bin HIKYO_TAR_BIN
-require_bin HIKYO_INSTALL_BIN
-require_absolute HIKYO_BINARY_PATH
-require_var HIKYO_SYSTEMD_UNIT
-
-case "$phase" in
-	plan) [ -f "$HIKYO_BINARY_PATH" ] || fail 'installed Hikyo binary is missing'; "$HIKYO_SYSTEMCTL_BIN" is-active --quiet "$HIKYO_SYSTEMD_UNIT" ;;
-	backup) backup_database; cp -p "$HIKYO_BINARY_PATH" "$job_dir/previous-hikyo" ;;
-	verify)
-		verify_release "$version" "$release_url" "$job_id"
-		case "$(uname -m)" in x86_64) arch=x86_64 ;; aarch64|arm64) arch=arm64 ;; *) fail 'unsupported systemd architecture' ;; esac
-		archive="$job_dir/bundle/hikyo_${version}_Linux_${arch}.tar.gz"
-		[ -f "$archive" ] || fail "signed Linux archive is missing: $archive"
-		mkdir -m 0700 "$job_dir/stage" && "$HIKYO_TAR_BIN" -xzf "$archive" -C "$job_dir/stage"
-		[ -x "$job_dir/stage/hikyo" ] || fail 'archive contains no executable hikyo'
-		;;
-	apply) "$HIKYO_SYSTEMCTL_BIN" stop "$HIKYO_SYSTEMD_UNIT"; "$HIKYO_INSTALL_BIN" -m 0755 "$job_dir/stage/hikyo" "$HIKYO_BINARY_PATH"; "$HIKYO_SYSTEMCTL_BIN" start "$HIKYO_SYSTEMD_UNIT" ;;
-	health) health_check ;;
-	rollback) "$HIKYO_SYSTEMCTL_BIN" stop "$HIKYO_SYSTEMD_UNIT"; "$HIKYO_INSTALL_BIN" -m 0755 "$job_dir/previous-hikyo" "$HIKYO_BINARY_PATH"; restore_database; "$HIKYO_SYSTEMCTL_BIN" start "$HIKYO_SYSTEMD_UNIT"; health_check ;;
-esac
+# Retired legacy deployment adapter. Refuse every phase, including rollback,
+# before reading configuration, credentials, or invoking deployment commands.
+printf '%s\n' 'Remote apply is disabled: the legacy updater cannot prove migration-safe rollback. Use the manual signed-bundle upgrade procedure at https://hikyo.app/docs/upgrades/.' >&2
+exit 1

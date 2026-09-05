@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hikyo 1.0: legacy remote apply retirement</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; line-height: 1.6; }
+    body { max-width: 72rem; margin: 3rem auto; padding: 0 1.25rem; }
+    h1, h2 { line-height: 1.2; } h2 { margin-top: 2.5rem; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #8888; text-align: left; vertical-align: top; padding: .8rem; }
+    th { background: #8882; } code { overflow-wrap: anywhere; }
+    .status { padding: .8rem 1rem; border-left: .3rem solid #ba782a; background: #ba782a12; }
+    @media (max-width: 42rem) { table, tbody, tr, td, th { display: block; } thead { display: none; } tr { margin-bottom: 1rem; } }
+  </style>
+</head>
+<body>
+  <h1>Retire unsafe legacy remote apply</h1>
+  <p>2026-09-05. <a href="https://github.com/Hikyo-Org/Hikyo/issues/638">Issue #638</a>, native review findings 1 and 5.
+    Base: <code>f4175a5d</code>. Implementation: Codex. Parent release work owns governance, review, CI, and merge.</p>
+  <p class="status"><strong>Remote apply is disabled.</strong> This change removes an unsafe deployment path. It does not implement signed upgrade compatibility,
+    durable migration phases, an HA upgrade-generation fence, or a replacement platform controller. Manual verified artifacts and release metadata remain available.</p>
+
+  <h2>Why this blocks 1.0</h2>
+  <p>The old executor automatically ran rollback after apply or health failure without proving whether schema writes had started. The platform scripts restored
+    the database as part of that rollback. Its local journal did not provide a safe, datastore-owned phase boundary. Separately, the Flux adapter committed and
+    pushed through ambient Git credentials. Shipping those paths while describing the future design as disabled would expose the exact unsafe behavior the design rejects.</p>
+
+  <h2>Questions decided under delegated judgment</h2>
+  <table>
+    <thead><tr><th>Question</th><th>Options</th><th>Chosen recommendation</th></tr></thead>
+    <tbody>
+      <tr><td>What should happen before a safe replacement is proven?</td><td>A. Retire legacy remote apply now.<br>B. Keep it opt-in with a warning.<br>C. Implement the full replacement immediately.</td>
+        <td><strong>A.</strong> A warning cannot prevent a post-migration restore or broad Flux push. The replacement requires separate compatibility, backup, writer-fencing,
+          custody, and crash-recovery proof. This release must not claim those controls exist.</td></tr>
+      <tr><td>How should an existing enablement setting behave?</td><td>A. Refuse startup with a named corrective instruction.<br>B. Silently ignore it.</td>
+        <td><strong>A.</strong> Both config loading and direct server boot reject nonempty <code>HIKYO_UPDATER_SOCKET</code>. Remove the setting to retain notification-only startup.</td></tr>
+      <tr><td>Should legacy jobs be marked recovered or replayed?</td><td>A. Preserve their journal unchanged and refuse execution.<br>B. Retry or roll back automatically.</td>
+        <td><strong>A.</strong> The old phase does not prove the database's migration state. Startup must not rewrite that evidence or guess at recovery.</td></tr>
+      <tr><td>How should the API preserve audit obligations without a backend?</td><td>A. Record authorized intent plus a disabled failure atomically.<br>B. Fabricate a platform backend.<br>C. Remove the audit events.</td>
+        <td><strong>A.</strong> An additive audit-only <code>backend=disabled</code> value records the truth. The request returns conflict and no job is submitted.
+          Instance-config, human/MFA authorization, fresh authentication, security retention, and historical event compatibility remain enforced.</td></tr>
+      <tr><td>Should this UI trust an older remote's apply advertisement?</td><td>A. Preserve release metadata but suppress apply and refuse its mutation locally.<br>B. Offer the old unsafe helper.</td>
+        <td><strong>A.</strong> An older remote may still report <code>apply_supported=true</code>. The client normalizes it to unsupported and a direct mutation-hook invocation
+          fails before any POST. Historical outcome rendering and release notification tests remain.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Admission boundaries closed</h2>
+  <p>Config and server boot reject legacy enablement. Status always reports unsupported. The authenticated apply service emits a refused attempt and never contacts
+    the helper. <code>hikyo updater</code> refuses before config, socket, or journal access. The helper protocol refuses capability and submission. The executor and
+    direct command runner refuse independently. Compose, systemd, Flux, and their common shell library now exit with the migration-safety reason before any phase,
+    credential read, Git operation, or deployment command.</p>
+  <p>The OpenAPI descriptions and generated Go/TypeScript comments now describe retirement. Existing response schemas remain wire-compatible; authenticated apply
+    returns HTTP 409 with an explicit reason. Public job backend enums are unchanged. The extra <code>disabled</code> backend value is limited to audit payloads.</p>
+
+  <h2>Preserved and replaced tests</h2>
+  <p>Removed executor expectations that all phases run and that apply/health failures automatically roll back, plus phase-timeout and progress-write acceptance tied
+    to that retired execution path. Replaced them with all-backend/version refusal, direct runner no-process, and all-shell-phase no-side-effect tests. The old socket
+    preparation test is replaced by helper-startup refusal that preserves socket-path data and a queued journal. Unix submission acceptance becomes protocol refusal
+    plus historical job/outcome read and acknowledgement coverage. Service enqueue acceptance becomes audited conflict with and without a configured control.</p>
+  <p>Preserved journal persistence, interrupted-history handling, config integrity parsing, stale-auth refusal, historical outcome reconciliation and acknowledgement
+    retry, full runtime audit-emitter coverage on both engines, release-status wire fields, prior job wire shape, job error rendering/polling, signed-download
+    implementation, channel behavior, and unrelated tests. No unrelated gate was disabled.</p>
+  <p id="validation">Passed: targeted Go retirement/boot/update checks (70 tests); full runtime audit suite on SQLite and PostgreSQL (31 tests/subtests);
+    web typecheck; all 82 web test files (666 tests); generated TypeScript client typecheck and 13 tests. Full API/audit/updater/config package checks,
+    scoped vet, and diff whitespace checks passed. The preserved CLI update, release discovery, and verified-download regression subset passed (20 tests).
+    API parity now explicitly delivers the retired apply outcome through update status, with no new exception class.
+    Initial web setup lacked the adjacent generated client's Zod dependency; installing its frozen lockfile resolved it.</p>
+
+  <h2>Operator action and limits</h2>
+  <p><strong>Stop and disable existing updater services before installing this release.</strong> Check for previously spawned backend commands, preserve the journal
+    and logs, and remove <code>HIKYO_UPDATER_SOCKET</code>. A replacement binary cannot retroactively stop an already running old process. Do not replay queued jobs
+    or assume a legacy <code>apply</code> phase means rollback is safe. Investigate any interrupted apply and use the operator-led recovery procedure.</p>
+  <p>Follow <a href="https://hikyo.app/docs/upgrades/">manual upgrades</a> and <a href="https://hikyo.app/docs/installation/">signed artifact verification</a>.
+    The helper retirement does not change current automatic-migration behavior or provide the proposed generation fence. Those broader #638 requirements remain
+    separately governed. See the <a href="../../handoff/638-legacy-updater-retirement.md">implementation handoff</a>.</p>
+</body>
+</html>
