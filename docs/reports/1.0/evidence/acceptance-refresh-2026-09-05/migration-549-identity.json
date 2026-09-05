@@ -1,0 +1,20 @@
+{
+  "source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+  "development_declaration_not_official_manifest": true,
+  "engines": [
+    {
+      "engine": "sqlite",
+      "head": 45,
+      "migration_sha256": "62ea7d5cc6d1799f0227089064361e10a7f075c6eba9024a8f723093d4871958",
+      "schema_sha256": "d5d71f6c781bfc10aa3622ebb284229ecd940348049eab3899e521dc75554967",
+      "declaration_matches_file": true
+    },
+    {
+      "engine": "postgres",
+      "head": 45,
+      "migration_sha256": "86932d127083a831a19dcf1c5e8bc49b1a58891d3c12de5fc0603256ad04edc2",
+      "schema_sha256": "8bd35af8d81ae3a59568684b16fdced131f6e3a2d51e2ed6a8691e7d311b7b2c",
+      "declaration_matches_file": true
+    }
+  ]
+}

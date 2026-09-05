@@ -1,0 +1,254 @@
+{
+  "source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+  "run": 33973166043,
+  "conclusion": "success",
+  "jobs": [
+    {
+      "name": "validation / changes",
+      "id": 101325157808,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325157808",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / dco",
+      "id": 101325157946,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325157946",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / supply-chain-checks",
+      "id": 101325300979,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325300979",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / freeze-guard",
+      "id": 101325300984,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325300984",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / lint",
+      "id": 101325301002,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301002",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / app-build",
+      "id": 101325301018,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301018",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / release-snapshot",
+      "id": 101325301035,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301035",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / headline-guarantee",
+      "id": 101325301046,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301046",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / k8s-e2e",
+      "id": 101325301049,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301049",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / client",
+      "id": 101325301053,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301053",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / compose-demo",
+      "id": 101325301055,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301055",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / test_core",
+      "id": 101325301061,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / analysis_shards",
+      "id": 101325301067,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301067",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / docs",
+      "id": 101325301070,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301070",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / generated",
+      "id": 101325301101,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301101",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / floor-bench / measure",
+      "id": 101325301176,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301176",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / fuzz shard (0)",
+      "id": 101325734255,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734255",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / fuzz shard (1)",
+      "id": 101325734262,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734262",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / fuzz shard (2)",
+      "id": 101325734317,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734317",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / race shard (0)",
+      "id": 101325734320,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734320",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / race shard (1)",
+      "id": 101325734324,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734324",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / isolation shard (1)",
+      "id": 101325734327,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / race shard (2)",
+      "id": 101325734361,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / isolation shard (0)",
+      "id": 101325734372,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734372",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / isolation shard (2)",
+      "id": 101325734436,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / no-egress",
+      "id": 101326038195,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101326038195",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / web-go",
+      "id": 101326038240,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101326038240",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / web (mobile, 1)",
+      "id": 101326038272,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101326038272",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / web (desktop, 3)",
+      "id": 101326038273,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101326038273",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / web (mobile, 3)",
+      "id": 101326038277,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101326038277",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / web (desktop, 4)",
+      "id": 101326038280,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101326038280",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / web (mobile, 4)",
+      "id": 101326038281,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101326038281",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / web (mobile, 2)",
+      "id": 101326038300,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101326038300",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / web (desktop, 1)",
+      "id": 101326038310,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101326038310",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / web (desktop, 2)",
+      "id": 101326038388,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101326038388",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / fuzz",
+      "id": 101326633841,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101326633841",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / test",
+      "id": 101327370577,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101327370577",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / web-closure",
+      "id": 101327570142,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101327570142",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / race",
+      "id": 101328472155,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101328472155",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / ci-required",
+      "id": 101328484083,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101328484083",
+      "conclusion": "success"
+    },
+    {
+      "name": "ci-required",
+      "id": 101328502183,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101328502183",
+      "conclusion": "success"
+    }
+  ],
+  "test_output_boundary": "Ordinary core/isolation/race jobs are non-verbose. PASS supports selected suite execution, not named-case or per-test skip counts."
+}

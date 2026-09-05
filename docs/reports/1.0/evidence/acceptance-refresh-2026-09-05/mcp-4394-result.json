@@ -1,0 +1,71 @@
+{
+  "source_commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+  "trust": "explicitly synthetic signed production-profile fixture; no official/public release claim",
+  "runtime_platform": "darwin/arm64 native server processes; PostgreSQL18 isolated Docker container",
+  "status": "PASS",
+  "binary_sha256": "e9a3dcd9169597cff114cef8e034f2f263ec764a8edca177489089cbdffd993d",
+  "fixture_sha256": "54d6e665dae5c159b843fa27e32359123be24a0f6c55fe856030151f6a017d2c",
+  "sdk_driver_sha256": "8f4f6f2eb98125ef61a0403f833b39ba8540d27a39b7e5b511937f381d27f238",
+  "public_smoke_sha256": "5c98fbe2f14dd791371dd8e83913895ec09fe244aecd59b14b84d28777089723",
+  "local_five_tools": true,
+  "official_go_sdk": true,
+  "cross_replica_cursor": true,
+  "committed_token_revocation": true,
+  "committed_grant_removal_and_restoration": true,
+  "proxy": "buffered round-robin verified HTTPS; no streaming cancellation claim",
+  "postgres_image": "sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2",
+  "owned_postgres_removed": true,
+  "all_owned_processes_stopped": true,
+  "vcs_modified": false,
+  "go": "go1.27.0",
+  "build_tags": "none (actual API/MCP server, without embedded browser assets)",
+  "completed_at": "2026-09-05T15:19:46.960663+00:00",
+  "public_bundle_files": [
+    {
+      "path": "bundle/catalog.json",
+      "sha256": "e79c1be7b32d76bdf0cbec28c93d418a649a6d6f6ba196a73029e373a10990df"
+    },
+    {
+      "path": "bundle/catalog.sigstore.json",
+      "sha256": "66eaebc52626ae0582927c7f6bbb85b478335218fea309d66c6415647d5cb3e1"
+    },
+    {
+      "path": "bundle/index.json",
+      "sha256": "8057f2be94d981e3daa688f7db77a372fd1e7540fd6a912f1bd7a667520f4bca"
+    },
+    {
+      "path": "bundle/keys/test-primary.pub",
+      "sha256": "be69c800cb809c236e551abbe8bd78f4ef4161b995f4ad4b2b085682b1d2d87b"
+    },
+    {
+      "path": "bundle/metadata.json",
+      "sha256": "063e3b12385441a71ca9e7c8540ffabb055f409fa1a8c751fc5f211692af9f11"
+    },
+    {
+      "path": "bundle/metadata.sigstore.json",
+      "sha256": "617998d0320adf2a75a461b322392d59f0a7bde68a8353c0fb91a477a44ed3a9"
+    },
+    {
+      "path": "bundle/releases/c7c75c0d015e0a30f96990944e2ad638d3640bd06f79bf28488641c8db15df82/manifest.json",
+      "sha256": "c7c75c0d015e0a30f96990944e2ad638d3640bd06f79bf28488641c8db15df82"
+    },
+    {
+      "path": "bundle/releases/c7c75c0d015e0a30f96990944e2ad638d3640bd06f79bf28488641c8db15df82/manifest.sigstore.json",
+      "sha256": "504f42205bc210d5bc68748c265f48fe76963d103d2447b15f4c0ee9f670a34b"
+    },
+    {
+      "path": "bundle/releases/c7c75c0d015e0a30f96990944e2ad638d3640bd06f79bf28488641c8db15df82/release-candidate.json",
+      "sha256": "158846cb8bb7beff098c8634f0a4bbd2afc08d6254a28fc1b33adee63f2c1ac5"
+    },
+    {
+      "path": "bundle/releases/c7c75c0d015e0a30f96990944e2ad638d3640bd06f79bf28488641c8db15df82/upgrade-compatibility.json",
+      "sha256": "22e7b451d2a28e63af026ba138fa34dd5c428c9fdda7cbf8fd3419b4dd5a77d7"
+    },
+    {
+      "path": "operator.pub",
+      "sha256": "be69c800cb809c236e551abbe8bd78f4ef4161b995f4ad4b2b085682b1d2d87b"
+    }
+  ],
+  "credential_redaction_check": "passed against actual synthetic tokens and database passwords",
+  "owned_private_runtime_directories_removed": true
+}

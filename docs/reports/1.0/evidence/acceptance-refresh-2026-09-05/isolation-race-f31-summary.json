@@ -1,0 +1,16 @@
+{
+  "head": "f31c86373e3745f818fdf47f912984660c732720",
+  "run": 33969747593,
+  "job": 101316038932,
+  "status": "success",
+  "command": "go test -race -count=1 -timeout 150m ./internal/isolation/",
+  "package_result_lines": [
+    "2026-09-05T14:41:09.2434127Z ok  \tgithub.com/Hikyo-Org/hikyo/internal/isolation\t3204.701s"
+  ],
+  "job_started_at": "2026-09-05T13:44:05Z",
+  "job_completed_at": "2026-09-05T14:41:12Z",
+  "redacted_log_sha256": "c0267278d8b0f06bc6a24f8e3fb551eecaa965a9169ad06f1cb04994f799cbf8",
+  "source_qualification": "Exact f31 combined source; later CI-only commits require separate source-input equivalence proof. Not automatically attributed to future heads.",
+  "package_elapsed_seconds": 3204.701,
+  "test_inventory_limitation": "Existing workflow is non-verbose; log does not enumerate per-test skip counts."
+}

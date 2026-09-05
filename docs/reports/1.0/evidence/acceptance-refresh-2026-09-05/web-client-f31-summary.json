@@ -1,0 +1,86 @@
+{
+  "source": "f31c86373e3745f818fdf47f912984660c732720",
+  "run": 33969008887,
+  "browser_passed": 447,
+  "browser_skipped": 5,
+  "skip_reason": "viewport-specific tests; each executed in its applicable viewport",
+  "skips": [
+    {
+      "name": "matches the locked desktop chrome composition",
+      "evidence": [
+        {
+          "log": "101314962382.log",
+          "line": "2026-09-05T13:47:37.9037641Z   -  56 [mobile] \u203a e2e/flows/shell.spec.ts:69:3 \u203a app chrome \u203a matches the locked desktop chrome composition"
+        },
+        {
+          "log": "101314962430.log",
+          "line": "2026-09-05T13:48:39.0142920Z   \u2713  56 [desktop] \u203a e2e/flows/shell.spec.ts:69:3 \u203a app chrome \u203a matches the locked desktop chrome composition (719ms)"
+        }
+      ],
+      "counterpart_executed": true
+    },
+    {
+      "name": "stacks the instance context above the organisation block on instance routes",
+      "evidence": [
+        {
+          "log": "101314962382.log",
+          "line": "2026-09-05T13:47:38.1556078Z   -  57 [mobile] \u203a e2e/flows/shell.spec.ts:106:3 \u203a app chrome \u203a stacks the instance context above the organisation block on instance routes"
+        },
+        {
+          "log": "101314962430.log",
+          "line": "2026-09-05T13:48:39.4236139Z   \u2713  57 [desktop] \u203a e2e/flows/shell.spec.ts:106:3 \u203a app chrome \u203a stacks the instance context above the organisation block on instance routes (401ms)"
+        }
+      ],
+      "counterpart_executed": true
+    },
+    {
+      "name": "keeps every chrome destination in the fixed mobile drawer",
+      "evidence": [
+        {
+          "log": "101314962382.log",
+          "line": "2026-09-05T13:47:38.6339547Z   \u2713  58 [mobile] \u203a e2e/flows/shell.spec.ts:124:3 \u203a app chrome \u203a keeps every chrome destination in the fixed mobile drawer (470ms)"
+        },
+        {
+          "log": "101314962430.log",
+          "line": "2026-09-05T13:48:39.6732396Z   -  58 [desktop] \u203a e2e/flows/shell.spec.ts:124:3 \u203a app chrome \u203a keeps every chrome destination in the fixed mobile drawer"
+        }
+      ],
+      "counterpart_executed": true
+    },
+    {
+      "name": "releases the mobile drawer when the viewport becomes desktop",
+      "evidence": [
+        {
+          "log": "101314962382.log",
+          "line": "2026-09-05T13:47:39.0053862Z   \u2713  59 [mobile] \u203a e2e/flows/shell.spec.ts:156:3 \u203a app chrome \u203a releases the mobile drawer when the viewport becomes desktop (362ms)"
+        },
+        {
+          "log": "101314962430.log",
+          "line": "2026-09-05T13:48:39.9189947Z   -  59 [desktop] \u203a e2e/flows/shell.spec.ts:156:3 \u203a app chrome \u203a releases the mobile drawer when the viewport becomes desktop"
+        }
+      ],
+      "counterpart_executed": true
+    },
+    {
+      "name": "keeps the mobile matrix inert and restores drawer focus",
+      "evidence": [
+        {
+          "log": "101314962324.log",
+          "line": "2026-09-05T13:44:01.7388582Z   \u2713  13 [mobile] \u203a e2e/flows/history.spec.ts:851:3 \u203a revision history \u203a keeps the mobile matrix inert and restores drawer focus (1.2s)"
+        },
+        {
+          "log": "101314962360.log",
+          "line": "2026-09-05T13:44:53.4386341Z   -  13 [desktop] \u203a e2e/flows/history.spec.ts:851:3 \u203a revision history \u203a keeps the mobile matrix inert and restores drawer focus"
+        }
+      ],
+      "counterpart_executed": true
+    }
+  ],
+  "flow_registry_closure": "every claim executed for every viewport present in merged log",
+  "client_mode": "pre-freeze-rehearsal",
+  "client_named_passes": 3,
+  "client_sqlite_seconds": 1.25,
+  "client_postgres_seconds": 1.57,
+  "official_freeze": false,
+  "whole_ci": "failed unrelated app database cleanup"
+}

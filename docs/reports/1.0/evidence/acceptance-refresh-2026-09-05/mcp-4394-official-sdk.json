@@ -1,0 +1,8 @@
+{
+  "client": "official-go-sdk",
+  "passed": true,
+  "production_tools_called": 5,
+  "protocol": "2026-07-28",
+  "secret_canary_absent": true,
+  "version": "v1.7.0"
+}

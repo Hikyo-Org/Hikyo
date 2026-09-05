@@ -1,0 +1,209 @@
+{
+  "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+  "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+  "counts": {
+    "INTERNAL-PASS": 42,
+    "POST-1.0": 1,
+    "FREEZE-PENDING": 1,
+    "EXTERNAL-PENDING": 4,
+    "CEREMONY-PENDING": 1
+  },
+  "criteria": [
+    {
+      "criterion": "C1",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "C2",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "C-APV",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "C3",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "C4",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "C5",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "C6",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "A1",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "A2",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "A3",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "A4",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "A5",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "A6",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "A7",
+      "status": "POST-1.0"
+    },
+    {
+      "criterion": "K1",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "K2",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "K3",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "S1",
+      "status": "FREEZE-PENDING"
+    },
+    {
+      "criterion": "S2",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "S3",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "S4",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "M1",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "M2",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "M3",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "M4",
+      "status": "EXTERNAL-PENDING"
+    },
+    {
+      "criterion": "M5",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "M6",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "O1",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "O2",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "O3",
+      "status": "CEREMONY-PENDING"
+    },
+    {
+      "criterion": "O4",
+      "status": "EXTERNAL-PENDING"
+    },
+    {
+      "criterion": "O5",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "O6",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "O7",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "SA1",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "SA2",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "SA3",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "SA4",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "SC1",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "SC2",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "SC3",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "SC4",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "SS1",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "SS2",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "SS3",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "SS4",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "GH-E2E",
+      "status": "EXTERNAL-PENDING"
+    },
+    {
+      "criterion": "GH-STUB",
+      "status": "INTERNAL-PASS"
+    },
+    {
+      "criterion": "GH-CONTRACT",
+      "status": "EXTERNAL-PENDING"
+    }
+  ]
+}

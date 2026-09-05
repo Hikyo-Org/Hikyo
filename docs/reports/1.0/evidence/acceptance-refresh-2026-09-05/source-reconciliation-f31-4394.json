@@ -1,0 +1,20 @@
+{
+  "recorded_at": "2026-09-05T14:53:44.271336+00:00",
+  "old_source": "f31c86373e3745f818fdf47f912984660c732720",
+  "new_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+  "base": "d0ddd0fa218f4418cfb1f2a8fa99506500bdbb9b",
+  "changed_files": [
+    ".github/workflows/ci.yml",
+    "docs/handoff/core-database-scheduling.md",
+    "docs/reports/1.0/core-database-scheduling.html",
+    "scripts/ci/check-trusted-ci-scripts_test.sh",
+    "scripts/ci/test-core-packages.sh",
+    "scripts/ci/test-core-packages_test.sh"
+  ],
+  "range_diff": "1:  a4fc3619 = 1:  dec86ee4 feat(ops): expose verified recovery and storage diagnostics\n2:  889e8a4b = 2:  d08bf49c test(upgrade): distinguish historical and current schema fixtures\n3:  f31c8637 = 3:  4394dd49 test(web): select audit operation fields unambiguously",
+  "prototype_inputs_identical": true,
+  "prior_evidence_scope": "f31 native recovery/operator/Forgejo/full-isolation-race/browser/client/deployment results retain original source identity; compiled runtime and tests are identical. New source requires its own complete CI through updated scheduler.",
+  "go_runtime_go_tests_and_browser_inputs_identical": true,
+  "ci_fixture_sources_identical": false,
+  "binary_identity_boundary": "Source equivalence does not imply identical binary bytes: embedded commit/version metadata may differ. New archive and binary digests must be measured independently."
+}

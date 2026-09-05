@@ -1,0 +1,118 @@
+{
+  "source": "f31c86373e3745f818fdf47f912984660c732720",
+  "run": 33969008887,
+  "jobs": [
+    {
+      "name": "validation / client",
+      "job": 101314181254,
+      "conclusion": "success",
+      "evidence_lines": [
+        "2026-09-05T13:33:01.5228148Z client skew: mode=pre-freeze-rehearsal baseline=f31c86373e3745f818fdf47f912984660c732720 server=f31c86373e3745f818fdf47f912984660c732720",
+        "2026-09-05T13:35:38.4154703Z {\"Time\":\"2026-09-05T13:35:38.415128257Z\",\"Action\":\"output\",\"Package\":\"github.com/Hikyo-Org/hikyo/internal/isolation\",\"Test\":\"TestFrozenGeneratedClientAgainstCurrentServer/sqlite\",\"Output\":\"--- PASS: TestFrozenGeneratedClientAgainstCurrentServer/sqlite (1.25s)\\n\",\"OutputType\":\"frame\"}",
+        "2026-09-05T13:35:39.9854236Z {\"Time\":\"2026-09-05T13:35:39.985004247Z\",\"Action\":\"output\",\"Package\":\"github.com/Hikyo-Org/hikyo/internal/isolation\",\"Test\":\"TestFrozenGeneratedClientAgainstCurrentServer/postgres\",\"Output\":\"--- PASS: TestFrozenGeneratedClientAgainstCurrentServer/postgres (1.57s)\\n\",\"OutputType\":\"frame\"}",
+        "2026-09-05T13:35:39.9859907Z {\"Time\":\"2026-09-05T13:35:39.985034945Z\",\"Action\":\"output\",\"Package\":\"github.com/Hikyo-Org/hikyo/internal/isolation\",\"Test\":\"TestFrozenGeneratedClientAgainstCurrentServer\",\"Output\":\"--- PASS: TestFrozenGeneratedClientAgainstCurrentServer (2.82s)\\n\",\"OutputType\":\"frame\"}"
+      ]
+    },
+    {
+      "name": "validation / web-go",
+      "job": 101314962276,
+      "conclusion": "success",
+      "evidence_lines": []
+    },
+    {
+      "name": "validation / web (desktop, 4)",
+      "job": 101314962320,
+      "conclusion": "success",
+      "evidence_lines": [
+        "2026-09-05T13:45:37.4754014Z ##[notice]  27 passed (5.1m)",
+        "2026-09-05T13:45:37.4780180Z   27 passed (5.1m)"
+      ]
+    },
+    {
+      "name": "validation / web (mobile, 2)",
+      "job": 101314962324,
+      "conclusion": "success",
+      "evidence_lines": [
+        "2026-09-05T13:45:53.0876704Z ##[notice]  53 passed (4.7m)",
+        "2026-09-05T13:45:53.0883621Z   53 passed (4.7m)"
+      ]
+    },
+    {
+      "name": "validation / web (desktop, 2)",
+      "job": 101314962360,
+      "conclusion": "success",
+      "evidence_lines": [
+        "2026-09-05T13:47:19.1404488Z ##[notice]  1 skipped",
+        "  52 passed (5.8m)",
+        "2026-09-05T13:47:19.1415225Z   1 skipped",
+        "2026-09-05T13:47:19.1415660Z   52 passed (5.8m)"
+      ]
+    },
+    {
+      "name": "validation / web (mobile, 4)",
+      "job": 101314962364,
+      "conclusion": "success",
+      "evidence_lines": [
+        "2026-09-05T13:45:56.5954136Z ##[notice]  27 passed (4.3m)",
+        "2026-09-05T13:45:56.5961957Z   27 passed (4.3m)"
+      ]
+    },
+    {
+      "name": "validation / web (desktop, 1)",
+      "job": 101314962372,
+      "conclusion": "success",
+      "evidence_lines": [
+        "2026-09-05T13:46:11.6467738Z   \u2713  50 [desktop] \u203a e2e/flows/reveal.spec.ts:254:3 \u203a reveal ceremonies \u203a copying a secret is a disclosure, and copying a config value is free (1.2s)",
+        "2026-09-05T13:46:32.5657304Z   \u2713  58 [desktop] \u203a e2e/flows/reveal.spec.ts:564:3 \u203a OIDC disclosure reauthentication \u203a reveals after the IdP popup returns through the SPA done page (3.0s)",
+        "2026-09-05T13:46:35.1678975Z   \u2713  59 [desktop] \u203a e2e/flows/reveal.spec.ts:584:3 \u203a OIDC disclosure reauthentication \u203a keeps a protected zero-window environment passkey-only (2.6s)",
+        "2026-09-05T13:47:21.3004893Z ##[notice]  66 passed (5.4m)",
+        "2026-09-05T13:47:21.3014122Z   66 passed (5.4m)"
+      ]
+    },
+    {
+      "name": "validation / web (mobile, 3)",
+      "job": 101314962382,
+      "conclusion": "success",
+      "evidence_lines": [
+        "2026-09-05T13:48:06.9582105Z ##[notice]  2 skipped",
+        "  78 passed (5.8m)",
+        "2026-09-05T13:48:06.9592155Z   2 skipped",
+        "2026-09-05T13:48:06.9592872Z   78 passed (5.8m)"
+      ]
+    },
+    {
+      "name": "validation / web (desktop, 3)",
+      "job": 101314962430,
+      "conclusion": "success",
+      "evidence_lines": [
+        "2026-09-05T13:49:06.7697688Z ##[notice]  2 skipped",
+        "  78 passed (6.5m)",
+        "2026-09-05T13:49:06.7705587Z   2 skipped",
+        "2026-09-05T13:49:06.7705924Z   78 passed (6.5m)"
+      ]
+    },
+    {
+      "name": "validation / web (mobile, 1)",
+      "job": 101314962460,
+      "conclusion": "success",
+      "evidence_lines": [
+        "2026-09-05T13:46:28.8487186Z   \u2713  50 [mobile] \u203a e2e/flows/reveal.spec.ts:254:3 \u203a reveal ceremonies \u203a copying a secret is a disclosure, and copying a config value is free (1.1s)",
+        "2026-09-05T13:46:46.7314391Z   \u2713  58 [mobile] \u203a e2e/flows/reveal.spec.ts:564:3 \u203a OIDC disclosure reauthentication \u203a reveals after the IdP popup returns through the SPA done page (3.4s)",
+        "2026-09-05T13:46:49.2522309Z   \u2713  59 [mobile] \u203a e2e/flows/reveal.spec.ts:584:3 \u203a OIDC disclosure reauthentication \u203a keeps a protected zero-window environment passkey-only (2.5s)",
+        "2026-09-05T13:47:22.4765475Z ##[notice]  66 passed (5.1m)",
+        "2026-09-05T13:47:22.4772493Z   66 passed (5.1m)"
+      ]
+    },
+    {
+      "name": "validation / web-closure",
+      "job": 101316687147,
+      "conclusion": "success",
+      "evidence_lines": [
+        "2026-09-05T13:51:14.6453914Z Complete job name: validation / web-closure",
+        "2026-09-05T13:51:22.6465915Z ##[group]Run node e2e/check-closure.ts \"$GITHUB_WORKSPACE/merged-pinned.log\"",
+        "2026-09-05T13:51:22.6466934Z node e2e/check-closure.ts \"$GITHUB_WORKSPACE/merged-pinned.log\"",
+        "2026-09-05T13:51:22.7415343Z flow-registry closure: every claim executed for every viewport present in the merged log"
+      ]
+    }
+  ]
+}

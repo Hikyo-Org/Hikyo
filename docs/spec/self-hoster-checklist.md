@@ -1,5 +1,7 @@
 # Hikyo — Self-hoster checklist (synthesis deliverable, 2026-08-06)
 
+> Historical synthesis record. The PASS entries below describe the 2026-08-06 design assessment, not released artifact availability or current candidate certification. The [2026-09-05 candidate reassertion](../release/self-hoster-candidate.md) maps later capabilities and evidence, with final source and release sign-off explicitly pending. The approved native ARM floor policy permits conservative CPU estimates and optional physical calibration; the historical Pi wording below does not introduce a new physical-hardware release prerequisite.
+
 [mvp-boundary.md](../adr/mvp-boundary.md) §3 binds 1.0 wholesale to the oss-mechanics **decidable self-hoster test**: every capability in the spec set must be fully exercisable by a self-hoster — policy, API shape, recovery path, tenancy behavior, data transformation. Any capability failing is a **synthesis-blocking defect**. This checklist runs the instrument over the §1.2 capability list plus the four promotions. It is re-asserted against the release candidate's capability list at 1.0 (§6 item 4).
 
 Verdict legend: **PASS** = the capability meets the oss-mechanics test, quoted in full:

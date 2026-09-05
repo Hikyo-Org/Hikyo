@@ -1,0 +1,65 @@
+{
+  "source_commit": "407456a54dbb275cf322bbf274faaf78b8845260",
+  "version": "0.0.0-snapshot-407456a",
+  "status": "verified unsigned development snapshot",
+  "official_release": false,
+  "published_image_verified": false,
+  "producer_config_verified": true,
+  "linux_archive_matches_oci_input": true,
+  "archives": [
+    {
+      "os": "darwin",
+      "arch": "arm64",
+      "archive": "hikyo_0.0.0-snapshot-407456a_Darwin_arm64.tar.gz",
+      "archive_bytes": 34774971,
+      "archive_sha256": "2b7d5078df96d77fb6796ecfe54272fcafb5841686b86ffa6f2908e3e1f42c98",
+      "binary_bytes": 111852786,
+      "binary_sha256": "6fbff5d3dbbfeb6ad6c84dda084b8431152dbd3fffd11b8f47d0471997b5c8ef"
+    },
+    {
+      "os": "darwin",
+      "arch": "amd64",
+      "archive": "hikyo_0.0.0-snapshot-407456a_Darwin_x86_64.tar.gz",
+      "archive_bytes": 37379114,
+      "archive_sha256": "ce46863010f00d0770d9c5c350eee43fd730dfef473fc5fe37dc0a9be26c41f4",
+      "binary_bytes": 119984736,
+      "binary_sha256": "7d1b76668d5b01904636d55a01ac94dd194b82e3958cd03570abf45046b8e015"
+    },
+    {
+      "os": "linux",
+      "arch": "arm64",
+      "archive": "hikyo_0.0.0-snapshot-407456a_Linux_arm64.tar.gz",
+      "archive_bytes": 33094710,
+      "archive_sha256": "6f5ce4724cfa42ac5687f99f02915a9394700cd9b7e1d09156a904bd2dea5deb",
+      "binary_bytes": 108200096,
+      "binary_sha256": "d407f4aa4af770a0e455f1baf9efe78ee4d58e051ef8fabd5bc5e7cfc9f4ecee"
+    },
+    {
+      "os": "linux",
+      "arch": "amd64",
+      "archive": "hikyo_0.0.0-snapshot-407456a_Linux_x86_64.tar.gz",
+      "archive_bytes": 36573418,
+      "archive_sha256": "e8463a7bd231d9de5e7796046367fb72c187b812e83805ae50f964586c307f84",
+      "binary_bytes": 117137568,
+      "binary_sha256": "7a79afeb3c07109b36f04e02d342171726385ba6a43022e78ef497663c9e2394"
+    },
+    {
+      "os": "windows",
+      "arch": "arm64",
+      "archive": "hikyo_0.0.0-snapshot-407456a_Windows_arm64.zip",
+      "archive_bytes": 33219420,
+      "archive_sha256": "13e7aa03552e204628375256392545e38362ee11fa100cae74a16113ead4e59a",
+      "binary_bytes": 109063680,
+      "binary_sha256": "e093c4c3ca462a3e7766589b13c049d833b1a6cfc5cec593b301226685f6cc57"
+    },
+    {
+      "os": "windows",
+      "arch": "amd64",
+      "archive": "hikyo_0.0.0-snapshot-407456a_Windows_x86_64.zip",
+      "archive_bytes": 37381778,
+      "archive_sha256": "2dda8a5361784ab6c3efa8b958ca7bedd514dc7cd77170bb7d4de6ba2b5123c2",
+      "binary_bytes": 119407616,
+      "binary_sha256": "9d6058b5dc276938d02958cc0f5b60c710099d81b87e4a835037f4479aaa7df5"
+    }
+  ]
+}

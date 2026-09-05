@@ -1,0 +1,197 @@
+{
+  "source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+  "run": 33973166043,
+  "jobs": [
+    {
+      "name": "validation / k8s-e2e",
+      "job": 101325301049,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301049",
+      "conclusion": "success",
+      "evidence_lines": [
+        "2026-09-05T15:00:32.4036840Z  Test Files  85 passed (85)",
+        "2026-09-05T15:00:32.4042539Z       Tests  687 passed (687)",
+        "2026-09-05T15:04:31.2803748Z chart-kind: authenticated instance doctor reported all 12 operational finding families"
+      ]
+    },
+    {
+      "name": "validation / client",
+      "job": 101325301053,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301053",
+      "conclusion": "success",
+      "evidence_lines": [
+        "2026-09-05T14:56:39.4569072Z client skew: mode=pre-freeze-rehearsal baseline=4394dd497b7e35b2bcf585528cffd9f020eab795 server=4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "2026-09-05T14:58:44.4429784Z {\"Time\":\"2026-09-05T14:58:44.442713875Z\",\"Action\":\"output\",\"Package\":\"github.com/Hikyo-Org/hikyo/internal/isolation\",\"Test\":\"TestFrozenGeneratedClientAgainstCurrentServer/sqlite\",\"Output\":\"--- PASS: TestFrozenGeneratedClientAgainstCurrentServer/sqlite (1.47s)\\n\",\"OutputType\":\"frame\"}",
+        "2026-09-05T14:58:46.2883476Z {\"Time\":\"2026-09-05T14:58:46.287590327Z\",\"Action\":\"output\",\"Package\":\"github.com/Hikyo-Org/hikyo/internal/isolation\",\"Test\":\"TestFrozenGeneratedClientAgainstCurrentServer/postgres\",\"Output\":\"--- PASS: TestFrozenGeneratedClientAgainstCurrentServer/postgres (1.84s)\\n\",\"OutputType\":\"frame\"}",
+        "2026-09-05T14:58:46.2888466Z {\"Time\":\"2026-09-05T14:58:46.287629678Z\",\"Action\":\"output\",\"Package\":\"github.com/Hikyo-Org/hikyo/internal/isolation\",\"Test\":\"TestFrozenGeneratedClientAgainstCurrentServer\",\"Output\":\"--- PASS: TestFrozenGeneratedClientAgainstCurrentServer (3.31s)\\n\",\"OutputType\":\"frame\"}"
+      ],
+      "named_test_events": [
+        {
+          "Action": "pass",
+          "Test": "TestFrozenGeneratedClientAgainstCurrentServer/sqlite",
+          "Elapsed": 1.47
+        },
+        {
+          "Action": "pass",
+          "Test": "TestFrozenGeneratedClientAgainstCurrentServer/postgres",
+          "Elapsed": 1.84
+        },
+        {
+          "Action": "pass",
+          "Test": "TestFrozenGeneratedClientAgainstCurrentServer",
+          "Elapsed": 3.31
+        }
+      ]
+    },
+    {
+      "name": "validation / compose-demo",
+      "job": 101325301055,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301055",
+      "conclusion": "success",
+      "evidence_lines": [
+        "2026-09-05T15:01:48.0764221Z compose demo passed: authenticated instance doctor reported all 12 operational finding families"
+      ]
+    },
+    {
+      "name": "validation / web (mobile, 1)",
+      "job": 101326038272,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101326038272",
+      "conclusion": "success",
+      "evidence_lines": [
+        "2026-09-05T15:10:32.9985362Z ##[notice]  66 passed (5.1m)",
+        "2026-09-05T15:10:32.9995740Z   66 passed (5.1m)"
+      ],
+      "passed": 66,
+      "skipped": 0,
+      "viewport_evidence": []
+    },
+    {
+      "name": "validation / web (desktop, 3)",
+      "job": 101326038273,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101326038273",
+      "conclusion": "success",
+      "evidence_lines": [
+        "2026-09-05T15:12:06.0622310Z ##[notice]  2 skipped",
+        "  78 passed (6.3m)",
+        "2026-09-05T15:12:06.0641892Z   2 skipped",
+        "2026-09-05T15:12:06.0642621Z   78 passed (6.3m)"
+      ],
+      "passed": 78,
+      "skipped": 2,
+      "viewport_evidence": [
+        "2026-09-05T15:11:38.1193430Z   \u2713  56 [desktop] \u203a e2e/flows/shell.spec.ts:69:3 \u203a app chrome \u203a matches the locked desktop chrome composition (789ms)",
+        "2026-09-05T15:11:38.5980106Z   \u2713  57 [desktop] \u203a e2e/flows/shell.spec.ts:106:3 \u203a app chrome \u203a stacks the instance context above the organisation block on instance routes (472ms)",
+        "2026-09-05T15:11:38.8690315Z   -  58 [desktop] \u203a e2e/flows/shell.spec.ts:124:3 \u203a app chrome \u203a keeps every chrome destination in the fixed mobile drawer",
+        "2026-09-05T15:11:39.1329432Z   -  59 [desktop] \u203a e2e/flows/shell.spec.ts:156:3 \u203a app chrome \u203a releases the mobile drawer when the viewport becomes desktop"
+      ]
+    },
+    {
+      "name": "validation / web (mobile, 3)",
+      "job": 101326038277,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101326038277",
+      "conclusion": "success",
+      "evidence_lines": [
+        "2026-09-05T15:11:40.0937534Z ##[notice]  2 skipped",
+        "  78 passed (6.4m)",
+        "2026-09-05T15:11:40.0946170Z   2 skipped",
+        "2026-09-05T15:11:40.0946439Z   78 passed (6.4m)"
+      ],
+      "passed": 78,
+      "skipped": 2,
+      "viewport_evidence": [
+        "2026-09-05T15:11:07.4913657Z   -  56 [mobile] \u203a e2e/flows/shell.spec.ts:69:3 \u203a app chrome \u203a matches the locked desktop chrome composition",
+        "2026-09-05T15:11:07.8664614Z   -  57 [mobile] \u203a e2e/flows/shell.spec.ts:106:3 \u203a app chrome \u203a stacks the instance context above the organisation block on instance routes",
+        "2026-09-05T15:11:08.4377904Z   \u2713  58 [mobile] \u203a e2e/flows/shell.spec.ts:124:3 \u203a app chrome \u203a keeps every chrome destination in the fixed mobile drawer (563ms)",
+        "2026-09-05T15:11:08.8694519Z   \u2713  59 [mobile] \u203a e2e/flows/shell.spec.ts:156:3 \u203a app chrome \u203a releases the mobile drawer when the viewport becomes desktop (420ms)"
+      ]
+    },
+    {
+      "name": "validation / web (desktop, 4)",
+      "job": 101326038280,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101326038280",
+      "conclusion": "success",
+      "evidence_lines": [
+        "2026-09-05T15:10:33.7609333Z ##[notice]  27 passed (4.9m)",
+        "2026-09-05T15:10:33.7616630Z   27 passed (4.9m)"
+      ],
+      "passed": 27,
+      "skipped": 0,
+      "viewport_evidence": []
+    },
+    {
+      "name": "validation / web (mobile, 4)",
+      "job": 101326038281,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101326038281",
+      "conclusion": "success",
+      "evidence_lines": [
+        "2026-09-05T15:09:38.4755842Z ##[notice]  27 passed (4.2m)",
+        "2026-09-05T15:09:38.4762918Z   27 passed (4.2m)"
+      ],
+      "passed": 27,
+      "skipped": 0,
+      "viewport_evidence": []
+    },
+    {
+      "name": "validation / web (mobile, 2)",
+      "job": 101326038300,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101326038300",
+      "conclusion": "success",
+      "evidence_lines": [
+        "2026-09-05T15:11:05.5951146Z ##[notice]  53 passed (5.1m)",
+        "2026-09-05T15:11:05.5958295Z   53 passed (5.1m)"
+      ],
+      "passed": 53,
+      "skipped": 0,
+      "viewport_evidence": [
+        "2026-09-05T15:09:05.9339560Z   \u2713  13 [mobile] \u203a e2e/flows/history.spec.ts:851:3 \u203a revision history \u203a keeps the mobile matrix inert and restores drawer focus (1.3s)"
+      ]
+    },
+    {
+      "name": "validation / web (desktop, 1)",
+      "job": 101326038310,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101326038310",
+      "conclusion": "success",
+      "evidence_lines": [
+        "2026-09-05T15:11:16.8145247Z ##[notice]  66 passed (5.0m)",
+        "2026-09-05T15:11:16.8151893Z   66 passed (5.0m)"
+      ],
+      "passed": 66,
+      "skipped": 0,
+      "viewport_evidence": []
+    },
+    {
+      "name": "validation / web (desktop, 2)",
+      "job": 101326038388,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101326038388",
+      "conclusion": "success",
+      "evidence_lines": [
+        "2026-09-05T15:11:15.7925757Z ##[notice]  1 skipped",
+        "  52 passed (4.8m)",
+        "2026-09-05T15:11:15.7932573Z   1 skipped",
+        "2026-09-05T15:11:15.7932937Z   52 passed (4.8m)"
+      ],
+      "passed": 52,
+      "skipped": 1,
+      "viewport_evidence": [
+        "2026-09-05T15:09:14.4566966Z   -  13 [desktop] \u203a e2e/flows/history.spec.ts:851:3 \u203a revision history \u203a keeps the mobile matrix inert and restores drawer focus"
+      ]
+    },
+    {
+      "name": "validation / web-closure",
+      "job": 101327570142,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101327570142",
+      "conclusion": "success",
+      "evidence_lines": [
+        "2026-09-05T15:12:23.0750261Z flow-registry closure: every claim executed for every viewport present in the merged log"
+      ]
+    }
+  ],
+  "browser_passed": 447,
+  "browser_skipped": 5,
+  "whole_ci": "SUCCESS",
+  "official_freeze": false,
+  "all_viewport_skips_have_passing_counterpart": true,
+  "client_named_passes": 3,
+  "client_named_skips": 0,
+  "client_mode": "pre-freeze-rehearsal",
+  "all_exact_head_checks": 49
+}

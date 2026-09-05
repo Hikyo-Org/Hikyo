@@ -1,0 +1,17 @@
+{
+  "source_commit": "f31c86373e3745f818fdf47f912984660c732720",
+  "passes": [
+    "TestValidateManifestRefusesLossyForgejoNamesAndValues/lowercase",
+    "TestValidateManifestRefusesLossyForgejoNamesAndValues/leading_digit",
+    "TestValidateManifestRefusesLossyForgejoNamesAndValues/reserved_prefix",
+    "TestValidateManifestRefusesLossyForgejoNamesAndValues/variable_CI",
+    "TestValidateManifestRefusesLossyForgejoNamesAndValues/carriage_return",
+    "TestValidateManifestRefusesLossyForgejoNamesAndValues/prefixed_sentinel",
+    "TestValidateManifestRefusesLossyForgejoNamesAndValues/too_long",
+    "TestValidateManifestRefusesLossyForgejoNamesAndValues",
+    "TestWorkflowUsesCanonicalNamesAtRuntime",
+    "TestVariableReadPathDoesNotExist"
+  ],
+  "skips": [],
+  "failures": []
+}
