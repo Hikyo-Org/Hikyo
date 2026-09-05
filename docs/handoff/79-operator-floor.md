@@ -59,3 +59,5 @@ Keep the obligation open until reviewed candidate CI evidence is available.
 The manual operator-floor workflow requires no custody secret. Existing operator
 tests and resource limits remain unchanged; the server and backup floor gate
 are separate acceptance work. No production clusters were read or changed.
+
+CI integration correction: the existing cache policy allowed only ubuntu-latest and rejected native arm64. The policy now names only the two manual floor workflows as ubuntu-24.04-arm exceptions, forbids shared cache actions there, and retains ordinary GitHub-hosted runner restrictions. Both positive and injected wrong-runner/cache/trigger cases are checked before push.

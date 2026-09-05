@@ -44,9 +44,29 @@ for file in "$@"; do
 	if grep -iE 'blacksmith|buildjet|self-hosted' "$file" >/dev/null; then
 		fail "non-GitHub runner reference in $(basename "$file")"
 	fi
+	expected_runner=ubuntu-latest
+	case $(basename "$file") in
+		floor-acceptance.yml | operator-floor.yml)
+			# Native arm64 acceptance is an explicit release obligation. These
+			# manual jobs never share the ordinary x86 build caches.
+			expected_runner=ubuntu-24.04-arm
+			require_line "$file" '  workflow_dispatch:'
+			awk '
+				/^on:/ { active = 1; if ($0 != "on:") bad = 1; next }
+				active && /^[^[:space:]#]/ { active = 0 }
+				active && /^  [^ #]/ { if ($0 != "  workflow_dispatch:") bad = 1; else manual = 1 }
+				END { if (bad || !manual) exit 1 }
+			' "$file" || fail "release floor workflow must be manual-only"
+			require_line "$file" '          cache: false'
+			if grep -E 'actions/cache(@|/)' "$file" >/dev/null; then
+				fail "release floor workflow must not use shared caches"
+			fi
+			;;
+	esac
 	if grep -E '^[[:space:]]+runs-on:' "$file" |
-		grep -Fv 'runs-on: ubuntu-latest' >/dev/null; then
-		fail "runner other than ubuntu-latest in $(basename "$file")"
+		sed 's/^[[:space:]]*runs-on:[[:space:]]*//' |
+		grep -Fxv "$expected_runner" >/dev/null; then
+		fail "runner other than $expected_runner in $(basename "$file")"
 	fi
 done
 
