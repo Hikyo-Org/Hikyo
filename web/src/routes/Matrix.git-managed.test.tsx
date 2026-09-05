@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderForm } from '../testkit/renderForm.tsx';
 import { Matrix } from './Matrix.tsx';
 
-const mocks = vi.hoisted(() => ({ source: 'db' as 'db' | 'git' }));
+const mocks = vi.hoisted(() => ({ source: 'db' as 'db' | 'git', groupId: '' }));
 
 vi.mock('@tanstack/react-virtual', () => ({
   useVirtualizer: ({ count }: { readonly count: number }) => ({
@@ -58,7 +58,7 @@ vi.mock('../api/matrix.ts', async (importActual) => {
             deprecation_note: '',
             declaration: { rule: { type: 'string', allow_empty: true } },
             presence: { required_in: { mode: 'none' }, forbidden_in: { mode: 'none' } },
-            group_id: '',
+            group_id: mocks.groupId,
             created_at: '2026-08-24T08:00:00Z',
           }],
           count: 1,
@@ -66,7 +66,7 @@ vi.mock('../api/matrix.ts', async (importActual) => {
         isPending: false,
         isError: false,
       },
-      groups: { data: { items: [], count: 0 }, isPending: false, isError: false },
+      groups: { data: { items: [{ id: 'linked_a', name: 'Database credentials' }], count: 1 }, isPending: false, isError: false },
       environmentRows: [{
         environmentId: 'env_a',
         environment,
@@ -103,6 +103,7 @@ vi.mock('./useProtectedPublishCeremony.ts', () => ({
 
 afterEach(() => {
   mocks.source = 'db';
+  mocks.groupId = '';
 });
 
 function render() {
@@ -144,4 +145,20 @@ describe('Matrix declaration availability by definitions source', () => {
     ).toBe(true);
     await view.unmount();
   });
+});
+
+it('keeps linked keys in their folder and shows their relationship separately', async () => {
+  mocks.groupId = 'linked_a';
+  const view = await render();
+  const sections = [...view.container.querySelectorAll('.matrix__group-toggle')];
+  expect(sections).toHaveLength(1);
+  expect(sections[0]?.textContent).toContain('app');
+  expect(sections[0]?.textContent).not.toContain('Database credentials');
+  expect(view.container.querySelector('.matrix__linked-keys')?.textContent).toContain(
+    'Linked keys: Database credentials',
+  );
+  expect(view.container.querySelector('.matrix__linked-keys')?.getAttribute('title')).toContain(
+    'Pending changes publish together',
+  );
+  await view.unmount();
 });

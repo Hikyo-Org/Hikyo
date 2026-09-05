@@ -67,13 +67,13 @@ export function CatalogueManageDialog({
     <dialog className="matrix-editor catalogue-manage" ref={dialog} onClose={onClose}>
       <div className="matrix-editor__head">
         <div>
-          <h2>Folders &amp; groups</h2>
-          <p>Organise the catalogue: folders are namespace labels, groups couple related keys.</p>
+          <h2>Folders &amp; linked keys</h2>
+          <p>Folders organise keys by path. Linked keys enforce publishing and presence rules.</p>
         </div>
         <button
           type="button"
           className="btn matrix-editor__close"
-          aria-label="Close folders and groups"
+          aria-label="Close folders and linked keys"
           onClick={onClose}
         >
           ✕
@@ -84,6 +84,7 @@ export function CatalogueManageDialog({
 
       <section className="catalogue-manage__section" aria-labelledby="catalogue-folders">
         <h3 id="catalogue-folders">Folders</h3>
+        <p>Organise keys without changing how they publish or which values must be set.</p>
         {folders.isPending ? <p role="status">Loading folders…</p> : null}
         {folders.isError ? <Alert>Folders could not be read.</Alert> : null}
         {folders.data !== undefined && folders.data.items.length === 0 ? (
@@ -100,12 +101,13 @@ export function CatalogueManageDialog({
       </section>
 
       <section className="catalogue-manage__section" aria-labelledby="catalogue-groups">
-        <h3 id="catalogue-groups">Key groups</h3>
-        {groups.isPending ? <p role="status">Loading groups…</p> : null}
-        {groups.isError ? <Alert>Key groups could not be read.</Alert> : null}
+        <h3 id="catalogue-groups">Linked keys</h3>
+        <p>Pending changes publish together. All linked keys must be set together in each environment.</p>
+        {groups.isPending ? <p role="status">Loading linked keys…</p> : null}
+        {groups.isError ? <Alert>Linked keys could not be read.</Alert> : null}
         {groups.data !== undefined && groups.data.items.length === 0 ? (
           <p role="status" className="catalogue-manage__empty">
-            No groups yet. Create one, then add keys to it from each key’s detail page.
+            No linked keys yet. Create a set, then link keys from each key’s detail page.
           </p>
         ) : null}
         <ul className="catalogue-manage__list">
@@ -291,7 +293,7 @@ function FolderRow({
 
 function CreateKeyGroup({ refData }: { refData: MatrixRef }) {
   const create = useCreateKeyGroup(refData);
-  const write = useNameWrite('create the group');
+  const write = useNameWrite('create the linked-key set');
   const id = useId();
   const [name, setName] = useState('');
   const trimmed = name.trim();
@@ -309,12 +311,12 @@ function CreateKeyGroup({ refData }: { refData: MatrixRef }) {
                 { onSuccess: () => resolve(), onError: (error) => reject(error) },
               ),
             ).then(() => setName('')),
-          `Group ${trimmed} created.`,
+          `Linked-key set ${trimmed} created.`,
         );
       }}
     >
       <label className="visually-hidden" htmlFor={id}>
-        New group name
+        New linked-key set name
       </label>
       <input
         id={id}
@@ -324,14 +326,14 @@ function CreateKeyGroup({ refData }: { refData: MatrixRef }) {
         onChange={(event) => setName(event.currentTarget.value)}
       />
       <button type="submit" className="btn btn--primary" disabled={create.isPending || trimmed === ''}>
-        Add group
+        Add linked-key set
       </button>
       {write.refusal === null ? null : <Alert>{write.refusal}</Alert>}
       {write.done === null ? null : <Done>{write.done}</Done>}
       {write.scanBlock === null ? null : (
         <ScanBlockDialog
-          title="Group name blocked by secret scanning"
-          intro="A group name is exported to Git and treated as public. This one was refused because it looks like it carries secret material."
+          title="Linked-key set name blocked by secret scanning"
+          intro="A linked-key set name is exported to Git and treated as public. This one was refused because it looks like it carries secret material."
           findings={write.scanBlock.findings}
           onOverride={write.scanBlock.onOverride}
           onClose={write.closeScanBlock}
@@ -352,7 +354,7 @@ function GroupRow({
 }) {
   const rename = useRenameKeyGroup(refData, group.id);
   const remove = useDeleteKeyGroup(refData, group.id);
-  const write = useNameWrite('rename the group');
+  const write = useNameWrite('rename the linked-key set');
   const [name, setName] = useState(group.name);
   const [confirming, setConfirming] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -362,14 +364,14 @@ function GroupRow({
     <li className="catalogue-manage__row">
       <div className="catalogue-manage__row-main">
         <input
-          aria-label={`Name for group ${group.name}`}
+          aria-label={`Name for linked-key set ${group.name}`}
           value={name}
           disabled={readOnly || busy}
           onChange={(event) => setName(event.currentTarget.value)}
         />
         <span className="catalogue-manage__meta">
           {String(group.members.length)} {group.members.length === 1 ? 'key' : 'keys'}
-          {group.inert ? <span className="catalogue-manage__inert"> · inert</span> : null}
+          {group.inert ? <span className="catalogue-manage__inert"> · needs at least two keys</span> : null}
         </span>
         <button
           type="button"
@@ -384,7 +386,7 @@ function GroupRow({
                     { onSuccess: () => resolve(), onError: (error) => reject(error) },
                   ),
                 ),
-              `Group renamed to ${trimmed}.`,
+              `Linked-key set renamed to ${trimmed}.`,
             )
           }
         >
@@ -398,7 +400,7 @@ function GroupRow({
             onClick={() => {
               setDeleteError(null);
               remove.mutate(undefined, {
-                onError: (error) => setDeleteError(catalogueRefusalText(error, 'delete the group')),
+                onError: (error) => setDeleteError(catalogueRefusalText(error, 'delete the linked-key set')),
               });
             }}
           >
@@ -420,8 +422,8 @@ function GroupRow({
       {write.done === null ? null : <Done>{write.done}</Done>}
       {write.scanBlock === null ? null : (
         <ScanBlockDialog
-          title="Group name blocked by secret scanning"
-          intro="A group name is exported to Git and treated as public. This one was refused because it looks like it carries secret material."
+          title="Linked-key set name blocked by secret scanning"
+          intro="A linked-key set name is exported to Git and treated as public. This one was refused because it looks like it carries secret material."
           findings={write.scanBlock.findings}
           onOverride={write.scanBlock.onOverride}
           onClose={write.closeScanBlock}
