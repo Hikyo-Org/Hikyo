@@ -11,3 +11,9 @@ This must land separately before PR673: trusted `ci-control` invokes main's work
 Validation retained: five isolated f31 runs, all four restore scenarios, 25 named passes and zero skips, 40.477 seconds. Scheduler regression checks exact coverage/order, failure in either group, and missing/duplicate/empty concurrent inventory refusal. The empty case requires its exact diagnostic. ShellCheck, Actionlint, cache/required-job policy and diff whitespace checks passed. Hosted exact-head validation remains pending.
 
 Actual main-407 inventory replay: 96 packages listed, 95 dispatched once, app last and only isolation excluded. The earlier f31 proof listed 98 packages because it includes two added diagnostics packages. Dispatch evidence is not a full-suite execution. All author checks above passed again after the move and empty-inventory correction; no active runner remains.
+
+## Trusted fixture follow-up
+
+PR674 60e5 exposed a stale supply-chain assertion requiring the replaced inline `go list` command. The fixture now pins the two scheduler invocations and runs its coverage/order/failure regression directly, retaining all existing authority checks. Baseline refusal reproduced; focused fixture and ShellCheck passed; independent R2 CLEAN.
+
+All 38 supply-chain workflow run blocks passed locally, including actual Cosign interoperability/readable restore signing. The local chart mutation check resumed with GNU sed after identifying the BSD sed prerequisite mismatch; earlier passing Go/Cosign checks were retained. Helm4.2.3 archive checksum verified; Python3.14/PyYAML used through local PATH only. External `core-scheduling-supply-chain/{result,proof}.json` records exact scope and all outcomes. Updated hosted exact-head CI remains pending. No scheduler/runtime changes; parent owns signing and delivery.
