@@ -17,7 +17,16 @@ type GrantsQuery = {
   refetch: ReturnType<typeof vi.fn>;
 };
 
-type Mocks = { instanceGrants: GrantsQuery; orgGrantsCalls: string[] };
+type Mocks = { instanceGrants: GrantsQuery; orgGrants: GrantsQuery; orgGrantsCalls: string[] };
+
+const idle = (): GrantsQuery => ({
+  data: undefined,
+  error: null,
+  isError: false,
+  isPending: false,
+  isSuccess: false,
+  refetch: vi.fn(),
+});
 
 const mocks = vi.hoisted(
   (): Mocks => ({
@@ -26,6 +35,14 @@ const mocks = vi.hoisted(
       error: null,
       isError: false,
       isPending: true,
+      isSuccess: false,
+      refetch: vi.fn(),
+    },
+    orgGrants: {
+      data: undefined,
+      error: null,
+      isError: false,
+      isPending: false,
       isSuccess: false,
       refetch: vi.fn(),
     },
@@ -40,7 +57,7 @@ vi.mock('../api/access.ts', async (importActual) => {
     useInstanceGrants: () => mocks.instanceGrants,
     useOrgGrants: (org: string) => {
       mocks.orgGrantsCalls.push(org);
-      return { data: undefined, error: null, isError: false, isPending: false, isSuccess: false, refetch: vi.fn() };
+      return mocks.orgGrants;
     },
     useRevokeGrant: () => ({ isPending: false, variables: undefined, mutate: vi.fn() }),
     useCreateGrants: () => ({ isPending: false, mutate: vi.fn() }),
@@ -98,6 +115,7 @@ function text(container: HTMLElement, selector: string): string {
 describe('Members at instance scope', () => {
   beforeEach(() => {
     mocks.orgGrantsCalls.length = 0;
+    mocks.orgGrants = idle();
     mocks.instanceGrants = {
       data: { items: [instanceGrant], count: 1 },
       error: null,
@@ -146,4 +164,33 @@ describe('Members at instance scope', () => {
     expect(text(view.container, '[role="alert"]')).toContain('Instance grants require a second factor');
     await view.unmount();
   });
+});
+
+describe('Members at organisation scope without manage-members', () => {
+  beforeEach(() => {
+    mocks.instanceGrants = idle();
+  });
+
+  for (const status of [403, 404]) {
+    it(`hides the grant, invite and reset actions on a ${String(status)} listing refusal`, async () => {
+      mocks.orgGrants = { ...idle(), error: new ApiError(status, 'refused'), isError: true };
+      const view = await renderForm(
+        <MemoryRouter initialEntries={['/orgs/org_acme/members']}>
+          <Routes>
+            <Route path="/orgs/:org/members" element={<Members scope={{ kind: 'org' }} />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      expect(view.container.querySelector('[role="alert"]')).toBeNull();
+      const statuses = [...view.container.querySelectorAll('[role="status"]')].map((s) => s.textContent);
+      expect(statuses).toContain(
+        'You hold no manage-members here: this list shows only what you are allowed to see.',
+      );
+      const buttons = [...view.container.querySelectorAll('button')].map((b) => b.textContent);
+      expect(buttons).not.toContain('New grant');
+      expect(buttons).not.toContain('Invite');
+      expect(buttons.some((b) => b?.startsWith('Reset credential'))).toBe(false);
+      await view.unmount();
+    });
+  }
 });

@@ -18,7 +18,7 @@ function json(body: unknown): Response {
   });
 }
 
-/** The start body is parsed, not cast — the house rule holds in tests too. */
+/** The start body is parsed, not cast, the house rule holds in tests too. */
 const zStartBody = z.record(z.string(), z.unknown());
 const startBody = (init?: RequestInit): Record<string, unknown> =>
   zStartBody.parse(JSON.parse(String(init?.body)));

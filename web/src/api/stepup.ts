@@ -19,7 +19,7 @@ import { requestOptions, toBase64URL } from './values.ts';
  * A browser session is minted at password assurance and stays there until the
  * human presents a second factor IN THIS SESSION: enrolling an authenticator
  * proves nothing about the session that enrolled it. Every MFA-mandatory
- * surface — instance administration, grants, reveal — is refused until then,
+ * surface, instance administration, grants, reveal, is refused until then,
  * so the shell has to offer the step-up where the refusal would otherwise
  * land, rather than telling the human to "sign in again" into a login page
  * that only ever asks for a password.
@@ -104,7 +104,7 @@ export function useStepUpPasskey() {
 /**
  * usePasskeyLogin is the discoverable-credential sign-in: fully pre-auth, it
  * names no account, and the session it mints already carries webauthn
- * assurance — no step-up follows.
+ * assurance, no step-up follows.
  */
 export function usePasskeyLogin() {
   const auth = useAuth();

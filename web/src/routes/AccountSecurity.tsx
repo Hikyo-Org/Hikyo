@@ -38,7 +38,7 @@ const prototypeMode = import.meta.env.MODE === 'prototype';
  *
  * Every mutation on this page is an account-security mutation, and they share
  * one rule the prototype drew as a blue "confirm it's you" step-up: the proof
- * is the PRE-EXISTING credential — the password, or a confirmed code — never
+ * is the PRE-EXISTING credential, the password, or a confirmed code, never
  * the credential being added or removed. One dialog asks for it, so the rule
  * is stated once and cannot be half-applied.
  *
@@ -52,7 +52,7 @@ const prototypeMode = import.meta.env.MODE === 'prototype';
  *    time, and a switch that only pretended to set a policy is worse than
  *    none.
  *  - **Notification preferences.** No operation, and the ADR's own answer is
- *    that security alerts are not disableable — so there is nothing to offer.
+ *    that security alerts are not disableable, so there is nothing to offer.
  */
 export function AccountSecurity() {
   const auth = useAuth();
@@ -90,7 +90,7 @@ export function AccountSecurity() {
   // mid-flight enrolment: a settled status that reports a confirmed factor
   // (done) or, with nothing pending, no factor at all (the window lapsed). The
   // `!isFetching` guard scopes the "no factor" case to a SETTLED read, so the
-  // refetch a fresh start kicks off — which resolves to pending — does not count
+  // refetch a fresh start kicks off, which resolves to pending, does not count
   // the still-cached previous value as spent.
   const totpSeedSpent =
     totpStatus.isSuccess &&
@@ -337,7 +337,7 @@ export function AccountSecurity() {
 
         {totpEnrolmentInProgress ? (
           <p role="status">
-            An enrolment is staged — add it to your authenticator and confirm it with the code below.
+            An enrolment is staged. Add it to your authenticator and confirm it with the code below.
           </p>
         ) : null}
         {otpauth !== null && totpEnrolmentInProgress ? (
@@ -407,7 +407,7 @@ export function AccountSecurity() {
         </> : <>
           <p>
             Recovery codes restore <strong>access</strong> when every factor is gone. They never
-            satisfy a disclosure reauthentication, and they never authorise their own regeneration —
+            satisfy a disclosure reauthentication, and they never authorise their own regeneration:
             the proof is a code from your authenticator where one stands, otherwise your password.
           </p>
           <div className="panel__actions">
@@ -432,7 +432,7 @@ export function AccountSecurity() {
         ) : <>
         <p>
           Every artifact currently holding your account. A <span className="mono">workspace</span>{' '}
-          session belongs to another instance&apos;s shell operating this one as you — revoking it
+          session belongs to another instance&apos;s shell operating this one as you; revoking it
           ends that immediately, mid-flight, because the row is re-resolved on the next request.
         </p>
         {sessions.isError ? (
@@ -621,7 +621,7 @@ type ProofRequest =
 const PROOF_COPY: Record<ProofRequest['kind'], { title: string; hint: string; label: string }> = {
   'add-passkey': {
     title: 'Confirm it is you',
-    hint: 'Enrolling a passkey is an account-security change, so the credential you already have authorises it — the new one never authorises itself.',
+    hint: 'Enrolling a passkey is an account-security change, so the credential you already have authorises it; the new one never authorises itself.',
     label: 'Password',
   },
   'remove-passkey': {
@@ -734,7 +734,7 @@ function RecoveryCodes({ codes, onClose }: { codes: readonly string[]; onClose: 
     >
       <h2 id="codes-title">Your new recovery codes</h2>
       <p className="ceremony__lede">
-        Shown once. They are stored as hashes, so nobody — including this instance — can show them
+        Shown once. They are stored as hashes, so nobody, including this instance, can show them
         to you again. The previous batch is already invalid.
       </p>
       <ul className="codes" aria-label="Recovery codes">
@@ -776,7 +776,7 @@ function RecoveryCodes({ codes, onClose }: { codes: readonly string[]; onClose: 
  * QrCode renders `value` as a scannable QR built as inline SVG. It is inline
  * and not an `<img src="data:…">` because the CSP's `img-src 'self'` forbids
  * data-URL images. The modules are one `<path>`, painted black on white
- * regardless of theme — a scanner needs the contrast, and `forced-color-adjust`
+ * regardless of theme, a scanner needs the contrast, and `forced-color-adjust`
  * keeps the OS from repainting it into an unscannable pair.
  */
 function QrCode({ value, title }: { value: string; title: string }) {
@@ -883,8 +883,8 @@ function themeOf(value: string): ThemeChoice {
 function sessionDetail(session: ActiveSession): string {
   const seen = `last seen ${new Date(session.last_seen_at).toLocaleString()}`;
   if (session.requesting_origin !== undefined) {
-    return `Issued to ${session.requesting_origin} — ${seen}.`;
+    return `Issued to ${session.requesting_origin}, ${seen}.`;
   }
   const where = session.source_ip === undefined ? '' : ` from ${session.source_ip}`;
-  return `Signed in with ${session.auth_method}${where} — ${seen}.`;
+  return `Signed in with ${session.auth_method}${where}, ${seen}.`;
 }

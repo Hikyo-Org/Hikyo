@@ -44,7 +44,7 @@ function toScanBlock(
  * CatalogueManageDialog is the folder and key-group lifecycle surface (#493).
  *
  * Folders and groups are project-scoped organisation, not per-key facts, so
- * they live here — reachable from the matrix, including its empty state, which
+ * they live here, reachable from the matrix, including its empty state, which
  * is what makes the lifecycle complete from an empty project. A folder is a
  * namespace label that owns no value and blocks no key; a group couples keys
  * and dissolves without deleting them. Both names are Surface-2 scanning

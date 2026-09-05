@@ -60,7 +60,7 @@ describe('validatePolicyJson', () => {
     });
   });
 
-  it('rejects malformed JSON, arrays and primitives — never an unattributed 400', () => {
+  it('rejects malformed JSON, arrays and primitives, never an unattributed 400', () => {
     expect(validatePolicyJson('{not json', 'P').ok).toBe(false);
     expect(validatePolicyJson('[1,2]', 'P').ok).toBe(false);
     expect(validatePolicyJson('"string"', 'P').ok).toBe(false);

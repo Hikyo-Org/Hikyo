@@ -12,6 +12,31 @@ import {
   type AuditScope,
 } from '../api/audit.ts';
 import { ApiError } from '../api/client.ts';
+import { JumpIndex, Panel } from './Sections.tsx';
+
+/** The glyph before an outcome word, so the state is never colour-only. */
+function outcomeGlyph(outcome: AuditEvent['outcome']): string | null {
+  switch (outcome) {
+    case 'failure':
+      return '✕ ';
+    case 'denied':
+      return '⊘ ';
+    case 'disconnected':
+      return '⇅ ';
+    default:
+      return null;
+  }
+}
+
+function Outcome({ outcome }: { readonly outcome: AuditEvent['outcome'] }) {
+  const glyph = outcomeGlyph(outcome);
+  return (
+    <span className={`chip audit__outcome audit__outcome--${outcome}`}>
+      {glyph === null ? null : <span aria-hidden="true">{glyph}</span>}
+      {outcome}
+    </span>
+  );
+}
 
 /** A stored UTC timestamp rendered in the operator's locale, or the raw value. */
 function when(value: string): string {
@@ -64,6 +89,12 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
 
   const events = trail.data?.pages.flatMap((page) => page.items) ?? [];
   const scannedEnd = trail.hasNextPage !== true;
+  const emptyResult = trail.isSuccess && events.length === 0;
+  const clearButton = (
+    <button type="button" className="btn btn--quiet" onClick={() => apply(emptyAuditFilter, '')}>
+      Clear
+    </button>
+  );
 
   function apply(next: AuditFilter, nextEnvironment = environmentDraft) {
     setSelected(null);
@@ -91,7 +122,16 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
           : 'Every recorded event in this project, oldest first, or one environment of it. Reading the trail is itself audited.'}
       </p>
 
-      <form className="audit__filter panel" onSubmit={onSubmit} aria-label="Filter the audit trail">
+      <JumpIndex
+        sections={[
+          { id: 'audit-filter', label: 'Filter' },
+          { id: 'audit-events', label: 'Events' },
+          { id: 'audit-detail', label: 'Detail' },
+        ]}
+      />
+
+      <Panel id="audit-filter" title="Filter">
+      <form className="audit__filter" onSubmit={onSubmit} aria-label="Filter the audit trail">
         <div className="audit__filter-grid">
           {project === '' ? null : (
             <label className="field">
@@ -179,13 +219,9 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
           <button type="submit" className="btn btn--primary">
             Apply filter
           </button>
-          <button
-            type="button"
-            className="btn btn--quiet"
-            onClick={() => apply(emptyAuditFilter, '')}
-          >
-            Clear
-          </button>
+          {/* Clear lives in ONE place: here while there are events, inside the
+              empty state when the filter matched nothing. */}
+          {emptyResult ? null : clearButton}
           {/* A plain same-origin GET: the browser streams the JSONL to disk under
               the session cookie, so the SPA never holds the trail in memory and no
               token rides the URL. */}
@@ -194,33 +230,36 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
           </a>
         </div>
       </form>
+      </Panel>
 
       <div className="audit__panes">
-        <section className="audit__list-pane" aria-label="Audit events">
+        <Panel id="audit-events" title="Events">
+          {trail.isPending ? <p role="status">Loading events…</p> : null}
           {trail.isError ? (
             <p className="audit__empty alert" role="alert">
               {refusalText(trail.error)}
             </p>
-          ) : events.length === 0 && trail.isSuccess ? (
-            <p className="audit__empty" role="status">
-              {scannedEnd
-                ? 'No events match this filter.'
-                : 'No matches in the pages scanned so far — keep scanning for more.'}
-            </p>
+          ) : emptyResult ? (
+            <div className="audit__empty" role="status">
+              <p>
+                {scannedEnd
+                  ? 'No events match this filter.'
+                  : 'No matches in the pages scanned so far. Keep scanning for more.'}
+              </p>
+              {clearButton}
+            </div>
           ) : (
             <ol className="audit__list" aria-label="Audit events, oldest first">
               {events.map((event) => (
                 <li key={String(event.seq)}>
                   <button
                     type="button"
-                    className="btn audit__row"
+                    className="audit__row"
                     aria-pressed={selected?.seq === event.seq}
                     onClick={() => setSelected(event)}
                   >
-                    <span className="audit__row-op">{event.type}</span>
-                    <span className={`chip audit__outcome audit__outcome--${event.outcome}`}>
-                      {event.outcome}
-                    </span>
+                    <span className="audit__row-op mono">{event.type}</span>
+                    <Outcome outcome={event.outcome} />
                     <span className="audit__row-actor">{event.actor_id ?? event.actor_class}</span>
                     <span className="audit__row-when">{when(event.recorded_at)}</span>
                   </button>
@@ -243,12 +282,20 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
               End of the trail.
             </p>
           ) : null}
-        </section>
+        </Panel>
 
-        {selected !== null ? (
-          <aside className="audit__detail panel" aria-label="Event detail">
+        {/* The detail stays an aside (a complementary landmark beside the
+            list) rather than a Panel; the id and tabIndex give the jump index
+            the same focus landing a Panel has. */}
+        {selected === null ? (
+          <aside className="audit__detail card panel" id="audit-detail" tabIndex={-1} aria-label="Event detail">
+            <h2>Event detail</h2>
+            <p role="status">Select an event to see its detail.</p>
+          </aside>
+        ) : (
+          <aside className="audit__detail card panel" id="audit-detail" tabIndex={-1} aria-label="Event detail">
             <div className="audit__detail-head">
-              <h2>{selected.type}</h2>
+              <h2 className="mono">{selected.type}</h2>
               <button
                 type="button"
                 className="btn btn--quiet audit__detail-close"
@@ -260,10 +307,15 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
             <dl className="audit__facts">
               <AuditFact label="Sequence" value={String(selected.seq)} />
               <AuditFact label="Event id" value={selected.id} />
-              <AuditFact label="Outcome" value={selected.outcome} />
+              <div className="audit__fact">
+                <dt>Outcome</dt>
+                <dd>
+                  <Outcome outcome={selected.outcome} />
+                </dd>
+              </div>
               <AuditFact label="Recorded" value={when(selected.recorded_at)} />
               <AuditFact label="Occurred" value={when(selected.occurred_at)} />
-              <AuditFact label="Principal" value={selected.actor_id ?? '—'} />
+              <AuditFact label="Principal" value={selected.actor_id ?? 'absent'} />
               <AuditFact label="Actor class" value={selected.actor_class} />
               <AuditFact label="Scope" value={selected.scope_class} />
               {selected.org_id !== undefined ? <AuditFact label="Org" value={selected.org_id} /> : null}
@@ -300,7 +352,7 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
             <h3 className="audit__payload-title">Payload</h3>
             <pre className="audit__payload">{JSON.stringify(selected.payload, null, 2)}</pre>
           </aside>
-        ) : null}
+        )}
       </div>
     </div>
   );

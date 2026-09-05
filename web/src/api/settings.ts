@@ -294,7 +294,7 @@ export function orgTopologyReadiness(
 
 /**
  * useOrgTopology is the org's projects, their environments and each
- * environment's protection — the one shape the grant modal's scope select and
+ * environment's protection, the one shape the grant modal's scope select and
  * the org-scope blast enumeration both need. `ready` is the action gate: it is
  * true only after every hierarchy and settings read settled without a
  * forbidden or unexpected failure. Consumers must not open actions before it.
@@ -378,7 +378,7 @@ export function useOrgTopology(org: string): {
 
 /**
  * useInstanceOrgs is the OPERATOR's enumeration of every organisation on the
- * instance — `instance-config`, which is MFA-mandatory.
+ * instance, `instance-config`, which is MFA-mandatory.
  *
  * A password-only session is refused 403 here, and that refusal is rendered as
  * its own honest state rather than as an empty list: the answer is not "there
@@ -449,8 +449,8 @@ export function useDeleteProject(org: string, onDeleted?: () => void) {
 /**
  * useCreateProject writes one project into an organisation.
  *
- * On success it invalidates only the project list for this org — the exact key
- * every chrome surface reads through `useProjects` — so the new row appears
+ * On success it invalidates only the project list for this org, the exact key
+ * every chrome surface reads through `useProjects`, so the new row appears
  * without a reload and nothing else refetches.
  */
 export function useCreateProject(org: string) {
@@ -586,16 +586,16 @@ export function createProjectRefusalText(error: unknown): string {
         return 'Your session ended. Sign in again to continue.';
       case 403:
       case 404:
-        return 'You are not permitted to create a project here — that needs manage-projects at the organisation scope.';
+        return 'You are not permitted to create a project here: that needs manage-projects at the organisation scope.';
       case 409:
         return error.detail ?? 'This project name is already in use.';
       case 429:
         return 'Too many attempts right now. Wait a moment and try again.';
       default:
-        return 'The server failed; whether the project was created is unknown — reload to check.';
+        return 'The server failed; whether the project was created is unknown: reload to check.';
     }
   }
-  return 'The server failed; whether the project was created is unknown — reload to check.';
+  return 'The server failed; whether the project was created is unknown: reload to check.';
 }
 
 /**
@@ -607,7 +607,7 @@ export function createProjectRefusalText(error: unknown): string {
  * caller-safe detail of its own.
  */
 function environmentLifecyclePermission(action: string): string {
-  return `You are not permitted to ${action} — that needs definitions-edit on the project.`;
+  return `You are not permitted to ${action}: that needs definitions-edit on the project.`;
 }
 
 type EnvironmentLifecycleRefusal = {
@@ -649,7 +649,7 @@ export function createEnvironmentRefusalText(error: unknown): string {
     invalid: 'The environment name is invalid.',
     conflict: 'This environment name is already in use.',
     uncertain:
-      'The server failed; whether the environment was created is unknown — reload to check.',
+      'The server failed; whether the environment was created is unknown: reload to check.',
   });
 }
 
@@ -660,7 +660,7 @@ export function renameEnvironmentRefusalText(error: unknown): string {
     invalid: 'The environment name is invalid.',
     conflict: 'This environment name is already in use.',
     uncertain:
-      'The server failed; whether the environment was renamed is unknown — reload to check.',
+      'The server failed; whether the environment was renamed is unknown: reload to check.',
   });
 }
 
@@ -671,7 +671,7 @@ export function deleteEnvironmentRefusalText(error: unknown): string {
     invalid: 'The environment cannot be deleted from this request.',
     conflict: 'The current environment state refused deletion. Reload before retrying.',
     uncertain:
-      'The server failed; whether the environment was deleted is unknown — reload to check.',
+      'The server failed; whether the environment was deleted is unknown: reload to check.',
   });
 }
 
@@ -681,7 +681,7 @@ export function reorderEnvironmentsRefusalText(error: unknown): string {
     action: 'reorder these environments',
     invalid: 'The complete environment order is invalid. Reload before retrying.',
     conflict: 'The current environment state refused reordering. Reload before retrying.',
-    uncertain: 'The server failed; whether the order changed is unknown — reload to check.',
+    uncertain: 'The server failed; whether the order changed is unknown: reload to check.',
   });
 }
 
@@ -692,7 +692,7 @@ export function cloneEnvironmentRefusalText(error: unknown): string {
     invalid: 'The cloned environment name or source is invalid.',
     conflict: 'The clone conflicts with the current environment state.',
     uncertain:
-      'The server failed; whether the environment was cloned is unknown — reload to check.',
+      'The server failed; whether the environment was cloned is unknown: reload to check.',
   });
 }
 
@@ -705,8 +705,8 @@ export function cloneEnvironmentRefusalText(error: unknown): string {
  * bound to a purpose-specific passkey ceremony. No key material crosses the
  * wire on any of them.
  *
- * The genuinely host-only set — `init`, `migrate`, restore reconciliation,
- * break-glass, host-file custody, and startup-only key material — has no
+ * The genuinely host-only set, `init`, `migrate`, restore reconciliation,
+ * break-glass, host-file custody, and startup-only key material, has no
  * network surface at all, by the system-proof ADR. The "Keys & crypto" card
  * names that set as absent rather than drawing controls that could not exist.
  */
@@ -742,12 +742,12 @@ export function useRotateDek() {
   });
 }
 
-/** Walk the instance credential ciphertext onto the active DEK version. Resumable — re-run until it moves no rows. */
+/** Walk the instance credential ciphertext onto the active DEK version. Resumable, re-run until it moves no rows. */
 export function useReencryptInstance() {
   return useMutation({ mutationFn: () => parsed(reencryptInstanceOp, {}) });
 }
 
-/** Walk a project's ciphertext onto the active DEK version. Resumable — re-run until it moves no rows. */
+/** Walk a project's ciphertext onto the active DEK version. Resumable, re-run until it moves no rows. */
 export function useReencryptProject(org: string, project: string) {
   return useMutation({
     mutationFn: () => parsed(reencryptProjectOp, { path: { org, project } }),
@@ -834,7 +834,7 @@ export function retentionSentence(policy: RetentionPolicy): string {
   const age = policy.max_age_seconds ?? null;
   const count = policy.last_revisions ?? null;
   if (age === null || count === null) {
-    return 'Bounded, but this instance reported no bounds — that is a server fault, not a policy.';
+    return 'Bounded, but this instance reported no bounds: that is a server fault, not a policy.';
   }
   return `Keep a payload while it is younger than ${formatRetentionAge(age)} OR among the last ${count} revisions of its environment.`;
 }
@@ -887,8 +887,8 @@ export function settingsOperationFailure(
  * These are MFA-mandatory instance and tenant operations, so a 403 carries the
  * same reading every other instance-admin surface gives it: the session is
  * short of second-factor assurance, not permanently forbidden. It points at the
- * step-up banner — which the shell keeps visible above the content whenever the
- * session is password-only — rather than claiming an authorization failure that
+ * step-up banner, which the shell keeps visible above the content whenever the
+ * session is password-only, rather than claiming an authorization failure that
  * signing in again could not fix. Every other status defers to
  * settingsFailureText.
  */
@@ -923,10 +923,10 @@ export function settingsFailureText(
       case 429:
         return 'Too many attempts right now. Wait a moment and try again.';
       default:
-        return 'The server failed; whether the change applied is unknown — reload to check.';
+        return 'The server failed; whether the change applied is unknown: reload to check.';
     }
   }
-  return 'The server failed; whether the change applied is unknown — reload to check.';
+  return 'The server failed; whether the change applied is unknown: reload to check.';
 }
 
 function settingsAction(operation: SettingsOperation | undefined): string {

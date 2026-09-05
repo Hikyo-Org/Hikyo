@@ -188,7 +188,7 @@ describe('ConnectionCredentials mint', () => {
     expect(mutationData).not.toContain(SENTINEL);
     expect(JSON.stringify(client.getQueryCache().getAll())).not.toContain(SENTINEL);
 
-    // Done is refused until stored is confirmed — the value has no second look.
+    // Done is refused until stored is confirmed, the value has no second look.
     await act(async () => button(container, 'Done').click());
     await settle();
     expect(container.querySelector('.machine__token')?.textContent).toBe(SENTINEL);

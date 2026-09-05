@@ -231,10 +231,10 @@ describe('settings refusals', () => {
 
   it('does not claim an unknown server failure left state unchanged', () => {
     expect(settingsFailureText(new ApiError(500, 'x'), 'set-org-retention')).toBe(
-      'The server failed; whether the change applied is unknown — reload to check.',
+      'The server failed; whether the change applied is unknown: reload to check.',
     );
     expect(settingsFailureText(new Error('network'), 'set-org-retention')).toBe(
-      'The server failed; whether the change applied is unknown — reload to check.',
+      'The server failed; whether the change applied is unknown: reload to check.',
     );
   });
 });

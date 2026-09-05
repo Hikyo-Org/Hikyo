@@ -50,21 +50,21 @@ import { useNavigationGuard } from './MachineAccess.tsx';
  * group→template mapping table, the provisioning-credential lifecycle, and the
  * provisioned directory. Every operation here is `manage-members` held at ORG
  * SCOPE EXACTLY and is MFA-mandatory, so the surface renders the server's
- * refusals rather than second-guessing the caller's authority — a 403 IS the
+ * refusals rather than second-guessing the caller's authority, a 403 IS the
  * second-factor refusal, a 404 is the uniform "not available or absent".
  *
  * The consequence language a human is TOLD is server-authored on purpose: a
  * mapping mutation returns `warnings`, and this surface renders them verbatim
  * rather than composing a second, unreviewed policy. What the surface states on
- * its own — the binding teardown, the revocation bite — is factual and drawn
+ * its own, the binding teardown, the revocation bite, is factual and drawn
  * from the contract, never a guess about scope reach.
  */
 export function ScimProvisioning() {
   const params = useParams();
   const org = params['org'] ?? '';
   const [search, setSearch] = useSearchParams();
-  // The selected binding is ROUTE DATA in the query string — an id, never a
-  // secret — so a reload and a shared link land on the same binding.
+  // The selected binding is ROUTE DATA in the query string, an id, never a
+  // secret, so a reload and a shared link land on the same binding.
   const selected = search.get('binding') ?? '';
 
   const bindings = useScimBindings(org);
@@ -265,7 +265,7 @@ function DeleteBinding({ org, binding }: { org: string; binding: ScimBinding }) 
         One transaction, in order: every credential is revoked so no new sync can begin; every SCIM
         origin is released (lockout conversion included); the provisioning connection and its grant
         are retired; the directory, mapping table and binding row go. Identity links and accounts{' '}
-        <strong>survive</strong> — they are account property.
+        <strong>survive</strong>; they are account property.
       </p>
       {feedback.failure === null ? null : <Alert>{feedback.failure}</Alert>}
       <TypedNameConfirm
@@ -364,7 +364,7 @@ function CreateBindingForm({ org }: { org: string }) {
           Subject source{' '}
           <Explain
             label="subject source"
-            text="The SCIM attribute path carrying identity material. externalId or a declared extension path — userName is refused by name. Immutable after creation."
+            text="The SCIM attribute path carrying identity material. externalId or a declared extension path; userName is refused by name. Immutable after creation."
           />
         </label>
         <input
@@ -411,7 +411,7 @@ function MappingsSection({ org, binding }: { org: string; binding: ScimBinding }
     <Panel id="scim-mappings" title="Mappings">
       <p>
         Each row grants a provider group&apos;s members the capabilities a template expands into, at
-        one scope. Adding a row grants the group&apos;s current members immediately — the consequence
+        one scope. Adding a row grants the group&apos;s current members immediately; the consequence
         language is returned by the server and shown after the change.
       </p>
 
@@ -547,10 +547,14 @@ function MappingRow({
           or deleted; it is never removed automatically.
         </p>
       ) : null}
+      {/* Origin chip per capability line, as Members does. The wire carries no
+          per-capability origins on a mapping, but every capability on this row
+          comes from this row's group, so the origin is the row itself. */}
       <ul className="scim-mapping__caps">
         {row.capabilities.map((capability) => (
-          <li key={capability} className="mono chip">
-            {capability}
+          <li key={capability} className="capability">
+            <span className="capability__name mono">{capability}</span>
+            <span className="badge mono">scim: {groupName}</span>
           </li>
         ))}
       </ul>
@@ -696,7 +700,7 @@ function CreateMappingForm({ org, binding }: { org: string; binding: string }) {
     <form className="form" onSubmit={onSubmit} noValidate>
       <h3>Map a group to a template</h3>
       <p>
-        Absent scope means organisation — the widest a binding reaches. Nothing preselects a scope
+        Absent scope means organisation, the widest a binding reaches. Nothing preselects a scope
         for you.
       </p>
       {feedback.failure === null ? null : <Alert>{feedback.failure}</Alert>}
@@ -798,7 +802,7 @@ function CredentialsSection({ org, binding }: { org: string; binding: ScimBindin
     <Panel id="scim-credentials" title="Provisioning credentials">
       <p>
         The bearer tokens the identity provider presents at this binding&apos;s SCIM endpoint. The
-        list holds metadata only — the token exists in the mint response and nowhere else, ever.
+        list holds metadata only; the token exists in the mint response and nowhere else, ever.
         Several may be live at once, which is how overlap rotation works.
       </p>
 
@@ -992,7 +996,7 @@ function MintDialog({
       }}
     >
       <h2 className="ceremony__title" id="scim-mint-title">
-        Provisioning credential minted — shown exactly once
+        Provisioning credential minted, shown exactly once
       </h2>
       {minted.rotated ? (
         <p className="notice" role="status">
@@ -1000,7 +1004,7 @@ function MintDialog({
             !
           </span>
           <span>
-            This joined an already-live credential — that is overlap rotation. Update the identity
+            This joined an already-live credential; that is overlap rotation. Update the identity
             provider to this value, then revoke the old one.
           </span>
         </p>
@@ -1053,7 +1057,7 @@ function MintDialog({
         <label htmlFor="scim-stored">I have configured this credential at the identity provider.</label>
       </div>
       {heldBack ? (
-        <Alert>Store the credential first — it cannot be shown again once this closes.</Alert>
+        <Alert>Store the credential first. It cannot be shown again once this closes.</Alert>
       ) : null}
       <button className="btn btn--primary" type="button" disabled={!stored} onClick={dismiss}>
         Done
@@ -1083,7 +1087,7 @@ function DirectorySection({ org, binding }: { org: string; binding: ScimBinding 
     <Panel id="scim-directory" title="Directory">
       <p>
         What the identity provider has provisioned into this organisation. A deprovisioned user is
-        flagged loudly — the provider declared them gone, but grants made by hand here remain and are
+        flagged loudly: the provider declared them gone, but grants made by hand here remain and are
         still usable until a human decides about them.
       </p>
 
@@ -1131,17 +1135,31 @@ function DirectorySection({ org, binding }: { org: string; binding: ScimBinding 
   );
 }
 
-function DirectoryUserRow({ user }: { user: ScimDirectoryUser }) {
+export function DirectoryUserRow({ user }: { user: ScimDirectoryUser }) {
   return (
     <li className="scim-directory-user">
       <div className="scim-directory-user__head">
         <span className="scim-directory-user__name">{user.user_name}</span>
-        <span className="badge" data-state={user.active ? 'active' : 'inactive'}>
-          {user.active ? 'active' : 'inactive'}
-        </span>
+        {user.active ? (
+          <span className="badge" data-state="active">
+            active
+          </span>
+        ) : user.attention.some((item) => item.state === 'manual_grants_remain') ? (
+          <span className="badge" data-state="inactive">
+            <span aria-hidden="true">! </span>deprovisioned, manual grants remain
+          </span>
+        ) : (
+          <span className="badge" data-state="inactive">
+            deprovisioned
+          </span>
+        )}
       </div>
       <p className="scim-directory-user__groups">
-        {user.groups.length === 0 ? 'in no groups' : `${String(user.groups.length)} group(s)`}
+        {user.groups.length === 0
+          ? 'in no groups'
+          : user.groups.length === 1
+            ? 'in 1 group'
+            : `in ${String(user.groups.length)} groups`}
       </p>
       <AttentionList attention={user.attention} subjectPrefix={`${user.user_name} `} />
     </li>

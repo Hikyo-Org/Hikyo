@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { MatrixKeyCreate, type MatrixKeyCreatePayload } from './MatrixKeyCreate.tsx';
+import { editDistance, MatrixKeyCreate, nearMissKeyName, type MatrixKeyCreatePayload } from './MatrixKeyCreate.tsx';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -174,7 +174,7 @@ describe('MatrixKeyCreate', () => {
     const view = await render();
     await act(async () => set(byLabel(view.container, 'matrix-create-type'), 'integer'));
     const [min] = [...view.container.querySelectorAll<HTMLInputElement>('.matrix-key-create__constraints input[type="number"]')];
-    // Beyond Number.MAX_SAFE_INTEGER — parseInt would round it silently.
+    // Beyond Number.MAX_SAFE_INTEGER, parseInt would round it silently.
     await act(async () => set(min!, '9223372036854775807'));
     await fillNameAndSubmit(view.container, 'BIG');
 
@@ -188,10 +188,71 @@ describe('MatrixKeyCreate', () => {
     const secret = view.container.querySelector<HTMLInputElement>('.matrix-key-create__secret input');
     if (secret === null) throw new Error('no secret checkbox');
     await act(async () => secret.click());
+    // A textarea (a password input flattens newlines), masked by class until
+    // the operator opts to see what they type.
     const value = byLabel(view.container, 'matrix-create-value');
-    expect(value.getAttribute('type')).toBe('password');
+    expect(value.tagName).toBe('TEXTAREA');
+    expect(value.classList.contains('matrix-editor__value--masked')).toBe(true);
+    const show = [...view.container.querySelectorAll('label')].find((label) =>
+      label.textContent?.includes('Show while typing'),
+    )?.querySelector('input');
+    if (show === null || show === undefined) throw new Error('no show-while-typing toggle');
+    await act(async () => show.click());
+    expect(value.classList.contains('matrix-editor__value--masked')).toBe(false);
     await fillNameAndSubmit(view.container, 'API_KEY');
     expect(view.onCreate.mock.calls[0]![0].classification).toBe('secret');
     await view.unmount();
+  });
+
+  it('keeps the typed name and previews the normalised declaration', async () => {
+    const view = await render();
+    const nameField = byLabel(view.container, 'matrix-create-name');
+    await act(async () => set(nameField, 'log level'));
+    expect(nameField.value).toBe('log level');
+    const preview = view.container.querySelector('#matrix-create-name-preview');
+    expect(preview?.textContent).toBe('Will be declared as LOG_LEVEL in folder app/');
+    expect(preview?.hasAttribute('role')).toBe(false);
+    expect(nameField.getAttribute('aria-describedby')).toBe('matrix-create-name-preview');
+    await view.unmount();
+  });
+
+  it('warns about a near-miss of an existing key without blocking', async () => {
+    const view = await render({ existingKeyNames: ['DATABASE_URL'] });
+    await act(async () => set(byLabel(view.container, 'matrix-create-name'), 'DATABSE_URL'));
+    expect(view.container.textContent).toContain(
+      'Similar to existing key DATABASE_URL. Continue if this is intentional.',
+    );
+    await fillNameAndSubmit(view.container, 'DATABSE_URL');
+    expect(view.onCreate).toHaveBeenCalledTimes(1);
+    await view.unmount();
+  });
+
+  it('normalises surrounding whitespace off the first value and says so', async () => {
+    const view = await render();
+    await act(async () => set(byLabel(view.container, 'matrix-create-value'), '  info\u00a0'));
+    expect(view.container.textContent).toContain('Leading and trailing whitespace was removed.');
+    await fillNameAndSubmit(view.container, 'LEVEL');
+    expect(view.onCreate.mock.calls[0]![0].firstValue?.value).toBe('info');
+    await view.unmount();
+  });
+
+  it('renders the Git notice and refuses to declare when git-managed', async () => {
+    const view = await render({ gitManaged: true });
+    expect(view.container.textContent).toContain('managed in Git');
+    await fillNameAndSubmit(view.container, 'LEVEL');
+    expect(view.onCreate).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+});
+
+describe('editDistance / nearMissKeyName', () => {
+  it('counts a transposition as one edit and ignores exact or distant names', () => {
+    expect(editDistance('DATABASE_URL', 'DATABSE_URL')).toBe(1);
+    expect(editDistance('ab', 'ba')).toBe(1);
+    expect(editDistance('kitten', 'sitting')).toBe(3);
+    expect(nearMissKeyName('DATABASE_URL', ['DATABASE_URL'])).toBeNull();
+    expect(nearMissKeyName('DATABASE_URI', ['DATABASE_URL', 'LOG_LEVEL'])).toBe('DATABASE_URL');
+    expect(nearMissKeyName('LOG', ['LOG_LEVEL'])).toBeNull();
+    expect(nearMissKeyName('', ['A'])).toBeNull();
   });
 });

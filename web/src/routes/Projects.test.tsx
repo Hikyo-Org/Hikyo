@@ -1,9 +1,45 @@
 // @vitest-environment happy-dom
-import { act } from 'react';
+import { act, type ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { created, renderForm, settle, typeInto } from '../testkit/renderForm.tsx';
-import { NewProjectForm } from './Projects.tsx';
+import { MemoryRouter, Outlet, Route, Routes } from 'react-router';
+
+import { created, renderForm, settle, settleTask, typeInto } from '../testkit/renderForm.tsx';
+import { Overview } from './Placeholder.tsx';
+import { NewProjectForm, Projects } from './Projects.tsx';
+
+const project = {
+  id: 'prj_123e4567-e89b-12d3-a456-426614174000',
+  org_id: 'org_123e4567-e89b-12d3-a456-426614174001',
+  name: 'billing',
+  created_at: '2026-01-01T00:00:00Z',
+};
+
+function stubProjects(items: readonly (typeof project)[]) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((..._args: Parameters<typeof fetch>) =>
+      Promise.resolve(
+        new Response(JSON.stringify({ items, count: items.length }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    ),
+  );
+}
+
+function inShell(node: ReactNode, activeOrgId: string, path: string) {
+  return (
+    <MemoryRouter initialEntries={[path]}>
+      <Routes>
+        <Route element={<Outlet context={{ activeOrgId }} />}>
+          <Route path={path} element={node} />
+        </Route>
+      </Routes>
+    </MemoryRouter>
+  );
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -52,5 +88,70 @@ describe('NewProjectForm', () => {
 
     const status = container.querySelector('[role="status"]');
     expect(status?.textContent).toContain('Project billing created.');
+  });
+});
+
+describe('Projects', () => {
+  it('names the next action above the form when the organisation has no projects', async () => {
+    stubProjects([]);
+    const { container, unmount } = await renderForm(inShell(<Projects />, 'org_1', '/projects'));
+    await settleTask();
+
+    expect(container.querySelector('h1')?.textContent).toBe('Projects');
+    expect(container.querySelector('.page__lede')).not.toBeNull();
+    const statuses = [...container.querySelectorAll('[role="status"]')].map((s) => s.textContent);
+    expect(statuses).toContain('No projects yet. Create the first one below.');
+    const empty = container.querySelector('#projects-list');
+    const form = container.querySelector('#projects-new');
+    expect(empty).not.toBeNull();
+    expect(form).not.toBeNull();
+    expect(empty?.compareDocumentPosition(form ?? empty) ?? 0).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    await unmount();
+  });
+
+  it('leads the no-organisation state with the one action available', async () => {
+    stubProjects([]);
+    const { container, unmount } = await renderForm(inShell(<Projects />, '', '/projects'));
+    await settleTask();
+
+    expect(container.querySelector('[role="status"]')?.textContent).toMatch(
+      /^Ask an instance administrator to grant you access to an organisation\./,
+    );
+    expect(container.querySelector('form')).toBeNull();
+    await unmount();
+  });
+});
+
+describe('Overview', () => {
+  it('links to the project list and lists the projects it knows', async () => {
+    stubProjects([project]);
+    const { container, unmount } = await renderForm(inShell(<Overview />, 'org_1', '/'));
+    await settleTask();
+
+    const choose = [...container.querySelectorAll('a')].find(
+      (a) => a.textContent === 'Choose a project',
+    );
+    expect(choose?.getAttribute('href')).toBe('/projects');
+    expect(container.querySelector('h1')?.textContent).toBe('Overview');
+    expect(container.querySelector('#well-title')).toBeNull();
+    const rows = [...container.querySelectorAll('.projects__list li')];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.textContent).toContain('billing');
+    expect(rows[0]?.querySelector('a')?.getAttribute('href')).toBe(
+      '/orgs/org_1/projects/prj_123e4567-e89b-12d3-a456-426614174000/matrix',
+    );
+    await unmount();
+  });
+
+  it('shows no project panel while the organisation has none', async () => {
+    stubProjects([]);
+    const { container, unmount } = await renderForm(inShell(<Overview />, 'org_1', '/'));
+    await settleTask();
+
+    expect(container.querySelector('#overview-projects')).toBeNull();
+    expect(container.querySelector('a')?.textContent).toBe('Choose a project');
+    await unmount();
   });
 });

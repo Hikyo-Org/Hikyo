@@ -22,7 +22,7 @@ const nondisclosed = (error: unknown) => error instanceof ApiError && error.stat
  * retirement erases an already-`retiring` key (rotate first, hence the active
  * key refuses retirement), and compromise-retirement erases and replaces the
  * ACTIVE key with no overlap window. Only fingerprints and lifecycle state are
- * ever shown — private key material never leaves the server.
+ * ever shown, private key material never leaves the server.
  */
 export function SamlSpKeysPanel() {
   const keys = useSamlSpKeys();

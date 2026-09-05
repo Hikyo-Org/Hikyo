@@ -3,8 +3,10 @@ import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { InstanceUpdateJob } from '../api/updates.ts';
+import { MemoryRouter } from 'react-router';
+import { forgetWorkspace, rememberWorkspace } from '../api/workspace.ts';
 import { renderForm, settleTask, typeInto } from '../testkit/renderForm.tsx';
-import { AddRemote, ThisInstance, UpdateJobStatus } from './Remotes.tsx';
+import { AddRemote, Remotes, ThisInstance, UpdateJobStatus } from './Remotes.tsx';
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -151,6 +153,18 @@ describe('AddRemote', () => {
     },
   );
 
+  it('refuses this instance as its own remote before starting the mutation', async () => {
+    const { container, fetchMock } = await renderAddRemote([]);
+    vi.stubGlobal('location', new URL('https://self.example/remotes'));
+    await act(async () => typeInto(input(container, 'remote-url'), 'https://self.example'));
+    await submit(container);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      'That is this instance. A remote must be another instance.',
+    );
+  });
+
   it('trims a valid origin before posting it', async () => {
     const { container, fetchMock } = await renderAddRemote([]);
     await act(async () => {
@@ -195,5 +209,84 @@ describe('ThisInstance', () => {
     expect(rendered.container.querySelector('[role="alert"]')?.textContent).toContain('You do not hold instance-directory');
     expect(rendered.container.textContent).not.toContain('opaque-instance');
     expect(rendered.container.querySelector('dl')).toBeNull();
+  });
+});
+
+describe('RemoteCard', () => {
+  async function renderRemotes(items: readonly Record<string, unknown>[]) {
+    vi.stubGlobal('fetch', (request: Request) => {
+      const path = new URL(request.url).pathname;
+      const body = path === '/api/v1/instance/remotes' ? { items, count: items.length } : { items: [], count: 0 };
+      return Promise.resolve(
+        new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+      );
+    });
+    const rendered = await renderForm(<MemoryRouter><Remotes /></MemoryRouter>);
+    cleanups.push(rendered.unmount);
+    await settleTask();
+    return rendered.container;
+  }
+
+  it('renders the state as a badge label and folds staleness into one sentence', async () => {
+    const container = await renderRemotes([
+      { ...peer, state: 'unreachable', stale: true, stale_for_seconds: 7200, identity: 'inst-a' },
+    ]);
+    const card = container.querySelector('.remote');
+    expect(card?.querySelector('.badge[data-state="unreachable"]')?.textContent).toBe('Unreachable');
+    expect(card?.querySelector('.remote__stale')?.textContent).toBe(
+      'Unreachable for 2 hours. Showing the last known directory.',
+    );
+    for (const alert of card?.querySelectorAll('[role="alert"]') ?? []) {
+      expect(alert.textContent).not.toContain('Unreachable');
+    }
+    expect(card?.querySelectorAll('.values__absent')).toHaveLength(3);
+  });
+
+  it('gives a rejected credential its own recovery sentence naming the peer', async () => {
+    const container = await renderRemotes([{ ...peer, state: 'credential-rejected' }]);
+    expect(container.querySelector('.badge[data-state="credential-rejected"]')?.textContent).toBe(
+      'Credential rejected',
+    );
+    expect(container.querySelector('.remote [role="alert"]')?.textContent).toContain(
+      'The pinned credential was rejected. Mint a new connection credential on production and replace it here.',
+    );
+  });
+
+  it('marks both entries sharing an identity and refuses to open either', async () => {
+    const container = await renderRemotes([
+      { ...peer, identity: 'inst-a' },
+      { ...peer, id: 'rmt_223e4567-e89b-12d3-a456-426614174000', name: 'mirror', url: 'https://mirror.example/', identity: 'inst-a' },
+      { ...peer, id: 'rmt_323e4567-e89b-12d3-a456-426614174000', name: 'other', url: 'https://other.example/', identity: 'inst-b' },
+    ]);
+    const badges = [...container.querySelectorAll('.badge[data-state="duplicate-identity"]')];
+    expect(badges.map((badge) => badge.textContent)).toEqual(['Duplicate identity', 'Duplicate identity']);
+    const cards = [...container.querySelectorAll('.remote')];
+    const launcher = (card: Element) =>
+      [...card.querySelectorAll('button')].find((button) => !['Rename', 'Remove'].includes(button.textContent ?? ''));
+    expect(launcher(cards[0]!)?.disabled).toBe(true);
+    expect(launcher(cards[1]!)?.disabled).toBe(true);
+    expect(launcher(cards[2]!)?.disabled).toBe(false);
+  });
+
+  it('withdraws the open badge and picker from a duplicated entry that still holds a bearer', async () => {
+    rememberWorkspace({
+      origin: 'https://peer.example',
+      value: 'bearer-1',
+      session: 'session-1',
+      idleExpiresAt: '2099-01-01T00:00:00Z',
+      absoluteExpiresAt: '2099-01-01T01:00:00Z',
+    });
+    cleanups.push(() => {
+      forgetWorkspace('https://peer.example');
+      return Promise.resolve();
+    });
+    const container = await renderRemotes([
+      { ...peer, identity: 'inst-a' },
+      { ...peer, id: 'rmt_223e4567-e89b-12d3-a456-426614174000', name: 'mirror', url: 'https://mirror.example/', identity: 'inst-a' },
+    ]);
+    const card = container.querySelector('.remote');
+    expect(card?.querySelector('.remote__actions .badge')).toBeNull();
+    expect(card?.querySelector('.remote__picker')).toBeNull();
+    expect([...(card?.querySelectorAll('button') ?? [])].map((b) => b.textContent)).toContain('Close workspace');
   });
 });

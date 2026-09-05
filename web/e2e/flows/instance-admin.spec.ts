@@ -31,7 +31,7 @@ import {
 import { test } from '../fixtures/passkey.ts';
 
 /**
- * Flow: instance administration (registry surface `instance-admin`) —
+ * Flow: instance administration (registry surface `instance-admin`) , 
  * mvp-boundary S3's "instance administration", against the locked prototype
  * #29 iteration 15.
  *
@@ -39,7 +39,7 @@ import { test } from '../fixtures/passkey.ts';
  *
  *  - the organisation enumeration is the OPERATOR's, and it is MFA-mandatory.
  *    A password-only session gets the honest "second factor required" state,
- *    never an empty list — the empty list would be the UI answering a question
+ *    never an empty list, the empty list would be the UI answering a question
  *    it was refused;
  *  - the instance grant listing shows origins, so a break-glass grant is
  *    distinguishable from an ordinary one after an incident. The fixture's own
@@ -109,7 +109,7 @@ test.describe('instance administration', () => {
     await page.goto('/instance/members');
     const grants = page.locator('#members-list');
     // The seeding grants are written by the host-local `admin grant` verb, so
-    // they carry the break-glass origin — the one distinction the membership
+    // they carry the break-glass origin, the one distinction the membership
     // surface exists to preserve.
     await expect(grants.getByText('break-glass').first()).toBeVisible();
     await expect(grants.getByText(seed.principal).first()).toBeVisible();
@@ -174,7 +174,7 @@ test.describe('instance administration', () => {
     // Rotate the instance DEK for real. It appends a version and is
     // content-invisible: no other flow's plaintext moves. This leaves the
     // instance's credential ciphertext PENDING re-encryption onto the new
-    // version — an incomplete rotation.
+    // version, an incomplete rotation.
     await keys.getByRole('button', { name: 'Rotate the instance DEK' }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toContainText('incomplete until');
@@ -184,7 +184,7 @@ test.describe('instance administration', () => {
 
     // Reload BEFORE any re-encryption: the pending walk now lives only in the
     // server's cursor, with no client state to carry it. A fresh page must be
-    // able to pick it up and drive it to a clean, complete end — the real
+    // able to pick it up and drive it to a clean, complete end, the real
     // interrupted-then-resumed recovery, not a re-run of an already-finished job.
     await page.reload();
     await expect(
@@ -555,7 +555,7 @@ test.describe('instance administration', () => {
 
     // A fresh, unauthenticated context asks the public auth-methods endpoint
     // whether the provider is advertised for sign-in. Enabling a provider makes
-    // it appear; deleting it makes it vanish — that is the login-availability
+    // it appear; deleting it makes it vanish, that is the login-availability
     // property this journey exists to hold.
     const advertised = async (): Promise<boolean> => {
       const anon = await browser.newContext({ storageState: { cookies: [], origins: [] } });
@@ -659,7 +659,7 @@ test.describe('instance administration', () => {
   }) => {
     // Its own context, with an EMPTY jar: `browser.newContext()` still picks
     // up the describe's `storageState`, and a live session cookie on a login
-    // POST is refused 401 by the CSRF gate before the handler ever sees it —
+    // POST is refused 401 by the CSRF gate before the handler ever sees it , 
     // which looks exactly like a wrong password. This session is deliberately
     // weaker than the suite's, and it must not replace it.
     const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
@@ -704,7 +704,7 @@ test.describe('instance administration', () => {
     try {
       const fresh = await context.newPage();
       await fresh.goto('/login');
-      // The fixture's own provider is always advertised — waiting on it is the
+      // The fixture's own provider is always advertised, waiting on it is the
       // settle point that makes a later "absent" assertion trustworthy.
       await expect(
         fresh.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` }),
@@ -823,7 +823,7 @@ test.describe('instance administration', () => {
       .click();
     const editor = panel.locator('.oidc-editor');
     // The issuer field is disabled on reconfigure, so a changed issuer is not
-    // even expressible in the UI — the field-error path for it is unit-tested.
+    // even expressible in the UI, the field-error path for it is unit-tested.
     // Here the blank-secret guard refuses the save with no request reaching the
     // server, which is the write-only-secret contract enforced client-side.
     await expect(editor.getByLabel('Issuer URL')).toBeDisabled();
@@ -905,7 +905,7 @@ test.describe('instance administration', () => {
     await seedRow.getByRole('button', { name: 'Close' }).click();
     await expect(federation).toContainText(seed.machine.issuer);
 
-    // The never-bound issuer deletes cleanly — the destructive action is
+    // The never-bound issuer deletes cleanly, the destructive action is
     // present only because its census is zero.
     await newRow.getByRole('button', { name: 'Delete', exact: true }).click();
     await newRow.getByRole('button', { name: 'Delete issuer' }).click();

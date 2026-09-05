@@ -125,7 +125,7 @@ describe('Matrix declaration availability by definitions source', () => {
     mocks.source = 'db';
     const view = await render();
     expect(hasButton(view.container, '+ New key')).toBe(true);
-    expect(hasButton(view.container, '+ key')).toBe(true);
+    expect(hasButton(view.container, '+ Key')).toBe(true);
     expect(view.container.textContent ?? '').not.toContain('managed in Git');
     await view.unmount();
   });
@@ -134,7 +134,7 @@ describe('Matrix declaration availability by definitions source', () => {
     mocks.source = 'git';
     const view = await render();
     expect(hasButton(view.container, '+ New key')).toBe(false);
-    expect(hasButton(view.container, '+ key')).toBe(false);
+    expect(hasButton(view.container, '+ Key')).toBe(false);
     expect(view.container.textContent ?? '').toContain('managed in Git');
     // Value actions stay live: the cell is still an open control.
     expect(hasButton(view.container, '+ New key')).toBe(false);

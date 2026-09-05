@@ -40,9 +40,9 @@ import { useTransport } from './transport.tsx';
  *
  *  1. A collected revision names the policy that collected it, and a live one
  *     names none. That pairing is what makes the drawer's refusal quotable.
- *  2. An impact row for a `secret` key carries no material on either side —
+ *  2. An impact row for a `secret` key carries no material on either side,
  *     not a plaintext, not a length, not a comparison status beyond
- *     write-presence — and a `unset` row carries no `after` at all.
+ *     write-presence, and a `unset` row carries no `after` at all.
  */
 
 export type HistoryRevisionList = z.infer<typeof zRevisionList>;
@@ -109,7 +109,7 @@ export const zHistoryRollbackResult = zRollbackResult.superRefine((result, conte
  * REQUEST types are plain `number`, which is the generator's shape and not
  * something this file gets to change. The conversion is therefore explicit and
  * fails loud past `Number.MAX_SAFE_INTEGER` rather than silently addressing a
- * revision nobody asked for — a rounded revision number in a restore or a pin
+ * revision nobody asked for, a rounded revision number in a restore or a pin
  * is the wrong snapshot, delivered confidently.
  */
 export function revisionNumber(revision: bigint): number {
@@ -158,8 +158,8 @@ export function useRevisionHistory(env: EnvRef): UseQueryResult<HistoryRevisionL
  * It is deliberately gated on the lineage row's collection bit rather than
  * fetched optimistically: `getRevision` derives a change token over the
  * snapshot's manifest, so it refuses a collected revision with a 409. Asking
- * anyway would turn "this payload was collected, here is the policy" — a fact
- * the history row already carries — into an error state the drawer would have
+ * anyway would turn "this payload was collected, here is the policy", a fact
+ * the history row already carries, into an error state the drawer would have
  * to un-explain.
  */
 export function useRevisionDetail(
@@ -190,7 +190,7 @@ export function useRevisionPins(env: EnvRef): UseQueryResult<RevisionPinList> {
  * useProjectRetention is the drawer head's read-only line.
  *
  * The project endpoint answers with the EFFECTIVE policy and whether it is
- * inherited, which is the whole line — so the org read is not fetched here. A
+ * inherited, which is the whole line, so the org read is not fetched here. A
  * second request to render a badge the first response already determines is a
  * second thing that can fail.
  */
@@ -286,8 +286,8 @@ export function callerSafeRefusal(error: unknown, prefix: string): string | null
  * historyRefusalText surfaces a refusal by name.
  *
  * The server's caller-safe detail is quoted verbatim wherever there is one:
- * every refusal on this surface — collected payload, schema failure, expiry
- * bound, quota, missing reveal-history — is named by the service, and
+ * every refusal on this surface, collected payload, schema failure, expiry
+ * bound, quota, missing reveal-history, is named by the service, and
  * paraphrasing it here would put a second, drifting vocabulary in front of the
  * one the CLI and the audit trail use. Only a refusal with no detail gets a
  * sentence of our own, and it says which status it was.

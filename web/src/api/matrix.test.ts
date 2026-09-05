@@ -97,7 +97,7 @@ describe('restore preview lifecycle', () => {
   it('names a detail-less 409 as stale only when a preview token was attached', () => {
     const conflict = new ApiError(409, 'request failed with 409');
     expect(matrixMutationError(conflict, 'publish', true)).toBe(
-      'Publish refused: the restore preview is stale or missing — stage the restore again from the history drawer.',
+      'Publish refused: the restore preview is stale or missing. Stage the restore again from the history drawer.',
     );
     expect(matrixMutationError(conflict, 'publish', false)).toBe(
       'Publish was refused. Fix the named matrix problems, then retry.',
@@ -299,7 +299,7 @@ describe('environment-keyed matrix rows', () => {
       settings: [environmentQuery(envDev, devSettings)],
       pendingDrafts: [environmentQuery(envDev, drafts)],
     });
-    // Pending still outranks forbidden — the column may yet resolve.
+    // Pending still outranks forbidden, the column may yet resolve.
     expect(loadingRow?.readiness).toBe('pending');
   });
 
@@ -457,7 +457,7 @@ describe('key lifecycle impact boundary', () => {
     expect(matrixImpactReady(true, [])).toBe(true);
     expect(matrixImpactReady(false, [])).toBe(false);
     expect(matrixImpactReady(true, [ready, ready])).toBe(true);
-    // A row whose values errored or went stale must NOT count as ready — that is
+    // A row whose values errored or went stale must NOT count as ready, that is
     // the fail-closed property that keeps a preview from understating its reach.
     expect(
       matrixImpactReady(true, [ready, { values: { status: 'error' }, signals: { status: 'ready' } }]),

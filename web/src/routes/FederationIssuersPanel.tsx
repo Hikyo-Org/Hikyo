@@ -27,8 +27,8 @@ const ISSUER_TYPES: ReadonlyArray<{ readonly id: FederationIssuerType; readonly 
 ];
 
 const JWKS_MODES: ReadonlyArray<{ readonly id: FederationJwksMode; readonly label: string }> = [
-  { id: 'discovery', label: 'Discovery — fetch and cache the keys' },
-  { id: 'static', label: 'Static — supply the JWKS document' },
+  { id: 'discovery', label: 'Discovery: fetch and cache the keys' },
+  { id: 'static', label: 'Static: supply the JWKS document' },
 ];
 
 /** audiencesFrom splits the one-per-line textarea into trimmed, non-empty lines. */
@@ -151,7 +151,7 @@ export function FederationIssuersPanel() {
                   </button>
                   {/* Neutral until the confirmation opens: the danger button
                       is the destructive act itself, shown only after this one
-                      reveals it — the same reveal-then-danger shape every other
+                      reveals it, the same reveal-then-danger shape every other
                       surface uses, which also keeps the low-contrast danger
                       treatment out of the always-rendered page. */}
                   <button
@@ -174,7 +174,7 @@ export function FederationIssuersPanel() {
                     <p>
                       {issuer.live_bindings === 0
                         ? `Delete ${issuer.issuer}? No binding names it, so nothing that authenticates depends on it.`
-                        : `${String(issuer.live_bindings)} binding${issuer.live_bindings === 1 ? '' : 's'} — live or revoked — name ${issuer.issuer}, so it cannot be deleted. That history is append-only: even a revoked binding still records what this issuer was trusted for, and erasing the issuer would erase what it trusted. Deletion is only ever available for an issuer that was never bound.`}
+                        : `${String(issuer.live_bindings)} binding${issuer.live_bindings === 1 ? '' : 's'}, live or revoked, name ${issuer.issuer}, so it cannot be deleted. That history is append-only: even a revoked binding still records what this issuer was trusted for, and erasing the issuer would erase what it trusted. Deletion is only ever available for an issuer that was never bound.`}
                     </p>
                     <div className="panel__actions">
                       <button
@@ -227,7 +227,7 @@ export function FederationIssuersPanel() {
                         },
                         {
                           onSuccess: () => {
-                            const message = `Updated ${issuer.issuer}. The issuer string and platform type are unchanged — those are a replacement, not an edit.`;
+                            const message = `Updated ${issuer.issuer}. The issuer string and platform type are unchanged; those are a replacement, not an edit.`;
                             setEditor(null);
                             setDone(message);
                             notifySuccess(message);
@@ -315,7 +315,7 @@ type IssuerFormValue = {
 
 /**
  * IssuerForm is create and edit in one shape. On edit the issuer string and
- * platform type are read-only — the contract has no member to move them — and
+ * platform type are read-only, the contract has no member to move them, and
  * the JWKS document field is blank because the read shape never returns it.
  */
 function IssuerForm({
@@ -439,7 +439,7 @@ function IssuerForm({
           />
           <p className="field__hint">
             The key set this instance verifies against. It is never returned by any read, so it is
-            always entered here in full — there is no keep-the-old-document path, and there cannot be
+            always entered here in full. There is no keep-the-old-document path, and there cannot be
             one that silently retains a key set nobody rotates.
           </p>
         </div>

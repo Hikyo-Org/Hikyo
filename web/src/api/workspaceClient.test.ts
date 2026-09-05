@@ -32,7 +32,7 @@ test('the bearer rides an Authorization header and nothing ambient travels', asy
   await createWorkspaceClient(ORIGIN).get({ url: '/api/v1/me/sessions' });
 
   expect(seen?.headers.get('Authorization')).toBe('Bearer secret-1');
-  // credentials: 'omit' is load-bearing — it keeps the remote's CORS out of
+  // credentials: 'omit' is load-bearing, it keeps the remote's CORS out of
   // credentials mode and cookies from ever crossing the origin.
   expect(seen?.credentials).toBe('omit');
   expect(seen?.url).toBe('https://remote.example/api/v1/me/sessions');
@@ -51,7 +51,7 @@ test('a real generated call routes to the remote with the bearer and no cookies'
 
   // The whole seam as the wrappers use it: a generated SDK fn, its path
   // templated, its `security: bearer` resolved, pointed at the remote by the
-  // per-call client. Not `client.get` — that skips the parts a real call hits.
+  // per-call client. Not `client.get`, that skips the parts a real call hits.
   await listValues({
     path: { org: 'org_a', project: 'proj_b', environment: 'env_c' },
     client: createWorkspaceClient(ORIGIN),
@@ -86,14 +86,14 @@ test('no bearer fails closed rather than leaking an anonymous cross-origin call'
   const fetchSpy = vi.spyOn(globalThis, 'fetch');
   // The client resolves the refusal into a result (throwOnError is off, so an
   // interceptor throw becomes `{ error }` with no response) rather than
-  // rejecting — the guarantee that matters is that NO request left the browser.
+  // rejecting, the guarantee that matters is that NO request left the browser.
   const result = await createWorkspaceClient(ORIGIN).get({ url: '/api/v1/x' });
   expect(result.error).toBeInstanceOf(WorkspaceError);
   expect(result.response).toBeUndefined();
   expect(fetchSpy).not.toHaveBeenCalled();
 });
 
-test('a 401 drops the bearer at once — the kill switch does not wait for the poll', async () => {
+test('a 401 drops the bearer at once, the kill switch does not wait for the poll', async () => {
   seed('secret-1', 'ses_1');
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(
     new Response('{}', { status: 401, headers: { 'Content-Type': 'application/json' } }),
@@ -106,8 +106,8 @@ test('a 401 drops the bearer at once — the kill switch does not wait for the p
 
 test('a 401 for a value that was already rotated leaves the replacement alone', async () => {
   seed('secret-1', 'ses_1');
-  // Reseed INSIDE fetch — which runs only after the request interceptor has
-  // already captured secret-1 — so this is the real ordering: the credential is
+  // Reseed INSIDE fetch, which runs only after the request interceptor has
+  // already captured secret-1, so this is the real ordering: the credential is
   // rotated (a step-up: same session id, new value) while its old value's 401
   // is in flight. The stale 401 is for secret-1; the live secret-2 must survive.
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {

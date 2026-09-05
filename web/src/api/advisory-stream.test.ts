@@ -5,8 +5,8 @@ import { watchProjectAdvisoryStream } from './advisory.ts';
 /**
  * The stream loop is tested against a scripted fake of the generated stream
  * operation, because the real one is a fetch transport: what this module owns
- * is the STATE MACHINE around the iteration — parse, dispatch, reconnect after
- * a clean end, stop on abort — and a script can hold all of that while the
+ * is the STATE MACHINE around the iteration, parse, dispatch, reconnect after
+ * a clean end, stop on abort, and a script can hold all of that while the
  * hey-api transport itself is proven by the flow suite against the real
  * server, which is the only honest way to prove an SSE handshake.
  */

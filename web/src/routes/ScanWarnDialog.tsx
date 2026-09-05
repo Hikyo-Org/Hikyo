@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 import type { ScanFinding } from '../api/matrix.ts';
 import { useModalDialog } from './useModalDialog.ts';
@@ -6,7 +6,7 @@ import { useModalDialog } from './useModalDialog.ts';
 /**
  * One config value that a save flagged as credential-shaped (#74, Surface 1).
  *
- * `value` is the CANONICAL stored bytes (post-normalization) — exactly what
+ * `value` is the CANONICAL stored bytes (post-normalization), exactly what
  * the value write persisted, because the keep-as-config token is content-bound
  * to those bytes. Re-saving anything else re-warns instead of dismissing.
  */
@@ -23,21 +23,21 @@ const rowKey = (item: ScanWarnItem): string =>
 /**
  * ScanWarnDialog is the Surface-1 warn (#74, secret-scanning ADR §4).
  *
- * The save already SUCCEEDED — this is a non-blocking warning that a value
+ * The save already SUCCEEDED, this is a non-blocking warning that a value
  * classified as `config` looks like a credential, and `config` skips every
  * secret-handling rule (masking, the reveal ceremony, write-presence diffing).
- * It renders only what the redacted finding carries — the rule id and the key
- * locator — never the matched text, which the response does not contain.
+ * It renders only what the redacted finding carries, the rule id and the key
+ * locator, never the matched text, which the response does not contain.
  *
  * Two first-class resolutions per ADR §4, and deliberately no blanket
  * ignore-all control:
  *
- *   - Reclassify as secret (primary) — routes the key through secret handling
+ *   - Reclassify as secret (primary), routes the key through secret handling
  *     via the reclassification ceremony;
- *   - Keep as config — an explicit, sticky dismissal presenting the finding's
+ *   - Keep as config, an explicit, sticky dismissal presenting the finding's
  *     acknowledgement token, so the identical value never re-warns while a
  *     distinct offending value still does. The value stays a plain config
- *     value, outside secret handling — which is what the dismissal affirms.
+ *     value, outside secret handling, which is what the dismissal affirms.
  *
  * Closing the dialog without choosing leaves the warning undismissed: the same
  * value simply re-warns on the next save. That is the safe direction, and it
@@ -54,7 +54,7 @@ export function ScanWarnDialog({
   items: readonly ScanWarnItem[];
   /**
    * Records the keep-as-config dismissal by re-saving the value with its
-   * token, and returns the server's fresh findings for that value — empty when
+   * token, and returns the server's fresh findings for that value, empty when
    * the dismissal took, or a re-fired finding (with a new token) when the
    * token was stale. The dialog trusts that answer rather than assuming.
    */
@@ -63,6 +63,7 @@ export function ScanWarnDialog({
   onClose: () => void;
 }) {
   const dialog = useModalDialog();
+  const titleId = useId();
   const [rows, setRows] = useState<readonly ScanWarnItem[]>(items);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -97,12 +98,12 @@ export function ScanWarnDialog({
   };
 
   return (
-    <dialog className="matrix-editor scan-warn" ref={dialog} onClose={onClose}>
+    <dialog className="matrix-editor scan-warn" ref={dialog} aria-labelledby={titleId} onClose={onClose}>
       <div className="matrix-editor__head">
         <div>
-          <h2>Possible secret in a config value</h2>
+          <h2 id={titleId}>Possible secret in a config value</h2>
           <p>
-            {`${keyName} is classified as config, so its value is stored without secret handling — no masking, no reveal ceremony. These saved values look like credentials.`}
+            {`${keyName} is classified as config, so its value is stored without secret handling: no masking, no reveal ceremony. These saved values look like credentials.`}
           </p>
         </div>
         <button
@@ -120,6 +121,7 @@ export function ScanWarnDialog({
           <li className="scan-warn__finding" key={rowKey(item)}>
             <div className="scan-warn__finding-head">
               <span className="mono scan-warn__rule">{item.finding.rule_id}</span>
+              <span className="mono scan-warn__locator">{item.finding.locator}</span>
               <span className="scan-warn__env">{item.environmentName}</span>
             </div>
             {item.finding.acknowledgement === undefined ? null : (
@@ -156,9 +158,6 @@ export function ScanWarnDialog({
           onClick={reclassify}
         >
           {busy === 'reclassify' ? 'Reclassifying…' : `Reclassify ${keyName} as secret`}
-        </button>
-        <button type="button" className="btn" disabled={busy !== null} onClick={onClose}>
-          Dismiss for now
         </button>
       </div>
     </dialog>

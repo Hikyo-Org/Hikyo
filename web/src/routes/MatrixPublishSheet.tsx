@@ -20,7 +20,34 @@ export type MatrixPendingEntry = {
   readonly classification: 'config' | 'secret';
   readonly operation: 'set' | 'unset';
   readonly configPreview?: string;
+  /** The linked-key group this key belongs to, when the matrix knows it. */
+  readonly group?: { readonly id: string; readonly name: string };
 };
+
+/**
+ * Linked keys publish together, so the sheet shows them together: one bucket
+ * per group (in first-seen order), then the ungrouped entries. Entries without
+ * a group stay flat.
+ */
+export function groupPendingEntries(
+  entries: readonly MatrixPendingEntry[],
+): readonly { readonly group: MatrixPendingEntry['group'] | undefined; readonly entries: readonly MatrixPendingEntry[] }[] {
+  const buckets = new Map<string, MatrixPendingEntry[]>();
+  const ungrouped: MatrixPendingEntry[] = [];
+  const groups = new Map<string, NonNullable<MatrixPendingEntry['group']>>();
+  for (const entry of entries) {
+    if (entry.group === undefined) {
+      ungrouped.push(entry);
+      continue;
+    }
+    groups.set(entry.group.id, entry.group);
+    buckets.set(entry.group.id, [...(buckets.get(entry.group.id) ?? []), entry]);
+  }
+  return [
+    ...[...buckets].map(([id, grouped]) => ({ group: groups.get(id), entries: grouped })),
+    ...(ungrouped.length === 0 ? [] : [{ group: undefined, entries: ungrouped }]),
+  ];
+}
 
 /** Selective publish review mirrors the frozen per-environment sheet. */
 export function MatrixPublishSheet({
@@ -33,6 +60,7 @@ export function MatrixPublishSheet({
   busy,
   mutationError,
   onPublish,
+  onClose,
 }: {
   refData: { readonly org: string; readonly project: string };
   environments: readonly Environment[];
@@ -43,6 +71,8 @@ export function MatrixPublishSheet({
   busy: boolean;
   mutationError: string | null;
   onPublish: (environmentIds: readonly string[]) => void;
+  /** Closes the sheet; the caller returns focus to the drafts button. */
+  onClose: () => void;
 }) {
   const pendingEnvironmentIds = environments
     .filter((environment) => (pendingByEnvironment.get(environment.id)?.length ?? 0) > 0)
@@ -84,7 +114,7 @@ export function MatrixPublishSheet({
       return {
         environmentId,
         environmentName: environment.name,
-        keys: entries.map((entry) => ({ id: entry.keyId, name: entry.name })),
+        keys: entries.map((entry) => ({ id: entry.keyId, name: entry.name, classification: entry.classification })),
       };
     });
 
@@ -93,7 +123,7 @@ export function MatrixPublishSheet({
       <section className="matrix__publish" id="matrix-publish" aria-label="Publish drafts">
         <h2>Publish drafts</h2>
         <p>
-          Each environment publishes as its own atomic revision — untick any you want to hold
+          Each environment publishes as its own atomic revision: untick any you want to hold
           back.
         </p>
         {environments.map((environment) => {
@@ -133,24 +163,36 @@ export function MatrixPublishSheet({
                 <strong>{environment.name}</strong>
                 {protectedEnvironmentIds.includes(environment.id) ? (
                   <span className="matrix__publish-protected">
-                    PROTECTED — confirms before publish
+                    PROTECTED: confirms before publish
                   </span>
                 ) : null}
                 <span className="matrix__publish-revision">
                   {`r${String(revision)} → r${String(revision + 1n)}`}
                 </span>
               </label>
-              <ul>
-                {entries.map((entry) => (
-                  <li key={entry.versionId} className="mono">
-                    <span>
-                      {entry.classification === 'secret' ? '🔒 ' : ''}
-                      {entry.name}
-                    </span>
-                    <span>{publishPreview(entry)}</span>
-                  </li>
-                ))}
-              </ul>
+              {groupPendingEntries(entries).map((bucket) => (
+                <ul
+                  key={bucket.group?.id ?? ''}
+                  className={bucket.group === undefined ? undefined : 'matrix__publish-group'}
+                  aria-label={bucket.group === undefined ? undefined : `Linked keys: ${bucket.group.name}, publish together`}
+                >
+                  {bucket.group === undefined ? null : (
+                    <li className="matrix__publish-group-name">
+                      <span aria-hidden="true">🔗 </span>
+                      {`Linked keys: ${bucket.group.name}`}
+                    </li>
+                  )}
+                  {bucket.entries.map((entry) => (
+                    <li key={entry.versionId} className="mono">
+                      <span>
+                        {entry.classification === 'secret' ? '🔒 ' : ''}
+                        {entry.name}
+                      </span>
+                      <span>{publishPreview(entry)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ))}
               {blocked ? (
                 <div className="matrix__publish-blocked" role="alert">
                   {`✕ Publish blocked: ${environmentProblems
@@ -210,13 +252,16 @@ export function MatrixPublishSheet({
             ? 'Publishing atomically…'
             : `Publish selected · ${String(selectedEntries.length)} draft${selectedEntries.length === 1 ? '' : 's'} · ${String(selectedEnvironmentIds.length)} environment${selectedEnvironmentIds.length === 1 ? '' : 's'}`}
         </button>
+        <button type="button" className="btn" onClick={onClose} disabled={busy}>
+          Close
+        </button>
         {mutationError === null ? null : (
           <p className="alert" role="alert">
             <span className="alert__glyph" aria-hidden="true">!</span>
             <span>{mutationError}</span>
           </p>
         )}
-        <p>Invalid environments cannot publish — delivery only sees valid revisions.</p>
+        <p>Invalid environments cannot publish: delivery only sees valid revisions.</p>
       </section>
       {protectedGuard.request === null ? null : (
         <Ceremony

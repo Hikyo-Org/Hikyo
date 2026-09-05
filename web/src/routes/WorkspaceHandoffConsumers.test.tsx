@@ -95,7 +95,8 @@ describe('workspace handoff consumers', () => {
 
     const mounted = await render(<Reconnect origin={origin} name="remote" />);
     await settle();
-    const proceed = buttonNamed(mounted.container, `Continue to ${origin} to sign in`);
+    expect(mounted.container.querySelector('h1')?.textContent).toBe(`Session expired on ${origin}`);
+    const proceed = buttonNamed(mounted.container, 'Reconnect');
 
     act(() => proceed.click());
     const waiting = buttonNamed(mounted.container, 'Waiting for sign-in…');

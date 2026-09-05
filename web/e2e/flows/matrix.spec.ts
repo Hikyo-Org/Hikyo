@@ -134,7 +134,7 @@ test.describe('environment matrix', () => {
       await expect(bar).toBeVisible();
       await expect(bar).toContainText('filter active: problems');
 
-      await page.getByRole('button', { name: '✕ show all keys' }).click();
+      await page.getByRole('button', { name: '✕ Show all keys' }).click();
       await expect(page.getByRole('rowheader', { name: /LOG_LEVEL/ })).toBeVisible();
 
       await publish.click();
@@ -147,7 +147,7 @@ test.describe('environment matrix', () => {
 
       await page.getByRole('button', { name: /unpublished edit/ }).click();
       const repairedSheet = page.getByRole('region', { name: 'Publish drafts' });
-      await expect(repairedSheet.getByText('PROTECTED — confirms before publish')).toBeVisible();
+      await expect(repairedSheet.getByText('PROTECTED: confirms before publish')).toBeVisible();
       const protectedConfirmation = repairedSheet.getByRole('checkbox', {
         name: 'I confirm publishing to protected production.',
       });
@@ -285,15 +285,18 @@ test.describe('environment matrix', () => {
         .click();
       const secretEditor = page.getByRole('dialog');
       await expect(secretEditor.getByRole('button', { name: `Reveal ${secret}` })).toBeVisible();
-      await expect(secretEditor.getByRole('button', { name: `Copy ${secret}` })).toBeVisible();
+      await expect(secretEditor.getByRole('button', { name: `Copy ${secret} (audited disclosure)` })).toBeVisible();
       await expect(secretEditor.getByRole('button', { name: 'Edit all environments' })).toBeVisible();
       await expect(secretEditor.getByRole('link', { name: 'Open Values' })).toHaveCount(0);
       await secretEditor.getByRole('button', { name: `Reveal ${secret}` }).click();
       await expect(page.getByRole('heading', { name: 'reveal · development' })).toBeVisible();
       await expect(page.getByRole('list', { name: 'Keys this decision covers' })).toContainText(secret);
       await page.getByRole('button', { name: 'Use a passkey' }).click();
-      const revealed = secretEditor.getByLabel(`${secret} revealed`);
+      // The plaintext is the element's own accessible content (no aria-label
+      // hides it); the status region announces whose value it is.
+      const revealed = secretEditor.locator('.matrix-editor__revealed');
       await expect(revealed).toBeVisible();
+      await expect(secretEditor.getByRole('status').filter({ hasText: `${secret} revealed` })).toHaveCount(1);
       await expect(revealed).toHaveCount(0, { timeout: 12_000 });
       await secretEditor.getByRole('button', { name: 'Close row editor' }).click();
 
@@ -301,10 +304,10 @@ test.describe('environment matrix', () => {
         .getByRole('button', { name: new RegExp(`${secret} in production:`) })
         .click();
       const productionSecretEditor = page.getByRole('dialog');
-      await productionSecretEditor.getByRole('button', { name: `Copy ${secret}` }).click();
+      await productionSecretEditor.getByRole('button', { name: `Copy ${secret} (audited disclosure)` }).click();
       await expect(page.getByRole('heading', { name: 'copy to clipboard · production' })).toBeVisible();
       await page.getByRole('button', { name: 'Use a passkey' }).click();
-      await expect(productionSecretEditor.getByRole('status')).toContainText(
+      await expect(productionSecretEditor.getByRole('status').filter({ hasText: 'Copied' })).toContainText(
         'Copied, and recorded as a disclosure',
       );
   });
@@ -330,7 +333,7 @@ test.describe('environment matrix', () => {
         text: [editor.getByRole('heading', { name: 'LOG_LEVEL' }), firstEditorRow],
         radii: [
           [editor, 'container'],
-          [firstEditorRow, 'control'],
+          [firstEditorRow, 'container'],
           [editor.getByLabel('development value'), 'control'],
         ],
         fonts: [
@@ -429,7 +432,7 @@ test.describe('environment matrix', () => {
           density: [[chooser, '--touch']],
         });
         // Sidebar treatment e draws the hairline on each ROW, so the row is
-        // where the rule has to be — a border on the list around them would
+        // where the rule has to be, a border on the list around them would
         // satisfy a container assertion while the active row could not own its
         // own segment of the line.
         expect(await groupRow.evaluate((element) => getComputedStyle(element).borderLeftWidth)).toBe('1px');
@@ -442,7 +445,7 @@ test.describe('environment matrix', () => {
    * fixture tenant is in its settled shape: one healthy stream replaces the
    * 2s-per-environment signals poll, the poll returns only while the stream
    * is not healthy, and a publish on a SECOND tab reaches the first without a
-   * reload — which is the whole point of demoting the poll.
+   * reload, which is the whole point of demoting the poll.
    */
 
   test('holds one advisory stream, drops the fallback poll while healthy, and closes it on route leave', async ({ page }) => {
@@ -477,14 +480,14 @@ test.describe('environment matrix', () => {
       .toBe(1);
 
     // Idle window longer than three fallback cadences: a healthy stream holds
-    // ZERO periodic signals requests — the failure mode #510 exists to fix.
+    // ZERO periodic signals requests, the failure mode #510 exists to fix.
     const before = signals.length;
     await page.waitForTimeout(7_000);
     expect(signals.slice(before).length).toBe(0);
 
     // Leaving the matrix is the subscription's whole teardown: the stream's
     // request is aborted, not left open behind the route. A client-side link,
-    // so this proves the React cleanup and not just a document teardown —
+    // so this proves the React cleanup and not just a document teardown , 
     // matrix/history renders the same Matrix with its drawer open and
     // deliberately keeps the stream, so the target is another surface.
     const menu = page.getByRole('button', { name: 'Menu' });
@@ -537,7 +540,7 @@ test.describe('environment matrix', () => {
   test('delivers another session\u2019s publish to an idle matrix without a reload', async ({ passkeyPage: page }, testInfo) => {
     const eventsPath = `/api/v1/orgs/${seed.org}/projects/${seed.project}/events`;
     // Register the listener BEFORE the navigation: the stream can open before
-    // the heading settles, and the 200 below must be THIS page's own stream —
+    // the heading settles, and the 200 below must be THIS page's own stream , 
     // the idle assertion at the end is about live delivery, not a stale poll.
     let streamOpen = false;
     page.on('response', (response) => {
@@ -553,7 +556,7 @@ test.describe('environment matrix', () => {
 
     // A second page in the same context is a second browser session over the
     // same signed-in identity. It stages and publishes through the ordinary
-    // matrix UI — development only, so no protected ceremony is involved —
+    // matrix UI, development only, so no protected ceremony is involved , 
     // while the first page sits idle on the same surface.
     const observer = await page.context().newPage();
     try {
@@ -574,7 +577,7 @@ test.describe('environment matrix', () => {
       await publish.click();
       await expect(observer.locator('.notice')).toContainText(/Published atomically/);
 
-      // The idle page repaints the published cell from the advisory events —
+      // The idle page repaints the published cell from the advisory events , 
       // the signals fallback poll is not running, so nothing else could have
       // brought the new value in.
       await expect(page.getByRole('button', { name: /LOG_LEVEL in development:/ })).toContainText(
@@ -593,7 +596,7 @@ test.describe('environment matrix', () => {
  * It rides THIS spec file rather than its own by necessity, not preference: the
  * merge gate loads `ci.yml` from the base branch (`ci-control.yml` is
  * `pull_request_target`), so the per-group spec lists it runs are the base
- * branch's, and a spec a PR adds to a group never executes on that PR — its
+ * branch's, and a spec a PR adds to a group never executes on that PR, its
  * pinned claims would then be forever unmet and web-closure would fail. The
  * matrix spec is already in a group, and its FILE content comes from the PR
  * checkout, so the surface's pinned set runs today. See e2e/registry.ts.
@@ -680,7 +683,7 @@ test.describe('catalogue declaration detail', () => {
     await expect(panel).toContainText('Value rules');
     await expect(panel).toContainText('Presence');
 
-    // The one write: edit the description, save, and see it survive a reload —
+    // The one write: edit the description, save, and see it survive a reload , 
     // the surface is addressed by the key id, not its name.
     const description = 'Feature flag catalogue entry';
     await panel.getByLabel('Description').fill(description);
@@ -720,7 +723,7 @@ test.describe('catalogue declaration detail', () => {
 
     // Commit a value-safe presence change (the key holds no values, so
     // forbidding it everywhere is satisfiable) and verify it persisted through
-    // the API — the client preview alone would not prove the write carried it.
+    // the API, the client preview alone would not prove the write carried it.
     await panel.getByLabel('Forbidden in').selectOption('all');
     await panel.getByRole('button', { name: 'Save value rules & presence' }).click();
     await expect(panel.getByRole('status').filter({ hasText: 'Saved.' })).toBeVisible();
@@ -821,7 +824,7 @@ test.describe('catalogue declaration detail', () => {
   });
 
   test('keeps a stale or missing key recoverable', async ({ page }) => {
-    // A well-formed key id that does not exist — a link that outlived its key.
+    // A well-formed key id that does not exist, a link that outlived its key.
     const missing = 'key_01890000-0000-7000-8000-000000000000';
     await page.goto(`/orgs/${seed.org}/projects/${seed.project}/matrix/keys/${missing}`);
 
@@ -879,7 +882,7 @@ test.describe('catalogue declaration detail', () => {
 });
 
 /**
- * Flow: the browser key lifecycle — rename, reclassify, delete (#494).
+ * Flow: the browser key lifecycle, rename, reclassify, delete (#494).
  *
  * Rides this spec for the same merge-gate reason the detail surface does (it
  * reuses the `key-detail` surface). One serial journey over one throwaway config
@@ -922,7 +925,7 @@ test.describe('catalogue declaration lifecycle', () => {
 
       // Rename: identity is the id, so the URL is unchanged and the heading
       // follows the new name once the query is invalidated. `exact` because
-      // getByLabel is case-insensitive substring — plain 'Name' also matches the
+      // getByLabel is case-insensitive substring, plain 'Name' also matches the
       // delete surface's "Confirm the key name to delete it".
       await panel.getByLabel('Name', { exact: true }).fill(renamed);
       await panel.getByRole('button', { name: 'Rename key' }).click();
@@ -970,7 +973,7 @@ test.describe('catalogue declaration lifecycle', () => {
  *
  * Runs after the edit/publish suite and as the last describe in the file, so
  * the persistent catalogue write it makes cannot perturb an earlier
- * assertion — the leg's other specs run before matrix.spec, and this block runs
+ * assertion, the leg's other specs run before matrix.spec, and this block runs
  * after every `environment matrix` test. It declares a config key with a value
  * rule and presence, opens a first value, and proves the value entered the
  * draft workflow with the declaration.
@@ -995,7 +998,7 @@ test.describe('environment matrix declaration', () => {
     await modal.getByLabel('First value (optional)').fill('true');
     // Presence stays at the default `none`: declaring `required_in` an
     // environment that has no value yet is a server veto (required + absent),
-    // which the modal surfaces recoverably — its own test below. This journey
+    // which the modal surfaces recoverably, its own test below. This journey
     // proves the declaration + first-value draft path succeeds end to end.
 
     await modal.getByRole('button', { name: 'Declare' }).click();
@@ -1003,7 +1006,7 @@ test.describe('environment matrix declaration', () => {
     await expect(page.locator('.notice')).toContainText(
       'Declared FEATURE_ENABLED with a draft value in 1 environment',
     );
-    // The declared key's cell now carries its opening draft — proof the value
+    // The declared key's cell now carries its opening draft, proof the value
     // entered the draft workflow with the declaration.
     await expect(
       page.getByRole('button', { name: /FEATURE_ENABLED in development:.*draft set/ }),
@@ -1039,7 +1042,7 @@ test.describe('environment matrix declaration', () => {
     await modal.getByLabel('Group').fill('features');
     await modal.getByLabel('Key name').fill('REQUIRED_EVERYWHERE');
     await modal.getByLabel('Type').selectOption('string');
-    // Symbolic all — required in every environment, current and future — on a
+    // Symbolic all, required in every environment, current and future, on a
     // key with no values yet: the server vetoes (required + absent). The block
     // is a phase-1 failure, so the intact form stays open for the operator to
     // relax the rule or add values.
@@ -1059,8 +1062,8 @@ test.describe('environment matrix declaration', () => {
  * Flow tail: the browser dotenv import wizard (#495).
  *
  * A local .env file is read in the browser, its one new key is classified and
- * typed explicitly, and — targeting only the unprotected development
- * environment so no step-up is needed — the reviewed import declares the key
+ * typed explicitly, and, targeting only the unprotected development
+ * environment so no step-up is needed, the reviewed import declares the key
  * and publishes its value. The result names what landed, and the value is a
  * live (published) matrix cell, not a draft.
  */
@@ -1172,8 +1175,8 @@ test.describe('environment matrix kubernetes import', () => {
 /**
  * Change approvals (#151). Rides this spec because a new spec file's pinned
  * claims never run on the PR (the merge gate loads ci.yml from the base). This
- * exercises the BROWSER PROPOSAL half of the [UI] criterion — a covered publish
- * stages a request rather than publishing — and the surface's pinned assertion
+ * exercises the BROWSER PROPOSAL half of the [UI] criterion, a covered publish
+ * stages a request rather than publishing, and the surface's pinned assertion
  * set. Vote/merge/bypass are exercised end to end at the service layer on both
  * engines (internal/isolation/approvals_e2e_test.go); the in-browser vote
  * ceremony is a documented follow-up (see the PR/handoff).

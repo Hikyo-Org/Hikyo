@@ -54,7 +54,7 @@ function firstMenuItem(container: HTMLElement): HTMLElement {
   return item;
 }
 
-async function renderAccountEntry(): Promise<{
+async function renderAccountEntry(who: WhoAmI = session): Promise<{
   container: HTMLDivElement;
   trigger: HTMLButtonElement;
   unmount: () => Promise<void>;
@@ -66,7 +66,7 @@ async function renderAccountEntry(): Promise<{
   await act(async () => {
     root.render(
       <MemoryRouter>
-        <AccountEntry session={session} updateVersions={[]} />
+        <AccountEntry session={who} updateVersions={[]} />
       </MemoryRouter>,
     );
   });
@@ -134,6 +134,19 @@ describe('account menu', () => {
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
     expect(container.querySelector('[role="menu"]')).toBeNull();
 
+    await unmount();
+  });
+
+  it('falls back to the principal id when the display name is absent or blank', async () => {
+    const blank: WhoAmI = { ...session, principal: { ...session.principal, display_name: '' } };
+    const { container, trigger, unmount } = await renderAccountEntry(blank);
+    expect(trigger.getAttribute('aria-label')).toBe(
+      'Account: prn_123e4567-e89b-12d3-a456-426614174000',
+    );
+    await act(async () => trigger.click());
+    expect(container.querySelector('.menu__label .mono')?.textContent).toBe(
+      'prn_123e4567-e89b-12d3-a456-426614174000',
+    );
     await unmount();
   });
 });

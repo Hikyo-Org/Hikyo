@@ -116,7 +116,7 @@ describe('useWorkspaceHandoff', () => {
   it('fails with a retry affordance when a step-up bearer is unavailable', async () => {
     const mounted = await renderHandoff(vi.fn(), {
       preparation: {
-        kind: 'unavailable',
+        kind: 'refused',
         message: 'This workspace is no longer connected.',
       },
     });
@@ -138,7 +138,7 @@ describe('useWorkspaceHandoff', () => {
       mounted.root.render(
         <HandoffHarness
           onAuthorised={vi.fn()}
-          preparation={{ kind: 'unavailable', message: 'Workspace disconnected.' }}
+          preparation={{ kind: 'refused', message: 'Workspace disconnected.' }}
         />,
       ),
     );

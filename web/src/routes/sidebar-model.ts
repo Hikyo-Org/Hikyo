@@ -21,7 +21,7 @@ export type SidebarBlock = {
 export type SidebarModel = {
   /** The project or instance block, stacked above the organisation block. */
   readonly context: SidebarBlock | null;
-  /** Null while no organisation is active — an entry is absent, never dead. */
+  /** Null while no organisation is active, an entry is absent, never dead. */
   readonly organisation: SidebarBlock | null;
   /** Operator-only, mobile drawer only; null when `context` already IS it. */
   readonly instance: SidebarBlock | null;
@@ -29,7 +29,7 @@ export type SidebarModel = {
   readonly account: SidebarBlock;
 };
 
-const localOnly = (label: string) => `${label} is not available for remote workspaces yet`;
+const localOnly = (label: string) => `${label} is local-instance only`;
 
 function link(surface: Surface, to: string, disabledReason: string | null = null): SidebarLink {
   return { id: surface.id, label: surface.label, to, disabledReason };

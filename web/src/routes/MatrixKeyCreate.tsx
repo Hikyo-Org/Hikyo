@@ -1,7 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
 
+import { GIT_DEFINITIONS_NOTICE } from '../api/definitions.ts';
 import type { CreateKeyPresence, CreateKeyRule, CreateKeyType } from '../api/matrix.ts';
 import type { EnvironmentList } from '../api/values.ts';
+import { normalizeMatrixDraftValue } from './matrix-state.ts';
+import { isBackdropClick } from './MatrixRowEditor.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 
 type Environment = EnvironmentList['items'][number];
@@ -46,12 +49,50 @@ const INT64_MAX = 9223372036854775807n;
 const SAFE_MIN = BigInt(Number.MIN_SAFE_INTEGER);
 const SAFE_MAX = BigInt(Number.MAX_SAFE_INTEGER);
 
+const normalizeFolder = (raw: string) => raw.trim().toLowerCase().replace(/[^a-z0-9_/-]/g, '');
+const normalizeName = (raw: string) => raw.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+
+/**
+ * Damerau-Levenshtein (optimal string alignment) distance, for the near-miss
+ * warning: DATABASE_URL against DATABSE_URL is one transposition, not two edits.
+ */
+export function editDistance(a: string, b: string): number {
+  const rows = Array.from({ length: a.length + 1 }, (_, i) =>
+    Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)),
+  );
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      let best = Math.min(rows[i - 1]![j]! + 1, rows[i]![j - 1]! + 1, rows[i - 1]![j - 1]! + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        best = Math.min(best, rows[i - 2]![j - 2]! + 1);
+      }
+      rows[i]![j] = best;
+    }
+  }
+  return rows[a.length]![b.length]!;
+}
+
+/** An existing key one or two edits away from `name` (never an exact match), or null. */
+export function nearMissKeyName(name: string, existing: readonly string[]): string | null {
+  if (name === '') return null;
+  let closest: { readonly name: string; readonly distance: number } | null = null;
+  for (const candidate of existing) {
+    if (candidate === name || Math.abs(candidate.length - name.length) > 2) continue;
+    const distance = editDistance(name, candidate);
+    if (distance <= 2 && (closest === null || distance < closest.distance)) {
+      closest = { name: candidate, distance };
+    }
+  }
+  return closest?.name ?? null;
+}
+
 /**
  * Declare-key modal (env-matrix 31 / #492). A group is a folder: a name that is
  * not yet a folder simply creates it, so there is no separate "create group"
  * step. The declaration carries one value rule with its type-specific
  * constraints and per-environment presence (required / forbidden, each
- * none / all / an explicit set). `all` is offered as an explicit choice — it is
+ * none / all / an explicit set). `all` is offered as an explicit choice, it is
  * SYMBOLIC and covers environments created later, so it is never inferred from
  * "these happen to be every environment today". Richer editing (any_of unions,
  * deprecation, key groups) lives in the key's own editor.
@@ -62,6 +103,7 @@ export function MatrixKeyCreate({
   protectedEnvironmentIds,
   initialFolder,
   existingKeyNames,
+  gitManaged = false,
   busy,
   mutationError,
   onClose,
@@ -72,6 +114,8 @@ export function MatrixKeyCreate({
   protectedEnvironmentIds: readonly string[];
   initialFolder: string | null;
   existingKeyNames: readonly string[];
+  /** Definitions live in Git: the form is read-only and says why. */
+  gitManaged?: boolean;
   busy: boolean;
   mutationError: string | null;
   onClose: () => void;
@@ -84,7 +128,7 @@ export function MatrixKeyCreate({
   const [type, setType] = useState<CreateKeyType>('string');
   const [secret, setSecret] = useState(false);
   const [description, setDescription] = useState('');
-  // Constraint fields — kept as raw strings so an in-progress edit never coerces
+  // Constraint fields, kept as raw strings so an in-progress edit never coerces
   // to NaN; parsed and range-checked only at submit.
   const [minLength, setMinLength] = useState('');
   const [maxLength, setMaxLength] = useState('');
@@ -107,16 +151,25 @@ export function MatrixKeyCreate({
   const [forbiddenEnvironmentIds, setForbiddenEnvironmentIds] = useState<readonly string[]>([]);
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showTyping, setShowTyping] = useState(false);
 
   const existing = useMemo(() => new Set(existingKeyNames), [existingKeyNames]);
+  // The field keeps what was typed; the normalised form is previewed, not
+  // forced in under the cursor.
+  const normalizedName = normalizeName(name);
+  const normalizedFolder = normalizeFolder(folder);
+  const nearMiss = useMemo(
+    () => nearMissKeyName(normalizedName, existingKeyNames),
+    [existingKeyNames, normalizedName],
+  );
+  const whitespaceRemoved = normalizeMatrixDraftValue(value) !== value;
 
   const submit = () => {
-    const normalizedFolder = folder.trim().toLowerCase().replace(/[^a-z0-9_/-]/g, '');
+    if (gitManaged) return;
     if (normalizedFolder === '') {
       setError('Enter a group, e.g. app.');
       return;
     }
-    const normalizedName = name.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_');
     if (normalizedName === '') {
       setError('Enter a key name.');
       return;
@@ -163,7 +216,7 @@ export function MatrixKeyCreate({
       return;
     }
 
-    const trimmedValue = value.trim();
+    const trimmedValue = normalizeMatrixDraftValue(value);
     let firstValue: MatrixKeyCreateFirstValue | null = null;
     if (trimmedValue !== '') {
       const valueError = validateFirstValue(rule, trimmedValue);
@@ -209,7 +262,7 @@ export function MatrixKeyCreate({
       ref={dialog}
       onClose={onClose}
       onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (isBackdropClick(event)) onClose();
       }}
     >
       <form
@@ -224,7 +277,7 @@ export function MatrixKeyCreate({
             <p className="matrix-editor__eyebrow">Declare key</p>
             <h2>New key</h2>
             <p>
-              Each environment gets its own explicit value — nothing inherits. A new group name
+              Each environment gets its own explicit value: nothing inherits. A new group name
               creates that group.
             </p>
           </div>
@@ -237,6 +290,13 @@ export function MatrixKeyCreate({
             ✕
           </button>
         </div>
+
+        {gitManaged ? (
+          <p className="notice" role="status">
+            <span aria-hidden="true">ℹ</span>
+            <span>{GIT_DEFINITIONS_NOTICE}</span>
+          </p>
+        ) : null}
 
         <div className="matrix-key-create__field">
           <label htmlFor="matrix-create-folder">Group</label>
@@ -265,8 +325,22 @@ export function MatrixKeyCreate({
             autoComplete="off"
             placeholder="KEY_NAME"
             value={name}
+            aria-describedby={normalizedName === '' ? undefined : 'matrix-create-name-preview'}
             onChange={(event) => setName(event.target.value)}
           />
+          {/* Not a live region: it changes on every keystroke, and a status
+              that re-announces each character is noise, not help. */}
+          {normalizedName === '' ? null : (
+            <p className="matrix-editor__hint" id="matrix-create-name-preview">
+              {`Will be declared as ${normalizedName}${normalizedFolder === '' ? '' : ` in folder ${normalizedFolder}/`}`}
+            </p>
+          )}
+          {nearMiss === null ? null : (
+            <p className="notice" role="status">
+              <span aria-hidden="true">ℹ</span>
+              <span>{`Similar to existing key ${nearMiss}. Continue if this is intentional.`}</span>
+            </p>
+          )}
         </div>
 
         <div className="matrix-key-create__type">
@@ -371,7 +445,7 @@ export function MatrixKeyCreate({
               <span>One member per line</span>
               <textarea
                 className="mono"
-                rows={4}
+                rows={2}
                 autoComplete="off"
                 placeholder={'debug\ninfo\nwarn\nerror'}
                 value={members}
@@ -404,7 +478,7 @@ export function MatrixKeyCreate({
               <span>Schema document</span>
               <textarea
                 className="mono"
-                rows={5}
+                rows={2}
                 autoComplete="off"
                 placeholder='{ "type": "object" }'
                 value={jsonSchema}
@@ -414,6 +488,10 @@ export function MatrixKeyCreate({
           </fieldset>
         ) : null}
 
+        <p className="matrix-editor__hint">
+          Descriptions and other free-text fields are exported to Git and treated as public. Never
+          paste secret values.
+        </p>
         <div className="matrix-key-create__field">
           <label htmlFor="matrix-create-description">Description (optional)</label>
           <textarea
@@ -428,27 +506,30 @@ export function MatrixKeyCreate({
 
         <div className="matrix-key-create__field">
           <label htmlFor="matrix-create-value">First value (optional)</label>
+          <textarea
+            id="matrix-create-value"
+            className={`mono matrix-editor__value${secret && !showTyping ? ' matrix-editor__value--masked' : ''}`}
+            rows={2}
+            autoComplete="off"
+            placeholder={secret ? 'first value (hidden)' : type === 'json' ? 'first value (json)' : 'first value'}
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+          />
           {secret ? (
-            <input
-              id="matrix-create-value"
-              type="password"
-              className="mono matrix-editor__value"
-              autoComplete="off"
-              placeholder="first value (hidden)"
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-            />
-          ) : (
-            <textarea
-              id="matrix-create-value"
-              className="mono matrix-editor__value"
-              rows={type === 'json' ? 5 : 1}
-              autoComplete="off"
-              placeholder={type === 'json' ? 'first value (json)' : 'first value'}
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-            />
-          )}
+            <label className="matrix-editor__show-typing">
+              <input
+                type="checkbox"
+                checked={showTyping}
+                onChange={(event) => setShowTyping(event.target.checked)}
+              />
+              <span>Show while typing</span>
+            </label>
+          ) : null}
+          {whitespaceRemoved ? (
+            <p className="matrix-editor__hint" role="status">
+              Leading and trailing whitespace was removed.
+            </p>
+          ) : null}
         </div>
 
         <fieldset className="matrix-editor__copy">
@@ -506,7 +587,7 @@ export function MatrixKeyCreate({
         )}
 
         <div className="matrix-editor__actions">
-          <button type="submit" className="btn btn--primary" disabled={busy || applying}>
+          <button type="submit" className="btn btn--primary" disabled={busy || applying || gitManaged}>
             {busy || applying ? 'Declaring…' : 'Declare'}
           </button>
           <button type="button" className="btn" onClick={onClose}>
@@ -523,7 +604,7 @@ export function MatrixKeyCreate({
 
 /**
  * One presence axis (required / forbidden). `all` is a first-class radio, not a
- * "select every environment" — the symbolic mode covers future environments
+ * "select every environment", the symbolic mode covers future environments
  * that an explicit set cannot, so the operator states it directly.
  */
 function PresenceField({
@@ -731,7 +812,7 @@ function parseOptionalInt(raw: string): number | undefined | 'invalid' {
 
 /**
  * Parses a signed integer bound, rejecting values outside int64 (the contract's
- * range) and — separately — values a JS number cannot hold exactly, because the
+ * range) and, separately, values a JS number cannot hold exactly, because the
  * request carries a `number` and `Number.parseInt` would silently round a value
  * past 2^53. Better to refuse than to transmit a different number than typed.
  */
@@ -775,7 +856,7 @@ function validatePresence(required: CreateKeyPresence, forbidden: CreateKeyPrese
 /**
  * Light first-value check mirroring the prototype's declare-time validation.
  * The server is the authority on the staged write; this only rejects values
- * that cannot satisfy the declared rule at all — the type, and an enum's
+ * that cannot satisfy the declared rule at all, the type, and an enum's
  * membership, which is knowable without the service.
  */
 function validateFirstValue(rule: CreateKeyRule, value: string): string | null {

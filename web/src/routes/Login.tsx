@@ -1,7 +1,9 @@
+import { samlStartOp } from '@hikyo/operations';
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 
-import { useSensitiveState } from '../api/sensitiveMutation.ts';
+import { parsed } from '../api/client.ts';
+import { useSensitiveMutation, useSensitiveState } from '../api/sensitiveMutation.ts';
 import { useAuthMethods } from '../api/account.ts';
 import { loginFailureText, useLogin, useOIDCLogin } from '../api/session.ts';
 import { passkeysAvailable, stepUpFailureText, usePasskeyLogin } from '../api/stepup.ts';
@@ -19,14 +21,27 @@ import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
  * and it carries a glyph. The wording never distinguishes an unknown account
  * from a wrong password, because the server deliberately does not either.
  */
+/** A SAML provider's login leg: the same artifact as OIDC, over the SP-initiated redirect. */
+function useSAMLLogin() {
+  return useSensitiveMutation({
+    mutationFn: (provider: string) =>
+      parsed(samlStartOp, { path: { provider }, body: { purpose: 'login' } }),
+    onSuccess: (result) => globalThis.location.assign(result.redirect_url),
+  });
+}
+
 export function Login() {
   const login = useLogin();
   const passkey = usePasskeyLogin();
   const oidc = useOIDCLogin();
+  const saml = useSAMLLogin();
   const methods = useAuthMethods();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useSensitiveState('');
-  const busy = login.isPending || passkey.isPending || oidc.isPending;
+  // The provider being contacted, so only ITS button shows the busy label.
+  const [contacting, setContacting] = useState<string | null>(null);
+  const providerPending = oidc.isPending || saml.isPending;
+  const busy = login.isPending || passkey.isPending || providerPending;
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -102,36 +117,45 @@ export function Login() {
             ) : null}
           </>
         ) : null}
+        {methods.isPending ? <p role="status">Loading sign-in methods…</p> : null}
         {methods.data?.providers
-          .filter((provider) => provider.kind === 'oidc')
+          .filter((provider) => provider.kind === 'oidc' || provider.kind === 'saml')
           .map((provider) => (
             <button
               className="btn"
               type="button"
               key={provider.slug}
-              onClick={() => oidc.mutate(provider.slug)}
+              onClick={() => {
+                setContacting(provider.slug);
+                if (provider.kind === 'saml') saml.mutate(provider.slug);
+                else oidc.mutate(provider.slug);
+              }}
               disabled={busy}
             >
-              {oidc.isPending ? 'Contacting identity provider…' : `Continue with ${provider.display_name}`}
+              {providerPending && contacting === provider.slug
+                ? 'Contacting identity provider…'
+                : `Continue with ${provider.display_name}`}
             </button>
           ))}
         {methods.isError ? (
           <ProviderDiscoveryAlert onRetry={() => void methods.refetch()} />
         ) : null}
-        {oidc.isError ? (
+        {oidc.isError || saml.isError ? (
           <p className="alert" role="alert">
             <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{loginFailureText(oidc.error)}</span>
+            <span>{loginFailureText(oidc.isError ? oidc.error : saml.error)}</span>
           </p>
         ) : null}
-        {/* A `.btn` link, not an inline one: the mobile pinned set holds every
-            interactive element to the 44px touch floor (#567). */}
-        <Link className="btn" to={surfaceById('establish-credential').path}>
-          Have a setup authority? Establish your credential
-        </Link>
-        <Link className="btn" to={`${surfaceById('establish-credential').path}?mode=recover`}>
-          Lost your second factor? Recover with a code
-        </Link>
+        {/* Quiet links, demoted from buttons: the CSS keeps them on the 44px
+            touch floor (#567) without reading as a third way to sign in. */}
+        <p className="login__links">
+          <Link to={surfaceById('establish-credential').path}>
+            Have a setup authority? Establish your credential
+          </Link>
+          <Link to={`${surfaceById('establish-credential').path}?mode=recover`}>
+            Lost your second factor? Recover with a code
+          </Link>
+        </p>
       </form>
     </main>
   );

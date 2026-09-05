@@ -247,3 +247,73 @@ describe('Ceremony task identity', () => {
     await act(async () => root.unmount());
   });
 });
+
+describe('Ceremony copy and factor state (a11y audit)', () => {
+  const slidingWindow = {
+    protected: false,
+    effective_window_seconds: 300,
+    live: false,
+    single_decision: false,
+    can_reveal: false,
+    totp_offered: true,
+  };
+
+  async function mount(request: Parameters<typeof Ceremony>[0]['request']) {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () =>
+      root.render(<Ceremony request={request} onAuthorised={vi.fn()} onCancel={vi.fn()} />),
+    );
+    return { container, unmount: () => act(async () => root.unmount()) };
+  }
+
+  it('names the act in the lede, marks secret keys, and explains the sliding window', async () => {
+    const view = await mount({
+      ...ceremonyRequest('production'),
+      purpose: 'publish',
+      keys: [
+        { id: 'k1', name: 'API_KEY', classification: 'secret' },
+        { id: 'k2', name: 'LOG_LEVEL', classification: 'config' },
+      ],
+      window: slidingWindow,
+    });
+    expect(view.container.querySelector('.ceremony__lede strong')?.textContent).toBe(
+      'publish into a protected environment',
+    );
+    const items = [...view.container.querySelectorAll('.ceremony__keys li')];
+    expect(items[0]?.querySelector('.visually-hidden')?.textContent).toBe('secret ');
+    expect(items[1]?.querySelector('.visually-hidden')).toBeNull();
+    expect(view.container.textContent).toContain('Success opens a sliding reveal window.');
+    await view.unmount();
+  });
+
+  it('keeps disclosure wording for a reveal and no window sentence for a single decision', async () => {
+    const view = await mount(ceremonyRequest('production'));
+    expect(view.container.querySelector('.ceremony__lede strong')?.textContent).toBe('disclosure');
+    expect(view.container.textContent).not.toContain('Success opens a sliding reveal window.');
+    await view.unmount();
+  });
+
+  it('relabels only the pending factor and puts Cancel last', async () => {
+    mocks.identity = { session: { assurance: { method: 'oidc:strict', provider: 'strict' } } };
+    mocks.providerAvailable = true;
+    const passkey = deferred<void>();
+    mocks.runPasskeyCeremony.mockReturnValue(passkey.promise);
+    const view = await mount({ ...ceremonyRequest('production'), window: slidingWindow });
+    const actions = [...view.container.querySelectorAll('.ceremony__actions button')];
+    expect(actions.at(-1)?.textContent).toBe('Cancel');
+
+    await act(async () => button(view.container, 'Use a passkey').click());
+    const labels = [...view.container.querySelectorAll<HTMLButtonElement>('.ceremony__actions button')].map(
+      (node) => [node.textContent, node.disabled],
+    );
+    expect(labels).toEqual([
+      ['Waiting for your passkey…', true],
+      ['Re-authenticate with Corporate IdP', true],
+      ['Cancel', true],
+    ]);
+    await act(async () => passkey.resolve());
+    await view.unmount();
+  });
+});

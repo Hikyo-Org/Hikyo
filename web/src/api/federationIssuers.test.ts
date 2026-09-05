@@ -11,8 +11,8 @@ import {
 
 /**
  * The federation-issuer surface's pure gates. Each is where a wrong answer is a
- * SECURITY statement — an http issuer admitted, a delete promised that the
- * server refuses, a default-audience list left empty — so they are pinned here
+ * SECURITY statement, an http issuer admitted, a delete promised that the
+ * server refuses, a default-audience list left empty, so they are pinned here
  * rather than inferred from a screenshot.
  */
 
@@ -26,7 +26,7 @@ describe('isHttpsIssuer', () => {
     expect(isHttpsIssuer('http://token.actions.githubusercontent.com')).toBe(false);
   });
 
-  it('refuses userinfo, query and fragment — each would be disclosed byte-exact', () => {
+  it('refuses userinfo, query and fragment, each would be disclosed byte-exact', () => {
     expect(isHttpsIssuer('https://user:secret@host')).toBe(false);
     expect(isHttpsIssuer('https://host?x=1')).toBe(false);
     expect(isHttpsIssuer('https://host#frag')).toBe(false);
@@ -61,7 +61,7 @@ describe('issuerFieldRefusal', () => {
     expect(issuerFieldRefusal({ ...base, refusedAudiences: [''] })).toMatch(/refused audience/);
   });
 
-  it('refuses an audience carrying a line break — newline is the separator', () => {
+  it('refuses an audience carrying a line break, newline is the separator', () => {
     expect(issuerFieldRefusal({ ...base, refusedAudiences: ['a\nb'] })).toMatch(/line break/);
   });
 

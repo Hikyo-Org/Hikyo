@@ -186,7 +186,7 @@ async function expectRecoverySurface(page: Page, theme: 'dark' | 'light') {
 /**
  * Flow: login (registry surface `login`).
  *
- * Covers the surface's whole job — refusal and success — and runs the pinned
+ * Covers the surface's whole job, refusal and success, and runs the pinned
  * assertion set over everything it touches.
  */
 
@@ -236,7 +236,7 @@ test.describe('login', () => {
     await page.getByLabel('Password').fill(ADMIN.password);
     await page.getByRole('button', { name: 'Sign in' }).click();
 
-    // The org rail is desktop chrome — a phone reaches organisations through
+    // The org rail is desktop chrome, a phone reaches organisations through
     // the drawer, so the rail is `display:none` there. What proves the shell
     // came up at BOTH widths is the breadcrumb, which only the authenticated
     // chrome renders.
@@ -316,7 +316,7 @@ test.describe('login', () => {
 
   // Credential establishment (#568, registry surface `establish-credential`):
   // the public page where an invitation or reset authority becomes a password.
-  // The happy path — a real invitation claimed here and signed in with — is
+  // The happy path, a real invitation claimed here and signed in with, is
   // the members flow's; this flow owns the page's own contract.
   test('reaches the establish page from the login card', async ({ page }) => {
     await page.goto('/login');
@@ -483,7 +483,7 @@ test.describe('login', () => {
 
   test('is dark by default and follows the platform preference', async ({ page }) => {
     await page.goto('/login');
-    // No explicit choice has been made — no attribute, no stored value — and
+    // No explicit choice has been made, no attribute, no stored value, and
     // no script decides the theme, which is what lets the CSP forbid inline
     // script without a first-paint flash.
     await expect(page.locator('html')).not.toHaveAttribute('data-theme', /.+/);
@@ -493,8 +493,8 @@ test.describe('login', () => {
     expect(dark.luminance, `the dark surface is not dark (${dark.colour})`).toBeLessThan(0.1);
 
     // Chromium never reports `no-preference`, so "dark default" is asserted
-    // where it is observable — the declared default in the stylesheet, before
-    // the light override — via the document's own colour-scheme order.
+    // where it is observable, the declared default in the stylesheet, before
+    // the light override, via the document's own colour-scheme order.
     const declared = await page.evaluate(
       () => document.querySelector('meta[name="color-scheme"]')?.getAttribute('content') ?? '',
     );

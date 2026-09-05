@@ -133,7 +133,7 @@ describe('probeWorkspace session identity', () => {
 
   // A step-up ELEVATES in place: same session id, a freshly rotated value. A
   // probe fired with the pre-elevation value must not, on its stale 401, take
-  // down the live elevated bearer that shares its session id — the drop is keyed
+  // down the live elevated bearer that shares its session id, the drop is keyed
   // by local epoch, exactly as the transport's kill path is.
   it('ignores a stale 401 for a value the same session has since rotated', async () => {
     const response = deferredResponse();
@@ -247,7 +247,7 @@ describe('probeWorkspace response validation', () => {
   it('treats a 403 as alive, never dropping a valid session on a spurious forbidden', async () => {
     // /me/sessions is self-scoped and cannot legitimately 403 a live session; a
     // 403 here is anomalous (a proxy/WAF), not death (that is 401) and not
-    // unreachability. Two of them in a row must NOT kill the workspace — that
+    // unreachability. Two of them in a row must NOT kill the workspace, that
     // would be a false reconnect the human never earned.
     vi.stubGlobal(
       'fetch',

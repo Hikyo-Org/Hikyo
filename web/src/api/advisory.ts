@@ -20,7 +20,7 @@ import type { TransportOptions } from './transport.tsx';
  *
  * The channel is ADVISORY ONLY and replays nothing (`Last-Event-ID` refetches
  * nothing): a client that misses events refetches current state from the
- * signals endpoint. The fallback poll is that refetch — it runs precisely
+ * signals endpoint. The fallback poll is that refetch, it runs precisely
  * while the stream is not healthy, so a dropped stream costs two seconds of
  * age, never correctness.
  */
@@ -41,7 +41,7 @@ export type AdvisoryEvent = {
 /**
  * The wire envelope every event shares (`wireAdvisory`, internal/server/
  * revisions.go): the type, and the environment the event was authorized
- * against. Metadata only — no field here could hold a value or a change
+ * against. Metadata only, no field here could hold a value or a change
  * token, and the schemas below must never grow one.
  */
 const zAdvisoryEnvelope = z.object({
@@ -79,7 +79,7 @@ const zPendingStagedWire = z.object({
   ...zEventKey,
   // The actor survives only on the recipient's OWN events (advisory.go's
   // projection blanks everyone else), so `actor_id` present means "your own
-  // draft" — a fact the recipient already knows and may act on.
+  // draft", a fact the recipient already knows and may act on.
   actor_id: z.string().min(1).optional(),
 });
 
@@ -87,7 +87,7 @@ const zPendingStagedWire = z.object({
  * parseAdvisoryEvent narrows one stream payload, returning null for an event
  * type this build does not know. Unknown types are skipped, never fatal: the
  * channel is additive by design, and a future server naming a new fact must
- * not kill delivery of the types this build does understand — nothing was
+ * not kill delivery of the types this build does understand, nothing was
  * missed that the fallback refetch would not fetch. A KNOWN type with a
  * malformed body is refused loudly instead: a silently-accepted wrong shape is
  * the bug this Zod boundary exists to stop.
@@ -138,7 +138,7 @@ export type AdvisoryHandlers = {
  * The client-side reconnect cadence for attempts the server never answered.
  * After a CONNECTED stream the server's own jittered `retry:` hint governs,
  * so this only bounds the dark: one second before the first retry, ten at the
- * ceiling — a compromise between a reconnect storm and a tab that sits stale
+ * ceiling, a compromise between a reconnect storm and a tab that sits stale
  * behind its fallback poll for half a minute.
  */
 const ADVISORY_RECONNECT_BASE_MS = 1_000;
@@ -165,7 +165,7 @@ export function signalsPollInterval(state: AdvisoryConnectionState): number | fa
  *  - hey-api's fetch-SSE client retries a FAILED attempt (a refused connection,
  *    a non-2xx handshake) internally, surfacing each failure through
  *    `onSseError`; the iteration only ends when the server ends the response
- *    cleanly — the slow-client drop, an instance shutting down.
+ *    cleanly, the slow-client drop, an instance shutting down.
  *  - That clean end ends the iteration, and this loop re-subscribes after its
  *    own jittered backoff.
  *

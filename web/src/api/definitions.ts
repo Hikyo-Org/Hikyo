@@ -19,7 +19,7 @@ import { useTransport, type TransportOptions } from './transport.tsx';
 
 // Normative text: docs/spec/ui-spec.md § Git-mode.
 export const GIT_DEFINITIONS_NOTICE =
-  'Definitions for this project are managed in Git — changes arrive through `definitions plan` / `definitions apply`.';
+  'Definitions for this project are managed in Git: changes arrive through `definitions plan` / `definitions apply`.';
 
 export type DefinitionsSettings = z.infer<typeof zDefinitionsSettings>;
 export type DefinitionsSource = DefinitionsSettings['definitions_source'];
@@ -37,7 +37,7 @@ export function parseDefinitionsSource(value: string): DefinitionsSource {
  *
  * `transport` is the workspace seam (#71): definitions settings are product
  * data, so in a workspace this call MUST route through the remote's client, or
- * it hits the viewing server — a leak the two-instance e2e route-guard catches.
+ * it hits the viewing server, a leak the two-instance e2e route-guard catches.
  * Defaults to the same-origin singleton for non-hook callers.
  */
 export function definitionsSettingsQueryOptions(

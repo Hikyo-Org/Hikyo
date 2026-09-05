@@ -80,6 +80,23 @@ describe('OIDC done page', () => {
     await act(async () => root.unmount());
   });
 
+  it('keeps a refused reauthentication on screen with a way back, and never closes the window', async () => {
+    globalThis.sessionStorage.setItem('hikyo-oidc-return:reauth-state', '/settings#account-security');
+    globalThis.history.replaceState({}, '', '/auth/oidc/done?state=reauth-state&purpose=reauth&error=access_denied');
+    const container = document.createElement('div');
+    const root = createRoot(container);
+
+    await act(async () => root.render(<OIDCDone />));
+
+    expect(channels[0]?.message).toEqual({ state: 'reauth-state', ok: false, error: 'access_denied' });
+    expect(globalThis.close).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('refused this reauthentication');
+    const back = container.querySelector('a.btn');
+    expect(back?.textContent).toBe('Back');
+    expect(back?.getAttribute('href')).toBe('/settings#account-security');
+    await act(async () => root.unmount());
+  });
+
   it('keeps a refused identity link visible before returning to account security', async () => {
     globalThis.sessionStorage.setItem('hikyo-oidc-return:link-state', '/settings#account-security');
     globalThis.history.replaceState({}, '', '/auth/oidc/done?state=link-state&purpose=link&error=unauthenticated');
@@ -101,6 +118,7 @@ it('announces a successful OIDC login to other tabs before returning home', asyn
   const container = document.createElement('div');
   const root = createRoot(container);
   await act(async () => root.render(<OIDCDone />));
+  expect(container.querySelector('[role="status"]')?.textContent).toBe('Signed in.');
   expect(channels).toContainEqual({
     name: 'hikyo-root-auth',
     message: { type: 'session-changed', sender: expect.any(String) },

@@ -17,21 +17,21 @@ import { surfacesForFlow } from '../registry.ts';
  * Flow: the multi-instance surfaces (registry surfaces `remotes`,
  * `workspace-approve`, `workspace-callback`).
  *
- * This is M6's [UI] deliverable — "workspace popup ceremony + kill switch" —
+ * This is M6's [UI] deliverable, "workspace popup ceremony + kill switch" , 
  * and it runs against TWO REAL INSTANCES on two loopback origins, not against a
  * mock. What it proves, in the order it proves it:
  *
  *   1. The directory card renders a real entry, its state, and the last-known
  *      listing it holds.
  *   2. The serving instance's administrator allowlists the viewing origin
- *      THROUGH THE UI — the consent surface, exercised rather than seeded.
+ *      THROUGH THE UI, the consent surface, exercised rather than seeded.
  *   3. The origin-labelled workspace action opens a popup ON THE REMOTE'S ORIGIN, the human
  *      authorizes there, the code returns through this origin's own callback
  *      page over a BroadcastChannel, and the shell redeems it cross-origin.
  *      There is no server in the middle at any point.
  *   4. Removing the allowlist entry kills the workspace, and the shell says so.
  *   5. Revoking the session in the remote's own active-session list kills it
- *      the same way — criterion 5, seen from the browser.
+ *      the same way, criterion 5, seen from the browser.
  *
  * The two instances differ by HOSTNAME (A is `localhost`, B is `127.0.0.1`)
  * and not only by port, because cookies are not partitioned by port: one
@@ -70,7 +70,7 @@ function card(page: Page) {
 /**
  * revokeConnectionByLabel is best-effort test cleanup: it retires any live
  * connection credential carrying `label`, from inside B's own origin so the
- * session cookie and its synchronizer token are both present. It never throws —
+ * session cookie and its synchronizer token are both present. It never throws , 
  * a failed cleanup must not mask the assertion that actually failed.
  */
 async function revokeConnectionByLabel(page: Page, label: string): Promise<void> {
@@ -151,8 +151,8 @@ test.describe('multi-instance', () => {
     await expect(entry).toContainText(BASE_URL_B);
 
     // The state is a SENTENCE, announced, never a colour. The entry is
-    // deliberately unreachable over plaintext — the server refuses to fetch a
-    // remote URL that is not https — so the card is in exactly the state the
+    // deliberately unreachable over plaintext, the server refuses to fetch a
+    // remote URL that is not https, so the card is in exactly the state the
     // ADR names: last known, with its age.
     await expectStatusIsTextAndAria(page, entry.getByRole('status').first());
     await expect(entry).toContainText('Showing the last known directory');
@@ -167,14 +167,14 @@ test.describe('multi-instance', () => {
   /**
    * The receiving side, end to end (#498). The serving instance's operator
    * mints a connection credential IN THE UI, a peer presents it at the one
-   * endpoint it may reach — the directory fetch — and it authenticates.
+   * endpoint it may reach, the directory fetch, and it authenticates.
    * Revoking it through the UI, after the consequence is stated, refuses the
    * very next presentation.
    *
    * It mints its OWN uniquely-labelled credential and never touches the seeded
    * one every sibling test depends on. The connect-and-refuse legs run through
-   * an EXPLICITLY cookie-less request context, so the credential — not an
-   * ambient session — is provably what authenticates: a no-auth control against
+   * an EXPLICITLY cookie-less request context, so the credential, not an
+   * ambient session, is provably what authenticates: a no-auth control against
    * the same endpoint is refused, and only the bearer turns that into a 200,
    * which is exactly what a peer instance's server-side directory fetch does.
    *
@@ -191,7 +191,7 @@ test.describe('multi-instance', () => {
     await expect(section).toBeVisible();
 
     const label = `e2e connection ${Date.now()}`;
-    // A context with no storage state carries no cookies — the only credential
+    // A context with no storage state carries no cookies, the only credential
     // it can present is the bearer set per request.
     const peer = await playwright.request.newContext();
     const directory = `${BASE_URL_B}/api/v1/instance/directory`;
@@ -209,15 +209,15 @@ test.describe('multi-instance', () => {
       const anonymous = await peer.get(directory);
       expect(anonymous.status(), 'the directory fetch is not open without a credential').toBe(401);
 
-      // A peer presents the minted value at the directory fetch — the one
-      // operation an instance-connection credential may reach — and connects.
+      // A peer presents the minted value at the directory fetch, the one
+      // operation an instance-connection credential may reach, and connects.
       const connected = await peer.get(directory, {
         headers: { Authorization: `Bearer ${value}` },
       });
       expect(connected.status()).toBe(200);
 
       // The value is display-once: confirm storage, dismiss, and it is gone from
-      // the surface — the inventory shows metadata only.
+      // the surface, the inventory shows metadata only.
       await mintDialog.getByLabel(/I have stored this credential/).check();
       await mintDialog.getByRole('button', { name: 'Done' }).click();
       await expect(mintDialog).toBeHidden();
@@ -242,7 +242,7 @@ test.describe('multi-instance', () => {
 
       await expect(row.getByText('revoked', { exact: true })).toBeVisible();
 
-      // The same presentation is now refused — revocation bit at the next fetch.
+      // The same presentation is now refused, revocation bit at the next fetch.
       const refused = await peer.get(directory, {
         headers: { Authorization: `Bearer ${value}` },
       });
@@ -291,7 +291,7 @@ test.describe('multi-instance', () => {
     // removing the flag would otherwise have changed no assertion in this file.
     expect(
       await popup.evaluate(() => globalThis.opener === null),
-      'the popup can reach back into the viewing shell — window.opener is not null',
+      'the popup can reach back into the viewing shell, window.opener is not null',
     ).toBe(true);
     // The ceremony is on the REMOTE'S origin. This assertion is the whole
     // architecture in one line: nothing about authenticating to B happens on
@@ -303,13 +303,13 @@ test.describe('multi-instance', () => {
     // The popup's OWN tab-scoped stores, inspected at the last moment the tab
     // is on B's origin. This is the only browsing context that ever holds
     // B-origin sessionStorage during the ceremony, and the only ceremony
-    // artifact it has seen by now is the handoff state — assert B's ceremony
+    // artifact it has seen by now is the handoff state, assert B's ceremony
     // pages stash no workspace-grammar artifact (ws bearer, hc code, hs state;
     // B's own script-readable CSRF token is legitimately present and is not a
     // ceremony artifact). The bearer itself CANNOT appear in this tab's
     // B-origin storage at any later moment either: it is minted by the shell's
     // redemption call after the popup has left B for the callback origin
-    // (openPrepared in web/src/api/workspace.ts — "the artifact never crosses
+    // (openPrepared in web/src/api/workspace.ts, "the artifact never crosses
     // a redirect"), so this pre-authorization snapshot plus the origin-scoped
     // localStorage check below on page `b` close every store B can write.
     const popupStores = await popup.evaluate(() => ({
@@ -325,7 +325,7 @@ test.describe('multi-instance', () => {
     }
     await popup.getByRole('button', { name: 'Authorize' }).click();
 
-    // The popup lands on THIS origin's callback page and closes itself — it was
+    // The popup lands on THIS origin's callback page and closes itself, it was
     // opened with `noopener`, so there is no `window.opener` to talk back
     // through and the return path is a BroadcastChannel only this origin can
     // open.
@@ -349,14 +349,14 @@ test.describe('multi-instance', () => {
     );
     // document.cookie sees only script-readable cookies on THIS origin. The
     // cookie jar is where an HttpOnly cookie would be, and B's jar is where the
-    // remote would have set one — both are checked, because "memory only" is a
+    // remote would have set one, both are checked, because "memory only" is a
     // claim about every store either origin can write.
     const jar = await context.cookies([VIEWING_ORIGIN, BASE_URL_B]);
     expect(JSON.stringify(jar), 'the workspace bearer reached a cookie jar').not.toContain(value);
     // The SERVING origin's script-visible stores get the same inspection.
     // localStorage and document.cookie are ORIGIN-scoped, so this tab sees any
     // write the popup's B pages made. sessionStorage is tab-scoped and this
-    // tab's says nothing about the popup's — that gap is closed structurally
+    // tab's says nothing about the popup's, that gap is closed structurally
     // by the pre-authorization popup snapshot above: the bearer is minted only
     // after the popup has left B's origin, so no B-tab sessionStorage moment
     // exists in which it could have been stored.
@@ -404,7 +404,7 @@ test.describe('multi-instance', () => {
     await expect(entry.getByText('Workspace open')).toBeVisible({ timeout: 30_000 });
 
     // The workspace session appears in the REMOTE'S own list as its own
-    // artifact type, carrying the origin it was issued to — criterion 5.
+    // artifact type, carrying the origin it was issued to, criterion 5.
     await onB(b, '/settings');
     const workspaceRow = b.locator('.session').filter({ hasText: 'workspace' });
     await expect(workspaceRow).toBeVisible();
@@ -420,7 +420,7 @@ test.describe('multi-instance', () => {
   });
 
   /**
-   * OPERATING the remote — the reopen's core: a live workspace must route
+   * OPERATING the remote, the reopen's core: a live workspace must route
    * matrix/values reads and edits to the REMOTE, and NEVER to the viewing
    * instance's server. This is the criterion the badge-only version failed.
    */
@@ -460,7 +460,7 @@ test.describe('multi-instance', () => {
       await route.abort('failed');
     });
 
-    // Navigate into B's project through the picker — a CLIENT-SIDE navigation,
+    // Navigate into B's project through the picker, a CLIENT-SIDE navigation,
     // because the bearer lives in memory and a full load would drop it. The
     // picker read B's own orgs and projects over the bearer to build this link.
     const picker = entry.locator('.remote__picker');
@@ -486,7 +486,7 @@ test.describe('multi-instance', () => {
     // Clean up the session this test opened. Both Playwright projects run
     // against the SAME pair of instances and the specs run in order, so a
     // workspace session left behind here is one a later test's kill-switch
-    // assertion would count — its "revoked 1 workspace session" is a real
+    // assertion would count, its "revoked 1 workspace session" is a real
     // assertion and must not be loosened to absorb this one's litter.
     const cleanup = await context.newPage();
     await onB(cleanup, '/remotes');
@@ -503,7 +503,7 @@ test.describe('multi-instance', () => {
    * A popup opened at a remote the human has never signed into on this device
    * lands with no session for that instance. Bouncing it to /login would throw
    * away the `state` the transaction is addressed by, so the approve page
-   * renders the login itself and the URL survives — a small piece of routing
+   * renders the login itself and the URL survives, a small piece of routing
    * with nothing else asserting it. The suite's shared storage state carries
    * sessions for BOTH instances, so the happy path above never reaches this
    * branch at all: breaking the public signed-out route, the state-preserving
@@ -519,7 +519,7 @@ test.describe('multi-instance', () => {
     await b.close();
 
     // Sign the context OUT of the SERVING instance only. The viewing shell must
-    // stay signed in — this is the state a human is in the first time they open
+    // stay signed in, this is the state a human is in the first time they open
     // a workspace at a remote. B's cookies are kept so the fully stepped-up
     // administrator session can be restored for the cleanup at the end: the
     // password login this test performs in the popup is single-factor, and
@@ -527,7 +527,7 @@ test.describe('multi-instance', () => {
     // B's own remotes page afterwards.
     // Captured by DOMAIN, not by URL. `context.cookies(url)` applies the
     // browser's own delivery rules, and a `Secure` cookie is not delivered to
-    // an `http://` URL whose host is an IP LITERAL — Chrome's plaintext
+    // an `http://` URL whose host is an IP LITERAL, Chrome's plaintext
     // carve-out for secure cookies is `localhost` by name. B is the address
     // literal (A holds `localhost`, which WebAuthn requires of the instance
     // that runs passkey ceremonies), so the URL form silently returns nothing
@@ -566,7 +566,7 @@ test.describe('multi-instance', () => {
 
     // Clean up the session this test opened. Both Playwright projects run
     // against the SAME pair of instances, so a workspace session left behind
-    // here is one the other project's kill-switch test would find and count —
+    // here is one the other project's kill-switch test would find and count , 
     // its "revoked 1 workspace session" assertion is a real assertion and must
     // not be loosened to absorb this one's litter.
     await context.clearCookies({ domain: HOST_B });
@@ -658,7 +658,7 @@ test.describe('multi-instance', () => {
         }
 
         // The two ceremony pages are reached by a redirect in life, so they are
-        // visited with the query they are addressed by — the approve page with
+        // visited with the query they are addressed by, the approve page with
         // a state to consent to, the callback page with none, which is its own
         // refusal state and the one that renders without closing the window.
         const addressedPath =
@@ -751,7 +751,7 @@ test.describe('consent summary resilience', () => {
       key_ids: [], expires_at: '2020-01-01T00:00:00Z',
     } }));
     await page.goto('/workspace/approve?state=expired-state');
-    await expect(page.getByRole('heading', { name: 'Authorization unavailable' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Authorization could not be completed' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Authorize', exact: true })).toHaveCount(0);
   });
 });

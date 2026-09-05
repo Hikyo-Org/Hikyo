@@ -11,7 +11,8 @@ describe('writeExpiringClipboard', () => {
   it('reports audited copy honestly and clears while the tab remains focused', async () => {
     vi.useFakeTimers();
     const writeText = vi.fn(() => Promise.resolve());
-    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    const readText = vi.fn(() => Promise.resolve('secret'));
+    vi.stubGlobal('navigator', { clipboard: { writeText, readText } });
     vi.stubGlobal('document', { hasFocus: () => true });
 
     await expect(writeExpiringClipboard('secret', true)).resolves.toContain(
@@ -21,6 +22,21 @@ describe('writeExpiringClipboard', () => {
 
     expect(writeText).toHaveBeenNthCalledWith(1, 'secret');
     expect(writeText).toHaveBeenNthCalledWith(2, '');
+  });
+
+  it.each([
+    ['the clipboard now holds something else', () => Promise.resolve('other')],
+    ['the clipboard cannot be read', () => Promise.reject(new Error('denied'))],
+  ])('does not clear when %s', async (_case, readText) => {
+    vi.useFakeTimers();
+    const writeText = vi.fn(() => Promise.resolve());
+    vi.stubGlobal('navigator', { clipboard: { writeText, readText: vi.fn(readText) } });
+    vi.stubGlobal('document', { hasFocus: () => true });
+
+    await writeExpiringClipboard('secret', true);
+    await vi.advanceTimersByTimeAsync(45_000);
+
+    expect(writeText).toHaveBeenCalledTimes(1);
   });
 });
 

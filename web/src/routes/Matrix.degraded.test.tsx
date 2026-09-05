@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { act } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -128,7 +129,7 @@ describe('Matrix per-environment degradation (#451)', () => {
     holder.project = { ...readyCatalogue, environmentRows: [readyRow, forbiddenRow] };
     const view = await renderMatrix();
 
-    // The grid rendered — the catalogue loaded, so no whole-grid failure.
+    // The grid rendered, the catalogue loaded, so no whole-grid failure.
     expect(view.container.textContent).not.toContain('could not be loaded');
     // The forbidden column names its state, in words, in the header.
     expect(view.container.textContent).toContain('No access to this environment');
@@ -141,13 +142,77 @@ describe('Matrix per-environment degradation (#451)', () => {
     // The forbidden column is excluded from problem detection: a required_in:all
     // key must not fabricate a "missing value" problem for a column we cannot read.
     expect(view.container.textContent).not.toContain('problem');
+    // The degraded cell says why in text, not as a hidden dash.
+    const degradedCell = view.container.querySelector('.matrix__cell--degraded .matrix-cell__absent');
+    expect(degradedCell?.textContent).toBe('· unreadable');
+    expect(degradedCell?.getAttribute('aria-label')).toBe('production unreadable: no access');
+
+    await view.unmount();
+  });
+
+  it('names environments, marks state in text, and scopes the group header (a11y audit)', async () => {
+    const protectedAbsentRow = {
+      ...readyRow,
+      environmentId: 'env_b',
+      environment: environment('env_b', 'production', 1),
+      values: { status: 'ready' as const, data: { items: [], count: 0 } },
+      signals: {
+        status: 'ready' as const,
+        data: {
+          environment_id: 'env_b',
+          revision: 2n,
+          cells: [{
+            key_id: 'key_a',
+            name: 'LOG_LEVEL',
+            classification: 'config' as const,
+            pending_by_others: false,
+            pending: { versionId: 'ver_pending', operation: 'set' as const },
+          }],
+        },
+      },
+      settings: { status: 'ready' as const, data: { protected: true } },
+    };
+    holder.project = {
+      ...readyCatalogue,
+      keys: { ...readyCatalogue.keys, data: { items: [{ ...key, group_id: 'grp_db' }], count: 1 } },
+      groups: { ...readyCatalogue.groups, data: { items: [{ id: 'grp_db', name: 'Database credentials' }], count: 1 } },
+      environmentRows: [readyRow, protectedAbsentRow],
+    };
+    const view = await renderMatrix();
+    const { container } = view;
+
+    // PROTECTED sits in its own wrapper, spaced from the environment name.
+    expect(container.querySelector('th .matrix__env-protected .matrix__protected')?.textContent).toBe('PROTECTED');
+    // A pending set counts as effectively set, so no problem here; the drafts
+    // pill points at the sheet only while it is mounted.
+    const drafts = container.querySelector<HTMLButtonElement>('.matrix__drafts');
+    expect(drafts?.textContent).toContain('Publish drafts');
+    expect(drafts?.hasAttribute('aria-controls')).toBe(false);
+    await act(async () => drafts?.click());
+    expect(drafts?.getAttribute('aria-controls')).toBe('matrix-publish');
+    expect(container.querySelector('#matrix-publish')).not.toBeNull();
+    // The sheet groups linked keys and closes back to the pill.
+    expect(container.querySelector('.matrix__publish-group-name')?.textContent).toContain('Linked keys: Database credentials');
+    const close = [...container.querySelectorAll<HTMLButtonElement>('#matrix-publish button')].find((node) => node.textContent === 'Close');
+    await act(async () => close?.click());
+    expect(container.querySelector('#matrix-publish')).toBeNull();
+    expect(document.activeElement).toBe(drafts);
+    // Group header: count class, colgroup scope, and the linked-keys marker's
+    // accessible text with the group name.
+    expect(container.querySelector('.matrix__group-row th')?.getAttribute('scope')).toBe('colgroup');
+    expect(container.querySelector('.matrix__group-count')?.textContent).toBe('1');
+    const linked = container.querySelector('.matrix__linked-keys');
+    expect(linked?.querySelector('.visually-hidden')?.textContent).toBe('Linked keys: Database credentials');
+    expect(linked?.getAttribute('title')).toContain('Linked keys: Database credentials.');
+    // The draft dot carries a text twin.
+    expect(container.querySelector('button.matrix-cell .visually-hidden')?.textContent).toBe('draft');
 
     await view.unmount();
   });
 
   it('does not offer a degraded column for publish even when its signals still carry a pending draft', async () => {
     // Mixed-family degradation: settings failed (→ readiness forbidden) while
-    // signals still hold a pending draft. The column must not be publishable —
+    // signals still hold a pending draft. The column must not be publishable , 
     // it would lose its protected marker and confirmation ceremony (#451).
     const mixedForbiddenRow = {
       ...forbiddenRow,

@@ -15,7 +15,7 @@ import { test } from '../fixtures/passkey.ts';
 
 /**
  * Flow: the reveal, copy and publish-into-protected ceremonies (registry
- * surface `values`) — mvp-boundary A5 and the S3 ceremony row.
+ * surface `values`), mvp-boundary A5 and the S3 ceremony row.
  *
  * What this flow is here to prove, in the ADR's own terms:
  *
@@ -56,7 +56,7 @@ const ROTATED = 'rotated-blind';
 
 /**
  * valueUpdatedAt reads a cell's `updated_at` through the masked listing, which
- * needs no `reveal` at all — write-presence is `read`-class. It is how a
+ * needs no `reveal` at all, write-presence is `read`-class. It is how a
  * fire-and-forget mutation is turned into something waitable without giving the
  * test capabilities the principal under test does not have.
  */
@@ -85,7 +85,7 @@ async function valueUpdatedAt(page: Page, environment: string, key: string): Pro
 /**
  * publishOwnDraft bridges the staging model until the matrix grows its publish
  * affordance (#56): since #51 a save only STAGES a pending change, so a flow
- * that asserts on DELIVERED state publishes its own draft through the API —
+ * that asserts on DELIVERED state publishes its own draft through the API , 
  * the same seam the CLI demo uses. It reads the caller's own
  * `pending_version_id` off the signals endpoint and publishes exactly that.
  */
@@ -186,7 +186,7 @@ test.describe('reveal ceremonies', () => {
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     // Purpose-bound: the act and the environment, not "authenticate".
-    // Purpose-bound means the ACT and the ENVIRONMENT BY NAME — `reveal ·
+    // Purpose-bound means the ACT and the ENVIRONMENT BY NAME, `reveal ·
     // development`, never an opaque id, which is the modal's headline feature.
     await expect(dialog.getByRole('heading', { level: 2 })).toHaveText('reveal · development');
     // Disclosure reauth is not account step-up, and the modal says so.
@@ -209,7 +209,7 @@ test.describe('reveal ceremonies', () => {
     await expect(auditLines(page).first()).toContainText(secret);
     // And the SERVER agrees. The list above is the UI's belief; per-key
     // cardinality is a property of the trail, so it is asserted against the
-    // trail — a server that aggregated would pass the first check and fail
+    // trail, a server that aggregated would pass the first check and fail
     // this one, which is the whole point of having both.
     expect(countDisclosureEvents() - trailBefore, 'server-side disclosure rows').toBe(1);
   });
@@ -257,13 +257,13 @@ test.describe('reveal ceremonies', () => {
     // Copy WITHOUT display: the cell is still masked when the copy is asked
     // for, and the ceremony runs anyway.
     await expect(page.getByLabel(`${secret} is masked`)).toBeVisible();
-    await page.getByRole('button', { name: `Copy ${secret}` }).click();
+    await page.getByRole('button', { name: `Copy ${secret} (audited disclosure)` }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Use a passkey' }).click();
 
     const notice = page.getByRole('status').filter({ hasText: 'recorded as a disclosure' });
     await expect(notice).toBeVisible();
-    // The honest caveat, verbatim: the OS may keep clipboard history.
-    await expect(notice).toContainText('the OS may keep clipboard history');
+    // The honest caveat, verbatim: The OS may keep clipboard history.
+    await expect(notice).toContainText('The OS may keep clipboard history');
     await expect(auditLines(page)).toHaveCount(1);
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('hunter2-development');
 
@@ -293,9 +293,9 @@ test.describe('reveal ceremonies', () => {
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     // The source window IS live, so the source leg passes without a prompt and
-    // the one decision left is the destination's — named as such.
+    // the one decision left is the destination's, named as such.
     await expect(dialog.getByRole('heading', { level: 2 })).toHaveText('publish into · production');
-    // Protected, so no code option — the destination's cap, not the source's.
+    // Protected, so no code option, the destination's cap, not the source's.
     await expect(dialog.getByLabel('Or a code from your authenticator')).toHaveCount(0);
     await dialog.getByRole('button', { name: 'Use a passkey' }).click();
     await expect(dialog).toBeHidden();
@@ -367,7 +367,7 @@ test.describe('reveal ceremonies', () => {
   test('navigating to another environment re-masks', async () => {
     // React Router reuses this component when only the route parameters
     // change. Without an explicit reset the plaintext disclosed in development
-    // is still in state a moment later — and key names repeat across
+    // is still in state a moment later, and key names repeat across
     // environments, so it would render in PRODUCTION's row for the same key.
     const secret = seed.secrets[0] ?? '';
     await page.getByRole('button', { name: `Reveal ${secret}` }).click();
@@ -391,7 +391,7 @@ test.describe('reveal ceremonies', () => {
 
   test('meets the pinned assertion set with the ceremony open', async () => {
     // S3 asks for the pinned set "for the components touched", and the
-    // ceremony is the component this ticket exists for — asserting only the
+    // ceremony is the component this ticket exists for, asserting only the
     // resting surface would leave the modal, its key list and its code form
     // unchecked. The dialog is native, so this also proves the focus ring and
     // contrast hold inside the top layer.
@@ -424,13 +424,13 @@ test.describe('reveal ceremonies', () => {
     await expect(field).toBeVisible();
     await expect(field).toBeEnabled();
     // This principal HOLDS reveal here, so the field says the other thing:
-    // empty means unchanged, and there is no per-row clear — the prototype's
+    // empty means unchanged, and there is no per-row clear, the prototype's
     // resolution removed it. The blind-replacement wording is asserted in the
     // write-only flow below, where the capability is genuinely absent.
     await expect(field).toHaveAttribute('placeholder', 'Leave empty to keep unchanged');
     await expect(field).toHaveAttribute('data-write-only', 'false');
 
-    // The pinned set again, over the editor and a POPULATED audit region —
+    // The pinned set again, over the editor and a POPULATED audit region , 
     // both are components this flow touches and neither is on the resting
     // surface.
     await page.getByRole('button', { name: `Reveal ${secret}` }).click();
@@ -454,9 +454,9 @@ test.describe('reveal ceremonies', () => {
    * The protected environment: mvp-boundary A5's [E2E] line.
    *
    * A protected environment caps the window at 0, so TOTP cannot honour the gate
-   * and the ceremony must not offer it. The refusal is asserted at BOTH levels —
+   * and the ceremony must not offer it. The refusal is asserted at BOTH levels , 
    * the modal has no code field, and the server answers 409 to a code presented
-   * directly — because a UI that merely hides the option is a convention, and
+   * directly, because a UI that merely hides the option is a convention, and
    * the criterion is about what the server will accept.
    */
   test('the ceremony offers no code option, and the server refuses one', async () => {
@@ -502,7 +502,7 @@ test.describe('reveal ceremonies', () => {
     await expect(dialog).toBeHidden();
     // Disclosed, asserted by the remask countdown rather than by a literal
     // value: an earlier test in this file publishes INTO production, so the
-    // material here is whatever the last authorised copy put there — which is
+    // material here is whatever the last authorised copy put there, which is
     // the honest state of a real environment and not something a flow should
     // pin.
     await expect(page.getByText(/re-masks in \d+s/).first()).toBeVisible();
@@ -518,12 +518,12 @@ test.describe('reveal ceremonies', () => {
     // CLIPBOARD COPY IN A PROTECTED ENVIRONMENT. This is where a ceremony that
     // signed the wrong operation shows up: the assertion is bound
     // byte-exactly, so a copy that signed `copy` and then took the reveal
-    // route would be refused here every single time — and a sliding
+    // route would be refused here every single time, and a sliding
     // environment would never reveal it, because sliding windows are
     // deliberately not purpose-scoped.
     const trailBefore = countDisclosureEvents();
     const secret = seed.secrets[0] ?? '';
-    await page.getByRole('button', { name: `Copy ${secret}` }).click();
+    await page.getByRole('button', { name: `Copy ${secret} (audited disclosure)` }).click();
     const copyDialog = page.getByRole('dialog');
     await expect(copyDialog).toBeVisible();
     // Told the truth about what it is, while signing the route it takes.
@@ -554,7 +554,7 @@ test.describe('OIDC disclosure reauthentication', () => {
     // seed race; fail on that signal instead of hiding it behind reloads.
     await expect(oidcSignIn).toBeVisible({ timeout: 15_000 });
     await oidcSignIn.click();
-    // The org rail is desktop chrome — a phone reaches organisations through
+    // The org rail is desktop chrome, a phone reaches organisations through
     // the drawer, so the rail is `display:none` there. What proves the shell
     // came up at BOTH widths is the breadcrumb, which only the authenticated
     // chrome renders.
@@ -600,7 +600,7 @@ test.describe('OIDC disclosure reauthentication', () => {
 /**
  * Write-only editing, with the capability genuinely absent (permission-model
  * ADR § `edit` and `publish` are separate: "`edit` without `reveal` is a valid,
- * supported state — write-only replacement (blind rotation)… the UI MUST
+ * supported state, write-only replacement (blind rotation)… the UI MUST
  * support the write-only editing path").
  *
  * It takes the administrator's `reveal` away for the duration rather than
@@ -608,7 +608,7 @@ test.describe('OIDC disclosure reauthentication', () => {
  * `admin create` mints the FIRST administrator and refuses a second. Revoking
  * a grant advances the principal's session generation and kills every session
  * they hold, so the grant is restored and the suite's shared session re-minted
- * afterwards — leaving the instance as this file found it.
+ * afterwards, leaving the instance as this file found it.
  */
 test.describe('write-only editing', () => {
   test.describe.configure({ mode: 'serial' });
@@ -636,7 +636,7 @@ test.describe('write-only editing', () => {
 
       const secret = seed.rotatable;
       const before = await valueUpdatedAt(page, seed.dev, secret);
-      // No reveal affordance at all — there is nothing to offer.
+      // No reveal affordance at all, there is nothing to offer.
       await expect(page.getByRole('button', { name: `Reveal ${secret}` })).toHaveCount(0);
       await expect(page.getByLabel(`${secret} is masked`)).toBeVisible();
 
@@ -653,20 +653,20 @@ test.describe('write-only editing', () => {
       await expect(page.getByText('You may replace this value but not read it')).toBeVisible();
 
       // And the blind replacement actually LANDS. A masked cell and no alert
-      // prove nothing — the mutation is fire-and-forget from the DOM's point
-      // of view — so the value is read back through the API afterwards, under
+      // prove nothing, the mutation is fire-and-forget from the DOM's point
+      // of view, so the value is read back through the API afterwards, under
       // the reveal this principal is about to get again.
       await field.fill(ROTATED);
       await page.getByRole('button', { name: 'Save draft' }).click();
       // No error may surface. The app-level assertive announcer holds
-      // role="alert" for its whole lifetime — it must exist empty before an
-      // announcement lands — so "no alert fired" is pinned as an absent error
+      // role="alert" for its whole lifetime, it must exist empty before an
+      // announcement lands, so "no alert fired" is pinned as an absent error
       // toast plus an announcer that stayed empty.
       await expect(page.locator('.toast--error')).toHaveCount(0);
       await expect(page.locator('.visually-hidden[role="alert"]')).toHaveText('');
       await expect(page.getByLabel(`${secret} is masked`)).toBeVisible();
       // A save STAGES (#51); the blind edit only lands on delivery when its
-      // draft is published. `edit` staged it, `publish` commits it — and
+      // draft is published. `edit` staged it, `publish` commits it, and
       // neither needs `reveal`, which is the point of the write-only path.
       await publishOwnDraft(page, seed.dev, secret);
       // Wait for the publish to have reached the server before restoring the

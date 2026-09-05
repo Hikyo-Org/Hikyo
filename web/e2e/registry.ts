@@ -9,15 +9,15 @@ import { SURFACES, type Surface, type SurfaceId } from '../src/app/navigation.ts
  *
  * The 1.0 gate requires that every locked surface has a Playwright flow. That
  * only means something if it is CHECKED, and only stays true if the check
- * cannot be satisfied by editing the check — so the surface list is the
+ * cannot be satisfied by editing the check, so the surface list is the
  * router's own (`src/app/navigation.ts`), which a new route has to touch, and
  * the closure test below fails when the two disagree in either direction:
  *
- *   - a surface with no flow  — the gate's actual requirement;
- *   - a flow naming a surface that does not exist — a rename that left a
+ *   - a surface with no flow , the gate's actual requirement;
+ *   - a flow naming a surface that does not exist, a rename that left a
  *     registry entry pointing at nothing, which would silently reduce
  *     coverage while looking complete;
- *   - a registry entry whose spec file is missing — same, one level down;
+ *   - a registry entry whose spec file is missing, same, one level down;
  *   - a claimed surface the pinned assertion set never actually RAN on. A
  *     declaration-only check is satisfied by adding three lines and asserting
  *     nothing, so the flows record what they execute and the run log below is
@@ -48,15 +48,15 @@ export const FLOWS: readonly Flow[] = [
   // demands a flow, but it cannot get its own spec FILE for the key-detail
   // reason below: the merge gate loads `ci.yml` from the base branch, so a spec
   // a PR adds to a group never runs on that PR and its pinned claims would
-  // never execute. It rides `members.spec.ts` — already in group 1 on main, and
-  // the org-scoped `manage-members` sibling surface — so the pinned set runs
+  // never execute. It rides `members.spec.ts`, already in group 1 on main, and
+  // the org-scoped `manage-members` sibling surface, so the pinned set runs
   // from PR-checked-out spec content today.
   { id: 'scim', spec: 'flows/members.spec.ts', surfaces: ['scim'] },
   // Audit trail (#502) is a new SURFACE, so S3 closure demands a flow, but it
   // cannot get its own spec FILE for the same reason scim cannot: the merge
   // gate loads `ci.yml` from the base branch, so a spec a PR adds to a group
   // never runs on that PR and its pinned claims would never execute. It rides
-  // `members.spec.ts` — already in group 1 and the org-scoped sibling surface —
+  // `members.spec.ts`, already in group 1 and the org-scoped sibling surface , 
   // so the pinned set runs from PR-checked-out content today.
   { id: 'audit', spec: 'flows/members.spec.ts', surfaces: ['audit'] },
   // Change approvals (#151) rides matrix.spec.ts (group on main) so its pinned
@@ -71,7 +71,7 @@ export const FLOWS: readonly Flow[] = [
   { id: 'account', spec: 'flows/account.spec.ts', surfaces: ['settings'] },
   // Instance members (#567) is a new SURFACE, so the S3 closure demands a flow,
   // but it cannot get its own spec FILE (the merge gate loads `ci.yml` from the
-  // base branch); it rides `instance-admin.spec.ts` — already in group 3 and
+  // base branch); it rides `instance-admin.spec.ts`, already in group 3 and
   // the operator sibling surface.
   {
     id: 'instance-admin',
@@ -81,7 +81,7 @@ export const FLOWS: readonly Flow[] = [
   { id: 'reveal', spec: 'flows/reveal.spec.ts', surfaces: ['values'] },
   { id: 'matrix', spec: 'flows/matrix.spec.ts', surfaces: ['matrix'] },
   // Secret-scanning warn dialog (#74, SS2/SS4 [UI]) rides the matrix editing
-  // surface — a config value carrying a credential warns, and the canary never
+  // surface, a config value carrying a credential warns, and the canary never
   // reaches the DOM or the console. It claims `matrix` too: a surface may carry
   // more than one flow, and the run log holds each flow's claim independently.
   { id: 'scanning', spec: 'flows/scanning.spec.ts', surfaces: ['matrix'] },
@@ -91,7 +91,7 @@ export const FLOWS: readonly Flow[] = [
   // FILE: the merge gate loads `ci.yml` from the base branch
   // (`ci-control.yml` is `pull_request_target`), so the per-group spec lists a
   // leg runs are the base branch's, and a spec a PR adds to a group never runs
-  // on that PR — its pinned claims would then never execute and web-closure
+  // on that PR, its pinned claims would then never execute and web-closure
   // would fail forever. Riding a file already in a group (matrix, group 2)
   // lets the surface's pinned set run from PR-checked-out spec content today.
   { id: 'key-detail', spec: 'flows/matrix.spec.ts', surfaces: ['key-detail'] },
@@ -118,7 +118,7 @@ export const FLOWS: readonly Flow[] = [
 
 /**
  * ClosureCandidate is a flow as the CHECK sees it: surface ids are plain
- * strings here, not `SurfaceId`. That is deliberate — the check's whole job is
+ * strings here, not `SurfaceId`. That is deliberate, the check's whole job is
  * to catch a registry that names a surface the router does not have, and a
  * type that made that unrepresentable would only move the failure to a cast in
  * the test that proves the check works.
@@ -149,7 +149,7 @@ export function closureViolations(input: ClosureInput): string[] {
       problems.push(`flow "${flow.id}" names a spec that does not exist: ${flow.spec}`);
     }
     if (flow.surfaces.length === 0) {
-      problems.push(`flow "${flow.id}" covers no surface — it is not a flow, it is a file`);
+      problems.push(`flow "${flow.id}" covers no surface, it is not a flow, it is a file`);
     }
     for (const surface of flow.surfaces) {
       if (!input.surfaceIds.includes(surface)) {
@@ -162,7 +162,7 @@ export function closureViolations(input: ClosureInput): string[] {
   for (const id of input.surfaceIds) {
     if (!covered.has(id)) {
       problems.push(
-        `surface "${id}" has no flow — a locked surface without a flow is exactly what the ` +
+        `surface "${id}" has no flow, a locked surface without a flow is exactly what the ` +
           `S3 gate forbids; add one to e2e/flows and register it in e2e/registry.ts`,
       );
     }
@@ -185,7 +185,7 @@ export function liveClosureViolations(): string[] {
  *
  * Flows ITERATE this rather than re-listing their surfaces: a second list is a
  * second thing to forget, and "claimed three, asserted one" is exactly the hole
- * a declarative registry leaves open. An unknown flow id throws — a typo must
+ * a declarative registry leaves open. An unknown flow id throws, a typo must
  * not silently become an empty loop that passes.
  */
 export function surfacesForFlow(flowID: string): readonly Surface[] {
@@ -222,7 +222,7 @@ export function surfacesForFlow(flowID: string): readonly Surface[] {
 // that same project, so one complete viewport can never conceal a partial
 // second one. The append stays single-writer PER LEG; the aggregator merges the
 // legs by concatenation, which needs no coordination. A `--shard` split is
-// still refused by global teardown — it fragments the flows without the
+// still refused by global teardown, it fragments the flows without the
 // positional-filter marker the skip is keyed on.
 
 const RUN_LOG = fileURLToPath(new URL('.runs/pinned.log', import.meta.url));
@@ -281,7 +281,7 @@ export function unexecutedClaims(log: string, flows: readonly ClosureCandidate[]
           if (!ran.has(`${project}/${flow.id}/${surface}/${theme}`)) {
             missing.push(
               `project "${project}": flow "${flow.id}" claims surface "${surface}" but the ` +
-                `pinned assertion set never ran on it in the ${theme} theme — a claim nothing ` +
+                `pinned assertion set never ran on it in the ${theme} theme, a claim nothing ` +
                 `executes is a claim nothing checks`,
             );
           }

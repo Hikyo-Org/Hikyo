@@ -23,7 +23,7 @@ describe('definitions settings', () => {
 
   it('pins the persistent Git-mode explanation byte for byte', () => {
     expect(GIT_DEFINITIONS_NOTICE).toBe(
-      'Definitions for this project are managed in Git — changes arrive through `definitions plan` / `definitions apply`.',
+      'Definitions for this project are managed in Git: changes arrive through `definitions plan` / `definitions apply`.',
     );
   });
 });

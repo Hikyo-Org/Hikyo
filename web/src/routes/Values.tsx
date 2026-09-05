@@ -31,7 +31,7 @@ import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
  *  - **The window gates the prompt, never the check.** Before a disclosure the
  *    surface asks the server whether a window is live. If one is, it discloses
  *    without a modal; if not, it runs the ceremony first. A refusal from the
- *    disclosure route itself is NOT a cue to prompt again — it remasks and
+ *    disclosure route itself is NOT a cue to prompt again, it remasks and
  *    says so, because the usual cause is a grant that went away underneath an
  *    open window.
  *  - **Auto-remask with a visible countdown.** A revealed value re-masks after
@@ -56,7 +56,7 @@ const MASK = '••••••••';
  *
  * It bounds the panel, never the trail: every disclosure is a durable audit
  * row on the server whatever this says, and one line per key is the property
- * that matters — this is only how far back the human can scroll without
+ * that matters, this is only how far back the human can scroll without
  * leaving the page.
  */
 const AUDIT_LINES = 12;
@@ -67,7 +67,7 @@ type RevealAnnouncement = { id: number; message: string };
 /**
  * cellKey identifies a disclosed cell by ENVIRONMENT and key id.
  *
- * Key names repeat across environments — that is the point of the model — so a
+ * Key names repeat across environments, that is the point of the model, so a
  * map keyed by name alone would let development's `DB_PASSWORD` render in
  * production's row. The environment is in the key as well as being cleared on
  * navigation, because the two failures are different: one is a stale map, the
@@ -113,7 +113,7 @@ export function Values() {
 
   // NAVIGATION RE-MASKS. React Router reuses this component when only the
   // route parameters change, so without this a value disclosed in development
-  // would still be in state — and on screen — a moment after the human moved
+  // would still be in state, and on screen, a moment after the human moved
   // to production. Everything transient goes: the plaintext, a ceremony
   // waiting to be answered, the act it was staged for, an open editor and the
   // clipboard notice, none of which mean anything in a different environment.
@@ -149,7 +149,7 @@ export function Values() {
   }, [now]);
 
   const cells: ValueCell[] = useMemo(() => values.data?.items ?? [], [values.data]);
-  // The modal title is purpose-bound — `reveal · production` — so it needs the
+  // The modal title is purpose-bound, `reveal · production`, so it needs the
   // environment's NAME. Until the list resolves the id is the honest stand-in:
   // showing nothing would make the ceremony's headline blank, which is worse
   // than showing an identifier.
@@ -171,7 +171,7 @@ export function Values() {
    * withCeremony is the one place the "prompt or not" decision is made.
    *
    * `targets` is every environment the act needs authority over, in the order
-   * the server will judge them: a reveal names one, a publish names two — the
+   * the server will judge them: a reveal names one, a publish names two, the
    * SOURCE it discloses from and the DESTINATION it delivers into, each with
    * its own window and its own protected flag. A live window on one is not
    * authority over the other, which is exactly what a protected environment's
@@ -185,7 +185,7 @@ export function Values() {
    */
   const withCeremony = useCallback(
     async (
-      keys: ReadonlyArray<{ id: string; name: string }>,
+      keys: ReadonlyArray<{ id: string; name: string; classification?: 'secret' | 'config' }>,
       act: (task: CeremonyTask) => Promise<void>,
       targets: ReadonlyArray<{ id: string; name: string; purpose: CeremonyPurpose }>,
     ) => {
@@ -274,7 +274,7 @@ export function Values() {
         const verb = entries.length === 1 ? 're-masks' : 're-mask';
         setRevealAnnouncement((current) => ({
           id: (current?.id ?? 0) + 1,
-          message: `${subject} — ${verb} in ${String(REMASK_MS / 1000)} seconds`,
+          message: `${subject}: ${verb} in ${String(REMASK_MS / 1000)} seconds`,
         }));
       }
       noteDisclosure(entries.map((e) => e.name));
@@ -284,7 +284,7 @@ export function Values() {
 
   const doRevealOne = (cell: ValueCell) =>
     void withCeremony(
-      [{ id: cell.key_id, name: cell.name }],
+      [{ id: cell.key_id, name: cell.name, classification: cell.classification }],
       async (task) => {
         try {
           const fresh = await revealOne.mutateAsync(cell.name);
@@ -307,7 +307,7 @@ export function Values() {
 
   const doRevealAll = () =>
     void withCeremony(
-      secretsSet.map((c) => ({ id: c.key_id, name: c.name })),
+      secretsSet.map((c) => ({ id: c.key_id, name: c.name, classification: c.classification })),
       async (task) => {
         try {
           const fresh = await revealAll.mutateAsync();
@@ -342,7 +342,7 @@ export function Values() {
       return;
     }
     void withCeremony(
-      [{ id: cell.key_id, name: cell.name }],
+      [{ id: cell.key_id, name: cell.name, classification: cell.classification }],
       async (task) => {
         try {
           const fresh = await revealOne.mutateAsync(cell.name);
@@ -368,7 +368,7 @@ export function Values() {
       return;
     }
     void withCeremony(
-      secretsSet.map((c) => ({ id: c.key_id, name: c.name })),
+      secretsSet.map((c) => ({ id: c.key_id, name: c.name, classification: c.classification })),
       async (task) => {
         try {
           await copy.mutateAsync({
@@ -516,7 +516,7 @@ export function Values() {
             // WRITE-ONLY IS A CAPABILITY, not a display state. `edit` without
             // `reveal` is a supported grant shape the permission model refuses
             // to reject, and the guard reports whether this principal holds
-            // `reveal` here — so the editor says "replace without seeing" to
+            // `reveal` here, so the editor says "replace without seeing" to
             // someone who genuinely cannot read the value, and keeps saying it
             // while they are looking at nothing. Deriving it from whether the
             // cell happens to be revealed on screen would make the microcopy a
@@ -539,7 +539,10 @@ export function Values() {
                   {!cell.set ? (
                     <span className="values__absent">absent</span>
                   ) : live !== undefined ? (
-                    <span className="mono values__plain" aria-label={`${cell.name} revealed`}>
+                    // No aria-label: it would replace the plaintext as the
+                    // accessible name. The reveal announcement above says whose
+                    // value this is.
+                    <span className="mono values__plain">
                       {live.value}
                       <span className="values__countdown" aria-hidden="true">
                         {`re-masks in ${remaining}s`}
@@ -569,7 +572,7 @@ export function Values() {
                       className="btn"
                       type="button"
                       onClick={() => doCopy(cell)}
-                      aria-label={`Copy ${cell.name}`}
+                      aria-label={secret ? `Copy ${cell.name} (audited disclosure)` : `Copy ${cell.name}`}
                     >
                       Copy
                     </button>
@@ -594,12 +597,12 @@ export function Values() {
       <section className="values__audit" aria-label="Disclosure records">
         <h2>Recorded this session</h2>
         {audit.length === 0 ? (
-          <p role="status">No disclosures yet.</p>
+          <p role="status">No disclosures yet. Reveal or copy a secret above to record one.</p>
         ) : (
           // The live region is the LIST, not each item. An explicit role on an
           // `li` replaces its implicit `listitem` role, which would leave the
-          // list with no items as far as assistive technology — and the flow
-          // registry's own assertions — are concerned.
+          // list with no items as far as assistive technology, and the flow
+          // registry's own assertions, are concerned.
           <ul aria-live="polite">
             {audit.map((line, i) => (
               <li key={`${line}-${String(i)}`}>{line}</li>

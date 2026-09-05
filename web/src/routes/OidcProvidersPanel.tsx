@@ -26,7 +26,7 @@ import { useFeedback, useModalDialog } from './useModalDialog.ts';
  *
  * The client secret is write-only and never returned. The editor never prefills
  * it and always requires it, because every PUT re-seals whatever secret it
- * carries — there is no path that keeps the old one.
+ * carries, there is no path that keeps the old one.
  */
 
 const secondFactor = (error: unknown) => error instanceof ApiError && error.status === 403;
@@ -73,7 +73,7 @@ export function OidcProvidersPanel() {
   const [deleting, setDeleting] = useState<OidcProvider | null>(null);
   // Set while a post-conflict refetch is in flight. The provider PUT is a
   // full replace by slug with no client row-version, so the server's CAS only
-  // guards a write racing inside its own transaction — it cannot stop an admin
+  // guards a write racing inside its own transaction, it cannot stop an admin
   // acting on STALE displayed data. So after a fail-closed refusal we latch the
   // action controls shut until the list has refetched: without it, a stale
   // editor could reopen during the refresh and silently overwrite a concurrent
@@ -279,8 +279,8 @@ function ProviderEditor({
         onFailure(new Refusal(oidcProviderRefusalText(error, 'save-oidc-provider')));
         // Stale (409), forbidden (403), or ended-session (401) refusals are
         // fail-closed: close and refetch so no retry proceeds on stale state.
-        // The server's row-version CAS is the ultimate guard — a stale write is
-        // refused there too — so this is defence in depth, not the only line.
+        // The server's row-version CAS is the ultimate guard, a stale write is
+        // refused there too, so this is defence in depth, not the only line.
         if (
           error instanceof ApiError &&
           (error.status === 401 || error.status === 403 || error.status === 409)
@@ -341,7 +341,7 @@ function ProviderEditor({
         <p className="field__hint">
           {original === null
             ? 'Its OpenID configuration is fetched and validated on save.'
-            : 'The issuer is immutable after create — every linked identity is keyed by it.'}
+            : 'The issuer is immutable after create; every linked identity is keyed by it.'}
         </p>
       </div>
 
@@ -367,7 +367,7 @@ function ProviderEditor({
           onChange={(event) => set('clientSecret', event.target.value)}
         />
         <p className="field__hint">
-          Write-only: it is never displayed, so it must be entered on every save — including when
+          Write-only: it is never displayed, so it must be entered on every save, including when
           only disabling.
         </p>
       </div>

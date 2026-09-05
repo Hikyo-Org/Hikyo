@@ -77,7 +77,7 @@ export type MatrixKeyList = z.infer<typeof zKeyList>;
 /**
  * A redacted secret-scanning finding (#74, secret-scanning ADR §4). It rides
  * a config value-write response and carries a rule id, an immutable locator,
- * and — for a keep-as-config dismissal — an opaque acknowledgement token. It
+ * and, for a keep-as-config dismissal, an opaque acknowledgement token. It
  * never carries the matched text, so the UI renders only what it holds.
  */
 export type ScanFinding = z.infer<typeof zScanFinding>;
@@ -107,7 +107,7 @@ type MatrixQueryState<T> =
   | { readonly status: 'pending'; readonly data?: undefined }
   // A per-environment 403: the caller may not read this column. Distinct from
   // 'error' because a denial never heals on retry, so the surface must say so
-  // rather than offering a reload. Fail-closed — it carries no data even when a
+  // rather than offering a reload. Fail-closed, it carries no data even when a
   // stale copy is cached, because a revoked column must blank, not linger.
   | { readonly status: 'forbidden'; readonly data?: undefined }
   | { readonly status: 'error'; readonly data?: undefined }
@@ -243,7 +243,7 @@ function matrixQueryState<T>(query: MatrixQueryResult<T>): MatrixQueryState<T> {
   if (query.isError) {
     // A 403 is a permission denial, not a transient failure: retrying never
     // resolves it, so it maps to 'forbidden' even when a stale copy is cached
-    // (fail-closed — a revoked column blanks rather than lingering as 'stale').
+    // (fail-closed, a revoked column blanks rather than lingering as 'stale').
     if (query.error instanceof ApiError && query.error.status === 403) {
       return { status: 'forbidden' };
     }
@@ -396,7 +396,7 @@ export function signalsRequireValuesRefresh(
 
 /**
  * advisoryInvalidations maps one advisory event (#510) onto exactly the cache
- * prefixes it names — the event payload is metadata-only, so the mapping is
+ * prefixes it names, the event payload is metadata-only, so the mapping is
  * this mechanical and the pure function is the whole of it:
  *
  *  - `revision.published`: the environment advanced. Its values moved, its
@@ -406,7 +406,7 @@ export function signalsRequireValuesRefresh(
  *    is direct rather than deferred.
  *  - `cell.changed`: the named cell moved; the signals refetch decides from
  *    the revision whether values must follow.
- *  - `pending.staged`: a draft appeared — the recipient's own (the projection
+ *  - `pending.staged`: a draft appeared, the recipient's own (the projection
  *    blanks other actors) or another principal's write-presence marker. Both
  *    the draft list and the pending cells render that fact.
  */
@@ -519,8 +519,8 @@ export function useMatrixProject(ref: MatrixRef) {
   const environments = useEnvironments(ref.org, ref.project);
   // The live channel (#510): one advisory stream for the whole project. An
   // event invalidates exactly the caches its payload names; the connection
-  // state gates the signals fallback poll below. Subscribing here — inside
-  // the same hook that owns the matrix's queries — is what makes the
+  // state gates the signals fallback poll below. Subscribing here, inside
+  // the same hook that owns the matrix's queries, is what makes the
   // subscription die with the route and never outlive its ref.
   const signalsStream = useAdvisoryStream(
     ref,
@@ -643,7 +643,7 @@ export function useStageMatrixValue(ref: MatrixRef) {
     // `acknowledgements` carries a keep-as-config token to dismiss a Surface-1
     // warning (#74): re-staging the SAME value with its token records the
     // dismissal so the identical value no longer re-warns. The save succeeds
-    // either way — the token only settles whether the finding rides back.
+    // either way, the token only settles whether the finding rides back.
     mutationFn: (input: {
       readonly environment: string;
       readonly key: string;
@@ -687,7 +687,7 @@ export function useStageMatrixValue(ref: MatrixRef) {
  *
  * `all` is SYMBOLIC and covers environments created later; it is a choice the
  * operator makes, never one derived from "the explicit set happens to be every
- * environment today" — that derivation would silently exempt a new environment
+ * environment today", that derivation would silently exempt a new environment
  * from a rule written as "always" (zKeyPresence's own contract note).
  */
 export type CreateKeyType = 'string' | 'integer' | 'boolean' | 'enum' | 'url' | 'json';
@@ -788,7 +788,7 @@ export type ValueOccurrenceList = z.infer<typeof zValueOccurrenceList>;
 /**
  * useListValueOccurrences is import phase 1 (`import.presence`, #495): a
  * read-only POST that, for one environment, returns the project's definitions
- * revision and — per candidate — whether it is declared, whether it is `set`,
+ * revision and, per candidate, whether it is declared, whether it is `set`,
  * and a server-minted OPAQUE occurrence token. Nothing is written and no value
  * is sent; the token is the only thing that binds this review to the phase-2
  * write, so a candidate's intended classification/type must be its FINAL one
@@ -822,7 +822,7 @@ export function useListValueOccurrences(ref: MatrixRef) {
 
 /**
  * useImportValues is import phase 2 (`value.import`, #495): the strict,
- * human-only batch write. It is one transaction — an undeclared key rejects the
+ * human-only batch write. It is one transaction, an undeclared key rejects the
  * whole run by name (declare first), a `set` key is skipped unless it is in the
  * enumerated `overwrite` list, and the `precondition` (revision + the phase-1
  * tokens) is re-checked inside the write so a state that moved since review
@@ -876,7 +876,7 @@ export function useReclassifyKey(ref: MatrixRef) {
     // re-materialises the value under ordinary config read, and tightening
     // (`config` → `secret`) drops the key's config dismissals and re-secures the
     // cells. Both change what the value/signals/pending views must show, so the
-    // whole matrix is invalidated alongside the single-key detail and the list —
+    // whole matrix is invalidated alongside the single-key detail and the list , 
     // the metadata-only edit's narrow key+list invalidation is not enough here.
     onSuccess: (_result, input) =>
       Promise.all([
@@ -891,7 +891,7 @@ export function useReclassifyKey(ref: MatrixRef) {
 
 /**
  * useRenameKey renames a key by its immutable id (#494). Identity is that id, so
- * no stored reference breaks — but the DELIVERED payload's key set changes,
+ * no stored reference breaks, but the DELIVERED payload's key set changes,
  * which is a content-affecting schema change and advances the schema revision.
  * `acknowledgements` carries Surface-2 override tokens because the new name is
  * exported to Git and treated as public, so the scanner can refuse it exactly as
@@ -932,11 +932,11 @@ export function useRenameKey(ref: MatrixRef, key: string) {
  * `matrixKeysKey` plus a suffix, so a non-exact list invalidation would ALSO
  * match the still-mounted single-key query and re-fetch the now-deleted key.
  * That 404 would reject this `onSuccess` promise and, with it, the caller's
- * navigate-to-matrix — leaving the surface stranded on the deleted key. `exact`
+ * navigate-to-matrix, leaving the surface stranded on the deleted key. `exact`
  * refreshes only the list; the surface navigates away and the stale single-key
  * cache is dropped on unmount (a later visit re-fetches to the recoverable
  * deleted-key state). The key vanishes from the whole matrix, so its per-
- * environment views are invalidated too — none of those keys is a prefix of the
+ * environment views are invalidated too, none of those keys is a prefix of the
  * single-key query, so they do not cascade.
  */
 export function useDeleteKey(ref: MatrixRef, key: string) {
@@ -957,7 +957,7 @@ export function useDeleteKey(ref: MatrixRef, key: string) {
 
 /** One key's cross-environment lifecycle impact: the environments whose value
  *  the action moves (a set occurrence) or whose pending draft it disturbs. Only
- *  environment IDs cross this boundary — never a value cell, which for a config
+ *  environment IDs cross this boundary, never a value cell, which for a config
  *  key can carry material the detail surface must never hold (#491). */
 export type KeyImpact = {
   readonly setEnvironmentIds: readonly string[];
@@ -983,7 +983,7 @@ export function assembleKeyImpact(
 /**
  * matrixImpactReady reports whether a key's impact preview can be trusted enough
  * to arm a destructive action. It fails CLOSED: every environment row's values
- * AND signals must be fully `ready` — an `error` row has no data and a `stale`
+ * AND signals must be fully `ready`, an `error` row has no data and a `stale`
  * row may be outdated, either of which would silently drop an affected
  * environment from the preview and understate the blast radius. The empty case
  * (a project with no environments) is legitimately ready once the environment
@@ -1001,7 +1001,7 @@ export function matrixImpactReady(
 
 /**
  * keyLifecycleRefusalText renders a rename/reclassify/delete refusal in the
- * caller's words, and — this is the security-sensitive part — WITHOUT ever
+ * caller's words, and, this is the security-sensitive part, WITHOUT ever
  * turning the reveal gate into an oracle.
  *
  * A caller-safe server detail is quoted verbatim (a rename collision names the
@@ -1010,7 +1010,7 @@ export function matrixImpactReady(
  *    the server discloses the assurance requirement ONLY to a caller who already
  *    holds the reveal grant; every other 403 is a plain permission refusal.
  *  - 404 is the uniform missing-key sentence. For a declassification it ALSO
- *    masks "you do not hold reveal on this key" — the gate is a one-bit oracle
+ *    masks "you do not hold reveal on this key", the gate is a one-bit oracle
  *    the instant the UI says anything else, so this stays identical to every
  *    other 404.
  */
@@ -1021,8 +1021,8 @@ export function keyLifecycleRefusalText(
   if (error instanceof ApiError) {
     // 404 is handled FIRST and its wording is the one canonical constant: for a
     // declassification a 404 ALSO masks "you do not hold reveal on this key",
-    // and ANY variance — a caller-safe detail smuggled onto the 404, or copy
-    // that differs from the ordinary missing-key line — is exactly the
+    // and ANY variance, a caller-safe detail smuggled onto the 404, or copy
+    // that differs from the ordinary missing-key line, is exactly the
     // existence/permission oracle the reveal gate exists to close. So a 404
     // never consults `callerSafeRefusal`.
     if (error.status === 404) {
@@ -1054,7 +1054,7 @@ export const KEY_GONE_REFUSAL = 'This key no longer exists. Return to the matrix
 export type MatrixKey = MatrixKeyList['items'][number];
 
 /**
- * useKey loads ONE key's full declaration by its immutable id — the catalogue
+ * useKey loads ONE key's full declaration by its immutable id, the catalogue
  * detail surface's own fetch (#491), not a slice of the matrix list. A first-
  * class query gives the surface its own loading, 404 (deleted key) and 403
  * (authorization) states rather than inferring "missing" from a list that has
@@ -1071,7 +1071,7 @@ export function useKey(ref: MatrixRef, key: string) {
 
 /**
  * useUpdateKeyMetadata edits a key's organisational and documentation fields
- * (folder, description, deprecation) — the smallest complete write of the
+ * (folder, description, deprecation), the smallest complete write of the
  * shared declaration editor foundation (#491). It carries `acknowledgements`
  * so a Surface-2 scanning block on a free-text field can be deliberately
  * overridden once the caller owns the finding. Both the single-key detail and
@@ -1168,7 +1168,7 @@ export function usePublishMatrix(ref: MatrixRef) {
       const preview = restorePreviewFor(ref, input.versionIds);
       if (preview !== null && 'conflict' in preview) {
         throw new RestorePreviewSelectionError(
-          'Restore drafts must be published exactly as previewed — deselect the other drafts or ' +
+          'Restore drafts must be published exactly as previewed: deselect the other drafts or ' +
           `stage the restore again. Overlapping version ids: ${preview.conflict.join(', ')}.`,
         );
       }
@@ -1276,8 +1276,8 @@ export function useCopyMatrixConfig(ref: MatrixRef) {
  * matrixMutationError turns a refusal into something the human can act on.
  *
  * The server's caller-safe detail is quoted VERBATIM whenever there is one.
- * Every refusal that names a key — a presence veto, a value that fails the
- * current schema, a stale or missing restore preview token — carries it, and
+ * Every refusal that names a key, a presence veto, a value that fails the
+ * current schema, a stale or missing restore preview token, carries it, and
  * mvp-boundary C5 requires a schema-failing restore to block loud naming the
  * keys. Paraphrasing would put a second vocabulary in front of the one the CLI
  * and the audit trail use, and dropping it leaves a 400 with nothing to fix.
@@ -1291,7 +1291,7 @@ export function matrixMutationError(
     return error.message;
   }
   if (action === 'publish' && restorePreviewAttached && error instanceof ApiError && error.status === 409) {
-    return 'Publish refused: the restore preview is stale or missing — stage the restore again from the history drawer.';
+    return 'Publish refused: the restore preview is stale or missing. Stage the restore again from the history drawer.';
   }
   // `create` declares a key and `import` writes a batch; neither reads as a
   // single value, so both get their own object phrasing in the fallbacks.
@@ -1323,7 +1323,7 @@ export function matrixMutationError(
         : action === 'create'
           ? 'The server refused the declaration; reload the matrix and retry.'
           : action === 'import'
-            ? 'The reviewed state moved before this import ran — re-review this environment and try again.'
+            ? 'The reviewed state moved before this import ran: re-review this environment and try again.'
             : `The server refused this ${action}; reload the matrix and retry.`;
     }
     return action === 'publish'

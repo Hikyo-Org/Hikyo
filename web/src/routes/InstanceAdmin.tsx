@@ -62,6 +62,26 @@ function useInstanceRetentionHealth() {
   });
 }
 
+/**
+ * humanDuration names a whole number of seconds in the largest unit that
+ * divides it exactly, so a policy of 7776000s reads "90 days" and an odd value
+ * stays in seconds rather than rounding to a lie.
+ */
+export function humanDuration(seconds: number): string {
+  const units = [
+    [86_400, 'day'],
+    [3600, 'hour'],
+    [60, 'minute'],
+  ] as const;
+  for (const [size, name] of units) {
+    if (seconds >= size && seconds % size === 0) {
+      const count = seconds / size;
+      return `${String(count)} ${name}${count === 1 ? '' : 's'}`;
+    }
+  }
+  return `${String(seconds)} second${seconds === 1 ? '' : 's'}`;
+}
+
 const secondFactor = (error: unknown) => error instanceof ApiError && error.status === 403;
 const nondisclosed = (error: unknown) => error instanceof ApiError && error.status === 404;
 class SurfaceMessage extends Error {}
@@ -168,7 +188,7 @@ export function InstanceAdmin() {
       {nondisclosed(health.error) ? <p role="status">Retention health is not disclosed to this session.</p> : null}
       {health.isError && !secondFactor(health.error) && !nondisclosed(health.error) ? <Alert>{settingsFailureText(health.error, 'get-retention-health')}</Alert> : null}
       {health.isSuccess ? <><p role="status">{stale?.kind === 'stale'
-        ? health.data.last_prune_success === null ? 'Payload pruning has never succeeded — retention bounds are not being enforced.' : `Payload pruning has not succeeded since ${new Date(health.data.last_prune_success).toLocaleString()} — retention bounds are not being enforced.`
+        ? health.data.last_prune_success === null ? 'Payload pruning has never succeeded. Retention bounds are not being enforced.' : `Payload pruning has not succeeded since ${new Date(health.data.last_prune_success).toLocaleString()}. Retention bounds are not being enforced.`
         : `Payload pruning last succeeded ${health.data.last_prune_success === null ? 'never' : new Date(health.data.last_prune_success).toLocaleString()}.`}</p>
         <p className="field__hint">A run is stale after {health.data.stale_after_seconds / 3600} hours. The same fact is a Prometheus gauge and a <span className="mono">hikyo doctor</span> row.</p></> : null}
     </Panel>
@@ -208,16 +228,15 @@ function CredentialPolicyPanel({ query, onDone, onFailure }: { query: ReturnType
     {query.isSuccess ? <>
       <div className="settings-row">
         <div className="settings-row__copy"><span className="settings-row__title">Machine-credential ceiling</span><span className="settings-row__detail">authoritative instance policy; clamps every org value</span></div>
-        <span className="settings-row__spacer" /><code className="mono">{String(query.data.max_finite_lifetime_seconds)}s · {String(query.data.max_live_credentials)} live max · {query.data.allow_indefinite ? 'indefinite allowed' : 'finite only'}</code><button type="button" className="btn" onClick={() => setEditing(true)}>edit</button>
+        <span className="settings-row__spacer" /><code className="mono"><span title={`${String(query.data.max_finite_lifetime_seconds)}s`}>{humanDuration(query.data.max_finite_lifetime_seconds)}</span> · {String(query.data.max_live_credentials)} live max · {query.data.allow_indefinite ? 'indefinite allowed' : 'finite only'}</code><button type="button" className="btn" onClick={() => setEditing(true)}>edit</button>
       </div>
-      <p className="settings-note">Server URL and audit-retention settings are not exposed by this API.</p>
     </> : null}
     {editing ? <>
       {query.isSuccess ? <>
         <div className="field"><label htmlFor={finiteId}>Maximum finite lifetime (seconds)</label><input id={finiteId} inputMode="numeric" value={finite} onChange={(event) => { setPreview(null); setFinite(event.target.value); }} /></div>
         <div className="field"><label htmlFor={liveId}>Maximum live credentials per service account</label><input id={liveId} inputMode="numeric" value={live} onChange={(event) => { setPreview(null); setLive(event.target.value); }} /></div>
         <div className="field chk"><input id={indefiniteId} type="checkbox" checked={indefinite} onChange={(event) => { setPreview(null); setIndefinite(event.target.checked); }} /><label htmlFor={indefiniteId}>Allow credentials with no expiry</label></div>
-        {preview === null ? null : <div className="policy-impact" role="alert"><p>This tightening affects {preview.result.affected.length} live credential{preview.result.affected.length === 1 ? '' : 's'}. Nothing has changed yet.</p><ul>{preview.result.affected.map((credential) => <li key={credential.id} className="mono">{credential.id} — {credential.reason}</li>)}</ul><button type="button" className="btn btn--danger" disabled={update.isPending} onClick={() => submit(true, preview.proposal)}>Apply and affect these credentials</button></div>}
+        {preview === null ? null : <div className="policy-impact" role="alert"><p>This tightening affects {preview.result.affected.length} live credential{preview.result.affected.length === 1 ? '' : 's'}. Nothing has changed yet.</p><ul>{preview.result.affected.map((credential) => <li key={credential.id} className="mono">{credential.id}: {credential.reason}</li>)}</ul><button type="button" className="btn btn--danger" disabled={update.isPending} onClick={() => submit(true, preview.proposal)}>Apply and affect these credentials</button></div>}
         <div className="panel__actions"><button type="button" className="btn" onClick={() => setEditing(false)}>Cancel</button><button type="button" className="btn btn--primary" disabled={update.isPending} onClick={() => submit(false)}>Save credential policy</button></div>
       </> : null}
     </> : null}
@@ -270,7 +289,7 @@ function CryptoMaintenance({ onDone }: { onDone: (message: string) => void }) {
     </div>
 
     <div className="settings-row">
-      <div className="settings-row__copy"><span className="settings-row__title">Master key</span><span className="settings-row__detail">Re-wraps every tier-3 key (all DEKs and the root token key) under a new master, then retires the old one. Refused while the root key is dual-wrapped — finalize the root rotation first.</span></div>
+      <div className="settings-row__copy"><span className="settings-row__title">Master key</span><span className="settings-row__detail">Re-wraps every tier-3 key (all DEKs and the root token key) under a new master, then retires the old one. Refused while the root key is dual-wrapped; finalize the root rotation first.</span></div>
       <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo rotate-master-key</code>
       <button type="button" className="btn" onClick={() => open('master')}>Rotate the master key</button>
     </div>
@@ -282,7 +301,7 @@ function CryptoMaintenance({ onDone }: { onDone: (message: string) => void }) {
     </div>
 
     <div className="settings-row">
-      <div className="settings-row__copy"><span className="settings-row__title">Instance re-encryption</span><span className="settings-row__detail">Walks every instance credential ciphertext onto the active DEK version and retires the superseded ones — the completion of an instance DEK rotation. Chunked and resumable: safe to re-run, and complete once it moves no rows.</span></div>
+      <div className="settings-row__copy"><span className="settings-row__title">Instance re-encryption</span><span className="settings-row__detail">Walks every instance credential ciphertext onto the active DEK version and retires the superseded ones: the completion of an instance DEK rotation. Chunked and resumable: safe to re-run, and complete once it moves no rows.</span></div>
       <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo reencrypt</code>
       <button type="button" className="btn" disabled={drain.running} onClick={drain.run}>{drain.running ? 'Re-encrypting…' : 'Re-encrypt the instance'}</button>
     </div>
@@ -292,7 +311,7 @@ function CryptoMaintenance({ onDone }: { onDone: (message: string) => void }) {
     <div className="settings-row">
       <div className="settings-row__copy">
         <span className="settings-row__title">Root-key rotation</span>
-        <span className="settings-row__detail">Three crash-safe phases over a dual-wrapped master. No key material crosses the wire. Between <strong>prepare</strong> and <strong>verify</strong> you install the new root at the primary source on the host. The instance stays bootable under either root and warns on every start until <strong>finalize</strong>. Run the phases in order — the server refuses one run out of turn.</span>
+        <span className="settings-row__detail">Three crash-safe phases over a dual-wrapped master. No key material crosses the wire. Between <strong>prepare</strong> and <strong>verify</strong> you install the new root at the primary source on the host. The instance stays bootable under either root and warns on every start until <strong>finalize</strong>. Run the phases in order; the server refuses one run out of turn.</span>
       </div>
       <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo rotate-root-key</code>
       <div className="crypto-phases">
@@ -302,7 +321,7 @@ function CryptoMaintenance({ onDone }: { onDone: (message: string) => void }) {
       </div>
     </div>
 
-    <p className="field__hint"><span className="mono">init</span>, <span className="mono">migrate</span>, restore reconciliation, break-glass, host-file custody and startup-only key material are local host authority. They are deliberately absent from every network surface — CLI-at-the-box, not CLI-over-network.</p>
+    <p className="field__hint"><span className="mono">init</span>, <span className="mono">migrate</span>, restore reconciliation, break-glass, host-file custody and startup-only key material are local host authority. They are deliberately absent from every network surface: CLI-at-the-box, not CLI-over-network.</p>
 
     {ceremony === 'token' ? <ConsequencesDialog titleId={titleId} title="Rotate the change-token key?" confirmLabel="Rotate the key" busyLabel="Rotating the change-token key…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
       setDialogFailure(null);
@@ -322,7 +341,7 @@ function CryptoMaintenance({ onDone }: { onDone: (message: string) => void }) {
       setDialogFailure(null);
       master.mutate(undefined, { onSuccess: (result) => { onDone(`The master key was rotated (version ${String(result.key_version)}). Every tier-3 key is now wrapped under it.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-master-key')) });
     }}>
-      <p>A new master key is generated, every tier-3 key is re-wrapped under it, and the old master is retired after a zero-reference check. This is refused while the root key is dual-wrapped — finalize the root rotation first.</p>
+      <p>A new master key is generated, every tier-3 key is re-wrapped under it, and the old master is retired after a zero-reference check. This is refused while the root key is dual-wrapped; finalize the root rotation first.</p>
     </ConsequencesDialog> : null}
 
     {ceremony === 'dek-instance' ? <ConsequencesDialog titleId={titleId} title="Rotate the instance DEK?" confirmLabel="Rotate the DEK" busyLabel="Rotating the instance DEK…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {

@@ -7,6 +7,7 @@ import {
   deleteServiceAccountFailureText,
   deleteServiceAccountRefusalText,
   expiryLabel,
+  grantableFor,
   grantWideningReach,
   lastUsedLabel,
   parseClaimNumber,
@@ -51,9 +52,24 @@ describe('scopeOf', () => {
   it('reads one environment-scoped grant as reach on that environment only', () => {
     const scope = scopeOf([grant('mp_a', 'read', { environment_id: 'env_dev' })], 'mp_a', ENVS);
     expect(scope).toEqual([
-      { id: 'env_dev', name: 'development', read: true, reveal: false },
-      { id: 'env_prod', name: 'production', read: false, reveal: false },
+      { id: 'env_dev', name: 'development', read: true, reveal: false, origins: [] },
+      { id: 'env_prod', name: 'production', read: false, reveal: false, origins: [] },
     ]);
+  });
+
+  it('carries every origin behind the rows that reach an environment, once each', () => {
+    const manual = { kind: 'manual', subject: 'usr_admin' };
+    const scim = { kind: 'scim', subject: 'group:platform' };
+    const scope = scopeOf(
+      [
+        { ...grant('mp_a', 'read', { environment_id: 'env_dev' }), origins: [manual, scim] },
+        { ...grant('mp_a', 'reveal', { environment_id: 'env_dev' }), origins: [manual] },
+      ],
+      'mp_a',
+      ENVS,
+    );
+    expect(scope[0]?.origins).toEqual([manual, scim]);
+    expect(scope[1]?.origins).toEqual([]);
   });
 
   it('lets a project-scoped grant reach every environment beneath it', () => {
@@ -132,6 +148,31 @@ describe('grantWideningReach', () => {
   });
 });
 
+describe('grantableFor', () => {
+  const scope = scopeOf(
+    [
+      grant('mp_a', 'read', { environment_id: 'env_dev' }),
+      grant('mp_a', 'reveal', { environment_id: 'env_dev' }),
+      grant('mp_a', 'read', { environment_id: 'env_prod' }),
+    ],
+    'mp_a',
+    ENVS,
+  );
+
+  it('offers read only where the account has none', () => {
+    expect(grantableFor(scopeOf([], 'mp_a', ENVS), 'read', false).map((s) => s.id)).toEqual([
+      'env_dev',
+      'env_prod',
+    ]);
+    expect(grantableFor(scope, 'read', true)).toEqual([]);
+  });
+
+  it('offers reveal only where read is held without reveal, and only under the opt-in', () => {
+    expect(grantableFor(scope, 'reveal', true).map((s) => s.id)).toEqual(['env_prod']);
+    expect(grantableFor(scope, 'reveal', false)).toEqual([]);
+  });
+});
+
 describe('parseClaimNumber', () => {
   // An immutable repository id is what stops a renamed-and-reused path
   // inheriting a production binding. Every case below is a way `Number()`
@@ -155,7 +196,7 @@ describe('parseClaimNumber', () => {
   });
 
   it('refuses a value past the range JSON carries exactly', () => {
-    // 2^53 + 1 rounds to 2^53 — a DIFFERENT, existing repository id.
+    // 2^53 + 1 rounds to 2^53, a DIFFERENT, existing repository id.
     expect(parseClaimNumber('9007199254740993')).toBeNull();
     expect(parseClaimNumber('9007199254740991')).toBe(9_007_199_254_740_991);
   });
@@ -169,12 +210,20 @@ describe('setupJourney', () => {
   it('waits on the read grant before anything else', () => {
     const steps = setupJourney('workload', scopeOf([], 'mp_a', ENVS), false) ?? [];
     expect(steps.map((s) => s.state)).toEqual(['done', 'next', 'next', 'next', 'blocked']);
+    // The act rides on the step that names the gap, and only there.
+    expect(steps.map((s) => s.action)).toEqual([
+      undefined,
+      'grant-read',
+      undefined,
+      'enable-opt-in',
+      undefined,
+    ]);
   });
 
   it('states delivery permission without claiming a successful fetch and gates reveal on opt-in', () => {
     const scope = scopeOf([grant('mp_a', 'read', { environment_id: 'env_dev' })], 'mp_a', ENVS);
     const steps = setupJourney('workload', scope, false) ?? [];
-    expect(steps[1]?.title).toBe('read granted — development');
+    expect(steps[1]?.title).toBe('read granted: development');
     expect(steps[2]?.state).toBe('done');
     // With the opt-in off the grant API refuses reveal, so the step says so
     // rather than offering a control the server refuses every time.
@@ -188,7 +237,10 @@ describe('setupJourney', () => {
     const reading = scopeOf([grant('mp_a', 'read', { environment_id: 'env_dev' })], 'mp_a', ENVS);
     const steps = setupJourney('workload', reading, true) ?? [];
     expect(steps[3]?.state).toBe('done');
+    expect(steps[3]?.action).toBeUndefined();
     expect(steps[4]?.state).toBe('next');
+    expect(steps[4]?.title).toBe('Grant reveal on the environments the workload needs');
+    expect(steps[4]?.action).toBe('grant-reveal');
     const revealing = scopeOf(
       [
         grant('mp_a', 'read', { environment_id: 'env_dev' }),
@@ -199,7 +251,8 @@ describe('setupJourney', () => {
     );
     const held = setupJourney('workload', revealing, true) ?? [];
     expect(held[4]?.state).toBe('done');
-    expect(held[4]?.title).toBe('reveal granted — development');
+    expect(held[4]?.title).toBe('reveal granted: development');
+    expect(held[4]?.action).toBeUndefined();
     const withdrawn = setupJourney('workload', revealing, false) ?? [];
     expect(withdrawn[4]?.state).toBe('blocked');
     expect(withdrawn[4]?.note).toContain('until the opt-in above is on');
@@ -219,23 +272,38 @@ const credential = (over: Partial<MachineCredential>): MachineCredential => ({
 describe('expiryLabel', () => {
   const now = new Date('2026-08-13T00:00:00Z');
 
-  it('counts the days left', () => {
-    expect(expiryLabel(credential({ expires_at: '2026-08-27T00:00:00Z' }), now)).toBe(
-      'expires in 14 days',
-    );
+  it('counts the days left and tiers the words, never colour alone', () => {
+    expect(expiryLabel(credential({ expires_at: '2026-08-27T00:00:00Z' }), now)).toEqual({
+      text: 'expires in 14 days',
+      tier: 'warn',
+    });
+    expect(expiryLabel(credential({ expires_at: '2026-08-20T00:00:00Z' }), now)).toEqual({
+      text: 'expires in 7 days',
+      tier: 'danger',
+    });
+    expect(expiryLabel(credential({ expires_at: '2026-10-01T00:00:00Z' }), now)).toEqual({
+      text: 'expires in 49 days',
+      tier: 'none',
+    });
   });
 
   it('says expired rather than a negative count', () => {
-    expect(expiryLabel(credential({ expires_at: '2026-08-01T00:00:00Z' }), now)).toBe('expired');
+    expect(expiryLabel(credential({ expires_at: '2026-08-01T00:00:00Z' }), now)).toEqual({
+      text: 'expired',
+      tier: 'danger',
+    });
   });
 
   it('says revoked first, whatever the expiry says', () => {
     const dead = credential({ expires_at: '2026-12-01T00:00:00Z', revoked_at: '2026-08-02T00:00:00Z' });
-    expect(expiryLabel(dead, now)).toBe('revoked');
+    expect(expiryLabel(dead, now).text).toBe('revoked');
   });
 
   it('states an indefinite lifetime as a fact, not as a large number', () => {
-    expect(expiryLabel(credential({ lifetime: 'indefinite' }), now)).toBe('no expiry');
+    expect(expiryLabel(credential({ lifetime: 'indefinite' }), now)).toEqual({
+      text: 'no expiry',
+      tier: 'none',
+    });
   });
 });
 
@@ -268,7 +336,7 @@ describe('pullRequestRefusal', () => {
 
 describe('serviceAccountNameRefusal', () => {
   it('refuses an empty name, and only an empty one', () => {
-    // The server checks `name == "" || len(name) > 64` — byte-for-byte, no trim.
+    // The server checks `name == "" || len(name) > 64`, byte-for-byte, no trim.
     // A whitespace-only name is server-legal, so the client does not invent a
     // stricter rule that would refuse what the server accepts.
     expect(serviceAccountNameRefusal('')).not.toBeNull();
@@ -292,7 +360,7 @@ describe('serviceAccountNameRefusal', () => {
 describe('createServiceAccountRefusalText', () => {
   it('names the duplicate-name / limit conflict on 409, not the credential ceiling', () => {
     const text = createServiceAccountRefusalText(new ApiError(409, 'conflict'));
-    // The account-create 409 is a duplicate live name or a structural limit —
+    // The account-create 409 is a duplicate live name or a structural limit , 
     // never the "live-credential ceiling or identical binding" the mint's 409
     // is. A wrong sentence here sends an operator to look at credentials.
     expect(text).toContain('name');
@@ -303,7 +371,7 @@ describe('createServiceAccountRefusalText', () => {
     expect(createServiceAccountRefusalText(new ApiError(400, 'bad'))).toContain('64');
   });
 
-  it('never demands disclosure or reauth on 403 — create needs neither', () => {
+  it('never demands disclosure or reauth on 403, create needs neither', () => {
     const text = createServiceAccountRefusalText(new ApiError(403, 'no'));
     expect(text).toContain('manage-identities');
     expect(text).not.toContain('reauth');
@@ -323,7 +391,7 @@ describe('deleteServiceAccountRefusalText', () => {
     expect(deleteServiceAccountRefusalText(new ApiError(404, 'gone'))).toContain('no longer here');
   });
 
-  it('never demands disclosure or reauth — delete is plain-capability', () => {
+  it('never demands disclosure or reauth, delete is plain-capability', () => {
     const text = deleteServiceAccountRefusalText(new ApiError(403, 'no'));
     expect(text).not.toContain('reauth');
     expect(text).not.toContain('disclosure');

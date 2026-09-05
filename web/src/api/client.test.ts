@@ -43,8 +43,8 @@ afterEach(() => {
 
 // The synchronizer token is read out of a cookie string by hand, which is one
 // of the few pieces of parsing the SPA does itself. A cookie header is a
-// hostile little format — leading spaces, other cookies with overlapping
-// prefixes, values containing '=' — and getting it wrong means every mutation
+// hostile little format, leading spaces, other cookies with overlapping
+// prefixes, values containing '=', and getting it wrong means every mutation
 // is refused with no obvious cause.
 describe('readCsrfToken', () => {
   it('finds the token among other cookies', () => {
@@ -53,7 +53,7 @@ describe('readCsrfToken', () => {
 
   it('is not fooled by a cookie whose name merely starts the same', () => {
     // `__Host-hikyo` is the session cookie and is HttpOnly, so it should never
-    // appear here — but a prefix match would also pick up anything named
+    // appear here, but a prefix match would also pick up anything named
     // `__Host-hikyo-csrf-something`.
     expect(readCsrfToken('__Host-hikyo-csrf-other=nope; __Host-hikyo-csrf=yes')).toBe('yes');
   });
@@ -183,8 +183,8 @@ describe('ok', () => {
   });
 });
 
-// The generic error tier: one canonical sentence per case, and — the reason
-// this helper exists — "could not be reached" kept distinct from "answered
+// The generic error tier: one canonical sentence per case, and, the reason
+// this helper exists, "could not be reached" kept distinct from "answered
 // something this client cannot understand". Where possible the error is
 // produced by driving the REAL chain against a mocked fetch, matching this
 // file's convention, so the classification is exercised end to end and not
@@ -246,7 +246,7 @@ describe('transportRefusalText', () => {
 
     vi.stubGlobal('navigator', { onLine: false });
     expect(transportRefusalText(error)).toBe(
-      'You appear to be offline. The server could not be reached — check your connection and try again.',
+      'You appear to be offline. The server could not be reached: check your connection and try again.',
     );
 
     vi.stubGlobal('navigator', { onLine: true });

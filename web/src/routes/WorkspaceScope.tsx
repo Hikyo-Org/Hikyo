@@ -20,7 +20,7 @@ import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHando
  * WorkspaceScope is the boundary between operating THIS instance and operating a
  * remote (#71, multi-instance ADR § What the workspace is, and is not).
  *
- * The product surfaces — matrix, history, values — render the same component
+ * The product surfaces, matrix, history, values, render the same component
  * either way; what changes is the transport under them, and this is where that
  * swap is made. A surface reached with a `?remote=<name>` query parameter is
  * operating that remote; without one it is local, and this renders its children
@@ -29,7 +29,7 @@ import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHando
  * The remote is a QUERY PARAMETER rather than a new route on purpose: the
  * closed surface registry (`app/navigation.ts`) gates every path on a Playwright
  * flow, and the workspace is the SAME matrix/values/history the flow already
- * covers, pointed elsewhere — not a second set of surfaces to register and
+ * covers, pointed elsewhere, not a second set of surfaces to register and
  * assert twice over. The deep link that carries the parameter is built from a
  * live read of the remote's own project list, so its org and project ids are
  * the remote's, resolved over the bearer, never guessed from the directory
@@ -39,7 +39,7 @@ export function WorkspaceScope({
   remote,
   children,
 }: {
-  /** Overrides the `?remote` parameter — the remotes card supplies it directly. */
+  /** Overrides the `?remote` parameter, the remotes card supplies it directly. */
   remote?: string;
   children: ReactNode;
 }) {
@@ -54,7 +54,7 @@ export function WorkspaceScope({
 /**
  * WorkspaceBoundary holds one live workspace: the origin-scoped client, its own
  * isolated query cache, and the states a workspace can be in that the local
- * path never is — not yet connected, version-skewed, or killed out from under
+ * path never is, not yet connected, version-skewed, or killed out from under
  * the shell.
  */
 function WorkspaceBoundary({ remote, children }: { remote: string; children: ReactNode }) {
@@ -71,7 +71,7 @@ function WorkspaceBoundary({ remote, children }: { remote: string; children: Rea
   // call fails at the browser without a status the transport can read, and
   // without this poll an idle workspace would keep claiming to be open. The
   // probe drops the bearer on a run of failures, which flips this boundary to
-  // its reconnect state — fail closed, without reloading the shell.
+  // its reconnect state, fail closed, without reloading the shell.
   useEffect(() => {
     if (bearer === undefined) {
       return;
@@ -116,15 +116,15 @@ function WorkspaceBoundary({ remote, children }: { remote: string; children: Rea
     return <Reconnect origin={origin} name={remote} />;
   }
 
-  // The connected subtree — its cache, its client, its compatibility gate — is
+  // The connected subtree, its cache, its client, its compatibility gate, is
   // KEYED on origin AND session id. That key is the whole isolation story:
   //
   //   - a different human reconnecting in the same tab after a revocation gets a
-  //     NEW session id, so the key changes and the cache is thrown away — they
+  //     NEW session id, so the key changes and the cache is thrown away, they
   //     never see a frame of the previous human's values;
   //   - switching `?remote=A` to `?remote=B` changes the origin, same effect;
   //   - a STEP-UP rotates the bearer VALUE under a stable session id, so the key
-  //     does NOT change and the cache is preserved — the elevation is the same
+  //     does NOT change and the cache is preserved, the elevation is the same
   //     human continuing, not a new one.
   return (
     <ConnectedWorkspace key={`${origin}::${bearer.session}`} origin={origin} remote={remote}>
@@ -139,8 +139,8 @@ function WorkspaceBoundary({ remote, children }: { remote: string; children: Rea
  *
  * It is mounted under a key of origin + session id, so everything below is
  * created fresh for a new session and torn down with the old one. The gate is
- * the ADR's "live meta read BEFORE resuming": product children — which would
- * fire data reads at a possibly downgraded or restored remote — do not mount
+ * the ADR's "live meta read BEFORE resuming": product children, which would
+ * fire data reads at a possibly downgraded or restored remote, do not mount
  * until the check passes, rather than mounting first and refusing after the
  * reads have already gone out.
  */
@@ -215,7 +215,7 @@ function ConnectedWorkspace({
 /**
  * WorkspaceBanner is the workspace's trust story in one line: you are operating
  * a DIFFERENT instance, as yourself, and everything you do lands in ITS audit
- * trail under your name. It is persistent because the fact is — a human three
+ * trail under your name. It is persistent because the fact is, a human three
  * clicks deep in a foreign matrix is owed the reminder of whose data it is.
  */
 function WorkspaceBanner({ origin }: { origin: string }) {
@@ -223,8 +223,9 @@ function WorkspaceBanner({ origin }: { origin: string }) {
     <div className="workspace-banner" role="status">
       <span className="workspace-banner__dot" aria-hidden="true" />
       <span className="workspace-banner__text">
-        Operating <span className="mono">{origin}</span> — as you, on that instance. Everything you
-        do here appears in its audit trail under your name.
+        Operating <span className="mono">{origin}</span> as you, on that instance. Everything you
+        do here appears in its audit trail under your name. Live updates from a remote instance
+        arrive by polling.
       </span>
       <button
         className="btn"
@@ -240,7 +241,7 @@ function WorkspaceBanner({ origin }: { origin: string }) {
 
 /**
  * Reconnect is the state a deep-linked workspace URL lands in when the bearer
- * is gone — which is EVERY reload, because the bearer lives in memory only, and
+ * is gone, which is EVERY reload, because the bearer lives in memory only, and
  * also the moment a kill switch fires. It is the same eager preparation the
  * remotes card uses: finish the network round trip first, then synchronously
  * open the popup from the origin-labelled action's user gesture.
@@ -254,16 +255,17 @@ export function Reconnect({ origin, name }: { origin: string; name: string }) {
         : 'The workspace could not be reconnected. Check that this instance allowlists this origin.',
   });
   const action = workspaceHandoffAction(handoff, {
-    ready: `Continue to ${origin} to sign in`,
+    ready: 'Reconnect',
     authorising: 'Waiting for sign-in…',
   });
 
   return (
-    <section className="card" aria-labelledby="workspace-reconnect">
-      <h1 id="workspace-reconnect">Reconnect to {name}</h1>
+    <div className="page page--chrome">
+      <h1>Session expired on {origin}</h1>
+      <p className="page__lede">Reconnect to continue as you on that instance.</p>
       <p>
-        Your workspace on <span className="mono">{origin}</span> is not open. Reconnect to operate
-        it — you will sign in on that instance&apos;s own origin, in a popup.
+        The workspace <span className="mono">{name}</span> signs you in on that instance&apos;s own
+        origin, in a popup.
       </p>
       {handoff.phase.kind !== 'failed' ? null : (
         <p className="alert" role="alert">
@@ -281,6 +283,6 @@ export function Reconnect({ origin, name }: { origin: string; name: string }) {
       >
         {action.label}
       </button>
-    </section>
+    </div>
   );
 }

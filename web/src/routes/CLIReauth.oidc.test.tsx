@@ -8,6 +8,7 @@ import { settleTask } from '../testkit/renderForm.tsx';
 import { CLIReauth } from './CLIReauth.tsx';
 
 const mocks = vi.hoisted(() => ({
+  authStatus: 'authenticated',
   load: vi.fn(),
   providerAvailable: true,
   provider: { kind: 'oidc', slug: 'strict', display_name: 'Corporate IdP' },
@@ -28,7 +29,7 @@ vi.mock('../api/account.ts', () => ({
 
 vi.mock('../app/AuthProvider.tsx', () => ({
   useAuth: () => ({
-    state: { status: 'authenticated' },
+    state: { status: mocks.authStatus },
     identity: { session: { assurance: { method: 'oidc:strict', provider: 'strict' } } },
     refreshSession: vi.fn(),
   }),
@@ -86,6 +87,19 @@ beforeEach(() => {
 });
 
 describe('CLI OIDC disclosure handoff', () => {
+  it('renders the loading state inside the same card shell as the loaded page', async () => {
+    mocks.authStatus = 'checking';
+    try {
+      const { container, unmount } = await renderTransaction([]);
+      const status = container.querySelector('.login__card [role="status"]');
+      expect(status?.textContent).toBe('Loading…');
+      expect(container.querySelector('.login__card h1')?.textContent).toBe('Authorize CLI');
+      await unmount();
+    } finally {
+      mocks.authStatus = 'authenticated';
+    }
+  });
+
   it('offers the current provider when any environment has a reusable window', async () => {
     const view = await renderTransaction([
       { environment_id: 'production', effective_window_seconds: 300, requires_webauthn: false },
@@ -96,7 +110,7 @@ describe('CLI OIDC disclosure handoff', () => {
     expect(view.container.textContent).toContain(
       'Re-authenticate once per sliding-window environment with your identity provider.',
     );
-    expect(view.container.textContent).toContain('locked — passkey required');
+    expect(view.container.textContent).toContain('locked (passkey required)');
     await view.unmount();
   });
 
@@ -106,7 +120,7 @@ describe('CLI OIDC disclosure handoff', () => {
     ]);
 
     expect(view.container.textContent).not.toContain('Re-authenticate with Corporate IdP');
-    expect(view.container.textContent).toContain('locked — passkey required');
+    expect(view.container.textContent).toContain('locked (passkey required)');
     await view.unmount();
   });
 

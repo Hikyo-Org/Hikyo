@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router';
+import { useCallback, useEffect, useId, useMemo, useState, type MouseEvent } from 'react';
+import { generatePath, Link } from 'react-router';
 
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { historyHref } from '../api/history.ts';
@@ -15,15 +15,18 @@ import {
   type ValueCell,
 } from '../api/values.ts';
 import { writeExpiringClipboard } from '../app/clipboard.ts';
+import { surfaceById } from '../app/navigation.ts';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import {
   canClearMatrixCell,
   copyRequiresProtectedConfirmation,
   draftValueForMatrixCell,
   matrixDraftChanges,
-  validateMatrixDraft,
+  validateMatrixDeclaration,
   type MatrixDraftChange,
   type MatrixDraftEdit,
+  type MatrixDraftRule,
+  type MatrixDraftValidation,
 } from './matrix-state.ts';
 import {
   useProtectedPublishCeremony,
@@ -40,7 +43,7 @@ type EditorRow = {
   readonly environment: Environment;
   readonly protected: boolean;
   // #451: this column's value/signal reads failed or were denied. It is excluded
-  // from bulk edit and copy destinations — the caller cannot read it, so writing
+  // from bulk edit and copy destinations, the caller cannot read it, so writing
   // to it blind would be a silent guess.
   readonly degraded: boolean;
   readonly cell: ValueCell | undefined;
@@ -52,6 +55,22 @@ type EditorRow = {
 export type MatrixEditorChange = MatrixDraftChange;
 
 const REMASK_MS = 10_000;
+
+/**
+ * A native `<dialog>` receives the click for its own backdrop, but ALSO for its
+ * padding: `event.target === dialog` is true for both. Only a click outside the
+ * dialog's box is a "walk away".
+ */
+export function isBackdropClick(event: MouseEvent<HTMLDialogElement>): boolean {
+  if (event.target !== event.currentTarget) return false;
+  const rect = event.currentTarget.getBoundingClientRect();
+  return (
+    event.clientX < rect.left ||
+    event.clientX > rect.right ||
+    event.clientY < rect.top ||
+    event.clientY > rect.bottom
+  );
+}
 
 /** Locked cell modal: one environment first, with explicit multi-environment editing. */
 export function MatrixRowEditor({
@@ -76,6 +95,7 @@ export function MatrixRowEditor({
   onCopy: (destinations: readonly string[], confirmProtected: boolean) => void;
 }) {
   const dialog = useModalDialog();
+  const titleId = useId();
   const initialDrafts = useMemo(
     () =>
       new Map(
@@ -97,6 +117,9 @@ export function MatrixRowEditor({
   const [applyError, setApplyError] = useState<string | null>(null);
   const [copyOpen, setCopyOpen] = useState(false);
   const [editAll, setEditAll] = useState(false);
+  // Secret inputs are masked while typing (a shoulder-surfer reads a textarea as
+  // easily as a screen); this is the operator's own opt-out.
+  const [showTyping, setShowTyping] = useState(false);
   const [destinations, setDestinations] = useState<readonly string[]>([]);
   const [protectedCopyConfirmed, setProtectedCopyConfirmed] = useState(false);
   const protectedEnvironmentIds = rows.flatMap((row) =>
@@ -151,13 +174,19 @@ export function MatrixRowEditor({
     )
     .map((row) => row.environment.name);
 
-  const validationByEnvironment = new Map<string, ReturnType<typeof validateMatrixDraft>>();
+  const secret = keyRecord.classification === 'secret';
+  const valueClass = `mono matrix-editor__value${secret && !showTyping ? ' matrix-editor__value--masked' : ''}`;
+  const declarationHref = withRemote(
+    generatePath(surfaceById('key-detail').path, { ...refData, key: keyRecord.id }),
+    workspace?.remote ?? '',
+  );
+  const validationByEnvironment = new Map<string, MatrixDraftValidation>();
   for (const row of rows) {
     const edit = edits.get(row.environmentId);
     if (edit?.op !== 'set') {
       continue;
     }
-    const error = validateDeclaration(keyRecord, edit.value);
+    const error = validateMatrixDeclaration(declarationRules(keyRecord), edit.value);
     if (error !== null) {
       validationByEnvironment.set(row.environmentId, error);
     }
@@ -182,7 +211,7 @@ export function MatrixRowEditor({
         return {
           environmentId,
           environmentName: destination.environment.name,
-          keys: [{ id: keyRecord.id, name: keyRecord.name }],
+          keys: [{ id: keyRecord.id, name: keyRecord.name, classification: keyRecord.classification }],
         };
       });
 
@@ -191,9 +220,10 @@ export function MatrixRowEditor({
       <dialog
         className="matrix-editor matrix-row-editor"
         ref={dialog}
+        aria-labelledby={titleId}
         onClose={onClose}
         onClick={(event) => {
-          if (event.target === event.currentTarget) onClose();
+          if (isBackdropClick(event)) onClose();
         }}
       >
         <form
@@ -217,7 +247,7 @@ export function MatrixRowEditor({
               <p className="matrix-editor__eyebrow">
                 {`${environment.name} · ${keyRecord.classification}`}
               </p>
-              <h2 className="mono">
+              <h2 className="mono" id={titleId}>
                 {keyRecord.classification === 'secret' ? (
                   <span aria-hidden="true">🔒 </span>
                 ) : null}
@@ -235,24 +265,33 @@ export function MatrixRowEditor({
             </button>
           </div>
 
-          <details className="matrix-editor__schema">
-            <summary>Schema and presence rules</summary>
-            <pre className="mono">{JSON.stringify({
-              declaration: keyRecord.declaration,
-              presence: keyRecord.presence,
-            }, null, 2)}</pre>
-          </details>
+          {secret ? (
+            <label className="matrix-editor__show-typing">
+              <input
+                type="checkbox"
+                checked={showTyping}
+                onChange={(event) => setShowTyping(event.target.checked)}
+              />
+              <span>Show while typing</span>
+            </label>
+          ) : null}
+          {secret && disclosure.revealDenied ? (
+            <p className="matrix-editor__hint">
+              No reveal for your role here. Write-only replacement only; copying is a disclosure
+              too, so it stays gated with reveal.
+            </p>
+          ) : null}
 
           {editAll ? <div className="matrix-row-editor__fill">
             <label htmlFor="matrix-fill-all">Fill all environments</label>
             <div>
-              <input
+              <textarea
                 id="matrix-fill-all"
-                className="mono"
-                type={keyRecord.classification === 'secret' ? 'password' : 'text'}
+                className={valueClass}
+                rows={2}
                 autoComplete="off"
                 value={fillAll}
-                placeholder={keyRecord.classification === 'secret' ? 'Write-only replacement' : 'Shared draft value'}
+                placeholder={secret ? 'Write-only replacement' : 'Shared draft value'}
                 onChange={(event) => setFillAll(event.target.value)}
               />
               <button
@@ -287,13 +326,13 @@ export function MatrixRowEditor({
                   <div className="matrix-row-editor__row-head">
                     <h3 id={`matrix-row-${rowEnvironmentId}`}>{row.environment.name}</h3>
                     {row.protected ? <span>PROTECTED</span> : null}
-                    <span>{publishedSet ? 'explicit set' : 'explicit absent'}</span>
+                    <span>{publishedSet ? 'set' : '· absent'}</span>
                     {row.signal?.pending === undefined ? null : (
-                      <span>{`Δ ${row.signal.pending.operation} pending`}</span>
+                      <span>{`Δ pending ${row.signal.pending.operation === 'unset' ? 'clear' : 'set'}`}</span>
                     )}
                   </div>
                   {row.problems.map((problem) => (
-                    <p className="alert" role="alert" key={problem.message}>
+                    <p className="alert" role="status" key={problem.message}>
                       <span className="alert__glyph" aria-hidden="true">!</span>
                       <span>{problem.message}</span>
                     </p>
@@ -303,8 +342,8 @@ export function MatrixRowEditor({
                   </label>
                   <textarea
                     id={`matrix-edit-${rowEnvironmentId}`}
-                    className="mono matrix-editor__value"
-                    rows={keyRecord.declaration.rule?.type === 'json' ? 6 : 2}
+                    className={valueClass}
+                    rows={2}
                     autoComplete="off"
                     value={
                       edit?.op === 'set'
@@ -337,6 +376,7 @@ export function MatrixRowEditor({
                       className={liveValidation.level === 'error' ? 'matrix-cell__error' : 'matrix-editor__hint'}
                       id={`matrix-error-${rowEnvironmentId}`}
                     >
+                      {liveValidation.level === 'error' ? <span aria-hidden="true">✕ </span> : null}
                       {liveValidation.message}
                     </p>
                   )}
@@ -345,18 +385,22 @@ export function MatrixRowEditor({
                       <dt>Updated</dt>
                       <dd>{row.cell?.updated_at === undefined ? 'No published value' : formatTimestamp(row.cell.updated_at)}</dd>
                     </div>
-                    <div><dt>Updated by</dt><dd className="mono">{row.cell?.updated_by ?? '—'}</dd></div>
+                    <div><dt>Updated by</dt><dd className="mono">{row.cell?.updated_by ?? 'unknown'}</dd></div>
                     <div>
                       <dt>Revision</dt>
                       <dd>{row.signal?.changed_in_revision === undefined ? 'No change signal' : `r${String(row.signal.changed_in_revision)}`}</dd>
                     </div>
                   </dl>
                   {rowEnvironmentId === environmentId && disclosure.revealed !== null ? (
-                    <p className="matrix-editor__revealed mono" aria-label={`${keyRecord.name} revealed`}>
+                    // No aria-label here: it would REPLACE the plaintext as the
+                    // accessible name, hiding the disclosed value from AT. The
+                    // announcement lives in the status region below.
+                    <p className="matrix-editor__revealed mono">
                       <span>{disclosure.revealed.value}</span>
-                      <small>{`re-masks in ${String(disclosure.revealed.remaining)}s`}</small>
+                      <small aria-hidden="true">{`re-masks in ${String(disclosure.revealed.remaining)}s`}</small>
                     </p>
                   ) : null}
+                  {editAll ? null : (
                   <button
                     type="button"
                     className="btn"
@@ -374,6 +418,7 @@ export function MatrixRowEditor({
                   >
                     {clearing ? 'Keep current state' : `Clear ${row.environment.name} to absent`}
                   </button>
+                  )}
                 </section>
               );
             })}
@@ -383,6 +428,11 @@ export function MatrixRowEditor({
           {mutationError === null ? null : <p className="alert" role="alert">{mutationError}</p>}
           {disclosure.error === null ? null : <p className="alert" role="alert">{disclosure.error}</p>}
           {disclosure.notice === null ? null : <p className="notice" role="status">{disclosure.notice}</p>}
+          <p className="visually-hidden" role="status">
+            {disclosure.announcement === null ? null : (
+              <span key={disclosure.announcement.id}>{disclosure.announcement.message}</span>
+            )}
+          </p>
 
           <div className="matrix-editor__actions">
             <button
@@ -392,24 +442,44 @@ export function MatrixRowEditor({
             >
               {busy || applying ? 'Saving drafts…' : `Save ${String(changes.length)} draft${changes.length === 1 ? '' : 's'}`}
             </button>
-            {!editAll && rows.length > 1 ? (
-              <button type="button" className="btn" onClick={() => setEditAll(true)}>
-                Edit all environments
+            {rows.length > 1 ? (
+              <button
+                type="button"
+                className="btn"
+                aria-expanded={editAll}
+                onClick={() => {
+                  if (editAll) {
+                    // Leaving the all-environments view drops the edits it
+                    // alone could show; the save count must match what is on
+                    // screen.
+                    setEdits((current) => {
+                      const kept = current.get(environmentId);
+                      return kept === undefined ? new Map() : new Map([[environmentId, kept]]);
+                    });
+                    setFillAll('');
+                  }
+                  setEditAll(!editAll);
+                }}
+              >
+                {editAll ? `Back to ${environment.name} only` : 'Edit all environments'}
               </button>
             ) : null}
-            {sourceSet && keyRecord.classification === 'secret' && disclosure.canReveal ? (
+            {sourceSet && secret && disclosure.canReveal ? (
               <button type="button" className="btn" onClick={disclosure.reveal}>
                 {`Reveal ${keyRecord.name}`}
               </button>
             ) : null}
-            {sourceSet ? (
+            {sourceSet && (!secret || disclosure.canReveal) ? (
               <button type="button" className="btn" onClick={disclosure.copy}>
-                {`Copy ${keyRecord.name}`}
+                {secret ? `Copy ${keyRecord.name} (audited disclosure)` : `Copy ${keyRecord.name}`}
               </button>
             ) : null}
+            <Link className="btn" to={declarationHref} onClick={onClose}>
+              Edit declaration
+            </Link>
             {/*
               The per-key history entry point. Per-key history is a FILTER over
-              the same lineage, so it is the history surface with `key` set —
+              the same lineage, so it is the history surface with `key` set , 
               never a second surface, and never a second fetch.
             */}
             <Link
@@ -488,6 +558,20 @@ export function MatrixRowEditor({
               </button>
             </fieldset>
           ) : null}
+
+          <details className="matrix-editor__schema">
+            <summary>Schema and presence rules</summary>
+            <p>{declarationSummary(keyRecord, rows)}</p>
+            <details>
+              <summary>Raw declaration</summary>
+              <pre className="mono">{JSON.stringify(
+                { declaration: keyRecord.declaration, presence: keyRecord.presence },
+                // Integer bounds arrive as bigint, which JSON.stringify refuses.
+                (_key, value: unknown) => (typeof value === 'bigint' ? value.toString() : value),
+                2,
+              )}</pre>
+            </details>
+          </details>
         </form>
       </dialog>
       {protectedGuard.request === null ? null : (
@@ -529,6 +613,9 @@ function useCellDisclosure(
   const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Announced ONCE per reveal, with the window's full length: a status region
+  // that ticked with the countdown would read the value aloud every 250ms.
+  const [announcement, setAnnouncement] = useState<{ id: number; message: string } | null>(null);
 
   useEffect(() => {
     if (plaintext === null) return;
@@ -544,6 +631,7 @@ function useCellDisclosure(
     setPlaintext(null);
     setError(null);
     setNotice(null);
+    setAnnouncement(null);
   }, [keyRecord.id, sourceRow.environmentId]);
 
   const clipboardMessage = useCallback(
@@ -576,7 +664,7 @@ function useCellDisclosure(
       purpose,
       environmentId: sourceRow.environmentId,
       environmentName: sourceRow.environment.name,
-      keys: [{ id: keyRecord.id, name: keyRecord.name }],
+      keys: [{ id: keyRecord.id, name: keyRecord.name, classification: keyRecord.classification }],
       window: state,
     }, () => void act(task));
   }, [ceremony, env, keyRecord.id, keyRecord.name, sourceRow.environment.name, sourceRow.environmentId, transport.client]);
@@ -607,9 +695,13 @@ function useCellDisclosure(
       ceremony.commit(task, () => {
         setPlaintext({ value, until: Date.now() + REMASK_MS });
         setNotice('Disclosure recorded.');
+        setAnnouncement((current) => ({
+          id: (current?.id ?? 0) + 1,
+          message: `${keyRecord.name} revealed, re-masks in ${String(REMASK_MS / 1000)}s`,
+        }));
       });
     }));
-  }, [ceremony, discloseValue, withDisclosure]);
+  }, [ceremony, discloseValue, keyRecord.name, withDisclosure]);
 
   const copy = useCallback(() => {
     if (keyRecord.classification === 'config') {
@@ -623,7 +715,12 @@ function useCellDisclosure(
   }, [ceremony, clipboardMessage, discloseValue, keyRecord.classification, sourceRow.cell?.value, withDisclosure]);
 
   return {
-    canReveal: window.data?.can_reveal !== false,
+    // Fail closed: no guard answer means no reveal, and no copy of a secret.
+    canReveal: window.data?.can_reveal === true,
+    // Only once the guard has answered: a "no reveal for your role" line shown
+    // while the read is in flight would lie for a second on every open.
+    revealDenied: window.data !== undefined && !window.data.can_reveal,
+    announcement,
     ceremony,
     copy,
     error,
@@ -636,19 +733,42 @@ function useCellDisclosure(
   };
 }
 
-function validateDeclaration(
-  keyRecord: MatrixKey,
-  value: string,
-): ReturnType<typeof validateMatrixDraft> {
-  const rules = keyRecord.declaration.rule === undefined
+function declarationRules(keyRecord: MatrixKey): readonly MatrixDraftRule[] {
+  return keyRecord.declaration.rule === undefined
     ? keyRecord.declaration.any_of ?? []
     : [keyRecord.declaration.rule];
-  const errors = rules.map((rule) => validateMatrixDraft(rule, value));
-  if (errors.some((error) => error === null)) return null;
-  return errors.find((error) => error?.level === 'notice') ?? errors[0] ?? {
-    level: 'notice',
-    message: 'Full declaration validation runs when publishing.',
+}
+
+/** One human line for the declaration: `string · pattern · range · required in production`. */
+function declarationSummary(keyRecord: MatrixKey, rows: readonly EditorRow[]): string {
+  const rules = declarationRules(keyRecord);
+  const parts: string[] = [rules.map((rule) => rule.type).join(' | ') || 'no rule'];
+  const push = (part: string) => {
+    if (!parts.includes(part)) parts.push(part);
   };
+  for (const rule of rules) {
+    if (rule.pattern !== undefined) push('pattern');
+    if ([rule.min, rule.max, rule.min_length, rule.max_length].some((bound) => bound !== undefined)) {
+      push('range');
+    }
+    if (rule.members !== undefined) push('members');
+    if (rule.schemes !== undefined) push('schemes');
+    if (rule.json_schema !== undefined) push('schema');
+  }
+  const names = (ids: readonly string[] | undefined) =>
+    rows
+      .filter((row) => ids?.includes(row.environmentId) === true)
+      .map((row) => row.environment.name)
+      .join(', ');
+  const presences: readonly [string, MatrixKey['presence']['required_in']][] = [
+    ['required', keyRecord.presence.required_in],
+    ['forbidden', keyRecord.presence.forbidden_in],
+  ];
+  for (const [label, presence] of presences) {
+    if (presence.mode === 'all') push(`${label} everywhere`);
+    else if (presence.mode === 'explicit') push(`${label} in ${names(presence.environment_ids)}`);
+  }
+  return parts.join(' · ');
 }
 
 function formatTimestamp(value: string): string {

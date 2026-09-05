@@ -96,7 +96,7 @@ describe('accountFailureText', () => {
 
   it('does not claim a failed server attempt was unchanged', () => {
     expect(accountFailureText(new ApiError(500, 'failed'))).toContain(
-      'whether the change applied is unknown — reload to check',
+      'whether the change applied is unknown: reload to check',
     );
   });
 });

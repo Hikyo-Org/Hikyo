@@ -8,13 +8,13 @@ import { useModalDialog } from './useModalDialog.ts';
  *
  * Unlike the Surface-1 warn, the write was REFUSED: the scanner matched
  * credential-shaped material on a write that must not carry it. The dialog
- * renders only the redacted findings the refusal carried — a rule id and an
- * immutable locator (secret-scanning ADR §4) — NEVER the matched text, and
+ * renders only the redacted findings the refusal carried, a rule id and an
+ * immutable locator (secret-scanning ADR §4), NEVER the matched text, and
  * never the value the operator supplied (which is not in the refusal and is not
  * passed here). That is the whole non-leak guarantee.
  *
  * Where every finding carries an acknowledgement token, the operator may
- * override — an explicit, audited "I have reviewed this and it is intentional".
+ * override, an explicit, audited "I have reviewed this and it is intentional".
  * A finding without a token is a hard block that cannot be overridden from the
  * browser; the dialog says so rather than offering a button that would refuse.
  */
@@ -51,7 +51,7 @@ export function ScanBlockDialog({
     setError(null);
     void onOverride(tokens)
       .then(() => onClose())
-      // A rejected override carries the server's OWN caller-safe reason — a
+      // A rejected override carries the server's OWN caller-safe reason, a
       // content-bound token the field's content outran is rejected by name
       // (stale / version-skew / surplus / expired), never as matched text. Show
       // that named refusal verbatim; only a refusal that carried no safe detail
@@ -113,7 +113,7 @@ export function ScanBlockDialog({
       {overridable ? (
         <p className="matrix-editor__hint">
           Acknowledging records that this material is intentional and lets the write proceed. A
-          secret belongs in a secret key — reclassify instead if it is one.
+          secret belongs in a secret key; reclassify instead if it is one.
         </p>
       ) : (
         <p className="matrix-editor__hint">

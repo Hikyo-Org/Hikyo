@@ -5,7 +5,7 @@ import type { ValueOccurrence } from '@hikyo/client';
  *
  * The file is parsed in the browser and never leaves it until the reviewed
  * phase-2 write. Everything here is deterministic and unit-tested so the risky
- * parts — the dotenv grammar, the type suggestion, the collision/trim buckets —
+ * parts, the dotenv grammar, the type suggestion, the collision/trim buckets , 
  * match the Go importer the CLI drives (`internal/dotenv`, `internal/importer`).
  * The server re-validates every one of these; the browser mirror exists so the
  * operator reviews an accurate preview, never so a mismatch can slip a write.
@@ -14,7 +14,7 @@ import type { ValueOccurrence } from '@hikyo/client';
 /** A single KEY=value assignment, with its 1-based source line for the preview. */
 type ParsedEntry = { readonly key: string; readonly value: string; readonly line: number };
 
-/** A line the strict grammar refused, named for the preview — never its value. */
+/** A line the strict grammar refused, named for the preview, never its value. */
 type ParseError = { readonly line: number; readonly reason: string };
 
 export type ParseResult = {
@@ -24,7 +24,7 @@ export type ParseResult = {
 
 /** The primitive types the wizard can declare a new key as. `enum` is excluded:
  * it needs member authoring the wizard does not gather and the suggester never
- * proposes it — declare enum keys through the matrix `+ New key` form. */
+ * proposes it, declare enum keys through the matrix `+ New key` form. */
 export type PrimitiveType = 'string' | 'integer' | 'boolean' | 'url' | 'json';
 
 /** KeyName contract (openapi `KeyName`): ASCII upper-snake, ≤128 code points. */
@@ -138,7 +138,7 @@ function parseDoubleQuoted(rest: string): ValueResult {
       const decoded = DOUBLE_ESCAPES[next];
       if (decoded === undefined) {
         // The offending character comes from the value, so it is never echoed
-        // into a diagnostic the preview renders — only the class of error is.
+        // into a diagnostic the preview renders, only the class of error is.
         return { error: 'unknown escape in a double-quoted value' };
       }
       out += decoded;
@@ -187,7 +187,7 @@ const INTEGER = /^-?[0-9]+$/;
  * suggestType mirrors `importer.SuggestType`: a type is suggested only when
  * EVERY value satisfies it, checked in the fixed order boolean → integer → json,
  * falling back to string (also the floor for an empty set). The suggestion is
- * only ever displayed — it lands only on an explicit accept.
+ * only ever displayed, it lands only on an explicit accept.
  */
 export function suggestType(values: readonly string[]): PrimitiveType {
   if (values.length === 0) {
@@ -205,7 +205,7 @@ export function suggestType(values: readonly string[]): PrimitiveType {
   return 'string';
 }
 
-/** Boolean is the canonical `true`/`false` only — `1`, `yes`, `TRUE` are not
+/** Boolean is the canonical `true`/`false` only, `1`, `yes`, `TRUE` are not
  * coerced (schema TypeBoolean). */
 function isBoolean(value: string): boolean {
   return value === 'true' || value === 'false';
@@ -247,19 +247,19 @@ export function indexOccurrences(items: readonly ValueOccurrence[]): OccurrenceI
 /** The buckets one environment's import falls into, for the review preview and
  * for building the phase-2 request. Mirrors `importer.planEnvironment`. */
 export type EnvironmentPlan = {
-  /** Undeclared keys — a declaration must land before phase 2 accepts them. */
+  /** Undeclared keys, a declaration must land before phase 2 accepts them. */
   readonly newKeys: readonly string[];
   /** Keys phase 2 will write: declared and either absent or an accepted overwrite. */
   readonly imported: readonly string[];
-  /** Keys already `set` that no overwrite named — phase 2 skips them by name. */
+  /** Keys already `set` that no overwrite named, phase 2 skips them by name. */
   readonly skipped: readonly string[];
-  /** Keys already `set` — the overwrite opt-in candidates (superset of chosen). */
+  /** Keys already `set`, the overwrite opt-in candidates (superset of chosen). */
   readonly collisions: readonly string[];
 };
 
 export function planEnvironment(
   // Only the key is read; `.env` passes `ParsedEntry`, the connectors pass their
-  // own richer entry — both carry `key`, which is all bucketing needs.
+  // own richer entry, both carry `key`, which is all bucketing needs.
   entries: readonly { readonly key: string }[],
   occurrences: OccurrenceIndex,
   overwrite: ReadonlySet<string>,

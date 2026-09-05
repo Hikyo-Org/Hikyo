@@ -69,13 +69,13 @@ describe('sidebarModel', () => {
     expect(mustFind(links, 'matrix').to).toBe('/orgs/org_1/projects/prj_1/matrix?remote=ew');
     expect(mustFind(links, 'matrix').disabledReason).toBeNull();
     expect(mustFind(links, 'machine-access').disabledReason).toBe(
-      'Machine access is not available for remote workspaces yet',
+      'Machine access is local-instance only',
     );
     expect(mustFind(links, 'project-members').disabledReason).toBe(
-      'Members is not available for remote workspaces yet',
+      'Members is local-instance only',
     );
     expect(mustFind(links, 'project-settings').disabledReason).toBe(
-      'Project settings is not available for remote workspaces yet',
+      'Project settings is local-instance only',
     );
   });
 

@@ -31,7 +31,7 @@ describe('history revision boundary', () => {
     expect(parsed.items[0]?.collected_policy).toBe('keep-if-either(x)');
   });
 
-  it('refuses a collected revision with no policy — the refusal has to name one', () => {
+  it('refuses a collected revision with no policy, the refusal has to name one', () => {
     expect(() => zHistoryRevisionList.parse({ items: [{ ...lineage, payload_present: false }], count: 1 }))
       .toThrow(/collected revision must name the policy/);
   });

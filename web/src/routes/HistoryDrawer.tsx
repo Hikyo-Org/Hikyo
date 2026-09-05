@@ -37,6 +37,7 @@ import { Ceremony } from './Ceremony.tsx';
 import {
   defaultPinExpiry,
   historyKeyDisplay,
+  impactHeading,
   pinAction,
   pinCeremonyUnit,
   pinExpiry,
@@ -48,6 +49,7 @@ import {
   restoreCeremonyUnit,
   restoreKeyName,
   restorePreviewSummary,
+  restorePublishLabel,
   retentionLine,
   revisionActionGate,
   revisionsForKeyFilter,
@@ -56,6 +58,7 @@ import {
   type CeremonyKey,
   type HistoryCurrentCell,
   type HistoryImpactChange,
+  type HistoryImpactEnvironment,
   type HistoryPin,
   type HistoryRevision,
   type HistorySnapshotKey,
@@ -92,8 +95,8 @@ const zPinComparisonValues = zExportedValues.superRefine((values, context) => {
  *
  * The shape is iteration 2's verdict **b**: a slim revision list beside a
  * detail pane, rendered over the matrix rather than instead of it. Below the
- * chrome's 800px breakpoint the two panes become one — list, then detail, with
- * a back affordance — because a 440px drawer split in two is neither.
+ * chrome's 800px breakpoint the two panes become one, list, then detail, with
+ * a back affordance, because a 440px drawer split in two is neither.
  *
  * Three properties are the surface's whole point and none of them is decoration:
  *
@@ -174,7 +177,8 @@ export function HistoryDrawer({
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [outcome, setOutcome] = useState<ReactNode>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
-  const [mobileDetail, setMobileDetail] = useState(false);
+  // A deep link with `rev` lands on the detail pane on a phone, not on the list.
+  const [mobileDetail, setMobileDetail] = useState(() => params.get('rev') !== null);
   const drawerHeading = useRef<HTMLHeadingElement>(null);
   const detailHeading = useRef<HTMLHeadingElement>(null);
   const selectedRow = useRef<HTMLButtonElement>(null);
@@ -209,7 +213,7 @@ export function HistoryDrawer({
     [pins.data],
   );
   const workloads = (accounts.data?.items ?? []).filter((account) => account.kind === 'workload');
-  // A pin binds a WORKLOAD, and a workload does resolve to a name — through the
+  // A pin binds a WORKLOAD, and a workload does resolve to a name, through the
   // project's service accounts. (A human publisher does not: nothing in this
   // API maps a human principal id to a display name, so those stay ids.)
   const workloadNames = new Map(
@@ -234,6 +238,12 @@ export function HistoryDrawer({
     generatePath(surfaceById('matrix').path, refData),
     workspace?.remote ?? '',
   );
+  // The retention knob lives on the project-settings Policy panel (`#project-policy`).
+  const policyPath = `${withRemote(
+    generatePath(surfaceById('project-settings').path, refData),
+    workspace?.remote ?? '',
+  )}#project-policy`;
+  const environmentNames = new Map(environments.map((candidate) => [candidate.id, candidate.name]));
 
   useEffect(() => {
     setSheet(null);
@@ -327,7 +337,7 @@ export function HistoryDrawer({
               },
             });
             setOutcome(
-              `Staged ${String(result.changes.length)} draft${result.changes.length === 1 ? '' : 's'} from r${String(revision)} — nothing is published yet.`,
+              `Staged ${String(result.changes.length)} draft${result.changes.length === 1 ? '' : 's'} from r${String(revision)}. Nothing is published yet.`,
             );
           },
           onError: (error) =>
@@ -500,7 +510,10 @@ export function HistoryDrawer({
       >
         <div className="history__head">
           <div className="history__title">
-            <h2 id="history-title" ref={drawerHeading} tabIndex={-1}>↺ Revision history</h2>
+            <h2 id="history-title" ref={drawerHeading} tabIndex={-1}>
+              <span aria-hidden="true">↺ </span>
+              Revision history
+            </h2>
             <span className="history__current count">{`current r${String(currentRevision)}`}</span>
             {protectedEnvironmentIds.includes(environment.id) ? (
               <span className="history__protected">PROTECTED</span>
@@ -512,7 +525,7 @@ export function HistoryDrawer({
 
           {/*
             Plain toggle buttons, deliberately NOT `role="tab"`. These do not
-            switch a panel inside the page — they rewrite the URL the whole
+            switch a panel inside the page: they rewrite the URL the whole
             surface is addressed by, and a tab role would promise keyboard
             semantics (arrow-key roving, an owned tabpanel) that a set of links
             to different states does not have.
@@ -543,9 +556,11 @@ export function HistoryDrawer({
                 ? ''
                 : `${String(stagedByMe)} staged by you (unpublished)`}
               {stagedByMe > 0 && stagedByOthers > 0 ? ' · ' : ''}
+              {/* The pending signal is a boolean per cell (`pending_by_others`), so
+                  no actor names reach this surface. */}
               {stagedByOthers === 0
                 ? ''
-                : `${String(stagedByOthers)} pending by other people`}
+                : `${String(stagedByOthers)} change${stagedByOthers === 1 ? '' : 's'} pending by others`}
             </p>
           )}
 
@@ -555,15 +570,19 @@ export function HistoryDrawer({
               <span className="history__badge" title={line.badgeTitle}>
                 {line.badge}
               </span>
-              <span className="history__settings-pointer">
-                → change it in project settings › Policy
-              </span>
+              <Link className="history__settings-pointer" to={policyPath}>
+                <span aria-hidden="true">→ </span>
+                change it in project settings › Policy
+              </Link>
             </p>
           )}
 
           {keyFilter === null ? null : (
             <p className="history__filter" role="status">
-              <span>{`⚠ filter active: history of ${keyDisplay?.label ?? keyFilter} — showing ${String(filtered.length)} of ${String(revisions.length)} revisions`}</span>
+              <span>
+                <span aria-hidden="true">⚠ </span>
+                {`filter active: history of ${keyDisplay?.label ?? keyFilter}, showing ${String(filtered.length)} of ${String(revisions.length)} revisions`}
+              </span>
               <button type="button" className="btn" onClick={() => setParam('key', null)}>
                 ✕ show every revision
               </button>
@@ -627,7 +646,8 @@ export function HistoryDrawer({
                       ) : null}
                       {pinnedHere.length === 0 ? null : (
                         <span className="history__tag" title={`pinned by ${String(pinnedHere.length)} workload(s)`}>
-                          ⚲ pinned
+                          <span aria-hidden="true">⚲ </span>
+                          pinned
                         </span>
                       )}
                       {entry.payloadPresent ? null : (
@@ -726,6 +746,7 @@ export function HistoryDrawer({
       {sheet?.kind === 'restore' ? (
         <RestoreSheet
           environmentName={environment.name}
+          environmentNames={environmentNames}
           revision={sheet.revision}
           keyName={sheet.keyName}
           result={sheet.result}
@@ -756,6 +777,7 @@ export function HistoryDrawer({
             existingPin: pinRows.find((pin) => pin.workloadPrincipalId === account.principal_id),
           }))}
           state={sheet}
+          pinCount={pinRows.length}
           expiryMinimum={expiryBounds.minimum}
           expiryMaximum={expiryBounds.maximum}
           busy={setPin.isPending}
@@ -882,7 +904,7 @@ function sheetRevisionKeys(sheet: Sheet | null): readonly HistorySnapshotKey[] {
  * The detail pane: one revision's lineage, its consumers, and its two actions.
  *
  * The delivered key set comes from `getRevision`, which is NOT fetched for a
- * collected revision — that endpoint derives a change token over the snapshot's
+ * collected revision, that endpoint derives a change token over the snapshot's
  * manifest and refuses a collected payload by name. The changed-key list below
  * is lineage and survives collection either way.
  */
@@ -940,15 +962,19 @@ function RevisionDetail({
         <div>
           <dt>Published by</dt>
           {/*
-            Principal IDS, not names. Nothing in this API resolves a HUMAN
-            principal id to a display name — there is no member-listing
-            operation, and inventing one is a permission decision this ticket
-            does not own — so the row shows a shortened id and carries the whole
-            one in `title`. Workloads DO resolve, through the project's service
-            accounts, which is why the pin rows below name them.
+            Principal IDS, not names. The revision list carries `published_by`
+            as an id only, and nothing in this API resolves a HUMAN principal
+            id to a display name (there is no member-listing operation, and
+            inventing one is a permission decision this ticket does not own),
+            so the row shows a shortened id and carries the whole one in
+            `title`. A display name needs the API to carry it. Workloads DO
+            resolve, through the project's service accounts, which is why the
+            pin rows below name them.
           */}
-          <dd className="mono" title={revision.publishedBy}>
-            {shortPrincipal(revision.publishedBy)}
+          <dd>
+            <span className="mono" title={revision.publishedBy}>
+              {shortPrincipal(revision.publishedBy)}
+            </span>
           </dd>
         </div>
         <div>
@@ -965,11 +991,12 @@ function RevisionDetail({
 
       {pinnedHere.length === 0 ? null : (
         <p className="history__consumers">
-          {`⚲ ${pinnedHere
+          <span aria-hidden="true">⚲ </span>
+          {`${pinnedHere
             .map((pin) => workloadLabel(pin.workloadPrincipalId, workloadNames))
             .join(', ')} receive${pinnedHere.length === 1 ? 's' : ''} this revision's values`}
           {revision.revision === currentRevision ? '' : ` instead of latest (r${String(currentRevision)})`}
-          {' — until the pin is released or expires.'}
+          {' until the pin is released or expires.'}
         </p>
       )}
 
@@ -1038,11 +1065,11 @@ function RevisionDetail({
 
       <h4>{`Pins (${String(pins.length)})`}</h4>
       <p className="history__pin-note">
-        A pinned workload stops following latest — it keeps receiving exactly the pinned
+        A pinned workload stops following latest: it keeps receiving exactly the pinned
         revision&apos;s values, restarts included, until the pin is released or expires.
       </p>
       {pins.length === 0 ? (
-        <p className="history__empty">{`No pins — every workload here follows latest (r${String(currentRevision)}).`}</p>
+        <p className="history__empty">{`No pins: every workload here follows latest (r${String(currentRevision)}).`}</p>
       ) : (
         <ul className="history__pins">
           {pins.map((pin) => {
@@ -1052,29 +1079,40 @@ function RevisionDetail({
               (entry) => entry.revision > pin.revision,
             ).length;
             const gap = pin.revision === currentRevision
-              ? `${workload} is pinned to the current revision r${String(pin.revision)} — it will keep these values when the next publish lands.`
-              : `${workload} still runs on r${String(pin.revision)}'s values — ${String(publishesBehind)} publishes behind latest (r${String(currentRevision)}). New publishes don't reach it.`;
+              ? `${workload} is pinned to the current revision r${String(pin.revision)}: it will keep these values when the next publish lands.`
+              : `${workload} still runs on r${String(pin.revision)}'s values, ${String(publishesBehind)} publishes behind latest (r${String(currentRevision)}). New publishes don't reach it.`;
             return (
               <li key={pin.id} className="history__pin">
-                <span className="mono">{`⚲ r${String(pin.revision)}`}</span>
+                <span className="mono">
+                  <span aria-hidden="true">⚲ </span>
+                  {`r${String(pin.revision)}`}
+                </span>
                 <span className="mono" title={pin.workloadPrincipalId}>
                   {workload}
                 </span>
                 <span className={`history__expiry history__expiry--${expiry.tier}`}>
                   {expiry.tier === 'expired'
-                    ? `expired — still delivering r${String(pin.revision)} while its payload survives`
+                    ? `expired: still delivering r${String(pin.revision)} while its payload survives`
                     : expiry.text}
                 </span>
                 <span className="history__pin-gap">{gap}</span>
                 {pin.schemaOverride ? (
-                  <span className="history__warn" title="Pinned despite a current-schema failure, recorded as an explicit override. Pinned delivery is verbatim.">
+                  <span className="history__drift" title="Pinned despite a current-schema failure, recorded as an explicit override. Pinned delivery is verbatim.">
                     Δ schema drift
                   </span>
                 ) : null}
+                {/* The server's preview: this pin is the only thing holding the
+                    payload past its policy window (ADR revision-model § Retention). */}
                 {pin.releaseRetentionConsequence === 'collection_eligible' ? (
-                  <span className="history__warn">
-                    This pin currently keeps r{String(pin.revision)}&apos;s values retained.
-                  </span>
+                  <>
+                    <span className="history__warn">
+                      <span aria-hidden="true">⚠ </span>
+                      sole keeper
+                    </span>
+                    <span className="history__pin-gap">
+                      {`r${String(pin.revision)} is past normal retention: its values survive only because of this pin.`}
+                    </span>
+                  </>
                 ) : null}
                 <button
                   type="button"
@@ -1096,15 +1134,16 @@ function RevisionDetail({
  * The restore sheet: what a restore does, then what it did.
  *
  * **Divergence from the prototype, named.** Iteration 1 previews first and
- * stages on confirmation. The shipped verb does both in one call —
+ * stages on confirmation. The shipped verb does both in one call,
  * `rollbackRevision` writes the drafts and returns the impact preview with the
- * token that binds them — so this sheet explains the act before it is taken and
+ * token that binds them, so this sheet explains the act before it is taken and
  * reports the exact impact after. Nothing is published either way: the drafts
  * are ordinary, the matrix's draft dots appear, and the ordinary publish sheet
  * commits them.
  */
 function RestoreSheet({
   environmentName,
+  environmentNames,
   revision,
   keyName,
   result,
@@ -1117,6 +1156,8 @@ function RestoreSheet({
   onClose,
 }: {
   environmentName: string;
+  /** Names for every environment the preview may cover; an unknown id renders as itself. */
+  environmentNames: ReadonlyMap<string, string>;
   revision: bigint;
   keyName: string | null;
   result: RestoreSheetResult | null;
@@ -1129,11 +1170,15 @@ function RestoreSheet({
   onClose: () => void;
 }) {
   const dialog = useModalDialog();
-  const changes: readonly HistoryImpactChange[] =
+  const groups: readonly HistoryImpactEnvironment[] =
     result === null
       ? []
-      : result.preview.environments.flatMap((environment) =>
-          environment.changes.map((change) => ({
+      : result.preview.environments.map((environment) => ({
+          environmentId: environment.environment_id,
+          name: environmentNames.get(environment.environment_id) ?? environment.environment_id,
+          baseRevision: environment.base_revision,
+          protected: environment.protected,
+          changes: environment.changes.map((change): HistoryImpactChange => ({
             keyId: change.key_id,
             name: change.name,
             classification: change.classification,
@@ -1142,8 +1187,8 @@ function RestoreSheet({
             ...(change.before === undefined ? {} : { before: change.before }),
             ...(change.after === undefined ? {} : { after: change.after }),
           })),
-        );
-  const summary = restorePreviewSummary(changes);
+        }));
+  const summary = restorePreviewSummary(groups.flatMap((group) => group.changes));
 
   return (
     <dialog className="matrix-editor history-sheet" ref={dialog} onClose={onClose}>
@@ -1156,7 +1201,7 @@ function RestoreSheet({
           </h2>
           <p>
             Stages drafts reproducing r{String(revision)}. Publishing them runs the normal
-            pipeline and re-validates against the CURRENT schema — history is never rewritten.
+            pipeline and re-validates against the CURRENT schema; history is never rewritten.
           </p>
         </div>
         <button type="button" className="btn matrix-editor__close" aria-label="Close restore" onClick={onClose}>
@@ -1189,30 +1234,43 @@ function RestoreSheet({
               </span>
             ))}
           </p>
-          <ul className="history__impact">
-            {changes.map((change) => (
-              <li key={change.keyId}>
-                <span className="mono">
-                  {change.classification === 'secret' ? <span aria-hidden="true">🔒 </span> : null}
-                  {change.name}
-                </span>
-                <span className="history__kind">{change.operation === 'set' ? 'set' : 'clear'}</span>
-                <span className="mono history__impact-values">
-                  {change.classification === 'secret'
-                    ? `secret — ${change.status}, write-presence only`
-                    : change.operation === 'unset'
-                      ? `${change.before ?? '(absent)'} → (cleared)`
-                      : `${change.before ?? '(absent)'} → ${change.after ?? '(unreadable)'}`}
-                </span>
-              </li>
-            ))}
-          </ul>
+          {groups.map((group) => (
+            <section key={group.environmentId} className="history__impact-group">
+              <h3 className="history__impact-heading">
+                {impactHeading(group)}
+                {group.protected ? <span className="history__protected">PROTECTED</span> : null}
+              </h3>
+              <ul className="history__impact">
+                {group.changes.map((change) => (
+                  <li key={`${group.environmentId}:${change.keyId}`}>
+                    <span className="mono">
+                      {change.classification === 'secret' ? <span aria-hidden="true">🔒 </span> : null}
+                      {change.name}
+                    </span>
+                    <span className="history__kind">{change.operation === 'set' ? 'set' : 'clear'}</span>
+                    <span className="mono history__impact-values">
+                      {change.classification === 'secret' ? (
+                        `secret: ${change.status}, write-presence only`
+                      ) : (
+                        <>
+                          <ImpactValue value={change.before} absent="absent" />
+                          {' → '}
+                          {change.operation === 'unset' ? (
+                            <span className="values__absent">cleared</span>
+                          ) : (
+                            <ImpactValue value={change.after} absent="unreadable" />
+                          )}
+                        </>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
           <p className="notice" role="status">
             <span aria-hidden="true">✓</span>
-            <span>
-              Staged as ordinary drafts. Review and publish them from the matrix — the publish
-              carries the preview token that binds this exact restore.
-            </span>
+            <span>Drafts are staged; they are also visible on the matrix.</span>
           </p>
           <div className="matrix-editor__actions">
             <button
@@ -1225,7 +1283,7 @@ function RestoreSheet({
             >
               {publishBusy
                 ? 'Publishing this restore…'
-                : restorePublishLabel(revision, result)}
+                : restorePublishLabel(revision, groups)}
             </button>
             <Link id="history-restore-back" className="btn" to={matrixPath}>
               Back to the matrix
@@ -1250,6 +1308,7 @@ function PinSheet({
   currentRevision,
   workloads,
   state,
+  pinCount,
   expiryMinimum,
   expiryMaximum,
   busy,
@@ -1277,6 +1336,8 @@ function PinSheet({
     readonly overrideSchema: boolean;
     readonly offerOverride: boolean;
   };
+  /** Pins already held in this environment, against the per-project quota. */
+  pinCount: number;
   expiryMinimum: string;
   expiryMaximum: string;
   busy: boolean;
@@ -1299,8 +1360,11 @@ function PinSheet({
     <dialog className="matrix-editor history-sheet" ref={dialog} onClose={onClose}>
       <div className="matrix-editor__head">
         <div>
-          <h2>{`⚲ Pin r${String(revision)} · ${environmentName}`}</h2>
-          <p>One pin per workload and environment. Quota 100 per project; expiry is mandatory.</p>
+          <h2>
+            <span aria-hidden="true">⚲ </span>
+            {`Pin r${String(revision)} · ${environmentName}`}
+          </h2>
+          <p>{`One pin per workload and environment. ${String(pinCount)} pinned in this environment; the project quota is 100 and expiry is mandatory.`}</p>
         </div>
         <button type="button" className="btn matrix-editor__close" aria-label="Close pin sheet" onClick={onClose}>
           ✕
@@ -1318,8 +1382,8 @@ function PinSheet({
         <h3>What pinning does</h3>
         <ul>
           <li>
-            The workload keeps receiving exactly r{String(revision)}&apos;s values — across
-            restarts and redeploys — instead of following latest.
+            The workload keeps receiving exactly r{String(revision)}&apos;s values, across
+            restarts and redeploys, instead of following latest.
           </li>
           <li>
             New publishes to {environmentName} stop reaching this workload while the pin lives;
@@ -1328,7 +1392,7 @@ function PinSheet({
           <li>r{String(revision)}&apos;s values are kept from retention clean-up while the pin exists.</li>
           <li>
             On release the workload resumes latest on its next fetch. On EXPIRY it keeps
-            delivering the pinned revision until the payload is collected — expiry never silently
+            delivering the pinned revision until the payload is collected; expiry never silently
             changes delivery.
           </li>
         </ul>
@@ -1353,7 +1417,7 @@ function PinSheet({
         {workloads.length === 0 ? <option value="">No workloads in this project</option> : null}
         {workloads.map((workload) => (
           <option key={workload.principalID} value={workload.principalID}>
-            {`${workload.name} — ${workload.existingPin === undefined ? 'follows latest' : `pinned to r${String(workload.existingPin.revision)}`}`}
+            {`${workload.name}: ${workload.existingPin === undefined ? 'follows latest' : `pinned to r${String(workload.existingPin.revision)}`}`}
           </option>
         ))}
       </select>
@@ -1361,7 +1425,7 @@ function PinSheet({
       {plan.kind === 'move' && chosen?.existingPin !== undefined ? (
         <>
           <p className="history__gate" role="status">
-            {`${chosen.name} is currently pinned to r${String(chosen.existingPin.revision)} — one pin per workload, so this MOVES it to r${String(revision)} and replaces the old pin atomically.`}
+            {`${chosen.name} is currently pinned to r${String(chosen.existingPin.revision)}. One pin per workload, so this MOVES it to r${String(revision)} and replaces the old pin atomically.`}
           </p>
           {moveMayCollect ? (
             <p id="history-pin-move-collection-warning" className="history__gate" role="alert">
@@ -1449,7 +1513,7 @@ function PinSheet({
           disabled={busy || state.workloadPrincipalID === '' || state.expiresAt === ''}
           onClick={onSubmit}
         >
-          {busy ? 'Pinning…' : moveMayCollect ? `${plan.label} — old values may be collected` : plan.label}
+          {busy ? 'Pinning…' : moveMayCollect ? `${plan.label}, old values may be collected` : plan.label}
         </button>
         <button type="button" className="btn" onClick={onClose}>
           Cancel
@@ -1477,12 +1541,19 @@ function ReleaseSheet({
   onClose: () => void;
 }) {
   const dialog = useModalDialog();
+  const soleKeeper = pin.releaseRetentionConsequence === 'collection_eligible';
+  const revision = String(pin.revision);
   return (
     <dialog className="matrix-editor history-sheet" ref={dialog} onClose={onClose}>
       <div className="matrix-editor__head">
         <div>
           <h2>Release pin</h2>
-          <p>The server will report r{String(pin.revision)}&apos;s retention consequence after release.</p>
+          {soleKeeper ? (
+            <p>
+              {`This pin is the only thing keeping r${revision}'s values. Releasing it makes them collection-eligible: no diff by value, no restore, no reveal once collected.`}
+            </p>
+          ) : null}
+          <p>{`The server will report r${revision}'s retention consequence after release.`}</p>
         </div>
         <button type="button" className="btn matrix-editor__close" aria-label="Close release confirmation" onClick={onClose}>
           ✕
@@ -1490,7 +1561,11 @@ function ReleaseSheet({
       </div>
       <ul className="history__consequences">
         <li>{`${workloadName} resumes latest (r${String(currentRevision)}) on its next fetch.`}</li>
-        <li>The values may remain retained, become collection-eligible, or already be collected.</li>
+        <li>
+          {soleKeeper
+            ? `r${revision}'s values become collection-eligible at release; a sweep may collect them immediately.`
+            : 'The values may remain retained, become collection-eligible, or already be collected.'}
+        </li>
         <li>The lineage entry stays in every case.</li>
       </ul>
       <div className="matrix-editor__actions">
@@ -1501,7 +1576,7 @@ function ReleaseSheet({
           disabled={busy}
           onClick={onRelease}
         >
-          {busy ? 'Releasing…' : 'Release pin'}
+          {busy ? 'Releasing…' : soleKeeper ? `Release and allow collection of r${revision}` : 'Release pin'}
         </button>
         <button type="button" className="btn" onClick={onClose}>
           Keep the pin
@@ -1534,7 +1609,7 @@ export function PinReleaseOutcome({
       return exhaustive;
     }
   }
-  return <>{`Pin released — workload resumes latest on its next fetch. ${retention}`}</>;
+  return <>{`Pin released: workload resumes latest on its next fetch. ${retention}`}</>;
 }
 
 function toHistoryRevision(item: HistoryRevisionItem): HistoryRevision {
@@ -1595,12 +1670,9 @@ function comparisonRefusal(error: unknown, revision: bigint): string {
   return `Comparison of r${String(revision)} could not be read.`;
 }
 
-function restorePublishLabel(revision: bigint, result: RestoreSheetResult): string {
-  const preview = result.preview.environments[0];
-  if (preview === undefined) {
-    throw new Error('restore result has no preview environment');
-  }
-  return `Publish this restore (r${String(revision)} → r${String(preview.base_revision + 1n)})`;
+/** A config value in the impact preview, with explicit absence rendered as such. */
+function ImpactValue({ value, absent }: { value: string | undefined; absent: 'absent' | 'unreadable' }) {
+  return value === undefined ? <span className="values__absent">{absent}</span> : <>{value}</>;
 }
 
 function toHistoryPin(pin: RevisionPinItem): HistoryPin {
@@ -1615,8 +1687,11 @@ function toHistoryPin(pin: RevisionPinItem): HistoryPin {
   };
 }
 
-/** A prefixed UUIDv7 is unreadable at a glance; the whole one lives in `title`. */
-function shortPrincipal(id: string): string {
-  const separator = id.indexOf('_');
-  return separator < 0 ? id : `${id.slice(0, separator + 1)}${id.slice(separator + 1, separator + 9)}…`;
+/**
+ * A prefixed UUIDv7 is unreadable at a glance; the whole one lives in `title`.
+ * `published_by` is an id only: a display name needs the revision API to carry
+ * it, so nothing here looks one up.
+ */
+export function shortPrincipal(id: string): string {
+  return id.length <= 12 ? id : `${id.slice(0, 12)}…`;
 }

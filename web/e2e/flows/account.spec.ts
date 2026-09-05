@@ -12,7 +12,7 @@ import {
 import { test } from '../fixtures/passkey.ts';
 
 /**
- * Flow: account & security (registry surface `settings`) — mvp-boundary S3's
+ * Flow: account & security (registry surface `settings`), mvp-boundary S3's
  * "account & security", against the locked prototype #29 iteration 15
  * (Profile · Sign-in factors · Recovery · Active sessions · Linked identities
  * · Preferences).
@@ -22,13 +22,13 @@ import { test } from '../fixtures/passkey.ts';
  *
  * What this flow does NOT do, deliberately: enrol or remove a factor. Every
  * one of those is an account-security mutation that advances the principal's
- * session generation and deletes every other session the account holds — and
+ * session generation and deletes every other session the account holds, and
  * this suite has exactly ONE administrator per instance, whose TOTP seed and
  * whose passkey are the fixture every other flow's ceremonies stand on.
  * Removing the authenticator would break the TOTP ledger for the whole run.
  * The affordances are asserted as affordances, the proof rule is asserted
- * through a real refusal, and the ONE mutation that is safe to make — a
- * recovery-code batch, which nothing else in the suite reads — is made last
+ * through a real refusal, and the ONE mutation that is safe to make, a
+ * recovery-code batch, which nothing else in the suite reads, is made last
  * and followed by re-minting the shared session it invalidates.
  */
 
@@ -117,7 +117,7 @@ test.describe('account and security', () => {
 
   test('reports a refused proof honestly, and changes nothing', async ({ page }) => {
     // One attempt, against the real server: removing the authenticator is
-    // proved by the PASSWORD, never by the code — so a wrong password is
+    // proved by the PASSWORD, never by the code, so a wrong password is
     // refused and the factor stands. There is no per-account lockout to trip.
     await page.getByRole('button', { name: 'Remove the authenticator' }).click();
     const dialog = page.getByRole('dialog');
@@ -270,7 +270,7 @@ test.describe('account and security', () => {
    * LAST in this file, and it must stay last.
    *
    * Regenerating the batch is an account-security mutation: it reissues the
-   * acting session and deletes every other session this principal holds — the
+   * acting session and deletes every other session this principal holds, the
    * suite's shared storage state included. The re-mint at the end is what
    * leaves the run as it was found; every later test builds its context from
    * that file.
@@ -280,7 +280,7 @@ test.describe('account and security', () => {
       const proof = page.getByRole('dialog');
       await expect(proof).toContainText('never authorise their own regeneration');
       // The proof is a code from the authenticator where one stands, which it
-      // does — and the ledger hands out a step nothing has spent.
+      // does, and the ledger hands out a step nothing has spent.
       await proof.getByLabel('Code or password').fill(await nextTotpCode());
       await proof.getByRole('button', { name: 'Confirm' }).click();
 

@@ -32,8 +32,21 @@ describe('OpsDiagnosticBanners', () => {
     container.innerHTML = renderToStaticMarkup(<OpsDiagnosticBanners health={health} />);
     const region = container.querySelector('section[aria-label="Operational diagnostics"]');
     expect(region?.getAttribute('tabindex')).toBe('0');
-    const alerts = [...container.querySelectorAll('[role="alert"]')];
+    // Persistent diagnostics are status, never alert: they stay for the whole
+    // session rather than interrupting one.
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    const alerts = [...container.querySelectorAll('[role="status"]')];
     expect(alerts).toHaveLength(3);
+    expect(alerts.map((alert) => alert.getAttribute('data-severity'))).toEqual([
+      'unknown',
+      'warn',
+      'error',
+    ]);
+    expect(alerts.map((alert) => alert.querySelector('.alert__glyph')?.textContent)).toEqual([
+      '?',
+      '!',
+      '!',
+    ]);
     expect(alerts[0]?.textContent).toContain('Unmeasured: Check storage on the remote database host.');
     expect(alerts[1]?.textContent).toContain('Warning: Verify <current> root escrow.');
     expect(alerts[1]?.querySelector('current')).toBeNull();

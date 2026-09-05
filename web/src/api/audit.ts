@@ -165,7 +165,7 @@ function queryScoped(scope: AuditScope, query: Record<string, string | number>):
  * useAuditTrail pages the org trail. Each page SCANS up to the limit and RETURNS
  * the filtered subset; `getNextPageParam` follows `next_after_seq` and stops
  * only when the server reports the scan reached the trail's end. A sparse filter
- * therefore yields more pages with few or no items — deliberately: the caller
+ * therefore yields more pages with few or no items, deliberately: the caller
  * drives "load more" so the trail is never walked unbounded, and every page it
  * reads writes its own audit.query event.
  */
@@ -179,7 +179,7 @@ export function useAuditTrail(
     // carries no ceiling; the server pins one and returns it as upper_seq, which
     // every later page echoes as to_seq so paging is stable across concurrent
     // writes. Request params are plain numbers in the generated client, so the
-    // cursor is narrowed — guarded — only at the call.
+    // cursor is narrowed, guarded, only at the call.
     initialPageParam: { after: 0n, ceiling: 0n } as AuditCursor,
     queryFn: ({ pageParam }) =>
       queryScoped(scope, {
@@ -196,7 +196,7 @@ export function useAuditTrail(
 /**
  * auditExportUrl is the JSONL download URL for the current filter. It is a plain
  * same-origin GET so the browser streams the bytes to disk under the session
- * cookie — nothing is buffered in the SPA and no token rides the URL. Paging
+ * cookie, nothing is buffered in the SPA and no token rides the URL. Paging
  * fields are omitted: the export streams the whole filtered slice.
  */
 export function auditExportUrl(scope: AuditScope, filter: AuditFilter): string {

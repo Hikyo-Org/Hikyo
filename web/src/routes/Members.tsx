@@ -105,7 +105,7 @@ const projectGrantCapabilities = [
  *
  * One surface for the whole organisation, and that is a decision rather than a
  * shortcut: `listOrgGrants` answers org-, project- AND environment-scoped
- * lines in one read, and there is deliberately no `grant.list-env` — "who can
+ * lines in one read, and there is deliberately no `grant.list-env`, "who can
  * reach this environment" has to include the lines above it, so an
  * environment-only listing could only answer a narrower question while looking
  * like the whole one. Project settings therefore links to a filtered projection
@@ -218,6 +218,13 @@ export function Members({ scope }: { scope: MembersScope }) {
   const secondFactorRefused =
     instance && grants.error instanceof ApiError && grants.error.status === 403;
   const nondisclosed = instance && grants.error instanceof ApiError && grants.error.status === 404;
+  // The org listing needs manage-members at this organisation, and 403 and 404
+  // are the one uniform tenant refusal. Without it there is nothing to grant,
+  // invite or reset from here, so those actions are absent rather than dead.
+  const noManageMembers =
+    !instance
+    && grants.error instanceof ApiError
+    && (grants.error.status === 403 || grants.error.status === 404);
 
   const [draft, setDraft] = useState<GrantDraft>({
     principal: '',
@@ -228,7 +235,7 @@ export function Members({ scope }: { scope: MembersScope }) {
   });
 
   // The safe default is computed from the topology, so it can only settle once
-  // the environments — and their protection — have actually been read.
+  // the environments, and their protection, have actually been read.
   useEffect(() => {
     if (modal === 'grant' && topologyReady && draft.scope === '' && grantOptions.length > 0) {
       // Instance scope has one option and nothing narrower to prefer, so it
@@ -303,6 +310,10 @@ export function Members({ scope }: { scope: MembersScope }) {
         </Alert>
       ) : nondisclosed ? (
         <p role="status">Instance grants are not disclosed to this session.</p>
+      ) : noManageMembers ? (
+        <p role="status">
+          You hold no manage-members here: this list shows only what you are allowed to see.
+        </p>
       ) : grants.isError ? (
         <Alert>{membershipFailureText(grants.error)}</Alert>
       ) : null}
@@ -487,6 +498,7 @@ export function Members({ scope }: { scope: MembersScope }) {
           </table>
         )}
 
+        {noManageMembers ? null : (
         <div className="panel__actions">
           {topologyPending ? (
             <p role="status">Loading the complete organisation topology before a new grant can open…</p>
@@ -524,6 +536,7 @@ export function Members({ scope }: { scope: MembersScope }) {
             </button>
           ) : null}
         </div>
+        )}
       </Panel>
 
       {modal === 'invite' ? (
@@ -1008,8 +1021,8 @@ function GrantModal({
         <p className="ceremony__lede">
           <strong>{draft.principal}</strong> would get <span className="mono">{composed}</span> on{' '}
           <strong>every project and environment in {orgName}</strong>, current and future. Grants
-          inherit downward and there are no deny rules, so there is no per-project exception under
-          an organisation grant.
+          inherit automatically, with no further decision, and there are no deny rules, so there is
+          no per-project exception under an organisation grant.
         </p>
         {topologyPending ? (
           <p role="status" aria-live="polite">

@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useParams, useSearchParams } from 'react-router';
+import { z } from 'zod';
 
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import {
@@ -930,7 +931,33 @@ function CreateAdapterPanel({
  * classification are conveniences resolved on save and never stored, and
  * the copy says so beside them.
  */
-function TargetForm({
+/**
+ * A comma-separated list of GitHub repository ids. The request type carries
+ * them as numbers, so an id past the safe-integer range is refused here rather
+ * than rounded silently on the way to the wire.
+ */
+const zRepositoryIdList = z
+  .string()
+  .transform((raw) => raw.split(',').map((entry) => entry.trim()).filter((entry) => entry !== ''))
+  .pipe(
+    z
+      .array(
+        z
+          .string()
+          .regex(/^\d+$/, 'Repository ids are whole numbers.')
+          .transform(Number)
+          .refine(Number.isSafeInteger, 'A repository id is too large to send exactly.'),
+      )
+      .min(1, 'Selected visibility needs at least one repository id.')
+      .max(500, 'At most 500 repository ids.'),
+  );
+
+/** The prefix the server will store: the wire grammar is upper-case only. */
+export function normalisePrefix(raw: string): string {
+  return raw.toUpperCase();
+}
+
+export function TargetForm({
   title,
   environments,
   keys,
@@ -961,6 +988,10 @@ function TargetForm({
   );
   const [visibility, setVisibility] = useState<AdapterTargetInput['visibility']>(initial?.visibility ?? '');
   const [prefix, setPrefix] = useState(initial?.name_prefix ?? '');
+  const [repositoryIds, setRepositoryIds] = useState(
+    initial?.selected_repository_ids.map(String).join(', ') ?? '',
+  );
+  const [repositoryIdsError, setRepositoryIdsError] = useState<string | null>(null);
   const [keyIds, setKeyIds] = useState<ReadonlySet<string>>(
     () => new Set(initial?.keys.map((key) => key.key_id) ?? []),
   );
@@ -980,6 +1011,13 @@ function TargetForm({
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    const selectsRepositories = kind === 'organization' && visibility === 'selected';
+    const parsedIds = selectsRepositories ? zRepositoryIdList.safeParse(repositoryIds) : null;
+    if (parsedIds !== null && !parsedIds.success) {
+      setRepositoryIdsError(parsedIds.error.issues[0]?.message ?? 'Repository ids are not valid.');
+      return;
+    }
+    setRepositoryIdsError(null);
     const includePatterns = patterns(include);
     const excludePatterns = patterns(exclude);
     const selection =
@@ -997,8 +1035,8 @@ function TargetForm({
       destination_name: kind === 'organization' ? '' : name,
       destination_environment: kind === 'environment' ? destinationEnvironment : '',
       visibility: kind === 'organization' ? visibility : '',
-      selected_repository_ids: [],
-      name_prefix: prefix,
+      selected_repository_ids: parsedIds?.success === true ? parsedIds.data : [],
+      name_prefix: normalisePrefix(prefix),
       key_ids: [...keyIds],
       ...(selection === undefined ? {} : { key_selection: selection }),
     });
@@ -1015,6 +1053,11 @@ function TargetForm({
   return (
     <form className="adapters__form" onSubmit={submit} aria-label={title}>
       <h3>{title}</h3>
+      {lockRouting === true ? (
+        <p className="field__hint">
+          Destination and routing are locked once a target exists; move it with the CLI move ceremony.
+        </p>
+      ) : null}
       <div className="adapters__form adapters__form--two">
         <label className="field">
           <span className="field__label">Environment</span>
@@ -1041,7 +1084,7 @@ function TargetForm({
             }}
           >
             <option value="repository">Repository</option>
-            <option value="organization">Organization</option>
+            <option value="organization">GitHub organization</option>
             <option value="environment">GitHub environment</option>
           </select>
         </label>
@@ -1068,9 +1111,30 @@ function TargetForm({
               <option value="">Forgejo (none)</option>
               <option value="all">all</option>
               <option value="private">private</option>
+              <option value="selected">selected repositories</option>
             </select>
           </label>
         )}
+        {kind === 'organization' && visibility === 'selected' ? (
+          <label className="field">
+            <span className="field__label">Repository ids</span>
+            <input
+              className="mono"
+              inputMode="numeric"
+              value={repositoryIds}
+              disabled={lockRouting === true}
+              aria-invalid={repositoryIdsError !== null}
+              placeholder="123456, 789012"
+              onChange={(event) => {
+                setRepositoryIds(event.target.value);
+                setRepositoryIdsError(null);
+              }}
+            />
+            <span className="field__hint">
+              {repositoryIdsError ?? 'Comma-separated GitHub repository ids the organization secret is visible to.'}
+            </span>
+          </label>
+        ) : null}
         {kind === 'environment' ? (
           <label className="field">
             <span className="field__label">GitHub environment</span>
@@ -1085,10 +1149,13 @@ function TargetForm({
           <span className="field__label">Name prefix</span>
           <input
             value={prefix}
-            onChange={(event) => setPrefix(event.target.value.toUpperCase())}
+            onChange={(event) => setPrefix(event.target.value)}
             placeholder="PROD_"
           />
           <span className="field__hint">Applied to every name at the provider; applications keep canonical names.</span>
+          {normalisePrefix(prefix) !== prefix ? (
+            <span className="field__hint">Will be stored as {normalisePrefix(prefix)}</span>
+          ) : null}
         </label>
       </div>
       <fieldset className="field">
@@ -1248,12 +1315,18 @@ function TargetDetail({
             <dd>{String(target.generation)}</dd>
           </dl>
           {target.failure_names.length > 0 ? (
-            <p className="alert" role="alert">
-              <span className="alert__glyph" aria-hidden="true">
-                !
-              </span>
-              <span>Failed names: {target.failure_names.join(', ')}</span>
-            </p>
+            <div role="alert">
+              <ul className="adapters__failures" aria-label="Failed names">
+                {target.failure_names.map((name) => (
+                  <li key={name}>
+                    <span className="alert__glyph" aria-hidden="true">
+                      !
+                    </span>{' '}
+                    <span className="mono">{name}</span>: failed
+                  </li>
+                ))}
+              </ul>
+            </div>
           ) : null}
           {target.warnings.length > 0 ? (
             <ul className="adapters__warnings" aria-label="Provider warnings">

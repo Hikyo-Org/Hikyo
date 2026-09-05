@@ -148,10 +148,10 @@ describe('Values reveal accessibility', () => {
     expect(container.querySelectorAll('.values__reveal-announcement')).toHaveLength(1);
     const announcement = container.querySelector('.values__reveal-announcement');
     expect(announcement?.getAttribute('role')).toBe('status');
-    expect(announcement?.textContent).toBe('KEY_A revealed — re-masks in 10 seconds');
-    expect(container.querySelector('.values__plain')?.getAttribute('aria-label')).toBe(
-      'KEY_A revealed',
-    );
+    expect(announcement?.textContent).toBe('KEY_A revealed: re-masks in 10 seconds');
+    // The plaintext IS the accessible content: an aria-label would hide it.
+    expect(container.querySelector('.values__plain')?.hasAttribute('aria-label')).toBe(false);
+    expect(container.querySelector('.values__plain')?.textContent).toContain('revealed-value');
     expect(container.querySelector('.values__countdown')?.getAttribute('aria-hidden')).toBe(
       'true',
     );
@@ -187,7 +187,7 @@ describe('Values reveal accessibility', () => {
 
     expect(container.querySelectorAll('.values__reveal-announcement')).toHaveLength(1);
     expect(container.querySelector('.values__reveal-announcement')?.textContent).toBe(
-      '2 secrets revealed — re-mask in 10 seconds',
+      '2 secrets revealed: re-mask in 10 seconds',
     );
     expect(container.querySelectorAll('.values__countdown')).toHaveLength(2);
     expect(container.querySelectorAll('.values__countdown[aria-hidden="true"]')).toHaveLength(2);

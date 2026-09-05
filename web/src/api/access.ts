@@ -51,7 +51,7 @@ export type { Level };
  *     single "create" call to get wrong.
  *  2. **A capability may only be granted at or above its DEEPEST level.**
  *     `manage-projects` on one environment is a row nothing can evaluate, so
- *     the checklist offers, per scope, exactly the atoms that scope admits —
+ *     the checklist offers, per scope, exactly the atoms that scope admits , 
  *     the same table `internal/domain`'s `capabilityLevels` holds, transcribed
  *     with the ADR's own "Covers" wording as the explanation each `(?)` shows.
  *  3. **Each checked capability becomes its own revocable line.** The modal
@@ -100,7 +100,7 @@ const CAPABILITY_REGISTRY: readonly RegistryCapability[] = [
   {
     id: 'publish',
     deepest: 'environment',
-    covers: 'commit a revision — including rollback, apply, and any publish whose effect reaches this environment',
+    covers: 'commit a revision, including rollback, apply, and any publish whose effect reaches this environment',
     humanGrantable: true,
   },
   { id: 'pin', deepest: 'environment', covers: 'create, reassign or release a revision pin for this environment', humanGrantable: true },
@@ -153,7 +153,7 @@ const CAPABILITY_REGISTRY: readonly RegistryCapability[] = [
  *
  * Instance-only atoms are deliberately absent from this tenant subset because
  * offering them on an org surface would offer a refusal. `scim-provision` is
- * absent for a different reason — it is system-created with its SCIM binding
+ * absent for a different reason, it is system-created with its SCIM binding
  * and refused BY NAME through the grant API (#73).
  */
 export const TENANT_CAPABILITIES: readonly CapabilityAtom[] = CAPABILITY_REGISTRY.filter(
@@ -166,7 +166,7 @@ const DEPTH: Record<Level, number> = { instance: 0, org: 1, project: 2, environm
  * capabilitiesAt returns the atoms a scope of this level admits.
  *
  * A grant is legal at its atom's deepest level or ANY level above it, because
- * grants inherit downward — so an org scope admits everything and an
+ * grants inherit downward, so an org scope admits everything and an
  * environment scope admits only the environment atoms. Instance scope admits
  * both the tenant atoms (by downward inheritance) and the instance-only atoms.
  */
@@ -202,7 +202,7 @@ export type ScopeOption = {
   readonly group: string;
   /**
    * Protection as the environment's own settings report it. `null` means the
-   * caller could not read them — which is a real state (a member manager needs
+   * caller could not read them, which is a real state (a member manager needs
    * no `read`), and one that must never be presented as "not protected".
    */
   readonly isProtected: boolean | null;
@@ -239,7 +239,7 @@ export function scopeValue(scope: ScopeRef): string {
  *
  * The order is the argument: a select whose first entry is the widest scope
  * makes the widest grant the cheapest gesture, and the ADR's own honest
- * consequence — an org-scoped `reveal` reveals in production — is exactly the
+ * consequence, an org-scoped `reveal` reveals in production, is exactly the
  * mistake a careless default produces.
  */
 export function scopeOptions(org: string, orgName: string, projects: readonly ProjectNode[]): ScopeOption[] {
@@ -465,7 +465,7 @@ type BlastLine = { readonly project: string; readonly environments: string };
 /**
  * blastRadius enumerates what an ORG-scoped grant reaches: every project and
  * every environment in the organisation, plus the line the enumeration cannot
- * show — the projects that do not exist yet and inherit anyway.
+ * show, the projects that do not exist yet and inherit anyway.
  *
  * Enumerated rather than summarised on purpose. "All projects" is a phrase a
  * human skims; a list with production in it is one they read.
@@ -504,7 +504,7 @@ const instanceGrantsKey = ['instance-grants'] as const;
  * useOrgGrants is the membership listing.
  *
  * `listOrgGrants` answers org, project AND environment scoped lines in one
- * read — which is why this surface needs no second listing per depth, and why
+ * read, which is why this surface needs no second listing per depth, and why
  * there is no `grant.list-env` to call: "who can reach this environment" has
  * to include the lines above it, and an environment-only listing would omit
  * exactly those.
@@ -775,9 +775,9 @@ export function inviteFailureText(error: unknown): string {
 }
 
 /**
- * resetFailureText: the reset route answers every enumerable cause — unknown
+ * resetFailureText: the reset route answers every enumerable cause, unknown
  * or non-human target, a caller without `credential-reset`, a target holding
- * an instance capability — with one uniform 401, and this sentence keeps it
+ * an instance capability, with one uniform 401, and this sentence keeps it
  * that way.
  */
 export function resetFailureText(error: unknown): string {
@@ -797,7 +797,7 @@ export function resetFailureText(error: unknown): string {
  *
  * The 403 line is not a guess: `manage-members` is MFA-mandatory, and
  * `isolation.TestTenantRoutesDeclareForbiddenOnlyForMFA` pins that a tenant
- * route declares 403 for that reason and no other — so on this surface a 403
+ * route declares 403 for that reason and no other, so on this surface a 403
  * IS the second-factor refusal. A 404 is the uniform nonexistent shape: it
  * cannot be distinguished from a genuine miss, and saying otherwise would
  * invent the oracle the server closed.
@@ -834,10 +834,10 @@ export function grantFailureText(error: unknown): string {
       case 429:
         return 'Too many attempts right now. Wait a moment and try again.';
       default:
-        return `The server failed (${error.status}); whether the change applied is unknown — reload to check.`;
+        return `The server failed (${error.status}); whether the change applied is unknown: reload to check.`;
     }
   }
-  return 'The grant surface could not be reached, or it answered something this client does not understand. Whether the change applied is unknown — reload to check.';
+  return 'The grant surface could not be reached, or it answered something this client does not understand. Whether the change applied is unknown: reload to check.';
 }
 
 export function membershipFailureText(error: unknown): string {

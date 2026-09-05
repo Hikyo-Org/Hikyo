@@ -49,3 +49,16 @@ describe('prototype mock session', () => {
     }
   });
 });
+
+describe('prototype mock contract shape', () => {
+  it('serves instance health and meta in the generated contract shape', async () => {
+    const { zMeta, zRetentionHealth } = await import('../../clients/ts/src/generated/zod.gen.ts');
+    const { prototypeMeta, prototypeRetentionHealth } = await import('../prototype/mock-api.ts');
+
+    expect(zMeta.safeParse(prototypeMeta).success).toBe(true);
+    for (const scenario of ['populated', 'attention', 'empty'] as const) {
+      const result = zRetentionHealth.safeParse(prototypeRetentionHealth(scenario));
+      expect(result.success, scenario).toBe(true);
+    }
+  });
+});

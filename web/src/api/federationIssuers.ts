@@ -19,8 +19,8 @@ import { ApiError, ok, parsed } from './client.ts';
  *
  * Two rules the ADRs put here rather than in the component:
  *
- *  - **`static_jwks` never round-trips.** The read shape has no such member —
- *    the document is configuration an operator supplied and can re-supply — so
+ *  - **`static_jwks` never round-trips.** The read shape has no such member , 
+ *    the document is configuration an operator supplied and can re-supply, so
  *    the editor field is always blank and, under `static` mode, always
  *    re-entered. There is no keep-the-old-document path, and there cannot be
  *    one that silently retains a key set nobody rotates.
@@ -78,7 +78,7 @@ export function useCreateFederationIssuer() {
 }
 
 /**
- * useUpdateFederationIssuer moves the MUTABLE half only — the JWKS source and
+ * useUpdateFederationIssuer moves the MUTABLE half only, the JWKS source and
  * the refused audiences. The issuer string and platform type are absent on
  * purpose: changing either is a replacement, not an edit, and the request
  * schema has no member for them.
@@ -110,7 +110,7 @@ export function useUpdateFederationIssuer() {
 
 /**
  * useDeleteFederationIssuer removes one configuration. The server refuses it
- * with a 409 while any binding names the issuer — live or historical — so the
+ * with a 409 while any binding names the issuer, live or historical, so the
  * caller shows the `live_bindings` census first and revokes those bindings
  * before the delete can land.
  */
@@ -129,7 +129,7 @@ export function useDeleteFederationIssuer() {
 
 /**
  * issuerCreateRefusalText names a create refusal in the create verb's OWN
- * vocabulary — every status, never delegating. A 409 is a duplicate issuer
+ * vocabulary, every status, never delegating. A 409 is a duplicate issuer
  * (matched byte-exact); a 403 is the instance-config second factor, never a
  * disclosure capability; a 404 is the authorization mask.
  */
@@ -170,7 +170,7 @@ export function issuerUpdateRefusalText(error: unknown): string {
       case 403:
         return 'Editing a federation issuer is instance-config work and needs a second factor. Present your authenticator code or passkey in the banner above. Nothing was changed.';
       case 404:
-        return 'That issuer is absent, or not disclosed to this session — the two are the same uniform response. Nothing was changed.';
+        return 'That issuer is absent, or not disclosed to this session: the two are the same uniform response. Nothing was changed.';
       case 429:
         return 'Too many requests right now. Wait a moment and try again.';
       default:
@@ -194,9 +194,9 @@ export function issuerDeleteRefusalText(error: unknown): string {
       case 403:
         return 'Deleting a federation issuer is instance-config work and needs a second factor. Present your authenticator code or passkey in the banner above.';
       case 404:
-        return 'That issuer is absent, or not disclosed to this session — the two are the same uniform response.';
+        return 'That issuer is absent, or not disclosed to this session: the two are the same uniform response.';
       case 409:
-        return 'This issuer has bindings naming it — live or revoked — so it cannot be deleted. That binding history is append-only and never reaches zero once an issuer has been used, because erasing the issuer would erase what those bindings trusted.';
+        return 'This issuer has bindings naming it, live or revoked, so it cannot be deleted. That binding history is append-only and never reaches zero once an issuer has been used, because erasing the issuer would erase what those bindings trusted.';
       case 429:
         return 'Too many requests right now. Wait a moment and try again.';
       default:
@@ -222,7 +222,7 @@ export function issuerFieldRefusal(input: {
 }): string | null {
   if (input.issuer !== undefined) {
     if (!isHttpsIssuer(input.issuer)) {
-      return 'The issuer must be an https URL with a host and nothing else — no user, no query, no fragment. Discovery and JWKS are fetched from it, so http would rest the instance’s whole federation trust on the network path. Nothing was saved.';
+      return 'The issuer must be an https URL with a host and nothing else: no user, no query, no fragment. Discovery and JWKS are fetched from it, so http would rest the instance’s whole federation trust on the network path. Nothing was saved.';
     }
   }
   const audiences = input.refusedAudiences.filter((a) => a !== '');
@@ -230,7 +230,7 @@ export function issuerFieldRefusal(input: {
     return 'At least one refused audience is required: the default-audience rule turns on the instance knowing what the default is, and it is not derivable. Nothing was saved.';
   }
   if (audiences.some((a) => /[\n\r]/.test(a))) {
-    return 'A refused audience may not contain a line break — newline is the storage separator, so one value would split into two. Nothing was saved.';
+    return 'A refused audience may not contain a line break: newline is the storage separator, so one value would split into two. Nothing was saved.';
   }
   if (input.jwksMode === 'static' && input.staticJwks.trim() === '') {
     return 'Static mode requires the JWKS document: it is the key set this instance verifies against, and there is no discovery endpoint to fetch it from. Nothing was saved.';

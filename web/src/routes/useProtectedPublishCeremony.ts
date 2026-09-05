@@ -33,7 +33,7 @@ export type ProtectedPublishTarget = {
  * Copy and publish intentionally share this controller: copying into a
  * protected destination is the same publish-into-protected decision, so both
  * use purpose `publish` and must not drift in sequencing or refusal handling.
- * Restore staging and historical pinning (#59) join them for the same reason —
+ * Restore staging and historical pinning (#59) join them for the same reason , 
  * one place decides whether a live sliding window already covers the act.
  */
 export function useProtectedPublishCeremony(

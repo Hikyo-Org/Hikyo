@@ -86,9 +86,8 @@ test.describe('app chrome', () => {
     await expect(matrixLink).toHaveCSS('min-height', '38px');
     await expect(matrixLink).toHaveCSS('font-size', '13px');
     await expect(sidebar.locator('.context-sidebar__org-avatar')).toHaveCSS('width', '28px');
-    await expect(sidebar.locator('.context-sidebar__org small')).toHaveText(
-      'Organisation member',
-    );
+    // whoami reports no organisation role, so the org block states none.
+    await expect(sidebar.locator('.context-sidebar__org small')).toHaveCount(0);
     await expect(sidebar.locator('.context-sidebar__group').first()).toHaveCSS('height', '38px');
     await expect(sidebar.getByRole('heading', { name: 'Organisation' })).toBeVisible();
     await expect(projectNav.getByRole('link', { name: 'Version history' })).toHaveCount(0);
@@ -274,13 +273,16 @@ test.describe('app chrome', () => {
     });
     await page.reload();
     const region = page.getByRole('region', { name: 'Operational diagnostics', exact: true });
-    await expect(region.getByRole('alert')).toHaveCount(5);
+    await expect(region.getByRole('status')).toHaveCount(5);
+    await expect(region.getByRole('alert')).toHaveCount(0);
     await expect(page.locator('.retention-warning')).toHaveCount(7);
+    await expect(page.locator('.retention-warning[data-severity="error"]')).toHaveCount(1);
+    await expect(page.locator('.retention-warning[data-severity="warn"]')).toHaveCount(6);
     await expect(region).toHaveAttribute('tabindex', '0');
     await expect.poll(() => page.locator('.content').evaluate((element) => element.clientHeight)).toBeGreaterThanOrEqual(240);
     await region.focus();
     await page.keyboard.press('End');
-    const last = region.getByRole('alert').filter({ hasText: '3 key scopes' });
+    const last = region.getByRole('status').filter({ hasText: '3 key scopes' });
     await expect.poll(async () => {
       const outer = await region.boundingBox();
       const inner = await last.boundingBox();
@@ -296,9 +298,10 @@ test.describe('app chrome', () => {
     await page.reload();
 
     const warning = page.locator('.retention-warning');
-    await expect(warning).toHaveAttribute('role', 'alert');
+    await expect(warning).toHaveAttribute('role', 'status');
+    await expect(warning).toHaveAttribute('data-severity', 'warn');
     await expect(warning).toContainText('Payload pruning has not succeeded since');
-    await expect(warning).toContainText('retention bounds are not being enforced.');
+    await expect(warning).toContainText('Retention bounds are not being enforced.');
     await expect(warning.locator('time')).toHaveAttribute('datetime', lastSuccess);
   });
 
@@ -312,15 +315,16 @@ test.describe('app chrome', () => {
     await page.reload();
 
     const warning = page.locator('.retention-warning');
-    await expect(warning).toHaveAttribute('role', 'alert');
+    await expect(warning).toHaveAttribute('role', 'status');
+    await expect(warning).toHaveAttribute('data-severity', 'warn');
     await expect(warning).toContainText('1.40 GiB of stored payload');
-    await expect(warning).toContainText('new publishes are refused at 4 GiB');
+    await expect(warning).toContainText('New publishes are refused at 4 GiB');
   });
 
   for (const status of [403, 404]) {
     // An operator whose health endpoint refuses the read still keeps the
-    // administration chrome — that is gated on the whoami capability, not on
-    // this poll — but the pruning banner has no health to show, so it is silent.
+    // administration chrome, that is gated on the whoami capability, not on
+    // this poll, but the pruning banner has no health to show, so it is silent.
     test(`silently hides pruning health when the endpoint returns ${status}`, async ({ page }) => {
       await page.route('**/api/v1/instance/retention-health', (route) =>
         route.fulfill({ status, contentType: 'application/json', body: '{}' }),
@@ -358,7 +362,7 @@ test.describe('app chrome', () => {
     await expect(instanceAdmin).toHaveCount(0);
     expect(retentionCalled).toBe(false);
     // whoami is re-read on load, focus and hydrate, so drop the async override
-    // before the page tears down — a route.fetch still in flight at test end
+    // before the page tears down, a route.fetch still in flight at test end
     // would otherwise error against the closing context.
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
@@ -446,9 +450,15 @@ test.describe('app chrome', () => {
         const account = page.getByRole('button', { name: /^Account:/ });
         const theme = page.getByRole('button', { name: /theme/i });
         const heading = page.getByRole('heading', { name: surface.label, level: 1 });
-        const well = page.locator('.card');
+        // Both shell surfaces use the settings anatomy (h1, lede, jump index,
+        // panels), so the well is the first panel and its boundary is the
+        // dense panel line, not the card hairline.
+        const well = page.locator('.card.panel').first();
         const crumbs = page.getByLabel('Breadcrumb');
-        const active = page.getByRole('link', { name: surface.label, exact: true });
+        // The sidebar row, not the jump-index chip that may share the label.
+        const active = page
+          .getByRole('navigation', { name: 'Sections' })
+          .getByRole('link', { name: surface.label, exact: true });
 
         await expectPinnedAssertionSet(page, {
           flow: 'shell',
@@ -471,7 +481,7 @@ test.describe('app chrome', () => {
             // the `--bg-raise` of a raised row. The two are a rounding apart in
             // dark and opposite sides of the page in light.
             [well, 'backgroundColor', '--bg-panel'],
-            [well, 'borderTopColor', '--line'],
+            [well, 'borderTopColor', '--panel-line'],
             // Treatment e's hairline rule belongs to each ROW, so that the
             // current row can own its segment of it and turn it accent.
             // Not `.first()`: the first link on this surface IS the current one,
@@ -502,7 +512,7 @@ test.describe('app chrome', () => {
   });
 });
 
-// Sign-out revokes the session it uses, so it gets its own — sharing the
+// Sign-out revokes the session it uses, so it gets its own, sharing the
 // suite's would leave every later test holding a dead cookie.
 test.describe('sign out', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
@@ -518,7 +528,7 @@ test.describe('sign out', () => {
     await page.getByRole('menuitem', { name: 'Sign out' }).click();
 
     // Sign-out is a cookie-authenticated POST, so it only succeeds if the SPA
-    // echoed the synchronizer token — reaching the login page proves the whole
+    // echoed the synchronizer token, reaching the login page proves the whole
     // CSRF contract end to end, through the real server.
     await expect(page.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
     const names = (await page.context().cookies()).map((c) => c.name);

@@ -16,8 +16,8 @@ import {
  *
  * A browser session is minted at password assurance (the login page asks for
  * nothing else, by design: the local floor must work with no second factor
- * enrolled). Every MFA-mandatory surface then refuses it — instance
- * administration, grants, reveal — and the refusal used to say "sign in again
+ * enrolled). Every MFA-mandatory surface then refuses it, instance
+ * administration, grants, reveal, and the refusal used to say "sign in again
  * and present a passkey or authenticator code", an instruction no page could
  * satisfy. This banner is that page: it sits above the content while the
  * session is short of a second factor AND the account has one to present, and

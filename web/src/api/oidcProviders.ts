@@ -16,7 +16,7 @@ import { ApiError, ok, parsed } from './client.ts';
 
 /**
  * OIDC provider administration (#499), riding the instance provider API
- * (`/api/v1/instance/oidc-providers`) exactly as it is — no contract change.
+ * (`/api/v1/instance/oidc-providers`) exactly as it is, no contract change.
  *
  * The server returns only a coarse refusal CODE and never a per-field message
  * (errors.go: it "never writes anything derived from the cause beyond the code
@@ -32,7 +32,7 @@ import { ApiError, ok, parsed } from './client.ts';
  * The one thing the WebUI cannot hold and must not pretend to: the client secret
  * is envelope-encrypted and NEVER returned. Every PUT re-seals whatever secret
  * it carries (service/oidc.go seals `in.ClientSecret` unconditionally on both
- * create and reconfigure), so there is no "keep the old secret" path — the
+ * create and reconfigure), so there is no "keep the old secret" path, the
  * editor field is always blank and always required, and "replacement cannot
  * silently retain an old value" falls out of that contract.
  */
@@ -64,7 +64,7 @@ export type OidcProviderInput = {
  * putOidcProvider is a ONE-SHOT request, deliberately NOT a cached React Query
  * mutation: the write-only client secret rides its body, and a mutation would
  * retain that secret in its cached `variables` after the call settled. An
- * imperative call keeps the secret out of every cache — it lives only for the
+ * imperative call keeps the secret out of every cache, it lives only for the
  * duration of the request and in the editor's own controlled field, which the
  * editor blanks on failure. The caller refetches the provider list on success.
  */
@@ -137,7 +137,7 @@ type PolicyValidation =
 /**
  * validatePolicyJson parses an optional policy field as a JSON OBJECT.
  *
- * Empty is a real, distinct value — the absent policy — and is returned as
+ * Empty is a real, distinct value, the absent policy, and is returned as
  * `null`, not an empty string, because the wire's "absent" is `null`. Anything
  * present must be a JSON object: `JSON.parse` is routed through Zod (never cast)
  * and arrays and primitives are refused, because the server's policies are
@@ -185,7 +185,7 @@ export type OidcProviderDraft = {
  *
  * `existing` is the currently-loaded provider list. It lets the editor refuse an
  * enabled-issuer collision here, with a named field, rather than let it reach
- * the database's `oidc_providers_issuer_enabled` unique index — a raw
+ * the database's `oidc_providers_issuer_enabled` unique index, a raw
  * constraint the server does not translate, so it would otherwise surface as an
  * opaque 500.
  */
@@ -211,7 +211,7 @@ export function validateProviderDraft(
       ok: false,
       field: 'issuer',
       message:
-        'The issuer is immutable after create — every linked identity is keyed by it. To change it, delete this provider and create a new one.',
+        'The issuer is immutable after create: every linked identity is keyed by it. To change it, delete this provider and create a new one.',
     };
   }
   if (draft.clientId.trim() === '') {
@@ -222,7 +222,7 @@ export function validateProviderDraft(
       ok: false,
       field: 'client_secret',
       message:
-        'The client secret is write-only and is never returned, so it must be entered on every save — including when only disabling.',
+        'The client secret is write-only and is never returned, so it must be entered on every save, including when only disabling.',
     };
   }
   if (draft.scopes.trim() === '') {
@@ -238,7 +238,7 @@ export function validateProviderDraft(
       return {
         ok: false,
         field: 'issuer',
-        message: `Another enabled provider (${clash.display_name}) already uses this issuer. At most one enabled provider is allowed per issuer — disable or delete it first.`,
+        message: `Another enabled provider (${clash.display_name}) already uses this issuer. At most one enabled provider is allowed per issuer: disable or delete it first.`,
       };
     }
   }
@@ -271,8 +271,8 @@ export type OidcProviderOperation =
 /**
  * oidcProviderRefusalText maps a refusal to one honest sentence.
  *
- * The server cannot tell a discovery failure from a slug already in use — both
- * are a bare `bad_request` — so the 400 sentence names both possibilities
+ * The server cannot tell a discovery failure from a slug already in use, both
+ * are a bare `bad_request`, so the 400 sentence names both possibilities
  * rather than guessing one. The distinguishable failures (a bad slug, a changed
  * issuer, malformed policy JSON) never reach here: they are refused as field
  * errors before submit.
@@ -291,7 +291,7 @@ export function oidcProviderRefusalText(
       case 401:
         return 'Your session ended. Sign in again to continue.';
       case 403:
-        return 'You are not permitted to administer identity providers — that needs instance-config, which is MFA-mandatory. Present your second factor.';
+        return 'You are not permitted to administer identity providers: that needs instance-config, which is MFA-mandatory. Present your second factor.';
       case 404:
         return operation === 'list-oidc-providers'
           ? 'The identity-provider directory is not disclosed to this session.'
@@ -303,6 +303,6 @@ export function oidcProviderRefusalText(
     }
   }
   return operation === 'delete-oidc-provider'
-    ? 'The server failed; whether the provider was deleted is unknown — reload to check.'
-    : 'The server failed; whether the change applied is unknown — reload to check.';
+    ? 'The server failed; whether the provider was deleted is unknown: reload to check.'
+    : 'The server failed; whether the change applied is unknown: reload to check.';
 }

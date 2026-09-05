@@ -100,6 +100,8 @@ describe('MintDialog', () => {
     vi.stubGlobal('navigator', clipboard === undefined ? {} : { clipboard });
 
     const { container } = await renderForm(<MintHarness />);
+    // Sentence case, as every other dialog title.
+    expect(container.querySelector('#mint-title')?.textContent).toMatch(/^Mint credential · /);
     const mintButton = Array.from(container.querySelectorAll('button')).find(
       (button) => button.textContent === 'Mint credential',
     );
@@ -108,6 +110,10 @@ describe('MintDialog', () => {
     }
     await act(async () => mintButton.click());
     await settle();
+
+    // The mint result is narrowed to value and clamped, so the panel states the
+    // instance default rather than an instant it does not hold.
+    expect(container.textContent).toContain('Expiry: instance default.');
 
     const copyButton = Array.from(container.querySelectorAll('button')).find(
       (button) => button.textContent === 'Copy to clipboard',
@@ -135,7 +141,7 @@ describe('MintDialog', () => {
 
     expect(container.querySelector('.machine__token')?.textContent).toBe(SENTINEL);
     expect(container.textContent).toContain(
-      'Confirm you have stored it — there is no second look at this value.',
+      'Confirm you have stored it: there is no second look at this value.',
     );
   });
 });

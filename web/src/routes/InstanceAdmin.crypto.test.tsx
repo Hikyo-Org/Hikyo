@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { authenticatedIdentity } from '../testkit/identity.ts';
 import { AuthProvider } from '../app/AuthProvider.tsx';
 import { renderForm, settleTask } from '../testkit/renderForm.tsx';
-import { InstanceAdmin } from './InstanceAdmin.tsx';
+import { humanDuration, InstanceAdmin } from './InstanceAdmin.tsx';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -268,5 +268,15 @@ describe('instance crypto maintenance', () => {
     } finally {
       await unmount();
     }
+  });
+});
+
+describe('humanDuration', () => {
+  it('names the policy ceiling in the largest unit that divides it exactly', () => {
+    expect(humanDuration(7_776_000)).toBe('90 days');
+    expect(humanDuration(43_200)).toBe('12 hours');
+    expect(humanDuration(86_400)).toBe('1 day');
+    expect(humanDuration(90)).toBe('90 seconds');
+    expect(humanDuration(1)).toBe('1 second');
   });
 });

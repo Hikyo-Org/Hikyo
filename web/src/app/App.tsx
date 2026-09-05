@@ -55,7 +55,7 @@ const withRouteFallback = (element: ReactElement) => (
  * closure: a surface added to `navigation.ts` does not compile until it has an
  * element here, and an element cannot exist for a surface the table does not
  * name. The routes below are then GENERATED from the table, so there is no
- * hand-written `<Route path=…>` for a new page to hide in — which is what the
+ * hand-written `<Route path=…>` for a new page to hide in, which is what the
  * S3 gate needs to stay true rather than merely be true today.
  */
 const ELEMENTS: Record<SurfaceId, ReactElement> = {
@@ -97,7 +97,7 @@ const ELEMENTS: Record<SurfaceId, ReactElement> = {
     </WorkspaceScope>
   ),
   // The catalogue declaration detail is the matrix with one key's declaration
-  // open — same component, same workspace wrapper as `history`, so a `?remote`
+  // open, same component, same workspace wrapper as `history`, so a `?remote`
   // deep link resolves the key against the workspace's instance, not this one.
   'key-detail': withRouteFallback(
     <WorkspaceScope>
@@ -132,8 +132,8 @@ const shellSurfaces = SURFACES.filter((surface) => surface.chrome === 'shell');
  * The approve page is here deliberately and it is the non-obvious one: a first
  * establishment lands in a popup carrying no cookies for this instance at all,
  * so bouncing it to `/login` would throw away the `state` the whole transaction
- * is addressed by. It renders the sign-in form itself instead, and the URL —
- * with its state — survives.
+ * is addressed by. It renders the sign-in form itself instead, and the URL , 
+ * with its state, survives.
  *
  * The callback page is here for a duller reason: it only reads two query
  * parameters and shouts them down a channel, and making that depend on a

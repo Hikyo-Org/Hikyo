@@ -10,12 +10,14 @@ import {
   revisionsForKeyFilter,
   defaultPinExpiry,
   historyKeyDisplay,
+  impactHeading,
   pinCeremonyUnit,
   pinSchemaOverrideOffered,
   relativeAge,
   restoreKeyName,
   restoreCeremonyUnit,
   restorePreviewSummary,
+  restorePublishLabel,
   retentionLine,
   toHistoryRetention,
   workloadLabel,
@@ -56,7 +58,7 @@ describe('revisionActionGate', () => {
     const gate = revisionActionGate(revision({ revision: 5n }), 5n);
     expect(gate.restore).toBe(false);
     expect(gate.pin).toBe(true);
-    expect(gate.reason).toBe('r5 is already the current revision — a restore would stage nothing.');
+    expect(gate.reason).toBe('r5 is already the current revision, so a restore would stage nothing.');
   });
 
   it('refuses both and names the stamped policy when the payload was collected', () => {
@@ -67,7 +69,7 @@ describe('revisionActionGate', () => {
     expect(gate).toEqual({
       restore: false,
       pin: false,
-      reason: `r3's payload was collected by retention policy ${collectedPolicy} — restore and pin are refused; the lineage stays.`,
+      reason: `r3's payload was collected by retention policy ${collectedPolicy}: restore and pin are refused; the lineage stays.`,
     });
   });
 });
@@ -209,12 +211,12 @@ describe('pinExpiry', () => {
     expect(pinExpiry('2026-08-19T12:00:00Z', now)).toEqual({
       days: 0,
       tier: 'expired',
-      text: 'expired — still delivering until its payload is collected',
+      text: 'expired: still delivering until its payload is collected',
     });
     expect(pinExpiry('2026-08-19T11:59:59.999Z', now)).toEqual({
       days: -1,
       tier: 'expired',
-      text: 'expired — still delivering until its payload is collected',
+      text: 'expired: still delivering until its payload is collected',
     });
   });
 });
@@ -234,8 +236,36 @@ describe('restorePreviewSummary', () => {
       set: 0,
       clear: 0,
       total: 0,
-      chips: ['already matches — nothing to stage'],
+      chips: ['already matches, nothing to stage'],
     });
+  });
+});
+
+describe('impact preview per environment', () => {
+  const production = {
+    environmentId: 'env_prod',
+    name: 'production',
+    baseRevision: 7n,
+    protected: true,
+    changes: [],
+  };
+  const groups = [
+    production,
+    { environmentId: 'env_stage', name: 'staging', baseRevision: 2n, protected: false, changes: [] },
+  ];
+
+  it('heads each group with the environment and its revision step', () => {
+    expect(impactHeading(production)).toBe('production · r7 → r8');
+  });
+
+  it('names every environment on the publish button, not only the first', () => {
+    expect(restorePublishLabel(3n, groups)).toBe(
+      'Publish this restore (r3 → production r8, staging r3)',
+    );
+  });
+
+  it('refuses a preview with no environment', () => {
+    expect(() => restorePublishLabel(3n, [])).toThrow('no preview environment');
   });
 });
 
@@ -325,7 +355,7 @@ describe('retentionLine', () => {
       window: 'values kept: 90 d or the last 10 revisions, whichever is longer, plus pinned',
       badge: 'inherits org',
       badgeTitle:
-        'this project has no retention of its own — it follows the org default and moves when the org value moves',
+        'this project has no retention of its own: it follows the org default and moves when the org value moves',
     });
   });
 
@@ -344,12 +374,12 @@ describe('retentionLine', () => {
     expect(
       retentionLine({ inherited: true, mode: 'unlimited', maxAgeSeconds: null, lastRevisions: null })
         .window,
-    ).toBe('values kept: unlimited — no payload is ever collected');
+    ).toBe('values kept: unlimited, no payload is ever collected');
   });
 });
 
 describe('pinSchemaOverrideOffered', () => {
-  it('does not offer an override for the expiry bound — an override would not fix it', () => {
+  it('does not offer an override for the expiry bound, since an override would not fix it', () => {
     expect(pinSchemaOverrideOffered('pin expiry exceeds the maximum 365 days')).toBe(false);
     expect(pinSchemaOverrideOffered('pin expiry must be in the future')).toBe(false);
   });
@@ -458,7 +488,7 @@ describe('pinComparedToLatest', () => {
       laterRevisions: [revision({ revision: 4n, changedKeys: [{ keyId: 'k_secret', name: 'SECRET', change: 'edited' }] })],
     })).toEqual({
       lines: [
-        'CHANGED stays at old — latest: new',
+        'CHANGED stays at old, latest: new',
         'keeps REMOVED',
         'SECRET written again since r3 (r4)',
         "won't have ADDED",

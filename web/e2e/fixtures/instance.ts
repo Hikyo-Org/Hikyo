@@ -23,7 +23,7 @@ import { seedTenant, totpCode } from './seed.ts';
  * the flows are there to prove, and a dev server implements none of them.
  *
  * Both instances are `--dev` zero-config sqlite ones in fresh temp directories,
- * bootstrapped exactly the way an operator does it — `hikyo admin create` on the
+ * bootstrapped exactly the way an operator does it, `hikyo admin create` on the
  * host, then the credential established with the authority it minted. No seeded
  * password, no fixture user inserted behind the API's back, and no assurance
  * handed out that was not demonstrated: every instance-scope surface is
@@ -51,9 +51,9 @@ import { seedTenant, totpCode } from './seed.ts';
  * `service.CanonicalOrigin` accepts http so a loopback ORIGIN is representable
  * as an allowlist entry, while `remotefetch.ValidateRemoteURL` refuses plaintext
  * so a REMOTE URL never is. That asymmetry is deliberate in the product and the
- * harness leans on it: what the browser leg proves — popup on the remote's
+ * harness leans on it: what the browser leg proves, popup on the remote's
  * origin, CORS, `noopener` + BroadcastChannel, header-borne bearer, the kill
- * switch — is ORIGIN-shaped, not pin-shaped, so http loopback exercises it
+ * switch, is ORIGIN-shaped, not pin-shaped, so http loopback exercises it
  * honestly and no certificate exception is needed anywhere. The pinned TLS half
  * is proven where it belongs, in `internal/isolation/two_instance_test.go`,
  * against two real routers over real TLS.
@@ -63,7 +63,7 @@ import { seedTenant, totpCode } from './seed.ts';
  * real API against a pinned TLS front that proxies B's own directory, and then
  * repointed at B's loopback http origin for the browser leg. The credential is
  * really sealed, the snapshot is really B's, and the card lands in the
- * `unreachable — last known` state, which is itself one of the states the
+ * `unreachable, last known` state, which is itself one of the states the
  * directory card owes a human.
  */
 
@@ -95,7 +95,7 @@ export const OIDC_PROVIDER = { slug: 'e2e-oidc', displayName: 'E2E Identity Prov
  *
  * A second issuer is not optional: `oidc_providers_issuer_enabled` allows at
  * most one ENABLED provider per (kind, issuer), so a second enabled provider on
- * `OIDC_PROVIDER`'s issuer would collide — and the admin session is linked
+ * `OIDC_PROVIDER`'s issuer would collide, and the admin session is linked
  * through that provider, so this flow must not touch it.
  */
 const PORT_OIDC2 = Number(process.env['HIKYO_E2E_PORT_OIDC2'] ?? 45795);
@@ -122,7 +122,7 @@ const repoRoot = fileURLToPath(new URL('../../..', import.meta.url));
  * for the whole run.
  *
  * Signing in is the login flow's subject; every other flow starts from a
- * session, which is also how a real browser works — and it keeps the suite's
+ * session, which is also how a real browser works, and it keeps the suite's
  * spend against each instance's pre-auth allowance proportional to what is
  * actually being tested rather than to how many tests there are.
  */
@@ -140,7 +140,7 @@ export const SEEDED = fileURLToPath(new URL('../.auth/seed.json', import.meta.ur
  *
  * It exists so that NO TEST ever enrols one. Passkey enrolment is an
  * account-security mutation: it advances the principal's session generation
- * and deletes every other session that principal holds — so a flow that
+ * and deletes every other session that principal holds, so a flow that
  * enrolled would silently invalidate the shared session every other flow in
  * the suite is using, and the suite has exactly one principal per instance.
  * Enrolling once, here, and handing the credential to each test's virtual
@@ -351,7 +351,7 @@ async function configureAndLinkOIDC(instance: Instance, issuer: string): Promise
  *
  * A run killed part-way can leave a server holding the port with a datastore
  * in a different temp directory. Health alone would say "ready" and every
- * later step would then address a stranger's state — which surfaces as an
+ * later step would then address a stranger's state, which surfaces as an
  * unreadable root-key file or an authentication failure with no cause in this
  * run's code. The process's own exit is what makes the wait specific; the
  * root-key file written into THIS instance's directory is what makes the
@@ -400,8 +400,8 @@ function csrfToken(instance: Instance): string {
 /**
  * api is an authenticated call as the instance's administrator, with the
  * synchronizer token echoed exactly as the SPA echoes it. It is used for the
- * setup a flow is not about — minting a connection credential, adding the
- * entry — never for anything a flow claims to prove.
+ * setup a flow is not about, minting a connection credential, adding the
+ * entry, never for anything a flow claims to prove.
  */
 async function api(
   instance: Instance,
@@ -423,8 +423,8 @@ async function api(
       `${method} ${path} on ${instance.base} answered ${resp.status}: ${await resp.text()}`,
     );
   }
-  // Several account-security mutations REISSUE the session — the TOTP family
-  // rotates the verifier — so the jar is refreshed from every response that
+  // Several account-security mutations REISSUE the session, the TOTP family
+  // rotates the verifier, so the jar is refreshed from every response that
   // carries one. Holding the pre-call cookies made the very next request
   // answer `unauthenticated`, which reads exactly like a wrong code and is not.
   adoptCookies(instance, resp);
@@ -498,7 +498,7 @@ async function signIn(instance: Instance): Promise<void> {
  *
  * Only B needs this. A's administrator is enrolled by `seedTenant`, whose
  * provisioning URI and spent-step bookkeeping travel to the workers in the
- * SEEDED file — enrolling a second time here would rotate the secret out from
+ * SEEDED file, enrolling a second time here would rotate the secret out from
  * under `nextTotpCode` and stale every flow that uses it.
  *
  * Every instance-scope capability is MFA-mandatory, so without this the setup
@@ -523,8 +523,8 @@ async function enrolTotp(instance: Instance): Promise<string> {
  * presentTotp posts a TOTP code, after waiting for a step the server has not
  * already consumed.
  *
- * TRAP, recorded because it cost real time. A code is single-use PER STEP —
- * `last_step < ?`, strictly — and the validation window is only +/-1 step wide,
+ * TRAP, recorded because it cost real time. A code is single-use PER STEP , 
+ * `last_step < ?`, strictly, and the validation window is only +/-1 step wide,
  * so two ceremonies inside the same 30 seconds have NO code that is both fresh
  * and acceptable. The server names that case (409, "already used for its time
  * step") rather than answering the uniform `unauthenticated`; a wrong code is
@@ -532,8 +532,8 @@ async function enrolTotp(instance: Instance): Promise<string> {
  * identical instants (checked against `pquerna/otp` directly).
  *
  * So every presentation waits for the step counter to advance and then sends
- * the code for NOW. That is deterministic — one request, no failed attempts to
- * feed the per-account backoff — at the cost of up to 30 seconds per ceremony.
+ * the code for NOW. That is deterministic, one request, no failed attempts to
+ * feed the per-account backoff, at the cost of up to 30 seconds per ceremony.
  */
 async function presentTotp(instance: Instance, otpauth: string, path: string): Promise<void> {
   const deadline = Date.now() + 3 * TOTP_PERIOD * 1000;
@@ -613,7 +613,7 @@ async function startInstanceAt(
 ): Promise<Instance> {
   // Fail loud on a squatter. A previous run killed mid-flight (a timeout, a
   // ^C) leaves a server on this port with ANOTHER datastore behind it, and the
-  // health probe below cannot tell the difference — the bootstrap then writes
+  // health probe below cannot tell the difference, the bootstrap then writes
   // to a database nobody is serving and the first authenticated call answers
   // 401, which reads like a credential bug and is not.
   //
@@ -664,7 +664,7 @@ async function startInstanceAt(
       env: {
         ...process.env,
         // Every login of every flow, on both viewport projects, arrives from one
-        // loopback address inside about twenty seconds — a traffic shape the
+        // loopback address inside about twenty seconds, a traffic shape the
         // locked per-IP allowance of ten a minute is deliberately not sized for.
         // Raising it here is not weakening the product: the key is refused
         // outside `--dev` and the server will not start with it set in
@@ -689,7 +689,7 @@ async function startInstanceAt(
   instances.push(instance);
   // The last 64 KiB of output is kept regardless of verbosity: when the server
   // dies unexpectedly mid-suite, the diagnosis lives in this buffer and nowhere
-  // else — the suite has been killed by an undiagnosable ERR_CONNECTION_REFUSED
+  // else, the suite has been killed by an undiagnosable ERR_CONNECTION_REFUSED
   // before. stdout gets the same treatment so a full pipe can never block the
   // server either.
   const tail: Buffer[] = [];
@@ -762,8 +762,8 @@ async function establishCredential(instance: Instance): Promise<void> {
  *
  * A store-level seam, and it is here for a reason that is about the fixture
  * rather than the product. `instance-directory` is deliberately NOT in the
- * operator set — reading another installation's org and project names is its
- * own grantable power — so an operator really does have to grant it. Doing that
+ * operator set, reading another installation's org and project names is its
+ * own grantable power, so an operator really does have to grant it. Doing that
  * through the API is a three-ceremony detour: the grant surface is
  * MFA-mandatory, and granting to oneself invalidates one's own sessions, so the
  * fixture would have to enrol, step up, grant, sign in and step up again, at one
@@ -800,7 +800,7 @@ function seedDirectoryGrant(dir: string): void {
     // and that is not cosmetics. Every listing that carries a grant row is
     // parsed against the generated schema at the SPA boundary, so a
     // hand-written id like `grn_e2e_directory` makes the whole instance-grant
-    // listing fail to parse — which is the client being right and the fixture
+    // listing fail to parse, which is the client being right and the fixture
     // being wrong. Fixed rather than accommodated (#60).
     db.prepare(
       `INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at)
@@ -820,7 +820,7 @@ function seedDirectoryGrant(dir: string): void {
 
 /**
  * The serving instance's operable project (#71). A workspace can only be proven
- * to OPERATE a remote if the remote has something to operate — so B gets one
+ * to OPERATE a remote if the remote has something to operate, so B gets one
  * org, one project, one development environment and one CONFIG value (config is
  * delivered in plaintext, so the matrix renders it without a reveal ceremony,
  * which keeps this flow off the TOTP-in-a-popup path). Written to a file because
@@ -862,7 +862,7 @@ function servingPrincipal(dir: string): string {
 /**
  * grantServingAdmin gives the serving instance's administrator the operating
  * capabilities a workspace exercises over there. Break-glass, at instance scope,
- * BEFORE the first sign-in — a grant that predates every session invalidates
+ * BEFORE the first sign-in, a grant that predates every session invalidates
  * none, which is the ordering rule the whole fixture obeys.
  */
 function grantServingAdmin(serving: Instance): void {
@@ -926,7 +926,7 @@ async function seedServingProject(
  * stores is B's real listing rather than a fabricated one.
  *
  * The certificate is generated here and its SPKI fingerprint is what the entry
- * pins — the same construction the product uses, so the add ceremony is the
+ * pins, the same construction the product uses, so the add ceremony is the
  * real one including pin verification. The front is bound to the loopback
  * ADDRESS regardless of which name A wears, because the certificate names it
  * and because the pin, not the name, is what the product verifies.
@@ -994,7 +994,7 @@ function openHarnessDb(path: string, options?: { readonly readOnly?: boolean }):
  * over https, which it was, through the real API, against a real pin. What the
  * browser leg needs afterwards is B's real ORIGIN, and the workspace tier is
  * origin-shaped rather than pin-shaped. The card then renders the
- * `unreachable — last known` state honestly: the server genuinely cannot fetch
+ * `unreachable, last known` state honestly: the server genuinely cannot fetch
  * a plaintext URL, and the snapshot it shows is genuinely the last one it got.
  */
 function repointRemoteAtB(instance: Instance): void {
@@ -1023,13 +1023,13 @@ export async function startInstance(): Promise<void> {
   ]);
 
   // Only the VIEWING instance needs `instance-directory`: it is the one that
-  // reads a foreign directory. The serving side's work — minting a connection
-  // credential, managing the origin allowlist — is `instance-config`, which the
+  // reads a foreign directory. The serving side's work, minting a connection
+  // credential, managing the origin allowlist, is `instance-config`, which the
   // bootstrap operator already holds.
   seedDirectoryGrant(viewing.dir);
   await Promise.all([establishCredential(viewing), establishCredential(serving)]);
 
-  // The fixture tenant, on the VIEWING instance — the reveal flow's subject and
+  // The fixture tenant, on the VIEWING instance, the reveal flow's subject and
   // the instance every non-#71 flow addresses. Break-glass grants run through
   // the binary on the host, which is the only path that issues a grant without
   // a session, and the bootstrap administrator holds no disclosure capability
@@ -1056,7 +1056,7 @@ export async function startInstance(): Promise<void> {
   // A fresh sign-in before the step-up: the enrolment's confirm REISSUES the
   // session, and re-presenting the credential is both cheaper to reason about
   // than tracking a rotation across two ceremonies and closer to what a human
-  // does — enrol, then sign in again and present the new factor.
+  // does, enrol, then sign in again and present the new factor.
   await signIn(serving);
   await presentTotp(serving, servingOtpauth, '/api/v1/auth/totp/step-up');
 
@@ -1138,7 +1138,7 @@ async function stepUpWithSeededTotp(instance: Instance): Promise<void> {
 /**
  * zSeeded and zVirtualCredential are the two files this harness writes and
  * reads back. They are PARSED, not narrowed by hand: these files cross a
- * process boundary — global setup writes them, workers read them — so they are
+ * process boundary, global setup writes them, workers read them, so they are
  * exactly the untrusted-input boundary the house rule is about, and a stale
  * file from an earlier shape should say so by name rather than surface as an
  * `undefined` in the middle of a flow.
@@ -1189,7 +1189,7 @@ const zSeeded = z.object({
   /**
    * The instance's sqlite file. Playwright runs global setup and the workers
    * in SEPARATE PROCESSES, so a worker cannot reach the setup process's
-   * variables — the path travels through the same file the rest of the
+   * variables, the path travels through the same file the rest of the
    * fixture does.
    */
   dbPath: z.string(),
@@ -1209,7 +1209,7 @@ export function readSeed(): Fixture {
 
 /**
  * zStorageState is the Playwright storage state, parsed because this harness
- * READS ITS OWN FILE BACK — `mintStorageState` has to preserve the serving
+ * READS ITS OWN FILE BACK, `mintStorageState` has to preserve the serving
  * instance's cookies across a re-mint, and a worker calling
  * `refreshSharedSession` cannot reach the setup process's variables.
  */
@@ -1234,8 +1234,8 @@ const zStorageState = z.object({
  * every other origin's cookies alone.
  *
  * `keepForeign` is only passed during initial setup, when the serving jar
- * exists in memory. Every later call — `refreshSharedSession`, from a WORKER
- * process where `instances` is empty — recovers it from the file instead. The
+ * exists in memory. Every later call, `refreshSharedSession`, from a WORKER
+ * process where `instances` is empty, recovers it from the file instead. The
  * file is the cross-process medium here for the same reason SEEDED and PASSKEY
  * are: a re-mint that dropped B's session would kill the workspace flow
  * halfway through the suite, from a cause several tests in the past.
@@ -1305,7 +1305,7 @@ async function mintStorageState(keepForeign?: readonly Cookie[]): Promise<void> 
 /**
  * zVirtualCredential is the CDP credential shape, narrowed to the members
  * `WebAuthn.addCredential` requires. It is declared here rather than imported
- * because Playwright does not export its protocol types — and it is a schema
+ * because Playwright does not export its protocol types, and it is a schema
  * rather than a type so the file this harness writes and reads back is parsed
  * at that boundary like every other one.
  */
@@ -1333,7 +1333,7 @@ export type VirtualCredential = z.infer<typeof zVirtualCredential>;
  * A passkey's counter is how a CLONED authenticator is detected: the server
  * refuses an assertion whose counter did not move forward. Playwright runs the
  * same flow once per viewport project, in separate browsers, so the second
- * project's authenticator has to start where the first one stopped — exactly
+ * project's authenticator has to start where the first one stopped, exactly
  * as one physical key carried between two machines would.
  */
 function writePasskey(credential: VirtualCredential): void {
@@ -1404,12 +1404,12 @@ export async function establishSession(page: Page, stepUp = true): Promise<void>
 }
 
 /**
- * sessionScript signs in, optionally enrols a passkey, and steps up — all
+ * sessionScript signs in, optionally enrols a passkey, and steps up, all
  * inside the page, because a WebAuthn ceremony needs `navigator.credentials`.
  *
  * `enrol` is true exactly once per suite, in global setup. The only other
  * subtlety is the synchronizer token: enrolment rotates the session AND its
- * token, so the cookie is re-read on every request instead of captured once —
+ * token, so the cookie is re-read on every request instead of captured once , 
  * a stale token is refused, which from out here looks exactly like a failed
  * ceremony.
  */
@@ -1531,7 +1531,7 @@ const sessionScript = async ({
     }
     // Step up, so the session carries the webauthn factor class. `reveal` is
     // MFA-mandatory at the chokepoint and a password-only session is refused
-    // there — for a reason the reveal guard is not about.
+    // there, for a reason the reveal guard is not about.
     const assertOptions = options(await post('/api/v1/auth/webauthn/step-up/start', {}));
     const assertion = await navigator.credentials.get({
       publicKey: {
@@ -1569,7 +1569,7 @@ const sessionScript = async ({
  *
  * The surface's own "recorded this session" list is client state: it proves
  * what the UI believes, not what the trail holds, and per-key cardinality is a
- * property of the TRAIL — "never one row saying revealed 40 secrets". Asserting
+ * property of the TRAIL, "never one row saying revealed 40 secrets". Asserting
  * it against the client alone would let a server that aggregated pass, which is
  * exactly the divergence the criterion exists to catch.
  *
@@ -1595,7 +1595,7 @@ const zCount = z.object({ n: z.number() });
  * nextTotpCode returns a code for a step nothing has spent yet, and records
  * that it spent it.
  *
- * Every code is single-use per (account, step) — so the seeding session, this
+ * Every code is single-use per (account, step), so the seeding session, this
  * harness's own step-up, the desktop project and the mobile project cannot each
  * pick "one step ahead of now" and expect all of them to be accepted. The
  * newest spent step lives in the same file the rest of the fixture does, for
@@ -1670,7 +1670,7 @@ export function stopInstance(): void {
   oidcProcess2 = null;
   for (const instance of instances) {
     // SIGKILL, not SIGTERM: a server still inside boot may not have installed
-    // its signal handler yet, and a survivor holds the port for the NEXT run —
+    // its signal handler yet, and a survivor holds the port for the NEXT run , 
     // where it answers /healthz from another datastore and turns every
     // authenticated call into a 401 that looks like a credential bug.
     instance.expectedExit = true;

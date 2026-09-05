@@ -15,7 +15,7 @@ import { assertSessionEpoch, captureSessionEpoch } from './sessionEpoch.ts';
  * therefore load-bearing, not tidiness.
  *
  * The structural rule everything below obeys: THE BROWSER TALKS TO THE REMOTE
- * DIRECTLY. This module never asks its own server about another instance —
+ * DIRECTLY. This module never asks its own server about another instance , 
  * there is no endpoint that would answer, and `api/noproxy_test.go` is what
  * keeps it that way.
  *
@@ -27,7 +27,7 @@ import { assertSessionEpoch, captureSessionEpoch } from './sessionEpoch.ts';
 /**
  * The minimum API revision a remote must serve before this shell will operate
  * it. Read LIVE from the remote's own meta endpoint before establishing or
- * resuming — never from the directory's cached `version`, which can race a
+ * resuming, never from the directory's cached `version`, which can race a
  * downgrade or a restore. The shell refuses BY NAME rather than rendering a
  * secrets matrix it half understands.
  */
@@ -45,7 +45,7 @@ export type WorkspaceBearer = {
 /**
  * The workspace session store: one module-level Map and nothing else.
  *
- * Never a cookie, never localStorage, never sessionStorage — the ADR's rule,
+ * Never a cookie, never localStorage, never sessionStorage, the ADR's rule,
  * and the reason is stated plainly there: in-memory narrows the AT-REST window,
  * it is not non-stealability. A reload is a re-establishment, which costs one
  * popup and one passkey tap.
@@ -174,7 +174,7 @@ export function useWorkspaces(): readonly WorkspaceBearer[] {
 /**
  * How often the shell asks the remote whether the workspace is still alive.
  *
- * This is the ADR's "expiry surfaces in the shell as session expired —
+ * This is the ADR's "expiry surfaces in the shell as session expired , 
  * reconnect", and it is also how the two server-side kill switches become
  * visible over here: de-allowlisting this origin and revoking the session in
  * the remote's own active-session list both take effect at the remote's next
@@ -191,7 +191,7 @@ export const livenessPollMs = LIVENESS_POLL_MS;
  * `/api/v1/me/sessions` is the right probe rather than a convenient one: it is
  * self-scoped, needs no capability, and is exactly the surface a revoked or
  * de-allowlisted session stops answering. A false answer drops the bearer here
- * too — keeping a value the remote has already forgotten would let the card
+ * too, keeping a value the remote has already forgotten would let the card
  * claim a workspace that is not there.
  */
 export async function probeWorkspace(bearer: WorkspaceBearer): Promise<boolean> {
@@ -217,31 +217,31 @@ export async function probeWorkspace(bearer: WorkspaceBearer): Promise<boolean> 
     // identical from here, because withdrawing consent withdraws the CORS
     // headers with it and the browser then refuses to show script the status.
     //
-    // So a single failure is not death — a blip must not cost a ceremony — but
+    // So a single failure is not death, a blip must not cost a ceremony, but
     // a run of them is: whatever the cause, a workspace this shell cannot
     // reach is not a workspace, and claiming it is open is the one thing the
     // card must not do.
     return strike(session);
   }
-  // Only a 401 is the session dying (revoked, expired, origin-binding mismatch —
+  // Only a 401 is the session dying (revoked, expired, origin-binding mismatch , 
   // all ErrUnauthenticated).
   if (response.status === 401) {
     dropWorkspaceSession(session);
     return false;
   }
-  // A 403 is NOT death and NOT unreachability — it is a "forbidden" from a
+  // A 403 is NOT death and NOT unreachability, it is a "forbidden" from a
   // remote that is up and did not 401 the session. This endpoint is self-scoped
   // and cannot legitimately 403 a live session, so a 403 here is anomalous (a
   // proxy, a WAF); treating it as a strike would let two spurious ones kill a
-  // valid workspace. Matches the transport's own 403 handling — keep the
-  // session — so a forbidden never becomes a false reconnect. It does not clear
+  // valid workspace. Matches the transport's own 403 handling, keep the
+  // session, so a forbidden never becomes a false reconnect. It does not clear
   // the strike count either: it is not the clean answer that proves liveness.
   if (response.status === 403) {
     return isCurrentWorkspaceSession(session);
   }
   // ONLY A WELL-FORMED SUCCESS CLEARS THE STRIKE COUNT. Anything else is a
   // strike: a 404 or a 500 is not this endpoint answering, and a 200 carrying
-  // HTML is something in the path — a captive portal, a proxy error page —
+  // HTML is something in the path, a captive portal, a proxy error page , 
   // that is not the remote at all. Treating those as "alive" is how the card
   // ends up claiming a workspace nobody can use, which is the exact failure the
   // strike counter exists to prevent.
@@ -323,7 +323,7 @@ export async function assertCompatible(origin: string): Promise<void> {
   // The live protection is right here in `remoteJSON`: a remote that is
   // unreachable, refuses this origin, or serves a meta that does not PARSE as
   // this protocol throws, and the caller refuses the workspace. The numeric
-  // check below is the second half — the per-operation minimum-revision gate —
+  // check below is the second half, the per-operation minimum-revision gate , 
   // and it is dormant while this shell's floor equals the meta contract's own
   // (`zMeta` already rejects a revision below 1). It becomes live the day a
   // future operation raises `WORKSPACE_MIN_API_REVISION` above that floor.
@@ -331,7 +331,7 @@ export async function assertCompatible(origin: string): Promise<void> {
   if (meta.api_revision < WORKSPACE_MIN_API_REVISION) {
     throw new WorkspaceError(
       `${origin} serves API revision ${meta.api_revision}; this shell needs at least ` +
-        `${WORKSPACE_MIN_API_REVISION}. Upgrade that instance before operating it from here — ` +
+        `${WORKSPACE_MIN_API_REVISION}. Upgrade that instance before operating it from here: ` +
         `degraded rendering of a secrets matrix is not a graceful state.`,
     );
   }
@@ -373,9 +373,9 @@ type FrontChannelResult = { readonly code: string; readonly state: string };
 /**
  * awaitFrontChannel listens for the callback page's hand-off.
  *
- * `window.opener` is deliberately unavailable — the popup is opened with
+ * `window.opener` is deliberately unavailable, the popup is opened with
  * `noopener` so a hostile remote cannot navigate this window into a phishing
- * page — so the return path is a same-origin callback page of THIS UI, talking
+ * page, so the return path is a same-origin callback page of THIS UI, talking
  * over a channel only this origin can open.
  */
 function awaitFrontChannel(state: string, timeoutMs: number): Promise<FrontChannelResult> {
@@ -388,7 +388,7 @@ function awaitFrontChannel(state: string, timeoutMs: number): Promise<FrontChann
     channel.onmessage = (event: MessageEvent<unknown>) => {
       const parsed = frontChannelMessage(event.data);
       // A message for a different transaction is not this one's business. It
-      // cannot normally arrive — the channel is named for the state — but
+      // cannot normally arrive, the channel is named for the state, but
       // matching anyway keeps "whose code is this" answerable rather than
       // assumed.
       if (parsed === null || parsed.state !== state) {
@@ -428,7 +428,7 @@ const CEREMONY_TIMEOUT_MS = 5 * 60_000;
  * The ceremony prepares eagerly because `window.open` only survives the popup
  * blocker inside the task of a real user gesture, while the transaction needs a
  * network round trip first. The enabled, origin-labelled action therefore means
- * preparation has completed and its click can open synchronously — while still
+ * preparation has completed and its click can open synchronously, while still
  * giving the human the anti-phishing check of seeing the exact destination
  * before a window appears.
  */
@@ -540,8 +540,8 @@ export async function prepareWorkspace(
  *
  * It MUST be called straight from a click handler: the `window.open` below
  * runs before any await for that reason, and everything asynchronous happens
- * after it. `noopener` is the ADR's requirement — a hostile or compromised
- * remote must not be able to navigate the opener into a phishing page — which
+ * after it. `noopener` is the ADR's requirement, a hostile or compromised
+ * remote must not be able to navigate the opener into a phishing page, which
  * is why this returns no handle and why the popup closes itself from the
  * callback page.
  *
