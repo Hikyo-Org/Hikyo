@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/mcpserver"
+	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
 func TestRunProvesPublicProfileWithoutPersistingCredentials(t *testing.T) {
@@ -21,7 +24,7 @@ func TestRunProvesPublicProfileWithoutPersistingCredentials(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		method := r.Header.Get("Mcp-Method")
-		var result any
+		var result map[string]any
 		switch method {
 		case "server/discover":
 			result = map[string]any{
@@ -49,7 +52,7 @@ func TestRunProvesPublicProfileWithoutPersistingCredentials(t *testing.T) {
 			http.Error(w, "unknown method", http.StatusNotFound)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": 1, "result": result})
+		_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": 1, "result": modernResult(result, method != "tools/call")})
 	}))
 	t.Cleanup(server.Close)
 	t.Setenv("TEST_MCP_LIVE", "live-runtime-token")
@@ -98,16 +101,16 @@ func TestRunRefusesRedirectBeforeBearerCanReachDowngradedTarget(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if r.Header.Get("Mcp-Method") == "server/discover" {
-			_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": 1, "result": map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": 1, "result": modernResult(map[string]any{
 				"supportedVersions": []string{mcpserver.ProtocolVersion}, "capabilities": map[string]any{"tools": map[string]any{}},
-			}})
+			}, true)})
 			return
 		}
 		tools := make([]map[string]string, 0, len(mcpserver.ProductionToolNames()))
 		for _, name := range mcpserver.ProductionToolNames() {
 			tools = append(tools, map[string]string{"name": name})
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": 1, "result": map[string]any{"tools": tools}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": 1, "result": modernResult(map[string]any{"tools": tools}, true)})
 	}))
 	t.Cleanup(source.Close)
 	t.Setenv("TEST_MCP_LIVE", "live-runtime-token")
@@ -141,14 +144,14 @@ func TestDecodeRPCResponseRejectsNonCanonicalEnvelopes(t *testing.T) {
 }
 
 func TestSuccessfulToolResultRequiresTypedExactShape(t *testing.T) {
-	valid, err := json.Marshal(successfulDefinitionsResult())
+	valid, err := json.Marshal(modernResult(successfulDefinitionsResult(), false))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !successfulToolResult(valid, "org_test", "prj_test") {
 		t.Fatal("valid definitions result was rejected")
 	}
-	if !successfulToolResult(json.RawMessage(populatedDefinitionsResult()), "org_test", "prj_test") {
+	if !successfulToolResult(modernJSON(t, populatedDefinitionsResult(), false), "org_test", "prj_test") {
 		t.Fatal("valid populated definitions result was rejected")
 	}
 	for _, result := range []string{
@@ -162,7 +165,7 @@ func TestSuccessfulToolResultRequiresTypedExactShape(t *testing.T) {
 		`{"content":[{"type":"text","text":"Hikyo returned structured data."}],"structuredContent":{"org_id":"org_test","project_id":"prj_test","schema_revision":1,"definitions":[{"name":"DATABASE_URL","description":"Database endpoint","classification":"secret","deprecated":false,"value":"tenant-secret","declaration":{"rule":{"type":"string"}},"presence":{"required_in":{"mode":"none"},"forbidden_in":{"mode":"none"}}}]}}`,
 		`{"content":[{"type":"text","text":"Hikyo returned structured data."}],"structuredContent":{"org_id":"org_test","project_id":"prj_test","schema_revision":1,"definitions":[{"name":"DATABASE_URL","description":"Database endpoint","classification":"secret","deprecated":false,"declaration":{"rule":{"type":"string","tenant":"fact"}},"presence":{"required_in":{"mode":"none"},"forbidden_in":{"mode":"none"}}}]}}`,
 	} {
-		if successfulToolResult(json.RawMessage(result), "org_test", "prj_test") {
+		if successfulToolResult(modernJSON(t, result, false), "org_test", "prj_test") {
 			t.Fatalf("accepted malformed tool result %s", result)
 		}
 	}
@@ -180,7 +183,7 @@ func TestValidateDiscoveryPinsProtocolAndCapabilities(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if validateDiscovery(json.RawMessage(test.result)) == nil {
+			if validateDiscovery(modernJSON(t, test.result, true)) == nil {
 				t.Fatal("unapproved discovery profile accepted")
 			}
 		})
@@ -188,7 +191,7 @@ func TestValidateDiscoveryPinsProtocolAndCapabilities(t *testing.T) {
 }
 
 func TestValidateCatalogRequiresExactProductionSet(t *testing.T) {
-	if validateCatalog(json.RawMessage(`{"tools":[{"name":"hikyo_list_definitions"}]}`)) == nil {
+	if validateCatalog(modernJSON(t, `{"tools":[{"name":"hikyo_list_definitions"}]}`, true)) == nil {
 		t.Fatal("partial catalog accepted")
 	}
 	all := mcpserver.ProductionToolNames()
@@ -201,14 +204,14 @@ func TestValidateCatalogRequiresExactProductionSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if validateCatalog(result) == nil {
+	if validateCatalog(modernJSON(t, string(result), true)) == nil {
 		t.Fatal("widened catalog accepted")
 	}
 	result, err = json.Marshal(map[string]any{"tools": tools[:len(tools)-1], "tenant": "fact"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if validateCatalog(result) == nil {
+	if validateCatalog(modernJSON(t, string(result), true)) == nil {
 		t.Fatal("catalog with an extra result field accepted")
 	}
 }
@@ -222,5 +225,118 @@ func TestValidateOptionsRefusesPlainHTTP(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("plain HTTP public endpoint accepted")
+	}
+}
+
+func modernResult(fields map[string]any, cacheable bool) map[string]any {
+	fields["resultType"] = "complete"
+	fields["_meta"] = map[string]any{"io.modelcontextprotocol/serverInfo": map[string]string{"name": "hikyo", "title": "Hikyo", "description": "Read-only Hikyo configuration tools.", "version": "test"}}
+	if cacheable {
+		fields["ttlMs"] = 0
+		fields["cacheScope"] = "public"
+	}
+	return fields
+}
+func modernJSON(t *testing.T, raw string, cacheable bool) json.RawMessage {
+	t.Helper()
+	var fields map[string]any
+	if err := json.Unmarshal([]byte(raw), &fields); err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.Marshal(modernResult(fields, cacheable))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// Use the actual handler and pinned SDK serialization, not a handwritten
+// discovery/catalog envelope that can silently drift from production.
+func TestPublicProfileAcceptsActualProductionHandler(t *testing.T) {
+	registry := mcpserver.NewRegistry()
+	services := mcpserver.ProductionServices{Admission: &service.MCPAdmission{}, Definitions: &service.Keys{}, Environments: &service.Environments{}, Configuration: &service.Values{}, Pending: &service.Revisions{}, Revisions: &service.Revisions{}}
+	if err := mcpserver.RegisterProductionTools(registry, services); err != nil {
+		t.Fatal(err)
+	}
+	// Static discovery does not open a cursor or access the nil datastore.
+	sealer := unexpectedCursorUse{t: t}
+	server := httptest.NewUnstartedServer(nil)
+	handler, err := mcpserver.New(mcpserver.Options{Registry: registry, ExternalOrigin: "https://" + server.Listener.Addr().String(), Version: "test", CursorSealer: sealer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.Config.Handler = handler
+	server.StartTLS()
+	t.Cleanup(server.Close)
+	for _, method := range []string{"server/discover", "tools/list"} {
+		response, _, err := invoke(server.Client(), server.URL+"/mcp", method, "", nil, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if method == "server/discover" {
+			err = validateDiscovery(response.Result)
+		} else {
+			err = validateCatalog(response.Result)
+		}
+		if err != nil {
+			t.Fatalf("actual %s response rejected: %v", method, err)
+		}
+	}
+}
+
+type unexpectedCursorUse struct{ t *testing.T }
+
+func (c unexpectedCursorUse) Seal(context.Context, []byte) (string, error) {
+	c.t.Error("static discovery used cursor sealer")
+	return "", errors.New("unexpected cursor use")
+}
+func (c unexpectedCursorUse) Open(context.Context, string) ([]byte, error) {
+	c.t.Error("static discovery used cursor sealer")
+	return nil, errors.New("unexpected cursor use")
+}
+
+func TestModernPublicEnvelopeRejectsExtraFacts(t *testing.T) {
+	base := modernJSON(t, `{"supportedVersions":["2026-07-28"],"capabilities":{"tools":{}}}`, true)
+	for _, mutate := range []func(map[string]json.RawMessage){
+		func(f map[string]json.RawMessage) { f["_meta"] = json.RawMessage(`{"tenant":"fact"}`) },
+		func(f map[string]json.RawMessage) {
+			f["_meta"] = json.RawMessage(`{"io.modelcontextprotocol/serverInfo":{"name":"hikyo","title":"Hikyo","description":"Read-only Hikyo configuration tools.","version":"test","tenant":"fact"}}`)
+		},
+		func(f map[string]json.RawMessage) { f["resultType"] = json.RawMessage(`"incomplete"`) },
+		func(f map[string]json.RawMessage) { f["ttlMs"] = json.RawMessage(`-1`) },
+		func(f map[string]json.RawMessage) { f["cacheScope"] = json.RawMessage(`"private"`) },
+	} {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(base, &fields); err != nil {
+			t.Fatal(err)
+		}
+		mutate(fields)
+		body, err := json.Marshal(fields)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if validateDiscovery(body) == nil {
+			t.Fatal("accepted unapproved transport metadata")
+		}
+	}
+}
+
+func TestDuplicateMembersCannotHideTenantFacts(t *testing.T) {
+	// Raw wire fixtures are essential: parsing and reserializing a map would
+	// silently erase the very duplicate this regression needs to reject.
+	for _, raw := range []string{
+		`{"_meta":{"tenant":"fact"},"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"hikyo","title":"Hikyo","description":"Read-only Hikyo configuration tools.","version":"test"}},"resultType":"complete","ttlMs":0,"cacheScope":"public","supportedVersions":["2026-07-28"],"capabilities":{"tools":{}}}`,
+		`{"_meta":{"io.modelcontextprotocol/serverInfo":{"tenant":"fact"},"io.modelcontextprotocol/serverInfo":{"name":"hikyo","title":"Hikyo","description":"Read-only Hikyo configuration tools.","version":"test"}},"resultType":"complete","ttlMs":0,"cacheScope":"public","supportedVersions":["2026-07-28"],"capabilities":{"tools":{}}}`,
+		`{"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"hikyo","title":"Hikyo","description":"tenant fact","description":"Read-only Hikyo configuration tools.","version":"test"}},"resultType":"complete","ttlMs":0,"cacheScope":"public","supportedVersions":["2026-07-28"],"capabilities":{"tools":{}}}`,
+	} {
+		if validateDiscovery(json.RawMessage(raw)) == nil {
+			t.Fatal("discovery accepted duplicate members hiding tenant facts")
+		}
+		if _, err := decodeRPCResponse([]byte(`{"jsonrpc":"2.0","id":1,"result":` + raw + `}`)); err == nil {
+			t.Fatal("RPC decoder accepted nested duplicate members")
+		}
+	}
+	if _, err := decodeRPCResponse([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tenant":"fact"},"result":{}}`)); err == nil {
+		t.Fatal("RPC decoder accepted duplicate result members")
 	}
 }

@@ -122,7 +122,8 @@ store or an owner-only runtime file, never in Helm values, Compose YAML,
 
 ## Client profiles
 
-The interoperability gate pins these profiles:
+The interoperability gate pins these profiles. Configuration examples below
+describe credential channels; a listed profile is not a passing client claim.
 
 | Client | Pinned profile | Credential channel |
 | --- | --- | --- |
@@ -131,6 +132,27 @@ The interoperability gate pins these profiles:
 | Codex CLI | `0.153.2` | `bearer_token_env_var` |
 | Claude Code | `2.1.261` | `.mcp.json` environment expansion in `headers` |
 | OpenAI Responses API | remote MCP tool | request-time `authorization`, restricted `allowed_tools` |
+
+The 5 September 2026 rehearsal used the actual server image at source
+`9827af64962a36e2e31906b48906fd59c7a36c1c`, two PostgreSQL-backed replicas, and
+verified local HTTPS. These observations are scoped to that image and endpoint:
+
+| Client | Observed production result |
+| --- | --- |
+| Official Go SDK `v1.7.0` | All five production tools passed with a scoped synthetic identity. |
+| Inspector `2.5.0`, Modern | Authenticated, nonempty `hikyo_list_definitions` passed. |
+| Codex CLI `0.153.2` | Unverified: isolated direct tool invocation failed in the client transport before reaching the local proxy. No protocol compatibility verdict. |
+| Claude Code `2.1.261` | Its health check reached HTTPS but sent legacy `initialize` without the required mirrored protocol/method headers; the server refused it. This tested handshake is incompatible with the required modern profile. No production tool call passed. |
+| OpenAI Responses API | Unverified: no authorized API credential or provider call. |
+
+The same local deployment passed cross-replica cursor continuation, wrong-scope
+refusal, and revocation on both replicas. Publicly trusted remote HTTPS remains
+unverified because the disposable ingress failed its network preflight. No
+model turns or paid provider requests were used. See the
+[redacted rehearsal evidence](https://github.com/Hikyo-Org/hikyo/blob/main/docs/reports/1.0/mcp-production-proof.html)
+for image identity, limitations, and the excluded invalid endpoint attempt.
+Issue #651 remains open for the missing remote/client evidence. Do not enable a
+legacy protocol or weaken TLS/authentication to make these examples connect.
 
 Set the credential only in the launching process:
 

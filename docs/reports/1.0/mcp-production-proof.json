@@ -1,0 +1,145 @@
+{
+  "issue": 651,
+  "recorded_at_utc": "2026-09-05T02:12:22.899128+00:00",
+  "source_commit": "9827af64962a36e2e31906b48906fd59c7a36c1c",
+  "image_id": "sha256:9a439da272423f4012a5e23f2cd52f8251343392cb7d0f27e8091870429085e1",
+  "image_identity_kind": "local Docker image ID; not a published OCI RepoDigest or final release candidate",
+  "binary_sha256": "a9f3928ce4f004ae96d36e8d1811cd3544fd62ac227970db45d118291063a1ee",
+  "protocol": "2026-07-28",
+  "deployment": {
+    "actual_server_processes": 2,
+    "datastore": "dedicated PostgreSQL 18 container",
+    "tls": "verified local private CA on proxy and each upstream",
+    "proxy": "exact POST /mcp only, round-robin, buffered responses; all other routes refuse",
+    "ha_enabled": true,
+    "session_affinity": false
+  },
+  "local_production_proof": {
+    "protocol": "2026-07-28",
+    "tls_verified": true,
+    "production_tools": [
+      "hikyo_inspect_configuration",
+      "hikyo_list_definitions",
+      "hikyo_list_environments",
+      "hikyo_list_pending_changes",
+      "hikyo_list_revisions"
+    ],
+    "all_five_calls_passed": true,
+    "configuration_nonvacuous": true,
+    "revision_nonvacuous": true,
+    "pending_result": "authenticated empty result; workload owns no pending draft",
+    "secret_canary_absent": true,
+    "cross_replica_cursor_passed": true,
+    "wrong_scope_and_ungranted_and_invalid_refused": true,
+    "rotating_token_proved_live": true,
+    "at": 1788574297.5708039
+  },
+  "revocation": {
+    "existing_public_checker": "passed against local verified HTTPS, not public deployment",
+    "rotating_previously_live": true,
+    "revocation_service_committed_at": 1788574304.399935,
+    "first_post_commit_per_replica_denied": true,
+    "replacement_works": true,
+    "inflight_claims_remaining": 0,
+    "observations": [
+      {
+        "replica": "0",
+        "status": 200,
+        "rpc_error": null,
+        "tool_error": true,
+        "after_commit": true
+      },
+      {
+        "replica": "1",
+        "status": 200,
+        "rpc_error": null,
+        "tool_error": true,
+        "after_commit": true
+      },
+      {
+        "replica": "0",
+        "status": 200,
+        "rpc_error": null,
+        "tool_error": false,
+        "after_commit": true
+      }
+    ],
+    "stdout": "MCP public smoke passed: discovery, catalog, authorized read, invalid token, and revoked token",
+    "passed": true
+  },
+  "clients": [
+    {
+      "name": "official Go SDK",
+      "version": "v1.7.0",
+      "status": "passed_local",
+      "tools_called": 5
+    },
+    {
+      "name": "MCP Inspector",
+      "version": "2.5.0",
+      "profile": "Modern",
+      "status": "passed_local",
+      "tools_called": [
+        "hikyo_list_definitions"
+      ],
+      "credential_channel": "environment injected into in-process CLI argv; absent from OS arguments and saved catalog"
+    },
+    {
+      "name": "Codex CLI",
+      "version": "0.153.2",
+      "status": "unverified",
+      "observed": "isolated app-server direct tool call failed in client HTTP transport before reaching proxy; localhost and IP SAN endpoint both tried",
+      "model_turns": 0,
+      "provider_calls": 0,
+      "configuration": "fresh CODEX_HOME and workdir; exactly one MCP server verified before ephemeral thread"
+    },
+    {
+      "name": "Claude Code",
+      "version": "2.1.261",
+      "status": "tested_handshake_incompatible",
+      "observed": "actual HTTPS initialize without protocol/method mirror headers refused HTTP400 JSON-RPC -32020; no authenticated production tool result",
+      "configuration": "fresh CLAUDE_CONFIG_DIR and workdir; token reference only; no inherited servers or model call"
+    },
+    {
+      "name": "OpenAI Responses API",
+      "status": "unverified",
+      "observed": "no authorized API key; no API call or subscription-token reuse"
+    }
+  ],
+  "public_https": {
+    "status": "unverified",
+    "allocation_attempts": 2,
+    "excluded_invalid_attempt": "first allocation timed out; scratch parser selected Cloudflare API URL from error log, then synthetic bearer discovery got HTTP405. Invalid endpoint, excluded from all passing evidence. Bearer immediately revoked and replaced through the application service. No real tenant/provider/user credentials were involved.",
+    "bounded_retry": "strict allocated-host banner parser excluded API endpoint; registered disposable ingress then exited on blocked region2 TCP/UDP7844 network precheck. No-credential /mcp probe returned530; no replacement bearer was sent.",
+    "public_data_or_admin_exposure": "only synthetic /mcp proxy was eligible; other routes refuse; public preflight never passed"
+  },
+  "unproved": [
+    "Publicly trusted remote HTTPS deployment",
+    "Successful Codex production tool invocation",
+    "Successful Claude Code production tool invocation",
+    "OpenAI Responses API invocation",
+    "Streaming cancellation and in-flight graceful drain through this buffering proxy",
+    "Final release-candidate image digest and exact-head CI evidence",
+    "Immediate live grant mutation across the two deployed processes"
+  ],
+  "checker_fix": {
+    "problem": "handwritten smoke fixture omitted actual modern SDK transport result fields; healthy production discovery was rejected",
+    "fix": "strictly validate approved serverInfo metadata, complete resultType, static ttlMs=0 and public cacheScope before exact payload validation",
+    "regression": "TestPublicProfileAcceptsActualProductionHandler fails with original checker source and passes with fix",
+    "normal_and_race_tests": "passed locally; not CI",
+    "review_finding": "R1 found duplicate JSON members could hide extra tenant facts during map decoding; reused definitions.RejectDuplicateMembers before full RPC and standalone profile decoding.",
+    "duplicate_regression": "Raw duplicate _meta, serverInfo, nested description and top-level result fixtures are refused; normal/race/vet and rebuilt actual two-process checker replay pass.",
+    "independent_review": "R2 CLEAN; reviewer independently ran all14 checker tests successfully"
+  },
+  "custody": "All fixture credentials/root/TLS keys stay in owner-only local runtime files. Owned containers and proxy retained temporarily for parent independent replay; cleanup pending.",
+  "release_gate": "partial evidence only; #651 remains open",
+  "validation": {
+    "checker_and_client_race": "passed; manual client compile only, no unit tests",
+    "fixture_guard": "passed",
+    "go_vet": "passed for checker, client and isolation packages",
+    "docs_verify": "passed Astro check/build, OSS, PWA and offline browser checks under Node26.7.0/pnpm11.24.0",
+    "git_diff_check": "passed",
+    "exact_head_ci": "not run by implementation agent"
+  },
+  "independent_parent_replay": "passed all five tools, cross-replica cursor, refusals and committed credential revocation on both replicas"
+}
