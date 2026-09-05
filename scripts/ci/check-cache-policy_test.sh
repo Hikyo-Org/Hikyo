@@ -46,6 +46,18 @@ for file in "$@"; do
 	fi
 	expected_runner=ubuntu-latest
 	case $(basename "$file") in
+		ops-floor.yml)
+			# The secret-free operations lane measures both native CPU floors.
+			# Keep its matrix closed to these two GitHub-hosted architectures.
+			expected_runner='${{ matrix.runner }}'
+			runners=$(sed -n 's/^[[:space:]]*runner:[[:space:]]*//p' "$file" | sort)
+			[ "$runners" = "$(printf '%s\n' ubuntu-24.04 ubuntu-24.04-arm)" ] ||
+				fail 'operations floor runner matrix must contain exactly the native GitHub pair'
+			require_line "$file" '          cache: false'
+			if grep -E 'actions/cache(@|/)' "$file" >/dev/null; then
+				fail 'operations floor workflow must not use shared caches'
+			fi
+			;;
 		floor-acceptance.yml | operator-floor.yml)
 			# Native arm64 acceptance is an explicit release obligation. These
 			# manual jobs never share the ordinary x86 build caches.
