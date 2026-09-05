@@ -15,7 +15,9 @@ func TestWorkspaceConsentOriginAndLiveness(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		ctx := t.Context()
 		ws := stepUpWorkspace(t, db)
-		now := time.Now().UTC()
+		// Exercise sub-microsecond clocks even on hosts whose clock resolution
+		// already matches the persisted timestamp precision.
+		now := time.Now().UTC().Truncate(time.Microsecond).Add(time.Nanosecond)
 		ws.Now = func() time.Time { return now }
 		approver := service.Bearer(seedSessionFactors(t, db, root, `["password","totp"]`))
 		origins := []string{"https://first.example:8443", "https://second.example", "https://xn--bcher-kva.example"}
@@ -43,7 +45,7 @@ func TestWorkspaceConsentOriginAndLiveness(t *testing.T) {
 					t.Fatalf("recipient=%q want stored%q", view.RequestingOrigin, origin)
 				}
 				if !view.ExpiresAt.Equal(started.ExpiresAt) {
-					t.Fatal("summary expiry differs from transaction")
+					t.Fatalf("summary expiry %s differs from transaction %s", view.ExpiresAt.Format(time.RFC3339Nano), started.ExpiresAt.Format(time.RFC3339Nano))
 				}
 				code, redirect, err := ws.ApproveHandoff(ctx, approver, started.State)
 				if err != nil {

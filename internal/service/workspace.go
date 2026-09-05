@@ -731,7 +731,8 @@ func (s *Workspace) StartHandoff(ctx context.Context, req HandoffRequest) (Hando
 		return HandoffStart{}, err
 	}
 	now := s.now()
-	expires := now.Add(remotefetch.HandoffExpiry)
+	// Return the same deadline that both stores persist and consent displays.
+	expires := store.CanonTime(now.Add(remotefetch.HandoffExpiry))
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		allowed, err := az.WorkspaceOriginAllowed(ctx, canonical)
 		if err != nil {
