@@ -1,0 +1,121 @@
+---
+title: Roadmap to 1.0
+description: Merged capabilities, remaining release gates, and the first post-1.0 work.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/roadmap.mdx
+---
+
+Hikyo's first stable release targets a bounded, self-hosted configuration and
+secrets service with controlled human onboarding, workload delivery, and
+recoverable operations. New product surfaces follow after that boundary is
+verified.
+
+<Callout type="warn" title="Development snapshot, 5 September 2026">
+  This page describes main at `0d591366874ad525b60ca12938dfd0ef2efe12d4`
+  and the review queue at this assessment. Merged code is not a released 1.0
+  build. The [release gate](https://github.com/Hikyo-Org/Hikyo/issues/79)
+  and [implementation status](/implementation-status/) remain authoritative
+  for acceptance and current capability state. This roadmap sets no release date.
+</Callout>
+
+## Already merged
+
+The [implementation status](/implementation-status/) links the owning evidence
+for the core API, CLI and embedded browser, validation, revisions, audit,
+backup/restore, SAML/SCIM, service accounts and workload federation, Compose,
+Kubernetes, and deployment adapters. These capabilities remain subject to the
+final candidate's acceptance checks.
+
+Several capabilities originally planned after 1.0 have already merged:
+[recovery hardening](https://github.com/Hikyo-Org/Hikyo/pull/590),
+[multi-node HA](https://github.com/Hikyo-Org/Hikyo/pull/570),
+[PostgreSQL dynamic credentials](https://github.com/Hikyo-Org/Hikyo/pull/593),
+[change approvals](https://github.com/Hikyo-Org/Hikyo/pull/594), and
+[multi-target adapters](https://github.com/Hikyo-Org/Hikyo/pull/592).
+They no longer belong behind a future-version clock.
+
+Recent merged repairs include
+[production verification gaps](https://github.com/Hikyo-Org/Hikyo/pull/641),
+[stale-leader approval fencing](https://github.com/Hikyo-Org/Hikyo/pull/642), and
+[the docs dependency security fix](https://github.com/Hikyo-Org/Hikyo/pull/643).
+Machine MCP's transport, five bounded read tools and deployment checker are
+also merged through [#637](https://github.com/Hikyo-Org/Hikyo/pull/637),
+[#639](https://github.com/Hikyo-Org/Hikyo/pull/639), and the
+[conformance CI repair](https://github.com/Hikyo-Org/Hikyo/pull/640).
+That implementation does not establish every advertised client's live result.
+
+## Required before the 1.0 gate closes
+
+The release is not reduced to a signing ceremony or tag push. Supported
+workflows, compatibility safety and candidate evidence still need closure.
+The following changes were **open pull requests at this snapshot**; their links
+show the current review and merge state.
+
+| Work | Why it belongs in 1.0 | Delivery under review |
+| --- | --- | --- |
+| Browser bundle export/check/plan/apply and this instance's directory | Browser-only operators need the actual immutable bundle and directory workflows; catalogue editing is not equivalent. | [#644](https://github.com/Hikyo-Org/Hikyo/pull/644), issues [#575](https://github.com/Hikyo-Org/Hikyo/issues/575) and [#576](https://github.com/Hikyo-Org/Hikyo/issues/576) |
+| Safe upgrade boundary | Refuse legacy remote apply before effects, preserve discovery/manual operation, and record the compatibility governance. A refusal is not an implemented signed migration graph. | [#645](https://github.com/Hikyo-Org/Hikyo/pull/645), [#638](https://github.com/Hikyo-Org/Hikyo/issues/638) |
+| Pre-freeze identity and response compatibility | Retire obsolete JIT provisioning, settle org rename authority, and preserve unknown extensible response values before additive-only freeze. | [#646](https://github.com/Hikyo-Org/Hikyo/pull/646), [#650](https://github.com/Hikyo-Org/Hikyo/pull/650), [#617](https://github.com/Hikyo-Org/Hikyo/issues/617) |
+| Recovery and operator floor evidence | Exercise isolated native arm64 limits, separate backup/root custody, real recovery, and the operator's shipped memory limit. Harness code and local runs do not certify a final candidate. | [#647](https://github.com/Hikyo-Org/Hikyo/pull/647), [#648](https://github.com/Hikyo-Org/Hikyo/pull/648) |
+| Criterion-to-evidence inventory | Every owning acceptance criterion needs executable evidence and an honest pending or passing result. An inventory alone is not acceptance. | [#649](https://github.com/Hikyo-Org/Hikyo/pull/649) |
+| Provider lifecycle and connection cleanup | Real Forgejo lifecycle checks must exercise both engines, and disposable provider transports must release connections. | [#652](https://github.com/Hikyo-Org/Hikyo/pull/652) |
+| Client revision and generated SDK compatibility | Enforce endpoint revision before dispatch, exercise the archived SDK against both engines, and return PostgreSQL timestamps in UTC. | [#653](https://github.com/Hikyo-Org/Hikyo/pull/653) |
+
+After reviewed changes merge, [#79](https://github.com/Hikyo-Org/Hikyo/issues/79)
+and umbrella [#41](https://github.com/Hikyo-Org/Hikyo/issues/41) still require
+exact-candidate, non-skipped SQLite/PostgreSQL checks, desktop/mobile browser
+and locked-prototype validation, recovery/operator resource evidence, live
+provider evidence, API/CLI freeze and bidirectional skew checks, self-hoster
+and disclosure-channel checks, and the real release-signing ceremony.
+Published trust material and a stable tag cannot stand in for those results.
+Signed compatibility metadata and release binding, the applied-release ledger,
+exact legacy genesis, and mandatory migration gates on both engines remain
+required implementation before 1.0. PR #645 records governance and disables
+unsafe apply; it does not complete those foundations.
+
+## MCP: deployment proof and human delegation are separate
+
+[#651](https://github.com/Hikyo-Org/Hikyo/issues/651) tracks the exact-image
+public HTTPS, authenticated named-client and deployed multi-process evidence
+required for the advertised machine-MCP support matrix. Conformance fixtures,
+configuration examples and a raw Go request do not prove execution by Codex,
+Claude Code or OpenAI Responses. Missing credentials or an unsupported wire
+profile remain visible evidence limits.
+
+[#631](https://github.com/Hikyo-Org/Hikyo/issues/631) is a **post-1.0 decision**
+about a concrete unmet human-delegation workflow and whether it needs embedded
+OAuth. The current machine boundary uses managed service-account bearers and
+five read-only tools, with configuration plaintext but no secret material or
+writes. Enterprise self-hosting alone does not require a new authorization
+server. Evidence collection can proceed now; human identity/consent integration
+must respect its owning dependencies. See [MCP operations](/docs/mcp/).
+
+## First after 1.0
+
+Social sign-in and open registration are post-1.0 by the
+[owner's recorded scope decision](https://github.com/Hikyo-Org/Hikyo/issues/527#issuecomment-5531906184).
+The [#615 umbrella](https://github.com/Hikyo-Org/Hikyo/issues/615) sequences
+[#605](https://github.com/Hikyo-Org/Hikyo/issues/605) data foundations,
+[#606](https://github.com/Hikyo-Org/Hikyo/issues/606) registration policy,
+[#607](https://github.com/Hikyo-Org/Hikyo/issues/607) federated sign-up,
+[#608](https://github.com/Hikyo-Org/Hikyo/issues/608) local email sign-up,
+[#609](https://github.com/Hikyo-Org/Hikyo/issues/609) OAuth2 identity providers,
+[#612](https://github.com/Hikyo-Org/Hikyo/issues/612) CLI login handoff,
+[#610](https://github.com/Hikyo-Org/Hikyo/issues/610) invitation claim,
+[#611](https://github.com/Hikyo-Org/Hikyo/issues/611) account establishment and
+unlinking, then [#613](https://github.com/Hikyo-Org/Hikyo/issues/613) acceptance.
+The [locked future design](https://github.com/Hikyo-Org/Hikyo/issues/589)
+is not a current sign-up feature. Pre-freeze work in #617 does not implement
+that onboarding system. OAuth2 social login and MCP human delegation remain
+distinct product decisions.
+
+Other additive lanes remain after the release, without a promised minor version:
+
+| Lane | Tickets | Boundary |
+| --- | --- | --- |
+| Rotation, temporary access and repository scanning | [#148](https://github.com/Hikyo-Org/Hikyo/issues/148), [#152](https://github.com/Hikyo-Org/Hikyo/issues/152), [#153](https://github.com/Hikyo-Org/Hikyo/issues/153) | New credential/grant lifecycles and repository scanning; current manual rotation and entry-time scanning remain available. Repository scanning requires its declared ADR amendment. |
+| PKI, SSH certificates and Transit/KMS | [#154](https://github.com/Hikyo-Org/Hikyo/issues/154), [#155](https://github.com/Hikyo-Org/Hikyo/issues/155), [#156](https://github.com/Hikyo-Org/Hikyo/issues/156) | New signing or cryptographic service boundaries. |
+| Additional synchronization destinations | [#158](https://github.com/Hikyo-Org/Hikyo/issues/158), [#159](https://github.com/Hikyo-Org/Hikyo/issues/159), [#161](https://github.com/Hikyo-Org/Hikyo/issues/161), [#162](https://github.com/Hikyo-Org/Hikyo/issues/162), [#163](https://github.com/Hikyo-Org/Hikyo/issues/163), [#164](https://github.com/Hikyo-Org/Hikyo/issues/164) | AWS, GitLab, Cloudflare, Vault/OpenBao, sealed webhooks and generic file delivery add destinations to the existing workload delivery boundary. |
+
+The [execution tracker](https://github.com/Hikyo-Org/Hikyo/issues/527) coordinates
+these lanes. Refresh this dated snapshot when scope or merge state changes.
+Issue labels, milestones and a closed dependency graph do not certify a release.

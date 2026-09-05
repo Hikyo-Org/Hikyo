@@ -433,7 +433,7 @@ const faq = [
                 <tr>
                   <th scope="row">Dynamic secrets</th>
                   <td class="hikyo-column">
-                    <a class="comparison-status planned" href={`${repository}/issues/147`} aria-label="Planned for version 1.1, issue 147"><span>◷ <small>v1.1</small></span></a>
+                    <a class="comparison-status yes" href="/docs/dynamic-secrets/" aria-label="Included on main: PostgreSQL dynamic credentials">✓</a>
                   </td>
                   <td><span class="comparison-status yes" aria-label="Included">✓</span></td>
                   <td><span class="comparison-status tier" aria-label="Advanced paid tier">Adv</span></td>
@@ -442,7 +442,7 @@ const faq = [
                 <tr>
                   <th scope="row">Automated secret rotation</th>
                   <td class="hikyo-column">
-                    <a class="comparison-status planned" href={`${repository}/issues/148`} aria-label="Planned for version 1.1, issue 148"><span>◷ <small>v1.1</small></span></a>
+                    <a class="comparison-status planned" href={`${repository}/issues/148`} aria-label="Planned after 1.0, issue 148"><span>◷ <small>post-1.0</small></span></a>
                   </td>
                   <td><span class="comparison-status yes" aria-label="Included">✓</span></td>
                   <td><span class="comparison-status tier" aria-label="Paid Pro tier">Pro</span></td>
@@ -458,7 +458,7 @@ const faq = [
                 <tr>
                   <th scope="row">Native multi-node HA</th>
                   <td class="hikyo-column">
-                    <a class="comparison-status planned" href={`${repository}/issues/146`} aria-label="Planned for version 1.1, issue 146"><span>◷ <small>v1.1</small></span></a>
+                    <a class="comparison-status yes" href="/docs/high-availability/" aria-label="Included on main: multi-node high availability">✓</a>
                   </td>
                   <td><span class="comparison-status yes" aria-label="Included">✓</span></td>
                   <td><span class="comparison-status partial" aria-label="Deployment dependent">—</span></td>
@@ -478,7 +478,8 @@ const faq = [
           <div class="comparison-notes">
             <p><span class="yes">✓ included</span><span>— partial or indirect</span><span>× unavailable</span><span>Adv/Pro paid tier</span><span>EE enterprise tier</span></p>
             <p>
-              Clocks link to public roadmap tickets. Compared against public self-hosted documentation and plan
+              Hikyo entries describe main-branch capabilities; the <a href="/docs/roadmap/">1.0 roadmap</a> records remaining release gates.
+              Clocks mark post-1.0 work without a promised minor version. Other products were compared against public self-hosted documentation and plan
               availability on 25 August 2026: <a href="https://openbao.org/docs/use-cases/">OpenBao</a>,
               <a href="https://infisical.com/pricing">Infisical</a>, and <a href="https://phase.dev/pricing/">Phase</a>.
             </p>

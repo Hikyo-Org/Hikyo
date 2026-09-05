@@ -1,0 +1,20 @@
+[
+  {
+    "viewport": "desktop",
+    "roadmap_title": true,
+    "mcp_issue_links": true,
+    "roadmap_page_overflow": false,
+    "implemented_labels": true,
+    "rotation_unversioned_post_one_zero": true,
+    "page_errors": []
+  },
+  {
+    "viewport": "mobile",
+    "roadmap_title": true,
+    "mcp_issue_links": true,
+    "roadmap_page_overflow": false,
+    "implemented_labels": true,
+    "rotation_unversioned_post_one_zero": true,
+    "page_errors": []
+  }
+]

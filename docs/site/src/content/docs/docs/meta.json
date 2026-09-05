@@ -2,6 +2,7 @@
   "title": "Documentation",
   "pages": [
     "index",
+    "roadmap",
     "---Get started---",
     "getting-started",
     "first-project",
