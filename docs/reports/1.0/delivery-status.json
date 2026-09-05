@@ -1,0 +1,147 @@
+{
+  "checkedAt": "2026-09-05T02:01:15.429682+00:00",
+  "pullRequests": [
+    {
+      "headRefOid": "944d23e5ffb3e7cae3accb8d9175c96d8681458c",
+      "mergeCommit": {
+        "oid": "54c58bbdbf7abb90228482718a8bf4f0844f6ea4"
+      },
+      "mergedAt": "2026-09-05T00:41:51Z",
+      "number": 641,
+      "state": "MERGED",
+      "title": "test(ci): close production verification gaps #619",
+      "url": "https://github.com/Hikyo-Org/Hikyo/pull/641"
+    },
+    {
+      "headRefOid": "4198b115434fed9c538f4f04288588a6a4eb7e1a",
+      "mergeCommit": {
+        "oid": "90867bcd2548cd3348456a89e33ce328b74b866c"
+      },
+      "mergedAt": "2026-09-05T00:56:12Z",
+      "number": 642,
+      "state": "MERGED",
+      "title": "fix(ha): fence approval sweeps against stale leadership #616",
+      "url": "https://github.com/Hikyo-Org/Hikyo/pull/642"
+    },
+    {
+      "headRefOid": "7aec702b51372bc3a6916e16f0b4338fbced5ae5",
+      "mergeCommit": {
+        "oid": "0d591366874ad525b60ca12938dfd0ef2efe12d4"
+      },
+      "mergedAt": "2026-09-05T00:58:20Z",
+      "number": 643,
+      "state": "MERGED",
+      "title": "fix(docs): patch vulnerable fast-uri build dependency",
+      "url": "https://github.com/Hikyo-Org/Hikyo/pull/643"
+    },
+    {
+      "headRefOid": "06528e67d5b894d8a5b87cf746e03fc80ba33978",
+      "mergeCommit": null,
+      "mergedAt": null,
+      "number": 644,
+      "state": "OPEN",
+      "title": "feat(web): complete definitions and directory browser parity #575 #576",
+      "url": "https://github.com/Hikyo-Org/Hikyo/pull/644"
+    },
+    {
+      "headRefOid": "4273c1039330d7fb160ed8b6dcfffda535981516",
+      "mergeCommit": null,
+      "mergedAt": null,
+      "number": 645,
+      "state": "OPEN",
+      "title": "fix(upgrades): retire unsafe apply and lock compatibility governance #638",
+      "url": "https://github.com/Hikyo-Org/Hikyo/pull/645"
+    },
+    {
+      "headRefOid": "b7e8f3219ad232f929a2f7c8e650c0ff54a1affa",
+      "mergeCommit": {
+        "oid": "9827af64962a36e2e31906b48906fd59c7a36c1c"
+      },
+      "mergedAt": "2026-09-05T01:21:50Z",
+      "number": 646,
+      "state": "MERGED",
+      "title": "fix(auth): close pre-freeze identity and authorization changes #617",
+      "url": "https://github.com/Hikyo-Org/Hikyo/pull/646"
+    },
+    {
+      "headRefOid": "eaaf01563b19c620e6ad84a080f093e0aca1c44a",
+      "mergeCommit": {
+        "oid": "c88d43a95e7f646097cdd344894b565b406b8348"
+      },
+      "mergedAt": "2026-09-05T01:57:10Z",
+      "number": 647,
+      "state": "MERGED",
+      "title": "test(release): add isolated arm64 recovery acceptance #79",
+      "url": "https://github.com/Hikyo-Org/Hikyo/pull/647"
+    },
+    {
+      "headRefOid": "1c7230cf3ba8bf27d957b8b9b65700583c2063a5",
+      "mergeCommit": null,
+      "mergedAt": null,
+      "number": 648,
+      "state": "OPEN",
+      "title": "fix(operator): close leaked connections and validate the resource floor (#79)",
+      "url": "https://github.com/Hikyo-Org/Hikyo/pull/648"
+    },
+    {
+      "headRefOid": "3af0c4d687f61b7fa935c083cca98fc7989f7454",
+      "mergeCommit": {
+        "oid": "85e5c13353f6b3029072d93d1499a3fc38984409"
+      },
+      "mergedAt": "2026-09-05T01:40:52Z",
+      "number": 649,
+      "state": "MERGED",
+      "title": "docs(release): map every 1.0 acceptance criterion to evidence (#79)",
+      "url": "https://github.com/Hikyo-Org/Hikyo/pull/649"
+    },
+    {
+      "headRefOid": "1d4735f5f5378b8a5aa5a1249a34ddb5d06471e3",
+      "mergeCommit": {
+        "oid": "c9ee2605e64112a7d6bdf1a3b83005944caa848c"
+      },
+      "mergedAt": "2026-09-05T01:45:07Z",
+      "number": 650,
+      "state": "MERGED",
+      "title": "fix(api): preserve future response discriminator values (#79)",
+      "url": "https://github.com/Hikyo-Org/Hikyo/pull/650"
+    },
+    {
+      "headRefOid": "81504e128306b1637ae8ba95909e3ac39a09f3c5",
+      "mergeCommit": null,
+      "mergedAt": null,
+      "number": 652,
+      "state": "OPEN",
+      "title": "fix(adapters): release private connections and prove real Forgejo delivery (#79)",
+      "url": "https://github.com/Hikyo-Org/Hikyo/pull/652"
+    },
+    {
+      "headRefOid": "57571932b11544ebf4c9222ffa026d00b78898b9",
+      "mergeCommit": null,
+      "mergedAt": null,
+      "number": 653,
+      "state": "OPEN",
+      "title": "fix(api): enforce client revision and frozen SDK compatibility (#79)",
+      "url": "https://github.com/Hikyo-Org/Hikyo/pull/653"
+    },
+    {
+      "headRefOid": "6162c086bed05785b2d01bb70e5ba0036d9e026b",
+      "mergeCommit": {
+        "oid": "693f68fa3329907b83af1349a6f30ece050ad2cd"
+      },
+      "mergedAt": "2026-09-05T02:00:21Z",
+      "number": 654,
+      "state": "MERGED",
+      "title": "docs: align the 1.0 roadmap with required acceptance #527",
+      "url": "https://github.com/Hikyo-Org/Hikyo/pull/654"
+    },
+    {
+      "headRefOid": "b3fb04eb87d4a3598e60c071563e47a6ff126264",
+      "mergeCommit": null,
+      "mergedAt": null,
+      "number": 655,
+      "state": "OPEN",
+      "title": "fix(backup): preserve failed drills and durably publish archives and restores",
+      "url": "https://github.com/Hikyo-Org/Hikyo/pull/655"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "passed_cases": 302,
+  "packages": [
+    {
+      "package": "github.com/Hikyo-Org/hikyo/api",
+      "seconds": 1.3679999999999999
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/config",
+      "seconds": 1.141
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/app",
+      "seconds": 6.103
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store/migrate",
+      "seconds": 5.117
+    }
+  ],
+  "skipped": [],
+  "failed": [],
+  "exit_code": 0
+}

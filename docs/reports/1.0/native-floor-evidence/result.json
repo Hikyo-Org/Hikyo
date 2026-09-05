@@ -1,0 +1,18 @@
+{
+  "architecture": "arm64",
+  "cpu_max": "400000 100000",
+  "elapsed_ms": 2115,
+  "go_version": "go1.27.0",
+  "memory_events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+  "memory_max": "4294967296",
+  "memory_peak": "221356032",
+  "memory_swap_max": "0",
+  "operator_fit": "not measured",
+  "os": "linux",
+  "physical_pi_calibration": "not claimed",
+  "rto_target_ms": 1800000,
+  "schema_version": 1,
+  "scope": "K2/K3 and CLI backup/restore runbook",
+  "started_at": "2026-09-05T02:05:57.759161565Z",
+  "status": "pass"
+}
