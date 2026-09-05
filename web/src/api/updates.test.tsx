@@ -5,12 +5,16 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, expect, test, vi } from 'vitest';
 
 import { forgetWorkspace, rememberWorkspace } from './workspace.ts';
+import { renderForm, settleTask } from '../testkit/renderForm.tsx';
 import {
   type InstanceUpdateJob,
   jobReadErrorVisible,
   updateJobOutcome,
   useRemoteUpdateJob,
   useServerVersion,
+  useRemoteUpdateStatuses,
+  useRequestRemoteUpdate,
+  remoteApplyDisabledReason,
 } from './updates.ts';
 
 const origin = 'https://remote.example';
@@ -22,6 +26,44 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   document.body.replaceChildren();
+});
+
+test('older remote metadata remains visible but its legacy apply capability is refused without POST', async () => {
+  const workspace = {
+    origin, value: 'secret', session: 'ses_retired',
+    idleExpiresAt: '2099-01-01T00:00:00Z', absoluteExpiresAt: '2099-01-01T00:00:00Z',
+  };
+  rememberWorkspace(workspace);
+  const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify({
+    channel: 'stable', current_version: '1.0.0', latest_version: '1.1.0',
+    release_url: 'https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.1.0',
+    available: true, prerelease: false, apply_supported: true, apply_backend: 'flux',
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+  vi.stubGlobal('fetch', fetchMock);
+  function Probe() {
+    const status = useRemoteUpdateStatuses([workspace])[0]?.status;
+    const mutation = useRequestRemoteUpdate();
+    return <>
+      <p>{status?.latest_version} {status?.apply_supported ? 'apply-enabled' : status?.apply_error}</p>
+      <button type="button" onClick={() => mutation.mutate({ origin, version: '1.1.0' })}>Probe legacy invocation</button>
+      <p role="status">{mutation.error?.message}</p>
+    </>;
+  }
+  const rendered = await renderForm(<Probe />);
+  try {
+    await settleTask();
+    expect(rendered.container.textContent).toContain('1.1.0');
+    expect(rendered.container.textContent).toContain(remoteApplyDisabledReason);
+    expect(rendered.container.textContent).not.toContain('apply-enabled');
+    const button = rendered.container.querySelector('button');
+    if (!(button instanceof HTMLButtonElement)) throw new Error('probe button missing');
+    await act(async () => button.click());
+    await settleTask();
+    expect(rendered.container.querySelector('[role="status"]')?.textContent).toBe(remoteApplyDisabledReason);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  } finally {
+    await rendered.unmount();
+  }
 });
 
 function job(overrides: Partial<InstanceUpdateJob>): InstanceUpdateJob {

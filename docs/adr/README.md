@@ -56,6 +56,7 @@ for its ripple register.
 | scim-provisioning ADR | [scim-provisioning.md](./scim-provisioning.md) |
 | secret-scanning ADR | [secret-scanning.md](./secret-scanning.md) |
 | source-of-truth ADR | [source-of-truth.md](./source-of-truth.md) |
+| signed-upgrade-compatibility ADR | [signed-upgrade-compatibility.md](./signed-upgrade-compatibility.md) |
 | system-architecture ADR | [system-architecture.md](./system-architecture.md) |
 | tenant-isolation ADR | [tenant-isolation.md](./tenant-isolation.md) |
 | threat-model ADR | [threat-model.md](./threat-model.md) |

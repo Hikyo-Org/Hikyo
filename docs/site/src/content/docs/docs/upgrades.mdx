@@ -19,9 +19,10 @@ Before any stable release exists, the first line is
 `0.0.1-nightly.<date>.<run>.g<sha>`. Release discovery is paginated; a long
 nightly history cannot hide the latest published stable release.
 
-Server-side checks remain notification-only unless the instance operator
-configures the separately privileged local updater helper. Remote apply admits
-stable releases only; nightlies can never cross that boundary.
+Server-side and remote workspace checks are notification-only. Remote apply is
+disabled for every release channel because the legacy helper cannot prove safe
+rollback once a migration has started. Signed release discovery and verified
+manual downloads remain available.
 
 Release binaries also check their own CLI track before dispatching a command
 when stderr and a controlling terminal are available. Stable artifacts default to `stable`, nightly artifacts default to
@@ -54,92 +55,36 @@ without changing it; use that installation's package or service procedure.
 `hikyo update check` bypasses the 24-hour refresh interval and performs the same
 confirmation flow immediately.
 
-## Optional local updater helper
+## Remote apply is disabled
 
-The Hikyo server never receives Docker, Git, cluster, host-root, or service
-manager credentials. It can submit only a stable version and its fixed Hikyo
-release URL over a Unix socket to `hikyo updater`. The helper then runs the same
-bounded lifecycle for every supported backend:
+The legacy `hikyo updater` helper and its Compose, systemd, and Flux adapters are
+retired. They could automatically restore a database after schema writes had
+started; the Flux adapter also used ambient Git credentials. No replacement
+platform apply path or migration-generation gate is implemented by this change.
 
-`Plan → Backup → Verify → Apply → Health-check → Rollback`
+`HIKYO_UPDATER_SOCKET` now prevents server startup. Remove that setting to start
+the server with release notifications. `hikyo updater` refuses before reading
+configuration, touching its socket or journal, or starting commands. The shipped
+platform adapters refuse every phase, including rollback. The API reports
+`apply_supported: false` with a migration-safety reason; authenticated apply
+requests are refused and never submitted to a helper. The WebUI also refuses
+legacy apply advertised by an older remote instance.
 
-1. Copy one strict profile from `install/updater/` to
-   `/etc/hikyo/updater.json`; choose `flux`, `compose`, or `systemd`.
-2. Install the shipped backend adapter and common verification library at the
-   exact paths in the profile. Choose one of `hikyo-update-flux`,
-   `hikyo-update-compose`, or `hikyo-update-systemd`. They receive version,
-   release URL, and opaque job ID as separate arguments, never shell text.
-3. Make the profile owner-only writable, create the dedicated identity, and
-   install the example unit:
+Before installing this release, stop and disable every existing updater helper
+service and check for already running backend commands. Replacing a binary on
+disk cannot stop an old process or a previously spawned privileged child. Preserve
+`jobs.json` and deployment logs as historical evidence; do not replay queued jobs
+or infer a safe rollback from a legacy journal's phase. If an earlier attempt
+reached apply, investigate the datastore and use the operator-led recovery
+procedure below. Retirement does not mark existing jobs successful or restored.
 
-```bash
-sudo groupadd --system hikyo
-sudo useradd --system --gid hikyo --home-dir /var/lib/hikyo-updater \
-  --shell /usr/sbin/nologin hikyo-updater
-sudo install -d -o root -g hikyo -m 0750 /etc/hikyo
-sudo install -o root -g hikyo -m 0640 install/updater/compose.json.example /etc/hikyo/updater.json
-sudo install -o root -g hikyo -m 0640 install/updater/updater.env.example /etc/hikyo/updater.env
-sudo install -o root -g root -m 0755 install/updater/hikyo-update-common /usr/local/libexec/hikyo-update-common
-sudo install -o root -g root -m 0755 install/updater/hikyo-update-compose /usr/local/libexec/hikyo-update-compose
-sudo install -m 0644 install/updater/hikyo-updater.service /etc/systemd/system/hikyo-updater.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now hikyo-updater.service
-```
+Every connected workspace still checks release metadata directly. Administrators
+retain update notifications and links to release notes. Upgrades use the manual
+signed-bundle and maintenance procedure below. The viewing instance holds no
+fleet deployment credentials.
 
-For Flux or systemd, install the matching adapter instead of the Compose one.
-Install `scripts/release/verify-bundle.sh` plus its `scripts/lib/release.sh`
-dependency at the `HIKYO_VERIFY_BUNDLE_BIN` path, and copy the pinned release
-trust root and keys to `HIKYO_TRUST_ROOT`'s directory.
-
-If those identities already exist, verify their membership instead of
-recreating them. The ordinary server identity needs membership of the `hikyo`
-group only to open the mode-`0660` control socket. Add backend-specific writable
-paths to a unit override; do not relax `ProtectSystem` globally. Fill only the
-selected backend section in `/etc/hikyo/updater.env`; remove unused credentials.
-Set `HIKYO_DB` to the running instance's datastore and
-`HIKYO_BACKUP_RECIPIENTS` to its authorized age recipients so the backup phase
-can create an encrypted export. Treat a PostgreSQL DSN in this file as a secret.
-For Compose, `HIKYO_COMPOSE_ENV_FILE` must be a dedicated one-line image file
-consumed as `${HIKYO_IMAGE}` by the Compose definition; the adapter replaces it
-atomically and never writes unrelated application environment variables.
-
-`HIKYO_ROLLBACK_BIN` is mandatory because restoring an encrypted database is
-installation-specific and deliberately requires custody unavailable to the
-generic adapter. It is an absolute, root-owned executable receiving three
-separate arguments: the pre-update backup directory, version, and job ID. It
-must stop access to the target, restore the archive into the deployment's empty
-rollback target, and return only when that target is ready. The adapter restores
-the previous binary/image/Git revision around that database action and then
-requires the health check to pass.
-
-4. Add `HIKYO_UPDATER_SOCKET=/run/hikyo-updater/updater.sock` to the ordinary Hikyo
-   server service and restart it. Do not grant the server identity access to
-   the phase executables' deployment credentials.
-5. Sign in with `instance-config`. The WebUI reports the helper backend and
-   offers remote apply only for the newest stable signed release. Submitting an
-   update requires authentication from the last five minutes. Reconnecting
-   preserves the remote browser session's original authentication time; if it
-   is old, sign out and back in on the remote, then reconnect.
-
-The profile is an adapter contract, not deployment folklore. A Flux phase
-executable owns its narrowly scoped Git/cluster reconciliation, a Compose one
-owns its rootless Docker/Compose project, and a systemd one owns only the named
-binary and service actions. `backup` must create Hikyo's encrypted export with
-the old binary. `verify` must fail closed against the pinned release trust root.
-`rollback` must restore the backup-compatible artifact because migrations have
-no down path.
-
-Jobs are durable in `/var/lib/hikyo-updater/jobs.json`; only one can be active.
-A helper restart marks an interrupted job failed instead of guessing that an
-orphaned privileged command completed.
-
-## Remote environments
-
-Every connected workspace checks its remote directly. A remote admin sees that
-environment's update toast and the persistent profile badge; ordinary members
-receive no update metadata. Choosing “Update remote” sends the request straight
-to the remote's authenticated API. The viewing Hikyo server never relays the
-request and never holds fleet credentials.
+For stable artifacts, use the [installation and release-verification instructions](/docs/installation/)
+to obtain and verify the signed bundle before the maintenance window.
 
 ## Before the change
 

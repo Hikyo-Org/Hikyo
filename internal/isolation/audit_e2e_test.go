@@ -567,16 +567,10 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 				}}, nil
 			}),
 		}
-		job, err := updates.Request(tctx(t), service.Bearer(artifact), "1.1.0")
-		if err != nil {
-			t.Fatal(err)
+		if _, err := updates.Request(tctx(t), service.Bearer(artifact), "1.1.0"); !errors.Is(err, updater.ErrRemoteApplyDisabled) {
+			t.Fatalf("retired updater request=%v, want audited refusal", err)
 		}
-		control.job.State = updater.StateSucceeded
-		control.job.Phase = "complete"
-		control.job.FinishedAt = time.Now().UTC()
-		if _, err := updates.GetJob(tctx(t), service.Bearer(artifact), job.ID); err != nil {
-			t.Fatal(err)
-		}
+
 		for _, typ := range audit.Types() {
 			spec, _ := audit.Spec(typ)
 			seen := int64(0)

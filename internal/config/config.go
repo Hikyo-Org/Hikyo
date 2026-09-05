@@ -14,11 +14,16 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// Remote apply is retired at configuration admission as well as runtime. Keep
+// the shared refusal vocabulary here: config is a leaf package.
+const RemoteApplyDisabledReason = "Remote apply is disabled: the legacy updater cannot prove migration-safe rollback. Use the manual signed-bundle upgrade procedure at https://hikyo.app/docs/upgrades/."
+
+var ErrRemoteApplyDisabled = errors.New(RemoteApplyDisabledReason)
 
 type Engine string
 
@@ -156,8 +161,8 @@ type Config struct {
 	ReauthWindow time.Duration
 	// UpdateChannel is this server installation's release notification track.
 	UpdateChannel string
-	// UpdaterSocket is the optional Unix socket of the separately privileged
-	// local updater helper. Empty keeps update checks notification-only.
+	// UpdaterSocket is retained only to reject legacy enablement explicitly.
+	// A nonempty value fails config loading and server boot.
 	UpdaterSocket string
 
 	// HA enables multi-node application-tier high availability (#146): the
@@ -276,8 +281,8 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 	}
 	if subcommand == "server" {
 		cfg.UpdaterSocket = strings.TrimSpace(getenv("HIKYO_UPDATER_SOCKET"))
-		if cfg.UpdaterSocket != "" && !filepath.IsAbs(cfg.UpdaterSocket) {
-			return nil, nil, fmt.Errorf("HIKYO_UPDATER_SOCKET: path must be absolute")
+		if cfg.UpdaterSocket != "" {
+			return nil, nil, fmt.Errorf("HIKYO_UPDATER_SOCKET: %w; remove this setting to start the server", ErrRemoteApplyDisabled)
 		}
 	}
 	updateChannel := getenv("HIKYO_UPDATE_CHANNEL")

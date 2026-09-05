@@ -33,6 +33,7 @@ This is the build-ready specification set for Hikyo 1.0: a fully open-source, se
 | WebUI parity registry | [api/parity.yaml](../../api/parity.yaml): one disposition per operation (surface, closed exception, or open issue), executable via `go test ./api` and `scripts/ci/check-parity-issues.sh`; browser-only lifecycle acceptance in `web/e2e/flows/machine-access.spec.ts` (`browser-only lifecycle`), user-facing in [browser-operations.mdx](../site/src/content/docs/docs/browser-operations.mdx) |
 | Multi-instance | [adr/multi-instance.md](../adr/multi-instance.md) |
 | Model Context Protocol phase 1 | [adr/mcp-server.md](../adr/mcp-server.md) |
+| Signed upgrade compatibility and migration safety | [adr/signed-upgrade-compatibility.md](../adr/signed-upgrade-compatibility.md), mandatory foundations before 1.0; automated application remains disabled pending platform acceptance |
 | Deployment & operations | [adr/ops-spec.md](../adr/ops-spec.md) + [ops-catalogue.md](./ops-catalogue.md) (deferred values, discharged) |
 | MVP scope & acceptance criteria | [adr/mvp-boundary.md](../adr/mvp-boundary.md) §1–§2, §6 + [self-hoster-checklist.md](./self-hoster-checklist.md) (passed) |
 | Out-of-scope / roadmap appendix | [adr/mvp-boundary.md](../adr/mvp-boundary.md) §4, verbatim |

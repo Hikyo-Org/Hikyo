@@ -1807,7 +1807,7 @@ var registry = map[EventType]TypeSpec{
 		Trails:        map[Trail]bool{TrailInstance: true},
 		Schema: Schema{
 			"version": {Kind: KindString, Required: true},
-			"backend": {Kind: KindString, Required: true, Enum: []string{"flux", "compose", "systemd"}},
+			"backend": {Kind: KindString, Required: true, Enum: []string{"flux", "compose", "systemd", "disabled"}},
 		},
 	},
 	EventUpdateOutcome: {
@@ -1817,7 +1817,7 @@ var registry = map[EventType]TypeSpec{
 		Trails:        map[Trail]bool{TrailInstance: true},
 		Schema: Schema{
 			"version":      {Kind: KindString, Required: true},
-			"backend":      {Kind: KindString, Required: true, Enum: []string{"flux", "compose", "systemd"}},
+			"backend":      {Kind: KindString, Required: true, Enum: []string{"flux", "compose", "systemd", "disabled"}},
 			"state":        {Kind: KindString, Required: true, Enum: []string{"succeeded", "failed", "rolled-back", "rollback-failed"}},
 			"failure_code": {Kind: KindString},
 		},

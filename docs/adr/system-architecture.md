@@ -1,5 +1,7 @@
 # Hikyo system architecture & stack (ADR, locked 2026-08-02)
 
+> **Declared amendment (2026-09-05, [#638](https://github.com/Hikyo-Org/Hikyo/issues/638), operative upon this governance and retirement PR merging):** Upgrade compatibility is a signed directed exact-release graph, bound into release manifests and independently enforced by the target binary. A durable applied-release ledger, pending migration state and generation fencing cover SQLite and PostgreSQL. Version ordering alone confers no compatibility. The normative contract is [signed-upgrade-compatibility.md](./signed-upgrade-compatibility.md). Native Codex high-effort review concluded SOUND in three rounds; see [the review handoff](../handoff/638-signed-upgrade-governance.md). Historical text below is preserved.
+
 > **Amended 2026-08-07 ([#22](https://github.com/Hikyo-Org/Hikyo/issues/22) reopened per the [oss-mechanics](./oss-mechanics.md) governance procedure; operative — this banner wins over the body below):**
 >
 > 1. **§ API contract and § Binds — OpenAPI 3.1 supersedes the 3.0.3 pin.** The pin's sole recorded rationale was generator support ("`oapi-codegen` does not support 3.1"); oapi-codegen ≥ 2.8 ships 3.1 support, and the body's own classification governs: this is a tooling change, not an architecture change. The contract is authored as **OpenAPI 3.1** at `api/openapi.yaml`. The contract regime transfers **as duties, not tool names** — each duty must be demonstrated against the same 3.1 document before its tool is adopted:

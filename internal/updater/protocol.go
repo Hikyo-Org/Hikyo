@@ -11,17 +11,10 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"regexp"
-	"strings"
-	"sync"
 	"time"
-
-	"golang.org/x/mod/semver"
 )
 
 const protocolBodyLimit = 1 << 20
-
-var updaterJobID = regexp.MustCompile(`^upd_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
 type Capability struct {
 	Backend Backend `json:"backend"`
@@ -42,7 +35,6 @@ type ControlServer struct {
 	Journal  *Journal
 	Log      *slog.Logger
 	Context  context.Context
-	jobs     sync.WaitGroup
 }
 
 func (s *ControlServer) Handler() http.Handler {
@@ -59,66 +51,11 @@ func (s *ControlServer) Handler() http.Handler {
 }
 
 func (s *ControlServer) capability(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, Capability{Backend: s.Executor.Config.Backend})
+	writeProtocolError(w, http.StatusServiceUnavailable, "remote-apply-disabled")
 }
 
-func (s *ControlServer) submit(w http.ResponseWriter, r *http.Request) {
-	if s.Journal == nil {
-		writeProtocolError(w, http.StatusServiceUnavailable, "journal-unavailable")
-		return
-	}
-	var request Request
-	if err := decodeJSON(r.Body, &request); err != nil || !updaterJobID.MatchString(request.ID) ||
-		!strings.HasPrefix(request.RequestedBy, "usr_") || len(request.RequestedBy) > 128 ||
-		request.Version == "" || request.ReleaseURL == "" {
-		writeProtocolError(w, http.StatusBadRequest, "invalid-request")
-		return
-	}
-	version := "v" + request.Version
-	if !semverStable(version) {
-		writeProtocolError(w, http.StatusUnprocessableEntity, "stable-only")
-		return
-	}
-	if request.ReleaseURL != "https://github.com/Hikyo-Org/hikyo/releases/tag/v"+request.Version {
-		writeProtocolError(w, http.StatusUnprocessableEntity, "release-authority")
-		return
-	}
-	now := s.Executor.now()
-	job := Job{
-		ID: request.ID, Backend: s.Executor.Config.Backend, Version: request.Version,
-		ReleaseURL: request.ReleaseURL, RequestedBy: request.RequestedBy,
-		State: StateQueued, Phase: PhaseQueued, RequestedAt: now,
-	}
-	if err := s.Journal.Create(job); err != nil {
-		if errors.Is(err, ErrUpdateActive) {
-			writeProtocolError(w, http.StatusConflict, "update-active")
-			return
-		}
-		writeProtocolError(w, http.StatusInternalServerError, "journal-write-failed")
-		return
-	}
-	jobCtx := s.Context
-	if jobCtx == nil {
-		jobCtx = context.Background()
-	}
-	s.jobs.Add(1)
-	go func() {
-		defer s.jobs.Done()
-		executor := s.Executor
-		executor.Progress = s.Journal.Put
-		result, err := executor.Execute(jobCtx, request)
-		if err != nil && result.ID == "" {
-			result = job
-			result.State = StateFailed
-			result.Phase = PhasePlan
-			result.FailureCode = "execution-refused"
-			result.FinishedAt = s.Executor.now()
-		}
-		if err := s.Journal.Put(result); err != nil && s.Log != nil {
-			s.Log.Error("updater job result was not persisted", "job", request.ID, "err", err)
-		}
-	}()
-	writeJSON(w, http.StatusAccepted, job)
+func (s *ControlServer) submit(w http.ResponseWriter, _ *http.Request) {
+	writeProtocolError(w, http.StatusServiceUnavailable, "remote-apply-disabled")
 }
 
 func (s *ControlServer) outcomes(w http.ResponseWriter, _ *http.Request) {
@@ -133,8 +70,6 @@ func (s *ControlServer) outcomes(w http.ResponseWriter, _ *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, jobs)
 }
-
-func (s *ControlServer) Wait() { s.jobs.Wait() }
 
 func (s *ControlServer) job(w http.ResponseWriter, r *http.Request) {
 	if s.Journal == nil {
@@ -173,10 +108,6 @@ func (s *ControlServer) acknowledge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func semverStable(version string) bool {
-	return semver.IsValid(version) && semver.Prerelease(version) == ""
 }
 
 type protocolError struct {
@@ -227,19 +158,14 @@ func NewClient(socket string) *Client {
 	}}
 }
 
-func (c *Client) Capability(ctx context.Context) (Capability, error) {
-	var capability Capability
-	err := c.do(ctx, http.MethodGet, "/v1/capability", nil, http.StatusOK, &capability)
-	if err == nil && !capability.Backend.Valid() {
-		return Capability{}, fmt.Errorf("updater: helper returned invalid backend %q", capability.Backend)
-	}
-	return capability, err
+// Capability and Submit refuse locally even when the socket belongs to an old
+// helper. Historical reads and outcome acknowledgement remain available.
+func (c *Client) Capability(context.Context) (Capability, error) {
+	return Capability{}, ErrRemoteApplyDisabled
 }
 
-func (c *Client) Submit(ctx context.Context, request Request) (Job, error) {
-	var job Job
-	err := c.do(ctx, http.MethodPost, "/v1/jobs", request, http.StatusAccepted, &job)
-	return job, err
+func (c *Client) Submit(context.Context, Request) (Job, error) {
+	return Job{}, ErrRemoteApplyDisabled
 }
 
 func (c *Client) Job(ctx context.Context, id string) (Job, error) {
@@ -282,6 +208,9 @@ func (c *Client) do(ctx context.Context, method, path string, body any, want int
 	if response.StatusCode != want {
 		var refusal protocolError
 		_ = decodeJSON(response.Body, &refusal)
+		if refusal.Code == "remote-apply-disabled" {
+			return ErrRemoteApplyDisabled
+		}
 		if refusal.Code == "update-active" {
 			return ErrUpdateActive
 		}

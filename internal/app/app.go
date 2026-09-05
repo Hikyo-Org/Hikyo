@@ -343,6 +343,9 @@ func Boot(ctx context.Context, cfg *config.Config, log *slog.Logger) (*Server, e
 }
 
 func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources bootResources) (*Server, error) {
+	if cfg.UpdaterSocket != "" {
+		return nil, fmt.Errorf("boot: HIKYO_UPDATER_SOCKET: %w", updater.ErrRemoteApplyDisabled)
+	}
 	sc := storeConfig(cfg)
 
 	// Every resource acquired below has one temporary owner — this guard —
@@ -456,10 +459,6 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	if err != nil {
 		return nil, fmt.Errorf("boot: update release cache: %w", err)
 	}
-	var updateControl updater.Control
-	if cfg.UpdaterSocket != "" {
-		updateControl = updater.NewClient(cfg.UpdaterSocket)
-	}
 	reencryptSvc := &service.Reencrypt{DB: db, Keyring: kr, Budget: budget}
 	adapterRuntime := store.NewAdapterRuntime(db, func(ctx context.Context, job adapter.Job, _ adapter.Effect) error {
 		return tx.Read(ctx, db, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
@@ -489,7 +488,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		ProviderFactory: newDynamicFactory(cfg.DynamicEgressPolicy), LeaseDeadline: dynamicProviderDeadline,
 	}
 
-	updatesService := &service.Updates{DB: db, Source: updateSource, Version: Version, Channel: updatecheck.Channel(cfg.UpdateChannel), Control: updateControl, Log: log}
+	updatesService := &service.Updates{DB: db, Source: updateSource, Version: Version, Channel: updatecheck.Channel(cfg.UpdateChannel), Log: log}
 	// One RED collector shared by the API middleware (writer) and the
 	// operational /metrics handler (reader) (#513). The limiter supplies its
 	// admission-pressure gauges at scrape time.

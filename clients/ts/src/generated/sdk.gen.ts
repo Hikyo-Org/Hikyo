@@ -2137,16 +2137,16 @@ export const getUpdateStatus = <ThrowOnError extends boolean = false>(options?: 
 });
 
 /**
- * Ask this instance's local updater helper to apply a stable release.
+ * Refuse legacy remote apply while preserving authenticated audit evidence.
  *
- * Human sessions only, including an origin-bound workspace session used
- * directly from another Hikyo UI. The caller must hold instance-config,
- * have multi-factor assurance, and have authenticated within the last five
- * minutes. The server never receives deployment credentials: it submits a
- * fixed version and release URL to a separately configured local helper.
- *
- * Stable releases only. Nightly and other prerelease builds remain
- * notification-only. One update may be active at a time.
+ * Remote apply is disabled because the legacy updater cannot prove safe
+ * rollback after schema writes. No job is submitted or resumed. An
+ * authorized request returns 409 with an explicit unsupported reason.
+ * The caller must still hold instance-config, have multi-factor assurance,
+ * and have authenticated within the last five minutes. This endpoint
+ * remains present for older clients; release metadata and manual verified
+ * downloads remain available. The 202 shape is retained for wire
+ * compatibility with historical helper responses, not current enablement.
  *
  */
 export const requestInstanceUpdate = <ThrowOnError extends boolean = false>(options: Options<RequestInstanceUpdateData, ThrowOnError>) => (options.client ?? client).post<RequestInstanceUpdateResponses, RequestInstanceUpdateErrors, ThrowOnError>({

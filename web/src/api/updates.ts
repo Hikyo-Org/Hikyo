@@ -2,7 +2,6 @@ import {
   getInstanceUpdateJobOp,
   getMetaOp,
   getUpdateStatusOp,
-  requestInstanceUpdateOp,
 } from '@hikyo/operations';
 import type { Client } from '@hikyo/runtime-core';
 import { zInstanceUpdateJob, zUpdateStatus } from '@hikyo/zod';
@@ -12,6 +11,9 @@ import type { z } from 'zod';
 import { ApiError, parsed, parsedPick } from './client.ts';
 import type { WorkspaceBearer } from './workspace.ts';
 import { createWorkspaceClient } from './workspaceClient.ts';
+
+export const remoteApplyDisabledReason =
+  'Remote apply is disabled because the legacy updater cannot prove migration-safe rollback. Follow the manual signed-bundle upgrade procedure.';
 
 export type UpdateStatus = z.infer<typeof zUpdateStatus>;
 export type InstanceUpdateJob = z.infer<typeof zInstanceUpdateJob>;
@@ -83,7 +85,10 @@ export function useServerVersion(): UseQueryResult<string> {
 
 async function readStatus(client?: Client): Promise<UpdateStatus | null> {
   try {
-    return await parsed(getUpdateStatusOp, client === undefined ? {} : { client });
+    const status = await parsed(getUpdateStatusOp, client === undefined ? {} : { client });
+    // An older remote may still advertise its unsafe legacy helper. Preserve
+    // release metadata while refusing to offer that mutation from this client.
+    return { ...status, apply_supported: false, apply_error: remoteApplyDisabledReason };
   } catch (error) {
     if (error instanceof ApiError && (error.status === 403 || error.status === 404)) {
       return null;
@@ -131,11 +136,9 @@ export function useRemoteUpdateStatuses(
 
 export function useRequestRemoteUpdate() {
   return useMutation({
-    mutationFn: async ({ origin, version }: { origin: string; version: string }) =>
-      parsed(requestInstanceUpdateOp, {
-        client: createWorkspaceClient(origin),
-        body: { version },
-      }),
+    mutationFn: async (_request: { origin: string; version: string }): Promise<InstanceUpdateJob> => {
+      throw new Error(remoteApplyDisabledReason);
+    },
   });
 }
 

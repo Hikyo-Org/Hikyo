@@ -3,15 +3,17 @@ package updater
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
-	"time"
 )
 
-func TestUnixControlSubmitsAndPersistsOneJob(t *testing.T) {
+func TestUnixControlRefusesSubmissionAndPreservesHistoricalOutcomes(t *testing.T) {
 	dir, err := os.MkdirTemp("/tmp", "hikyo-updater-test-")
 	if err != nil {
 		t.Fatal(err)
@@ -36,40 +38,23 @@ func TestUnixControlSubmitsAndPersistsOneJob(t *testing.T) {
 	})
 
 	client := NewClient(socket)
-	capability, err := client.Capability(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if capability.Backend != BackendFlux {
-		t.Fatalf("backend = %q", capability.Backend)
+	if _, err := client.Capability(t.Context()); !errors.Is(err, ErrRemoteApplyDisabled) {
+		t.Fatalf("helper capability=%v, want disabled", err)
 	}
 	jobID := "upd_0198aa00-0000-7000-8000-000000000001"
-	job, err := client.Submit(t.Context(), Request{
-		ID: jobID, Version: "1.2.3", ReleaseURL: "https://github.com/Hikyo-Org/hikyo/releases/tag/v1.2.3", RequestedBy: "usr_admin",
-	})
-	if err != nil {
+	if err := journal.Create(Job{ID: jobID, Backend: BackendFlux, State: StateSucceeded}); err != nil {
 		t.Fatal(err)
 	}
-	if job.ID != jobID || (job.State != StateQueued && job.State != StateRunning) {
-		t.Fatalf("submitted job = %#v", job)
+	queuedID := "upd_0198aa00-0000-7000-8000-000000000002"
+	if err := journal.Create(Job{ID: queuedID, Backend: BackendFlux, State: StateQueued}); err != nil {
+		t.Fatal(err)
 	}
-
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		job, err = client.Job(t.Context(), jobID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if job.State.Terminal() {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("job did not finish: %#v", job)
-		}
-		time.Sleep(5 * time.Millisecond)
+	if _, err := client.Submit(t.Context(), Request{ID: queuedID, Version: "1.2.3"}); !errors.Is(err, ErrRemoteApplyDisabled) {
+		t.Fatalf("old queued submission=%v, want disabled", err)
 	}
-	if job.State != StateSucceeded {
-		t.Fatalf("terminal job = %#v", job)
+	queued, err := client.Job(t.Context(), queuedID)
+	if err != nil || queued.State != StateQueued || len(runner.calls) != 0 {
+		t.Fatalf("queued history changed or executed: job=%+v calls=%v err=%v", queued, runner.calls, err)
 	}
 	pending, err := client.PendingOutcomes(t.Context())
 	if err != nil {
@@ -81,7 +66,7 @@ func TestUnixControlSubmitsAndPersistsOneJob(t *testing.T) {
 	if err := client.AcknowledgeOutcome(t.Context(), jobID); err != nil {
 		t.Fatal(err)
 	}
-	job, err = journal.Get(jobID)
+	job, err := journal.Get(jobID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +82,47 @@ func TestUnixControlSubmitsAndPersistsOneJob(t *testing.T) {
 	if _, err := client.Submit(t.Context(), Request{
 		ID: "upd_0198aa00-0000-7000-8000-000000000002", Version: "1.2.4",
 		ReleaseURL: "https://attacker.example/v1.2.4", RequestedBy: "usr_admin",
-	}); !errors.Is(err, ErrReleaseAuthority) {
-		t.Fatalf("foreign release authority error = %v, want ErrReleaseAuthority", err)
+	}); !errors.Is(err, ErrRemoteApplyDisabled) {
+		t.Fatalf("foreign release authority error = %v, want ErrRemoteApplyDisabled", err)
+	}
+}
+
+// This transport models an old helper that still accepts legacy jobs. The new
+// client must refuse before it can advertise capability or enqueue a command.
+type acceptingLegacyTransport struct{ calls int }
+
+func (transport *acceptingLegacyTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	transport.calls++
+	status, body := http.StatusOK, `{"backend":"flux"}`
+	if request.Method == http.MethodPost {
+		status, body = http.StatusAccepted, `{"id":"upd_legacy","backend":"flux","state":"queued"}`
+	}
+	return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+}
+
+func TestRetiredClientCannotContactAcceptingLegacyHelper(t *testing.T) {
+	transport := &acceptingLegacyTransport{}
+	client := &Client{http: &http.Client{Transport: transport}}
+	if _, err := client.Capability(t.Context()); !errors.Is(err, ErrRemoteApplyDisabled) {
+		t.Fatalf("capability error=%v, want local retirement refusal", err)
+	}
+	if _, err := client.Submit(t.Context(), Request{ID: "upd_legacy", Version: "1.2.3"}); !errors.Is(err, ErrRemoteApplyDisabled) {
+		t.Fatalf("submit error=%v, want local retirement refusal", err)
+	}
+	if transport.calls != 0 {
+		t.Fatalf("legacy helper received %d requests", transport.calls)
+	}
+}
+
+func TestRetiredControlEndpointsRefuseBeforeReadingJournal(t *testing.T) {
+	handler := (&ControlServer{}).Handler()
+	for _, endpoint := range []struct{ method, path string }{
+		{http.MethodGet, "/v1/capability"}, {http.MethodPost, "/v1/jobs"},
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(endpoint.method, endpoint.path, strings.NewReader(`{}`)))
+		if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), "remote-apply-disabled") {
+			t.Fatalf("%s %s: status=%d body=%s", endpoint.method, endpoint.path, response.Code, response.Body.String())
+		}
 	}
 }

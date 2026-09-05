@@ -2,20 +2,25 @@ package server
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 	"github.com/Hikyo-Org/hikyo/internal/updater"
 )
 
 type stubUpdates struct {
-	status updatecheck.Status
-	job    updater.Job
+	status     updatecheck.Status
+	job        updater.Job
+	requestErr error
 }
 
 func (s stubUpdates) GetStatus(context.Context, service.Actor) (updatecheck.Status, error) {
@@ -23,7 +28,23 @@ func (s stubUpdates) GetStatus(context.Context, service.Actor) (updatecheck.Stat
 }
 
 func (s stubUpdates) Request(context.Context, service.Actor, string) (updater.Job, error) {
-	return s.job, nil
+	return s.job, s.requestErr
+}
+
+func TestRetiredInstanceUpdateReturnsUnsupportedConflict(t *testing.T) {
+	refusal := fmt.Errorf("%w: %w", domain.ErrConflict, updater.ErrRemoteApplyDisabled)
+	api := &API{Updates: stubUpdates{requestErr: refusal}}
+	response, err := api.RequestInstanceUpdate(t.Context(), apigen.RequestInstanceUpdateRequestObject{
+		Body: &apigen.InstanceUpdateRequest{Version: "1.2.3"},
+	})
+	if response != nil || !errors.Is(err, updater.ErrRemoteApplyDisabled) {
+		t.Fatalf("response=%v error=%v, want disabled refusal", response, err)
+	}
+	recorder := httptest.NewRecorder()
+	writeError(recorder, wireErrorFor(err), err.Error())
+	if recorder.Code != http.StatusConflict || !strings.Contains(recorder.Body.String(), "migration-safe rollback") {
+		t.Fatalf("unsupported wire response: status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
 }
 
 func (s stubUpdates) GetJob(context.Context, service.Actor, string) (updater.Job, error) {

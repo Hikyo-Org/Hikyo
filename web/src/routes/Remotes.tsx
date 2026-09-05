@@ -28,6 +28,7 @@ import { WorkspaceContextProvider, withRemote } from '../api/transport.tsx';
 import {
   type InstanceUpdateJob,
   jobReadErrorVisible,
+  remoteApplyDisabledReason,
   updateJobOutcome,
   useRemoteUpdateJob,
   useRemoteUpdateStatuses,
@@ -294,7 +295,7 @@ function RemoteCard({ remote }: { remote: Remote }) {
           ) : (
             <p>
               {update.apply_error ??
-                'This remote has no local updater helper configured; notification remains available.'}
+                remoteApplyDisabledReason}
             </p>
           )}
           {updateJobID === undefined ? null : (
