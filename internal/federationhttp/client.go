@@ -148,14 +148,22 @@ func (t *transport) RoundTrip(request *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, ErrTransport
 	}
+	return bufferResponse(ctx, response, t.maxBytes)
+}
+
+// bufferResponse finishes the bounded read before protocol libraries can observe
+// any provider bytes. The original network body is closed on every outcome.
+func bufferResponse(ctx context.Context, response *http.Response, maxBytes int64) (*http.Response, error) {
 	defer response.Body.Close()
-	if response.ContentLength > t.maxBytes {
+	if response.ContentLength > maxBytes {
 		return nil, ErrTransport
 	}
 	// Read before handing the response to protocol libraries. A LimitReader
 	// alone can hide trailing bytes after a valid JSON value; cap+1 rejects them.
-	payload, err := io.ReadAll(io.LimitReader(response.Body, t.maxBytes+1))
-	if err != nil || int64(len(payload)) > t.maxBytes {
+	payload, err := io.ReadAll(io.LimitReader(response.Body, maxBytes+1))
+	// EOF can race cancellation and still make ReadAll return a nil error.
+	// Never deliver those bytes after the request's bounded context has expired.
+	if err != nil || ctx.Err() != nil || int64(len(payload)) > maxBytes {
 		return nil, ErrTransport
 	}
 	response.Body = io.NopCloser(bytes.NewReader(payload))
