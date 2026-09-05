@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { InstanceUpdateJob } from '../api/updates.ts';
 import { renderForm, settleTask, typeInto } from '../testkit/renderForm.tsx';
-import { AddRemote, UpdateJobStatus } from './Remotes.tsx';
+import { AddRemote, ThisInstance, UpdateJobStatus } from './Remotes.tsx';
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -168,5 +168,32 @@ describe('AddRemote', () => {
       throw new Error('the add mutation did not send a Request');
     }
     expect(await request.json()).toMatchObject({ url: 'https://new.example' });
+  });
+});
+
+
+describe('ThisInstance', () => {
+  it('uses the own-directory endpoint and discards visible stale metadata after a forbidden refresh', async () => {
+    let forbidden = false;
+    const paths: string[] = [];
+    vi.stubGlobal('fetch', async (request: Request) => {
+      paths.push(new URL(request.url).pathname);
+      return new Response(JSON.stringify(forbidden ? { error: { code: 'forbidden', message: 'forbidden' } } : {
+        identity: 'opaque-instance', version: 'v1.0.0', org_count: 1, project_count: 2,
+        orgs: [{ name: 'Example', projects: ['Billing', 'Portal'] }],
+      }), { status: forbidden ? 403 : 200, headers: { "Content-Type": "application/json" } });
+    });
+    const rendered = await renderForm(<ThisInstance />);
+    cleanups.push(rendered.unmount);
+    await settleTask();
+    expect(rendered.container.textContent).toContain('opaque-instance');
+    expect(rendered.container.textContent).toContain('Billing, Portal');
+    expect(paths).toEqual(['/api/v1/instance/directory']);
+    forbidden = true;
+    await act(async () => { await rendered.client.invalidateQueries({ queryKey: ['instance-directory'] }); });
+    await settleTask();
+    expect(rendered.container.querySelector('[role="alert"]')?.textContent).toContain('You do not hold instance-directory');
+    expect(rendered.container.textContent).not.toContain('opaque-instance');
+    expect(rendered.container.querySelector('dl')).toBeNull();
   });
 });

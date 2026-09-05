@@ -58,3 +58,11 @@ WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id
 -- hikyo:instance-scoped
 -- name: PruneExpiredPlans :execrows
 DELETE FROM definitions_plans WHERE applied = FALSE AND expires_at <= sqlc.arg(now);
+
+
+-- DeleteProjectDefinitionsPlans removes project-owned plan/provenance state
+-- only inside the authorized project deletion transaction. Tenant audit is
+-- independent and retained. If content still blocks deletion, rollback keeps
+-- every plan, including applied provenance; there is no standalone purge API.
+-- name: DeleteProjectDefinitionsPlans :exec
+DELETE FROM definitions_plans WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id);

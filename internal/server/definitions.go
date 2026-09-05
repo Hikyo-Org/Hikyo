@@ -107,20 +107,20 @@ func wireDefinitionsKindDiff(d definitions.KindDiff) apigen.DefinitionsKindDiff 
 	for _, r := range d.Renames {
 		renamed = append(renamed, apigen.DefinitionsRename{Id: r.ID, From: r.From, To: r.To})
 	}
-	return apigen.DefinitionsKindDiff{Creates: d.Creates, Updates: d.Updates, Renames: renamed, Deletes: d.Deletes}
+	return apigen.DefinitionsKindDiff{Creates: nonNil(d.Creates), Updates: nonNil(d.Updates), Renames: renamed, Deletes: nonNil(d.Deletes)}
 }
 
 func wireDefinitionsDiff(d definitions.Diff) apigen.DefinitionsDiff {
 	return apigen.DefinitionsDiff{
 		Environments: wireDefinitionsKindDiff(d.Environments), KeyGroups: wireDefinitionsKindDiff(d.KeyGroups),
-		Keys: wireDefinitionsKindDiff(d.Keys), RevealRequired: d.RevealRequired,
+		Keys: wireDefinitionsKindDiff(d.Keys), RevealRequired: nonNil(d.RevealRequired),
 	}
 }
 
 func wireDefinitionsPlanDiff(d service.PlanDiff) apigen.DefinitionsPlanDiff {
 	keys := make([]apigen.DefinitionsKeyDeletion, 0, len(d.KeyDeletions))
 	for _, k := range d.KeyDeletions {
-		keys = append(keys, apigen.DefinitionsKeyDeletion{Name: k.Name, LiveIn: k.LiveIn})
+		keys = append(keys, apigen.DefinitionsKeyDeletion{Name: k.Name, LiveIn: nonNil(k.LiveIn)})
 	}
 	envs := make([]apigen.DefinitionsEnvironmentDeletion, 0, len(d.EnvDeletions))
 	for _, e := range d.EnvDeletions {
@@ -128,15 +128,15 @@ func wireDefinitionsPlanDiff(d service.PlanDiff) apigen.DefinitionsPlanDiff {
 	}
 	return apigen.DefinitionsPlanDiff{
 		Environments: wireDefinitionsKindDiff(d.Environments), KeyGroups: wireDefinitionsKindDiff(d.KeyGroups),
-		Keys: wireDefinitionsKindDiff(d.Keys), KeyDeletions: keys, EnvDeletions: envs, RevealRequired: d.RevealRequired,
+		Keys: wireDefinitionsKindDiff(d.Keys), KeyDeletions: keys, EnvDeletions: envs, RevealRequired: nonNil(d.RevealRequired),
 	}
 }
 
 func wireDefinitionsPlan(p service.PlanView) apigen.DefinitionsPlan {
 	return apigen.DefinitionsPlan{
 		Id: p.ID, Digest: p.Digest, BaseRevision: p.BaseRevision, CurrentRevision: p.CurrentRevision,
-		Additive: p.Additive, ExpiresAt: p.ExpiresAt, ProtectedEnvironments: p.ProtectedEnvironments,
-		Diff: wireDefinitionsPlanDiff(p.Diff), DeletionsPresent: p.DeletionsPresent, RevealRequired: p.RevealRequired,
+		Additive: p.Additive, ExpiresAt: p.ExpiresAt, ProtectedEnvironments: nonNil(p.ProtectedEnvironments),
+		Diff: wireDefinitionsPlanDiff(p.Diff), DeletionsPresent: p.DeletionsPresent, RevealRequired: nonNil(p.RevealRequired),
 	}
 }
 

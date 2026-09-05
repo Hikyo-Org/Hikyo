@@ -11,6 +11,7 @@ import {
   renameRemoteOp,
   revokeInstanceConnectionOp,
   revokeMySessionOp,
+  serveDirectoryOp,
 } from '@hikyo/operations';
 import {
   zInstanceConnection,
@@ -85,6 +86,15 @@ const connectionsKey = ['instance-connections'] as const;
  * that is quietly rate-limited refreshes no faster than one that is not.
  */
 const DIRECTORY_POLL_MS = 20_000;
+
+/** The serving view has the same freshness cadence as connected directories. */
+export function useInstanceDirectory() {
+  return useQuery({
+    queryKey: ['instance-directory'],
+    queryFn: () => parsed(serveDirectoryOp, {}),
+    refetchInterval: DIRECTORY_POLL_MS,
+  });
+}
 
 /** useRemotes is the directory card list, refreshed on a poll. */
 export function useRemotes(): UseQueryResult<RemoteList> {

@@ -5770,3 +5770,12 @@ select {
     min-height: 48px;
   }
 }
+
+/* Bundle file mode extends the locked settings and centred-modal primitives. */
+.definitions-bundle__body { display: grid; gap: 1rem; padding-block: 1rem; min-width: 0; }
+.definitions-bundle__body > * { min-width: 0; }
+.definitions-bundle__body section { display: grid; gap: .75rem; }
+.definitions-bundle__body h3, .definitions-bundle__body h4 { margin: 0; }
+.definitions-bundle__body .remote__facts dd { overflow-wrap: anywhere; min-width: 0; }
+.definitions-bundle__body input[type="file"] { width: 100%; min-width: 0; max-width: 100%; }
+.definitions-bundle__delete { display: flex; align-items: center; gap: .75rem; min-height: 44px; }

@@ -12,6 +12,7 @@ import {
   useAddRemote,
   useAddWorkspaceOrigin,
   useConnections,
+  useInstanceDirectory,
   useMintConnection,
   useRemotes,
   useRemoveRemote,
@@ -106,10 +107,50 @@ export function Remotes() {
         </ul>
       </section>
 
+      <ThisInstance />
       <AddRemote />
       <ConnectionCredentials />
       <OriginAllowlist />
     </>
+  );
+}
+
+/** What this instance publishes under instance-directory, never tenant-list surrogates. */
+export function ThisInstance() {
+  const directory = useInstanceDirectory();
+  return (
+    <section className="card" aria-labelledby="this-instance-title">
+      <h2 id="this-instance-title">This instance</h2>
+      <p>The identity and directory this instance shares with connected instances.</p>
+      {directory.isPending ? <p role="status">Loading this instance's directory…</p> : null}
+      {directory.isError ? (
+        <p className="alert" role="alert">
+          <span className="alert__glyph" aria-hidden="true">!</span>
+          <span>{directory.error instanceof ApiError && directory.error.status === 403
+            ? 'You do not hold instance-directory on this instance. Its directory is not available to you.'
+            : "This instance's directory could not be read. Reload to try again."}</span>
+        </p>
+      ) : directory.data === undefined ? null : (
+        <>
+          <dl className="remote__facts">
+            <dt>Identity</dt><dd className="mono">{directory.data.identity}</dd>
+            <dt>Version</dt><dd className="mono">{directory.data.version}</dd>
+            <dt>Organisations</dt><dd>{directory.data.org_count}</dd>
+            <dt>Projects</dt><dd>{directory.data.project_count}</dd>
+          </dl>
+          {directory.data.orgs.length === 0 ? <p>No organisations on this instance.</p> : (
+            <ul className="remote__orgs">
+              {directory.data.orgs.map((org) => (
+                <li key={org.name}>
+                  <span className="mono">{org.name}</span>
+                  <span className="remote__projects">{org.projects.join(', ') || 'no projects'}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 

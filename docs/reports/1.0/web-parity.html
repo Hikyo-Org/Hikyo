@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  /><title>Hikyo 1.0: browser operation parity</title
+  ><style>
+    body {
+      font:
+        16px/1.55 system-ui,
+        sans-serif;
+      max-width: 1000px;
+      margin: 3rem auto;
+      padding: 0 1.5rem;
+      color: #182e33;
+      background: #f5f7f6;
+    }
+    h1,
+    h2 {
+      line-height: 1.2;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+    th,
+    td {
+      border: 1px solid #aab8b8;
+      padding: 0.75rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    code {
+      overflow-wrap: anywhere;
+    }
+    a {
+      color: #07555c;
+    }
+    .status {
+      padding: 1rem;
+      border-left: 4px solid #13716e;
+      background: #e4eeea;
+    }
+  </style>
+  <h1>Browser parity required for 1.0</h1>
+  <p>
+    Issues <a href="https://github.com/Hikyo-Org/hikyo/issues/575">#575</a> and
+    <a href="https://github.com/Hikyo-Org/hikyo/issues/576">#576</a>. Assessed
+    from API outcomes and implementation, independently of labels/milestones.
+  </p>
+  <p class="status">
+    Implementation in review. API parity checks passed (100 tests), full web
+    unit suite passed (677 tests across 83 files), and all six embedded
+    desktop/mobile browser flows passed with dark/light axe and explicit
+    overflow checks. Independent Standards review is CLEAN after strict numeric
+    file-input validation; its 11 focused tests and TypeScript check passed.
+  </p>
+  <h2>Why these belong in 1.0</h2>
+  <p>
+    A browser-only self-hosting operator must be able to export and reconcile
+    configuration definitions, inspect the exact impact before publishing, and
+    see what their instance exposes to connected peers. Direct key editing
+    cannot replace an immutable bundle plan; tenant lists cannot replace the
+    instance-scoped directory identity. The previous parity registry claimed
+    these were equivalent without those outcomes.
+  </p>
+  <h2>Decisions made without waking the maintainer</h2>
+  <table>
+    <tr>
+      <th>Question</th>
+      <th>Options</th>
+      <th>Recommended choice and reason</th>
+    </tr>
+    <tr>
+      <td>Where should bundle mode live?</td>
+      <td>
+        A: existing project Policy row and native centred dialog. B: new
+        navigation surface.
+      </td>
+      <td>
+        A. Extends locked app-chrome settings anatomy and existing modal
+        primitives; keeps the task beside definitions governance.
+      </td>
+    </tr>
+    <tr>
+      <td>How should a browser publish a bundle?</td>
+      <td>
+        A: exact immutable plan, digest, explicit impact confirmation and
+        deletion consent. B: reuse the value-draft passkey intent.
+      </td>
+      <td>
+        A. The server's structural schema fan-out checks publish grants per
+        environment atomically. It does not consume value-publish reauth
+        intents. Creating an unrelated WebAuthn ceremony would claim a binding
+        the server does not implement. Existing ConsequencesDialog provides
+        explicit publish confirmation; caller-safe permission and stale-base
+        refusals remain visible.
+      </td>
+    </tr>
+    <tr>
+      <td>Should Git mode allow browser apply?</td>
+      <td>
+        A: check/plan only, refuse browser apply and re-read governance
+        immediately before submit. B: expose the API's general apply permission
+        in all modes.
+      </td>
+      <td>
+        A. Locked source-of-truth ADR reserves Git writes for repository apply.
+        Last repository ref is displayed when recorded; no repository URL is
+        invented because the contract stores no URL.
+      </td>
+    </tr>
+    <tr>
+      <td>How should files be stored and exported?</td>
+      <td>
+        A: same-origin GET download links and mounted-dialog memory only. B: URL
+        payloads or durable browser draft storage.
+      </td>
+      <td>
+        A. No bundle bytes in URLs, localStorage, sessionStorage or
+        query/mutation caches. Canonical and portable downloads both exposed.
+        Reject oversized/invalid JSON and unsafe integers before requests.
+      </td>
+    </tr>
+    <tr>
+      <td>How should this-instance metadata refresh?</td>
+      <td>
+        A: direct serveDirectory query on the existing 20-second cadence. B:
+        derive from organisation/project APIs.
+      </td>
+      <td>
+        A. Preserves instance-directory authorization and actual
+        identity/version. Refused refresh hides stale metadata and states the
+        missing permission.
+      </td>
+    </tr>
+  </table>
+  <h2>Defects found by running the embedded app</h2>
+  <table>
+    <tr>
+      <th>Observed failure</th>
+      <th>Cause</th>
+      <th>Fix and proof</th>
+    </tr>
+    <tr>
+      <td>
+        Creating a valid additive plan returned 201, but the browser could not
+        render it.
+      </td>
+      <td>
+        The service returned a nil reveal-required slice; JSON serialized null
+        even though the OpenAPI contract requires an array.
+      </td>
+      <td>
+        The existing nonNil wire helper now normalizes all required
+        definition-diff/plan lists. A contract fixture deliberately returns nil
+        so the real regression cannot hide behind preallocated empty test
+        arrays.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        After planning, deleting an otherwise empty project returned 409
+        permanently for applied plans.
+      </td>
+      <td>
+        definitions_plans retained a non-cascading project foreign key, and
+        project deletion removed only its schema counter. Applied plans never
+        expire.
+      </td>
+      <td>
+        Authorized project deletion now explicitly removes its own plan ledger
+        inside the same transaction and proof-bound tenant chain. Audit stays
+        permanent. Both engines prove unapplied/applied cleanup,
+        nonempty-project rollback, foreign actor/org refusal, and retained plan
+        plus project-deletion audit.
+      </td>
+    </tr>
+  </table>
+  <p>
+    <strong>Deletion decision:</strong> A: explicitly remove project-owned plans
+    with the authorized project transaction; B: change the FK to blanket
+    cascade; C: leave permanent deletion refusal. Chose A. Plan immutability and
+    provenance retention govern the live project and scheduled GC; explicit
+    project destruction ends its operational ledger. The independent audit
+    remains durable. No migration, cascade authorization change, standalone
+    purge operation, or audit deletion.
+  </p>
+  <h2>Prototype alignment</h2>
+  <p>
+    Reused ProjectSettings Policy row, settings controls, native matrix-editor
+    dialog, ConsequencesDialog, redacted ScanBlockDialog, and Remotes
+    card/facts/directory-list styling. No changes to locked prototype fixtures.
+    Desktop/mobile, dark/light screenshots accompany embedded browser
+    validation. Parent performs broader five-family prototype comparison on
+    combined head.
+  </p>
+  <h2>Validation plan and limits</h2>
+  <p>
+    Real embedded application tests cover canonical download, equal/file-ahead
+    comparison, immutable plan read, atomic apply creating an environment, stale
+    bundle refusal and actual Git-mode policy. Controlled HTTP refusal fixtures
+    cover missing publish authority and forbidden instance directory display;
+    unit tests prove a later 403 hides previously rendered metadata and a
+    governance flip prevents browser apply. Scanner overrides reuse the existing
+    audited content-bound mechanism. A bundle requiring secret-to-config changes
+    retains the server refusal and directs the operator to the dedicated
+    declassification ceremony.
+  </p>
+  <h2>Desktop evidence</h2>
+  <p>
+    <a href="evidence/web-parity/desktop-definitions-plan-dark.png"
+      >Definitions, dark</a
+    >
+    ·
+    <a href="evidence/web-parity/desktop-definitions-plan-light.png"
+      >Definitions, light</a
+    >
+    ·
+    <a href="evidence/web-parity/desktop-this-instance-dark.png"
+      >This instance, dark</a
+    >
+    ·
+    <a href="evidence/web-parity/desktop-this-instance-light.png"
+      >This instance, light</a
+    >
+  </p>
+  <h2>Final browser evidence and review fix</h2>
+  <p>
+    The final real embedded browser replay passed all six focused flows in 3.1
+    minutes. Mobile inspection found native file-input intrinsic sizing could
+    overflow the dialog; the final layout constrains grid children and the file
+    input, and tests now assert zero horizontal overflow. The recorded plan
+    shows its digest and apply action within the mobile viewport.
+  </p>
+  <p>
+    Independent review found generated bigint response coercion accepted
+    malformed file numbers such as booleans and numeric strings. File-input
+    schemas now require integer JSON numbers before conversion, including direct
+    and union min/max and base_revision. Arrays, objects, null, fractions,
+    strings and booleans refuse before any API request. Response schemas remain
+    unchanged. Review verification: CLEAN.
+  </p>
+  <p>
+    Evidence:
+    <a href="evidence/web-parity/mobile-definitions-plan-dark.png"
+      >mobile plan dark</a
+    >,
+    <a href="evidence/web-parity/mobile-definitions-plan-light.png"
+      >mobile plan light</a
+    >,
+    <a href="evidence/web-parity/mobile-this-instance-dark.png"
+      >mobile directory dark</a
+    >,
+    <a href="evidence/web-parity/mobile-this-instance-light.png"
+      >mobile directory light</a
+    >.
+  </p>
+</html>
