@@ -75,3 +75,9 @@ min/max require actual JSON integers in the safe-number range. Final UI reset al
 the native file picker after successful apply, allowing the same filename to be selected again.
 
 Parent Spec/security review: CLEAN after verifying proof-scoped project deletion, preserved audit, immutable plan and per-environment publish semantics, transient file lifetime, Git browser refusal and exact direct parity claims. Parent reran API/server/definitions/isolation invariants on both engines; all passed. Parent visually inspected retained mobile plan and desktop directory screenshots; containment and existing shell primitives match the intended treatment. Final combined five-family prototype proof remains a release gate.
+
+## CodeQL report renderer correction
+
+At candidate `519d1218bb9e0eeb370303dccf21f87d7c5aa122`, CodeQL identified DOM selector values interpolated into `innerHTML` in the prototype comparison report. The renderer now uses `createElement`, `textContent`, DOM property assignment and `replaceChildren`; viewport/theme values are narrowed to the supported choices. No suppression was added.
+
+Chromium validation passed all four viewport/theme combinations, eight sections and sixteen images per combination, all 64 expected image paths, and a hostile injected option value. The hostile value produced neither injected DOM nor script execution; invalid choices used desktop/dark defaults. No page JavaScript errors occurred. This is report-only validation; product web code did not change. Parent retains independent preview/review and exact-head CodeQL confirmation.

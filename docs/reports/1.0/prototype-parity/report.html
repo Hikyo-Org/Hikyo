@@ -24,4 +24,49 @@
 <label>Viewport<select id="viewport"><option value="desktop">Desktop</option><option value="mobile">Mobile</option></select></label><label>Theme<select id="theme"><option value="dark">Dark</option><option value="light">Light</option></select></label><div id="comparisons"></div>
 <h2>Corrected machine journey</h2><p>The supported grant now says blocked until its prerequisite is met. Permission readiness is explicitly separated from observed delivery; existing reveal grants also become blocked when the project opt-in is withdrawn. These final screenshots include the wrapping correction.</p><div class="pair"><figure><figcaption>Desktop, dark</figcaption><a href="evidence/desktop-machine-journey-dark.png"><img loading="lazy" alt="Corrected desktop setup journey" src="evidence/desktop-machine-journey-dark.png"></a></figure><figure><figcaption>Mobile, light</figcaption><a href="evidence/mobile-machine-journey-light.png"><img loading="lazy" alt="Corrected mobile setup journey" src="evidence/mobile-machine-journey-light.png"></a></figure></div><p><a href="evidence/desktop-machine-journey-light.png">Desktop light</a> · <a href="evidence/mobile-machine-journey-dark.png">Mobile dark</a></p>
 <h2>Validation and limits</h2><p>TypeScript check, production build, all 83 web test files/677 tests and the focused 39 identity derivation tests pass after the copy change. Six focused desktop/mobile machine cases passed, including all five tabs, expansion and real display-once mint. Final desktop/mobile label-wrapping replay also passed (2.8 minutes). Parent retains exact combined-head replay, review, CI and merge. This local browser evidence is not a deployed-production claim. The sixth locked social-signin/2 family is explicitly post-1.0 in its owning scope. The existing real login was inspected: username/password, passkey, configured identity provider, setup-authority establishment and recovery; no registration or JIT door was falsely advertised. Its <a href="evidence/login-closed-registration-app.png">current login capture</a> is retained.</p>
-<script>const surfaces=[['matrix','Environment matrix31'],['cell-editor','Single-cell editor'],['reveal-ceremony','Protected disclosure ceremony'],['project-settings','Project settings15'],['org-retention','Organisation retention16'],['sidebar-e','Sidebar18 treatment e'],['history-list','Revision history6'],['machine-expanded','Machine access3']];function render(){const viewport=document.querySelector('#viewport').value,theme=document.querySelector('#theme').value;document.body.classList.toggle('mobile',viewport==='mobile');document.querySelector('#comparisons').innerHTML=surfaces.map(([key,title])=>`<section class="surface"><h3>${title}</h3><div class="pair">${[['ref','Frozen reference'],['app','Actual application']].map(([kind,label])=>`<figure><figcaption>${label}</figcaption><a href="evidence/${viewport}-${theme}-${key}-${kind}.png"><img loading="lazy" alt="${label}: ${title}, ${viewport}, ${theme}" src="evidence/${viewport}-${theme}-${key}-${kind}.png"></a></figure>`).join('')}</div></section>`).join('')}document.querySelectorAll('select').forEach(el=>el.addEventListener('change',render));render();</script></html>
+<script>
+const surfaces = [
+  ['matrix', 'Environment matrix31'],
+  ['cell-editor', 'Single-cell editor'],
+  ['reveal-ceremony', 'Protected disclosure ceremony'],
+  ['project-settings', 'Project settings15'],
+  ['org-retention', 'Organisation retention16'],
+  ['sidebar-e', 'Sidebar18 treatment e'],
+  ['history-list', 'Revision history6'],
+  ['machine-expanded', 'Machine access3'],
+];
+function render() {
+  const viewport = document.querySelector('#viewport').value === 'mobile' ? 'mobile' : 'desktop';
+  const theme = document.querySelector('#theme').value === 'light' ? 'light' : 'dark';
+  document.body.classList.toggle('mobile', viewport === 'mobile');
+  const comparisons = document.querySelector('#comparisons');
+  comparisons.replaceChildren();
+  for (const [key, title] of surfaces) {
+    const section = document.createElement('section');
+    section.className = 'surface';
+    const heading = document.createElement('h3');
+    heading.textContent = title;
+    const pair = document.createElement('div');
+    pair.className = 'pair';
+    for (const [kind, label] of [['ref', 'Frozen reference'], ['app', 'Actual application']]) {
+      const figure = document.createElement('figure');
+      const caption = document.createElement('figcaption');
+      caption.textContent = label;
+      const link = document.createElement('a');
+      const source = `evidence/${viewport}-${theme}-${key}-${kind}.png`;
+      link.href = source;
+      const screenshot = document.createElement('img');
+      screenshot.loading = 'lazy';
+      screenshot.alt = `${label}: ${title}, ${viewport}, ${theme}`;
+      screenshot.src = source;
+      link.append(screenshot);
+      figure.append(caption, link);
+      pair.append(figure);
+    }
+    section.append(heading, pair);
+    comparisons.append(section);
+  }
+}
+document.querySelectorAll('select').forEach(element => element.addEventListener('change', render));
+render();
+</script></html>
