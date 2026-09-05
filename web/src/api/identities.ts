@@ -490,6 +490,21 @@ export function grantableFor(
 }
 
 /**
+ * grantSubmittable is the dialog's submit gate: the chosen environment must
+ * still be grantable for the chosen capability under the CURRENT opt-in. The
+ * opt-in can be withdrawn while the dialog is open, and a stale `reveal`
+ * choice must not stay one click from landing.
+ */
+export function grantSubmittable(
+  scope: readonly MachineEnvScope[],
+  environment: string,
+  capability: 'read' | 'reveal',
+  machineReveal: boolean,
+): boolean {
+  return grantableFor(scope, capability, machineReveal).some((s) => s.id === environment);
+}
+
+/**
  * parseClaimNumber turns a typed int64 pin into a number, or refuses.
  *
  * `Number()` is not usable here and the failures are not cosmetic: an empty

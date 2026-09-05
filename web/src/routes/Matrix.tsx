@@ -1230,6 +1230,7 @@ export function Matrix({
                         ref={rowVirtualizer.measureElement}
                       >
                         <th scope="row" title={key.name}>
+                          <span className="matrix__key-cell">
                           {/* The key NAME opens its declaration detail (#491):
                               the routable, reload-safe catalogue surface that
                               inspects every declaration field and hosts the
@@ -1257,6 +1258,7 @@ export function Matrix({
                             </span>
                           )}
                           <span className="matrix__required">{requiredLabel(key, environments)}</span>
+                          </span>
                         </th>
                         {visibleEnvironments.map((environment) => {
                           const id = cellID(key.id, environment.id);

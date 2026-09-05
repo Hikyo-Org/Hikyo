@@ -226,6 +226,16 @@ export function Values() {
           return;
         }
         if (!ceremony.isCurrent(task)) return;
+        if (state.can_reveal !== true) {
+          // The fetched window is the authority: a stale cache may have
+          // offered the control, but the disclosure stops here.
+          if (ceremony.commit(task, () => {
+            setRefusal('Reveal is not granted here, so nothing was disclosed.');
+          })) {
+            ceremony.finish(task);
+          }
+          return;
+        }
         if (state.live && !state.single_decision) {
           await advance(remaining.slice(1));
           return;
@@ -465,7 +475,7 @@ export function Values() {
           className="btn"
           type="button"
           onClick={doRevealAll}
-          disabled={secretsSet.length === 0 || guard?.can_reveal === false}
+          disabled={secretsSet.length === 0 || guard?.can_reveal !== true}
         >
           Reveal every secret
         </button>
@@ -521,7 +531,11 @@ export function Values() {
             // while they are looking at nothing. Deriving it from whether the
             // cell happens to be revealed on screen would make the microcopy a
             // function of what the human last clicked.
-            const writeOnly = secret && guard !== undefined && !guard.can_reveal;
+            // Fail closed: while the guard is pending or failed the value is
+            // treated as write-only, so no disclosure control is offered on a
+            // permission nobody has confirmed.
+            const canReveal = guard?.can_reveal === true;
+            const writeOnly = secret && !canReveal;
             return (
               <tr key={cell.key_id}>
                 <th scope="row">
@@ -567,7 +581,7 @@ export function Values() {
                       Reveal
                     </button>
                   ) : null}
-                  {cell.set ? (
+                  {cell.set && (!secret || canReveal) ? (
                     <button
                       className="btn"
                       type="button"

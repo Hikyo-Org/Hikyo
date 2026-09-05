@@ -8,6 +8,7 @@ import {
   deleteServiceAccountRefusalText,
   expiryLabel,
   grantableFor,
+  grantSubmittable,
   grantWideningReach,
   lastUsedLabel,
   parseClaimNumber,
@@ -419,5 +420,20 @@ describe('deleteServiceAccountFailureText', () => {
 
   it('warns of a possible commit on an ambiguous failure', () => {
     expect(deleteServiceAccountFailureText(new ApiError(500, 'boom'))).toContain('may still');
+  });
+});
+
+describe('grantSubmittable', () => {
+  const scope = scopeOf([], 'mp_a', ENVS);
+  it('refuses a stale reveal choice once the project opt-in is withdrawn', () => {
+    const readHeld = scope.map((s) => ({ ...s, read: true }));
+    expect(grantSubmittable(readHeld, readHeld[0]?.id ?? '', 'reveal', true)).toBe(true);
+    expect(grantSubmittable(readHeld, readHeld[0]?.id ?? '', 'reveal', false)).toBe(false);
+  });
+  it('refuses an environment that is no longer grantable for the capability', () => {
+    expect(grantSubmittable(scope, scope[0]?.id ?? '', 'read', false)).toBe(true);
+    const held = scope.map((s) => ({ ...s, read: true }));
+    expect(grantSubmittable(held, held[0]?.id ?? '', 'read', false)).toBe(false);
+    expect(grantSubmittable(scope, '', 'read', false)).toBe(false);
   });
 });

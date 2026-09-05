@@ -21,6 +21,7 @@ import {
   expiryLabel,
   FEDERATION_PRESETS,
   grantableFor,
+  grantSubmittable,
   grantWideningReach,
   identityRefusalText,
   isoDay,
@@ -2589,6 +2590,18 @@ function GrantBody({
   const [environment, setEnvironment] = useState(grantable[0]?.id ?? '');
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The inputs can move under an open dialog (the opt-in withdrawn, the
+  // account's scope refreshed). Fold the selection back onto what is still
+  // grantable so no stale choice survives to the submit.
+  useEffect(() => {
+    if (capability === 'reveal' && !machineReveal) {
+      setCapability('read');
+      return;
+    }
+    if (environment !== '' && !grantable.some((s) => s.id === environment)) {
+      setEnvironment(grantable[0]?.id ?? '');
+    }
+  }, [capability, environment, grantable, machineReveal]);
 
   // An in-flight grant is not dismissible by Back or unload either: a widening
   // that commits behind a dismissed dialog is invisible at the moment it most
@@ -2605,8 +2618,18 @@ function GrantBody({
    * dialog never renders, and a fetch is a cached copy (see useKeyCatalogue).
    */
   const values = useKeyCatalogue(project);
-  const reachable = values.data?.items ?? [];
+  // A read grant reaches the whole catalogue by name; a reveal grant adds
+  // standing decryption of the SECRETS only (read is already held, so config
+  // values are not new). Presence per environment is not in this read, so the
+  // sentence says "when set" rather than claiming plaintext for every row.
+  const catalogue = values.data?.items ?? [];
+  const reachable =
+    capability === 'reveal' ? catalogue.filter((key) => key.classification === 'secret') : catalogue;
   const chosen = grantable.find((s) => s.id === environment);
+  // The opt-in can be withdrawn while this dialog is open: the capability
+  // select disappears, but a stale reveal choice or a stale environment must
+  // not stay submittable.
+  const submittable = grantSubmittable(scope, environment, capability, machineReveal);
   // The mint formula's conjunct for a WIDENING is the delta, not the whole
   // post-state, which is what the server computes in checkMachineWidening.
   const widening = grantWideningReach(scope, environment, capability);
@@ -2726,7 +2749,7 @@ function GrantBody({
               ? 'This project declares no keys, so the grant reaches an empty catalogue today, and every key declared later.'
               : capability === 'read'
                 ? 'Newly reachable: every key below, by name and classification. A read grant delivers configuration values and secret presence; plaintext needs reveal.'
-                : 'Newly decryptable: every secret below, in plaintext, on the next fetch.'}
+                : 'Newly decryptable: every secret below, as standing authority over its value wherever it is set. Configuration keys are not listed: read already reaches them.'}
           </p>
           {reachable.length === 0 ? null : (
             <ul className="ceremony__keys" aria-label="Keys this grant makes reachable">
@@ -2764,7 +2787,7 @@ function GrantBody({
         <button
           className="btn btn--primary"
           type="button"
-          disabled={busy || environment === '' || !values.isSuccess}
+          disabled={busy || !submittable || !values.isSuccess}
           onClick={() => void submit()}
         >
           {busy ? 'Granting…' : `Grant ${capability}`}

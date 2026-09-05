@@ -189,7 +189,7 @@ select {
   color: var(--changed);
 }
 
-.badge[data-state='reachable'] {
+.badge[data-state='ok'] {
   border-color: var(--accent);
 }
 
@@ -4969,6 +4969,15 @@ select {
     min-width: var(--touch);
     min-height: var(--touch);
   }
+
+  /* The retention line's link to the owning settings panel is inline prose on
+     a desktop; on a phone it is the only control in that block and has to
+     clear the 44px floor on its own. */
+  .history__settings-pointer {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--touch);
+  }
 }
 
 /* The shell's second-factor step-up: a strip above the content, present only
@@ -5987,6 +5996,27 @@ select {
 
 /* A degraded matrix column names its state in words (DESIGN.md: unknown is a
    word, never a dash). */
+/* One line, always: the name shrinks with an ellipsis and the glyph and the
+   required label keep their width, so a long key never adds a second line. */
+.matrix__key-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.matrix__key-cell > .matrix__key {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.matrix__key-cell > .matrix__linked-keys,
+.matrix__key-cell > .matrix__required {
+  flex: none;
+  margin-left: 0;
+}
+
 .matrix-cell__absent {
   color: var(--tx-faint);
   font-family: var(--font-mono);
@@ -6050,19 +6080,14 @@ select {
 }
 
 .definitions-bundle__provenance {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 4px 12px;
   margin: 8px 0 0;
+  color: var(--tx-dim);
   font-size: 12.5px;
+  line-height: 1.6;
 }
 
-.definitions-bundle__provenance dt {
-  color: var(--tx-faint);
-}
-
-.definitions-bundle__provenance dd {
-  margin: 0;
+.definitions-bundle__provenance .mono {
+  color: var(--tx);
 }
 
 .history__impact-group {

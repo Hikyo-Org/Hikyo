@@ -51,7 +51,7 @@ Copy: no em-dash anywhere in user-visible text; use a comma, colon, or full stop
 ## Shape & Space
 
 - **Radius carries a role** (decided app-chrome iteration 8, ticket #29): containers/cards 6px; controls (buttons, inputs, selects) 4px; badges/tags/chips 3px.
-- **The 999px pill is reserved** for identity circles, count badges, and 6-8px status dots. Matrix values, labelled chips, and revision labels are table content, not badges: they take the 3px badge radius.
+- **The 999px pill is reserved** for identity circles, count badges, and status dots of 12px or less. Matrix values are table content, not badges: the hover and focus box around a value is a control (4px). Labelled chips (problem counts, `current rN`, staging summaries) are badges (3px).
 - Hairline borders (1px) over shadows; shadows only on modal overlays.
 - Density: matrix rows ~36px desktop, ~44px touch targets mobile.
 

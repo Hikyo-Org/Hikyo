@@ -171,26 +171,56 @@ describe('Members at organisation scope without manage-members', () => {
     mocks.instanceGrants = idle();
   });
 
-  for (const status of [403, 404]) {
-    it(`hides the grant, invite and reset actions on a ${String(status)} listing refusal`, async () => {
-      mocks.orgGrants = { ...idle(), error: new ApiError(status, 'refused'), isError: true };
-      const view = await renderForm(
-        <MemoryRouter initialEntries={['/orgs/org_acme/members']}>
-          <Routes>
-            <Route path="/orgs/:org/members" element={<Members scope={{ kind: 'org' }} />} />
-          </Routes>
-        </MemoryRouter>,
-      );
-      expect(view.container.querySelector('[role="alert"]')).toBeNull();
-      const statuses = [...view.container.querySelectorAll('[role="status"]')].map((s) => s.textContent);
-      expect(statuses).toContain(
-        'You hold no manage-members here: this list shows only what you are allowed to see.',
-      );
-      const buttons = [...view.container.querySelectorAll('button')].map((b) => b.textContent);
-      expect(buttons).not.toContain('New grant');
-      expect(buttons).not.toContain('Invite');
-      expect(buttons.some((b) => b?.startsWith('Reset credential'))).toBe(false);
-      await view.unmount();
-    });
-  }
+  const staleRows = {
+    items: [
+      {
+        id: 'grn_stale',
+        principal_id: 'usr_stale',
+        capability: 'read',
+        scope: { org_id: 'org_acme' },
+        origins: [{ kind: 'manual', subject: 'usr_admin' }],
+        created_at: '2026-08-24T08:00:00Z',
+      },
+    ],
+    count: 1,
+  };
+
+  const renderOrg = () =>
+    renderForm(
+      <MemoryRouter initialEntries={['/orgs/org_acme/members']}>
+        <Routes>
+          <Route path="/orgs/:org/members" element={<Members scope={{ kind: 'org' }} />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+  it('treats a 403 as the second-factor refusal it is, keeping the recovery path', async () => {
+    mocks.orgGrants = { ...idle(), data: staleRows, error: new ApiError(403, 'refused'), isError: true };
+    const view = await renderOrg();
+    expect(text(view.container, '[role="alert"]')).toContain('Managing members requires a second factor');
+    // A refused refetch must not keep showing the last page or its controls.
+    expect(view.container.textContent).not.toContain('usr_stale');
+    const buttons = [...view.container.querySelectorAll('button')].map((b) => b.textContent);
+    expect(buttons).not.toContain('New grant');
+    expect(buttons).not.toContain('Invite');
+    expect(buttons.some((b) => b?.startsWith('Reset credential'))).toBe(false);
+    expect(buttons.some((b) => b?.startsWith('Revoke'))).toBe(false);
+    await view.unmount();
+  });
+
+  it('hides the grant, invite and reset actions on a 404 listing refusal and says why', async () => {
+    mocks.orgGrants = { ...idle(), data: staleRows, error: new ApiError(404, 'refused'), isError: true };
+    const view = await renderOrg();
+    expect(view.container.querySelector('[role="alert"]')).toBeNull();
+    const statuses = [...view.container.querySelectorAll('[role="status"]')].map((s) => s.textContent);
+    expect(statuses).toContain(
+      'You hold no manage-members here: this list shows only what you are allowed to see.',
+    );
+    expect(view.container.textContent).not.toContain('usr_stale');
+    const buttons = [...view.container.querySelectorAll('button')].map((b) => b.textContent);
+    expect(buttons).not.toContain('New grant');
+    expect(buttons).not.toContain('Invite');
+    expect(buttons.some((b) => b?.startsWith('Reset credential'))).toBe(false);
+    await view.unmount();
+  });
 });

@@ -203,7 +203,11 @@ export function Members({ scope }: { scope: MembersScope }) {
           ['staging', 'production', 'project', 'org'],
         )
       : [...projectOptions, ...allOptions.filter((option) => option.scope.kind === 'org')];
-  const lines = grants.data?.items ?? [];
+  // A refused listing blanks everything derived from it: react-query keeps the
+  // last successful page in `data` across a failed refetch, and a manager whose
+  // second factor has lapsed must not keep seeing (or acting on) rows the
+  // server just declined to show.
+  const lines = grants.isError ? [] : (grants.data?.items ?? []);
   const visibleLines = projectId === ''
     ? lines
     : lines.filter((grant) => {
@@ -215,16 +219,16 @@ export function Members({ scope }: { scope: MembersScope }) {
   // The prototype's compact project presentation never applies at instance
   // scope: there is no project to be compact about.
   const compactPresentation = projectId !== '' || (prototypeMode && !instance);
+  // `manage-members` is MFA-mandatory at every scope, so a 403 here is the
+  // second-factor refusal and nothing else (grantFailureText documents the pin);
+  // a 404 is the uniform nonexistent shape: no manage-members, or no such scope.
   const secondFactorRefused =
-    instance && grants.error instanceof ApiError && grants.error.status === 403;
-  const nondisclosed = instance && grants.error instanceof ApiError && grants.error.status === 404;
-  // The org listing needs manage-members at this organisation, and 403 and 404
-  // are the one uniform tenant refusal. Without it there is nothing to grant,
-  // invite or reset from here, so those actions are absent rather than dead.
-  const noManageMembers =
-    !instance
-    && grants.error instanceof ApiError
-    && (grants.error.status === 403 || grants.error.status === 404);
+    grants.error instanceof ApiError && grants.error.status === 403;
+  const nondisclosed = grants.error instanceof ApiError && grants.error.status === 404;
+  // Either refusal leaves nothing to grant, invite or reset from here, so those
+  // actions are absent rather than dead; the second-factor case keeps its
+  // recovery path (the step-up banner) in the sentence above the list.
+  const noManageMembers = secondFactorRefused || nondisclosed;
 
   const [draft, setDraft] = useState<GrantDraft>({
     principal: '',
@@ -305,14 +309,14 @@ export function Members({ scope }: { scope: MembersScope }) {
 
       {secondFactorRefused ? (
         <Alert>
-          Instance grants require a second factor. Present your authenticator code or passkey in
-          the banner above.
+          {instance ? 'Instance grants' : 'Managing members'} require{instance ? '' : 's'} a second
+          factor. Present your authenticator code or passkey in the banner above, then reload.
         </Alert>
       ) : nondisclosed ? (
-        <p role="status">Instance grants are not disclosed to this session.</p>
-      ) : noManageMembers ? (
         <p role="status">
-          You hold no manage-members here: this list shows only what you are allowed to see.
+          {instance
+            ? 'Instance grants are not disclosed to this session.'
+            : 'You hold no manage-members here: this list shows only what you are allowed to see.'}
         </p>
       ) : grants.isError ? (
         <Alert>{membershipFailureText(grants.error)}</Alert>
