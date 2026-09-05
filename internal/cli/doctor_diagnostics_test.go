@@ -71,13 +71,20 @@ func TestDoctorDiagnosticVerdictsAndExitCodes(t *testing.T) {
 					return ""
 				}
 			}}}
-			if code := Run(t.Context(), ios, []string{"doctor", "--instance", "local", "-o", "json"}); code != tc.exit {
+			if code := Run(t.Context(), ios, []string{"doctor", "--instance", "local", "-o", "json", "--evidence"}); code != tc.exit {
 				t.Fatalf("exit=%d want=%d stderr=%s", code, tc.exit, stderr.String())
 			}
-			var result doctorResult
-			if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+			var report doctorEvidence
+			if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
 				t.Fatal(err)
 			}
+			if report.ServerVersion != "fixture-current" || report.ServerOrigin != server.URL || report.CollectedAt.Before(now) || report.SchemaVersion != 1 || len(report.NotAssessed) == 0 {
+				t.Fatalf("invalid collection metadata: %+v", report)
+			}
+			if strings.Contains(stdout.String(), "doctor-test-token") {
+				t.Fatal("evidence leaked authentication token")
+			}
+			result := report.Measurements
 			if result.Status != tc.status || requests != 2 {
 				t.Fatalf("status=%s want=%s requests=%d", result.Status, tc.status, requests)
 			}

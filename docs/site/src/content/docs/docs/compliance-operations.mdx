@@ -1,0 +1,88 @@
+---
+title: Compliance operator procedures
+description: Handle privacy requests, preserve evidence, review access and respond to personal-data breaches.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/compliance-operations.mdx
+---
+
+Assign named owners to these procedures before processing real personal data.
+Adapt them to your organization's responsibilities and installed Hikyo version.
+Review the [control boundaries](/docs/compliance/#controls-and-limits) against
+your installed version.
+
+## Rights requests
+
+1. Record receipt time, requested right, scope and responsible controller; verify identity proportionately without collecting unnecessary documents.
+2. Locate relevant records using the [inventory](/docs/privacy/), including external copies and processors. Keep results within the person's authorized scope.
+3. Assess access, correction, restriction, objection, portability or erasure as applicable. Review other people's rights and legal retention exceptions; exclude passwords, tokens and unrelated secrets.
+4. Use the [identity workflows](/docs/privacy/#identity-workflows) and approved content lifecycle operations, then document coverage. SCIM deprovisioning alone is not proof of erasure; inspect residual data and external copies.
+5. Respond and record evidence, exceptions and follow-up. The ordinary response deadline is one month; a permitted extension requires timely notice and reasons.
+
+A full instance backup is not a safe subject-access export. A self-service UI is
+not necessary for every workflow, but the operator must be able to fulfil the
+applicable right. See [EDPB rights guidance](https://www.edpb.europa.eu/sme/be-compliant/respect-individuals-rights_en).
+
+## Access review and evidence
+
+Review human and machine access at an organization-chosen cadence and after
+personnel changes. Include instance administrators, database operators, identity
+provider administrators, backup custodians, service accounts and downstream targets.
+Record reviewer, scope, findings and evidence that corrections were completed.
+
+Use existing diagnostics from an authenticated operator session:
+
+```bash
+hikyo version
+hikyo doctor --instance NAME --evidence -o json
+```
+
+Replace `NAME` with your configured instance. `--evidence` requires `-o json` and
+adds schema version, collection time, server origin/version, API revision, client
+version and explicit unassessed controls to the existing findings. Ordinary doctor
+output remains available without the flag. Error findings still produce exit code
+4 after output. The report is a collection record, not a signed attestation.
+
+Store it in a restricted evidence destination alongside operator identity and
+remediation records. It excludes session credentials and configuration dumps, but
+server origins and provider metadata can still be sensitive.
+Doctor covers operational findings documented in the
+[self-hosting checklist](/docs/self-hosting/#operational-checklist); it is not a
+GDPR validator, a complete access-review report or a SOC 2 certification check.
+
+Preserve audit exports in a separately administered destination with appropriate
+access and retention. Project-scoped automation cannot silently become an
+instance-wide audit collector. For broader archive-based evidence, follow the
+[backup procedures](/docs/backup-and-restore/) and protect the sensitive contents.
+Alert on missed collection, failed exports and backup/restore findings.
+
+## Recovery exercise
+
+Follow the [recurring restore drill](/docs/backup-and-restore/#6-recurring-restore-drill).
+Record archive identity, recovery result and timing, key-custody verification,
+operator decisions, privacy reconciliation and cleanup. Include externally managed
+copies and failed scratch targets in the evidence. A successful technical restore
+alone does not prove that deleted personal data will stay deleted.
+
+## Personal-data breach response
+
+1. Record when the organization became aware, affected systems and incident owner. Contain access and preserve protected evidence.
+2. Assess personal-data exposure and risks to people, including unavailable or altered data. Record the assessment even if notification is unnecessary.
+3. If acting as processor, notify the controller without undue delay. If acting as controller, notify the authority within 72 hours of awareness where required; information can be supplied in phases.
+4. Notify affected people without undue delay where high risk requires it, subject to applicable exceptions. Keep a record of recipients, decisions and communications.
+5. Recover safely, verify credential and data remediation, and record corrective actions and their owners.
+
+The [vulnerability-reporting policy](/security/) is a route to the software
+maintainer, not your organization's breach-notification procedure. Its response
+targets do not replace GDPR deadlines. Follow [EDPB breach guidance](https://www.edpb.europa.eu/sme/assess-the-risks/data-breaches_en).
+
+## Evidence register template
+
+| Control | Owner | Evidence and review |
+| --- | --- | --- |
+| Access | Named security owner | Membership/grant review, privileged access and completed revocations |
+| Recovery | Named operator | Backup health, restore result, escrow verification and cleanup |
+| Privacy | Named privacy owner | Inventory, retention decisions, requests and processor/copy register |
+| Incidents | Named incident owner | Assessment, notification decisions, exercise and corrective actions |
+| Changes and vulnerabilities | Named maintainer/operator | Reviewed release, CI evidence, installed version and remediation decisions |
+
+Store evidence with restricted access and justified retention. Do not attach
+production secrets, full archives or unredacted personal data to public issues.

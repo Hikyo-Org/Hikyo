@@ -13,6 +13,7 @@ func TestDoctorGrammar(t *testing.T) {
 		args []string
 		want int
 	}{
+		{"evidence requires json", []string{"doctor", "--evidence"}, cli.ExitUsage},
 		{"unknown argument", []string{"doctor", "now"}, cli.ExitUsage},
 		{"valid invocation reaches auth", []string{"doctor", "--instance", "unknown-ref"}, cli.ExitRefused},
 	}

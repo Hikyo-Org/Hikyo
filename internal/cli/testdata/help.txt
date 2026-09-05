@@ -23,7 +23,8 @@ contexts:
   hikyo context delete --instance <ref>            forget a trust-store entry
 
 diagnostics:
-  hikyo doctor [--instance REF] [-o table|json]     report provider and retention health
+  hikyo doctor [--instance REF] [-o table|json] [--evidence]
+                                                 report health or JSON collection evidence
   hikyo update channel stable|nightly|off           choose local release track
   hikyo update check                                check the selected release track now
 

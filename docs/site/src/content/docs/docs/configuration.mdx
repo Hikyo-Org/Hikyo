@@ -264,3 +264,15 @@ is available; `hikyo update check` refreshes immediately.
 
 Prefer flags for visible, one-off target changes and `--token-file` for machine
 credentials. See [contexts and targets](/docs/contexts/).
+
+## Audit retention
+
+`HIKYO_AUDIT_ACCESS_RETAIN_DAYS` defaults to `90`;
+`HIKYO_AUDIT_SECURITY_RETAIN_DAYS` defaults to `365`. Both require whole days
+within `1..3650`, with security at least access retention. Invalid values refuse
+startup. Host-local policy changes and deletion batches are audited.
+
+**The upgraded scheduler deletes eligible pre-existing audit history.** Review
+policy before starting it and preserve any independently required evidence.
+Correlated units survive until every member expires. See
+[audit retention and upgrade precautions](/docs/privacy/#audit-retention).

@@ -384,3 +384,38 @@ The old pickup brief assumed every minimum revision was 1. The inspected impleme
 Marc already [approved `conflict` and `limit_exceeded` and accepted the SOPS/KMS size tradeoff](https://github.com/Hikyo-Org/Hikyo/issues/79#issuecomment-5353930183). Both errors enter the freeze baseline; the negative fixture forbidding later closed-response-enum growth remains. The binary must be remeasured at the final candidate, with all supported KMS sources retained.
 
 Existing open contracts `ProtocolCapability`, `SessionArtifact`, `AuthMethod` and `FactorClass` remain open. #617 additionally opens identity-provider kind, OIDC/SAML purpose and grant origin, with unknown-consumer fixtures. Audit event types and adapter-plan warnings already use strings. Control/state enums are not widened merely to make a test pass. The remaining potentially extensible response fields `AdapterProvider` and `SamlProviderWarning.code` require an explicit pre-freeze disposition and unknown-consumer validation; the [acceptance ledger](../release/acceptance-1.0.md) must not treat the enum audit as complete until that is resolved. `DynamicProviderKind` remains deliberately closed to PostgreSQL under #147.
+
+## Doctor evidence collection
+
+`hikyo doctor --instance REF --evidence -o json` wraps the existing findings in
+a versioned collection record: UTC collection time, server origin and version,
+API revision, client version, and explicit unassessed organizational boundaries.
+It reads the existing metadata endpoint and retains existing refused exit status
+for error findings. `--evidence` requires JSON; ordinary output is unchanged.
+No session credentials or server configuration dump enter the report.
+
+## Host-local privacy operations
+
+`hikyo admin privacy export|restrict|erase|release --principal ID --output-file PATH`
+uses the normal admin environment and root-key admission. Mutations additionally
+require `--confirm`. `correct` also requires `--username HANDLE --display-name NAME`.
+`hikyo admin privacy reapply --receipt PATH --output-file PATH --confirm` reapplies
+an approved restriction/erasure after restoration to the same instance and account.
+There is no network route or tenant-admin authority. Root custody covers the named
+account across organizations. Outputs are new owner-only files; receipts exclude
+direct identifying labels and must be retained separately from backups.
+
+Exports contain account, linked identity, grant, session and actor-activity metadata;
+credential material, value contents and audit payloads are excluded. Activity above
+10,000 rows per trail refuses rather than truncating. Operators review residual
+SCIM attributes, other audit references and customer content.
+
+Restriction blocks account resolution and grant authorization and revokes sessions.
+Release leaves erased principals blocked. Erasure removes direct identity and
+authentication custody while retaining a pseudonymous tombstone for historical FKs.
+Correction changes local labels only and preserves a restriction. All mutations
+and export are audited; manager lockout checks serialize with grant writers.
+Receipts for correction/release record the decision but are not replay instructions.
+
+The public [privacy guide](../site/src/content/docs/docs/privacy.mdx) owns operator
+examples, destructive-action warnings and residual limits.

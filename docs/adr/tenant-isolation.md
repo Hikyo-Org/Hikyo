@@ -1,5 +1,15 @@
 # Hikyo tenant isolation — enforcement, layer by layer (ADR, locked 2026-08-02)
 
+> **Declared amendment (2026-09-05, self-hosted privacy controls):**
+> The existing scheduler authority gains exactly `retention.AuditPolicy`,
+> `retention.SetAuditPolicy` and `retention.PruneAudit` for bounded audit expiry.
+> Host policy adoption and deletion receipts remain transactional and audited.
+> Boot and tenant authority do not gain these operations. The exact operation
+> set and denial tests remain pinned. Host-local identity workflows reuse the
+> existing root-custody admin boundary, have no network route, and are separately
+> call-site constrained. See [the compliance spec](../spec/self-hosted-compliance.md).
+
+
 > **Declared amendment (2026-09-05, 1.0 diagnostics, #79):** the closed local-authority set additionally contains `local-escrow-verification`. It is CLI-only, has no HTTP route, and holds only active-master/openable-tier3 reads, the existing hierarchy fence, public escrow-record write and instance audit insert. Boot authority is unchanged. The existing scheduler and instance-authorized retention-health read additionally read aggregate diagnostics metadata. Exact operation sets and negative authority tests are pinned in CI.
 
 

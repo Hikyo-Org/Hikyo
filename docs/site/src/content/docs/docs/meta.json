@@ -36,6 +36,10 @@
     "backup-and-restore",
     "upgrades",
     "troubleshooting",
+    "---Security and privacy---",
+    "compliance",
+    "privacy",
+    "compliance-operations",
     "---Reference---",
     "cli-reference",
     "http-api"

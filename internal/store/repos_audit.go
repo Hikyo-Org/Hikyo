@@ -41,19 +41,20 @@ import (
 // isolation, invariant 8) accepts only `col OP param` conjuncts, so an optional
 // equality predicate has no provable SQL shape. An empty field is unset.
 type AuditFilter struct {
-	From           time.Time
-	To             time.Time
-	AfterSeq       int64
-	ToSeq          int64 // session ceiling: interactive pages never return seq above this
-	Limit          int
-	Actor          string         // actor_id (the acting principal)
-	Type           string         // event type (the operation)
-	Outcome        string         // outcome
-	ObjectType     string         // object type (a supported resource identifier)
-	ObjectID       string         // object id (a supported resource identifier)
-	CorrelationID  string         // links INTENT and OUTCOME of one act
-	Order          AuditPageOrder // service-controlled page mode; excluded from Normalized
-	AfterCommitSeq AuditCommitSeq // service-controlled export cursor; excluded from Normalized
+	RetentionSnapshot time.Time // internal export guard; not a client filter
+	From              time.Time
+	To                time.Time
+	AfterSeq          int64
+	ToSeq             int64 // session ceiling: interactive pages never return seq above this
+	Limit             int
+	Actor             string         // actor_id (the acting principal)
+	Type              string         // event type (the operation)
+	Outcome           string         // outcome
+	ObjectType        string         // object type (a supported resource identifier)
+	ObjectID          string         // object id (a supported resource identifier)
+	CorrelationID     string         // links INTENT and OUTCOME of one act
+	Order             AuditPageOrder // service-controlled page mode; excluded from Normalized
+	AfterCommitSeq    AuditCommitSeq // service-controlled export cursor; excluded from Normalized
 }
 
 // Matches reports whether a scanned row satisfies the filter's equality fields.
@@ -275,6 +276,11 @@ func (a sqliteAudit) PageTenant(ctx context.Context, p authz.Proof, f AuditFilte
 	if err != nil {
 		return nil, err
 	}
+	if !f.RetentionSnapshot.IsZero() {
+		if err := a.guardRetentionSnapshot(ctx, f.RetentionSnapshot); err != nil {
+			return nil, err
+		}
+	}
 	if f.Order == AuditPageByCommit {
 		return a.pageTenantExport(ctx, chain, level, f, from, to)
 	}
@@ -324,6 +330,11 @@ func (a sqliteAudit) PageInstance(ctx context.Context, p authz.Proof, f AuditFil
 	from, to, err := f.bounds()
 	if err != nil {
 		return nil, err
+	}
+	if !f.RetentionSnapshot.IsZero() {
+		if err := a.guardRetentionSnapshot(ctx, f.RetentionSnapshot); err != nil {
+			return nil, err
+		}
 	}
 	if f.Order == AuditPageByCommit {
 		return a.pageInstanceExport(ctx, f, from, to)
@@ -510,6 +521,11 @@ func (a pgAudit) PageTenant(ctx context.Context, p authz.Proof, f AuditFilter) (
 	if err != nil {
 		return nil, err
 	}
+	if !f.RetentionSnapshot.IsZero() {
+		if err := a.guardRetentionSnapshot(ctx, f.RetentionSnapshot); err != nil {
+			return nil, err
+		}
+	}
 	if f.Order == AuditPageByCommit {
 		return a.pageTenantExport(ctx, chain, level, f, from, to)
 	}
@@ -559,6 +575,11 @@ func (a pgAudit) PageInstance(ctx context.Context, p authz.Proof, f AuditFilter)
 	from, to, err := f.bounds()
 	if err != nil {
 		return nil, err
+	}
+	if !f.RetentionSnapshot.IsZero() {
+		if err := a.guardRetentionSnapshot(ctx, f.RetentionSnapshot); err != nil {
+			return nil, err
+		}
 	}
 	if f.Order == AuditPageByCommit {
 		return a.pageInstanceExport(ctx, f, from, to)

@@ -78,12 +78,14 @@ SELECT DISTINCT principal_id FROM grants
 WHERE capability = 'manage-members'
   AND project_id IS NULL
   AND (org_id = ? OR org_id IS NULL)
+AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active')
 ORDER BY principal_id;
 
 -- hikyo:authn-resolution
 -- name: ListManageMembersHoldersAtInstance :many
 SELECT DISTINCT principal_id FROM grants
 WHERE capability = 'manage-members' AND org_id IS NULL
+AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active')
 ORDER BY principal_id;
 
 -- The reveal guard reads the environment's own protection state and window.

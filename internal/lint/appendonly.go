@@ -17,18 +17,21 @@ import (
 // tables, and no session-level durability downgrade.
 //
 // The application layer holds INSERT and SELECT only on both audit tables.
-// The ADR licenses exactly two future deletion queries — the retention-
-// pruning job and the org-deletion cascade — each content-pinned like the
-// annotated-query allowlist. NEITHER EXISTS YET, so the allowlist ships
-// empty and this check is strictly tighter than the ADR until those tickets
-// land their pinned entries.
+// The ADR licenses policy retention and org-deletion cleanup. The retention
+// job now carries engine-specific content pins; arbitrary deletion remains
+// forbidden. Each trail has its own atomic retention-unit query.
 
 var auditTables = []string{"audit_tenant_events", "audit_instance_events"}
 
 // auditDeletionAllowlist is the content-pinned licensed-deleter set:
-// query name → sha256 of its normalized SQL. Empty until the pruning job
-// (ops-spec ticket) and the org-deletion cascade land.
-var auditDeletionAllowlist = map[string]string{}
+// engine/query name to SHA256 of normalized SQL. Only policy-driven audit
+// retention deletion is licensed here. Content changes require renewed review.
+var auditDeletionAllowlist = map[string]string{
+	"sqlite/PruneTenantAuditRetention":     "83cbaf696b02d8d6290e5a7707449c45c1c6c4bdbb95cc75b77339806fe5489e",
+	"sqlite/PruneInstanceAuditRetention":   "494e205b046dbe850ea921ca5094b9ca273ba6d8b569c657ae4d2d97cc40629b",
+	"postgres/PruneTenantAuditRetention":   "375a9eeddf60d58e04f87a7075cd3d7841497104287d5fd9189886192e692e1a",
+	"postgres/PruneInstanceAuditRetention": "fda06448ca43aad9884524b2a9d30dea73ffebc474cdffac275639707c3b431d",
+}
 
 // CheckAuditAppendOnly scans every query file on both engines.
 func CheckAuditAppendOnly(repoRoot string) []string {
@@ -53,7 +56,7 @@ func CheckAuditAppendOnly(repoRoot string) []string {
 			if strings.HasPrefix(upper, "INSERT ") || strings.HasPrefix(upper, "SELECT ") {
 				continue
 			}
-			if want, ok := auditDeletionAllowlist[q.Name]; ok && q.Hash() == want {
+			if want, ok := auditDeletionAllowlist[engine+"/"+q.Name]; ok && q.Hash() == want {
 				continue
 			}
 			findings = append(findings, fmt.Sprintf(
@@ -138,6 +141,9 @@ var ResolutionSurfaceWriters = map[string]bool{
 	// Bootstrap under local host authority (#47) — the closed local-authority
 	// exception set's boot/bootstrap member, never reachable over the network.
 	"CreatePrincipal":           true,
+	"CorrectPrivacyAccount":     true,
+	"RestrictPrivacyPrincipal":  true,
+	"ErasePrivacyAccount":       true,
 	"CreateAccount":             true,
 	"CreateGrant":               true,
 	"CreateCredentialAuthority": true,

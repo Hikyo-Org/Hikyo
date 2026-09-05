@@ -1,5 +1,16 @@
 # Hikyo v1 operational & deployment spec (ADR, locked 2026-08-05)
 
+> **Declared amendment (2026-09-05, self-hosted privacy controls):**
+> [Self-hosted compliance support](../spec/self-hosted-compliance.md) replaces
+> unlimited security-audit retention with a bounded 365-day default. Access
+> retention defaults to 90 days. Host-local policy allows 1 through 3650 days,
+> with security retention at least access retention. Policy changes and pruning
+> are audited; no tenant receives an evidence-expiry switch. These are product
+> defaults, not legally prescribed retention periods. Operators must choose
+> justified periods and manage separately controlled copies. Earlier unlimited
+> security-default language below is historical where it conflicts.
+
+
 > **Declared implementation amendment (2026-09-05, 1.0 diagnostics, #79):** escrow verification records an authenticated unwrap against the current finalized root epoch and recovery incarnation. Separate offline custody is explicitly operator-asserted; a distinct private file is required, while software cannot prove physical offline custody. Root rotation or restore invalidates the old record by binding mismatch. Datastore volume utilization is measured on the actual SQLite filesystem (space available to the process); 80% warns and 90% is critical. Remote PostgreSQL filesystem capacity is explicitly unknown and requires authoritative database-host storage monitoring, never substitution of the application filesystem. Diagnostics do not change admission or readiness policy.
 
 

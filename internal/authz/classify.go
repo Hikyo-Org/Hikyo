@@ -750,6 +750,7 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"cli:admin": {Class: ClassSystem, Events: []audit.EventType{
 		audit.EventAuthAuthorityMinted, audit.EventAuthCredentialResetIssued,
 		audit.EventBreakGlassGrant,
+		audit.EventPrivacySubjectCorrected, audit.EventPrivacySubjectExported, audit.EventPrivacySubjectRestricted, audit.EventPrivacySubjectReleased, audit.EventPrivacySubjectErased,
 	}},
 
 	// Process entry points with no principal: boot (server) and migration.

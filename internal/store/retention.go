@@ -40,6 +40,9 @@ type RetentionReader interface {
 // pin-release decision transaction-time truth.
 type RetentionRepo interface {
 	RetentionReader
+	AuditPolicy(ctx context.Context, p authz.Proof) (AuditRetentionPolicy, error)
+	SetAuditPolicy(ctx context.Context, p authz.Proof, policy AuditRetentionPolicy) error
+	PruneAudit(ctx context.Context, p authz.Proof, accessCutoff, securityCutoff time.Time) ([]AuditPrunedRow, error)
 	LockSnapshot(ctx context.Context, p authz.Proof, snapshotID string) error
 	Eligible(ctx context.Context, p authz.Proof, now time.Time, limit int) ([]GCEligibleSnapshot, error)
 	MarkCollected(ctx context.Context, p authz.Proof, snapshotID, policy string, now time.Time) (bool, error)

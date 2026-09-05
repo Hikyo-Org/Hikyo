@@ -10,6 +10,9 @@ const { count, size, warnings } = await generateSW({
   globPatterns: ['**/*.{css,html,js,json,png,svg,txt,webmanifest,woff,woff2}'],
   ignoreURLParametersMatching: [/^deployment$/, /^utm_/, /^fbclid$/],
   inlineWorkboxRuntime: true,
+  // The complete docs search index exceeds Workbox's 2 MiB default. Keep
+  // offline search available, with an explicit ceiling and fatal warnings.
+  maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
   skipWaiting: true,
   sourcemap: false,
   swDest: fileURLToPath(new URL('../dist/sw.js', import.meta.url)),

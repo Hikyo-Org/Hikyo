@@ -814,6 +814,9 @@ const (
 	StorePinsDelete            StoreOp = "pins.Delete"
 	StorePinsDeleteEnvironment StoreOp = "pins.DeleteEnvironment"
 
+	StoreRetentionAuditPolicy    StoreOp = "retention.AuditPolicy"
+	StoreRetentionSetAuditPolicy StoreOp = "retention.SetAuditPolicy"
+	StoreRetentionPruneAudit     StoreOp = "retention.PruneAudit"
 	StoreRetentionEligible       StoreOp = "retention.Eligible"
 	StoreRetentionSnapshotLock   StoreOp = "retention.LockSnapshot"
 	StoreRetentionMarkCollected  StoreOp = "retention.MarkCollected"
@@ -4190,6 +4193,7 @@ var systemSites = map[SystemSite]map[StoreOp]bool{
 		StoreRetentionEligible:  true, StoreRetentionMarkCollected: true,
 		StoreRetentionDeleteEntries: true, StoreRetentionLastSuccess: true,
 		StoreRetentionSetLastSuccess: true, StoreAuditTenantInsert: true,
+		StoreRetentionAuditPolicy: true, StoreRetentionSetAuditPolicy: true, StoreRetentionPruneAudit: true,
 		StoreAuditInstanceInsert: true,
 		// The hourly GC also prunes expired, unapplied definitions plans (#70).
 		StoreDefinitionsPlanPrune: true,
@@ -4229,6 +4233,7 @@ var systemSites = map[SystemSite]map[StoreOp]bool{
 var systemSiteEvents = map[SystemSite][]audit.EventType{
 	SiteEscrow: {audit.EventRootEscrowVerified},
 	SiteScheduler: {
+		audit.EventAuditRetentionChanged, audit.EventAuditRetentionPruned,
 		audit.EventRetentionPayloadGC,
 		audit.EventRetentionPruneRun,
 		audit.EventUpdateOutcome,

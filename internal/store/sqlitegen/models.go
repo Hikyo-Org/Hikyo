@@ -317,6 +317,12 @@ type AuditInstanceEvent struct {
 	Payload           string
 }
 
+type AuditRetentionPolicy struct {
+	Singleton    int64
+	AccessDays   int64
+	SecurityDays int64
+}
+
 type AuditTenantEvent struct {
 	Seq               int64
 	ID                string
@@ -760,6 +766,7 @@ type Principal struct {
 	SessionGeneration int64
 	Class             sql.NullString
 	ReconciledEpoch   int64
+	PrivacyState      string
 }
 
 type Project struct {

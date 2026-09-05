@@ -167,3 +167,26 @@ func (s *Session) DataRecoveryAdmission(ctx context.Context, plan upgradecompat.
 	}
 	return RecoveryAdmission{state: &recoveryState{kind: restoredData, preparation: prepared, epoch: restored}}, nil
 }
+
+// SourceMigrationVersion reports the highest migration in the authenticated
+// source manifest. Recovery may run against the source before target migration;
+// callers must never infer legacy compatibility by swallowing a query error.
+func (a RecoveryAdmission) SourceMigrationVersion() (uint64, error) {
+	if err := a.CheckOwner(); err != nil {
+		return 0, err
+	}
+	manifest, err := a.state.preparation.state.plan.SourceManifest(a.state.preparation.state.session.engine)
+	if err != nil {
+		return 0, err
+	}
+	var version uint64
+	for _, entry := range manifest.Entries {
+		if entry.Version > version {
+			version = entry.Version
+		}
+	}
+	if version == 0 {
+		return 0, ErrConflict
+	}
+	return version, nil
+}

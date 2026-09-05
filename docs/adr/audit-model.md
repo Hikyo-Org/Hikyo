@@ -1,5 +1,16 @@
 # Hikyo audit logging & event model (ADR, locked 2026-08-02)
 
+> **Declared amendment (2026-09-05, self-hosted privacy controls):**
+> [Self-hosted compliance support](../spec/self-hosted-compliance.md) replaces
+> unlimited security-audit retention with a bounded 365-day default. Access
+> retention defaults to 90 days. Host-local policy allows 1 through 3650 days,
+> with security retention at least access retention. Policy changes and pruning
+> are audited; no tenant receives an evidence-expiry switch. These are product
+> defaults, not legally prescribed retention periods. Operators must choose
+> justified periods and manage separately controlled copies. Earlier unlimited
+> security-default language below is historical where it conflicts.
+
+
 > **Operative pre-freeze amendment (2026-09-05, #617, implementing #579 and #589):** Remove `auth.jit_provisioned` and the `jit-refused` cause of `auth.oidc_refused` before 1.0, together with OIDC automatic account creation. Unknown login identities emit the existing `unknown-identity` refusal. Registration must not repeat these removals. Earlier references to that provisioning event or its removal during registration are historical.
 
 

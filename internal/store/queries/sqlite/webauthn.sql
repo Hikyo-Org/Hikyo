@@ -9,7 +9,7 @@
 -- hikyo:authn-resolution
 -- name: GetAccountByWebAuthnUserHandle :one
 SELECT id, principal_id, username, display_name, created_at FROM accounts
-WHERE webauthn_user_handle = ?;
+WHERE webauthn_user_handle = ? AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active');
 
 -- hikyo:authn-resolution
 -- name: GetWebAuthnUserHandle :one
