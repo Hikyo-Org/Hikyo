@@ -26,6 +26,7 @@ type ImportConfinement struct {
 // internal/store or its subpackages. Additions here are architecture
 // decisions, not conveniences.
 var storeImporters = map[string]bool{
+	module + "/internal/store/upgrade":   true, // closed candidate-health reader; no runtime repository handle
 	module + "/internal/service":         true,
 	module + "/internal/app":             true, // construction wiring only
 	module + "/internal/authz":           true, // the resolution surface (store/authn) only — see authnImporters

@@ -1,0 +1,22 @@
+{
+  "base": "373910cca63eb8a2e2e6b5a079cc285b64a2ae95",
+  "releaseidentity_dependency": {
+    "identity_test.go": "9ebb25f94221c53ba2f91a498a35322f0e28aae12ac907e9bf0a4b6ff960b0b0",
+    "floor.go": "7638db1bccfb7b4c0d6b6eb2ce96c5a4befa6ac3fca0a44b9d672bb8ca18c0e1",
+    "identity.go": "58863699b31c17b4354c3cdd91d8f3cae85d76b30d8e8c85d7678e7fb1f45f3b"
+  },
+  "genesis": {
+    "sqlite": {
+      "artifact_sha256": "8cc297766029a04e1457999977494eee3477fc07498514c5e7190463fffa8872",
+      "objects": 143,
+      "migrations": 43,
+      "maximum_version": 44
+    },
+    "postgres": {
+      "artifact_sha256": "8b30e18f8b0cfa8f4b932036d172807bdbd233527d75b85559dbba2b2d9d307b",
+      "objects": 3134,
+      "migrations": 43,
+      "maximum_version": 44
+    }
+  }
+}

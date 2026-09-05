@@ -1,0 +1,103 @@
+{
+  "status": "local verification passed; independent review and delivery pending",
+  "normal_ledger": {
+    "passed_cases": 129,
+    "packages": [
+      {
+        "package": "github.com/Hikyo-Org/hikyo/internal/store/upgrade",
+        "seconds": 18.274
+      }
+    ],
+    "skipped": [],
+    "failed": [],
+    "exit_code": 0
+  },
+  "existing_packages": {
+    "passed_cases": 368,
+    "packages": [
+      {
+        "package": "github.com/Hikyo-Org/hikyo/internal/store/migrate",
+        "seconds": 4.633
+      },
+      {
+        "package": "github.com/Hikyo-Org/hikyo/internal/store/tx",
+        "seconds": 0.993
+      },
+      {
+        "package": "github.com/Hikyo-Org/hikyo/internal/store",
+        "seconds": 6.574
+      },
+      {
+        "package": "github.com/Hikyo-Org/hikyo/internal/boundary",
+        "seconds": 9.273
+      },
+      {
+        "package": "github.com/Hikyo-Org/hikyo/internal/releaseidentity",
+        "seconds": 0.598
+      },
+      {
+        "package": "github.com/Hikyo-Org/hikyo/internal/crypto",
+        "seconds": 0.478
+      },
+      {
+        "package": "github.com/Hikyo-Org/hikyo/internal/lint",
+        "seconds": 24.782
+      }
+    ],
+    "skipped": [],
+    "failed": [],
+    "exit_code": 0
+  },
+  "vet": "PASS",
+  "diff_check": "PASS",
+  "recorded_at": "2026-09-05T04:04:38.215954+00:00",
+  "race": {
+    "passed_cases": 129,
+    "packages": [
+      {
+        "package": "github.com/Hikyo-Org/hikyo/internal/store/upgrade",
+        "seconds": 90.512
+      }
+    ],
+    "skipped": [],
+    "failed": [],
+    "exit_code": 0
+  },
+  "catalog_drift": {
+    "passed_cases": 5,
+    "packages": [
+      {
+        "package": "github.com/Hikyo-Org/hikyo/internal/store/upgrade",
+        "seconds": 2.327
+      }
+    ],
+    "skipped": [],
+    "failed": [],
+    "exit_code": 0
+  },
+  "windows_amd64_compile": "PASS (compile only, no Windows execution claimed)",
+  "legacy_schema_accessor_race": {
+    "passed_cases": 3,
+    "packages": [
+      {
+        "package": "github.com/Hikyo-Org/hikyo/internal/store/upgrade",
+        "seconds": 6.411
+      }
+    ],
+    "skipped": [],
+    "failed": [],
+    "exit_code": 0
+  },
+  "review_fix_race": {
+    "passed_cases": 18,
+    "packages": [
+      {
+        "package": "github.com/Hikyo-Org/hikyo/internal/store/upgrade",
+        "seconds": 25.396
+      }
+    ],
+    "skipped": [],
+    "failed": [],
+    "exit_code": 0
+  }
+}

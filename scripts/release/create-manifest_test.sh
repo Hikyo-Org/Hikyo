@@ -60,6 +60,12 @@ printf 'image:\n  repository: ghcr.io/hikyo-org/hikyo\n  digest: %s\n' "$image_d
 tar -czf "$dist/hikyo-0.1.0.tgz" -C "$fixture_dir" hikyo
 printf '{"commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","key_id":"primary-1","public_key":"primary-1.pub","sequence":7,"version":"0.1.0"}\n' \
 	>"$dist/release-candidate.json"
+jq -n --slurpfile candidate "$dist/release-candidate.json" '{
+ schema: "hikyo.dev/upgrade-compatibility/v1", profile: "stable/v1",
+ version: $candidate[0].version, sequence: $candidate[0].sequence, commit: $candidate[0].commit,
+ engines: ["sqlite", "postgres"] | map({migrations: {engine: ., entries: []}, schema_sha256: ("a" * 64), sources: []})
+}' >"$dist/upgrade-compatibility.json"
+
 
 "$(dirname "$0")/create-manifest.sh" \
 	"$dist/release-candidate.json" ghcr.io/hikyo-org/hikyo \

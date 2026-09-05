@@ -42,6 +42,18 @@ jobs:
   build-unsigned-draft:
     needs: docs
     runs-on: ubuntu-latest
+    services:
+      release-schema:
+        image: postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
+        env:
+          POSTGRES_USER: hikyo
+          POSTGRES_PASSWORD: release-schema-fixture
+          POSTGRES_DB: hikyo_release_schema
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hikyo -d hikyo_release_schema"
+          --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -118,7 +130,12 @@ jobs:
             "$candidate" "$candidate_sha256" "$resolved_version" "$resolved_commit" >>"$GITHUB_OUTPUT"
 
       - name: Test release source
+        env:
+          RELEASE_SCHEMA_CONTAINER: ${{ job.services['release-schema'].id }}
+          HIKYO_TEST_POSTGRES_DSN: postgres://hikyo:release-schema-fixture@127.0.0.1:5432/hikyo_release_tests?sslmode=disable
         run: |
+          # Preserve the separate empty database used by artifact generation.
+          docker exec "$RELEASE_SCHEMA_CONTAINER" createdb -U hikyo hikyo_release_tests
           go test ./...
           ./scripts/release/test-fixtures.sh
 
@@ -154,6 +171,22 @@ jobs:
             printf '\n'
           } >>"$GITHUB_OUTPUT"
 
+      - name: Generate exact compatibility from both migrated engines
+        id: compatibility
+        env:
+          CANDIDATE: ${{ steps.candidate.outputs.path }}
+          HIKYO_RELEASE_SCHEMA_POSTGRES_DSN: postgres://hikyo:release-schema-fixture@127.0.0.1:5432/hikyo_release_schema?sslmode=disable
+        run: |
+          declaration="$RUNNER_TEMP/upgrade-compatibility.json"
+          go run ./scripts/release/compatibility --candidate "$CANDIDATE" --out "$declaration"
+          {
+            printf 'path=%s\n' "$declaration"
+            printf 'sha256=%s\n' "$(sha256sum "$declaration" | awk '{print $1}')"
+            printf 'base64='
+            base64 <"$declaration" | tr -d '\n'
+            printf '\n'
+          } >>"$GITHUB_OUTPUT"
+
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         env:
           HIKYO_RELEASE_VERSION: ${{ steps.candidate.outputs.version }}
@@ -161,6 +194,8 @@ jobs:
           HIKYO_UPDATE_CHANNEL: stable
           HIKYO_UPDATE_TRUST_ROOT: ${{ steps.update-trust.outputs.root }}
           HIKYO_UPDATE_RECOVERY_KEY: ${{ steps.update-trust.outputs.recovery }}
+          HIKYO_COMPATIBILITY_BASE64: ${{ steps.compatibility.outputs.base64 }}
+          HIKYO_COMPATIBILITY_SHA256: ${{ steps.compatibility.outputs.sha256 }}
         with:
           distribution: goreleaser
           version: v2.17.1
@@ -312,6 +347,8 @@ jobs:
 
       - name: Build release manifest
         env:
+          COMPATIBILITY: ${{ steps.compatibility.outputs.path }}
+          COMPATIBILITY_SHA256: ${{ steps.compatibility.outputs.sha256 }}
           CANDIDATE: ${{ steps.candidate.outputs.path }}
           CANDIDATE_SHA256: ${{ steps.candidate.outputs.sha256 }}
           IMAGE: ${{ steps.identity.outputs.image }}
@@ -321,6 +358,8 @@ jobs:
         run: |
           ./scripts/release/check-candidate.sh "$CANDIDATE" "$CANDIDATE_SHA256"
           cp "$CANDIDATE" dist/release-candidate.json
+          test "$(sha256sum "$COMPATIBILITY" | awk '{print $1}')" = "$COMPATIBILITY_SHA256"
+          cp "$COMPATIBILITY" dist/upgrade-compatibility.json
           ./scripts/release/create-manifest.sh dist/release-candidate.json \
             "$IMAGE" "$IMAGE_DIGEST" "$CHART" "$CHART_DIGEST" \
             dist

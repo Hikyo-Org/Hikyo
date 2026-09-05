@@ -200,6 +200,11 @@ printf '{"spdxVersion":"SPDX-2.3"}\n' >"$bundle_dir/hikyo-source.spdx.json"
 printf '#!/bin/sh\nprintf "fixture installer\\n"\n' >"$bundle_dir/install.sh"
 printf '{"commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","key_id":"primary-1","public_key":"primary-1.pub","sequence":1,"version":"0.1.0"}\n' \
 	>"$bundle_dir/release-candidate.json"
+jq -n --slurpfile candidate "$bundle_dir/release-candidate.json" '{
+	schema: "hikyo.dev/upgrade-compatibility/v1", profile: "stable/v1",
+	version: $candidate[0].version, sequence: $candidate[0].sequence, commit: $candidate[0].commit,
+	engines: ["sqlite", "postgres"] | map({migrations: {engine: ., entries: []}, schema_sha256: ("a" * 64), sources: []})
+}' >"$bundle_dir/upgrade-compatibility.json"
 mkdir -p "$fixture_dir/chart/hikyo"
 printf 'name: hikyo\nversion: 0.1.0\nappVersion: 0.1.0\n' >"$fixture_dir/chart/hikyo/Chart.yaml"
 printf 'image:\n  repository: ghcr.io/hikyo-org/hikyo\n  digest: sha256:%064d\n' 1 \
@@ -448,6 +453,9 @@ for package_format in deb rpm apk archlinux; do
 done
 printf '{"commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","key_id":"primary-2","public_key":"primary-2.pub","sequence":2,"version":"0.2.0"}\n' \
 	>"$fixture_dir/bundle-v2/release-candidate.json"
+jq '.version = "0.2.0" | .sequence = 2' "$fixture_dir/bundle-v2/upgrade-compatibility.json" \
+	>"$fixture_dir/compatibility-v2.json"
+mv "$fixture_dir/compatibility-v2.json" "$fixture_dir/bundle-v2/upgrade-compatibility.json"
 jq '.version = "0.2.0"' "$fixture_dir/bundle-v2/binary-provenance.json" \
 	>"$fixture_dir/binary-provenance-v2.json"
 mv "$fixture_dir/binary-provenance-v2.json" "$fixture_dir/bundle-v2/binary-provenance.json"
