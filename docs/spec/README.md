@@ -49,4 +49,4 @@ Every "at synthesis (#27)" delegation in the corpus resolves as follows: exact S
 
 ## The 1.0 gate, in one sentence
 
-1.0 exists when every [mvp-boundary](../adr/mvp-boundary.md) §1.2 criterion (plus the four promotion criteria sets) is green as [E2E] on sqlite **and** postgres, [UI] via Playwright desktop+mobile, and [CI] invariants, the backup/restore drill has run on floor hardware, the self-hoster checklist re-asserts, and the freeze tag fires — nothing satisfiable by deleting or weakening its check.
+1.0 exists when every [mvp-boundary](../adr/mvp-boundary.md) §1.2 criterion (plus the four promotion criteria sets) is green as [E2E] on sqlite **and** postgres, [UI] via Playwright desktop+mobile, and [CI] invariants, the backup/restore drill has passed in the native arm64 4-CPU/4-GB cgroup lane with two separate custody secrets ([Marc’s #79 amendment](https://github.com/Hikyo-Org/Hikyo/issues/79#issuecomment-5354009024); physical hardware is optional calibration), the self-hoster checklist re-asserts, and the freeze tag fires — nothing satisfiable by deleting or weakening its check.
