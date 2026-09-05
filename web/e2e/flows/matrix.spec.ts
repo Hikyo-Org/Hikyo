@@ -609,6 +609,7 @@ const zCreatedKey = z.object({ id: z.string() });
 const CANARY = 'AKIAIOSFODNN7EXAMPLE';
 const zKeyRead = z.object({
   name: z.string(),
+  folder_path: z.string(),
   group_id: z.string(),
   declaration: z.object({
     rule: z
@@ -756,13 +757,20 @@ test.describe('catalogue declaration detail', () => {
     const keyPath = `/api/v1/orgs/${seed.org}/projects/${seed.project}/keys/${keyId}`;
     try {
       await page.goto(`/orgs/${seed.org}/projects/${seed.project}/matrix/keys/${keyId}`);
-      const groupSelect = page.getByLabel('Key group');
+      const groupSelect = page.getByLabel('Linked-key set');
       await groupSelect.selectOption(group.id);
-      await expect(page.getByRole('status').filter({ hasText: 'Group updated.' })).toBeVisible();
-      expect((await fixtureApiCall(token, 'GET', keyPath, zKeyRead)).group_id).toBe(group.id);
+      await expect(page.getByRole('status').filter({ hasText: 'Linked keys updated.' })).toBeVisible();
+      const linkedKey = await fixtureApiCall(token, 'GET', keyPath, zKeyRead);
+      expect(linkedKey.group_id).toBe(group.id);
+      await page.goto(MATRIX_PATH);
+      await expect(page.locator('.matrix__linked-keys').filter({ hasText: `catgrp-${testInfo.project.name}` })).toBeVisible();
+      await expect(page.locator('.matrix__group-toggle').filter({ hasText: `catgrp-${testInfo.project.name}` })).toHaveCount(0);
+      await expect(page.locator('.matrix__group-toggle').filter({ hasText: linkedKey.folder_path || 'No folder' })).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath('folders-linked-keys.png'), fullPage: true });
+      await page.goto(`/orgs/${seed.org}/projects/${seed.project}/matrix/keys/${keyId}`);
 
       await groupSelect.selectOption('');
-      await expect(page.getByRole('status').filter({ hasText: 'Group updated.' })).toBeVisible();
+      await expect(page.getByRole('status').filter({ hasText: 'Linked keys updated.' })).toBeVisible();
       expect((await fixtureApiCall(token, 'GET', keyPath, zKeyRead)).group_id).toBe('');
     } finally {
       await fixtureApiCall(
@@ -779,17 +787,17 @@ test.describe('catalogue declaration detail', () => {
     const folderPath = `catflow-${suffix}`;
     const groupName = `catflow ${suffix}`;
     await page.goto(MATRIX_PATH);
-    await page.getByRole('button', { name: 'Folders & groups' }).click();
+    await page.getByRole('button', { name: 'Folders & linked keys' }).click();
     const dialog = page.locator('dialog.catalogue-manage');
-    await expect(dialog.getByRole('heading', { name: 'Folders & groups' })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: 'Folders & linked keys' })).toBeVisible();
 
     await dialog.getByLabel('New folder path').fill(folderPath);
     await dialog.getByRole('button', { name: 'Add folder' }).click();
     await expect(dialog.getByText(`Folder ${folderPath} created.`)).toBeVisible();
 
-    await dialog.getByLabel('New group name').fill(groupName);
-    await dialog.getByRole('button', { name: 'Add group' }).click();
-    await expect(dialog.getByText(`Group ${groupName} created.`)).toBeVisible();
+    await dialog.getByLabel('New linked-key set name').fill(groupName);
+    await dialog.getByRole('button', { name: 'Add linked-key set' }).click();
+    await expect(dialog.getByText(`Linked-key set ${groupName} created.`)).toBeVisible();
 
     // Clean up through the same lifecycle controls; a row is addressed by its
     // input's accessible name (its identity lives in an input value).
@@ -801,7 +809,7 @@ test.describe('catalogue declaration detail', () => {
       .click();
     await expect(folderInput).toHaveCount(0);
 
-    const groupInput = dialog.getByLabel(`Name for group ${groupName}`);
+    const groupInput = dialog.getByLabel(`Name for linked-key set ${groupName}`);
     await groupInput.locator('xpath=ancestor::li').getByRole('button', { name: 'Delete' }).click();
     await groupInput
       .locator('xpath=ancestor::li')

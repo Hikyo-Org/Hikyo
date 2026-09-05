@@ -253,7 +253,7 @@ function KeyDeclarationBody({
           value={record.classification === 'secret' ? '🔒 secret' : 'config'}
         />
         <Fact term="Folder" value={record.folder_path === '' ? '(none)' : record.folder_path} mono />
-        <Fact term="Group" value={record.group_id === '' ? '(ungrouped)' : record.group_id} mono />
+        <Fact term="Linked keys" value={record.group_id === '' ? 'None' : record.group_id} mono />
         <Fact
           term="Description"
           value={record.description === '' ? '(none)' : record.description}
@@ -1717,9 +1717,10 @@ function GroupEditor({
 
   return (
     <section className="key-detail__section" aria-labelledby={`${id}-group`}>
-      <h3 id={`${id}-group`}>Group membership</h3>
+      <h3 id={`${id}-group`}>Linked keys</h3>
+      <p>Pending changes publish together. All linked keys must be set together in each environment.</p>
       <label className="field">
-        <span>Key group</span>
+        <span>Linked-key set</span>
         <select
           value={record.group_id}
           disabled={setGroup.isPending || !groups.isSuccess}
@@ -1731,12 +1732,12 @@ function GroupEditor({
               { groupId },
               {
                 onSuccess: () => setDone(true),
-                onError: (error) => setRefusal(catalogueRefusalText(error, 'change the group')),
+                onError: (error) => setRefusal(catalogueRefusalText(error, 'change the linked keys')),
               },
             );
           }}
         >
-          <option value="">(no group)</option>
+          <option value="">No linked keys</option>
           {(groups.data?.items ?? []).map((group) => (
             <option key={group.id} value={group.id}>
               {group.name}
@@ -1744,9 +1745,9 @@ function GroupEditor({
           ))}
         </select>
       </label>
-      {groups.isError ? <Alert>The project’s key groups could not be read.</Alert> : null}
+      {groups.isError ? <Alert>The project’s linked keys could not be read.</Alert> : null}
       {refusal === null ? null : <Alert>{refusal}</Alert>}
-      {done ? <Done>Group updated.</Done> : null}
+      {done ? <Done>Linked keys updated.</Done> : null}
     </section>
   );
 }

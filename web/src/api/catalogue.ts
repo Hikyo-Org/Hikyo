@@ -68,13 +68,13 @@ export function scanFindings(error: unknown): readonly RefusalFinding[] | null {
 
 export type CatalogueAction =
   | 'update the rules'
-  | 'change the group'
+  | 'change the linked keys'
   | 'create the folder'
   | 'rename the folder'
   | 'delete the folder'
-  | 'create the group'
-  | 'rename the group'
-  | 'delete the group';
+  | 'create the linked-key set'
+  | 'rename the linked-key set'
+  | 'delete the linked-key set';
 
 /**
  * catalogueRefusalText renders a catalogue-write refusal in the caller's own

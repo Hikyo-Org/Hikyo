@@ -393,7 +393,7 @@ export function Matrix({
     () => new Set(keysForMatrixFilter(stateKeys, problems, filter).map((key) => key.id)),
     [filter, problems, stateKeys],
   );
-  const displayGroupList = useMemo(() => displayGroups(keys, keyGroups), [keyGroups, keys]);
+  const displayGroupList = useMemo(() => displayGroups(keys), [keys]);
   const groups = useMemo(
     () => displayGroupList.map((group) => ({
       ...group,
@@ -914,7 +914,7 @@ export function Matrix({
         {/* #493: folder & key-group lifecycle. Project-scoped organisation in its
             own dialog, reachable here and from the empty state. */}
         <button type="button" className="btn matrix__manage" onClick={() => setManageOpen(true)}>
-          Folders &amp; groups
+          Folders &amp; linked keys
         </button>
         {/* env-matrix 31 / #492: the header's primary declare action. Git-managed
             projects disable it and say why — value actions still work. */}
@@ -1025,7 +1025,7 @@ export function Matrix({
                     Declare first key
                   </button>
                   <button type="button" className="btn" onClick={() => setManageOpen(true)}>
-                    Folders &amp; groups
+                    Folders &amp; linked keys
                   </button>
                 </div>
               )}
@@ -1192,10 +1192,7 @@ export function Matrix({
                                   className="matrix__add-key"
                                   onClick={() => {
                                     setCreateError(null);
-                                    // Prefill the actual folder_path, not the
-                                    // display name — an explicit key-group's name
-                                    // can differ from its folder, and the
-                                    // ungrouped pseudo-group has none (→ blank).
+                                    // New keys inherit this section's folder.
                                     setCreate({ folder: group.keys[0]?.folder_path || null });
                                   }}
                                 >
@@ -1233,6 +1230,15 @@ export function Matrix({
                             {key.classification === 'secret' ? <span aria-hidden="true">🔒 </span> : null}
                             {key.name}
                           </Link>
+                          {key.group_id === '' ? null : (
+                            <span
+                              className="matrix__linked-keys"
+                              title="Pending changes publish together. All linked keys must be set together in each environment."
+                            >
+                              <span aria-hidden="true">🔗 </span>
+                              Linked keys: {keyGroups.find((group) => group.id === key.group_id)?.name ?? key.group_id}
+                            </span>
+                          )}
                           <span className="matrix__required">{requiredLabel(key, environments)}</span>
                         </th>
                         {visibleEnvironments.map((environment) => {
@@ -1691,15 +1697,10 @@ function matrixPresence(key: MatrixKey): MatrixPresence {
 }
 
 function displayGroupID(key: MatrixKey): string {
-  if (key.group_id !== '') return `group:${key.group_id}`;
-  return `folder:${key.folder_path === '' ? 'ungrouped' : key.folder_path}`;
+  return `folder:${key.folder_path}`;
 }
 
-function displayGroups(
-  keys: readonly MatrixKey[],
-  groups: readonly { readonly id: string; readonly name: string }[],
-): readonly DisplayGroup[] {
-  const names = new Map(groups.map((group) => [`group:${group.id}`, group.name]));
+function displayGroups(keys: readonly MatrixKey[]): readonly DisplayGroup[] {
   const result = new Map<string, MatrixKey[]>();
   for (const key of keys) {
     const id = displayGroupID(key);
@@ -1709,7 +1710,7 @@ function displayGroups(
   }
   return [...result].map(([id, members]) => ({
     id,
-    name: names.get(id) ?? (members[0]?.folder_path || 'ungrouped'),
+    name: members[0]?.folder_path || 'No folder',
     keys: members,
   }));
 }

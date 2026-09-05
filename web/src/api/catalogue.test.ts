@@ -92,7 +92,7 @@ describe('catalogueRefusalText', () => {
     expect(catalogueRefusalText(new ApiError(403, 'x'), 'delete the folder')).toContain(
       'permission to delete the folder',
     );
-    expect(catalogueRefusalText(new ApiError(404, 'x'), 'rename the group')).toContain(
+    expect(catalogueRefusalText(new ApiError(404, 'x'), 'rename the linked-key set')).toContain(
       'no longer exists',
     );
     expect(catalogueRefusalText(new ApiError(409, 'x'), 'update the rules')).toContain(
