@@ -22,6 +22,7 @@ bundle_dir=$(CDPATH='' cd -- "$(dirname "$manifest")" && pwd)
 candidate="$bundle_dir/release-candidate.json"
 verify_release_candidate_artifact "$manifest" "$bundle_dir" || exit 1
 release_manifest_matches_candidate "$manifest" "$candidate" || exit 1
+verify_release_compatibility_artifact "$manifest" "$bundle_dir" || exit 1
 authorize_release_candidate "$input" "$candidate" || exit 1
 version=$(jq -r '.version' "$candidate")
 release_sequence=$(jq -r '.sequence' "$candidate")

@@ -29,6 +29,7 @@ candidate="$bundle/release-candidate.json"
 
 verify_release_candidate_artifact "$manifest" "$bundle" || exit 1
 release_manifest_matches_candidate "$manifest" "$candidate" || exit 1
+verify_release_compatibility_artifact "$manifest" "$bundle" || exit 1
 authorize_release_candidate "$metadata" "$candidate" || exit 1
 version=$(jq -r '.version' "$candidate")
 release_sequence=$(jq -r '.sequence' "$candidate")

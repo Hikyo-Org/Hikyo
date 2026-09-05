@@ -43,6 +43,11 @@ commit=$(jq -r '.commit' "$candidate")
 release_sequence=$(jq -r '.sequence' "$candidate")
 key_id=$(jq -r '.key_id' "$candidate")
 
+validate_release_compatibility "$dist/upgrade-compatibility.json" "$candidate" || {
+	printf 'manifest: missing or mismatched source-owned compatibility declaration\n' >&2
+	exit 1
+}
+
 printf '%s\n' "$image_digest" >"$dist/image-index.digest"
 printf '%s\n' "$chart_digest" >"$dist/chart-index.digest"
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-manifest.XXXXXX")
@@ -55,6 +60,7 @@ while IFS= read -r path; do
 	case "$name" in
 		release-manifest.json | *.sigstore.json) continue ;;
 		release-candidate.json) kind='release-candidate' ;;
+		upgrade-compatibility.json) kind='upgrade-compatibility' ;;
 		binary-provenance.json)
 			kind='binary-provenance'
 			validate_binary_provenance "$path" "$commit" "$version" || {

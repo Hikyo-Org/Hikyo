@@ -27,16 +27,18 @@ var driverHandles = map[string]bool{
 // handleUsers is the exact allowlist of packages permitted to touch a raw
 // driver handle. Additions are architecture decisions, not conveniences.
 var handleUsers = map[string]bool{
-	Module + "/internal/store":            true, // defines them
-	Module + "/internal/store/tx":         true, // owns the transaction boundary
-	Module + "/internal/store/migrate":    true, // opens its own connection for DDL
-	Module + "/internal/store/sqlitegen":  true, // generated: it IS the driver layer
-	Module + "/internal/store/pggen":      true, // generated: it IS the driver layer
-	Module + "/internal/store_test":       true, // external store harness: runtime durability/state assertions
-	Module + "/internal/conformance":      true, // cross-engine fixtures
-	Module + "/internal/isolation":        true, // probe fixtures + instrumentation
-	Module + "/internal/conformance_test": true,
-	Module + "/internal/isolation_test":   true,
+	Module + "/internal/store":              true, // defines them
+	Module + "/internal/store/tx":           true, // owns the transaction boundary
+	Module + "/internal/store/migrate":      true, // opens its own connection for DDL
+	Module + "/internal/store/upgrade":      true, // locked upgrade-control/restore transaction boundary; no tenant repositories
+	Module + "/internal/store/upgrade_test": true, // external archive acceptance exercises actual recovery mutation callbacks
+	Module + "/internal/store/sqlitegen":    true, // generated: it IS the driver layer
+	Module + "/internal/store/pggen":        true, // generated: it IS the driver layer
+	Module + "/internal/store_test":         true, // external store harness: runtime durability/state assertions
+	Module + "/internal/conformance":        true, // cross-engine fixtures
+	Module + "/internal/isolation":          true, // probe fixtures + instrumentation
+	Module + "/internal/conformance_test":   true,
+	Module + "/internal/isolation_test":     true,
 	// The dynamic-secret PostgreSQL provider (#147) is an OUTBOUND client to an
 	// external engine the operator configured, not a handle on Hikyo's own
 	// datastore. Like the forgejo adapter's net/http client it lives outside the
@@ -91,6 +93,7 @@ var generatedPackages = map[string]bool{
 
 // generatedImporters may import the sqlc outputs.
 var generatedImporters = map[string]bool{
+	Module + "/internal/store/upgrade":   true, // closed candidate-health wrapper inventory under migration exclusion
 	Module + "/internal/store":           true, // the binding layer
 	Module + "/internal/store/authn":     true, // the resolution surface
 	Module + "/internal/store/auditrow":  true, // shared audit Row→params mapping

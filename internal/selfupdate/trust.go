@@ -2,16 +2,10 @@ package selfupdate
 
 import (
 	"context"
-	"crypto"
-	"crypto/ecdsa"
-	"crypto/ed25519"
-	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
@@ -19,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 	"github.com/Masterminds/semver/v3"
 	"github.com/gofrs/flock"
@@ -29,75 +24,14 @@ var (
 	commitPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
 )
 
-type trustRoot struct {
-	Schema           string       `json:"schema"`
-	Recovery         trustRootKey `json:"recovery"`
-	BootstrapPrimary trustRootKey `json:"bootstrap_primary"`
-}
-
-type trustRootKey struct {
-	ID        string `json:"id"`
-	PublicKey string `json:"public_key"`
-	SHA256    string `json:"sha256"`
-}
-
-type trustRelease struct {
-	Version        string `json:"version"`
-	Sequence       int64  `json:"sequence"`
-	ManifestSHA256 string `json:"manifest_sha256"`
-}
-
-type trustPrimary struct {
-	ID                          string `json:"id"`
-	PublicKey                   string `json:"public_key"`
-	SHA256                      string `json:"sha256"`
-	ValidFromReleaseSequence    int64  `json:"valid_from_release_sequence"`
-	ValidThroughReleaseSequence *int64 `json:"valid_through_release_sequence"`
-	Revoked                     bool   `json:"revoked"`
-	Pending                     *bool  `json:"pending,omitempty"`
-}
-
-type trustMetadata struct {
-	Schema                 string  `json:"schema"`
-	Sequence               int64   `json:"sequence"`
-	HighestRelease         *string `json:"highest_release"`
-	HighestReleaseSequence *int64  `json:"highest_release_sequence"`
-	Recovery               struct {
-		ID     string `json:"id"`
-		SHA256 string `json:"sha256"`
-	} `json:"recovery"`
-	Event struct {
-		Type     string `json:"type"`
-		SignedBy string `json:"signed_by"`
-	} `json:"event"`
-	PrimaryKeys    []trustPrimary `json:"primary_keys"`
-	Releases       []trustRelease `json:"releases"`
-	PendingRelease *trustRelease  `json:"pending_release"`
-}
-
-type releaseManifest struct {
-	Schema          string             `json:"schema"`
-	Version         string             `json:"version"`
-	Tag             string             `json:"tag"`
-	SourceCommit    string             `json:"source_commit"`
-	ReleaseSequence int64              `json:"release_sequence"`
-	SigningKeyID    string             `json:"signing_key_id"`
-	Artifacts       []manifestArtifact `json:"artifacts"`
-}
-
-type manifestArtifact struct {
-	Name   string `json:"name"`
-	Kind   string `json:"kind"`
-	SHA256 string `json:"sha256"`
-}
-
-type releaseCandidate struct {
-	Version   string `json:"version"`
-	Sequence  int64  `json:"sequence"`
-	Commit    string `json:"commit"`
-	KeyID     string `json:"key_id"`
-	PublicKey string `json:"public_key"`
-}
+type trustRoot = releasetrust.Root
+type trustRootKey = releasetrust.RootKey
+type trustRelease = releasetrust.Release
+type trustPrimary = releasetrust.Primary
+type trustMetadata = releasetrust.Metadata
+type releaseManifest = releasetrust.Manifest
+type manifestArtifact = releasetrust.Artifact
+type releaseCandidate = releasetrust.Candidate
 
 // legacySignatureBundle is the cosign `--new-bundle-format=false` bundle the
 // release ceremony emits. Only the signature is read; the certificate and Rekor
@@ -229,63 +163,10 @@ func (i *Installer) verifyStableLocked(ctx context.Context, status updatecheck.S
 }
 
 func validateTrustRoot(root trustRoot, recoveryKey []byte) error {
-	if root.Schema != "hikyo.dev/trust-root/v1" || !validRootKey(root.Recovery) || !validRootKey(root.BootstrapPrimary) {
-		return errors.New("selfupdate: embedded stable trust root is invalid")
-	}
-	if digestHex(recoveryKey) != root.Recovery.SHA256 {
-		return errors.New("selfupdate: embedded recovery public-key hash mismatch")
-	}
-	return nil
+	return releasetrust.ValidateRoot(root, recoveryKey)
 }
-
-func validRootKey(key trustRootKey) bool {
-	return key.ID != "" && safeName(key.PublicKey) && sha256Pattern.MatchString(key.SHA256)
-}
-
 func validateTrustMetadata(root trustRoot, metadata trustMetadata) error {
-	validEvents := map[string]bool{"bootstrap": true, "release-candidate": true, "release": true, "rotation": true, "revocation": true}
-	if metadata.Schema != "hikyo.dev/trust-metadata/v1" || metadata.Sequence < 1 ||
-		metadata.Recovery.ID != root.Recovery.ID || metadata.Recovery.SHA256 != root.Recovery.SHA256 ||
-		metadata.Event.SignedBy != root.Recovery.ID || !validEvents[metadata.Event.Type] || len(metadata.PrimaryKeys) == 0 ||
-		(metadata.HighestRelease == nil) != (metadata.HighestReleaseSequence == nil) {
-		return errors.New("selfupdate: current trust metadata is invalid")
-	}
-	ids, names := map[string]bool{}, map[string]bool{}
-	bootstrapMatches := 0
-	for _, primary := range metadata.PrimaryKeys {
-		if primary.ID == "" || !safeName(primary.PublicKey) || !sha256Pattern.MatchString(primary.SHA256) ||
-			primary.ValidFromReleaseSequence < 1 ||
-			(primary.ValidThroughReleaseSequence != nil && *primary.ValidThroughReleaseSequence < primary.ValidFromReleaseSequence) ||
-			ids[primary.ID] || names[primary.PublicKey] {
-			return errors.New("selfupdate: current trust metadata is invalid")
-		}
-		ids[primary.ID], names[primary.PublicKey] = true, true
-		if primary.ID == root.BootstrapPrimary.ID && primary.PublicKey == root.BootstrapPrimary.PublicKey &&
-			primary.SHA256 == root.BootstrapPrimary.SHA256 && primary.ValidFromReleaseSequence == 1 {
-			bootstrapMatches++
-		}
-	}
-	if bootstrapMatches != 1 {
-		return errors.New("selfupdate: bootstrap primary does not match pinned root")
-	}
-	versions, sequences := map[string]bool{}, map[int64]bool{}
-	allReleases := append([]trustRelease(nil), metadata.Releases...)
-	if metadata.PendingRelease != nil {
-		allReleases = append(allReleases, *metadata.PendingRelease)
-	}
-	for _, release := range allReleases {
-		if _, err := semver.StrictNewVersion(release.Version); err != nil || release.Sequence < 1 ||
-			!sha256Pattern.MatchString(release.ManifestSHA256) || versions[release.Version] || sequences[release.Sequence] {
-			return errors.New("selfupdate: current trust metadata is invalid")
-		}
-		versions[release.Version], sequences[release.Sequence] = true, true
-	}
-	if metadata.HighestRelease != nil {
-		if _, err := semver.StrictNewVersion(*metadata.HighestRelease); err != nil || *metadata.HighestReleaseSequence < 1 {
-			return errors.New("selfupdate: current trust metadata is invalid")
-		}
-	}
-	return nil
+	return releasetrust.ValidateMetadata(root, metadata)
 }
 
 func validateStableRelease(status updatecheck.Status, metadata trustMetadata, manifest releaseManifest, candidate releaseCandidate, manifestRaw, candidateRaw []byte, archiveName string, archive []byte) (trustPrimary, error) {
@@ -346,47 +227,7 @@ func validateStableRelease(status updatecheck.Status, metadata trustMetadata, ma
 }
 
 func verifyBlobSignature(publicKeyPEM, bundleRaw, payload []byte) error {
-	var bundle legacySignatureBundle
-	if err := json.Unmarshal(bundleRaw, &bundle); err != nil || bundle.Base64Signature == "" {
-		return errors.New("invalid legacy Cosign bundle")
-	}
-	signature, err := base64.StdEncoding.DecodeString(bundle.Base64Signature)
-	if err != nil || len(signature) == 0 {
-		return errors.New("invalid base64 signature")
-	}
-	block, rest := pem.Decode(publicKeyPEM)
-	if block == nil || len(strings.TrimSpace(string(rest))) != 0 || block.Type != "PUBLIC KEY" {
-		return errors.New("invalid PEM public key")
-	}
-	publicKey, err := x509.ParsePKIXPublicKey(block.Bytes)
-	if err != nil {
-		return fmt.Errorf("parse public key: %w", err)
-	}
-	switch key := publicKey.(type) {
-	case *ecdsa.PublicKey:
-		if key.Curve.Params().BitSize != 256 && key.Curve.Params().BitSize != 384 && key.Curve.Params().BitSize != 521 {
-			return errors.New("unsupported ECDSA curve")
-		}
-		digest := sha256.Sum256(payload)
-		if !ecdsa.VerifyASN1(key, digest[:], signature) {
-			return errors.New("ECDSA signature mismatch")
-		}
-	case *rsa.PublicKey:
-		if key.Size() < 256 {
-			return errors.New("RSA public key is smaller than 2048 bits")
-		}
-		digest := sha256.Sum256(payload)
-		if err := rsa.VerifyPKCS1v15(key, crypto.SHA256, digest[:], signature); err != nil {
-			return fmt.Errorf("RSA signature mismatch: %w", err)
-		}
-	case ed25519.PublicKey:
-		if !ed25519.Verify(key, payload, signature) {
-			return errors.New("Ed25519 signature mismatch")
-		}
-	default:
-		return fmt.Errorf("unsupported public key type %T", publicKey)
-	}
-	return nil
+	return releasetrust.VerifyKeySignature(publicKeyPEM, bundleRaw, payload)
 }
 
 func updateVerificationState(path string, metadata trustMetadata, metadataRaw []byte) error {

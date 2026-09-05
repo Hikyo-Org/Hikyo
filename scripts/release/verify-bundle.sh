@@ -179,7 +179,7 @@ jq -e '
 	([.artifacts[].name] | unique | length) == (.artifacts | length) and
 	all(.artifacts[]; . as $artifact |
 		($artifact.name | type == "string" and length > 0) and
-		($artifact.kind as $kind | ["binary", "package", "binary-provenance", "sbom", "image", "checksum", "chart", "chart-digest", "installer", "oci-payload", "release-candidate"] | index($kind) != null) and
+		($artifact.kind as $kind | ["binary", "package", "binary-provenance", "sbom", "image", "checksum", "chart", "chart-digest", "installer", "oci-payload", "release-candidate", "upgrade-compatibility"] | index($kind) != null) and
 		($artifact.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
 			(if $artifact.kind == "package" then
 				($artifact.format as $format | ["apk", "archlinux", "deb", "rpm"] | index($format) != null) and
@@ -254,6 +254,7 @@ chart_digest_count=0
 installer_count=0
 oci_payload_count=0
 candidate_count=0
+compatibility_count=0
 image_payload_count=0
 chart_payload_count=0
 image_manifest_digest=
@@ -285,6 +286,11 @@ while [ "$i" -lt "$artifact_count" ]; do
 		installer) installer_count=$((installer_count + 1)) ;;
 		oci-payload) oci_payload_count=$((oci_payload_count + 1)) ;;
 		release-candidate) candidate_count=$((candidate_count + 1)) ;;
+		upgrade-compatibility)
+			compatibility_count=$((compatibility_count + 1))
+			[ "$name" = upgrade-compatibility.json ] || fail 'unexpected compatibility artifact name'
+			validate_release_compatibility "$bundle_dir/$name" "$candidate" || fail 'invalid compatibility declaration'
+			;;
 		checksum) ;;
 		*) fail "unsupported artifact kind $kind" ;;
 	esac
@@ -391,6 +397,7 @@ jq -e '
 [ "$chart_digest_count" -eq 1 ] || fail 'manifest must contain exactly one chart digest artifact'
 [ "$installer_count" -eq 1 ] || fail 'manifest must contain exactly one installer'
 [ "$candidate_count" -eq 1 ] || fail 'manifest must contain exactly one release candidate'
+[ "$compatibility_count" -eq 1 ] || fail 'manifest must contain exactly one compatibility declaration'
 [ "$oci_payload_count" -eq 2 ] || fail 'manifest must contain image and chart OCI signing payloads'
 [ "$image_payload_count" -eq 1 ] || fail 'manifest must contain exactly one image OCI signing payload'
 [ "$chart_payload_count" -eq 1 ] || fail 'manifest must contain exactly one chart OCI signing payload'

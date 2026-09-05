@@ -84,6 +84,12 @@ jq -ncS --arg version "$version" --arg commit "$commit" '{
 	version: $version, sequence: 1, commit: $commit,
 	key_id: "primary-1", public_key: "primary-1.pub"
 }' >"$fixture_dist/release-candidate.json"
+jq -n --slurpfile candidate "$fixture_dist/release-candidate.json" '{
+ schema: "hikyo.dev/upgrade-compatibility/v1", profile: "stable/v1",
+ version: $candidate[0].version, sequence: $candidate[0].sequence, commit: $candidate[0].commit,
+ engines: ["sqlite", "postgres"] | map({migrations: {engine: ., entries: []}, schema_sha256: ("a" * 64), sources: []})
+}' >"$fixture_dist/upgrade-compatibility.json"
+
 
 "$script_dir/create-manifest.sh" "$fixture_dist/release-candidate.json" \
 	ghcr.io/hikyo-org/hikyo "$image_digest" ghcr.io/hikyo-org/charts/hikyo "$chart_digest" \

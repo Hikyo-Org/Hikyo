@@ -35,6 +35,10 @@ builds:
         -X main.updateChannel={{ with index .Env "HIKYO_UPDATE_CHANNEL" }}{{ . }}{{ else }}off{{ end }}
         -X main.updateTrustRoot={{ with index .Env "HIKYO_UPDATE_TRUST_ROOT" }}{{ . }}{{ end }}
         -X main.updateRecoveryKey={{ with index .Env "HIKYO_UPDATE_RECOVERY_KEY" }}{{ . }}{{ end }}
+        -X github.com/Hikyo-Org/hikyo/internal/buildcompat.encodedTrustRoot={{ with index .Env "HIKYO_UPDATE_TRUST_ROOT" }}{{ . }}{{ end }}
+        -X github.com/Hikyo-Org/hikyo/internal/buildcompat.encodedRecoveryPublicKey={{ with index .Env "HIKYO_UPDATE_RECOVERY_KEY" }}{{ . }}{{ end }}
+        -X github.com/Hikyo-Org/hikyo/internal/buildcompat.encodedDeclaration={{ with index .Env "HIKYO_COMPATIBILITY_BASE64" }}{{ . }}{{ end }}
+        -X github.com/Hikyo-Org/hikyo/internal/buildcompat.declarationSHA256={{ with index .Env "HIKYO_COMPATIBILITY_SHA256" }}{{ . }}{{ end }}
 
 archives:
   - id: hikyo-archives

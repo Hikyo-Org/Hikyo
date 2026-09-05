@@ -1,5 +1,36 @@
 #!/bin/sh
 
+# Source-owned declaration is generated before the binary; its enclosing
+# signed manifest supplies the nonrecursive artifact identity.
+validate_release_compatibility() {
+	compatibility_file=$1
+	compatibility_candidate=$2
+	jq -e --slurpfile candidate "$compatibility_candidate" '
+		.schema == "hikyo.dev/upgrade-compatibility/v1" and .profile == "stable/v1" and
+		.version == $candidate[0].version and .sequence == $candidate[0].sequence and
+		.commit == $candidate[0].commit and
+		(.engines | type == "array" and length == 2) and
+		([.engines[].migrations.engine] | sort) == ["postgres", "sqlite"] and
+		all(.engines[];
+			(.schema_sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+			(.migrations.entries | type == "array") and
+			all(.migrations.entries[]; (.version | type == "number") and .version > 0 and
+				(.version | floor) == .version and (.sha256 | test("^[0-9a-f]{64}$"))) and
+			(.sources | type == "array"))
+	' "$compatibility_file" >/dev/null
+}
+
+verify_release_compatibility_artifact() {
+	compatibility_manifest=$1
+	compatibility_bundle=$2
+	compatibility_path="$compatibility_bundle/upgrade-compatibility.json"
+	[ -f "$compatibility_path" ] || { printf 'compatibility: upgrade-compatibility.json is absent\n' >&2; return 1; }
+	validate_release_compatibility "$compatibility_path" "$compatibility_bundle/release-candidate.json" || { printf 'compatibility: declaration target mismatch\n' >&2; return 1; }
+	jq -e --arg sha "$(sha256_file "$compatibility_path")" '
+		[.artifacts[] | select(.name == "upgrade-compatibility.json" and .kind == "upgrade-compatibility" and .sha256 == $sha)] | length == 1
+	' "$compatibility_manifest" >/dev/null || { printf 'compatibility: upgrade-compatibility.json hash mismatch\n' >&2; return 1; }
+}
+
 # Shared release input validation. Callers remain fail-closed and decide how to
 # report invalid values; these helpers only return success or failure.
 # Every release now carries native packages. Build metadata is excluded because
