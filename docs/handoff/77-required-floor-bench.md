@@ -77,3 +77,13 @@ The pre-refresh stash `floor-bench-before-d98-refresh` was retained by Git after
 two additive conflicts. Both insertions were resolved preserving upstream's
 exact ops-floor cache policy and native-handle entry. Do not blindly pop that
 old stash over the completed worktree.
+
+## PR672 first hosted failure and correction
+
+Exact source 3ab42de4d3dcfd71e1868b9e3e4bfc31967710d4, native run33965289417 failed publish: raw7579.442ms ×4 =30317.768ms exceeds unchanged30000ms. Other workloads passed including scanner and same-source operator RSS99147776B. Unmodified JSON retained in docs/reports/1.0/evidence/floor-bench/hosted-3ab42de4-failed.json. Required acceptance remains pending new exact-head CI.
+
+Profiled production correction: SQLiteTransaction owns exactly two lazy prepared statements, matched against exact generated SQLC constants by sqlitegen.SnapshotInsertSlot. Surrounding whitespace is trimmed only for these statements, to enable the driver's single-statement reuse. Per-row proof verification, all tenant bind parameters, transaction fencing, and commit/rollback ownership remain unchanged. No service timing, data volume, CPU factor or bound changes. No tenant result cache or cross-transaction native handles. PostgreSQL unchanged.
+
+Local native paired diagnostic: 6152.373ms ->4985.196ms (100000 values independently read back both times), sampled CPU5.63s ->4.20s. Profile showed InsertEntry32.86% + InsertChange28.95%, parser24.87%. Profiles and exact instrumentation/production patch retained at /Users/developwent/.codex/artifacts/hikyo-1.0-20260905/floor-publish-profile. Temporary profiler code removed. Local data is diagnostic, not hosted or physical Pi release evidence.
+
+Focused regression: real SQLite/PostgreSQL proof refusals after statement reuse, complete scope rebinding, populated rollback and expired-proof refusal; transaction-owned statement constraint/cancellation/commit/rollback checks. Both-engine race passed six cases, zero skips. Parent R1 strengthened closure assertions to reject only settled-resource errors with original arity. Proof/fence/SQL lint, cache invariant, floor verifier and diff check passed. Isolation shard0's separate declaration-name false positive fixed by renaming the cgroup file-charge test, with test body and cache invariant untouched.

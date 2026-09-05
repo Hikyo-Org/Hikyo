@@ -135,7 +135,7 @@ func TestFloorMemoryCountersMustBePresent(t *testing.T) {
 	}
 }
 
-func TestFloorOperatorRSSIsDistinctFromCgroupPageCache(t *testing.T) {
+func TestFloorOperatorRSSExcludesCgroupFileCharges(t *testing.T) {
 	e := validEvidence(t)
 	e.Operator.MemoryPeak = 134295552 // actual observed page-cache-inclusive charge
 	if err := e.Validate(); err != nil {
