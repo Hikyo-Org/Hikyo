@@ -47,18 +47,37 @@ services:
       - --listen=0.0.0.0:8080
       - --operational-listen=0.0.0.0:8081
       - --root-key-file=/run/hikyo-root-key/root-key
+      - --auto-migrate=false
     environment:
       HIKYO_DB: ${HIKYO_DB:?set through the deployment secret store}
       HIKYO_EXTERNAL_ORIGIN: ${HIKYO_EXTERNAL_ORIGIN:?set the canonical HTTPS origin}
       HIKYO_MCP_ENABLED: "true"
       HIKYO_MCP_ALLOWED_ORIGINS: ""
       HIKYO_TRUSTED_PROXY_CIDRS: ${HIKYO_COMPOSE_SUBNET:?set a dedicated Compose network CIDR}
+      HIKYO_UPGRADE_BUNDLE: /run/hikyo-upgrade/bundle
+      HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY: /run/hikyo-upgrade/operator.pub
+      HIKYO_UPGRADE_STATE_DIR: /var/lib/hikyo-installation
+      HIKYO_UPGRADE_EVIDENCE: ${HIKYO_UPGRADE_EVIDENCE:-}
+      HIKYO_UPGRADE_BACKUP: ${HIKYO_UPGRADE_BACKUP:-}
+      HIKYO_UPGRADE_TARGET_MANIFEST: ${HIKYO_UPGRADE_TARGET_MANIFEST:-}
+      HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED: ${HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED:-false}
     expose:
       - "8080"
     ports:
       - "127.0.0.1:8081:8081"
     volumes:
       - root-key-staged:/run/hikyo-root-key:ro
+      - type: bind
+        source: ${HIKYO_UPGRADE_PUBLIC_DIR:?set the prepared public upgrade directory}
+        target: /run/hikyo-upgrade
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HIKYO_UPGRADE_INSTALLATION_DIR:?set the persistent installation custody directory}
+        target: /var/lib/hikyo-installation
+        bind:
+          create_host_path: false
     stop_grace_period: 30s
     read_only: true
     tmpfs:

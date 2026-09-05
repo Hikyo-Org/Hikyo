@@ -22,29 +22,7 @@ import (
 // analyzer only sees the query text, so every other guardrail stays green.
 var driverHandles = map[string]bool{
 	"PG": true, "SQLiteWrite": true, "SQLiteRead": true,
-}
-
-// handleUsers is the exact allowlist of packages permitted to touch a raw
-// driver handle. Additions are architecture decisions, not conveniences.
-var handleUsers = map[string]bool{
-	Module + "/internal/store":              true, // defines them
-	Module + "/internal/store/tx":           true, // owns the transaction boundary
-	Module + "/internal/store/migrate":      true, // opens its own connection for DDL
-	Module + "/internal/store/upgrade":      true, // locked upgrade-control/restore transaction boundary; no tenant repositories
-	Module + "/internal/store/upgrade_test": true, // external archive acceptance exercises actual recovery mutation callbacks
-	Module + "/internal/store/sqlitegen":    true, // generated: it IS the driver layer
-	Module + "/internal/store/pggen":        true, // generated: it IS the driver layer
-	Module + "/internal/store_test":         true, // external store harness: runtime durability/state assertions
-	Module + "/internal/conformance":        true, // cross-engine fixtures
-	Module + "/internal/isolation":          true, // probe fixtures + instrumentation
-	Module + "/internal/conformance_test":   true,
-	Module + "/internal/isolation_test":     true,
-	// The dynamic-secret PostgreSQL provider (#147) is an OUTBOUND client to an
-	// external engine the operator configured, not a handle on Hikyo's own
-	// datastore. Like the forgejo adapter's net/http client it lives outside the
-	// chokepoint by design: it never touches the Hikyo tables, only mints roles
-	// at the target. Its own reflection test pins that it speaks no arbitrary SQL.
-	Module + "/internal/dynamic/postgres": true,
+	"BeginSQLite": true, "BeginPostgres": true, "BeginPostgresSerialized": true,
 }
 
 // driverTypes are the concrete engine handles. Naming one at all — in a
@@ -56,21 +34,23 @@ var handleUsers = map[string]bool{
 // types closes that escape and the type-assertion variant with it, because
 // both must write the driver type somewhere.
 //
-// Honest limit, stated: a package inside the allowlist could still hand out
-// a wrapper whose methods run queries behind a driver-free interface. That
-// is a trusted-set change — the allowlist is the trusted set — and gets
-// adversarial review depth, not lint.
+// The remaining trusted set is the explicit source-file list in
+// handle_positions.go. Changes inside those files still require review.
 // Keyed by the NAMED type, not its pointer spelling: matching "*pkg.Pool"
 // as a string misses `*pool` where `type pool = pgxpool.Pool`, and misses a
 // value-typed occurrence entirely.
 var driverTypes = map[string]bool{
-	"github.com/jackc/pgx/v5/pgxpool.Pool": true,
-	"github.com/jackc/pgx/v5/pgxpool.Conn": true,
-	"github.com/jackc/pgx/v5.Tx":           true,
-	"github.com/jackc/pgx/v5.Conn":         true,
-	"database/sql.DB":                      true,
-	"database/sql.Tx":                      true,
-	"database/sql.Conn":                    true,
+	"github.com/jackc/pgx/v5/pgxpool.Pool":                 true,
+	"github.com/jackc/pgx/v5/pgxpool.Conn":                 true,
+	"github.com/jackc/pgx/v5.Tx":                           true,
+	"github.com/jackc/pgx/v5.Conn":                         true,
+	"database/sql.DB":                                      true,
+	"database/sql.Tx":                                      true,
+	"database/sql.Conn":                                    true,
+	Module + "/internal/store.SQLiteTransaction":           true,
+	Module + "/internal/store.PostgresTransaction":         true,
+	Module + "/internal/store.RecoverySQLiteTransaction":   true,
+	Module + "/internal/store.RecoveryPostgresTransaction": true,
 }
 
 // namedKey is a named type's stable identity, independent of how any use
@@ -116,8 +96,20 @@ func CheckDriverHandles(pkgs []*packages.Package) []string {
 		if p.TypesInfo == nil {
 			continue
 		}
-		if !handleUsers[base] {
+		for ident, obj := range p.TypesInfo.Uses {
+			if obj.Pkg() == nil || obj.Pkg().Path() != Module+"/internal/store" || obj.Name() != "openConfigured" {
+				continue
+			}
+			at := p.Fset.Position(ident.Pos())
+			if !permittedRawConstructor(p, base, ident.Pos()) {
+				findings = append(findings, fmt.Sprintf("handles: %s: private datastore construction is confined to explicit runtime, preparation and recovery openers", at))
+			}
+		}
+		{
 			for ident, obj := range p.TypesInfo.Uses {
+				if permittedHandlePosition(p, base, ident.Pos()) {
+					continue
+				}
 				fn, ok := obj.(*types.Func)
 				if !ok || !driverHandles[fn.Name()] {
 					continue
@@ -138,7 +130,7 @@ func CheckDriverHandles(pkgs []*packages.Package) []string {
 			// a locally declared method rather than the store's.
 			reported := map[string]bool{}
 			report := func(pos token.Pos, named string) {
-				if named == "" {
+				if named == "" || permittedHandlePosition(p, base, pos) || permittedGuardedTransaction(p, base, pos, named) {
 					return
 				}
 				at := p.Fset.Position(pos)

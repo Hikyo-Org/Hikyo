@@ -5,13 +5,23 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"embed"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
+	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
+	"github.com/Hikyo-Org/hikyo/internal/upgradebundle"
+	bundlefixture "github.com/Hikyo-Org/hikyo/internal/upgradebundle/testfixture"
+	"github.com/Hikyo-Org/hikyo/internal/upgradecompat"
+	"github.com/jackc/pgx/v5"
 	"github.com/pressly/goose/v3/lock"
 )
 
@@ -288,4 +298,348 @@ func TestSessionMigrationBackendTerminationCannotReconnect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// A successful ownership probe can race backend termination. The transaction's
+// shared drain lock, not that probe, must prevent the next owner from entering.
+func TestOperatorTransactionDrainsAfterBackendTermination(t *testing.T) {
+	cfg := testConfig(t, releaseidentity.Postgres)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	native, err := pgx.Connect(ctx, cfg.DSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer native.Close(context.Background())
+	admin, err := pgx.Connect(ctx, cfg.DSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close(context.Background())
+	var next <-chan error
+	reached := false
+	err = WithLock(ctx, cfg, func(s *Session) error {
+		var backend int
+		if err := s.conn.QueryRowContext(ctx, "SELECT pg_backend_pid()").Scan(&backend); err != nil {
+			return err
+		}
+		transaction, err := native.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer transaction.Rollback(context.Background())
+		if err := s.guardPostgresOperator(ctx, transaction); err != nil {
+			return err
+		}
+		// This is the exact gap after a successful pre-commit owner check.
+		if err := s.checkPostgresOwner(ctx); err != nil {
+			return err
+		}
+		var killed bool
+		if err := admin.QueryRow(ctx, "SELECT pg_terminate_backend($1)", backend).Scan(&killed); err != nil {
+			return err
+		}
+		if !killed {
+			return errors.New("backend termination refused")
+		}
+		if err := s.checkPostgresOwner(ctx); err == nil {
+			return errors.New("terminated owner retained authority")
+		}
+		done := make(chan error, 1)
+		next = done
+		go func() { done <- WithLock(ctx, cfg, func(*Session) error { return nil }) }()
+		// Wait for an actual blocked exclusive lock request, not a timing guess.
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			var waiting bool
+			if err := admin.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_locks
+    WHERE locktype='advisory' AND database=(SELECT oid FROM pg_database WHERE datname=current_database())
+    AND classid=($1::bigint >> 32)::oid AND objid=($1::bigint & 4294967295)::oid
+    AND objsubid=1 AND mode='ExclusiveLock' AND NOT granted)`, operatorDrainLock).Scan(&waiting); err != nil {
+				return err
+			}
+			if waiting {
+				break
+			}
+			select {
+			case err := <-done:
+				next = nil
+				return fmt.Errorf("next owner entered before transaction settled: %v", err)
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-ticker.C:
+			}
+		}
+		if err := transaction.Rollback(ctx); err != nil {
+			return err
+		}
+		if err := <-done; err != nil {
+			return err
+		}
+		next = nil
+		reached = true
+		return nil
+	})
+	if next != nil {
+		cancel()
+		<-next
+	}
+	if err == nil {
+		t.Fatal("terminated session reported success")
+	}
+	if !reached {
+		t.Fatalf("custody regression did not reach settlement: %v", err)
+	}
+}
+
+// commitObservedDriver preserves every maintained driver interface. The only
+// interception is after a real successful transaction COMMIT has returned.
+type observedMigrationConnection interface {
+	driver.Conn
+	driver.ConnBeginTx
+	driver.ConnPrepareContext
+	driver.ExecerContext
+	driver.QueryerContext
+	driver.SessionResetter
+}
+type commitObservedDriver struct {
+	observedMigrationConnection
+	after func()
+}
+
+// Preserve SQLite's optional Validator without pretending PostgreSQL's driver
+// implements that interface. Native connection validity remains independently
+// checked by the existing production migration runner.
+type commitObservedSQLiteDriver struct {
+	*commitObservedDriver
+	driver.Validator
+}
+
+func (d *commitObservedDriver) BeginTx(ctx context.Context, options driver.TxOptions) (driver.Tx, error) {
+	transaction, err := d.observedMigrationConnection.BeginTx(ctx, options)
+	if err != nil {
+		return nil, err
+	}
+	return &commitObservedTransaction{Tx: transaction, after: d.after}, nil
+}
+
+type commitObservedTransaction struct {
+	driver.Tx
+	after func()
+}
+
+func (t *commitObservedTransaction) Commit() error {
+	if err := t.Tx.Commit(); err != nil {
+		return err
+	}
+	t.after()
+	return nil
+}
+
+type migrationCommitProcessConfig struct {
+	Store     Config
+	State     State
+	Directory string
+	Pinned    releasetrust.PinnedTrust
+	Version   int64
+	Marker    string
+}
+
+func TestMigrationCommitCrashChild(t *testing.T) {
+	path := os.Getenv("HIKYO_MIGRATION_COMMIT_PROCESS_CONFIG")
+	if path == "" {
+		return
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal("read private child configuration")
+	}
+	var cfg migrationCommitProcessConfig
+	if json.Unmarshal(raw, &cfg) != nil {
+		t.Fatal("decode private child configuration")
+	}
+	bundle, err := upgradebundle.Load(t.Context(), cfg.Directory, cfg.Pinned, cfg.State.Floor)
+	if err != nil {
+		t.Fatal("authenticate child release bundle")
+	}
+	plan, err := bundle.Plan(upgradecompat.InstalledSource{Identity: cfg.State.Pending.RouteSource, Migrations: emptyManifest(cfg.Store.Engine), SchemaSHA256: cfg.State.Pending.SourceSchemaDigest}, cfg.State.Pending.Target)
+	if err != nil || plan.Digest() != cfg.State.Pending.RouteDigest {
+		t.Fatal("child route differs from signed release")
+	}
+	err = WithLock(t.Context(), cfg.Store, func(session *Session) error {
+		if _, err := session.Resume(t.Context(), cfg.State); err != nil {
+			return err
+		}
+		session.wrapMigrationDriver = func(original driver.Conn) driver.Conn {
+			maintained, ok := original.(observedMigrationConnection)
+			if !ok {
+				t.Fatal("fixture driver lacks maintained interfaces")
+			}
+			wrapped := &commitObservedDriver{observedMigrationConnection: maintained, after: func() {
+				observed, err := open(cfg.Store, true)
+				if err != nil {
+					t.Fatal("open commit observation")
+				}
+				var version int64
+				err = observed.QueryRowContext(t.Context(), "SELECT COALESCE(MAX(version_id),0) FROM goose_db_version WHERE is_applied").Scan(&version)
+				closeErr := observed.Close()
+				if err != nil || closeErr != nil {
+					t.Fatal("read committed goose history:", errors.Join(err, closeErr))
+				}
+				if version != cfg.Version {
+					return
+				}
+				if err := os.WriteFile(cfg.Marker, []byte("committed"), 0600); err != nil {
+					t.Fatal("write commit marker")
+				}
+				<-t.Context().Done()
+			}}
+			if validator, ok := original.(driver.Validator); ok {
+				return &commitObservedSQLiteDriver{commitObservedDriver: wrapped, Validator: validator}
+			}
+			return wrapped
+		}
+		return session.ApplyMigrations(t.Context(), cfg.State, sessionMigrations, "testdata/session-commits")
+	})
+	if err != nil {
+		t.Fatal("migration child failed before checkpoint:", err)
+	}
+	t.Fatal("migration child returned before kill")
+}
+
+func TestMigrationProcessCrashAfterIndividualCommits(t *testing.T) {
+	both(t, func(t *testing.T, cfg Config) {
+		for _, version := range []int64{1, 2} {
+			t.Run(fmt.Sprintf("commit-%d", version), func(t *testing.T) {
+				cfg := testConfig(t, cfg.Engine)
+				empty, catalog, err := BuildScratchSchema(t.Context(), testConfig(t, cfg.Engine), sessionMigrations, "testdata/session-commits")
+				if err != nil {
+					t.Fatal(err)
+				}
+				manifest, err := releaseidentity.BuildMigrationManifest(sessionMigrations, "testdata/session-commits", cfg.Engine)
+				if err != nil {
+					t.Fatal(err)
+				}
+				source := upgradecompat.InstalledSource{Identity: Source{Genesis: FreshGenesis}, Migrations: emptyManifest(cfg.Engine), SchemaSHA256: empty.Digest()}
+				fixture := bundlefixture.Write(t, source, []bundlefixture.Target{{Version: "1.0.1", Sequence: 1, Commit: strings.Repeat("c", 40), Migrations: manifest, SchemaSHA256: catalog.Digest()}})
+				step := fixture.Plan.Steps()[0]
+				sourceDigest, _ := source.Migrations.Digest()
+				targetDigest, _ := manifest.Digest()
+				operation := Operation{Kind: UpgradeOperation, Source: source.Identity, RouteSource: source.Identity, Target: step.Target, SourceMigrationDigest: sourceDigest, TargetMigrationDigest: targetDigest, SourceSchemaDigest: source.SchemaSHA256, TargetSchemaDigest: step.TargetSchemaSHA256, RouteDigest: fixture.Plan.Digest(), RouteLength: 1, Generation: 1, BackupID: "fresh-bootstrap", Phase: Prepared, Acceptance: Acceptance{Floor: fixture.Bundle.Snapshot().Floor(), ReleaseRootDigest: releaseidentity.Hash(fixture.Pinned.Root)}}
+				var state State
+				err = WithLock(t.Context(), cfg, func(session *Session) error {
+					var err error
+					state, err = session.Bootstrap(t.Context(), source.Migrations, operation, Production)
+					if err != nil {
+						return err
+					}
+					state, err = session.Advance(t.Context(), state, SchemaWriteStarted)
+					return err
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				directory := t.TempDir()
+				marker := filepath.Join(directory, "committed")
+				child := migrationCommitProcessConfig{Store: cfg, State: state, Directory: fixture.Directory, Pinned: fixture.Pinned, Version: version, Marker: marker}
+				raw, err := json.Marshal(child)
+				if err != nil {
+					t.Fatal(err)
+				}
+				path := filepath.Join(directory, "child.json")
+				if err := os.WriteFile(path, raw, 0600); err != nil {
+					t.Fatal(err)
+				}
+				ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+				defer cancel()
+				command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestMigrationCommitCrashChild$", "-test.timeout=25s")
+				command.Env = append(os.Environ(), "HIKYO_MIGRATION_COMMIT_PROCESS_CONFIG="+path)
+				log, err := os.OpenFile(filepath.Join(directory, "child.log"), os.O_CREATE|os.O_WRONLY, 0600)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer log.Close()
+				command.Stdout, command.Stderr = log, log
+				if err := command.Start(); err != nil {
+					t.Fatal(err)
+				}
+				done := make(chan error, 1)
+				go func() { done <- command.Wait() }()
+				defer command.Process.Kill()
+				ticker := time.NewTicker(10 * time.Millisecond)
+				defer ticker.Stop()
+				waiting := true
+				for waiting {
+					select {
+					case err := <-done:
+						output, _ := os.ReadFile(filepath.Join(directory, "child.log"))
+						safe := string(output)
+						if cfg.DSN != "" {
+							safe = strings.ReplaceAll(safe, cfg.DSN, "[test DSN]")
+						}
+						t.Fatalf("child exited before commit checkpoint: %v: %s", err, safe)
+					case <-ctx.Done():
+						command.Process.Kill()
+						<-done
+						t.Fatal("child commit checkpoint deadline")
+					case <-ticker.C:
+						if _, err := os.Stat(marker); errors.Is(err, os.ErrNotExist) {
+							continue
+						} else if err != nil {
+							t.Fatal(err)
+						}
+						if err := command.Process.Kill(); err != nil {
+							t.Fatal(err)
+						}
+						var exit *exec.ExitError
+						if err := <-done; !errors.As(err, &exit) || exit.Success() {
+							t.Fatal("expected SIGKILL termination")
+						}
+						waiting = false
+					}
+				}
+				after, err := InspectControl(t.Context(), cfg)
+				if err != nil || !reflect.DeepEqual(state, after) {
+					t.Fatal("migration commit crash changed durable phase", err)
+				}
+				observed, err := open(cfg, true)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var actual, count int64
+				err = observed.QueryRowContext(t.Context(), "SELECT MAX(version_id) FROM goose_db_version WHERE is_applied").Scan(&actual)
+				if err == nil {
+					err = observed.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM migration_commit_probe").Scan(&count)
+				}
+				observed.Close()
+				if err != nil || actual != version || count != version {
+					t.Fatalf("crash did not preserve exactly committed prefix: version=%d count=%d error=%v", actual, count, err)
+				}
+				err = WithLock(t.Context(), cfg, func(session *Session) error {
+					if err := session.ApplyMigrations(t.Context(), state, sessionMigrations, "testdata/session-commits"); err != nil {
+						return err
+					}
+					actual, err := session.DomainCatalog(t.Context())
+					if err != nil {
+						return err
+					}
+					if actual.Digest() != catalog.Digest() {
+						return errors.New("resume differs from exact signed target catalog")
+					}
+					var count int
+					if err := session.conn.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM migration_commit_probe").Scan(&count); err != nil {
+						return err
+					}
+					if count != 3 {
+						return errors.New("resume duplicated or lost committed migration effects")
+					}
+					return nil
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
+	})
 }

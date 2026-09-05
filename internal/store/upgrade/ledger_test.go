@@ -73,7 +73,7 @@ func operation(source Source, manifest releaseidentity.MigrationManifest) Operat
 	if manifest.Engine == releaseidentity.Postgres {
 		catalog.Objects = []string{`["schema", "public"]`}
 	}
-	op := Operation{SourceSchemaDigest: catalog.Digest(), TargetSchemaDigest: releaseidentity.Hash([]byte("target schema")), Acceptance: fixtureAcceptance(), RouteSource: source, Source: source, Target: target(1), SourceMigrationDigest: digest, TargetMigrationDigest: releaseidentity.Hash([]byte("target migrations")), RouteDigest: releaseidentity.Hash([]byte("route")), Generation: 1, RouteLength: 1, Phase: Prepared, BackupID: "backup_fixture"}
+	op := Operation{SourceSchemaDigest: catalog.Digest(), TargetSchemaDigest: catalog.Digest(), Acceptance: fixtureAcceptance(), RouteSource: source, Source: source, Target: target(1), SourceMigrationDigest: digest, TargetMigrationDigest: digest, RouteDigest: releaseidentity.Hash([]byte("route")), Generation: 1, RouteLength: 1, Phase: Prepared, BackupID: "backup_fixture"}
 	if source.Genesis == LegacyGenesis {
 		op.RecoveryIncarnation[0] = 1
 	} // Explicit fixture proposal, never live-state proof.

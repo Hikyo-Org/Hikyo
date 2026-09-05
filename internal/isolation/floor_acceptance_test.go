@@ -11,11 +11,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
+	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 )
 
 // This opt-in release gate refuses an unconstrained or emulated-target claim.
-// It shares the full K2/K3 fixture with ordinary CI, then drives the shipped
-// binary through the operator runbook against a separate disposable instance.
+// It shares the full K2/K3 fixture with ordinary CI, then drives the source-built
+// binary through the development-domain operator runbook against a separate
+// disposable instance. This resource measurement grants no production trust.
 func TestFloorBackupRestoreAcceptance(t *testing.T) {
 	if runtime.GOOS != "linux" || runtime.GOARCH != "arm64" {
 		t.Fatal("floor evidence requires native Linux arm64 execution")
@@ -52,7 +56,7 @@ func TestFloorBackupRestoreAcceptance(t *testing.T) {
 	}) {
 		return
 	}
-	if !t.Run("CLI_runbook", func(t *testing.T) { runFloorCLIRunbook(t, c) }) {
+	if !t.Run("CLI_runbook", func(t *testing.T) { runFloorCLIRunbook(t, c, "/hikyo", "/evidence/cli-drill.json") }) {
 		return
 	}
 	elapsed := time.Since(started)
@@ -70,6 +74,7 @@ func TestFloorBackupRestoreAcceptance(t *testing.T) {
 		"memory_peak": read("/sys/fs/cgroup/memory.peak"), "memory_events": events,
 		"started_at": started, "elapsed_ms": elapsed.Milliseconds(), "rto_target_ms": 1800000,
 		"operator_fit": "not measured", "physical_pi_calibration": "not claimed",
+		"trust_domain": "local-development", "production_release_authentication": "not claimed",
 	}
 	raw, err := json.MarshalIndent(evidence, "", "  ")
 	if err != nil {
@@ -80,7 +85,20 @@ func TestFloorBackupRestoreAcceptance(t *testing.T) {
 	}
 }
 
-func runFloorCLIRunbook(t *testing.T, c custody) {
+// This optional local check exercises the actual subprocess protocol without
+// weakening or calling the native ARM64/cgroup acceptance test above.
+func TestFloorCLIRunbookWithoutResourceClaim(t *testing.T) {
+	binary := os.Getenv("HIKYO_FLOOR_CLI_BINARY")
+	if binary == "" {
+		t.Skip("set HIKYO_FLOOR_CLI_BINARY to an absolute source-built binary path for CLI-only validation")
+	}
+	if !filepath.IsAbs(binary) {
+		t.Fatal("HIKYO_FLOOR_CLI_BINARY must be absolute")
+	}
+	runFloorCLIRunbook(t, newCustody(t), binary, filepath.Join(t.TempDir(), "cli-drill.json"))
+}
+
+func runFloorCLIRunbook(t *testing.T, c custody, binary, evidencePath string) {
 	t.Helper()
 	target := sqliteTarget(t, t.TempDir(), c.recipient(t))
 	db, a := buildInstance(t, target, c)
@@ -89,8 +107,15 @@ func runFloorCLIRunbook(t *testing.T, c custody) {
 	}
 	run := func(args ...string) []byte {
 		t.Helper()
-		cmd := exec.CommandContext(t.Context(), "/hikyo", args...)
-		cmd.Env = []string{"HIKYO_DB=sqlite:" + target.cfg.Store.Path, "HIKYO_BACKUP_RTO_TARGET=30m"}
+		// Group-level opt-in is explicit. The persisted signed development
+		// bundle must match the one that admitted the seeded datastore.
+		args = append([]string{args[0], "--dev"}, args[1:]...)
+		cmd := exec.CommandContext(t.Context(), binary, args...)
+		cmd.Env = []string{
+			"HIKYO_DB=sqlite:" + target.cfg.Store.Path,
+			"HIKYO_BACKUP_RTO_TARGET=30m",
+			"HIKYO_UPGRADE_STATE_DIR=" + target.cfg.Upgrade.StateDirectory,
+		}
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("CLI %s: %v\n%s", args[0:2], err, output)
@@ -133,7 +158,7 @@ func runFloorCLIRunbook(t *testing.T, c custody) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile("/evidence/cli-drill.json", append(raw, '\n'), 0600); err != nil {
+	if err := os.WriteFile(evidencePath, append(raw, '\n'), 0600); err != nil {
 		t.Fatal(err)
 	}
 	target.destroy(t)
@@ -143,6 +168,16 @@ func runFloorCLIRunbook(t *testing.T, c custody) {
 		t.Fatal("restored human not pending reconciliation")
 	}
 	run("restore", "reconcile", "--principal", "usr_ident")
+	control, err := upgrade.InspectControl(t.Context(), upgrade.Config{Engine: releaseidentity.SQLite, Path: target.cfg.Store.Path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !control.Maintenance || control.Pending == nil || !control.Pending.Invalidated {
+		t.Fatal("data restoration or principal reconciliation reopened runtime admission")
+	}
+	// A restored database remains fenced after data-only CLI reconciliation.
+	// Prove a fresh export and real isolated custody drill before opening it.
+	recoverRestoredTarget(t, target, c)
 	restored := target.open(t)
 	if got := queryInt(t, restored, "SELECT reconciled_epoch FROM principals WHERE id = 'usr_ident'"); got == 0 {
 		t.Fatal("CLI did not reconcile chosen principal")

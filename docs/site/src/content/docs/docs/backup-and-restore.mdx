@@ -214,3 +214,23 @@ With `--cleanup`, SQLite scratch files are removed only after every drill step
 and its recovery-time check pass. A failed or refused drill retains the target
 for inspection, including any pre-existing database. PostgreSQL scratch cleanup
 remains an explicit database-administrator action.
+
+## Upgrade proof and restored admission
+
+Ordinary exports and recurring drills do not issue upgrade permission. Use
+`hikyo backup upgrade-export` and the operator-held
+`hikyo backup upgrade-drill` to produce the public receipt and signed readable
+restore attestation required by a populated upgrade. Follow the exact commands
+in the [manual upgrade runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/manual-upgrades.md).
+The server receives the ciphertext and public proof, never the operator signing
+key, age identity or separate backup root escrow.
+
+After supported restore, keep the current external installation state and
+operator pin. An old database backup must never replace that state. Restore
+advances the credential epoch and creates a new recovery incarnation; old
+attestations and pending upgrade authority remain invalid. Before starting the
+restored instance, export and drill again against that current incarnation and
+complete the same-release recovery gate with the exact signed source binary.
+`restore status` and individual principal reconciliation remain available through
+narrow local recovery commands while ordinary serving is blocked. The original
+root key alone does not reactivate restored serving or bearer credentials.

@@ -381,7 +381,7 @@ func TestSchemaAheadOfBinaryRefusesToServe(t *testing.T) {
 		srv.Close()
 		t.Fatal("a database migrated by a newer binary must refuse to serve")
 	}
-	if !strings.Contains(err.Error(), "unknown to this binary") {
+	if !strings.Contains(err.Error(), "schema differs from signed target") {
 		t.Fatalf("refusal must name the unknown-schema cause, got: %v", err)
 	}
 }

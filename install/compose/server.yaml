@@ -1,0 +1,54 @@
+# Manual deployment only. Supply reviewed, digest-pinned artifacts and stop all
+# writers before migration. See docs/operations/manual-upgrades.md.
+services:
+  server:
+    image: ${HIKYO_SERVER_IMAGE:?set the verified repository@sha256 digest}
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command:
+      - server
+      - --auto-migrate=false
+      - --listen=0.0.0.0:8080
+      - --operational-listen=0.0.0.0:8081
+      - --root-key-file=/run/hikyo-root/root-key
+    environment:
+      HIKYO_DB: ${HIKYO_DB:?set the instance datastore}
+      HIKYO_EXTERNAL_ORIGIN: ${HIKYO_EXTERNAL_ORIGIN:?set the HTTPS browser origin}
+      HIKYO_TRUSTED_PROXY_CIDRS: ${HIKYO_TRUSTED_PROXY_CIDRS:?set exact reverse proxy CIDRs}
+      HIKYO_UPGRADE_BUNDLE: /run/hikyo-upgrade/bundle
+      HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY: /run/hikyo-upgrade/operator.pub
+      HIKYO_UPGRADE_STATE_DIR: /var/lib/hikyo-upgrade
+      HIKYO_UPGRADE_EVIDENCE: ${HIKYO_UPGRADE_EVIDENCE:-}
+      HIKYO_UPGRADE_BACKUP: ${HIKYO_UPGRADE_BACKUP:-}
+      HIKYO_UPGRADE_TARGET_MANIFEST: ${HIKYO_UPGRADE_TARGET_MANIFEST:-}
+      HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED: ${HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED:-false}
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8081:8081"
+    tmpfs:
+      - /tmp:mode=1777
+    volumes:
+      - type: bind
+        source: ${HIKYO_UPGRADE_PUBLIC_DIR:?set the public artifact directory}
+        target: /run/hikyo-upgrade
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HIKYO_UPGRADE_INSTALLATION_DIR:?set persistent installation state}
+        target: /var/lib/hikyo-upgrade
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HIKYO_SERVER_DATA_DIR:?set the instance data directory}
+        target: /var/lib/hikyo
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HIKYO_SERVER_ROOT_KEY_FILE:?set the existing runtime root-key file}
+        target: /run/hikyo-root/root-key
+        read_only: true
+        bind:
+          create_host_path: false

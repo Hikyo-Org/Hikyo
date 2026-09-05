@@ -6,9 +6,9 @@ replicaCount: 1
 # ha.replicaCount stateless replicas behind the Service, coordinated through
 # PostgreSQL: singleton work runs under a datastore lease, admission counters
 # are shared, and because sessions are datastore-backed the Service needs no
-# session stickiness. Migrate once (a single `hikyo migrate`, or the first
-# replica) before rolling replicas; a replica whose schema lags the datastore
-# reports not-ready. HA is refused on sqlite at boot.
+# session stickiness. Upgrades require an operator-enforced full stop, one
+# verified migrator, then exact-target boot. Rolling replacement is not an
+# upgrade procedure. HA is refused on sqlite at boot.
 ha:
   enabled: false
   # Number of server replicas when ha.enabled. Ignored otherwise (replicaCount
@@ -44,6 +44,26 @@ rootKey:
   # projected file into an owner-only runtime volume; key bytes never use env.
   existingSecret: ""
   key: root-key
+
+# Manual, verified deployment inputs. Populate these PVCs before installation.
+# Neither the server nor the secrets delivery operator prepares or applies an
+# upgrade. Read docs/operations/manual-upgrades.md for the exact directory layout.
+upgrade:
+  # Read-only public bundle, operator.pub and optional evidence/backup.age.
+  # Use regular files; projected ConfigMap/Secret symlinks are refused by readers.
+  existingClaim: ""
+  # Separate persistent installation pin/journal, never restored from DB backup.
+  # Provision volume root gid 65532 mode 2770 (including setgid), with child
+  # operator-custody owned by UID 65532 mode 0700. OnRootMismatch must skip
+  # recursive permission changes; drivers must preserve private child modes.
+  # Must support shared POSIX locks/durability when used by multiple HA replicas.
+  stateExistingClaim: ""
+  # Present only during a populated upgrade or current-incarnation recovery.
+  evidence: false
+  # Exact final manifest digest for a multi-hop route; empty selects this binary.
+  targetManifestSHA256: ""
+  # Explicit operator assertion AFTER every pre-gate writer has stopped.
+  legacyWritersStopped: false
 
 # Canonical browser-visible origin. Paths, query strings, fragments, userinfo,
 # and trailing slashes are refused.

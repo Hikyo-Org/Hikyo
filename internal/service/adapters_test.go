@@ -16,21 +16,17 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 	storetx "github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
 // adapterScope is the project scope every adapter test operates in.
 var adapterScope = domain.Scope{Org: "org_adapter", Project: "prj_adapter"}
 
-// adapterKeyring generates a fresh root key and loads a keyring over db, the
-// setup every adapter test that touches sealed material repeats.
+// adapterKeyring reopens the hierarchy initialized by the signed fixture gate
+// using that database's original root custody.
 func adapterKeyring(t *testing.T, db *store.DB) *crypto.Keyring {
 	t.Helper()
-	root, err := crypto.GenerateRootKey()
-	if err != nil {
-		t.Fatal(err)
-	}
+	root := serviceFixtureRoot(t, db)
 	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
 	if err != nil {
 		t.Fatal(err)
@@ -84,10 +80,7 @@ func adapterCLISession(t *testing.T, db *store.DB) string {
 func adapterServiceDB(t *testing.T) *store.DB {
 	t.Helper()
 	cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "adapter-service.db")}
-	if err := migrate.Run(t.Context(), cfg); err != nil {
-		t.Fatal(err)
-	}
-	db, err := store.Open(t.Context(), cfg)
+	db, err := openServiceFixture(t, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

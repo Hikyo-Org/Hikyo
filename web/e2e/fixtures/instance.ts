@@ -726,7 +726,7 @@ async function startInstanceAt(
   const authorityFile = join(dir, 'authority');
   run(
     binary,
-    ['admin', 'create', '--username', ADMIN.username, '--display-name', ADMIN.displayName,
+    ['admin', '--dev', 'create', '--username', ADMIN.username, '--display-name', ADMIN.displayName,
       '--output-file', authorityFile],
     { cwd: dir, env: adminEnv(instance) },
   );
@@ -868,7 +868,7 @@ function servingPrincipal(dir: string): string {
 function grantServingAdmin(serving: Instance): void {
   const principal = servingPrincipal(serving.dir);
   for (const capability of ['read', 'edit', 'publish', 'manage-projects', 'definitions-edit']) {
-    run(serving.binary, ['admin', 'grant', '--principal', principal, '--capability', capability], {
+    run(serving.binary, ['admin', '--dev', 'grant', '--principal', principal, '--capability', capability], {
       cwd: serving.dir,
       env: adminEnv(serving),
     });
@@ -1036,7 +1036,7 @@ export async function startInstance(): Promise<void> {
   // by design, so something has to. It also enrols the administrator's TOTP
   // factor, which is why nothing here enrols a second one.
   const seeded = await seedTenant((args) => {
-    run(viewing.binary, ['admin', 'grant', ...args], {
+    run(viewing.binary, ['admin', '--dev', 'grant', ...args], {
       cwd: viewing.dir,
       env: adminEnv(viewing),
     });

@@ -64,7 +64,7 @@ var ErrMixedRootKey = errors.New("store: another live node registered a differen
 // acquisition, so a holder that resumes after losing the lease writes under a
 // stale token and its guarded writes match zero rows. held is false when a
 // live holder still owns the lease.
-func (c *Coordination) ClaimLease(ctx context.Context, name, owner string, now, expires time.Time) (fence int64, held bool, err error) {
+func (c *coordinationTx) ClaimLease(ctx context.Context, name, owner string, now, expires time.Time) (fence int64, held bool, err error) {
 	switch c.db.engine {
 	case EnginePostgres:
 		err = c.db.pool.QueryRow(ctx,
@@ -110,7 +110,7 @@ func (c *Coordination) ClaimLease(ctx context.Context, name, owner string, now, 
 // matches zero rows and held is false: that is the fenced write the HA design
 // turns on. now must be datastore time (the scheduler reads it via Now) so the
 // comparison is not subject to per-node clock skew.
-func (c *Coordination) RenewLease(ctx context.Context, name, owner string, fence int64, now, expires time.Time) (held bool, err error) {
+func (c *coordinationTx) RenewLease(ctx context.Context, name, owner string, fence int64, now, expires time.Time) (held bool, err error) {
 	var affected int64
 	switch c.db.engine {
 	case EnginePostgres:
@@ -143,7 +143,7 @@ func (c *Coordination) RenewLease(ctx context.Context, name, owner string, fence
 // deleted-and-reinserted row would reset the token to 1 and let a delayed
 // same-owner process match an old token. It only releases the row the caller
 // still holds at its fence.
-func (c *Coordination) ReleaseLease(ctx context.Context, name, owner string, fence int64) error {
+func (c *coordinationTx) ReleaseLease(ctx context.Context, name, owner string, fence int64) error {
 	var err error
 	switch c.db.engine {
 	case EnginePostgres:
@@ -167,7 +167,7 @@ func (c *Coordination) ReleaseLease(ctx context.Context, name, owner string, fen
 // every node compares against one clock, removing per-node skew as a
 // split-brain vector. On sqlite (single node, never HA) the process clock is
 // authoritative.
-func (c *Coordination) Now(ctx context.Context) (time.Time, error) {
+func (c *coordinationTx) Now(ctx context.Context) (time.Time, error) {
 	switch c.db.engine {
 	case EnginePostgres:
 		var now time.Time
@@ -187,7 +187,7 @@ func (c *Coordination) Now(ctx context.Context) (time.Time, error) {
 
 // LeaseHolder reports the current owner of a lease and whether the lease is
 // still live at now. Used by health to expose the leader and the lease age.
-func (c *Coordination) LeaseHolder(ctx context.Context, name string, now time.Time) (owner string, acquiredAt time.Time, live bool, err error) {
+func (c *coordinationTx) LeaseHolder(ctx context.Context, name string, now time.Time) (owner string, acquiredAt time.Time, live bool, err error) {
 	switch c.db.engine {
 	case EnginePostgres:
 		var expires time.Time
@@ -234,7 +234,7 @@ type HANode struct {
 
 // UpsertNode records or refreshes a node's registry row. StartedAt is only set
 // on first insert; the heartbeat advances on every call.
-func (c *Coordination) UpsertNode(ctx context.Context, n HANode) error {
+func (c *coordinationTx) UpsertNode(ctx context.Context, n HANode) error {
 	var err error
 	switch c.db.engine {
 	case EnginePostgres:
@@ -280,14 +280,10 @@ const (
 // master unwraps under either root) cannot both observe no foreign row and both
 // proceed. On sqlite there is a single node and no race, so it is a plain
 // upsert. since bounds which peers count as live.
-func (c *Coordination) RegisterNodeChecked(ctx context.Context, n HANode, since time.Time) error {
+func (c *coordinationTx) RegisterNodeChecked(ctx context.Context, n HANode, since time.Time) error {
 	switch c.db.engine {
 	case EnginePostgres:
-		tx, err := c.db.pool.Begin(ctx)
-		if err != nil {
-			return fmt.Errorf("store: register node: begin: %w", err)
-		}
-		defer tx.Rollback(ctx)
+		tx := c.db.pool
 		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, $2)`, coordinationAdvisoryNamespace, haRegisterAdvisoryClass); err != nil {
 			return fmt.Errorf("store: register node: lock: %w", err)
 		}
@@ -312,9 +308,6 @@ func (c *Coordination) RegisterNodeChecked(ctx context.Context, n HANode, since 
 			n.NodeID, n.BinaryVersion, n.SchemaVersion, n.RootKeyFingerprint, n.StartedAt, n.HeartbeatAt); err != nil {
 			return fmt.Errorf("store: register node: upsert: %w", err)
 		}
-		if err := tx.Commit(ctx); err != nil {
-			return fmt.Errorf("store: register node: commit: %w", err)
-		}
 		return nil
 	case EngineSQLite:
 		foreign, err := c.ForeignRootKeyFingerprints(ctx, n.NodeID, n.RootKeyFingerprint, since)
@@ -331,7 +324,7 @@ func (c *Coordination) RegisterNodeChecked(ctx context.Context, n HANode, since 
 }
 
 // CountLiveNodes counts nodes whose heartbeat is at or after since.
-func (c *Coordination) CountLiveNodes(ctx context.Context, since time.Time) (int, error) {
+func (c *coordinationTx) CountLiveNodes(ctx context.Context, since time.Time) (int, error) {
 	var count int
 	var err error
 	switch c.db.engine {
@@ -352,7 +345,7 @@ func (c *Coordination) CountLiveNodes(ctx context.Context, since time.Time) (int
 
 // PruneNodes drops registry rows whose heartbeat fell before cutoff, so a
 // decommissioned node does not linger in nodes_seen or the fingerprint check.
-func (c *Coordination) PruneNodes(ctx context.Context, cutoff time.Time) error {
+func (c *coordinationTx) PruneNodes(ctx context.Context, cutoff time.Time) error {
 	var err error
 	switch c.db.engine {
 	case EnginePostgres:
@@ -376,7 +369,7 @@ func (c *Coordination) PruneNodes(ctx context.Context, cutoff time.Time) error {
 // decommissioned node's stale row must not veto forever, and a root-key
 // rotation (stop-all, rotate, start-all) must not be refused by the outgoing
 // nodes' rows.
-func (c *Coordination) ForeignRootKeyFingerprints(ctx context.Context, nodeID, fingerprint string, since time.Time) ([]string, error) {
+func (c *coordinationTx) ForeignRootKeyFingerprints(ctx context.Context, nodeID, fingerprint string, since time.Time) ([]string, error) {
 	var others []string
 	switch c.db.engine {
 	case EnginePostgres:
@@ -421,7 +414,7 @@ func (c *Coordination) ForeignRootKeyFingerprints(ctx context.Context, nodeID, f
 // BumpWindow increments the hit count for a windowed admission bucket
 // (ip/meta/issuer) and returns the new count within that fixed window. Callers
 // compare it against the dimension's per-minute allowance.
-func (c *Coordination) BumpWindow(ctx context.Context, bucket, subject string, windowStart time.Time) (int64, error) {
+func (c *coordinationTx) BumpWindow(ctx context.Context, bucket, subject string, windowStart time.Time) (int64, error) {
 	var count int64
 	var err error
 	switch c.db.engine {
@@ -459,7 +452,7 @@ const mcpAdmissionAdvisoryClass = 88
 // three concurrency dimensions. No rate token is consumed unless every
 // concurrency dimension has room. The PostgreSQL clock is authoritative;
 // SQLite is single-node and uses the process clock like Coordination.Now.
-func (c *Coordination) AcquireMCP(ctx context.Context, callID, principalID, orgID string, ttl time.Duration) error {
+func (c *coordinationTx) AcquireMCP(ctx context.Context, callID, principalID, orgID string, ttl time.Duration) error {
 	if callID == "" || principalID == "" || orgID == "" || ttl <= 0 {
 		return errors.New("store: invalid MCP admission claim")
 	}
@@ -473,12 +466,9 @@ func (c *Coordination) AcquireMCP(ctx context.Context, callID, principalID, orgI
 	}
 }
 
-func (c *Coordination) acquireMCPPostgres(ctx context.Context, callID, principalID, orgID string, ttl time.Duration) error {
-	tx, err := c.db.pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("store: MCP admission begin: %w", err)
-	}
-	defer tx.Rollback(ctx)
+func (c *coordinationTx) acquireMCPPostgres(ctx context.Context, callID, principalID, orgID string, ttl time.Duration) error {
+	tx := c.db.pool
+	var err error
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, $2)`, coordinationAdvisoryNamespace, mcpAdmissionAdvisoryClass); err != nil {
 		return fmt.Errorf("store: MCP admission lock: %w", err)
 	}
@@ -522,18 +512,12 @@ func (c *Coordination) acquireMCPPostgres(ctx context.Context, callID, principal
 		callID, principalID, orgID, now.Add(ttl)); err != nil {
 		return fmt.Errorf("store: insert MCP claim: %w", err)
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("store: commit MCP admission: %w", err)
-	}
 	return nil
 }
 
-func (c *Coordination) acquireMCPSQLite(ctx context.Context, callID, principalID, orgID string, ttl time.Duration) error {
-	tx, err := c.db.sqWrite.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("store: MCP admission begin: %w", err)
-	}
-	defer tx.Rollback()
+func (c *coordinationTx) acquireMCPSQLite(ctx context.Context, callID, principalID, orgID string, ttl time.Duration) error {
+	tx := c.db.sqWrite
+	var err error
 	now := time.Now().UTC()
 	if _, err := tx.ExecContext(ctx, `DELETE FROM mcp_inflight WHERE expires_at <= ?`, fixedStamp(now)); err != nil {
 		return fmt.Errorf("store: prune MCP claims: %w", err)
@@ -578,15 +562,12 @@ func (c *Coordination) acquireMCPSQLite(ctx context.Context, callID, principalID
 		callID, principalID, orgID, fixedStamp(now.Add(ttl))); err != nil {
 		return fmt.Errorf("store: insert MCP claim: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("store: commit MCP admission: %w", err)
-	}
 	return nil
 }
 
 // ReleaseMCP releases one successful claim. A missing or already-expired id is
 // harmless. Callers still fail closed on datastore errors.
-func (c *Coordination) ReleaseMCP(ctx context.Context, callID string) error {
+func (c *coordinationTx) ReleaseMCP(ctx context.Context, callID string) error {
 	if callID == "" {
 		return errors.New("store: empty MCP admission call id")
 	}
@@ -612,7 +593,7 @@ func (c *Coordination) ReleaseMCP(ctx context.Context, callID string) error {
 // and the comparison use one clock: no separately stored deadline to go stale,
 // and no per-node clock skew in the remaining-delay calculation. ok is false
 // when no failures are recorded.
-func (c *Coordination) AccountFailureState(ctx context.Context, subject string) (failures int64, lastFailure, dbNow time.Time, ok bool, err error) {
+func (c *coordinationTx) AccountFailureState(ctx context.Context, subject string) (failures int64, lastFailure, dbNow time.Time, ok bool, err error) {
 	switch c.db.engine {
 	case EnginePostgres:
 		var until sql.NullTime
@@ -658,7 +639,7 @@ func (c *Coordination) AccountFailureState(ctx context.Context, subject string) 
 // concurrent record can leave the row admitting again. On sqlite (single node)
 // now is the process clock; on Postgres the SQL uses now() and the argument is
 // ignored, so multi-node timestamps come from one clock.
-func (c *Coordination) RecordAccountFailure(ctx context.Context, subject string, now time.Time) (int64, error) {
+func (c *coordinationTx) RecordAccountFailure(ctx context.Context, subject string, now time.Time) (int64, error) {
 	var failures int64
 	var err error
 	switch c.db.engine {
@@ -692,7 +673,7 @@ func (c *Coordination) RecordAccountFailure(ctx context.Context, subject string,
 // PruneAccountBackoff drops account rows whose last failure fell before cutoff,
 // so unique unknown usernames cannot accumulate permanent rows. The cutoff is
 // well past the maximum backoff, so a live backoff is never swept.
-func (c *Coordination) PruneAccountBackoff(ctx context.Context, cutoff time.Time) error {
+func (c *coordinationTx) PruneAccountBackoff(ctx context.Context, cutoff time.Time) error {
 	var err error
 	switch c.db.engine {
 	case EnginePostgres:
@@ -713,7 +694,7 @@ func (c *Coordination) PruneAccountBackoff(ctx context.Context, cutoff time.Time
 }
 
 // ClearAccount drops an account subject's backoff row on a successful attempt.
-func (c *Coordination) ClearAccount(ctx context.Context, subject string) error {
+func (c *coordinationTx) ClearAccount(ctx context.Context, subject string) error {
 	var err error
 	switch c.db.engine {
 	case EnginePostgres:
@@ -736,7 +717,7 @@ func (c *Coordination) ClearAccount(ctx context.Context, subject string) error {
 // PruneAdmissionWindows deletes windowed rate buckets whose window closed
 // before cutoff. Account backoff rows use the sentinel window and are never
 // swept here; a success clears them and a live deadline keeps them meaningful.
-func (c *Coordination) PruneAdmissionWindows(ctx context.Context, cutoff time.Time) error {
+func (c *coordinationTx) PruneAdmissionWindows(ctx context.Context, cutoff time.Time) error {
 	var err error
 	switch c.db.engine {
 	case EnginePostgres:

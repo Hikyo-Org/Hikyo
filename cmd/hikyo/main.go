@@ -49,9 +49,6 @@ func run() int {
 	if handled, code := runRootKeyStageMode(os.Args[1:]); handled {
 		return code
 	}
-	if err := binaryupdate.CleanupPrevious(); err != nil {
-		fmt.Fprintln(os.Stderr, "hikyo: clean up previous update:", err)
-	}
 	if handled, code := runTLSStageMode(os.Args[1:]); handled {
 		return code
 	}
@@ -63,6 +60,13 @@ func run() int {
 		return 2
 	}
 	cmd, args := os.Args[1], os.Args[2:]
+	// Datastore and custody commands must reach their gate before any optional
+	// executable housekeeping. Only remote client verbs own CLI update cleanup.
+	if slices.Contains(cli.Verbs, cmd) {
+		if err := binaryupdate.CleanupPrevious(); err != nil {
+			fmt.Fprintln(os.Stderr, "hikyo: clean up previous update:", err)
+		}
+	}
 	builtChannel, err := builtUpdateChannel()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "hikyo:", err)
@@ -103,6 +107,8 @@ func run() int {
 		return runUpdaterMode(ctx, args)
 	case cmd == "migrate":
 		return runMigrate(ctx, args)
+	case cmd == "upgrade":
+		return runUpgradeOperator(ctx, args)
 	case cmd == "admin":
 		return runAdmin(ctx, args)
 	case cmd == "backup":
@@ -193,7 +199,7 @@ func updateIO(terminalSession *disclose.TerminalSession, terminalError error, ch
 }
 
 func shouldCheckForUpdate(command string) bool {
-	return command != "update" && command != "version" && command != "--version" && command != "about" && command != "welcome"
+	return command != "update" && slices.Contains(cli.Verbs, command)
 }
 
 func runServer(ctx context.Context, args []string) int {
@@ -217,7 +223,7 @@ func runServer(ctx context.Context, args []string) int {
 	}
 	appURL := serverAppURL(cfg, srv)
 	message := ""
-	if term.IsTerminal(int(os.Stdout.Fd())) {
+	if !srv.Maintenance && term.IsTerminal(int(os.Stdout.Fd())) {
 		message = console.ServerReadyMessage(console.ServerInfo{
 			Version:        version,
 			AppURL:         appURL,
@@ -272,20 +278,23 @@ func runUpdaterMode(ctx context.Context, args []string) int {
 // runAdmin is the local-admin group: `hikyo admin create` on the server's own
 // host. It is a client verb of the same binary, not a new multicall mode -
 // the mode set (server/operator/migrate/client) is unchanged. It shares
-// runOperator's shape: own flags, environment-only configuration.
+// runOperator's shape: own flags and explicit group-level development opt-in.
 func runAdmin(ctx context.Context, args []string) int {
 	return runOperator(ctx, "admin", args, app.RunAdmin)
 }
 
 // runOperator is the shared shape of the host-only operator verb groups
-// (`backup`, `restore`). Like `admin`, they take their own flags and read
-// configuration from the environment only - the same environment the server
-// beside them reads, so an operator cannot back up one datastore and restore
-// another by passing a different flag.
+// (`admin`, `backup`, `restore`). Datastore/custody configuration comes from
+// the server's environment. Only a leading group-level --dev opts into the
+// distinct development trust domain. Verb flags and values are passed untouched.
 func runOperator(ctx context.Context, name string, args []string,
 	run func(context.Context, *config.Config, *slog.Logger, []string, io.Writer, *disclose.TerminalSession, error) error,
 ) int {
-	cfg, warnings, err := config.Load(name, nil, os.Getenv, os.Environ())
+	var configurationArgs []string
+	if len(args) > 0 && args[0] == "--dev" {
+		configurationArgs, args = args[:1], args[1:]
+	}
+	cfg, warnings, err := config.Load(name, configurationArgs, os.Getenv, os.Environ())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "hikyo %s: %v\n", name, err)
 		return 2
@@ -329,12 +338,33 @@ func runMigrate(ctx context.Context, args []string) int {
 	return 0
 }
 
+func runUpgradeOperator(ctx context.Context, args []string) int {
+	if len(args) == 0 || args[0] != "operator" {
+		fmt.Fprintln(os.Stderr, "usage: hikyo upgrade operator rotate --statement FILE --signature FILE --new-public-key FILE")
+		return 2
+	}
+	cfg, warnings, err := config.Load("upgrade", nil, os.Getenv, os.Environ())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "hikyo upgrade:", err)
+		return 2
+	}
+	log := app.Logger(cfg.Dev)
+	for _, warning := range warnings {
+		log.Warn(warning)
+	}
+	if err := app.RunUpgradeOperator(ctx, cfg, args[1:], os.Stderr); err != nil {
+		fmt.Fprintln(os.Stderr, "hikyo upgrade:", err)
+		return 1
+	}
+	return 0
+}
+
 func usage() {
 	fmt.Fprintf(os.Stderr, `hikyo — one binary, several roles
 
 server commands:
   hikyo server [--dev] [--listen ADDR] [--auto-migrate=BOOL]
-  hikyo migrate
+  hikyo migrate [--dev]
 
 kubernetes operator (separate deployable; HIKYO_OPERATOR_* env only):
   hikyo operator
@@ -348,12 +378,12 @@ information:
   hikyo welcome
 
 local host authority (server host only):
-  hikyo admin create --username USER
-  hikyo backup export [--out DIR]
-  hikyo backup keygen
-  hikyo restore run --from ARCHIVE --identity-file PATH
-  hikyo restore status
-  hikyo restore reconcile --principal ID
+  hikyo admin [--dev] create --username USER
+  hikyo backup [--dev] export [--out DIR]
+  hikyo backup [--dev] keygen
+  hikyo restore [--dev] run --from ARCHIVE --identity-file PATH
+  hikyo restore [--dev] status
+  hikyo restore [--dev] reconcile --principal ID
 
 client verbs:
   %v

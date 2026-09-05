@@ -3,6 +3,7 @@ package isolation
 import (
 	"context"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"io"
 	"log/slog"
 	"net/http"
@@ -58,7 +59,7 @@ func runRetentionCLIStartupSweep(t *testing.T, engine store.Engine) {
 	stopFirst := serveRetentionApp(t, first)
 	waitHTTP(t, operationalOrigin+"/healthz")
 
-	db, err := store.Open(t.Context(), retentionStoreConfig(cfg))
+	db, err := openBootedIsolationFixture(t, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,19 +275,20 @@ func retentionAppConfig(t *testing.T, engine store.Engine) *config.Config {
 	storeCfg := config.Datastore{Engine: config.EngineSQLite, Path: filepath.Join(t.TempDir(), "retention-cli.db")}
 	if engine == store.EnginePostgres {
 		dsn := derivedDatabase(t, postgresTestDSN(t), "_retention_cli")
-		reset, err := store.Open(t.Context(), store.Config{Engine: store.EnginePostgres, DSN: dsn})
+		reset, err := pgx.Connect(t.Context(), dsn)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := reset.PG().Exec(t.Context(), "DROP SCHEMA public CASCADE; CREATE SCHEMA public"); err != nil {
-			reset.Close()
+		if _, err := reset.Exec(t.Context(), "DROP SCHEMA public CASCADE; CREATE SCHEMA public"); err != nil {
+			reset.Close(t.Context())
 			t.Fatal(err)
 		}
-		reset.Close()
+		reset.Close(t.Context())
 		storeCfg = config.Datastore{Engine: config.EnginePostgres, DSN: dsn}
 	}
 	return &config.Config{
-		Dev: true, Listen: "127.0.0.1:0", OperationalListen: "localhost:0", AutoMigrate: true, Store: storeCfg,
+		Upgrade: config.UpgradeConfiguration{StateDirectory: isolationCustodyDirectory(t)},
+		Dev:     true, Listen: "127.0.0.1:0", OperationalListen: "localhost:0", AutoMigrate: true, Store: storeCfg,
 		ExternalOrigin: "http://127.0.0.1", RootKeyFile: rootPath,
 		Argon2MemoryKiB: crypto.PasswordFloor.MemoryKiB,
 		Argon2Time:      crypto.PasswordFloor.Time, Argon2Parallelism: crypto.PasswordFloor.Parallelism,

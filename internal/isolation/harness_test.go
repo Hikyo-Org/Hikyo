@@ -23,6 +23,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/Hikyo-Org/hikyo/internal/admission"
@@ -31,7 +32,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 )
 
 // adminOpts describes the per-suite identity and authentication configuration
@@ -455,10 +455,7 @@ func rowCounts(t *testing.T, db *store.DB) map[string]int64 {
 func openSQLite(t *testing.T) *store.DB {
 	t.Helper()
 	cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "isolation.db")}
-	if err := migrate.Run(t.Context(), cfg); err != nil {
-		t.Fatal(err)
-	}
-	db, err := store.Open(t.Context(), cfg)
+	db, err := openIsolationFixture(t, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -492,7 +489,7 @@ func openPostgres(t *testing.T) *store.DB {
 	// test server — true for the CI service user and any scratch container.
 	dsn = derivedDatabase(t, dsn, "_isolation")
 	cfg := store.Config{Engine: store.EnginePostgres, DSN: dsn}
-	pre, err := store.Open(t.Context(), cfg)
+	pre, err := pgx.Connect(t.Context(), cfg.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -505,15 +502,12 @@ func openPostgres(t *testing.T) *store.DB {
 	// objects depend on it" or "relation Y does not exist", cascading through
 	// the whole suite from a cause several runs in the past. A schema drop
 	// cannot have that failure mode: whatever is there, it is gone.
-	if _, err := pre.PG().Exec(t.Context(), "DROP SCHEMA public CASCADE; CREATE SCHEMA public"); err != nil {
-		pre.Close()
+	if _, err := pre.Exec(t.Context(), "DROP SCHEMA public CASCADE; CREATE SCHEMA public"); err != nil {
+		pre.Close(t.Context())
 		t.Fatal(err)
 	}
-	pre.Close()
-	if err := migrate.Run(t.Context(), cfg); err != nil {
-		t.Fatal(err)
-	}
-	db, err := store.Open(t.Context(), cfg)
+	pre.Close(t.Context())
+	db, err := openIsolationFixture(t, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -534,12 +528,12 @@ func derivedDatabase(t *testing.T, dsn, suffix string) string {
 		t.Fatal("postgres DSN has no database name")
 	}
 	derived := base + suffix
-	admin, err := store.Open(t.Context(), store.Config{Engine: store.EnginePostgres, DSN: dsn})
+	admin, err := pgx.Connect(t.Context(), dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer admin.Close()
-	if _, err := admin.PG().Exec(t.Context(), `CREATE DATABASE `+pq(derived)); err != nil {
+	defer admin.Close(t.Context())
+	if _, err := admin.Exec(t.Context(), `CREATE DATABASE `+pq(derived)); err != nil {
 		var pgErr *pgconn.PgError
 		if !errors.As(err, &pgErr) || pgErr.Code != "42P04" { // duplicate_database is fine
 			t.Fatalf("create derived database %s: %v", derived, err)
@@ -624,7 +618,6 @@ func keySvc(t *testing.T, db *store.DB) *service.Keys {
 // the hierarchy is minted ONCE per store under one root, so a second loader
 // with a fresh root is refused — correctly.
 var (
-	probeKeyringInitMu   sync.Mutex
 	probeKeyringMu       sync.Mutex
 	probeKeyringRegistry = map[*store.DB]probeKeyringRegistration{}
 )
@@ -650,6 +643,7 @@ func registerKeyring(t *testing.T, db *store.DB, kr *crypto.Keyring, root []byte
 	t.Cleanup(func() {
 		probeKeyringMu.Lock()
 		defer probeKeyringMu.Unlock()
+		crypto.Zero(probeKeyringRegistry[db].root)
 		delete(probeKeyringRegistry, db)
 	})
 }
@@ -670,6 +664,7 @@ func validateProbeKeyringRegistration(db *store.DB, kr *crypto.Keyring, root []b
 func loadAndRegisterKeyring(t *testing.T, db *store.DB, root []byte) *crypto.Keyring {
 	t.Helper()
 	retainedRoot := bytes.Clone(root)
+	defer crypto.Zero(retainedRoot)
 	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
 	if err != nil {
 		t.Fatal(err)
@@ -806,19 +801,14 @@ func valueSvc(t *testing.T, db *store.DB) *service.Values {
 // the auth service) has to share this one.
 func probeKeyring(t *testing.T, db *store.DB) *crypto.Keyring {
 	t.Helper()
-	probeKeyringInitMu.Lock()
-	defer probeKeyringInitMu.Unlock()
 	probeKeyringMu.Lock()
 	registration, ok := probeKeyringRegistry[db]
 	probeKeyringMu.Unlock()
 	if ok {
 		return registration.keyring
 	}
-	root, err := crypto.GenerateRootKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return loadAndRegisterKeyring(t, db, root)
+	t.Fatal("probe keyring requires the root from actual admitted fixture")
+	return nil
 }
 func keyGroupSvc(t *testing.T, db *store.DB) *service.KeyGroups {
 	return &service.KeyGroups{DB: db, Keyring: probeKeyring(t, db)}

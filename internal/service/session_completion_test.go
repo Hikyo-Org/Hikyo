@@ -10,7 +10,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
@@ -224,10 +223,7 @@ func TestSessionCompletionPublishesOnlyCommittedAttemptTokens(t *testing.T) {
 func sessionCompletionFixture(t *testing.T) (*store.DB, authz.Account) {
 	t.Helper()
 	cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "session-completion.db")}
-	if err := migrate.Run(t.Context(), cfg); err != nil {
-		t.Fatal(err)
-	}
-	db, err := store.Open(t.Context(), cfg)
+	db, err := openServiceFixture(t, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

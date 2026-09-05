@@ -20,7 +20,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/operation"
 	"github.com/Hikyo-Org/hikyo/internal/store"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 )
 
 // newAuditEvent is the one event constructor for every service emitter —
@@ -58,17 +57,10 @@ type System struct {
 	Store store.Config
 }
 
-// Ready reports whether a request would actually work: the datastore is
-// reachable and the schema matches this binary exactly. Boot already refuses
-// to serve on a mismatch, but the live check also catches the cross-process
-// race the ADR names — an old server still running after a newer
-// `hikyo migrate` applied DDL (behind or ahead).
-func (s *System) Ready(ctx context.Context) error {
-	if err := s.DB.Ping(ctx); err != nil {
-		return err
-	}
-	return migrate.Check(ctx, s.Store)
-}
+// Ready verifies this process still owns runtime admission in a read-only
+// transaction. Missing/corrupt state, maintenance or stale identity refuse;
+// readiness never creates migration bookkeeping or performs schema writes.
+func (s *System) Ready(ctx context.Context) error { return s.DB.CheckAdmission(ctx) }
 
 // Actor is who is asking, resolved INSIDE the operation's own transaction.
 //

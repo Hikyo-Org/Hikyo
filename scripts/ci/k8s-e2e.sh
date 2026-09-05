@@ -109,6 +109,12 @@ if [ "$(uname -s)" = Linux ]; then
 fi
 ./scripts/ci/install-corepack.sh
 ./scripts/ci/build-spa.sh --verify
+HIKYO_CHART_FIXTURE_OUTPUT="$image_root/chart-fixture" \
+	HIKYO_CHART_FIXTURE_COMMIT="$(git rev-parse HEAD)" \
+	go test -count=1 -run '^TestWriteChartFixture$' ./scripts/ci/chartfixture
+chart_ldflags=$(cat "$image_root/chart-fixture/ldflags")
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -tags ui \
+	-ldflags "$chart_ldflags" \
 	-o "$image_root/hikyo-ui" ./cmd/hikyo
-HIKYO_CHART_KIND_BINARY="$image_root/hikyo-ui" ./scripts/ci/chart-kind.sh
+HIKYO_CHART_KIND_BINARY="$image_root/hikyo-ui" \
+	HIKYO_CHART_KIND_PUBLIC_DIR="$image_root/chart-fixture/public" ./scripts/ci/chart-kind.sh

@@ -1,0 +1,74 @@
+{
+  "started_at": "2026-09-05T07:50:52.608200+00:00",
+  "finished_at": "2026-09-05T07:50:55.322356+00:00",
+  "head": "987e0a4f00735e0697b0c841a825aa084669d7ca",
+  "exit_code": 0,
+  "binary_sha256": "c2c8ce0e7cfe2eaf6c3108b335264f166a1ffdfcf04fe03f0902f55fe04f0a79",
+  "fixture_test_sha256": "12fc9b014c6b09aac399f57b7784407607a7344fb0b815314809370112ce2105",
+  "recorded_at": "2026-09-05T07:52:06.163132+00:00",
+  "result": "PASS",
+  "source": "Clean checkout of exact PR666 commit, no overlay or uncommitted source changes",
+  "test": "TestForgejoRealLifecycle",
+  "test_filter": "^TestForgejoRealLifecycle$",
+  "datastores": {
+    "sqlite": {
+      "result": "PASS",
+      "duration_seconds": 0.86
+    },
+    "postgres": {
+      "result": "PASS",
+      "duration_seconds": 1.45
+    }
+  },
+  "total_duration_seconds": 2.31,
+  "skipped_legs": 0,
+  "provider": {
+    "version": "16.0.3+gitea-1.22.0",
+    "repository_id": 1,
+    "repository_private": true,
+    "account_admin": false,
+    "delivery_token_scope": "write:repository"
+  },
+  "runtime": {
+    "image_ids": {
+      "provider": "sha256:7c4e1db440be7b2ca685b49d0d7864cdd78e92431f531bf7893659def8200fc5",
+      "postgres": "sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2",
+      "runner": "sha256:0ecdc2a9f6156af6451080bfe3d8382a662fcc4e209608c6f919e643453514c1"
+    },
+    "compiler": "go version go1.27.0 darwin/arm64",
+    "execution": "Cross-compiled GOOS=linux GOARCH=arm64 CGO_ENABLED=0 test binary; native Linux arm64 Docker process",
+    "GOMAXPROCS": 2,
+    "CI": true,
+    "test_timeout": "5m"
+  },
+  "tls": {
+    "verification": "Private CA via SSL_CERT_FILE; normal certificate and hostname verification enabled",
+    "certificate_not_after": "Sep  7 00:49:27 2026 GMT",
+    "host_trust_modified": false,
+    "network_allowance": "172.19.0.0/16"
+  },
+  "custody": {
+    "credential_file_mode": "0600",
+    "delivery_credential_source": "Retained local dedicated fixture runner.env",
+    "provisioning_credential_used": false,
+    "github_credentials_used": false,
+    "fixture_resources_retained": true,
+    "unrelated_resources_touched": false,
+    "owned_provider_resources": [
+      "hikyo-forgejo-acceptance-5405-server",
+      "hikyo-forgejo-acceptance-5405-postgres",
+      "hikyo-forgejo-acceptance-5405",
+      "hikyo-forgejo-acceptance-5405-data"
+    ]
+  },
+  "cleanup": {
+    "provider_secret_rows": 0,
+    "provider_action_variable_rows": 0,
+    "temporary_runner_removed": true
+  },
+  "limitations": [
+    "Provider API lifecycle acceptance only; does not prove Forgejo workflow consumption.",
+    "Separate GitHub real-provider acceptance prerequisites remain unavailable.",
+    "No release, merge, production deployment or main-head result is implied."
+  ]
+}

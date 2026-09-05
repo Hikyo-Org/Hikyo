@@ -1,8 +1,39 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
-  "required": ["image", "database", "rootKey", "externalOrigin", "network"],
+  "required": ["image", "database", "rootKey", "externalOrigin", "network", "upgrade"],
   "properties": {
+    "upgrade": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "existingClaim",
+        "stateExistingClaim",
+        "evidence",
+        "targetManifestSHA256",
+        "legacyWritersStopped"
+      ],
+      "properties": {
+        "existingClaim": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stateExistingClaim": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence": {
+          "type": "boolean"
+        },
+        "targetManifestSHA256": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{64})?$"
+        },
+        "legacyWritersStopped": {
+          "type": "boolean"
+        }
+      }
+    },
     "image": {
       "type": "object",
       "required": ["repository", "digest"],

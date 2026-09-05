@@ -7,7 +7,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 )
 
 // proveFixture is a migrated sqlite instance with one project, environment and
@@ -16,10 +15,7 @@ import (
 func proveFixture(t *testing.T) (*store.DB, *crypto.Keyring) {
 	t.Helper()
 	cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "prove.db")}
-	if err := migrate.Run(t.Context(), cfg); err != nil {
-		t.Fatal(err)
-	}
-	db, err := store.Open(t.Context(), cfg)
+	db, err := openServiceFixture(t, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,10 +30,7 @@ func proveFixture(t *testing.T) (*store.DB, *crypto.Keyring) {
 			t.Fatal(err)
 		}
 	}
-	root, err := crypto.GenerateRootKey()
-	if err != nil {
-		t.Fatal(err)
-	}
+	root := serviceFixtureRoot(t, db)
 	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, root)
 	if err != nil {
 		t.Fatal(err)

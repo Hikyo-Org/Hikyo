@@ -10,6 +10,10 @@ metadata:
   labels:
     {{- include "hikyo.labels" . | nindent 4 }}
 spec:
+  # Release changes require explicit full-stop maintenance. This prevents a
+  # default Kubernetes rolling replacement from retaining old server writers.
+  strategy:
+    type: Recreate
   replicas: {{ if .Values.ha.enabled }}{{ .Values.ha.replicaCount }}{{ else }}{{ .Values.replicaCount }}{{ end }}
   selector:
     matchLabels:
@@ -90,6 +94,26 @@ spec:
             - --tls-key-file=/run/hikyo-tls/tls.key
             {{- end }}
           env:
+            - name: HIKYO_UPGRADE_BUNDLE
+              value: /run/hikyo-upgrade/bundle
+            - name: HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY
+              value: /run/hikyo-upgrade/operator.pub
+            - name: HIKYO_UPGRADE_STATE_DIR
+              value: /var/lib/hikyo-upgrade/operator-custody
+            {{- if .Values.upgrade.evidence }}
+            - name: HIKYO_UPGRADE_EVIDENCE
+              value: /run/hikyo-upgrade/evidence
+            - name: HIKYO_UPGRADE_BACKUP
+              value: /run/hikyo-upgrade/backup.age
+            {{- end }}
+            {{- if .Values.upgrade.targetManifestSHA256 }}
+            - name: HIKYO_UPGRADE_TARGET_MANIFEST
+              value: {{ .Values.upgrade.targetManifestSHA256 | quote }}
+            {{- end }}
+            {{- if .Values.upgrade.legacyWritersStopped }}
+            - name: HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED
+              value: "true"
+            {{- end }}
             - name: HIKYO_DB
               valueFrom:
                 secretKeyRef:
@@ -144,6 +168,11 @@ spec:
             periodSeconds: 5
             failureThreshold: 30
           volumeMounts:
+            - name: upgrade-public
+              mountPath: /run/hikyo-upgrade
+              readOnly: true
+            - name: upgrade-state
+              mountPath: /var/lib/hikyo-upgrade
             - name: root-key
               mountPath: /run/hikyo-root-key
               readOnly: true
@@ -186,6 +215,13 @@ spec:
             {{- toYaml .Values.tls.reloaderResources | nindent 12 }}
         {{- end }}
       volumes:
+        - name: upgrade-public
+          persistentVolumeClaim:
+            claimName: {{ .Values.upgrade.existingClaim }}
+            readOnly: true
+        - name: upgrade-state
+          persistentVolumeClaim:
+            claimName: {{ .Values.upgrade.stateExistingClaim }}
         - name: root-key-source
           secret:
             secretName: {{ .Values.rootKey.existingSecret }}

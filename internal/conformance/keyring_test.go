@@ -11,7 +11,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 )
 
 // Keyring scenarios join the cross-engine corpus: the same lifecycle runs on
@@ -32,14 +31,13 @@ func newRoot(t *testing.T) []byte {
 	return root
 }
 
-// First boot mints the hierarchy; a reboot with the same root unwraps it and
+// The signed gate mints the hierarchy; a reboot with the same root unwraps it and
 // opens ciphertext sealed before the reboot; the wrong root is refused with
 // the ADR's distinct error.
 func scenarioKeyringLifecycle(t *testing.T, db *store.DB) {
 	ks := &keyring.Store{DB: db}
-	// The datastore's ONE root: whichever scenario loads the keyring first
-	// mints the hierarchy under it, and every later load in this corpus must
-	// present the same one (see sharedRoot).
+	// The datastore's root was used by its signed fixture admission. Every
+	// later load in this corpus must present that same root (see sharedRoot).
 	root := sharedRoot(t, db)
 	rootCopy := bytes.Clone(root)
 
@@ -103,15 +101,12 @@ func scenarioKeyringOneActive(t *testing.T, db *store.DB) {
 func TestKnownPlaintextAbsentFromDump(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "dump.db")
 	cfg := store.Config{Engine: store.EngineSQLite, Path: path}
-	if err := migrate.Run(t.Context(), cfg); err != nil {
-		t.Fatal(err)
-	}
-	db, err := store.Open(t.Context(), cfg)
+	db, err := admitConformanceFixture(t, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	root := newRoot(t)
+	root := sharedRoot(t, db)
 	rootHex := crypto.EncodeRootKey(root)
 	kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, bytes.Clone(root))
 	if err != nil {

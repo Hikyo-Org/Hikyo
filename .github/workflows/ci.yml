@@ -188,6 +188,11 @@ jobs:
         env:
           COSIGN_BIN: cosign
         run: go test -count=1 ./internal/releasetrust -run '^TestCosignLegacyBundleInProcessInterop$'
+      - name: Readable restore drill signs and verifies with actual offline Cosign
+        env:
+          HIKYO_TEST_COSIGN: cosign
+          HIKYO_REQUIRE_COSIGN_TEST: "1"
+        run: go test -count=1 ./internal/app -run '^TestUpgradeCLISignsActualDrill$'
       - name: Canonical release binary fixture
         run: ./scripts/release/prepare-image-root_test.sh
       - name: Release binary workflow fixture
@@ -1542,7 +1547,7 @@ jobs:
           go test -count=1 -v ./internal/isolation/
           -run 'TestBackupRestoreDrill|TestNoBulkAcceptInTheAPISurface'
       - name: Automatic pre-migration export, with recipients and without
-        run: go test -count=1 ./internal/app/ -run TestPreMigrationExport
+        run: go test -count=1 ./internal/app/ -run '^(TestMigrationRefusesUnverifiedExistingSchemaBeforeWrites|TestVerifiedMigrateSkipsBackupOnHealthyRestart|TestRestoreRequiredRestartExposesOnlyOperationalHealth)$'
 
   # The permanent required context. Every validation job is named here so a
   # future job split cannot accidentally weaken branch protection.

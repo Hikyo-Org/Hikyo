@@ -14,16 +14,21 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
+	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
+	gatefixture "github.com/Hikyo-Org/hikyo/internal/upgradegate/testfixture"
 )
 
 func TestReadTransactionDoesNotBlockWriter(t *testing.T) {
 	cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "rw.db")}
-	if err := migrate.Run(t.Context(), cfg); err != nil {
+	root, err := crypto.GenerateRootKey()
+	if err != nil {
 		t.Fatal(err)
 	}
-	db, err := store.Open(t.Context(), cfg)
+	admission := gatefixture.Prepare(t, upgrade.Config{Engine: releaseidentity.SQLite, Path: cfg.Path}, store.MigrationsFS, "migrations/sqlite", root)
+	db, err := store.Open(t.Context(), cfg, admission)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,10 +66,12 @@ func TestReadTransactionDoesNotBlockWriter(t *testing.T) {
 
 func TestWriteResultPublishesOnlyCommittedAttemptValue(t *testing.T) {
 	cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "write-result.db")}
-	if err := migrate.Run(t.Context(), cfg); err != nil {
+	root, err := crypto.GenerateRootKey()
+	if err != nil {
 		t.Fatal(err)
 	}
-	db, err := store.Open(t.Context(), cfg)
+	admission := gatefixture.Prepare(t, upgrade.Config{Engine: releaseidentity.SQLite, Path: cfg.Path}, store.MigrationsFS, "migrations/sqlite", root)
+	db, err := store.Open(t.Context(), cfg, admission)
 	if err != nil {
 		t.Fatal(err)
 	}

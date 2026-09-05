@@ -41,8 +41,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
+	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
 	"github.com/Hikyo-Org/hikyo/internal/pathutil"
+	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
+	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
+	"github.com/Hikyo-Org/hikyo/internal/upgradecompat"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"modernc.org/sqlite"
@@ -62,8 +67,9 @@ const (
 // Manifest describes an archive: what produced it, and what a restore needs
 // to know before it commits anything.
 type Manifest struct {
-	Format string `json:"format"`
-	Engine Engine `json:"engine"`
+	Upgrade *backupreceipt.Snapshot `json:"upgrade,omitempty"`
+	Format  string                  `json:"format"`
+	Engine  Engine                  `json:"engine"`
 	// SchemaVersion is the highest applied goose migration. Restore refuses
 	// an archive this binary's migration set does not contain.
 	SchemaVersion int64     `json:"schema_version"`
@@ -98,14 +104,11 @@ var ErrNoSchema = errors.New("store: datastore has no schema (goose version tabl
 
 // SchemaVersion reports the highest applied goose migration.
 func SchemaVersion(ctx context.Context, db *DB) (int64, error) {
-	var v int64
-	var err error
-	if db.engine == EnginePostgres {
-		err = db.pool.QueryRow(ctx, schemaVersionQuery).Scan(&v)
-	} else {
-		err = db.sqRead.QueryRowContext(ctx, schemaVersionQuery).Scan(&v)
-	}
-	return schemaVersionResult(v, err)
+	return dbReadResult(ctx, db, func(q adapterDB) (int64, error) {
+		var v int64
+		err := q.QueryRow(ctx, schemaVersionQuery).Scan(&v)
+		return schemaVersionResult(v, err)
+	})
 }
 
 const schemaVersionQuery = "SELECT COALESCE(MAX(version_id), 0) FROM goose_db_version"
@@ -141,6 +144,10 @@ func isMissingGooseTable(err error) bool {
 // travels with it. That is what makes a backup readable only by someone
 // holding BOTH the backup identity and the root key.
 func Export(ctx context.Context, db *DB, w io.Writer, workDir string) (Manifest, error) {
+	return exportArchive(ctx, db, w, workDir, nil)
+}
+
+func exportArchive(ctx context.Context, db *DB, w io.Writer, workDir string, upgrade *UpgradeExportRequest) (Manifest, error) {
 	m := Manifest{
 		Format:    ArchiveFormat,
 		Engine:    db.engine,
@@ -150,9 +157,9 @@ func Export(ctx context.Context, db *DB, w io.Writer, workDir string) (Manifest,
 	var err error
 	switch db.engine {
 	case EngineSQLite:
-		err = exportSQLite(ctx, db, tw, &m, workDir)
+		err = exportSQLite(ctx, db, tw, &m, workDir, upgrade)
 	case EnginePostgres:
-		err = exportPostgres(ctx, db, tw, &m, workDir)
+		err = exportPostgres(ctx, db, tw, &m, workDir, upgrade)
 	default:
 		err = fmt.Errorf("store: export for unknown engine %q", db.engine)
 	}
@@ -167,7 +174,23 @@ func Export(ctx context.Context, db *DB, w io.Writer, workDir string) (Manifest,
 
 // exportSQLite snapshots through VACUUM INTO — sqlite's own consistent
 // online snapshot — and frames the resulting file.
-func exportSQLite(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, workDir string) error {
+func exportSQLite(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, workDir string, upgrade *UpgradeExportRequest) (exportErr error) {
+	if upgrade == nil || !upgrade.preparation.Valid() {
+		guard, err := db.admission.LockSQLite(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() { exportErr = errors.Join(exportErr, guard.Close()) }()
+		tx, err := db.sqRead.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+		if err != nil {
+			return err
+		}
+		checkErr := guard.Check(ctx, tx)
+		if err := errors.Join(checkErr, tx.Rollback()); err != nil {
+			return err
+		}
+	}
+
 	snapshot := filepath.Join(workDir, "snapshot.db")
 	// VACUUM INTO refuses an existing target, which is the behaviour wanted:
 	// a stale snapshot must never be framed as this one.
@@ -182,6 +205,9 @@ func exportSQLite(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, work
 	}
 	var version int64
 	scanErr := archived.QueryRowContext(ctx, schemaVersionQuery).Scan(&version)
+	if scanErr == nil && upgrade != nil {
+		scanErr = upgrade.bindSQLite(ctx, archived, m)
+	}
 	closeErr := archived.Close()
 	m.SchemaVersion, err = schemaVersionResult(version, scanErr)
 	if err := errors.Join(err, closeErr); err != nil {
@@ -196,10 +222,10 @@ func exportSQLite(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, work
 	return writeFileMember(tw, sqliteMember, snapshot)
 }
 
-// exportPostgres reads every table at one instant. DEFERRABLE is what makes
-// a SERIALIZABLE READ ONLY transaction wait for a genuinely safe snapshot
-// instead of risking a serialization failure part-way through a long dump.
-func exportPostgres(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, workDir string) error {
+// exportPostgres owns admission in the same serializable snapshot as COPY.
+// The shared control lock is acquired before READ ONLY. Serialization failure
+// remains a loud failed export; no DEFERRABLE safe-snapshot claim is made.
+func exportPostgres(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, workDir string, upgrade *UpgradeExportRequest) error {
 	conn, err := db.pool.Acquire(ctx)
 	if err != nil {
 		return fmt.Errorf("store: acquire connection for export: %w", err)
@@ -207,14 +233,25 @@ func exportPostgres(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, wo
 	defer conn.Release()
 
 	tx, err := conn.BeginTx(ctx, pgx.TxOptions{
-		IsoLevel:       pgx.Serializable,
-		AccessMode:     pgx.ReadOnly,
-		DeferrableMode: pgx.Deferrable,
+		IsoLevel:   pgx.Serializable,
+		AccessMode: pgx.ReadWrite,
 	})
 	if err != nil {
 		return fmt.Errorf("store: begin export snapshot: %w", err)
 	}
 	defer tx.Rollback(ctx)
+	if upgrade != nil && upgrade.preparation.Valid() {
+		err = upgrade.preparation.GuardPostgres(ctx, tx)
+	} else {
+		err = db.admission.GuardPostgres(ctx, tx)
+	}
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, "SET TRANSACTION READ ONLY"); err != nil {
+		return err
+	}
+
 	var version int64
 	scanErr := tx.QueryRow(ctx, schemaVersionQuery).Scan(&version)
 	m.SchemaVersion, err = schemaVersionResult(version, scanErr)
@@ -231,6 +268,11 @@ func exportPostgres(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, wo
 		return err
 	}
 	m.Tables, m.Sequences = tables, sequences
+	if upgrade != nil {
+		if err := upgrade.bindPostgres(ctx, tx, m); err != nil {
+			return err
+		}
+	}
 	if err := writeManifest(tw, *m); err != nil {
 		return err
 	}
@@ -441,13 +483,24 @@ func openArchive(archive io.Reader) (*tar.Reader, Manifest, error) {
 	if hdr.Name != manifestMember {
 		return nil, Manifest{}, fmt.Errorf("%w: first member is %q, want %q", ErrArchiveFormat, hdr.Name, manifestMember)
 	}
+	raw, err := io.ReadAll(io.LimitReader(tr, (1<<20)+1))
+	if err != nil || len(raw) > 1<<20 {
+		return nil, Manifest{}, fmt.Errorf("%w: manifest exceeds bound", ErrArchiveFormat)
+	}
 	var m Manifest
-	if err := json.NewDecoder(io.LimitReader(tr, 1<<20)).Decode(&m); err != nil {
-		return nil, Manifest{}, fmt.Errorf("%w: manifest: %v", ErrArchiveFormat, err)
+	if definitions.DecodeStrict(raw, &m) != nil {
+		return nil, Manifest{}, fmt.Errorf("%w: invalid manifest", ErrArchiveFormat)
 	}
-	if m.Format != ArchiveFormat {
-		return nil, Manifest{}, fmt.Errorf("%w: format %q, this build reads %q", ErrArchiveFormat, m.Format, ArchiveFormat)
+	if m.Format != ArchiveFormat && m.Format != UpgradeArchiveFormat {
+		return nil, Manifest{}, fmt.Errorf("%w: unsupported format", ErrArchiveFormat)
 	}
+	if (m.Format == UpgradeArchiveFormat) != (m.Upgrade != nil) {
+		return nil, Manifest{}, fmt.Errorf("%w: upgrade manifest binding missing or unexpected", ErrArchiveFormat)
+	}
+	if m.Upgrade != nil && (m.Upgrade.Validate() != nil || m.Upgrade.Engine != releaseidentity.Engine(m.Engine) || !m.Upgrade.CreatedAt.Equal(m.CreatedAt)) {
+		return nil, Manifest{}, fmt.Errorf("%w: upgrade snapshot identity mismatch", ErrArchiveFormat)
+	}
+
 	switch m.Engine {
 	case EngineSQLite, EnginePostgres:
 	default:
@@ -465,7 +518,7 @@ func openArchive(archive io.Reader) (*tar.Reader, Manifest, error) {
 // where the credential-epoch bump belongs: a restored datastore must never be
 // reachable, even for an instant, in a state where its pre-restore bearer
 // credentials still authenticate.
-func RestoreSQLite(ctx context.Context, archive io.Reader, path string, mutate func(ctx context.Context, db *DB) error) (Manifest, error) {
+func RestoreSQLite(ctx context.Context, archive io.Reader, path string, mutate func(ctx context.Context, tx *sql.Tx) error) (Manifest, error) {
 	return restoreSQLite(ctx, archive, path, mutate, defaultSQLiteRestoreOperations())
 }
 
@@ -477,8 +530,8 @@ var ErrRestoreDurabilityUnconfirmed = errors.New("restored database published bu
 type sqliteRestoreOperations struct {
 	createTemp    func(string, string) (*os.File, error)
 	closeFile     func(*os.File) error
-	openDatabase  func(context.Context, Config) (*DB, error)
-	closeDatabase func(*DB) error
+	openDatabase  func(context.Context, string) (*sql.DB, error)
+	closeDatabase func(*sql.DB) error
 	fsyncFile     func(string) error
 	syncDirectory func(string) error
 	link          func(string, string) error
@@ -489,8 +542,8 @@ func defaultSQLiteRestoreOperations() sqliteRestoreOperations {
 	return sqliteRestoreOperations{
 		createTemp:    os.CreateTemp,
 		closeFile:     func(file *os.File) error { return file.Close() },
-		openDatabase:  Open,
-		closeDatabase: func(db *DB) error { return db.Close() },
+		openDatabase:  openSQLiteRestore,
+		closeDatabase: func(db *sql.DB) error { return db.Close() },
 		fsyncFile:     fsyncFile,
 		syncDirectory: filedurability.SyncDirectory,
 		link:          os.Link,
@@ -498,10 +551,35 @@ func defaultSQLiteRestoreOperations() sqliteRestoreOperations {
 	}
 }
 
-func restoreSQLite(ctx context.Context, archive io.Reader, path string, mutate func(ctx context.Context, db *DB) error, operations sqliteRestoreOperations) (manifest Manifest, restoreErr error) {
+func restoreSQLite(ctx context.Context, archive io.Reader, path string, mutate func(ctx context.Context, tx *sql.Tx) error, operations sqliteRestoreOperations) (manifest Manifest, restoreErr error) {
+	return restoreSQLitePlan(ctx, archive, path, upgradecompat.Plan{}, mutate, operations)
+}
+
+func RestoreUpgradeSQLite(ctx context.Context, archive io.Reader, path string, plan upgradecompat.Plan, mutate func(context.Context, *sql.Tx) error) (Manifest, error) {
+	if !plan.Valid() {
+		return Manifest{}, errors.New("upgrade restore requires a verified route")
+	}
+	return restoreSQLitePlan(ctx, archive, path, plan, mutate, defaultSQLiteRestoreOperations())
+}
+
+func restoreSQLitePlan(ctx context.Context, archive io.Reader, path string, plan upgradecompat.Plan, mutate func(context.Context, *sql.Tx) error, operations sqliteRestoreOperations) (manifest Manifest, restoreErr error) {
+	return restoreSQLiteChecked(ctx, archive, path, plan, mutate, operations, true)
+}
+
+func RestoreDataSQLite(ctx context.Context, archive io.Reader, path string, plan upgradecompat.Plan, mutate func(context.Context, *sql.Tx) error) (Manifest, error) {
+	if !plan.Valid() {
+		return Manifest{}, upgrade.ErrConflict
+	}
+	return restoreSQLiteChecked(ctx, archive, path, plan, mutate, defaultSQLiteRestoreOperations(), false)
+}
+
+func restoreSQLiteChecked(ctx context.Context, archive io.Reader, path string, plan upgradecompat.Plan, mutate func(context.Context, *sql.Tx) error, operations sqliteRestoreOperations, requireUpgradeReceipt bool) (manifest Manifest, restoreErr error) {
 	tr, m, err := openArchive(archive)
 	if err != nil {
 		return Manifest{}, err
+	}
+	if !requireUpgradeReceipt && m.Upgrade != nil {
+		return Manifest{}, errors.New("data-only restore requires an ordinary v1 archive")
 	}
 	if m.Engine != EngineSQLite {
 		return Manifest{}, fmt.Errorf("%w: archive is %s, target is sqlite", ErrEngineMismatch, m.Engine)
@@ -533,12 +611,40 @@ func restoreSQLite(ctx context.Context, archive io.Reader, path string, mutate f
 		return Manifest{}, fmt.Errorf("store: write %s: %w", staging.database, err)
 	}
 
+	if plan.Valid() {
+		if (requireUpgradeReceipt && m.Upgrade == nil) || (m.Upgrade != nil && matchUpgradePlan(*m.Upgrade, plan) != nil) {
+			return Manifest{}, errors.New("upgrade restore archive source differs from verified route")
+		}
+		source, err := plan.SourceManifest(releaseidentity.SQLite)
+		if err != nil {
+			return Manifest{}, err
+		}
+		original := mutate
+		mutate = func(ctx context.Context, tx *sql.Tx) error {
+			actual, err := upgrade.InspectSQLiteSource(ctx, tx, source)
+			if err != nil {
+				return err
+			}
+			if actual.Source != plan.Source() || actual.SchemaDigest != plan.SourceSchemaDigest() {
+				return upgrade.ErrConflict
+			}
+			if m.Upgrade != nil {
+				if err := matchRestoredUpgradeSnapshot(actual, *m.Upgrade); err != nil {
+					return err
+				}
+			}
+			if original == nil {
+				return errors.New("upgrade restore requires credential invalidation")
+			}
+			return original(ctx, tx)
+		}
+	}
 	if mutate != nil {
-		db, err := operations.openDatabase(ctx, Config{Engine: EngineSQLite, Path: staging.database})
+		db, err := operations.openDatabase(ctx, staging.database)
 		if err != nil {
 			return Manifest{}, fmt.Errorf("store: open restored snapshot: %w", err)
 		}
-		mutateErr := mutate(ctx, db)
+		mutateErr := mutateSQLiteRestore(ctx, db, mutate)
 		closeErr := operations.closeDatabase(db)
 		if mutateErr != nil {
 			return Manifest{}, mutateErr
@@ -567,6 +673,33 @@ func restoreSQLite(ctx context.Context, archive io.Reader, path string, mutate f
 		}
 	}
 	return m, nil
+}
+
+// The staging connection is private to restore. It never constructs a runtime
+// datastore or starts workers, and closes before the restored file is published.
+func openSQLiteRestore(ctx context.Context, path string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite", SQLiteDSN(path))
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(1)
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return db, nil
+}
+
+func mutateSQLiteRestore(ctx context.Context, db *sql.DB, mutate func(context.Context, *sql.Tx) error) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := mutate(ctx, tx); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // sqliteRestoreStaging is one restore attempt's exclusively owned resource.
@@ -660,15 +793,16 @@ func fsyncFile(path string) error {
 	return nil
 }
 
-// RestorePostgres loads an archive into a database whose schema is already at
-// the archive's version. Everything — the truncate, every COPY, the sequence
-// positions and mutate's credential-epoch bump — happens in ONE transaction,
-// so there is no instant at which a restored row is visible under the old
-// epoch.
-func RestorePostgres(ctx context.Context, db *DB, archive io.Reader, mutate func(context.Context, pgx.Tx) error) (Manifest, error) {
+func restorePostgresChecked(ctx context.Context, db *DB, archive io.Reader, plan upgradecompat.Plan, mutate func(context.Context, pgx.Tx) error, guard func(context.Context, pgx.Tx) error, owner func(context.Context) error, requireUpgradeReceipt bool) (Manifest, error) {
+	if !plan.Valid() || guard == nil || owner == nil {
+		return Manifest{}, upgrade.ErrConflict
+	}
 	tr, m, err := openArchive(archive)
 	if err != nil {
 		return Manifest{}, err
+	}
+	if !requireUpgradeReceipt && m.Upgrade != nil {
+		return Manifest{}, errors.New("data-only restore requires an ordinary v1 archive")
 	}
 	if m.Engine != EnginePostgres {
 		return Manifest{}, fmt.Errorf("%w: archive is %s, target is postgres", ErrEngineMismatch, m.Engine)
@@ -684,7 +818,38 @@ func RestorePostgres(ctx context.Context, db *DB, archive io.Reader, mutate func
 		return Manifest{}, fmt.Errorf("store: begin restore: %w", err)
 	}
 	defer tx.Rollback(ctx)
+	if guard != nil {
+		if err := guard(ctx, tx); err != nil {
+			return Manifest{}, err
+		}
+	}
 
+	if plan.Valid() {
+		source, err := plan.SourceManifest(releaseidentity.Postgres)
+		if err != nil {
+			return Manifest{}, err
+		}
+		if (requireUpgradeReceipt && m.Upgrade == nil) || (m.Upgrade != nil && matchUpgradePlan(*m.Upgrade, plan) != nil) {
+			return Manifest{}, errors.New("upgrade restore archive source differs from verified route")
+		}
+		if plan.Source().Genesis == "" {
+			if err := upgrade.PreparePostgresRestoreControlSchema(ctx, tx, source, plan.SourceSchemaDigest()); err != nil {
+				return Manifest{}, err
+			}
+		}
+	}
+	if guard != nil {
+		actualTables, err := pgTableOrder(ctx, tx)
+		if err != nil {
+			return Manifest{}, err
+		}
+		archivedTables := slices.Clone(m.Tables)
+		slices.Sort(actualTables)
+		slices.Sort(archivedTables)
+		if !slices.Equal(actualTables, archivedTables) {
+			return Manifest{}, errors.New("restore archive table inventory differs from verified source schema")
+		}
+	}
 	quoted := make([]string, 0, len(m.Tables))
 	for _, t := range m.Tables {
 		quoted = append(quoted, pgIdent(t))
@@ -733,8 +898,31 @@ func RestorePostgres(ctx context.Context, db *DB, archive io.Reader, mutate func
 			return Manifest{}, fmt.Errorf("store: restore sequence %s: %w", name, err)
 		}
 	}
+	if plan.Valid() {
+		source, err := plan.SourceManifest(releaseidentity.Postgres)
+		if err != nil {
+			return Manifest{}, err
+		}
+		actual, err := upgrade.InspectPostgresSource(ctx, tx, source)
+		if err != nil {
+			return Manifest{}, err
+		}
+		if actual.Source != plan.Source() || actual.SchemaDigest != plan.SourceSchemaDigest() {
+			return Manifest{}, upgrade.ErrConflict
+		}
+		if m.Upgrade != nil {
+			if err := matchRestoredUpgradeSnapshot(actual, *m.Upgrade); err != nil {
+				return Manifest{}, err
+			}
+		}
+	}
 	if mutate != nil {
 		if err := mutate(ctx, tx); err != nil {
+			return Manifest{}, err
+		}
+	}
+	if owner != nil {
+		if err := owner(ctx); err != nil {
 			return Manifest{}, err
 		}
 	}
@@ -826,20 +1014,6 @@ func copyMembersIn(ctx context.Context, tx pgx.Tx, tr *tar.Reader, tables []stri
 		}
 		loaded[table] = true
 	}
-}
-
-// PostgresIsEmpty reports whether the target database has no tables at all.
-// Restore refuses anything else: it reconstructs an instance, and reusing a
-// database that already carries one is how two instances become one.
-func PostgresIsEmpty(ctx context.Context, db *DB) (bool, error) {
-	var n int64
-	err := db.pool.QueryRow(ctx, `SELECT count(*) FROM pg_class AS c
-		JOIN pg_namespace AS ns ON ns.oid = c.relnamespace
-		WHERE c.relkind = 'r' AND ns.nspname = current_schema()`).Scan(&n)
-	if err != nil {
-		return false, fmt.Errorf("store: inspect restore target: %w", err)
-	}
-	return n == 0, nil
 }
 
 // pgIdent quotes an identifier. Every name reaching it comes from the

@@ -190,7 +190,7 @@ admin_log="$work_dir/admin.log"
 (
 	cd "$work_dir"
 	HIKYO_DB=sqlite:hikyo-dev.db HIKYO_ROOT_KEY="$root_key" \
-		"$binary" admin create --username compose-admin --display-name 'Compose Demo' \
+		"$binary" admin --dev create --username compose-admin --display-name 'Compose Demo' \
 		--output-file "$work_dir/authority" >"$admin_log" 2>&1
 )
 admin_principal=$(sed -n 's/.*principal \([^)]*\)).*/\1/p' "$admin_log")
@@ -199,7 +199,7 @@ admin_principal=$(sed -n 's/.*principal \([^)]*\)).*/\1/p' "$admin_log")
 (
 	cd "$work_dir"
 	HIKYO_DB=sqlite:hikyo-dev.db HIKYO_ROOT_KEY="$root_key" \
-		"$binary" admin grant --principal "$admin_principal" --capability instance-config >/dev/null
+		"$binary" admin --dev grant --principal "$admin_principal" --capability instance-config >/dev/null
 )
 
 authority=$(tr -d '\n' <"$work_dir/authority")

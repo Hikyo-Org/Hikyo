@@ -27,6 +27,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
+	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 	"io"
 	"log/slog"
 	"os"
@@ -43,7 +45,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
 	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
-	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
 // MinRestoreSchemaVersion is the first schema that carries the restore state
@@ -134,6 +135,12 @@ func RunBackup(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 		return errors.New("usage: hikyo backup export | hikyo backup keygen")
 	}
 	switch args[0] {
+	case "upgrade-export", "upgrade-drill":
+		trust, err := configuredBackupTrust(ctx, cfg, args[0] == "upgrade-drill")
+		if err != nil {
+			return err
+		}
+		return RunUpgradeBackup(ctx, cfg, args, stderr, trust)
 	case "export":
 		return runBackupExport(ctx, cfg, log, args, stderr)
 	case "keygen":
@@ -172,7 +179,7 @@ func runBackupExport(ctx context.Context, cfg *config.Config, log *slog.Logger, 
 		return errors.New("no destination: pass --out DIR or set HIKYO_BACKUP_DIR")
 	}
 
-	db, err := store.Open(ctx, storeConfig(cfg))
+	db, err := openBackupRuntime(ctx, cfg)
 	if err != nil {
 		return err
 	}
@@ -337,40 +344,22 @@ func runRestoreRun(ctx context.Context, cfg *config.Config, log *slog.Logger, ar
 	now := time.Now()
 	switch sc.Engine {
 	case store.EngineSQLite:
-		if _, err := tx.RestoreSQLite(ctx, plain, sc.Path, service.CompleteRestore(now, manifest)); err != nil {
+		if err := restoreOrdinarySQLite(ctx, cfg, sc, plain, manifest, now); err != nil {
 			return err
 		}
 	case store.EnginePostgres:
-		if err := migrate.RunUpTo(ctx, sc, manifest.SchemaVersion); err != nil {
+		if err := restoreOrdinaryPostgres(ctx, cfg, sc, plain, manifest, now); err != nil {
 			return err
 		}
-		db, err := store.Open(ctx, sc)
-		if err != nil {
-			return err
-		}
-		_, err = tx.RestorePostgres(ctx, db, plain, service.CompleteRestore(now, manifest))
-		db.Close()
-		if err != nil {
-			return err
-		}
+
 	default:
 		return fmt.Errorf("restore: unknown engine %q", sc.Engine)
 	}
 
-	// Roll forward to this binary's schema. Roll-forward only is the standing
-	// rule, and a pre-migration export restored by a newer binary is exactly
-	// the case it exists for. It runs unconditionally: when the archive is
-	// already current this applies nothing.
-	if err := migrate.Run(ctx, sc); err != nil {
-		return fmt.Errorf("restore completed but the roll-forward migration failed: %w", err)
-	}
-
-	db, err := store.Open(ctx, sc)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-	status, err := (&service.Restore{DB: db}).Status(ctx)
+	// Data publication never migrates or admits serving. A new current-incarnation
+	// export/drill must pass the upgrade gate before any later schema writes.
+	var status service.Status
+	err = withReconciliation(ctx, cfg, func(s reconciliationService) error { var err error; status, err = s.Status(ctx); return err })
 	if err != nil {
 		return err
 	}
@@ -405,19 +394,14 @@ func checkRestorable(ctx context.Context, sc store.Config, m store.Manifest) err
 			return fmt.Errorf("check restore target: %w", err)
 		}
 	case store.EnginePostgres:
-		db, err := store.Open(ctx, sc)
+		actual, err := upgrade.InspectInstalled(ctx, upgrade.Config{Engine: releaseidentity.Postgres, DSN: sc.DSN}, releaseidentity.MigrationManifest{Engine: releaseidentity.Postgres, Entries: []releaseidentity.Migration{}})
 		if err != nil {
-			return err
+			return fmt.Errorf("%w: PostgreSQL restore requires an empty schema: %v", store.ErrTargetNotEmpty, err)
 		}
-		empty, err := store.PostgresIsEmpty(ctx, db)
-		db.Close()
-		if err != nil {
-			return err
+		if actual.Source.Genesis != releaseidentity.FreshGenesisV1 {
+			return store.ErrTargetNotEmpty
 		}
-		if !empty {
-			return fmt.Errorf("%w: the configured database already has tables — restore reconstructs an instance, it never merges into one",
-				store.ErrTargetNotEmpty)
-		}
+
 	}
 	max, err := migrate.MaxVersion(ctx, sc)
 	if err != nil {
@@ -473,15 +457,12 @@ func decryptArchive(source, path string, u backup.Unlock) (*os.File, error) {
 }
 
 func runRestoreStatus(ctx context.Context, cfg *config.Config, stderr io.Writer) error {
-	db, err := store.Open(ctx, storeConfig(cfg))
+	var status service.Status
+	err := withReconciliation(ctx, cfg, func(s reconciliationService) error { var err error; status, err = s.Status(ctx); return err })
 	if err != nil {
 		return err
 	}
-	defer db.Close()
-	status, err := (&service.Restore{DB: db}).Status(ctx)
-	if err != nil {
-		return err
-	}
+
 	if !status.State.Restored() {
 		fmt.Fprintln(stderr, "this instance has never been restored; no reconciliation is outstanding")
 		return nil
@@ -517,15 +498,16 @@ func runRestoreReconcile(ctx context.Context, cfg *config.Config, log *slog.Logg
 	if *principal == "" {
 		return errors.New("--principal is required: reconciliation is a per-principal assertion, and there is no bulk form")
 	}
-	db, err := store.Open(ctx, storeConfig(cfg))
+	var status service.Status
+	err := withReconciliation(ctx, cfg, func(s reconciliationService) error {
+		var err error
+		status, err = s.Reconcile(ctx, domain.PrincipalID(*principal))
+		return err
+	})
 	if err != nil {
 		return err
 	}
-	defer db.Close()
-	status, err := (&service.Restore{DB: db}).Reconcile(ctx, domain.PrincipalID(*principal))
-	if err != nil {
-		return err
-	}
+
 	log.Info("principal reconciled", "principal", *principal, "pending", len(status.Pending))
 	fmt.Fprintf(stderr, "reconciled %s\n", *principal)
 	printPending(stderr, status)
@@ -607,7 +589,7 @@ func runRestoreDrill(ctx context.Context, cfg *config.Config, log *slog.Logger, 
 	}
 	scope := domain.Scope{Org: domain.OrgID(org), Project: domain.ProjectID(prj)}
 
-	manifest, drillErr := runDrillSteps(ctx, scratch, *from, unlock, rootKey, domain.PrincipalID(*principal), scope, &report)
+	manifest, drillErr := runDrillSteps(ctx, cfg, scratch, *from, unlock, rootKey, domain.PrincipalID(*principal), scope, &report)
 	report.Engine = manifest.Engine
 	report.SchemaVersion = manifest.SchemaVersion
 	report.Elapsed = time.Since(start)
@@ -638,7 +620,7 @@ func runRestoreDrill(ctx context.Context, cfg *config.Config, log *slog.Logger, 
 	// manifest existed (an unreadable archive) has nothing to record and is
 	// returned as-is.
 	if manifest.Engine != "" {
-		live, err := store.Open(ctx, storeConfig(cfg))
+		live, err := openBackupRuntime(ctx, cfg)
 		if err != nil {
 			return errors.Join(drillErr, err)
 		}
@@ -667,7 +649,7 @@ func runRestoreDrill(ctx context.Context, cfg *config.Config, log *slog.Logger, 
 // target and fills report.FailedStep on the first step that does not pass. It
 // returns the manifest as soon as it is known so the caller can record engine
 // and schema even for a failed drill.
-func runDrillSteps(ctx context.Context, scratch store.Config, from string,
+func runDrillSteps(ctx context.Context, cfg *config.Config, scratch store.Config, from string,
 	unlock backup.Unlock, rootKey []byte, principal domain.PrincipalID, scope domain.Scope, report *service.DrillReport,
 ) (store.Manifest, error) {
 	work, err := os.MkdirTemp("", "hikyo-drill-")
@@ -698,70 +680,56 @@ func runDrillSteps(ctx context.Context, scratch store.Config, from string,
 	now := time.Now()
 	switch scratch.Engine {
 	case store.EngineSQLite:
-		if _, err := tx.RestoreSQLite(ctx, plain, scratch.Path, service.CompleteRestore(now, manifest)); err != nil {
+		if err := restoreOrdinarySQLite(ctx, cfg, scratch, plain, manifest, now); err != nil {
 			report.FailedStep = "restore"
 			return manifest, err
 		}
 	case store.EnginePostgres:
-		if err := migrate.RunUpTo(ctx, scratch, manifest.SchemaVersion); err != nil {
+		if err := restoreOrdinaryPostgres(ctx, cfg, scratch, plain, manifest, now); err != nil {
 			report.FailedStep = "restore"
 			return manifest, err
 		}
-		db, err := store.Open(ctx, scratch)
+	}
+
+	err = withDataRecovery(ctx, cfg, scratch, func(scratchDB *store.RecoveryDB) error {
+		// Boot the restored data under the escrowed root key. A copy is handed to
+		// LoadKeyring (which zeroes it); the caller keeps and wipes the original.
+		existing := &keyring.RecoveryStore{DB: scratchDB}
+		if err := crypto.VerifyExistingHierarchy(ctx, existing, append([]byte(nil), rootKey...)); err != nil {
+			report.FailedStep = "boot"
+			return err
+		}
+		kr, err := crypto.LoadKeyring(ctx, existing, append([]byte(nil), rootKey...))
 		if err != nil {
-			report.FailedStep = "restore"
-			return manifest, err
+			report.FailedStep = "boot"
+			return fmt.Errorf("the restored data did not boot under the supplied root key: %w", err)
 		}
-		_, err = tx.RestorePostgres(ctx, db, plain, service.CompleteRestore(now, manifest))
-		db.Close()
+
+		backupSvc := &service.Recovery{DB: scratchDB}
+		readable, err := backupSvc.ProveValuesReadable(ctx, kr)
+		report.ValuesReadable = readable
 		if err != nil {
-			report.FailedStep = "restore"
-			return manifest, err
+			report.FailedStep = "prove-values"
+			return err
 		}
-	}
-	if err := migrate.Run(ctx, scratch); err != nil {
-		report.FailedStep = "restore"
-		return manifest, fmt.Errorf("drill roll-forward migration failed: %w", err)
-	}
 
-	scratchDB, err := store.Open(ctx, scratch)
-	if err != nil {
-		report.FailedStep = "restore"
-		return manifest, err
-	}
-	defer scratchDB.Close()
-
-	// Boot the restored data under the escrowed root key. A copy is handed to
-	// LoadKeyring (which zeroes it); the caller keeps and wipes the original.
-	kr, err := crypto.LoadKeyring(ctx, &keyring.Store{DB: scratchDB}, append([]byte(nil), rootKey...))
-	if err != nil {
-		report.FailedStep = "boot"
-		return manifest, fmt.Errorf("the restored data did not boot under the supplied root key: %w", err)
-	}
-
-	backupSvc := &service.Backup{DB: scratchDB}
-	readable, err := backupSvc.ProveValuesReadable(ctx, kr)
-	report.ValuesReadable = readable
-	if err != nil {
-		report.FailedStep = "prove-values"
-		return manifest, err
-	}
-
-	// Reconcile the one approved human, then mint and immediately revoke a
-	// throwaway credential in the named project to prove the recovered
-	// instance can issue new machine identity. Both use the reconciled
-	// principal's own authority.
-	if _, err := (&service.Restore{DB: scratchDB}).Reconcile(ctx, principal); err != nil {
-		report.FailedStep = "reconcile"
-		return manifest, err
-	}
-	minted, err := drillMintAndRevoke(ctx, scratchDB, kr, principal, scope)
-	report.Minted = minted
-	if err != nil {
-		report.FailedStep = "mint-credential"
-		return manifest, err
-	}
-	return manifest, nil
+		// Reconcile the one approved human, then mint and immediately revoke a
+		// throwaway credential in the named project to prove the recovered
+		// instance can issue new machine identity. Both use the reconciled
+		// principal's own authority.
+		if _, err := (&service.Recovery{DB: scratchDB}).Reconcile(ctx, principal); err != nil {
+			report.FailedStep = "reconcile"
+			return err
+		}
+		err = backupSvc.MintAndRevoke(ctx, kr, principal, scope)
+		report.Minted = err == nil
+		if err != nil {
+			report.FailedStep = "mint-credential"
+			return err
+		}
+		return nil
+	})
+	return manifest, err
 }
 
 // drillMintAndRevoke creates a throwaway workload service account in the

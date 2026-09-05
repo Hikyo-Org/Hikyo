@@ -100,7 +100,7 @@ else
 		scripts/ci/k8s-e2e.sh)
 			select_class k8s-e2e-script
 			;;
-		scripts/ci/chart-kind.sh)
+		scripts/ci/chart-kind.sh | scripts/ci/chartfixture/*)
 			select_class chart-kind-script
 			;;
 		chart/*)

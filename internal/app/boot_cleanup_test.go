@@ -12,6 +12,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/remotefetch"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 )
 
 func TestBootLogsEffectiveSQLitePoolSizes(t *testing.T) {
@@ -48,8 +49,8 @@ type bootResourceRecord struct {
 
 func recordingBootResources(record *bootResourceRecord) bootResources {
 	resources := defaultBootResources()
-	resources.openDatabase = func(ctx context.Context, cfg store.Config) (*store.DB, error) {
-		db, err := store.Open(ctx, cfg)
+	resources.openDatabase = func(ctx context.Context, cfg store.Config, admission upgrade.Admission) (*store.DB, error) {
+		db, err := store.Open(ctx, cfg, admission)
 		record.database = db
 		return db, err
 	}
@@ -77,7 +78,7 @@ func TestBootResourceOwnershipOnFailure(t *testing.T) {
 	t.Run("before database acquisition closes nothing", func(t *testing.T) {
 		record := &bootResourceRecord{}
 		resources := recordingBootResources(record)
-		resources.openDatabase = func(context.Context, store.Config) (*store.DB, error) {
+		resources.openDatabase = func(context.Context, store.Config, upgrade.Admission) (*store.DB, error) {
 			return nil, injected
 		}
 

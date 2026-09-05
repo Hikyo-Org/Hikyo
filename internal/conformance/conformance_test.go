@@ -21,10 +21,13 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
+	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
+	gatefixture "github.com/Hikyo-Org/hikyo/internal/upgradegate/testfixture"
+	"github.com/jackc/pgx/v5"
 )
 
 // admin is the corpus's fixture principal: seeded at instance scope with
@@ -102,10 +105,7 @@ func runCorpus(t *testing.T, db *store.DB) {
 
 func TestConformanceSQLite(t *testing.T) {
 	cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "conformance.db")}
-	if err := migrate.Run(t.Context(), cfg); err != nil {
-		t.Fatal(err)
-	}
-	db, err := store.Open(t.Context(), cfg)
+	db, err := admitConformanceFixture(t, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,10 +120,7 @@ func TestConformanceSQLite(t *testing.T) {
 // predate the constraint and cannot be reached through it.)
 func TestSQLiteActiveDomainEnforced(t *testing.T) {
 	cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "check.db")}
-	if err := migrate.Run(t.Context(), cfg); err != nil {
-		t.Fatal(err)
-	}
-	db, err := store.Open(t.Context(), cfg)
+	db, err := admitConformanceFixture(t, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,10 +136,7 @@ func TestConformancePostgres(t *testing.T) {
 	dsn := postgresTestDSN(t)
 	cfg := store.Config{Engine: store.EnginePostgres, DSN: dsn}
 	resetPostgres(t, cfg)
-	if err := migrate.Run(t.Context(), cfg); err != nil {
-		t.Fatal(err)
-	}
-	db, err := store.Open(t.Context(), cfg)
+	db, err := admitConformanceFixture(t, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,12 +147,15 @@ func TestConformancePostgres(t *testing.T) {
 
 func TestPostgresPoolSizing(t *testing.T) {
 	dsn := postgresTestDSN(t)
+	cfg := store.Config{Engine: store.EnginePostgres, DSN: postgresDSNWithPoolMax(t, dsn, "")}
+	resetPostgres(t, cfg)
+	admission := gatefixture.Prepare(t, upgrade.Config{Engine: releaseidentity.Postgres, DSN: cfg.DSN}, store.MigrationsFS, "migrations/postgres", newRoot(t))
 
 	t.Run("locked default is applied", func(t *testing.T) {
 		db, err := store.Open(t.Context(), store.Config{
 			Engine: store.EnginePostgres,
 			DSN:    postgresDSNWithPoolMax(t, dsn, ""),
-		})
+		}, admission)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -172,7 +169,7 @@ func TestPostgresPoolSizing(t *testing.T) {
 		db, err := store.Open(t.Context(), store.Config{
 			Engine: store.EnginePostgres,
 			DSN:    postgresDSNWithPoolMax(t, dsn, "6"),
-		})
+		}, admission)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -188,7 +185,7 @@ func TestPostgresPoolSizing(t *testing.T) {
 			Engine:          store.EnginePostgres,
 			DSN:             postgresDSNWithPoolMax(t, dsn, "6"),
 			PostgresPoolMax: configuredMax,
-		})
+		}, admission)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -236,12 +233,12 @@ func postgresDSNWithPoolMax(t *testing.T, dsn, poolMax string) string {
 // test database stays reusable across runs.
 func resetPostgres(t *testing.T, cfg store.Config) {
 	t.Helper()
-	db, err := store.Open(t.Context(), cfg)
+	db, err := pgx.Connect(t.Context(), cfg.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
-	if _, err := db.PG().Exec(t.Context(), "DROP SCHEMA public CASCADE; CREATE SCHEMA public"); err != nil {
+	defer db.Close(t.Context())
+	if _, err := db.Exec(t.Context(), "DROP SCHEMA public CASCADE; CREATE SCHEMA public"); err != nil {
 		t.Fatal(err)
 	}
 }

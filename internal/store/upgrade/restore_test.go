@@ -15,28 +15,32 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
+	"github.com/Hikyo-Org/hikyo/internal/upgradebundle"
+	"github.com/Hikyo-Org/hikyo/internal/upgradecompat"
+	gatefixture "github.com/Hikyo-Org/hikyo/internal/upgradegate/testfixture"
 	"github.com/jackc/pgx/v5"
 )
 
 func TestSameArchiveRestoresNewIncarnationsBeforePublication(t *testing.T) {
 	both(t, func(t *testing.T, cfg upgrade.Config) {
-		if err := migrate.Run(t.Context(), schemaConfig(cfg)); err != nil {
+		admission, material := gatefixture.PrepareWithMaterial(t, cfg, store.MigrationsFS, "migrations/"+string(cfg.Engine), bytes.Repeat([]byte{42}, 32))
+		original, err := upgrade.InspectControl(t.Context(), cfg)
+		if err != nil {
 			t.Fatal(err)
 		}
 		manifest, err := upgrade.PinnedLegacyManifest(cfg.Engine)
 		if err != nil {
 			t.Fatal(err)
 		}
-		var original upgrade.State
-		err = upgrade.WithLock(t.Context(), cfg, func(s *upgrade.Session) error {
-			var err error
-			original, err = s.Bootstrap(t.Context(), manifest, legacyOperation(t, cfg, manifest), upgrade.Production)
-			return err
-		})
+		bundle, err := upgradebundle.Load(t.Context(), material.Directory, material.Pinned, original.Floor)
 		if err != nil {
 			t.Fatal(err)
 		}
-		source, err := store.Open(t.Context(), schemaConfig(cfg))
+		plan, err := bundle.Plan(upgradecompat.InstalledSource{Identity: original.Applied, Migrations: manifest, SchemaSHA256: original.SchemaDigest}, original.Applied.Release)
+		if err != nil {
+			t.Fatal(err)
+		}
+		source, err := store.Open(t.Context(), schemaConfig(cfg), admission)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -50,22 +54,13 @@ func TestSameArchiveRestoresNewIncarnationsBeforePublication(t *testing.T) {
 			targetCfg := testConfig(t, cfg.Engine)
 			var restored upgrade.State
 			if cfg.Engine == releaseidentity.SQLite {
-				_, err = store.RestoreSQLite(t.Context(), bytes.NewReader(archive.Bytes()), targetCfg.Path, func(ctx context.Context, db *store.DB) error {
-					tx, err := db.SQLiteWrite().BeginTx(ctx, nil)
-					if err != nil {
-						return err
-					}
-					defer tx.Rollback()
+				_, err = store.RestoreSQLite(t.Context(), bytes.NewReader(archive.Bytes()), targetCfg.Path, func(ctx context.Context, tx *sql.Tx) error {
 					// F2 consumes the existing resolver's committed-in-this-tx
 					// epoch result. The resolver's max-known scan is unchanged.
 					if _, err := tx.ExecContext(ctx, `UPDATE auth_instance_state SET credential_epoch=99,restore_epoch=99 WHERE id=1`); err != nil {
 						return err
 					}
-					restored, err = upgrade.ReconcileSQLiteRestore(ctx, tx)
-					if err != nil {
-						return err
-					}
-					return tx.Commit()
+					return upgrade.ReconcileSQLiteRestoreIfPresent(ctx, tx)
 				})
 			} else {
 				if err := migrate.Run(t.Context(), schemaConfig(targetCfg)); err != nil {
@@ -74,24 +69,33 @@ func TestSameArchiveRestoresNewIncarnationsBeforePublication(t *testing.T) {
 				// Recovery schema construction is not ledger bootstrap: imported
 				// rows arrive together with the new authority domain transaction.
 				prepareArchiveControlFixture(t, targetCfg, manifest, original.SchemaDigest)
-				destination, openErr := store.Open(t.Context(), schemaConfig(targetCfg))
-				if openErr != nil {
-					t.Fatal(openErr)
-				}
-				_, err = store.RestorePostgres(t.Context(), destination, bytes.NewReader(archive.Bytes()), func(ctx context.Context, tx pgx.Tx) error {
-					if _, err := tx.Exec(ctx, `UPDATE auth_instance_state SET credential_epoch=99,restore_epoch=99 WHERE id=1`); err != nil {
+				err = upgrade.WithLock(t.Context(), targetCfg, func(session *upgrade.Session) error {
+					authority, err := session.ValidateDataRestoreDestination(t.Context(), plan)
+					if err != nil {
 						return err
 					}
-					var err error
-					restored, err = upgrade.ReconcilePostgresRestore(ctx, tx)
+					destination, err := store.OpenDataRestoreDestination(t.Context(), schemaConfig(targetCfg), authority, plan)
+					if err != nil {
+						return err
+					}
+					defer destination.Close()
+					_, err = destination.RestorePostgres(t.Context(), bytes.NewReader(archive.Bytes()), func(ctx context.Context, tx pgx.Tx) error {
+						if _, err := tx.Exec(ctx, `UPDATE auth_instance_state SET credential_epoch=99,restore_epoch=99 WHERE id=1`); err != nil {
+							return err
+						}
+						return upgrade.ReconcilePostgresRestoreIfPresent(ctx, tx)
+					})
 					return err
 				})
-				destination.Close()
 			}
 			if err != nil {
 				t.Fatal(err)
 			}
-			if restored.RestoreEpoch != 99 || restored.Generation != 2 || restored.RecoveryIncarnation == original.RecoveryIncarnation || !restored.Pending.Invalidated || restored.Pending.Phase != upgrade.RestoreRequired || !restored.Maintenance || restored.TrustDomain != upgrade.Production {
+			restored, err = upgrade.InspectControl(t.Context(), targetCfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if restored.RestoreEpoch != 99 || restored.Generation != 2 || restored.RecoveryIncarnation == original.RecoveryIncarnation || !restored.Pending.Invalidated || restored.Pending.Phase != upgrade.RestoreRequired || !restored.Maintenance || restored.TrustDomain != original.TrustDomain {
 				t.Fatalf("restored authority=%+v", restored)
 			}
 			err = upgrade.WithLock(t.Context(), targetCfg, func(s *upgrade.Session) error {
@@ -123,21 +127,8 @@ func TestSameArchiveRestoresNewIncarnationsBeforePublication(t *testing.T) {
 
 func TestRestoreMutationFailureDoesNotPublishSQLite(t *testing.T) {
 	cfg := testConfig(t, releaseidentity.SQLite)
-	if err := migrate.Run(t.Context(), schemaConfig(cfg)); err != nil {
-		t.Fatal(err)
-	}
-	manifest, err := upgrade.PinnedLegacyManifest(cfg.Engine)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = upgrade.WithLock(t.Context(), cfg, func(s *upgrade.Session) error {
-		_, err := s.Bootstrap(t.Context(), manifest, legacyOperation(t, cfg, manifest), upgrade.Production)
-		return err
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	source, err := store.Open(t.Context(), schemaConfig(cfg))
+	admission := gatefixture.Prepare(t, cfg, store.MigrationsFS, "migrations/"+string(cfg.Engine), bytes.Repeat([]byte{42}, 32))
+	source, err := store.Open(t.Context(), schemaConfig(cfg), admission)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,12 +138,7 @@ func TestRestoreMutationFailureDoesNotPublishSQLite(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "refused.db")
-	_, err = store.RestoreSQLite(t.Context(), bytes.NewReader(archive.Bytes()), path, func(ctx context.Context, db *store.DB) error {
-		tx, err := db.SQLiteWrite().BeginTx(ctx, &sql.TxOptions{})
-		if err != nil {
-			return err
-		}
-		defer tx.Rollback()
+	_, err = store.RestoreSQLite(t.Context(), bytes.NewReader(archive.Bytes()), path, func(ctx context.Context, tx *sql.Tx) error {
 		// No credential advance: a restored record alone never grants authority.
 		_, err = upgrade.ReconcileSQLiteRestore(ctx, tx)
 		return err

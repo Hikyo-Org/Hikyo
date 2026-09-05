@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"net/url"
 	"strings"
 	"testing"
@@ -492,11 +493,6 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// Before the backup lifecycle, because that one advances the restore
 		// epoch and this one authenticates real artifacts against the current.
 		runRemoteLifecycle(t, db)
-		// The operator lifecycle (#76): every backup.* and restore.* type gets
-		// a real emitter. It runs LAST of the lifecycles because it advances
-		// the restore epoch and then reconciles the principals it made inert,
-		// one call per principal, leaving the fixture authorizing again.
-		runBackupLifecycle(t, db)
 		// Secret scanning (#74): the four scanning.finding_* types get a real
 		// emitter — warned, dismissed, blocked and overridden — driven end to end
 		// through the scanning-enabled value and declaration services.
@@ -571,14 +567,21 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 			t.Fatalf("retired updater request=%v, want audited refusal", err)
 		}
 
+		// Recovery runs last on a separate instance of the same engine. The
+		// preceding negative corpus intentionally carries corrupt ciphertext and
+		// cannot honestly prove readable escrow. Both trails remain actual emitters.
+		recovered := runBackupLifecycle(t, db.Engine())
+
 		for _, typ := range audit.Types() {
 			spec, _ := audit.Spec(typ)
 			seen := int64(0)
 			if spec.Trails[audit.TrailTenant] {
 				seen += queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
+				seen += queryInt(t, recovered, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
 			}
 			if spec.Trails[audit.TrailInstance] {
 				seen += queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type = '"+string(typ)+"'")
+				seen += queryInt(t, recovered, "SELECT COUNT(*) FROM audit_instance_events WHERE type = '"+string(typ)+"'")
 			}
 			if seen == 0 {
 				t.Errorf("registered event type %s was never emitted — declaration without an emitter", typ)
@@ -929,21 +932,38 @@ func TestPostgresDurabilityBootRefusal(t *testing.T) {
 	}
 	name := strings.TrimPrefix(u.Path, "/")
 
-	admin, err := store.Open(t.Context(), store.Config{Engine: store.EnginePostgres, DSN: dsn})
+	admin, err := pgx.Connect(t.Context(), dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer admin.Close()
-	if _, err := admin.PG().Exec(t.Context(), "ALTER DATABASE "+pq(name)+" SET synchronous_commit = off"); err != nil {
+	defer admin.Close(t.Context())
+	if _, err := admin.Exec(t.Context(), "ALTER DATABASE "+pq(name)+" RESET synchronous_commit"); err != nil {
+		t.Fatal(err)
+	}
+	reset, err := pgx.Connect(t.Context(), derived)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reset.Exec(t.Context(), "DROP SCHEMA public CASCADE; CREATE SCHEMA public"); err != nil {
+		t.Fatal(err)
+	}
+	_ = reset.Close(t.Context())
+	admitted, err := openIsolationFixture(t, store.Config{Engine: store.EnginePostgres, DSN: derived})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority := isolationAdmission(t, admitted)
+	_ = admitted.Close()
+	if _, err := admin.Exec(t.Context(), "ALTER DATABASE "+pq(name)+" SET synchronous_commit = off"); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		if _, err := admin.PG().Exec(t.Context(), "ALTER DATABASE "+pq(name)+" RESET synchronous_commit"); err != nil {
+		if _, err := admin.Exec(t.Context(), "ALTER DATABASE "+pq(name)+" RESET synchronous_commit"); err != nil {
 			t.Errorf("reset synchronous_commit: %v", err)
 		}
 	}()
 
-	db, err := store.Open(t.Context(), store.Config{Engine: store.EnginePostgres, DSN: derived})
+	db, err := store.Open(t.Context(), store.Config{Engine: store.EnginePostgres, DSN: derived}, authority)
 	if err == nil {
 		db.Close()
 		t.Fatal("boot accepted a database with synchronous_commit = off")

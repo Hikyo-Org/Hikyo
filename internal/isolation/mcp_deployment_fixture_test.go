@@ -10,11 +10,15 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
+	"github.com/Hikyo-Org/hikyo/internal/buildcompat"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
+	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
+	"github.com/Hikyo-Org/hikyo/internal/upgradegate"
 )
 
 // TestMCPDeploymentFixture prepares only an explicitly owned disposable
@@ -42,10 +46,65 @@ func TestMCPDeploymentFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := store.Config{Engine: store.EnginePostgres, DSN: settings.DSN}
-	if err := migrate.Run(t.Context(), cfg); err != nil {
+	// The fixture and deployed binary must use the same authenticated production
+	// build. A development seed cannot stand in for production deployment proof.
+	pinned, err := buildcompat.ProductionTrust()
+	if err != nil {
+		t.Fatal("MCP fixture requires the deployed binary's verified release linker stamps")
+	}
+	bundle := os.Getenv("HIKYO_MCP_PROOF_BUNDLE")
+	publicPath := os.Getenv("HIKYO_MCP_PROOF_OPERATOR_KEY")
+	if bundle == "" || publicPath == "" {
+		t.Fatal("MCP fixture requires public release bundle and installation operator key")
+	}
+	public, err := backupreceipt.ReadPublicArtifact(publicPath, 1<<20)
+	if err != nil {
 		t.Fatal(err)
 	}
-	db, err := store.Open(t.Context(), cfg)
+	rootPath := filepath.Join(dir, "root.key")
+	if _, err := os.Lstat(rootPath); os.IsNotExist(err) && os.Getenv("HIKYO_MCP_PROOF_REVOKE") == "" {
+		root, err := crypto.GenerateRootKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer crypto.Zero(root)
+		file, err := os.OpenFile(rootPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, writeErr := file.WriteString(hex.EncodeToString(root))
+		syncErr := file.Sync()
+		closeErr := file.Close()
+		if writeErr != nil || syncErr != nil || closeErr != nil {
+			t.Fatal("could not durably create fixture root custody")
+		}
+	}
+	root, err := crypto.ReadRootKey(rootPath, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer crypto.Zero(root)
+	// Docker Desktop can present a bind mount's root as UID 0 even when its
+	// host owner differs. Mount only this traversable wrapper into the server;
+	// the private child retains the fixture UID and strict custody permissions.
+	installationDir := filepath.Join(dir, "installation")
+	if err := os.Mkdir(installationDir, 0755); err != nil && !os.IsExist(err) {
+		t.Fatal(err)
+	}
+	stateDir := filepath.Join(installationDir, "operator-state")
+	if err := os.Mkdir(stateDir, 0700); err != nil && !os.IsExist(err) {
+		t.Fatal(err)
+	}
+	admitted, err := upgradegate.Run(t.Context(), upgradegate.Request{
+		Store:           upgrade.Config{Engine: releaseidentity.Postgres, DSN: settings.DSN},
+		BundleDirectory: bundle, Pinned: pinned, StateDirectory: stateDir, InitialOperatorPublicKey: public,
+		Migrations: store.MigrationsFS, MigrationDirectory: "migrations/postgres",
+		Mode: upgradegate.Boot, AllowMigrations: true, RootKey: root,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.Open(t.Context(), cfg, admitted.Admission)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,13 +166,6 @@ func TestMCPDeploymentFixture(t *testing.T) {
 	}
 	if exists {
 		t.Fatal("refusing nonempty fixture database")
-	}
-	root, err := crypto.GenerateRootKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "root.key"), []byte(hex.EncodeToString(root)), 0600); err != nil {
-		t.Fatal(err)
 	}
 	kr := loadAndRegisterKeyring(t, db, root)
 	seededDB(t, func(*testing.T) *store.DB { return db })

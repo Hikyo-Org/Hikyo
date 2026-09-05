@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Floor recovery CLI fixture admission</title>
+<style>body{max-width:820px;margin:48px auto;padding:0 24px;font:17px/1.6 system-ui;color:#172238;background:#f5f7fa}code{background:#e5eaf0;padding:2px 5px}h1,h2{line-height:1.2}</style>
+<h1>Floor recovery CLI fixture admission</h1>
+<p>The dedicated release-floor workflow builds an unstamped source binary. Its real backup/restore subprocesses now explicitly use the development trust domain and the exact persistent development bundle that admitted the seeded test database. Production stamp refusal remains unchanged.</p>
+<h2>Decisions</h2>
+<ol>
+<li>Use leading group-level <code>--dev</code> and the seeded <code>HIKYO_UPGRADE_STATE_DIR</code> for every subprocess. Keep backup identity and root escrow in their existing separate stores; the source-built test binary gains no production authority.</li>
+<li>After real CLI destruction, restore, status and single-principal reconciliation, assert maintenance and invalidated pending authority. Perform a fresh export and real isolated recovery drill before reopening the runtime datastore for assertions. Data restoration alone must not admit tenant service.</li>
+<li>Provide a separately named, opt-in CLI-only tagged regression check. It cannot call, relax or emit a passing verdict for the native ARM64/cgroup acceptance gate. The constrained lane still requires its two explicit external disposable test custody inputs.</li>
+</ol>
+<h2>Actual validation</h2>
+<p>A newly built native source binary completed <code>TestFloorCLIRunbookWithoutResourceClaim</code> in 4.311 seconds on macOS. It exercised backup export, isolated restore drill, destructive restore, status and reconciliation as actual subprocesses, then authenticated recovery. The complete <code>flooracceptance</code> test package cross-compiled successfully for Linux ARM64 with CGO disabled.</p>
+<p>This result does not claim constrained CPU/RAM/swap measurements, physical Pi calibration or production signing acceptance. The dedicated exact-candidate workflow remains responsible for those applicable release-floor measurements.</p>
+</html>

@@ -1,0 +1,8 @@
+{
+  "migrate": "pass",
+  "production_boot_ready": "pass",
+  "trust_domain": "production",
+  "maintenance": 0,
+  "fixture": "ephemeral signed stable profile; no production keys",
+  "kind": "not run locally; Docker VM 2.35 GiB"
+}

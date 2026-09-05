@@ -26,20 +26,23 @@ type ImportConfinement struct {
 // internal/store or its subpackages. Additions here are architecture
 // decisions, not conveniences.
 var storeImporters = map[string]bool{
-	module + "/internal/store/upgrade":   true, // closed candidate-health reader; no runtime repository handle
-	module + "/internal/service":         true,
-	module + "/internal/app":             true, // construction wiring only
-	module + "/internal/authz":           true, // the resolution surface (store/authn) only — see authnImporters
-	module + "/internal/store":           true,
-	module + "/internal/store/authn":     true,
-	module + "/internal/store/tx":        true,
-	module + "/internal/store/migrate":   true,
-	module + "/internal/store/keyring":   true, // crypto.KeyStore implementation
-	module + "/internal/store/auditrow":  true, // shared audit Row→params mapping
-	module + "/internal/store/sqlitegen": true,
-	module + "/internal/store/pggen":     true,
-	module + "/internal/conformance":     true, // cross-engine test harness
-	module + "/internal/isolation":       true, // probe harness (#44)
+	module + "/scripts/ci/chartfixture":          true, // test-only signed deployment fixture verifies source-owned embedded migration bytes
+	module + "/internal/upgradegate":             true, // closed control capability only; stricter production rule below
+	module + "/internal/upgradegate/testfixture": true, // real signed development admission fixture
+	module + "/internal/store/upgrade":           true, // closed candidate-health reader; no runtime repository handle
+	module + "/internal/service":                 true,
+	module + "/internal/app":                     true, // construction wiring only
+	module + "/internal/authz":                   true, // the resolution surface (store/authn) only — see authnImporters
+	module + "/internal/store":                   true,
+	module + "/internal/store/authn":             true,
+	module + "/internal/store/tx":                true,
+	module + "/internal/store/migrate":           true,
+	module + "/internal/store/keyring":           true, // crypto.KeyStore implementation
+	module + "/internal/store/auditrow":          true, // shared audit Row→params mapping
+	module + "/internal/store/sqlitegen":         true,
+	module + "/internal/store/pggen":             true,
+	module + "/internal/conformance":             true, // cross-engine test harness
+	module + "/internal/isolation":               true, // probe harness (#44)
 }
 
 // authnImporters is the stricter allowlist for the authorization package's
@@ -48,10 +51,11 @@ var storeImporters = map[string]bool{
 // consumes it and only the transaction package constructs it (per
 // transaction attempt); the isolation probe harness instruments it in tests.
 var authnImporters = map[string]bool{
-	module + "/internal/authz":       true,
-	module + "/internal/store/authn": true,
-	module + "/internal/store/tx":    true,
-	module + "/internal/isolation":   true, // query-count instrumentation (tests only)
+	module + "/internal/store/upgrade": true, // canonical epoch invalidation inside the exclusively owned operator-rotation transaction
+	module + "/internal/authz":         true,
+	module + "/internal/store/authn":   true,
+	module + "/internal/store/tx":      true,
+	module + "/internal/isolation":     true, // query-count instrumentation (tests only)
 }
 
 // protocolImportConfinements checks the actual third-party libraries, not the
@@ -249,6 +253,21 @@ func TestStoreImportAllowlist(t *testing.T) {
 				if !storeImporters[p.ImportPath] {
 					t.Errorf("%s imports %s: not on the store-importer allowlist", p.ImportPath, imp)
 				}
+			}
+		}
+	}
+}
+
+// The gate must precede runtime construction. Its only production datastore
+// dependency is the leaf control package; root store is a schema fixture in tests.
+func TestUpgradeGateCannotOpenRuntimeStore(t *testing.T) {
+	for _, p := range loadPackages(t) {
+		if p.ImportPath != module+"/internal/upgradegate" && p.ImportPath != module+"/internal/upgradegate/testfixture" {
+			continue
+		}
+		for _, imp := range p.Imports {
+			if matchesDependencyPrefix(imp, module+"/internal/store") && imp != module+"/internal/store/upgrade" {
+				t.Errorf("%s imports %s: upgrade admission must not depend on runtime store or legacy migration entry points", p.ImportPath, imp)
 			}
 		}
 	}

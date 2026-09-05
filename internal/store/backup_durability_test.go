@@ -3,17 +3,14 @@ package store
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
-
-	"github.com/pressly/goose/v3"
-	"github.com/pressly/goose/v3/database"
 )
 
 func TestRestoreSQLiteDirectoryDurabilityPreservesCommittedMutations(t *testing.T) {
@@ -61,16 +58,11 @@ func TestRestoreSQLiteDirectoryDurabilityPreservesCommittedMutations(t *testing.
 				}
 				return syncDirectory(path)
 			}
-			mutate := func(ctx context.Context, db *DB) error {
-				tx, err := db.sqWrite.BeginTx(ctx, nil)
-				if err != nil {
-					return err
-				}
-				defer tx.Rollback()
+			mutate := func(ctx context.Context, tx *sql.Tx) error {
 				if _, err := tx.ExecContext(ctx, "UPDATE restore_publication_probe SET value = 'recovered' WHERE id = 1"); err != nil {
 					return err
 				}
-				return tx.Commit()
+				return nil
 			}
 			manifest, err := restoreSQLite(t.Context(), bytes.NewReader(archive), target, mutate, operations)
 			if test.failAt >= 0 {
@@ -102,13 +94,13 @@ func TestRestoreSQLiteDirectoryDurabilityPreservesCommittedMutations(t *testing.
 			// Storage must preserve the callback's committed mutations even
 			// when publication durability fails. The isolation drill suite owns
 			// the real credential-epoch and reconciliation contract.
-			db, err := Open(t.Context(), Config{Engine: EngineSQLite, Path: target})
+			db, err := sql.Open("sqlite", "file:"+target+"?mode=ro")
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer db.Close()
 			var value string
-			if err := db.sqRead.QueryRowContext(t.Context(), "SELECT value FROM restore_publication_probe WHERE id = 1").Scan(&value); err != nil {
+			if err := db.QueryRowContext(t.Context(), "SELECT value FROM restore_publication_probe WHERE id = 1").Scan(&value); err != nil {
 				t.Fatal(err)
 			}
 			if value != "recovered" {
@@ -125,22 +117,11 @@ func TestRestoreSQLiteDirectoryDurabilityPreservesCommittedMutations(t *testing.
 // so the failure path proves committed mutations survive publication intact.
 func publicationMutationArchive(t *testing.T) []byte {
 	t.Helper()
-	db, err := Open(t.Context(), Config{Engine: EngineSQLite, Path: filepath.Join(t.TempDir(), "source.db")})
+	db, err := admittedStoreFixture(t, Config{Engine: EngineSQLite, Path: filepath.Join(t.TempDir(), "source.db")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	migrations, err := fs.Sub(MigrationsFS, "migrations/sqlite")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(database.DialectSQLite3, db.sqWrite, migrations)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := provider.Up(t.Context()); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := db.sqWrite.ExecContext(t.Context(), "CREATE TABLE restore_publication_probe(id INTEGER PRIMARY KEY, value TEXT NOT NULL); INSERT INTO restore_publication_probe VALUES (1, 'original')"); err != nil {
 		t.Fatal(err)
 	}

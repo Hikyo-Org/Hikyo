@@ -1,15 +1,11 @@
 package app
 
-// The automatic pre-migration export, both ways (#76, mvp-boundary O1's
-// export portion; ops spec § 11).
-//
-// The two behaviours the row names are "with recipients configured" and
-// "LOUD SKIP without", and they are tested as what an operator can actually
-// see afterwards: an artifact on disk plus a durable record in the instance
-// trail, or no artifact and a durable record saying so. A warning log alone
-// would satisfy neither.
+// Upgrade admission replaces the retired best-effort export-and-skip path.
+// Missing signed proof must refuse before DDL, even when recipients exist.
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -18,22 +14,15 @@ import (
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
-	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
+	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 )
 
-// pendingMigration builds a datastore one migration BEHIND this binary, so the
-// next migrate run has genuine work to do. That is what makes the
-// pre-migration hook fire: an export before every idle restart would be a
-// backup policy nobody asked for.
-func pendingMigration(t *testing.T, f *storeFixture) {
+// legacySchema creates actual pre-ledger domain tables, never runtime admission.
+func legacySchema(t *testing.T, f *storeFixture) {
 	t.Helper()
-	max, err := migrate.MaxVersion(t.Context(), f.sc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := migrate.RunUpTo(t.Context(), f.sc, max-1); err != nil {
+	if err := migrate.Run(t.Context(), f.sc); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -54,13 +43,13 @@ func newStoreFixture(t *testing.T) *storeFixture {
 
 func countInstanceEvents(t *testing.T, sc store.Config, typ string) int64 {
 	t.Helper()
-	db, err := store.Open(t.Context(), sc)
+	db, err := sql.Open("sqlite", store.SQLiteDSN(sc.Path))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 	var n int64
-	if err := db.SQLiteRead().QueryRowContext(t.Context(),
+	if err := db.QueryRowContext(t.Context(),
 		"SELECT COUNT(*) FROM audit_instance_events WHERE type = ?", typ).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
@@ -85,79 +74,60 @@ func archiveCount(t *testing.T, dir string) int {
 	return n
 }
 
-func TestPreMigrationExportWithRecipients(t *testing.T) {
-	fixture := newStoreFixture(t)
-	pendingMigration(t, fixture)
-	_, recipient, err := backup.GenerateIdentity()
-	if err != nil {
-		t.Fatal(err)
-	}
-	backupDir := filepath.Join(fixture.dir, "backups")
-	cfg := preMigrationConfig(fixture, backupDir, []string{recipient})
-
-	if err := RunMigrate(t.Context(), cfg, quietLogger()); err != nil {
-		t.Fatal(err)
-	}
-	if n := archiveCount(t, backupDir); n != 1 {
-		t.Fatalf("pre-migration export published %d archives, want 1", n)
-	}
-	if n := countInstanceEvents(t, fixture.sc, "backup.exported"); n != 1 {
-		t.Fatalf("backup.exported events = %d, want 1", n)
-	}
-	if n := countInstanceEvents(t, fixture.sc, "backup.export_skipped"); n != 0 {
-		t.Fatalf("a configured export also recorded %d skips", n)
-	}
-}
-
-func TestPreMigrationExportLoudlySkipsWithoutRecipients(t *testing.T) {
-	fixture := newStoreFixture(t)
-	pendingMigration(t, fixture)
-	cfg := preMigrationConfig(fixture, "", nil)
-
-	var logged strings.Builder
-	log := slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelWarn}))
-
-	// The skip is NON-FATAL by the ops spec's own wording: an unconfigured
-	// backup must not block a migration.
-	if err := RunMigrate(t.Context(), cfg, log); err != nil {
-		t.Fatalf("the skip blocked the migration: %v", err)
-	}
-	// Loud in the log...
-	if !strings.Contains(logged.String(), "PRE-MIGRATION EXPORT SKIPPED") {
-		t.Fatalf("the skip was not loud in the log; got %q", logged.String())
-	}
-	// ...and, more importantly, loud the morning after.
-	if n := countInstanceEvents(t, fixture.sc, "backup.export_skipped"); n != 1 {
-		t.Fatalf("backup.export_skipped events = %d, want 1: a warning nobody scrolls back to is not loud", n)
-	}
-	if n := countInstanceEvents(t, fixture.sc, "backup.exported"); n != 0 {
-		t.Fatalf("an unconfigured export recorded %d exports", n)
+func TestMigrationRefusesUnverifiedExistingSchemaBeforeWrites(t *testing.T) {
+	for _, configured := range []bool{false, true} {
+		t.Run(fmt.Sprint(configured), func(t *testing.T) {
+			fixture := newStoreFixture(t)
+			legacySchema(t, fixture)
+			cfg := preMigrationConfig(fixture, filepath.Join(fixture.dir, "backups"), nil)
+			if configured {
+				cfg.BackupRecipients = []string{"configured-public-recipient"}
+			}
+			db, err := sql.Open("sqlite", store.SQLiteDSN(fixture.sc.Path))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			before, err := upgrade.DomainCatalogSQLite(t.Context(), db)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := RunMigrate(t.Context(), cfg, quietLogger()); err == nil {
+				t.Fatal("existing schema migrated without authenticated release trust and restore proof")
+			}
+			after, err := upgrade.DomainCatalogSQLite(t.Context(), db)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if before.Digest() != after.Digest() {
+				t.Fatal("refused migration changed domain schema")
+			}
+			if n := archiveCount(t, cfg.BackupDir); n != 0 {
+				t.Fatalf("refusal created %d archives", n)
+			}
+			if n := countInstanceEvents(t, fixture.sc, "backup.export_skipped"); n != 0 {
+				t.Fatal("refusal recorded a permitted backup skip")
+			}
+			if _, err := upgrade.InspectControl(t.Context(), upgrade.Config{Engine: "sqlite", Path: fixture.sc.Path}); !errors.Is(err, upgrade.ErrAbsent) {
+				t.Fatalf("refusal wrote upgrade control: %v", err)
+			}
+		})
 	}
 }
 
-// TestPreMigrationExportSkipsAnIdleRestart pins the other half of the
-// behaviour: no pending migration means no export at all, so an instance that
-// restarts hourly does not accumulate hourly backups.
-func TestPreMigrationExportSkipsAnIdleRestart(t *testing.T) {
-	fixture := newStoreFixture(t)
-	if err := migrate.Run(t.Context(), fixture.sc); err != nil {
-		t.Fatal(err)
-	}
-	_, recipient, err := backup.GenerateIdentity()
+func TestVerifiedMigrateSkipsBackupOnHealthyRestart(t *testing.T) {
+	cfg := devConfig(t)
+	srv, err := Boot(t.Context(), cfg, quietLogger())
 	if err != nil {
 		t.Fatal(err)
 	}
-	backupDir := filepath.Join(fixture.dir, "backups")
-	cfg := preMigrationConfig(fixture, backupDir, []string{recipient})
-
+	srv.Close()
+	cfg.BackupDir = filepath.Join(filepath.Dir(cfg.Store.Path), "backups")
 	if err := RunMigrate(t.Context(), cfg, quietLogger()); err != nil {
 		t.Fatal(err)
 	}
-	if n := archiveCount(t, backupDir); n != 0 {
-		t.Fatalf("an idle restart published %d archives", n)
-	}
-	if n := countInstanceEvents(t, fixture.sc, "backup.exported"); n != 0 {
-		t.Fatalf("an idle restart recorded %d exports", n)
+	if n := archiveCount(t, cfg.BackupDir); n != 0 {
+		t.Fatalf("idle migrate created %d archives", n)
 	}
 }
 

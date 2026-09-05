@@ -40,7 +40,21 @@ type Datastore struct {
 	PostgresPoolMax int32  // HIKYO_PG_POOL_MAX override; zero uses DSN/locked default
 }
 
+// UpgradeConfiguration contains only installation paths and public evidence.
+// Private backup identities and operator signing keys are never server config.
+type UpgradeConfiguration struct {
+	BundleDirectory       string
+	StateDirectory        string
+	EvidenceDirectory     string
+	CiphertextPath        string
+	OperatorPublicKeyFile string
+	OperatorInstanceID    string
+	TargetManifestSHA256  string
+	LegacyWritersStopped  bool
+}
+
 type Config struct {
+	Upgrade           UpgradeConfiguration
 	Dev               bool
 	Listen            string
 	OperationalListen string
@@ -180,37 +194,45 @@ type Config struct {
 
 // knownEnv is the closed set of HIKYO_* keys this build understands.
 var knownEnv = map[string]bool{
-	"HIKYO_DB":                         true,
-	"HIKYO_PG_POOL_MAX":                true,
-	"HIKYO_LISTEN":                     true,
-	"HIKYO_OPERATIONAL_LISTEN":         true,
-	"HIKYO_TLS_CERT_FILE":              true,
-	"HIKYO_TLS_KEY_FILE":               true,
-	"HIKYO_EXTERNAL_ORIGIN":            true,
-	"HIKYO_MCP_ENABLED":                true,
-	"HIKYO_MCP_ALLOWED_ORIGINS":        true,
-	"HIKYO_TRUSTED_PROXY_CIDRS":        true,
-	"HIKYO_ROOT_KEY":                   true,
-	"HIKYO_NEW_ROOT_KEY_FILE":          true,
-	"HIKYO_DIRECTORY_PROXY":            true,
-	"HIKYO_ARGON2_MEMORY_KIB":          true,
-	"HIKYO_ARGON2_TIME":                true,
-	"HIKYO_ARGON2_PARALLELISM":         true,
-	"HIKYO_ADMISSION_BUDGET_MIB":       true,
-	"HIKYO_BACKUP_RECIPIENTS":          true,
-	"HIKYO_BACKUP_DIR":                 true,
-	"HIKYO_BACKUP_INTERVAL":            true,
-	"HIKYO_BACKUP_RPO":                 true,
-	"HIKYO_BACKUP_RETAIN_COUNT":        true,
-	"HIKYO_BACKUP_RETAIN_DAYS":         true,
-	"HIKYO_BACKUP_RTO_TARGET":          true,
-	"HIKYO_ADAPTER_EGRESS_POLICY_FILE": true,
-	"HIKYO_DYNAMIC_EGRESS_POLICY_FILE": true,
-	"HIKYO_REAUTH_WINDOW_SECONDS":      true,
-	"HIKYO_UPDATE_CHANNEL":             true,
-	"HIKYO_UPDATER_SOCKET":             true,
-	"HIKYO_HA":                         true,
-	"HIKYO_NODE_ID":                    true,
+	"HIKYO_DB":                             true,
+	"HIKYO_PG_POOL_MAX":                    true,
+	"HIKYO_LISTEN":                         true,
+	"HIKYO_OPERATIONAL_LISTEN":             true,
+	"HIKYO_TLS_CERT_FILE":                  true,
+	"HIKYO_TLS_KEY_FILE":                   true,
+	"HIKYO_EXTERNAL_ORIGIN":                true,
+	"HIKYO_MCP_ENABLED":                    true,
+	"HIKYO_MCP_ALLOWED_ORIGINS":            true,
+	"HIKYO_TRUSTED_PROXY_CIDRS":            true,
+	"HIKYO_ROOT_KEY":                       true,
+	"HIKYO_UPGRADE_BUNDLE":                 true,
+	"HIKYO_UPGRADE_STATE_DIR":              true,
+	"HIKYO_UPGRADE_EVIDENCE":               true,
+	"HIKYO_UPGRADE_BACKUP":                 true,
+	"HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY":    true,
+	"HIKYO_UPGRADE_OPERATOR_INSTANCE":      true,
+	"HIKYO_UPGRADE_TARGET_MANIFEST":        true,
+	"HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED": true,
+	"HIKYO_NEW_ROOT_KEY_FILE":              true,
+	"HIKYO_DIRECTORY_PROXY":                true,
+	"HIKYO_ARGON2_MEMORY_KIB":              true,
+	"HIKYO_ARGON2_TIME":                    true,
+	"HIKYO_ARGON2_PARALLELISM":             true,
+	"HIKYO_ADMISSION_BUDGET_MIB":           true,
+	"HIKYO_BACKUP_RECIPIENTS":              true,
+	"HIKYO_BACKUP_DIR":                     true,
+	"HIKYO_BACKUP_INTERVAL":                true,
+	"HIKYO_BACKUP_RPO":                     true,
+	"HIKYO_BACKUP_RETAIN_COUNT":            true,
+	"HIKYO_BACKUP_RETAIN_DAYS":             true,
+	"HIKYO_BACKUP_RTO_TARGET":              true,
+	"HIKYO_ADAPTER_EGRESS_POLICY_FILE":     true,
+	"HIKYO_DYNAMIC_EGRESS_POLICY_FILE":     true,
+	"HIKYO_REAUTH_WINDOW_SECONDS":          true,
+	"HIKYO_UPDATE_CHANNEL":                 true,
+	"HIKYO_UPDATER_SOCKET":                 true,
+	"HIKYO_HA":                             true,
+	"HIKYO_NODE_ID":                        true,
 
 	// Development-only. Named so the deployment it does not belong in is
 	// obvious at a glance, and refused at boot outside --dev regardless.
@@ -269,6 +291,15 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 	}
 
 	cfg := &Config{
+		Upgrade: UpgradeConfiguration{
+			BundleDirectory:       getenv("HIKYO_UPGRADE_BUNDLE"),
+			StateDirectory:        getenv("HIKYO_UPGRADE_STATE_DIR"),
+			EvidenceDirectory:     getenv("HIKYO_UPGRADE_EVIDENCE"),
+			CiphertextPath:        getenv("HIKYO_UPGRADE_BACKUP"),
+			OperatorPublicKeyFile: getenv("HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY"),
+			OperatorInstanceID:    getenv("HIKYO_UPGRADE_OPERATOR_INSTANCE"),
+			TargetManifestSHA256:  getenv("HIKYO_UPGRADE_TARGET_MANIFEST"),
+		},
 		Dev:               *dev,
 		AutoMigrate:       *autoMigrate,
 		Listen:            *listen,
@@ -295,6 +326,13 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 		cfg.UpdateChannel = updateChannel
 	default:
 		return nil, nil, fmt.Errorf("HIKYO_UPDATE_CHANNEL: channel must be stable, nightly, or off, got %q", updateChannel)
+	}
+	if raw := getenv("HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED"); raw != "" {
+		stopped, err := strconv.ParseBool(raw)
+		if err != nil {
+			return nil, nil, fmt.Errorf("HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED: invalid boolean")
+		}
+		cfg.Upgrade.LegacyWritersStopped = stopped
 	}
 	if cfg.RootKeyFile != "" && cfg.RootKeyFromEnv {
 		return nil, nil, fmt.Errorf("both --root-key-file and HIKYO_ROOT_KEY are set: configure exactly one root-key source")

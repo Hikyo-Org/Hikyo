@@ -11,7 +11,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 	storetx "github.com/Hikyo-Org/hikyo/internal/store/tx"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 	"github.com/Hikyo-Org/hikyo/internal/updater"
@@ -196,10 +195,7 @@ func fixtureUpdates(db *store.DB, control updater.Control, now time.Time) *Updat
 func updateServiceDB(t *testing.T, authenticatedAt time.Time) (*store.DB, string) {
 	t.Helper()
 	cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "updates.db")}
-	if err := migrate.Run(t.Context(), cfg); err != nil {
-		t.Fatal(err)
-	}
-	db, err := store.Open(t.Context(), cfg)
+	db, err := openServiceFixture(t, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,7 +2,6 @@ package service
 
 import (
 	"errors"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -101,10 +100,7 @@ func TestPlanPruneOrdersByNameNotListing(t *testing.T) {
 func pruneDB(t *testing.T) *store.DB {
 	t.Helper()
 	cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "prune.db")}
-	if err := migrate.Run(t.Context(), cfg); err != nil {
-		t.Fatal(err)
-	}
-	db, err := store.Open(t.Context(), cfg)
+	db, err := openServiceFixture(t, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

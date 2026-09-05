@@ -45,7 +45,7 @@ func TestProductionBootWithoutRootKeyRefuses(t *testing.T) {
 // Acceptance (#43): `hikyo migrate` never loads the keyring — it succeeds
 // with no root key configured anywhere.
 func TestMigrateNeedsNoRootKey(t *testing.T) {
-	cfg := prodConfig(t, nil)
+	cfg := devConfig(t)
 	if err := RunMigrate(t.Context(), cfg, testLogger()); err != nil {
 		t.Fatalf("migrate must not need a root key: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestBootWithRootKeyFileAndWrongKeyRefused(t *testing.T) {
 		// default operational listener.
 		"HIKYO_OPERATIONAL_LISTEN": "localhost:0",
 	}
-	cfg, _, err := config.Load("server", []string{"--listen", "127.0.0.1:0", "--root-key-file", keyPath},
+	cfg, _, err := config.Load("server", []string{"--dev", "--listen", "127.0.0.1:0", "--root-key-file", keyPath},
 		func(k string) string { return env[k] }, nil)
 	if err != nil {
 		t.Fatal(err)

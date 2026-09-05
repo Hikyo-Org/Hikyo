@@ -47,14 +47,28 @@ func (s *Session) existingKeys(ctx context.Context, expected State, phase Phase)
 }
 
 type candidateKeys struct {
-	session  *Session
-	expected State
-	phase    Phase
+	session          *Session
+	expected         State
+	phase            Phase
+	operatorRecovery bool
 }
 
 func (r *candidateKeys) check(ctx context.Context) error {
 	if r == nil || r.session == nil || r.expected.Pending == nil || r.expected.Pending.Phase != r.phase {
 		return ErrConflict
+	}
+	if r.operatorRecovery {
+		if err := r.session.check(); err != nil {
+			return err
+		}
+		current, err := r.session.Read(ctx)
+		if err != nil {
+			return err
+		}
+		if !equalRecord(current, r.expected) {
+			return ErrConflict
+		}
+		return nil
 	}
 	switch r.phase {
 	case SchemaApplied:

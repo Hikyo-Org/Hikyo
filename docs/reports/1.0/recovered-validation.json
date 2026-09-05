@@ -1,0 +1,394 @@
+{
+  "scope": "Local recovered integration before commit; exact-head hosted CI still required",
+  "baseline": "907e2f41fccc40bb8287025763b56e38c533eb37",
+  "runs": {
+    "recovered-full-summary.json": {
+      "passed_cases": 6187,
+      "packages": [
+        {
+          "package": "github.com/Hikyo-Org/hikyo/cmd/hikyo",
+          "seconds": 0.958
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/adapter",
+          "seconds": 0.73
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/adapter/forgejo",
+          "seconds": 0.468
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/adapter/githubactions",
+          "seconds": 0.545
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/admission",
+          "seconds": 0.448
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/audit",
+          "seconds": 0.729
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/authz",
+          "seconds": 0.296
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/backupreceipt",
+          "seconds": 1.168
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/boundary",
+          "seconds": 9.125
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/buildcompat",
+          "seconds": 0.376
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/cli",
+          "seconds": 2.4
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/compose",
+          "seconds": 3.225
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/config",
+          "seconds": 0.387
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/conformance",
+          "seconds": 25.442
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/console",
+          "seconds": 0.199
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/crypto",
+          "seconds": 0.272
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/crypto/backup",
+          "seconds": 2.059
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/definitions",
+          "seconds": 0.251
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/delivery",
+          "seconds": 0.234
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/devupgrade",
+          "seconds": 2.6390000000000002
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/disclose",
+          "seconds": 0.219
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/domain",
+          "seconds": 0.192
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/dotenv",
+          "seconds": 0.18
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/dynamic",
+          "seconds": 0.201
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/dynamic/postgres",
+          "seconds": 0.311
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/importer",
+          "seconds": 3.67
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/app",
+          "seconds": 73.542
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/jwkssource",
+          "seconds": 1.275
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/lint",
+          "seconds": 53.04
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/mcpserver",
+          "seconds": 0.792
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/netpolicy",
+          "seconds": 0.185
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/oidcfed",
+          "seconds": 0.234
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/oidctest",
+          "seconds": 0.437
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/operation",
+          "seconds": 0.194
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/operator",
+          "seconds": 1.108
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1",
+          "seconds": 2.989
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/operator/client",
+          "seconds": 0.435
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/pathutil",
+          "seconds": 0.268
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/releaseidentity",
+          "seconds": 0.195
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/releasetrust",
+          "seconds": 0.887
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/remotefetch",
+          "seconds": 1.233
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/samlsp",
+          "seconds": 0.529
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/scanning",
+          "seconds": 0.19
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/scanning/gen",
+          "seconds": 0.219
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/schema",
+          "seconds": 0.222
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/scimproto",
+          "seconds": 0.206
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/securefile",
+          "seconds": 0.285
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/selfupdate",
+          "seconds": 0.41
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/server",
+          "seconds": 0.87
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/service",
+          "seconds": 30.055
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/store",
+          "seconds": 27.785
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/store/migrate",
+          "seconds": 7.211
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/store/tx",
+          "seconds": 1.487
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/store/upgrade",
+          "seconds": 61.053
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/testutil/fixtureref",
+          "seconds": 0.68
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/tlspolicy",
+          "seconds": 0.471
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/updatecheck",
+          "seconds": 0.41
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/updater",
+          "seconds": 0.592
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/upgradebundle",
+          "seconds": 0.708
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/upgradecompat",
+          "seconds": 0.611
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/webauthntest",
+          "seconds": 0.338
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/scripts/ci",
+          "seconds": 0.416
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/scripts/ci/chartfixture",
+          "seconds": 0.572
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/scripts/mcp-public-smoke",
+          "seconds": 0.661
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/scripts/operator-floor",
+          "seconds": 0.616
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/scripts/release",
+          "seconds": 0.3
+        }
+      ],
+      "skipped": [
+        "github.com/Hikyo-Org/hikyo/api/apigen",
+        "github.com/Hikyo-Org/hikyo/cmd/bench-scan",
+        "TestGitHubDotComContract",
+        "TestProviderEgressRefusedWithoutAllowance",
+        "TestProviderLeaseLifecycle",
+        "TestProviderUnreachableIsDefinite",
+        "github.com/Hikyo-Org/hikyo/internal/filedurability",
+        "github.com/Hikyo-Org/hikyo/internal/oidcrp",
+        "github.com/Hikyo-Org/hikyo/internal/oidctest/cmd",
+        "github.com/Hikyo-Org/hikyo/internal/releasetrust/testfixture",
+        "github.com/Hikyo-Org/hikyo/internal/samltest",
+        "github.com/Hikyo-Org/hikyo/internal/scanning/bench",
+        "github.com/Hikyo-Org/hikyo/internal/scanning/corpus",
+        "TestFrozenGeneratedClientAgainstCurrentServer",
+        "github.com/Hikyo-Org/hikyo/internal/store/auditrow",
+        "github.com/Hikyo-Org/hikyo/internal/store/authn",
+        "github.com/Hikyo-Org/hikyo/internal/store/keyring",
+        "github.com/Hikyo-Org/hikyo/internal/store/pggen",
+        "github.com/Hikyo-Org/hikyo/internal/store/sqlitegen",
+        "github.com/Hikyo-Org/hikyo/internal/tlstest",
+        "github.com/Hikyo-Org/hikyo/internal/upgradebundle/testfixture",
+        "github.com/Hikyo-Org/hikyo/internal/upgradegate/testfixture",
+        "github.com/Hikyo-Org/hikyo/internal/webauthnrp",
+        "github.com/Hikyo-Org/hikyo/internal/webui",
+        "github.com/Hikyo-Org/hikyo/scripts/ci/analysis-shards-go",
+        "github.com/Hikyo-Org/hikyo/scripts/ci/api-freeze-guard",
+        "github.com/Hikyo-Org/hikyo/scripts/ci/mcp-conformance-server",
+        "github.com/Hikyo-Org/hikyo/scripts/mcp-production-client",
+        "github.com/Hikyo-Org/hikyo/scripts/release/compatibility",
+        "TestForgejoRealLifecycle",
+        "TestMCPDeploymentFixture"
+      ],
+      "failed": [
+        "TestReleaseAcceptanceLedgerReferences",
+        "github.com/Hikyo-Org/hikyo/api",
+        "github.com/Hikyo-Org/hikyo/internal/upgradegate",
+        "github.com/Hikyo-Org/hikyo/internal/isolation"
+      ],
+      "exit_code": 1
+    },
+    "recovered-isolation-tail-summary.json": {
+      "passed_cases": 247,
+      "packages": [
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+          "seconds": 158.936
+        }
+      ],
+      "skipped": [
+        "TestFrozenGeneratedClientAgainstCurrentServer",
+        "TestForgejoRealLifecycle",
+        "TestMCPDeploymentFixture"
+      ],
+      "failed": [],
+      "exit_code": 0
+    },
+    "recovered-final-gate-summary.json": {
+      "passed_cases": 365,
+      "packages": [
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/upgradegate",
+          "seconds": 175.134
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/store/upgrade",
+          "seconds": 138.447
+        },
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/app",
+          "seconds": 326.126
+        }
+      ],
+      "skipped": [],
+      "failed": [],
+      "exit_code": 0
+    },
+    "recovered-cli-summary.json": {
+      "passed_cases": 3,
+      "packages": [
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/upgradegate",
+          "seconds": 22.881
+        }
+      ],
+      "skipped": [],
+      "failed": [],
+      "exit_code": 0
+    },
+    "operator-rotation-summary.json": {
+      "passed_cases": 17,
+      "packages": [
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/upgradegate",
+          "seconds": 8.319
+        }
+      ],
+      "skipped": [],
+      "failed": [],
+      "exit_code": 0
+    },
+    "backup-custody-summary.json": {
+      "passed_cases": 10,
+      "packages": [
+        {
+          "package": "github.com/Hikyo-Org/hikyo/internal/app",
+          "seconds": 7.463
+        }
+      ],
+      "skipped": [],
+      "failed": [],
+      "exit_code": 0
+    }
+  },
+  "interpretation": {
+    "broad_run": "6187 pass events; stale API references fixed and retested; gate compiled during concurrent changes then passed final complete race run; isolation package timed out while progressing and its unfinished tests passed separately.",
+    "external_skips": "Provider credentials, frozen SDK dedicated lane and deployed MCP fixture are opt-in and are not certified by this local run.",
+    "web": "Typecheck and683 unit tests pass. Desktop pinned surfaces24 pass plus complete4-case adapter rerun pass. Mobile complete selected28 cases pass. Filtered runs do not claim whole registry execution closure; exact-head hosted web/web-closure remains required.",
+    "static": "Go formatting, repository lint, architecture boundaries, acceptance ledger and Astro check pass.",
+    "floor": "Actual newly built CLI export/drill/restore/status/reconcile plus authenticated recovery passed4.311s. Tagged Linux arm64 compilation and vet pass. Dedicated native arm64 cgroup execution remains required."
+  }
+}

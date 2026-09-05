@@ -1,0 +1,7 @@
+=== RUN   TestForgejoRealLifecycle
+=== RUN   TestForgejoRealLifecycle/sqlite
+=== RUN   TestForgejoRealLifecycle/postgres
+--- PASS: TestForgejoRealLifecycle (2.31s)
+    --- PASS: TestForgejoRealLifecycle/sqlite (0.86s)
+    --- PASS: TestForgejoRealLifecycle/postgres (1.45s)
+PASS

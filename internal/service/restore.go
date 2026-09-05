@@ -56,8 +56,12 @@ type Status struct {
 
 // Status reads the instance's restore posture.
 func (s *Restore) Status(ctx context.Context) (Status, error) {
+	return restoreStatus(ctx, func(ctx context.Context, fn tx.ReadFn) error { return tx.Read(ctx, s.DB, fn) })
+}
+
+func restoreStatus(ctx context.Context, run func(context.Context, tx.ReadFn) error) (Status, error) {
 	var out Status
-	err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
+	err := run(ctx, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
 		state, err := az.RestoreState(ctx)
 		if err != nil {
 			return err
@@ -83,11 +87,15 @@ func (s *Restore) Status(ctx context.Context) (Status, error) {
 // cost — a single "reconcile everything" would turn an informed assertion
 // about each identity into a keystroke.
 func (s *Restore) Reconcile(ctx context.Context, target domain.PrincipalID) (Status, error) {
+	return restoreReconcile(ctx, func(ctx context.Context, fn tx.RestoreFn) error { return tx.Reconcile(ctx, s.DB, fn) }, target)
+}
+
+func restoreReconcile(ctx context.Context, run func(context.Context, tx.RestoreFn) error, target domain.PrincipalID) (Status, error) {
 	if target == "" {
 		return Status{}, errors.New("reconciliation names exactly one principal")
 	}
 	var out Status
-	err := tx.Reconcile(ctx, s.DB, func(ctx context.Context, az *authz.TxAuthorizer) error {
+	err := run(ctx, func(ctx context.Context, az *authz.TxAuthorizer) error {
 		state, err := az.RestoreState(ctx)
 		if err != nil {
 			return err

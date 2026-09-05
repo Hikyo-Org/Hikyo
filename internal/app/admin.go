@@ -41,6 +41,10 @@ func AdminUsage(w io.Writer) {
   hikyo admin grant --principal ID --capability CAP
                     [--org ID [--project ID [--env ID]]]
 
+For a development datastore, put --dev immediately after the group:
+  hikyo admin --dev create --username USER
+The production trust domain remains the default.
+
 create mints the first administrator and a single-use credential-establishment
 authority. reset-credential is the break-glass recovery path: it mints the same
 authority for ANY existing principal, including an instance-capability holder no

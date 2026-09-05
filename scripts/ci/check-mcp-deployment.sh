@@ -34,6 +34,15 @@ export HIKYO_COMPOSE_SUBNET='172.30.0.0/24'
 export HIKYO_ROOT_KEY_FILE="$tmp/root-key"
 export HIKYO_TLS_CERT_FILE="$tmp/tls-cert"
 export HIKYO_TLS_KEY_FILE="$tmp/tls-key"
+mkdir -p "$tmp/public/bundle" "$tmp/installation"
+chmod 700 "$tmp/installation"
+touch "$tmp/public/operator.pub" "$tmp/public/bundle/index.json"
+export HIKYO_UPGRADE_PUBLIC_DIR="$tmp/public"
+export HIKYO_UPGRADE_INSTALLATION_DIR="$tmp/installation"
+export HIKYO_UPGRADE_EVIDENCE=''
+export HIKYO_UPGRADE_BACKUP=''
+export HIKYO_UPGRADE_TARGET_MANIFEST=''
+export HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED=false
 
 "$root/scripts/mcp-compose-preflight.sh" >/dev/null
 if HIKYO_IMAGE='ghcr.io/hikyo-org/hikyo:latest' "$root/scripts/mcp-compose-preflight.sh" >/dev/null 2>&1; then
@@ -55,6 +64,18 @@ if "$root/scripts/mcp-compose-preflight.sh" >/dev/null 2>&1; then
 	fail "operator preflight accepted a world-readable TLS key file"
 fi
 chmod 600 "$tmp/tls-key"
+if HIKYO_UPGRADE_INSTALLATION_DIR="$tmp/missing-installation" "$root/scripts/mcp-compose-preflight.sh" >/dev/null 2>&1; then
+	fail "operator preflight accepted missing installation custody"
+fi
+chmod 755 "$tmp/installation"
+if "$root/scripts/mcp-compose-preflight.sh" >/dev/null 2>&1; then
+	fail "operator preflight accepted public installation custody"
+fi
+chmod 700 "$tmp/installation"
+ln -s "$tmp/public" "$tmp/public-link"
+if HIKYO_UPGRADE_PUBLIC_DIR="$tmp/public-link" "$root/scripts/mcp-compose-preflight.sh" >/dev/null 2>&1; then
+	fail "operator preflight accepted a symlinked public directory"
+fi
 docker compose -f "$compose" config >"$tmp/rendered.yaml"
 
 python3 - "$tmp/rendered.yaml" "$proxy" <<'PY'
@@ -87,6 +108,7 @@ if hikyo.get("command") != [
     "--listen=0.0.0.0:8080",
     "--operational-listen=0.0.0.0:8081",
     "--root-key-file=/run/hikyo-root-key/root-key",
+    "--auto-migrate=false",
 ]:
     fail("Hikyo command drifted")
 environment = hikyo.get("environment", {})
@@ -96,6 +118,13 @@ want_environment = {
     "HIKYO_MCP_ALLOWED_ORIGINS": "",
     "HIKYO_MCP_ENABLED": "true",
     "HIKYO_TRUSTED_PROXY_CIDRS": "172.30.0.0/24",
+    "HIKYO_UPGRADE_BUNDLE": "/run/hikyo-upgrade/bundle",
+    "HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY": "/run/hikyo-upgrade/operator.pub",
+    "HIKYO_UPGRADE_STATE_DIR": "/var/lib/hikyo-installation",
+    "HIKYO_UPGRADE_EVIDENCE": "",
+    "HIKYO_UPGRADE_BACKUP": "",
+    "HIKYO_UPGRADE_TARGET_MANIFEST": "",
+    "HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED": "false",
 }
 if environment != want_environment:
     fail(f"Hikyo environment drifted: {environment}")
@@ -110,8 +139,13 @@ if hikyo.get("depends_on", {}).get("root-key-stage", {}).get("condition") != "se
 if hikyo.get("secrets"):
     fail("Hikyo must not consume Compose's group-readable file-backed secret directly")
 mounts = hikyo.get("volumes", [])
-if len(mounts) != 1 or mounts[0].get("target") != "/run/hikyo-root-key" or not mounts[0].get("read_only"):
+if len(mounts) != 3 or mounts[0].get("target") != "/run/hikyo-root-key" or not mounts[0].get("read_only"):
     fail(f"Hikyo staged root-key mount drifted: {mounts}")
+by_target = {mount["target"]: mount for mount in mounts}
+for target, readonly in [("/run/hikyo-upgrade", True), ("/var/lib/hikyo-installation", False)]:
+    mount = by_target.get(target, {})
+    if mount.get("type") != "bind" or bool(mount.get("read_only")) != readonly or mount.get("bind", {}).get("create_host_path", False):
+        fail(f"upgrade mount must preserve preprovisioned custody: {target}")
 if hikyo.get("ports") != [{"mode": "ingress", "target": 8081, "published": "8081", "protocol": "tcp", "host_ip": "127.0.0.1"}]:
     fail(f"operational port exposure drifted: {hikyo.get('ports')}")
 if proxy_service.get("ports") != [{"mode": "ingress", "target": 443, "published": "443", "protocol": "tcp"}]:

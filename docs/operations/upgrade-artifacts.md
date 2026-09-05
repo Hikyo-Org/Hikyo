@@ -5,6 +5,12 @@ release trust and execution obligations. This foundation verifies release
 evidence and computes a route. It does not stop a server, authorize a database
 migration, consume an operator nonce, or enable the retired remote updater.
 
+The integrated runtime gate consumes this public evidence at every production
+boot and migration. See [manual deployment](manual-upgrades.md) for the required
+offline directory layout, persistent operator custody and deployment mounts.
+The release artifact directory must be assembled into that bounded gate layout;
+the existing download bundle is not interchangeable with it.
+
 ## Source build declaration
 
 `upgrade-compatibility.json` contains the target profile, canonical version,

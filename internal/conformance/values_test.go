@@ -2,7 +2,6 @@ package conformance
 
 import (
 	"bytes"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"os"
@@ -36,10 +35,9 @@ func init() {
 	)
 }
 
-// The keyring hierarchy is minted ONCE per datastore, under the root of
-// whichever scenario loads it first, so every scenario in this package shares
-// one root. Without this the second loader is refused with
-// ErrRootKeyMismatch — which is the keyring behaving correctly.
+// The signed fixture gate initializes one hierarchy per datastore. Every
+// scenario must reopen it with that exact root; generating a root lazily would
+// correctly fail with ErrRootKeyMismatch.
 var (
 	rootMu    sync.Mutex
 	rootBytes = map[*store.DB][]byte{}
@@ -52,12 +50,8 @@ func sharedRoot(t *testing.T, db *store.DB) []byte {
 	if have, ok := rootBytes[db]; ok {
 		return bytes.Clone(have)
 	}
-	root := make([]byte, crypto.KeySize)
-	if _, err := rand.Read(root); err != nil {
-		t.Fatal(err)
-	}
-	rootBytes[db] = bytes.Clone(root)
-	return root
+	t.Fatal("conformance keyring requires root from admitted fixture")
+	return nil
 }
 
 func sharedKeyring(t *testing.T, db *store.DB) *crypto.Keyring {
