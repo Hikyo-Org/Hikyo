@@ -84,7 +84,14 @@ func TestMCPDeploymentFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer crypto.Zero(root)
-	stateDir := filepath.Join(dir, "operator-state")
+	// Docker Desktop can present a bind mount's root as UID 0 even when its
+	// host owner differs. Mount only this traversable wrapper into the server;
+	// the private child retains the fixture UID and strict custody permissions.
+	installationDir := filepath.Join(dir, "installation")
+	if err := os.Mkdir(installationDir, 0755); err != nil && !os.IsExist(err) {
+		t.Fatal(err)
+	}
+	stateDir := filepath.Join(installationDir, "operator-state")
 	if err := os.Mkdir(stateDir, 0700); err != nil && !os.IsExist(err) {
 		t.Fatal(err)
 	}
