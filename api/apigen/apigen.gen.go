@@ -307,24 +307,6 @@ func (e AdapterMoveTargetVisibility) Valid() bool {
 	}
 }
 
-// Defines values for AdapterProvider.
-const (
-	AdapterProviderForgejo       AdapterProvider = "forgejo"
-	AdapterProviderGithubActions AdapterProvider = "github-actions"
-)
-
-// Valid indicates whether the value is a known member of the AdapterProvider enum.
-func (e AdapterProvider) Valid() bool {
-	switch e {
-	case AdapterProviderForgejo:
-		return true
-	case AdapterProviderGithubActions:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for AdapterTargetLastErrorClass.
 const (
 	AdapterTargetLastErrorClassAuth              AdapterTargetLastErrorClass = "auth"
@@ -1786,30 +1768,6 @@ func (e SamlProviderKind) Valid() bool {
 	}
 }
 
-// Defines values for SamlProviderWarningCode.
-const (
-	MetadataExpired               SamlProviderWarningCode = "metadata_expired"
-	MetadataExpiresSoon           SamlProviderWarningCode = "metadata_expires_soon"
-	SigningCertificateExpired     SamlProviderWarningCode = "signing_certificate_expired"
-	SigningCertificateNotYetValid SamlProviderWarningCode = "signing_certificate_not_yet_valid"
-)
-
-// Valid indicates whether the value is a known member of the SamlProviderWarningCode enum.
-func (e SamlProviderWarningCode) Valid() bool {
-	switch e {
-	case MetadataExpired:
-		return true
-	case MetadataExpiresSoon:
-		return true
-	case SigningCertificateExpired:
-		return true
-	case SigningCertificateNotYetValid:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for SamlProviderWarningSeverity.
 const (
 	SamlProviderWarningSeverityError   SamlProviderWarningSeverity = "error"
@@ -2541,8 +2499,10 @@ type Adapter struct {
 	CredentialSetAt     *time.Time `json:"credential_set_at,omitempty"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
-	Id       ID              `json:"id"`
-	Origin   string          `json:"origin"`
+	Id     ID     `json:"id"`
+	Origin string `json:"origin"`
+
+	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server.
 	Provider AdapterProvider `json:"provider"`
 	State    AdapterState    `json:"state"`
 	Targets  []AdapterTarget `json:"targets"`
@@ -2724,8 +2684,8 @@ type AdapterPlan struct {
 	Warnings   []string        `json:"warnings"`
 }
 
-// AdapterProvider defines model for AdapterProvider.
-type AdapterProvider string
+// AdapterProvider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server.
+type AdapterProvider = string
 
 // AdapterResume defines model for AdapterResume.
 type AdapterResume struct {
@@ -3497,10 +3457,12 @@ type CopyValuesResult struct {
 // CreateAdapterRequest defines model for CreateAdapterRequest.
 type CreateAdapterRequest struct {
 	// Credential Write-only provider credential. Never returned.
-	Credential string             `json:"credential"`
-	Origin     string             `json:"origin"`
-	Provider   AdapterProvider    `json:"provider"`
-	Target     AdapterTargetInput `json:"target"`
+	Credential string `json:"credential"`
+	Origin     string `json:"origin"`
+
+	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server.
+	Provider AdapterProvider    `json:"provider"`
+	Target   AdapterTargetInput `json:"target"`
 }
 
 // CreateBindingRequest A binding names exactly one service account, matched byte-for-byte on
@@ -6385,7 +6347,8 @@ type SamlProviderPatch struct {
 
 // SamlProviderWarning defines model for SamlProviderWarning.
 type SamlProviderWarning struct {
-	Code SamlProviderWarningCode `json:"code"`
+	// Code Open diagnostic code. Clients display the server message and use severity even when the code is not yet known to them.
+	Code string `json:"code"`
 
 	// EffectiveAt RFC 3339 UTC, microsecond precision.
 	EffectiveAt Timestamp `json:"effective_at"`
@@ -6395,9 +6358,6 @@ type SamlProviderWarning struct {
 	Message     string                      `json:"message"`
 	Severity    SamlProviderWarningSeverity `json:"severity"`
 }
-
-// SamlProviderWarningCode defines model for SamlProviderWarning.Code.
-type SamlProviderWarningCode string
 
 // SamlProviderWarningSeverity defines model for SamlProviderWarning.Severity.
 type SamlProviderWarningSeverity string

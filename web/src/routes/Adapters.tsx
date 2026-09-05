@@ -312,7 +312,7 @@ function AdapterPanel({
   return (
     <section className="panel adapters__adapter" aria-label={`Adapter ${adapter.origin}`}>
       <div className="adapters__adapter-head">
-        <h2>{adapter.provider === 'forgejo' ? 'Forgejo' : 'GitHub Actions'}</h2>
+        <h2>{adapter.provider === 'forgejo' ? 'Forgejo' : adapter.provider === 'github-actions' ? 'GitHub Actions' : adapter.provider}</h2>
         <span className="adapters__origin mono">{adapter.origin}</span>
         <span className="chip">
           {adapter.credential_present ? 'credential set' : 'credential absent'}

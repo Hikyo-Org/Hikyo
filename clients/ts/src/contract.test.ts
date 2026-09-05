@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import type { AdapterProvider, SamlProviderWarning } from './generated/types.gen.ts';
+
 import {
+  zAdapterProvider,
+  zDynamicProviderKind,
+  zSamlProviderWarning,
   zCreateOrgRequest,
   zErrorCode,
   zGrantResult,
@@ -120,4 +125,21 @@ test('pre-freeze SAML purpose accepts a future purpose', () => {
 });
 test('pre-freeze grant origin accepts a future origin', () => {
   assert.equal(zGrantOrigin.parse({ kind: 'future-origin', subject: 'holder' }).kind, 'future-origin');
+});
+
+test('adapter provider preserves an unknown response discriminator', () => {
+  const provider: AdapterProvider = 'future-provider';
+  assert.equal(zAdapterProvider.parse(provider), provider);
+});
+test('SAML warning preserves an unknown code and its server diagnostic', () => {
+  const warning: SamlProviderWarning = {
+    code: 'future-warning', effective_at: '2026-09-01T00:00:00Z',
+    message: 'Server diagnostic', severity: 'error',
+  };
+  assert.deepEqual(zSamlProviderWarning.parse(warning), warning);
+  assert.throws(() => zSamlProviderWarning.parse({ ...warning, severity: 'future-severity' }));
+});
+test('dynamic provider kind keeps the closed PostgreSQL-only contract', () => {
+  assert.equal(zDynamicProviderKind.parse('postgres'), 'postgres');
+  assert.throws(() => zDynamicProviderKind.parse('future-provider'));
 });

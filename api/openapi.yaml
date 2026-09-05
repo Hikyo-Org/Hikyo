@@ -10560,7 +10560,10 @@ components:
 
     AdapterProvider:
       type: string
-      enum: [forgejo, github-actions]
+      description: >-
+        Open provider discriminator. Clients preserve unknown response values;
+        creation requires a provider supported by the receiving server.
+      x-extensible-enum: [forgejo, github-actions]
 
     AdapterTargetInput:
       type: object
@@ -13666,6 +13669,7 @@ components:
         has no such claim — and inferring the type from a URL would let renaming
         a deployment change the security rules that apply to it.
       enum: [kubernetes, forgejo, github-actions]
+      x-enum-varnames: [IssuerTypeKubernetes, IssuerTypeForgejo, IssuerTypeGithubActions]
 
     JWKSMode:
       type: string
@@ -15245,7 +15249,10 @@ components:
       properties:
         code:
           type: string
-          enum:
+          description: >-
+            Open diagnostic code. Clients display the server message and use
+            severity even when the code is not yet known to them.
+          x-extensible-enum:
             - metadata_expires_soon
             - metadata_expired
             - signing_certificate_not_yet_valid

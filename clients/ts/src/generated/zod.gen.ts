@@ -24,7 +24,10 @@ export const zAdapterVisibility = z.enum([
     'selected'
 ]);
 
-export const zAdapterProvider = z.enum(['forgejo', 'github-actions']);
+/**
+ * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server.
+ */
+export const zAdapterProvider = z.string();
 
 /**
  * Configuration-time selection conveniences (#157). They are resolved
@@ -2416,12 +2419,7 @@ export const zSamlProviderPatch = z.object({
 });
 
 export const zSamlProviderWarning = z.object({
-    code: z.enum([
-        'metadata_expires_soon',
-        'metadata_expired',
-        'signing_certificate_not_yet_valid',
-        'signing_certificate_expired'
-    ]),
+    code: z.string(),
     severity: z.enum(['warning', 'error']),
     message: z.string().max(512),
     effective_at: zTimestamp,

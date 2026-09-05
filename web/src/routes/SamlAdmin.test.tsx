@@ -282,3 +282,27 @@ describe('SamlSpKeysPanel retirement gating', () => {
     await unmount();
   });
 });
+
+
+describe('SAML forward-compatible diagnostics', () => {
+  it('shows an unknown warning code using the server message and error severity', async () => {
+    vi.stubGlobal('fetch', vi.fn((...args: Parameters<typeof fetch>) => {
+      const { method, path } = pathOf(args[0]);
+      if (method !== 'GET' || path !== '/api/v1/instance/saml-providers') {
+        throw new Error(`unexpected ${method} ${path}`);
+      }
+      return Promise.resolve(json({ providers: [{ ...provider, warnings: [{
+        code: 'future-warning', severity: 'error', message: 'Server diagnostic',
+        effective_at: '2026-09-01T00:00:00Z',
+      }] }] }));
+    }));
+    const { container, unmount } = await renderForm(<SamlProvidersPanel />);
+    try {
+      await settleTask();
+      expect(container.querySelector('[data-saml-provider="acme"] [role="alert"]')?.textContent)
+        .toBe('error Server diagnostic');
+    } finally {
+      await unmount();
+    }
+  });
+});

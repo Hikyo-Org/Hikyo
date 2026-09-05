@@ -13,7 +13,7 @@ func TestDoctorResultsUseServerWarningsWithoutRecalculation(t *testing.T) {
 	result, rows := doctorResults(apigen.SamlProviderList{Providers: []apigen.SamlProvider{{
 		Slug: "corp",
 		Warnings: []apigen.SamlProviderWarning{{
-			Code: apigen.MetadataExpired, Severity: apigen.SamlProviderWarningSeverityError,
+			Code: "metadata_expired", Severity: apigen.SamlProviderWarningSeverityError,
 			Message: "server message", EffectiveAt: effectiveAt,
 		}},
 	}}}, apigen.RetentionHealth{LastPruneSuccess: &lastPrune, Stale: false, StaleAfterSeconds: 86400, Backup: healthyBackup(effectiveAt)}, effectiveAt)
@@ -164,6 +164,24 @@ func TestDoctorPruneHealthRows(t *testing.T) {
 			got := doctorPruneFinding(tc.health, now)
 			if got.Severity != tc.status || got.Message != tc.message {
 				t.Fatalf("finding = %#v", got)
+			}
+		})
+	}
+}
+
+func TestDoctorUnknownWarningUsesServerSeverity(t *testing.T) {
+	now := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	for _, severity := range []apigen.SamlProviderWarningSeverity{apigen.SamlProviderWarningSeverityWarning, apigen.SamlProviderWarningSeverityError} {
+		t.Run(string(severity), func(t *testing.T) {
+			warning := apigen.SamlProviderWarning{Code: "future-warning", Severity: severity, Message: "Server diagnostic", EffectiveAt: now}
+			result, rows := doctorResults(apigen.SamlProviderList{Providers: []apigen.SamlProvider{{Slug: "corp", Warnings: []apigen.SamlProviderWarning{warning}}}}, apigen.RetentionHealth{LastPruneSuccess: &now, Backup: healthyBackup(now)}, now)
+			finding := result.Findings[len(result.Findings)-1]
+			row := rows[len(rows)-1]
+			if result.Status != string(severity) || finding.Code != warning.Code || finding.Message != warning.Message || row[2] != warning.Code || row[4] != warning.Message {
+				t.Fatalf("unknown warning lost or misclassified: result=%+v row=%v", result, row)
+			}
+			if codes := warningCodes([]apigen.SamlProviderWarning{warning}); len(codes) != 1 || codes[0] != warning.Code {
+				t.Fatalf("provider inventory lost unknown code: %v", codes)
 			}
 		})
 	}

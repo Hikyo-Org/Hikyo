@@ -18,7 +18,10 @@ export type AdapterDestinationKind = 'repository' | 'organization' | 'environmen
 
 export type AdapterVisibility = 'all' | 'private' | 'selected';
 
-export type AdapterProvider = 'forgejo' | 'github-actions';
+/**
+ * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server.
+ */
+export type AdapterProvider = string;
 
 export type AdapterTargetInput = {
     environment_id: Id;
@@ -3252,7 +3255,10 @@ export type SamlProvider = {
 };
 
 export type SamlProviderWarning = {
-    code: 'metadata_expires_soon' | 'metadata_expired' | 'signing_certificate_not_yet_valid' | 'signing_certificate_expired';
+    /**
+     * Open diagnostic code. Clients display the server message and use severity even when the code is not yet known to them.
+     */
+    code: string;
     severity: 'warning' | 'error';
     message: string;
     effective_at: Timestamp;

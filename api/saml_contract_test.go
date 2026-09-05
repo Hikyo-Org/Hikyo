@@ -130,7 +130,7 @@ func TestSAMLProviderInputHasNoJITSurface(t *testing.T) {
 	}
 }
 
-func TestSAMLProviderWarningsAreRequiredAndClosed(t *testing.T) {
+func TestSAMLProviderWarningsAreRequiredAndCodesAreOpen(t *testing.T) {
 	doc, err := api.Doc()
 	if err != nil {
 		t.Fatal(err)
@@ -151,8 +151,13 @@ func TestSAMLProviderWarningsAreRequiredAndClosed(t *testing.T) {
 		t.Fatal("warning code is not typed")
 	}
 	want := []any{"metadata_expires_soon", "metadata_expired", "signing_certificate_not_yet_valid", "signing_certificate_expired"}
-	if !slices.Equal(code.Value.Enum, want) {
-		t.Fatalf("warning codes = %v, want closed %v", code.Value.Enum, want)
+	known, declared := code.Value.Extensions[api.ExtOpenEnum].([]any)
+	if !declared || len(code.Value.Enum) != 0 || !slices.Equal(known, want) {
+		t.Fatalf("warning codes must be open with documented values %v; got extension=%v enum=%v", want, known, code.Value.Enum)
+	}
+	severity := warning.Value.Properties["severity"].Value
+	if !slices.Equal(severity.Enum, []any{"warning", "error"}) {
+		t.Fatalf("warning severity changed closed contract: %v", severity.Enum)
 	}
 }
 
