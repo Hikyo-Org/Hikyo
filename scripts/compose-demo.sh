@@ -160,6 +160,10 @@ origin="http://127.0.0.1:$port"
 ops_origin="http://127.0.0.1:$ops_port"
 (
 	cd "$work_dir"
+	# Every CLI command now checks /meta. This finite serialization fixture
+	# exceeds the production discovery allowance when run from one loopback IP.
+	# The existing dev-only override is rejected by production configuration.
+	HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE=200 \
 	"$binary" server --dev --listen "127.0.0.1:$port" --operational-listen "127.0.0.1:$ops_port" >server.log 2>&1 &
 	printf '%s\n' "$!" >server.pid
 )
