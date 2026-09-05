@@ -1,5 +1,7 @@
 # Hikyo — API & CLI spellings deferred to synthesis (2026-08-06)
 
+> **1.0 disposition sweep (2026-09-05, [#79](https://github.com/Hikyo-Org/Hikyo/issues/79)): section 9 is operative for the existing release surface and takes precedence over older shorthand examples in this document. Section 8 describes the post-1.0 registration map; it is not a claim that those endpoints already ship. Retain current parser spellings, output classes and authority checks.**
+
 [api-cli-surface.md](../adr/api-cli-surface.md) is the API/CLI spec's skeleton; several later ADRs joined its closed grammar at declared join points and delegated their **exact spellings** to this document. Every spelling here is bound by the locked grammar (noun-verb families, output classes, print triad, exit codes, parity rules) and by the delegating ADR's constraints; a spelling that would violate either is a defect here, not a licence to reinterpret the ADR. Nothing here adds a verb class, an output class, or an endpoint outside the declared join points.
 
 ## 1. SCIM administration ([scim-provisioning.md](../adr/scim-provisioning.md))
@@ -339,3 +341,46 @@ hikyo login <url> [--provider <kind>:<slug>] # preselects the browser's method s
 `hikyo instance-config mail test --to <address>` (`instance-config@instance` ∧ reauth; `POST /api/v1/instance/mail/test`; budget `mail-test` 5/h per principal, 1 concurrent per instance); `GET /api/v1/instance/mail` returns `{configured: bool}` only.
 
 Not verbs, by locked rule: sign-up, claim, link and establish from the terminal ([#596](https://github.com/Hikyo-Org/Hikyo/issues/596)); the CLI prints the browser URL.
+
+## 9. Confirmed pre-freeze spellings and dispositions (#79)
+
+These confirmations settle the named freeze notes in handoffs #47, #48, #49, #50, #54, #55, #68, #69 and #73. They preserve existing behavior. The parser and reviewed golden help remain the executable spelling reference; older examples omitting mandatory scope selectors do not authorize a broader default.
+
+### Hierarchy, catalogue and values
+
+| Family | Confirmed subverbs / selectors | Source |
+|---|---|---|
+| `org` | `list`, `show`, `create`, `rename`, `delete`; rename addresses one org and takes `--name` | `internal/cli/verbs.go` |
+| `project` | `list`, `show`, `create`, `rename`, `delete` | `internal/cli/hierarchy.go` |
+| `env` | `list`, `show`, `create`, `rename`, `reorder`, `delete` | `internal/cli/hierarchy.go` |
+| `folder` | `list`, `show`, `create`, `rename`, `delete` | `internal/cli/hierarchy.go` |
+| `key` | `list`, `show`, `create`, `rename`, `declare`, `reclassify`, `update`, `set-group`, `delete` | `internal/cli/keys.go` |
+| `key group` | `list`, `show`, `create`, `rename`, `delete` | `internal/cli/keys.go` |
+| `values` | Retain `declare` and `copy`; `declare --envs` names first-value destinations; `copy --from --to` names source and destinations; `set --clear` stages absence | `internal/cli/values.go` |
+| `values export` | `--format table/json/dotenv` selects the payload; it is not `-o`. Disclosure still uses the print triad | `internal/cli/values.go` |
+| `definitions` | `export`, `check`, `plan`, `apply`, `scaffold`; `scaffold --from` consumes dotenv | `internal/cli/definitions.go` |
+| `values import` | `--from-dotenv` is the strict declared-key path; `--file` names import-authored values, mutually exclusive | `internal/cli/importer.go` |
+
+The reveal-gated catalogue routes remain `x-hikyo-class: tenant`: an unauthorized object has the uniform nonexistent response even when another permitted catalogue view lists its name. No new existence oracle or output class is introduced. `org.rename` moves to `manage-members` at the addressed org through #617; delete retains its separate formula.
+
+### Authentication, environment settings and SCIM
+
+`account establish-credential` is retained as confirmed in #54. The network administrator verb is `account reset-credential`; its endpoint is `/api/v1/accounts/{principal}/credential-reset`. The authority metadata spelling `credential-reset` does not create a top-level CLI verb. Recovery remains a sessionless credential-establishment authority, accepted in #54 and documented consistently by #617; no new issuer field is invented. Effective reauthentication window defaults to zero, retaining the previously accepted fail-closed policy.
+
+`project-settings get/set --env E` addresses the environment's `protected` and `reauth-window-seconds` settings. This historical family name is retained; omitting `--env` does not create a project-wide mutation. `project-settings machine-reveal get/set --enabled true/false` is the distinct project-level opt-in.
+
+SCIM mappings are addressed by **binding, group and scope**, with the template as the value that update replaces. `add`, `update` and `remove` require `--group` plus either `--project` (optionally `--env`) or explicit `--org-scope`. They cannot silently choose the widest org scope. The group-only examples in section 1 are shorthand and are superseded by this scope requirement. Credentials retain `scim-credential` artifact eligibility, distinct from workload machine credentials. `scim.binding_updated` remains unregistered while no binding-update emitter exists; a future mutation must register its own complete audit contract.
+
+### Import, delivery and rotation
+
+`import --environment` selects the destination; `import --env` selects the Infisical source slice. These selectors are intentionally distinct. `--kube-context` selects the Kubernetes source context; it does not change the Hikyo context. The top-level import wizard remains the no-source-arguments TTY mode. Retain `run --use-human-session` as an explicit authenticated delivery choice; it does not turn a machine token into a human ceremony.
+
+The rotation families are `rotate-token-key`, `rotate-scanning-key`, `rotate-dek`, `rotate-master-key` and `rotate-root-key`. `rotate-dek --instance` addresses the instance; otherwise the named org/project. `rotate-root-key` takes exactly one of `--prepare`, `--verify`, `--finalize`, one phase per invocation, with operator confirmation. `reencrypt --instance` or `reencrypt --org O --project P` completes the ciphertext walk separately. Doctor remains a read-only diagnostic verb; it does not silently rotate, repair or accept restored identities.
+
+### Revision and enum baseline
+
+The old pickup brief assumed every minimum revision was 1. The inspected implementation advertises **API revision 2**. Nine operations require 2: `exportDefinitions`, `checkDefinitions`, `createDefinitionsPlan`, `getDefinitionsPlan`, `applyDefinitionsPlan`, `getDefinitionsSettings`, `setDefinitionsSettings`, `getMachineReveal`, `setMachineReveal`; the other 259 operations require 1 at the inspected baseline. Retain these published minima rather than lowering them for the freeze. `TestEveryOperationCarriesItsContractExtensions` enforces that no operation requires a revision above the server's advertised revision. Runtime client-skew acceptance remains a separate S1 gate.
+
+Marc already [approved `conflict` and `limit_exceeded` and accepted the SOPS/KMS size tradeoff](https://github.com/Hikyo-Org/Hikyo/issues/79#issuecomment-5353930183). Both errors enter the freeze baseline; the negative fixture forbidding later closed-response-enum growth remains. The binary must be remeasured at the final candidate, with all supported KMS sources retained.
+
+Existing open contracts `ProtocolCapability`, `SessionArtifact`, `AuthMethod` and `FactorClass` remain open. #617 additionally opens identity-provider kind, OIDC/SAML purpose and grant origin, with unknown-consumer fixtures. Audit event types and adapter-plan warnings already use strings. Control/state enums are not widened merely to make a test pass. The remaining potentially extensible response fields `AdapterProvider` and `SamlProviderWarning.code` require an explicit pre-freeze disposition and unknown-consumer validation; the [acceptance ledger](../release/acceptance-1.0.md) must not treat the enum audit as complete until that is resolved. `DynamicProviderKind` remains deliberately closed to PostgreSQL under #147.
