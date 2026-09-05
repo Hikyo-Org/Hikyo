@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Required floor measurement gate</title>
+<style>body{font:17px/1.6 system-ui,sans-serif;max-width:920px;margin:3rem auto;padding:0 1rem;color:#18232d;background:#f8fafc}h1,h2{line-height:1.2}table{border-collapse:collapse;width:100%}td,th{padding:.65rem;border:1px solid #ccd4dc;text-align:left}code{background:#e8edf2;padding:.1rem .3rem}.pending{background:#fff4ca;padding:1rem}</style>
+<h1>Required floor measurement gate</h1>
+<p>Decision authority: <a href="https://github.com/Hikyo-Org/Hikyo/issues/77#issuecomment-5354008780">#77 measurement-gate amendment</a>. Implementation uses native Linux ARM64 with four CPUs, 4 GiB RAM and zero swap. Physical Raspberry Pi calibration remains optional.</p>
+<p class="pending">Harness implemented and under review. The local isolated rehearsal remains failed: scanner p99 × 4.0 exceeds its bound and corrected same-source operator RSS evidence is pending. No passing release artifact is claimed. Exact candidate GitHub ARM execution is the next gate.</p>
+<h2>Choices recorded</h2>
+<table><tr><th>Question</th><th>Options</th><th>Recommended choice and reason</th></tr>
+<tr><td>Can an unmeasured Pi calibration block contribution?</td><td>Require physical hardware; conservative CI estimate.</td><td>Use the explicit amendment: committed CPU factors 4.0 and memory factor 1.0. Calibration commit/date remain null. Missing factors refuse acceptance.</td></tr>
+<tr><td>What does reencrypt 100 rows / 100 ms mean?</td><td>A throughput deadline; a bounded batch plus pause.</td><td>Preserve ADR section 9: at most 100 rows per transaction, 100 ms inter-batch pause. Measure completion and readability. Elapsed throughput has no invented deadline.</td></tr>
+<tr><td>How should operator memory be measured?</td><td>Idle substitute process; existing real reconciler fixture.</td><td>Run the existing 50-resource reconciler workload under the shipped 128 MiB / 200m limits, measuring process RSS separately from page-cache-inclusive cgroup charges. Compose only matching source, diff and actual Hikyo executable hashes.</td></tr>
+<tr><td>What is a 100,000-cell publish?</td><td>Count catalogue capacity; commit and read every populated cell.</td><td>Prepare ten environments with 10,000 valid encrypted values each. Time real schema fan-out, then export all 100,000 committed plaintext values through authorized services.</td></tr>
+<tr><td>How should boot and KDF memory be interpreted?</td><td>Invent a total 272 MiB process RSS limit; preserve the declared admission arithmetic.</td><td>Measure default development CLI readiness and five idle RSS samples. Execute four real Argon2id derivations through the production 272 MiB limiter. The 272 MiB number covers admitted work and shared headroom; whole-process/cgroup memory is reported separately.</td></tr>
+</table>
+<h2>Local isolated rehearsal, 2026-09-05</h2>
+<p><a href="evidence/floor-bench/local-r6.json">Raw structured evidence</a>: source d98e694f5f82282092eddceab62395d30143df3a plus dirty harness edits; Linux ARM64 VM on a macOS host, not the canonical GitHub ARM runner or a physical Pi. Other owned build and floor work was held during timing.</p>
+<table><tr><th>Metric</th><th>Raw measurement</th><th>Interpretation</th></tr>
+<tr><td>Boot and idle</td><td>716.805 ms; 104,480,768 bytes RSS</td><td>Five idle samples; no new latency bound</td></tr>
+<tr><td>Four Argon2id operations</td><td>235.843 ms; four admitted and completed</td><td>Real 64 MiB/t3/p2 work under 272 MiB admission</td></tr>
+<tr><td>100,000-cell publish</td><td>6,370.999 ms</td><td>×4.0 = 25,483.997 ms, within 30 seconds; all values read back</td></tr>
+<tr><td>Reencrypt</td><td>217.196 ms; minimum callback interval 102.995 ms</td><td>Committed progression 0/100/200; 250 rows readable on the new key</td></tr>
+<tr><td>Scanner</td><td>p99 1.439 ms; boot compile 0.633 ms; boot RSS 11,878,400 bytes</td><td>p99 ×4.0 = 5.756 ms exceeds 5 ms. No factor or threshold changed. Compile and memory fit.</td></tr>
+<tr><td>Workload cgroup</td><td>Peak 691,249,152 bytes; zero OOM kills</td><td>Four CPUs / 4 GiB / zero swap</td></tr></table>
+<h2>Corrections and retained failures</h2>
+<p>The first operator launch failed because the wrapper's private umask made image executables mode 0700. The wrapper now invokes the existing operator builder with umask 022 inside private work/evidence directories. A later fixture typo supplied a 17-byte salt; the harness now calls the existing crypto.NewSalt generator.</p>
+<p>The prior operator runner compared total cgroup memory.peak to a requirement explicitly written as process RSS. All five workload phases completed with zero restarts/OOM, but the historical runner refused a 134,295,552-byte total cgroup peak. This remains a recorded refusal, not a retrospectively passing artifact. Corrected same-source RSS evidence is required.</p>
+<p>Launching the scanner after Argon2 from the large Go parent contaminated Linux pre-exec high-water RSS (277 MB). The scanner now starts directly as container PID1, with its identical image, limits and exit state recorded. The measured startup RSS fell to 11.9 MB. No scanner memory bound was changed.</p>
+<p>Earlier uncoordinated publish timings ranged from 9.0 to 21.2 seconds during other local build/floor activity. They remain failed diagnostic runs, not proof of an intrinsic production defect. The isolated publish fit; the remaining scanner timing refusal will be assessed on the required native GitHub candidate run.</p>
+<h2>Acceptance boundaries</h2>
+<p>CPU durations multiplied by committed factors are conservative estimates, not measurements on a Pi. Publish must estimate at most 30 seconds; scanner p99 at most 5 ms per 64 KiB item; scanner compilation at most 2 seconds and 32 MiB boot RSS. Boot, KDF and reencrypt timings remain reported measurements with estimates, without new latency limits.</p>
+<p>The fixtures use signed development admission and synthetic tenant content. They grant no production release or recovery authority. The operator uses a controlled test TLS delivery source. Existing recovery proofs remain separate.</p>
+<p>The required main CI graph includes the planned floor-bench job, its registry and its fail-closed aggregate. A separate secret-free PR trigger proves the new job before the trusted base learns it; all tags run the gate. The release workflow also directly depends on it before building an unsigned draft. This intentionally duplicates the rare release-tag run so an independent failed workflow cannot be ignored by publication. Raw runs emit <code>raw-measurement-only</code> and cannot satisfy required CI.</p>
+</html>

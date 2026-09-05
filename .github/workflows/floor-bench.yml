@@ -1,0 +1,51 @@
+name: floor-bench
+
+# No production custody or secrets. PR trigger supplies proof before the trusted
+# base CI graph learns this new required job; main calls it from ci.yml.
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    tags: ['**']
+  pull_request:
+    paths:
+      - '.github/workflows/floor-bench.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.2.3
+      - name: Install pinned native arm64 kind
+        run: |
+          curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error \
+            --retry 4 --retry-delay 2 --retry-all-errors \
+            https://github.com/kubernetes-sigs/kind/releases/download/v0.32.0/kind-linux-arm64 \
+            --output "$RUNNER_TEMP/kind"
+          printf '%s  %s\n' b92cd615e97585de8ddade28ed5cd7feb4248d717c233eea5b03c37298900f5d "$RUNNER_TEMP/kind" | sha256sum --check --strict
+          chmod +x "$RUNNER_TEMP/kind"
+          sudo install "$RUNNER_TEMP/kind" /usr/local/bin/kind
+      - name: Measure and enforce the declared floor
+        run: ./scripts/bench/floor.sh "$RUNNER_TEMP/floor-bench"
+      - name: Preserve exact-source floor measurements
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: floor-bench-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/floor-bench/
+          if-no-files-found: error
+          retention-days: 90

@@ -58,6 +58,13 @@ for file in "$@"; do
 				fail 'operations floor workflow must not use shared caches'
 			fi
 			;;
+		floor-bench.yml)
+			expected_runner=ubuntu-24.04-arm
+			require_line "$file" '          cache: false'
+			if grep -E 'actions/cache(@|/)' "$file" >/dev/null; then
+				fail 'required floor bench must not use shared caches'
+			fi
+			;;
 		floor-acceptance.yml | operator-floor.yml)
 			# Native arm64 acceptance is an explicit release obligation. These
 			# manual jobs never share the ordinary x86 build caches.

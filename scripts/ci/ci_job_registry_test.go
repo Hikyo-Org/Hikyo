@@ -32,6 +32,7 @@ type workflow struct {
 }
 
 type workflowJob struct {
+	Uses     string           `yaml:"uses"`
 	Needs    yaml.Node        `yaml:"needs"`
 	If       string           `yaml:"if"`
 	Strategy workflowStrategy `yaml:"strategy"`
@@ -346,4 +347,34 @@ func sortedKeys[Value any](input map[string]Value) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// A tag-side benchmark running independently is useful evidence, but cannot
+// gate publication. The release graph must depend on the actual measured job.
+func TestReleaseFloorBenchBlocksArtifactConstruction(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var release workflow
+	if err := yaml.Unmarshal(raw, &release); err != nil {
+		t.Fatal(err)
+	}
+	if release.Jobs["floor-bench"].Uses != "./.github/workflows/floor-bench.yml" {
+		t.Fatal("release must call the actual floor measurement workflow")
+	}
+	var needs []string
+	draft := release.Jobs["build-unsigned-draft"]
+	if err := draft.Needs.Decode(&needs); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, job := range needs {
+		if job == "floor-bench" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("unsigned draft construction does not wait for the floor gate")
+	}
 }

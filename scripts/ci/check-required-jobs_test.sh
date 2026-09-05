@@ -35,6 +35,7 @@ all_plan='{
 	"client":true,
 	"compose-demo":true,
 	"docs":true,
+	"floor-bench":true,
 	"freeze-guard":true,
 	"fuzz":true,
 	"generated":true,
@@ -55,6 +56,7 @@ all_success='{
 	"compose-demo":{"result":"success"},
 	"dco":{"result":"success"},
 	"docs":{"result":"success"},
+	"floor-bench":{"result":"success"},
 	"freeze-guard":{"result":"success"},
 	"fuzz":{"result":"success"},
 	"generated":{"result":"success"},
@@ -75,6 +77,7 @@ docs_plan=$(printf '%s' "$all_plan" | jq 'map_values(false) | .docs = true')
 docs_success=$(printf '%s' "$all_success" | jq '
 	.client.result = "skipped" |
 	.["compose-demo"].result = "skipped" |
+	.["floor-bench"].result = "skipped" |
 	.["freeze-guard"].result = "skipped" |
 	.fuzz.result = "skipped" |
 	.generated.result = "skipped" |
@@ -147,3 +150,7 @@ expect_reject 'non-boolean plan entry' pull_request "$all_success" \
 expect_reject 'malformed plan' pull_request "$all_success" 'not-json'
 
 printf 'required-jobs fixture: planned success/skip accepted; drift and failures refused\n'
+
+expect_reject 'planned floor bench skipped' push "$(printf '%s' "$all_success" | jq '.["floor-bench"].result="skipped"')" "$all_plan"
+expect_reject 'floor bench failed' push "$(printf '%s' "$all_success" | jq '.["floor-bench"].result="failure"')" "$all_plan"
+expect_reject 'floor bench missing' push "$(printf '%s' "$all_success" | jq 'del(.["floor-bench"])')" "$all_plan"

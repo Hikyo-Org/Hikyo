@@ -23,7 +23,9 @@ All defaults must run comfortably on **both** declared minimum deployments; the 
 - **Pi 4, 4 GB RAM, single node, sqlite** — CPU/crypto floor (Cortex-A72, no ARMv8 crypto extensions; the [encryption ADR](./encryption-model.md)'s XChaCha20-Poly1305 choice is constant-time in software here).
 - **2 vCPU / 4 GB x86 VPS, single node** — the generic hosted floor.
 
-No shipped profiles; one set of defaults. Bigger hardware buys headroom, not different behavior. Resource numbers marked *(measured)* below are to be verified empirically on Pi-class hardware before implementation freeze and revisited on measurement, per the verification workstyle.
+No shipped profiles; one set of defaults. Bigger hardware buys headroom, not different behavior.
+
+**Declared measurement amendment ([#77, 2026-08-20](https://github.com/Hikyo-Org/Hikyo/issues/77#issuecomment-5354008780), recorded 2026-09-05):** the required `floor-bench` CI gate runs native ARM64 with four CPUs, 4 GiB RAM and zero swap. CPU measurements multiplied by the committed per-metric factors in [derate.json](../release/measurements/derate.json) must fit the declared latency bounds. Until optional physical Pi calibration supplies a commit and date, every CPU factor is conservatively **4.0**; absent factors fail closed. Memory is measured directly with factor **1.0**. These CPU results are estimates, not physical Pi measurements. Physical Pi calibration can improve the factors but does not block contributions. A release must preserve its passing exact-source `floor-<sha>.json` artifact. The harness and evidence contract are documented in [floor-bench.md](../release/floor-bench.md).
 
 ## 2. Retention & erasure
 

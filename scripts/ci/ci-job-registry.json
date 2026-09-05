@@ -6,6 +6,7 @@
       "client",
       "compose-demo",
       "docs",
+      "floor-bench",
       "freeze-guard",
       "fuzz",
       "generated",
@@ -56,6 +57,7 @@
       "release-snapshot",
       "supply-chain-checks"
     ],
+    "floor-bench": ["floor-bench"],
     "docs": ["docs"],
     "docs-ci": ["docs", "lint"],
     "k8s-e2e-script": ["k8s-e2e", "lint"],
@@ -87,6 +89,7 @@
   },
   "jobs": {
     "changes": {"required_gate": "always"},
+    "floor-bench": {"required_gate": "planned", "plan_jobs": ["floor-bench"]},
     "lint": {"required_gate": "planned", "plan_jobs": ["lint"]},
     "dco": {"required_gate": "pull-request"},
     "supply-chain-checks": {

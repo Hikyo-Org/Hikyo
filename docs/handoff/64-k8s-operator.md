@@ -307,7 +307,7 @@ added to `scripts/ci/classify-changed-paths.sh` AND `ci-required.needs`.
 | requeue / resync interval default | 5 min | ops-spec |
 | error backoff | 1 s → 5 min, jittered | ops-spec |
 | informer full resync | 10 h explicit | ops-spec |
-| operator resources | 50m/64Mi – 200m/128Mi | ops-spec (measured on Pi before freeze, #77) |
+| operator resources | 50m/64Mi – 200m/128Mi | ops-spec (required native ARM64 CI measurement; physical Pi calibration optional, #77) |
 | TokenRequest expiry | 600 s | API-server minimum |
 | credential expiry warning horizon | 7 days | this ticket (no ops-spec value) |
 | stamp length / version | 128 bit, `v1:` | k8s ADR |
@@ -469,8 +469,8 @@ See §0.9; additionally TokenRequest expiry 600 s, expiry warning 7 days,
 
 ## Open items
 
-- Pi-class measurement of the operator resources (#77), tracked as
-  `OBL-OPERATOR-PI-FIT`. Still open.
+- Operator resource measurement (#77), tracked as `OBL-OPERATOR-PI-FIT`.
+  The [declared measurement amendment](https://github.com/Hikyo-Org/Hikyo/issues/77#issuecomment-5354008780) makes native ARM64 floor-bench evidence required and physical Pi calibration optional. Historical status here is not the current implementation-status ledger.
 - Push/webhook sync, ESO provider, in-cluster operator-pod E2E: deferred per
   the ADR.
 

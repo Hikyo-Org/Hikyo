@@ -10,6 +10,7 @@ import (
 // Exact source-owned exceptions. Being inside store, a fixture package or the
 // migration package does not grant new files ambient raw-driver authority.
 var driverFiles = map[string]bool{
+	"internal/isolation/floor_bench_test.go":                     true, // signed-admitted bulk fixture and independent committed-chunk observation only
 	"internal/isolation/ops_floor_test.go":                       true, // isolated admitted SQLite health accounting for native O2 acceptance
 	"internal/store/timestamps_postgres_test.go":                 true, // existing exact PostgreSQL connection timestamp regression
 	"internal/upgradegate/gate_populated_process_test.go":        true, // actual admitted transactions seed crash-recovery acceptance

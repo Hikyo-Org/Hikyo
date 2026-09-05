@@ -18,6 +18,11 @@ env:
   GOFLAGS: -mod=readonly
 
 jobs:
+  floor-bench:
+    uses: ./.github/workflows/floor-bench.yml
+    permissions:
+      contents: read
+
   docs:
     permissions:
       contents: read
@@ -40,7 +45,7 @@ jobs:
         run: ./scripts/ci/verify-docs.sh
 
   build-unsigned-draft:
-    needs: docs
+    needs: [docs, floor-bench]
     runs-on: ubuntu-latest
     services:
       release-schema:

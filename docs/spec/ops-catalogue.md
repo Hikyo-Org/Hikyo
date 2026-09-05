@@ -124,6 +124,6 @@ is a directory listing, so neither adds a resource class.
 |---|---|---|
 | Key name length | ≤ 128 bytes (safe under the K8s Secret data-key limit with adapter prefixes applied) | fixed |
 
-## Values still pending measurement (not deferrable past implementation freeze)
+## Required measurement gate (not deferrable past implementation freeze)
 
-Per ops-spec, all *(measured)* entries — operator resource requests/limits, scan p99, scanner boot compile — are verified on Pi-class hardware **before implementation freeze**. Tracked in [open-items.md](./open-items.md).
+Per the declared [#77 amendment](https://github.com/Hikyo-Org/Hikyo/issues/77#issuecomment-5354008780), all *(measured)* entries require the native ARM64 `floor-bench` CI artifact before implementation freeze. CPU measurements use committed conservative factors (4.0 until optional physical Pi calibration); memory uses factor 1.0. Missing factors or measurements refuse acceptance. Physical Pi calibration is optional; estimates must not be described as Pi measurements. Tracked in [open-items.md](./open-items.md).
