@@ -486,6 +486,19 @@ func destinationPath(d adapter.Destination) (string, error) {
 	}
 }
 
+// artifactPath selects the provider namespace for secrets and variables.
+// Environment endpoints sit directly below the environment, unlike repo/org Actions endpoints.
+func artifactPath(d adapter.Destination) (string, error) {
+	path, err := destinationPath(d)
+	if err != nil {
+		return "", err
+	}
+	if d.Kind != adapter.Environment {
+		path += "/actions"
+	}
+	return path, nil
+}
+
 func (c *Client) ResolveDestination(ctx context.Context, d adapter.Destination) (DestinationIdentity, error) {
 	var repositoryID int64
 	if d.Kind == adapter.Environment {
@@ -528,7 +541,7 @@ func (c *Client) ResolveDestination(ctx context.Context, d adapter.Destination) 
 }
 
 func (c *Client) ListSecretNames(ctx context.Context, d adapter.Destination) ([]string, error) {
-	path, err := destinationPath(d)
+	path, err := artifactPath(d)
 	if err != nil {
 		return nil, err
 	}
@@ -541,7 +554,7 @@ func (c *Client) ListSecretNames(ctx context.Context, d adapter.Destination) ([]
 			} `json:"secrets"`
 		}
 		query := "?per_page=" + strconv.Itoa(pageSize) + "&page=" + strconv.Itoa(page)
-		if _, err := c.do(ctx, operationRegistry["list-secrets"], path+"/actions/secrets"+query, nil, &out); err != nil {
+		if _, err := c.do(ctx, operationRegistry["list-secrets"], path+"/secrets"+query, nil, &out); err != nil {
 			return nil, err
 		}
 		if len(names)+len(out.Rows) > secretNameLimit {
@@ -563,7 +576,7 @@ func (c *Client) ListSecretNames(ctx context.Context, d adapter.Destination) ([]
 }
 
 func (c *Client) PublicKey(ctx context.Context, d adapter.Destination) (PublicKey, error) {
-	path, err := destinationPath(d)
+	path, err := artifactPath(d)
 	if err != nil {
 		return PublicKey{}, err
 	}
@@ -571,7 +584,7 @@ func (c *Client) PublicKey(ctx context.Context, d adapter.Destination) (PublicKe
 		ID  string `json:"key_id"`
 		Key string `json:"key"`
 	}
-	if _, err := c.do(ctx, operationRegistry["public-key"], path+"/actions/secrets/public-key", nil, &out); err != nil {
+	if _, err := c.do(ctx, operationRegistry["public-key"], path+"/secrets/public-key", nil, &out); err != nil {
 		return PublicKey{}, err
 	}
 	raw, err := base64.StdEncoding.DecodeString(out.Key)
@@ -593,11 +606,11 @@ func secretBody(d adapter.Destination, encrypted, keyID string) map[string]any {
 }
 
 func (c *Client) PutSecret(ctx context.Context, d adapter.Destination, name, encrypted, keyID string) (WriteResult, error) {
-	path, err := destinationPath(d)
+	path, err := artifactPath(d)
 	if err != nil {
 		return WriteResult{}, err
 	}
-	status, err := c.do(ctx, operationRegistry["put-secret"], path+"/actions/secrets/"+url.PathEscape(name), secretBody(d, encrypted, keyID), nil)
+	status, err := c.do(ctx, operationRegistry["put-secret"], path+"/secrets/"+url.PathEscape(name), secretBody(d, encrypted, keyID), nil)
 	return WriteResult{Status: status}, err
 }
 
@@ -613,38 +626,38 @@ func variableBody(d adapter.Destination, name, value string, includeName bool) m
 }
 
 func (c *Client) CreateVariable(ctx context.Context, d adapter.Destination, name, value string) (WriteResult, error) {
-	path, err := destinationPath(d)
+	path, err := artifactPath(d)
 	if err != nil {
 		return WriteResult{}, err
 	}
-	status, err := c.do(ctx, operationRegistry["create-variable"], path+"/actions/variables", variableBody(d, name, value, true), nil)
+	status, err := c.do(ctx, operationRegistry["create-variable"], path+"/variables", variableBody(d, name, value, true), nil)
 	return WriteResult{Status: status}, err
 }
 
 func (c *Client) UpdateVariable(ctx context.Context, d adapter.Destination, name, value string) (WriteResult, error) {
-	path, err := destinationPath(d)
+	path, err := artifactPath(d)
 	if err != nil {
 		return WriteResult{}, err
 	}
-	status, err := c.do(ctx, operationRegistry["update-variable"], path+"/actions/variables/"+url.PathEscape(name), variableBody(d, name, value, false), nil)
+	status, err := c.do(ctx, operationRegistry["update-variable"], path+"/variables/"+url.PathEscape(name), variableBody(d, name, value, false), nil)
 	return WriteResult{Status: status}, err
 }
 
 func (c *Client) DeleteSecret(ctx context.Context, d adapter.Destination, name string) error {
-	path, err := destinationPath(d)
+	path, err := artifactPath(d)
 	if err != nil {
 		return err
 	}
-	_, err = c.do(ctx, operationRegistry["delete-secret"], path+"/actions/secrets/"+url.PathEscape(name), nil, nil)
+	_, err = c.do(ctx, operationRegistry["delete-secret"], path+"/secrets/"+url.PathEscape(name), nil, nil)
 	return err
 }
 
 func (c *Client) DeleteVariable(ctx context.Context, d adapter.Destination, name string) error {
-	path, err := destinationPath(d)
+	path, err := artifactPath(d)
 	if err != nil {
 		return err
 	}
-	_, err = c.do(ctx, operationRegistry["delete-variable"], path+"/actions/variables/"+url.PathEscape(name), nil, nil)
+	_, err = c.do(ctx, operationRegistry["delete-variable"], path+"/variables/"+url.PathEscape(name), nil, nil)
 	return err
 }
 

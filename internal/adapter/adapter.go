@@ -280,8 +280,12 @@ func ValidateGitHubActionsManifest(prefix string, entries []ManifestEntry, value
 			return fmt.Errorf("github-actions: %s: effective name %q is not uppercase GitHub Actions identifier syntax", entry.CanonicalName, name)
 		case strings.HasPrefix(name, "GITHUB_"):
 			return fmt.Errorf("github-actions: %s: effective name %q uses reserved GITHUB_ prefix", entry.CanonicalName, name)
-		case values && len([]byte(entry.Value)) > 48*1024:
-			return fmt.Errorf("github-actions: %s: value exceeds GitHub's 48 KB limit", entry.CanonicalName)
+		case values && entry.Classification == ConfigClassification && entry.Value == "":
+			return fmt.Errorf("github-actions: %s: GitHub does not accept empty variable values", entry.CanonicalName)
+		case values && entry.Classification == SecretClassification && len(entry.Value) > 47952:
+			return fmt.Errorf("github-actions: %s: secret value exceeds GitHub's 47952-byte plaintext limit", entry.CanonicalName)
+		case values && entry.Classification == ConfigClassification && len(entry.Value) > 48000:
+			return fmt.Errorf("github-actions: %s: variable value exceeds GitHub's 48000-byte limit", entry.CanonicalName)
 		case values && strings.ContainsRune(entry.Value, '\x00'):
 			return fmt.Errorf("github-actions: %s: NUL-containing values are not workflow-byte-exact", entry.CanonicalName)
 		case values && !utf8.ValidString(entry.Value):

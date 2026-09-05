@@ -353,6 +353,9 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 			if outcome == adapter.OutcomeUnknown {
 				return result, fmt.Errorf("%w: %s %s", adapter.ErrIndeterminate, row.Surface, row.EffectiveName)
 			}
+			if row.Surface == adapter.Variable && !primaryLanded && IsStatus(err, http.StatusForbidden) {
+				return result, destinationCapabilityError(req.Target.Destination, err)
+			}
 			return result, err
 		}
 		if err := journal.Finish(ctx, effect, adapter.Completion{Outcome: adapter.OutcomeSuccess, State: adapter.Owned, ProviderStatus: providerStatus}); err != nil {

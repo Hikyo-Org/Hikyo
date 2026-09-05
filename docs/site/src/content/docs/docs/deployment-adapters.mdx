@@ -93,6 +93,17 @@ first 100 secrets alphabetically; combined organization and repository
 variables over 256 KB can also truncate at consumption time. Plan/sync warnings
 name both limits.
 
+GitHub rejects empty variable values. Sync refuses an empty configuration value
+by key name before any provider request; it does not substitute whitespace or
+silently omit the variable. Plans remain value-blind. Variables write permission
+is first proven by the sync sentinel, since connection checks cannot safely read
+provider variables or mutate them.
+
+The GitHub delivery limits are 48,000 UTF-8 bytes per variable and 47,952
+plaintext bytes per secret. These effective limits are pinned by real API
+boundary probes; they are not 48 KiB. Sync rejects larger values by key name
+before contacting the provider. It never chunks or re-encodes a value to fit.
+
 Published environment changes automatically queue a newest-wins converge for
 intersecting targets under their recorded authority. `adapter plan` reports
 names and dispositions only. Existing provider names are never captured
