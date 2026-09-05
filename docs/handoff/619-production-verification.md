@@ -47,3 +47,5 @@ The workflow now starts in the package directory, and the conformance script
 changes directory before invoking its tools. Frozen installation selects
 11.24.0; real Inspector and all pinned conformance scenarios pass. No version
 check is suppressed and no dependency pin is changed.
+
+Trusted-workflow bootstrap follow-up: the second CI run still executes the base branch command. Added a private root packageManager pin matching all nested packages (pnpm 11.24.0), validated the old root --dir invocation with a fresh Corepack cache. This preserves trusted orchestration. Newly added CI steps require post-merge main proof; their exact local equivalents already passed.
