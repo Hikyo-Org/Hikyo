@@ -1006,8 +1006,9 @@ function invalidSettingsText(operation: SettingsOperation | undefined): string {
 function unavailableSettingsText(operation: SettingsOperation | undefined): string {
   switch (operation) {
     case 'rename-org':
+      return 'This organisation is unavailable or does not exist. Renaming requires organisation membership administration.';
     case 'delete-org':
-      return 'This organisation is unavailable or does not exist. Organisation lifecycle changes are instance-operator work.';
+      return 'This organisation is unavailable or does not exist. Deleting requires instance administration.';
     case 'rename-project':
     case 'delete-project':
       return 'This project is unavailable or does not exist.';

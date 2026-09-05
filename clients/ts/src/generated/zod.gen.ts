@@ -509,6 +509,12 @@ export const zMeta = z.object({
     protocol_capabilities: z.array(zProtocolCapability)
 });
 
+/**
+ * Accepts a credential-establishment authority issued by bootstrap,
+ * invitation, credential-reset, break-glass, or recovery. The issuer is
+ * server-owned metadata, not a request discriminator.
+ *
+ */
 export const zEstablishCredentialRequest = z.object({
     authority: z.string().min(16).max(256),
     password: z.string().min(12).max(1024)
@@ -1495,7 +1501,7 @@ export const zMintCredentialResult = z.object({
 /**
  * A binding names exactly one service account, matched byte-for-byte on
  * `(issuer, subject)`. There are no wildcards, no namespace patterns, no
- * path prefixes, no case folding and no JIT provisioning: a pattern rule
+ * path prefixes, no case folding and no automatic provisioning: a pattern rule
  * such as "any ServiceAccount in namespace prod" would hand a Hikyo
  * principal to anyone holding `create serviceaccount` in that namespace, a
  * far wider group than cluster-admin.
@@ -1600,13 +1606,7 @@ export const zApplyTemplateRequest = z.object({
  *
  */
 export const zGrantOrigin = z.object({
-    kind: z.enum([
-        'manual',
-        'break-glass',
-        'scim',
-        'structural',
-        'lockout-retention'
-    ]),
+    kind: z.string(),
     subject: z.string().max(128)
 });
 
@@ -2283,11 +2283,7 @@ export const zRenameKeyGroupRequest = z.object({
 });
 
 export const zOidcStartRequest = z.object({
-    purpose: z.enum([
-        'login',
-        'link',
-        'reauth'
-    ]),
+    purpose: z.string(),
     environment_id: z.string().max(64).optional(),
     proof: z.string().max(1024).optional(),
     browser: z.boolean().optional().default(false)
@@ -2298,11 +2294,7 @@ export const zOidcStartResult = z.object({
 });
 
 export const zSamlStartRequest = z.object({
-    purpose: z.enum([
-        'login',
-        'link',
-        'reauth'
-    ]),
+    purpose: z.string(),
     environment_id: z.string().max(64).optional(),
     proof: z.string().max(1024).optional()
 });
@@ -2332,7 +2324,6 @@ export const zOidcProviderInput = z.object({
     client_id: z.string().max(1024),
     client_secret: z.string().max(4096),
     scopes: z.string().max(1024),
-    jit_policy: z.string().max(4096).nullish(),
     assurance_policy: z.string().max(4096).nullish(),
     enabled: z.boolean()
 });
@@ -2344,7 +2335,6 @@ export const zOidcProvider = z.object({
     client_id: z.string(),
     scopes: z.string(),
     redirect_uri: z.string(),
-    jit_policy: z.string().nullish(),
     assurance_policy: z.string().nullish(),
     enabled: z.boolean()
 });
@@ -2354,9 +2344,9 @@ export const zOidcProviderList = z.object({
 });
 
 /**
- * Closed protocol discriminator in the byte-exact external-identity key.
+ * OPEN protocol discriminator in the byte-exact external-identity key.
  */
-export const zIdentityProviderKind = z.enum(['oidc', 'saml']);
+export const zIdentityProviderKind = z.string();
 
 export const zAuthMethodProvider = z.object({
     slug: z.string(),
@@ -2390,7 +2380,7 @@ export const zSamlMetadataSource = z.enum(['file', 'url']);
 /**
  * SAML authentication configuration. Exactly one of `metadata_document`
  * and `metadata_url` must match `metadata_source`; the service enforces
- * that conditional before fetching or parsing. No JIT member exists:
+ * that conditional before fetching or parsing. No provisioning member exists:
  * SAML never provisions accounts.
  *
  */

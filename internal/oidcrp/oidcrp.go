@@ -13,7 +13,6 @@ package oidcrp
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -133,8 +132,7 @@ func (p *Provider) Exchange(ctx context.Context, clientID string, clientSecret [
 // Claims is the validated ID-token content the service policy consults. Nonce
 // is returned raw for the caller to compare against the hashed transaction
 // value (A19); the AMR/ACR/auth_time are what the provider asserted, recorded
-// verbatim in the assurance record (A12). Raw carries every claim for the JIT
-// policy's issuer-specific claim lookup.
+// verbatim in the assurance record (A12). No unverified claims leave this boundary.
 type Claims struct {
 	Issuer          string
 	Subject         string
@@ -144,7 +142,6 @@ type Claims struct {
 	AuthorizedParty string
 	AuthTime        time.Time
 	HasAuthTime     bool
-	Raw             map[string]json.RawMessage
 }
 
 // Verify validates an ID token completely: exact issuer against the pinned one,
@@ -199,11 +196,6 @@ func (p *Provider) Verify(ctx context.Context, clientID, rawIDToken string, now 
 		c.AuthTime = time.Unix(*extra.AuthTime, 0).UTC()
 		c.HasAuthTime = true
 	}
-	raw := map[string]json.RawMessage{}
-	if err := tok.Claims(&raw); err != nil {
-		return Claims{}, fmt.Errorf("%w: %v", ErrTokenInvalid, err)
-	}
-	c.Raw = raw
 	return c, nil
 }
 

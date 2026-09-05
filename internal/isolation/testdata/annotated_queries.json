@@ -195,7 +195,7 @@
     "engine": "postgres",
     "name": "CreateOIDCProvider",
     "annotation": "authn-resolution",
-    "hash": "f5c5253e3cbfe6d6dc9dfb7ed1e805c3706fef1a8b1e978ff2e08ef7b6498ab4"
+    "hash": "60126692e17ab926b179e3764af5115e0c0c2e140d7841552e6e050bcde79c43"
   },
   {
     "engine": "postgres",
@@ -507,13 +507,13 @@
     "engine": "postgres",
     "name": "GetEnabledProviderByIssuer",
     "annotation": "authn-resolution",
-    "hash": "8720cfbe40a6900eee4d57fc382865ab7c6b44ef8d7c43705bd7f99b99a378a0"
+    "hash": "f6ead29fea22c802d532e3b2bdd0dfa28feb442e4a0940453bca1c2bd4a9174d"
   },
   {
     "engine": "postgres",
     "name": "GetEnabledProviderBySlug",
     "annotation": "authn-resolution",
-    "hash": "2b9325b93b2a8ece65f668f68f607696af2a3ac335322f385801e5cd6aafc27e"
+    "hash": "22f5e0ab3ca2af9d045c25b323687ae5952aaaa66dfe16480480767c49fcc537"
   },
   {
     "engine": "postgres",
@@ -543,7 +543,7 @@
     "engine": "postgres",
     "name": "GetOIDCProviderBySlug",
     "annotation": "authn-resolution",
-    "hash": "0fc87d39348bfd633354fc898a1cbd7f681c8395299ea8223aa78c1871dbf454"
+    "hash": "b66498471767d6825ae3c10138ca67e0cc10367b97eb434b6603262cf03884c6"
   },
   {
     "engine": "postgres",
@@ -591,7 +591,7 @@
     "engine": "postgres",
     "name": "GetProviderForCallback",
     "annotation": "authn-resolution",
-    "hash": "e63c2d8817d8c47dcfb6ace0e4738ca1405c97c7c2694a3b785954c426cab679"
+    "hash": "dd0c5490aee6dfd7f8c6a951b033faf7cecf384e9830a56b0924ada8517f614e"
   },
   {
     "engine": "postgres",
@@ -1047,7 +1047,7 @@
     "engine": "postgres",
     "name": "ListOIDCProviders",
     "annotation": "authn-resolution",
-    "hash": "a40c245b92177b74179d4a24c340a6bfcfb9255d2e9b16917ed7ef6b558dd98b"
+    "hash": "f56ab37022bf6a6cbbeb747e17f235d27d52c8c9be2ae05d49aa879750882ff1"
   },
   {
     "engine": "postgres",
@@ -1479,7 +1479,7 @@
     "engine": "postgres",
     "name": "UpdateOIDCProviderCAS",
     "annotation": "authn-resolution",
-    "hash": "ded2711fd1d54b158c424e2fb95f6543ef0660ab9bbb8c649440b41d68b17b30"
+    "hash": "dce489c076a53d2dd9fe37fcf21c1222daa861e5d14726a819610f7dde6f97ab"
   },
   {
     "engine": "postgres",
@@ -1719,7 +1719,7 @@
     "engine": "sqlite",
     "name": "CreateOIDCProvider",
     "annotation": "authn-resolution",
-    "hash": "c42dd08dd3f40a1c8e97b602875c3dcdeec65754a90e9a5a5a02ca158fbacdb7"
+    "hash": "0e6cee4d1dbde7b6320270e1a40081342a2db85269679fff17d0e5789ce7f8c1"
   },
   {
     "engine": "sqlite",
@@ -2031,13 +2031,13 @@
     "engine": "sqlite",
     "name": "GetEnabledProviderByIssuer",
     "annotation": "authn-resolution",
-    "hash": "385335ff0dd06601ecdfd0333e3f3e8513c2bbb1b7bb80b4938803330df8c67c"
+    "hash": "64b64f24eb8efc4e7c7ab8d07c61a995fc1b9e223699eeeca12fb13023e454a4"
   },
   {
     "engine": "sqlite",
     "name": "GetEnabledProviderBySlug",
     "annotation": "authn-resolution",
-    "hash": "7dec4d917828f5562953739f4aaf32bd65d875969afc45c08d1912f74653c101"
+    "hash": "0918227ccff9a73bdd237417945b9025e8d56e8e07e106c7ae2549de1a7aa963"
   },
   {
     "engine": "sqlite",
@@ -2067,7 +2067,7 @@
     "engine": "sqlite",
     "name": "GetOIDCProviderBySlug",
     "annotation": "authn-resolution",
-    "hash": "8f0c1510ef41096cf92117b3287da005a1abc2cfece8c1ecdba485c18c2f0fcd"
+    "hash": "269c40d6785a85cd15f79517706927a8cd40f13fe3f77efcda91e97f23cf5f5c"
   },
   {
     "engine": "sqlite",
@@ -2115,7 +2115,7 @@
     "engine": "sqlite",
     "name": "GetProviderForCallback",
     "annotation": "authn-resolution",
-    "hash": "46c9fcacefdd07f115a81064b1fa73bb8fad94bd14994a58fb9369c41771ee4e"
+    "hash": "8ace8d4c9dc0156a7f195a05b7469b3f5e93022ce87fe510293b962dc189c7c1"
   },
   {
     "engine": "sqlite",
@@ -2571,7 +2571,7 @@
     "engine": "sqlite",
     "name": "ListOIDCProviders",
     "annotation": "authn-resolution",
-    "hash": "a40c245b92177b74179d4a24c340a6bfcfb9255d2e9b16917ed7ef6b558dd98b"
+    "hash": "f56ab37022bf6a6cbbeb747e17f235d27d52c8c9be2ae05d49aa879750882ff1"
   },
   {
     "engine": "sqlite",
@@ -3003,7 +3003,7 @@
     "engine": "sqlite",
     "name": "UpdateOIDCProviderCAS",
     "annotation": "authn-resolution",
-    "hash": "d67be70bee78cb32202bbaffdf0fd50ee3bef2ff208836ab19132ac53ce1e266"
+    "hash": "b361b0a041aab4120d32539d44cc155afd91133e390ac8a5662c7e347932c242"
   },
   {
     "engine": "sqlite",

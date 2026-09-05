@@ -668,7 +668,6 @@ type OidcProvider struct {
 	ClientSecret    []byte
 	Scopes          string
 	RedirectUri     string
-	JitPolicy       sql.NullString
 	AssurancePolicy sql.NullString
 	Enabled         int64
 	DekVersion      int64

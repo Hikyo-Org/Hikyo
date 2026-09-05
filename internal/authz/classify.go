@@ -190,7 +190,7 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	// fixture with that reason rather than silently absent.
 	// OIDC (#54). start emits only a throttle crossing directly; the callback
 	// is where a login/link/reauth lands, so it carries the family of outcomes
-	// (login success, refusal by cause, link, JIT, the reissued/rotated session,
+	// (login success, refusal by cause, link, the reissued/rotated session,
 	// reauth). link start mirrors start; unlink emits the unlink plus the
 	// reissued session. Provider administration is operation-modeled (Ops).
 	"http:POST /api/v1/auth/oidc/{provider}/start": {Class: ClassUnauthenticated, Events: []audit.EventType{audit.EventAuthThrottleCrossed}},
@@ -198,7 +198,6 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 		audit.EventOIDCLogin,
 		audit.EventOIDCRefused,
 		audit.EventIdentityLinked,
-		audit.EventJITProvisioned,
 		audit.EventAuthSessionCreated,
 		audit.EventAuthReauthenticated,
 		audit.EventAuthThrottleCrossed,

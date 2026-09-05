@@ -28,14 +28,8 @@ const prototypeMode = import.meta.env.MODE === 'prototype';
  * Organisation settings (registry surface `org-settings`, #60; locked
  * prototype app-chrome iteration 14, retention panel from iteration 16).
  *
- * The one thing to know before reading the identity panel: renaming and
- * deleting an organisation carry `instance-config@instance`, because the
- * locked capability set holds NO org-lifecycle atom (`manage-projects` is
- * explicitly "create and delete projects"). An organisation administrator
- * therefore cannot rename or delete the organisation they administer and gets
- * the uniform 404 — a standing consequence #48 and #55 both carried to human
- * disposition rather than amending the ADR in code. The surface states it in
- * the panel instead of discovering it as a mysterious refusal.
+ * Renaming requires manage-members at this organisation. Deleting remains
+ * an instance administrator operation.
  */
 export function OrgSettings() {
   const navigate = useNavigate();

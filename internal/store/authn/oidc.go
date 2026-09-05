@@ -33,7 +33,6 @@ type OIDCProvider struct {
 	ClientSecret    []byte
 	Scopes          string
 	RedirectURI     string
-	JITPolicy       *string
 	AssurancePolicy *string
 	Enabled         bool
 	DEKVersion      int64
@@ -45,8 +44,8 @@ func sqliteProvider(row sqlitegen.OidcProvider) OIDCProvider {
 		ID: row.ID, Slug: row.Slug, DisplayName: row.DisplayName, Kind: row.Kind,
 		Issuer: row.Issuer, ClientID: row.ClientID, ClientSecret: row.ClientSecret,
 		Scopes: row.Scopes, RedirectURI: row.RedirectUri,
-		JITPolicy: nullStringPtr(row.JitPolicy), AssurancePolicy: nullStringPtr(row.AssurancePolicy),
-		Enabled: row.Enabled == 1, DEKVersion: row.DekVersion, RowVersion: row.RowVersion,
+		AssurancePolicy: nullStringPtr(row.AssurancePolicy),
+		Enabled:         row.Enabled == 1, DEKVersion: row.DekVersion, RowVersion: row.RowVersion,
 	}
 }
 
@@ -55,8 +54,8 @@ func pgProvider(row pggen.OidcProvider) OIDCProvider {
 		ID: row.ID, Slug: row.Slug, DisplayName: row.DisplayName, Kind: row.Kind,
 		Issuer: row.Issuer, ClientID: row.ClientID, ClientSecret: row.ClientSecret,
 		Scopes: row.Scopes, RedirectURI: row.RedirectUri,
-		JITPolicy: pgTextPtr(row.JitPolicy), AssurancePolicy: pgTextPtr(row.AssurancePolicy),
-		Enabled: row.Enabled == 1, DEKVersion: row.DekVersion, RowVersion: row.RowVersion,
+		AssurancePolicy: pgTextPtr(row.AssurancePolicy),
+		Enabled:         row.Enabled == 1, DEKVersion: row.DekVersion, RowVersion: row.RowVersion,
 	}
 }
 
@@ -106,7 +105,6 @@ type NewProvider struct {
 	ClientSecret    []byte
 	Scopes          string
 	RedirectURI     string
-	JITPolicy       *string
 	AssurancePolicy *string
 	Enabled         bool
 	DEKVersion      int64
@@ -123,7 +121,6 @@ type ProviderUpdate struct {
 	ClientSecret    []byte
 	Scopes          string
 	RedirectURI     string
-	JITPolicy       *string
 	AssurancePolicy *string
 	Enabled         bool
 	DEKVersion      int64
@@ -144,16 +141,16 @@ func (r *Resolver) CreateProvider(ctx context.Context, n NewProvider) error {
 		return r.sq.CreateOIDCProvider(ctx, sqlitegen.CreateOIDCProviderParams{
 			ID: n.ID, Slug: n.Slug, DisplayName: n.DisplayName, Kind: n.Kind, Issuer: n.Issuer,
 			ClientID: n.ClientID, ClientSecret: n.ClientSecret, Scopes: n.Scopes, RedirectUri: n.RedirectURI,
-			JitPolicy: ptrNullString(n.JITPolicy), AssurancePolicy: ptrNullString(n.AssurancePolicy),
-			Enabled: boolInt(n.Enabled), DekVersion: n.DEKVersion,
+			AssurancePolicy: ptrNullString(n.AssurancePolicy),
+			Enabled:         boolInt(n.Enabled), DekVersion: n.DEKVersion,
 			CreatedAt: encodeTime(n.CreatedAt), UpdatedAt: encodeTime(n.UpdatedAt),
 		})
 	}
 	return r.pg.CreateOIDCProvider(ctx, pggen.CreateOIDCProviderParams{
 		ID: n.ID, Slug: n.Slug, DisplayName: n.DisplayName, Kind: n.Kind, Issuer: n.Issuer,
 		ClientID: n.ClientID, ClientSecret: n.ClientSecret, Scopes: n.Scopes, RedirectUri: n.RedirectURI,
-		JitPolicy: ptrPgTextIn(n.JITPolicy), AssurancePolicy: ptrPgTextIn(n.AssurancePolicy),
-		Enabled: boolInt(n.Enabled), DekVersion: n.DEKVersion,
+		AssurancePolicy: ptrPgTextIn(n.AssurancePolicy),
+		Enabled:         boolInt(n.Enabled), DekVersion: n.DEKVersion,
 		CreatedAt: pgTimestamp(n.CreatedAt), UpdatedAt: pgTimestamp(n.UpdatedAt),
 	})
 }
@@ -206,8 +203,8 @@ func (r *Resolver) UpdateProvider(ctx context.Context, u ProviderUpdate) (bool, 
 		n, err := r.sq.UpdateOIDCProviderCAS(ctx, sqlitegen.UpdateOIDCProviderCASParams{
 			DisplayName: u.DisplayName, ClientID: u.ClientID, ClientSecret: u.ClientSecret,
 			Scopes: u.Scopes, RedirectUri: u.RedirectURI,
-			JitPolicy: ptrNullString(u.JITPolicy), AssurancePolicy: ptrNullString(u.AssurancePolicy),
-			Enabled: boolInt(u.Enabled), DekVersion: u.DEKVersion, UpdatedAt: encodeTime(u.UpdatedAt),
+			AssurancePolicy: ptrNullString(u.AssurancePolicy),
+			Enabled:         boolInt(u.Enabled), DekVersion: u.DEKVersion, UpdatedAt: encodeTime(u.UpdatedAt),
 			ID: u.ID, RowVersion: u.RowVersion,
 		})
 		return n == 1, err
@@ -215,8 +212,8 @@ func (r *Resolver) UpdateProvider(ctx context.Context, u ProviderUpdate) (bool, 
 	n, err := r.pg.UpdateOIDCProviderCAS(ctx, pggen.UpdateOIDCProviderCASParams{
 		DisplayName: u.DisplayName, ClientID: u.ClientID, ClientSecret: u.ClientSecret,
 		Scopes: u.Scopes, RedirectUri: u.RedirectURI,
-		JitPolicy: ptrPgTextIn(u.JITPolicy), AssurancePolicy: ptrPgTextIn(u.AssurancePolicy),
-		Enabled: boolInt(u.Enabled), DekVersion: u.DEKVersion, UpdatedAt: pgTimestamp(u.UpdatedAt),
+		AssurancePolicy: ptrPgTextIn(u.AssurancePolicy),
+		Enabled:         boolInt(u.Enabled), DekVersion: u.DEKVersion, UpdatedAt: pgTimestamp(u.UpdatedAt),
 		ID: u.ID, RowVersion: u.RowVersion,
 	})
 	return n == 1, err

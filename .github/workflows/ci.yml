@@ -923,6 +923,12 @@ jobs:
           xargs go test -count=1 <"$packages"
       - name: MCP 2026-07-28 upstream conformance
         run: ./scripts/ci/check-mcp-conformance.sh
+      - name: Start TLS PostgreSQL dynamic-secret target
+        run: ./scripts/ci/start-dynamic-pg.sh
+      - name: Prove dynamic-secret PostgreSQL lifecycle over verified TLS
+        run: go test -count=1 -v ./internal/dynamic/postgres
+      - name: Verify analysis shard planner fixtures
+        run: ./scripts/ci/analysis-shards_test.sh
       # The secret-scanning benchmark regression guard (#74, SS1). Relative, not
       # absolute-ms — CI runners are not the Pi-class calibration floor, so this
       # only proves BenchmarkScan compiles and runs to completion; the absolute

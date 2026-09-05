@@ -9,50 +9,69 @@
 # target did not come up), while other jobs that never set the flag skip it.
 set -euo pipefail
 
-dir="${RUNNER_TEMP:-/tmp}/dynpg"
-mkdir -p "$dir"
+dir=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/hikyo-dynpg.XXXXXX")
+container="hikyo-dyn-tls-$$"
+ready=0
+created=0
+cleanup() {
+	if [ "$created" = 1 ] && [ "$ready" != 1 ]; then
+		docker rm -f "$container" >/dev/null 2>&1 || true
+	fi
+	rm -rf "$dir"
+}
+trap cleanup EXIT
 
 openssl req -new -x509 -days 2 -nodes \
-  -out "$dir/server.crt" -keyout "$dir/server.key" \
-  -subj "/CN=127.0.0.1" -addext "subjectAltName=IP:127.0.0.1" >/dev/null 2>&1
+	-out "$dir/server.crt" -keyout "$dir/server.key" \
+	-subj "/CN=127.0.0.1" -addext "subjectAltName=IP:127.0.0.1" >/dev/null 2>&1
+chmod 600 "$dir/server.key"
+printf '%s\n' 'local all all trust' 'hostssl all all all scram-sha-256' 'hostnossl all all all reject' >"$dir/pg_hba.conf"
 
-# PostgreSQL refuses a key readable by group/other; it must be 0600 owned by the
-# container's postgres user (uid 999 in the official image).
-sudo chown 999:999 "$dir/server.key"
-sudo chmod 600 "$dir/server.key"
-chmod 644 "$dir/server.crt"
-
-docker rm -f hikyo-dyn-tls >/dev/null 2>&1 || true
-docker run -d --name hikyo-dyn-tls \
-  -e POSTGRES_PASSWORD=adminpw -e POSTGRES_USER=leaseadmin -e POSTGRES_DB=app \
-  -p 55432:5432 \
-  -v "$dir/server.crt:/etc/pg/server.crt:ro" \
-  -v "$dir/server.key:/etc/pg/server.key:ro" \
-  postgres:18 \
-  -c ssl=on -c ssl_cert_file=/etc/pg/server.crt -c ssl_key_file=/etc/pg/server.key >/dev/null
+# Copy into the disposable container before startup. Ownership is set inside
+# it, so this works without sudo or host/container UID assumptions on macOS.
+docker create --name "$container" \
+	-e POSTGRES_PASSWORD=adminpw -e POSTGRES_USER=leaseadmin -e POSTGRES_DB=app \
+	-p 127.0.0.1:55432:5432 --entrypoint /bin/sh \
+	postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941 \
+	-c 'set -eu; chown postgres:postgres /tmp/server.key; chmod 600 /tmp/server.key; exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/tmp/server.crt -c ssl_key_file=/tmp/server.key -c hba_file=/tmp/pg_hba.conf' >/dev/null
+created=1
+docker cp "$dir/server.crt" "$container:/tmp/server.crt"
+docker cp "$dir/server.key" "$container:/tmp/server.key"
+docker cp "$dir/pg_hba.conf" "$container:/tmp/pg_hba.conf"
+docker start "$container" >/dev/null
 
 for _ in $(seq 1 60); do
-  if docker exec hikyo-dyn-tls pg_isready -U leaseadmin -d app >/dev/null 2>&1; then
-    ready=1
+  if docker exec "$container" pg_isready -h 127.0.0.1 -U leaseadmin -d app >/dev/null 2>&1; then
+    started=1
     break
   fi
   sleep 1
 done
-if [ "${ready:-0}" != "1" ]; then
+if [ "${started:-0}" != "1" ]; then
   echo "dynamic-secret TLS PostgreSQL target did not become ready" >&2
-  docker logs hikyo-dyn-tls >&2 || true
+  docker logs "$container" >&2 || true
   exit 1
 fi
 
-# Confirm TLS is actually on: a plain no-ssl connection must be refused.
-docker exec hikyo-dyn-tls psql -U leaseadmin -d app -c "CREATE ROLE app_reader" >/dev/null
+# A non-TLS network connection must fail even with the correct password.
+if docker exec -e PGPASSWORD=adminpw "$container" psql \
+	"postgres://leaseadmin@127.0.0.1/app?sslmode=disable" -c 'SELECT 1' >/dev/null 2>&1; then
+	echo 'dynamic-secret target accepted a non-TLS connection' >&2
+	exit 1
+fi
+docker exec "$container" psql -U leaseadmin -d app -c "CREATE ROLE app_reader" >/dev/null
 
+# Keep only the public CA outside the container after setup.
+ca_dir=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/hikyo-dynpg-ca.XXXXXX")
+cp "$dir/server.crt" "$ca_dir/server.crt"
 {
+  echo "HIKYO_TEST_DYNAMIC_PG_CONTAINER=$container"
   echo "HIKYO_TEST_DYNAMIC_PG_DSN=postgres://leaseadmin@127.0.0.1:55432/app"
   echo "HIKYO_TEST_DYNAMIC_PG_PASSWORD=adminpw"
-  echo "HIKYO_TEST_DYNAMIC_PG_CA=$dir/server.crt"
+  echo "HIKYO_TEST_DYNAMIC_PG_CA=$ca_dir/server.crt"
   echo "HIKYO_TEST_DYNAMIC_PG_GRANT_ROLE=app_reader"
   echo "HIKYO_DYNAMIC_PG_REQUIRED=1"
 } >>"$GITHUB_ENV"
 
+ready=1
 echo "dynamic-secret TLS PostgreSQL target ready on 127.0.0.1:55432"

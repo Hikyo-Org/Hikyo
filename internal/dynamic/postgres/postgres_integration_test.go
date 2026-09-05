@@ -167,6 +167,7 @@ func TestProviderUnreachableIsDefinite(t *testing.T) {
 	// unreachable failure, never ambiguous — nothing was sent.
 	p, err := postgres.New(postgres.Config{
 		Origin: "postgres://nobody@127.0.0.1:1/nodb", Password: "x", Deadline: 2 * time.Second,
+		AllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -175,8 +176,8 @@ func TestProviderUnreachableIsDefinite(t *testing.T) {
 	err = p.CreateRole(context.Background(), dynamic.CreateRoleRequest{
 		Name: "hikyo_unreachable", Password: mustPassword(t), GrantRole: "app_reader", ValidUntil: time.Now().Add(time.Hour),
 	})
-	if err == nil {
-		t.Fatal("CreateRole against an unreachable target returned nil")
+	if !errors.Is(err, dynamic.ErrUnreachable) {
+		t.Fatalf("CreateRole against an unreachable target = %v, want ErrUnreachable", err)
 	}
 	// Connect failure -> ErrUnreachable (definite), the port-1 target refuses.
 	// (A blackhole would time out to ErrAmbiguous; 127.0.0.1:1 refuses fast.)

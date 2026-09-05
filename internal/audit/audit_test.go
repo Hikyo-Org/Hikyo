@@ -405,7 +405,7 @@ func TestValidateRefusesValuesOutsideClosedTaxonomies(t *testing.T) {
 			[]string{"single-factor", "multi-factor"}},
 		{"OIDC refusal cause", EventOIDCRefused, OutcomeFailure, TrailInstance, domain.Scope{}, "cause",
 			Payload{"cause": "mixup"},
-			[]string{"mixup", "nonce", "purpose", "state", "issuer", "audience", "signature", "epoch", "idp-error", "expired", "unknown-identity", "no-assurance-policy", "no-auth-time", "binding", "jit-refused", "reconciliation", "window-zero", "no-possession", "downgrade"}},
+			[]string{"mixup", "nonce", "purpose", "state", "issuer", "audience", "signature", "epoch", "idp-error", "expired", "unknown-identity", "no-assurance-policy", "no-auth-time", "binding", "reconciliation", "window-zero", "no-possession", "downgrade"}},
 		{"provider change", EventOIDCProviderChanged, OutcomeSuccess, TrailInstance, domain.Scope{}, "change",
 			Payload{"provider_id": "idp_a", "change": "created", "sessions_swept": 0},
 			[]string{"created", "updated", "deleted"}},

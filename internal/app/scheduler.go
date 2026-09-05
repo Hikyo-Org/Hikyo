@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"sync/atomic"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
 const (
@@ -60,7 +62,9 @@ type Scheduler struct {
 	// behaviour, unchanged). When set, jobs run only while this node holds the
 	// scheduler lease, so every singleton executes at most once across the
 	// cluster and a stale leader that loses the lease has its in-flight jobs
-	// cancelled.
+	// cancelled. Its term identity also travels in the job context: tx.Write
+	// locks and validates that fence before mutation, so a paused leader cannot
+	// commit after takeover even before cancellation reaches it.
 	Lease     LeaseManager
 	NodeID    string
 	LeaseTTL  time.Duration
@@ -277,7 +281,7 @@ func (s *Scheduler) runHA(ctx context.Context) {
 					expiresAt = expires
 					s.leader.Store(true)
 					s.logger().Info("scheduler acquired leadership", "node", s.NodeID, "fence", fence)
-					termCtx, cancel := context.WithCancel(ctx)
+					termCtx, cancel := context.WithCancel(store.WithSingletonLease(ctx, schedulerLeaseName, s.NodeID, fence))
 					termCancel = cancel
 					termDone = make(chan struct{})
 					done := termDone

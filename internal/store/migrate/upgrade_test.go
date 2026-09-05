@@ -44,7 +44,7 @@ func TestMCPAuditOriginMigrationRollsBackPostgres(t *testing.T) {
 func runMCPAuditOriginRollback(t *testing.T, cfg store.Config) {
 	t.Helper()
 	ctx := t.Context()
-	if err := Run(ctx, cfg); err != nil {
+	if err := RunUpTo(ctx, cfg, 42); err != nil {
 		t.Fatal(err)
 	}
 	if err := withProvider(ctx, cfg, func(provider *goose.Provider, _ *sql.DB) error {
@@ -59,7 +59,7 @@ func runMCPAuditOriginRollback(t *testing.T, cfg store.Config) {
 	if err := insertMCPAuditOrigin(t, cfg, "evt_mcp_rollback_refused"); err == nil {
 		t.Fatal("rolled-back schema still accepted the mcp audit origin")
 	}
-	if err := Run(ctx, cfg); err != nil {
+	if err := RunUpTo(ctx, cfg, 42); err != nil {
 		t.Fatalf("reapply MCP audit origin migration: %v", err)
 	}
 	if err := insertMCPAuditOrigin(t, cfg, "evt_mcp_rollback_reapplied"); err != nil {
