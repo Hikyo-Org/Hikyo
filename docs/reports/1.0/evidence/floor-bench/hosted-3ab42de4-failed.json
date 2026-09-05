@@ -1,0 +1,158 @@
+{
+  "schema": "hikyo.dev/floor-bench/v1",
+  "status": "failed",
+  "started_at": "2026-09-05T12:19:55.478623707Z",
+  "architecture": "arm64",
+  "os": "linux",
+  "cpu": 4,
+  "memory_limit_bytes": 4294967296,
+  "swap_bytes": 0,
+  "memory_peak_bytes": 491118592,
+  "oom_events": 0,
+  "oom_kills": 0,
+  "physical_pi": false,
+  "raw": false,
+  "provenance": {
+    "source_commit": "3ab42de4d3dcfd71e1868b9e3e4bfc31967710d4",
+    "source_dirty": false,
+    "source_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "run_url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33965289417",
+    "binary_sha256": {
+      "bench-scan": "db957b722795cdd781cc4fa17854ca7a5485cd81388e5b60b6b248233b1092af",
+      "floor.test": "c2a71fc1aa93a6e1689663bb27c832a7a24e0ecb289e53224458ad303d8e1789",
+      "hikyo": "4a56c22c3d4b1600e89e95538c97f86109406861a2596e7a4724717ab5479fe6",
+      "isolation.test": "5fb386ff2c6f4a49fcd062d051930166f4c41ce447df6668badca430e6c424ad"
+    },
+    "image": "sha256:699a3edc2d72f2d34ce58c4f0e5aba31a94ddb92283d62c47b25acd79acd7f8b"
+  },
+  "boot_ms": 521.524644,
+  "idle_rss_bytes": 106106880,
+  "idle_sample_seconds": 5,
+  "argon2_four_ms": 206.654695,
+  "admission_mib": 272,
+  "argon_memory_kib": 65536,
+  "argon_time": 3,
+  "argon_parallelism": 2,
+  "argon_concurrent": 4,
+  "argon_completed": 4,
+  "publish": {
+    "elapsed_ms": 7579.441999,
+    "cells": 100000,
+    "environments": 10,
+    "keys": 10000,
+    "operation": "Keys.UpdateDeclaration schema fan-out",
+    "readback_verified": true
+  },
+  "reencrypt": {
+    "elapsed_ms": 217.812185,
+    "value_rows": 250,
+    "rows_moved": 251,
+    "chunk_rows": 100,
+    "committed_progression": [
+      0,
+      100,
+      200
+    ],
+    "minimum_interchunk_interval_ms": 103.42852,
+    "configured_pause_ms": 100,
+    "readback_verified": true
+  },
+  "scanner": {
+    "harness_version": "2",
+    "snapshot_version": "gitleaks/v8.19.0+23f3bf389bd0",
+    "host": "native-arm64-ci-floor",
+    "machine_model": "ARM CPU IDs (/proc/cpuinfo): CPU implementer=0x41, CPU architecture=8, CPU variant=0x0, CPU part=0xd49, CPU revision=0",
+    "items": 38,
+    "item_bytes": 65536,
+    "boot_compile_millis": 0.332,
+    "boot_peak_rss_bytes": 12140544,
+    "p50_millis": 0.384,
+    "p99_millis": 0.739,
+    "peak_rss_bytes": 12140544
+  },
+  "scanner_run": {
+    "image": "sha256:699a3edc2d72f2d34ce58c4f0e5aba31a94ddb92283d62c47b25acd79acd7f8b",
+    "entrypoint": [
+      "/bench-scan"
+    ],
+    "status": "exited",
+    "exit_code": 0,
+    "oom_killed": false,
+    "nano_cpus": 4000000000,
+    "memory": 4294967296,
+    "memory_swap": 4294967296
+  },
+  "operator": {
+    "schema": "hikyo.dev/operator-floor-evidence/v1",
+    "source_commit": "3ab42de4d3dcfd71e1868b9e3e4bfc31967710d4",
+    "source_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "operator_binary_sha256": "4a56c22c3d4b1600e89e95538c97f86109406861a2596e7a4724717ab5479fe6",
+    "architecture": "arm64",
+    "outer_cpu": 4,
+    "outer_memory_bytes": 4294967296,
+    "operator_cpu_millicores": 200,
+    "operator_memory_limit_bytes": 134217728,
+    "operator_memory_peak_bytes": 34062336,
+    "operator_rss_peak_bytes": 99147776,
+    "rss_measurement": {
+      "process": {
+        "node_pid": 4130,
+        "start_time_ticks": 120041,
+        "container_id": "3522645cc36b0c4a2fecb262ee3546fddd0929a0fcceb50d28096744bffeeac7",
+        "executable_sha256": "4a56c22c3d4b1600e89e95538c97f86109406861a2596e7a4724717ab5479fe6",
+        "rss_bytes": 96538624,
+        "rss_peak_bytes": 99147776
+      }
+    },
+    "swap_bytes": 0,
+    "passed": true
+  },
+  "derating": {
+    "schema": "hikyo.dev/floor-derating/v1",
+    "policy_date": "2026-09-05",
+    "authority": "https://github.com/Hikyo-Org/Hikyo/issues/77#issuecomment-5354008780",
+    "memory_factor": 1,
+    "cpu": {
+      "argon2_four_ms": {
+        "factor": 4,
+        "calibration_commit": null,
+        "calibration_date": null
+      },
+      "boot_ms": {
+        "factor": 4,
+        "calibration_commit": null,
+        "calibration_date": null
+      },
+      "publish_ms": {
+        "factor": 4,
+        "calibration_commit": null,
+        "calibration_date": null
+      },
+      "reencrypt_ms": {
+        "factor": 4,
+        "calibration_commit": null,
+        "calibration_date": null
+      },
+      "scanner_boot_ms": {
+        "factor": 4,
+        "calibration_commit": null,
+        "calibration_date": null
+      },
+      "scanner_p99_ms": {
+        "factor": 4,
+        "calibration_commit": null,
+        "calibration_date": null
+      }
+    },
+    "interpretation": "Conservative uncalibrated CPU estimates, not physical Raspberry Pi measurements. Memory is not derated. Reencrypt duration includes mandated pauses; its estimate is informational, not a throughput promise."
+  },
+  "cpu_estimates_ms": {
+    "argon2_four_ms": 826.61878,
+    "boot_ms": 2086.098576,
+    "publish_ms": 30317.767996,
+    "reencrypt_ms": 871.24874,
+    "scanner_boot_ms": 1.328,
+    "scanner_p99_ms": 2.956
+  },
+  "interpretation": "Native ARM CPU timings multiplied by committed factors are conservative estimates, not measured Raspberry Pi performance. Memory is measured without derating. The admission work budget is not a total RSS cap. Reencrypt elapsed time includes mandatory pauses and has no throughput deadline."
+}

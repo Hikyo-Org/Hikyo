@@ -4,7 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
+	"sync"
 
+	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -15,9 +18,32 @@ import (
 type SQLiteTransaction struct {
 	tx    *sql.Tx
 	guard *upgrade.SQLiteGuard
+	// These two SQL templates contain no tenant results or retained arguments.
+	// They belong to this transaction alone; database/sql closes them when the
+	// transaction settles. Repository proof verification still precedes every
+	// execution, including reuse with another environment's bound parameters.
+	snapshotMu         sync.Mutex
+	snapshotStatements [2]*sql.Stmt
 }
 
 func (t *SQLiteTransaction) ExecContext(ctx context.Context, q string, args ...any) (sql.Result, error) {
+	if slot, ok := sqlitegen.SnapshotInsertSlot(q); ok {
+		t.snapshotMu.Lock()
+		statement := t.snapshotStatements[slot]
+		if statement == nil {
+			// SQLC adds trailing whitespace. The SQLite driver's single-statement
+			// reuse path requires no tail, so normalize only these exact queries.
+			var err error
+			statement, err = t.tx.PrepareContext(ctx, strings.TrimSpace(q))
+			if err != nil {
+				t.snapshotMu.Unlock()
+				return nil, err
+			}
+			t.snapshotStatements[slot] = statement
+		}
+		t.snapshotMu.Unlock()
+		return statement.ExecContext(ctx, args...)
+	}
 	return t.tx.ExecContext(ctx, q, args...)
 }
 func (t *SQLiteTransaction) PrepareContext(ctx context.Context, q string) (*sql.Stmt, error) {

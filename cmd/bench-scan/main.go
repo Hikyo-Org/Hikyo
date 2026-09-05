@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -126,25 +127,55 @@ func machineModel() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("read Linux machine model: %w", err)
 	}
+	return cpuInfoModel(string(data))
+}
+
+// ARM VMs and hosted ARM runners often expose only architectural CPU IDs,
+// without a board or marketing model name. Record those kernel-provided IDs
+// verbatim instead of inventing a Pi model or accepting a caller label.
+func cpuInfoModel(data string) (string, error) {
 	var modelName string
-	for _, line := range strings.Split(string(data), "\n") {
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) != 2 {
-			continue
+	var armModels []string
+	for _, block := range strings.Split(data, "\n\n") {
+		fields := map[string]string{}
+		for _, line := range strings.Split(block, "\n") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			key, value := strings.ToLower(strings.TrimSpace(parts[0])), strings.TrimSpace(parts[1])
+			fields[key] = value
+			if key == "model name" && value != "" {
+				modelName = value
+			}
+			if key == "model" && strings.Contains(value, "Raspberry Pi") {
+				return value, nil
+			}
 		}
-		key := strings.TrimSpace(parts[0])
-		value := strings.TrimSpace(parts[1])
-		if strings.EqualFold(key, "model") && value != "" {
-			return value, nil
+		var identifiers []string
+		for _, key := range []string{"CPU implementer", "CPU architecture", "CPU variant", "CPU part", "CPU revision"} {
+			value := fields[strings.ToLower(key)]
+			if value == "" {
+				identifiers = nil
+				break
+			}
+			identifiers = append(identifiers, key+"="+value)
 		}
-		if strings.EqualFold(key, "model name") && modelName == "" {
-			modelName = value
+		if len(identifiers) == 5 {
+			identity := strings.Join(identifiers, ", ")
+			if !slices.Contains(armModels, identity) {
+				armModels = append(armModels, identity)
+			}
 		}
 	}
-	if modelName == "" {
-		return "", fmt.Errorf("read Linux machine model: no model field in /proc/cpuinfo")
+	if modelName != "" {
+		return modelName, nil
 	}
-	return modelName, nil
+	if len(armModels) > 0 {
+		slices.Sort(armModels)
+		return "ARM CPU IDs (/proc/cpuinfo): " + strings.Join(armModels, "; "), nil
+	}
+	return "", fmt.Errorf("read Linux machine model: no model name or complete ARM CPU IDs in /proc/cpuinfo")
 }
 
 // corpusItems pads every corpus TP and FP to the size cap, planting the

@@ -42,7 +42,7 @@ expect_plan 'docs-only' '["docs"]' \
 	'docs/site/src/content/docs/docs/getting-started.mdx' 'README.md'
 expect_plan 'web-only' '["release-snapshot","web","web-go"]' 'web/src/routes/Values.tsx'
 expect_plan 'core' \
-	'["client","fuzz","generated","headline-guarantee","race","release-snapshot","test","web-go"]' \
+	'["client","floor-bench","fuzz","generated","headline-guarantee","race","release-snapshot","test","web-go"]' \
 	'internal/service/values.go'
 expect_plan 'API' \
 	'["client","compose-demo","freeze-guard","generated","headline-guarantee","release-snapshot","test","web-go"]' \
@@ -51,7 +51,7 @@ expect_plan 'client' '["client","release-snapshot","web-go"]' \
 	'clients/ts/src/generated/types.gen.ts'
 expect_plan 'release' '["lint","release-snapshot","supply-chain-checks"]' \
 	'scripts/release/check-tag.sh'
-expect_plan 'chart' '["k8s-e2e","lint","release-snapshot","supply-chain-checks"]' \
+expect_plan 'chart' '["floor-bench","k8s-e2e","lint","release-snapshot","supply-chain-checks"]' \
 	'chart/hikyo/values.yaml'
 expect_plan 'release image' '["k8s-e2e","lint","release-snapshot","supply-chain-checks"]' \
 	'Dockerfile.release'
@@ -116,22 +116,21 @@ expect_plan 'fallback channel' \
 expect_plan 'mixed docs and web' '["docs","release-snapshot","web","web-go"]' \
 	'docs/site/src/content/docs/docs/index.mdx' 'web/src/routes/Login.tsx'
 
-for operator_path in \
-	'internal/operator/reconciler.go' \
-	'internal/isolation/k8s_operator_e2e_test.go'; do
-	expect_plan "$operator_path" \
-		'["fuzz","generated","headline-guarantee","k8s-e2e","race","release-snapshot","test","web-go"]' \
-		"$operator_path"
-done
+expect_plan 'operator' \
+	'["floor-bench","fuzz","generated","headline-guarantee","k8s-e2e","race","release-snapshot","test","web-go"]' \
+	'internal/operator/reconciler.go'
+expect_plan 'operator isolation' \
+	'["fuzz","generated","headline-guarantee","k8s-e2e","race","release-snapshot","test","web-go"]' \
+	'internal/isolation/k8s_operator_e2e_test.go'
 
 expect_plan 'generated CRD' \
-	'["generated","k8s-e2e","lint","release-snapshot","supply-chain-checks"]' \
+	'["floor-bench","generated","k8s-e2e","lint","release-snapshot","supply-chain-checks"]' \
 	'chart/hikyo/crds/hikyo.dev_hikyosecrets.yaml'
 expect_plan 'k8s e2e runner' '["k8s-e2e","lint"]' 'scripts/ci/k8s-e2e.sh'
 expect_plan 'chart kind runner' '["k8s-e2e","lint"]' 'scripts/ci/chart-kind.sh'
 expect_plan 'chart production trust fixture' '["k8s-e2e","lint"]' 'scripts/ci/chartfixture/fixture_test.go'
 expect_plan 'root-key staging runtime' \
-	'["client","fuzz","generated","headline-guarantee","k8s-e2e","race","release-snapshot","test","web-go"]' \
+	'["client","floor-bench","fuzz","generated","headline-guarantee","k8s-e2e","race","release-snapshot","test","web-go"]' \
 	'internal/crypto/rootkey_stage.go'
 
 for non_web_app_path in \
@@ -178,3 +177,33 @@ if "$classifier" --unsupported >/dev/null 2>&1; then
 fi
 
 printf 'changed-path classifier fixture: exact workflow job IDs and fail-closed plans passed\n'
+
+for floor_path in internal/crypto/password.go internal/admission/admission.go internal/service/publish.go internal/operator/reconciler.go internal/bench/floor_test.go internal/isolation/floor_bench_test.go docs/release/measurements/derate.json scripts/bench/floor.sh go.mod go.sum; do
+	expect_selected "$floor_path" floor-bench "$floor_path"
+done
+
+# A rename out of a measured directory must retain the deleted source path.
+# Exercise Git's real rename detection with trees; no unsigned fixture commits.
+floor_repo=$(mktemp -d)
+trap 'rm -rf "$floor_repo"' EXIT HUP INT TERM
+git -C "$floor_repo" init -q
+mkdir -p "$floor_repo/internal/crypto" "$floor_repo/docs"
+printf 'floor rename fixture\n' >"$floor_repo/internal/crypto/password.go"
+git -C "$floor_repo" add .
+floor_before=$(git -C "$floor_repo" write-tree)
+mv "$floor_repo/internal/crypto/password.go" "$floor_repo/docs/archived-password.md"
+git -C "$floor_repo" add -A
+floor_after=$(git -C "$floor_repo" write-tree)
+floor_detected=$(git -C "$floor_repo" diff -M --name-only "$floor_before" "$floor_after")
+[ "$floor_detected" = docs/archived-password.md ] || {
+	echo 'floor rename fixture did not exercise real Git rename detection' >&2; exit 1;
+}
+floor_plan=$(git -C "$floor_repo" diff --no-renames --name-only "$floor_before" "$floor_after" | "$classifier" --files)
+printf '%s' "$floor_plan" | jq -e '.["floor-bench"] == true' >/dev/null
+git -C "$floor_repo" read-tree --empty
+floor_empty=$(git -C "$floor_repo" write-tree)
+floor_plan=$(git -C "$floor_repo" diff --no-renames --name-only "$floor_before" "$floor_empty" | "$classifier" --files)
+printf '%s' "$floor_plan" | jq -e '.["floor-bench"] == true' >/dev/null
+# Pin the workflow's extraction boundary as well as the classifier itself.
+# shellcheck disable=SC2016
+grep -F 'git diff --no-renames --name-only "$BASE_SHA...$HEAD_SHA"' "$script_dir/../../.github/workflows/ci.yml" >/dev/null

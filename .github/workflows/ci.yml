@@ -49,7 +49,7 @@ jobs:
             git show "$BASE_SHA:scripts/ci/classify-changed-paths.sh" >"$trusted_classifier"
             git show "$BASE_SHA:scripts/ci/ci-job-registry.json" >"$trusted_registry"
             chmod +x "$trusted_classifier"
-            plan=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" |
+            plan=$(git diff --no-renames --name-only "$BASE_SHA...$HEAD_SHA" |
               CI_JOB_REGISTRY="$trusted_registry" "$trusted_classifier" --files)
           else
             echo "trusted CI classifier or job registry is missing at $BASE_SHA" >&2
@@ -102,7 +102,7 @@ jobs:
           shellcheck_dir="$RUNNER_TEMP/shellcheck-$SHELLCHECK_VERSION"
           "$shellcheck_dir/shellcheck" \
             .githooks/* scripts/git/*.sh scripts/lib/*.sh scripts/ci/*.sh \
-            scripts/release/*.sh scripts/compose-demo.sh install/install.sh.in
+            scripts/release/*.sh scripts/bench/*.sh scripts/compose-demo.sh install/install.sh.in
           echo "$shellcheck_dir" >>"$GITHUB_PATH"
       - name: Actionlint
         run: ./scripts/ci/run-go-tool.sh actionlint
@@ -210,7 +210,7 @@ jobs:
       - name: Changed-path classifier fixture
         run: ./scripts/ci/classify-changed-paths_test.sh
       - name: CI job registry and workflow bijection fixture
-        run: go test -count=1 ./scripts/ci -run '^TestCIJobRegistry'
+        run: go test -count=1 ./scripts/ci -run '^(TestCIJobRegistry|TestReleaseFloorBench)'
       - name: Chart check fixture
         run: ./scripts/ci/check-chart_test.sh
       - name: Trusted CI scripts fixture
@@ -221,6 +221,8 @@ jobs:
         run: ./scripts/ci/check-build-artifact-reuse_test.sh
       - name: Cache policy fixture
         run: ./scripts/ci/check-cache-policy_test.sh
+      - name: Verify floor measurement preflight refusals
+        run: ./scripts/bench/floor_test.sh
       - name: Fuzz finding classifier fixture
         run: ./scripts/ci/classify-fuzz-findings_test.sh
       - name: Fuzz finding reporter fixture
@@ -955,6 +957,8 @@ jobs:
           xargs go test -count=1 <"$packages"
       - name: MCP 2026-07-28 upstream conformance
         run: ./scripts/ci/check-mcp-conformance.sh
+      - name: Verify dynamic-secret target port discovery refusals
+        run: ./scripts/ci/start-dynamic-pg_test.sh
       - name: Start TLS PostgreSQL dynamic-secret target
         run: ./scripts/ci/start-dynamic-pg.sh
       - name: Prove dynamic-secret PostgreSQL lifecycle over verified TLS
@@ -1551,6 +1555,13 @@ jobs:
       - name: Automatic pre-migration export, with recipients and without
         run: go test -count=1 ./internal/app/ -run '^(TestMigrationRefusesUnverifiedExistingSchemaBeforeWrites|TestVerifiedMigrateSkipsBackupOnHealthyRestart|TestRestoreRequiredRestartExposesOnlyOperationalHealth)$'
 
+  floor-bench:
+    needs: changes
+    if: ${{ fromJSON(needs.changes.outputs.plan)['floor-bench'] }}
+    uses: ./.github/workflows/floor-bench.yml
+    permissions:
+      contents: read
+
   # The permanent required context. Every validation job is named here so a
   # future job split cannot accidentally weaken branch protection.
   ci-required:
@@ -1563,6 +1574,7 @@ jobs:
       - compose-demo
       - dco
       - docs
+      - floor-bench
       - freeze-guard
       - fuzz
       - generated

@@ -41,6 +41,11 @@ else
 		[ -n "$path" ] || continue
 		saw_path=true
 		case "$path" in
+		cmd/hikyo/* | cmd/bench-scan/* | internal/admission/* | internal/crypto/* | internal/service/* | internal/store/* | internal/app/* | internal/operator/* | internal/scanning/* | internal/bench/* | internal/isolation/floor_bench_test.go | scripts/bench/* | scripts/ci/operator-floor.sh | scripts/operator-floor/* | chart/* | docs/release/measurements/derate.json)
+			select_class floor-bench
+			;;
+		esac
+		case "$path" in
 		install/compose/demo/* | scripts/compose-demo.sh | internal/cli/compose.go | internal/cli/run*.go | internal/compose/* | internal/service/delivery.go | api/* | go.mod)
 			select_class compose
 			;;

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"errors"
 	"fmt"
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
@@ -15,9 +16,81 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
+	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 	gatefixture "github.com/Hikyo-Org/hikyo/internal/upgradegate/testfixture"
 )
+
+func TestSQLiteSnapshotStatementsEndWithTheirTransaction(t *testing.T) {
+	for _, commit := range []bool{false, true} {
+		t.Run(fmt.Sprintf("commit=%t", commit), func(t *testing.T) {
+			db, err := admittedStoreFixture(t, ownedAdmissionConfig(t, EngineSQLite))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			transaction, err := db.BeginSQLite(t.Context(), false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer transaction.Rollback()
+			q := sqlitegen.New(transaction)
+			// Real SQL constraints reject these nonexistent owners. A rejected
+			// execution must not poison the prepared statement or its lifetime.
+			entry := sqlitegen.InsertSnapshotEntryParams{ID: "missing", Classification: "config", Ciphertext: []byte("fixture")}
+			if err := q.InsertSnapshotEntry(t.Context(), entry); err == nil {
+				t.Fatal("missing snapshot owner accepted")
+			}
+			if err := q.InsertRevisionKeyChange(t.Context(), sqlitegen.InsertRevisionKeyChangeParams{Change: "added"}); err == nil {
+				t.Fatal("missing lineage owner accepted")
+			}
+			statements := transaction.snapshotStatements
+			if statements[0] == nil || statements[1] == nil {
+				t.Fatal("publish statements were not prepared")
+			}
+			if err := q.InsertSnapshotEntry(t.Context(), entry); err == nil {
+				t.Fatal("reused statement lost its constraints")
+			}
+			if transaction.snapshotStatements != statements {
+				t.Fatal("repeated execution reparsed the same statement")
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+			if err := q.InsertSnapshotEntry(ctx, entry); !errors.Is(err, context.Canceled) {
+				t.Fatalf("canceled prepared execution: %v", err)
+			}
+			if commit {
+				err = transaction.Commit()
+			} else {
+				err = transaction.Rollback()
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertSettled := func(err error) {
+				t.Helper()
+				if !errors.Is(err, sql.ErrTxDone) && (err == nil || err.Error() != "sql: statement is closed") {
+					t.Fatalf("expected settled transaction/statement refusal, got %v", err)
+				}
+			}
+			// Retain each statement's actual argument arity. Constraint or bind
+			// errors cannot substitute for evidence that the resource was closed.
+			_, err = statements[0].ExecContext(t.Context(), entry.ID, entry.OrgID, entry.ProjectID, entry.EnvironmentID, entry.SnapshotID, entry.KeyID, entry.KeyName, entry.Classification, entry.Ciphertext, entry.ValueEntryID)
+			assertSettled(err)
+			_, err = statements[1].ExecContext(t.Context(), "", "", "", int64(0), "", "", "added")
+			assertSettled(err)
+			assertSettled(q.InsertSnapshotEntry(t.Context(), entry))
+			next, err := db.BeginSQLite(t.Context(), false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer next.Rollback()
+			if next.snapshotStatements != [2]*sql.Stmt{} {
+				t.Fatal("a new transaction inherited prepared statements")
+			}
+		})
+	}
+}
 
 func TestRuntimeOpenRequiresActualGateAndSQLiteReadsCannotWrite(t *testing.T) {
 	cfg := Config{Engine: EngineSQLite, Path: filepath.Join(t.TempDir(), "runtime.db")}

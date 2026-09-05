@@ -1,0 +1,15 @@
+{
+  "schema": "hikyo.dev/floor-derating/v1",
+  "policy_date": "2026-09-05",
+  "authority": "https://github.com/Hikyo-Org/Hikyo/issues/77#issuecomment-5354008780",
+  "memory_factor": 1.0,
+  "cpu": {
+    "boot_ms": {"factor": 4.0, "calibration_commit": null, "calibration_date": null},
+    "argon2_four_ms": {"factor": 4.0, "calibration_commit": null, "calibration_date": null},
+    "publish_ms": {"factor": 4.0, "calibration_commit": null, "calibration_date": null},
+    "reencrypt_ms": {"factor": 4.0, "calibration_commit": null, "calibration_date": null},
+    "scanner_p99_ms": {"factor": 4.0, "calibration_commit": null, "calibration_date": null},
+    "scanner_boot_ms": {"factor": 4.0, "calibration_commit": null, "calibration_date": null}
+  },
+  "interpretation": "Conservative uncalibrated CPU estimates, not physical Raspberry Pi measurements. Memory is not derated. Reencrypt duration includes mandated pauses; its estimate is informational, not a throughput promise."
+}

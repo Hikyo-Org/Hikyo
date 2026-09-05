@@ -1,0 +1,39 @@
+{
+  "status": "local-profile-diagnostic-only",
+  "source_commit": "3ab42de4d3dcfd71e1868b9e3e4bfc31967710d4",
+  "source_dirty": true,
+  "platform": "native Linux ARM64 Docker VM on macOS, 4 CPUs / 4 GiB / zero swap",
+  "timing_boundary": "existing Keys.UpdateDeclaration call; temporary CPU profiler starts immediately before and stops immediately after, excludes preparation and full readback",
+  "unchanged_requirements": {
+    "cells": 100000,
+    "cpu_factor": 4.0,
+    "publish_bound_ms": 30000
+  },
+  "baseline": {
+    "cells": 100000,
+    "elapsed_ms": 6152.372753,
+    "environments": 10,
+    "keys": 10000,
+    "operation": "Keys.UpdateDeclaration schema fan-out",
+    "readback_verified": true,
+    "binary_sha256": "1faa9b0af4d3aa399010c7a69107fcd58d8721edcfc4c1ca17be318d9ff11597",
+    "profile_sha256": "c52cbd69bafc113d723ce635ffe6036c69b1d6c064425e28277075e1a606c3e3",
+    "sampled_cpu_seconds": 5.63,
+    "profile_path": "/Users/developwent/.codex/artifacts/hikyo-1.0-20260905/floor-publish-profile/baseline/publish.pprof"
+  },
+  "fixed": {
+    "cells": 100000,
+    "elapsed_ms": 4985.195877,
+    "environments": 10,
+    "keys": 10000,
+    "operation": "Keys.UpdateDeclaration schema fan-out",
+    "readback_verified": true,
+    "binary_sha256": "4af5a787a475ed4b632f1db79411c8f66a3654024dccda34a6ce7ebe96bff0ea",
+    "profile_sha256": "7718112988713daa82b66174a491833fc47f4d2fca428033b7bd84741315113d",
+    "sampled_cpu_seconds": 4.2,
+    "profile_path": "/Users/developwent/.codex/artifacts/hikyo-1.0-20260905/floor-publish-profile/fixed/publish.pprof",
+    "production_patch_sha256": "41e79dac0448fd7b3b50b81821674abd881a5948e733b5105e356f02edefe92d"
+  },
+  "artifacts_directory": "/Users/developwent/.codex/artifacts/hikyo-1.0-20260905/floor-publish-profile",
+  "instrumentation_sha256": "4988fba344cb284b66aacf6eb05b0189c3214fd9e93f0c1c868d1d02fd90175d"
+}
