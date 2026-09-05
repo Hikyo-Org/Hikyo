@@ -73,8 +73,12 @@ type Client struct {
 	http   *http.Client
 }
 
-// Forget drops the retained bearer as soon as one outbox attempt ends.
-func (c *Client) Forget() { c.token = "" }
+// Forget releases the private transport and retained bearer when one outbox
+// attempt ends. No other module lease shares these idle connections.
+func (c *Client) Forget() {
+	c.token = ""
+	c.http.CloseIdleConnections()
+}
 
 func NewClient(cfg ClientConfig) (*Client, error) {
 	return newClient(cfg, net.DefaultResolver, &net.Dialer{Timeout: cfg.Deadline})

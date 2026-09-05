@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/netip"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -17,7 +16,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
-	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 	storetx "github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
@@ -33,6 +31,18 @@ func TestForgejoRealLifecycle(t *testing.T) {
 	if origin == "" || token == "" || owner == "" || repository == "" {
 		t.Skip("set HIKYO_TEST_FORGEJO_URL/TOKEN/OWNER/REPOSITORY for the real Forgejo adapter lifecycle")
 	}
+	for _, engine := range []struct {
+		name string
+		open func(*testing.T) *store.DB
+	}{{"sqlite", openSQLite}, {"postgres", openPostgres}} {
+		t.Run(engine.name, func(t *testing.T) {
+			runForgejoRealLifecycle(t, engine.open(t), origin, token, owner, repository)
+		})
+	}
+}
+
+func runForgejoRealLifecycle(t *testing.T, db *store.DB, origin, token, owner, repository string) {
+	t.Helper()
 	var allowed []netip.Prefix
 	if raw := os.Getenv("HIKYO_TEST_FORGEJO_ALLOWED_CIDR"); raw != "" {
 		prefix, err := netip.ParsePrefix(raw)
@@ -45,6 +55,7 @@ func TestForgejoRealLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(client.Forget)
 	destination := adapter.Destination{Kind: adapter.Repository, Owner: owner, Name: repository}
 	connection, err := (&forgejo.Module{API: client}).TestConnection(t.Context(), adapter.ConnectionRequest{Destination: destination, Gate: func(context.Context) error { return nil }})
 	if err != nil {
@@ -61,7 +72,13 @@ func TestForgejoRealLifecycle(t *testing.T) {
 		{KeyID: "key_config", CanonicalName: "MODE", Classification: adapter.ConfigClassification, Value: "claim"},
 	}
 	t.Cleanup(func() {
-		_, _ = module.Sync(t.Context(), adapter.SyncRequest{Target: target, Ledger: journal.ledger(), Teardown: true}, journal)
+		// Go cancels t.Context before cleanup; provider scrub needs its own
+		// bounded live context even when an assertion failed.
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if _, err := module.Sync(ctx, adapter.SyncRequest{Target: target, Ledger: journal.ledger(), Teardown: true}, journal); err != nil {
+			t.Errorf("cleanup provider fixture: %v", err)
+		}
 	})
 	if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest}, journal); err != nil {
 		t.Fatalf("claim: %v", err)
@@ -94,7 +111,7 @@ func TestForgejoRealLifecycle(t *testing.T) {
 	if !observed {
 		t.Fatalf("Plan did not observe pre-existing %s: %+v", adoptedName, plan.Changes)
 	}
-	db := realAdoptionDB(t, origin, destination.NumericID, adoptPrefix)
+	seedRealAdoptionDB(t, db, origin, destination.NumericID, adoptPrefix)
 	projectScope := domain.Scope{Org: "org_external", Project: "prj_external"}
 	runtime := store.NewAdapterRuntime(db, func(context.Context, adapter.Job, adapter.Effect) error { return nil })
 	now := time.Now().UTC()
@@ -140,9 +157,7 @@ func TestForgejoRealLifecycle(t *testing.T) {
 	if err := client.CreateVariable(t.Context(), destination, dispatchedName, "landed-before-crash"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapter_targets SET provider_lease_expires_at='2000-01-01T00:00:00Z' WHERE id=?`, adoptTarget.ID); err != nil {
-		t.Fatal(err)
-	}
+	execRealAdoption(t, db, `UPDATE adapter_targets SET provider_lease_expires_at='2000-01-01T00:00:00Z' WHERE id=$1`, adoptTarget.ID)
 	if _, err := module.Sync(t.Context(), adapter.SyncRequest{
 		Target: adoptTarget, Manifest: []adapter.ManifestEntry{{KeyID: "gap2", CanonicalName: "DISPATCHED_GAP", Classification: adapter.ConfigClassification, Value: "reconciled"}}, Ledger: realLedger(t, db, adoptTarget.ID),
 	}, runtime.Journal(replayJob)); err != nil {
@@ -150,10 +165,10 @@ func TestForgejoRealLifecycle(t *testing.T) {
 	}
 	var durableState string
 	var unresolvedIntents int
-	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT state FROM adapter_ledger WHERE target_id=? AND surface='variable' AND normalized_name=?`, adoptTarget.ID, strings.ToUpper(dispatchedName)).Scan(&durableState); err != nil {
+	if err := queryRealAdoptionRow(t, db, `SELECT state FROM adapter_ledger WHERE target_id=$1 AND surface='variable' AND normalized_name=$2`, adoptTarget.ID, strings.ToUpper(dispatchedName)).Scan(&durableState); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM adapter_effects WHERE job_id=? AND outcome IS NULL`, replayJob.ID).Scan(&unresolvedIntents); err != nil {
+	if err := queryRealAdoptionRow(t, db, `SELECT COUNT(*) FROM adapter_effects WHERE job_id=$1 AND outcome IS NULL`, replayJob.ID).Scan(&unresolvedIntents); err != nil {
 		t.Fatal(err)
 	}
 	if durableState != "owned" || unresolvedIntents < 1 {
@@ -221,59 +236,86 @@ func TestForgejoRealLifecycle(t *testing.T) {
 	}
 }
 
-func realAdoptionDB(t *testing.T, origin string, destinationID int64, prefix string) *store.DB {
+func seedRealAdoptionDB(t *testing.T, db *store.DB, origin string, destinationID int64, prefix string) {
 	t.Helper()
-	cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "forgejo-adoption.db")}
-	if err := migrate.Run(t.Context(), cfg); err != nil {
-		t.Fatal(err)
-	}
-	db, err := store.Open(t.Context(), cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
 	statements := []struct {
 		query string
 		args  []any
 	}{
-		{`INSERT INTO orgs (id,name,active,metadata,created_at) VALUES ('org_external','External',1,'{}','2026-08-17T00:00:00Z')`, nil},
+		{`INSERT INTO orgs (id,name,active,metadata,created_at) VALUES ('org_external','External',TRUE,'{}','2026-08-17T00:00:00Z')`, nil},
 		{`INSERT INTO projects (id,org_id,name,created_at) VALUES ('prj_external','org_external','External','2026-08-17T00:00:00Z')`, nil},
 		{`INSERT INTO environments (id,org_id,project_id,name,note,created_at,display_order) VALUES ('env_external_adopt','org_external','prj_external','external','','2026-08-17T00:00:00Z',0)`, nil},
 		{`INSERT INTO principals (id,kind,created_at) VALUES ('usr_external','human','2026-08-17T00:00:00Z')`, nil},
 		{`INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('gr_external_manage','usr_external','manage-adapters','org_external','prj_external',NULL,'2026-08-17T00:00:00Z')`, nil},
 		{`INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('gr_external_reveal','usr_external','reveal','org_external','prj_external','env_external_adopt','2026-08-17T00:00:00Z')`, nil},
-		{`INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_external','org_external','prj_external','forgejo',?,'usr_external','active','2026-08-17T00:00:00Z')`, []any{origin}},
-		{`INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_external_adopt','org_external','prj_external','env_external_adopt','adp_external','repository','external','external',?,?,1,'active','failed','2026-08-17T00:00:00Z')`, []any{destinationID, prefix}},
+		{`INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_external','org_external','prj_external','forgejo',$1,'usr_external','active','2026-08-17T00:00:00Z')`, []any{origin}},
+		{`INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_external_adopt','org_external','prj_external','env_external_adopt','adp_external','repository','external','external',$1,$2,1,'active','failed','2026-08-17T00:00:00Z')`, []any{destinationID, prefix}},
 		{`INSERT INTO adapter_outbox (id,org_id,project_id,environment_id,target_id,kind,authority_principal_id,generation,dedup_key,next_attempt_at,state,created_at) VALUES ('job_external_replay','org_external','prj_external','env_external_adopt','tgt_external_adopt','converge','usr_external',1,'tgt_external_adopt','2026-08-17T00:00:00Z','queued','2026-08-17T00:00:00Z')`, nil},
 		{`UPDATE adapter_targets SET active_job_id='job_external_replay' WHERE id='tgt_external_adopt'`, nil},
 	}
 	for _, statement := range statements {
-		if _, err := db.SQLiteWrite().ExecContext(t.Context(), statement.query, statement.args...); err != nil {
-			t.Fatal(err)
-		}
+		execRealAdoption(t, db, statement.query, statement.args...)
 	}
-	return db
+}
+
+// Both drivers support numbered placeholders. These fixture helpers keep raw
+// observation and crash injection independent of the engine under test.
+func execRealAdoption(t *testing.T, db *store.DB, query string, args ...any) {
+	t.Helper()
+	var err error
+	if db.Engine() == store.EnginePostgres {
+		_, err = db.PG().Exec(t.Context(), query, args...)
+	} else {
+		_, err = db.SQLiteWrite().ExecContext(t.Context(), query, args...)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func queryRealAdoptionRow(t *testing.T, db *store.DB, query string, args ...any) interface{ Scan(...any) error } {
+	t.Helper()
+	if db.Engine() == store.EnginePostgres {
+		return db.PG().QueryRow(t.Context(), query, args...)
+	}
+	return db.SQLiteRead().QueryRowContext(t.Context(), query, args...)
 }
 
 func realLedger(t *testing.T, db *store.DB, targetID string) []adapter.LedgerEntry {
 	t.Helper()
-	rows, err := db.SQLiteRead().QueryContext(t.Context(), `SELECT surface,effective_name,state FROM adapter_ledger WHERE target_id=? ORDER BY surface,effective_name`, targetID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
+	const query = `SELECT surface,effective_name,state FROM adapter_ledger WHERE target_id=$1 ORDER BY surface,effective_name`
 	var out []adapter.LedgerEntry
-	for rows.Next() {
-		var surface, state string
-		var entry adapter.LedgerEntry
-		if err := rows.Scan(&surface, &entry.EffectiveName, &state); err != nil {
+	scan := func(next func() bool, get func(...any) error) {
+		for next() {
+			var surface, state string
+			var entry adapter.LedgerEntry
+			if err := get(&surface, &entry.EffectiveName, &state); err != nil {
+				t.Fatal(err)
+			}
+			entry.Surface, entry.State = adapter.Surface(surface), adapter.LedgerState(state)
+			out = append(out, entry)
+		}
+	}
+	if db.Engine() == store.EnginePostgres {
+		rows, err := db.PG().Query(t.Context(), query, targetID)
+		if err != nil {
 			t.Fatal(err)
 		}
-		entry.Surface, entry.State = adapter.Surface(surface), adapter.LedgerState(state)
-		out = append(out, entry)
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatal(err)
+		defer rows.Close()
+		scan(rows.Next, rows.Scan)
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		rows, err := db.SQLiteRead().QueryContext(t.Context(), query, targetID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		scan(rows.Next, rows.Scan)
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return out
 }
