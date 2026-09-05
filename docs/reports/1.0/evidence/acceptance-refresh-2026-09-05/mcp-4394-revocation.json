@@ -1,0 +1,34 @@
+{
+  "existing_public_checker": "passed against local verified HTTPS, not public deployment",
+  "rotating_previously_live": true,
+  "revocation_service_committed_at": 1788621418.7927291,
+  "first_post_commit_per_replica_denied": true,
+  "inflight_claims_remaining": 0,
+  "observations": [
+    {
+      "replica": "0",
+      "status": 200,
+      "rpc_error": null,
+      "tool_error": true,
+      "after_commit": true
+    },
+    {
+      "replica": "1",
+      "status": 200,
+      "rpc_error": null,
+      "tool_error": true,
+      "after_commit": true
+    },
+    {
+      "replica": "0",
+      "status": 200,
+      "rpc_error": null,
+      "tool_error": false,
+      "after_commit": true
+    }
+  ],
+  "stdout": "MCP public smoke passed: discovery, catalog, authorized read, invalid token, and revoked token",
+  "passed": true,
+  "unrevoked_credential_works": true,
+  "credential_scope": "independent still-valid credential remains usable; no newly minted replacement claim"
+}

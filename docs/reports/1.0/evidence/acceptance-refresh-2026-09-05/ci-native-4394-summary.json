@@ -1,0 +1,317 @@
+{
+  "checked_at": "2026-09-05T15:20:12.634931+00:00",
+  "heads": {
+    "pr673-4394dd497b7e35b2bcf585528cffd9f020eab795": {
+      "counts": {
+        "success": 49
+      },
+      "remaining": [],
+      "failed": []
+    },
+    "prmain-d0ddd0fa218f4418cfb1f2a8fa99506500bdbb9b": {
+      "counts": {
+        "skipped": 4,
+        "success": 44
+      },
+      "remaining": [],
+      "failed": []
+    }
+  },
+  "native": [
+    {
+      "kind": "ops",
+      "path": "pr673-4394dd497b7e35b2bcf585528cffd9f020eab795/33973166724/artifacts/ops-floor-amd64-4394dd497b7e35b2bcf585528cffd9f020eab795/result.json",
+      "result": {
+        "schema": "hikyo.dev/ops-floor/v1",
+        "status": "pass",
+        "limits": {
+          "architecture": "amd64",
+          "cpu_max": "200000 100000",
+          "memory_max": "4294967296",
+          "memory_swap_max": "0"
+        },
+        "started_at": "2026-09-05T15:02:27.597189615Z",
+        "elapsed_ms": 10187,
+        "memory_peak_bytes": 1282715648,
+        "checks": [
+          {
+            "name": "doctor-and-storage",
+            "elapsed_ms": 10125,
+            "tests": [
+              "TestOpsFloorDoctor",
+              "TestOpsFloorStorageRefusal"
+            ]
+          },
+          {
+            "name": "admission",
+            "elapsed_ms": 60,
+            "tests": [
+              "TestDerivedConcurrency",
+              "TestBootRefusesABudgetOneVerificationCannotFit",
+              "TestSemaphoreBoundsConcurrentVerifications",
+              "TestQueueDepthIsBounded",
+              "TestPerIPSlidingWindow",
+              "TestPerAccountBackoffTransitions",
+              "TestLimiterStateIsBounded"
+            ]
+          }
+        ],
+        "doctor_states": [
+          "healthy",
+          "prune-warning",
+          "backup-error",
+          "drill-warning",
+          "adapter-warning",
+          "provider-error",
+          "storage-warning",
+          "recovered"
+        ],
+        "trust_domain": "local-development",
+        "scope": "complete doctor checklist, independently measured real SQLite volume, storage refusal and selected admission bounds; degraded host capacity retains its actual verdict and is not healthy capacity acceptance; other registry fixtures remain ordinary CI evidence",
+        "healthy_capacity": true
+      },
+      "provenance": {
+        "schema": "hikyo.dev/ops-floor-provenance/v1",
+        "commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "source_dirty": false,
+        "image": "sha256:b7cb3618dd7021f22ef0ceda2fb6b74d947d6b6c9a1c09826c64a8df71608626",
+        "architecture": "amd64",
+        "cpus": 2,
+        "memory_bytes": 4294967296,
+        "swap_bytes": 0,
+        "binary_sha256": "7da092f6fa536ee2dd131dbf4a2458e95b1a96db3576f73b5b9c98b78951d645",
+        "tests_sha256": "2e2178874b656497abb2d8e855af163f2c8f3214bd82aac16873a03f69c67285",
+        "runner_sha256": "6e5644b9fb7749e73bf5a7f91905a20aae603210fc228b598d39d91b5e6aaca5",
+        "admission_sha256": "b50687963f576b5758033cc47f58ee0192119d83e69ca42aecf4b78ba98caf2b",
+        "run_url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166724",
+        "physical_pi": false,
+        "derating": "not claimed",
+        "sqlite_storage": "private disposable host-backed directory"
+      }
+    },
+    {
+      "kind": "ops",
+      "path": "pr673-4394dd497b7e35b2bcf585528cffd9f020eab795/33973166724/artifacts/ops-floor-arm64-4394dd497b7e35b2bcf585528cffd9f020eab795/result.json",
+      "result": {
+        "schema": "hikyo.dev/ops-floor/v1",
+        "status": "pass",
+        "limits": {
+          "architecture": "arm64",
+          "cpu_max": "400000 100000",
+          "memory_max": "4294967296",
+          "memory_swap_max": "0"
+        },
+        "started_at": "2026-09-05T15:01:44.05225873Z",
+        "elapsed_ms": 14713,
+        "memory_peak_bytes": 1235894272,
+        "checks": [
+          {
+            "name": "doctor-and-storage",
+            "elapsed_ms": 14651,
+            "tests": [
+              "TestOpsFloorDoctor",
+              "TestOpsFloorStorageRefusal"
+            ]
+          },
+          {
+            "name": "admission",
+            "elapsed_ms": 62,
+            "tests": [
+              "TestDerivedConcurrency",
+              "TestBootRefusesABudgetOneVerificationCannotFit",
+              "TestSemaphoreBoundsConcurrentVerifications",
+              "TestQueueDepthIsBounded",
+              "TestPerIPSlidingWindow",
+              "TestPerAccountBackoffTransitions",
+              "TestLimiterStateIsBounded"
+            ]
+          }
+        ],
+        "doctor_states": [
+          "healthy",
+          "prune-warning",
+          "backup-error",
+          "drill-warning",
+          "adapter-warning",
+          "provider-error",
+          "storage-warning",
+          "recovered"
+        ],
+        "trust_domain": "local-development",
+        "scope": "complete doctor checklist, independently measured real SQLite volume, storage refusal and selected admission bounds; degraded host capacity retains its actual verdict and is not healthy capacity acceptance; other registry fixtures remain ordinary CI evidence",
+        "healthy_capacity": true
+      },
+      "provenance": {
+        "schema": "hikyo.dev/ops-floor-provenance/v1",
+        "commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "source_dirty": false,
+        "image": "sha256:096d1cbec5cb8a6c239df64fd6829670763b3f7298f500b589632b82b7d9b853",
+        "architecture": "arm64",
+        "cpus": 4,
+        "memory_bytes": 4294967296,
+        "swap_bytes": 0,
+        "binary_sha256": "51a5189821975bc65e12aa065f751e7857299177dd282643c4d23ad2ad6d25ce",
+        "tests_sha256": "aed020b03ae4f62dc1bed744694046cb96ed82deb91f45a6950603af627555f5",
+        "runner_sha256": "ef2d968884a3a948a3115352acda2530382fba51f241c035e703f6523b2e77ab",
+        "admission_sha256": "fd76e54c841ed85e2c62bcfcc1cd3bc87a0e5e7cf276dbcaa7dd729bf8d05e4c",
+        "run_url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166724",
+        "physical_pi": false,
+        "derating": "not claimed",
+        "sqlite_storage": "private disposable host-backed directory"
+      }
+    },
+    {
+      "kind": "operator",
+      "path": "pr673-4394dd497b7e35b2bcf585528cffd9f020eab795/33973220948/artifacts/operator-floor-4394dd497b7e35b2bcf585528cffd9f020eab795/result.json",
+      "result": {
+        "schema": "hikyo.dev/operator-floor-evidence/v1",
+        "source_commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "source_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "operator_binary_sha256": "51a5189821975bc65e12aa065f751e7857299177dd282643c4d23ad2ad6d25ce",
+        "operator_image": "sha256:40f68036bf50a7e9857c8b8a0a03dd915a8a01e6c782cc1e83cadb19b3346901",
+        "node_image": "kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5",
+        "architecture": "arm64",
+        "outer_cpu": 4,
+        "outer_memory_bytes": 4294967296,
+        "operator_cpu_millicores": 200,
+        "operator_memory_limit_bytes": 134217728,
+        "operator_memory_peak_bytes": 34422784,
+        "operator_rss_peak_bytes": 98889728,
+        "rss_measurement": {
+          "source": "kind node /proc/PID/status VmHWM (kB converted to bytes)",
+          "reader_location": "outside operator cgroup",
+          "process": {
+            "node_pid": 4297,
+            "start_time_ticks": 59706,
+            "container_id": "4ca699d4e6032f3eb8adfdffaf673fc0eed1f71d92b147b69f1b22570b194b7f",
+            "cgroup": "/sys/fs/cgroup/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-burstable.slice/kubelet-kubepods-burstable-podad8297a9_376c_4e29_a58b_3c62a9a12009.slice/cri-containerd-4ca699d4e6032f3eb8adfdffaf673fc0eed1f71d92b147b69f1b22570b194b7f.scope",
+            "executable": "/hikyo",
+            "executable_sha256": "51a5189821975bc65e12aa065f751e7857299177dd282643c4d23ad2ad6d25ce",
+            "rss_bytes": 96468992,
+            "rss_peak_bytes": 98889728
+          }
+        },
+        "swap_bytes": 0,
+        "load": {
+          "schema": "hikyo.dev/operator-floor/v1",
+          "crs": 50,
+          "keys_per_cr": 64,
+          "value_bytes": 1024,
+          "phase_limit_seconds": 300,
+          "phases": [
+            {
+              "name": "initial",
+              "seconds": 4.4043966789999995,
+              "objects": 50
+            },
+            {
+              "name": "updated",
+              "seconds": 4.369701904,
+              "objects": 50
+            },
+            {
+              "name": "conditional-current",
+              "seconds": 4.591299835,
+              "objects": 50
+            },
+            {
+              "name": "unavailable-retained",
+              "seconds": 5.617615202,
+              "objects": 50
+            },
+            {
+              "name": "recovered",
+              "seconds": 3.222948794,
+              "objects": 50
+            }
+          ]
+        },
+        "passed": true
+      }
+    },
+    {
+      "kind": "recovery",
+      "path": "pr673-4394dd497b7e35b2bcf585528cffd9f020eab795/33973219556/artifacts/floor-backup-restore-4394dd497b7e35b2bcf585528cffd9f020eab795/result.json",
+      "source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+      "source_dirty": false,
+      "elapsed_ms": 3182,
+      "memory_peak_bytes": 244891648,
+      "cpu_max": "400000 100000",
+      "memory_max": "4294967296",
+      "memory_swap_max": "0",
+      "memory_events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+      "schema_version": 45,
+      "cli_elapsed_ms": 119,
+      "status": "pass"
+    },
+    {
+      "kind": "composite_floor",
+      "path": "prmain-d0ddd0fa218f4418cfb1f2a8fa99506500bdbb9b/33973066386/artifacts/floor-bench-d0ddd0fa218f4418cfb1f2a8fa99506500bdbb9b/floor-d0ddd0fa218f4418cfb1f2a8fa99506500bdbb9b.json",
+      "source": "d0ddd0fa218f4418cfb1f2a8fa99506500bdbb9b",
+      "source_dirty": false,
+      "status": "pass",
+      "boot_ms": 521.805069,
+      "idle_rss_bytes": 102273024,
+      "argon2_four_ms": 202.11711,
+      "publish_ms": 5205.781469,
+      "scanner_p99_ms": 0.668,
+      "scanner_p99_estimate_ms": 2.672,
+      "operator_rss_peak_bytes": 99115008
+    },
+    {
+      "kind": "composite_floor",
+      "path": "pr673-4394dd497b7e35b2bcf585528cffd9f020eab795/33973166043/artifacts/floor-bench-4394dd497b7e35b2bcf585528cffd9f020eab795/floor-4394dd497b7e35b2bcf585528cffd9f020eab795.json",
+      "source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+      "source_dirty": false,
+      "status": "pass",
+      "boot_ms": 522.483342,
+      "idle_rss_bytes": 102797312,
+      "argon2_four_ms": 201.489231,
+      "publish_ms": 5194.924156,
+      "scanner_p99_ms": 0.803,
+      "scanner_p99_estimate_ms": 3.212,
+      "operator_rss_peak_bytes": 99680256,
+      "memory_limit_bytes": 4294967296,
+      "cpu": 4,
+      "swap_bytes": 0,
+      "oom_events": 0,
+      "oom_kills": 0
+    }
+  ],
+  "scheduler_proofs": [
+    {
+      "head": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+      "run": 33973166043,
+      "job": 101325301061,
+      "status": "success",
+      "scheduler_invoked": true,
+      "scheduler_fixture_invoked": true,
+      "app_package_results": [
+        "2026-09-05T15:03:49.2114468Z ok  \tgithub.com/Hikyo-Org/hikyo/internal/app\t62.996s"
+      ],
+      "log_sha256": "a203d4a032ebddab45acc2087bdf389edf94b0f4c63338773bba096cfca1f087"
+    },
+    {
+      "head": "d0ddd0fa218f4418cfb1f2a8fa99506500bdbb9b",
+      "run": 33973066386,
+      "job": 101324918146,
+      "status": "success",
+      "scheduler_invoked": true,
+      "scheduler_fixture_invoked": true,
+      "app_package_results": [
+        "2026-09-05T14:57:30.4172890Z ok  \tgithub.com/Hikyo-Org/hikyo/internal/app\t60.081s"
+      ],
+      "log_sha256": "91d3decf76493cee48f95f4efbca8dd241ef96afff51b42b92fd9fa73dad70f2"
+    }
+  ],
+  "limitations": [
+    "Synthetic local-development custody; no production signing authentication or physical Raspberry Pi claim.",
+    "Full race success belongs to f31c86373e3745f818fdf47f912984660c732720, run33969747593:3204.701s. Runtime/test-source equality to4394 is recorded separately in ops-diagnostics-4394-source-reconciliation.json.",
+    "Conservative scanner CPU estimates use the committed4x factor and remain distinct from measured native timings."
+  ],
+  "artifact_scan": {
+    "files": 118,
+    "credential_pattern_matches": []
+  },
+  "status": "all exact-head CI checks and native acceptance passed; parent retains merge"
+}

@@ -1,0 +1,129 @@
+{
+  "source_commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+  "protocol": "2026-07-28",
+  "tls_verified": true,
+  "production_tools": [
+    "hikyo_inspect_configuration",
+    "hikyo_list_definitions",
+    "hikyo_list_environments",
+    "hikyo_list_pending_changes",
+    "hikyo_list_revisions"
+  ],
+  "all_five_calls_passed": true,
+  "configuration_nonvacuous": true,
+  "revision_nonvacuous": true,
+  "pending_result": "authenticated empty result; automation identity owns no pending draft",
+  "secret_canary_absent": true,
+  "cross_replica_cursor_passed": true,
+  "wrong_scope_and_ungranted_and_invalid_refused": true,
+  "requests": [
+    {
+      "method": "server/discover",
+      "tool": null,
+      "status": 200,
+      "replica": "0",
+      "rpc_error": null,
+      "tool_error": false
+    },
+    {
+      "method": "tools/list",
+      "tool": null,
+      "status": 200,
+      "replica": "1",
+      "rpc_error": null,
+      "tool_error": false
+    },
+    {
+      "method": "tools/call",
+      "tool": "hikyo_inspect_configuration",
+      "status": 200,
+      "replica": "0",
+      "rpc_error": null,
+      "tool_error": false
+    },
+    {
+      "method": "tools/call",
+      "tool": "hikyo_list_definitions",
+      "status": 200,
+      "replica": "1",
+      "rpc_error": null,
+      "tool_error": false
+    },
+    {
+      "method": "tools/call",
+      "tool": "hikyo_list_environments",
+      "status": 200,
+      "replica": "0",
+      "rpc_error": null,
+      "tool_error": false
+    },
+    {
+      "method": "tools/call",
+      "tool": "hikyo_list_pending_changes",
+      "status": 200,
+      "replica": "1",
+      "rpc_error": null,
+      "tool_error": false
+    },
+    {
+      "method": "tools/call",
+      "tool": "hikyo_list_revisions",
+      "status": 200,
+      "replica": "0",
+      "rpc_error": null,
+      "tool_error": false
+    },
+    {
+      "method": "tools/call",
+      "tool": "hikyo_list_definitions",
+      "status": 200,
+      "replica": "1",
+      "rpc_error": null,
+      "tool_error": false
+    },
+    {
+      "method": "tools/call",
+      "tool": "hikyo_list_definitions",
+      "status": 200,
+      "replica": "0",
+      "rpc_error": null,
+      "tool_error": false
+    },
+    {
+      "method": "tools/call",
+      "tool": "hikyo_list_definitions",
+      "status": 200,
+      "replica": "1",
+      "rpc_error": null,
+      "tool_error": true
+    },
+    {
+      "method": "tools/call",
+      "tool": "hikyo_list_definitions",
+      "status": 200,
+      "replica": "0",
+      "rpc_error": null,
+      "tool_error": true
+    },
+    {
+      "method": "tools/call",
+      "tool": "hikyo_list_definitions",
+      "status": 200,
+      "replica": "1",
+      "rpc_error": null,
+      "tool_error": true
+    },
+    {
+      "method": "tools/call",
+      "tool": "hikyo_list_definitions",
+      "status": 200,
+      "replica": "0",
+      "rpc_error": null,
+      "tool_error": false
+    }
+  ],
+  "rotating_token_proved_live": true,
+  "at": 1788621416.838758,
+  "revocation_pending_at_catalog_stage": true,
+  "subsequent_revocation_evidence": "revocation.json"
+}

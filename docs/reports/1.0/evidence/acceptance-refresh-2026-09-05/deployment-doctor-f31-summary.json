@@ -1,0 +1,52 @@
+{
+  "source": "f31c86373e3745f818fdf47f912984660c732720",
+  "run": 33969008887,
+  "result": "PASS",
+  "jobs": [
+    {
+      "name": "validation / k8s-e2e",
+      "id": 101314181242,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33969008887/job/101314181242",
+      "conclusion": "success"
+    },
+    {
+      "name": "validation / compose-demo",
+      "id": 101314181258,
+      "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33969008887/job/101314181258",
+      "conclusion": "success"
+    }
+  ],
+  "assertion_source_sha256": {
+    "scripts/compose-demo.sh": "d74af4094866009b8ebf8cdc603f79beedb2b561458f724767de4216cdd0cbba",
+    "scripts/ci/chart-kind.sh": "70d6b9dcf37deddf0dd0405df2ddc235a115db67a14da99bce635a1302401768",
+    "scripts/ci/assert-doctor-findings.jq": "300973721aa4b3f666bf67c24821fd67b31c3701447aa6d06cf49b4c083554b9"
+  },
+  "authenticated_doctor_families": 12,
+  "engines": {
+    "compose-demo": "sqlite",
+    "k8s-e2e": "postgres"
+  },
+  "observed_log_evidence": [
+    {
+      "job": 101314181242,
+      "name": "k8s-e2e",
+      "lines": [
+        "2026-09-05T13:34:41.9730241Z chart-kind: creating cluster hikyo-chart-e2e",
+        "2026-09-05T13:35:23.4935893Z chart-kind: building candidate image",
+        "2026-09-05T13:36:02.9494383Z chart-kind: installing exact chart and image localhost:5001/hikyo-chart-e2e@sha256:1d50c1a7226e9f8d24d67f8a10358da15cf575cd52077efedfca9b822db45337",
+        "2026-09-05T13:38:31.2769391Z chart-kind: authenticated instance doctor reported all 12 operational finding families",
+        "2026-09-05T13:38:49.1015615Z chart-kind: exact chart/image booted; database outage toggled readiness without liveness restart"
+      ]
+    },
+    {
+      "job": 101314181258,
+      "name": "compose-demo",
+      "lines": [
+        "2026-09-05T13:35:46.4456761Z compose demo passed: authenticated instance doctor reported all 12 operational finding families"
+      ]
+    }
+  ],
+  "capacity_semantics": "SQLite measured parent volume; remote PostgreSQL unknown, never inferred healthy",
+  "scope": "Actual Compose and chart deployment checks; native resource constraints are separate evidence; raw doctor JSON not uploaded by workflow",
+  "whole_ci": "failed unrelated application database cleanup"
+}

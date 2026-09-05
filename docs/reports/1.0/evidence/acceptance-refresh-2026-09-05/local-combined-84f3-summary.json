@@ -1,0 +1,335 @@
+{
+  "tested_source_prefix": "84f3",
+  "candidate_source": "f31c86373e3745f818fdf47f912984660c732720",
+  "relationship": "Release owner reports runtime-identical sources; subsequent changes only CI PostgreSQL fixture, wiring and report. This local run was not executed at f31.",
+  "evidence_kind": "local named Go test JSON summary",
+  "passes": [
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestSQLiteSnapshotStatementsEndWithTheirTransaction/commit=false"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestSQLiteSnapshotStatementsEndWithTheirTransaction/commit=true"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestSQLiteSnapshotStatementsEndWithTheirTransaction"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite/adapter_claim"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite/dynamic_gauges"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite/backup"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite/node_registration"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite/counter"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite/lease_claim"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite/adapter_activation_read"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite/dynamic_claim"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite/readiness"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite/lease_release"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite/MCP_release"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite/dynamic_claim#01"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite/readiness#01"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite/lease_release#01"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite/MCP_release#01"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite/adapter_claim#01"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite/dynamic_gauges#01"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite/backup#01"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite/node_registration#01"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite/counter#01"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite/lease_claim#01"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite/adapter_activation_read#01"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/sqlite"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres/adapter_claim"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres/node_registration"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres/lease_release"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres/MCP_release"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres/adapter_activation_read"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres/dynamic_claim"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres/dynamic_gauges"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres/backup"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres/readiness"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres/counter"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres/lease_claim"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres/adapter_claim#01"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres/node_registration#01"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres/lease_release#01"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres/MCP_release#01"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres/adapter_activation_read#01"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres/dynamic_claim#01"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres/dynamic_gauges#01"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres/backup#01"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres/readiness#01"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres/counter#01"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres/lease_claim#01"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration/postgres"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/store",
+      "test": "TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsAuthorityAndEscrowEpoch/sqlite"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsAuthorityAndEscrowEpoch/postgres"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsAuthorityAndEscrowEpoch"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsVolumeDiagnosticsBoundaries/sqlite"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsVolumeDiagnosticsBoundaries/postgres"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsVolumeDiagnosticsBoundaries"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsPinTierBoundaries/sqlite/expired-exact"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsPinTierBoundaries/sqlite/future"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsPinTierBoundaries/sqlite/day-exact"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsPinTierBoundaries/sqlite/day-past"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsPinTierBoundaries/sqlite/week-exact"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsPinTierBoundaries/sqlite/week-past"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsPinTierBoundaries/sqlite/month-exact"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsPinTierBoundaries/sqlite/outside-window"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsPinTierBoundaries/sqlite"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsPinTierBoundaries/postgres/expired-exact"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsPinTierBoundaries/postgres/future"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsPinTierBoundaries/postgres/day-exact"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsPinTierBoundaries/postgres/day-past"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsPinTierBoundaries/postgres/week-exact"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsPinTierBoundaries/postgres/week-past"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsPinTierBoundaries/postgres/month-exact"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsPinTierBoundaries/postgres/outside-window"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsPinTierBoundaries/postgres"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsPinTierBoundaries"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsReencryptCompletion/sqlite"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsReencryptCompletion/postgres"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestOpsDiagnosticsReencryptCompletion"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestSnapshotInsertsRetainProofBindingAndRollback/sqlite"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestSnapshotInsertsRetainProofBindingAndRollback/postgres"
+    },
+    {
+      "package": "github.com/Hikyo-Org/hikyo/internal/isolation",
+      "test": "TestSnapshotInsertsRetainProofBindingAndRollback"
+    }
+  ],
+  "skips": [],
+  "failures": [],
+  "raw_sha256": "4398f1f7c6c4a67256002993e56a487b535ecc4d0fd0c49e351022a1df5895f2"
+}

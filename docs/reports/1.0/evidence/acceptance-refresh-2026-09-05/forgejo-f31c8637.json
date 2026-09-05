@@ -1,0 +1,27 @@
+{
+  "status": "PASS",
+  "server_id": "31bd01278d01935b137153d4f5b8e5eee16e7962637fd6464ae274d414e9509c",
+  "server_image": "sha256:7c4e1db440be7b2ca685b49d0d7864cdd78e92431f531bf7893659def8200fc5",
+  "postgres_image": "sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2",
+  "runner_image": "sha256:0ecdc2a9f6156af6451080bfe3d8382a662fcc4e209608c6f919e643453514c1",
+  "tls_hostname_verified": true,
+  "version": "16.0.3+gitea-1.22.0",
+  "provider_lifecycle_run": true,
+  "source_commit": "f31c86373e3745f818fdf47f912984660c732720",
+  "source_dirty": false,
+  "binary_sha256": "f7d54a9b7fe62c160a750eb0be7ff834e3d9f28662a831fc81584d74a83f11c5",
+  "fixture_test_sha256": "12fc9b014c6b09aac399f57b7784407607a7344fb0b815314809370112ce2105",
+  "started_at": "2026-09-05T13:33:12.603999+00:00",
+  "tests": {
+    "TestForgejoRealLifecycle": "PASS",
+    "TestForgejoRealLifecycle/postgres": "PASS",
+    "TestForgejoRealLifecycle/sqlite": "PASS"
+  },
+  "cleanup": {
+    "secret_rows": 0,
+    "variable_rows": 0
+  },
+  "skipped_legs": 0,
+  "finished_at": "2026-09-05T13:33:15.671864+00:00",
+  "temporary_runner_removed": true
+}

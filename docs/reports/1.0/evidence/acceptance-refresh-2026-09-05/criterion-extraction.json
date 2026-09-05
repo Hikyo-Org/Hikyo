@@ -1,0 +1,3836 @@
+{
+  "source_commit": "f31c86373e3745f818fdf47f912984660c732720",
+  "source_state": "Go test inventory inspected atf31, unchanged through tested4394 and same-tree merged549; mapped internal suites and all49 exact-head checks passed.",
+  "evidence_kind": "source-derived extraction map, not a test-run result",
+  "shard_count": 3,
+  "planner": "scripts/ci/analysis-shards-go/main.go",
+  "planner_sha256": "356182507987e034e5ec37c288d8b9b288f38c97163486eb9b5ebd12148391fd",
+  "derivation": "FNV-1a uint32(name) modulo3 for isolation; preferred race package overrides then FNV-1a(relative package) modulo3. Final hosted plan must be compared before certifying selection.",
+  "ordinary_go_output": "Non-verbose go test. Successful package/shard job plus actual command, source selection and required-engine guards supports suite-level execution, not individually logged named-case counts.",
+  "both_engine_guards": [
+    "internal/conformance/conformance_test.go: postgresTestDSN fails in CI if DSN missing",
+    "internal/isolation/harness_test.go: postgresTestDSN fails in CI if DSN missing; forEngines selects both engines"
+  ],
+  "required_special_evidence": {
+    "S1": "Dedicated client verifier must report both engines. pre-freeze-rehearsal is not immutable frozen-v1.0.0 mode.",
+    "S3": "All desktop/mobile jobs plus web-closure and source-bound locked-prototype comparison.",
+    "K2": "Headline both-engine backup and constrained native recovery artifacts with separate custody.",
+    "M3": "Real Kind/operator phases and corrected process RSS/cgroup provenance.",
+    "M4": "Attached exact-source Forgejo API+structural proof; live GitHub remains separate.",
+    "O2": "Exact-candidate authenticated Compose and Kubernetes doctor outputs validated against all12 finding families and engine-specific severities, plus required measured benchmark, native complete diagnostic families, recovery/operator source identities and bounds. Native acceptance does not substitute for deployment doctor execution.",
+    "O3": "Official ceremony/public artifacts are not proven by synthetic signing fixtures.",
+    "O4": "Current fallback receipt plus separately recorded PVR receipt and actual public endpoints.",
+    "GH-E2E/GH-CONTRACT": "Dedicated real github.com API and byte-exact workflow consumption; ordinary skip not a pass."
+  },
+  "criteria": [
+    {
+      "criterion": "C1",
+      "capability": "Hierarchy and project key catalogue",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race, web",
+      "go_entrypoints": [
+        {
+          "name": "TestConformanceSQLite",
+          "file": "internal/conformance/conformance_test.go",
+          "package": "internal/conformance",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestConformancePostgres",
+          "file": "internal/conformance/conformance_test.go",
+          "package": "internal/conformance",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestIsolation",
+          "file": "internal/isolation/probes_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "hierarchy.go",
+          "path": "internal/cli/hierarchy.go"
+        },
+        {
+          "name": "conformance_test.go",
+          "path": "internal/conformance/conformance_test.go"
+        },
+        {
+          "name": "instance-admin.spec.ts",
+          "path": "web/e2e/flows/instance-admin.spec.ts"
+        }
+      ],
+      "remaining_evidence": "Hierarchy/key conformance, isolation and CLI/browser suites passed; this is mapped acceptance evidence, not a claim to every conceivable CLI round trip.",
+      "completed_browser_leg": {
+        "source_commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "evidence": "browser-client-deployment-4394-summary.json",
+        "qualification": "Every claimed viewport passed; not a substitute for engine or release prerequisites."
+      },
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "C2",
+      "capability": "Flat values and fill operations",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race, web",
+      "go_entrypoints": [
+        {
+          "name": "TestConformanceSQLite",
+          "file": "internal/conformance/conformance_test.go",
+          "package": "internal/conformance",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestConformancePostgres",
+          "file": "internal/conformance/conformance_test.go",
+          "package": "internal/conformance",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestMaskedIsAbsentFromSchemaAndAPI",
+          "file": "internal/conformance/values_test.go",
+          "package": "internal/conformance",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestDeliveryDeliversValuesUnderAuthority",
+          "file": "internal/isolation/delivery_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "values_test.go",
+          "path": "internal/conformance/values_test.go"
+        },
+        {
+          "name": "matrix.spec.ts",
+          "path": "web/e2e/flows/matrix.spec.ts"
+        }
+      ],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "completed_browser_leg": {
+        "source_commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "evidence": "browser-client-deployment-4394-summary.json",
+        "qualification": "Every claimed viewport passed; not a substitute for engine or release prerequisites."
+      },
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "C-APV",
+      "capability": "Secret-change approvals",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race, web",
+      "go_entrypoints": [
+        {
+          "name": "TestApprovalsLifecycle",
+          "file": "internal/isolation/approvals_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestApprovalEdges",
+          "file": "internal/isolation/approvals_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (0)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (0)",
+              "id": 101325734372,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734372",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestProtectedApprovalBypass",
+          "file": "internal/isolation/approvals_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestConcurrentApprovalVotes",
+          "file": "internal/isolation/approvals_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "matrix.spec.ts",
+          "path": "web/e2e/flows/matrix.spec.ts"
+        }
+      ],
+      "remaining_evidence": "Both-engine approval lifecycle/edge/bypass suites and claimed desktop/mobile approval flows passed.",
+      "completed_browser_leg": {
+        "source_commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "evidence": "browser-client-deployment-4394-summary.json",
+        "qualification": "Every claimed viewport passed; not a substitute for engine or release prerequisites."
+      },
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "C3",
+      "capability": "Schema and validation",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race",
+      "go_entrypoints": [
+        {
+          "name": "TestConformanceSQLite",
+          "file": "internal/conformance/conformance_test.go",
+          "package": "internal/conformance",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestConformancePostgres",
+          "file": "internal/conformance/conformance_test.go",
+          "package": "internal/conformance",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestValueFixtures",
+          "file": "internal/schema/validate_test.go",
+          "package": "internal/schema",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (0)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (0)",
+              "id": 101325734320,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734320",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestJSONSchemaConformanceBaseline",
+          "file": "internal/schema/suite_test.go",
+          "package": "internal/schema",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (0)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (0)",
+              "id": 101325734320,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734320",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "catalogue_test.go",
+          "path": "internal/conformance/catalogue_test.go"
+        }
+      ],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "C4",
+      "capability": "Revisions and publishing",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race",
+      "go_entrypoints": [
+        {
+          "name": "TestConformanceSQLite",
+          "file": "internal/conformance/conformance_test.go",
+          "package": "internal/conformance",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestConformancePostgres",
+          "file": "internal/conformance/conformance_test.go",
+          "package": "internal/conformance",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestDeliveryChangeTokenTracksTheManifest",
+          "file": "internal/isolation/delivery_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "revisions_test.go",
+          "path": "internal/conformance/revisions_test.go"
+        }
+      ],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "C5",
+      "capability": "Rollback and pins",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race, web",
+      "go_entrypoints": [
+        {
+          "name": "TestWorkloadRevealHistoryPin",
+          "file": "internal/isolation/machine_reveal_history_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestRestorePinAndProtectedPublishTakeCeremonies",
+          "file": "internal/isolation/reveal_ceremony_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (0)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (0)",
+              "id": 101325734372,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734372",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "history.spec.ts",
+          "path": "web/e2e/flows/history.spec.ts"
+        }
+      ],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "completed_browser_leg": {
+        "source_commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "evidence": "browser-client-deployment-4394-summary.json",
+        "qualification": "Every claimed viewport passed; not a substitute for engine or release prerequisites."
+      },
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "C6",
+      "capability": "Retention and GC",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race",
+      "go_entrypoints": [
+        {
+          "name": "TestRetentionGCC6",
+          "file": "internal/isolation/retention_gc_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestRetentionCLIStartupSweepSQLite",
+          "file": "internal/isolation/retention_cli_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestRetentionCLIStartupSweepPostgres",
+          "file": "internal/isolation/retention_cli_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "A1",
+      "capability": "Human authentication",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race, web",
+      "go_entrypoints": [
+        {
+          "name": "TestDemoFlow",
+          "file": "internal/isolation/demo_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestOIDCMixup",
+          "file": "internal/isolation/oidc_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (0)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (0)",
+              "id": 101325734372,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734372",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestOIDCByteExactSubject",
+          "file": "internal/isolation/oidc_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestRecoveryCompleteFlow",
+          "file": "internal/isolation/factors_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestWebAuthnRoundtrip",
+          "file": "internal/isolation/webauthn_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (0)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (0)",
+              "id": 101325734372,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734372",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestBreakGlassGrantHasNoNetworkRoute",
+          "file": "internal/isolation/grants_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (0)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (0)",
+              "id": 101325734372,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734372",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "login.spec.ts",
+          "path": "web/e2e/flows/login.spec.ts"
+        },
+        {
+          "name": "account.spec.ts",
+          "path": "web/e2e/flows/account.spec.ts"
+        }
+      ],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "completed_browser_leg": {
+        "source_commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "evidence": "browser-client-deployment-4394-summary.json",
+        "qualification": "Every claimed viewport passed; not a substitute for engine or release prerequisites."
+      },
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "A2",
+      "capability": "Permissions and revocation",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race",
+      "go_entrypoints": [
+        {
+          "name": "TestFormulaMatrix",
+          "file": "internal/isolation/formula_matrix_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestMatrixCoversEveryProofMintingOperation",
+          "file": "internal/isolation/formula_matrix_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestRevocationIsImmediate",
+          "file": "internal/isolation/formula_matrix_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestAccessWireQueryTrace",
+          "file": "internal/isolation/access_wire_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (0)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (0)",
+              "id": 101325734372,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734372",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "A3",
+      "capability": "Tenant isolation",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race",
+      "go_entrypoints": [
+        {
+          "name": "TestIsolation",
+          "file": "internal/isolation/probes_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestInvariant01ClassificationTotality",
+          "file": "internal/isolation/invariants_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestInvariant13AllowlistPinning",
+          "file": "internal/isolation/invariants_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "invariants_test.go",
+          "path": "internal/isolation/invariants_test.go"
+        },
+        {
+          "name": "lint_test.go",
+          "path": "internal/lint/lint_test.go"
+        }
+      ],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "A4",
+      "capability": "Audit trails and export",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race",
+      "go_entrypoints": [
+        {
+          "name": "TestAuditCore",
+          "file": "internal/isolation/audit_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestPostgresAuditExportCommitOrder",
+          "file": "internal/isolation/audit_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (0)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (0)",
+              "id": 101325734372,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734372",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestInvariantAuditCompleteness",
+          "file": "internal/isolation/audit_invariants_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestPostgresDurabilityBootRefusal",
+          "file": "internal/isolation/audit_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (0)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (0)",
+              "id": 101325734372,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734372",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "A5",
+      "capability": "Reveal ceremonies",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race, web",
+      "go_entrypoints": [
+        {
+          "name": "TestZeroWindowForcesAPasskeyPerDisclosure",
+          "file": "internal/isolation/reveal_ceremony_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestCopySourceTakesTheCeremony",
+          "file": "internal/isolation/reveal_ceremony_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "reveal.spec.ts",
+          "path": "web/e2e/flows/reveal.spec.ts"
+        }
+      ],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "completed_browser_leg": {
+        "source_commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "evidence": "browser-client-deployment-4394-summary.json",
+        "qualification": "Every claimed viewport passed; not a substitute for engine or release prerequisites."
+      },
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "A6",
+      "capability": "Log non-disclosure",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race",
+      "go_entrypoints": [
+        {
+          "name": "TestRedactionSurfacesAgainstPlantedSecret",
+          "file": "internal/crypto/redact_test.go",
+          "package": "internal/crypto",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (1)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (1)",
+              "id": 101325734324,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734324",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestSensitiveFormattingRepo",
+          "file": "internal/lint/lint_test.go",
+          "package": "internal/lint",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (1)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (1)",
+              "id": 101325734324,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734324",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestInvariantAuditRedaction",
+          "file": "internal/isolation/audit_invariants_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "A7",
+      "capability": "Social sign-in and registration",
+      "ledger_status": "POST-1.0",
+      "required_lanes": "none for deferred scope",
+      "go_entrypoints": [],
+      "supporting_references": [
+        {
+          "name": "social-signin.md",
+          "path": "docs/spec/social-signin.md"
+        }
+      ],
+      "remaining_evidence": "Social registration remains deferred under the accepted release assessment; no implementation pass claimed.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "POST-1.0",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": [
+          "Social registration remains deferred under the accepted release assessment; no implementation pass claimed."
+        ]
+      }
+    },
+    {
+      "criterion": "K1",
+      "capability": "Envelope encryption and rotation",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race",
+      "go_entrypoints": [
+        {
+          "name": "TestRootKeyRotationCrashSafe",
+          "file": "internal/crypto/keyring_test.go",
+          "package": "internal/crypto",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (1)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (1)",
+              "id": 101325734324,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734324",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestMasterKeyRotationRewrapsTier3",
+          "file": "internal/crypto/keyring_test.go",
+          "package": "internal/crypto",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (1)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (1)",
+              "id": 101325734324,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734324",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestReencryptProjectRetrySafe",
+          "file": "internal/isolation/reencrypt_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestReencryptInstanceRetrySafe",
+          "file": "internal/isolation/reencrypt_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "lint_test.go",
+          "path": "internal/lint/lint_test.go"
+        }
+      ],
+      "remaining_evidence": "Rotation suites and existing crash/custody fixtures passed; a unit keyring fixture alone is not represented as a process kill drill.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "K2",
+      "capability": "Backup, restore and custody",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "headline-guarantee, test, floor-acceptance",
+      "go_entrypoints": [
+        {
+          "name": "TestBackupRestoreDrillSQLite",
+          "file": "internal/isolation/backup_drill_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestBackupRestoreDrillPostgres",
+          "file": "internal/isolation/backup_drill_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestNoBulkAcceptInTheAPISurface",
+          "file": "internal/isolation/backup_drill_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestFederationRestorePredicate",
+          "file": "internal/isolation/federation_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestSCIMRestoreDrill",
+          "file": "internal/isolation/scim_login_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [],
+      "remaining_evidence": "Both-engine headline backup drills and native schema 45 recovery passed; separately held synthetic custody remains explicit.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "K3",
+      "capability": "Stolen dump and backup guarantee",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "headline-guarantee, test",
+      "go_entrypoints": [
+        {
+          "name": "TestBackupRestoreDrillSQLite",
+          "file": "internal/isolation/backup_drill_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestBackupRestoreDrillPostgres",
+          "file": "internal/isolation/backup_drill_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [],
+      "remaining_evidence": "Both-engine headline stolen-dump/backup fixtures passed.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "S1",
+      "capability": "API freeze and bidirectional skew",
+      "ledger_status": "FREEZE-PENDING",
+      "required_lanes": "freeze-guard, test, client",
+      "go_entrypoints": [
+        {
+          "name": "TestFreezeGateFixtures",
+          "file": "api/freeze_test.go",
+          "package": "api",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestEveryOperationCarriesItsContractExtensions",
+          "file": "api/spec_test.go",
+          "package": "api",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestFrozenGeneratedClientAgainstCurrentServer",
+          "file": "internal/isolation/client_skew_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "required_dedicated_job": "validation / client",
+          "ordinary_skip": "Requires dedicated frozen-client environment; ordinary suite execution is not acceptance.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestClientRefusesSubminimumOperationBeforeDispatch",
+          "file": "internal/cli/client_revision_test.go",
+          "package": "internal/cli",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestClientChangingOriginCannotReuseAnotherServersRevision",
+          "file": "internal/cli/client_revision_test.go",
+          "package": "internal/cli",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "check-client-skew.sh",
+          "path": "scripts/ci/check-client-skew.sh"
+        },
+        {
+          "name": "check-api-freeze.sh",
+          "path": "scripts/ci/check-api-freeze.sh"
+        }
+      ],
+      "remaining_evidence": "Internal API extensions/parity/goldens and 4394 client rehearsal PASS: SQLite 1.47 s/PostgreSQL 1.84 s, three named passes, zero skips. Immutable v1.0.0 freeze remains pending; pre-freeze rehearsal is not frozen-tag execution.",
+      "completed_client_leg": {
+        "source_commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "job_id": 101325301053,
+        "evidence": "browser-client-deployment-4394-summary.json",
+        "qualification": "Both-engine pre-freeze rehearsal, immutable freeze pending."
+      },
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "FREEZE-PENDING",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": [
+          "Internal API extensions/parity/goldens and 4394 client rehearsal PASS: SQLite 1.47 s/PostgreSQL 1.84 s, three named passes, zero skips. Immutable v1.0.0 freeze remains pending; pre-freeze rehearsal is not frozen-tag execution."
+        ]
+      }
+    },
+    {
+      "criterion": "S2",
+      "capability": "CLI grammar and output",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race, client",
+      "go_entrypoints": [
+        {
+          "name": "TestHelpOutputIsFrozen",
+          "file": "internal/cli/golden_test.go",
+          "package": "internal/cli",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestMachineTokenChannels",
+          "file": "internal/cli/identities_internal_test.go",
+          "package": "internal/cli",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestRunNonExecutableIs126",
+          "file": "internal/cli/compose_internal_test.go",
+          "package": "internal/cli",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestRunExecNotFoundAndNotExecutable",
+          "file": "internal/cli/compose_internal_test.go",
+          "package": "internal/cli",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestParityRegistryCoversEveryOperationExactlyOnce",
+          "file": "api/parity_test.go",
+          "package": "api",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [],
+      "remaining_evidence": "CLI goldens, operation parity, output channels and shared revision refusal suites passed.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "S3",
+      "capability": "Locked browser surfaces",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "web, web-closure",
+      "go_entrypoints": [],
+      "supporting_references": [
+        {
+          "name": "registry.ts",
+          "path": "web/e2e/registry.ts"
+        },
+        {
+          "name": "check-closure.ts",
+          "path": "web/e2e/check-closure.ts"
+        },
+        {
+          "name": "assertions.ts",
+          "path": "web/e2e/fixtures/assertions.ts"
+        },
+        {
+          "name": "ui-spec.md",
+          "path": "docs/spec/ui-spec.md"
+        }
+      ],
+      "remaining_evidence": "4394:447 browser passes across eight shards; five viewport-specific skips each have a passing counterpart. Every claimed viewport passed closure. The 190 locked-prototype inputs are source-reconciled to the merged tree.",
+      "completed_browser_leg": {
+        "source_commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "evidence": "browser-client-deployment-4394-summary.json",
+        "qualification": "Every claimed viewport passed; not a substitute for engine or release prerequisites."
+      },
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "S4",
+      "capability": "Definitions Git flow",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race, web",
+      "go_entrypoints": [
+        {
+          "name": "TestDefinitions",
+          "file": "internal/isolation/definitions_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (0)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (0)",
+              "id": 101325734372,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734372",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestDefinitionsGoldenOutputs",
+          "file": "internal/cli/golden_test.go",
+          "package": "internal/cli",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "matrix.spec.ts",
+          "path": "web/e2e/flows/matrix.spec.ts"
+        }
+      ],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "completed_browser_leg": {
+        "source_commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "evidence": "browser-client-deployment-4394-summary.json",
+        "qualification": "Every claimed viewport passed; not a substitute for engine or release prerequisites."
+      },
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "M1",
+      "capability": "Machine identities and federation",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race, web",
+      "go_entrypoints": [
+        {
+          "name": "TestMachineIdentityLifecycle",
+          "file": "internal/isolation/identities_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (0)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (0)",
+              "id": 101325734372,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734372",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestMachineTokenChannels",
+          "file": "internal/cli/identities_internal_test.go",
+          "package": "internal/cli",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestFederationAgainstEachIssuerType",
+          "file": "internal/isolation/federation_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestFederationJWKSStalenessBound",
+          "file": "internal/isolation/federation_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestDeliveryCursorFalsification",
+          "file": "internal/isolation/delivery_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (0)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (0)",
+              "id": 101325734372,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734372",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "machine-access.spec.ts",
+          "path": "web/e2e/flows/machine-access.spec.ts"
+        }
+      ],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "completed_browser_leg": {
+        "source_commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "evidence": "browser-client-deployment-4394-summary.json",
+        "qualification": "Every claimed viewport passed; not a substitute for engine or release prerequisites."
+      },
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "M2",
+      "capability": "Compose delivery",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "compose-demo, test, race",
+      "go_entrypoints": [
+        {
+          "name": "TestComposeCLIDeliverySQLite",
+          "file": "internal/isolation/compose_cli_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestComposeCLIDeliveryPostgres",
+          "file": "internal/isolation/compose_cli_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestComposeCLIRenderAndDoctor",
+          "file": "internal/isolation/compose_cli_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestComposeCLISyncRematerializesWipedRuntime",
+          "file": "internal/isolation/compose_cli_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "compose-demo.sh",
+          "path": "scripts/compose-demo.sh"
+        }
+      ],
+      "remaining_evidence": "Both-engine Compose suites and actual 4394 Compose deployment passed, including byte-exact delivery and authenticated doctor.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "M3",
+      "capability": "Kubernetes operator",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "k8s-e2e, operator-floor",
+      "go_entrypoints": [
+        {
+          "name": "TestK8sOperator",
+          "file": "internal/isolation/k8s_operator_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "k8s-e2e.sh",
+          "path": "scripts/ci/k8s-e2e.sh"
+        }
+      ],
+      "remaining_evidence": "4394 Kind/chart and all five 50-resource operator phases passed; standalone operator RSS 98,889,728 bytes under 128 MiB.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "M4",
+      "capability": "Deployment adapters",
+      "ledger_status": "EXTERNAL-PENDING",
+      "required_lanes": "test plus external run",
+      "go_entrypoints": [
+        {
+          "name": "TestForgejoRealLifecycle",
+          "file": "internal/isolation/forgejo_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (0)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "required_dedicated_proof": "forgejo-f31c8637.json",
+          "ordinary_skip": "Requires actual provider configuration; dedicated exact-source proof attached.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (0)",
+              "id": 101325734372,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734372",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestAdapterMultiTargetSync",
+          "file": "internal/isolation/adapter_multi_target_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [],
+      "remaining_evidence": "Forgejo API lifecycle passed both engines at f31 with zero skips; structural/value-blind/canonical mapping fixtures also passed. Runtime/test-source equivalence to 4394 and same-tree merge 549 are recorded. Separate real GitHub API/workflow acceptance remains pending.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "EXTERNAL-PENDING",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": [
+          "Forgejo API lifecycle passed both engines at f31 with zero skips; structural/value-blind/canonical mapping fixtures also passed. Runtime/test-source equivalence to 4394 and same-tree merge 549 are recorded. Separate real GitHub API/workflow acceptance remains pending."
+        ]
+      }
+    },
+    {
+      "criterion": "M5",
+      "capability": "Import connectors",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race",
+      "go_entrypoints": [
+        {
+          "name": "TestSubprocessEnvironmentIsSanitizedAtTheSharedPath",
+          "file": "internal/importer/connector_test.go",
+          "package": "internal/importer",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (1)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (1)",
+              "id": 101325734324,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734324",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestValuesImportFromDotenvStagesDeclaredKeys",
+          "file": "internal/cli/importer_dotenv_test.go",
+          "package": "internal/cli",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "connector_test.go",
+          "path": "internal/importer/connector_test.go"
+        },
+        {
+          "name": "import_test.go",
+          "path": "internal/conformance/import_test.go"
+        }
+      ],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "M6",
+      "capability": "Directory and workspace tiers",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race, web",
+      "go_entrypoints": [
+        {
+          "name": "TestTwoInstancesDirectoryAndWorkspace",
+          "file": "internal/isolation/two_instance_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestZeroRemotesOriginateZeroConnections",
+          "file": "internal/isolation/two_instance_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestWorkspaceAssuranceAndStepUp",
+          "file": "internal/isolation/workspace_stepup_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "workspace.spec.ts",
+          "path": "web/e2e/flows/workspace.spec.ts"
+        },
+        {
+          "name": "noproxy_test.go",
+          "path": "api/noproxy_test.go"
+        }
+      ],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "completed_browser_leg": {
+        "source_commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "evidence": "browser-client-deployment-4394-summary.json",
+        "qualification": "Every claimed viewport passed; not a substitute for engine or release prerequisites."
+      },
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "O1",
+      "capability": "Binary, engines and upgrades",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, k8s-e2e, web-go",
+      "go_entrypoints": [
+        {
+          "name": "TestConformanceSQLite",
+          "file": "internal/conformance/conformance_test.go",
+          "package": "internal/conformance",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestConformancePostgres",
+          "file": "internal/conformance/conformance_test.go",
+          "package": "internal/conformance",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestMigrationRefusesUnverifiedExistingSchemaBeforeWrites",
+          "file": "internal/app/premigration_test.go",
+          "package": "internal/app",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (0)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (0)",
+              "id": 101325734320,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734320",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestVerifiedMigrateSkipsBackupOnHealthyRestart",
+          "file": "internal/app/premigration_test.go",
+          "package": "internal/app",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (0)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (0)",
+              "id": 101325734320,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734320",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestActualCLIMigrateBootRestart",
+          "file": "internal/upgradegate/cli_process_test.go",
+          "package": "internal/upgradegate",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestRestoreRequiredRestartExposesOnlyOperationalHealth",
+          "file": "internal/app/maintenance_test.go",
+          "package": "internal/app",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (0)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (0)",
+              "id": 101325734320,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734320",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "upgrade_test.go",
+          "path": "internal/store/migrate/upgrade_test.go"
+        },
+        {
+          "name": "chart-kind.sh",
+          "path": "scripts/ci/chart-kind.sh"
+        }
+      ],
+      "remaining_evidence": "Both-engine conformance/upgrade/runtime-custody suites, actual CLI signed-drill fixtures and chart boot passed. Official published artifact availability remains O3.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "O2",
+      "capability": "Ops bounds and calibration",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, compose-demo, k8s-e2e, ops-floor, floor-acceptance, operator-floor, required floor-bench",
+      "go_entrypoints": [
+        {
+          "name": "TestBoundRegistryFixtureReferencesResolve",
+          "file": "internal/conformance/boundregistry_test.go",
+          "package": "internal/conformance",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestMetricRegistryStaysWithinCardinalityBudget",
+          "file": "internal/conformance/metrics_test.go",
+          "package": "internal/conformance",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestProjectStorageHighWater",
+          "file": "internal/isolation/project_storage_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (0)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (0)",
+              "id": 101325734372,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734372",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "boundregistry_test.go",
+          "path": "internal/conformance/boundregistry_test.go"
+        },
+        {
+          "name": "authenticated Compose doctor",
+          "path": "scripts/compose-demo.sh",
+          "lines": "268-295"
+        },
+        {
+          "name": "authenticated Kubernetes chart doctor",
+          "path": "scripts/ci/chart-kind.sh",
+          "lines": "374-422"
+        },
+        {
+          "name": "exact12-family and severity verifier",
+          "path": "scripts/ci/assert-doctor-findings.jq",
+          "source_commit": "f31c86373e3745f818fdf47f912984660c732720"
+        }
+      ],
+      "remaining_evidence": "Both-engine bounds, authenticated Compose SQLite and chart PostgreSQL 12-family doctor outputs, both native doctor architectures, required benchmark, recovery and operator gates passed at 4394. SQLite volume is measured; PostgreSQL is unknown. Native gates do not substitute for deployment doctor. CPU estimates retain factor 4.0; memory 1.0; no physical Pi claim.",
+      "deployment_doctor_evidence": {
+        "source_commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "state": "observed PASS on both required jobs",
+        "summary": "browser-client-deployment-4394-summary.json",
+        "job_ids": [
+          101325301055,
+          101325301049
+        ],
+        "authenticated_families": 12,
+        "raw_doctor_json_uploaded": false,
+        "native_floor_is_substitute": false,
+        "assertion_source_sha256_reference": "deployment-doctor-f31-summary.json",
+        "assertion_sources_unchanged_through_4394": true
+      },
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "O3",
+      "capability": "Signed immutable releases",
+      "ledger_status": "CEREMONY-PENDING",
+      "required_lanes": "release-snapshot, supply-chain-checks, dco; release",
+      "go_entrypoints": [],
+      "supporting_references": [
+        {
+          "name": "test-fixtures.sh",
+          "path": "scripts/release/test-fixtures.sh"
+        },
+        {
+          "name": "check-tag.sh",
+          "path": "scripts/release/check-tag.sh"
+        },
+        {
+          "name": "check-dco.sh",
+          "path": "scripts/ci/check-dco.sh"
+        },
+        {
+          "name": "signing.md",
+          "path": "docs/release/signing.md"
+        }
+      ],
+      "remaining_evidence": "Internal release-snapshot, signature/bundle and actual Cosign fixtures PASS. Official trust/signing ceremony, immutable stable release and published signature verification remain pending.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "CEREMONY-PENDING",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": [
+          "Internal release-snapshot, signature/bundle and actual Cosign fixtures PASS. Official trust/signing ceremony, immutable stable release and published signature verification remain pending."
+        ]
+      }
+    },
+    {
+      "criterion": "O4",
+      "capability": "Security disclosure channels",
+      "ledger_status": "EXTERNAL-PENDING",
+      "required_lanes": "docs, security-channel; release",
+      "go_entrypoints": [],
+      "supporting_references": [
+        {
+          "name": "check-docs-live.sh",
+          "path": "scripts/ci/check-docs-live.sh"
+        },
+        {
+          "name": "check-fallback-channel-test.sh",
+          "path": "scripts/ci/check-fallback-channel-test.sh"
+        },
+        {
+          "name": "SECURITY.md",
+          "path": "SECURITY.md"
+        }
+      ],
+      "remaining_evidence": "4394 docs/security-channel assertions and current fallback receipt pass; previous actual public endpoint checks remain recorded. Quarterly PVR receipt evidence is unlocated. Main 549 Pages deployment passed; enablement is not acknowledgment proof.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "EXTERNAL-PENDING",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": [
+          "4394 docs/security-channel assertions and current fallback receipt pass; previous actual public endpoint checks remain recorded. Quarterly PVR receipt evidence is unlocated. Main 549 Pages deployment passed; enablement is not acknowledgment proof."
+        ]
+      }
+    },
+    {
+      "criterion": "O5",
+      "capability": "Governance and licensing",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "docs, release-snapshot",
+      "go_entrypoints": [],
+      "supporting_references": [
+        {
+          "name": "check-oss-policy.sh",
+          "path": "scripts/ci/check-oss-policy.sh"
+        },
+        {
+          "name": "GOVERNANCE.md",
+          "path": "GOVERNANCE.md"
+        },
+        {
+          "name": "LICENSE",
+          "path": "LICENSE"
+        }
+      ],
+      "remaining_evidence": "Pinned governance/licensing/no-EE policy assertions and release-snapshot checks passed at 4394.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "O6",
+      "capability": "Support policy",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "docs; release",
+      "go_entrypoints": [],
+      "supporting_references": [
+        {
+          "name": "verify-docs.sh",
+          "path": "scripts/ci/verify-docs.sh"
+        },
+        {
+          "name": "SUPPORT.md",
+          "path": "SUPPORT.md"
+        }
+      ],
+      "remaining_evidence": "Support-policy/doc assertions passed at 4394; post-merge public documentation deployment is tracked separately.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "O7",
+      "capability": "Zero unsolicited egress",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "no-egress, test",
+      "go_entrypoints": [
+        {
+          "name": "TestZeroRemotesOriginateZeroConnections",
+          "file": "internal/isolation/two_instance_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [],
+      "remaining_evidence": "Instrumented no-egress job and zero-remotes/two-instance suites passed. Explicit configured integrations remain opt-in network activity.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "SA1",
+      "capability": "SAML validation and replay",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race",
+      "go_entrypoints": [
+        {
+          "name": "TestSAMLLoginReplay",
+          "file": "internal/isolation/saml_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (0)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (0)",
+              "id": 101325734372,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734372",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestSAMLArtifactsAreSingleUseAndDurable",
+          "file": "internal/isolation/saml_storage_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestParseResponseRefusesStructuralWrappingShapes",
+          "file": "internal/samlsp/response_test.go",
+          "package": "internal/samlsp",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestParseResponseRefusesAlgorithmsOutsideClosedAllowlist",
+          "file": "internal/samlsp/response_test.go",
+          "package": "internal/samlsp",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "validation_test.go",
+          "path": "internal/samlsp/validation_test.go"
+        }
+      ],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "SA2",
+      "capability": "SAML identity and no-JIT",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race",
+      "go_entrypoints": [
+        {
+          "name": "TestEncodeNameIDIsInjectiveAcrossFieldsAndPresence",
+          "file": "internal/samlsp/nameid_test.go",
+          "package": "internal/samlsp",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestSCIMProvisionThenLoginSAML",
+          "file": "internal/isolation/scim_login_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "saml_e2e_test.go",
+          "path": "internal/isolation/saml_e2e_test.go"
+        },
+        {
+          "name": "saml_contract_test.go",
+          "path": "api/saml_contract_test.go"
+        }
+      ],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "SA3",
+      "capability": "SAML assurance and reauth",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race",
+      "go_entrypoints": [
+        {
+          "name": "TestValidateResponseRequiresExactlyOneAuthnStatementAndAtMostOneContext",
+          "file": "internal/samlsp/validation_test.go",
+          "package": "internal/samlsp",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestBuildAuthnRequestBuildsSignedRedirectOverExactWireValues",
+          "file": "internal/samlsp/request_test.go",
+          "package": "internal/samlsp",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "saml_e2e_test.go",
+          "path": "internal/isolation/saml_e2e_test.go"
+        },
+        {
+          "name": "saml_test.go",
+          "path": "internal/server/saml_test.go"
+        }
+      ],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "SA4",
+      "capability": "SAML metadata and SP material",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race, web",
+      "go_entrypoints": [
+        {
+          "name": "TestSAMLSPKeyLifecycle",
+          "file": "internal/isolation/saml_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestParseMetadataVerifiesSignedDescriptorBeforeExtraction",
+          "file": "internal/samlsp/metadata_test.go",
+          "package": "internal/samlsp",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "instance-admin.spec.ts",
+          "path": "web/e2e/flows/instance-admin.spec.ts"
+        }
+      ],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "completed_browser_leg": {
+        "source_commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "evidence": "browser-client-deployment-4394-summary.json",
+        "qualification": "Every claimed viewport passed; not a substitute for engine or release prerequisites."
+      },
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "SC1",
+      "capability": "SCIM wire and credentials",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race",
+      "go_entrypoints": [
+        {
+          "name": "TestSCIMCriteriaMatrixIsComplete",
+          "file": "internal/isolation/scim_criteria_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestSCIMOktaSequence",
+          "file": "internal/isolation/scim_provider_sequence_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestSCIMEntraSequence",
+          "file": "internal/isolation/scim_provider_sequence_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestSCIMCredentialLifecycle",
+          "file": "internal/isolation/scim_credential_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestSCIMCredentialIsRejectedOnNonSCIMOperations",
+          "file": "internal/isolation/scim_invariants_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "SC2",
+      "capability": "SCIM provisioning lifecycle",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race, web",
+      "go_entrypoints": [
+        {
+          "name": "TestSCIMProvisionThenLoginOIDC",
+          "file": "internal/isolation/scim_login_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestSCIMProvisionThenLoginSAML",
+          "file": "internal/isolation/scim_login_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestSCIMTransitionTable",
+          "file": "internal/isolation/scim_wire_coverage_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestSCIMZeroAuthorityOnCreate",
+          "file": "internal/isolation/scim_wire_coverage_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (0)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (0)",
+              "id": 101325734372,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734372",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "members.spec.ts",
+          "path": "web/e2e/flows/members.spec.ts"
+        }
+      ],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "completed_browser_leg": {
+        "source_commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "evidence": "browser-client-deployment-4394-summary.json",
+        "qualification": "Every claimed viewport passed; not a substitute for engine or release prerequisites."
+      },
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "SC3",
+      "capability": "SCIM origins and reconciliation",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race, web",
+      "go_entrypoints": [
+        {
+          "name": "TestSCIMMappingWidenAndNarrow",
+          "file": "internal/isolation/scim_audit_coverage_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestSCIMLockoutAcrossEveryReleasePathSQLite",
+          "file": "internal/isolation/scim_audit_coverage_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestSCIMLockoutAcrossEveryReleasePathPostgres",
+          "file": "internal/isolation/scim_audit_coverage_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (0)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (0)",
+              "id": 101325734372,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734372",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestSCIMTwoBindingRace",
+          "file": "internal/isolation/scim_login_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestAuthorizeNeverReadsOrigins",
+          "file": "internal/isolation/scim_audit_coverage_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "members.spec.ts",
+          "path": "web/e2e/flows/members.spec.ts"
+        }
+      ],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "completed_browser_leg": {
+        "source_commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "evidence": "browser-client-deployment-4394-summary.json",
+        "qualification": "Every claimed viewport passed; not a substitute for engine or release prerequisites."
+      },
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "SC4",
+      "capability": "SCIM audit and restore",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race",
+      "go_entrypoints": [
+        {
+          "name": "TestSCIMRestoreDrill",
+          "file": "internal/isolation/scim_login_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (1)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (1)",
+              "id": 101325734327,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734327",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestSCIMAttentionStatePairs",
+          "file": "internal/isolation/scim_audit_coverage_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestSCIMPayloadSchemasAreValidatedOnWrite",
+          "file": "internal/isolation/scim_audit_coverage_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestSCIMPerBindingSerializationOrder",
+          "file": "internal/isolation/scim_concurrency_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (0)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (0)",
+              "id": 101325734372,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734372",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "SS1",
+      "capability": "Scanner corpus and calibration",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race",
+      "go_entrypoints": [
+        {
+          "name": "TestScanningCriteriaMatrixIsComplete",
+          "file": "internal/isolation/scanning_criteria_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestPiBenchArtifact",
+          "file": "internal/scanning/bench_validate_test.go",
+          "package": "internal/scanning",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (0)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (0)",
+              "id": 101325734320,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734320",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "pi-result.json",
+          "path": "internal/scanning/testdata/bench/pi-result.json"
+        }
+      ],
+      "remaining_evidence": "Both-engine scanner matrix/corpus and actual 4394 native scanner passed: 0.803 ms raw p99 / 3.212 ms conservative estimate. Physical calibration remains optional.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "SS2",
+      "capability": "Scanner warn path",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race, web",
+      "go_entrypoints": [
+        {
+          "name": "TestScanningCriteriaMatrixIsComplete",
+          "file": "internal/isolation/scanning_criteria_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "scanning_test.go",
+          "path": "internal/conformance/scanning_test.go"
+        },
+        {
+          "name": "scanning.spec.ts",
+          "path": "web/e2e/flows/scanning.spec.ts"
+        }
+      ],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "completed_browser_leg": {
+        "source_commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "evidence": "browser-client-deployment-4394-summary.json",
+        "qualification": "Every claimed viewport passed; not a substitute for engine or release prerequisites."
+      },
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "SS3",
+      "capability": "Scanner block path",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race, web",
+      "go_entrypoints": [
+        {
+          "name": "TestScanningCriteriaMatrixIsComplete",
+          "file": "internal/isolation/scanning_criteria_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "scanning_test.go",
+          "path": "internal/conformance/scanning_test.go"
+        },
+        {
+          "name": "scanning.spec.ts",
+          "path": "web/e2e/flows/scanning.spec.ts"
+        }
+      ],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "completed_browser_leg": {
+        "source_commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "evidence": "browser-client-deployment-4394-summary.json",
+        "qualification": "Every claimed viewport passed; not a substitute for engine or release prerequisites."
+      },
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "SS4",
+      "capability": "Scanner non-disclosure",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race, web",
+      "go_entrypoints": [
+        {
+          "name": "TestScanningCanarySweep",
+          "file": "internal/isolation/scanning_sweep_e2e_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestScanningCriteriaMatrixIsComplete",
+          "file": "internal/isolation/scanning_criteria_test.go",
+          "package": "internal/isolation",
+          "ordinary_job": "validation / isolation shard (2)",
+          "race_job": null,
+          "race_note": "Explicitly excluded by the actual race planner.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / isolation shard (2)",
+              "id": 101325734436,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734436",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "scanning.spec.ts",
+          "path": "web/e2e/flows/scanning.spec.ts"
+        }
+      ],
+      "remaining_evidence": "Mapped4394 ordinary suites and applicable engine/race/browser lanes passed. Evidence is selected-suite execution with required PostgreSQL guards; no individual case counts are inferred.",
+      "completed_browser_leg": {
+        "source_commit": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "evidence": "browser-client-deployment-4394-summary.json",
+        "qualification": "Every claimed viewport passed; not a substitute for engine or release prerequisites."
+      },
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "GH-E2E",
+      "capability": "GitHub real-provider lifecycle",
+      "ledger_status": "EXTERNAL-PENDING",
+      "required_lanes": "dedicated external run",
+      "go_entrypoints": [
+        {
+          "name": "TestGitHubDotComContract",
+          "file": "internal/adapter/githubactions/contract_external_test.go",
+          "package": "internal/adapter/githubactions",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "required_dedicated_proof": "EXTERNAL-PENDING",
+          "ordinary_skip": "Dedicated all-or-nothing live provider credentials and workflow required.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [
+        {
+          "name": "hikyo-contract-consume.yml",
+          "path": "internal/adapter/githubactions/testdata/hikyo-contract-consume.yml"
+        }
+      ],
+      "remaining_evidence": "Real github.com repository/organization/environment and byte-exact workflow consumption require the separate dedicated provider run; ordinary CI intentionally skips it.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "EXTERNAL-PENDING",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": [
+          "Real github.com repository/organization/environment and byte-exact workflow consumption require the separate dedicated provider run; ordinary CI intentionally skips it."
+        ]
+      }
+    },
+    {
+      "criterion": "GH-STUB",
+      "capability": "GitHub deterministic state machine",
+      "ledger_status": "INTERNAL-PASS",
+      "required_lanes": "test, race",
+      "go_entrypoints": [
+        {
+          "name": "TestSyncSealsSecretsAndSurfacesFirstDispatch204Capture",
+          "file": "internal/adapter/githubactions/module_test.go",
+          "package": "internal/adapter/githubactions",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestOwnedMissingVariableSurvivesCrashBoundaryAndRetriesCreateOnly",
+          "file": "internal/adapter/githubactions/module_test.go",
+          "package": "internal/adapter/githubactions",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestStalePublicKeyRefetchesAndResealsOnce",
+          "file": "internal/adapter/githubactions/module_test.go",
+          "package": "internal/adapter/githubactions",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestSyncResumeCursorDoesNotReplayCompletedName",
+          "file": "internal/adapter/githubactions/module_test.go",
+          "package": "internal/adapter/githubactions",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [],
+      "remaining_evidence": "Engine-independent GitHub state-machine/no-read fixtures and applicable both-engine outbox suites passed; live GitHub contract remains separate.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "INTERNAL-PASS",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": []
+      }
+    },
+    {
+      "criterion": "GH-CONTRACT",
+      "capability": "GitHub real API contract pins",
+      "ledger_status": "EXTERNAL-PENDING",
+      "required_lanes": "dedicated external run; test",
+      "go_entrypoints": [
+        {
+          "name": "TestGitHubDotComContract",
+          "file": "internal/adapter/githubactions/contract_external_test.go",
+          "package": "internal/adapter/githubactions",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "required_dedicated_proof": "EXTERNAL-PENDING",
+          "ordinary_skip": "Dedicated all-or-nothing live provider credentials and workflow required.",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "TestProviderSurfaceHasNoVariableReadOperation",
+          "file": "internal/adapter/githubactions/client_test.go",
+          "package": "internal/adapter/githubactions",
+          "ordinary_job": "validation / test_core",
+          "race_job": "validation / race shard (2)",
+          "observed_4394_jobs": [
+            {
+              "name": "validation / test_core",
+              "id": 101325301061,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325301061",
+              "conclusion": "success"
+            },
+            {
+              "name": "validation / race shard (2)",
+              "id": 101325734361,
+              "url": "https://github.com/Hikyo-Org/Hikyo/actions/runs/33973166043/job/101325734361",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "supporting_references": [],
+      "remaining_evidence": "Real409/PATCH/settings-preserving PUT and workflow consumption remain pending. Engine-independent structural no-read checks passed internally.",
+      "certification_preparation": {
+        "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+        "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+        "state": "EXTERNAL-PENDING",
+        "scope": "Internal criterion acceptance is distinct from official release publication",
+        "evidence": "ci-4394-jobs.json",
+        "outstanding": [
+          "Real409/PATCH/settings-preserving PUT and workflow consumption remain pending. Engine-independent structural no-read checks passed internally."
+        ]
+      }
+    }
+  ],
+  "baseline_evidence": {
+    "source_commit": "407456a54dbb275cf322bbf274faaf78b8845260",
+    "ci_summary": "main-407-ci-summary.json",
+    "scope": "Green merged pre-diagnostics baseline. Do not substitute its results for the final diagnostics candidate.",
+    "development_snapshot": "development-snapshot-407-inspection.json",
+    "official_release": false
+  },
+  "additional_isolation_race": {
+    "source_commit": "f31c86373e3745f818fdf47f912984660c732720",
+    "run_id": 33969747593,
+    "job_id": 101316038932,
+    "state": "observed package PASS",
+    "elapsed_seconds": 3204.701,
+    "evidence": "isolation-race-f31-summary.json",
+    "named_case_or_skip_counts": null,
+    "limitation": "Non-verbose output. Dedicated opt-in provider/client proofs are separate. Future heads require compiled-source equivalence."
+  },
+  "completed_f31_browser_client": {
+    "source_commit": "f31c86373e3745f818fdf47f912984660c732720",
+    "run_id": 33969008887,
+    "summary": "web-client-f31-summary.json",
+    "extracted_lines": "web-client-f31-extraction.json",
+    "browser_passed": 447,
+    "viewport_only_skips": 5,
+    "all_skip_counterparts_passed": true,
+    "registry_closure": "every claim every viewport passed",
+    "client_mode": "pre-freeze-rehearsal",
+    "client_named_passes": 3,
+    "client_skips": 0,
+    "whole_ci": "failed separately at app database cleanup"
+  },
+  "current_candidate": {
+    "tested_source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+    "merged_source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+    "merge_verification": "merge-549-verification.json",
+    "reconciliation": "source-reconciliation-f31-4394.json",
+    "go_runtime_go_tests_and_browser_inputs_identical": true,
+    "ci_fixture_sources_identical": false,
+    "binary_source_equivalence_implies_hash_equality": false,
+    "ci_state": "all49 exact-head checks success; actual updated scheduler invoked",
+    "ci_evidence": "ci-native-4394-summary.json",
+    "job_metadata": "ci-4394-jobs.json",
+    "post_merge_main_ci": "observed SUCCESS33974501201",
+    "post_merge_pages": "observed SUCCESS33974501013",
+    "automatic_sha_relabel": false,
+    "post_merge_evidence": "post-merge-549-summary.json"
+  },
+  "development_snapshot": {
+    "source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+    "evidence": "development-snapshot-549-inspection.json",
+    "all_six_platform_hashes_and_bytes_verified": true,
+    "official_release": false,
+    "published_image_verified": false
+  },
+  "migration_identity": {
+    "source": "549726d96c2c5938636f31d9b85232a761bb75a2",
+    "evidence": "migration-549-identity.json",
+    "sqlite_head": 45,
+    "postgres_head": 45,
+    "official_manifest": false
+  },
+  "completed_4394_browser_client_deployment": {
+    "source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+    "run_id": 33973166043,
+    "evidence": "browser-client-deployment-4394-summary.json",
+    "browser_passed": 447,
+    "viewport_skips": 5,
+    "all_skip_counterparts_passed": true,
+    "client_mode": "pre-freeze-rehearsal",
+    "client_named_passes": 3,
+    "client_named_skips": 0,
+    "authenticated_doctor_families": 12,
+    "deployment_engines": [
+      "sqlite",
+      "postgres"
+    ],
+    "whole_ci": "SUCCESS"
+  },
+  "fresh_mcp": {
+    "source": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+    "evidence": "mcp-4394-result.json",
+    "status": "PASS",
+    "scope": "five tools,official SDK,cross-replica cursor,committed token/grant revocation and restoration",
+    "synthetic_trust": true,
+    "embedded_browser_assets": false,
+    "fresh_cancellation_or_streaming_claim": false
+  },
+  "final_status_counts": {
+    "INTERNAL-PASS": 42,
+    "POST-1.0": 1,
+    "FREEZE-PENDING": 1,
+    "EXTERNAL-PENDING": 4,
+    "CEREMONY-PENDING": 1
+  }
+}

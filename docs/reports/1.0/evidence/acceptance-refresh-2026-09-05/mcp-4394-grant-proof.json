@@ -1,0 +1,57 @@
+{
+  "passed": true,
+  "mutation": "service.Grants.Revoke and service.Grants.Create under the existing org member-manager; both changes committed and audited",
+  "same_credential_throughout": true,
+  "before": [
+    {
+      "replica": 0,
+      "status": 200,
+      "authorized": true,
+      "rpc_error": null,
+      "tool_error": false
+    },
+    {
+      "replica": 1,
+      "status": 200,
+      "authorized": true,
+      "rpc_error": null,
+      "tool_error": false
+    }
+  ],
+  "grant_removal_committed_at": 1788621421.1033118,
+  "first_post_commit_request_per_replica": [
+    {
+      "replica": 0,
+      "status": 200,
+      "authorized": false,
+      "rpc_error": null,
+      "tool_error": true
+    },
+    {
+      "replica": 1,
+      "status": 200,
+      "authorized": false,
+      "rpc_error": null,
+      "tool_error": true
+    }
+  ],
+  "after_restoration": [
+    {
+      "replica": 0,
+      "status": 200,
+      "authorized": true,
+      "rpc_error": null,
+      "tool_error": false
+    },
+    {
+      "replica": 1,
+      "status": 200,
+      "authorized": true,
+      "rpc_error": null,
+      "tool_error": false
+    }
+  ],
+  "inflight_claims_remaining": 0,
+  "tls_verified": true,
+  "routing": "direct verified HTTPS to each exact process with canonical Host; proxy unchanged"
+}

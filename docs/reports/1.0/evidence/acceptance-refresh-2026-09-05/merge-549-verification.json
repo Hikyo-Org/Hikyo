@@ -1,0 +1,17 @@
+{
+  "recorded_at": "2026-09-05T15:38:40.718518+00:00",
+  "pr": 673,
+  "tested_head": "4394dd497b7e35b2bcf585528cffd9f020eab795",
+  "merge": "549726d96c2c5938636f31d9b85232a761bb75a2",
+  "merged_at": "2026-09-05T15:20:28Z",
+  "all_exact_head_checks": 49,
+  "all_success": true,
+  "tested_and_merge_tree": "38588db4b34af5ce97179a9c40b617a41e25831e",
+  "github_verified": true,
+  "post_main_ci": 33974501201,
+  "post_main_docs": 33974501013,
+  "post_main_status": "SUCCESS",
+  "post_main_report": "post-merge-549/report.html",
+  "post_main_native": "PASS",
+  "unsigned_development_package_inspection": "development-snapshot-549/inspection.json"
+}
