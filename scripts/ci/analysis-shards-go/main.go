@@ -49,8 +49,10 @@ type options struct {
 
 var preferredShards = map[string]map[string]int{
 	"race": {
+		// Each repeatedly boots the authenticated database fixture. Keep the
+		// largest suites on separate runners instead of contending on shard 0.
 		"internal/app":           0,
-		"internal/service":       0,
+		"internal/service":       1,
 		"internal/lint":          1,
 		"internal/store/migrate": 1,
 		"internal/conformance":   2,
