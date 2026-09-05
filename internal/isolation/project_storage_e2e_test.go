@@ -72,3 +72,47 @@ func runProjectStorageHighWater(t *testing.T, db *store.DB) {
 		t.Fatalf("publish below the high-water must succeed: %v", err)
 	}
 }
+
+// The instance health aggregate must combine both payload tables per owning
+// project before choosing the peak. Different projects must not be summed.
+func TestProjectStorageHealthGroupsPayloadBytes(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		values := valueSvc(t, db)
+		revisions := &service.Revisions{DB: db, Keyring: probeKeyring(t, db)}
+		actor := service.LocalPrincipal(custodian)
+		health := &service.Retention{DB: db}
+		before, err := health.OperationalHealth(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if before.PeakProjectBytes != 0 {
+			t.Fatal("plaintext config rows and empty snapshot table must contribute zero ciphertext bytes")
+		}
+		execRaw(t, db, `UPDATE keys SET classification='secret' WHERE id IN ('key_a1','key_a2')`)
+		scopes := []domain.Scope{scopeEnv(orgA, prjA1, envA1), scopeEnv(orgA, prjA2, envA2)}
+		var expectedPeak int64
+		for i, scope := range scopes {
+			staged, err := values.Set(t.Context(), actor, scope, "SHARED_KEY", strings.Repeat("é", (i+1)*151), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := revisions.PublishPlanned(t.Context(), actor, scope, service.PublishRequest{VersionIDs: []string{staged.VersionID}}); err != nil {
+				t.Fatal(err)
+			}
+			project := []string{"prj_a1", "prj_a2"}[i]
+			live := queryInt(t, db, "SELECT COALESCE(SUM(LENGTH(ciphertext)),0) FROM value_entries WHERE org_id='org_a' AND project_id='"+project+"'")
+			snapshots := queryInt(t, db, "SELECT COALESCE(SUM(LENGTH(ciphertext)),0) FROM snapshot_entries WHERE org_id='org_a' AND project_id='"+project+"'")
+			if live <= 0 || snapshots <= 0 {
+				t.Fatal("both payload tables must contribute")
+			}
+			expectedPeak = max(expectedPeak, int64(live+snapshots))
+		}
+		got, err := health.OperationalHealth(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.PeakProjectBytes != expectedPeak {
+			t.Fatalf("peak bytes=%d want=%d; per-project live and snapshot bytes must combine without combining projects", got.PeakProjectBytes, expectedPeak)
+		}
+	})
+}

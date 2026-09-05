@@ -390,8 +390,11 @@ func (q *Queries) SampleSecretValueEntry(ctx context.Context) (ValueEntry, error
 }
 
 const sumValuePayloadByProject = `-- name: SumValuePayloadByProject :many
-SELECT org_id, project_id, CAST(COALESCE(SUM(LENGTH(ciphertext)), 0) AS INTEGER) AS bytes
-FROM value_entries
+WITH payload_sizes AS (
+    SELECT org_id, project_id, LENGTH(ciphertext) AS bytes FROM value_entries LIMIT -1 OFFSET 0
+)
+SELECT org_id, project_id, CAST(COALESCE(SUM(bytes), 0) AS INTEGER) AS bytes
+FROM payload_sizes
 GROUP BY org_id, project_id
 `
 
@@ -406,6 +409,9 @@ type SumValuePayloadByProjectRow struct {
 // metric). Cross-tenant by definition: it addresses no tenant and carries no
 // chain conjunct, so it is annotated instance-scoped and content-pinned.
 // hikyo:instance-scoped
+// Project sizes before grouping. OFFSET 0 prevents SQLite flattening this
+// projection into the sorter; LIMIT -1 preserves every row. Sorting whole
+// ciphertext BLOBs instead can exceed the health transaction deadline.
 func (q *Queries) SumValuePayloadByProject(ctx context.Context) ([]SumValuePayloadByProjectRow, error) {
 	rows, err := q.db.QueryContext(ctx, sumValuePayloadByProject)
 	if err != nil {

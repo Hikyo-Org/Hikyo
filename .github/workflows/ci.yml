@@ -961,6 +961,8 @@ jobs:
         run: go test -count=1 -v ./internal/dynamic/postgres
       - name: Verify analysis shard planner fixtures
         run: ./scripts/ci/analysis-shards_test.sh
+      - name: Verify operations floor preflight refusals
+        run: ./scripts/ci/ops-floor_test.sh
       # The secret-scanning benchmark regression guard (#74, SS1). Relative, not
       # absolute-ms — CI runners are not the Pi-class calibration floor, so this
       # only proves BenchmarkScan compiles and runs to completion; the absolute

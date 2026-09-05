@@ -40,6 +40,6 @@ This local check generates separate disposable test custody and writes its drill
 
 ## Separate evidence still required
 
-This lane does not mark `OBL-OPERATOR-PI-FIT` complete. That gate requires a real controller reconciling under load inside the 200m CPU / 128 MiB operator limit. It also does not invent Pi CPU derating factors or replace the scanner's committed physical-Pi artifact (`internal/scanning/testdata/bench/pi-result.json`). The amendment mentions an O2 `floor-bench` job and committed derating factors, but neither is present at the inspected baseline `f4175a5dbffc63a5d1e34bf450a7a52956a54668`. Those benchmark/calibration claims must retain their own evidence.
+This lane does not mark `OBL-OPERATOR-PI-FIT` complete. That gate requires a real controller reconciling under load inside the 200m CPU / 128 MiB operator limit. It also does not invent Pi CPU derating factors or replace the scanner's committed physical-Pi artifact (`internal/scanning/testdata/bench/pi-result.json`). The separate [operations floor lane](ops-floor.md) measures the real doctor checklist and selected bounds on native ARM64 and x86 deployments. Its evidence composes with the ordinary bound-registry and both-engine fixtures; it does not fabricate the amendment's optional physical calibration or Pi derating factors.
 
 A release reviewer must link the successful exact-candidate run, verify every named subtest executed, and reassert the self-hoster checklist. Workflow availability alone is not acceptance.

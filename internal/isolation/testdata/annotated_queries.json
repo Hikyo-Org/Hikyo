@@ -2961,13 +2961,13 @@
     "engine": "sqlite",
     "name": "SumSnapshotPayloadByProject",
     "annotation": "instance-scoped",
-    "hash": "a43b437e8e153424482be2fc0349f70ac19ca9b63cdb95b0ef0094d36c5d39f2"
+    "hash": "9b825fcc7022b2f9afdba9788c4d1dfece82bbdb6ca4bf19cffba09374fbca4a"
   },
   {
     "engine": "sqlite",
     "name": "SumValuePayloadByProject",
     "annotation": "instance-scoped",
-    "hash": "96b047627eb885a33a63a9546f7c0cf480b6ed198d2152ffe5fca898375e6c35"
+    "hash": "50670362ba70257c11181a81475773b5199ed67b2e53aeaef5032d363694b93d"
   },
   {
     "engine": "sqlite",
