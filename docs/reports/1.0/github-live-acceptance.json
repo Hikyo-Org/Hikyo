@@ -1,0 +1,253 @@
+{
+  "recorded_at": "2026-09-05T21:23:22.014414+00:00",
+  "status": "PASS",
+  "contract": "TestGitHubDotComContract",
+  "source_base_commit": "a7c084200e5b61049114ce5b85d2cbd1a6061d47",
+  "source_was_uncommitted": true,
+  "changed_go_sha256": {
+    "internal/adapter/adapter.go": "d7681d5f8170e2acdf08bce6389701dd08654ebe71d301869cee5793207d3f8d",
+    "internal/adapter/githubactions/client.go": "9aaa34aea253fac735f6fb5c5627fdc95e4bb5c2ef085e8af645526567b23f89",
+    "internal/adapter/githubactions/module.go": "e3f34463d8361492b19f285f8d9e268dbe97a063b6d695f33a293a22a7a88d5e",
+    "internal/adapter/githubactions/contract_external_test.go": "435f258e5cf6bd6a6eeda7727f0fb909f7cfb3d32a236512b361119da6cf10e9",
+    "internal/adapter/githubactions/environment_paths_test.go": "6f2564456e0c340d6025b7b8900690f0e78a9639fb5a1360ece7a5762133b289",
+    "internal/adapter/githubactions/value_limits_test.go": "72ebdc9ec9df6a138aa015af518684f708555048d89b8dfdf1bd4f0c049d746a"
+  },
+  "source_binding_note": "Worker froze and validated shared validator before live run; parent rechecked unchanged digest during replay. Live wrapper did not independently snapshot this shared file at start.",
+  "latest_main_comparison": {
+    "from_base": "a7c084200e5b61049114ce5b85d2cbd1a6061d47",
+    "to_base": "ee8924e6d1a1d2361343e14744f88f71ecbe58a1",
+    "tracked_contract_dependency_inputs_compared": 72,
+    "changed_inputs": [],
+    "scope": "Baseline inputs only; final modified Go inputs bound separately by final-source-binding.json. No whole-program equivalence claim."
+  },
+  "elapsed_seconds": 574.203,
+  "started_at": "2026-09-05T21:11:48.945956+00:00",
+  "finished_at": "2026-09-05T21:21:23.323958+00:00",
+  "go_test_exit_code": 0,
+  "go_test_log_sha256": "6f5357ce2c93802fc8b5f3adf3c6d525b833afd2623da003a8eb8834c2e29819",
+  "workflow_runs": [
+    {
+      "conclusion": "success",
+      "createdAt": "2026-09-05T21:12:14Z",
+      "databaseId": 33992341073,
+      "displayTitle": "hikyo-contract-dl7oxkb1yxa8",
+      "headSha": "3756144981f0fc7ae58da1cefb3bcf7fc18e011f",
+      "status": "completed",
+      "url": "https://github.com/Hikyo-Org/hikyo-adapter-acceptance/actions/runs/33992341073"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-09-05T21:12:37Z",
+      "databaseId": 33992358294,
+      "displayTitle": "hikyo-contract-dl7oxum35t1c",
+      "headSha": "3756144981f0fc7ae58da1cefb3bcf7fc18e011f",
+      "status": "completed",
+      "url": "https://github.com/Hikyo-Org/hikyo-adapter-acceptance/actions/runs/33992358294"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-09-05T21:12:54Z",
+      "databaseId": 33992374445,
+      "displayTitle": "hikyo-contract-dl7oy24oh43c",
+      "headSha": "3756144981f0fc7ae58da1cefb3bcf7fc18e011f",
+      "status": "completed",
+      "url": "https://github.com/Hikyo-Org/hikyo-adapter-acceptance/actions/runs/33992374445"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-09-05T21:13:16Z",
+      "databaseId": 33992392977,
+      "displayTitle": "hikyo-contract-dl7oycx2tqmw",
+      "headSha": "3756144981f0fc7ae58da1cefb3bcf7fc18e011f",
+      "status": "completed",
+      "url": "https://github.com/Hikyo-Org/hikyo-adapter-acceptance/actions/runs/33992392977"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-09-05T21:13:33Z",
+      "databaseId": 33992406038,
+      "displayTitle": "hikyo-contract-dl7oykkc8grs",
+      "headSha": "3756144981f0fc7ae58da1cefb3bcf7fc18e011f",
+      "status": "completed",
+      "url": "https://github.com/Hikyo-Org/hikyo-adapter-acceptance/actions/runs/33992406038"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-09-05T21:13:58Z",
+      "databaseId": 33992428548,
+      "displayTitle": "hikyo-contract-dl7oyw2mdiuo",
+      "headSha": "3756144981f0fc7ae58da1cefb3bcf7fc18e011f",
+      "status": "completed",
+      "url": "https://github.com/Hikyo-Org/hikyo-adapter-acceptance/actions/runs/33992428548"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-09-05T21:14:55Z",
+      "databaseId": 33992475827,
+      "displayTitle": "hikyo-contract-dl7ozmagr60o",
+      "headSha": "3756144981f0fc7ae58da1cefb3bcf7fc18e011f",
+      "status": "completed",
+      "url": "https://github.com/Hikyo-Org/hikyo-adapter-acceptance/actions/runs/33992475827"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-09-05T21:15:14Z",
+      "databaseId": 33992493323,
+      "displayTitle": "hikyo-contract-dl7ozuuh9mzc",
+      "headSha": "3756144981f0fc7ae58da1cefb3bcf7fc18e011f",
+      "status": "completed",
+      "url": "https://github.com/Hikyo-Org/hikyo-adapter-acceptance/actions/runs/33992493323"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-09-05T21:15:33Z",
+      "databaseId": 33992511937,
+      "displayTitle": "hikyo-contract-dl7p03i4d420",
+      "headSha": "3756144981f0fc7ae58da1cefb3bcf7fc18e011f",
+      "status": "completed",
+      "url": "https://github.com/Hikyo-Org/hikyo-adapter-acceptance/actions/runs/33992511937"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-09-05T21:15:55Z",
+      "databaseId": 33992530504,
+      "displayTitle": "hikyo-contract-dl7p0dm24o68",
+      "headSha": "3756144981f0fc7ae58da1cefb3bcf7fc18e011f",
+      "status": "completed",
+      "url": "https://github.com/Hikyo-Org/hikyo-adapter-acceptance/actions/runs/33992530504"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-09-05T21:16:13Z",
+      "databaseId": 33992546621,
+      "displayTitle": "hikyo-contract-dl7p0m6bmf94",
+      "headSha": "3756144981f0fc7ae58da1cefb3bcf7fc18e011f",
+      "status": "completed",
+      "url": "https://github.com/Hikyo-Org/hikyo-adapter-acceptance/actions/runs/33992546621"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-09-05T21:16:34Z",
+      "databaseId": 33992564729,
+      "displayTitle": "hikyo-contract-dl7p0vfmd5mg",
+      "headSha": "3756144981f0fc7ae58da1cefb3bcf7fc18e011f",
+      "status": "completed",
+      "url": "https://github.com/Hikyo-Org/hikyo-adapter-acceptance/actions/runs/33992564729"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-09-05T21:17:35Z",
+      "databaseId": 33992615303,
+      "displayTitle": "hikyo-contract-dl7p1nezei1s",
+      "headSha": "3756144981f0fc7ae58da1cefb3bcf7fc18e011f",
+      "status": "completed",
+      "url": "https://github.com/Hikyo-Org/hikyo-adapter-acceptance/actions/runs/33992615303"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-09-05T21:18:42Z",
+      "databaseId": 33992671442,
+      "displayTitle": "hikyo-contract-dl7p2ile72iw",
+      "headSha": "3756144981f0fc7ae58da1cefb3bcf7fc18e011f",
+      "status": "completed",
+      "url": "https://github.com/Hikyo-Org/hikyo-adapter-acceptance/actions/runs/33992671442"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-09-05T21:18:59Z",
+      "databaseId": 33992683259,
+      "displayTitle": "hikyo-contract-dl7p2q60f9q0",
+      "headSha": "3756144981f0fc7ae58da1cefb3bcf7fc18e011f",
+      "status": "completed",
+      "url": "https://github.com/Hikyo-Org/hikyo-adapter-acceptance/actions/runs/33992683259"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-09-05T21:19:16Z",
+      "databaseId": 33992698024,
+      "displayTitle": "hikyo-contract-dl7p2xrrthjk",
+      "headSha": "3756144981f0fc7ae58da1cefb3bcf7fc18e011f",
+      "status": "completed",
+      "url": "https://github.com/Hikyo-Org/hikyo-adapter-acceptance/actions/runs/33992698024"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-09-05T21:19:33Z",
+      "databaseId": 33992713401,
+      "displayTitle": "hikyo-contract-dl7p35ukowhs",
+      "headSha": "3756144981f0fc7ae58da1cefb3bcf7fc18e011f",
+      "status": "completed",
+      "url": "https://github.com/Hikyo-Org/hikyo-adapter-acceptance/actions/runs/33992713401"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-09-05T21:20:10Z",
+      "databaseId": 33992743845,
+      "displayTitle": "hikyo-contract-dl7p3mxvyxlc",
+      "headSha": "3756144981f0fc7ae58da1cefb3bcf7fc18e011f",
+      "status": "completed",
+      "url": "https://github.com/Hikyo-Org/hikyo-adapter-acceptance/actions/runs/33992743845"
+    }
+  ],
+  "local_validation": {
+    "package_pass_events": 159,
+    "adapter_race_pass_events": 197,
+    "service_pass_events": 15,
+    "disabled_live_test_skips_in_local_runs": 1,
+    "vet": "PASS",
+    "docs_check": "PASS",
+    "docs_build": "PASS"
+  },
+  "reviews": {
+    "standards": "R2 CLEAN",
+    "specification": "R2 CLEAN"
+  },
+  "provider_cleanup": {
+    "checked_at": "2026-09-05T21:22:35.822435+00:00",
+    "surfaces": {
+      "repository_secrets": {
+        "total_count": 0,
+        "hikyo_names_remaining": []
+      },
+      "repository_variables": {
+        "total_count": 0,
+        "hikyo_names_remaining": []
+      },
+      "organization_secrets": {
+        "total_count": 1,
+        "hikyo_names_remaining": []
+      },
+      "organization_variables": {
+        "total_count": 0,
+        "hikyo_names_remaining": []
+      },
+      "environment_secrets": {
+        "total_count": 0,
+        "hikyo_names_remaining": []
+      },
+      "environment_variables": {
+        "total_count": 0,
+        "hikyo_names_remaining": []
+      }
+    },
+    "artifacts": 0,
+    "environments": [
+      "contract"
+    ],
+    "status": "PASS"
+  },
+  "temporary_tokens_revoked": 7,
+  "scope": "Real github.com adapter/provider acceptance across repository, selected organization, and protected environment. Workflow hashes were downloaded and compared for all18runs. Does not claim live GHES or whole-program equivalence.",
+  "pre_delivery_base_comparison": {
+    "from_base": "a7c084200e5b61049114ce5b85d2cbd1a6061d47",
+    "to_base": "0e1ff3c4b1536b5d27f14c5a86da2c3025ede86b",
+    "tracked_contract_dependency_inputs_compared": 72,
+    "changed_inputs": [],
+    "scope": "Baseline dependency inputs only; all six modified Go file hashes separately verified after rebase. No whole-program equivalence claim."
+  },
+  "ci_prerequisite": {
+    "pr": 678,
+    "merge": "0e1ff3c4b1536b5d27f14c5a86da2c3025ede86b",
+    "reason": "Isolate application cleanup in race CI and refuse federation responses completed after context cancellation."
+  }
+}

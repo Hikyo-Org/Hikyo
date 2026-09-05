@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	_ "embed"
 	"encoding/base64"
@@ -78,13 +79,11 @@ func TestGitHubDotComContract(t *testing.T) {
 	}
 	environment.NumericID = environmentIdentity.ID
 
-	// Validate every static premise before the first provider mutation.
+	// Validate destination identities and read-only capabilities before mutation.
 	assertNoVariableReadSurface(t)
 	assertConnectionContract(t, repositoryClient, cfg.repositoryToken, repository, repositoryIdentity.ID, repositoryIdentity.ID)
 	assertConnectionContract(t, organizationClient, cfg.organizationToken, organization, organizationIdentity.ID, 0)
 	assertConnectionContract(t, environmentClient, cfg.environmentToken, environment, environmentIdentity.ID, repositoryIdentity.ID)
-	assertNamedPermissionRefusal(t, repositoryDeniedClient, cfg.repositoryDeniedToken, repository, "Secrets: write", "Variables: write")
-	assertNamedPermissionRefusal(t, organizationDeniedClient, cfg.organizationDeniedToken, organization, "Secrets: write", "Variables: write")
 	assertNamedPermissionRefusal(t, environmentDeniedClient, cfg.environmentDeniedToken, environment, "Environments: write", "Actions: read")
 
 	before := harness.environmentProtection(t, cfg.environment)
@@ -94,6 +93,12 @@ func TestGitHubDotComContract(t *testing.T) {
 	if !before.unattended {
 		t.Fatal("dedicated contract environment requires reviewers; use unattended branch protection so workflow consumption can complete")
 	}
+	t.Run("repository missing Variables write fails first-sync sentinel", func(t *testing.T) {
+		assertNamedVariablePermissionRefusal(t, repositoryDeniedClient, repositoryClient, cfg.repositoryDeniedToken, repository)
+	})
+	t.Run("organization missing Variables write fails first-sync sentinel", func(t *testing.T) {
+		assertNamedVariablePermissionRefusal(t, organizationDeniedClient, organizationClient, cfg.organizationDeniedToken, organization)
+	})
 	if err := adminClient.CreateEnvironment(t.Context(), environment); err != nil {
 		t.Fatalf("settings-free PUT against protected environment: %v", err)
 	}
@@ -231,14 +236,43 @@ func assertNamedPermissionRefusal(t *testing.T, client *Client, token string, de
 	}
 }
 
+func assertNamedVariablePermissionRefusal(t *testing.T, denied, cleanup *Client, token string, destination adapter.Destination) {
+	t.Helper()
+	module := &Module{API: denied}
+	// Variables cannot be read safely. Missing Variables write must therefore
+	// pass TestConnection and fail on the real first-sync sentinel POST.
+	if _, err := module.TestConnection(t.Context(), adapter.ConnectionRequest{
+		Destination: destination, Access: adapter.Access{Credential: token}, Gate: allow,
+	}); err != nil {
+		t.Fatalf("missing-Variables token failed before its first-sync proof: %v", err)
+	}
+	prefix := "HIKYO_PERMISSION_" + strings.ToUpper(rand.Text()) + "_"
+	sentinel := prefix + adapter.SentinelName
+	// The secret sentinel may land before the variable is refused. Register
+	// full-permission cleanup before Sync, including unexpected-success paths.
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		cleanupContractName(t, cleanup.DeleteVariable(ctx, destination, sentinel), "permission sentinel variable")
+		cleanupContractName(t, cleanup.DeleteSecret(ctx, destination, sentinel), "permission sentinel secret")
+	})
+	result, err := module.Sync(t.Context(), adapter.SyncRequest{
+		Target: adapter.Target{ID: "github-permission-contract", Generation: 1, Destination: destination, NamePrefix: prefix},
+	}, newFakeJournal())
+	if !IsStatus(err, http.StatusForbidden) || !strings.Contains(err.Error(), "Variables: write") {
+		t.Fatalf("missing-Variables token did not fail with named first-sync 403: %v", err)
+	}
+	if len(result.Failed) != 1 || result.Failed[0].Surface != adapter.Variable || result.Failed[0].EffectiveName != sentinel {
+		t.Fatal("missing-Variables token refusal did not identify the variable sentinel")
+	}
+}
+
 func workflowByteClasses() []struct{ name, value string } {
 	return []struct{ name, value string }{
-		{name: "EMPTY", value: ""},
 		{name: "CRLF", value: "line-one\r\nline-two\r\n"},
 		{name: "LONE_CR", value: "line-one\rline-two"},
 		{name: "TRAILING_WHITESPACE", value: "value \t  "},
 		{name: "UNICODE", value: "雪-☃-e\u0301"},
-		{name: "LIMIT_48K", value: strings.Repeat("x", 48*1024)},
 	}
 }
 
@@ -266,6 +300,7 @@ func runGitHubScopeContract(t *testing.T, client *Client, harness *contractHTTP,
 	if err != nil {
 		t.Fatalf("public key with minimum destination permission: %v", err)
 	}
+	assertEmptyValueContract(t, client, harness, destination, prefix, variable, key)
 	for _, row := range workflowByteClasses() {
 		name := prefix + row.name
 		if result, err := client.CreateVariable(t.Context(), destination, name, row.value); err != nil || result.Status != http.StatusCreated {
@@ -291,6 +326,7 @@ func runGitHubScopeContract(t *testing.T, client *Client, harness *contractHTTP,
 		})
 		harness.assertWorkflowHashes(t, destination, secretName, name, row.value)
 	}
+	assertValueBoundaryContract(t, client, harness, destination, prefix, key)
 
 	sealed, err := SealSecret([]byte("contract-secret-not-logged"), key)
 	if err != nil {
@@ -314,6 +350,79 @@ func runGitHubScopeContract(t *testing.T, client *Client, harness *contractHTTP,
 	if !containsContractConflict(plan.Changes, adoption) {
 		t.Fatalf("pre-existing secret was not classified for explicit adoption")
 	}
+}
+
+func assertEmptyValueContract(t *testing.T, client *Client, harness *contractHTTP, destination adapter.Destination, prefix, nonemptyVariable string, key PublicKey) {
+	t.Helper()
+	variable, secret := prefix+"EMPTY_VARIABLE", prefix+"EMPTY_SECRET"
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		cleanupContractName(t, client.DeleteVariable(ctx, destination, variable), "empty variable probe")
+		cleanupContractName(t, client.DeleteSecret(ctx, destination, secret), "empty secret proof")
+	})
+	// Probe the provider constraint, not the local Sync preflight: a changed
+	// provider acceptance contract must fail visibly, with cleanup already owned.
+	if _, err := client.CreateVariable(t.Context(), destination, variable, ""); !IsStatus(err, http.StatusUnprocessableEntity) {
+		t.Fatalf("empty variable POST did not return exact 422: %v", err)
+	}
+	sealed, err := SealSecret(nil, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, err := client.PutSecret(t.Context(), destination, secret, sealed, key.ID); err != nil || result.Status != http.StatusCreated {
+		t.Fatalf("empty secret create status=%d: %v", result.Status, err)
+	}
+	configureSelectedRecipients(t, client, destination, adapter.Secret, secret)
+	names, err := client.ListSecretNames(t.Context(), destination)
+	if err != nil || !slices.Contains(names, secret) {
+		t.Fatalf("empty secret must exist before consumption: %v", err)
+	}
+	// A missing secret also expands to empty. The successful create and name
+	// presence above make this a non-vacuous empty-secret consumption proof.
+	harness.assertWorkflowValueHashes(t, destination, secret, nonemptyVariable, "", "contract-value-not-logged")
+}
+
+func assertValueBoundaryContract(t *testing.T, client *Client, harness *contractHTTP, destination adapter.Destination, prefix string, key PublicKey) {
+	t.Helper()
+	variable, secret := prefix+"VARIABLE_MAX", prefix+"SECRET_MAX"
+	overVariable, overSecret := prefix+"VARIABLE_OVER", prefix+"SECRET_OVER"
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		for _, name := range []string{variable, overVariable} {
+			cleanupContractName(t, client.DeleteVariable(ctx, destination, name), "variable boundary proof")
+		}
+		for _, name := range []string{secret, overSecret} {
+			cleanupContractName(t, client.DeleteSecret(ctx, destination, name), "secret boundary proof")
+		}
+	})
+	// These independently observed effective limits are plaintext UTF-8 bytes.
+	// Do not infer the provider's internal encrypted-value accounting from them.
+	variableValue, secretValue := strings.Repeat("x", 48000), strings.Repeat("x", 47952)
+	if _, err := client.CreateVariable(t.Context(), destination, overVariable, variableValue+"x"); !IsStatus(err, http.StatusUnprocessableEntity) {
+		t.Fatalf("48001-byte variable POST did not return exact 422: %v", err)
+	}
+	sealedOver, err := SealSecret([]byte(secretValue+"x"), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.PutSecret(t.Context(), destination, overSecret, sealedOver, key.ID); !IsStatus(err, http.StatusUnprocessableEntity) {
+		t.Fatalf("47953-byte secret PUT did not return exact 422: %v", err)
+	}
+	if result, err := client.CreateVariable(t.Context(), destination, variable, variableValue); err != nil || result.Status != http.StatusCreated {
+		t.Fatalf("48000-byte variable create status=%d: %v", result.Status, err)
+	}
+	configureSelectedRecipients(t, client, destination, adapter.Variable, variable)
+	sealed, err := SealSecret([]byte(secretValue), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, err := client.PutSecret(t.Context(), destination, secret, sealed, key.ID); err != nil || result.Status != http.StatusCreated {
+		t.Fatalf("47952-byte secret create status=%d: %v", result.Status, err)
+	}
+	configureSelectedRecipients(t, client, destination, adapter.Secret, secret)
+	harness.assertWorkflowValueHashes(t, destination, secret, variable, secretValue, variableValue)
 }
 
 func configureSelectedRecipients(t *testing.T, client *Client, destination adapter.Destination, surface adapter.Surface, name string) {
@@ -474,6 +583,11 @@ func (c *contractHTTP) environmentProtection(t *testing.T, name string) environm
 
 func (c *contractHTTP) assertWorkflowHashes(t *testing.T, destination adapter.Destination, secretName, variableName, value string) {
 	t.Helper()
+	c.assertWorkflowValueHashes(t, destination, secretName, variableName, value, value)
+}
+
+func (c *contractHTTP) assertWorkflowValueHashes(t *testing.T, destination adapter.Destination, secretName, variableName, secretValue, variableValue string) {
+	t.Helper()
 	nonce := strings.ToLower(strconv.FormatInt(time.Now().UTC().UnixNano(), 36))
 	environmentName := ""
 	if destination.Kind == adapter.Environment {
@@ -490,9 +604,10 @@ func (c *contractHTTP) assertWorkflowHashes(t *testing.T, destination adapter.De
 	runID := c.waitForWorkflow(t, workflowID, nonce, started)
 	artifactID, archiveURL := c.waitForArtifact(t, runID, nonce)
 	got := c.downloadHashes(t, archiveURL)
-	want := fmt.Sprintf("%x", sha256.Sum256([]byte(value)))
-	if got.Secret != want || got.Variable != want {
-		t.Fatalf("workflow byte hash mismatch for %s (secret_match=%t variable_match=%t)", destination.Kind, got.Secret == want, got.Variable == want)
+	wantSecret := fmt.Sprintf("%x", sha256.Sum256([]byte(secretValue)))
+	wantVariable := fmt.Sprintf("%x", sha256.Sum256([]byte(variableValue)))
+	if got.Secret != wantSecret || got.Variable != wantVariable {
+		t.Fatalf("workflow byte hash mismatch for %s (secret_match=%t variable_match=%t)", destination.Kind, got.Secret == wantSecret, got.Variable == wantVariable)
 	}
 	if _, err := c.api(t.Context(), http.MethodDelete, c.repoPath("/actions/artifacts/"+strconv.FormatInt(artifactID, 10)), nil, nil); err != nil {
 		t.Errorf("delete hash-only artifact: %v", err)
