@@ -160,7 +160,7 @@ func samlProviderWire(v service.SAMLProviderView) apigen.SamlProvider {
 	warnings := make([]apigen.SamlProviderWarning, 0, len(v.Warnings))
 	for _, warning := range v.Warnings {
 		warnings = append(warnings, apigen.SamlProviderWarning{
-			Code: apigen.SamlProviderWarningCode(warning.Code), Severity: apigen.SamlProviderWarningSeverity(warning.Severity),
+			Code: warning.Code, Severity: apigen.SamlProviderWarningSeverity(warning.Severity),
 			Message: warning.Message, EffectiveAt: warning.EffectiveAt, Fingerprint: warning.Fingerprint,
 		})
 	}
