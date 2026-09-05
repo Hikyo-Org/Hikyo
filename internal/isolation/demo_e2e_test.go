@@ -646,8 +646,8 @@ func runHierarchyDemo(t *testing.T, db *store.DB, ios func() cli.IO, takeRequest
 		t.Fatalf("delete with a stale --confirm exited %d, want %d", code, cli.ExitRefused)
 	}
 	got := takeRequests()
-	if len(got) != 1 || !strings.HasPrefix(got[0], "GET ") {
-		t.Fatalf("delete with a stale --confirm made %v, want exactly one GET (the name it compares against)", got)
+	if len(got) != 2 || got[0] != "GET /api/v1/meta" || got[1] != "GET /api/v1/orgs/"+org.Id+"/projects/"+project.Id {
+		t.Fatalf("delete with a stale --confirm made %v, want discovery then only the project-name GET", got)
 	}
 
 	// The correct name reaches the server — where deletes never cascade, so a
@@ -659,8 +659,8 @@ func runHierarchyDemo(t *testing.T, db *store.DB, ios func() cli.IO, takeRequest
 	}); code == cli.ExitOK {
 		t.Fatal("deleting a project that still holds environments succeeded")
 	}
-	if got := takeRequests(); len(got) != 2 || !strings.HasPrefix(got[0], "GET ") || !strings.HasPrefix(got[1], "DELETE ") {
-		t.Fatalf("delete with the right name made %v, want GET then DELETE", got)
+	if got := takeRequests(); len(got) != 3 || got[0] != "GET /api/v1/meta" || got[1] != "GET /api/v1/orgs/"+org.Id+"/projects/"+project.Id || got[2] != "DELETE /api/v1/orgs/"+org.Id+"/projects/"+project.Id {
+		t.Fatalf("delete with the right name made %v, want discovery, project GET, then DELETE", got)
 	}
 
 	// Empty it through the CLI — successful deletes at every level, which nothing
@@ -683,8 +683,8 @@ func runHierarchyDemo(t *testing.T, db *store.DB, ios func() cli.IO, takeRequest
 	}); code != cli.ExitOK {
 		t.Fatal("deleting the now-empty project failed")
 	}
-	if got := takeRequests(); len(got) != 2 || !strings.HasPrefix(got[0], "GET ") || !strings.HasPrefix(got[1], "DELETE ") {
-		t.Fatalf("the successful delete made %v, want GET then DELETE", got)
+	if got := takeRequests(); len(got) != 3 || got[0] != "GET /api/v1/meta" || got[1] != "GET /api/v1/orgs/"+org.Id+"/projects/"+project.Id || got[2] != "DELETE /api/v1/orgs/"+org.Id+"/projects/"+project.Id {
+		t.Fatalf("the successful delete made %v, want discovery, project GET, then DELETE", got)
 	}
 	var afterDelete list
 	decode(run("project", "list", "--org", org.Id, "-o", "json"), &afterDelete)

@@ -540,9 +540,21 @@ jobs:
     needs: changes
     if: ${{ fromJSON(needs.changes.outputs.plan).client }}
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
+        env:
+          POSTGRES_USER: hikyo
+          POSTGRES_PASSWORD: hikyo
+          POSTGRES_DB: hikyo_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U hikyo"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
@@ -566,6 +578,15 @@ jobs:
       - name: Contract round-trip fixtures (3.1 profile, Zod half)
         working-directory: clients/ts
         run: pnpm run test
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Frozen generated client against current server, both engines
+        env:
+          HIKYO_TEST_POSTGRES_DSN: postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test
+        run: ./scripts/ci/check-client-skew.sh
 
   docs:
     needs: changes

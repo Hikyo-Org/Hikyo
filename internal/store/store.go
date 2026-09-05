@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "modernc.org/sqlite"
 
@@ -1125,6 +1126,22 @@ func openPostgres(ctx context.Context, dsn string, configuredMax int32) (*DB, er
 		poolConfig.MaxConns = configuredMax
 	} else if !postgresDSNHasPoolMax(dsn) {
 		poolConfig.MaxConns = postgresPoolDefaultMaxConnections
+	}
+	poolConfig.AfterConnect = func(_ context.Context, conn *pgx.Conn) error {
+		// Normalize at the decoding boundary for both binary and text queries.
+		// A session TimeZone alone does not change pgx's binary use of time.Local.
+		timestamp := &pgtype.Type{
+			Name: "timestamptz", OID: pgtype.TimestamptzOID,
+			Codec: &pgtype.TimestamptzCodec{ScanLocation: time.UTC},
+		}
+		conn.TypeMap().RegisterType(timestamp)
+		// Array codecs hold their element type directly, so replace that binding
+		// too instead of leaving arrays on pgx's default local-time decoder.
+		conn.TypeMap().RegisterType(&pgtype.Type{
+			Name: "_timestamptz", OID: pgtype.TimestamptzArrayOID,
+			Codec: &pgtype.ArrayCodec{ElementType: timestamp},
+		})
+		return nil
 	}
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {

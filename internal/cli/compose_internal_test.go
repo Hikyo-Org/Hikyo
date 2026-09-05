@@ -170,7 +170,7 @@ func TestRunRefusesWithoutMachineCredential(t *testing.T) {
 }
 
 func TestRunAllOrNothingRefusal(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newRevisionAwareFixtureServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if strings.HasSuffix(r.URL.Path, "/delivery") {
 			_, _ = w.Write([]byte(deliveryJSON(t, deliveryResp([]apigen.DeliveredKey{
@@ -349,7 +349,7 @@ func TestRunArgMaxRefusal(t *testing.T) {
 func TestComposeRenderCursorEligibility(t *testing.T) {
 	runtimeDir := filepath.Join(t.TempDir(), "runtime")
 	var fetchCount int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newRevisionAwareFixtureServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if !strings.HasSuffix(r.URL.Path, "/delivery") {
 			http.NotFound(w, r)
@@ -613,7 +613,7 @@ func TestRunRefusesRelativePathEntry(t *testing.T) {
 // of the presented token, so a different token forces a full fetch (finding 8).
 func TestComposeRenderCursorRebindsOnCredentialChange(t *testing.T) {
 	runtimeDir := filepath.Join(t.TempDir(), "runtime")
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newRevisionAwareFixtureServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if !strings.HasSuffix(r.URL.Path, "/delivery") {
 			http.NotFound(w, r)
@@ -693,7 +693,7 @@ func TestOfflineSnapshotModeBinding(t *testing.T) {
 // (finding 7).
 func TestComposeRenderConfigOnlyMixedTarget(t *testing.T) {
 	runtimeDir := filepath.Join(t.TempDir(), "runtime")
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newRevisionAwareFixtureServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if !strings.HasSuffix(r.URL.Path, "/delivery") {
 			http.NotFound(w, r)
@@ -762,7 +762,7 @@ func TestComposeRenderConfigOnlyMixedTarget(t *testing.T) {
 // covered separately.)
 func TestComposeRenderConfigOnlySkipsUndeliveredKey(t *testing.T) {
 	runtimeDir := filepath.Join(t.TempDir(), "runtime")
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newRevisionAwareFixtureServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if !strings.HasSuffix(r.URL.Path, "/delivery") {
 			http.NotFound(w, r)
@@ -819,7 +819,7 @@ func TestComposeRenderConfigOnlySkipsUndeliveredKey(t *testing.T) {
 func TestComposeRenderFlushesBeforeFetch(t *testing.T) {
 	runtimeDir := filepath.Join(t.TempDir(), "runtime")
 	var order []string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newRevisionAwareFixtureServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		order = append(order, r.Method+" "+r.URL.Path)
 		switch {
@@ -1384,7 +1384,7 @@ func deliveryResp(keys []apigen.DeliveredKey) apigen.DeliveryResponse {
 func deliveryServer(t *testing.T, resp apigen.DeliveryResponse) *httptest.Server {
 	t.Helper()
 	body := deliveryJSON(t, resp)
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return newRevisionAwareFixtureServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if strings.HasSuffix(r.URL.Path, "/delivery") {
 			_, _ = w.Write([]byte(body))

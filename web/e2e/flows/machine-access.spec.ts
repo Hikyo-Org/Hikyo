@@ -561,7 +561,36 @@ test.describe('machine access', () => {
     await expect(replace.getByLabel('Issuer')).toHaveValue(seed.machine.issuer);
     await expect(replace.getByLabel('Subject, matched byte-for-byte')).toHaveValue(subject);
     await replace.getByLabel('Binding lifetime').selectOption('90d');
-    await replace.getByRole('button', { name: 'Replace this binding' }).click();
+    // Hold the real post-mutation listing to expose the stale-cache window.
+    // The replacement must remain pending until its successor is rendered.
+    let signalListing: () => void = () => { throw new Error('listing gate not initialized'); };
+    const listingStarted = new Promise<void>((resolve) => { signalListing = resolve; });
+    let releaseListing: () => void = () => { throw new Error('release gate not initialized'); };
+    const listingReleased = new Promise<void>((resolve) => { releaseListing = resolve; });
+    let finishListing: () => void = () => { throw new Error('finish gate not initialized'); };
+    const listingFinished = new Promise<void>((resolve) => { finishListing = resolve; });
+    const credentialsPattern = '**/service-accounts/*/credentials';
+    await page.route(credentialsPattern, async (route) => {
+      if (route.request().method() === 'GET') {
+        signalListing();
+        await listingReleased;
+      }
+      try {
+        await route.continue();
+      } finally {
+        finishListing();
+      }
+    });
+    try {
+      await replace.getByRole('button', { name: 'Replace this binding' }).click();
+      await listingStarted;
+      await expect(replace).toBeVisible();
+      await expect(replace.getByRole('button', { name: 'Replacing…' })).toBeDisabled();
+    } finally {
+      releaseListing();
+      await listingFinished;
+      await page.unroute(credentialsPattern);
+    }
     await expect(replace).toBeHidden();
     await expect(page.locator('.notice').filter({ hasText: 'Replaced' })).toBeVisible();
 
