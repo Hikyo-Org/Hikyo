@@ -33,8 +33,12 @@ require_line "$workflow" "git show \"\$BASE_SHA:scripts/ci/analysis-shards-go/ma
 require_line "$workflow" 'isolation_shard=$(go run "$trusted_planner" isolation --root .'
 # shellcheck disable=SC2016
 require_line "$workflow" 'ISOLATION_SHARD_RESULT: ${{ needs.isolation_shard.result }}'
-# shellcheck disable=SC2016
-require_line "$workflow" 'go list ./... | grep -Fvx "$isolation_package" >"$packages"'
+# Core package enumeration moved into the scheduler so app cleanup does not
+# contend with other packages' PostgreSQL checkpoints. Keep workflow wiring
+# pinned here, and execute its coverage/order/failure refusal proof directly.
+require_line "$workflow" './scripts/ci/test-core-packages_test.sh'
+require_line "$workflow" './scripts/ci/test-core-packages.sh'
+"$script_dir/test-core-packages_test.sh"
 require_line "$workflow" 'name: Upload shard fuzz reproducers'
 require_line "$workflow" 'name: Download shard fuzz reproducers'
 require_line "$workflow" 'name: Upload minimized fuzz reproducers'
