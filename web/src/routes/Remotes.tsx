@@ -2,6 +2,7 @@ import { QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { generatePath, Link } from 'react-router';
 
+import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { ApiError } from '../api/client.ts';
 import { isoDay } from '../api/identities.ts';
 import { useProjects } from '../api/settings.ts';
@@ -449,7 +450,7 @@ export function AddRemote() {
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [pin, setPin] = useState('');
-  const [credential, setCredential] = useState('');
+  const [credential, setCredential] = useSensitiveState('');
   const [validationFailure, setValidationFailure] = useState<string | null>(null);
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -483,6 +484,7 @@ export function AddRemote() {
         },
       },
     );
+    setCredential('');
   };
 
   return (
@@ -656,7 +658,7 @@ type Disclosed = MintedConnectionValue & { readonly label: string };
 export function ConnectionCredentials() {
   const connections = useConnections();
   const mint = useMintConnection();
-  const [disclosed, setDisclosed] = useState<Disclosed | null>(null);
+  const [disclosed, setDisclosed] = useSensitiveState<Disclosed | null>(null);
   const [revoking, setRevoking] = useState<InstanceConnection | null>(null);
 
   const items = connections.data?.items ?? [];

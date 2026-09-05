@@ -145,9 +145,9 @@ func TestPostgresRemoteVerifiedTLSAllowed(t *testing.T) {
 
 func TestPostgresHostParamCannotBypassTLSCheck(t *testing.T) {
 	for _, dsn := range []string{
-		"postgres:///hikyo?host=remote.example.com",          // libpq-style host param
-		"postgres://u:p@/hikyo?host=10.0.0.5&sslmode=prefer", // empty authority + host param
-		"postgres:///hikyo", // no host at all (implicit PGHOST)
+		"postgres:///hikyo?host=remote.example.com",              // libpq-style host param
+		"postgres://u:p@/hikyo?host=10.0.0.5&sslmode=prefer",     // empty authority + host param
+		"postgres:///hikyo",                                      // no host at all (implicit PGHOST)
 		"postgres://u:p@localhost/hikyo?host=remote.example.com", // conflicting hosts
 		"postgres:///hikyo?host=a,b",                             // multi-host
 	} {
@@ -790,5 +790,43 @@ func TestBackupScheduleKnobsWithoutPolicyRefuse(t *testing.T) {
 	}
 	if cfg.BackupScheduled() || cfg.BackupRTOTarget != 20*time.Minute {
 		t.Fatalf("standalone RTO target: scheduled=%v target=%s", cfg.BackupScheduled(), cfg.BackupRTOTarget)
+	}
+}
+
+func TestOIDCEgressPolicyIsExplicitAndOriginScoped(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		valid      bool
+	}{
+		{"private", `{"https://idp.internal.example":["10.42.0.0/16"]}`, true},
+		{"uppercase", `{"https://IDP.example":["10.0.0.0/8"]}`, false},
+		{"empty-invalid-origin", `{"https://IDP.example":[]}`, false},
+		{"userinfo", `{"https://user:synthetic-config-secret@idp.example":["10.0.0.0/8"]}`, false},
+		{"query", `{"https://idp.example?":["10.0.0.0/8"]}`, false},
+		{"http", `{"http://127.0.0.1":["127.0.0.1/32"]}`, false},
+		{"cidr", `{"https://idp.example":["bad"]}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "oidc-egress.json")
+			if err := os.WriteFile(path, []byte(tc.body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, warnings, err := Load("server", []string{"--dev"}, env("HIKYO_OIDC_EGRESS_POLICY_FILE", path), environFrom("HIKYO_OIDC_EGRESS_POLICY_FILE", path))
+			if !tc.valid {
+				if err == nil || !strings.Contains(err.Error(), "HIKYO_OIDC_EGRESS_POLICY_FILE") {
+					t.Fatalf("invalid policy: %v", err)
+				}
+				if strings.Contains(err.Error(), "synthetic-config-secret") {
+					t.Fatal("invalid policy leaked credential-like userinfo")
+				}
+				return
+			}
+			if err != nil || len(warnings) != 0 {
+				t.Fatalf("valid policy: %v warnings=%v", err, warnings)
+			}
+			if len(cfg.OIDCEgressPolicy["https://idp.internal.example"]) != 1 || len(cfg.AdapterEgressPolicy) != 0 {
+				t.Fatal("policy authority was not separately scoped")
+			}
+		})
 	}
 }

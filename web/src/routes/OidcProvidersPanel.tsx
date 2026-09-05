@@ -1,5 +1,6 @@
 import { useId, useState } from 'react';
 
+import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { ApiError } from '../api/client.ts';
 import {
   oidcProviderRefusalText,
@@ -235,7 +236,7 @@ function ProviderEditor({
 }) {
   const original = target.kind === 'reconfigure' ? target.provider : null;
   const [busy, setBusy] = useState(false);
-  const [draft, setDraft] = useState<OidcProviderDraft>(
+  const [draft, setDraft] = useSensitiveState<OidcProviderDraft>(
     original === null ? emptyDraft : draftFrom(original),
   );
   const [invalidField, setInvalidField] = useState<OidcProviderField | null>(null);

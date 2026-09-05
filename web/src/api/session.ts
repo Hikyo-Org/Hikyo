@@ -10,6 +10,7 @@ import { zMyOrgList } from '@hikyo/zod';
 import { useMutation, useQuery, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
+import { useSensitiveMutation } from './sensitiveMutation.ts';
 import { ApiError, ok, parsed, transportRefusalText } from './client.ts';
 import { useTransport } from './transport.tsx';
 import { useAuth } from '../app/AuthProvider.tsx';
@@ -76,7 +77,7 @@ export function useOrgs(enabled: boolean): UseQueryResult<MyOrgList> {
  */
 export function useLogin() {
   const auth = useAuth();
-  return useMutation({
+  return useSensitiveMutation({
     onMutate: auth.captureTransition,
     mutationFn: async (input: { username: string; password: string }) => {
       // Parsed, not discarded. The session itself arrives on cookies, but the
@@ -95,7 +96,10 @@ export function useLogin() {
       }
       return result;
     },
-    onSuccess: (identity, _input, guard) => auth.acceptSession(identity, guard),
+    onSuccess: (identity, _input, guard) => {
+      if (guard === undefined) throw new Error('Missing session transition guard.');
+      auth.acceptSession(identity, guard);
+    },
   });
 }
 
@@ -110,7 +114,7 @@ export function useLogout() {
 
 /** Start a browser OIDC login whose callback returns through the SPA. */
 export function useOIDCLogin() {
-  return useMutation({
+  return useSensitiveMutation({
     mutationFn: (provider: string) =>
       parsed(oidcStartOp, {
         path: { provider },

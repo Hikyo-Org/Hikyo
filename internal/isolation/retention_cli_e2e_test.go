@@ -3,7 +3,6 @@ package isolation
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgx/v5"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/Hikyo-Org/hikyo/internal/app"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
 	"github.com/Hikyo-Org/hikyo/internal/config"
@@ -20,6 +21,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
+	"github.com/Hikyo-Org/hikyo/internal/storagehealth"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
 )
@@ -221,26 +223,32 @@ func runRetentionCLIStartupSweep(t *testing.T, engine store.Engine) {
 	if !strings.Contains(revisionErr, "revision 1") || !strings.Contains(revisionErr, "keep-if-either(max_age=480h0m0s,last_revisions=2)") {
 		t.Errorf("collected revision refusal does not name revision and policy: %s", revisionErr)
 	}
-	doctor, _ := runCLI(cli.ExitOK, "doctor", "-o", "json")
-	// The retention-prune finding is fresh. Asserted by its own message rather
-	// than by the overall status, because the disaster-recovery findings (#145)
-	// legitimately warn on this backup-less, never-drilled instance and would
-	// otherwise make "status: ok" unreachable for reasons unrelated to pruning.
-	if !strings.Contains(doctor, `"code": "retention-prune"`) || !strings.Contains(doctor, `"message": "last_prune_success is 0s old"`) {
-		t.Errorf("doctor did not report fresh prune health: %s", doctor)
+	// Host capacity is real, unlike this test's controlled retention corpus.
+	// A critical host volume must remain a doctor refusal while each retention
+	// finding still proves its own expected state. All other errors fail here.
+	runDoctor := func(severity, message string) {
+		t.Helper()
+		stdout, stderr := &strings.Builder{}, &strings.Builder{}
+		invocation := ios()
+		invocation.Stdout, invocation.Stderr = stdout, stderr
+		exit := cli.Run(t.Context(), invocation, []string{"doctor", "-o", "json"})
+		var capacity storagehealth.Capacity
+		if engine == store.EngineSQLite {
+			capacity, err = storagehealth.Read(filepath.Dir(cfg.Store.Path))
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := validateRetentionDoctor(stdout.String(), exit, capacity, severity, message); err != nil {
+			t.Fatalf("doctor retention contract: %v (exit %d)", err, exit)
+		}
 	}
+	runDoctor("ok", "last_prune_success is 0s old")
 	staleAt := time.Now().UTC().Add(-25 * time.Hour).Format(time.RFC3339Nano)
 	execRaw(t, db, "UPDATE retention_runtime SET last_prune_success = '"+staleAt+"' WHERE id = 1")
-	doctor, _ = runCLI(cli.ExitOK, "doctor", "-o", "json")
-	if !strings.Contains(doctor, `"status": "warning"`) || !strings.Contains(doctor, `"severity": "warn"`) ||
-		!strings.Contains(doctor, `old (\u003e 24h)`) {
-		t.Errorf("doctor did not report stale prune health: %s", doctor)
-	}
+	runDoctor("warn", "old (> 24h)")
 	execRaw(t, db, "DELETE FROM retention_runtime WHERE id = 1")
-	doctor, _ = runCLI(cli.ExitOK, "doctor", "-o", "json")
-	if !strings.Contains(doctor, `"status": "warning"`) || !strings.Contains(doctor, `"message": "never recorded"`) {
-		t.Errorf("doctor did not report absent prune health: %s", doctor)
-	}
+	runDoctor("warn", "never recorded")
 
 	for _, eventType := range []string{"settings.org_retention_changed", "settings.project_retention_changed"} {
 		if got := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+eventType+"'"); got != 1 {

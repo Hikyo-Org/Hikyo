@@ -47,7 +47,7 @@ vi.mock('../api/account.ts', async (importActual) => {
       isSuccess: true,
       data: { passkeys: [] },
     }),
-    useRegenerateRecoveryCodes: mutation,
+    useRegenerateRecoveryCodes: () => ({ ...mutation(), codes: null, dismiss: vi.fn() }),
     useRemovePasskey: mutation,
     useRemoveTotp: mutation,
     useTotpStatus: () => ({

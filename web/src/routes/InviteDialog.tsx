@@ -1,6 +1,7 @@
 import { useId, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 
+import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import {
   inviteFailureText,
   inviteMember,
@@ -44,7 +45,7 @@ export function InviteDialog({
   const [template, setTemplate] = useState('');
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
-  const [issued, setIssued] = useState<{ principalId: string; authority: IssuedAuthority } | null>(
+  const [issued, setIssued] = useSensitiveState<{ principalId: string; authority: IssuedAuthority } | null>(
     null,
   );
 

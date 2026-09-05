@@ -113,7 +113,7 @@ func TestRecoveryKeepsTheAdvisoryStreamAStream(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/meta", nil))
+	handler.ServeHTTP(&deadlineRecorder{ResponseRecorder: recorder}, httptest.NewRequest(http.MethodGet, "/api/v1/meta", nil))
 
 	if !recorder.Flushed {
 		t.Fatal("flush did not reach the recorder; the advisory stream would buffer until it ended")

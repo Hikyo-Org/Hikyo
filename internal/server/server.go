@@ -96,6 +96,7 @@ func NewPublic(ready ReadyChecker, a *API, ui fs.FS, publicOptions PublicOptions
 	if a != nil {
 		r.Use(a.observe)
 	}
+	r.Use(boundPublicRequests)
 	// Cross-origin readability for allowlisted workspace origins (#71), at the
 	// TOP of the chain rather than inside the API group, and that placement is
 	// load-bearing rather than tidy.

@@ -15,6 +15,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/federationhttp"
 	"github.com/Hikyo-Org/hikyo/internal/oidcrp"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -137,7 +138,7 @@ func (s *Auth) discover(ctx context.Context, issuer string) (*oidcrp.Provider, e
 	if s.OIDCDiscover != nil {
 		return s.OIDCDiscover(ctx, issuer)
 	}
-	return oidcrp.Discover(ctx, issuer)
+	return oidcrp.DiscoverWithPolicy(ctx, issuer, s.FederationPolicy)
 }
 
 // assurancePolicy is the parsed per-provider MFA policy (A12): a session gains
@@ -211,9 +212,10 @@ type Providers struct {
 	Keyring *crypto.Keyring
 	// ExternalOrigin is the instance's public origin, used to build the
 	// per-provider redirect URI (A1). Never derived from a request header.
-	ExternalOrigin string
-	Now            func() time.Time
-	Log            *slog.Logger
+	ExternalOrigin   string
+	FederationPolicy federationhttp.Policy
+	Now              func() time.Time
+	Log              *slog.Logger
 }
 
 func (s *Providers) now() time.Time {
@@ -276,7 +278,7 @@ func (s *Providers) Put(ctx context.Context, actor Actor, slug string, in Provid
 		if err != nil {
 			return err
 		}
-		if _, derr := oidcrp.Discover(ctx, in.Issuer); derr != nil {
+		if _, derr := oidcrp.DiscoverWithPolicy(ctx, in.Issuer, s.FederationPolicy); derr != nil {
 			if s.Log != nil {
 				s.Log.WarnContext(ctx, "oidc provider discovery failed", "slug", slug, "err", derr)
 			}

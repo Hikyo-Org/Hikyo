@@ -524,6 +524,9 @@ func runShowHandoffReturnsBoundPolicy(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatalf("show handoff: %v", err)
 	}
+	if view.RequestingOrigin != stepUpOrigin {
+		t.Fatalf("requesting origin = %q, want stored %q", view.RequestingOrigin, stepUpOrigin)
+	}
 	if view.Purpose != service.HandoffStepUp {
 		t.Errorf("purpose = %q, want step-up", view.Purpose)
 	}
@@ -572,6 +575,9 @@ func runShowHandoffReturnsBoundPolicy(t *testing.T, db *store.DB) {
 	establishmentView, err := ws.ShowHandoff(ctx, service.Bearer(approver), establishment.State)
 	if err != nil {
 		t.Fatalf("show establishment handoff: %v", err)
+	}
+	if establishmentView.RequestingOrigin != stepUpOrigin {
+		t.Fatalf("establishment origin = %q, want stored %q", establishmentView.RequestingOrigin, stepUpOrigin)
 	}
 	if establishmentView.Purpose != service.HandoffEstablishment || establishmentView.Operation != "" ||
 		establishmentView.EnvID != "" || len(establishmentView.KeySet) != 0 {

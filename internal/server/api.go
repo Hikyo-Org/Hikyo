@@ -686,7 +686,7 @@ func (a *API) extractBearer(next http.Handler) http.Handler {
 // allocate an arbitrary amount of memory parsing JSON it was always going to
 // reject. The bound is far above any legitimate request this contract
 // describes.
-const MaxRequestBytes = 1 << 20
+const MaxRequestBytes = 2 << 20
 
 func (a *API) validateAgainstContract(next http.Handler) http.Handler {
 	return a.validateAgainstContractWith(api.MatchRequest, next)

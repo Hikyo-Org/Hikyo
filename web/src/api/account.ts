@@ -21,9 +21,10 @@ import {
   zPasskeyList,
   zTotpStatus,
 } from '@hikyo/zod';
-import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
+import { useSensitiveMutation, useSensitiveState } from './sensitiveMutation.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { ApiError, parsed } from './client.ts';
 import { fromBase64URL, toBase64URL } from './values.ts';
@@ -138,7 +139,7 @@ function useAfterAccountMutation(): () => void {
 
 export function useEnrolTotpStart() {
   const queries = useQueryClient();
-  return useMutation({
+  return useSensitiveMutation({
     mutationFn: (input: { password: string }) =>
       parsed(enrolTotpStartOp, { body: { password: input.password } }),
     // A start stages a pending row but reissues no session, so it does not go
@@ -152,7 +153,7 @@ export function useEnrolTotpStart() {
 
 export function useConfirmTotp() {
   const after = useAfterAccountMutation();
-  return useMutation({
+  return useSensitiveMutation({
     mutationFn: (input: { code: string }) =>
       parsed(enrolTotpConfirmOp, { body: { code: input.code } }),
     onSettled: after,
@@ -161,7 +162,7 @@ export function useConfirmTotp() {
 
 export function useRemoveTotp() {
   const after = useAfterAccountMutation();
-  return useMutation({
+  return useSensitiveMutation({
     mutationFn: (input: { password: string }) =>
       parsed(removeTotpOp, { body: { password: input.password } }),
     onSettled: after,
@@ -170,7 +171,7 @@ export function useRemoveTotp() {
 
 export function useRemovePasskey() {
   const after = useAfterAccountMutation();
-  return useMutation({
+  return useSensitiveMutation({
     mutationFn: (input: { id: string; password: string }) =>
       parsed(removePasskeyOp, { path: { id: input.id }, body: { password: input.password } }),
     onSettled: after,
@@ -178,17 +179,35 @@ export function useRemovePasskey() {
 }
 
 export function useRegenerateRecoveryCodes() {
-  const after = useAfterAccountMutation();
-  return useMutation({
+  const auth = useAuth();
+  const [codes, setCodes, prepareTransfer] = useSensitiveState<readonly string[] | null>(null);
+  const operation = useSensitiveMutation({
+    onMutate: auth.captureTransition,
     mutationFn: (input: { proof: string }) =>
       parsed(regenerateRecoveryCodesOp, { body: { proof: input.proof } }),
-    onSettled: after,
+    onSuccess: (result, _input, guard) => {
+      if (guard === undefined || !auth.acceptAccountSession(result.login, guard,
+        prepareTransfer(result.recovery_codes, {
+          sessionId: result.login.session.id, principalId: result.login.principal.id,
+        }))) throw new Error('The account session changed before its recovery codes could be displayed.');
+    },
+    onError: () => { void auth.refreshSession(); },
   });
+  return {
+    codes,
+    isPending: operation.isPending,
+    error: operation.error,
+    // No asynchronous plaintext-return path: delivery happens only inside the
+    // guarded synchronous account-session handoff above.
+    mutate: (input: { proof: string }, callbacks?: { onError?: (error: Error) => void }) =>
+      operation.mutate(input, { onError: callbacks?.onError }),
+    dismiss: () => { operation.reset(); setCodes(null); },
+  };
 }
 
 export function useUnlinkIdentity() {
   const after = useAfterAccountMutation();
-  return useMutation({
+  return useSensitiveMutation({
     mutationFn: (input: { id: string; password: string }) =>
       parsed(unlinkIdentityOp, { path: { id: input.id }, body: { proof: input.password } }),
     onSettled: after,
@@ -196,7 +215,7 @@ export function useUnlinkIdentity() {
 }
 
 export function useLinkIdentity() {
-  return useMutation({
+  return useSensitiveMutation({
     mutationFn: async (input: { provider: string; kind: 'oidc' | 'saml'; proof: string }) => {
       if (input.kind === 'saml') {
         const result = await parsed(samlStartOp, {
@@ -226,7 +245,7 @@ export function useLinkIdentity() {
  */
 export function useEnrolPasskey() {
   const after = useAfterAccountMutation();
-  return useMutation({
+  return useSensitiveMutation({
     mutationFn: async (input: { password: string }) => {
       const epoch = captureSessionEpoch();
       const options = await parsed(enrolPasskeyStartOp, { body: { password: input.password } });

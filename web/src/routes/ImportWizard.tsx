@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 
+import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { GIT_DEFINITIONS_NOTICE } from '../api/definitions.ts';
 import { revisionNumber } from '../api/history.ts';
 import {
@@ -160,7 +161,7 @@ export function ImportWizard({
   const [fileName, setFileName] = useState<string | null>(null);
   // `.env` carries its own parse (with per-line errors); the connectors carry a
   // normalized entry set plus what they renamed and skipped, or one refusal.
-  const [parse, setParse] = useState<ParseResult | null>(null);
+  const [parse, setParse] = useSensitiveState<ParseResult | null>(null);
   const [source, setSource] = useState<ConnectorSource | null>(null);
   const [envSlug, setEnvSlug] = useState('');
   const [selected, setSelected] = useState<ReadonlySet<string>>(
@@ -403,6 +404,7 @@ export function ImportWizard({
       ...results,
       ...declareFailures.map((name) => declareFailureOutcome(name)),
     ]);
+    setParse(null);
     setStep('result');
   };
 

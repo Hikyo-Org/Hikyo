@@ -128,7 +128,7 @@ describe('Values write feedback', () => {
     await act(async () => root.unmount());
   });
 
-  it('shows saving, then surfaces a refusal and keeps the rejected draft editable', async () => {
+  it('shows a refusal, clears the submitted plaintext, and retries only with fresh input', async () => {
     mocks.canReveal.value = false;
     let rejectWrite: (reason?: unknown) => void = () => undefined;
     mocks.setValue.mockImplementationOnce(
@@ -153,8 +153,16 @@ describe('Values write feedback', () => {
     await settle();
 
     const retained = container.querySelector<HTMLInputElement>('#edit-key-a');
-    expect(retained?.value).toBe('correctable draft');
+    expect(retained?.value).toBe('');
     expect(container.textContent).toContain('You are not permitted to stage this value.');
+    expect(mocks.setValue).toHaveBeenCalledOnce();
+    if (retained === null) throw new Error('value editor is missing after refusal');
+    mocks.setValue.mockResolvedValueOnce({ id: 'pending-retry' });
+    typeInto(retained, 'freshly entered value');
+    await act(async () => button(container, 'Save draft').click());
+    await settle();
+    expect(mocks.setValue).toHaveBeenCalledTimes(2);
+    expect(mocks.setValue).toHaveBeenLastCalledWith({ key: 'KEY_A', value: 'freshly entered value' });
     await act(async () => root.unmount());
   });
 

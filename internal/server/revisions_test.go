@@ -21,7 +21,7 @@ func TestEventStreamSuggestsJitteredRetry(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	retry := advisoryRetryBase + advisoryRetryRange/2
 	stream := eventStream{ctx: ctx, events: make(chan service.AdvisoryEvent), retry: retry}
-	if err := stream.VisitWatchProjectEventsResponse(recorder); err != nil {
+	if err := stream.VisitWatchProjectEventsResponse(&deadlineRecorder{ResponseRecorder: recorder}); err != nil {
 		t.Fatal(err)
 	}
 	match := regexp.MustCompile(`retry: ([0-9]+)`).FindStringSubmatch(recorder.Body.String())

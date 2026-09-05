@@ -1,0 +1,28 @@
+# Private recovery-code session handoff
+
+2026-09-05. Private remediation only. No public report, commit, push, advisory edit or merge by this author.
+
+The combined browser run on 16e49dfa9f284f443ba513bc2538f7e686660a23 reproduced a real recovery regression: the server generated the one-time codes and reissued the account session, then global sensitive-state retirement correctly cleared the just-displayed batch. A focused real-hook/AuthProvider regression reproduced the same empty result before the fix.
+
+The recovery hook now owns its display-once codes and exposes only current codes, pending/error, fire-once mutate and dismiss. It exposes no asynchronous plaintext result. Before the request it captures the root transition revision. The successful response already contains its exact authoritative login session and principal. AuthProvider accepts only an authenticated account reissue naming the same principal, a different exact browser session, and the still-current pre-request revision.
+
+Acceptance is synchronous. Every old session value, query, mutation and pending sensitive operation retires first. A single-use capability can then transfer only its own component state to the exact next lifetime generation and exact target session/principal. It rejects another QueryClient, target mismatch, reuse, prior/extra retirement, reset or unmount. The capability erases its pending payload before validation/consumption. No registry stores it or its plaintext. Dismiss invalidates the operation and clears the new state; later logout or session replacement clears it normally.
+
+The original mutation intentionally retires to idle during success. Its internal AbortError is consumed by the fire-once operation; successful UI state is the new component-owned code batch. No success flag or returned Promise is used as a disclosure channel. Same-caller refusals remain visible, proof submission is not automatically replayed, and one explicit fresh retry is tested.
+
+Recommended choice: use the exact login response and bounded owner transfer. Rejected alternatives were deferring authority refresh until dialog dismissal, exempting account state from global retirement, or allowing a stale plaintext Promise to be rebound after its continuation runs. Those alternatives either retain old authority/state or weaken late-delivery refusal.
+
+Validation observed on this private client source:
+- Baseline focused regression: 1 actual failure, expected codes received empty state.
+- Final focused four-file suite: 62 PASS, 0 failures, 0 skips.
+- Full web suite: 737 PASS, 0 failures, 0 skips.
+- Full TypeScript typecheck, Vite build/precompression and git diff --check: PASS.
+Reviewed mutation-capable inventory entries did not change; no pins were renewed.
+- Actual desktop/mobile recovery browser: 2 PASS, 0 failures/skips/global errors. Each viewport ran a fresh owned fixture against the same rebuilt binaries; source remained unchanged. Both app/IdP process sets were cleaned up. Full corrected combined flow validation remains separate.
+
+The earlier full desktop run is retained separately: 220 passes, 3 intended viewport skips, 5 failures, and execution-closure refusal. Its real two-tab login/logout case passed. The four non-recovery failures were independently assigned to consent/matrix fixture corrections. Mobile was not run on that known-bad candidate. No full corrected combined-browser or hosted CI success is claimed here.
+
+Primary private evidence: ../recovery-handoff-proof/../recovery-handoff-proof/recovery-handoff-baseline.json, ../recovery-handoff-proof/../recovery-handoff-proof/recovery-handoff-focused.json, ../recovery-handoff-proof/../recovery-handoff-proof/recovery-handoff-full-web.json, ../recovery-handoff-proof/../recovery-handoff-proof/recovery-handoff-typecheck.log, ../recovery-handoff-proof/../recovery-handoff-proof/recovery-handoff-build.log, ../recovery-handoff-proof/ and ../combined-local-browser-13k12qbr/. Binaries and traces remain private. Parent owns final signing, integration, exact combined browser validation and delivery gates.
+
+Local source base: e6fa5a174507fa4bd6d56c244c6c44a8b4f88e7d
+Web source diff SHA256 at build: 439d66909549a9c4a7cc6690346ee1e62f22376293688ebdc943992cc7601362

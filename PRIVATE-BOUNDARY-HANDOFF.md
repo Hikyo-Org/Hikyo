@@ -1,0 +1,7 @@
+# Private HTTP boundary remediation handoff
+
+This branch enforces the locked public admission, request and write bounds, with separate operational health admission. ResponseController deadlines cover actual SSE writes/flushes and clear afterward so a healthy HTTP/2 idle stream survives. Ordinary API body size remains distinct from definition-domain and SCIM limits. Independent R2 and parent review passed; HTTP/2 heartbeat/stalled TCP, server/conformance race, full app and actual Cosign fixture execution are recorded owner-private in boundary-report.html and related JSON/logs.
+
+Combined verification additionally found the CLI retention test assumed the host volume was roomy. The production doctor correctly refuses a critically full local volume. The test now independently samples real capacity and requires exact retention/prune and project-storage findings, consistent status/exit, and a correctly measured sole data-volume error before accepting that unrelated refusal. All other errors remain failures. Nine verifier cases exercise false excuses and refusal masking; both real SQLite/PostgreSQL retention CLI cases passed. No production threshold or host data was changed.
+
+Private evidence: retention-fixture-focused.jsonl and retention-fixture-report.html/json outside the worktree. Parent reviewed the test-only correction. Original combined failure stays recorded under source202f. Full local integration and missing hosted private-fork CI remain separate gates; no release, disclosure or advisory closure is claimed.

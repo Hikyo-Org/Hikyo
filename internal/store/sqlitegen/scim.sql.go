@@ -95,6 +95,45 @@ func (q *Queries) CountSCIMGroups(ctx context.Context, arg CountSCIMGroupsParams
 	return count, err
 }
 
+const countSCIMGroupsByDisplayName = `-- name: CountSCIMGroupsByDisplayName :one
+SELECT COUNT(*) FROM scim_groups WHERE org_id = ?1 AND binding_id = ?2 AND display_name_lower = ?3
+`
+
+type CountSCIMGroupsByDisplayNameParams struct {
+	OrgID       string
+	BindingID   string
+	FilterValue string
+}
+
+// Okta and Entra both discover a group by `displayName eq` before creating or
+// updating it; displayName is caseExact:false like userName. It is NOT unique
+// (RFC 7643 does not make it so), which is why this returns MANY: a directory
+// with two same-named groups must answer with two.
+func (q *Queries) CountSCIMGroupsByDisplayName(ctx context.Context, arg CountSCIMGroupsByDisplayNameParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countSCIMGroupsByDisplayName, arg.OrgID, arg.BindingID, arg.FilterValue)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countSCIMGroupsByExternalID = `-- name: CountSCIMGroupsByExternalID :one
+SELECT COUNT(*) FROM scim_groups WHERE org_id = ?1 AND binding_id = ?2 AND external_id = ?3
+`
+
+type CountSCIMGroupsByExternalIDParams struct {
+	OrgID       string
+	BindingID   string
+	FilterValue string
+}
+
+// externalId is not unique on groups either.
+func (q *Queries) CountSCIMGroupsByExternalID(ctx context.Context, arg CountSCIMGroupsByExternalIDParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countSCIMGroupsByExternalID, arg.OrgID, arg.BindingID, arg.FilterValue)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countSCIMUsers = `-- name: CountSCIMUsers :one
 SELECT COUNT(*) FROM scim_users WHERE org_id = ? AND binding_id = ?
 `
@@ -106,10 +145,48 @@ type CountSCIMUsersParams struct {
 
 // The WIRE's paged reads. Paging in Go over an unbounded read lets a valid
 // credential force full-directory work for a 200-item answer, every request;
-// LIMIT/OFFSET keeps the cost proportional to the page and the count query
+// LIMIT/OFFSET bounds resource materialization; the matching count query
 // keeps `totalResults` truthful (ADR section 8's ListResponse fields).
 func (q *Queries) CountSCIMUsers(ctx context.Context, arg CountSCIMUsersParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countSCIMUsers, arg.OrgID, arg.BindingID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countSCIMUsersByExternalID = `-- name: CountSCIMUsersByExternalID :one
+SELECT COUNT(*) FROM scim_users WHERE org_id = ?1 AND binding_id = ?2 AND external_id = ?3
+`
+
+type CountSCIMUsersByExternalIDParams struct {
+	OrgID       string
+	BindingID   string
+	FilterValue string
+}
+
+// externalId compares BYTE-EXACT (ADR section 8). It is NOT unique -- only the
+// SUBJECT is -- so this returns MANY: an empty externalId is the default and a
+// singular query would answer an arbitrary one of them with totalResults 1.
+func (q *Queries) CountSCIMUsersByExternalID(ctx context.Context, arg CountSCIMUsersByExternalIDParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countSCIMUsersByExternalID, arg.OrgID, arg.BindingID, arg.FilterValue)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countSCIMUsersByUserName = `-- name: CountSCIMUsersByUserName :one
+SELECT COUNT(*) FROM scim_users WHERE org_id = ?1 AND binding_id = ?2 AND user_name_lower = ?3
+`
+
+type CountSCIMUsersByUserNameParams struct {
+	OrgID       string
+	BindingID   string
+	FilterValue string
+}
+
+// Filtered pages and counts deliberately use identical equality predicates.
+func (q *Queries) CountSCIMUsersByUserName(ctx context.Context, arg CountSCIMUsersByUserNameParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countSCIMUsersByUserName, arg.OrgID, arg.BindingID, arg.FilterValue)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -942,99 +1019,6 @@ func (q *Queries) ListSCIMGroups(ctx context.Context, arg ListSCIMGroupsParams) 
 	return items, nil
 }
 
-const listSCIMGroupsByDisplayName = `-- name: ListSCIMGroupsByDisplayName :many
-SELECT id, org_id, binding_id, display_name, display_name_lower, external_id,
-       created_at, updated_at
-FROM scim_groups WHERE org_id = ? AND binding_id = ? AND display_name_lower = ? ORDER BY id
-`
-
-type ListSCIMGroupsByDisplayNameParams struct {
-	OrgID            string
-	BindingID        string
-	DisplayNameLower string
-}
-
-// Okta and Entra both discover a group by `displayName eq` before creating or
-// updating it; displayName is caseExact:false like userName. It is NOT unique
-// (RFC 7643 does not make it so), which is why this returns MANY: a directory
-// with two same-named groups must answer with two.
-func (q *Queries) ListSCIMGroupsByDisplayName(ctx context.Context, arg ListSCIMGroupsByDisplayNameParams) ([]ScimGroup, error) {
-	rows, err := q.db.QueryContext(ctx, listSCIMGroupsByDisplayName, arg.OrgID, arg.BindingID, arg.DisplayNameLower)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ScimGroup
-	for rows.Next() {
-		var i ScimGroup
-		if err := rows.Scan(
-			&i.ID,
-			&i.OrgID,
-			&i.BindingID,
-			&i.DisplayName,
-			&i.DisplayNameLower,
-			&i.ExternalID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listSCIMGroupsByExternalID = `-- name: ListSCIMGroupsByExternalID :many
-SELECT id, org_id, binding_id, display_name, display_name_lower, external_id,
-       created_at, updated_at
-FROM scim_groups WHERE org_id = ? AND binding_id = ? AND external_id = ? ORDER BY id
-`
-
-type ListSCIMGroupsByExternalIDParams struct {
-	OrgID      string
-	BindingID  string
-	ExternalID string
-}
-
-// externalId is not unique on groups either.
-func (q *Queries) ListSCIMGroupsByExternalID(ctx context.Context, arg ListSCIMGroupsByExternalIDParams) ([]ScimGroup, error) {
-	rows, err := q.db.QueryContext(ctx, listSCIMGroupsByExternalID, arg.OrgID, arg.BindingID, arg.ExternalID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ScimGroup
-	for rows.Next() {
-		var i ScimGroup
-		if err := rows.Scan(
-			&i.ID,
-			&i.OrgID,
-			&i.BindingID,
-			&i.DisplayName,
-			&i.DisplayNameLower,
-			&i.ExternalID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listSCIMMappings = `-- name: ListSCIMMappings :many
 SELECT id, org_id, binding_id, group_id, template, scope_project_id, scope_env_id,
        inert, created_at
@@ -1172,57 +1156,6 @@ func (q *Queries) ListSCIMUsers(ctx context.Context, arg ListSCIMUsersParams) ([
 	return items, nil
 }
 
-const listSCIMUsersByExternalID = `-- name: ListSCIMUsersByExternalID :many
-SELECT id, org_id, binding_id, account_id, user_name, user_name_lower, external_id,
-       subject, active, attributes, created_at, updated_at
-FROM scim_users WHERE org_id = ? AND binding_id = ? AND external_id = ? ORDER BY id
-`
-
-type ListSCIMUsersByExternalIDParams struct {
-	OrgID      string
-	BindingID  string
-	ExternalID string
-}
-
-// externalId compares BYTE-EXACT (ADR section 8). It is NOT unique -- only the
-// SUBJECT is -- so this returns MANY: an empty externalId is the default and a
-// singular query would answer an arbitrary one of them with totalResults 1.
-func (q *Queries) ListSCIMUsersByExternalID(ctx context.Context, arg ListSCIMUsersByExternalIDParams) ([]ScimUser, error) {
-	rows, err := q.db.QueryContext(ctx, listSCIMUsersByExternalID, arg.OrgID, arg.BindingID, arg.ExternalID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ScimUser
-	for rows.Next() {
-		var i ScimUser
-		if err := rows.Scan(
-			&i.ID,
-			&i.OrgID,
-			&i.BindingID,
-			&i.AccountID,
-			&i.UserName,
-			&i.UserNameLower,
-			&i.ExternalID,
-			&i.Subject,
-			&i.Active,
-			&i.Attributes,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const lockSCIMBinding = `-- name: LockSCIMBinding :execrows
 UPDATE scim_bindings SET last_contact_at = last_contact_at
 WHERE org_id = ? AND id = ?
@@ -1297,6 +1230,112 @@ func (q *Queries) PageSCIMGroups(ctx context.Context, arg PageSCIMGroupsParams) 
 	return items, nil
 }
 
+const pageSCIMGroupsByDisplayName = `-- name: PageSCIMGroupsByDisplayName :many
+SELECT id, org_id, binding_id, display_name, display_name_lower, external_id,
+       created_at, updated_at
+FROM scim_groups WHERE org_id = ?1 AND binding_id = ?2 AND display_name_lower = ?3
+ORDER BY id LIMIT ?5 OFFSET ?4
+`
+
+type PageSCIMGroupsByDisplayNameParams struct {
+	OrgID       string
+	BindingID   string
+	FilterValue string
+	PageOffset  int64
+	PageLimit   int64
+}
+
+func (q *Queries) PageSCIMGroupsByDisplayName(ctx context.Context, arg PageSCIMGroupsByDisplayNameParams) ([]ScimGroup, error) {
+	rows, err := q.db.QueryContext(ctx, pageSCIMGroupsByDisplayName,
+		arg.OrgID,
+		arg.BindingID,
+		arg.FilterValue,
+		arg.PageOffset,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ScimGroup
+	for rows.Next() {
+		var i ScimGroup
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.BindingID,
+			&i.DisplayName,
+			&i.DisplayNameLower,
+			&i.ExternalID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const pageSCIMGroupsByExternalID = `-- name: PageSCIMGroupsByExternalID :many
+SELECT id, org_id, binding_id, display_name, display_name_lower, external_id,
+       created_at, updated_at
+FROM scim_groups WHERE org_id = ?1 AND binding_id = ?2 AND external_id = ?3
+ORDER BY id LIMIT ?5 OFFSET ?4
+`
+
+type PageSCIMGroupsByExternalIDParams struct {
+	OrgID       string
+	BindingID   string
+	FilterValue string
+	PageOffset  int64
+	PageLimit   int64
+}
+
+func (q *Queries) PageSCIMGroupsByExternalID(ctx context.Context, arg PageSCIMGroupsByExternalIDParams) ([]ScimGroup, error) {
+	rows, err := q.db.QueryContext(ctx, pageSCIMGroupsByExternalID,
+		arg.OrgID,
+		arg.BindingID,
+		arg.FilterValue,
+		arg.PageOffset,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ScimGroup
+	for rows.Next() {
+		var i ScimGroup
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.BindingID,
+			&i.DisplayName,
+			&i.DisplayNameLower,
+			&i.ExternalID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const pageSCIMUsers = `-- name: PageSCIMUsers :many
 SELECT id, org_id, binding_id, account_id, user_name, user_name_lower, external_id,
        subject, active, attributes, created_at, updated_at
@@ -1317,6 +1356,120 @@ func (q *Queries) PageSCIMUsers(ctx context.Context, arg PageSCIMUsersParams) ([
 		arg.BindingID,
 		arg.Limit,
 		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ScimUser
+	for rows.Next() {
+		var i ScimUser
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.BindingID,
+			&i.AccountID,
+			&i.UserName,
+			&i.UserNameLower,
+			&i.ExternalID,
+			&i.Subject,
+			&i.Active,
+			&i.Attributes,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const pageSCIMUsersByExternalID = `-- name: PageSCIMUsersByExternalID :many
+SELECT id, org_id, binding_id, account_id, user_name, user_name_lower, external_id,
+       subject, active, attributes, created_at, updated_at
+FROM scim_users WHERE org_id = ?1 AND binding_id = ?2 AND external_id = ?3
+ORDER BY id LIMIT ?5 OFFSET ?4
+`
+
+type PageSCIMUsersByExternalIDParams struct {
+	OrgID       string
+	BindingID   string
+	FilterValue string
+	PageOffset  int64
+	PageLimit   int64
+}
+
+func (q *Queries) PageSCIMUsersByExternalID(ctx context.Context, arg PageSCIMUsersByExternalIDParams) ([]ScimUser, error) {
+	rows, err := q.db.QueryContext(ctx, pageSCIMUsersByExternalID,
+		arg.OrgID,
+		arg.BindingID,
+		arg.FilterValue,
+		arg.PageOffset,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ScimUser
+	for rows.Next() {
+		var i ScimUser
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.BindingID,
+			&i.AccountID,
+			&i.UserName,
+			&i.UserNameLower,
+			&i.ExternalID,
+			&i.Subject,
+			&i.Active,
+			&i.Attributes,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const pageSCIMUsersByUserName = `-- name: PageSCIMUsersByUserName :many
+SELECT id, org_id, binding_id, account_id, user_name, user_name_lower, external_id,
+       subject, active, attributes, created_at, updated_at
+FROM scim_users WHERE org_id = ?1 AND binding_id = ?2 AND user_name_lower = ?3
+ORDER BY id LIMIT ?5 OFFSET ?4
+`
+
+type PageSCIMUsersByUserNameParams struct {
+	OrgID       string
+	BindingID   string
+	FilterValue string
+	PageOffset  int64
+	PageLimit   int64
+}
+
+func (q *Queries) PageSCIMUsersByUserName(ctx context.Context, arg PageSCIMUsersByUserNameParams) ([]ScimUser, error) {
+	rows, err := q.db.QueryContext(ctx, pageSCIMUsersByUserName,
+		arg.OrgID,
+		arg.BindingID,
+		arg.FilterValue,
+		arg.PageOffset,
+		arg.PageLimit,
 	)
 	if err != nil {
 		return nil, err

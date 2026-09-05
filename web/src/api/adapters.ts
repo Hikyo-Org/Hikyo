@@ -40,6 +40,7 @@ import {
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
+import { useSensitiveMutation } from './sensitiveMutation.ts';
 import { ApiError, ok, parsed } from './client.ts';
 
 export type Adapter = z.infer<typeof zAdapter>;
@@ -193,7 +194,7 @@ export type CreateAdapterInput = {
 
 export function useCreateAdapter(ref: ProjectRef) {
   const invalidate = useInvalidateAdapters(ref);
-  return useMutation({
+  return useSensitiveMutation({
     mutationFn: (input: CreateAdapterInput) =>
       parsed(createAdapterOp, {
         path: ref,
@@ -365,7 +366,7 @@ export type MoveAdapterOriginInput = {
  */
 export function useMoveAdapterOrigin(ref: ProjectRef) {
   const invalidate = useInvalidateAdapters(ref);
-  return useMutation({
+  return useSensitiveMutation({
     mutationFn: (input: MoveAdapterOriginInput) =>
       parsed(updateAdapterOriginOp, {
         path: { ...ref, adapter: input.adapter },
@@ -386,7 +387,7 @@ export type ResumeAdapterMoveInput = {
 export function useResumeAdapterMove(ref: ProjectRef) {
   const invalidate = useInvalidateAdapters(ref);
   const queries = useQueryClient();
-  return useMutation({
+  return useSensitiveMutation({
     mutationFn: (input: ResumeAdapterMoveInput) =>
       parsed(resumeAdapterMoveOp, {
         path: { ...ref, move: input.move },
@@ -415,7 +416,7 @@ export function useCancelAdapterMove(ref: ProjectRef) {
 /** useSetAdapterCredential replaces the write-only provider credential; nothing is enqueued. */
 export function useSetAdapterCredential(ref: ProjectRef) {
   const invalidate = useInvalidateAdapters(ref);
-  return useMutation({
+  return useSensitiveMutation({
     mutationFn: (input: { readonly adapter: string; readonly credential: string }) =>
       ok(setAdapterCredentialOp, {
         path: { ...ref, adapter: input.adapter },

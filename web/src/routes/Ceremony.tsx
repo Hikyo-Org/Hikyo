@@ -1,5 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react';
 
+import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { useWorkspaceContext } from '../api/transport.tsx';
 import { useAuthMethods, useSessionOIDCProvider } from '../api/account.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
@@ -138,7 +139,7 @@ export function Ceremony({
   onAuthorised: () => void;
   onCancel: () => void;
 }) {
-  const [code, setCode] = useState('');
+  const [code, setCode] = useSensitiveState('');
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const first = useRef<HTMLButtonElement>(null);
@@ -181,6 +182,7 @@ export function Ceremony({
   const onCode = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     void attempt(() => runTOTPCeremony(request.environmentId, code));
+    setCode('');
   };
 
   const onOIDC = () => {

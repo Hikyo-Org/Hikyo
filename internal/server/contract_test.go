@@ -1919,10 +1919,12 @@ func TestWorkspaceHandoffInvalidPreservesContextualRefusals(t *testing.T) {
 }
 
 func TestWorkspaceHandoffStepUpResponseUsesRequiredBranch(t *testing.T) {
+	const requestingOrigin = "https://xn--bcher-kva.example:8443"
 	workspace := stubWorkspace{show: func(context.Context, service.Actor, string) (service.HandoffView, error) {
 		return service.HandoffView{
 			Purpose: service.HandoffStepUp, Operation: string(service.PurposeReveal),
-			EnvID: testEnvID, KeySet: []string{testKeyID}, ExpiresAt: time.Now().UTC().Add(time.Minute),
+			RequestingOrigin: requestingOrigin,
+			EnvID:            testEnvID, KeySet: []string{testKeyID}, ExpiresAt: time.Now().UTC().Add(time.Minute),
 		}, nil
 	}}
 	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
@@ -1947,6 +1949,9 @@ func TestWorkspaceHandoffStepUpResponseUsesRequiredBranch(t *testing.T) {
 	}
 	if stepUp.Purpose != apigen.WorkspaceHandoffStepUpPurposeStepUp {
 		t.Fatalf("purpose = %q, want step-up", stepUp.Purpose)
+	}
+	if stepUp.RequestingOrigin != requestingOrigin {
+		t.Fatalf("requesting origin = %q, want stored %q", stepUp.RequestingOrigin, requestingOrigin)
 	}
 	if stepUp.Operation != apigen.WorkspaceHandoffStepUpOperationReveal {
 		t.Fatalf("operation = %q, want reveal", stepUp.Operation)

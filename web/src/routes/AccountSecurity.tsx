@@ -1,6 +1,7 @@
 import qrcode from 'qrcode-generator';
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 
+import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import {
   accountFailureText,
   useAuthMethods,
@@ -81,9 +82,8 @@ export function AccountSecurity() {
     clearNotification();
     recordSuccess(message);
   };
-  const [otpauth, setOtpauth] = useState<string | null>(null);
-  const [codes, setCodes] = useState<readonly string[] | null>(null);
-  const [totpCode, setTotpCode] = useState('');
+  const [otpauth, setOtpauth] = useSensitiveState<string | null>(null);
+  const [totpCode, setTotpCode] = useSensitiveState('');
   const codeId = useId();
 
   // The locally-held seed is SPENT once the server no longer has a matching
@@ -100,6 +100,12 @@ export function AccountSecurity() {
   // ceremony and the status line both read THIS rather than the query, so
   // neither flashes the lagging cached status during the post-start refetch.
   const totpEnrolmentInProgress = otpauth !== null && !totpSeedSpent;
+  useEffect(() => {
+    if (totpSeedSpent) {
+      setOtpauth(null);
+      setTotpCode('');
+    }
+  }, [totpSeedSpent]);
 
   const runProof = (value: string) => {
     const request = proof;
@@ -145,10 +151,6 @@ export function AccountSecurity() {
         regenerate.mutate(
           { proof: value },
           {
-            onSuccess: (result) => {
-              setCodes(result.recovery_codes);
-              ok('A new batch replaced the old one. The codes are shown exactly once.');
-            },
             onError: report,
           },
         );
@@ -377,6 +379,7 @@ export function AccountSecurity() {
                         ok('Authenticator enrolled. Present it to step up when you need to.');
                       },
                       onError: report,
+                      onSettled: () => setTotpCode(''),
                     },
                   )
                 }
@@ -598,7 +601,10 @@ export function AccountSecurity() {
         />
       )}
 
-      {codes === null ? null : <RecoveryCodes codes={codes} onClose={() => setCodes(null)} />}
+      {regenerate.codes === null ? null : <RecoveryCodes codes={regenerate.codes} onClose={() => {
+        regenerate.dismiss();
+        ok('A new batch replaced the old one. The codes are shown exactly once.');
+      }} />}
     </div>
   );
 }
@@ -661,7 +667,7 @@ function ProofDialog({
 }) {
   const dialog = useModalDialog();
   const inputId = useId();
-  const [value, setValue] = useState('');
+  const [value, setValue] = useSensitiveState('');
   const copy = PROOF_COPY[request.kind];
 
   return (

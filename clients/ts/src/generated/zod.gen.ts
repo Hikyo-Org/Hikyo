@@ -2983,6 +2983,7 @@ export const zWorkspaceSession = z.object({
 });
 
 export const zWorkspaceHandoffEstablishment = z.object({
+    requesting_origin: z.url().min(1),
     state: z.string().min(1),
     purpose: z.enum(['establishment']),
     key_ids: z.array(zId),
@@ -2990,6 +2991,7 @@ export const zWorkspaceHandoffEstablishment = z.object({
 });
 
 export const zWorkspaceHandoffStepUp = z.object({
+    requesting_origin: z.url().min(1),
     state: z.string().min(1),
     purpose: z.enum(['step-up']),
     operation: z.enum([

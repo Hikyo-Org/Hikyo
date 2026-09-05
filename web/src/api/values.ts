@@ -22,6 +22,7 @@ import type { Client } from '@hikyo/runtime-core';
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
+import { useSensitiveMutation } from './sensitiveMutation.ts';
 import { ApiError, parsed } from './client.ts';
 import { oidcChannelName, rememberOIDCReturn } from './oidcChannel.ts';
 import {
@@ -480,7 +481,7 @@ export function writeRefusalText(error: unknown): string {
 export function useRevealOne(env: EnvRef) {
   const queries = useQueryClient();
   const transport = useTransport();
-  return useMutation({
+  return useSensitiveMutation({
     mutationFn: (key: string) =>
       parsed(revealValueOp, {
           path: {
@@ -500,7 +501,7 @@ export function useRevealOne(env: EnvRef) {
 export function useRevealAll(env: EnvRef) {
   const queries = useQueryClient();
   const transport = useTransport();
-  return useMutation({
+  return useSensitiveMutation({
     mutationFn: () =>
       parsed(revealValuesOp, {
           path: {
@@ -526,7 +527,7 @@ export function useRevealAll(env: EnvRef) {
 export function useSetValue(env: EnvRef) {
   const queries = useQueryClient();
   const transport = useTransport();
-  return useMutation({
+  return useSensitiveMutation({
     mutationFn: (input: { key: string; value: string }) =>
       parsed(setValueOp, {
           path: {

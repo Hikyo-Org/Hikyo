@@ -38,12 +38,16 @@ func (w *responseWriter) Write(body []byte) (int, error) {
 }
 
 func (w *responseWriter) Flush() {
+	_ = w.FlushError()
+}
+
+func (w *responseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+func (w *responseWriter) FlushError() error {
 	if !w.wroteHeader {
 		w.WriteHeader(http.StatusOK)
 	}
-	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
-		flusher.Flush()
-	}
+	return http.NewResponseController(w.ResponseWriter).Flush()
 }
 
 // markRecoveredPanic changes only the observational status. When bytes were

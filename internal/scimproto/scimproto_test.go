@@ -370,13 +370,6 @@ func TestPagingIsOneBasedAndBounded(t *testing.T) {
 		t.Fatalf("non-integer startIndex: want invalidValue, got %v", e)
 	}
 
-	all := []int{1, 2, 3, 4, 5}
-	if got := Slice(all, Page{StartIndex: 2, Count: 2}); len(got) != 2 || got[0] != 2 {
-		t.Fatalf("page 2..3 = %v", got)
-	}
-	if got := Slice(all, Page{StartIndex: 99, Count: 10}); len(got) != 0 {
-		t.Fatalf("out-of-range page must be empty, got %v", got)
-	}
 	body := ListResponse(5, Page{StartIndex: 99, Count: 10}, nil)
 	if body["totalResults"] != 5 {
 		t.Fatalf("an out-of-range page must still report the truthful total: %v", body["totalResults"])

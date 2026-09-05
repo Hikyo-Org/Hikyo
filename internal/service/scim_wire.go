@@ -721,40 +721,34 @@ func (s *SCIM) GetUser(ctx context.Context, actor Actor, org domain.OrgID, bindi
 // ListUsers answers the two User filters and the RFC's 1-based paging. An
 // out-of-range page returns an empty resource list with a TRUTHFUL total.
 func (s *SCIM) ListUsers(ctx context.Context, actor Actor, org domain.OrgID, bindingID string, filter scimproto.Filter, page scimproto.Page) ([]SCIMUserResource, int, error) {
+	page.StartIndex = max(1, page.StartIndex)
+	page.Count = min(max(0, page.Count), s.pageBound())
 	var out []SCIMUserResource
 	total := 0
 	err := s.wireTx(ctx, actor, org, bindingID, authz.OpSCIMUserList,
 		func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, c scimContext, now time.Time) ([]grantEventInput, error) {
-			var rows []store.SCIMUser
+			selected := store.SCIMListFilter{}
 			switch filter.Shape {
 			case scimproto.FilterNone:
-				all, err := r.SCIM().Users(ctx, c.proof, bindingID)
-				if err != nil {
-					return nil, err
-				}
-				rows = all
 			case scimproto.FilterUserNameEq:
-				row, err := r.SCIM().UserByUserName(ctx, c.proof, bindingID, fold(filter.Value))
-				if err != nil && !errors.Is(err, domain.ErrNotFound) {
-					return nil, err
-				}
-				if err == nil {
-					rows = []store.SCIMUser{row}
-				}
+				selected.Field = store.SCIMFilterUserName
+				selected.Value = fold(filter.Value)
 			case scimproto.FilterExternalIDEq:
-				// MANY: externalId is not unique (only the subject is), so a
-				// singular lookup would answer an arbitrary one of several and
-				// report totalResults 1.
-				matches, err := r.SCIM().UsersByExternalID(ctx, c.proof, bindingID, filter.Value)
-				if err != nil {
-					return nil, err
-				}
-				rows = matches
+				selected.Field = store.SCIMFilterExternalID
+				selected.Value = filter.Value
 			default:
 				return nil, fmt.Errorf("%w: service: filter %q is not answerable on Users", domain.ErrInvalid, filter.Shape)
 			}
-			total = len(rows)
-			for _, row := range scimproto.Slice(rows, page) {
+			// Normalize even direct service callers; the HTTP parser applies
+			// these same RFC rules. Subtract only after clamping the start.
+			start := page.StartIndex
+			limit := page.Count
+			rows, count, err := r.SCIM().PageUsers(ctx, c.proof, bindingID, selected, int64(limit), int64(start-1))
+			if err != nil {
+				return nil, err
+			}
+			total = int(count)
+			for _, row := range rows {
 				view, err := s.renderUser(ctx, r, c, row)
 				if err != nil {
 					return nil, err

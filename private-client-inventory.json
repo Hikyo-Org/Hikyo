@@ -1,0 +1,615 @@
+{
+  "scope": "Private advisory client secret lifetime",
+  "modules": [
+    {
+      "file": "api/access.ts",
+      "review": "Grant identities, scopes and capability/template names only; invitation/reset authorities use plain async functions.",
+      "operations": [
+        {
+          "name": "useCreateGrants",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useApplyTemplate",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRevokeGrant",
+          "ownership": "metadata mutation cache"
+        }
+      ]
+    },
+    {
+      "file": "api/account.ts",
+      "review": "All proof, TOTP, passkey enrollment and recovery mutations use the sensitive primitive; queries expose factor metadata only.",
+      "operations": [
+        {
+          "name": "useEnrolTotpStart",
+          "ownership": "component-local sensitive"
+        },
+        {
+          "name": "useConfirmTotp",
+          "ownership": "component-local sensitive"
+        },
+        {
+          "name": "useRemoveTotp",
+          "ownership": "component-local sensitive"
+        },
+        {
+          "name": "useRemovePasskey",
+          "ownership": "component-local sensitive"
+        },
+        {
+          "name": "useRegenerateRecoveryCodes",
+          "ownership": "component-local sensitive"
+        },
+        {
+          "name": "useUnlinkIdentity",
+          "ownership": "component-local sensitive"
+        },
+        {
+          "name": "useLinkIdentity",
+          "ownership": "component-local sensitive"
+        },
+        {
+          "name": "useEnrolPasskey",
+          "ownership": "component-local sensitive"
+        }
+      ]
+    },
+    {
+      "file": "api/adapters.ts",
+      "review": "Create/move/resume/replacement credentials are uncached; remaining cached calls carry IDs, provider routing/selection, ownership consent and redacted plans.",
+      "operations": [
+        {
+          "name": "useCreateAdapter",
+          "ownership": "component-local sensitive"
+        },
+        {
+          "name": "useAddAdapterTarget",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useUpdateAdapterTarget",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "usePauseAdapterTarget",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useResumeAdapterTarget",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useResyncAdapterTarget",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRemoveAdapterTarget",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useAdoptAdapterNames",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useMoveAdapterOrigin",
+          "ownership": "component-local sensitive"
+        },
+        {
+          "name": "useResumeAdapterMove",
+          "ownership": "component-local sensitive"
+        },
+        {
+          "name": "useCancelAdapterMove",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useSetAdapterCredential",
+          "ownership": "component-local sensitive"
+        },
+        {
+          "name": "useRevokeAdapterCredential",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useDeleteAdapter",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "usePlanAdapterTarget",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useTestAdapterTarget",
+          "ownership": "metadata mutation cache"
+        }
+      ]
+    },
+    {
+      "file": "api/approvals.ts",
+      "review": "Policy configuration, request IDs, votes and audit reasons; no credential or plaintext value inputs/results.",
+      "operations": [
+        {
+          "name": "useSavePolicy",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useDeletePolicy",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useVote",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useResolveRequest",
+          "ownership": "metadata mutation cache"
+        }
+      ]
+    },
+    {
+      "file": "api/catalogue.ts",
+      "review": "Key declarations, schema/presence rules, folder/group metadata and scanner acknowledgement tokens; no value writes/reveal.",
+      "operations": [
+        {
+          "name": "useUpdateKeyDeclaration",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useSetKeyGroup",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useCreateFolder",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRenameFolder",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useDeleteFolder",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useCreateKeyGroup",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRenameKeyGroup",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useDeleteKeyGroup",
+          "ownership": "metadata mutation cache"
+        }
+      ]
+    },
+    {
+      "file": "api/definitions.ts",
+      "review": "Definitions authority mode enum only.",
+      "operations": [
+        {
+          "name": "useSetDefinitionsSettings",
+          "ownership": "metadata mutation cache"
+        }
+      ]
+    },
+    {
+      "file": "api/dynamic.ts",
+      "review": "Cached calls carry provider/lease IDs, TTLs and revoke consent; provider credentials and lease passwords already use plain async helpers.",
+      "operations": [
+        {
+          "name": "useDeleteDynamicProvider",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRevokeDynamicProviderCredential",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRenewLease",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRevokeLease",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useSettleLease",
+          "ownership": "metadata mutation cache"
+        }
+      ]
+    },
+    {
+      "file": "api/federationIssuers.ts",
+      "review": "Issuer URLs, public verification JWKS, refused audiences and IDs. No signing private key or bearer credential is part of this contract.",
+      "operations": [
+        {
+          "name": "useCreateFederationIssuer",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useUpdateFederationIssuer",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useDeleteFederationIssuer",
+          "ownership": "metadata mutation cache"
+        }
+      ]
+    },
+    {
+      "file": "api/history.ts",
+      "review": "Revision IDs, pins and bounded rollback preview metadata; no value plaintext.",
+      "operations": [
+        {
+          "name": "useRestoreRevision",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useSetRevisionPin",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useReleaseRevisionPin",
+          "ownership": "metadata mutation cache"
+        }
+      ]
+    },
+    {
+      "file": "api/identities.ts",
+      "review": "Account/binding/grant metadata and credential IDs for revocation; display-once bearer mint uses plain async helper.",
+      "operations": [
+        {
+          "name": "useRevokeCredential",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useCreateServiceAccount",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useDeleteServiceAccount",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useCreateBinding",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useGrantEnvironment",
+          "ownership": "metadata mutation cache"
+        }
+      ]
+    },
+    {
+      "file": "api/machineReveal.ts",
+      "review": "Boolean reveal policy only.",
+      "operations": [
+        {
+          "name": "useSetMachineReveal",
+          "ownership": "metadata mutation cache"
+        }
+      ]
+    },
+    {
+      "file": "api/matrix.ts",
+      "review": "Stage/import values are uncached. Remaining calls carry key metadata, declaration/schema/scanner acknowledgements, occurrence/preview tokens, publishing consent and IDs.",
+      "operations": [
+        {
+          "name": "useStageMatrixValue",
+          "ownership": "component-local sensitive"
+        },
+        {
+          "name": "useCreateKey",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useListValueOccurrences",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useImportValues",
+          "ownership": "component-local sensitive"
+        },
+        {
+          "name": "useReclassifyKey",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRenameKey",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useDeleteKey",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useUpdateKeyMetadata",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useClearMatrixValue",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "usePublishMatrix",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useCopyMatrixConfig",
+          "ownership": "metadata mutation cache"
+        }
+      ]
+    },
+    {
+      "file": "api/oidcProviders.ts",
+      "review": "Client secret submission already uses a plain async helper; cached deletion is slug-only.",
+      "operations": [
+        {
+          "name": "useDeleteOidcProvider",
+          "ownership": "metadata mutation cache"
+        }
+      ]
+    },
+    {
+      "file": "api/remotes.ts",
+      "review": "Remote credential addition is uncached; remaining cached calls carry names, URLs, allowlist origins and connection/session IDs. Minted token uses plain async helper.",
+      "operations": [
+        {
+          "name": "useAddRemote",
+          "ownership": "component-local sensitive"
+        },
+        {
+          "name": "useRenameRemote",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRemoveRemote",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useAddWorkspaceOrigin",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRemoveWorkspaceOrigin",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRevokeConnection",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRevokeSession",
+          "ownership": "metadata mutation cache"
+        }
+      ]
+    },
+    {
+      "file": "api/samlProviders.ts",
+      "review": "Write-only metadata upload/refresh now uncached; remaining calls carry public policy, fingerprints and key lifecycle metadata. Private SP signing keys are never returned.",
+      "operations": [
+        {
+          "name": "usePutSamlProvider",
+          "ownership": "component-local sensitive"
+        },
+        {
+          "name": "usePatchSamlProvider",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRefreshSamlMetadata",
+          "ownership": "component-local sensitive"
+        },
+        {
+          "name": "useDeleteSamlProvider",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRotateSamlSpKey",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRetireSamlSpKey",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useCompromiseRetireSamlSpKey",
+          "ownership": "metadata mutation cache"
+        }
+      ]
+    },
+    {
+      "file": "api/scim.ts",
+      "review": "Cached binding/mapping/deletion/revocation metadata only; proof and display-once token mint use a plain async helper.",
+      "operations": [
+        {
+          "name": "useCreateScimBinding",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useDeleteScimBinding",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useCreateScimMapping",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useUpdateScimMapping",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useDeleteScimMapping",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRevokeScimCredential",
+          "ownership": "metadata mutation cache"
+        }
+      ]
+    },
+    {
+      "file": "api/session.ts",
+      "review": "Password and OIDC authorization start are uncached. Logout has no credential variables/result; establishment/recovery use guarded local operations.",
+      "operations": [
+        {
+          "name": "useLogin",
+          "ownership": "component-local sensitive"
+        },
+        {
+          "name": "useLogout",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useOIDCLogin",
+          "ownership": "component-local sensitive"
+        }
+      ]
+    },
+    {
+      "file": "api/settings.ts",
+      "review": "Topology names/IDs, policy bounds, rotation and re-encryption progress. Root/DEK/backup key bytes are not exposed by these API responses.",
+      "operations": [
+        {
+          "name": "useCreateOrg",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useDeleteOrg",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRenameOrg",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRenameProject",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useDeleteProject",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useCreateProject",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useCreateEnvironment",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRenameEnvironment",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useDeleteEnvironment",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useReorderEnvironments",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useCloneEnvironment",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRotateTokenKey",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRotateScanningKey",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRotateMasterKey",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRotateRootKey",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useRotateDek",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useReencryptInstance",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useReencryptProject",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useSetEnvironmentSettings",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useSetOrgRetention",
+          "ownership": "metadata mutation cache"
+        },
+        {
+          "name": "useSetProjectRetention",
+          "ownership": "metadata mutation cache"
+        }
+      ]
+    },
+    {
+      "file": "api/stepup.ts",
+      "review": "All code/assertion/session operations are uncached and retain guarded auth acceptance.",
+      "operations": [
+        {
+          "name": "useStepUpTotp",
+          "ownership": "component-local sensitive"
+        },
+        {
+          "name": "useStepUpPasskey",
+          "ownership": "component-local sensitive"
+        },
+        {
+          "name": "usePasskeyLogin",
+          "ownership": "component-local sensitive"
+        }
+      ]
+    },
+    {
+      "file": "api/updates.ts",
+      "review": "Origin/version request refuses locally; no credentials.",
+      "operations": [
+        {
+          "name": "useRequestRemoteUpdate",
+          "ownership": "metadata mutation cache"
+        }
+      ]
+    },
+    {
+      "file": "api/values.ts",
+      "review": "Single/bulk reveal and writes uncached. Copy uses server-side value references and destination IDs; no plaintext returned.",
+      "operations": [
+        {
+          "name": "useRevealOne",
+          "ownership": "component-local sensitive"
+        },
+        {
+          "name": "useRevealAll",
+          "ownership": "component-local sensitive"
+        },
+        {
+          "name": "useSetValue",
+          "ownership": "component-local sensitive"
+        },
+        {
+          "name": "useCopyValues",
+          "ownership": "metadata mutation cache"
+        }
+      ]
+    }
+  ]
+}

@@ -1,17 +1,56 @@
 import type { WorkspaceHandoffStepUp, WorkspaceHandoffTransaction } from '@hikyo/client';
 import { approveWorkspaceHandoffOp, showWorkspaceHandoffOp } from '@hikyo/operations';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 
 import { parsed } from '../api/client.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { ceremonyRefusalText, runPasskeyCeremony, runTOTPCeremony } from '../api/values.ts';
 import { Login } from './Login.tsx';
+import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
 
 function isWorkspaceHandoffStepUp(
   transaction: WorkspaceHandoffTransaction,
 ): transaction is WorkspaceHandoffStepUp {
   return transaction.purpose === 'step-up';
+}
+
+/** Consent has a local expiry wall as well as the authoritative server check. */
+function useHandoffExpiry(expiresAt: string | undefined): boolean {
+  const [clock, setClock] = useState(() => Date.now());
+  const deadline = expiresAt === undefined ? Number.NaN : Date.parse(expiresAt);
+  const expired = !Number.isFinite(deadline) || Math.max(clock, Date.now()) >= deadline;
+  useEffect(() => {
+    if (expired) return;
+    const timer = globalThis.setTimeout(
+      () => setClock(Date.now()),
+      Math.min(2_147_483_647, Math.max(0, deadline - Date.now())),
+    );
+    return () => globalThis.clearTimeout(timer);
+  }, [deadline, expired]);
+  return expired;
+}
+
+/** A refreshed response cannot silently change what the human just approved. */
+function sameHandoffSummary(
+  a: WorkspaceHandoffTransaction,
+  b: WorkspaceHandoffTransaction,
+): boolean {
+  if (
+    a.state !== b.state ||
+    a.requesting_origin !== b.requesting_origin ||
+    a.expires_at !== b.expires_at ||
+    a.purpose !== b.purpose
+  )
+    return false;
+  if (a.purpose === 'establishment') return true;
+  return (
+    b.purpose === 'step-up' &&
+    a.operation === b.operation &&
+    a.environment === b.environment &&
+    a.key_ids.length === b.key_ids.length &&
+    a.key_ids.every((key, index) => key === b.key_ids[index])
+  );
 }
 
 /**
@@ -67,9 +106,47 @@ export function WorkspaceApprove() {
     enabled: state !== '' && auth.state.status === 'authenticated',
   });
 
+  const tasks = useCeremonyTask([
+    state,
+    auth.state.status,
+    auth.state.status === 'authenticated' ? auth.state.sessionEpoch : '',
+  ]);
+  const expired = useHandoffExpiry(transaction.data?.expires_at);
+  const wrongState = transaction.data !== undefined && transaction.data.state !== state;
+
   const approve = useMutation({
-    mutationFn: async () => {
-      const result = await parsed(approveWorkspaceHandoffOp, { body: { state } });
+    mutationFn: async ({ task, revision }: { task: CeremonyTask; revision: number }) => {
+      const requireCurrent = () => {
+        if (!tasks.isCurrent(task) || auth.captureTransition().revision !== revision) {
+          throw new Error('The authorization surface is no longer active.');
+        }
+      };
+      requireCurrent();
+      const displayed = transaction.data;
+      if (
+        displayed === undefined ||
+        wrongState ||
+        expired ||
+        Date.parse(displayed.expires_at) <= Date.now()
+      ) {
+        throw new Error('The authorization request is no longer valid.');
+      }
+      // Re-read immediately before approval, including after an asynchronous
+      // reauthentication. Consumed/expired/changed summaries require starting
+      // again. The server's atomic approval still decides a concurrent race.
+      const current = await parsed(showWorkspaceHandoffOp, {
+        path: { state },
+        signal: task.signal,
+      });
+      requireCurrent();
+      if (!sameHandoffSummary(displayed, current) || Date.parse(current.expires_at) <= Date.now()) {
+        throw new Error('The authorization request changed or expired.');
+      }
+      const result = await parsed(approveWorkspaceHandoffOp, {
+        body: { state },
+        signal: task.signal,
+      });
+      requireCurrent();
       // The code goes to the pre-registered callback and nowhere else. Building
       // the URL from the SERVER's `redirect_uri` is what makes that true.
       const target = new URL(result.redirect_uri);
@@ -78,6 +155,9 @@ export function WorkspaceApprove() {
       globalThis.location.assign(target.toString());
     },
   });
+
+  const authorize = () =>
+    approve.mutate({ task: tasks.begin(['approve']), revision: auth.captureTransition().revision });
 
   if (state === '') {
     return (
@@ -112,7 +192,12 @@ export function WorkspaceApprove() {
     return <Login />;
   }
 
-  if (transaction.isError) {
+  if (
+    transaction.isError ||
+    approve.isError ||
+    wrongState ||
+    (transaction.data !== undefined && expired)
+  ) {
     return (
       <main className="login">
         <div className="login__card">
@@ -122,7 +207,7 @@ export function WorkspaceApprove() {
               !
             </span>
             <span>
-              This authorization request could not be read — it may have expired or been used
+              This authorization request could not be read. It may have expired or been used
               already. Close this window and start again from the instance you were browsing.
             </span>
           </p>
@@ -151,6 +236,34 @@ export function WorkspaceApprove() {
         <h1 className="login__title">
           {isStepUp ? 'Authorize this disclosure' : 'Authorize this workspace'}
         </h1>
+        <p className="login__lede workspace-consent__origin">
+          Requesting origin:{' '}
+          <strong className="mono">
+            <bdi dir="ltr">{transaction.data.requesting_origin}</bdi>
+          </strong>
+        </p>
+        {stepUpTransaction !== undefined ? (
+          <section className="workspace-consent__scope" aria-label="Requested scope" tabIndex={0}>
+            <dl>
+              <dt>Environment</dt>
+              <dd className="mono">{stepUpTransaction.environment}</dd>
+              <dt>Keys</dt>
+              <dd>
+                {stepUpTransaction.key_ids.length === 0 ? (
+                  'Entire environment'
+                ) : (
+                  <ul>
+                    {stepUpTransaction.key_ids.map((key) => (
+                      <li className="mono" key={key}>
+                        {key}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </dd>
+            </dl>
+          </section>
+        ) : null}
         <p className="login__lede">
           {isStepUp ? (
             <>
@@ -159,37 +272,26 @@ export function WorkspaceApprove() {
               {stepUpTransaction.key_ids.length === 0
                 ? 'this environment'
                 : `${stepUpTransaction.key_ids.length} key${stepUpTransaction.key_ids.length === 1 ? '' : 's'}`}
-              . Reauthenticate here to allow it — this is a disclosure, not a new sign-in, and it
+              . Reauthenticate here to allow it. This is a disclosure, not a new sign-in, and it
               covers only this one act.
             </>
           ) : (
             <>
-              Signed in as <span className="mono">{name}</span>. Approving lets the site you started
-              from operate this instance <strong>as you</strong>, for as long as the session lives or
-              until it is revoked. Everything it does will appear in this instance&apos;s audit trail
-              under your name.
+              Signed in as <span className="mono">{name}</span>. Approving lets the requesting
+              origin shown above operate this instance <strong>as you</strong>, for as long as the
+              session lives or until it is revoked. Everything it does will appear in this
+              instance&apos;s audit trail under your name.
             </>
           )}
         </p>
-
-        {approve.isError ? (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>
-              That authorization could not be completed. The transaction may have expired or been
-              used already — close this window and start again.
-            </span>
-          </p>
-        ) : null}
 
         {stepUpTransaction !== undefined ? (
           <StepUpReauth
             operation={stepUpTransaction.operation}
             environmentId={stepUpTransaction.environment}
             keyIds={stepUpTransaction.key_ids}
-            onReauthed={() => approve.mutate()}
+            key={auth.state.sessionEpoch}
+            onReauthed={authorize}
             approving={approve.isPending}
           />
         ) : (
@@ -197,7 +299,7 @@ export function WorkspaceApprove() {
             <button
               className="btn btn--primary"
               type="button"
-              onClick={() => approve.mutate()}
+              onClick={authorize}
               disabled={approve.isPending}
             >
               {approve.isPending ? 'Authorizing…' : 'Authorize'}
@@ -229,7 +331,7 @@ function StepUpReauth({
   onReauthed,
   approving,
 }: {
-  operation: string;
+  operation: WorkspaceHandoffStepUp['operation'];
   environmentId: string;
   keyIds: readonly string[];
   onReauthed: () => void;
@@ -239,13 +341,24 @@ function StepUpReauth({
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
-  const signed = operation === 'copy' ? 'copy' : operation === 'publish' ? 'publish' : 'reveal';
+  const auth = useAuth();
+  const tasks = useCeremonyTask([
+    operation,
+    environmentId,
+    keyIds,
+    auth.state.status,
+    auth.state.status === 'authenticated' ? auth.state.sessionEpoch : '',
+  ]);
 
   const attempt = async (run: () => Promise<void>) => {
+    const task = tasks.begin(['reauthenticate']);
+    const revision = auth.captureTransition().revision;
+    const current = () => tasks.isCurrent(task) && auth.captureTransition().revision === revision;
     setBusy(true);
     setFailure(null);
     try {
       await run();
+      if (!current()) return;
       // Reauth is done; hand off to the approval and release our own busy flag
       // so `working` now reflects only the approve mutation. If that mutation
       // fails (an expired or already-consumed transaction), the buttons must
@@ -254,19 +367,25 @@ function StepUpReauth({
       setBusy(false);
       onReauthed();
     } catch (err) {
+      if (!current()) return;
       setFailure(ceremonyRefusalText(err));
       setBusy(false);
+    } finally {
+      if (current()) {
+        setCode('');
+        tasks.finish(task);
+      }
     }
   };
 
   const onPasskey = () =>
-    void attempt(() =>
-      runPasskeyCeremony({ operation: signed, environmentId, keyIds: [...keyIds] }),
-    );
+    void attempt(() => runPasskeyCeremony({ operation, environmentId, keyIds: [...keyIds] }));
 
   const onCode = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    void attempt(() => runTOTPCeremony(environmentId, code));
+    const proof = code;
+    setCode('');
+    void attempt(() => runTOTPCeremony(environmentId, proof));
   };
 
   const working = busy || approving;
@@ -298,6 +417,7 @@ function StepUpReauth({
             inputMode="numeric"
             autoComplete="one-time-code"
             value={code}
+            disabled={working}
             onChange={(e) => setCode(e.target.value)}
           />
         </div>

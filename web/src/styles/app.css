@@ -399,6 +399,31 @@ select {
   max-width: 60ch;
 }
 
+/* Consent recipients and key sets remain fully readable on narrow popups. */
+.workspace-consent__origin {
+  overflow-wrap: anywhere;
+}
+
+.workspace-consent__scope {
+  min-width: 0;
+  max-height: min(35dvh, 20rem);
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+
+.workspace-consent__scope dl {
+  margin: 0;
+}
+
+.workspace-consent__scope dd {
+  margin: 4px 0 12px;
+}
+
+.workspace-consent__scope ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
 /* Never colour alone: the alert carries a glyph and its own text, and its
    border is what survives forced-colors. */
 .alert {

@@ -34,6 +34,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/rea
 import { useMemo } from 'react';
 import { z } from 'zod';
 
+import { useSensitiveMutation } from './sensitiveMutation.ts';
 import {
   signalsPollInterval,
   useAdvisoryStream,
@@ -638,7 +639,7 @@ export function useMatrixProject(ref: MatrixRef) {
 export function useStageMatrixValue(ref: MatrixRef) {
   const queries = useQueryClient();
   const transport = useTransport();
-  return useMutation({
+  return useSensitiveMutation({
     // `acknowledgements` carries a keep-as-config token to dismiss a Surface-1
     // warning (#74): re-staging the SAME value with its token records the
     // dismissal so the identical value no longer re-warns. The save succeeds
@@ -659,12 +660,13 @@ export function useStageMatrixValue(ref: MatrixRef) {
           },
           ...transport,
         }),
-    onSuccess: (_result, input) =>
-      Promise.all([
+    onSuccess: async (_result, input) => {
+      await Promise.all([
         queries.invalidateQueries({ queryKey: valuesKey({ ...ref, environment: input.environment }) }),
         queries.invalidateQueries({ queryKey: signalsKey(ref, input.environment) }),
         queries.invalidateQueries({ queryKey: pendingDraftsKey(ref, input.environment) }),
-      ]),
+      ]);
+    },
   });
 }
 
@@ -830,7 +832,7 @@ export function useListValueOccurrences(ref: MatrixRef) {
 export function useImportValues(ref: MatrixRef) {
   const queries = useQueryClient();
   const transport = useTransport();
-  return useMutation({
+  return useSensitiveMutation({
     mutationFn: (input: {
       readonly environment: string;
       readonly entries: readonly { readonly key: string; readonly value: string }[];
@@ -846,9 +848,9 @@ export function useImportValues(ref: MatrixRef) {
           },
           ...transport,
         }),
-    onSuccess: (_result, input) => {
+    onSuccess: async (_result, input) => {
       const environment = { ...ref, environment: input.environment };
-      return Promise.all([
+      await Promise.all([
         queries.invalidateQueries({ queryKey: valuesKey(environment) }),
         queries.invalidateQueries({ queryKey: signalsKey(ref, input.environment) }),
         queries.invalidateQueries({ queryKey: pendingDraftsKey(ref, input.environment) }),

@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { useParams } from 'react-router';
 
+import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import type { FederatedClaimPin, GrantResult } from '@hikyo/client';
 
 import { grantFailureText, grantOutcomeSummary } from '../api/access.ts';
@@ -2882,7 +2883,7 @@ function CreateProviderDialog({
   const refresh = useRefreshProviders(project);
   const [origin, setOrigin] = useState('');
   const [grantRole, setGrantRole] = useState('');
-  const [credential, setCredential] = useState('');
+  const [credential, setCredential] = useSensitiveState('');
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -2908,6 +2909,7 @@ function CreateProviderDialog({
       refresh();
       setFailure(createProviderRefusalText(error));
     } finally {
+      setCredential('');
       setBusy(false);
     }
   };
@@ -3032,7 +3034,7 @@ function SetCredentialDialog({
 }) {
   const dialog = useModalDialog();
   const refresh = useRefreshProviders(project);
-  const [credential, setCredential] = useState('');
+  const [credential, setCredential] = useSensitiveState('');
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -3053,6 +3055,7 @@ function SetCredentialDialog({
       refresh();
       setFailure(setCredentialRefusalText(error));
     } finally {
+      setCredential('');
       setBusy(false);
     }
   };

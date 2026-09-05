@@ -449,36 +449,33 @@ func (s *SCIM) GetGroup(ctx context.Context, actor Actor, org domain.OrgID, bind
 // Okta and Entra issue to discover a group before creating or updating it, so
 // it is load-bearing rather than a convenience.
 func (s *SCIM) ListGroups(ctx context.Context, actor Actor, org domain.OrgID, bindingID string, filter scimproto.Filter, page scimproto.Page) ([]SCIMGroupResource, int, error) {
+	page.StartIndex = max(1, page.StartIndex)
+	page.Count = min(max(0, page.Count), s.pageBound())
 	var out []SCIMGroupResource
 	total := 0
 	err := s.wireTx(ctx, actor, org, bindingID, authz.OpSCIMGroupList,
 		func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, c scimContext, now time.Time) ([]grantEventInput, error) {
-			var rows []store.SCIMGroup
+			selected := store.SCIMListFilter{}
 			switch filter.Shape {
 			case scimproto.FilterNone:
-				all, err := r.SCIM().Groups(ctx, c.proof, bindingID)
-				if err != nil {
-					return nil, err
-				}
-				rows = all
 			case scimproto.FilterDisplayNameEq:
-				matches, err := r.SCIM().GroupsByDisplayName(ctx, c.proof, bindingID, fold(filter.Value))
-				if err != nil {
-					return nil, err
-				}
-				rows = matches
+				selected.Field = store.SCIMFilterDisplayName
+				selected.Value = fold(filter.Value)
 			case scimproto.FilterExternalIDEq:
-				matches, err := r.SCIM().GroupsByExternalID(ctx, c.proof, bindingID, filter.Value)
-				if err != nil {
-					return nil, err
-				}
-				rows = matches
+				selected.Field = store.SCIMFilterExternalID
+				selected.Value = filter.Value
 			default:
 				return nil, fmt.Errorf("%w: service: filter %q is not answerable on Groups", domain.ErrInvalid, filter.Shape)
 			}
-			total = len(rows)
-			for _, row := range scimproto.Slice(rows, page) {
-				view, err := s.renderGroup(ctx, r, c, bindingID, row.ID)
+			start := page.StartIndex
+			limit := page.Count
+			rows, count, err := r.SCIM().PageGroups(ctx, c.proof, bindingID, selected, int64(limit), int64(start-1))
+			if err != nil {
+				return nil, err
+			}
+			total = int(count)
+			for _, row := range rows {
+				view, err := s.renderGroupRow(ctx, r, c, row)
 				if err != nil {
 					return nil, err
 				}
@@ -496,7 +493,13 @@ func (s *SCIM) renderGroup(ctx context.Context, r store.Repos, c scimContext, bi
 	if err != nil {
 		return SCIMGroupResource{}, err
 	}
-	members, err := r.SCIM().GroupMembers(ctx, c.proof, c.binding.ID, id)
+	return s.renderGroupRow(ctx, r, c, row)
+}
+
+// Page callers already own this proof-scoped row. Only expand membership
+// references here, without materializing each directory resource a second time.
+func (s *SCIM) renderGroupRow(ctx context.Context, r store.Repos, c scimContext, row store.SCIMGroup) (SCIMGroupResource, error) {
+	members, err := r.SCIM().GroupMembers(ctx, c.proof, row.BindingID, row.ID)
 	if err != nil {
 		return SCIMGroupResource{}, err
 	}

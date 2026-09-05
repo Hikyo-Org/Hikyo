@@ -696,20 +696,6 @@ func ListResponse(total int, page Page, resources []any) map[string]any {
 	}
 }
 
-// Slice applies a page to an ordered result set. An out-of-range page yields
-// an empty slice, and the caller still reports the truthful total.
-func Slice[T any](all []T, page Page) []T {
-	if page.StartIndex > len(all) || page.Count == 0 {
-		return nil
-	}
-	start := page.StartIndex - 1
-	end := start + page.Count
-	if end > len(all) {
-		end = len(all)
-	}
-	return all[start:end]
-}
-
 // ---------------------------------------------------------------------------
 // The closed PATCH operation x path matrix
 // ---------------------------------------------------------------------------

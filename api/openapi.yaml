@@ -16451,8 +16451,13 @@ components:
     WorkspaceHandoffEstablishment:
       type: object
       additionalProperties: false
-      required: [state, purpose, key_ids, expires_at]
+      required: [state, requesting_origin, purpose, key_ids, expires_at]
       properties:
+        requesting_origin:
+          type: string
+          format: uri
+          minLength: 1
+          description: Exact canonical requesting origin from the stored transaction, never from approval-page URL fields.
         state:
           type: string
           minLength: 1
@@ -16469,8 +16474,13 @@ components:
     WorkspaceHandoffStepUp:
       type: object
       additionalProperties: false
-      required: [state, purpose, operation, environment, key_ids, expires_at]
+      required: [state, requesting_origin, purpose, operation, environment, key_ids, expires_at]
       properties:
+        requesting_origin:
+          type: string
+          format: uri
+          minLength: 1
+          description: Exact canonical requesting origin from the stored transaction, never from approval-page URL fields.
         state:
           type: string
           minLength: 1

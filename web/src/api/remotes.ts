@@ -26,6 +26,7 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tan
 import { useState } from 'react';
 import type { z } from 'zod';
 
+import { useSensitiveMutation } from './sensitiveMutation.ts';
 import { ok, parsed, parsedPick } from './client.ts';
 
 /**
@@ -107,7 +108,7 @@ export function useRemotes(): UseQueryResult<RemoteList> {
 
 export function useAddRemote() {
   const queries = useQueryClient();
-  return useMutation({
+  return useSensitiveMutation({
     mutationFn: (input: { name: string; url: string; spkiPin: string; credential: string }) =>
       parsed(addRemoteOp, {
           body: {

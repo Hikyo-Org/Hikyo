@@ -310,10 +310,10 @@ func TestHTTPServerSlowClientLimitsConfigured(t *testing.T) {
 	if srv.MaxHeaderBytes <= 0 {
 		t.Error("MaxHeaderBytes must be bounded")
 	}
-	if srv.WriteTimeout != 0 {
-		t.Error("WriteTimeout must stay unset until SSE decides it")
+	if srv.WriteTimeout != 60*time.Second {
+		t.Errorf("WriteTimeout = %s, want 60s", srv.WriteTimeout)
 	}
-	if srv.ReadHeaderTimeout != 10*time.Second || srv.MaxHeaderBytes != 64<<10 {
+	if srv.ReadHeaderTimeout != 10*time.Second || srv.ReadTimeout != 30*time.Second || srv.IdleTimeout != 120*time.Second || srv.MaxHeaderBytes != 64<<10 {
 		t.Fatalf("HTTP limits = header timeout %s, max headers %d", srv.ReadHeaderTimeout, srv.MaxHeaderBytes)
 	}
 }

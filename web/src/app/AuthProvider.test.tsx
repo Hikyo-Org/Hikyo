@@ -10,6 +10,9 @@ import {
   workspaceBearer,
   type WorkspaceBearer,
 } from '../api/workspace.ts';
+import { useLogout } from '../api/session.ts';
+import { useRegenerateRecoveryCodes } from '../api/account.ts';
+import { useSensitiveMutation, useSensitiveState } from '../api/sensitiveMutation.ts';
 import { renderForm, settle, settleTask } from '../testkit/renderForm.tsx';
 import { parsed, parsedPick } from '../api/client.ts';
 import { listMyOrgsOp, localLoginOp, regenerateRecoveryCodesOp, stepUpTotpOp } from '@hikyo/operations';
@@ -179,6 +182,195 @@ afterEach(async () => {
 });
 
 describe('AuthProvider', () => {
+  it.each([false, true])('displays recovery codes only after their exact session reissue is verified (cookie changed=%s)', async (changedCookie) => {
+    let cookie = '__Host-hikyo-csrf=original';
+    vi.spyOn(document, 'cookie', 'get').mockImplementation(() => cookie);
+    const response = deferred<Response>();
+    const verification = deferred<Response>();
+    const current = identity('00', '10');
+    const replacement = identity('01', '10');
+    const code = 'SENTINEL-authorized-recovery-code';
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(json(current))
+      .mockReturnValueOnce(response.promise)
+      .mockReturnValueOnce(verification.promise));
+    function RecoverySurface() {
+      const operation = useRegenerateRecoveryCodes();
+      return <><button onClick={() => operation.mutate({ proof: 'SENTINEL-proof' })}>Replace codes</button>
+        <output data-testid="codes">{operation.codes?.join(',')}</output></>;
+    }
+    const { container } = await renderAuth(<AuthProvider><RecoverySurface /></AuthProvider>);
+    await settle();
+    await act(async () => container.querySelector('button')?.click());
+    if (changedCookie) cookie = '__Host-hikyo-csrf=reminted';
+    await act(async () => response.resolve(json({ recovery_codes: [code], login: replacement })));
+    expect(text(container, 'codes')).toBe('');
+    expect(container.querySelector('.session-owner')?.hasAttribute('hidden')).toBe(true);
+    await act(async () => verification.resolve(json(replacement)));
+    await settleTask();
+    expect(text(container, 'codes')).toBe(code);
+  });
+
+  it.each(['dismiss', 'resolved-before-dismiss', 'unmount', 'logout', 'same-principal-replacement', 'different-principal-replacement'])
+  ('refuses a deferred recovery handoff after %s', async (boundary) => {
+    const response = deferred<Response>();
+    const current = identity('00', '10');
+    const intended = identity('01', '10');
+    const unrelated = identity('02', boundary === 'different-principal-replacement' ? '11' : '10');
+    const code = 'SENTINEL-late-recovery-code';
+    const report = vi.fn();
+    class PeerChannel extends EventTarget {
+      static channels = new Set<PeerChannel>();
+      constructor(readonly name: string) { super(); PeerChannel.channels.add(this); }
+      postMessage(data: { type: string; sender: string }) {
+        for (const channel of PeerChannel.channels) {
+          if (channel !== this && channel.name === this.name) channel.dispatchEvent(new MessageEvent('message', { data }));
+        }
+      }
+      close() { PeerChannel.channels.delete(this); }
+    }
+    vi.stubGlobal('BroadcastChannel', PeerChannel);
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(json(current)).mockReturnValueOnce(response.promise)
+      .mockResolvedValue(json(unrelated)));
+    let returned: void;
+    let hasPlaintextPromise = false;
+    function RecoverySurface() {
+      const auth = useAuth();
+      const operation = useRegenerateRecoveryCodes();
+      hasPlaintextPromise = Object.hasOwn(operation, 'mutateAsync');
+      return <><button onClick={() => { returned = operation.mutate({ proof: 'SENTINEL-proof' }, { onError: report }); }}>Replace</button>
+        <button onClick={operation.dismiss}>Dismiss</button>
+        <button onClick={() => auth.endSession(auth.captureTransition())}>Logout</button>
+        <output data-testid="codes">{operation.codes?.join(',')}</output>
+        <output data-testid="owner">{auth.identity?.session.id}</output></>;
+    }
+    const { container, unmount } = await renderAuth(<AuthProvider><RecoverySurface /></AuthProvider>);
+    await settle();
+    await act(async () => container.querySelector('button')?.click());
+    expect(hasPlaintextPromise).toBe(false);
+    expect(returned).toBeUndefined();
+    if (boundary === 'unmount') await unmount();
+    else if (boundary.includes('replacement')) {
+      const peer = new PeerChannel('hikyo-root-auth');
+      await act(async () => peer.postMessage({ type: 'session-changed', sender: 'peer-test' }));
+      await settleTask();
+      expect(text(container, 'owner')).toBe(unrelated.session.id);
+      peer.close();
+    } else if (boundary === 'logout') {
+      await act(async () => container.querySelectorAll('button')[2]?.click());
+      await settleTask();
+    } else if (boundary === 'dismiss') await act(async () => container.querySelectorAll('button')[1]?.click());
+    await act(async () => {
+      response.resolve(json({ recovery_codes: [code], login: intended }));
+      if (boundary === 'resolved-before-dismiss') queueMicrotask(() => container.querySelectorAll('button')[1]?.click());
+    });
+    await settleTask();
+    expect(container.textContent).not.toContain(code);
+    expect(report).not.toHaveBeenCalled();
+    if (boundary.includes('replacement')) expect(text(container, 'owner')).toBe(unrelated.session.id);
+  });
+
+  it.each(['dismiss', 'logout', 'replacement'])('clears an accepted recovery batch on later %s', async (boundary) => {
+    const current = identity('00', '10');
+    const replacement = identity('01', '10');
+    const code = 'SENTINEL-current-recovery-code';
+    const request = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(json(current))
+      .mockResolvedValueOnce(json({ recovery_codes: [code], login: replacement }))
+      .mockResolvedValue(json(replacement));
+    vi.stubGlobal('fetch', request);
+    function RecoverySurface() {
+      const auth = useAuth();
+      const operation = useRegenerateRecoveryCodes();
+      const [old, setOld] = useSensitiveState('');
+      const queries = useQueryClient();
+      return <><button onClick={() => setOld('SENTINEL-old-state')}>Old value</button>
+        <button onClick={() => operation.mutate({ proof: 'proof' })}>Replace</button>
+        <button onClick={() => {
+          if (boundary === 'dismiss') operation.dismiss();
+          else if (boundary === 'logout') auth.endSession(auth.captureTransition());
+          else void auth.revalidate();
+        }}>Clear</button><output data-testid="codes">{operation.codes?.join(',')}</output>
+        <output data-testid="old">{old}</output><output data-testid="pending">{String(operation.isPending)}</output>
+        <output data-testid="cache">{String(queries.getMutationCache().getAll().length)}</output></>;
+    }
+    const { container } = await renderAuth(<AuthProvider><RecoverySurface /></AuthProvider>);
+    await settle();
+    await act(async () => container.querySelector('button')?.click());
+    await act(async () => container.querySelectorAll('button')[1]?.click());
+    await settleTask();
+    expect(text(container, 'codes')).toBe(code);
+    expect(text(container, 'old')).toBe('');
+    // The original operation retires with its session; the new disclosure owns
+    // only component state, not a mutation success/result entry.
+    expect(text(container, 'pending')).toBe('false');
+    expect(text(container, 'cache')).toBe('0');
+    if (boundary === 'replacement') request.mockResolvedValue(json(identity('02', '10')));
+    await act(async () => container.querySelectorAll('button')[2]?.click());
+    await settleTask();
+    expect(text(container, 'codes')).toBe('');
+  });
+
+  it('reports a refused recovery request once and accepts only an explicit fresh retry', async () => {
+    const current = identity('00', '10');
+    const replacement = identity('01', '10');
+    const response = deferred<Response>();
+    const report = vi.fn();
+    const request = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(json(current)).mockReturnValueOnce(response.promise)
+      .mockResolvedValueOnce(json(current))
+      .mockResolvedValueOnce(json({ recovery_codes: ['SENTINEL-retried-code'], login: replacement }))
+      .mockResolvedValue(json(replacement));
+    vi.stubGlobal('fetch', request);
+    function RecoverySurface() {
+      const operation = useRegenerateRecoveryCodes();
+      return <><button disabled={operation.isPending} onClick={() => operation.mutate({ proof: 'fresh-proof' }, { onError: report })}>Replace</button>
+        <output data-testid="codes">{operation.codes?.join(',')}</output></>;
+    }
+    const { container } = await renderAuth(<AuthProvider><RecoverySurface /></AuthProvider>);
+    await settle();
+    await act(async () => container.querySelector('button')?.click());
+    expect(container.querySelector('button')?.disabled).toBe(true);
+    await act(async () => response.resolve(json({ code: 'forbidden', message: 'Proof refused.' }, 403)));
+    await settleTask();
+    expect(report).toHaveBeenCalledOnce();
+    expect(container.querySelector('button')?.disabled).toBe(false);
+    expect(text(container, 'codes')).toBe('');
+    expect(request).toHaveBeenCalledTimes(3);
+    await act(async () => container.querySelector('button')?.click());
+    await settleTask();
+    expect(request).toHaveBeenCalledTimes(5);
+    expect(request.mock.calls.filter(([input]) =>
+      (input instanceof Request ? input.url : String(input)).endsWith('/recovery-codes/regenerate'))).toHaveLength(2);
+    expect(text(container, 'codes')).toBe('SENTINEL-retried-code');
+  });
+
+  it.each(['unchanged-session', 'different-principal'])('refuses an account result naming %s', async (invalid) => {
+    const current = identity('00', '10');
+    const result = invalid === 'unchanged-session' ? current : identity('01', '11');
+    const report = vi.fn();
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(json(current))
+      .mockResolvedValueOnce(json({ recovery_codes: ['SENTINEL-invalid-owner'], login: result }))
+      .mockResolvedValue(json(current)));
+    function RecoverySurface() {
+      const auth = useAuth();
+      const operation = useRegenerateRecoveryCodes();
+      return <><button onClick={() => operation.mutate({ proof: 'proof' }, { onError: report })}>Replace</button>
+        <output data-testid="codes">{operation.codes?.join(',')}</output>
+        <output data-testid="owner">{auth.identity?.session.id}</output></>;
+    }
+    const { container } = await renderAuth(<AuthProvider><RecoverySurface /></AuthProvider>);
+    await settle();
+    await act(async () => container.querySelector('button')?.click());
+    await settleTask();
+    expect(text(container, 'codes')).toBe('');
+    expect(text(container, 'owner')).toBe(current.session.id);
+    // A rejected foreign remint retires the old surface before delivery.
+    expect(report).toHaveBeenCalledTimes(invalid === 'different-principal' ? 0 : 1);
+  });
+
   it('drops deferred results from the previous session before rendering a replacement', async () => {
     const oldResult = deferred<string>();
     const replacement = deferred<Response>();
@@ -510,6 +702,40 @@ describe('AuthProvider', () => {
   });
 });
 
+it.each(['logout', 'expiry', 'replacement'])('retires plaintext and pending delivery at real auth %s', async (boundary) => {
+  const sentinel = 'SENTINEL-retired-session-plaintext';
+  const pending = deferred<string>();
+  const delivered = vi.fn();
+  const fetchMock = vi.fn<(...args: Parameters<typeof fetch>) => Promise<Response>>()
+    .mockResolvedValueOnce(json(identity('00', '10')))
+    .mockResolvedValueOnce(boundary === 'logout'
+      ? new Response(null, { status: 204 })
+      : boundary === 'expiry' ? json({ code: 'unauthorized' }, 401) : json(identity('01', '11')));
+  vi.stubGlobal('fetch', fetchMock);
+  function SensitiveSurface() {
+    const auth = useAuth();
+    const logout = useLogout();
+    const [value, setValue] = useSensitiveState('');
+    const operation = useSensitiveMutation({ mutationFn: () => pending.promise });
+    const queries = useQueryClient();
+    return <>
+      <output data-testid="state">{auth.state.status}</output>
+      <output data-testid="sensitive">{value}</output>
+      <output data-testid="cache">{JSON.stringify(queries.getMutationCache().getAll().map((entry) => entry.state))}</output>
+      <button onClick={() => { setValue(sentinel); operation.mutate(undefined, { onSuccess: delivered }); }}>Disclose and start</button>
+      <button onClick={() => { if (boundary === 'logout') logout.mutate(); else auth.revalidate(); }}>Retire</button>
+    </>;
+  }
+  const { container } = await renderAuth(<AuthProvider><SensitiveSurface /></AuthProvider>);
+  await expectTextEventually(container, 'state', 'authenticated');
+  await act(async () => container.querySelectorAll('button')[0]?.click());
+  expect(text(container, 'sensitive')).toBe(sentinel);
+  await act(async () => container.querySelectorAll('button')[1]?.click());
+  await vi.waitFor(async () => { await settle(); expect(text(container, 'sensitive')).toBe(''); });
+  await act(async () => pending.resolve(sentinel));
+  expect(delivered).not.toHaveBeenCalled();
+  expect(container.textContent).not.toContain(sentinel);
+});
 class PeerChannel extends EventTarget {
   static peers = new Set<PeerChannel>();
   constructor(readonly name: string) { super(); PeerChannel.peers.add(this); }

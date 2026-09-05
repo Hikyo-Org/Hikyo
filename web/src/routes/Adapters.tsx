@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 
+import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import {
   adapterRefusalText,
   adaptersKey,
@@ -498,11 +499,12 @@ function OriginMoveForm({
   readonly onSubmit: (input: { origin: string; credential: string; keepRemote: boolean }) => Promise<void>;
 }) {
   const [origin, setOrigin] = useState(initialOrigin);
-  const [credential, setCredential] = useState('');
+  const [credential, setCredential] = useSensitiveState('');
   const [keepRemote, setKeepRemote] = useState(false);
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    void onSubmit({ origin: origin.trim(), credential, keepRemote }).then(() => setCredential(''));
+    void onSubmit({ origin: origin.trim(), credential, keepRemote });
+    setCredential('');
   };
   return (
     <form className="adapters__form" onSubmit={submit} aria-label={title}>
@@ -553,10 +555,11 @@ function CredentialForm({
   readonly onCancel: () => void;
   readonly onSubmit: (credential: string) => Promise<void>;
 }) {
-  const [credential, setCredential] = useState('');
+  const [credential, setCredential] = useSensitiveState('');
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    void onSubmit(credential).then(() => setCredential(''));
+    void onSubmit(credential);
+    setCredential('');
   };
   return (
     <form className="adapters__form" onSubmit={submit} aria-label="Replace credential">
@@ -858,7 +861,7 @@ function CreateAdapterPanel({
   const create = useCreateAdapter(refData);
   const [provider, setProvider] = useState<'forgejo' | 'github-actions'>('forgejo');
   const [origin, setOrigin] = useState('');
-  const [credential, setCredential] = useState('');
+  const [credential, setCredential] = useSensitiveState('');
   return (
     <section className="panel adapters__adapter" aria-label="New adapter">
       <div className="adapters__adapter-head">
@@ -912,6 +915,8 @@ function CreateAdapterPanel({
             onClose();
           } catch (error) {
             feedback.report(error);
+          } finally {
+            setCredential('');
           }
         }}
       />

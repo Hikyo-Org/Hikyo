@@ -1,0 +1,18 @@
+{
+  "date": "2026-09-05",
+  "private_only": true,
+  "vitest": {
+    "passed": 716,
+    "failed": 0,
+    "skipped": 0,
+    "evidence": "private-client-vitest.json"
+  },
+  "typecheck": "PASS",
+  "build": "PASS after finalizer and SCIM fixes; private-client-build.log",
+  "diff_check": "PASS",
+  "eslint": "NOT RUN: no dependency, configuration or script in this repository",
+  "browser_backend_replay": "NOT RUN: DOM/component fixtures and real QueryClient tests only",
+  "api_sensitive_hooks": 25,
+  "review_status": "Independent R2 CLEAN; parent R2 clean on finalizer, SCIM proof, fillAll and onMutate findings",
+  "commit_push_pr": "not performed"
+}

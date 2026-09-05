@@ -6,8 +6,8 @@ import {
   stepUpPasskeyStartOp,
   stepUpTotpOp,
 } from '@hikyo/operations';
-import { useMutation } from '@tanstack/react-query';
 
+import { useSensitiveMutation } from './sensitiveMutation.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { ApiError, parsed } from './client.ts';
 import type { WhoAmI } from './session.ts';
@@ -62,7 +62,7 @@ export function stepUpFailureText(error: unknown): string {
  */
 export function useStepUpTotp() {
   const auth = useAuth();
-  return useMutation({
+  return useSensitiveMutation({
     onMutate: auth.captureTransition,
     mutationFn: async (code: string) => {
       const result = await parsed(stepUpTotpOp, { body: { code } });
@@ -71,14 +71,17 @@ export function useStepUpTotp() {
       }
       return result;
     },
-    onSuccess: (identity, _code, guard) => auth.acceptSession(identity, guard),
+    onSuccess: (identity, _code, guard) => {
+      if (guard === undefined) throw new Error('Missing session transition guard.');
+      auth.acceptSession(identity, guard);
+    },
   });
 }
 
 /** useStepUpPasskey elevates the acting session with a passkey assertion. */
 export function useStepUpPasskey() {
   const auth = useAuth();
-  return useMutation({
+  return useSensitiveMutation({
     onMutate: auth.captureTransition,
     mutationFn: async () => {
       const epoch = captureSessionEpoch();
@@ -91,7 +94,10 @@ export function useStepUpPasskey() {
       }
       return result;
     },
-    onSuccess: (identity, _input, guard) => auth.acceptSession(identity, guard),
+    onSuccess: (identity, _input, guard) => {
+      if (guard === undefined) throw new Error('Missing session transition guard.');
+      auth.acceptSession(identity, guard);
+    },
   });
 }
 
@@ -102,7 +108,7 @@ export function useStepUpPasskey() {
  */
 export function usePasskeyLogin() {
   const auth = useAuth();
-  return useMutation({
+  return useSensitiveMutation({
     onMutate: auth.captureTransition,
     mutationFn: async () => {
       const epoch = captureSessionEpoch();
@@ -115,7 +121,10 @@ export function usePasskeyLogin() {
       }
       return result;
     },
-    onSuccess: (identity, _input, guard) => auth.acceptSession(identity, guard),
+    onSuccess: (identity, _input, guard) => {
+      if (guard === undefined) throw new Error('Missing session transition guard.');
+      auth.acceptSession(identity, guard);
+    },
   });
 }
 

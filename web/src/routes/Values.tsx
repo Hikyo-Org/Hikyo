@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router';
 
+import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import {
   disclosureRefusalText,
   fetchRevealWindow,
@@ -94,7 +95,7 @@ export function Values() {
   const setValue = useSetValue(env);
   const copy = useCopyValues(env);
 
-  const [disclosed, setDisclosed] = useState<Record<string, Disclosed>>({});
+  const [disclosed, setDisclosed] = useSensitiveState<Record<string, Disclosed>>({});
   const [now, setNow] = useState(() => Date.now());
   const [refusal, setRefusal] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -677,7 +678,7 @@ function RowEditor({
   saving: boolean;
   onSave: (value: string) => void;
 }) {
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useSensitiveState('');
   const id = `edit-${cell.key_id}`;
   return (
     <form
@@ -685,6 +686,7 @@ function RowEditor({
       onSubmit={(event) => {
         event.preventDefault();
         onSave(draft);
+        setDraft('');
       }}
     >
       <div className="field">

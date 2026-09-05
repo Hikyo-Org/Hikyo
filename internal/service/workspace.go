@@ -864,15 +864,16 @@ func (s *Workspace) ApproveHandoff(ctx context.Context, actor Actor, state strin
 }
 
 // HandoffView is the live transaction shape the remote's approve page reads.
-// Establishments carry only purpose and expiry; step-ups additionally carry the
+// Establishments carry purpose, requesting origin and expiry; step-ups also carry the
 // operation, environment and enumerated key set they were opened against.
 // Identifiers only — never a value, a bearer or a verifier.
 type HandoffView struct {
-	Purpose   HandoffPurpose
-	Operation string
-	EnvID     string
-	KeySet    []string
-	ExpiresAt time.Time
+	RequestingOrigin string
+	Purpose          HandoffPurpose
+	Operation        string
+	EnvID            string
+	KeySet           []string
+	ExpiresAt        time.Time
 }
 
 // ShowHandoff returns the purpose and any step-up policy a live transaction
@@ -913,7 +914,7 @@ func (s *Workspace) ShowHandoff(ctx context.Context, actor Actor, state string) 
 				return ErrHandoffInvalid
 			}
 			out = HandoffView{
-				Purpose: h.Purpose, KeySet: []string{}, ExpiresAt: h.ExpiresAt,
+				Purpose: h.Purpose, RequestingOrigin: h.Origin, KeySet: []string{}, ExpiresAt: h.ExpiresAt,
 			}
 		case authz.HandoffStepUp:
 			// OWNERSHIP is the step-up branch's security boundary. StartHandoff is
@@ -942,11 +943,12 @@ func (s *Workspace) ShowHandoff(ctx context.Context, actor Actor, state string) 
 				return ErrHandoffInvalid
 			}
 			out = HandoffView{
-				Purpose:   h.Purpose,
-				Operation: string(binding.purpose),
-				EnvID:     h.EnvID,
-				KeySet:    []string{},
-				ExpiresAt: h.ExpiresAt,
+				Purpose:          h.Purpose,
+				RequestingOrigin: h.Origin,
+				Operation:        string(binding.purpose),
+				EnvID:            h.EnvID,
+				KeySet:           []string{},
+				ExpiresAt:        h.ExpiresAt,
 			}
 			if h.KeySet != "" {
 				out.KeySet = splitKeySet(h.KeySet)

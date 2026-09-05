@@ -30,7 +30,7 @@ import (
 // responses unless told otherwise -- so the stream sends a comment on this
 // interval to hold the connection open and to notice a dead peer.
 const (
-	heartbeat          = 20 * time.Second
+	heartbeat          = SSEHeartbeat
 	advisoryRetryBase  = 2 * time.Second
 	advisoryRetryRange = time.Second
 )
@@ -447,12 +447,20 @@ type eventStream struct {
 }
 
 func (s eventStream) VisitWatchProjectEventsResponse(w http.ResponseWriter) error {
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		// Without a flusher every event would sit in a buffer until the
-		// response ended, which for a stream is never. Loud rather than
-		// silently useless.
-		return fmt.Errorf("server: the advisory stream needs a flushing response writer")
+	controller := http.NewResponseController(w)
+	writeFrame := func(frame []byte) error {
+		if err := controller.SetWriteDeadline(time.Now().Add(SSEWriteTimeout)); err != nil {
+			return err
+		}
+		if _, err := w.Write(frame); err != nil {
+			return err
+		}
+		if err := controller.Flush(); err != nil {
+			return err
+		}
+		// HTTP/2 enforces the timer even while idle. Only an active frame may
+		// carry a deadline; a healthy stream can wait for its next heartbeat.
+		return controller.SetWriteDeadline(time.Time{})
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	// no-cache and no proxy buffering: an intermediary that buffers a stream
@@ -460,11 +468,9 @@ func (s eventStream) VisitWatchProjectEventsResponse(w http.ResponseWriter) erro
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.Header().Set("Connection", "keep-alive")
-	w.WriteHeader(http.StatusOK)
-	if _, err := fmt.Fprintf(w, "retry: %d\n\n", s.retry.Milliseconds()); err != nil {
-		return nil
+	if err := writeFrame(fmt.Appendf(nil, "retry: %d\n\n", s.retry.Milliseconds())); err != nil {
+		return err
 	}
-	flusher.Flush()
 
 	ticker := time.NewTicker(heartbeat)
 	defer ticker.Stop()
@@ -475,10 +481,9 @@ func (s eventStream) VisitWatchProjectEventsResponse(w http.ResponseWriter) erro
 		case <-ticker.C:
 			// A comment line: valid SSE, ignored by every client, and enough
 			// to defeat an idle timeout and to notice a dead peer.
-			if _, err := fmt.Fprint(w, ": heartbeat\n\n"); err != nil {
+			if err := writeFrame([]byte(": heartbeat\n\n")); err != nil {
 				return nil
 			}
-			flusher.Flush()
 		case ev, ok := <-s.events:
 			if !ok {
 				// The subscriber fell behind or the instance is shutting down.
@@ -491,10 +496,9 @@ func (s eventStream) VisitWatchProjectEventsResponse(w http.ResponseWriter) erro
 			if err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Type, payload); err != nil {
+			if err := writeFrame(fmt.Appendf(nil, "event: %s\ndata: %s\n\n", ev.Type, payload)); err != nil {
 				return nil
 			}
-			flusher.Flush()
 		}
 	}
 }

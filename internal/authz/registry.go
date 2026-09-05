@@ -993,7 +993,6 @@ const (
 	StoreSCIMCreateUser            StoreOp = "scim.CreateUser"
 	StoreSCIMUser                  StoreOp = "scim.User"
 	StoreSCIMUserByUserName        StoreOp = "scim.UserByUserName"
-	StoreSCIMUsersByExternalID     StoreOp = "scim.UsersByExternalID"
 	StoreSCIMPageUsers             StoreOp = "scim.PageUsers"
 	StoreSCIMUserBySubject         StoreOp = "scim.UserBySubject"
 	StoreSCIMUserByAccount         StoreOp = "scim.UserByAccount"
@@ -1004,8 +1003,6 @@ const (
 
 	StoreSCIMCreateGroup            StoreOp = "scim.CreateGroup"
 	StoreSCIMGroup                  StoreOp = "scim.Group"
-	StoreSCIMGroupsByDisplayName    StoreOp = "scim.GroupsByDisplayName"
-	StoreSCIMGroupsByExternalID     StoreOp = "scim.GroupsByExternalID"
 	StoreSCIMPageGroups             StoreOp = "scim.PageGroups"
 	StoreSCIMGroups                 StoreOp = "scim.Groups"
 	StoreSCIMUpdateGroup            StoreOp = "scim.UpdateGroup"
@@ -4480,24 +4477,21 @@ func scimDiscoveryOps() map[StoreOp]bool {
 var scimDirectoryOps = map[StoreOp]bool{
 	// The mapping surface's ancestry check (§1): a row naming a project outside
 	// the binding's org is refused at authoring AND at every sync.
-	StoreProjectsList:            true,
-	StoreSCIMUser:                true,
-	StoreSCIMUsers:               true,
-	StoreSCIMUserByUserName:      true,
-	StoreSCIMUsersByExternalID:   true,
-	StoreSCIMPageUsers:           true,
-	StoreSCIMUserBySubject:       true,
-	StoreSCIMUserByAccount:       true,
-	StoreSCIMGroup:               true,
-	StoreSCIMGroups:              true,
-	StoreSCIMGroupsByDisplayName: true,
-	StoreSCIMGroupsByExternalID:  true,
-	StoreSCIMPageGroups:          true,
-	StoreSCIMGroupMembers:        true,
-	StoreSCIMMembershipsForUser:  true,
-	StoreSCIMMappings:            true,
-	StoreSCIMMappingsForGroup:    true,
-	StoreSCIMMapping:             true,
+	StoreProjectsList:           true,
+	StoreSCIMUser:               true,
+	StoreSCIMUsers:              true,
+	StoreSCIMUserByUserName:     true,
+	StoreSCIMPageUsers:          true,
+	StoreSCIMUserBySubject:      true,
+	StoreSCIMUserByAccount:      true,
+	StoreSCIMGroup:              true,
+	StoreSCIMGroups:             true,
+	StoreSCIMPageGroups:         true,
+	StoreSCIMGroupMembers:       true,
+	StoreSCIMMembershipsForUser: true,
+	StoreSCIMMappings:           true,
+	StoreSCIMMappingsForGroup:   true,
+	StoreSCIMMapping:            true,
 }
 
 var scimUserWriteOps = map[StoreOp]bool{

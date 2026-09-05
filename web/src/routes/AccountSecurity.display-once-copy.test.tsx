@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act } from 'react';
+import { act, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { renderForm, settle, typeInto } from '../testkit/renderForm.tsx';
@@ -71,7 +71,13 @@ vi.mock('../api/account.ts', () => {
       isSuccess: true,
       data: { passkeys: [] },
     }),
-    useRegenerateRecoveryCodes: () => ({ isPending: false, mutate: mocks.regenerate }),
+    useRegenerateRecoveryCodes: () => {
+      const [codes, setCodes] = useState<readonly string[] | null>(null);
+      return { codes, isPending: false, dismiss: () => setCodes(null),
+        mutate: (input: { proof: string }) => mocks.regenerate(input, {
+          onSuccess: (result: { recovery_codes: readonly string[] }) => setCodes(result.recovery_codes),
+        }) };
+    },
     useRemovePasskey: mutation,
     useRemoveTotp: mutation,
     useTotpStatus: () => ({

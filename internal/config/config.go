@@ -80,6 +80,9 @@ type Config struct {
 	// private address is usable only for the origin whose entry contains it.
 	AdapterEgressPolicy map[string][]netip.Prefix
 
+	// OIDCEgressPolicy grants private-network access only to exact federation endpoint origins.
+	OIDCEgressPolicy map[string][]netip.Prefix
+
 	// DynamicEgressPolicy is the dynamic-secret (#147) equivalent, keyed by an
 	// exact postgres:// origin. A self-hosted PostgreSQL target is normally on a
 	// private address, so without an entry the default-deny public-egress rule
@@ -228,6 +231,7 @@ var knownEnv = map[string]bool{
 	"HIKYO_BACKUP_RETAIN_DAYS":             true,
 	"HIKYO_BACKUP_RTO_TARGET":              true,
 	"HIKYO_ADAPTER_EGRESS_POLICY_FILE":     true,
+	"HIKYO_OIDC_EGRESS_POLICY_FILE":        true,
 	"HIKYO_DYNAMIC_EGRESS_POLICY_FILE":     true,
 	"HIKYO_REAUTH_WINDOW_SECONDS":          true,
 	"HIKYO_UPDATE_CHANNEL":                 true,
@@ -471,6 +475,11 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 			return nil, nil, err
 		}
 		cfg.AdapterEgressPolicy = policy
+		oidcPolicy, err := loadOIDCEgressPolicy(getenv("HIKYO_OIDC_EGRESS_POLICY_FILE"))
+		if err != nil {
+			return nil, nil, err
+		}
+		cfg.OIDCEgressPolicy = oidcPolicy
 		dynamicPolicy, err := loadDynamicEgressPolicy(getenv("HIKYO_DYNAMIC_EGRESS_POLICY_FILE"))
 		if err != nil {
 			return nil, nil, err
@@ -614,28 +623,74 @@ func loadHAConfig(cfg *Config, getenv func(string) string) error {
 	return nil
 }
 
+// Configuration remains a leaf package. The outbound transport independently
+// revalidates this policy before use; configuration never constructs a client.
+func loadOIDCEgressPolicy(path string) (map[string][]netip.Prefix, error) {
+	policy, err := loadOriginEgressPolicy(path, "HIKYO_OIDC_EGRESS_POLICY_FILE")
+	refusal := errors.New("HIKYO_OIDC_EGRESS_POLICY_FILE: unreadable or invalid canonical HTTPS origin policy")
+	if err != nil {
+		return nil, refusal
+	}
+	for origin := range policy {
+		u, err := url.Parse(origin)
+		if err != nil || u.ForceQuery || u.String() != origin {
+			return nil, refusal
+		}
+		host := u.Hostname()
+		if host == "" || host != strings.ToLower(host) || strings.HasSuffix(host, ".") || strings.Contains(host, "%") {
+			return nil, refusal
+		}
+		if _, err := netip.ParseAddr(host); err != nil {
+			for _, label := range strings.Split(host, ".") {
+				if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+					return nil, refusal
+				}
+				for _, c := range label {
+					if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
+						return nil, refusal
+					}
+				}
+			}
+		}
+		if port := u.Port(); port != "" {
+			n, err := strconv.Atoi(port)
+			if err != nil || n < 1 || n > 65535 || strconv.Itoa(n) != port {
+				return nil, refusal
+			}
+		} else if strings.HasSuffix(u.Host, ":") {
+			return nil, refusal
+		}
+	}
+	return policy, nil
+}
+
 func loadAdapterEgressPolicy(path string) (map[string][]netip.Prefix, error) {
+	return loadOriginEgressPolicy(path, "HIKYO_ADAPTER_EGRESS_POLICY_FILE")
+}
+
+func loadOriginEgressPolicy(path, setting string) (map[string][]netip.Prefix, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, nil
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("HIKYO_ADAPTER_EGRESS_POLICY_FILE: read policy: %w", err)
+		return nil, fmt.Errorf("%s: read policy: %w", setting, err)
 	}
 	var encoded map[string][]string
 	if err := json.Unmarshal(raw, &encoded); err != nil {
-		return nil, fmt.Errorf("HIKYO_ADAPTER_EGRESS_POLICY_FILE: invalid JSON: %w", err)
+		return nil, fmt.Errorf("%s: invalid JSON: %w", setting, err)
 	}
 	out := make(map[string][]netip.Prefix, len(encoded))
 	for origin, cidrs := range encoded {
 		u, err := url.Parse(origin)
 		if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || origin != "https://"+u.Host {
-			return nil, fmt.Errorf("HIKYO_ADAPTER_EGRESS_POLICY_FILE: origin %q is not an exact canonical HTTPS origin", origin)
+			return nil, fmt.Errorf("%s: origin %q is not an exact canonical HTTPS origin", setting, origin)
 		}
+		out[origin] = nil // Retain empty entries for subsequent origin validation.
 		for _, rawCIDR := range cidrs {
 			prefix, err := netip.ParsePrefix(rawCIDR)
 			if err != nil {
-				return nil, fmt.Errorf("HIKYO_ADAPTER_EGRESS_POLICY_FILE: origin %q has invalid CIDR %q", origin, rawCIDR)
+				return nil, fmt.Errorf("%s: origin %q has invalid CIDR %q", setting, origin, rawCIDR)
 			}
 			out[origin] = append(out[origin], prefix.Masked())
 		}

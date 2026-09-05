@@ -1,5 +1,6 @@
-import { useState, type FormEvent } from 'react';
+import { type FormEvent } from 'react';
 
+import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { usePasskeys, useTotpStatus } from '../api/account.ts';
 import type { WhoAmI } from '../api/session.ts';
 import {
@@ -30,7 +31,7 @@ export function StepUpBanner({ session }: { session: WhoAmI }) {
   const passkeys = usePasskeys();
   const stepUpTotp = useStepUpTotp();
   const stepUpPasskey = useStepUpPasskey();
-  const [code, setCode] = useState('');
+  const [code, setCode] = useSensitiveState('');
 
   if (elevated) {
     return null;
@@ -49,7 +50,8 @@ export function StepUpBanner({ session }: { session: WhoAmI }) {
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    stepUpTotp.mutate(code.trim(), { onSuccess: () => setCode('') });
+    stepUpTotp.mutate(code.trim());
+    setCode('');
   };
 
   return (

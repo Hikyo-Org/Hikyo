@@ -13,6 +13,7 @@ import {
 import { flushSync } from 'react-dom';
 import type { z } from 'zod';
 
+import { retireSensitiveOperations, transferSensitiveState, type SensitiveStateTransfer } from '../api/sensitiveMutation.ts';
 import {
   announceSessionChange,
   blockSessionEpoch,
@@ -64,6 +65,7 @@ type AuthContextValue = {
   readonly degraded: Error | null;
   readonly captureTransition: () => SessionTransitionGuard;
   readonly acceptSession: (identity: AcceptedIdentity, guard: SessionTransitionGuard) => void;
+  readonly acceptAccountSession: (identity: AcceptedIdentity, guard: SessionTransitionGuard, transfer: SensitiveStateTransfer) => boolean;
   readonly endSession: (guard: SessionTransitionGuard) => void;
   readonly refreshSession: () => Promise<void>;
   readonly revalidate: () => Promise<void>;
@@ -177,6 +179,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const mountedRef = useRef(true);
   const requestRef = useRef(0);
   const transitionRevisionRef = useRef(0);
+  const verifiedRemintRef = useRef<{ revision: number; session: string; principal: string } | null>(null);
   const lastFocusCheckRef = useRef(0);
   const degradedRetriesRef = useRef(0);
 
@@ -186,6 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const destroySessionCache = useCallback((current: Snapshot): Snapshot => {
+    retireSensitiveOperations(current.queries);
     void current.queries.cancelQueries();
     current.queries.clear();
     return { ...current, epoch: current.epoch + 1, queries: makeQueryClient() };
@@ -213,6 +217,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // A verified account-security result continues the initiating logical
       // epoch. An unrelated login, including the same principal, still resets.
       const sameOwner = expectedRotation === undefined ? sameSession : expectedRemint;
+      verifiedRemintRef.current = expectedRemint && !sameSession && identity !== null
+        ? { revision: transitionRevisionRef.current, session: identity.session.id, principal: identity.principal.id }
+        : null;
       if (identityVersion(identity) !== identityVersion(current.identity)) {
         transitionRevisionRef.current += 1;
       }
@@ -422,6 +429,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const acceptAccountSession = useCallback(
+    (identity: AcceptedIdentity, guard: SessionTransitionGuard, transfer: SensitiveStateTransfer): boolean => {
+      const current = snapshotRef.current;
+      const verified = verifiedRemintRef.current;
+      if (verified === null || verified.revision !== guard.revision ||
+          verified.session !== identity.session.id || verified.principal !== identity.principal.id ||
+          current.state.status !== 'authenticated' || current.identity === null ||
+          identity.principal.id !== current.identity.principal.id ||
+          identity.session.id !== current.identity.session.id || identity.session.artifact !== 'browser') return false;
+      verifiedRemintRef.current = null;
+      const hydrated: WhoAmI = {
+        session: identity.session,
+        principal: identity.principal,
+        capabilities: current.identity.capabilities,
+      };
+      const accepted = transferSensitiveState(transfer, current.queries, {
+        sessionId: identity.session.id, principalId: identity.principal.id,
+      }, () => {
+        requestRef.current += 1;
+        // whoami already proved this exact remint. Retire old secrets while
+        // preserving the initiating surface for its one-shot transfer.
+        retireSensitiveOperations(current.queries);
+        void current.queries.cancelQueries();
+        current.queries.clear();
+        settleIdentity(hydrated, false);
+      });
+      return accepted;
+    },
+    [settleIdentity],
+  );
+
   const acceptSession = useCallback(
     (identity: AcceptedIdentity, guard: SessionTransitionGuard) => {
       if (guard.revision !== transitionRevisionRef.current) {
@@ -488,6 +526,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(
     () => () => {
       const current = snapshotRef.current;
+      retireSensitiveOperations(current.queries);
       void current.queries.cancelQueries();
       current.queries.clear();
     },
@@ -577,6 +616,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     degraded: snapshot.degraded,
     captureTransition,
     acceptSession,
+    acceptAccountSession,
     endSession,
     refreshSession,
     revalidate,

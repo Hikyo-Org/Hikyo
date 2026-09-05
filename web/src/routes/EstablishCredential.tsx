@@ -1,6 +1,7 @@
 import { useId, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
 
+import { useSensitiveMutation, useSensitiveState } from '../api/sensitiveMutation.ts';
 import {
   beginRecovery,
   establishCredential,
@@ -30,9 +31,12 @@ import { surfaceById } from '../app/navigation.ts';
 export function EstablishCredential() {
   const [search, setSearch] = useSearchParams();
   const recovering = search.get('mode') === 'recover';
-  const [authority, setAuthority] = useState('');
-  const [password, setPassword] = useState('');
-  const [repeat, setRepeat] = useState('');
+  const establish = useSensitiveMutation({
+    mutationFn: (input: { authority: string; password: string }) => establishCredential(input.authority, input.password),
+  });
+  const [authority, setAuthority] = useSensitiveState('');
+  const [password, setPassword] = useSensitiveState('');
+  const [repeat, setRepeat] = useSensitiveState('');
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -47,6 +51,11 @@ export function EstablishCredential() {
     else next.delete('mode');
     setSearch(next, { replace: true });
     setFailure(null);
+    establish.reset();
+    setAuthority('');
+    setPassword('');
+    setRepeat('');
+    setRecovered(false);
   };
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -68,7 +77,7 @@ export function EstablishCredential() {
     }
     setPending(true);
     try {
-      await establishCredential(authority.trim(), password);
+      await establish.mutateAsync({ authority: authority.trim(), password });
       setAuthority('');
       setPassword('');
       setRepeat('');
@@ -76,6 +85,10 @@ export function EstablishCredential() {
     } catch (error) {
       setFailure(establishFailureText(error));
     } finally {
+      setAuthority('');
+      setRecovered(false);
+      setPassword('');
+      setRepeat('');
       setPending(false);
     }
   };
@@ -211,8 +224,11 @@ function RecoveryForm({
   readonly onRecovered: (authority: string) => void;
   readonly onBack: () => void;
 }) {
+  const recover = useSensitiveMutation({
+    mutationFn: (input: { username: string; code: string }) => beginRecovery(input.username, input.code),
+  });
   const [username, setUsername] = useState('');
-  const [code, setCode] = useState('');
+  const [code, setCode] = useSensitiveState('');
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const usernameId = useId();
@@ -227,12 +243,13 @@ function RecoveryForm({
     }
     setPending(true);
     try {
-      const authority = await beginRecovery(username.trim(), code.trim());
+      const authority = await recover.mutateAsync({ username: username.trim(), code: code.trim() });
       setCode('');
       onRecovered(authority);
     } catch (error) {
       setFailure(recoveryFailureText(error));
     } finally {
+      setCode('');
       setPending(false);
     }
   };

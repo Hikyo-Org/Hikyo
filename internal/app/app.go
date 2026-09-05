@@ -26,6 +26,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/federationhttp"
 	"github.com/Hikyo-Org/hikyo/internal/mcpserver"
 	"github.com/Hikyo-Org/hikyo/internal/oidcfed"
 	"github.com/Hikyo-Org/hikyo/internal/remotefetch"
@@ -350,7 +351,12 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	// expensive category — export, publish, adapter sync, machine fetch, and
 	// schema revision.
 	budget := serviceBudget(cfg)
-	authSvc := &service.Auth{DB: db, Keyring: kr, KDF: kdf, Admission: limiter, Log: log, ExternalOrigin: cfg.ExternalOrigin, ReauthWindow: cfg.ReauthWindow}
+	federationPolicy := federationhttp.Policy{AllowedCIDRs: cfg.OIDCEgressPolicy, Development: cfg.Dev}
+	authSvc := &service.Auth{
+		DB: db, Keyring: kr, KDF: kdf, Admission: limiter, Log: log,
+		ExternalOrigin: cfg.ExternalOrigin, ReauthWindow: cfg.ReauthWindow,
+		FederationPolicy: federationPolicy,
+	}
 	samlProviders := service.NewSAMLProviders(db, kr, cfg.ExternalOrigin)
 	// RP ID + expected origins are immutable instance config derived from the
 	// configured external origin, never a request header (human-auth ADR §5). An
@@ -531,12 +537,15 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		Retention:       retentionSvc,
 		RetentionHealth: retentionSvc,
 		Updates:         updatesService,
-		Providers:       &service.Providers{DB: db, Keyring: kr, ExternalOrigin: cfg.ExternalOrigin, Log: log},
-		SAMLProviders:   samlProviders,
-		Adapters:        adapterService,
-		Dynamic:         dynamicService,
-		Audits:          &service.Audits{DB: db, Budget: budget},
-		Approvals:       approvalsSvc,
+		Providers: &service.Providers{
+			DB: db, Keyring: kr, ExternalOrigin: cfg.ExternalOrigin, Log: log,
+			FederationPolicy: federationPolicy,
+		},
+		SAMLProviders: samlProviders,
+		Adapters:      adapterService,
+		Dynamic:       dynamicService,
+		Audits:        &service.Audits{DB: db, Budget: budget},
+		Approvals:     approvalsSvc,
 		// ONE SCIM service behind both surfaces: the administration verbs and
 		// the identity provider's wire read the same bindings, the same mapping
 		// table and the same bounds. Two instances would let the wire clamp a
@@ -735,10 +744,8 @@ func parseCIDRs(raw []string) ([]*net.IPNet, error) {
 	return out, nil
 }
 
-// newHTTPServer applies the baseline slow-client hardening: bounded header
-// read, request read, idle keep-alive, and header size. WriteTimeout stays
-// deliberately unset — long-lived streamed responses (SSE) arrive later.
-// Tuned values belong to the ops spec.
+// newHTTPServer applies the locked slow-client limits. SSE replaces the
+// ordinary response deadline with a fresh deadline for each frame.
 type managedHTTPServer struct {
 	*http.Server
 	cancelActive context.CancelFunc
@@ -779,6 +786,7 @@ func newHTTPServer(h http.Handler) *managedHTTPServer {
 		BaseContext:       func(net.Listener) context.Context { return activeContext },
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      server.ResponseWriteTimeout,
 		IdleTimeout:       2 * time.Minute,
 		MaxHeaderBytes:    64 << 10,
 	}, cancelActive: cancelActive, requests: requests}

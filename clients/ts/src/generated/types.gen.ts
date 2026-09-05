@@ -4046,6 +4046,10 @@ export type WorkspaceSession = {
 export type WorkspaceHandoffTransaction = WorkspaceHandoffEstablishment | WorkspaceHandoffStepUp;
 
 export type WorkspaceHandoffEstablishment = {
+    /**
+     * Exact canonical requesting origin from the stored transaction, never from approval-page URL fields.
+     */
+    requesting_origin: string;
     state: string;
     purpose: 'establishment';
     /**
@@ -4056,6 +4060,10 @@ export type WorkspaceHandoffEstablishment = {
 };
 
 export type WorkspaceHandoffStepUp = {
+    /**
+     * Exact canonical requesting origin from the stored transaction, never from approval-page URL fields.
+     */
+    requesting_origin: string;
     state: string;
     purpose: 'step-up';
     /**

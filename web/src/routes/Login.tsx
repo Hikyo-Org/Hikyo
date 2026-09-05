@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 
+import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { useAuthMethods } from '../api/account.ts';
 import { loginFailureText, useLogin, useOIDCLogin } from '../api/session.ts';
 import { passkeysAvailable, stepUpFailureText, usePasskeyLogin } from '../api/stepup.ts';
@@ -24,12 +25,13 @@ export function Login() {
   const oidc = useOIDCLogin();
   const methods = useAuthMethods();
   const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [password, setPassword] = useSensitiveState('');
   const busy = login.isPending || passkey.isPending || oidc.isPending;
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     login.mutate({ username, password });
+    setPassword('');
   };
 
   return (

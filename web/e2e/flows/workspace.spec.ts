@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import type { WorkspaceHandoffEstablishment, WorkspaceHandoffStepUp } from '@hikyo/client';
 
 import { expectNoSeriousAxeViolations, expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
 import {
@@ -284,6 +285,7 @@ test.describe('multi-instance', () => {
 
     const popup = await popupOpened;
     await popup.waitForLoadState();
+    await expect(popup.locator('.workspace-consent__origin')).toContainText(VIEWING_ORIGIN);
     // `noopener` ASSERTED, not claimed. Without it the remote's page keeps a
     // handle on the viewing shell and can navigate it to phishing content;
     // removing the flag would otherwise have changed no assertion in this file.
@@ -612,9 +614,10 @@ test.describe('multi-instance', () => {
               body: JSON.stringify({
                 state: workspaceTransactionState,
                 purpose: 'establishment',
+                requesting_origin: VIEWING_ORIGIN,
                 key_ids: [],
                 expires_at: '2099-01-01T00:00:00Z',
-              }),
+              } satisfies WorkspaceHandoffEstablishment),
             });
           });
         }
@@ -669,6 +672,7 @@ test.describe('multi-instance', () => {
         const heading = page.getByRole('heading', { level: 1 }).first();
         await expect(heading).toBeVisible();
         if (surface.id === 'workspace-approve') {
+          await expect(page.locator('.workspace-consent__origin')).toContainText(VIEWING_ORIGIN);
           await expect(page.getByRole('button', { name: 'Authorize' })).toBeVisible();
           await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible();
           expect(workspaceTransactionReads).toBe(1);
@@ -703,4 +707,51 @@ test.describe('multi-instance', () => {
       });
     }
   }
+});
+
+// The live application and authenticated session render the real consent
+// component; only its metadata response is varied to exercise worst-case
+// layout. The genuine two-instance popup above separately proves issuance.
+test.describe('consent summary resilience', () => {
+  test.use({ storageState: STORAGE_STATE });
+
+  test('consent recipient and every key remain readable on a narrow popup', async ({ page }, testInfo) => {
+    const id = (prefix: string, n: number) => `${prefix}_00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
+    const origin = `https://${'a'.repeat(60)}.${'b'.repeat(60)}.${'c'.repeat(60)}.xn--bcher-kva.example:8443`;
+    const summary: WorkspaceHandoffStepUp = {
+      state: 'layout-state', purpose: 'step-up', requesting_origin: origin,
+      operation: 'reveal', environment: id('env', 1),
+      key_ids: Array.from({ length: 200 }, (_, n) => id('key', n)),
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+    };
+    await page.route('**/api/v1/auth/workspace/transactions/layout-state', route => route.fulfill({ json: summary }));
+    await page.goto('/workspace/approve?state=layout-state&origin=https://attacker.example');
+    await expect(page.locator('.workspace-consent__origin')).toHaveText(`Requesting origin: ${origin}`);
+    await expect(page.getByText('attacker.example')).toHaveCount(0);
+    const scope = page.getByRole('region', { name: 'Requested scope' });
+    await expect(scope.locator('li')).toHaveCount(200);
+    const bounds = await scope.boundingBox();
+    if (bounds === null) throw new Error('missing scope geometry');
+    const viewport = page.viewportSize();
+    if (viewport === null) throw new Error('missing viewport');
+    expect(bounds.height).toBeLessThanOrEqual(viewport.height * 0.35 + 1);
+    await expect(page.getByRole('button', { name: 'Use a passkey' })).toBeInViewport();
+    await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeInViewport();
+    await scope.focus();
+    await page.keyboard.press('End');
+    await expect(scope.locator('li').last()).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expectNoSeriousAxeViolations(page);
+    await page.screenshot({ path: testInfo.outputPath('consent-full-scope.png'), fullPage: true });
+  });
+
+  test('consent expired metadata offers no authorization action', async ({ page }) => {
+    await page.route('**/api/v1/auth/workspace/transactions/expired-state', route => route.fulfill({ json: {
+      state: 'expired-state', purpose: 'establishment', requesting_origin: 'https://xn--bcher-kva.example',
+      key_ids: [], expires_at: '2020-01-01T00:00:00Z',
+    } }));
+    await page.goto('/workspace/approve?state=expired-state');
+    await expect(page.getByRole('heading', { name: 'Authorization unavailable' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Authorize', exact: true })).toHaveCount(0);
+  });
 });

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 
+import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { historyHref } from '../api/history.ts';
 import type { MatrixKeyList, MatrixSignalCell } from '../api/matrix.ts';
 import type { MatrixRef } from '../api/keys.ts';
@@ -90,8 +91,8 @@ export function MatrixRowEditor({
       ),
     [keyRecord.classification, rows],
   );
-  const [edits, setEdits] = useState<ReadonlyMap<string, MatrixDraftEdit>>(() => new Map());
-  const [fillAll, setFillAll] = useState('');
+  const [edits, setEdits] = useSensitiveState<ReadonlyMap<string, MatrixDraftEdit>>(() => new Map());
+  const [fillAll, setFillAll] = useSensitiveState('');
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
   const [copyOpen, setCopyOpen] = useState(false);
@@ -203,8 +204,12 @@ export function MatrixRowEditor({
             setApplying(true);
             setApplyError(null);
             void onApply(changes)
-              .catch(() => setApplyError('The draft update failed. Fix the named row and retry.'))
-              .finally(() => setApplying(false));
+              .catch(() => setApplyError('The draft update failed. Re-enter the value in the named row and retry.'))
+              .finally(() => {
+                setEdits(new Map());
+                setFillAll('');
+                setApplying(false);
+              });
           }}
         >
           <div className="matrix-editor__head">
@@ -258,6 +263,7 @@ export function MatrixRowEditor({
                   setEdits(new Map<string, MatrixDraftEdit>(
                     editableRows.map((row) => [row.environmentId, { op: 'set', value: fillAll }]),
                   ));
+                  setFillAll('');
                 }}
               >
                 Fill all
@@ -519,7 +525,7 @@ function useCellDisclosure(
     sourceRow.environmentId,
     keyRecord.id,
   ]);
-  const [plaintext, setPlaintext] = useState<{ value: string; until: number } | null>(null);
+  const [plaintext, setPlaintext] = useSensitiveState<{ value: string; until: number } | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);

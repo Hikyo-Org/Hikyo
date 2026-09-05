@@ -15,6 +15,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/federationhttp"
 	"github.com/Hikyo-Org/hikyo/internal/oidcrp"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -136,7 +137,8 @@ type Auth struct {
 	Now func() time.Time
 	// ExternalOrigin is the instance's public origin; the OIDC callback validates
 	// the redirect it replays against the per-provider registered URI (A1).
-	ExternalOrigin string
+	ExternalOrigin   string
+	FederationPolicy federationhttp.Policy
 	// OIDCDiscover replaces go-oidc discovery in tests, so a fixture can point an
 	// httptest IdP's discovery at a byte-variant issuer. Nil means oidcrp.Discover.
 	OIDCDiscover func(ctx context.Context, issuer string) (*oidcrp.Provider, error)

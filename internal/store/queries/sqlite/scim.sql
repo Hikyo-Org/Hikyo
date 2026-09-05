@@ -90,14 +90,6 @@ SELECT id, org_id, binding_id, account_id, user_name, user_name_lower, external_
        subject, active, attributes, created_at, updated_at
 FROM scim_users WHERE org_id = ? AND binding_id = ? AND user_name_lower = ?;
 
--- externalId compares BYTE-EXACT (ADR section 8). It is NOT unique -- only the
--- SUBJECT is -- so this returns MANY: an empty externalId is the default and a
--- singular query would answer an arbitrary one of them with totalResults 1.
--- name: ListSCIMUsersByExternalID :many
-SELECT id, org_id, binding_id, account_id, user_name, user_name_lower, external_id,
-       subject, active, attributes, created_at, updated_at
-FROM scim_users WHERE org_id = ? AND binding_id = ? AND external_id = ? ORDER BY id;
-
 -- name: GetSCIMUserBySubject :one
 SELECT id, org_id, binding_id, account_id, user_name, user_name_lower, external_id,
        subject, active, attributes, created_at, updated_at
@@ -136,21 +128,6 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 SELECT id, org_id, binding_id, display_name, display_name_lower, external_id,
        created_at, updated_at
 FROM scim_groups WHERE org_id = ? AND binding_id = ? AND id = ?;
-
--- Okta and Entra both discover a group by `displayName eq` before creating or
--- updating it; displayName is caseExact:false like userName. It is NOT unique
--- (RFC 7643 does not make it so), which is why this returns MANY: a directory
--- with two same-named groups must answer with two.
--- name: ListSCIMGroupsByDisplayName :many
-SELECT id, org_id, binding_id, display_name, display_name_lower, external_id,
-       created_at, updated_at
-FROM scim_groups WHERE org_id = ? AND binding_id = ? AND display_name_lower = ? ORDER BY id;
-
--- externalId is not unique on groups either.
--- name: ListSCIMGroupsByExternalID :many
-SELECT id, org_id, binding_id, display_name, display_name_lower, external_id,
-       created_at, updated_at
-FROM scim_groups WHERE org_id = ? AND binding_id = ? AND external_id = ? ORDER BY id;
 
 -- name: ListSCIMGroups :many
 SELECT id, org_id, binding_id, display_name, display_name_lower, external_id,
@@ -230,7 +207,7 @@ WHERE org_id = ? AND id = ?;
 
 -- The WIRE's paged reads. Paging in Go over an unbounded read lets a valid
 -- credential force full-directory work for a 200-item answer, every request;
--- LIMIT/OFFSET keeps the cost proportional to the page and the count query
+-- LIMIT/OFFSET bounds resource materialization; the matching count query
 -- keeps `totalResults` truthful (ADR section 8's ListResponse fields).
 -- name: CountSCIMUsers :one
 SELECT COUNT(*) FROM scim_users WHERE org_id = ? AND binding_id = ?;
@@ -268,3 +245,48 @@ WHERE principals.id = ?
   AND NOT EXISTS (
     SELECT 1 FROM scim_bindings AS b WHERE b.connection_principal_id = principals.id
   );
+
+-- Filtered pages and counts deliberately use identical equality predicates.
+-- name: CountSCIMUsersByUserName :one
+SELECT COUNT(*) FROM scim_users WHERE org_id = sqlc.arg(org_id) AND binding_id = sqlc.arg(binding_id) AND user_name_lower = sqlc.arg(filter_value);
+
+-- name: PageSCIMUsersByUserName :many
+SELECT id, org_id, binding_id, account_id, user_name, user_name_lower, external_id,
+       subject, active, attributes, created_at, updated_at
+FROM scim_users WHERE org_id = sqlc.arg(org_id) AND binding_id = sqlc.arg(binding_id) AND user_name_lower = sqlc.arg(filter_value)
+ORDER BY id LIMIT sqlc.arg(page_limit) OFFSET sqlc.arg(page_offset);
+
+-- externalId compares BYTE-EXACT (ADR section 8). It is NOT unique -- only the
+-- SUBJECT is -- so this returns MANY: an empty externalId is the default and a
+-- singular query would answer an arbitrary one of them with totalResults 1.
+-- name: CountSCIMUsersByExternalID :one
+SELECT COUNT(*) FROM scim_users WHERE org_id = sqlc.arg(org_id) AND binding_id = sqlc.arg(binding_id) AND external_id = sqlc.arg(filter_value);
+
+-- name: PageSCIMUsersByExternalID :many
+SELECT id, org_id, binding_id, account_id, user_name, user_name_lower, external_id,
+       subject, active, attributes, created_at, updated_at
+FROM scim_users WHERE org_id = sqlc.arg(org_id) AND binding_id = sqlc.arg(binding_id) AND external_id = sqlc.arg(filter_value)
+ORDER BY id LIMIT sqlc.arg(page_limit) OFFSET sqlc.arg(page_offset);
+
+-- Okta and Entra both discover a group by `displayName eq` before creating or
+-- updating it; displayName is caseExact:false like userName. It is NOT unique
+-- (RFC 7643 does not make it so), which is why this returns MANY: a directory
+-- with two same-named groups must answer with two.
+-- name: CountSCIMGroupsByDisplayName :one
+SELECT COUNT(*) FROM scim_groups WHERE org_id = sqlc.arg(org_id) AND binding_id = sqlc.arg(binding_id) AND display_name_lower = sqlc.arg(filter_value);
+
+-- name: PageSCIMGroupsByDisplayName :many
+SELECT id, org_id, binding_id, display_name, display_name_lower, external_id,
+       created_at, updated_at
+FROM scim_groups WHERE org_id = sqlc.arg(org_id) AND binding_id = sqlc.arg(binding_id) AND display_name_lower = sqlc.arg(filter_value)
+ORDER BY id LIMIT sqlc.arg(page_limit) OFFSET sqlc.arg(page_offset);
+
+-- externalId is not unique on groups either.
+-- name: CountSCIMGroupsByExternalID :one
+SELECT COUNT(*) FROM scim_groups WHERE org_id = sqlc.arg(org_id) AND binding_id = sqlc.arg(binding_id) AND external_id = sqlc.arg(filter_value);
+
+-- name: PageSCIMGroupsByExternalID :many
+SELECT id, org_id, binding_id, display_name, display_name_lower, external_id,
+       created_at, updated_at
+FROM scim_groups WHERE org_id = sqlc.arg(org_id) AND binding_id = sqlc.arg(binding_id) AND external_id = sqlc.arg(filter_value)
+ORDER BY id LIMIT sqlc.arg(page_limit) OFFSET sqlc.arg(page_offset);

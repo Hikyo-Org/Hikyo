@@ -198,6 +198,22 @@ type SCIMAttentionRow struct {
 	EnteredAt  time.Time
 }
 
+// SCIMFilterField selects one supported equality predicate.
+type SCIMFilterField string
+
+const (
+	SCIMFilterAll         SCIMFilterField = ""
+	SCIMFilterUserName    SCIMFilterField = "user_name"
+	SCIMFilterDisplayName SCIMFilterField = "display_name"
+	SCIMFilterExternalID  SCIMFilterField = "external_id"
+)
+
+// SCIMListFilter carries a normalized value; external IDs remain case-sensitive.
+type SCIMListFilter struct {
+	Field SCIMFilterField
+	Value string
+}
+
 // SCIMReader is the read half of the SCIM surface.
 type SCIMReader interface {
 	Binding(ctx context.Context, p authz.Proof, id string) (SCIMBinding, error)
@@ -209,19 +225,17 @@ type SCIMReader interface {
 
 	User(ctx context.Context, p authz.Proof, bindingID, id string) (SCIMUser, error)
 	UserByUserName(ctx context.Context, p authz.Proof, bindingID, folded string) (SCIMUser, error)
-	UsersByExternalID(ctx context.Context, p authz.Proof, bindingID, externalID string) ([]SCIMUser, error)
 	UserBySubject(ctx context.Context, p authz.Proof, bindingID, subject string) (SCIMUser, error)
 	UserByAccount(ctx context.Context, p authz.Proof, bindingID, accountID string) (SCIMUser, error)
 	Users(ctx context.Context, p authz.Proof, bindingID string) ([]SCIMUser, error)
 	// PageUsers and PageGroups are the WIRE's reads: bounded in SQL, with a
-	// separate count, so a page costs a page rather than the whole directory.
-	PageUsers(ctx context.Context, p authz.Proof, bindingID string, limit, offset int64) ([]SCIMUser, int64, error)
+	// separate count, so resource materialization stays bounded independently
+	// of directory size (the count itself can still scan matching index entries).
+	PageUsers(ctx context.Context, p authz.Proof, bindingID string, filter SCIMListFilter, limit, offset int64) ([]SCIMUser, int64, error)
 
 	Group(ctx context.Context, p authz.Proof, bindingID, id string) (SCIMGroup, error)
-	GroupsByDisplayName(ctx context.Context, p authz.Proof, bindingID, folded string) ([]SCIMGroup, error)
-	GroupsByExternalID(ctx context.Context, p authz.Proof, bindingID, externalID string) ([]SCIMGroup, error)
 	Groups(ctx context.Context, p authz.Proof, bindingID string) ([]SCIMGroup, error)
-	PageGroups(ctx context.Context, p authz.Proof, bindingID string, limit, offset int64) ([]SCIMGroup, int64, error)
+	PageGroups(ctx context.Context, p authz.Proof, bindingID string, filter SCIMListFilter, limit, offset int64) ([]SCIMGroup, int64, error)
 
 	// Every membership method carries the bindingID. Without it an org-scoped
 	// proof for one binding could address group and user ids belonging to
@@ -767,40 +781,6 @@ func (r scimRepo) UserByUserName(ctx context.Context, p authz.Proof, bindingID, 
 	return pgUserOrNotFound(row, err)
 }
 
-func (r scimRepo) UsersByExternalID(ctx context.Context, p authz.Proof, bindingID, externalID string) ([]SCIMUser, error) {
-	chain, err := authz.Verify(p, authz.StoreSCIMUsersByExternalID, r.tok)
-	if err != nil {
-		return nil, err
-	}
-	out := []SCIMUser{}
-	if r.sq != nil {
-		rows, err := r.sq.ListSCIMUsersByExternalID(ctx, sqlitegen.ListSCIMUsersByExternalIDParams{
-			OrgID: string(chain.Org), BindingID: bindingID, ExternalID: externalID,
-		})
-		if err != nil {
-			return nil, err
-		}
-		for _, row := range rows {
-			u, err := sqliteUser(row)
-			if err != nil {
-				return nil, err
-			}
-			out = append(out, u)
-		}
-		return out, nil
-	}
-	rows, err := r.pg.ListSCIMUsersByExternalID(ctx, pggen.ListSCIMUsersByExternalIDParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, ExternalID: externalID,
-	})
-	if err != nil {
-		return nil, err
-	}
-	for _, row := range rows {
-		out = append(out, pgUser(row))
-	}
-	return out, nil
-}
-
 func (r scimRepo) UserBySubject(ctx context.Context, p authz.Proof, bindingID, subject string) (SCIMUser, error) {
 	chain, err := authz.Verify(p, authz.StoreSCIMUserBySubject, r.tok)
 	if err != nil {
@@ -869,45 +849,66 @@ func (r scimRepo) Users(ctx context.Context, p authz.Proof, bindingID string) ([
 	return out, nil
 }
 
-func (r scimRepo) PageUsers(ctx context.Context, p authz.Proof, bindingID string, limit, offset int64) ([]SCIMUser, int64, error) {
+func (r scimRepo) PageUsers(ctx context.Context, p authz.Proof, bindingID string, filter SCIMListFilter, limit, offset int64) ([]SCIMUser, int64, error) {
 	chain, err := authz.Verify(p, authz.StoreSCIMPageUsers, r.tok)
 	if err != nil {
 		return nil, 0, err
 	}
+	if (filter.Field != SCIMFilterAll && filter.Field != SCIMFilterUserName && filter.Field != SCIMFilterExternalID) || limit < 0 || offset < 0 {
+		return nil, 0, domain.ErrInvalid
+	}
 	out := []SCIMUser{}
 	if r.sq != nil {
-		total, err := r.sq.CountSCIMUsers(ctx, sqlitegen.CountSCIMUsersParams{
-			OrgID: string(chain.Org), BindingID: bindingID,
-		})
-		if err != nil {
-			return nil, 0, err
+		var total int64
+		var rows []sqlitegen.ScimUser
+		switch filter.Field {
+		case SCIMFilterAll:
+			total, err = r.sq.CountSCIMUsers(ctx, sqlitegen.CountSCIMUsersParams{OrgID: string(chain.Org), BindingID: bindingID})
+			if err == nil {
+				rows, err = r.sq.PageSCIMUsers(ctx, sqlitegen.PageSCIMUsersParams{OrgID: string(chain.Org), BindingID: bindingID, Limit: limit, Offset: offset})
+			}
+		case SCIMFilterUserName:
+			total, err = r.sq.CountSCIMUsersByUserName(ctx, sqlitegen.CountSCIMUsersByUserNameParams{OrgID: string(chain.Org), BindingID: bindingID, FilterValue: filter.Value})
+			if err == nil {
+				rows, err = r.sq.PageSCIMUsersByUserName(ctx, sqlitegen.PageSCIMUsersByUserNameParams{OrgID: string(chain.Org), BindingID: bindingID, FilterValue: filter.Value, PageLimit: limit, PageOffset: offset})
+			}
+		case SCIMFilterExternalID:
+			total, err = r.sq.CountSCIMUsersByExternalID(ctx, sqlitegen.CountSCIMUsersByExternalIDParams{OrgID: string(chain.Org), BindingID: bindingID, FilterValue: filter.Value})
+			if err == nil {
+				rows, err = r.sq.PageSCIMUsersByExternalID(ctx, sqlitegen.PageSCIMUsersByExternalIDParams{OrgID: string(chain.Org), BindingID: bindingID, FilterValue: filter.Value, PageLimit: limit, PageOffset: offset})
+			}
 		}
-		rows, err := r.sq.PageSCIMUsers(ctx, sqlitegen.PageSCIMUsersParams{
-			OrgID: string(chain.Org), BindingID: bindingID,
-			Limit: limit, Offset: offset,
-		})
 		if err != nil {
 			return nil, 0, err
 		}
 		for _, row := range rows {
-			u, err := sqliteUser(row)
+			v, err := sqliteUser(row)
 			if err != nil {
 				return nil, 0, err
 			}
-			out = append(out, u)
+			out = append(out, v)
 		}
 		return out, total, nil
 	}
-	total, err := r.pg.CountSCIMUsers(ctx, pggen.CountSCIMUsersParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID,
-	})
-	if err != nil {
-		return nil, 0, err
+	var total int64
+	var rows []pggen.ScimUser
+	switch filter.Field {
+	case SCIMFilterAll:
+		total, err = r.pg.CountSCIMUsers(ctx, pggen.CountSCIMUsersParams{ChainOrgID: string(chain.Org), BindingID: bindingID})
+		if err == nil {
+			rows, err = r.pg.PageSCIMUsers(ctx, pggen.PageSCIMUsersParams{ChainOrgID: string(chain.Org), BindingID: bindingID, PageLimit: limit, PageOffset: offset})
+		}
+	case SCIMFilterUserName:
+		total, err = r.pg.CountSCIMUsersByUserName(ctx, pggen.CountSCIMUsersByUserNameParams{ChainOrgID: string(chain.Org), BindingID: bindingID, FilterValue: filter.Value})
+		if err == nil {
+			rows, err = r.pg.PageSCIMUsersByUserName(ctx, pggen.PageSCIMUsersByUserNameParams{ChainOrgID: string(chain.Org), BindingID: bindingID, FilterValue: filter.Value, PageLimit: limit, PageOffset: offset})
+		}
+	case SCIMFilterExternalID:
+		total, err = r.pg.CountSCIMUsersByExternalID(ctx, pggen.CountSCIMUsersByExternalIDParams{ChainOrgID: string(chain.Org), BindingID: bindingID, FilterValue: filter.Value})
+		if err == nil {
+			rows, err = r.pg.PageSCIMUsersByExternalID(ctx, pggen.PageSCIMUsersByExternalIDParams{ChainOrgID: string(chain.Org), BindingID: bindingID, FilterValue: filter.Value, PageLimit: limit, PageOffset: offset})
+		}
 	}
-	rows, err := r.pg.PageSCIMUsers(ctx, pggen.PageSCIMUsersParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID,
-		PageLimit: int32(limit), PageOffset: int32(offset),
-	})
 	if err != nil {
 		return nil, 0, err
 	}
@@ -917,45 +918,66 @@ func (r scimRepo) PageUsers(ctx context.Context, p authz.Proof, bindingID string
 	return out, total, nil
 }
 
-func (r scimRepo) PageGroups(ctx context.Context, p authz.Proof, bindingID string, limit, offset int64) ([]SCIMGroup, int64, error) {
+func (r scimRepo) PageGroups(ctx context.Context, p authz.Proof, bindingID string, filter SCIMListFilter, limit, offset int64) ([]SCIMGroup, int64, error) {
 	chain, err := authz.Verify(p, authz.StoreSCIMPageGroups, r.tok)
 	if err != nil {
 		return nil, 0, err
 	}
+	if (filter.Field != SCIMFilterAll && filter.Field != SCIMFilterDisplayName && filter.Field != SCIMFilterExternalID) || limit < 0 || offset < 0 {
+		return nil, 0, domain.ErrInvalid
+	}
 	out := []SCIMGroup{}
 	if r.sq != nil {
-		total, err := r.sq.CountSCIMGroups(ctx, sqlitegen.CountSCIMGroupsParams{
-			OrgID: string(chain.Org), BindingID: bindingID,
-		})
-		if err != nil {
-			return nil, 0, err
+		var total int64
+		var rows []sqlitegen.ScimGroup
+		switch filter.Field {
+		case SCIMFilterAll:
+			total, err = r.sq.CountSCIMGroups(ctx, sqlitegen.CountSCIMGroupsParams{OrgID: string(chain.Org), BindingID: bindingID})
+			if err == nil {
+				rows, err = r.sq.PageSCIMGroups(ctx, sqlitegen.PageSCIMGroupsParams{OrgID: string(chain.Org), BindingID: bindingID, Limit: limit, Offset: offset})
+			}
+		case SCIMFilterDisplayName:
+			total, err = r.sq.CountSCIMGroupsByDisplayName(ctx, sqlitegen.CountSCIMGroupsByDisplayNameParams{OrgID: string(chain.Org), BindingID: bindingID, FilterValue: filter.Value})
+			if err == nil {
+				rows, err = r.sq.PageSCIMGroupsByDisplayName(ctx, sqlitegen.PageSCIMGroupsByDisplayNameParams{OrgID: string(chain.Org), BindingID: bindingID, FilterValue: filter.Value, PageLimit: limit, PageOffset: offset})
+			}
+		case SCIMFilterExternalID:
+			total, err = r.sq.CountSCIMGroupsByExternalID(ctx, sqlitegen.CountSCIMGroupsByExternalIDParams{OrgID: string(chain.Org), BindingID: bindingID, FilterValue: filter.Value})
+			if err == nil {
+				rows, err = r.sq.PageSCIMGroupsByExternalID(ctx, sqlitegen.PageSCIMGroupsByExternalIDParams{OrgID: string(chain.Org), BindingID: bindingID, FilterValue: filter.Value, PageLimit: limit, PageOffset: offset})
+			}
 		}
-		rows, err := r.sq.PageSCIMGroups(ctx, sqlitegen.PageSCIMGroupsParams{
-			OrgID: string(chain.Org), BindingID: bindingID,
-			Limit: limit, Offset: offset,
-		})
 		if err != nil {
 			return nil, 0, err
 		}
 		for _, row := range rows {
-			g, err := sqliteGroup(row)
+			v, err := sqliteGroup(row)
 			if err != nil {
 				return nil, 0, err
 			}
-			out = append(out, g)
+			out = append(out, v)
 		}
 		return out, total, nil
 	}
-	total, err := r.pg.CountSCIMGroups(ctx, pggen.CountSCIMGroupsParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID,
-	})
-	if err != nil {
-		return nil, 0, err
+	var total int64
+	var rows []pggen.ScimGroup
+	switch filter.Field {
+	case SCIMFilterAll:
+		total, err = r.pg.CountSCIMGroups(ctx, pggen.CountSCIMGroupsParams{ChainOrgID: string(chain.Org), BindingID: bindingID})
+		if err == nil {
+			rows, err = r.pg.PageSCIMGroups(ctx, pggen.PageSCIMGroupsParams{ChainOrgID: string(chain.Org), BindingID: bindingID, PageLimit: limit, PageOffset: offset})
+		}
+	case SCIMFilterDisplayName:
+		total, err = r.pg.CountSCIMGroupsByDisplayName(ctx, pggen.CountSCIMGroupsByDisplayNameParams{ChainOrgID: string(chain.Org), BindingID: bindingID, FilterValue: filter.Value})
+		if err == nil {
+			rows, err = r.pg.PageSCIMGroupsByDisplayName(ctx, pggen.PageSCIMGroupsByDisplayNameParams{ChainOrgID: string(chain.Org), BindingID: bindingID, FilterValue: filter.Value, PageLimit: limit, PageOffset: offset})
+		}
+	case SCIMFilterExternalID:
+		total, err = r.pg.CountSCIMGroupsByExternalID(ctx, pggen.CountSCIMGroupsByExternalIDParams{ChainOrgID: string(chain.Org), BindingID: bindingID, FilterValue: filter.Value})
+		if err == nil {
+			rows, err = r.pg.PageSCIMGroupsByExternalID(ctx, pggen.PageSCIMGroupsByExternalIDParams{ChainOrgID: string(chain.Org), BindingID: bindingID, FilterValue: filter.Value, PageLimit: limit, PageOffset: offset})
+		}
 	}
-	rows, err := r.pg.PageSCIMGroups(ctx, pggen.PageSCIMGroupsParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID,
-		PageLimit: int32(limit), PageOffset: int32(offset),
-	})
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1062,74 +1084,6 @@ func (r scimRepo) Group(ctx context.Context, p authz.Proof, bindingID, id string
 		ChainOrgID: string(chain.Org), BindingID: bindingID, ID: id,
 	})
 	return pgGroupOrNotFound(row, err)
-}
-
-func (r scimRepo) GroupsByDisplayName(ctx context.Context, p authz.Proof, bindingID, folded string) ([]SCIMGroup, error) {
-	chain, err := authz.Verify(p, authz.StoreSCIMGroupsByDisplayName, r.tok)
-	if err != nil {
-		return nil, err
-	}
-	out := []SCIMGroup{}
-	if r.sq != nil {
-		rows, err := r.sq.ListSCIMGroupsByDisplayName(ctx, sqlitegen.ListSCIMGroupsByDisplayNameParams{
-			OrgID: string(chain.Org), BindingID: bindingID, DisplayNameLower: folded,
-		})
-		if err != nil {
-			return nil, err
-		}
-		for _, row := range rows {
-			g, err := sqliteGroup(row)
-			if err != nil {
-				return nil, err
-			}
-			out = append(out, g)
-		}
-		return out, nil
-	}
-	rows, err := r.pg.ListSCIMGroupsByDisplayName(ctx, pggen.ListSCIMGroupsByDisplayNameParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, DisplayNameLower: folded,
-	})
-	if err != nil {
-		return nil, err
-	}
-	for _, row := range rows {
-		out = append(out, pgGroup(row))
-	}
-	return out, nil
-}
-
-func (r scimRepo) GroupsByExternalID(ctx context.Context, p authz.Proof, bindingID, externalID string) ([]SCIMGroup, error) {
-	chain, err := authz.Verify(p, authz.StoreSCIMGroupsByExternalID, r.tok)
-	if err != nil {
-		return nil, err
-	}
-	out := []SCIMGroup{}
-	if r.sq != nil {
-		rows, err := r.sq.ListSCIMGroupsByExternalID(ctx, sqlitegen.ListSCIMGroupsByExternalIDParams{
-			OrgID: string(chain.Org), BindingID: bindingID, ExternalID: externalID,
-		})
-		if err != nil {
-			return nil, err
-		}
-		for _, row := range rows {
-			g, err := sqliteGroup(row)
-			if err != nil {
-				return nil, err
-			}
-			out = append(out, g)
-		}
-		return out, nil
-	}
-	rows, err := r.pg.ListSCIMGroupsByExternalID(ctx, pggen.ListSCIMGroupsByExternalIDParams{
-		ChainOrgID: string(chain.Org), BindingID: bindingID, ExternalID: externalID,
-	})
-	if err != nil {
-		return nil, err
-	}
-	for _, row := range rows {
-		out = append(out, pgGroup(row))
-	}
-	return out, nil
 }
 
 func (r scimRepo) Groups(ctx context.Context, p authz.Proof, bindingID string) ([]SCIMGroup, error) {

@@ -12,6 +12,7 @@ import {
 import type { SamlMetadataSource, SamlProviderPatch } from '@hikyo/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { useSensitiveMutation } from './sensitiveMutation.ts';
 import { ApiError, ok, parsed } from './client.ts';
 
 /**
@@ -68,11 +69,8 @@ export type SamlProviderInputDraft = {
 
 export function usePutSamlProvider() {
   const queryClient = useQueryClient();
-  return useMutation({
-    // The write-only metadata document rides through as mutation variables, so
-    // it must not linger in the cache after the ceremony: gcTime 0 drops the
-    // record the moment `reset()` makes it inactive.
-    gcTime: 0,
+  return useSensitiveMutation({
+    // The write-only document is owned by the current editor, never a cache.
     mutationFn: (draft: SamlProviderInputDraft) =>
       parsed(putSamlProviderOp, {
         path: { slug: draft.slug },
@@ -114,9 +112,8 @@ export type SamlMetadataRefreshDraft = {
 
 export function useRefreshSamlMetadata() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useSensitiveMutation({
     // See usePutSamlProvider: keep the replacement document out of the cache.
-    gcTime: 0,
     mutationFn: (draft: SamlMetadataRefreshDraft) =>
       parsed(refreshSamlProviderMetadataOp, {
         path: { slug: draft.slug },

@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 
+import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import {
   optionByValue,
   scopeOptions,
@@ -790,7 +791,7 @@ function scopeToTarget(scope: ScopeRef | undefined): { projectId?: string; envir
 function CredentialsSection({ org, binding }: { org: string; binding: ScimBinding }) {
   const credentials = useScimCredentials(org, binding.id);
   const mint = useMintScimCredential(org, binding.id);
-  const [disclosed, setDisclosed] = useState<MintedScimCredential | null>(null);
+  const [disclosed, setDisclosed] = useSensitiveState<MintedScimCredential | null>(null);
   const items = credentials.data?.items ?? [];
 
   return (
@@ -886,7 +887,7 @@ function MintCredentialForm({
   mint: ReturnType<typeof useMintScimCredential>;
   onMinted: (minted: MintedScimCredential) => void;
 }) {
-  const [proof, setProof] = useState('');
+  const [proof, setProof] = useSensitiveState('');
   const [indefinite, setIndefinite] = useState(false);
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -903,7 +904,8 @@ function MintCredentialForm({
           setIndefinite(false);
         },
         () => {
-          // Surfaced from mint.error below; the proof stays so it can be retried.
+          // Surfaced from mint.error below; a retry needs a fresh proof.
+          setProof('');
         },
       );
   };

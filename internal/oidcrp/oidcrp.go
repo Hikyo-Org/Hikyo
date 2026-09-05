@@ -15,9 +15,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+
 	"strings"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/federationhttp"
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
 )
@@ -57,8 +60,10 @@ var (
 
 // Provider is a discovered OpenID Provider pinned to a byte-exact issuer.
 type Provider struct {
-	issuer string
-	op     *oidc.Provider
+	issuer      string
+	op          *oidc.Provider
+	client      *http.Client
+	tokenClient *http.Client
 }
 
 // Discover reconstructs a provider via go-oidc NewProvider, which re-asserts
@@ -67,14 +72,44 @@ type Provider struct {
 // passed here is the byte-exact string; NewProvider returns IssuerMismatchError
 // when the document disagrees.
 func Discover(ctx context.Context, issuer string) (*Provider, error) {
+	return DiscoverWithPolicy(ctx, issuer, federationhttp.Policy{})
+}
+
+// DiscoverWithPolicy binds every network leg to immutable operator egress policy.
+func DiscoverWithPolicy(ctx context.Context, issuer string, policy federationhttp.Policy) (*Provider, error) {
+	target, err := federationhttp.ValidateURL(issuer, policy.Development)
+	if err != nil || target.RawQuery != "" || target.ForceQuery {
+		return nil, ErrDiscovery
+	}
+	client, err := federationhttp.NewClient(policy, federationhttp.DocumentBytes)
+	if err != nil {
+		return nil, ErrDiscovery
+	}
+	tokenClient, err := federationhttp.NewClient(policy, federationhttp.TokenBytes)
+	if err != nil {
+		return nil, ErrDiscovery
+	}
+	ctx, cancel := context.WithTimeout(oidc.ClientContext(ctx, client), federationhttp.Deadline)
+	defer cancel()
 	op, err := oidc.NewProvider(ctx, issuer)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrDiscovery, err)
+		return nil, ErrDiscovery
 	}
 	if op.Endpoint().AuthURL == "" || op.Endpoint().TokenURL == "" {
 		return nil, fmt.Errorf("%w: discovery document is missing an authorization or token endpoint", ErrDiscovery)
 	}
-	return &Provider{issuer: issuer, op: op}, nil
+	var metadata struct {
+		JWKS string `json:"jwks_uri"`
+	}
+	if err := op.Claims(&metadata); err != nil {
+		return nil, ErrDiscovery
+	}
+	for _, endpoint := range []string{op.Endpoint().AuthURL, op.Endpoint().TokenURL, metadata.JWKS} {
+		if _, err := federationhttp.ValidateURL(endpoint, policy.Development); err != nil {
+			return nil, ErrDiscovery
+		}
+	}
+	return &Provider{issuer: issuer, op: op, client: client, tokenClient: tokenClient}, nil
 }
 
 // Issuer returns the byte-exact issuer this provider is pinned to.
@@ -117,10 +152,12 @@ func (p *Provider) AuthCodeURL(clientID, redirectURI, scopes, state, nonce, pkce
 // the caller. Removing it entirely needs an oauth2 client that accepts a
 // []byte secret (none exists); revisit if x/oauth2 ever grows one.
 func (p *Provider) Exchange(ctx context.Context, clientID string, clientSecret []byte, redirectURI, scopes, code, pkceVerifier string) (string, error) {
+	ctx, cancel := context.WithTimeout(oidc.ClientContext(ctx, p.tokenClient), federationhttp.Deadline)
+	defer cancel()
 	cfg := p.config(clientID, string(clientSecret), redirectURI, scopes)
 	tok, err := cfg.Exchange(ctx, code, oauth2.VerifierOption(pkceVerifier))
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrExchange, err)
+		return "", ErrExchange
 	}
 	raw, ok := tok.Extra("id_token").(string)
 	if !ok || raw == "" {
@@ -150,14 +187,16 @@ type Claims struct {
 // skew. Empty subject is refused (A15). Nonce equality is the caller's, because
 // the transaction stores it hashed.
 func (p *Provider) Verify(ctx context.Context, clientID, rawIDToken string, now func() time.Time) (Claims, error) {
-	verifier := p.op.Verifier(&oidc.Config{
+	ctx, cancel := context.WithTimeout(oidc.ClientContext(ctx, p.client), federationhttp.Deadline)
+	defer cancel()
+	verifier := p.op.VerifierContext(ctx, &oidc.Config{
 		ClientID:             clientID,
 		SupportedSigningAlgs: allowedAlgs,
 		Now:                  now,
 	})
 	tok, err := verifier.Verify(ctx, rawIDToken)
 	if err != nil {
-		return Claims{}, fmt.Errorf("%w: %v", ErrTokenInvalid, err)
+		return Claims{}, ErrTokenInvalid
 	}
 	if tok.Issuer != p.issuer {
 		return Claims{}, ErrIssuer
@@ -183,7 +222,7 @@ func (p *Provider) Verify(ctx context.Context, clientID, rawIDToken string, now 
 		AuthTime *int64   `json:"auth_time"`
 	}
 	if err := tok.Claims(&extra); err != nil {
-		return Claims{}, fmt.Errorf("%w: %v", ErrTokenInvalid, err)
+		return Claims{}, ErrTokenInvalid
 	}
 	if extra.AZP != "" && extra.AZP != clientID {
 		return Claims{}, ErrAudience

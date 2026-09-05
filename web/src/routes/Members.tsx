@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 
+import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import {
   blastRadius,
   capabilitiesAt,
@@ -142,7 +143,7 @@ export function Members({ scope }: { scope: MembersScope }) {
   // mutation cache, so the display-once authority lives exactly as long as
   // the dialog that shows it.
   const [resetPending, setResetPending] = useState<string | null>(null);
-  const [resetIssued, setResetIssued] = useState<
+  const [resetIssued, setResetIssued] = useSensitiveState<
     { principal: string; issued: IssuedAuthority } | null
   >(null);
 

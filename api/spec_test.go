@@ -63,6 +63,9 @@ func TestWorkspaceHandoffTransactionBindsStepUpFieldsToPurpose(t *testing.T) {
 	refs := make([]string, 0, len(transaction.OneOf))
 	for _, branch := range transaction.OneOf {
 		refs = append(refs, branch.Ref)
+		if branch.Value == nil || !slices.Contains(branch.Value.Required, "requesting_origin") {
+			t.Errorf("%s must require the stored requesting origin", branch.Ref)
+		}
 	}
 	wantRefs := []string{
 		"#/components/schemas/WorkspaceHandoffEstablishment",
@@ -84,24 +87,36 @@ func TestWorkspaceHandoffTransactionBindsStepUpFieldsToPurpose(t *testing.T) {
 
 	base := map[string]any{
 		"state": "live-state", "key_ids": []any{}, "expires_at": "2026-08-23T12:00:00Z",
+		"requesting_origin": "https://xn--bcher-kva.example:8443",
 	}
 	cases := map[string]struct {
 		purpose     string
 		operation   string
 		environment string
 		wantValid   bool
+		omitOrigin  bool
+		emptyOrigin bool
 	}{
 		"establishment":                {purpose: "establishment", wantValid: true},
 		"establishment with operation": {purpose: "establishment", operation: "reveal"},
 		"step-up":                      {purpose: "step-up", operation: "reveal", environment: "env_01900000-0000-7000-8000-000000000001", wantValid: true},
 		"step-up without operation":    {purpose: "step-up", environment: "env_01900000-0000-7000-8000-000000000001"},
 		"step-up without environment":  {purpose: "step-up", operation: "reveal"},
+		"establishment without origin": {purpose: "establishment", omitOrigin: true},
+		"establishment empty origin":   {purpose: "establishment", emptyOrigin: true},
+		"step-up without origin":       {purpose: "step-up", operation: "reveal", environment: "env_01900000-0000-7000-8000-000000000001", omitOrigin: true},
+		"step-up empty origin":         {purpose: "step-up", operation: "reveal", environment: "env_01900000-0000-7000-8000-000000000001", emptyOrigin: true},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			value := make(map[string]any, len(base)+3)
 			for key, item := range base {
 				value[key] = item
+			}
+			if tc.omitOrigin {
+				delete(value, "requesting_origin")
+			} else if tc.emptyOrigin {
+				value["requesting_origin"] = ""
 			}
 			value["purpose"] = tc.purpose
 			if tc.operation != "" {

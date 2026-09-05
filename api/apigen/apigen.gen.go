@@ -7371,7 +7371,10 @@ type WorkspaceHandoffEstablishment struct {
 	// KeyIds Empty for an establishment.
 	KeyIds  []ID                                 `json:"key_ids"`
 	Purpose WorkspaceHandoffEstablishmentPurpose `json:"purpose"`
-	State   string                               `json:"state"`
+
+	// RequestingOrigin Exact canonical requesting origin from the stored transaction, never from approval-page URL fields.
+	RequestingOrigin string `json:"requesting_origin"`
+	State            string `json:"state"`
 }
 
 // WorkspaceHandoffEstablishmentPurpose defines model for WorkspaceHandoffEstablishment.Purpose.
@@ -7403,7 +7406,10 @@ type WorkspaceHandoffStepUp struct {
 	// Operation The exact decision the reauthentication authorizes.
 	Operation WorkspaceHandoffStepUpOperation `json:"operation"`
 	Purpose   WorkspaceHandoffStepUpPurpose   `json:"purpose"`
-	State     string                          `json:"state"`
+
+	// RequestingOrigin Exact canonical requesting origin from the stored transaction, never from approval-page URL fields.
+	RequestingOrigin string `json:"requesting_origin"`
+	State            string `json:"state"`
 }
 
 // WorkspaceHandoffStepUpOperation The exact decision the reauthentication authorizes.

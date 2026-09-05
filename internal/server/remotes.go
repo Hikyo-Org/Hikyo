@@ -224,7 +224,7 @@ func (a *API) ShowWorkspaceHandoff(ctx context.Context, req apigen.ShowWorkspace
 			return nil, fmt.Errorf("show workspace handoff: establishment carries a step-up binding")
 		}
 		err = transaction.FromWorkspaceHandoffEstablishment(apigen.WorkspaceHandoffEstablishment{
-			State: req.State, Purpose: apigen.WorkspaceHandoffEstablishmentPurposeEstablishment,
+			State: req.State, Purpose: apigen.WorkspaceHandoffEstablishmentPurposeEstablishment, RequestingOrigin: view.RequestingOrigin,
 			KeyIds: keyIDs, ExpiresAt: view.ExpiresAt,
 		})
 	case service.HandoffStepUp:
@@ -233,7 +233,7 @@ func (a *API) ShowWorkspaceHandoff(ctx context.Context, req apigen.ShowWorkspace
 			return nil, fmt.Errorf("show workspace handoff: step-up carries an invalid binding")
 		}
 		err = transaction.FromWorkspaceHandoffStepUp(apigen.WorkspaceHandoffStepUp{
-			State: req.State, Purpose: apigen.WorkspaceHandoffStepUpPurposeStepUp,
+			State: req.State, Purpose: apigen.WorkspaceHandoffStepUpPurposeStepUp, RequestingOrigin: view.RequestingOrigin,
 			Operation: op, Environment: apigen.ID(view.EnvID), KeyIds: keyIDs, ExpiresAt: view.ExpiresAt,
 		})
 	default:

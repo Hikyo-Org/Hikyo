@@ -5,6 +5,8 @@ import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { retireSensitiveOperations } from '../api/sensitiveMutation.ts';
+import { typeInto as typeInput } from '../testkit/renderForm.tsx';
 import { MatrixRowEditor, type MatrixEditorChange } from './MatrixRowEditor.tsx';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -101,7 +103,7 @@ describe('MatrixRowEditor draft ownership', () => {
   });
 });
 
-async function renderEditor() {
+async function renderEditor(record: MatrixRowEditorProps['keyRecord'] = keyRecord, entries: MatrixRowEditorProps['rows'] = rows) {
   const onApply = vi
     .fn<(changes: readonly MatrixEditorChange[]) => Promise<void>>()
     .mockResolvedValue(undefined);
@@ -109,16 +111,16 @@ async function renderEditor() {
   document.body.appendChild(container);
   const root = createRoot(container);
 
+  const queries = new QueryClient({ defaultOptions: { queries: { enabled: false } } });
   await act(async () => {
-    const queries = new QueryClient({ defaultOptions: { queries: { enabled: false } } });
     root.render(
       <QueryClientProvider client={queries}>
         <MemoryRouter>
           <MatrixRowEditor
             refData={{ org: 'org-a', project: 'project-a' }}
-            keyRecord={keyRecord}
+            keyRecord={record}
             environmentId={environmentId}
-            rows={rows}
+            rows={entries}
             busy={false}
             mutationError={null}
             onClose={vi.fn()}
@@ -132,6 +134,7 @@ async function renderEditor() {
 
   return {
     container,
+    queries,
     onApply,
     unmount: async () => act(async () => root.unmount()),
   };
@@ -215,3 +218,36 @@ function typeInto(textarea: HTMLTextAreaElement, value: string): void {
   setter.call(textarea, value);
   textarea.dispatchEvent(new Event('input', { bubbles: true }));
 }
+
+it('clears secret fill-all input on transfer, refusal and session retirement', async () => {
+  const first = rows[0];
+  if (first === undefined) throw new Error('fixture row is missing');
+  const secretRows: MatrixRowEditorProps['rows'] = [first, {
+    ...first, environmentId: 'env-second', environment: { ...environment, id: 'env-second', name: 'production' },
+  }].map((row) => ({ ...row, cell: undefined }));
+  const view = await renderEditor({ ...keyRecord, classification: 'secret' }, secretRows);
+  const button = (label: string) => {
+    const result = [...view.container.querySelectorAll('button')].find((node) => node.textContent === label);
+    if (result === undefined) throw new Error(`Missing button: ${label}`);
+    return result;
+  };
+  try {
+    await act(async () => button('Edit all environments').click());
+    const fill = view.container.querySelector<HTMLInputElement>('#matrix-fill-all');
+    if (fill === null) throw new Error('fill-all input missing');
+    expect(fill.type).toBe('password');
+    await act(async () => typeInput(fill, 'SENTINEL-fill-all'));
+    await act(async () => button('Fill all').click());
+    expect(fill.value).toBe('');
+    expect([...view.container.querySelectorAll('textarea')].map((node) => node.value)).toEqual(['SENTINEL-fill-all', 'SENTINEL-fill-all']);
+    view.onApply.mockRejectedValueOnce(new Error('Refused'));
+    await act(async () => button('Save 2 drafts').click());
+    expect(view.onApply).toHaveBeenCalledOnce();
+    expect([...view.container.querySelectorAll('textarea')].map((node) => node.value)).toEqual(['', '']);
+    expect(view.container.textContent).toContain('Re-enter the value');
+    await act(async () => typeInput(fill, 'SENTINEL-session-fill'));
+    await act(async () => retireSensitiveOperations(view.queries));
+    expect(fill.value).toBe('');
+    expect(view.queries.getMutationCache().getAll()).toEqual([]);
+  } finally { await view.unmount(); }
+});

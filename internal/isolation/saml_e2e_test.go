@@ -184,7 +184,7 @@ func runSAMLLoginReplay(t *testing.T, db *store.DB) {
 	// assertion ID under a new request still fails, proving the cache is durable.
 	restarted := &service.Auth{
 		DB: auth.DB, Keyring: auth.Keyring, KDF: auth.KDF, Admission: auth.Admission,
-		Now: auth.Now, ExternalOrigin: auth.ExternalOrigin, OIDCDiscover: auth.OIDCDiscover,
+		Now: auth.Now, ExternalOrigin: auth.ExternalOrigin, OIDCDiscover: auth.OIDCDiscover, FederationPolicy: auth.FederationPolicy,
 		WebAuthn: auth.WebAuthn, ReauthWindow: auth.ReauthWindow, ReauthHardCap: auth.ReauthHardCap, Log: auth.Log,
 	}
 	replayStart, err := restarted.SAMLStart(ctx, "saml-idp", "login", "", "", "")

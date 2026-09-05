@@ -34,6 +34,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/importer"
 	"github.com/Hikyo-Org/hikyo/internal/remotefetch"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
+	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/testutil/fixtureref"
@@ -98,6 +99,19 @@ func goHelper(packagePath, name string) fixtureref.FixtureRef {
 // caught by TestReconciledBoundsMatchOpsSpecValues; completeness against new
 // spec rows is a review responsibility on this single source.
 var Registry = []Bound{
+	bound("http-server-limits", "HTTP header/read/write/idle limits", "ops-spec §10", "bounded net/http connection deadlines and header refusal", "Exact runtime configuration and stalled peer disconnect", StatusEnforced,
+		goTest("internal/app", "TestHTTPServerSlowClientLimitsConfigured")),
+	bound("http-public-inflight", "Public in-flight request cap", "ops-spec §10", "too_many_requests with Retry-After", "Request 513 refused before routing; completed requests release slots", StatusEnforced,
+		goTest("internal/server", "TestPublicRequestAdmissionIsBoundedAndReleasesSlots")),
+	bound("http-request-body", "Global and bundle body ceilings", "ops-spec §10", "bad_request transport refusal; named definitions limit", "2 MiB transport retains the separate 1 MiB bundle refusal", StatusEnforced,
+		goTest("internal/server", "TestDefinitionBodyTransportPreservesTheDomainBound")),
+	bound("http-sse-write", "SSE per-frame write deadline and heartbeat", "ops-spec §10", "disconnect stalled peer", "Fresh 30-second frame deadlines traverse middleware; unsupported deadlines fail closed", StatusEnforced,
+		goTest("internal/server", "TestEventStreamBoundsEveryFrameThroughMiddleware"),
+		goTest("internal/server", "TestEventStreamRefusesUnboundedWrites"),
+		goTest("internal/server", "TestStalledEventStreamDisconnectsAtWriteDeadline"),
+		goTest("internal/server", "TestHTTP2EventStreamSurvivesIdleHeartbeat")),
+	bound("http-hsts", "HSTS public HTTPS origin", "ops-spec §10", "secure response policy", "Existing direct TLS, proxy and loopback deployment-shape assertions", StatusByConstruction,
+		goTest("internal/server", "TestHSTSFollowsTheConfiguredExternalOriginAcrossDeploymentShapes")),
 	// §4 admission / §10 runtime.
 	bound("admission-queue-depth", "Admission queue depth", "ops-spec §4 / inv.8", "admission.ErrOverloaded", "admission.TestQueueDepth", StatusEnforced,
 		goTest("internal/admission", "TestQueueDepthIsBounded")),
@@ -287,6 +301,8 @@ func TestReconciledBoundsMatchOpsSpecValues(t *testing.T) {
 	}
 	pins := []pin{
 		// Reconciled this ticket.
+		{"server.MaxRequestBytes", server.MaxRequestBytes, 2 << 20},
+		{"server.MaxInFlightRequests", server.MaxInFlightRequests, 512},
 		{"schema.MaxEnumMembers", schema.MaxEnumMembers, 256},
 		{"schema.MaxJSONSchemaDepth", schema.MaxJSONSchemaDepth, 32},
 		{"schema.MaxJSONSchemaBytes", schema.MaxJSONSchemaBytes, 65536},
@@ -368,5 +384,11 @@ func TestReconciledBoundsMatchOpsSpecValues(t *testing.T) {
 		if p.got != p.want {
 			t.Errorf("%s = %v, ops-spec requires %v", p.name, p.got, p.want)
 		}
+	}
+}
+
+func TestHTTPStreamTimingBoundsMatchOpsSpec(t *testing.T) {
+	if server.ResponseWriteTimeout != 60*time.Second || server.SSEWriteTimeout != 30*time.Second || server.SSEHeartbeat != 30*time.Second {
+		t.Fatalf("HTTP timing bounds drifted: ordinary=%s frame=%s heartbeat=%s", server.ResponseWriteTimeout, server.SSEWriteTimeout, server.SSEHeartbeat)
 	}
 }

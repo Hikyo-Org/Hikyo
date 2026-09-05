@@ -14,6 +14,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/federationhttp"
 	"github.com/Hikyo-Org/hikyo/internal/oidctest"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -62,7 +63,8 @@ func configureProvider(t *testing.T, auth *service.Auth, ctx context.Context, ad
 	if err := idp.RegisterRedirectURI(strings.TrimRight(auth.ExternalOrigin, "/") + "/api/v1/auth/oidc/" + slug + "/callback"); err != nil {
 		t.Fatal(err)
 	}
-	providers := &service.Providers{DB: auth.DB, Keyring: auth.Keyring, ExternalOrigin: auth.ExternalOrigin}
+	auth.FederationPolicy = federationhttp.Policy{Development: true}
+	providers := &service.Providers{DB: auth.DB, Keyring: auth.Keyring, ExternalOrigin: auth.ExternalOrigin, FederationPolicy: auth.FederationPolicy}
 	in.Issuer = idp.Issuer()
 	if _, err := providers.Put(ctx, service.LocalPrincipal(admin), slug, in); err != nil {
 		t.Fatalf("configuring provider %q: %v", slug, err)
@@ -568,7 +570,8 @@ func runOIDCIssuerImmutable(t *testing.T, db *store.DB) {
 	_, idp := configureProvider(t, auth, ctx, admin, "idp", service.ProviderInput{
 		DisplayName: "IdP", ClientID: "c", ClientSecret: "s", Scopes: "openid", Enabled: true,
 	})
-	providers := &service.Providers{DB: auth.DB, Keyring: auth.Keyring, ExternalOrigin: auth.ExternalOrigin}
+	auth.FederationPolicy = federationhttp.Policy{Development: true}
+	providers := &service.Providers{DB: auth.DB, Keyring: auth.Keyring, ExternalOrigin: auth.ExternalOrigin, FederationPolicy: auth.FederationPolicy}
 	// A different issuer on update is refused by name.
 	other, err := oidctest.New()
 	if err != nil {
@@ -784,7 +787,8 @@ func runOIDCReauthProviderRebind(t *testing.T, db *store.DB) {
 			t.Fatal(err)
 		}
 	}
-	providers := &service.Providers{DB: auth.DB, Keyring: auth.Keyring, ExternalOrigin: auth.ExternalOrigin}
+	auth.FederationPolicy = federationhttp.Policy{Development: true}
+	providers := &service.Providers{DB: auth.DB, Keyring: auth.Keyring, ExternalOrigin: auth.ExternalOrigin, FederationPolicy: auth.FederationPolicy}
 	policy := strptr(`{"amr_sets":[["mfa"]]}`)
 	if _, err := providers.Put(ctx, service.LocalPrincipal(admin), "p1", service.ProviderInput{
 		DisplayName: "p1", Issuer: idp.Issuer(), ClientID: "c", ClientSecret: "s", Scopes: "openid",
