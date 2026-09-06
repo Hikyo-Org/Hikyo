@@ -12,7 +12,11 @@ import (
 )
 
 func TestNightlyOfflineCompleteProofAndExactInventory(t *testing.T) {
-	f, m, _ := testfixture.Nightly(t, []byte("signed compatibility fixture"), false)
+	f, m, proof := testfixture.Nightly(t, []byte("signed compatibility fixture"), false)
+	entry := proof.VerificationMaterial.TlogEntries[0]
+	if entry.LogIndex == entry.InclusionProof.LogIndex {
+		t.Fatal("fixture must exercise a sharded Rekor log")
+	}
 	release, err := releasetrust.VerifyNightly(f.Snapshot(t), m)
 	if err != nil {
 		t.Fatal(err)
@@ -20,7 +24,7 @@ func TestNightlyOfflineCompleteProofAndExactInventory(t *testing.T) {
 	if release.Identity().Profile != releaseidentity.NightlyV1 {
 		t.Fatal("nightly authorized stable identity")
 	}
-	for _, name := range []string{"unsigned", "wrong commit", "missing promise", "missing proof", "bad checkpoint", "wrong tree size", "wrong entry index", "missing asset", "extra asset", "substitution", "wrong root", "policy revoked", "wrong issuer", "wrong repository", "wrong owner", "wrong workflow", "wrong ref", "wrong log", "wrong checkpoint origin", "manifest revoked", "required SCT missing", "SCT choice omitted"} {
+	for _, name := range []string{"unsigned", "wrong commit", "missing promise", "missing proof", "bad checkpoint", "wrong tree size", "wrong entry index", "wrong global index", "missing asset", "extra asset", "substitution", "wrong root", "policy revoked", "wrong issuer", "wrong repository", "wrong owner", "wrong workflow", "wrong ref", "wrong log", "wrong checkpoint origin", "manifest revoked", "required SCT missing", "SCT choice omitted"} {
 		t.Run(name, func(t *testing.T) {
 			f, m, pb := testfixture.Nightly(t, []byte("signed compatibility fixture"), name == "wrong commit")
 			switch name {
@@ -36,6 +40,8 @@ func TestNightlyOfflineCompleteProofAndExactInventory(t *testing.T) {
 				pb.VerificationMaterial.TlogEntries[0].InclusionProof.TreeSize++
 			case "wrong entry index":
 				pb.VerificationMaterial.TlogEntries[0].InclusionProof.LogIndex++
+			case "wrong global index":
+				pb.VerificationMaterial.TlogEntries[0].LogIndex++
 			case "missing asset":
 				delete(m.Artifacts, "checksums.txt")
 			case "extra asset":
@@ -77,7 +83,7 @@ func TestNightlyOfflineCompleteProofAndExactInventory(t *testing.T) {
 				m.Policy = testfixture.JSON(t, policy)
 				f.Catalog.NightlyPolicies = []releaseidentity.Digest{releaseidentity.Hash(m.Policy)}
 			}
-			if name == "missing promise" || name == "missing proof" || name == "bad checkpoint" || name == "wrong tree size" || name == "wrong entry index" {
+			if name == "missing promise" || name == "missing proof" || name == "bad checkpoint" || name == "wrong tree size" || name == "wrong entry index" || name == "wrong global index" {
 				var err error
 				m.Bundle, err = protojson.Marshal(pb)
 				if err != nil {

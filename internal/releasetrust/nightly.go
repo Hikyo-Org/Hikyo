@@ -188,9 +188,13 @@ func verifyNightlyEnvelope(policy NightlyPolicy, trustedRoot, rawBundle, artifac
 	if err := checkpoint.UnmarshalText([]byte(proof.GetCheckpoint().GetEnvelope())); err != nil {
 		return err
 	}
-	if hex.EncodeToString(entries[0].GetLogId().GetKeyId()) != string(policy.RekorLogID) || checkpoint.Origin != policy.CheckpointOrigin || proof.GetTreeSize() < 1 || checkpoint.Size != uint64(proof.GetTreeSize()) || proof.GetLogIndex() != entries[0].GetLogIndex() {
-		return errors.New("nightly checkpoint identity/tree size or entry index differs from pinned evidence")
+	if hex.EncodeToString(entries[0].GetLogId().GetKeyId()) != string(policy.RekorLogID) || checkpoint.Origin != policy.CheckpointOrigin || proof.GetTreeSize() < 1 || checkpoint.Size != uint64(proof.GetTreeSize()) {
+		return errors.New("nightly checkpoint identity or tree size differs from pinned evidence")
 	}
+	// Rekor v1's SET authenticates a global index, but its Merkle proof uses
+	// a shard-local index. They need not match. The maintained verifier below
+	// verifies both against this entry's same canonicalized body, including
+	// the signed global index and the proof's local index and checkpoint.
 	san, err := verify.NewSANMatcher(workflowURI, "")
 	if err != nil {
 		return err
