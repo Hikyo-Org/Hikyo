@@ -218,11 +218,12 @@ func loadTrust(directory string) (releasetrust.Snapshot, []byte, error) {
 			return snapshot, nil, err
 		}
 	}
-	snapshot, err = releasetrust.VerifySnapshot(releasetrust.PinnedTrust{Root: rootRaw, RecoveryPublicKey: recovery}, material, releaseidentity.SnapshotFloor{})
+	policyRaw, err := read(filepath.Join(directory, "nightly", "policy.json"))
 	if err != nil {
 		return snapshot, nil, err
 	}
-	policyRaw, err := read(filepath.Join(directory, "nightly", "policy.json"))
+	material.NightlyPolicy = policyRaw
+	snapshot, err = releasetrust.VerifySnapshot(releasetrust.PinnedTrust{Root: rootRaw, RecoveryPublicKey: recovery}, material, releaseidentity.SnapshotFloor{})
 	if err != nil {
 		return snapshot, nil, err
 	}

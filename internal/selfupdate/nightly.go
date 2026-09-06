@@ -239,7 +239,7 @@ func saveNightlyState(statePath string, state nightlyVerificationState) error {
 func (i *Installer) nightlySnapshot(ctx context.Context, pinned releasetrust.PinnedTrust, floor releaseidentity.SnapshotFloor) (releasetrust.SnapshotMaterial, releasetrust.Snapshot, error) {
 	var err error
 	material := releasetrust.SnapshotMaterial{PrimaryKeys: map[string][]byte{}}
-	for name, target := range map[string]*[]byte{"metadata.json": &material.Metadata, "metadata.sigstore.json": &material.MetadataSignature, "catalog.json": &material.Catalog, "catalog.sigstore.json": &material.CatalogSignature} {
+	for name, target := range map[string]*[]byte{"metadata.json": &material.Metadata, "metadata.sigstore.json": &material.MetadataSignature, "catalog.json": &material.Catalog, "catalog.sigstore.json": &material.CatalogSignature, "nightly/policy.json": &material.NightlyPolicy} {
 		*target, err = i.downloadURL(ctx, trustURL(name), maxTrustBytes)
 		if err != nil {
 			return releasetrust.SnapshotMaterial{}, releasetrust.Snapshot{}, err

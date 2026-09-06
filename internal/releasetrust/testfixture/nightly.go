@@ -92,6 +92,7 @@ func NightlyWithPayloads(t testing.TB, compatibility []byte, wrongCommit bool, p
 	policyRaw = JSON(t, policy)
 	f := New(t)
 	f.Catalog.NightlyPolicies = append(f.Catalog.NightlyPolicies, releaseidentity.Hash(policyRaw))
+	f.NightlyPolicy = policyRaw
 	sign := func(compatibility []byte, version string, sequence uint64, payloads map[string][]byte, artifacts []releasetrust.Artifact) (releasetrust.NightlyMaterial, *protobundle.Bundle) {
 		commit := strings.Repeat("a", 40)
 		if payloads == nil {

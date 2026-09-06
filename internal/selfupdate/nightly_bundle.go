@@ -96,7 +96,7 @@ func (i *Installer) assembleNightlyEvidence(ctx context.Context, evidence []Prep
 			return "", err
 		}
 	}
-	options := upgradeassembly.Options{Pinned: pinned, Floor: snapshot.Floor(), SnapshotDirectory: filepath.Join(stage, "snapshot"), KeysDirectory: filepath.Join(stage, "keys"), OutputDirectory: destination}
+	options := upgradeassembly.Options{Pinned: pinned, Floor: snapshot.Floor(), SnapshotDirectory: filepath.Join(stage, "snapshot"), KeysDirectory: filepath.Join(stage, "keys"), OutputDirectory: destination, NightlyPolicy: material.NightlyPolicy}
 	for _, item := range evidence {
 		options.Nightlies = append(options.Nightlies, item.Directory)
 	}

@@ -47,7 +47,7 @@ func preparedNightlyFixture(t *testing.T, archive []byte) (*Installer, updateche
 	installer.config.TrustRootBase64 = base64.StdEncoding.EncodeToString(trust.Pinned.Root)
 	installer.config.RecoveryKeyBase64 = base64.StdEncoding.EncodeToString(trust.Pinned.RecoveryPublicKey)
 	snapshot := trust.Material(t)
-	for name, raw := range map[string][]byte{"metadata.json": snapshot.Metadata, "metadata.sigstore.json": snapshot.MetadataSignature, "catalog.json": snapshot.Catalog, "catalog.sigstore.json": snapshot.CatalogSignature, "primary.pub": trust.PrimaryPublic} {
+	for name, raw := range map[string][]byte{"metadata.json": snapshot.Metadata, "metadata.sigstore.json": snapshot.MetadataSignature, "catalog.json": snapshot.Catalog, "catalog.sigstore.json": snapshot.CatalogSignature, "nightly/policy.json": snapshot.NightlyPolicy, "primary.pub": trust.PrimaryPublic} {
 		responses[trustURL(name)] = raw
 	}
 	status.Assets = nil

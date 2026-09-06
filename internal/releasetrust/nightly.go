@@ -85,7 +85,7 @@ func VerifyNightly(snapshot Snapshot, material NightlyMaterial) (VerifiedRelease
 		return VerifiedRelease{}, err
 	}
 	manifestDigest := releaseidentity.Hash(material.Manifest)
-	if slices.Contains(policy.RevokedManifests, manifestDigest) {
+	if slices.Contains(policy.RevokedManifests, manifestDigest) || slices.Contains(snapshot.state.nightlyRevoked, manifestDigest) {
 		return VerifiedRelease{}, errors.New("nightly manifest revoked by current policy")
 	}
 	if err := verifyNightlyEnvelope(policy, material.TrustedRoot, material.Bundle, material.Manifest, manifest.SourceCommit); err != nil {

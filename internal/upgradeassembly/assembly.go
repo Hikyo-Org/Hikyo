@@ -34,6 +34,9 @@ type Options struct {
 	Releases          []string
 	Nightlies         []string
 	Bridges           []string
+	// NightlyPolicy is the currently published nightly policy when the caller
+	// obtained one online; its revocations then apply to every nightly input.
+	NightlyPolicy []byte
 }
 
 // Assemble verifies all input evidence before atomically publishing a new
@@ -75,7 +78,7 @@ func Assemble(ctx context.Context, o Options) error {
 	for _, key := range metadata.PrimaryKeys {
 		keys[key.ID] = keyFiles[key.PublicKey]
 	}
-	material := releasetrust.SnapshotMaterial{Metadata: snapshotFiles["metadata.json"], MetadataSignature: snapshotFiles["metadata.sigstore.json"], Catalog: snapshotFiles["catalog.json"], CatalogSignature: snapshotFiles["catalog.sigstore.json"], PrimaryKeys: keys}
+	material := releasetrust.SnapshotMaterial{Metadata: snapshotFiles["metadata.json"], MetadataSignature: snapshotFiles["metadata.sigstore.json"], Catalog: snapshotFiles["catalog.json"], CatalogSignature: snapshotFiles["catalog.sigstore.json"], PrimaryKeys: keys, NightlyPolicy: o.NightlyPolicy}
 	snapshot, err := releasetrust.VerifySnapshot(pinned, material, floor)
 	if err != nil {
 		return fmt.Errorf("authenticate trust snapshot: %w", err)

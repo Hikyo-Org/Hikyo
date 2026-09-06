@@ -2,6 +2,7 @@ package selfupdate
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -20,7 +21,7 @@ import (
 )
 
 func TestSignedNightlyStagesVerifiedInventoryWithoutReplacingServer(t *testing.T) {
-	for _, mutation := range []string{"none", "extra", "signature", "wrong workflow commit", "missing", "rollback", "trust rollback", "bridge signature", "bridge missing"} {
+	for _, mutation := range []string{"none", "extra", "signature", "wrong workflow commit", "missing", "rollback", "trust rollback", "bridge signature", "bridge missing", "current policy revocation", "current policy missing"} {
 		t.Run(mutation, func(t *testing.T) {
 			const version = "1.1.0-nightly.1"
 			installer, status, target, responses := installerFixtureForVersion(t, version, true, "")
@@ -51,9 +52,23 @@ func TestSignedNightlyStagesVerifiedInventoryWithoutReplacingServer(t *testing.T
 			}
 			installer.config.TrustRootBase64 = base64.StdEncoding.EncodeToString(trust.Pinned.Root)
 			installer.config.RecoveryKeyBase64 = base64.StdEncoding.EncodeToString(trust.Pinned.RecoveryPublicKey)
+			if mutation == "current policy revocation" {
+				// The release bundles a clean, still-authorized policy; only the
+				// currently published policy revokes its manifest.
+				var current releasetrust.NightlyPolicy
+				if err := json.Unmarshal(material.Policy, &current); err != nil {
+					t.Fatal(err)
+				}
+				current.RevokedManifests = append(current.RevokedManifests, releaseidentity.Hash(material.Manifest))
+				trust.NightlyPolicy = testfixture.JSON(t, current)
+				trust.Catalog.NightlyPolicies = append(trust.Catalog.NightlyPolicies, releaseidentity.Hash(trust.NightlyPolicy))
+			}
 			snapshot := trust.Material(t)
-			for name, raw := range map[string][]byte{"metadata.json": snapshot.Metadata, "metadata.sigstore.json": snapshot.MetadataSignature, "catalog.json": snapshot.Catalog, "catalog.sigstore.json": snapshot.CatalogSignature, "primary.pub": trust.PrimaryPublic} {
+			for name, raw := range map[string][]byte{"metadata.json": snapshot.Metadata, "metadata.sigstore.json": snapshot.MetadataSignature, "catalog.json": snapshot.Catalog, "catalog.sigstore.json": snapshot.CatalogSignature, "nightly/policy.json": snapshot.NightlyPolicy, "primary.pub": trust.PrimaryPublic} {
 				responses[trustURL(name)] = raw
+			}
+			if mutation == "current policy missing" {
+				delete(responses, trustURL("nightly/policy.json"))
 			}
 			status.Assets = nil
 			add := func(name string, raw []byte) {
@@ -119,6 +134,8 @@ func TestSignedNightlyStagesVerifiedInventoryWithoutReplacingServer(t *testing.T
 				}
 			} else if err == nil || errors.As(err, &staged) {
 				t.Fatalf("unsafe %s accepted: %v", mutation, err)
+			} else if mutation == "current policy revocation" && !strings.Contains(err.Error(), "revoked") {
+				t.Fatalf("revocation refused for another reason: %v", err)
 			}
 			raw, err := os.ReadFile(target)
 			if err != nil || string(raw) != "old hikyo binary\n" {

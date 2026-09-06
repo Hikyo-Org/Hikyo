@@ -22,6 +22,11 @@ type SnapshotMaterial struct {
 	PrimaryKeys       map[string][]byte
 	Catalog           []byte
 	CatalogSignature  []byte
+	// NightlyPolicy is the currently published nightly policy. Online
+	// verifiers must supply it so a revocation applies to every nightly,
+	// including releases that bundled an earlier still-authorized policy.
+	// Offline verifiers with only embedded material leave it nil.
+	NightlyPolicy []byte
 }
 
 // SnapshotFloor is persisted by the installer/gate. The offline verifier
@@ -47,6 +52,9 @@ type snapshotState struct {
 	floor        SnapshotFloor
 	id           releaseidentity.Digest
 	stablePolicy releaseidentity.Digest
+	// nightlyRevoked comes from the current published nightly policy, not
+	// from any policy copy bundled with a release under verification.
+	nightlyRevoked []releaseidentity.Digest
 }
 
 // Snapshot can only be created by successful signature and policy validation.
@@ -161,10 +169,24 @@ func VerifySnapshot(pinned PinnedTrust, material SnapshotMaterial, floor Snapsho
 	if err := checkFloor(catalog.Sequence, catalogDigest, floor.CatalogSequence, floor.CatalogSHA256); err != nil {
 		return Snapshot{}, fmt.Errorf("upgrade catalog: %w", err)
 	}
+	var nightlyRevoked []releaseidentity.Digest
+	if material.NightlyPolicy != nil {
+		if len(material.NightlyPolicy) > MaxDocumentBytes || !slices.Contains(catalog.NightlyPolicies, releaseidentity.Hash(material.NightlyPolicy)) {
+			return Snapshot{}, errors.New("current nightly policy is not recovery-authorized")
+		}
+		var policy NightlyPolicy
+		if err := decodeDocument(material.NightlyPolicy, &policy); err != nil {
+			return Snapshot{}, err
+		}
+		if err := policy.Validate(); err != nil {
+			return Snapshot{}, err
+		}
+		nightlyRevoked = slices.Clone(policy.RevokedManifests)
+	}
 	nextFloor := SnapshotFloor{MetadataSequence: metadata.Sequence, MetadataSHA256: metadataDigest, HighestReleaseSequence: highest, CatalogSequence: catalog.Sequence, CatalogSHA256: catalogDigest}
 	stablePolicy := releaseidentity.Hash(pinned.Root)
 	identityBytes := []byte(string(stablePolicy) + ":" + string(metadataDigest) + ":" + string(catalogDigest))
-	return Snapshot{state: &snapshotState{root: root, metadata: metadata, keys: keys, recoveryKey: bytes.Clone(pinned.RecoveryPublicKey), catalog: catalog, floor: nextFloor, id: releaseidentity.Hash(identityBytes), stablePolicy: stablePolicy}}, nil
+	return Snapshot{state: &snapshotState{root: root, metadata: metadata, keys: keys, recoveryKey: bytes.Clone(pinned.RecoveryPublicKey), catalog: catalog, floor: nextFloor, id: releaseidentity.Hash(identityBytes), stablePolicy: stablePolicy, nightlyRevoked: nightlyRevoked}}, nil
 }
 
 func checkFloor(sequence int64, digest releaseidentity.Digest, known int64, knownDigest releaseidentity.Digest) error {
