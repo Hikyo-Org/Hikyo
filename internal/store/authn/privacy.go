@@ -17,6 +17,7 @@ type PrivacyAccountView struct {
 	PrincipalID string    `json:"principal_id"`
 	Username    string    `json:"username"`
 	DisplayName string    `json:"display_name"`
+	Email       string    `json:"email"`
 	CreatedAt   time.Time `json:"created_at"`
 	State       string    `json:"state"`
 }
@@ -36,13 +37,13 @@ func (r *Resolver) PrivacyAccount(ctx context.Context, principal string) (Privac
 			return PrivacyAccountView{}, notFoundOr(err)
 		}
 		at, err := decodeTime(a.CreatedAt)
-		return PrivacyAccountView{a.ID, a.PrincipalID, a.Username, a.DisplayName, at, a.PrivacyState}, err
+		return PrivacyAccountView{a.ID, a.PrincipalID, a.Username, a.DisplayName, a.Email, at, a.PrivacyState}, err
 	}
 	a, err := r.pg.PrivacyAccount(ctx, principal)
 	if err != nil {
 		return PrivacyAccountView{}, notFoundOr(err)
 	}
-	return PrivacyAccountView{a.ID, a.PrincipalID, a.Username, a.DisplayName, a.CreatedAt.Time, a.PrivacyState}, nil
+	return PrivacyAccountView{a.ID, a.PrincipalID, a.Username, a.DisplayName, a.Email, a.CreatedAt.Time, a.PrivacyState}, nil
 }
 func (r *Resolver) PrivacyActivity(ctx context.Context, principal string) ([]PrivacyActivity, error) {
 	out := []PrivacyActivity{}

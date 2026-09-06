@@ -12,6 +12,7 @@ import {
   type AuditScope,
 } from '../api/audit.ts';
 import { ApiError } from '../api/client.ts';
+import { useScopeNames } from '../api/scopeNames.ts';
 import { JumpIndex, Panel } from './Sections.tsx';
 
 /** The glyph before an outcome word, so the state is never colour-only. */
@@ -260,7 +261,7 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
                   >
                     <span className="audit__row-op mono">{event.type}</span>
                     <Outcome outcome={event.outcome} />
-                    <span className="audit__row-actor">{event.actor_id ?? event.actor_class}</span>
+                    <span className="audit__row-actor">{event.actor_name ?? event.actor_id ?? event.actor_class}</span>
                     <span className="audit__row-when">{when(event.recorded_at)}</span>
                   </button>
                 </li>
@@ -315,14 +316,11 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
               </div>
               <AuditFact label="Recorded" value={when(selected.recorded_at)} />
               <AuditFact label="Occurred" value={when(selected.occurred_at)} />
-              <AuditFact label="Principal" value={selected.actor_id ?? 'absent'} />
+              <AuditFact label="Principal" value={selected.actor_name ?? selected.actor_id ?? 'absent'} />
+              {selected.actor_name !== undefined ? <AuditFact label="Principal ID" value={selected.actor_id ?? 'absent'} /> : null}
               <AuditFact label="Actor class" value={selected.actor_class} />
               <AuditFact label="Scope" value={selected.scope_class} />
-              {selected.org_id !== undefined ? <AuditFact label="Org" value={selected.org_id} /> : null}
-              {selected.project_id !== undefined ? (
-                <AuditFact label="Project" value={selected.project_id} />
-              ) : null}
-              {selected.env_id !== undefined ? <AuditFact label="Environment" value={selected.env_id} /> : null}
+              <AuditScopeFacts event={selected} />
               {selected.object_type !== undefined ? (
                 <AuditFact label="Resource type" value={selected.object_type} />
               ) : null}
@@ -367,4 +365,13 @@ function AuditFact({ label, value }: { readonly label: string; readonly value: s
       </dd>
     </div>
   );
+}
+
+function AuditScopeFacts({ event }: { readonly event: AuditEvent }) {
+  const names = useScopeNames(event.org_id ?? '', event.project_id ?? '', event.env_id ?? '');
+  return <>
+    {event.org_id !== undefined ? <AuditFact label="Org" value={names.org} /> : null}
+    {event.project_id !== undefined ? <AuditFact label="Project" value={names.project} /> : null}
+    {event.env_id !== undefined ? <AuditFact label="Environment" value={names.environment} /> : null}
+  </>;
 }

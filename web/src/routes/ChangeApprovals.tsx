@@ -109,6 +109,18 @@ export function ChangeApprovals() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const envItems = environments.data?.items ?? [];
+  // Names come only from authorized policies and the selected review queue.
+  const knownPrincipals = new Map<string, string>();
+  for (const policy of policies.isError ? [] : policies.data?.items ?? []) {
+    for (const [id, name] of Object.entries(policy.principal_names ?? {})) knownPrincipals.set(id, name);
+  }
+  for (const request of requests.isError ? [] : requests.data?.items ?? []) {
+    if (request.requester_name !== undefined) knownPrincipals.set(request.requester, request.requester_name);
+    for (const vote of request.votes) {
+      if (vote.principal_name !== undefined) knownPrincipals.set(vote.principal_id, vote.principal_name);
+    }
+  }
+
 
   const openEditor = (policy: ApprovalPolicy | null) => {
     setActionError(null);
@@ -317,21 +329,31 @@ export function ChangeApprovals() {
               Enabled
             </label>
 
-            <label htmlFor="ca-approvers">Approvers (one per line: a principal id, or group:groupId:bindingId)</label>
-            <textarea
-              id="ca-approvers"
-              value={approversText}
-              onChange={(event) => setApproversText(event.target.value)}
-              rows={3}
-            />
-
-            <label htmlFor="ca-bypassers">Emergency bypassers (principal ids, one per line)</label>
-            <textarea
-              id="ca-bypassers"
-              value={bypassersText}
-              onChange={(event) => setBypassersText(event.target.value)}
-              rows={2}
-            />
+            <fieldset>
+              <legend>Approvers</legend>
+              <PolicyPeople names={knownPrincipals} selected={parseApprovers(approversText).filter((entry) => entry.kind === 'principal').map((entry) => entry.subject_id)} onChange={(id, checked) => {
+                const next = parseApprovers(approversText).filter((entry) => entry.kind !== 'principal' || entry.subject_id !== id);
+                if (checked) next.push({ kind: 'principal', subject_id: id });
+                setApproversText(approversToText(next));
+              }} />
+            </fieldset>
+            <fieldset>
+              <legend>Emergency bypassers</legend>
+              <PolicyPeople names={knownPrincipals} selected={parseList(bypassersText)} onChange={(id, checked) => {
+                const next = parseList(bypassersText).filter((entry) => entry !== id);
+                if (checked) next.push(id);
+                setBypassersText(next.join('\n'));
+              }} />
+            </fieldset>
+            <p className="field__hint">Names shown here come from policies and the selected review queue. This list does not grant or confirm permission to approve a change.</p>
+            <details>
+              <summary>Advanced: other people and provider groups</summary>
+              <p>For someone not listed above, enter their exact principal ID. Provider groups require their group and binding IDs. This page cannot search the user directory.</p>
+              <label htmlFor="ca-approvers">Approver IDs (one per line, or group:groupId:bindingId)</label>
+              <textarea id="ca-approvers" value={approversText} onChange={(event) => setApproversText(event.target.value)} rows={3} />
+              <label htmlFor="ca-bypassers">Emergency bypasser IDs (one per line)</label>
+              <textarea id="ca-bypassers" value={bypassersText} onChange={(event) => setBypassersText(event.target.value)} rows={2} />
+            </details>
 
             <div className="change-approvals__form-actions">
               <button type="submit" className="btn btn--primary" disabled={savePolicy.isPending}>
@@ -478,7 +500,7 @@ function ApprovalRequestRow({
       <dl className="change-approvals__request-meta">
         <div>
           <dt>Requester</dt>
-          <dd className="mono">{request.requester}</dd>
+          <dd title={request.requester}>{request.requester_name ?? request.requester}</dd>
         </div>
         <div>
           <dt>Changes</dt>
@@ -495,6 +517,11 @@ function ApprovalRequestRow({
           </div>
         )}
       </dl>
+      {request.votes.length > 0 ? <ul aria-label="Recorded votes">
+        {request.votes.map((entry) => <li key={entry.principal_id}>
+          <span title={entry.principal_id}>{entry.principal_name ?? entry.principal_id}</span>: {entry.decision}
+        </li>)}
+      </ul> : null}
       {active ? (
         <div className="change-approvals__request-actions">
           <button type="button" className="btn" disabled={busy} onClick={() => onVote('approve')}>
@@ -533,4 +560,18 @@ function ApprovalRequestRow({
       ) : null}
     </li>
   );
+}
+
+function PolicyPeople({ names, selected, onChange }: {
+  readonly names: ReadonlyMap<string, string>;
+  readonly selected: readonly string[];
+  readonly onChange: (id: string, checked: boolean) => void;
+}) {
+  const ids = [...new Set([...names.keys(), ...selected])];
+  if (ids.length === 0) return <p>No people are named in the current policies or review queue. Use Advanced to add the first person.</p>;
+  return <div>{ids.map((id) => <label key={id} title={id}>
+    <input type="checkbox" checked={selected.includes(id)} onChange={(event) => onChange(id, event.target.checked)} />
+    {names.get(id) ?? id}
+    {[...names].some(([other, name]) => other !== id && name === names.get(id)) ? ` (${id})` : ''}
+  </label>)}</div>;
 }

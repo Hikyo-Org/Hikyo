@@ -305,6 +305,8 @@ var pinnedContractSurface = map[string]bool{
 	"GET /api/v1/instance/saml-providers/{slug}":                                               true,
 	"GET /api/v1/instance/saml-sp-keys":                                                        true,
 	"GET /api/v1/instance/workspace-origins":                                                   true,
+	"GET /api/v1/me/profile":                                                                   true,
+	"PATCH /api/v1/me/profile":                                                                 true,
 	"GET /api/v1/me/orgs":                                                                      true,
 	"GET /api/v1/me/sessions":                                                                  true,
 	"GET /api/v1/meta":                                                                         true,

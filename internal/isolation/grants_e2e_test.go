@@ -426,6 +426,14 @@ func TestMembershipListing(t *testing.T) {
 // origin chips, which is what makes "who can read production secrets?"
 // answerable by inspection.
 func runMembershipListing(t *testing.T, db *store.DB) {
+	if err := tx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+		if err := az.CreateAccount(ctx, authz.Account{ID: "acc_member_name", PrincipalID: grantee, Username: "dana", DisplayName: "Dana Jacobs", CreatedAt: time.Now()}); err != nil {
+			return err
+		}
+		return az.CreateAccount(ctx, authz.Account{ID: "acc_manager_name", PrincipalID: orgAdmin, Username: "member-manager", CreatedAt: time.Now()})
+	}); err != nil {
+		t.Fatal(err)
+	}
 	g := grantSvc(db)
 	ctx := t.Context()
 	spec := service.GrantSpec{Target: grantee, Capability: domain.CapReveal, Scope: envScope(envProd)}
@@ -445,12 +453,28 @@ func runMembershipListing(t *testing.T, db *store.DB) {
 	if found == nil {
 		t.Fatal("the reveal grant is absent from the org membership surface")
 	}
+	if found.PrincipalName != "Dana Jacobs" {
+		t.Fatalf("member name = %q, want Dana Jacobs", found.PrincipalName)
+	}
 	if len(found.Origins) != 1 || found.Origins[0].Kind != domain.OriginManual ||
 		found.Origins[0].Subject != string(orgAdmin) {
 		t.Fatalf("origin chips = %+v, want exactly manual(orgAdmin)", found.Origins)
 	}
 	if found.Scope != envScope(envProd) {
 		t.Fatalf("line scope = %+v, want the environment it was granted at", found.Scope)
+	}
+	// Audit labels describe only actors present in this authorized page, using
+	// the username when no display name is set. They do not enumerate accounts.
+	audits := &service.Audits{DB: db}
+	page, err := audits.Query(ctx, alice, orgAScope, store.AuditFilter{Limit: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.ActorNames[string(orgAdmin)] != "member-manager" {
+		t.Fatalf("audit actor names = %v", page.ActorNames)
+	}
+	if _, exposed := page.ActorNames[string(grantee)]; exposed {
+		t.Fatal("audit labels exposed a member who did not act in this page")
 	}
 	// A principal with no `manage-members` cannot read the surface at all: it
 	// answers the uniform nonexistent response, like every tenant refusal.

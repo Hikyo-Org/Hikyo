@@ -2,6 +2,21 @@
 
 import * as z from 'zod';
 
+export const zAccountProfile = z.object({
+    username: z.string(),
+    display_name: z.string(),
+    email: z.string(),
+    managed: z.boolean(),
+    username_editable: z.boolean()
+});
+
+export const zUpdateAccountProfileRequest = z.object({
+    username: z.string().min(1).max(256),
+    display_name: z.string().max(256),
+    email: z.string().max(254),
+    proof: z.string().optional()
+});
+
 /**
  * A prefixed UUIDv7, e.g. `org_0198…`.
  */
@@ -876,6 +891,7 @@ export const zApprovalPolicyInput = z.object({
 });
 
 export const zApprovalPolicy = z.object({
+    principal_names: z.record(z.string(), z.string()).optional(),
     id: zId,
     environment_id: z.string().max(64),
     min_approvals: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
@@ -894,12 +910,14 @@ export const zApprovalPolicyList = z.object({
 });
 
 export const zApprovalVote = z.object({
+    principal_name: z.string().optional(),
     principal_id: zId,
     decision: z.enum(['approve', 'reject']),
     created_at: zTimestamp
 });
 
 export const zApprovalRequest = z.object({
+    requester_name: z.string().optional(),
     id: zId,
     environment_id: zId,
     policy_id: zId,
@@ -1559,6 +1577,7 @@ export const zGrantScope = z.object({
 export const zGrant = z.object({
     id: zId,
     principal_id: zId,
+    principal_name: z.string().optional(),
     capability: zCapability,
     scope: zGrantScope,
     origins: z.array(zGrantOrigin),
@@ -2990,6 +3009,7 @@ export const zAuditEvent = z.object({
     occurred_asserted: z.boolean(),
     recorded_at: z.iso.datetime(),
     actor_id: z.string().optional(),
+    actor_name: z.string().optional(),
     actor_class: z.string(),
     actor_credential_id: z.string().optional(),
     authority_id: z.string().optional(),
@@ -4548,6 +4568,18 @@ export const zSamlMetadataPath = z.object({
  * SAML 2.0 SP metadata XML.
  */
 export const zSamlMetadataResponse = z.string();
+
+/**
+ * Your account profile.
+ */
+export const zGetMyProfileResponse = zAccountProfile;
+
+export const zUpdateMyProfileBody = zUpdateAccountProfileRequest;
+
+/**
+ * Your updated profile. Existing sessions remain valid.
+ */
+export const zUpdateMyProfileResponse = zAccountProfile;
 
 /**
  * The caller's organisations, empty when their grants name none.

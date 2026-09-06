@@ -392,8 +392,8 @@ export function Members({ scope }: { scope: MembersScope }) {
                 return (
                   <tr key={row.key}>
                     <td>
-                      <span className={compactPresentation ? 'member-name' : 'mono'}>
-                        {principalLabel(row.principal)}
+                      <span className="member-name" title={row.principal}>
+                        {principalLabel(row.principal, lines)}
                       </span>
                       {row.principal === me && !compactPresentation ? <span className="badge">you</span> : null}
                       {/* Reset credential (#568): humans only (`mch_` is a
@@ -411,7 +411,7 @@ export function Members({ scope }: { scope: MembersScope }) {
                           className="btn btn--quiet"
                           disabled={resetPending !== null}
                           aria-busy={resetPending === row.principal ? true : undefined}
-                          aria-label={`Reset credential for ${row.principal}`}
+                          aria-label={`Reset credential for ${principalLabel(row.principal, lines)}`}
                           onClick={() => void onReset(row.principal)}
                         >
                           {resetPending === row.principal ? 'Resetting…' : 'Reset credential'}
@@ -433,7 +433,7 @@ export function Members({ scope }: { scope: MembersScope }) {
                         {orderedMembershipGrants(row.grants, compactPresentation).map((grant) => {
                           const revoking =
                             revoke.isPending && revoke.variables?.grant.id === grant.id;
-                          const revokeLabel = `${revoking ? 'Revoking' : 'Revoke'} ${grant.capability} on ${row.scopeLabel} for ${row.principal}`;
+                          const revokeLabel = `${revoking ? 'Revoking' : 'Revoke'} ${grant.capability} on ${row.scopeLabel} for ${principalLabel(row.principal, lines)}`;
                           const revokeText = compactPresentation
                             ? (revoking ? '…' : '✕')
                             : (revoking ? 'Revoking…' : 'Revoke');
@@ -558,7 +558,7 @@ export function Members({ scope }: { scope: MembersScope }) {
       ) : null}
       {resetIssued === null ? null : (
         <IssuedAuthorityDialog
-          title={`Credential reset for ${principalLabel(resetIssued.principal)}`}
+          title={`Credential reset for ${principalLabel(resetIssued.principal, lines)}`}
           lede="Their sessions are revoked. Hand this authority to them out of band; it is shown once and only ever establishes a new password."
           username={null}
           principalId={resetIssued.principal}
@@ -566,7 +566,7 @@ export function Members({ scope }: { scope: MembersScope }) {
           origin={window.location.origin}
           onClose={() => {
             feedback.ok(
-              `Reset the credential for ${principalLabel(resetIssued.principal)}. The authority was shown once.`,
+              `Reset the credential for ${principalLabel(resetIssued.principal, lines)}. The authority was shown once.`,
             );
             setResetIssued(null);
           }}
@@ -584,6 +584,7 @@ export function Members({ scope }: { scope: MembersScope }) {
           topologyPending={topologyPending}
           topologyError={topologyError}
           known={[...new Set(lines.map((line) => line.principal_id))]}
+          principalName={(id) => principalLabel(id, lines)}
           onDraft={setDraft}
           onStage={setModal}
           onDone={(text) => {
@@ -692,7 +693,7 @@ function Inspect({
               {answer.map((grant, index) => (
                 <span key={grant.id}>
                   {index === 0 ? null : ', '}
-                  <strong>{principalLabel(grant.principal_id)}</strong>{' '}
+                  <strong>{principalLabel(grant.principal_id, grants)}</strong>{' '}
                   <span className="chrome-meta">
                     (via {compactGrantScopeLabel([grant], grantScopeLabel(grant, names), names)})
                   </span>
@@ -721,7 +722,7 @@ function Inspect({
             <strong>{answer.length}</strong> grant {answer.length === 1 ? 'line' : 'lines'} give{' '}
             <span className="mono">{capability}</span> on {chosen.label}:{' '}
             {answer
-              .map((grant) => `${grant.principal_id} (via ${grantScopeLabel(grant, names)})`)
+              .map((grant) => `${principalLabel(grant.principal_id, grants)} (via ${grantScopeLabel(grant, names)})`)
               .join(', ')}
             .
           </>
@@ -789,8 +790,9 @@ function membersFailureText(error: unknown): string {
   return error instanceof ResetRefusal ? error.message : grantFailureText(error);
 }
 
-function principalLabel(principal: string): string {
-  return prototypePrincipalNames?.get(principal) ?? principal;
+function principalLabel(principal: string, grants: readonly Grant[]): string {
+  return grants.find((grant) => grant.principal_id === principal)?.principal_name
+    ?? prototypePrincipalNames?.get(principal) ?? principal;
 }
 
 function orderedMembershipGrants(
@@ -843,6 +845,7 @@ function GrantModal({
   topologyPending,
   topologyError,
   known,
+  principalName,
   onDraft,
   onStage,
   onDone,
@@ -857,6 +860,7 @@ function GrantModal({
   topologyPending: boolean;
   topologyError: boolean;
   known: readonly string[];
+  principalName: (id: string) => string;
   onDraft: (draft: GrantDraft) => void;
   onStage: (stage: 'none' | 'grant' | 'blast') => void;
   onDone: (text: string) => void;
@@ -867,6 +871,7 @@ function GrantModal({
   const create = useCreateGrants();
   const applyTemplate = useApplyTemplate();
   const principalId = useId();
+  const [enterPrincipalId, setEnterPrincipalId] = useState(false);
   const scopeId = useId();
   const templateId = useId();
 
@@ -939,7 +944,7 @@ function GrantModal({
         {
           onSuccess: (result) =>
             onDone(
-              `Applied ${draft.template} to ${principal} on ${chosen.label}: ${grantOutcomeSummary(result.items)} Each grant line remains independently revocable.`,
+              `Applied ${draft.template} to ${principalName(principal)} on ${chosen.label}: ${grantOutcomeSummary(result.items)} Each grant line remains independently revocable.`,
             ),
           onError: (error) => {
             onStage('grant');
@@ -971,7 +976,7 @@ function GrantModal({
         try {
           done.push(...(await create.mutateAsync({ scope, principal, capabilities: pending })));
           onDone(
-            `Grant results for ${principal} on ${chosen.label}: ${grantOutcomeSummary(done)} Each grant line remains independently revocable.`,
+            `Grant results for ${principalName(principal)} on ${chosen.label}: ${grantOutcomeSummary(done)} Each grant line remains independently revocable.`,
           );
           return;
         } catch (error) {
@@ -1023,7 +1028,7 @@ function GrantModal({
       >
         <h2 id="blast-title">Organisation-scoped grant: check the blast radius</h2>
         <p className="ceremony__lede">
-          <strong>{draft.principal}</strong> would get <span className="mono">{composed}</span> on{' '}
+          <strong>{principalName(draft.principal)}</strong> would get <span className="mono">{composed}</span> on{' '}
           <strong>every project and environment in {orgName}</strong>, current and future. Grants
           inherit automatically, with no further decision, and there are no deny rules, so there is
           no per-project exception under an organisation grant.
@@ -1116,22 +1121,39 @@ function GrantModal({
           </select>
         ) : (
           <>
-            <input
-              id={principalId}
-              list={`${principalId}-known`}
-              value={draft.principal}
-              autoComplete="off"
-              spellCheck={false}
-              onChange={(event) => onDraft({ ...draft, principal: event.target.value })}
-            />
-            <datalist id={`${principalId}-known`}>
-              {known.map((id) => (
-                <option key={id} value={id} />
-              ))}
-            </datalist>
+            {enterPrincipalId ? (
+              <input
+                id={principalId}
+                value={draft.principal}
+                autoComplete="off"
+                spellCheck={false}
+                onChange={(event) => onDraft({ ...draft, principal: event.target.value })}
+              />
+            ) : (
+              <select
+                id={principalId}
+                value={draft.principal}
+                onChange={(event) => onDraft({ ...draft, principal: event.target.value })}
+              >
+                <option value="">Choose a member…</option>
+                {known.map((id) => (
+                  <option key={id} value={id}>
+                    {principalName(id)}
+                    {known.some((other) => other !== id && principalName(other) === principalName(id)) ? ` (${id})` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button type="button" className="btn btn--quiet" onClick={() => {
+              setEnterPrincipalId(!enterPrincipalId);
+              onDraft({ ...draft, principal: '' });
+            }}>
+              {enterPrincipalId ? 'Choose an existing member' : 'Enter an ID for another principal'}
+            </button>
             <p className="field__hint">
-              The principal id of a person or a service account; the list offers the ones already
-              holding something here.
+              {enterPrincipalId
+                ? 'Enter the exact ID of a person or service account outside this member list.'
+                : 'Choose a person or service account already holding access here. Invite a new person from Members.'}
             </p>
           </>
         )}

@@ -4,6 +4,30 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type AccountProfile = {
+    username: string;
+    display_name: string;
+    email: string;
+    /**
+     * SCIM controls the username and display name.
+     */
+    managed: boolean;
+    /**
+     * A local password or confirmed authenticator can prove a username change.
+     */
+    username_editable: boolean;
+};
+
+export type UpdateAccountProfileRequest = {
+    username: string;
+    display_name: string;
+    /**
+     * Contact address, or empty to clear. Never used for authentication.
+     */
+    email: string;
+    proof?: string;
+};
+
 /**
  * A prefixed UUIDv7, e.g. `org_0198…`.
  */
@@ -1318,6 +1342,12 @@ export type ApprovalPolicyInput = {
 };
 
 export type ApprovalPolicy = {
+    /**
+     * Current names for principal approvers and bypassers already disclosed by this policy; not a user directory.
+     */
+    principal_names?: {
+        [key: string]: string;
+    };
     id: Id;
     environment_id: string;
     min_approvals: number;
@@ -1336,12 +1366,20 @@ export type ApprovalPolicyList = {
 };
 
 export type ApprovalVote = {
+    /**
+     * Current display name of the referenced principal, when available.
+     */
+    principal_name?: string;
     principal_id: Id;
     decision: 'approve' | 'reject';
     created_at: Timestamp;
 };
 
 export type ApprovalRequest = {
+    /**
+     * Current display name of the referenced principal, when available.
+     */
+    requester_name?: string;
     id: Id;
     environment_id: Id;
     policy_id: Id;
@@ -2674,6 +2712,10 @@ export type GrantOrigin = {
 export type Grant = {
     id: Id;
     principal_id: Id;
+    /**
+     * Current display name or username of this authorized member; not an identifier.
+     */
+    principal_name?: string;
     capability: Capability;
     scope: GrantScope;
     /**
@@ -4200,6 +4242,10 @@ export type AuditEvent = {
     occurred_asserted: boolean;
     recorded_at: string;
     actor_id?: string;
+    /**
+     * Current display name of this event actor, when still available. This is a presentation label, not historical evidence.
+     */
+    actor_name?: string;
     actor_class: string;
     actor_credential_id?: string;
     authority_id?: string;
@@ -11186,6 +11232,127 @@ export type SamlMetadataResponses = {
 };
 
 export type SamlMetadataResponse = SamlMetadataResponses[keyof SamlMetadataResponses];
+
+export type GetMyProfileData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/me/profile';
+};
+
+export type GetMyProfileErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type GetMyProfileError = GetMyProfileErrors[keyof GetMyProfileErrors];
+
+export type GetMyProfileResponses = {
+    /**
+     * Your account profile.
+     */
+    200: AccountProfile;
+};
+
+export type GetMyProfileResponse = GetMyProfileResponses[keyof GetMyProfileResponses];
+
+export type UpdateMyProfileData = {
+    body: UpdateAccountProfileRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/me/profile';
+};
+
+export type UpdateMyProfileErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type UpdateMyProfileError = UpdateMyProfileErrors[keyof UpdateMyProfileErrors];
+
+export type UpdateMyProfileResponses = {
+    /**
+     * Your updated profile. Existing sessions remain valid.
+     */
+    200: AccountProfile;
+};
+
+export type UpdateMyProfileResponse = UpdateMyProfileResponses[keyof UpdateMyProfileResponses];
 
 export type ListMyOrgsData = {
     body?: never;

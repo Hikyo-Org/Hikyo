@@ -2,7 +2,7 @@
   "review": "See private-client-lifetime.html for input/result categories, uncached operations and local state ownership. Every changed mutation-capable module requires renewed sensitivity review.",
   "sources": {
     "api/access.ts": "09c2ca1331bf28e5ff831c05b5aeac48692887d470ac9c97956e7b3cc5992f0e",
-    "api/account.ts": "4f7e27828d8a9c40ba7a9af16e62128c68ffe2c559e2ebc48bf2835cc0882958",
+    "api/account.ts": "c8d8673aa12cfad4182ece141e67856a1057b7642ed4c674c705527884c86a84",
     "api/adapters.ts": "6777d375554728142dd73cac83cf8f9f4bc26d476040b4255d429c61464c74ce",
     "api/approvals.ts": "28db4234c0e8fe1770895c66c500c1d349b86c50bc17566bbaf6d549090777b4",
     "api/catalogue.ts": "a2ec076476732519cb5111848ec0ee2da091d1d2a0d7cdd27f7bc64af5c916d1",
@@ -26,7 +26,7 @@
     "api/values.ts": "90360adc1dcd66dcc4a88c3321e2ee80927c37a4b53d889e78962bf076225f3f",
     "routes/CLIReauth.tsx": "342e2da43c717dfa9a13e7b0413db60e9752746daeae7d4508626f4743841f7b",
     "routes/EstablishCredential.tsx": "9552a6feb4bbfffa7ec510de9cca6d2d483838ed1a0317a21513c9628fb0ad08",
-    "routes/HistoryDrawer.tsx": "26e6f38853978924bd6ab8fa5b2190320f22f6b7d738cf359a96b75dba0ec947",
+    "routes/HistoryDrawer.tsx": "fc39b7ae0b0f60352a8eab879cace6ceb739dd90fce5d6cf3f6f1284320d4858",
     "routes/InstanceAdmin.tsx": "3113315fcc47f1c75bee5d5a6bf69c868858134136d60a2ffeadf03d4834bd2d",
     "routes/Login.tsx": "aa8ffa9f6fb1f5a01f8e5e90673cc065ccb8807df8d0752de08f91778870f10c",
     "routes/WorkspaceApprove.tsx": "8e91e8afa4d9f2823674c17c28eb95222dcb8997f829b44ca25f490d279f955f"

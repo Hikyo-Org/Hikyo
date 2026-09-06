@@ -2554,6 +2554,19 @@ func (e ExportEnvAuditParamsOutcome) Valid() bool {
 	}
 }
 
+// AccountProfile defines model for AccountProfile.
+type AccountProfile struct {
+	DisplayName string `json:"display_name"`
+	Email       string `json:"email"`
+
+	// Managed SCIM controls the username and display name.
+	Managed  bool   `json:"managed"`
+	Username string `json:"username"`
+
+	// UsernameEditable A local password or confirmed authenticator can prove a username change.
+	UsernameEditable bool `json:"username_editable"`
+}
+
 // Acknowledgements Secret-scanning acknowledgement tokens (#74). On a value write, a
 // keep-as-config token dismisses a Surface-1 warning for exactly that
 // value. On a declaration write, one override token per finding is
@@ -3087,9 +3100,12 @@ type ApprovalPolicy struct {
 	EnvironmentId string    `json:"environment_id"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
-	Id                ID    `json:"id"`
-	MinApprovals      int32 `json:"min_approvals"`
-	RequestTtlSeconds int32 `json:"request_ttl_seconds"`
+	Id           ID    `json:"id"`
+	MinApprovals int32 `json:"min_approvals"`
+
+	// PrincipalNames Current names for principal approvers and bypassers already disclosed by this policy; not a user directory.
+	PrincipalNames    *map[string]string `json:"principal_names,omitempty"`
+	RequestTtlSeconds int32              `json:"request_ttl_seconds"`
 
 	// UpdatedAt RFC 3339 UTC, microsecond precision.
 	UpdatedAt Timestamp `json:"updated_at"`
@@ -3145,6 +3161,9 @@ type ApprovalRequest struct {
 	// Requester A prefixed UUIDv7, e.g. `org_0198…`.
 	Requester ID `json:"requester"`
 
+	// RequesterName Current display name of the referenced principal, when available.
+	RequesterName *string `json:"requester_name,omitempty"`
+
 	// ResolvedAt RFC 3339 UTC, microsecond precision.
 	ResolvedAt *Timestamp           `json:"resolved_at,omitempty"`
 	State      ApprovalRequestState `json:"state"`
@@ -3189,6 +3208,9 @@ type ApprovalVote struct {
 
 	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
 	PrincipalId ID `json:"principal_id"`
+
+	// PrincipalName Current display name of the referenced principal, when available.
+	PrincipalName *string `json:"principal_name,omitempty"`
 }
 
 // ApprovalVoteDecision defines model for ApprovalVote.Decision.
@@ -3239,12 +3261,15 @@ type AuditEvent struct {
 	ActorClass        string  `json:"actor_class"`
 	ActorCredentialId *string `json:"actor_credential_id,omitempty"`
 	ActorId           *string `json:"actor_id,omitempty"`
-	AuthorityId       *string `json:"authority_id,omitempty"`
-	CorrelationId     *string `json:"correlation_id,omitempty"`
-	EnvId             *string `json:"env_id,omitempty"`
-	Id                string  `json:"id"`
-	ObjectId          *string `json:"object_id,omitempty"`
-	ObjectType        *string `json:"object_type,omitempty"`
+
+	// ActorName Current display name of this event actor, when still available. This is a presentation label, not historical evidence.
+	ActorName     *string `json:"actor_name,omitempty"`
+	AuthorityId   *string `json:"authority_id,omitempty"`
+	CorrelationId *string `json:"correlation_id,omitempty"`
+	EnvId         *string `json:"env_id,omitempty"`
+	Id            string  `json:"id"`
+	ObjectId      *string `json:"object_id,omitempty"`
+	ObjectType    *string `json:"object_type,omitempty"`
 
 	// OccurredAsserted Whether occurred_at was asserted by a client rather than the server clock.
 	OccurredAsserted bool      `json:"occurred_asserted"`
@@ -4651,6 +4676,9 @@ type Grant struct {
 
 	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
 	PrincipalId ID `json:"principal_id"`
+
+	// PrincipalName Current display name or username of this authorized member; not an identifier.
+	PrincipalName *string `json:"principal_name,omitempty"`
 
 	// Scope The scope the grant was made at. All three absent is instance scope.
 	// Grants inherit downward, so a grant at a scope applies to everything
@@ -7172,6 +7200,16 @@ type TotpStatus struct {
 	Pending bool `json:"pending"`
 }
 
+// UpdateAccountProfileRequest defines model for UpdateAccountProfileRequest.
+type UpdateAccountProfileRequest struct {
+	DisplayName string `json:"display_name"`
+
+	// Email Contact address, or empty to clear. Never used for authentication.
+	Email    string  `json:"email"`
+	Proof    *string `json:"proof,omitempty"`
+	Username string  `json:"username"`
+}
+
 // UpdateAdapterOriginRequest defines model for UpdateAdapterOriginRequest.
 type UpdateAdapterOriginRequest struct {
 	// Credential Write-only credential for the pending origin.
@@ -8442,6 +8480,9 @@ type RemoveWorkspaceOriginJSONRequestBody = WorkspaceOriginRequest
 // AddWorkspaceOriginJSONRequestBody defines body for AddWorkspaceOrigin for application/json ContentType.
 type AddWorkspaceOriginJSONRequestBody = WorkspaceOriginRequest
 
+// UpdateMyProfileJSONRequestBody defines body for UpdateMyProfile for application/json ContentType.
+type UpdateMyProfileJSONRequestBody = UpdateAccountProfileRequest
+
 // CreateOrgJSONRequestBody defines body for CreateOrg for application/json ContentType.
 type CreateOrgJSONRequestBody = CreateOrgRequest
 
@@ -9134,6 +9175,12 @@ type ServerInterface interface {
 	// ListMyOrgs The organisations the caller's own grants name.
 	// (GET /api/v1/me/orgs)
 	ListMyOrgs(w http.ResponseWriter, r *http.Request)
+	// GetMyProfile Read your own account profile.
+	// (GET /api/v1/me/profile)
+	GetMyProfile(w http.ResponseWriter, r *http.Request)
+	// UpdateMyProfile Update your own account profile.
+	// (PATCH /api/v1/me/profile)
+	UpdateMyProfile(w http.ResponseWriter, r *http.Request)
 	// ListMySessions The caller's own active sessions, workspace sessions included.
 	// (GET /api/v1/me/sessions)
 	ListMySessions(w http.ResponseWriter, r *http.Request)
@@ -10214,6 +10261,18 @@ func (_ Unimplemented) AddWorkspaceOrigin(w http.ResponseWriter, r *http.Request
 // ListMyOrgs The organisations the caller's own grants name.
 // (GET /api/v1/me/orgs)
 func (_ Unimplemented) ListMyOrgs(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetMyProfile Read your own account profile.
+// (GET /api/v1/me/profile)
+func (_ Unimplemented) GetMyProfile(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateMyProfile Update your own account profile.
+// (PATCH /api/v1/me/profile)
+func (_ Unimplemented) UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -12972,6 +13031,34 @@ func (siw *ServerInterfaceWrapper) ListMyOrgs(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListMyOrgs(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMyProfile operation middleware
+func (siw *ServerInterfaceWrapper) GetMyProfile(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyProfile(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateMyProfile operation middleware
+func (siw *ServerInterfaceWrapper) UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateMyProfile(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -21693,6 +21780,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/auth/saml/{provider}/metadata", wrapper.SamlMetadata)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/me/profile", wrapper.GetMyProfile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1/me/profile", wrapper.UpdateMyProfile)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/me/orgs", wrapper.ListMyOrgs)
@@ -30619,6 +30712,205 @@ func (response ListMyOrgs429JSONResponse) VisitListMyOrgsResponse(w http.Respons
 type ListMyOrgs500JSONResponse struct{ InternalJSONResponse }
 
 func (response ListMyOrgs500JSONResponse) VisitListMyOrgsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyProfileRequestObject struct {
+}
+
+type GetMyProfileResponseObject interface {
+	VisitGetMyProfileResponse(w http.ResponseWriter) error
+}
+
+type GetMyProfile200JSONResponse AccountProfile
+
+func (response GetMyProfile200JSONResponse) VisitGetMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyProfile401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetMyProfile401JSONResponse) VisitGetMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyProfile404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetMyProfile404JSONResponse) VisitGetMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyProfile429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetMyProfile429JSONResponse) VisitGetMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyProfile500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetMyProfile500JSONResponse) VisitGetMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMyProfileRequestObject struct {
+	Body *UpdateMyProfileJSONRequestBody
+}
+
+type UpdateMyProfileResponseObject interface {
+	VisitUpdateMyProfileResponse(w http.ResponseWriter) error
+}
+
+type UpdateMyProfile200JSONResponse AccountProfile
+
+func (response UpdateMyProfile200JSONResponse) VisitUpdateMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMyProfile400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateMyProfile400JSONResponse) VisitUpdateMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMyProfile401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdateMyProfile401JSONResponse) VisitUpdateMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMyProfile403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdateMyProfile403JSONResponse) VisitUpdateMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMyProfile404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateMyProfile404JSONResponse) VisitUpdateMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMyProfile409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpdateMyProfile409JSONResponse) VisitUpdateMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMyProfile429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response UpdateMyProfile429JSONResponse) VisitUpdateMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMyProfile500JSONResponse struct{ InternalJSONResponse }
+
+func (response UpdateMyProfile500JSONResponse) VisitUpdateMyProfileResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -48219,6 +48511,12 @@ type StrictServerInterface interface {
 	// ListMyOrgs The organisations the caller's own grants name.
 	// (GET /api/v1/me/orgs)
 	ListMyOrgs(ctx context.Context, request ListMyOrgsRequestObject) (ListMyOrgsResponseObject, error)
+	// GetMyProfile Read your own account profile.
+	// (GET /api/v1/me/profile)
+	GetMyProfile(ctx context.Context, request GetMyProfileRequestObject) (GetMyProfileResponseObject, error)
+	// UpdateMyProfile Update your own account profile.
+	// (PATCH /api/v1/me/profile)
+	UpdateMyProfile(ctx context.Context, request UpdateMyProfileRequestObject) (UpdateMyProfileResponseObject, error)
 	// ListMySessions The caller's own active sessions, workspace sessions included.
 	// (GET /api/v1/me/sessions)
 	ListMySessions(ctx context.Context, request ListMySessionsRequestObject) (ListMySessionsResponseObject, error)
@@ -51310,6 +51608,61 @@ func (sh *strictHandler) ListMyOrgs(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListMyOrgsResponseObject); ok {
 		if err := validResponse.VisitListMyOrgsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMyProfile operation middleware
+func (sh *strictHandler) GetMyProfile(w http.ResponseWriter, r *http.Request) {
+	var request GetMyProfileRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMyProfile(ctx, request.(GetMyProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMyProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMyProfileResponseObject); ok {
+		if err := validResponse.VisitGetMyProfileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateMyProfile operation middleware
+func (sh *strictHandler) UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
+	var request UpdateMyProfileRequestObject
+
+	var body UpdateMyProfileJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateMyProfile(ctx, request.(UpdateMyProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateMyProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateMyProfileResponseObject); ok {
+		if err := validResponse.VisitUpdateMyProfileResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

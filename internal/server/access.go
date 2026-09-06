@@ -109,7 +109,7 @@ func wireMemberships(lines []service.Membership) apigen.GrantList {
 			})
 		}
 		items = append(items, apigen.Grant{
-			Id: l.GrantID, PrincipalId: string(l.Principal),
+			Id: l.GrantID, PrincipalId: string(l.Principal), PrincipalName: optStr(l.PrincipalName),
 			Capability: string(l.Capability), Scope: wireGrantScope(l.Scope),
 			Origins: origins, CreatedAt: l.CreatedAt,
 		})

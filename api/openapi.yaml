@@ -3915,6 +3915,64 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/me/profile:
+    get:
+      operationId: getMyProfile
+      tags: [auth]
+      summary: Read your own account profile.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "200":
+          description: Your account profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountProfile"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    patch:
+      operationId: updateMyProfile
+      tags: [auth]
+      summary: Update your own account profile.
+      description: Email is contact metadata and never a login or identity linking key. Provisioned names remain controlled by SCIM. Username changes require current account proof.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAccountProfileRequest"
+      responses:
+        "200":
+          description: Your updated profile. Existing sessions remain valid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountProfile"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
   /api/v1/me/orgs:
     get:
       operationId: listMyOrgs
@@ -10613,6 +10671,40 @@ components:
             $ref: "#/components/schemas/Error"
 
   schemas:
+    AccountProfile:
+      type: object
+      required: [username, display_name, email, managed, username_editable]
+      properties:
+        username:
+          type: string
+        display_name:
+          type: string
+        email:
+          type: string
+        managed:
+          type: boolean
+          description: SCIM controls the username and display name.
+        username_editable:
+          type: boolean
+          description: A local password or confirmed authenticator can prove a username change.
+    UpdateAccountProfileRequest:
+      type: object
+      additionalProperties: false
+      required: [username, display_name, email]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 256
+        display_name:
+          type: string
+          maxLength: 256
+        email:
+          type: string
+          maxLength: 254
+          description: Contact address, or empty to clear. Never used for authentication.
+        proof:
+          type: string
     ID:
       type: string
       description: A prefixed UUIDv7, e.g. `org_0198…`.
@@ -12416,6 +12508,11 @@ components:
       required: [id, environment_id, min_approvals, allow_self_approval, request_ttl_seconds, enabled, version, approvers, bypassers, created_at, updated_at]
       additionalProperties: false
       properties:
+        principal_names:
+          type: object
+          additionalProperties:
+            type: string
+          description: Current names for principal approvers and bypassers already disclosed by this policy; not a user directory.
         id: {$ref: "#/components/schemas/ID"}
         environment_id:
           type: string
@@ -12446,6 +12543,9 @@ components:
       required: [principal_id, decision, created_at]
       additionalProperties: false
       properties:
+        principal_name:
+          type: string
+          description: Current display name of the referenced principal, when available.
         principal_id: {$ref: "#/components/schemas/ID"}
         decision:
           type: string
@@ -12456,6 +12556,9 @@ components:
       required: [id, environment_id, policy_id, policy_version, requester, change_count, base_revision, purpose, state, invalidated_cause, min_approvals, approvals, key_ids, votes, created_at, expires_at]
       additionalProperties: false
       properties:
+        requester_name:
+          type: string
+          description: Current display name of the referenced principal, when available.
         id: {$ref: "#/components/schemas/ID"}
         environment_id: {$ref: "#/components/schemas/ID"}
         policy_id: {$ref: "#/components/schemas/ID"}
@@ -14364,6 +14467,9 @@ components:
           $ref: "#/components/schemas/ID"
         principal_id:
           $ref: "#/components/schemas/ID"
+        principal_name:
+          type: string
+          description: Current display name or username of this authorized member; not an identifier.
         capability:
           $ref: "#/components/schemas/Capability"
         scope:
@@ -16740,6 +16846,9 @@ components:
           format: date-time
         actor_id:
           type: string
+        actor_name:
+          type: string
+          description: Current display name of this event actor, when still available. This is a presentation label, not historical evidence.
         actor_class:
           type: string
         actor_credential_id:

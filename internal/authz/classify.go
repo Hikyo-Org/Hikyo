@@ -158,7 +158,9 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 		audit.EventAuthReauthenticated,
 		audit.EventAuthThrottleCrossed,
 	}},
-	"http:GET /api/v1/auth/totp": {Class: ClassUnauthenticated},
+	"http:GET /api/v1/me/profile":   {Class: ClassUnauthenticated},
+	"http:PATCH /api/v1/me/profile": {Class: ClassUnauthenticated, Events: []audit.EventType{audit.EventAuthProfileUpdated, audit.EventAuthThrottleCrossed}},
+	"http:GET /api/v1/auth/totp":    {Class: ClassUnauthenticated},
 	"http:DELETE /api/v1/auth/totp": {Class: ClassUnauthenticated, Events: []audit.EventType{
 		audit.EventAuthFactorRemoved,
 		audit.EventAuthSessionCreated,

@@ -42,12 +42,11 @@ test.describe('account and security', () => {
   });
 
   test('shows the account as it is, including whether a factor stands', async ({ page }) => {
-    // Profile is read-only because nothing writes it: no operation anywhere in
-    // the contract sets a display name or an email.
-    await expect(page.locator('#account-profile input')).toHaveCount(2);
-    for (const field of await page.locator('#account-profile input').all()) {
-      await expect(field).toHaveJSProperty('readOnly', true);
-    }
+    const profile = page.locator('#account-profile');
+    await expect(profile.getByLabel('Display name', { exact: true })).toBeEditable();
+    await expect(profile.getByLabel('Username', { exact: true })).toBeEditable();
+    await expect(profile.getByLabel('Email address', { exact: true })).toBeEditable();
+    await expect(profile.getByRole('button', { name: 'Save profile' })).toBeDisabled();
 
     // Passkeys are listable, so they are listed. The authenticator factor is
     // now readable too: this suite's administrator has a confirmed one, and the
@@ -74,6 +73,29 @@ test.describe('account and security', () => {
     await expect(
       identities.getByRole('button', { name: `Link ${OIDC_PROVIDER.displayName}` }),
     ).toBeVisible();
+  });
+
+  test('saves profile labels and contact email, persists them, and refreshes the account menu', async ({ page }) => {
+    const profile = page.locator('#account-profile');
+    const name = profile.getByLabel('Display name', { exact: true });
+    const email = profile.getByLabel('Email address', { exact: true });
+    const originalName = await name.inputValue();
+    const originalEmail = await email.inputValue();
+    try {
+      await name.fill('Readable Account Name');
+      await email.fill('profile-test@example.com');
+      await profile.getByRole('button', { name: 'Save profile' }).click();
+      await expect(profile.getByRole('status')).toContainText('Profile saved.');
+      await expect(page.getByRole('button', { name: 'Account: Readable Account Name', exact: true })).toBeVisible();
+      await page.reload();
+      await expect(name).toHaveValue('Readable Account Name');
+      await expect(email).toHaveValue('profile-test@example.com');
+    } finally {
+      await name.fill(originalName);
+      await email.fill(originalEmail);
+      await profile.getByRole('button', { name: 'Save profile' }).click();
+      await expect(profile.getByRole('status')).toContainText('Profile saved.');
+    }
   });
 
   test('keeps factor and provider empty claims hidden while their reads are pending', async ({

@@ -23,14 +23,15 @@ func TestWireRegistrySnapshot(t *testing.T) {
 	// #628 added the two unauthenticated MCP metadata methods.
 	// Ops diagnostics adds the CLI-only escrow verification event.
 	// #680 adds two revision-diff routes and one disclosure event surface.
-	if got := len(facts.Wire()); got != 320 {
-		t.Fatalf("wire entries = %d, want 320", got)
+	// Account profiles add two self-service routes and one audit event.
+	if got := len(facts.Wire()); got != 322 {
+		t.Fatalf("wire entries = %d, want 322", got)
 	}
 	if got := len(facts.WireRoutes()); got != 227 {
 		t.Fatalf("operation-linked entries = %d, want 227", got)
 	}
-	if got := len(facts.WireEvents()); got != 69 {
-		t.Fatalf("direct-event entries = %d, want 69", got)
+	if got := len(facts.WireEvents()); got != 70 {
+		t.Fatalf("direct-event entries = %d, want 70", got)
 	}
 }
 

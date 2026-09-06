@@ -31,6 +31,8 @@ import (
 
 // AuthService is the human-authentication surface this transport needs.
 type AuthService interface {
+	MyProfile(ctx context.Context, presented string) (service.AccountProfile, error)
+	UpdateMyProfile(ctx context.Context, presented string, profile service.AccountProfile, proof string) (service.AccountProfile, error)
 	LocalLogin(ctx context.Context, username, password string, artifact service.Artifact) (service.LoginResult, error)
 	EstablishCredential(ctx context.Context, authority, password string) error
 	Identity(ctx context.Context, presented string) (service.Identity, error)

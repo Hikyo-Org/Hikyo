@@ -78,10 +78,11 @@ type AuditEvent = store.AuditEvent
 // zero Events with Exhausted false — that means "keep scanning", not "no such
 // events" — which is why the cursor tracks scanned rows, not matched ones.
 type AuditPage struct {
-	Events    []store.AuditEvent
-	NextSeq   int64
-	UpperSeq  int64 // the session ceiling pinned for this paging run; echo it to resume
-	Exhausted bool
+	ActorNames map[string]string
+	Events     []store.AuditEvent
+	NextSeq    int64
+	UpperSeq   int64 // the session ceiling pinned for this paging run; echo it to resume
+	Exhausted  bool
 }
 
 // queryEvent builds the audit.query event: normalized filters plus the count of
@@ -160,6 +161,9 @@ func (s *Audits) Query(ctx context.Context, principal domain.PrincipalID, scope 
 			return err
 		}
 		page = filterPage(scanned, f, ceiling)
+		if err := nameAuditActors(ctx, az, &page); err != nil {
+			return err
+		}
 		// Record the pinned ceiling in the query's own audit event.
 		f.ToSeq = ceiling
 		ev, err := queryEvent(ctx, principal, f, len(page.Events))
@@ -198,6 +202,9 @@ func (s *Audits) InstanceQuery(ctx context.Context, principal domain.PrincipalID
 			return err
 		}
 		page = filterPage(scanned, f, ceiling)
+		if err := nameAuditActors(ctx, az, &page); err != nil {
+			return err
+		}
 		f.ToSeq = ceiling
 		ev, err := queryEvent(ctx, principal, f, len(page.Events))
 		if err != nil {

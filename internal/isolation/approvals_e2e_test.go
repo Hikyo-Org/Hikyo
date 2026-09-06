@@ -749,3 +749,32 @@ func runApprovalExpiryBatches(t *testing.T, db *store.DB) {
 func TestApprovalExpiryBatches(t *testing.T) {
 	forEngines(t, runApprovalExpiryBatches)
 }
+
+func TestApprovalPolicyNames(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		if err := tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+			return az.CreateAccount(ctx, authz.Account{ID: "acc_approval_name", PrincipalID: custodian, Username: "dana", DisplayName: "Dana Jacobs", CreatedAt: time.Now()})
+		}); err != nil {
+			t.Fatal(err)
+		}
+		approvals := &service.Approvals{DB: db}
+		scope := domain.Scope{Org: orgA, Project: prjA1}
+		if _, err := approvals.CreatePolicy(ctx, service.LocalPrincipal(orgAdmin), scope, service.ApprovalPolicyInput{
+			MinApprovals: 1, RequestTTLSeconds: 3600, Enabled: true,
+			Approvers: []service.ApprovalApproverSpec{{Kind: "principal", SubjectID: string(custodian)}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		policies, err := approvals.ListPolicies(ctx, service.LocalPrincipal(orgAdmin), scope)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(policies) != 1 || len(policies[0].PrincipalNames) != 1 || policies[0].PrincipalNames[string(custodian)] != "Dana Jacobs" {
+			t.Fatalf("policy names = %+v", policies)
+		}
+		if _, err := approvals.ListPolicies(ctx, service.LocalPrincipal(bob), scope); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("unauthorized policy names read = %v", err)
+		}
+	})
+}

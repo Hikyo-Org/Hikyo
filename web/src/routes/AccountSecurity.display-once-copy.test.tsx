@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderForm, settle, typeInto } from '../testkit/renderForm.tsx';
 import { AccountSecurity } from './AccountSecurity.tsx';
 
+vi.mock('./AccountProfile.tsx', () => ({ AccountProfile: () => null }));
+
 const mocks = vi.hoisted(() => ({
   regenerate: vi.fn(),
   startTotp: vi.fn(),

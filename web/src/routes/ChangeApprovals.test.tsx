@@ -70,3 +70,39 @@ it('uses the chrome anatomy, loads, and names the next action in each empty stat
     await unmount();
   }
 });
+
+
+it('edits disclosed approvers by name while preserving their IDs and keeping other IDs advanced', async () => {
+  const principal = 'prn_00000000-0000-0000-0000-000000000001';
+  const policy = {
+    id: 'pol_00000000-0000-0000-0000-000000000001', environment_id: '', min_approvals: 1,
+    allow_self_approval: false, request_ttl_seconds: 3600, enabled: true, version: 1,
+    approvers: [{ kind: 'principal', subject_id: principal }], bypassers: [],
+    principal_names: { [principal]: 'Dana Jacobs' },
+    created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z',
+  };
+  vi.stubGlobal('fetch', async (request: Request) => {
+    const path = new URL(request.url).pathname;
+    if (path.endsWith('/environments')) return Response.json({ items: [env], count: 1 });
+    if (path.endsWith('/approval-policies')) return Response.json({ items: [policy] });
+    throw new Error(`unexpected directory read ${path}`);
+  });
+  const { container, unmount } = await renderForm(
+    <MemoryRouter initialEntries={['/orgs/acme/projects/app/approvals']}>
+      <Routes><Route path="/orgs/:org/projects/:project/approvals" element={<ChangeApprovals />} /></Routes>
+    </MemoryRouter>,
+  );
+  try {
+    await settleTask();
+    const edit = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Edit');
+    if (edit === undefined) throw new Error('missing Edit');
+    await act(async () => edit.click());
+    const label = [...container.querySelectorAll('fieldset label')].find((item) => item.textContent === 'Dana Jacobs');
+    const checkbox = label?.querySelector('input');
+    expect(checkbox?.checked).toBe(true);
+    expect(container.querySelector<HTMLTextAreaElement>('#ca-approvers')?.value).toBe(principal);
+    await act(async () => checkbox?.click());
+    expect(container.querySelector<HTMLTextAreaElement>('#ca-approvers')?.value).toBe('');
+    expect(container.querySelector('details')?.open).toBe(false);
+  } finally { await unmount(); }
+});
