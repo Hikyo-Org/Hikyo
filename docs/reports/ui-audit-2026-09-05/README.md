@@ -132,6 +132,8 @@ Test infrastructure
 
 ## Left for the API (not buildable from the client)
 
+Tracked in #680.
+
 | Gap | What the client needs |
 | --- | --- |
 | History "Published by" shows a shortened principal id | `RevisionSummary.published_by` as a name, or a principal lookup |
@@ -181,8 +183,8 @@ Test infrastructure
 
 ## Handoff
 
-Branch `t3code/d9eb5a95`, five signed commits on top of `3700a0ef`. Nothing is pushed. To pick
+Branch `t3code/align-web-ui-prototypes`, five signed commits on top of `3700a0ef`. Nothing is pushed. To pick
 this up: `pnpm --dir web install`, `node --run typecheck && node --run test` in `web/`, and
 `pnpm --dir web e2e` for the flow suite (boots two instances from source, needs Go). The prototype
 mock (`pnpm --dir web prototype`) now serves clean chrome without a 501 banner. The API gaps table
-above is the follow-up list; each row names the field the client needs.
+above is the follow-up list, tracked in #680; each row names the field the client needs.
