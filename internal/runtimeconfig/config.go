@@ -6,6 +6,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+
+	"github.com/Hikyo-Org/hikyo/internal/admission"
+	"github.com/Hikyo-Org/hikyo/internal/config"
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 
 	"github.com/Hikyo-Org/hikyo/internal/mail"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
@@ -16,12 +22,15 @@ const SchemaVersion = 1
 // Bundle contains one immutable prepared configuration. Callers atomically
 // replace the whole bundle and retain the captured bundle for in-flight work.
 type Bundle struct {
-	updateChannel string
-	mailer        *mail.Client
+	updateChannel    string
+	mailer           *mail.Client
+	ownerValues      map[string]string
+	nodeValues       map[string]map[string]string
+	bootstrapSources config.ManagedBootstrapSources
 }
 
 func Prepare(values map[string]string) (*Bundle, error) {
-	known := make(map[string]bool, 9)
+	known := make(map[string]bool, len(Catalogue()))
 	for _, key := range Catalogue() {
 		known[key.Name] = true
 	}
@@ -34,6 +43,39 @@ func Prepare(values map[string]string) (*Bundle, error) {
 		}
 		if len(value) > schema.MaxValueBytes {
 			return nil, fmt.Errorf("%s exceeds the value size limit", key)
+		}
+	}
+	ownerValues := make(map[string]string)
+	for _, key := range config.ManagedOwnerKeys() {
+		if value, present := values[key]; present {
+			ownerValues[key] = value
+		}
+	}
+	policy, err := config.ParseManagedOwnerPolicy(ownerValues)
+	if err != nil {
+		return nil, err
+	}
+	params := crypto.PasswordParams{MemoryKiB: policy.Argon2MemoryKiB, Time: policy.Argon2Time, Parallelism: policy.Argon2Parallelism}
+	if err := params.CheckFloor(); err != nil {
+		return nil, errors.New("managed Argon2 parameters are below the authentication floor")
+	}
+	if len(policy.BackupRecipients) > 0 {
+		if err := (backup.Options{Recipients: policy.BackupRecipients}).Validate(); err != nil {
+			return nil, errors.New("HIKYO_BACKUP_RECIPIENTS contains an invalid public recipient")
+		}
+	}
+	var nodeValues map[string]map[string]string
+	if raw, present := values[config.ManagedNodeOverridesKey]; present {
+		nodeValues, err = config.ParseManagedNodeOverrides(raw)
+		if err != nil {
+			return nil, err
+		}
+	}
+	var bootstrapSources config.ManagedBootstrapSources
+	if raw, present := values[config.ManagedBootstrapSourcesKey]; present {
+		bootstrapSources, err = config.ParseManagedBootstrapSources(raw)
+		if err != nil {
+			return nil, err
 		}
 	}
 	channel, present := values["HIKYO_UPDATE_CHANNEL"]
@@ -51,8 +93,32 @@ func Prepare(values map[string]string) (*Bundle, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Bundle{updateChannel: channel, mailer: mailer}, nil
+	return &Bundle{updateChannel: channel, mailer: mailer, ownerValues: maps.Clone(ownerValues), nodeValues: nodeValues, bootstrapSources: bootstrapSources}, nil
 }
+
+// PrepareForConfig additionally proves that the owner settings fit this node's
+// bootstrap/deployment context. It performs no activation or I/O.
+func PrepareForConfig(values map[string]string, base *config.Config) (*Bundle, error) {
+	bundle, err := Prepare(values)
+	if err != nil {
+		return nil, err
+	}
+	if bundle.HasNodeValues() {
+		return nil, errors.New("managed node configuration requires an explicit node identity")
+	}
+	effective, err := config.ApplyManagedOwnerValues(base, bundle.ownerValues)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := admission.New(admission.Config{BudgetMiB: effective.AdmissionBudgetMiB, ArgonMemoryKiB: effective.Argon2MemoryKiB}); err != nil {
+		return nil, errors.New("managed Argon2 memory exceeds this node's admission budget")
+	}
+	return bundle, nil
+}
+
+// OwnerValues returns independent application settings only. Mail and release
+// notifications have separate runtime owners and are omitted from this map.
+func (b *Bundle) OwnerValues() map[string]string { return maps.Clone(b.ownerValues) }
 
 func (b *Bundle) UpdateChannel() string { return b.updateChannel }
 func (b *Bundle) MailConfigured() bool  { return b.mailer.Configured() }
@@ -62,3 +128,6 @@ func (b *Bundle) MailConfigured() bool  { return b.mailer.Configured() }
 func (b *Bundle) Send(ctx context.Context, to, subject, body string) error {
 	return b.mailer.Send(ctx, to, subject, body)
 }
+
+// BootstrapSources returns value-only installed source selections.
+func (b *Bundle) BootstrapSources() config.ManagedBootstrapSources { return b.bootstrapSources }

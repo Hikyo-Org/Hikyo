@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
@@ -21,7 +22,16 @@ type SelfConfig struct {
 	NodeID       string
 	Now          func() time.Time
 	Seed         func() (map[string]string, error)
+	SeedNode     func() (map[string]string, error)
+	Installer    runtimeconfig.RuntimeInstaller
+	Deployment   BootstrapDeployment
 	active       atomic.Pointer[selfConfigActive]
+	originReview atomic.Pointer[selfConfigOriginReview]
+	repairOrigin atomic.Pointer[selfConfigRepairOrigin]
+	// installed retains origin evidence when a failed target fences Capture.
+	// It grants no runtime authority and is never read by request admission.
+	installed    atomic.Pointer[selfConfigActive]
+	prepared     *selfConfigPrepared
 	runtimeMu    sync.Mutex
 	seedMu       sync.Mutex
 	seed         *selfConfigSeed

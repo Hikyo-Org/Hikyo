@@ -72,7 +72,8 @@ var reencryptCovered = map[string]string{
 	"adapters.credential_ciphertext":                    "adapter",
 	"adapter_route_moves.pending_credential_ciphertext": "adapter_route_move",
 	"dynamic_providers.admin_credential_ciphertext":     "dynamic_provider",
-	// instance scope (6)
+	// instance scope (7)
+	"self_config_seed_inputs.ciphertext": "self_config_seed_inputs",
 	"password_credentials.verifier":      "password",
 	"totp_credentials.seed":              "totp",
 	"recovery_codes.batch":               "recovery",

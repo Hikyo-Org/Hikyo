@@ -26,11 +26,14 @@ type SelfConfigNodeView struct {
 	Error            string
 }
 type SelfConfigJobView struct {
-	ID, State            string
-	Revision, Generation int64
-	CreatedAt            time.Time
-	CompletedAt          *time.Time
-	Error                string
+	ID, State                                    string
+	Revision, Generation                         int64
+	CreatedAt                                    time.Time
+	CompletedAt                                  *time.Time
+	Error                                        string
+	PlanDigest                                   string
+	Prepared                                     bool
+	DeploymentRestorePending, DeploymentRestored bool
 }
 type SelfConfigStatus struct {
 	OwnerInstanceID                 string
@@ -52,9 +55,9 @@ func (s *SelfConfig) Status(ctx context.Context, actor Actor) (SelfConfigStatus,
 }
 
 func selfConfigJobView(j store.SelfConfigJob) *SelfConfigJobView {
-	state := map[string]string{"preparing": "preparing", "applying": "pending", "partial": "partial", "applied": "completed", "aborted": "failed"}[j.Status]
+	state := map[string]string{"preparing": "preparing", "applying": "pending", "partial": "partial", "applied": "completed", "aborted": "failed", "superseded": "failed"}[j.Status]
 	view := &SelfConfigJobView{ID: j.ID, State: state, Revision: j.Revision, Generation: j.Generation, CreatedAt: j.CreatedAt, Error: j.ErrorCode}
-	if j.Status == "applied" || j.Status == "aborted" {
+	if j.Status == "applied" || j.Status == "aborted" || j.Status == "superseded" {
 		completed := j.UpdatedAt
 		view.CompletedAt = &completed
 	}
@@ -160,6 +163,27 @@ func (s *SelfConfig) status(ctx context.Context, actor Actor, jobID string) (Sel
 			}
 			if b.Suspended {
 				out.State = "recovery_required"
+			}
+			if out.Job != nil {
+				out.Job.Prepared = out.Job.State == "preparing" && len(nodes) > 0 && at.Sub(out.Job.CreatedAt) < store.SelfConfigPreparationTTL
+				for _, node := range nodes {
+					if node.JobID != out.Job.ID || !node.Prepared || node.ErrorCode != "" || node.SchemaVersion != b.SchemaVersion || node.Incarnation != b.Incarnation || node.UpdatedAt.After(at) || at.Sub(node.UpdatedAt) >= 30*time.Second {
+						out.Job.Prepared = false
+					}
+				}
+				rollout, err := r.SelfConfig().Rollout(ctx, p, out.Job.ID)
+				if err == nil {
+					out.Job.DeploymentRestored = rollout.ExternalPhase == "restored"
+					if command, err := decodeRolloutCommand(rollout.CommandJSON); err == nil {
+						out.Job.DeploymentRestorePending = command.Command.Action == "restore" && !out.Job.DeploymentRestored
+					}
+					if rollout.Incarnation == b.Incarnation {
+						out.Job.PlanDigest = rollout.PlanDigest
+					}
+					out.Job.Prepared = out.Job.Prepared && out.Job.PlanDigest != ""
+				} else if !errors.Is(err, domain.ErrNotFound) {
+					return err
+				}
 			}
 		}
 		ev, err := newAuditEvent(ctx, audit.EventSelfConfigStatusRead, caller.Principal, audit.Object{Type: "instance", ID: owner}, audit.OutcomeSuccess, "", audit.Payload{"owner_instance_id": owner, "generation": out.Generation})

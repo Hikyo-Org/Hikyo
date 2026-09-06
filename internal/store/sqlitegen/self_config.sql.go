@@ -9,6 +9,16 @@ import (
 	"context"
 )
 
+const clearSelfConfigSeedInputs = `-- name: ClearSelfConfigSeedInputs :exec
+DELETE FROM self_config_seed_inputs
+`
+
+// hikyo:instance-scoped
+func (q *Queries) ClearSelfConfigSeedInputs(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, clearSelfConfigSeedInputs)
+	return err
+}
+
 const commitSelfConfigTarget = `-- name: CommitSelfConfigTarget :execrows
 UPDATE self_config_binding SET desired_snapshot_id=?1,desired_revision=?2,generation=generation+1,suspended=0,updated_at=?3
 WHERE id=1 AND generation=?4
@@ -47,6 +57,18 @@ func (q *Queries) CountRecentSelfConfigJobs(ctx context.Context, sinceAt string)
 	return count, err
 }
 
+const countSelfConfigCompletedGeneration = `-- name: CountSelfConfigCompletedGeneration :one
+SELECT COUNT(*) FROM self_config_jobs WHERE generation=?1 AND status='applied'
+`
+
+// hikyo:instance-scoped
+func (q *Queries) CountSelfConfigCompletedGeneration(ctx context.Context, generation int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countSelfConfigCompletedGeneration, generation)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countSelfConfigOpenJobs = `-- name: CountSelfConfigOpenJobs :one
 SELECT COUNT(*) FROM self_config_jobs WHERE status IN ('preparing','applying','partial')
 `
@@ -54,6 +76,24 @@ SELECT COUNT(*) FROM self_config_jobs WHERE status IN ('preparing','applying','p
 // hikyo:instance-scoped
 func (q *Queries) CountSelfConfigOpenJobs(ctx context.Context) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countSelfConfigOpenJobs)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countSelfConfigRootFinalizationBlockers = `-- name: CountSelfConfigRootFinalizationBlockers :one
+SELECT COUNT(*) FROM self_config_binding b
+JOIN self_config_jobs j ON j.generation=b.generation
+JOIN self_config_rollouts r ON r.job_id=j.id AND r.incarnation=b.incarnation
+WHERE b.id=1 AND j.status IN ('applying','partial','applied','superseded')
+AND r.external_phase<>'applied'
+`
+
+// Preserve both roots until the committed deployment can no longer restore.
+// The caller holds LockSelfConfigBinding before consulting this count.
+// hikyo:instance-scoped
+func (q *Queries) CountSelfConfigRootFinalizationBlockers(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countSelfConfigRootFinalizationBlockers)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -186,6 +226,18 @@ func (q *Queries) GetSelfConfigBinding(ctx context.Context) (SelfConfigBinding, 
 	return i, err
 }
 
+const getSelfConfigClock = `-- name: GetSelfConfigClock :one
+SELECT CAST(strftime('%Y-%m-%dT%H:%M:%fZ', 'now') AS TEXT) AS observed_at
+`
+
+// hikyo:instance-scoped
+func (q *Queries) GetSelfConfigClock(ctx context.Context) (string, error) {
+	row := q.db.QueryRowContext(ctx, getSelfConfigClock)
+	var observed_at string
+	err := row.Scan(&observed_at)
+	return observed_at, err
+}
+
 const getSelfConfigJob = `-- name: GetSelfConfigJob :one
 SELECT id, idempotency_key, confirm_restored_credentials, principal_id, snapshot_id, revision, schema_version, expected_generation, generation, status, error_code, created_at, updated_at FROM self_config_jobs WHERE id=?1
 `
@@ -238,6 +290,18 @@ func (q *Queries) GetSelfConfigJobByKey(ctx context.Context, idempotencyKey stri
 	return i, err
 }
 
+const getSelfConfigPreviousRevision = `-- name: GetSelfConfigPreviousRevision :one
+SELECT s.revision FROM self_config_binding b JOIN snapshots s ON s.id=b.previous_snapshot_id AND s.org_id=b.org_id AND s.project_id=b.project_id AND s.environment_id=b.environment_id WHERE b.id=1
+`
+
+// hikyo:instance-scoped
+func (q *Queries) GetSelfConfigPreviousRevision(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getSelfConfigPreviousRevision)
+	var revision int64
+	err := row.Scan(&revision)
+	return revision, err
+}
+
 const getSelfConfigRetentionSlot = `-- name: GetSelfConfigRetentionSlot :one
 SELECT snapshot_id FROM self_config_retention WHERE slot=?1
 `
@@ -248,6 +312,28 @@ func (q *Queries) GetSelfConfigRetentionSlot(ctx context.Context, slot string) (
 	var snapshot_id string
 	err := row.Scan(&snapshot_id)
 	return snapshot_id, err
+}
+
+const getSelfConfigRollout = `-- name: GetSelfConfigRollout :one
+SELECT job_id, enrollment_id, incarnation, plan_digest, command_json, response_json, external_phase, sequence, row_version FROM self_config_rollouts WHERE job_id = ?1
+`
+
+// hikyo:instance-scoped
+func (q *Queries) GetSelfConfigRollout(ctx context.Context, jobID string) (SelfConfigRollout, error) {
+	row := q.db.QueryRowContext(ctx, getSelfConfigRollout, jobID)
+	var i SelfConfigRollout
+	err := row.Scan(
+		&i.JobID,
+		&i.EnrollmentID,
+		&i.Incarnation,
+		&i.PlanDigest,
+		&i.CommandJson,
+		&i.ResponseJson,
+		&i.ExternalPhase,
+		&i.Sequence,
+		&i.RowVersion,
+	)
+	return i, err
 }
 
 const insertSelfConfigJob = `-- name: InsertSelfConfigJob :execrows
@@ -281,6 +367,40 @@ func (q *Queries) InsertSelfConfigJob(ctx context.Context, arg InsertSelfConfigJ
 		arg.SnapshotID,
 		arg.Revision,
 		arg.ExpectedGeneration,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const insertSelfConfigRollout = `-- name: InsertSelfConfigRollout :execrows
+INSERT INTO self_config_rollouts (job_id,enrollment_id,incarnation,plan_digest,command_json,response_json,external_phase,sequence,row_version)
+VALUES (?1,?2,?3,?4,?5,?6,?7,?8,1)
+`
+
+type InsertSelfConfigRolloutParams struct {
+	JobID         string
+	EnrollmentID  string
+	Incarnation   string
+	PlanDigest    string
+	CommandJson   string
+	ResponseJson  string
+	ExternalPhase string
+	Sequence      int64
+}
+
+// hikyo:instance-scoped
+func (q *Queries) InsertSelfConfigRollout(ctx context.Context, arg InsertSelfConfigRolloutParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, insertSelfConfigRollout,
+		arg.JobID,
+		arg.EnrollmentID,
+		arg.Incarnation,
+		arg.PlanDigest,
+		arg.CommandJson,
+		arg.ResponseJson,
+		arg.ExternalPhase,
+		arg.Sequence,
 	)
 	if err != nil {
 		return 0, err
@@ -424,6 +544,60 @@ func (q *Queries) ListSelfConfigRetained(ctx context.Context) ([]string, error) 
 	return items, nil
 }
 
+const listSelfConfigSeedInputs = `-- name: ListSelfConfigSeedInputs :many
+SELECT i.node_id, i.owner_instance_id, i.incarnation, i.fingerprint, i.ciphertext, i.dek_version, i.row_version, s.schema_version, s.fingerprint AS owner_fingerprint, s.heartbeat_at
+FROM self_config_seed_inputs i JOIN self_config_seed_attestations s ON s.node_id=i.node_id
+ORDER BY i.node_id
+`
+
+type ListSelfConfigSeedInputsRow struct {
+	NodeID           string
+	OwnerInstanceID  string
+	Incarnation      string
+	Fingerprint      string
+	Ciphertext       []byte
+	DekVersion       int64
+	RowVersion       int64
+	SchemaVersion    int64
+	OwnerFingerprint string
+	HeartbeatAt      string
+}
+
+// hikyo:instance-scoped
+func (q *Queries) ListSelfConfigSeedInputs(ctx context.Context) ([]ListSelfConfigSeedInputsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSelfConfigSeedInputs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSelfConfigSeedInputsRow
+	for rows.Next() {
+		var i ListSelfConfigSeedInputsRow
+		if err := rows.Scan(
+			&i.NodeID,
+			&i.OwnerInstanceID,
+			&i.Incarnation,
+			&i.Fingerprint,
+			&i.Ciphertext,
+			&i.DekVersion,
+			&i.RowVersion,
+			&i.SchemaVersion,
+			&i.OwnerFingerprint,
+			&i.HeartbeatAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockSelfConfigBinding = `-- name: LockSelfConfigBinding :one
 SELECT id, owner_instance_id, adoption_key, adopted_by, org_id, project_id, environment_id, schema_version, generation, desired_revision, desired_snapshot_id, previous_snapshot_id, incarnation, suspended, created_at, updated_at FROM self_config_binding WHERE id = 1
 `
@@ -463,6 +637,20 @@ func (q *Queries) LockSelfConfigMembership(ctx context.Context) error {
 	return err
 }
 
+const nextSelfConfigRolloutSequence = `-- name: NextSelfConfigRolloutSequence :one
+INSERT INTO self_config_rollout_sequences (enrollment_id, sequence) VALUES (?1, 1)
+ON CONFLICT (enrollment_id) DO UPDATE SET sequence = self_config_rollout_sequences.sequence + 1
+RETURNING sequence
+`
+
+// hikyo:instance-scoped
+func (q *Queries) NextSelfConfigRolloutSequence(ctx context.Context, enrollmentID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, nextSelfConfigRolloutSequence, enrollmentID)
+	var sequence int64
+	err := row.Scan(&sequence)
+	return sequence, err
+}
+
 const putSelfConfigNode = `-- name: PutSelfConfigNode :exec
 INSERT INTO self_config_nodes(node_id,job_id,schema_version,prepared,active_generation,active_revision,incarnation,error_code,updated_at)
 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)
@@ -493,6 +681,58 @@ func (q *Queries) PutSelfConfigNode(ctx context.Context, arg PutSelfConfigNodePa
 		arg.Incarnation,
 		arg.ErrorCode,
 		arg.UpdatedAt,
+	)
+	return err
+}
+
+const putSelfConfigSeedAttestation = `-- name: PutSelfConfigSeedAttestation :exec
+INSERT INTO self_config_seed_attestations(node_id,schema_version,fingerprint,heartbeat_at)
+VALUES(?1,?2,?3,?4)
+ON CONFLICT(node_id) DO UPDATE SET schema_version=excluded.schema_version,fingerprint=excluded.fingerprint,heartbeat_at=excluded.heartbeat_at
+`
+
+type PutSelfConfigSeedAttestationParams struct {
+	NodeID        string
+	SchemaVersion int64
+	Fingerprint   string
+	HeartbeatAt   string
+}
+
+// hikyo:instance-scoped
+func (q *Queries) PutSelfConfigSeedAttestation(ctx context.Context, arg PutSelfConfigSeedAttestationParams) error {
+	_, err := q.db.ExecContext(ctx, putSelfConfigSeedAttestation,
+		arg.NodeID,
+		arg.SchemaVersion,
+		arg.Fingerprint,
+		arg.HeartbeatAt,
+	)
+	return err
+}
+
+const putSelfConfigSeedInput = `-- name: PutSelfConfigSeedInput :exec
+INSERT INTO self_config_seed_inputs(node_id,owner_instance_id,incarnation,fingerprint,ciphertext,dek_version)
+VALUES(?1,?2,?3,?4,?5,?6)
+ON CONFLICT(node_id) DO UPDATE SET owner_instance_id=excluded.owner_instance_id,incarnation=excluded.incarnation,fingerprint=excluded.fingerprint,ciphertext=excluded.ciphertext,dek_version=excluded.dek_version,row_version=self_config_seed_inputs.row_version+1
+`
+
+type PutSelfConfigSeedInputParams struct {
+	NodeID          string
+	OwnerInstanceID string
+	Incarnation     string
+	Fingerprint     string
+	Ciphertext      []byte
+	DekVersion      int64
+}
+
+// hikyo:instance-scoped
+func (q *Queries) PutSelfConfigSeedInput(ctx context.Context, arg PutSelfConfigSeedInputParams) error {
+	_, err := q.db.ExecContext(ctx, putSelfConfigSeedInput,
+		arg.NodeID,
+		arg.OwnerInstanceID,
+		arg.Incarnation,
+		arg.Fingerprint,
+		arg.Ciphertext,
+		arg.DekVersion,
 	)
 	return err
 }
@@ -569,6 +809,42 @@ func (q *Queries) UpdateSelfConfigJob(ctx context.Context, arg UpdateSelfConfigJ
 		arg.UpdatedAt,
 		arg.ID,
 		arg.PreviousStatus,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const updateSelfConfigRollout = `-- name: UpdateSelfConfigRollout :execrows
+UPDATE self_config_rollouts SET plan_digest=?1,command_json=?2,response_json=?3,external_phase=?4,sequence=?5,row_version=row_version+1
+WHERE job_id=?6 AND enrollment_id=?7 AND incarnation=?8 AND row_version=?9
+`
+
+type UpdateSelfConfigRolloutParams struct {
+	PlanDigest      string
+	CommandJson     string
+	ResponseJson    string
+	ExternalPhase   string
+	Sequence        int64
+	JobID           string
+	EnrollmentID    string
+	Incarnation     string
+	ExpectedVersion int64
+}
+
+// hikyo:instance-scoped
+func (q *Queries) UpdateSelfConfigRollout(ctx context.Context, arg UpdateSelfConfigRolloutParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateSelfConfigRollout,
+		arg.PlanDigest,
+		arg.CommandJson,
+		arg.ResponseJson,
+		arg.ExternalPhase,
+		arg.Sequence,
+		arg.JobID,
+		arg.EnrollmentID,
+		arg.Incarnation,
+		arg.ExpectedVersion,
 	)
 	if err != nil {
 		return 0, err

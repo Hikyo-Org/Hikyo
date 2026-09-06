@@ -8,6 +8,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
@@ -40,7 +41,7 @@ func (s *SelfConfig) Capture(ctx context.Context) (*runtimeconfig.Bundle, error)
 	}
 	if metadata.Managed {
 		owner, incarnation, err := s.DB.RecoveryIdentity()
-		if err != nil || owner != metadata.OwnerInstanceID || incarnation != metadata.Incarnation || metadata.Suspended || active.owner != metadata.OwnerInstanceID || active.generation != metadata.Generation || active.incarnation != metadata.Incarnation {
+		if err != nil || owner != metadata.OwnerInstanceID || incarnation != metadata.Incarnation || metadata.Suspended || metadata.DeploymentRestoring || active.owner != metadata.OwnerInstanceID || active.generation != metadata.Generation || active.incarnation != metadata.Incarnation {
 			return nil, ErrSelfConfigUnavailable
 		}
 	} else if active.generation != 0 {
@@ -71,12 +72,23 @@ func (s *SelfConfig) LoadRuntime(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := s.activateInstallation(ctx, "seed:"+seed.token, seed.incarnation, bundle); err != nil {
+		return err
+	}
 	active := &selfConfigActive{bundle: bundle, owner: seed.owner, incarnation: seed.incarnation, seedToken: seed.token}
 	s.active.Store(active)
+	s.installed.Store(active)
 	return s.attestSeed(ctx, active)
 }
 
 func (s *SelfConfig) attestSeed(ctx context.Context, active *selfConfigActive) error {
+	if s.SeedNode != nil {
+		seed, err := s.prepareSeed()
+		if err != nil {
+			return err
+		}
+		return s.attestNodeSeed(ctx, seed)
+	}
 	at, err := s.runtimeTimestamp(ctx)
 	if err != nil {
 		return err
@@ -94,6 +106,11 @@ func (s *SelfConfig) runtimeTimestamp(ctx context.Context) (time.Time, error) {
 // Run reconciles committed targets independently of the initiating request's
 // lifetime or its actor's later grant changes. Its context must be app-owned.
 func (s *SelfConfig) Run(ctx context.Context) {
+	defer func() {
+		if err := s.CloseRuntime(); err != nil {
+			s.logSelfConfigFailure(context.Background(), "preparation_cleanup_failed")
+		}
+	}()
 	outcomesDone := make(chan struct{})
 	go func() { defer close(outcomesDone); s.runMailOutcomes(ctx) }()
 	defer func() { <-outcomesDone }()
@@ -158,10 +175,13 @@ func (s *SelfConfig) ReconcileRuntime(ctx context.Context) error {
 	}
 	if owner != binding.OwnerInstanceID {
 		s.active.Store(nil)
-		return ErrSelfConfigUnavailable
+		return errors.Join(ErrSelfConfigUnavailable, s.closePrepared())
 	}
 	if incarnation != binding.Incarnation {
 		s.active.Store(nil)
+		if err := s.closePrepared(); err != nil {
+			return err
+		}
 		at, err := s.runtimeTimestamp(ctx)
 		if err != nil {
 			return err
@@ -188,12 +208,47 @@ func (s *SelfConfig) ReconcileRuntime(ctx context.Context) error {
 			break
 		}
 	}
+	deploymentApplied := true
+	if job.Status == "applying" || job.Status == "partial" {
+		installed, applied, err := s.reconcileDeployment(ctx, binding, job, nodes)
+		if err != nil {
+			s.active.Store(nil)
+			return errors.Join(err, s.recordRuntimeRefusal(ctx, binding, nodes, "transport_failed"))
+		}
+		if !installed {
+			s.active.Store(nil)
+			at, err := s.runtimeTimestamp(ctx)
+			if err != nil {
+				return err
+			}
+			if job.Status == "applying" && at.Sub(job.UpdatedAt) >= selfConfigConvergenceTimeout {
+				return s.recordRuntimeRefusal(ctx, binding, nodes, "convergence_timeout")
+			}
+			return nil
+		}
+		deploymentApplied = applied
+	}
+	// A prepared graph only belongs to its exact candidate. Aborted jobs and
+	// superseded snapshots release their resources before another candidate.
+	if s.prepared != nil && s.prepared.snapshotID != binding.DesiredSnapshotID &&
+		(job.ID == "" || s.prepared.snapshotID != job.SnapshotID) {
+		if err := s.closePrepared(); err != nil {
+			return err
+		}
+	}
 	active := s.active.Load()
 	if binding.Suspended {
 		s.active.Store(nil)
 		if job.Status != "preparing" {
-			return nil
+			return s.closePrepared()
 		}
+		active = &selfConfigActive{}
+	} else if job.Status == "preparing" && (active == nil || active.snapshotID != binding.DesiredSnapshotID || active.generation != binding.Generation || active.incarnation != binding.Incarnation) {
+		// A repair revision must be preparable even if the committed target
+		// cannot install. Keep business work fenced and report only the graph
+		// actually installed; preparation is not an acknowledgement of either
+		// the failed target or the repair candidate.
+		s.active.Store(nil)
 		active = &selfConfigActive{}
 	} else if active == nil || active.snapshotID != binding.DesiredSnapshotID || active.generation != binding.Generation || active.incarnation != binding.Incarnation {
 		bundle, err := s.prepareRuntimeSnapshot(ctx, binding, binding.DesiredSnapshotID, binding.DesiredRevision)
@@ -205,8 +260,23 @@ func (s *SelfConfig) ReconcileRuntime(ctx context.Context) error {
 			}
 			return errors.Join(err, s.recordRuntimeRefusal(ctx, binding, nodes, code))
 		}
+		if bundle.BootstrapSources() != (config.ManagedBootstrapSources{}) {
+			if !s.deploymentMatches(binding) {
+				s.active.Store(nil)
+				return ErrDeploymentSourcesPending
+			}
+			if err := s.Deployment.VerifyInstalled(ctx, bundle); err != nil {
+				s.active.Store(nil)
+				return err
+			}
+		}
+		if err := s.activateInstallation(ctx, binding.DesiredSnapshotID, binding.Incarnation, bundle); err != nil {
+			s.active.Store(nil)
+			return errors.Join(err, s.recordRuntimeRefusal(ctx, binding, nodes, "activation_failed"))
+		}
 		active = &selfConfigActive{bundle: bundle, owner: binding.OwnerInstanceID, incarnation: binding.Incarnation, snapshotID: binding.DesiredSnapshotID, generation: binding.Generation, revision: binding.DesiredRevision}
 		s.active.Store(active)
+		s.installed.Store(active)
 	}
 	var local store.SelfConfigNode
 	for _, n := range nodes {
@@ -225,11 +295,22 @@ func (s *SelfConfig) ReconcileRuntime(ctx context.Context) error {
 	local.ActiveRevision = active.revision
 	local.SchemaVersion = runtimeconfig.SchemaVersion
 	local.ErrorCode = ""
-	if job.Status == "preparing" && !local.Prepared {
+	if job.Status == "preparing" {
+		local.Prepared = false
 		if job.SchemaVersion != runtimeconfig.SchemaVersion {
 			local.ErrorCode = "incompatible_schema"
-		} else if _, err := s.prepareRuntimeSnapshot(ctx, binding, job.SnapshotID, job.Revision); err != nil {
+		} else if candidate, err := s.prepareRuntimeSnapshot(ctx, binding, job.SnapshotID, job.Revision); err != nil {
 			local.ErrorCode = "invalid_config"
+		} else if err := validateSelfConfigParticipants(candidate, nodes); err != nil {
+			local.ErrorCode = "invalid_config"
+		} else if ready, err := s.prepareDeployment(ctx, binding, job, candidate); err != nil {
+			local.ErrorCode = "preparation_failed"
+		} else if !ready {
+			// Deployment preparation is pending; no component acknowledgement.
+		} else if err := s.prepareInstallation(ctx, job.SnapshotID, binding.Incarnation, candidate); err != nil {
+			local.ErrorCode = "preparation_failed"
+		} else if err := s.prepareOriginReview(ctx, binding, job, candidate); err != nil {
+			local.ErrorCode = "preparation_failed"
 		} else {
 			local.Prepared = true
 		}
@@ -271,7 +352,7 @@ func (s *SelfConfig) ReconcileRuntime(ctx context.Context) error {
 					return s.finishRuntimeFailure(ctx, r, p, b, current, "aborted", n.ErrorCode, at)
 				}
 			}
-			if at.Sub(current.CreatedAt) >= selfConfigConvergenceTimeout {
+			if at.Sub(current.CreatedAt) >= store.SelfConfigPreparationTTL {
 				return s.finishRuntimeFailure(ctx, r, p, b, current, "aborted", "preparation_timeout", at)
 			}
 			return nil
@@ -279,7 +360,7 @@ func (s *SelfConfig) ReconcileRuntime(ctx context.Context) error {
 		if current.Status != "applying" && current.Status != "partial" {
 			return nil
 		}
-		complete := len(participants) > 0
+		complete := deploymentApplied && len(participants) > 0
 		for _, n := range participants {
 			if n.ActiveGeneration != b.Generation || n.ActiveRevision != b.DesiredRevision || n.Incarnation != b.Incarnation || n.ErrorCode != "" {
 				complete = false
@@ -337,8 +418,35 @@ func (s *SelfConfig) recordRuntimeRefusal(ctx context.Context, b store.SelfConfi
 		if current.Generation != b.Generation || current.Incarnation != b.Incarnation {
 			return domain.ErrConflict
 		}
-		return r.SelfConfig().PutNode(ctx, p, node)
+		if err := r.SelfConfig().PutNode(ctx, p, node); err != nil {
+			return err
+		}
+		if node.JobID == "" {
+			return nil
+		}
+		job, err := r.SelfConfig().Job(ctx, p, node.JobID)
+		if err != nil {
+			return err
+		}
+		// An explicit installation refusal is already partial convergence.
+		// Record it here because the failed installation cannot reach the
+		// successful reconciliation path's timeout handling.
+		if job.Status == "applying" && job.Generation == current.Generation {
+			return s.finishRuntimeFailure(ctx, r, p, current, job, "partial", code, at)
+		}
+		return nil
 	})
+}
+
+func validateSelfConfigParticipants(bundle *runtimeconfig.Bundle, nodes []store.SelfConfigNode) error {
+	if !bundle.HasNodeValues() {
+		return nil
+	}
+	ids := make([]string, len(nodes))
+	for i, node := range nodes {
+		ids[i] = node.NodeID
+	}
+	return bundle.ValidateNodeMembership(ids)
 }
 
 func (s *SelfConfig) prepareRuntimeSnapshot(ctx context.Context, b store.SelfConfigBinding, snapshotID string, revision int64) (*runtimeconfig.Bundle, error) {

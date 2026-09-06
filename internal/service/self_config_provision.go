@@ -12,7 +12,6 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
-	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
@@ -32,6 +31,10 @@ type SelfConfigAdoptRequest struct{ PreviewToken, IdempotencyKey string }
 type selfConfigSeed struct {
 	values                    map[string]string
 	owner, incarnation, token string
+	ownerToken                string
+	nodeValues                map[string]string
+	nodeReferences            []store.SelfConfigSeedReference
+	hostSeedDiscovery         bool
 }
 
 func (s *SelfConfig) prepareSeed() (selfConfigSeed, error) {
@@ -55,19 +58,19 @@ func (s *SelfConfig) prepareSeed() (selfConfigSeed, error) {
 	if _, err := runtimeconfig.Prepare(values); err != nil {
 		return selfConfigSeed{}, fmt.Errorf("%w: %s", domain.ErrInvalid, err)
 	}
-	encoded, err := json.Marshal(struct {
-		Schema int
-		Values map[string]string
-	}{runtimeconfig.SchemaVersion, values})
+	token, err := s.ownerSeedToken(owner, values)
 	if err != nil {
 		return selfConfigSeed{}, err
 	}
-	defer crypto.Zero(encoded)
-	token, err := s.Keyring.SelfConfigAdoptionToken(owner, encoded)
-	if err != nil {
-		return selfConfigSeed{}, err
+	var nodeValues map[string]string
+	if s.SeedNode != nil {
+		nodeValues, err = s.SeedNode()
+		if err != nil {
+			return selfConfigSeed{}, err
+		}
+		nodeValues = maps.Clone(nodeValues)
 	}
-	s.seed = &selfConfigSeed{values: values, owner: owner, incarnation: incarnation, token: token}
+	s.seed = &selfConfigSeed{values: values, owner: owner, incarnation: incarnation, token: token, ownerToken: token, nodeValues: nodeValues}
 	return *s.seed, nil
 }
 
@@ -95,7 +98,7 @@ func (s *SelfConfig) PreviewAdoption(ctx context.Context, actor Actor) (SelfConf
 	if err != nil {
 		return SelfConfigAdoptionPreview{}, err
 	}
-	seed, err := s.prepareSeed()
+	seed, err := s.prepareAdoptionSeed(ctx, &actor)
 	if err != nil {
 		return SelfConfigAdoptionPreview{}, err
 	}
@@ -141,7 +144,7 @@ func (s *SelfConfig) Adopt(ctx context.Context, actor Actor, req SelfConfigAdopt
 	if subtle.ConstantTimeCompare([]byte(preview.PreviewToken), []byte(req.PreviewToken)) != 1 {
 		return SelfConfigStatus{}, fmt.Errorf("%w: adoption preview changed", domain.ErrConflict)
 	}
-	seed, err := s.prepareSeed()
+	seed, err := s.prepareAdoptionSeed(ctx, &actor)
 	if err != nil {
 		return SelfConfigStatus{}, err
 	}
@@ -350,7 +353,7 @@ func (s *SelfConfig) provision(ctx context.Context, r store.Repos, az *authz.TxA
 	if err != nil {
 		return store.SelfConfigBinding{}, err
 	}
-	binding := store.SelfConfigBinding{OwnerInstanceID: seed.owner, OrgID: orgID, ProjectID: projectID, EnvironmentID: envID, SchemaVersion: runtimeconfig.SchemaVersion, Generation: 1, DesiredRevision: pub.Revision, DesiredSnapshotID: snapshot.ID, Incarnation: seed.incarnation, CreatedAt: store.CanonTime(now), UpdatedAt: store.CanonTime(now), SeedFingerprint: seed.token, AdoptionKey: idempotencyKey, AdoptedBy: string(caller.Principal)}
+	binding := store.SelfConfigBinding{OwnerInstanceID: seed.owner, OrgID: orgID, ProjectID: projectID, EnvironmentID: envID, SchemaVersion: runtimeconfig.SchemaVersion, Generation: 1, DesiredRevision: pub.Revision, DesiredSnapshotID: snapshot.ID, Incarnation: seed.incarnation, CreatedAt: store.CanonTime(now), UpdatedAt: store.CanonTime(now), SeedFingerprint: seed.ownerToken, SeedNodes: seed.nodeReferences, HostSeedDiscovery: seed.hostSeedDiscovery, AdoptionKey: idempotencyKey, AdoptedBy: string(caller.Principal)}
 	if err := r.SelfConfig().CreateBinding(ctx, adminProof, binding); err != nil {
 		return store.SelfConfigBinding{}, err
 	}

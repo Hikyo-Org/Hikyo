@@ -23,6 +23,7 @@ type SelfConfigReauthTarget struct {
 	PreviewToken               string `json:"preview_token"`
 	To                         string `json:"to"`
 	ConfirmRestoredCredentials bool   `json:"confirm_restored_credentials"`
+	PlanDigest                 string `json:"plan_digest,omitempty"`
 }
 
 type selfConfigChallenge struct {
@@ -35,6 +36,12 @@ func NewSelfConfigReauthIntent(target SelfConfigReauthTarget) (ReauthIntent, err
 	if target.OwnerInstanceID == "" || strings.ContainsAny(target.OwnerInstanceID, "\r\n") || target.SchemaVersion < 1 || target.ExpectedGeneration < 0 {
 		return ReauthIntent{}, domain.ErrInvalid
 	}
+	if target.PlanDigest != "" {
+		digest, err := hex.DecodeString(target.PlanDigest)
+		if err != nil || len(digest) != sha256.Size || hex.EncodeToString(digest) != target.PlanDigest || (target.Action != "apply" && target.Action != "rollout-restore") {
+			return ReauthIntent{}, domain.ErrInvalid
+		}
+	}
 	var variant reauthIntentVariant
 	switch target.Action {
 	case "adopt":
@@ -46,6 +53,13 @@ func NewSelfConfigReauthIntent(target SelfConfigReauthTarget) (ReauthIntent, err
 		if target.Revision < 1 || target.PreviewToken != "" || target.To != "" {
 			return ReauthIntent{}, domain.ErrInvalid
 		}
+		variant = intentSelfConfigApply
+	case "rollout-restore":
+		if target.Revision < 1 || target.ExpectedGeneration < 1 || target.PlanDigest == "" || target.PreviewToken != "" || target.To != "" || target.ConfirmRestoredCredentials {
+			return ReauthIntent{}, domain.ErrInvalid
+		}
+		// The operation is Apply authority, but the canonical action hash is
+		// distinct. An Apply proof can never authorize deployment restoration.
 		variant = intentSelfConfigApply
 	case "mail-test":
 		if target.Revision < 1 || target.PreviewToken != "" || target.To == "" || target.ConfirmRestoredCredentials {

@@ -1,12 +1,19 @@
 ---
 title: Manage Hikyo with Hikyo
-description: Edit, publish, test and apply Hikyo mail and notification settings through its own protected project.
+description: Edit and apply owner and node settings through Hikyo, with exact administrator MFA and explicit controlled deployment recovery.
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/managed-configuration.mdx
 ---
 
 Hikyo owns a protected configuration project on each logical instance. Open
 **Instance settings → Manage Hikyo configuration** to find the project, the
 running revision and the state of every admitted node.
+
+:::note[Current expansion status]
+The expanded 27-key catalogue described here is implemented in the current
+worktree and undergoing acceptance. It is uncommitted and has no exact-head CI
+or production rollout evidence. Earlier nine-key validation does not establish
+expanded deployment support.
+:::
 
 ## Set up or adopt
 
@@ -21,24 +28,22 @@ Sign in again when requested so the session reflects those grants. Instance
 administration alone does not grant secret reveal or history disclosure.
 
 Once adopted, the applied revision owns the supported settings. Stale startup
-variables and imported file paths cannot override it. Database connectivity,
-root keys, listeners, origin, HA node identity and other bootstrap settings
-remain externally configured. See [Configuration](/docs/configuration/).
+variables and imported file paths cannot override it. Owner and node settings use the catalogue below. Database and root sources remain in external custody; an enrolled deployment provider can apply selected source aliases through a controlled rollout. HA identity and other unsupported startup transitions remain externally managed. See [Configuration](/docs/configuration/).
 
 ## Change mail settings without restarting
 
 1. Open **Edit configuration project**. Change values in the normal matrix.
 2. Publish the drafts. Publishing creates a revision; running settings stay unchanged.
 3. Return to **Hikyo configuration**, select the exact published revision and optionally send a test email to a named recipient.
-4. Select **Apply selected revision**, then authorize that specific revision with a fresh authenticator code or passkey.
+4. Select **Apply selected revision**. Hikyo prepares it first; review **Reload live** or **Controlled rollout**, then authorize the exact ready plan with a fresh authenticator code or passkey.
 5. Check the node list. A pending or partial apply is still converging; only completed node acknowledgements establish that all admitted nodes use the target.
 
 A test uses the selected revision and does not activate it. Apply validates
-locally and does not contact the mail relay. A relay connection failure does
+the mail settings locally and does not contact the mail relay. A relay connection failure does
 not roll back the applied configuration. In-flight operations can finish using
 the bundle they started with; subsequent operations use the new bundle.
 
-## Supported catalogue
+## Original mail and notification keys
 
 | Key | Meaning |
 | --- | --- |
@@ -57,6 +62,69 @@ publication, encryption and history. Users cannot change the catalogue's types,
 secret classification or source mode. Certificate and password files are
 imported as contents once during adoption. Remote apply never reads arbitrary
 server filesystem paths.
+
+## Owner and node settings
+
+The catalogue has 27 top-level values: the nine above, 16 shared owner settings,
+`HIKYO_NODE_OVERRIDES` and `HIKYO_BOOTSTRAP_SOURCES`.
+
+| Owner settings | Applied behavior |
+| --- | --- |
+| Argon2 memory, time and parallelism; reauthentication window | Replace authentication policy after checking production floors and each node's available admission capacity. |
+| External origin, directory proxy, MCP enabled and allowed origins | Replace the dependent HTTP, authentication, federation and outbound clients. |
+| Backup interval, recipients, retention count/days, RPO and RTO target | Replace backup policy and scheduled work. |
+| Audit access and security retention days | Apply the retention policy to subsequent work. Already deleted records cannot be restored by lowering a setting. |
+
+`HIKYO_NODE_OVERRIDES` is an encrypted secret JSON document. Its version-1
+`nodes` map keys are the stable IDs shown in status. Each admitted node needs its
+own entry; never copy another node's identity or assume independent remotes
+share values. Edit listener addresses, operational listener, PostgreSQL pool
+limit, admission memory budget, backup directory and trusted proxy CIDRs in
+that node's entry. Trusted proxy policy is exclusively node-local.
+
+TLS uses `HIKYO_TLS_CERT_PEM` and `HIKYO_TLS_KEY_PEM` contents in the same entry.
+Adapter, OIDC and dynamic egress use their `*_EGRESS_POLICY_JSON` contents.
+Initial file aliases import once; private TLS files must have mode `0400` or
+`0600`. After adoption, edit and Apply the managed contents instead of expecting
+an old file path or SIGHUP to override them. A mismatched certificate/key pair
+is refused before activation.
+
+Live Apply prepares resources, drains old requests and workers, installs the
+new service graph and acknowledges actual installation. Changing a listener
+inside Hikyo does not configure an external reverse proxy, firewall, Service or
+Ingress. Make the new address reachable through the existing deployment.
+A missing HA node remains unready and permits configuration repair only until
+its explicit entry is published and applied.
+
+Changing the external origin's RP hostname requires a fresh authenticator code
+and a current password plus confirmed TOTP on the same initiating admin. An
+old-origin passkey alone cannot authorize that transition. Same-host port
+changes can use a passkey. This check preserves local login recovery; it does
+not prove target DNS, TLS or that you have successfully logged in there.
+
+## Controlled bootstrap rollout
+
+`HIKYO_BOOTSTRAP_SOURCES` selects enrolled external `database_source` and
+`root_source` aliases in a version-1 document. Never put raw root keys, database
+credentials or arbitrary filesystem paths in these cells. The application
+needs independently available database/root custody before it can decrypt its
+own project.
+
+The concrete provider currently targets an explicitly enrolled, singleton,
+non-HA **Recreate** Deployment on **Kubernetes 1.36**. The deployment must grant
+the constrained controller and admission integration authority over its declared
+resources. Enrollment is an operator installation task. Host, GitOps and HA
+bootstrap providers are not implemented. Unsupported transitions are refused;
+a prepared plan is not evidence that a provider is installed.
+
+Database aliases must reconnect to the same verified datastore; this is not a
+data migration facility. Root source changes retain the old recovery wrapper.
+There is no automatic root finalization.
+
+Preparation remains reviewable for five minutes. Each synchronous request waits
+at most 30 seconds; stale participant evidence must be refreshed. Final MFA binds
+the exact plan digest. Only verified external source/template observations and
+actual runtime acknowledgements establish convergence after replacement.
 
 ## Independent remotes and HA
 
@@ -84,7 +152,15 @@ pending or partial and reconciles to the committed target. Refresh status
 before retrying an uncertain response. The API's expected generation refuses
 concurrent stale decisions; the idempotency key identifies retries of one apply.
 
-To roll back, open **History and rollback**, restore the chosen revision into
+For a partial controlled rollout, use **Restore deployment inputs**. This needs
+a separate fresh MFA decision bound to the original job and plan. Wait for the
+verified controller restoration. The desired revision stays unchanged and
+business operations remain fenced. Publish a repaired revision and apply it
+with another fresh MFA decision to resume. Restoration never means runtime
+Applied, and an unresolved external handoff cannot be bypassed by publishing a
+new target.
+
+To roll back ordinary configuration, open **History and rollback**, restore the chosen revision into
 drafts, publish and apply that new revision. Existing unrelated drafts remain
 visible. History permissions and fresh reauthentication still apply. Required
 runtime snapshots are retained while active or involved in an apply.
@@ -96,7 +172,7 @@ viewing instance. See [Backup and restore](/docs/backup-and-restore/) and
 
 ## Human CLI
 
-The same operations are available to a human CLI session:
+The existing human CLI supports status, adoption, Apply and test-email:
 
 ```sh
 hikyo instance-config status -o json
@@ -105,6 +181,8 @@ hikyo instance-config adopt --yes
 hikyo instance-config apply --revision 3 --expected-generation 2
 hikyo instance-config test-email --revision 3 --expected-generation 2 --to admin@example.com
 ```
+
+Use the UI for the expanded prepare/review and deployment Restore workflow; complete CLI parity for controlled rollouts is not claimed here.
 
 Mutations open the existing browser authorization handoff. It shows the exact
 owner, action, revision and generation, then returns a single-use decision to

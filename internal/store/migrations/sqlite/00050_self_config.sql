@@ -32,12 +32,13 @@ CREATE TABLE self_config_jobs (
  schema_version INTEGER NOT NULL CHECK (schema_version > 0),
  expected_generation INTEGER NOT NULL CHECK (expected_generation >= 1),
  generation INTEGER NOT NULL CHECK (generation >= 1),
- status TEXT NOT NULL CHECK(status IN ('preparing','applying','applied','aborted','partial')),
+ status TEXT NOT NULL CHECK(status IN ('preparing','applying','applied','aborted','partial','superseded')),
  error_code TEXT NOT NULL DEFAULT '',
  created_at TEXT NOT NULL,
  updated_at TEXT NOT NULL
 );
 CREATE UNIQUE INDEX self_config_one_open_job ON self_config_jobs((1)) WHERE status IN ('preparing','applying','partial');
+CREATE INDEX self_config_jobs_generation ON self_config_jobs(generation);
 -- hikyo:table self_config_nodes class=instance chain=-
 CREATE TABLE self_config_nodes (
  node_id TEXT PRIMARY KEY,
@@ -66,6 +67,18 @@ CREATE TABLE self_config_seed_attestations (
  heartbeat_at TEXT NOT NULL
 );
 
+-- Temporary encrypted node inputs, imported into the normal project at adoption.
+-- hikyo:table self_config_seed_inputs class=instance chain=-
+CREATE TABLE self_config_seed_inputs (
+ node_id TEXT PRIMARY KEY REFERENCES self_config_seed_attestations(node_id) ON DELETE CASCADE,
+ owner_instance_id TEXT NOT NULL,
+ incarnation TEXT NOT NULL,
+ fingerprint TEXT NOT NULL,
+ ciphertext BLOB NOT NULL,
+ dek_version INTEGER NOT NULL CHECK (dek_version > 0),
+ row_version INTEGER NOT NULL DEFAULT 1 CHECK (row_version > 0)
+);
+
 -- Preserve outstanding ceremonies while extending the closed purpose set.
 CREATE TABLE cli_reauth_handoffs_new (
     id TEXT PRIMARY KEY,
@@ -91,3 +104,23 @@ INSERT INTO cli_reauth_handoffs_new
 SELECT id,state_verifier,code_verifier,session_id,principal_id,purpose,operation,environment_set,key_set,pkce_challenge,redirect_uri,approved_windows,created_at,expires_at,consumed_at FROM cli_reauth_handoffs;
 DROP TABLE cli_reauth_handoffs;
 ALTER TABLE cli_reauth_handoffs_new RENAME TO cli_reauth_handoffs;
+
+
+-- Rollout records contain only signed source aliases and secret-free receipts.
+-- hikyo:table self_config_rollouts class=instance chain=-
+CREATE TABLE self_config_rollouts (
+ job_id TEXT PRIMARY KEY REFERENCES self_config_jobs(id),
+ enrollment_id TEXT NOT NULL,
+ incarnation TEXT NOT NULL,
+ plan_digest TEXT NOT NULL DEFAULT '',
+ command_json TEXT NOT NULL,
+ response_json TEXT NOT NULL DEFAULT '',
+ external_phase TEXT NOT NULL DEFAULT '' CHECK (external_phase IN ('','applied','restored')),
+ sequence BIGINT NOT NULL CHECK (sequence > 0),
+ row_version BIGINT NOT NULL DEFAULT 1 CHECK (row_version > 0)
+);
+-- hikyo:table self_config_rollout_sequences class=instance chain=-
+CREATE TABLE self_config_rollout_sequences (
+ enrollment_id TEXT PRIMARY KEY,
+ sequence BIGINT NOT NULL CHECK (sequence > 0)
+);

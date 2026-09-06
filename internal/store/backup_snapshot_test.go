@@ -163,7 +163,7 @@ func TestExportPostgresManifestUsesCopySnapshotDuringMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	db := &DB{engine: EnginePostgres, pool: pool, admission: admitted.admission}
+	db := &DB{engine: EnginePostgres, pool: newPostgresPool(pool, pool.Config().MaxConns), admission: admitted.admission}
 	var archive bytes.Buffer
 	manifest, err := Export(ctx, db, &archive, t.TempDir())
 	if err != nil {

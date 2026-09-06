@@ -101,13 +101,15 @@ test.describe('instance administration', () => {
     await expect(page).toHaveURL(/\/instance\/config$/);
     await expect(page.getByRole('heading', { level: 1, name: 'Hikyo configuration' })).toBeVisible();
     await expect(page.getByText('Independent instances', { exact: true })).toBeVisible();
-    await expect(page.getByText('New operations use the applied settings without restarting Hikyo.', { exact: false })).toBeVisible();
+    await expect(page.getByText('Ordinary settings reload live. Bootstrap source changes use an enrolled controlled rollout.', { exact: false })).toBeVisible();
     const status = await browserApi(page, 'GET', '/api/v1/instance/config', zInstanceConfigStatus);
     expect(status.owner_instance_id).not.toBe('');
     expect(status.managed).toBe(true);
     await page.getByRole('link', { name: 'Edit configuration project', exact: true }).click();
     await expect(page.getByText('Hikyo system configuration', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Declare key', exact: true })).toHaveCount(0);
+    // The expanded catalogue virtualizes rows; scroll to the channel at the end.
+    await page.locator('.matrix__scroll').evaluate((element) => { element.scrollTop = element.scrollHeight; });
     await page.getByRole('button', { name: /^HIKYO_UPDATE_CHANNEL in Production:/ }).click();
     const editor = page.getByRole('dialog');
     await editor.getByLabel('Production value').fill('off');
@@ -127,6 +129,7 @@ test.describe('instance administration', () => {
     await page.getByRole('link', { name: 'Review and apply', exact: true }).click();
     await expect(page.getByLabel('Published revision to apply or test')).toHaveValue(String(pending.latest_revision));
     await page.getByRole('button', { name: 'Apply selected revision', exact: true }).click();
+    await expect(page.getByRole('dialog').getByText('Reload live', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Authorize with passkey', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect.poll(async () => (await browserApi(page, 'GET', '/api/v1/instance/config', zInstanceConfigStatus)).state).toBe('active');
@@ -160,6 +163,8 @@ test.describe('instance administration', () => {
     expect(remote.binding?.project_id).not.toBe(viewing.binding?.project_id);
     expect(remote.generation).not.toBe(viewing.generation);
     await page.getByRole('link', { name: 'Edit configuration project', exact: true }).click();
+    // The expanded catalogue virtualizes rows; scroll to the channel at the end.
+    await page.locator('.matrix__scroll').evaluate((element) => { element.scrollTop = element.scrollHeight; });
     await page.getByRole('button', { name: /^HIKYO_UPDATE_CHANNEL in Production:/ }).click();
     const editor = page.getByRole('dialog');
     await editor.getByLabel('Production value').fill('nightly');
@@ -172,6 +177,7 @@ test.describe('instance administration', () => {
     await page.getByRole('link', { name: 'Review and apply', exact: true }).click();
     await expect(page.getByLabel('Published revision to apply or test')).toHaveValue(String(published.latest_revision));
     await page.getByRole('button', { name: 'Apply selected revision', exact: true }).click();
+    await expect(page.getByRole('dialog').getByText('Reload live', { exact: true })).toBeVisible();
     await page.getByLabel('Fresh authenticator code').fill(totpCode(readServing().otpauth, new Date(Date.now() + 30_000)));
     await page.getByRole('button', { name: 'Authorize with code', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);

@@ -1,8 +1,77 @@
 # Self-configuration implementation and report validation
 
+## Current expansion evidence, 2026-09-06
+
+**Uncommitted worktree; no expanded exact-head CI, merge or production rollout evidence.** The current catalogue contains 27 top-level keys: nine original, 16 owner settings, secret node overrides and external bootstrap aliases. Trusted proxy policy is exclusively node-local. The 65-input inventory is metadata and does not establish every activation consumer.
+
+| Completed local check | Evidence and limit |
+| --- | --- |
+| Live owner/node consumers | Real HTTP/MCP, authentication/admission capacity, backup destination, listener movement and drain, TLS rotation/pair refusal/plain-TLS transition, immutable imports, same-DB pool replacement and fenced missing-node repair. Focused app race run passed in 85.788 s. |
+| Full app regression after upgrade projection fixes | Passed in 127.714 s against manifest 136. Log: `/tmp/hikyo-upgrade-managed-app-manifest136.log`. Later root/proxy/setup changes still need their own validation. |
+| Origin transition | Both-engine tests passed in 57.573 s; focused race passed in 145.042 s. Exact TOTP/current-password recovery checks do not prove target DNS/TLS/login. |
+| Deployment Restore | Both-engine exact-MFA/CAS/replay/cancel/fence checks passed in 5.438 s; Restore then fresh repair then next plan workflow passed in 5.419 s; focused race passed in 20.691 s and vet passed. Controller probe tests do not prove a real Kubernetes deployment. |
+| Browser code checks | 932 web tests across 107 files passed in 14.66 s, typecheck and production build passed. Logs: `/tmp/hikyo-selfconfig-web-restore-tests.log`, `/tmp/hikyo-selfconfig-web-restore-build.log`. That run preceded the separately recorded expanded desktop proof below. |
+
+Prepared review has a five-minute lease; individual synchronous requests wait at most 30 seconds and participant/worker evidence must be at most 30 seconds old. Final Apply binds exact plan/revision/generation/owner/incarnation and consumes fresh passkey/TOTP evidence once. Deployment Restore has a distinct exact MFA action, leaves the desired revision unchanged and keeps business fenced until a separately authorized repair applies. No automatic root finalization exists.
+
+Concrete bootstrap scope is explicitly enrolled singleton non-HA Recreate Kubernetes 1.36 only. Real enrollment, admission denial, source CAS, replacement boot/template acknowledgement and restoration now pass the exact-source Kubernetes fixture described below. HA bootstrap and topology/identity transitions and seven upgrade startup inputs remain unimplemented. Development controls and the next-root candidate selector have reviewed, locally tested isolated implementations pending integration. Host/GitOps providers and true datastore migration are separately scoped capabilities, not additional environment-variable families. No broad complete-server-variable claim is justified yet.
+
+Sealed setup seed correction has completed local evidence: service race passed in 35.027 s and app tests in 16.236 s. Both-engine checks cover large mail/TLS envelopes, exact owner/node import and MFA/network authority refusal; real app tests keep the running listener after host admin creation. R1 found final host-discovery and stale pre-lock timestamp issues. Both are fixed: the transient discovery mode reaches final membership-locked verification, which reads a fresh decision clock. Both-engine regressions passed in 5.308 s and R2 review is clean for those fixes. Durable authorized deployment command renewal and no-effect restoration now pass R2 review and race checks: module 4.877 s, service 111.817 s, app 17.108 s. Full lint passed in 78.122 s. Actual Kubernetes held-response expiry and recovery now pass as described below; executor process outage and takeover remain unproved.
+
+Latest local package evidence: 934 web tests, web typecheck and production build pass. Generated SDK tests pass 20/20 (`/tmp/hikyo-selfconfig-final-sdk-tests.log`). Full app and server packages passed in 100.472 s and 64.378 s before the small final seed-store correction. The expanded desktop rerun passed after the fixture was taught to scroll virtualized matrix rows. Desktop and mobile channel-Apply journeys and the exact-source real controlled-rollout chain below pass; no expanded exact-head CI result is claimed.
+
+## Expanded desktop browser evidence
+
+Freshly compiled Go instances passed two desktop Playwright flows: local passkey Apply in 7.6 s and independent-owner TOTP Apply in 6.4 s; the full run, including fixtures, took 3.2 minutes. Log: `/tmp/hikyo-selfconfig-rollout-desktop-scrolled.log`. The run was filtered, so it does not establish full flow-registry closure.
+
+The journeys navigate and edit the expanded catalogue, publish without changing the active generation, prepare before exact MFA, apply a new update channel and observe actual owner-local generation/channel changes. Applying owner B leaves owner A's revision, generation and channel unchanged. The local flow checks serious accessibility violations and page overflow. They do not change all new owner/node settings or execute an actual Kubernetes rollout.
+
+Screenshots were copied before the mobile run could overwrite test results: [local passkey Apply](validation/managed-configuration-expanded-desktop-applied.png), [node acknowledgement](validation/managed-configuration-expanded-desktop-nodes.png), [independent-owner TOTP Apply](validation/managed-configuration-expanded-desktop-independent-owner.png). These images are explicitly current expanded-desktop evidence; earlier screenshots below remain historical. Mobile equivalents also passed against the actual Go fixtures: local passkey 8.2 s and independent-owner TOTP 7.4 s, total 3.2 minutes. Log: `/tmp/hikyo-selfconfig-rollout-mobile.log`. Preserved [mobile passkey Apply](validation/managed-configuration-expanded-mobile-applied.png), [mobile node acknowledgement](validation/managed-configuration-expanded-mobile-nodes.png) and [mobile independent owner](validation/managed-configuration-expanded-mobile-independent-owner.png). These filtered journeys have the same limited setting and deployment scope as the desktop proof.
+
+Latest serial Go package checks passed: config 0.695 s, runtime configuration 0.360 s, crypto 0.383 s, store 37.031 s, service 114.142 s, app 90.759 s, server 63.187 s, configuration rollout 0.890 s and lint 35.491 s. The earlier isolation failure identified outdated fixture defaults, pins and audit expectations. Those corrections now pass focused checks; all 369 isolation cases now pass without coverage or assertion changes. Log: `/tmp/hikyo-selfconfig-final-sequential.log`.
+
+Compose and retention CLI isolation fixtures now use production audit defaults (90/365 days) and a 30-minute RTO. All TestComposeCLI and TestRetentionCLIStartupSweep cases passed on both engines in 59.640 s (`/tmp/hikyo-selfconfig-isolation-cli-final.log`). Full TestAuditCore and invariants 06/11/13 passed on SQLite/PostgreSQL in 35.458 s (`/tmp/hikyo-isolation-pins-audit-full-core.log`). Independent R1 review is CLEAN: every shared site is checked against explicit pins, seed authority rejects network/generic minting, and Restore audit rows come from real service authorization with refusal/idempotency coverage. All 369 isolation cases pass. Original planner shards 0 and 1 passed in 321.622 s and 457.832 s. The third reached its cumulative timeout without an assertion failure; its exact 134 cases were partitioned into three local groups, which passed in 229.973 s, 123.820 s and 176.508 s. No timeout, assertion or coverage requirement changed. Original logs: `/tmp/hikyo-selfconfig-isolation-shard-{0,1,2}.log`.
+
+Additional affected package checks passed: command 1.291 s, admission 0.427 s, authorization 0.415 s, store upgrade 40.423 s and upgrade gate 75.608 s (`/tmp/hikyo-selfconfig-final-boundaries.log`). Final affected-package vet passed (`/tmp/hikyo-selfconfig-final-vet.log`).
+
+Root finalization now locks the configuration binding before the key hierarchy, preserving both wrappers while the current generation/incarnation has an unresolved applying, partial, applied or superseded deployment. Restore and repair preparation retain the guard until the replacement generation is committed; finalization racing Apply invalidates its stale dual-wrap proof. SQLite/PostgreSQL rollout regressions passed in 15.885 s and existing key-rotation invariants passed in 2.166 s; R3 review is CLEAN. Logs: `/tmp/hikyo-root-guard-r3-focused.log` and `/tmp/hikyo-root-guard-r3-store.log`. Formatting and diff checks passed. No automatic root finalization is performed.
+
+## Exact-source real Kubernetes controlled-rollout evidence
+
+The complete owned-kind fixture passes against Kubernetes 1.36.1 using the production-mode server and executor, signed by an ephemeral test release authority. This is not a production release signature. [Metadata-only result](validation/controlled-rollout-kind.json) and [compiled source/embed manifest](validation/controlled-rollout-source-manifest.json) bind the run to the dirty worktree based on `907b162957441009f720c7fa4f3f76c573818a54`. The candidate binary and the final running process executable both hash to `ff5ed33f9fe084e1df154668edaad2bb35f98858bb7a6400af8058f636f949d8`. All 781 compiled source/embed inputs remained byte-identical through the build and completed proof. Later source changes require their own validation.
+
+| Real fixture action | Observed result |
+| --- | --- |
+| Normal host admin setup, password login and TOTP enrollment | Protected managed profile and real human session created through supported interfaces; no authentication rows seeded directly. |
+| Ordinary `HIKYO_UPDATE_CHANNEL` Apply, `stable` to `off` | Actual update consumer reports `off`; Pod UID, container ID, host PID and process start ticks remain identical. |
+| Fresh exact TOTP authorization of DB and root aliases | Replacement Pod opens the same PostgreSQL store through the new alias and distinct root key, records the exact application acknowledgement, and accepts a later TOTP login. |
+| Held executor response and root verification/finalization | Epoch-2 verification succeeds; finalization returns 409 conflict and preserves epochs 1 and 2 while acknowledgement is unresolved. |
+| Real five-minute signed-command expiry during held response | Submit sequence advances 6 to 7; owner, revision, generation and the entire authorized command remain unchanged except sequence and timestamps. Reauthentication count remains 6. Releasing the hold completes the same job. |
+| Restore, separate repair and later bootstrap Apply | Fresh exact TOTP Restore restores the previous deployment and replaces the candidate Pod while generation 5 remains partial and business requests return 503 `service_unavailable`. Separately published, freshly authorized repair applies generation 6 on the restored process. A later freshly authorized bootstrap Apply replaces the Pod and completes generation 7. |
+
+The real chain exposed a legitimate Deployment status resource-version change between Prepare and Submit. The fix accepts that change only while UID, full prepared spec, all other deployment metadata and every module UID/resource-version remain exact. A final metadata recheck and atomic write against the newly read resource version remain enforced. Status-only positive and metadata/spec/module negative regressions pass; configuration-rollout race checks passed in 4.052 s and vet passed. App bootstrap integration passed in 6.392 s and service deployment/Restore integration passed in 54.511 s. Independent R2 review is CLEAN, and the final real Restore/repair/later-Apply chain exercises the fix.
+
+The chart also now gives cluster-scoped admission policies namespace-qualified identities. Rendering the same release in two namespaces checks disjoint policy names and exact binding references. Full chart validation and the live admission/RBAC matrix pass, including accepted declared DB/root aliases and refused image, service-account, raw-root, undeclared-root, stale-custody and identity changes. Executor/server root reads and server Deployment writes remain denied.
+
+Reproduction instructions: [owned-kind harness](../../../scripts/ci/CONFIG_ROLLOUT_KIND.md). Successful private log: `/tmp/hikyo-rollout-reviewed-source-proof.log`. The retained fixture is namespace `hikyo-rollout-0520bd8e` in explicit context `kind-hikyo-rollout-818e`; no production resource was used. Exported evidence contains no credentials, root bytes or database locators.
+
+Scope remains singleton Recreate, same-store DB alias changes and real API/CLI human authentication ceremonies. Controlled-rollout clicks were not browser-driven. A held transport response and real expiry are proven; executor process outage/takeover, HA bootstrap, host/GitOps providers and true database migration are not. No merge, production rollout or expanded exact-head CI is implied, and no automatic root finalization occurs.
+
+## Current report and documentation checks
+
+The rebuilt standalone report returned LAN HTTP 200 from <http://192.168.0.30:8769/> and matched the local file byte-for-byte: 328962 bytes; SHA-256 `b9127fc709d956b722d9990cf152eef5357485e4600f4f3a4af631cb4eef7d1c`. Two consecutive builds were identical; both JavaScript source syntax checks passed. The regenerated inventory contains 65 inputs and 16 owner application-reload entries.
+
+T3 preview checks found all 30 decisions, no broken internal fragments and no external resource requests. With every disclosure open, document width equals viewport width at 320, 390 and 1280 pixels. The 320-pixel check found and corrected a long setting-name overflow in D13. Tables retain their own horizontal scroll containers. These checks verify the report, not product browser acceptance or a separate physical LAN device.
+
+Docs `pnpm run check` passed with zero errors, warnings or hints; `pnpm run build` generated 45 pages and 104 PWA precache entries. Both managed-configuration and configuration-rollouts pages are generated. No production docs deployment is implied.
+
+## Historical nine-key and earlier assurance evidence
+
+Everything below records earlier checkpoints. Their results remain useful for their tested revision and scope, but are not cumulative proof of the latest expanded worktree.
+
 ## D11 expansion and assurance revision, 2026-09-06
 
-The user replaced the earlier nine-key scope with every Hikyo variable, remote Apply, and target-instance administrator access using passkey or TOTP. D09/D11 now record explicit approval. The complete inventory covers 65 recognized inputs: 53 server, 10 client, one command-only and one retired. Inventory is metadata, not implemented activation. Application-generation replacement and managed deployment/bootstrap transitions remain unbuilt; the earlier green CI at `152373212c6d78a3bcae91e3300097ff0d893acf` does not prove them.
+The user replaced the earlier nine-key scope with every Hikyo variable, remote Apply, and target-instance administrator access using passkey or TOTP. D09/D11 now record explicit approval. The complete inventory covers 65 recognized inputs: 53 server, 10 client, one command-only and one retired. Inventory is metadata, not implemented activation. At that earlier revision, application-generation replacement and managed deployment/bootstrap transitions were unbuilt; the earlier green CI at `152373212c6d78a3bcae91e3300097ff0d893acf` does not prove them.
 
 Implemented in this revision: protected project reads/edits/publication, org navigation and capability hints enforce the instance-admin MFA conjunction. Exact Apply/adoption/test consumption accepts only TOTP or user-verifying passkey evidence authenticated within five minutes. Owner/revision binding, credential epoch and atomic single-use consumption remain enforced. Local host recovery remains a separate operation.
 
@@ -15,7 +84,7 @@ Validation:
 - Configuration inventory/generator tests and vet passed. Generated JSON is deterministic. Report JavaScript parses; desktop and 390px mobile show the revised D11, five explicit decisions and all 65 inventory rows without page overflow. LAN HTTP response matched the generated local HTML. A separate physical LAN device has not been checked.
 
 
-## Current implementation evidence
+## Historical nine-key implementation evidence
 
 2026-09-06, branch `t3code/dogfood-hikyo-environment`. Product implementation is
 built and locally verified. Full isolation, race and independent-owner browser
@@ -223,3 +292,5 @@ The artifact adds standalone HTML/CSS/JavaScript and design documentation under 
 The root topology now shows three separately owned projects, with sharing only among the third instance’s HA replicas. D26 records the explicit remote/HA separation; D27 records the delegated root-view interpretation. The design summary, handoff, ownership rules, apply scope, recovery requirements and delivery milestones were synchronized.
 
 Rebuilt deterministically and verified all 27 evidence-bearing decisions, source paths, unique IDs, JavaScript syntax and internal fragment links. Browser checks at 1280px and 320px found no topology/document overflow. The new D26 deep link opens its decision; the explicit-authority filter returns exactly three entries. Every existing walkthrough now explicitly scopes its nodes to one logical instance. No remote assets are loaded. The local preview server was restarted after its previous session stopped responding; the current artifact returned HTTP 200. These are report checks, not live multi-instance implementation tests.
+
+Latest complete isolation coverage: all 369 planned cases pass with SQLite/PostgreSQL configured. Shards 0 and 1 passed in 321.622 s and 457.832 s. Shard 2 reached the unchanged ten-minute process limit without an individual assertion failure; its exact 134-case set passed in three local groups (229.973 s, 123.820 s, 176.508 s). Logs: `/tmp/hikyo-selfconfig-isolation-shard-{0,1,2}.log` and `/tmp/hikyo-selfconfig-isolation-shard-2-part-{0,1,2}.jsonl`. No timeout or test coverage changed. These final results supersede the earlier pending isolation status above.

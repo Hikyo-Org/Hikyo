@@ -9,20 +9,21 @@ import (
 // SelfConfigGeneration is nonsecret runtime admission metadata. Consumers can
 // fence stale bundles without minting a runtime payload proof on an HTTP stack.
 type SelfConfigGeneration struct {
-	OwnerInstanceID, Incarnation string
-	Generation                   int64
-	Suspended, Managed           bool
+	OwnerInstanceID, Incarnation            string
+	Generation                              int64
+	Suspended, Managed, DeploymentRestoring bool
 }
 
 func (c *Coordination) CurrentSelfConfigGeneration(ctx context.Context) (SelfConfigGeneration, error) {
 	var out SelfConfigGeneration
 	err := c.transaction(ctx, true, func(q *coordinationTx) error {
-		const query = `SELECT owner_instance_id,generation,incarnation,suspended FROM self_config_binding WHERE id=1`
+		const prefix = `SELECT b.owner_instance_id,b.generation,b.incarnation,b.suspended,EXISTS(SELECT 1 FROM self_config_jobs j JOIN self_config_rollouts r ON r.job_id=j.id WHERE j.generation=b.generation AND r.incarnation=b.incarnation AND `
+		const suffix = `) FROM self_config_binding b WHERE b.id=1`
 		var err error
 		if q.db.engine == EnginePostgres {
-			err = q.db.pool.QueryRow(ctx, query).Scan(&out.OwnerInstanceID, &out.Generation, &out.Incarnation, &out.Suspended)
+			err = q.db.pool.QueryRow(ctx, prefix+`r.command_json::jsonb->'command'->>'action'='restore'`+suffix).Scan(&out.OwnerInstanceID, &out.Generation, &out.Incarnation, &out.Suspended, &out.DeploymentRestoring)
 		} else {
-			err = q.db.sqRead.QueryRowContext(ctx, query).Scan(&out.OwnerInstanceID, &out.Generation, &out.Incarnation, &out.Suspended)
+			err = q.db.sqRead.QueryRowContext(ctx, prefix+`json_extract(r.command_json,'$.command.action')='restore'`+suffix).Scan(&out.OwnerInstanceID, &out.Generation, &out.Incarnation, &out.Suspended, &out.DeploymentRestoring)
 		}
 		if isNoRows(err) {
 			return nil

@@ -720,7 +720,11 @@ export type TotpSelfConfigReauthRequest = {
 };
 
 export type SelfConfigReauthIntent = {
-    action: 'adopt' | 'apply' | 'mail-test';
+    /**
+     * Exact prepared deployment plan authorized by this decision.
+     */
+    plan_digest?: string;
+    action: 'adopt' | 'apply' | 'mail-test' | 'rollout-restore';
     owner_instance_id: string;
     revision: number;
     schema_version: number;
@@ -2662,6 +2666,22 @@ export type InstanceConfigNode = {
 };
 
 export type InstanceConfigJob = {
+    /**
+     * Deployment restoration was authorized and awaits the controller receipt.
+     */
+    deployment_restore_pending?: boolean;
+    /**
+     * The controller verified restored deployment resources. A separate configuration repair Apply is still required.
+     */
+    deployment_restored?: boolean;
+    /**
+     * Exact fixed participants and any deployment plan are ready for administrator authorization.
+     */
+    prepared?: boolean;
+    /**
+     * Exact prepared deployment plan authorized by this decision.
+     */
+    plan_digest?: string;
     id: string;
     state: 'preparing' | 'pending' | 'partial' | 'completed' | 'failed';
     revision: number;
@@ -2697,6 +2717,18 @@ export type InstanceConfigAdoptRequest = {
 };
 
 export type InstanceConfigApplyRequest = {
+    /**
+     * Restore the partial controlled deployment with exact rollout-restore MFA. The desired runtime revision remains fenced until a separate repair Apply.
+     */
+    restore_deployment?: boolean;
+    /**
+     * Exact prepared deployment plan authorized by this decision.
+     */
+    plan_digest?: string;
+    /**
+     * Prepare and return the exact plan for review without committing or consuming reauthentication.
+     */
+    prepare_only?: boolean;
     revision: number;
     expected_generation: number;
     idempotency_key: string;
@@ -4737,6 +4769,10 @@ export type GetMetaErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetMetaError = GetMetaErrors[keyof GetMetaErrors];
@@ -4782,6 +4818,10 @@ export type EstablishCredentialErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type EstablishCredentialError = EstablishCredentialErrors[keyof EstablishCredentialErrors];
@@ -4827,6 +4867,10 @@ export type LocalLoginErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type LocalLoginError = LocalLoginErrors[keyof LocalLoginErrors];
@@ -4871,6 +4915,10 @@ export type LogoutErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type LogoutError = LogoutErrors[keyof LogoutErrors];
@@ -4915,6 +4963,10 @@ export type WhoamiErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type WhoamiError = WhoamiErrors[keyof WhoamiErrors];
@@ -4966,6 +5018,10 @@ export type EnrolTotpStartErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type EnrolTotpStartError = EnrolTotpStartErrors[keyof EnrolTotpStartErrors];
@@ -5026,6 +5082,10 @@ export type EnrolTotpConfirmErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type EnrolTotpConfirmError = EnrolTotpConfirmErrors[keyof EnrolTotpConfirmErrors];
@@ -5086,6 +5146,10 @@ export type StepUpTotpErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type StepUpTotpError = StepUpTotpErrors[keyof StepUpTotpErrors];
@@ -5146,6 +5210,10 @@ export type ReauthTotpErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ReauthTotpError = ReauthTotpErrors[keyof ReauthTotpErrors];
@@ -5197,6 +5265,10 @@ export type StartCliReauthErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type StartCliReauthError = StartCliReauthErrors[keyof StartCliReauthErrors];
@@ -5246,6 +5318,10 @@ export type ShowCliReauthTransactionErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ShowCliReauthTransactionError = ShowCliReauthTransactionErrors[keyof ShowCliReauthTransactionErrors];
@@ -5300,6 +5376,10 @@ export type ApproveCliReauthErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ApproveCliReauthError = ApproveCliReauthErrors[keyof ApproveCliReauthErrors];
@@ -5348,6 +5428,10 @@ export type RedeemCliReauthErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RedeemCliReauthError = RedeemCliReauthErrors[keyof RedeemCliReauthErrors];
@@ -5399,6 +5483,10 @@ export type RemoveTotpErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RemoveTotpError = RemoveTotpErrors[keyof RemoveTotpErrors];
@@ -5443,6 +5531,10 @@ export type GetTotpStatusErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetTotpStatusError = GetTotpStatusErrors[keyof GetTotpStatusErrors];
@@ -5503,6 +5595,10 @@ export type RegenerateRecoveryCodesErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RegenerateRecoveryCodesError = RegenerateRecoveryCodesErrors[keyof RegenerateRecoveryCodesErrors];
@@ -5548,6 +5644,10 @@ export type BeginRecoveryErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type BeginRecoveryError = BeginRecoveryErrors[keyof BeginRecoveryErrors];
@@ -5609,6 +5709,10 @@ export type ListOrgsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListOrgsError = ListOrgsErrors[keyof ListOrgsErrors];
@@ -5686,6 +5790,10 @@ export type CreateOrgErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CreateOrgError = CreateOrgErrors[keyof CreateOrgErrors];
@@ -5761,6 +5869,10 @@ export type DeleteOrgErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type DeleteOrgError = DeleteOrgErrors[keyof DeleteOrgErrors];
@@ -5810,6 +5922,10 @@ export type GetOrgErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetOrgError = GetOrgErrors[keyof GetOrgErrors];
@@ -5892,6 +6008,10 @@ export type RenameOrgErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RenameOrgError = RenameOrgErrors[keyof RenameOrgErrors];
@@ -5941,6 +6061,10 @@ export type ListProjectsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListProjectsError = ListProjectsErrors[keyof ListProjectsErrors];
@@ -6006,6 +6130,10 @@ export type CreateProjectErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CreateProjectError = CreateProjectErrors[keyof CreateProjectErrors];
@@ -6055,6 +6183,10 @@ export type GetOrgRetentionErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetOrgRetentionError = GetOrgRetentionErrors[keyof GetOrgRetentionErrors];
@@ -6111,6 +6243,10 @@ export type SetOrgRetentionErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type SetOrgRetentionError = SetOrgRetentionErrors[keyof SetOrgRetentionErrors];
@@ -6173,6 +6309,10 @@ export type DeleteProjectErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type DeleteProjectError = DeleteProjectErrors[keyof DeleteProjectErrors];
@@ -6226,6 +6366,10 @@ export type GetProjectErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetProjectError = GetProjectErrors[keyof GetProjectErrors];
@@ -6295,6 +6439,10 @@ export type RenameProjectErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RenameProjectError = RenameProjectErrors[keyof RenameProjectErrors];
@@ -6348,6 +6496,10 @@ export type ListEnvironmentsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListEnvironmentsError = ListEnvironmentsErrors[keyof ListEnvironmentsErrors];
@@ -6417,6 +6569,10 @@ export type CreateEnvironmentErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CreateEnvironmentError = CreateEnvironmentErrors[keyof CreateEnvironmentErrors];
@@ -6486,6 +6642,10 @@ export type CloneEnvironmentErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CloneEnvironmentError = CloneEnvironmentErrors[keyof CloneEnvironmentErrors];
@@ -6546,6 +6706,10 @@ export type ReorderEnvironmentsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ReorderEnvironmentsError = ReorderEnvironmentsErrors[keyof ReorderEnvironmentsErrors];
@@ -6612,6 +6776,10 @@ export type DeleteEnvironmentErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type DeleteEnvironmentError = DeleteEnvironmentErrors[keyof DeleteEnvironmentErrors];
@@ -6669,6 +6837,10 @@ export type GetEnvironmentErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetEnvironmentError = GetEnvironmentErrors[keyof GetEnvironmentErrors];
@@ -6742,6 +6914,10 @@ export type RenameEnvironmentErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RenameEnvironmentError = RenameEnvironmentErrors[keyof RenameEnvironmentErrors];
@@ -6795,6 +6971,10 @@ export type GetProjectRetentionErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetProjectRetentionError = GetProjectRetentionErrors[keyof GetProjectRetentionErrors];
@@ -6855,6 +7035,10 @@ export type SetProjectRetentionErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type SetProjectRetentionError = SetProjectRetentionErrors[keyof SetProjectRetentionErrors];
@@ -6908,6 +7092,10 @@ export type ListFoldersErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListFoldersError = ListFoldersErrors[keyof ListFoldersErrors];
@@ -6977,6 +7165,10 @@ export type CreateFolderErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CreateFolderError = CreateFolderErrors[keyof CreateFolderErrors];
@@ -7034,6 +7226,10 @@ export type DeleteFolderErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type DeleteFolderError = DeleteFolderErrors[keyof DeleteFolderErrors];
@@ -7091,6 +7287,10 @@ export type GetFolderErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetFolderError = GetFolderErrors[keyof GetFolderErrors];
@@ -7164,6 +7364,10 @@ export type RenameFolderErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RenameFolderError = RenameFolderErrors[keyof RenameFolderErrors];
@@ -7250,6 +7454,10 @@ export type RevokeInstanceGrantErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RevokeInstanceGrantError = RevokeInstanceGrantErrors[keyof RevokeInstanceGrantErrors];
@@ -7311,6 +7519,10 @@ export type ListInstanceGrantsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListInstanceGrantsError = ListInstanceGrantsErrors[keyof ListInstanceGrantsErrors];
@@ -7379,6 +7591,10 @@ export type CreateInstanceGrantErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CreateInstanceGrantError = CreateInstanceGrantErrors[keyof CreateInstanceGrantErrors];
@@ -7447,6 +7663,10 @@ export type ApplyInstanceTemplateErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ApplyInstanceTemplateError = ApplyInstanceTemplateErrors[keyof ApplyInstanceTemplateErrors];
@@ -7524,6 +7744,10 @@ export type InviteInstanceMemberErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type InviteInstanceMemberError = InviteInstanceMemberErrors[keyof InviteInstanceMemberErrors];
@@ -7615,6 +7839,10 @@ export type RevokeOrgGrantErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RevokeOrgGrantError = RevokeOrgGrantErrors[keyof RevokeOrgGrantErrors];
@@ -7681,6 +7909,10 @@ export type ListOrgGrantsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListOrgGrantsError = ListOrgGrantsErrors[keyof ListOrgGrantsErrors];
@@ -7754,6 +7986,10 @@ export type CreateOrgGrantErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CreateOrgGrantError = CreateOrgGrantErrors[keyof CreateOrgGrantErrors];
@@ -7827,6 +8063,10 @@ export type ApplyOrgTemplateErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ApplyOrgTemplateError = ApplyOrgTemplateErrors[keyof ApplyOrgTemplateErrors];
@@ -7909,6 +8149,10 @@ export type InviteOrgMemberErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type InviteOrgMemberError = InviteOrgMemberErrors[keyof InviteOrgMemberErrors];
@@ -8004,6 +8248,10 @@ export type RevokeProjectGrantErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RevokeProjectGrantError = RevokeProjectGrantErrors[keyof RevokeProjectGrantErrors];
@@ -8074,6 +8322,10 @@ export type ListProjectGrantsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListProjectGrantsError = ListProjectGrantsErrors[keyof ListProjectGrantsErrors];
@@ -8151,6 +8403,10 @@ export type CreateProjectGrantErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CreateProjectGrantError = CreateProjectGrantErrors[keyof CreateProjectGrantErrors];
@@ -8228,6 +8484,10 @@ export type ApplyProjectTemplateErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ApplyProjectTemplateError = ApplyProjectTemplateErrors[keyof ApplyProjectTemplateErrors];
@@ -8327,6 +8587,10 @@ export type RevokeEnvGrantErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RevokeEnvGrantError = RevokeEnvGrantErrors[keyof RevokeEnvGrantErrors];
@@ -8408,6 +8672,10 @@ export type CreateEnvGrantErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CreateEnvGrantError = CreateEnvGrantErrors[keyof CreateEnvGrantErrors];
@@ -8489,6 +8757,10 @@ export type ApplyEnvTemplateErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ApplyEnvTemplateError = ApplyEnvTemplateErrors[keyof ApplyEnvTemplateErrors];
@@ -8546,6 +8818,10 @@ export type GetEnvironmentSettingsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetEnvironmentSettingsError = GetEnvironmentSettingsErrors[keyof GetEnvironmentSettingsErrors];
@@ -8610,6 +8886,10 @@ export type SetEnvironmentSettingsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type SetEnvironmentSettingsError = SetEnvironmentSettingsErrors[keyof SetEnvironmentSettingsErrors];
@@ -8665,6 +8945,10 @@ export type ExportDefinitionsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ExportDefinitionsError = ExportDefinitionsErrors[keyof ExportDefinitionsErrors];
@@ -8725,6 +9009,10 @@ export type CheckDefinitionsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CheckDefinitionsError = CheckDefinitionsErrors[keyof CheckDefinitionsErrors];
@@ -8806,6 +9094,10 @@ export type CreateDefinitionsPlanErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CreateDefinitionsPlanError = CreateDefinitionsPlanErrors[keyof CreateDefinitionsPlanErrors];
@@ -8863,6 +9155,10 @@ export type GetDefinitionsPlanErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetDefinitionsPlanError = GetDefinitionsPlanErrors[keyof GetDefinitionsPlanErrors];
@@ -8936,6 +9232,10 @@ export type ApplyDefinitionsPlanErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ApplyDefinitionsPlanError = ApplyDefinitionsPlanErrors[keyof ApplyDefinitionsPlanErrors];
@@ -8989,6 +9289,10 @@ export type GetDefinitionsSettingsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetDefinitionsSettingsError = GetDefinitionsSettingsErrors[keyof GetDefinitionsSettingsErrors];
@@ -9049,6 +9353,10 @@ export type SetDefinitionsSettingsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type SetDefinitionsSettingsError = SetDefinitionsSettingsErrors[keyof SetDefinitionsSettingsErrors];
@@ -9102,6 +9410,10 @@ export type GetMachineRevealErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetMachineRevealError = GetMachineRevealErrors[keyof GetMachineRevealErrors];
@@ -9179,6 +9491,10 @@ export type SetMachineRevealErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type SetMachineRevealError = SetMachineRevealErrors[keyof SetMachineRevealErrors];
@@ -9232,6 +9548,10 @@ export type ListKeysErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListKeysError = ListKeysErrors[keyof ListKeysErrors];
@@ -9301,6 +9621,10 @@ export type CreateKeyErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CreateKeyError = CreateKeyErrors[keyof CreateKeyErrors];
@@ -9367,6 +9691,10 @@ export type DeleteKeyErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type DeleteKeyError = DeleteKeyErrors[keyof DeleteKeyErrors];
@@ -9424,6 +9752,10 @@ export type GetKeyErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetKeyError = GetKeyErrors[keyof GetKeyErrors];
@@ -9497,6 +9829,10 @@ export type UpdateKeyMetadataErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type UpdateKeyMetadataError = UpdateKeyMetadataErrors[keyof UpdateKeyMetadataErrors];
@@ -9570,6 +9906,10 @@ export type RenameKeyErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RenameKeyError = RenameKeyErrors[keyof RenameKeyErrors];
@@ -9643,6 +9983,10 @@ export type UpdateKeyDeclarationErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type UpdateKeyDeclarationError = UpdateKeyDeclarationErrors[keyof UpdateKeyDeclarationErrors];
@@ -9716,6 +10060,10 @@ export type ReclassifyKeyErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ReclassifyKeyError = ReclassifyKeyErrors[keyof ReclassifyKeyErrors];
@@ -9789,6 +10137,10 @@ export type SetKeyGroupErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type SetKeyGroupError = SetKeyGroupErrors[keyof SetKeyGroupErrors];
@@ -9842,6 +10194,10 @@ export type ListKeyGroupsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListKeyGroupsError = ListKeyGroupsErrors[keyof ListKeyGroupsErrors];
@@ -9911,6 +10267,10 @@ export type CreateKeyGroupErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CreateKeyGroupError = CreateKeyGroupErrors[keyof CreateKeyGroupErrors];
@@ -9977,6 +10337,10 @@ export type DeleteKeyGroupErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type DeleteKeyGroupError = DeleteKeyGroupErrors[keyof DeleteKeyGroupErrors];
@@ -10034,6 +10398,10 @@ export type GetKeyGroupErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetKeyGroupError = GetKeyGroupErrors[keyof GetKeyGroupErrors];
@@ -10107,6 +10475,10 @@ export type RenameKeyGroupErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RenameKeyGroupError = RenameKeyGroupErrors[keyof RenameKeyGroupErrors];
@@ -10164,6 +10536,10 @@ export type ListValuesErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListValuesError = ListValuesErrors[keyof ListValuesErrors];
@@ -10235,6 +10611,10 @@ export type ClearValueErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ClearValueError = ClearValueErrors[keyof ClearValueErrors];
@@ -10299,6 +10679,10 @@ export type GetValueErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetValueError = GetValueErrors[keyof GetValueErrors];
@@ -10379,6 +10763,10 @@ export type SetValueErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type SetValueError = SetValueErrors[keyof SetValueErrors];
@@ -10448,6 +10836,10 @@ export type DeclareValuesErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type DeclareValuesError = DeclareValuesErrors[keyof DeclareValuesErrors];
@@ -10534,6 +10926,10 @@ export type CopyValuesErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CopyValuesError = CopyValuesErrors[keyof CopyValuesErrors];
@@ -10603,6 +10999,10 @@ export type DiffValuesErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type DiffValuesError = DiffValuesErrors[keyof DiffValuesErrors];
@@ -10660,6 +11060,10 @@ export type GetRevealWindowErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetRevealWindowError = GetRevealWindowErrors[keyof GetRevealWindowErrors];
@@ -10724,6 +11128,10 @@ export type ListValueOccurrencesErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListValueOccurrencesError = ListValueOccurrencesErrors[keyof ListValueOccurrencesErrors];
@@ -10797,6 +11205,10 @@ export type ImportValuesErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ImportValuesError = ImportValuesErrors[keyof ImportValuesErrors];
@@ -10871,6 +11283,10 @@ export type RevealValuesErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RevealValuesError = RevealValuesErrors[keyof RevealValuesErrors];
@@ -10952,6 +11368,10 @@ export type RevealValueErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RevealValueError = RevealValueErrors[keyof RevealValueErrors];
@@ -11029,6 +11449,10 @@ export type RevealValueDiffErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RevealValueDiffError = RevealValueDiffErrors[keyof RevealValueDiffErrors];
@@ -11060,6 +11484,10 @@ export type AuthMethodsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type AuthMethodsError = AuthMethodsErrors[keyof AuthMethodsErrors];
@@ -11109,6 +11537,10 @@ export type OidcStartErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type OidcStartError = OidcStartErrors[keyof OidcStartErrors];
@@ -11170,6 +11602,10 @@ export type OidcCallbackErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type OidcCallbackError = OidcCallbackErrors[keyof OidcCallbackErrors];
@@ -11219,6 +11655,10 @@ export type SamlStartErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type SamlStartError = SamlStartErrors[keyof SamlStartErrors];
@@ -11275,6 +11715,10 @@ export type SamlAcsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type SamlAcsError = SamlAcsErrors[keyof SamlAcsErrors];
@@ -11317,6 +11761,10 @@ export type SamlMetadataErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type SamlMetadataError = SamlMetadataErrors[keyof SamlMetadataErrors];
@@ -11361,6 +11809,10 @@ export type GetMyProfileErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetMyProfileError = GetMyProfileErrors[keyof GetMyProfileErrors];
@@ -11438,6 +11890,10 @@ export type UpdateMyProfileErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type UpdateMyProfileError = UpdateMyProfileErrors[keyof UpdateMyProfileErrors];
@@ -11482,6 +11938,10 @@ export type ListMyOrgsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListMyOrgsError = ListMyOrgsErrors[keyof ListMyOrgsErrors];
@@ -11526,6 +11986,10 @@ export type ListIdentitiesErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListIdentitiesError = ListIdentitiesErrors[keyof ListIdentitiesErrors];
@@ -11577,6 +12041,10 @@ export type LinkIdentityErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type LinkIdentityError = LinkIdentityErrors[keyof LinkIdentityErrors];
@@ -11633,6 +12101,10 @@ export type UnlinkIdentityErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type UnlinkIdentityError = UnlinkIdentityErrors[keyof UnlinkIdentityErrors];
@@ -11682,6 +12154,10 @@ export type ResetCredentialErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ResetCredentialError = ResetCredentialErrors[keyof ResetCredentialErrors];
@@ -11733,6 +12209,10 @@ export type EnrolPasskeyStartErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type EnrolPasskeyStartError = EnrolPasskeyStartErrors[keyof EnrolPasskeyStartErrors];
@@ -11784,6 +12264,10 @@ export type EnrolPasskeyFinishErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type EnrolPasskeyFinishError = EnrolPasskeyFinishErrors[keyof EnrolPasskeyFinishErrors];
@@ -11835,6 +12319,10 @@ export type PasskeyLoginStartErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type PasskeyLoginStartError = PasskeyLoginStartErrors[keyof PasskeyLoginStartErrors];
@@ -11886,6 +12374,10 @@ export type PasskeyLoginFinishErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type PasskeyLoginFinishError = PasskeyLoginFinishErrors[keyof PasskeyLoginFinishErrors];
@@ -11937,6 +12429,10 @@ export type StepUpPasskeyStartErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type StepUpPasskeyStartError = StepUpPasskeyStartErrors[keyof StepUpPasskeyStartErrors];
@@ -11988,6 +12484,10 @@ export type StepUpPasskeyFinishErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type StepUpPasskeyFinishError = StepUpPasskeyFinishErrors[keyof StepUpPasskeyFinishErrors];
@@ -12039,6 +12539,10 @@ export type ReauthPasskeyStartErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ReauthPasskeyStartError = ReauthPasskeyStartErrors[keyof ReauthPasskeyStartErrors];
@@ -12090,6 +12594,10 @@ export type ReauthPasskeyFinishErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ReauthPasskeyFinishError = ReauthPasskeyFinishErrors[keyof ReauthPasskeyFinishErrors];
@@ -12134,6 +12642,10 @@ export type ListPasskeysErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListPasskeysError = ListPasskeysErrors[keyof ListPasskeysErrors];
@@ -12190,6 +12702,10 @@ export type RemovePasskeyErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RemovePasskeyError = RemovePasskeyErrors[keyof RemovePasskeyErrors];
@@ -12251,6 +12767,10 @@ export type ListOidcProvidersErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListOidcProvidersError = ListOidcProvidersErrors[keyof ListOidcProvidersErrors];
@@ -12317,6 +12837,10 @@ export type DeleteOidcProviderErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type DeleteOidcProviderError = DeleteOidcProviderErrors[keyof DeleteOidcProviderErrors];
@@ -12383,6 +12907,10 @@ export type GetOidcProviderErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetOidcProviderError = GetOidcProviderErrors[keyof GetOidcProviderErrors];
@@ -12465,6 +12993,10 @@ export type PutOidcProviderErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type PutOidcProviderError = PutOidcProviderErrors[keyof PutOidcProviderErrors];
@@ -12526,6 +13058,10 @@ export type GetRetentionHealthErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetRetentionHealthError = GetRetentionHealthErrors[keyof GetRetentionHealthErrors];
@@ -12662,6 +13198,10 @@ export type RequestInstanceUpdateErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RequestInstanceUpdateError = RequestInstanceUpdateErrors[keyof RequestInstanceUpdateErrors];
@@ -12722,6 +13262,10 @@ export type GetInstanceUpdateJobErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetInstanceUpdateJobError = GetInstanceUpdateJobErrors[keyof GetInstanceUpdateJobErrors];
@@ -12783,6 +13327,10 @@ export type ListSamlProvidersErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListSamlProvidersError = ListSamlProvidersErrors[keyof ListSamlProvidersErrors];
@@ -12849,6 +13397,10 @@ export type DeleteSamlProviderErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type DeleteSamlProviderError = DeleteSamlProviderErrors[keyof DeleteSamlProviderErrors];
@@ -12915,6 +13467,10 @@ export type GetSamlProviderErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetSamlProviderError = GetSamlProviderErrors[keyof GetSamlProviderErrors];
@@ -12997,6 +13553,10 @@ export type PatchSamlProviderErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type PatchSamlProviderError = PatchSamlProviderErrors[keyof PatchSamlProviderErrors];
@@ -13079,6 +13639,10 @@ export type PutSamlProviderErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type PutSamlProviderError = PutSamlProviderErrors[keyof PutSamlProviderErrors];
@@ -13161,6 +13725,10 @@ export type RefreshSamlProviderMetadataErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RefreshSamlProviderMetadataError = RefreshSamlProviderMetadataErrors[keyof RefreshSamlProviderMetadataErrors];
@@ -13222,6 +13790,10 @@ export type ListSamlSpKeysErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListSamlSpKeysError = ListSamlSpKeysErrors[keyof ListSamlSpKeysErrors];
@@ -13292,6 +13864,10 @@ export type RotateSamlSpKeyErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RotateSamlSpKeyError = RotateSamlSpKeyErrors[keyof RotateSamlSpKeyErrors];
@@ -13367,6 +13943,10 @@ export type RetireSamlSpKeyErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RetireSamlSpKeyError = RetireSamlSpKeyErrors[keyof RetireSamlSpKeyErrors];
@@ -13442,6 +14022,10 @@ export type CompromiseRetireSamlSpKeyErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CompromiseRetireSamlSpKeyError = CompromiseRetireSamlSpKeyErrors[keyof CompromiseRetireSamlSpKeyErrors];
@@ -13495,6 +14079,10 @@ export type ListServiceAccountsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListServiceAccountsError = ListServiceAccountsErrors[keyof ListServiceAccountsErrors];
@@ -13564,6 +14152,10 @@ export type CreateServiceAccountErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CreateServiceAccountError = CreateServiceAccountErrors[keyof CreateServiceAccountErrors];
@@ -13621,6 +14213,10 @@ export type DeleteServiceAccountErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type DeleteServiceAccountError = DeleteServiceAccountErrors[keyof DeleteServiceAccountErrors];
@@ -13678,6 +14274,10 @@ export type ListMachineCredentialsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListMachineCredentialsError = ListMachineCredentialsErrors[keyof ListMachineCredentialsErrors];
@@ -13751,6 +14351,10 @@ export type MintMachineCredentialErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type MintMachineCredentialError = MintMachineCredentialErrors[keyof MintMachineCredentialErrors];
@@ -13814,6 +14418,10 @@ export type RevokeMachineCredentialErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RevokeMachineCredentialError = RevokeMachineCredentialErrors[keyof RevokeMachineCredentialErrors];
@@ -14280,6 +14888,10 @@ export type GetCredentialPolicyErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetCredentialPolicyError = GetCredentialPolicyErrors[keyof GetCredentialPolicyErrors];
@@ -14348,6 +14960,10 @@ export type SetCredentialPolicyErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type SetCredentialPolicyError = SetCredentialPolicyErrors[keyof SetCredentialPolicyErrors];
@@ -14409,6 +15025,10 @@ export type ListFederationIssuersErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListFederationIssuersError = ListFederationIssuersErrors[keyof ListFederationIssuersErrors];
@@ -14486,6 +15106,10 @@ export type CreateFederationIssuerErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CreateFederationIssuerError = CreateFederationIssuerErrors[keyof CreateFederationIssuerErrors];
@@ -14565,6 +15189,10 @@ export type DeleteFederationIssuerErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type DeleteFederationIssuerError = DeleteFederationIssuerErrors[keyof DeleteFederationIssuerErrors];
@@ -14642,6 +15270,10 @@ export type UpdateFederationIssuerErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type UpdateFederationIssuerError = UpdateFederationIssuerErrors[keyof UpdateFederationIssuerErrors];
@@ -14715,6 +15347,10 @@ export type CreateFederatedBindingErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CreateFederatedBindingError = CreateFederatedBindingErrors[keyof CreateFederatedBindingErrors];
@@ -14811,6 +15447,10 @@ export type FetchDeliveryErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type FetchDeliveryError = FetchDeliveryErrors[keyof FetchDeliveryErrors];
@@ -14884,6 +15524,10 @@ export type ReconcileOfflineRecordsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ReconcileOfflineRecordsError = ReconcileOfflineRecordsErrors[keyof ReconcileOfflineRecordsErrors];
@@ -14950,6 +15594,10 @@ export type ListScimBindingsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListScimBindingsError = ListScimBindingsErrors[keyof ListScimBindingsErrors];
@@ -15032,6 +15680,10 @@ export type CreateScimBindingErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CreateScimBindingError = CreateScimBindingErrors[keyof CreateScimBindingErrors];
@@ -15102,6 +15754,10 @@ export type DeleteScimBindingErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type DeleteScimBindingError = DeleteScimBindingErrors[keyof DeleteScimBindingErrors];
@@ -15172,6 +15828,10 @@ export type GetScimBindingErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetScimBindingError = GetScimBindingErrors[keyof GetScimBindingErrors];
@@ -15271,6 +15931,10 @@ export type DeleteScimMappingErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type DeleteScimMappingError = DeleteScimMappingErrors[keyof DeleteScimMappingErrors];
@@ -15341,6 +16005,10 @@ export type ListScimMappingsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListScimMappingsError = ListScimMappingsErrors[keyof ListScimMappingsErrors];
@@ -15427,6 +16095,10 @@ export type CreateScimMappingErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CreateScimMappingError = CreateScimMappingErrors[keyof CreateScimMappingErrors];
@@ -15513,6 +16185,10 @@ export type UpdateScimMappingErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type UpdateScimMappingError = UpdateScimMappingErrors[keyof UpdateScimMappingErrors];
@@ -15583,6 +16259,10 @@ export type ListScimCredentialsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListScimCredentialsError = ListScimCredentialsErrors[keyof ListScimCredentialsErrors];
@@ -15669,6 +16349,10 @@ export type MintScimCredentialErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type MintScimCredentialError = MintScimCredentialErrors[keyof MintScimCredentialErrors];
@@ -15745,6 +16429,10 @@ export type RevokeScimCredentialErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RevokeScimCredentialError = RevokeScimCredentialErrors[keyof RevokeScimCredentialErrors];
@@ -15821,6 +16509,10 @@ export type GetScimCredentialErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetScimCredentialError = GetScimCredentialErrors[keyof GetScimCredentialErrors];
@@ -15891,6 +16583,10 @@ export type ListScimDirectoryUsersErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListScimDirectoryUsersError = ListScimDirectoryUsersErrors[keyof ListScimDirectoryUsersErrors];
@@ -15961,6 +16657,10 @@ export type ListScimDirectoryGroupsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListScimDirectoryGroupsError = ListScimDirectoryGroupsErrors[keyof ListScimDirectoryGroupsErrors];
@@ -16014,6 +16714,10 @@ export type ScimServiceProviderConfigErrors = {
      *
      */
     500: ScimResource;
+    /**
+     * Configuration is converging. Retry after the indicated interval.
+     */
+    503: ScimResource;
 };
 
 export type ScimServiceProviderConfigError = ScimServiceProviderConfigErrors[keyof ScimServiceProviderConfigErrors];
@@ -16067,6 +16771,10 @@ export type ScimResourceTypesErrors = {
      *
      */
     500: ScimResource;
+    /**
+     * Configuration is converging. Retry after the indicated interval.
+     */
+    503: ScimResource;
 };
 
 export type ScimResourceTypesError = ScimResourceTypesErrors[keyof ScimResourceTypesErrors];
@@ -16120,6 +16828,10 @@ export type ScimSchemasErrors = {
      *
      */
     500: ScimResource;
+    /**
+     * Configuration is converging. Retry after the indicated interval.
+     */
+    503: ScimResource;
 };
 
 export type ScimSchemasError = ScimSchemasErrors[keyof ScimSchemasErrors];
@@ -16232,6 +16944,10 @@ export type ScimListUsersErrors = {
      *
      */
     501: ScimResource;
+    /**
+     * Configuration is converging. Retry after the indicated interval.
+     */
+    503: ScimResource;
 };
 
 export type ScimListUsersError = ScimListUsersErrors[keyof ScimListUsersErrors];
@@ -16300,6 +17016,10 @@ export type ScimCreateUserErrors = {
      *
      */
     500: ScimResource;
+    /**
+     * Configuration is converging. Retry after the indicated interval.
+     */
+    503: ScimResource;
 };
 
 export type ScimCreateUserError = ScimCreateUserErrors[keyof ScimCreateUserErrors];
@@ -16359,6 +17079,10 @@ export type ScimDeleteUserErrors = {
      *
      */
     500: ScimResource;
+    /**
+     * Configuration is converging. Retry after the indicated interval.
+     */
+    503: ScimResource;
 };
 
 export type ScimDeleteUserError = ScimDeleteUserErrors[keyof ScimDeleteUserErrors];
@@ -16418,6 +17142,10 @@ export type ScimGetUserErrors = {
      *
      */
     500: ScimResource;
+    /**
+     * Configuration is converging. Retry after the indicated interval.
+     */
+    503: ScimResource;
 };
 
 export type ScimGetUserError = ScimGetUserErrors[keyof ScimGetUserErrors];
@@ -16492,6 +17220,10 @@ export type ScimPatchUserErrors = {
      *
      */
     500: ScimResource;
+    /**
+     * Configuration is converging. Retry after the indicated interval.
+     */
+    503: ScimResource;
 };
 
 export type ScimPatchUserError = ScimPatchUserErrors[keyof ScimPatchUserErrors];
@@ -16566,6 +17298,10 @@ export type ScimReplaceUserErrors = {
      *
      */
     500: ScimResource;
+    /**
+     * Configuration is converging. Retry after the indicated interval.
+     */
+    503: ScimResource;
 };
 
 export type ScimReplaceUserError = ScimReplaceUserErrors[keyof ScimReplaceUserErrors];
@@ -16678,6 +17414,10 @@ export type ScimListGroupsErrors = {
      *
      */
     501: ScimResource;
+    /**
+     * Configuration is converging. Retry after the indicated interval.
+     */
+    503: ScimResource;
 };
 
 export type ScimListGroupsError = ScimListGroupsErrors[keyof ScimListGroupsErrors];
@@ -16746,6 +17486,10 @@ export type ScimCreateGroupErrors = {
      *
      */
     500: ScimResource;
+    /**
+     * Configuration is converging. Retry after the indicated interval.
+     */
+    503: ScimResource;
 };
 
 export type ScimCreateGroupError = ScimCreateGroupErrors[keyof ScimCreateGroupErrors];
@@ -16805,6 +17549,10 @@ export type ScimDeleteGroupErrors = {
      *
      */
     500: ScimResource;
+    /**
+     * Configuration is converging. Retry after the indicated interval.
+     */
+    503: ScimResource;
 };
 
 export type ScimDeleteGroupError = ScimDeleteGroupErrors[keyof ScimDeleteGroupErrors];
@@ -16864,6 +17612,10 @@ export type ScimGetGroupErrors = {
      *
      */
     500: ScimResource;
+    /**
+     * Configuration is converging. Retry after the indicated interval.
+     */
+    503: ScimResource;
 };
 
 export type ScimGetGroupError = ScimGetGroupErrors[keyof ScimGetGroupErrors];
@@ -16938,6 +17690,10 @@ export type ScimPatchGroupErrors = {
      *
      */
     500: ScimResource;
+    /**
+     * Configuration is converging. Retry after the indicated interval.
+     */
+    503: ScimResource;
 };
 
 export type ScimPatchGroupError = ScimPatchGroupErrors[keyof ScimPatchGroupErrors];
@@ -17012,6 +17768,10 @@ export type ScimReplaceGroupErrors = {
      *
      */
     500: ScimResource;
+    /**
+     * Configuration is converging. Retry after the indicated interval.
+     */
+    503: ScimResource;
 };
 
 export type ScimReplaceGroupError = ScimReplaceGroupErrors[keyof ScimReplaceGroupErrors];
@@ -17070,6 +17830,10 @@ export type ScimBulkErrors = {
      *
      */
     501: ScimResource;
+    /**
+     * Configuration is converging. Retry after the indicated interval.
+     */
+    503: ScimResource;
 };
 
 export type ScimBulkError = ScimBulkErrors[keyof ScimBulkErrors];
@@ -17119,6 +17883,10 @@ export type ScimMeErrors = {
      *
      */
     501: ScimResource;
+    /**
+     * Configuration is converging. Retry after the indicated interval.
+     */
+    503: ScimResource;
 };
 
 export type ScimMeError = ScimMeErrors[keyof ScimMeErrors];
@@ -17168,6 +17936,10 @@ export type ScimSearchUsersErrors = {
      *
      */
     501: ScimResource;
+    /**
+     * Configuration is converging. Retry after the indicated interval.
+     */
+    503: ScimResource;
 };
 
 export type ScimSearchUsersError = ScimSearchUsersErrors[keyof ScimSearchUsersErrors];
@@ -17217,6 +17989,10 @@ export type ScimSearchGroupsErrors = {
      *
      */
     501: ScimResource;
+    /**
+     * Configuration is converging. Retry after the indicated interval.
+     */
+    503: ScimResource;
 };
 
 export type ScimSearchGroupsError = ScimSearchGroupsErrors[keyof ScimSearchGroupsErrors];
@@ -17269,6 +18045,10 @@ export type ServeDirectoryErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ServeDirectoryError = ServeDirectoryErrors[keyof ServeDirectoryErrors];
@@ -17330,6 +18110,10 @@ export type ListRemotesErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListRemotesError = ListRemotesErrors[keyof ListRemotesErrors];
@@ -17407,6 +18191,10 @@ export type AddRemoteErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type AddRemoteError = AddRemoteErrors[keyof AddRemoteErrors];
@@ -17477,6 +18265,10 @@ export type RemoveRemoteErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RemoveRemoteError = RemoveRemoteErrors[keyof RemoveRemoteErrors];
@@ -17547,6 +18339,10 @@ export type ShowRemoteErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ShowRemoteError = ShowRemoteErrors[keyof ShowRemoteErrors];
@@ -17633,6 +18429,10 @@ export type RenameRemoteErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RenameRemoteError = RenameRemoteErrors[keyof RenameRemoteErrors];
@@ -17694,6 +18494,10 @@ export type ListInstanceConnectionsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListInstanceConnectionsError = ListInstanceConnectionsErrors[keyof ListInstanceConnectionsErrors];
@@ -17762,6 +18566,10 @@ export type MintInstanceConnectionErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type MintInstanceConnectionError = MintInstanceConnectionErrors[keyof MintInstanceConnectionErrors];
@@ -17837,6 +18645,10 @@ export type RevokeInstanceConnectionErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RevokeInstanceConnectionError = RevokeInstanceConnectionErrors[keyof RevokeInstanceConnectionErrors];
@@ -17903,6 +18715,10 @@ export type ShowInstanceConnectionErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ShowInstanceConnectionError = ShowInstanceConnectionErrors[keyof ShowInstanceConnectionErrors];
@@ -17971,6 +18787,10 @@ export type RemoveWorkspaceOriginErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RemoveWorkspaceOriginError = RemoveWorkspaceOriginErrors[keyof RemoveWorkspaceOriginErrors];
@@ -18032,6 +18852,10 @@ export type ListWorkspaceOriginsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListWorkspaceOriginsError = ListWorkspaceOriginsErrors[keyof ListWorkspaceOriginsErrors];
@@ -18109,6 +18933,10 @@ export type AddWorkspaceOriginErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type AddWorkspaceOriginError = AddWorkspaceOriginErrors[keyof AddWorkspaceOriginErrors];
@@ -18164,6 +18992,10 @@ export type StartWorkspaceHandoffErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type StartWorkspaceHandoffError = StartWorkspaceHandoffErrors[keyof StartWorkspaceHandoffErrors];
@@ -18232,6 +19064,10 @@ export type ApproveWorkspaceHandoffErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ApproveWorkspaceHandoffError = ApproveWorkspaceHandoffErrors[keyof ApproveWorkspaceHandoffErrors];
@@ -18287,6 +19123,10 @@ export type RedeemWorkspaceHandoffErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RedeemWorkspaceHandoffError = RedeemWorkspaceHandoffErrors[keyof RedeemWorkspaceHandoffErrors];
@@ -18327,6 +19167,10 @@ export type ShowWorkspaceHandoffErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ShowWorkspaceHandoffError = ShowWorkspaceHandoffErrors[keyof ShowWorkspaceHandoffErrors];
@@ -18371,6 +19215,10 @@ export type ListMySessionsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListMySessionsError = ListMySessionsErrors[keyof ListMySessionsErrors];
@@ -18420,6 +19268,10 @@ export type RevokeMySessionErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RevokeMySessionError = RevokeMySessionErrors[keyof RevokeMySessionErrors];
@@ -18510,6 +19362,10 @@ export type PublishPendingChangesErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type PublishPendingChangesError = PublishPendingChangesErrors[keyof PublishPendingChangesErrors];
@@ -18570,6 +19426,10 @@ export type ListApprovalPoliciesErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListApprovalPoliciesError = ListApprovalPoliciesErrors[keyof ListApprovalPoliciesErrors];
@@ -18639,6 +19499,10 @@ export type CreateApprovalPolicyErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CreateApprovalPolicyError = CreateApprovalPolicyErrors[keyof CreateApprovalPolicyErrors];
@@ -18693,6 +19557,10 @@ export type DeleteApprovalPolicyErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type DeleteApprovalPolicyError = DeleteApprovalPolicyErrors[keyof DeleteApprovalPolicyErrors];
@@ -18763,6 +19631,10 @@ export type UpdateApprovalPolicyErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type UpdateApprovalPolicyError = UpdateApprovalPolicyErrors[keyof UpdateApprovalPolicyErrors];
@@ -18820,6 +19692,10 @@ export type ListApprovalRequestsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListApprovalRequestsError = ListApprovalRequestsErrors[keyof ListApprovalRequestsErrors];
@@ -18911,6 +19787,10 @@ export type VoteApprovalRequestErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type VoteApprovalRequestError = VoteApprovalRequestErrors[keyof VoteApprovalRequestErrors];
@@ -18986,6 +19866,10 @@ export type GetApprovalCeremonyErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetApprovalCeremonyError = GetApprovalCeremonyErrors[keyof GetApprovalCeremonyErrors];
@@ -19059,6 +19943,10 @@ export type DiffRevisionsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type DiffRevisionsError = DiffRevisionsErrors[keyof DiffRevisionsErrors];
@@ -19149,6 +20037,10 @@ export type RevealRevisionDiffErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RevealRevisionDiffError = RevealRevisionDiffErrors[keyof RevealRevisionDiffErrors];
@@ -19206,6 +20098,10 @@ export type GetEnvironmentSignalsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetEnvironmentSignalsError = GetEnvironmentSignalsErrors[keyof GetEnvironmentSignalsErrors];
@@ -19263,6 +20159,10 @@ export type ListPendingDraftsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListPendingDraftsError = ListPendingDraftsErrors[keyof ListPendingDraftsErrors];
@@ -19337,6 +20237,10 @@ export type RollbackRevisionErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RollbackRevisionError = RollbackRevisionErrors[keyof RollbackRevisionErrors];
@@ -19394,6 +20298,10 @@ export type ListRevisionPinsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListRevisionPinsError = ListRevisionPinsErrors[keyof ListRevisionPinsErrors];
@@ -19467,6 +20375,10 @@ export type CreateRevisionPinErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CreateRevisionPinError = CreateRevisionPinErrors[keyof CreateRevisionPinErrors];
@@ -19525,6 +20437,10 @@ export type ReleaseRevisionPinErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ReleaseRevisionPinError = ReleaseRevisionPinErrors[keyof ReleaseRevisionPinErrors];
@@ -19582,6 +20498,10 @@ export type ListRevisionsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListRevisionsError = ListRevisionsErrors[keyof ListRevisionsErrors];
@@ -19652,6 +20572,10 @@ export type GetRevisionErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetRevisionError = GetRevisionErrors[keyof GetRevisionErrors];
@@ -19742,6 +20666,10 @@ export type ExportValuesErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ExportValuesError = ExportValuesErrors[keyof ExportValuesErrors];
@@ -19795,6 +20723,10 @@ export type WatchProjectEventsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type WatchProjectEventsError = WatchProjectEventsErrors[keyof WatchProjectEventsErrors];
@@ -19908,6 +20840,10 @@ export type QueryOrgAuditErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type QueryOrgAuditError = QueryOrgAuditErrors[keyof QueryOrgAuditErrors];
@@ -20001,6 +20937,10 @@ export type ExportOrgAuditErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ExportOrgAuditError = ExportOrgAuditErrors[keyof ExportOrgAuditErrors];
@@ -20118,6 +21058,10 @@ export type QueryProjectAuditErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type QueryProjectAuditError = QueryProjectAuditErrors[keyof QueryProjectAuditErrors];
@@ -20215,6 +21159,10 @@ export type ExportProjectAuditErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ExportProjectAuditError = ExportProjectAuditErrors[keyof ExportProjectAuditErrors];
@@ -20336,6 +21284,10 @@ export type QueryEnvAuditErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type QueryEnvAuditError = QueryEnvAuditErrors[keyof QueryEnvAuditErrors];
@@ -20437,6 +21389,10 @@ export type ExportEnvAuditErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ExportEnvAuditError = ExportEnvAuditErrors[keyof ExportEnvAuditErrors];
@@ -20481,6 +21437,10 @@ export type RotateTokenKeyErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RotateTokenKeyError = RotateTokenKeyErrors[keyof RotateTokenKeyErrors];
@@ -20541,6 +21501,10 @@ export type RotateDekErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RotateDekError = RotateDekErrors[keyof RotateDekErrors];
@@ -20594,6 +21558,10 @@ export type ReencryptInstanceErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ReencryptInstanceError = ReencryptInstanceErrors[keyof ReencryptInstanceErrors];
@@ -20647,6 +21615,10 @@ export type RotateMasterKeyErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RotateMasterKeyError = RotateMasterKeyErrors[keyof RotateMasterKeyErrors];
@@ -20707,6 +21679,10 @@ export type RotateRootKeyErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RotateRootKeyError = RotateRootKeyErrors[keyof RotateRootKeyErrors];
@@ -20763,6 +21739,10 @@ export type ReencryptProjectErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ReencryptProjectError = ReencryptProjectErrors[keyof ReencryptProjectErrors];
@@ -20807,6 +21787,10 @@ export type RotateScanningKeyErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RotateScanningKeyError = RotateScanningKeyErrors[keyof RotateScanningKeyErrors];
@@ -20854,6 +21838,10 @@ export type ListAdaptersErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListAdaptersError = ListAdaptersErrors[keyof ListAdaptersErrors];
@@ -20934,6 +21922,10 @@ export type CreateAdapterErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CreateAdapterError = CreateAdapterErrors[keyof CreateAdapterErrors];
@@ -20993,6 +21985,10 @@ export type DeleteAdapterErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type DeleteAdapterError = DeleteAdapterErrors[keyof DeleteAdapterErrors];
@@ -21041,6 +22037,10 @@ export type ShowAdapterErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ShowAdapterError = ShowAdapterErrors[keyof ShowAdapterErrors];
@@ -21122,6 +22122,10 @@ export type UpdateAdapterOriginErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type UpdateAdapterOriginError = UpdateAdapterOriginErrors[keyof UpdateAdapterOriginErrors];
@@ -21196,6 +22200,10 @@ export type CancelAdapterMoveErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CancelAdapterMoveError = CancelAdapterMoveErrors[keyof CancelAdapterMoveErrors];
@@ -21244,6 +22252,10 @@ export type ShowAdapterMoveErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ShowAdapterMoveError = ShowAdapterMoveErrors[keyof ShowAdapterMoveErrors];
@@ -21325,6 +22337,10 @@ export type ResumeAdapterMoveErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ResumeAdapterMoveError = ResumeAdapterMoveErrors[keyof ResumeAdapterMoveErrors];
@@ -21373,6 +22389,10 @@ export type RevokeAdapterCredentialErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RevokeAdapterCredentialError = RevokeAdapterCredentialErrors[keyof RevokeAdapterCredentialErrors];
@@ -21454,6 +22474,10 @@ export type SetAdapterCredentialErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type SetAdapterCredentialError = SetAdapterCredentialErrors[keyof SetAdapterCredentialErrors];
@@ -21502,6 +22526,10 @@ export type ListAdapterTargetsErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListAdapterTargetsError = ListAdapterTargetsErrors[keyof ListAdapterTargetsErrors];
@@ -21583,6 +22611,10 @@ export type AddAdapterTargetErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type AddAdapterTargetError = AddAdapterTargetErrors[keyof AddAdapterTargetErrors];
@@ -21642,6 +22674,10 @@ export type RemoveAdapterTargetErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RemoveAdapterTargetError = RemoveAdapterTargetErrors[keyof RemoveAdapterTargetErrors];
@@ -21692,6 +22728,10 @@ export type ShowAdapterTargetErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ShowAdapterTargetError = ShowAdapterTargetErrors[keyof ShowAdapterTargetErrors];
@@ -21773,6 +22813,10 @@ export type UpdateAdapterTargetErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type UpdateAdapterTargetError = UpdateAdapterTargetErrors[keyof UpdateAdapterTargetErrors];
@@ -21834,6 +22878,10 @@ export type PlanAdapterTargetErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type PlanAdapterTargetError = PlanAdapterTargetErrors[keyof PlanAdapterTargetErrors];
@@ -21908,6 +22956,10 @@ export type SyncAdapterTargetErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type SyncAdapterTargetError = SyncAdapterTargetErrors[keyof SyncAdapterTargetErrors];
@@ -21982,6 +23034,10 @@ export type PauseAdapterTargetErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type PauseAdapterTargetError = PauseAdapterTargetErrors[keyof PauseAdapterTargetErrors];
@@ -22056,6 +23112,10 @@ export type ResumeAdapterTargetErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ResumeAdapterTargetError = ResumeAdapterTargetErrors[keyof ResumeAdapterTargetErrors];
@@ -22104,6 +23164,10 @@ export type TestAdapterTargetErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type TestAdapterTargetError = TestAdapterTargetErrors[keyof TestAdapterTargetErrors];
@@ -22185,6 +23249,10 @@ export type AdoptAdapterTargetNamesErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type AdoptAdapterTargetNamesError = AdoptAdapterTargetNamesErrors[keyof AdoptAdapterTargetNamesErrors];
@@ -22232,6 +23300,10 @@ export type ListDynamicProvidersErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListDynamicProvidersError = ListDynamicProvidersErrors[keyof ListDynamicProvidersErrors];
@@ -22295,6 +23367,10 @@ export type CreateDynamicProviderErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type CreateDynamicProviderError = CreateDynamicProviderErrors[keyof CreateDynamicProviderErrors];
@@ -22357,6 +23433,10 @@ export type DeleteDynamicProviderErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type DeleteDynamicProviderError = DeleteDynamicProviderErrors[keyof DeleteDynamicProviderErrors];
@@ -22405,6 +23485,10 @@ export type ShowDynamicProviderErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ShowDynamicProviderError = ShowDynamicProviderErrors[keyof ShowDynamicProviderErrors];
@@ -22453,6 +23537,10 @@ export type RevokeDynamicProviderCredentialErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RevokeDynamicProviderCredentialError = RevokeDynamicProviderCredentialErrors[keyof RevokeDynamicProviderCredentialErrors];
@@ -22517,6 +23605,10 @@ export type SetDynamicProviderCredentialErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type SetDynamicProviderCredentialError = SetDynamicProviderCredentialErrors[keyof SetDynamicProviderCredentialErrors];
@@ -22568,6 +23660,10 @@ export type ListLeasesErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ListLeasesError = ListLeasesErrors[keyof ListLeasesErrors];
@@ -22652,6 +23748,10 @@ export type MintLeaseErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type MintLeaseError = MintLeaseErrors[keyof MintLeaseErrors];
@@ -22704,6 +23804,10 @@ export type ShowLeaseErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type ShowLeaseError = ShowLeaseErrors[keyof ShowLeaseErrors];
@@ -22772,6 +23876,10 @@ export type RenewLeaseErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RenewLeaseError = RenewLeaseErrors[keyof RenewLeaseErrors];
@@ -22824,6 +23932,10 @@ export type RevokeLeaseErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type RevokeLeaseError = RevokeLeaseErrors[keyof RevokeLeaseErrors];
@@ -22885,6 +23997,10 @@ export type SettleLeaseErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type SettleLeaseError = SettleLeaseErrors[keyof SettleLeaseErrors];

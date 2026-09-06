@@ -26,6 +26,7 @@
     "mcp",
     "compose",
     "kubernetes-operator",
+    "configuration-rollouts",
     "---Identity providers---",
     "saml",
     "scim",

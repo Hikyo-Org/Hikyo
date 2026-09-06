@@ -601,8 +601,15 @@ const (
 type StoreOp string
 
 const (
+	StoreSelfConfigSeedInputs          StoreOp = "selfconfig.SeedInputs"
+	StoreSelfConfigHostSeedInputs      StoreOp = "selfconfig.HostSeedInputs"
+	StoreSelfConfigPutSeedInput        StoreOp = "selfconfig.PutSeedInput"
 	StoreSelfConfigRecoverTarget       StoreOp = "selfconfig.RecoverTarget"
 	StoreSelfConfigBinding             StoreOp = "selfconfig.Binding"
+	StoreSelfConfigPreviousRevision    StoreOp = "selfconfig.PreviousRevision"
+	StoreSelfConfigRollout             StoreOp = "selfconfig.Rollout"
+	StoreSelfConfigPutRollout          StoreOp = "selfconfig.PutRollout"
+	StoreSelfConfigNextRolloutSequence StoreOp = "selfconfig.NextRolloutSequence"
 	StoreSelfConfigJobs                StoreOp = "selfconfig.Jobs"
 	StoreSelfConfigJob                 StoreOp = "selfconfig.Job"
 	StoreSelfConfigJobByIdempotencyKey StoreOp = "selfconfig.JobByIdempotencyKey"
@@ -892,21 +899,24 @@ const (
 	StoreKeysRetireRetiringTier3        StoreOp = "keys.RetireRetiringTier3"
 
 	// The instance-credential reencrypt surface (#75/#187), one ReencryptRepo.
-	StoreReencryptListPasswordCreds StoreOp = "reencrypt.ListPasswordCredsForReencrypt"
-	StoreReencryptPasswordCred      StoreOp = "reencrypt.ReencryptPasswordCred"
-	StoreReencryptListTotpCreds     StoreOp = "reencrypt.ListTotpCredsForReencrypt"
-	StoreReencryptTotpCred          StoreOp = "reencrypt.ReencryptTotpCred"
-	StoreReencryptListRecoveryCodes StoreOp = "reencrypt.ListRecoveryCodesForReencrypt"
-	StoreReencryptRecoveryCodes     StoreOp = "reencrypt.ReencryptRecoveryCodes"
-	StoreReencryptListOidcProviders StoreOp = "reencrypt.ListOidcProvidersForReencrypt"
-	StoreReencryptOidcProvider      StoreOp = "reencrypt.ReencryptOidcProvider"
-	StoreReencryptListSamlKeys      StoreOp = "reencrypt.ListSamlKeysForReencrypt"
-	StoreReencryptSamlKey           StoreOp = "reencrypt.ReencryptSamlKey"
-	StoreReencryptListRemotes       StoreOp = "reencrypt.ListRemotesForReencrypt"
-	StoreReencryptRemote            StoreOp = "reencrypt.ReencryptRemote"
-	StoreKeysRootRotatePrepare      StoreOp = "keys.RootKeyRotatePrepare"
-	StoreKeysRootRotateFinalize     StoreOp = "keys.RootKeyRotateFinalize"
-	StoreKeysInsertScopeGeneration  StoreOp = "keys.InsertScopeGeneration"
+	StoreReencryptListPasswordCreds        StoreOp = "reencrypt.ListPasswordCredsForReencrypt"
+	StoreReencryptPasswordCred             StoreOp = "reencrypt.ReencryptPasswordCred"
+	StoreReencryptListTotpCreds            StoreOp = "reencrypt.ListTotpCredsForReencrypt"
+	StoreReencryptTotpCred                 StoreOp = "reencrypt.ReencryptTotpCred"
+	StoreReencryptListRecoveryCodes        StoreOp = "reencrypt.ListRecoveryCodesForReencrypt"
+	StoreReencryptRecoveryCodes            StoreOp = "reencrypt.ReencryptRecoveryCodes"
+	StoreReencryptListOidcProviders        StoreOp = "reencrypt.ListOidcProvidersForReencrypt"
+	StoreReencryptOidcProvider             StoreOp = "reencrypt.ReencryptOidcProvider"
+	StoreReencryptListSelfConfigSeedInputs StoreOp = "reencrypt.ListSelfConfigSeedInputsForReencrypt"
+	StoreReencryptSelfConfigSeedInput      StoreOp = "reencrypt.ReencryptSelfConfigSeedInput"
+	StoreReencryptListSamlKeys             StoreOp = "reencrypt.ListSamlKeysForReencrypt"
+	StoreReencryptSamlKey                  StoreOp = "reencrypt.ReencryptSamlKey"
+	StoreReencryptListRemotes              StoreOp = "reencrypt.ListRemotesForReencrypt"
+	StoreReencryptRemote                   StoreOp = "reencrypt.ReencryptRemote"
+	StoreKeysAssertRootKeyEpoch            StoreOp = "keys.AssertRootKeyEpoch"
+	StoreKeysRootRotatePrepare             StoreOp = "keys.RootKeyRotatePrepare"
+	StoreKeysRootRotateFinalize            StoreOp = "keys.RootKeyRotateFinalize"
+	StoreKeysInsertScopeGeneration         StoreOp = "keys.InsertScopeGeneration"
 
 	// Secret-scanning dismissal rows (#74, secret-scanning ADR section 4). The
 	// "keep as config" sticky-dismissal surface. Insert/Exists ride the
@@ -1463,21 +1473,21 @@ var registry = mustNewRegistry(operationTable)
 // invariant 6. The table is never read directly: newRegistry validates it into
 // the immutable registry below, so no lookup can observe an unvalidated row.
 var operationTable = map[Operation]opSpec{
-	OpSelfConfigPreview: {class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}, {Cap: domain.CapManageMembers, At: domain.LevelNone}}, storeOps: map[StoreOp]bool{StoreSelfConfigBinding: true, StoreAuditInstanceInsert: true}, events: []audit.EventType{audit.EventSelfConfigStatusRead}},
+	OpSelfConfigPreview: {class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}, {Cap: domain.CapManageMembers, At: domain.LevelNone}}, storeOps: map[StoreOp]bool{StoreSelfConfigBinding: true, StoreSelfConfigSeedInputs: true, StoreAuditInstanceInsert: true}, events: []audit.EventType{audit.EventSelfConfigStatusRead}},
 	OpSelfConfigStatus: {
 		class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}},
-		storeOps: map[StoreOp]bool{StoreSelfConfigBinding: true, StoreSelfConfigJobs: true, StoreSelfConfigJob: true, StoreSelfConfigNodes: true, StoreSelfConfigRetained: true, StoreAuditInstanceInsert: true},
+		storeOps: map[StoreOp]bool{StoreSelfConfigBinding: true, StoreSelfConfigRollout: true, StoreSelfConfigJobs: true, StoreSelfConfigJob: true, StoreSelfConfigNodes: true, StoreSelfConfigRetained: true, StoreAuditInstanceInsert: true},
 		events:   []audit.EventType{audit.EventSelfConfigStatusRead},
 	},
 	OpSelfConfigAdopt: {
 		class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}, {Cap: domain.CapManageMembers, At: domain.LevelNone}},
-		storeOps: map[StoreOp]bool{StoreSelfConfigBinding: true, StoreSelfConfigCreateBinding: true, StoreAuditInstanceInsert: true},
+		storeOps: map[StoreOp]bool{StoreSelfConfigBinding: true, StoreSelfConfigSeedInputs: true, StoreSelfConfigCreateBinding: true, StoreAuditInstanceInsert: true},
 		events:   []audit.EventType{audit.EventSelfConfigAdopted},
 	},
 	OpSelfConfigApply: {
 		class: ClassTenant, level: domain.LevelEnv, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}, {Cap: domain.CapRead, At: domain.LevelEnv}, {Cap: domain.CapPublish, At: domain.LevelEnv}},
-		storeOps: map[StoreOp]bool{StoreSelfConfigBinding: true, StoreSelfConfigJobs: true, StoreSelfConfigJob: true, StoreSelfConfigJobByIdempotencyKey: true, StoreSelfConfigNodes: true, StoreSelfConfigBeginJob: true, StoreSelfConfigCommitJob: true, StoreSelfConfigFinishJob: true, StoreSnapshotsAtRevision: true, StoreAuditTenantInsert: true},
-		events:   []audit.EventType{audit.EventSelfConfigApplyRequested, audit.EventSelfConfigTargetCommitted, audit.EventSelfConfigResumed},
+		storeOps: map[StoreOp]bool{StoreSelfConfigBinding: true, StoreSelfConfigRollout: true, StoreSelfConfigPutRollout: true, StoreSelfConfigNextRolloutSequence: true, StoreSelfConfigJobs: true, StoreSelfConfigJob: true, StoreSelfConfigJobByIdempotencyKey: true, StoreSelfConfigNodes: true, StoreSelfConfigBeginJob: true, StoreSelfConfigCommitJob: true, StoreSelfConfigFinishJob: true, StoreSnapshotsAtRevision: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventSelfConfigDeploymentRestoreRequested, audit.EventSelfConfigApplyRequested, audit.EventSelfConfigTargetCommitted, audit.EventSelfConfigResumed},
 	},
 	OpSelfConfigTest: {
 		class: ClassTenant, level: domain.LevelEnv, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}, {Cap: domain.CapRead, At: domain.LevelEnv}},
@@ -2757,6 +2767,7 @@ var operationTable = map[Operation]opSpec{
 			StoreReencryptListRecoveryCodes: true, StoreReencryptRecoveryCodes: true,
 			StoreReencryptListOidcProviders: true, StoreReencryptOidcProvider: true,
 			StoreReencryptListSamlKeys: true, StoreReencryptSamlKey: true,
+			StoreReencryptListSelfConfigSeedInputs: true, StoreReencryptSelfConfigSeedInput: true,
 			StoreReencryptListRemotes: true, StoreReencryptRemote: true,
 			StoreKeysAssertActiveDEKVersion: true,
 			StoreKeysRetireRetiringTier3:    true,
@@ -2785,6 +2796,7 @@ var operationTable = map[Operation]opSpec{
 		formula: Formula{{Cap: domain.CapRotateRootKey, At: domain.LevelNone}},
 		storeOps: map[StoreOp]bool{
 			StoreKeysRootRotatePrepare:  true,
+			StoreKeysAssertRootKeyEpoch: true,
 			StoreKeysRootRotateFinalize: true,
 			StoreAuditInstanceInsert:    true,
 		},
@@ -4215,6 +4227,7 @@ var scimGroupMutationEvents = []audit.EventType{
 type SystemSite string
 
 const (
+	SiteSelfConfigSeed     SystemSite = "self-config-seed"
 	SiteSelfConfigRecovery SystemSite = "self-config-recovery"
 	SiteSelfConfigRuntime  SystemSite = "self-config-runtime"
 	SiteEscrow             SystemSite = "local-escrow-verification"
@@ -4233,8 +4246,9 @@ const (
 // and recovery reconciliation and break-glass arrive with #54/#55 — for
 // those three an empty set is the fail-closed default.
 var systemSites = map[SystemSite]map[StoreOp]bool{
+	SiteSelfConfigSeed:     {StoreSelfConfigSeedInputs: true, StoreSelfConfigHostSeedInputs: true, StoreSelfConfigPutSeedInput: true},
 	SiteSelfConfigRecovery: {StoreSelfConfigBinding: true, StoreSelfConfigJobs: true, StoreSelfConfigNodes: true, StoreSelfConfigRetained: true, StoreSelfConfigRecoverTarget: true, StoreSnapshotsAtRevision: true, StoreSnapshotsEntries: true, StoreCatalogueList: true, StoreCatalogueRevisionGet: true, StoreAuditTenantInsert: true},
-	SiteSelfConfigRuntime:  {StoreSelfConfigBinding: true, StoreSelfConfigJobs: true, StoreSelfConfigJob: true, StoreSelfConfigNodes: true, StoreSelfConfigRetained: true, StoreSelfConfigPutNode: true, StoreSelfConfigFinishJob: true, StoreSelfConfigFenceRestored: true, StoreSnapshotsAtRevision: true, StoreSnapshotsEntries: true, StoreCatalogueList: true, StoreCatalogueRevisionGet: true, StoreAuditTenantInsert: true},
+	SiteSelfConfigRuntime:  {StoreSelfConfigBinding: true, StoreSelfConfigPreviousRevision: true, StoreSelfConfigRollout: true, StoreSelfConfigPutRollout: true, StoreSelfConfigNextRolloutSequence: true, StoreSelfConfigJobs: true, StoreSelfConfigJob: true, StoreSelfConfigNodes: true, StoreSelfConfigRetained: true, StoreSelfConfigPutNode: true, StoreSelfConfigFinishJob: true, StoreSelfConfigFenceRestored: true, StoreSnapshotsAtRevision: true, StoreSnapshotsEntries: true, StoreCatalogueList: true, StoreCatalogueRevisionGet: true, StoreAuditTenantInsert: true},
 	SiteEscrow:             {StoreKeysActiveMasterWrappers: true, StoreKeysAllOpenableTier3: true, StoreKeysAcquireHierarchyGeneration: true, StoreEscrowVerificationWrite: true, StoreAuditInstanceInsert: true},
 	SiteBoot:               bootKeyringOps,
 	SiteMigration:          {},

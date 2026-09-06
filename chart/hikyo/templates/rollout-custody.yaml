@@ -1,0 +1,49 @@
+{{- include "hikyo.rollout.validate" . -}}
+{{- if .Values.rollout.enabled }}
+{{- $name := include "hikyo.rollout.name" . }}
+{{- range $suffix := list "config" "rollback" "plan" "receipt" "command" "response" "journal" }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ printf "%s-%s" $name $suffix }}
+  labels:
+    {{- include "hikyo.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: config-rollout
+  annotations:
+    helm.sh/resource-policy: keep
+type: Opaque
+{{- end }}
+---
+apiVersion: coordination.k8s.io/v1
+kind: Lease
+metadata:
+  name: {{ $name }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}-server
+automountServiceAccountToken: false
+{{- if .Values.rollout.enrolled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-enrollment
+immutable: true
+data:
+  enrollment.json: {{ include "hikyo.rollout.enrollment" . | quote }}
+  authority.pub: |
+    {{- .Values.rollout.authorityPublicKey | nindent 4 }}
+{{- end }}
+{{- end }}

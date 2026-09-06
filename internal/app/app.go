@@ -4,44 +4,29 @@ package app
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/Hikyo-Org/hikyo/api"
-	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/admission"
-	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
-	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
-	"github.com/Hikyo-Org/hikyo/internal/domain"
-	"github.com/Hikyo-Org/hikyo/internal/federationhttp"
-	"github.com/Hikyo-Org/hikyo/internal/mcpserver"
-	"github.com/Hikyo-Org/hikyo/internal/oidcfed"
 	"github.com/Hikyo-Org/hikyo/internal/remotefetch"
-	"github.com/Hikyo-Org/hikyo/internal/scanning"
+	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
-	"github.com/Hikyo-Org/hikyo/internal/storagehealth"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
-	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
-	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 	"github.com/Hikyo-Org/hikyo/internal/updater"
 	"github.com/Hikyo-Org/hikyo/internal/upgradegate"
-	"github.com/Hikyo-Org/hikyo/internal/webui"
 )
 
 // Version is the build's version string, set from main's linker-stamped
@@ -89,13 +74,9 @@ type Server struct {
 	operationalLn      net.Listener
 	publicHandler      http.Handler
 	operationalHandler http.Handler
-	tlsReloader        *certReloader
 	log                *slog.Logger
-	scheduler          *Scheduler
-	adapterWorker      *adapter.Worker
-	dynamicWorker      *dynamicWorker
-	updateReconciler   *service.Updates
 	selfConfig         *service.SelfConfig
+	owner              *ownerRuntime
 }
 
 // devRootKeyName sits beside the dev sqlite database (cwd when no sqlite
@@ -191,13 +172,14 @@ type bootGuard struct {
 // replace only these functions to pin ordering, inject failures at ownership
 // boundaries, and count releases.
 type bootResources struct {
-	openDatabase       func(context.Context, store.Config, upgrade.Admission) (*store.DB, error)
-	databaseGate       func(context.Context, *config.Config, []byte, upgradegate.Mode) (upgradegate.Result, error)
-	closeDatabase      func(*store.DB) error
-	warmOpenAPI        func() error
-	listen             func(string, string) (net.Listener, error)
-	closeListener      func(net.Listener) error
-	newDirectoryClient func(remotefetch.Config) (*remotefetch.Client, error)
+	openDatabase        func(context.Context, store.Config, upgrade.Admission) (*store.DB, error)
+	databaseGate        func(context.Context, *config.Config, []byte, upgradegate.Mode) (upgradegate.Result, error)
+	closeDatabase       func(*store.DB) error
+	warmOpenAPI         func() error
+	listen              func(string, string) (net.Listener, error)
+	closeListener       func(net.Listener) error
+	newDirectoryClient  func(remotefetch.Config) (*remotefetch.Client, error)
+	configureDeployment func(context.Context, *config.Config, *store.DB, *crypto.Keyring) (service.BootstrapDeployment, error)
 }
 
 func defaultBootResources() bootResources {
@@ -214,7 +196,8 @@ func defaultBootResources() bootResources {
 		closeListener: func(ln net.Listener) error {
 			return ln.Close()
 		},
-		newDirectoryClient: remotefetch.New,
+		newDirectoryClient:  remotefetch.New,
+		configureDeployment: configureBootstrapDeployment,
 	}
 }
 
@@ -332,366 +315,109 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		return nil, fmt.Errorf("boot: refusing to serve: %w", err)
 	}
 
-	// The secret-scanning ruleset compiles once at boot; a Load error refuses to
-	// serve (#74, ADR §7 fail-fast — a binary that ships a half-compiled ruleset
-	// is a scanner that silently is not one).
-	ruleset, err := scanning.Load()
+	// The coordinator survives graph replacement. Its Auth owns only the
+	// datastore-backed exact reauthentication operations and logging; each
+	// serving graph gets its own immutable configuration-dependent Auth.
+	bootstrapAuth := &service.Auth{DB: db, Keyring: kr, Log: log}
+	selfConfig := newSelfConfig(cfg, db, kr, bootstrapAuth)
+	configureDeployment := resources.configureDeployment
+	if configureDeployment == nil {
+		configureDeployment = configureBootstrapDeployment
+	}
+	selfConfig.Deployment, err = configureDeployment(ctx, cfg, db, kr)
 	if err != nil {
-		return nil, fmt.Errorf("boot: refusing to serve: secret-scanning ruleset: %w", err)
+		return nil, fmt.Errorf("boot: deployment enrollment unavailable")
 	}
-
-	kdf, limiter, err := AuthComponents(cfg)
+	bootstrapAuth.SelfConfig = selfConfig
+	bundle, err := selfConfig.ResolveRuntimeBundle(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("boot: refusing to serve: %w", err)
+		return nil, fmt.Errorf("boot: self-configuration: %w", err)
 	}
-	// The advisory channel is in-process fan-out: one per server, wired into
-	// every surface that announces a change.
-	advisory := service.NewAdvisory()
-	// The expensive-path budget (ops-spec § 179 / § 20 / § 151): one per server,
-	// in-memory like admission, wired into every surface that owns a named
-	// expensive category — export, publish, adapter sync, machine fetch, and
-	// schema revision.
-	budget := serviceBudget(cfg)
-	federationPolicy := federationhttp.Policy{AllowedCIDRs: cfg.OIDCEgressPolicy, Development: cfg.Dev}
-	authSvc := &service.Auth{
-		DB: db, Keyring: kr, KDF: kdf, Admission: limiter, Log: log,
-		ExternalOrigin: cfg.ExternalOrigin, ReauthWindow: cfg.ReauthWindow,
-		FederationPolicy: federationPolicy,
+	sourcesPending := bundle.BootstrapSources() != (config.ManagedBootstrapSources{}) &&
+		(selfConfig.Deployment == nil || selfConfig.Deployment.VerifyInstalled(ctx, bundle) != nil)
+	configurationBundle := bundle
+	if sourcesPending {
+		configurationBundle, err = selfConfig.ResolveRepairRuntimeBundle(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("boot: previous configuration required for deployment repair is unavailable")
+		}
 	}
-	selfConfig := newSelfConfig(cfg, db, kr, authSvc)
-	selfConfig.Budget = budget
-	authSvc.SelfConfig = selfConfig
-	samlProviders := service.NewSAMLProviders(db, kr, cfg.ExternalOrigin)
-	// RP ID + expected origins are immutable instance config derived from the
-	// configured external origin, never a request header (human-auth ADR §5). An
-	// origin that cannot yield a valid relying party is a boot refusal, not a
-	// first-ceremony surprise.
-	if err := authSvc.ConfigureWebAuthnRP(); err != nil {
-		return nil, fmt.Errorf("boot: refusing to serve: webauthn relying party: %w", err)
-	}
-	workspaceSvc := &service.Workspace{DB: db, Version: Version, Reauth: authSvc}
-	if err := workspaceSvc.PrimeOriginAllowlist(ctx); err != nil {
-		return nil, fmt.Errorf("boot: refusing to serve: workspace origin allowlist: %w", err)
-	}
-
-	proxies, err := parseCIDRs(cfg.TrustedProxyCIDRs)
+	bootstrap := cfg
+	effective, ownerValues, nodeValues, missingNode, err := bootNodeConfiguration(cfg, selfConfig, configurationBundle)
 	if err != nil {
-		return nil, fmt.Errorf("boot: refusing to serve: %w", err)
+		return nil, fmt.Errorf("boot: managed configuration is invalid: %w", err)
 	}
+	cfg = effective
 	if err := resources.warmOpenAPI(); err != nil {
 		return nil, fmt.Errorf("boot: refusing to serve: OpenAPI contract: %w", err)
 	}
 
-	ln, err := resources.listen("tcp", cfg.Listen)
+	srv := &Server{db: db, keyring: kr, log: log, selfConfig: selfConfig}
+	owner := &ownerRuntime{server: srv, base: bootstrap, resources: resources,
+		selfConfig: selfConfig, budget: serviceBudget(cfg), advisory: service.NewAdvisory(),
+		values: ownerValues, nodeValues: nodeValues, seedNodeValues: nodeValues,
+		endpointErrors: make(chan error, 4)}
+	certificate, err := newManagedCertificate(cfg.TLSCertPEM, cfg.TLSKeyPEM)
 	if err != nil {
-		return nil, fmt.Errorf("boot: listen %s: %w", cfg.Listen, err)
+		return nil, err
 	}
-	// Registered immediately after Listen so every later error path releases
-	// it, and — being registered after the database — before the database.
-	guard.add(func() error { return resources.closeListener(ln) })
-	operationalLn, err := resources.listen("tcp", cfg.OperationalListen)
+	endpoints, err := owner.prepareEndpoints(cfg, certificate)
 	if err != nil {
-		return nil, fmt.Errorf("boot: operational listen %s: %w", cfg.OperationalListen, err)
+		return nil, fmt.Errorf("boot: listeners: %w", err)
 	}
-	guard.add(func() error { return resources.closeListener(operationalLn) })
-
-	var tlsReloader *certReloader
-	publicLn := ln
-	if cfg.TLSCertFile != "" {
-		tlsReloader, err = newCertReloader(cfg.TLSCertFile, cfg.TLSKeyFile, log, 10*time.Second)
+	endpoints.activate(owner)
+	guard.add(func() error { return resources.closeListener(srv.publicLn) })
+	guard.add(func() error { return resources.closeListener(srv.operationalLn) })
+	if cfg.Store.PostgresPoolMax != bootstrap.Store.PostgresPoolMax {
+		pool, err := db.PreparePostgresPool(ctx, cfg.Store.PostgresPoolMax)
 		if err != nil {
-			return nil, fmt.Errorf("boot: TLS certificate: %w", err)
+			return nil, err
 		}
-		publicLn = tls.NewListener(ln, tlsReloader.tlsConfig())
-	}
-
-	federation := &service.Federation{
-		DB: db, Auth: authSvc, Admission: limiter,
-		Cache: &oidcfed.Cache{Limiter: limiter},
-	}
-	scimSvc := &service.SCIM{DB: db, Auth: authSvc}
-	fetchCfg := remotefetch.DefaultConfig()
-	if cfg.DirectoryProxy != "" {
-		// Explicit configuration is the ONLY way egress traverses a forward
-		// proxy. config.Load has already refused a non-https or hostless value,
-		// so a parse failure here would be an internal inconsistency rather
-		// than operator input — it still fails the boot loudly rather than
-		// silently reverting to direct egress, because "the proxy I configured
-		// is being bypassed" is exactly the surprise this control exists to
-		// prevent.
-		proxy, err := url.Parse(cfg.DirectoryProxy)
-		if err != nil {
-			return nil, fmt.Errorf("boot: directory proxy: %w", err)
+		err = pool.Activate(ctx)
+		closeErr := pool.Close()
+		if err != nil || closeErr != nil {
+			return nil, errors.Join(err, closeErr)
 		}
-		fetchCfg.Proxy = proxy
 	}
-	fetcher, err := resources.newDirectoryClient(fetchCfg)
-	if err != nil {
-		return nil, fmt.Errorf("boot: outbound directory client: %w", err)
-	}
-	diagnostics := &service.Diagnostics{Passwords: &kdf}
-	if cfg.Store.Engine == config.EngineSQLite {
-		diagnostics.Volume = func() (storagehealth.Capacity, error) { return storagehealth.Read(filepath.Dir(cfg.Store.Path)) }
-	}
-	retentionSvc := &service.Retention{DB: db, AuditPolicy: store.AuditRetentionPolicy{AccessDays: cfg.AuditAccessRetainDays, SecurityDays: cfg.AuditSecurityRetainDays}, Backup: backupPolicy(cfg), Diagnostics: diagnostics}
-	backupSvc := &service.Backup{DB: db, Options: backup.Options{Recipients: cfg.BackupRecipients}}
-	approvalsSvc := &service.Approvals{DB: db, Auth: authSvc, Keyring: kr}
-	updateHTTP, err := updatecheck.NewHTTPClient(3 * time.Second)
-	if err != nil {
-		return nil, fmt.Errorf("boot: update release client: %w", err)
-	}
-	updateSource, err := updatecheck.NewCachedSource(updatecheck.NewGitHubSource(updateHTTP), 6*time.Hour, nil)
-	if err != nil {
-		return nil, fmt.Errorf("boot: update release cache: %w", err)
-	}
-	reencryptSvc := &service.Reencrypt{DB: db, Keyring: kr, Budget: budget}
-	adapterRuntime := store.NewAdapterRuntime(db, func(ctx context.Context, job adapter.Job, _ adapter.Effect) error {
-		return tx.Read(ctx, db, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
-			_, err := az.Authorize(ctx, authz.Identity{Principal: domain.PrincipalID(job.AuthorityPrincipal), Class: domain.ClassHuman}, authz.OpAdapterPush, domain.Scope{
-				Org: domain.OrgID(job.OrgID), Project: domain.ProjectID(job.ProjectID), Env: domain.EnvID(job.EnvironmentID),
-			})
-			return err
-		})
-	})
-	var moduleFactory adapter.ModuleFactory = newAdapterModuleFactory(cfg.AdapterEgressPolicy).Build
-	if cfg.Dev && cfg.DevAdapterFakeProvider {
-		// The browser flow suite's stand-in provider (#157): config.Load has
-		// already refused this switch on anything but a --dev server.
-		fake := newDevFakeProvider()
-		moduleFactory = fake.factory
-		log.Warn("deployment adapters use the in-process development fake provider; no provider is contacted")
-	}
-	adapterWorker := &adapter.Worker{
-		Store: adapterRuntime, Loader: &adapterLoader{runtime: adapterRuntime, keyring: kr, moduleFactory: moduleFactory},
-		ID: "adapter-worker-" + uuid.Must(uuid.NewV7()).String(), Poll: time.Second, Log: log,
-	}
-	adapterService := &service.Adapters{DB: db, Auth: authSvc, Keyring: kr, Budget: budget, ModuleFactory: moduleFactory}
-	definitionsService := &service.Definitions{DB: db, Keyring: kr, Advisory: advisory, Budget: budget, Scan: ruleset}
-	dynamicRuntime := store.NewDynamicRuntime(db)
-	dynamicService := &service.Dynamic{
-		DB: db, Auth: authSvc, Keyring: kr, Budget: budget, Runtime: dynamicRuntime,
-		ProviderFactory: newDynamicFactory(cfg.DynamicEgressPolicy), LeaseDeadline: dynamicProviderDeadline,
-	}
-
-	updatesService := &service.Updates{DB: db, Source: updateSource, Version: Version, Channel: updatecheck.Channel(cfg.UpdateChannel), Log: log, SelfConfig: selfConfig}
-	// One RED collector shared by the API middleware (writer) and the
-	// operational /metrics handler (reader) (#513). The limiter supplies its
-	// admission-pressure gauges at scrape time.
-	metrics := server.NewMetrics(limiter)
-	// Secret-change approvals (#151): the two label-free approval gauges read
-	// their counts at scrape time under scheduler authority (#151, mirroring the
-	// storage high-water gauge's shared-door read).
-	metrics.SetApprovalSource(approvalMetricsSource{svc: approvalsSvc})
-	metrics.SetDynamicSource(dynamicGaugeSource{runtime: dynamicRuntime, log: log})
-	// The hierarchy, value, and revision services are named here so the read-only
-	// MCP tools (#629) map onto the SAME instances the REST surface uses: one
-	// keyring, one budget, one authorization path.
-	environmentsSvc := &service.Environments{DB: db, Keyring: kr, Auth: authSvc, Advisory: advisory, Budget: budget, Scan: ruleset}
-	keysSvc := &service.Keys{DB: db, Keyring: kr, Advisory: advisory, Budget: budget, Scan: ruleset}
-	valuesSvc := &service.Values{DB: db, Keyring: kr, Auth: authSvc, Advisory: advisory, Scan: ruleset, Budget: budget}
-	revisionsSvc := &service.Revisions{DB: db, Keyring: kr, Auth: authSvc, Advisory: advisory, Budget: budget}
-	api := &server.API{
-		Auth:     authSvc,
-		SAMLAuth: authSvc,
-		Orgs:     &service.Orgs{DB: db},
-		Projects: &service.Projects{DB: db},
-		// The keyring reaches the value surface (#50): clone-at-creation and
-		// every value write re-seal under the project data key, in the
-		// transaction that writes the row. The ruleset (#74) reaches every
-		// surface that writes a config value or a declaration leaf.
-		Environments: environmentsSvc,
-		Folders:      &service.Folders{DB: db, Keyring: kr, Scan: ruleset},
-		Keys:         keysSvc,
-		Definitions:  definitionsService,
-		// The reveal ceremony (#58): the value surface's disclosure routes
-		// consume the SAME reauthentication window machinery the passkey and
-		// TOTP reauth endpoints open, so both sides take the one Auth. A
-		// Values without it refuses every disclosure rather than disclosing
-		// without a ceremony.
-		// One Advisory across the value and revision surfaces: staging and
-		// publishing both announce on the same channel, and two channels would
-		// mean a subscriber saw half the events.
-		Values:    valuesSvc,
-		Revisions: revisionsSvc,
-		Rotation:  &service.Rotation{DB: db, Keyring: kr, RootKey: rootKeySource{cfg: cfg, log: log}, Budget: budget},
-		Reencrypt: reencryptSvc,
-		Pins:      &service.Pins{DB: db, Keyring: kr, Auth: authSvc},
-		Reveal:    &service.Reveal{DB: db, Auth: authSvc},
-		KeyGroups: &service.KeyGroups{DB: db, Keyring: kr, Advisory: advisory, Budget: budget, Scan: ruleset},
-		// One Auth across the grant surface, the settings knob and the machine
-		// identity surface: the reauthentication conjunct a machine widening
-		// carries is the SAME window machinery human disclosure consumes, so
-		// they cannot come from two configurations.
-		Grants:     &service.Grants{DB: db, Auth: authSvc},
-		Identities: &service.Identities{DB: db, Auth: authSvc},
-		// One Federation across the issuer surface and the delivery surface, and
-		// one JWKS cache inside it: the cache's staleness bound is an instance
-		// property, so two caches would mean two answers to "are this issuer's
-		// keys fresh". Its unknown-`kid` refresh rides the SAME admission limiter
-		// every other pre-authentication path rides, which is what the ADR means
-		// by putting the trigger under the instance-wide budget.
-		Federation: federation,
-		Delivery: &service.Delivery{
-			DB: db, Keyring: kr, Federation: federation, Budget: budget,
-		},
-		// The settings knob calls LowerEffectiveWindow, which is the Auth
-		// service's library — one Auth, so the window the knob writes and the
-		// window the reveal guard reads cannot come from two configurations.
-		Discovery:       &service.Discovery{DB: db},
-		Settings:        &service.ProjectSettings{DB: db, Auth: authSvc},
-		Retention:       retentionSvc,
-		RetentionHealth: retentionSvc,
-		Updates:         updatesService,
-		SelfConfig:      selfConfig,
-		Providers: &service.Providers{
-			DB: db, Keyring: kr, ExternalOrigin: cfg.ExternalOrigin, Log: log,
-			FederationPolicy: federationPolicy,
-		},
-		SAMLProviders: samlProviders,
-		Adapters:      adapterService,
-		Dynamic:       dynamicService,
-		Audits:        &service.Audits{DB: db, Budget: budget},
-		Approvals:     approvalsSvc,
-		// ONE SCIM service behind both surfaces: the administration verbs and
-		// the identity provider's wire read the same bindings, the same mapping
-		// table and the same bounds. Two instances would let the wire clamp a
-		// page against a different number than the one the discovery document
-		// advertises.
-		SCIM:     scimSvc,
-		SCIMWire: scimSvc,
-		// Multi-instance (#71). The outbound client is built from the
-		// owner-ratified bounds table (2026-08-13) and is the ONLY door to a
-		// foreign instance: with zero configured remotes it originates zero
-		// connections, which is what leaves the air-gap posture unchanged.
-		Remotes:        &service.Remotes{DB: db, Keyring: kr, Fetch: fetcher},
-		Workspace:      workspaceSvc,
-		Admission:      limiter,
-		Metrics:        metrics,
-		Version:        Version,
-		Log:            log,
-		TrustedProxies: proxies,
-	}
-
-	var mcpHandler http.Handler
-	if cfg.MCPEnabled {
-		registry := mcpserver.NewRegistry()
-		if err := mcpserver.RegisterProductionTools(registry, mcpserver.ProductionServices{
-			Admission:     &service.MCPAdmission{DB: db},
-			Definitions:   keysSvc,
-			Environments:  environmentsSvc,
-			Configuration: valuesSvc,
-			Pending:       revisionsSvc,
-			Revisions:     revisionsSvc,
-		}); err != nil {
-			return nil, fmt.Errorf("boot: refusing to serve: MCP tools: %w", err)
-		}
-		cursorSealer, err := kr.MCPCursorSealer()
-		if err != nil {
-			return nil, fmt.Errorf("boot: refusing to serve: MCP cursor sealer: %w", err)
-		}
-		mcpHandler, err = mcpserver.New(mcpserver.Options{
-			Registry:       registry,
-			ExternalOrigin: cfg.ExternalOrigin,
-			AllowedOrigins: cfg.MCPAllowedOrigins,
-			TrustedProxies: proxies,
-			Admission:      limiter,
-			Version:        Version,
-			CursorSealer:   cursorSealer,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("boot: refusing to serve: MCP transport: %w", err)
-		}
-		mcpHandler = metrics.ObserveMCP(mcpHandler, log, mcpserver.ProductionToolNames())
-	}
-
-	log.Info("boot complete", "version", Version, "engine", sc.Engine, "external_origin", cfg.ExternalOrigin,
-		"addr", ln.Addr().String(), "operational_addr", operationalLn.Addr().String(), "dev", cfg.Dev, "update_channel", cfg.UpdateChannel,
-		"argon2_memory_kib", cfg.Argon2MemoryKiB, "auth_concurrency", limiter.Concurrency(), "mcp_enabled", cfg.MCPEnabled)
-	// The operational readiness check is the datastore-and-schema probe, plus
-	// an optional HA lease-datastore probe attached below when HA is enabled so
-	// /readyz fails closed if the lease table becomes unreachable.
-	readyChk := &readyChecker{base: &service.System{DB: db, Store: sc}, selfConfig: selfConfig}
-	// Construct the complete owner before disarming: future fallible work added
-	// to construction stays inside the guard's protection.
-	srv := &Server{
-		Addr:            ln.Addr().String(),
-		OperationalAddr: operationalLn.Addr().String(),
-		db:              db,
-		keyring:         kr,
-		publicLn:        publicLn,
-		operationalLn:   operationalLn,
-		publicHandler: server.NewPublic(&service.System{DB: db, Store: sc}, api, webui.Assets(), server.PublicOptions{
-			HSTS:           config.EmitHSTS(cfg.ExternalOrigin),
-			ExternalOrigin: cfg.ExternalOrigin,
-			MCP:            mcpHandler,
-		}),
-		operationalHandler: server.NewOperational(readyChk, operationalHealth{retention: retentionSvc, tls: tlsReloader}, metrics),
-		tlsReloader:        tlsReloader,
-		log:                log,
-		scheduler: &Scheduler{Log: log, Jobs: []ScheduledJob{{
-			Name: "payload_gc",
-			Run: func(ctx context.Context) error {
-				_, err := retentionSvc.Sweep(ctx)
-				return err
-			},
-			LastSuccess: retentionSvc.LastPruneSuccess,
-		}, {
-			// Secret-change approvals (#151): resolve requests past their expiry
-			// across all tenants, fail closed, and emit a per-request expiry
-			// event. Idempotent and cross-tenant, like payload_gc beside it.
-			Name: "approval_expiry_sweep",
-			Run:  approvalsSvc.ExpireDue,
-		}, {
-			// Read-only operator nudge (#75/#187, scheduler option A): warn when a
-			// scope still carries a retiring DEK version so an operator runs
-			// `reencrypt`. It writes nothing and holds no write grant on any
-			// ciphertext table — reencrypt itself stays an operator act.
-			Name: "reencrypt_retiring_sweep",
-			Run: func(ctx context.Context) error {
-				scopes, err := reencryptSvc.SweepRetiring(ctx)
-				if err != nil {
-					return err
-				}
-				for _, sc := range scopes {
-					log.Warn("DEK scope has a retiring version awaiting reencrypt",
-						"purpose", sc.Purpose, "org", sc.OrgID, "project", sc.ProjectID,
-						"openable_versions", sc.OpenableVersions)
-				}
-				return nil
-			},
-		}}},
-		adapterWorker:    adapterWorker,
-		dynamicWorker:    &dynamicWorker{svc: dynamicService, id: "dynamic-worker-" + uuid.Must(uuid.NewV7()).String(), log: log},
-		updateReconciler: updatesService,
-		selfConfig:       selfConfig,
-	}
-	if cfg.BackupScheduled() {
-		srv.scheduler.Jobs = append(srv.scheduler.Jobs, backupJobs(cfg, log, backupSvc)...)
-	}
+	selfConfig.Budget = owner.budget
 	if cfg.HA {
-		coord, onTick, status, err := configureHA(ctx, cfg, log, db, sc, kr)
+		owner.haCoord, owner.haTick, owner.haStatus, err = configureHA(ctx, cfg, log, db, sc, kr)
 		if err != nil {
-			return nil, fmt.Errorf("boot: refusing to serve: %w", err)
+			return nil, err
 		}
-		srv.scheduler.Lease = coord
-		srv.scheduler.NodeID = cfg.NodeID
-		srv.scheduler.OnTick = onTick
-		status.leader = srv.scheduler.IsLeader
-		metrics.SetHASource(status)
-		readyChk.setHAProbe(haReadinessProbe(coord))
-		// Revalidate cached project DEKs per fetch so a rotate-dek on another
-		// node cannot leave this node fencing every write or missing records at
-		// the new version.
 		kr.SetHAFreshness(true)
-		// Share the pre-authentication counters installation-wide so node
-		// hopping cannot bypass a per-IP, per-account, or per-issuer limit. The
-		// concurrency semaphore stays per node. Wired before the listener
-		// accepts, so the limiter is not yet serving concurrently.
-		limiter.UseShared(coord, log)
 	}
-	if err := selfConfig.LoadRuntime(ctx); err != nil {
-		return nil, fmt.Errorf("boot: self-configuration: %w", err)
+	graph, err := owner.prepareGeneration(ctx, cfg)
+	if err != nil {
+		return nil, err
 	}
+	owner.current = newRunningGeneration(graph)
+	guard.add(func() error {
+		owner.stop()
+		return selfConfig.CloseRuntime()
+	})
+	srv.owner = owner
+	srv.publicHandler = owner.handler(false)
+	srv.operationalHandler = owner.handler(true)
+	selfConfig.Installer = owner
+	if missingNode || sourcesPending {
+		if err := selfConfig.RecordRepairOrigin(ctx, cfg.ExternalOrigin); err != nil {
+			return nil, err
+		}
+	}
+	if err := selfConfig.LoadRuntime(ctx); err != nil && !(missingNode && errors.Is(err, runtimeconfig.ErrNodeNotConfigured)) {
+		if !sourcesPending {
+			return nil, fmt.Errorf("boot: self-configuration: %w", err)
+		}
+		// The committed rollout worker must survive a pending source or mailbox
+		// outage. Capture remains fenced; only the validated repair graph runs.
+		log.Warn("deployment sources pending; administrative recovery remains available")
+	}
+	publicAddress, operationalAddress := endpoints.public.listener.Addr().String(), endpoints.operational.listener.Addr().String()
+	log.Info("boot complete", "version", Version, "engine", sc.Engine, "external_origin", cfg.ExternalOrigin,
+		"addr", publicAddress, "operational_addr", operationalAddress, "dev", cfg.Dev,
+		"argon2_memory_kib", cfg.Argon2MemoryKiB, "mcp_enabled", cfg.MCPEnabled)
+
 	// Ownership transfers only after the Server is complete. Nothing remains
 	// between disarm and return, so Server.Close is now the sole owner.
 	guard.disarm()
@@ -859,129 +585,14 @@ func (s *Server) serve(ctx context.Context, ready func()) error {
 	if s.Maintenance {
 		return s.serveMaintenance(ctx, ready)
 	}
-	defer s.db.Close()
-	configCtx, stopConfig := context.WithCancel(ctx)
-	var configDone chan struct{}
-	if s.selfConfig != nil {
-		configDone = make(chan struct{})
-		go func() { defer close(configDone); s.selfConfig.Run(configCtx) }()
-	}
-	defer func() {
-		stopConfig()
-		if configDone != nil {
-			<-configDone
-		}
-	}()
-	schedulerCtx, stopScheduler := context.WithCancel(ctx)
-	var schedulerDone chan struct{}
-	if s.scheduler != nil {
-		schedulerDone = make(chan struct{})
-		go func() {
-			defer close(schedulerDone)
-			s.scheduler.Run(schedulerCtx)
-		}()
-	}
-	defer func() {
-		stopScheduler()
-		if schedulerDone != nil {
-			<-schedulerDone
-		}
-	}()
-	updateCtx, stopUpdates := context.WithCancel(ctx)
-	var updateDone chan struct{}
-	if s.updateReconciler != nil {
-		updateDone = make(chan struct{})
-		go func() {
-			defer close(updateDone)
-			s.updateReconciler.Run(updateCtx)
-		}()
-	}
-	defer func() {
-		stopUpdates()
-		if updateDone != nil {
-			<-updateDone
-		}
-	}()
-	workerCtx, stopWorker := context.WithCancel(ctx)
-	var workerDone chan struct{}
-	if s.adapterWorker != nil {
-		workerDone = make(chan struct{})
-		go func() {
-			defer close(workerDone)
-			s.adapterWorker.Run(workerCtx)
-		}()
-	}
-	var dynamicWorkerDone chan struct{}
-	if s.dynamicWorker != nil {
-		dynamicWorkerDone = make(chan struct{})
-		go func() {
-			defer close(dynamicWorkerDone)
-			s.dynamicWorker.Run(workerCtx)
-		}()
-	}
-	defer func() {
-		stopWorker()
-		if workerDone != nil {
-			<-workerDone
-		}
-		if dynamicWorkerDone != nil {
-			<-dynamicWorkerDone
-		}
-	}()
-	reloaderCtx, stopReloader := context.WithCancel(ctx)
-	var reloaderDone chan struct{}
-	if s.tlsReloader != nil {
-		reloaderDone = make(chan struct{})
-		go func() {
-			defer close(reloaderDone)
-			s.tlsReloader.run(reloaderCtx)
-		}()
-	}
-	defer func() {
-		stopReloader()
-		if reloaderDone != nil {
-			<-reloaderDone
-		}
-	}()
-
-	publicServer := newHTTPServer(s.publicHandler)
-	operationalServer := newHTTPServer(s.operationalHandler)
-	errCh := make(chan error, 2)
-	var serveWG sync.WaitGroup
-	serveWG.Add(2)
-	go func() {
-		defer serveWG.Done()
-		errCh <- publicServer.Serve(s.publicLn)
-	}()
-	go func() {
-		defer serveWG.Done()
-		errCh <- operationalServer.Serve(s.operationalLn)
-	}()
-	addr, operationalAddr := s.Addr, s.OperationalAddr
-	s.log.Info("server ready", "version", Version, "addr", addr, "operational_addr", operationalAddr)
-	if ready != nil {
-		ready()
-	}
-
-	var serveErr error
-	select {
-	case serveErr = <-errCh:
-	case <-ctx.Done():
-	}
-	shutdownErr := shutdownHTTPServers(5*time.Second, publicServer, operationalServer)
-	serveWG.Wait()
-	if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-		return serveErr
-	}
-	return shutdownErr
+	return s.owner.serve(ctx, ready)
 }
 
-// ReloadTLS reloads the configured pair immediately, as used by SIGHUP.
+// ReloadTLS preserves the applied managed certificate when SIGHUP is received.
 func (s *Server) ReloadTLS() error {
-	if s.tlsReloader == nil {
-		return nil
-	}
-	return s.tlsReloader.reload()
+	// Managed TLS is immutable configuration. A signal must never reread an
+	// old bootstrap mount and override the administrator's applied revision.
+	return errors.New("TLS certificates are managed by instance configuration; publish and Apply the node certificate from Hikyo")
 }
 
 // Close releases resources for a booted server that never served.
@@ -989,7 +600,14 @@ func (s *Server) Close() error {
 	if s.Maintenance {
 		return s.operationalLn.Close()
 	}
-	return errors.Join(s.publicLn.Close(), s.operationalLn.Close(), s.db.Close())
+	if s.owner != nil {
+		s.owner.stop()
+	}
+	var runtimeErr error
+	if s.selfConfig != nil {
+		runtimeErr = s.selfConfig.CloseRuntime()
+	}
+	return errors.Join(runtimeErr, s.publicLn.Close(), s.operationalLn.Close(), s.db.Close())
 }
 
 // approvalMetricsSource adapts the change-approval service to the metrics

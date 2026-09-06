@@ -127,6 +127,8 @@ paths:
       x-hikyo-artifacts: [none]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Instance metadata.
           content:
@@ -169,6 +171,8 @@ paths:
             schema:
               $ref: "#/components/schemas/EstablishCredentialRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Credential established. No session, no assurance.
         "400":
@@ -218,6 +222,8 @@ paths:
             schema:
               $ref: "#/components/schemas/LocalLoginRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Session minted. The token is displayed once and never again.
           content:
@@ -246,6 +252,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Session revoked.
         "401":
@@ -270,6 +278,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The acting session.
           content:
@@ -307,6 +317,8 @@ paths:
             schema:
               $ref: "#/components/schemas/TotpEnrolStartRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The provisioning URI, returned once.
           content:
@@ -346,6 +358,8 @@ paths:
             schema:
               $ref: "#/components/schemas/TotpCodeRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Enrolment confirmed. The reissued session token replaces the old one.
           content:
@@ -386,6 +400,8 @@ paths:
             schema:
               $ref: "#/components/schemas/TotpCodeRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Session elevated. The rotated token replaces the old one.
           content:
@@ -440,6 +456,8 @@ paths:
             schema:
               $ref: "#/components/schemas/TotpReauthRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The window this reauthentication opened.
           content:
@@ -469,6 +487,8 @@ paths:
       x-hikyo-min-revision: 1
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CLIReauthStartRequest"}}}}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "201": {description: Opaque state for the browser handoff., content: {application/json: {schema: {$ref: "#/components/schemas/CLIReauthStart"}}}}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
@@ -487,6 +507,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: "Live transaction metadata without ids, bearers, or verifiers.", content: {application/json: {schema: {$ref: "#/components/schemas/CLIReauthTransaction"}}}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -503,6 +525,8 @@ paths:
       x-hikyo-min-revision: 1
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CLIReauthApproveRequest"}}}}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: Single-use authorization code., content: {application/json: {schema: {$ref: "#/components/schemas/CLIReauthApproved"}}}}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
@@ -521,6 +545,8 @@ paths:
       security: []
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CLIReauthRedeemRequest"}}}}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: Rotated bearer disclosed once to the initiating shell., content: {application/json: {schema: {$ref: "#/components/schemas/CLIReauthRedeemed"}}}}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
@@ -543,6 +569,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The caller's TOTP factor state.
           content:
@@ -577,6 +605,8 @@ paths:
             schema:
               $ref: "#/components/schemas/TotpProofRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Factor removed. The reissued session token replaces the old one.
           content:
@@ -615,6 +645,8 @@ paths:
             schema:
               $ref: "#/components/schemas/RecoveryProofRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: New batch. The codes are displayed once and never again.
           content:
@@ -659,6 +691,8 @@ paths:
             schema:
               $ref: "#/components/schemas/RecoveryBeginRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: A session-less credential-establishment authority, returned once.
           content:
@@ -690,6 +724,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The organisations this principal may administer.
           content:
@@ -730,6 +766,8 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateOrgRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "201":
           description: The created organisation.
           content:
@@ -770,6 +808,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The organisation.
           content:
@@ -806,6 +846,8 @@ paths:
             schema:
               $ref: "#/components/schemas/RenameRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The renamed organisation.
           content:
@@ -840,6 +882,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Deleted.
         "401":
@@ -872,6 +916,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The projects in this organisation, by name.
           content:
@@ -908,6 +954,8 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateProjectRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "201":
           description: The created project.
           content:
@@ -944,6 +992,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The organisation retention cap.
           content:
@@ -974,6 +1024,8 @@ paths:
             schema:
               $ref: "#/components/schemas/RetentionPolicy"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The stored organisation retention cap.
           content:
@@ -1005,6 +1057,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The project.
           content:
@@ -1039,6 +1093,8 @@ paths:
             schema:
               $ref: "#/components/schemas/RenameRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The renamed project.
           content:
@@ -1071,6 +1127,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Deleted.
         "401":
@@ -1101,6 +1159,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The project's environments, in display order.
           content:
@@ -1141,6 +1201,8 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateEnvironmentRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "201":
           description: The created environment.
           content:
@@ -1199,6 +1261,8 @@ paths:
             schema:
               $ref: "#/components/schemas/CloneEnvironmentRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "201":
           description: The created environment and what the clone carried.
           content:
@@ -1248,6 +1312,8 @@ paths:
             schema:
               $ref: "#/components/schemas/EnvironmentOrderRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The project's environments in their new display order.
           content:
@@ -1280,6 +1346,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The environment.
           content:
@@ -1313,6 +1381,8 @@ paths:
             schema:
               $ref: "#/components/schemas/RenameRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The renamed environment.
           content:
@@ -1345,6 +1415,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Deleted.
         "401":
@@ -1372,6 +1444,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Effective policy and whether it is inherited.
           content:
@@ -1406,6 +1480,8 @@ paths:
             schema:
               $ref: "#/components/schemas/SetProjectRetentionRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Effective policy and whether it is inherited.
           content:
@@ -1437,6 +1513,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The project's folders, by path.
           content:
@@ -1470,6 +1548,8 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateFolderRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "201":
           description: The created folder.
           content:
@@ -1504,6 +1584,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The folder.
           content:
@@ -1538,6 +1620,8 @@ paths:
             schema:
               $ref: "#/components/schemas/RenameFolderRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The moved folder.
           content:
@@ -1566,6 +1650,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Deleted.
         "401":
@@ -1602,6 +1688,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The instance-scope grant lines.
           content:
@@ -1634,6 +1722,8 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateGrantRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The grant mutation result, including an idempotent repeat.
           content:
@@ -1670,6 +1760,8 @@ paths:
         - $ref: "#/components/parameters/GrantPrincipal"
         - $ref: "#/components/parameters/GrantCapability"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Revoked.
         "400":
@@ -1708,6 +1800,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ApplyTemplateRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The grants the expansion produced.
           content:
@@ -1753,6 +1847,8 @@ paths:
             schema:
               $ref: "#/components/schemas/InviteMemberRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "201":
           description: The invited principal and its single-use authority.
           content:
@@ -1793,6 +1889,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The organisation's grant lines.
           content:
@@ -1829,6 +1927,8 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateGrantRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The grant mutation result, including an idempotent repeat.
           content:
@@ -1864,6 +1964,8 @@ paths:
         - $ref: "#/components/parameters/GrantPrincipal"
         - $ref: "#/components/parameters/GrantCapability"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Revoked.
         "400":
@@ -1900,6 +2002,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ApplyTemplateRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The grants the expansion produced.
           content:
@@ -1953,6 +2057,8 @@ paths:
             schema:
               $ref: "#/components/schemas/InviteMemberRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "201":
           description: The invited principal and its single-use authority.
           content:
@@ -1988,6 +2094,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The project's grant lines.
           content:
@@ -2025,6 +2133,8 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateGrantRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The grant mutation result, including an idempotent repeat.
           content:
@@ -2056,6 +2166,8 @@ paths:
         - $ref: "#/components/parameters/GrantPrincipal"
         - $ref: "#/components/parameters/GrantCapability"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Revoked.
         "400":
@@ -2093,6 +2205,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ApplyTemplateRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The grants the expansion produced.
           content:
@@ -2140,6 +2254,8 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateGrantRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The grant mutation result, including an idempotent repeat.
           content:
@@ -2171,6 +2287,8 @@ paths:
         - $ref: "#/components/parameters/GrantPrincipal"
         - $ref: "#/components/parameters/GrantCapability"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Revoked.
         "400":
@@ -2209,6 +2327,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ApplyTemplateRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The grants the expansion produced.
           content:
@@ -2247,6 +2367,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The environment's settings.
           content:
@@ -2287,6 +2409,8 @@ paths:
             schema:
               $ref: "#/components/schemas/EnvironmentSettings"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The settings as stored.
           content:
@@ -2322,6 +2446,8 @@ paths:
           in: query
           schema: {type: boolean, default: false}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Canonical definitions bundle bytes.
           content:
@@ -2351,6 +2477,8 @@ paths:
           application/json:
             schema: {$ref: "#/components/schemas/DefinitionsBundle"}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Drift classification and structural differences.
           content:
@@ -2382,6 +2510,8 @@ paths:
           application/json:
             schema: {$ref: "#/components/schemas/DefinitionsBundle"}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "201":
           description: The immutable impact plan.
           content:
@@ -2409,6 +2539,8 @@ paths:
       x-hikyo-artifacts: [human-session, machine-credential]
       x-hikyo-min-revision: 2
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The immutable impact plan.
           content:
@@ -2440,6 +2572,8 @@ paths:
           application/json:
             schema: {$ref: "#/components/schemas/ApplyDefinitionsPlanRequest"}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The committed schema revision and published environments.
           content:
@@ -2466,6 +2600,8 @@ paths:
       x-hikyo-artifacts: [human-session, machine-credential]
       x-hikyo-min-revision: 2
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Definitions governance settings.
           content:
@@ -2490,6 +2626,8 @@ paths:
           application/json:
             schema: {$ref: "#/components/schemas/SetDefinitionsSettingsRequest"}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Updated definitions governance settings.
           content:
@@ -2520,6 +2658,8 @@ paths:
       x-hikyo-artifacts: [human-session, machine-credential]
       x-hikyo-min-revision: 2
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The opt-in state.
           content:
@@ -2553,6 +2693,8 @@ paths:
           application/json:
             schema: {$ref: "#/components/schemas/MachineRevealSettings"}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The opt-in state after the write.
           content:
@@ -2583,6 +2725,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The project's keys, by name, and the schema revision.
           content:
@@ -2620,6 +2764,8 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateKeyRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "201":
           description: The declared key.
           content:
@@ -2654,6 +2800,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The key.
           content:
@@ -2694,6 +2842,8 @@ paths:
             schema:
               $ref: "#/components/schemas/UpdateKeyMetadataRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The updated key.
           content:
@@ -2725,6 +2875,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Deleted.
         "401":
@@ -2763,6 +2915,8 @@ paths:
             schema:
               $ref: "#/components/schemas/RenameKeyRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The renamed key.
           content:
@@ -2813,6 +2967,8 @@ paths:
             schema:
               $ref: "#/components/schemas/UpdateKeyDeclarationRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The updated key.
           content:
@@ -2860,6 +3016,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ReclassifyKeyRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The reclassified key.
           content:
@@ -2903,6 +3061,8 @@ paths:
             schema:
               $ref: "#/components/schemas/SetKeyGroupRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The updated key.
           content:
@@ -2940,6 +3100,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The project's key groups, by name.
           content:
@@ -2970,6 +3132,8 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateKeyGroupRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "201":
           description: The created group.
           content:
@@ -3004,6 +3168,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The group.
           content:
@@ -3037,6 +3203,8 @@ paths:
             schema:
               $ref: "#/components/schemas/RenameKeyGroupRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The renamed group.
           content:
@@ -3068,6 +3236,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Deleted.
         "401":
@@ -3100,6 +3270,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The environment's resolved values.
           content:
@@ -3131,6 +3303,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The cell, `set` or `absent`.
           content:
@@ -3179,6 +3353,8 @@ paths:
             schema:
               $ref: "#/components/schemas/SetValueRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The staged pending change. It never echoes the value back.
           content:
@@ -3215,6 +3391,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The staged pending change.
           content:
@@ -3261,6 +3439,8 @@ paths:
             schema:
               $ref: "#/components/schemas/DeclareValuesRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The cells as stored, one per environment.
           content:
@@ -3315,6 +3495,8 @@ paths:
             schema:
               $ref: "#/components/schemas/CopyValuesRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: What landed, one entry per (key, destination).
           content:
@@ -3373,6 +3555,8 @@ paths:
           schema:
             $ref: "#/components/schemas/ID"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: One row per declared key.
           content:
@@ -3419,6 +3603,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The guard's state.
           content:
@@ -3483,6 +3669,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ValueOccurrencesRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The environment's keys, presence and occurrence tokens.
           content:
@@ -3542,6 +3730,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ImportValuesRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: What landed and what was skipped by name.
           content:
@@ -3585,6 +3775,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The environment's resolved values, `secret` plaintext included.
           content:
@@ -3618,6 +3810,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The cell, plaintext included.
           content:
@@ -3659,6 +3853,8 @@ paths:
             schema:
               $ref: "#/components/schemas/RevealDiffRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: One row per declared key, plaintext included.
           content:
@@ -3693,6 +3889,8 @@ paths:
       x-hikyo-artifacts: [none]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The enabled login methods.
           content:
@@ -3727,6 +3925,8 @@ paths:
             schema:
               $ref: "#/components/schemas/OidcStartRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The IdP authorization URL.
           content:
@@ -3782,6 +3982,8 @@ paths:
           required: false
           schema: { type: string, maxLength: 256 }
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The minted or rotated session.
           content:
@@ -3831,6 +4033,8 @@ paths:
             schema:
               $ref: "#/components/schemas/SamlStartRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The signed or unsigned IdP HTTP-Redirect URL.
           content:
@@ -3869,6 +4073,8 @@ paths:
             schema:
               $ref: "#/components/schemas/SamlACSRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The minted or rotated ordinary Hikyo session.
           content:
@@ -3902,6 +4108,8 @@ paths:
       x-hikyo-artifacts: [none]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: SAML 2.0 SP metadata XML.
           content:
@@ -3924,6 +4132,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Your account profile.
           content:
@@ -3953,6 +4163,8 @@ paths:
             schema:
               $ref: "#/components/schemas/UpdateAccountProfileRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Your updated profile. Existing sessions remain valid.
           content:
@@ -4002,6 +4214,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The caller's organisations, empty when their grants name none.
           content:
@@ -4026,6 +4240,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The caller's linked identities.
           content:
@@ -4060,6 +4276,8 @@ paths:
             schema:
               $ref: "#/components/schemas/IdentityLinkRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The IdP authorization URL for the link.
           content:
@@ -4098,6 +4316,8 @@ paths:
             schema:
               $ref: "#/components/schemas/IdentityUnlinkRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Unlinked. The reissued session token replaces the old one.
           content:
@@ -4146,6 +4366,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: A session-less credential-establishment authority, returned once.
           content:
@@ -4181,6 +4403,8 @@ paths:
             schema:
               $ref: "#/components/schemas/WebauthnEnrolStartRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Opaque WebAuthn creation options for the browser.
           content:
@@ -4217,6 +4441,8 @@ paths:
             schema:
               $ref: "#/components/schemas/WebauthnResponse"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Enrolled. The reissued session replaces the old one.
           content:
@@ -4247,6 +4473,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Opaque WebAuthn request options for the browser.
           content:
@@ -4284,6 +4512,8 @@ paths:
             schema:
               $ref: "#/components/schemas/WebauthnResponse"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The minted browser session.
           content:
@@ -4314,6 +4544,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Opaque WebAuthn request options for the browser.
           content:
@@ -4351,6 +4583,8 @@ paths:
             schema:
               $ref: "#/components/schemas/WebauthnResponse"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Session elevated. The rotated token replaces the old one.
           content:
@@ -4387,6 +4621,8 @@ paths:
             schema:
               $ref: "#/components/schemas/WebauthnReauthStartRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Opaque WebAuthn request options for the browser.
           content:
@@ -4424,6 +4660,8 @@ paths:
             schema:
               $ref: "#/components/schemas/WebauthnResponse"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The window this reauthentication opened.
           content:
@@ -4450,6 +4688,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The caller's enrolled credentials.
           content:
@@ -4488,6 +4728,8 @@ paths:
             schema:
               $ref: "#/components/schemas/WebauthnCredentialProofRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Removed. The reissued session replaces the old one.
           content:
@@ -4516,6 +4758,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The configured providers.
           content:
@@ -4546,6 +4790,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The provider.
           content:
@@ -4583,6 +4829,8 @@ paths:
             schema:
               $ref: "#/components/schemas/OidcProviderInput"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The created or reconfigured provider.
           content:
@@ -4616,6 +4864,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Deleted.
         "401":
@@ -4640,6 +4890,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Persisted payload-pruner health.
           content:
@@ -4713,6 +4965,8 @@ paths:
             schema:
               $ref: "#/components/schemas/InstanceUpdateRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "202":
           description: Update accepted by the local helper.
           content:
@@ -4745,6 +4999,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Durable helper-owned update state.
           content:
@@ -4771,6 +5027,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The configured SAML providers.
           content:
@@ -4801,6 +5059,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The provider.
           content:
@@ -4840,6 +5100,8 @@ paths:
             schema:
               $ref: "#/components/schemas/SamlProviderInput"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Applied provider or metadata diff requiring explicit confirmation.
           content:
@@ -4882,6 +5144,8 @@ paths:
             schema:
               $ref: "#/components/schemas/SamlProviderPatch"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The updated provider.
           content:
@@ -4913,6 +5177,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Removed.
         "401":
@@ -4950,6 +5216,8 @@ paths:
             schema:
               $ref: "#/components/schemas/SamlMetadataRefreshRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Applied provider or metadata diff requiring explicit confirmation.
           content:
@@ -4983,6 +5251,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Active and overlap-retiring SP keys.
           content:
@@ -5012,6 +5282,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The newly active key.
           content:
@@ -5050,6 +5322,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Retired key erased and removed from SP metadata.
         "401":
@@ -5084,6 +5358,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The newly active replacement key.
           content:
@@ -5121,6 +5397,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The project's service accounts.
           content:
@@ -5155,6 +5433,8 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateServiceAccountRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "201":
           description: The created service account.
           content:
@@ -5194,6 +5474,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Deleted.
         "401":
@@ -5223,6 +5505,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The credentials' metadata.
           content:
@@ -5267,6 +5551,8 @@ paths:
             schema:
               $ref: "#/components/schemas/MintCredentialRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: |
             The credential value, returned EXACTLY ONCE. Nothing in the system
@@ -5308,6 +5594,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Revoked.
         "401":
@@ -5532,6 +5820,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The instance credential policy.
           content:
@@ -5570,6 +5860,8 @@ paths:
             schema:
               $ref: "#/components/schemas/SetCredentialPolicyRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The policy as written, with what the clamp touched.
           content:
@@ -5607,6 +5899,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The configured issuers.
           content:
@@ -5646,6 +5940,8 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateFederationIssuerRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "201":
           description: The configured issuer.
           content:
@@ -5690,6 +5986,8 @@ paths:
             schema:
               $ref: "#/components/schemas/UpdateFederationIssuerRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The issuer as written.
           content:
@@ -5724,6 +6022,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Deleted.
         "401":
@@ -5777,6 +6077,8 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateBindingRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "201":
           description: The created binding.
           content:
@@ -5838,6 +6140,8 @@ paths:
       x-hikyo-artifacts: [machine-credential]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The authorized projection, or the statement that the cursor is current.
           content:
@@ -5880,6 +6184,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ReconcileOfflineRecordsRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The idempotent batch outcome.
           content:
@@ -5927,6 +6233,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The organisation's bindings.
           content:
@@ -5967,6 +6275,8 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateScimBindingRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The created binding.
           content:
@@ -6007,6 +6317,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The binding.
           content:
@@ -6041,6 +6353,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: The binding and everything it owned are gone.
         "401":
@@ -6073,6 +6387,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The mapping table.
           content:
@@ -6112,6 +6428,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ScimMappingRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The row, its consequence language, and what it granted.
           content:
@@ -6156,6 +6474,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ScimMappingRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The row, its consequence language, and what it changed.
           content:
@@ -6211,6 +6531,8 @@ paths:
           schema:
             $ref: "#/components/schemas/ID"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The deleted row and the origin count it released.
           content:
@@ -6249,6 +6571,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The binding's credentials.
           content:
@@ -6287,6 +6611,8 @@ paths:
             schema:
               $ref: "#/components/schemas/MintScimCredentialRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The credential and its display-once token.
           content:
@@ -6323,6 +6649,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The credential.
           content:
@@ -6352,6 +6680,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: The credential is dead.
         "401":
@@ -6384,6 +6714,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The provisioned users.
           content:
@@ -6415,6 +6747,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The provisioned groups.
           content:
@@ -6467,6 +6801,8 @@ paths:
       x-hikyo-artifacts: [scim-credential]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ScimServiceUnavailable"
         "200":
           description: The ServiceProviderConfig resource.
           content:
@@ -6514,6 +6850,8 @@ paths:
       x-hikyo-artifacts: [scim-credential]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ScimServiceUnavailable"
         "200":
           description: The ResourceTypes list.
           content:
@@ -6560,6 +6898,8 @@ paths:
       x-hikyo-artifacts: [scim-credential]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ScimServiceUnavailable"
         "200":
           description: The Schemas list.
           content:
@@ -6619,6 +6959,8 @@ paths:
         - $ref: "#/components/parameters/ScimSortBy"
         - $ref: "#/components/parameters/ScimSortOrder"
       responses:
+        "503":
+          $ref: "#/components/responses/ScimServiceUnavailable"
         "200":
           description: An RFC 7644 ListResponse.
           content:
@@ -6691,6 +7033,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ScimResource"
       responses:
+        "503":
+          $ref: "#/components/responses/ScimServiceUnavailable"
         "201":
           description: The provisioned User resource.
           content:
@@ -6759,6 +7103,8 @@ paths:
       x-hikyo-artifacts: [scim-credential]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ScimServiceUnavailable"
         "200":
           description: The User resource.
           content:
@@ -6817,6 +7163,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ScimResource"
       responses:
+        "503":
+          $ref: "#/components/responses/ScimServiceUnavailable"
         "200":
           description: The replaced User resource.
           content:
@@ -6895,6 +7243,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ScimResource"
       responses:
+        "503":
+          $ref: "#/components/responses/ScimServiceUnavailable"
         "200":
           description: The patched User resource.
           content:
@@ -6965,6 +7315,8 @@ paths:
       x-hikyo-artifacts: [scim-credential]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ScimServiceUnavailable"
         "204":
           description: The directory entry is gone.
         "401":
@@ -7017,6 +7369,8 @@ paths:
         - $ref: "#/components/parameters/ScimSortBy"
         - $ref: "#/components/parameters/ScimSortOrder"
       responses:
+        "503":
+          $ref: "#/components/responses/ScimServiceUnavailable"
         "200":
           description: An RFC 7644 ListResponse.
           content:
@@ -7086,6 +7440,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ScimResource"
       responses:
+        "503":
+          $ref: "#/components/responses/ScimServiceUnavailable"
         "201":
           description: The provisioned Group resource.
           content:
@@ -7154,6 +7510,8 @@ paths:
       x-hikyo-artifacts: [scim-credential]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ScimServiceUnavailable"
         "200":
           description: The Group resource.
           content:
@@ -7208,6 +7566,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ScimResource"
       responses:
+        "503":
+          $ref: "#/components/responses/ScimServiceUnavailable"
         "200":
           description: The replaced Group resource.
           content:
@@ -7285,6 +7645,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ScimResource"
       responses:
+        "503":
+          $ref: "#/components/responses/ScimServiceUnavailable"
         "200":
           description: The patched Group resource.
           content:
@@ -7352,6 +7714,8 @@ paths:
       x-hikyo-artifacts: [scim-credential]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ScimServiceUnavailable"
         "204":
           description: The group is gone.
         "401":
@@ -7400,6 +7764,8 @@ paths:
       x-hikyo-artifacts: [scim-credential]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ScimServiceUnavailable"
         "401":
           description: |
             Authentication failed. Unknown, malformed, revoked, expired, epoch-superseded and wrong-binding credentials all answer this, so presentation reveals nothing about which credentials exist. A credential that does not match the binding in the path is an authentication failure, NEVER a SCIM 400.
@@ -7450,6 +7816,8 @@ paths:
       x-hikyo-artifacts: [scim-credential]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ScimServiceUnavailable"
         "401":
           description: |
             Authentication failed. Unknown, malformed, revoked, expired, epoch-superseded and wrong-binding credentials all answer this, so presentation reveals nothing about which credentials exist. A credential that does not match the binding in the path is an authentication failure, NEVER a SCIM 400.
@@ -7501,6 +7869,8 @@ paths:
       x-hikyo-artifacts: [scim-credential]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ScimServiceUnavailable"
         "401":
           description: |
             Authentication failed. Unknown, malformed, revoked, expired, epoch-superseded and wrong-binding credentials all answer this, so presentation reveals nothing about which credentials exist. A credential that does not match the binding in the path is an authentication failure, NEVER a SCIM 400.
@@ -7548,6 +7918,8 @@ paths:
       x-hikyo-artifacts: [scim-credential]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ScimServiceUnavailable"
         "401":
           description: |
             Authentication failed. Unknown, malformed, revoked, expired, epoch-superseded and wrong-binding credentials all answer this, so presentation reveals nothing about which credentials exist. A credential that does not match the binding in the path is an authentication failure, NEVER a SCIM 400.
@@ -7620,6 +7992,8 @@ paths:
       x-hikyo-artifacts: [human-session, instance-credential]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The served listing.
           content:
@@ -7660,6 +8034,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Every configured entry with its last-known state.
           content:
@@ -7708,6 +8084,8 @@ paths:
             schema:
               $ref: "#/components/schemas/AddRemoteRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "201":
           description: The entry, with the listing its verifying fetch returned.
           content:
@@ -7742,6 +8120,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The entry with its last-known state.
           content:
@@ -7781,6 +8161,8 @@ paths:
             schema:
               $ref: "#/components/schemas/RenameRemoteRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The entry as renamed.
           content:
@@ -7815,6 +8197,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Removed. The serving-side credential is still live.
         "401":
@@ -7843,6 +8227,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Every connection, live and revoked.
           content:
@@ -7886,6 +8272,8 @@ paths:
             schema:
               $ref: "#/components/schemas/MintInstanceConnectionRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "201":
           description: The connection, with its value disclosed once.
           content:
@@ -7918,6 +8306,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The connection.
           content:
@@ -7951,6 +8341,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Revoked.
         "401":
@@ -7983,6 +8375,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The allowlist.
           content:
@@ -8015,6 +8409,8 @@ paths:
             schema:
               $ref: "#/components/schemas/WorkspaceOriginRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "201":
           description: Allowlisted.
           content:
@@ -8061,6 +8457,8 @@ paths:
             schema:
               $ref: "#/components/schemas/WorkspaceOriginRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Removed, with the number of sessions the same transaction killed.
           content:
@@ -8108,6 +8506,8 @@ paths:
             schema:
               $ref: "#/components/schemas/StartWorkspaceHandoffRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "201":
           description: The transaction's opaque state and its expiry.
           content:
@@ -8148,6 +8548,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ApproveWorkspaceHandoffRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The authorization code and the callback to deliver it to.
           content:
@@ -8196,6 +8598,8 @@ paths:
             schema:
               $ref: "#/components/schemas/RedeemWorkspaceHandoffRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "201":
           description: The workspace session, disclosed once.
           content:
@@ -8229,6 +8633,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The live transaction's authoritative purpose and any bound step-up policy — identifiers only.
           content:
@@ -8262,6 +8668,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The caller's sessions.
           content:
@@ -8296,6 +8704,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Revoked.
         "401":
@@ -8357,6 +8767,8 @@ paths:
             schema:
               $ref: "#/components/schemas/PublishRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: What committed, and which environments advanced.
           content:
@@ -8406,6 +8818,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The project's approval policies.
           content:
@@ -8441,6 +8855,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ApprovalPolicyInput"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The created policy.
           content:
@@ -8488,6 +8904,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ApprovalPolicyInput"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The updated policy.
           content:
@@ -8519,6 +8937,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: The policy was deleted.
         "401":
@@ -8549,6 +8969,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The environment's approval requests.
           content:
@@ -8595,6 +9017,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ApprovalVoteRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The request after the vote.
           content:
@@ -8640,6 +9064,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The exact approval ceremony binding.
           content:
@@ -8682,6 +9108,8 @@ paths:
           application/json:
             schema: {$ref: "#/components/schemas/RevisionDiffRequest"}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The requested comparison, without change tokens or digests.
           content:
@@ -8719,6 +9147,8 @@ paths:
           application/json:
             schema: {$ref: "#/components/schemas/RevealRevisionDiffRequest"}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The requested comparison, without change tokens or digests.
           content:
@@ -8761,6 +9191,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The environment's signals.
           content:
@@ -8802,6 +9234,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The caller's pending drafts in the environment.
           content:
@@ -8851,6 +9285,8 @@ paths:
             schema:
               $ref: "#/components/schemas/RollbackRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Ordinary pending changes staged by the restore.
           content:
@@ -8879,6 +9315,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Pins, including loud expired status.
           content:
@@ -8911,6 +9349,8 @@ paths:
           application/json:
             schema: {$ref: "#/components/schemas/RevisionPinRequest"}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The created, reassigned, or renewed pin.
           content:
@@ -8948,6 +9388,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Released, with the server-derived retention consequence.
           content:
@@ -8979,6 +9421,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The history.
           content:
@@ -9026,6 +9470,8 @@ paths:
       x-hikyo-artifacts: [human-session, machine-credential]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The revision.
           content:
@@ -9081,6 +9527,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ExportValuesRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The resolved snapshot.
           content:
@@ -9140,6 +9588,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: An event stream.
           content:
@@ -9194,6 +9644,8 @@ paths:
         - $ref: "#/components/parameters/AuditObjectID"
         - $ref: "#/components/parameters/AuditCorrelationID"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: One page of trail events.
           content:
@@ -9241,6 +9693,8 @@ paths:
         - $ref: "#/components/parameters/AuditObjectID"
         - $ref: "#/components/parameters/AuditCorrelationID"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The trail as a JSONL byte stream.
           content:
@@ -9281,6 +9735,8 @@ paths:
         - $ref: "#/components/parameters/AuditObjectID"
         - $ref: "#/components/parameters/AuditCorrelationID"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: One page of trail events.
           content:
@@ -9318,6 +9774,8 @@ paths:
         - $ref: "#/components/parameters/AuditObjectID"
         - $ref: "#/components/parameters/AuditCorrelationID"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The trail as a JSONL byte stream.
           content:
@@ -9359,6 +9817,8 @@ paths:
         - $ref: "#/components/parameters/AuditObjectID"
         - $ref: "#/components/parameters/AuditCorrelationID"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: One page of trail events.
           content:
@@ -9397,6 +9857,8 @@ paths:
         - $ref: "#/components/parameters/AuditObjectID"
         - $ref: "#/components/parameters/AuditCorrelationID"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The trail as a JSONL byte stream.
           content:
@@ -9435,6 +9897,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The rotation.
           content:
@@ -9475,6 +9939,8 @@ paths:
             schema:
               $ref: "#/components/schemas/RotateDEKRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The rotation.
           content:
@@ -9511,6 +9977,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The reencrypt result.
           content:
@@ -9549,6 +10017,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The rotation.
           content:
@@ -9594,6 +10064,8 @@ paths:
             schema:
               $ref: "#/components/schemas/RotateRootKeyRequest"
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The phase result.
           content:
@@ -9632,6 +10104,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The reencrypt result.
           content:
@@ -9670,6 +10144,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The rotation.
           content:
@@ -9699,6 +10175,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: Adapter list., content: {application/json: {schema: {$ref: "#/components/schemas/AdapterList"}}}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -9714,6 +10192,8 @@ paths:
       x-hikyo-min-revision: 1
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CreateAdapterRequest"}}}}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "201": {description: Fully valid adapter., content: {application/json: {schema: {$ref: "#/components/schemas/Adapter"}}}}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
@@ -9737,6 +10217,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: Adapter., content: {application/json: {schema: {$ref: "#/components/schemas/Adapter"}}}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -9752,6 +10234,8 @@ paths:
       x-hikyo-min-revision: 1
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/UpdateAdapterOriginRequest"}}}}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "202": {description: Durable scrub-before-switch move., content: {application/json: {schema: {$ref: "#/components/schemas/AdapterMove"}}}}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
@@ -9772,6 +10256,8 @@ paths:
       parameters:
         - {name: keep_remote, in: query, required: false, schema: {type: boolean, default: false}}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: Teardown result., content: {application/json: {schema: {$ref: "#/components/schemas/AdapterTeardown"}}}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -9793,6 +10279,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: Move state., content: {application/json: {schema: {$ref: "#/components/schemas/AdapterMove"}}}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -9808,6 +10296,8 @@ paths:
       x-hikyo-min-revision: 1
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ResumeAdapterMoveRequest"}}}}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "202": {description: Updated move resumed., content: {application/json: {schema: {$ref: "#/components/schemas/AdapterMove"}}}}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
@@ -9825,6 +10315,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "202": {description: Move canceled and old-route converge queued., content: {application/json: {schema: {$ref: "#/components/schemas/AdapterMove"}}}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -9848,6 +10340,8 @@ paths:
       x-hikyo-min-revision: 1
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/SetAdapterCredentialRequest"}}}}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204": {description: Credential replaced. No job was enqueued.}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
@@ -9865,6 +10359,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204": {description: Credential revoked. No job was enqueued.}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -9885,6 +10381,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: Targets., content: {application/json: {schema: {$ref: "#/components/schemas/AdapterTargetList"}}}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -9900,6 +10398,8 @@ paths:
       x-hikyo-min-revision: 1
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/AdapterTargetInput"}}}}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "201": {description: Target., content: {application/json: {schema: {$ref: "#/components/schemas/AdapterTarget"}}}}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
@@ -9925,6 +10425,8 @@ paths:
       parameters:
         - {name: format, in: query, required: false, schema: {type: string, enum: [detail, workflow], default: detail}}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: Target detail or names-only workflow YAML.
           content:
@@ -9944,6 +10446,8 @@ paths:
       x-hikyo-min-revision: 1
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/UpdateAdapterTargetRequest"}}}}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: In-place key subset or prefix update with replacement converge queued., content: {application/json: {schema: {$ref: "#/components/schemas/AdapterTarget"}}}}
         "202": {description: Durable scrub-before-switch move., content: {application/json: {schema: {$ref: "#/components/schemas/AdapterMove"}}}}
         "400": {$ref: "#/components/responses/BadRequest"}
@@ -9964,6 +10468,8 @@ paths:
       parameters:
         - {name: keep_remote, in: query, required: false, schema: {type: boolean, default: false}}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: Teardown result., content: {application/json: {schema: {$ref: "#/components/schemas/AdapterTeardown"}}}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -9982,6 +10488,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: Plan., content: {application/json: {schema: {$ref: "#/components/schemas/AdapterPlan"}}}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -10000,6 +10508,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "202": {description: Queued job., content: {application/json: {schema: {$ref: "#/components/schemas/AdapterJob"}}}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -10026,6 +10536,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: The paused target., content: {application/json: {schema: {$ref: "#/components/schemas/AdapterTarget"}}}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -10050,6 +10562,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "202": {description: Queued catch-up converge., content: {application/json: {schema: {$ref: "#/components/schemas/AdapterResume"}}}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -10069,6 +10583,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: Connection result., content: {application/json: {schema: {$ref: "#/components/schemas/AdapterConnection"}}}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -10087,6 +10603,8 @@ paths:
       x-hikyo-min-revision: 1
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/AdapterAdoptionRequest"}}}}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "202": {description: Adoption committed and converge queued., content: {application/json: {schema: {$ref: "#/components/schemas/AdapterJob"}}}}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
@@ -10109,6 +10627,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: Provider list., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicProviderList"}}}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -10124,6 +10644,8 @@ paths:
       x-hikyo-min-revision: 1
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CreateDynamicProviderRequest"}}}}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "201": {description: Provider configured and reachable., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicProvider"}}}}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
@@ -10146,6 +10668,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: Provider., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicProvider"}}}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -10166,6 +10690,8 @@ paths:
           description: Revoke every live lease of this provider before deleting it.
           schema: {type: boolean, default: false}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: Provider deleted; any leases queued for revocation., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicProviderDeletion"}}}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -10188,6 +10714,8 @@ paths:
       x-hikyo-min-revision: 1
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/SetDynamicProviderCredentialRequest"}}}}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204": {description: Credential replaced.}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
@@ -10204,6 +10732,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "204": {description: Credential revoked.}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -10224,6 +10754,8 @@ paths:
       x-hikyo-artifacts: [human-session, machine-credential]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: Lease list., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicLeaseList"}}}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -10245,6 +10777,8 @@ paths:
       x-hikyo-min-revision: 1
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/MintLeaseRequest"}}}}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: The lease and its display-once secret., content: {application/json: {schema: {$ref: "#/components/schemas/MintLeaseResult"}}}}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
@@ -10269,6 +10803,8 @@ paths:
       x-hikyo-artifacts: [human-session, machine-credential]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: Lease., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicLease"}}}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -10291,6 +10827,8 @@ paths:
       x-hikyo-min-revision: 1
       requestBody: {required: false, content: {application/json: {schema: {$ref: "#/components/schemas/RenewLeaseRequest"}}}}
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: Lease after renewal., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicLease"}}}}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
@@ -10314,6 +10852,8 @@ paths:
       x-hikyo-artifacts: [human-session, machine-credential]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: Lease after revocation was queued., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicLease"}}}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -10335,6 +10875,8 @@ paths:
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
       responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "200": {description: Lease after settlement., content: {application/json: {schema: {$ref: "#/components/schemas/DynamicLease"}}}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -10877,6 +11419,16 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    ScimServiceUnavailable:
+      description: Configuration is converging. Retry after the indicated interval.
+      headers:
+        Retry-After:
+          required: true
+          schema: {type: integer, minimum: 1}
+      content:
+        application/scim+json:
+          schema:
+            $ref: "#/components/schemas/ScimResource"
     Internal:
       description: An unexpected server fault. The cause is logged, never returned.
       content:
@@ -11879,7 +12431,8 @@ components:
       additionalProperties: false
       required: [action, owner_instance_id, revision, schema_version, expected_generation, preview_token, to, confirm_restored_credentials]
       properties:
-        action: {type: string, enum: [adopt, apply, mail-test]}
+        plan_digest: {type: string, pattern: "^[a-f0-9]{64}$", description: Exact prepared deployment plan authorized by this decision.}
+        action: {type: string, enum: [adopt, apply, mail-test, rollout-restore]}
         owner_instance_id: {type: string, minLength: 1, maxLength: 128}
         revision: {type: integer, format: int64, minimum: 0}
         schema_version: {type: integer, minimum: 1}
@@ -14590,6 +15143,10 @@ components:
       additionalProperties: false
       required: [id, state, revision, generation, created_at]
       properties:
+        deployment_restore_pending: {type: boolean, description: Deployment restoration was authorized and awaits the controller receipt.}
+        deployment_restored: {type: boolean, description: The controller verified restored deployment resources. A separate configuration repair Apply is still required.}
+        prepared: {type: boolean, description: Exact fixed participants and any deployment plan are ready for administrator authorization.}
+        plan_digest: {type: string, pattern: "^[a-f0-9]{64}$", description: Exact prepared deployment plan authorized by this decision.}
         id: {type: string}
         state: {type: string, enum: [preparing, pending, partial, completed, failed]}
         revision: {type: integer, format: int64, minimum: 1}
@@ -14646,6 +15203,9 @@ components:
       additionalProperties: false
       required: [revision, expected_generation, idempotency_key, schema_version, confirm_restored_credentials]
       properties:
+        restore_deployment: {type: boolean, default: false, description: Restore the partial controlled deployment with exact rollout-restore MFA. The desired runtime revision remains fenced until a separate repair Apply.}
+        plan_digest: {type: string, pattern: "^[a-f0-9]{64}$", description: Exact prepared deployment plan authorized by this decision.}
+        prepare_only: {type: boolean, default: false, description: Prepare and return the exact plan for review without committing or consuming reauthentication.}
         revision: {type: integer, format: int64, minimum: 1}
         expected_generation: {type: integer, format: int64, minimum: 0}
         idempotency_key: {type: string, minLength: 1, maxLength: 128}

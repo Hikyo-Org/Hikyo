@@ -7,11 +7,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/mailtest"
 	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
 // runSelfConfigAuditLifecycle supplies actual service emitters to registry
@@ -22,14 +25,16 @@ func runSelfConfigAuditLifecycle(t *testing.T, engine store.Engine) *store.DB {
 	db := openSelfConfigAuditDB(t, engine)
 	auth := authService(t, db)
 	var clock atomic.Int64
-	clock.Store(time.Now().UTC().UnixNano())
+	// Advance only the authentication clock through distinct TOTP steps. Keep
+	// evidence in the recent past and runtime heartbeats on the real store clock.
+	clock.Store(time.Now().UTC().Add(-5 * time.Minute).UnixNano())
 	now := func() time.Time { return time.Unix(0, clock.Load()).UTC() }
 	advance := func() { clock.Add(int64(30 * time.Second)) }
 	auth.Now = now
 	const password = "self configuration audit lifecycle password"
 	admin := bootstrapAdmin(t, db, adminOpts{username: "self-config-admin", displayName: "Configuration Admin", password: password, auth: auth})
 	sink := mailtest.New(t, "implicit")
-	managed := &service.SelfConfig{DB: db, Keyring: auth.Keyring, Auth: auth, NodeID: "audit-local", Now: now, Seed: func() (map[string]string, error) {
+	managed := &service.SelfConfig{DB: db, Keyring: auth.Keyring, Auth: auth, NodeID: "audit-local", Seed: func() (map[string]string, error) {
 		return map[string]string{
 			"HIKYO_UPDATE_CHANNEL": "off",
 			"HIKYO_MAIL_ADDR":      sink.Addr, "HIKYO_MAIL_TLS": "implicit", "HIKYO_MAIL_FROM": "Hikyo <hikyo@example.com>",
@@ -184,6 +189,74 @@ func runSelfConfigAuditLifecycle(t *testing.T, engine store.Engine) *store.DB {
 	}
 	if status.Generation != 4 || status.State != "active" {
 		t.Fatalf("confirmed recovery did not resume: %+v", status)
+	}
+	// A prepared external rollout uses real publication, Apply and distinct TOTP
+	// ceremonies. Only the external deployment transport is deterministic here.
+	owner, incarnation, err := db.RecoveryIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	managed.Deployment = newAuditDeployment(owner, incarnation)
+	staged, err = values.Set(t.Context(), local, scope, config.ManagedBootstrapSourcesKey, `{"version":1,"database_source":"replacement"}`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := revisions.PublishPlanned(t.Context(), local, scope, service.PublishRequest{VersionIDs: []string{staged.VersionID}}); err != nil {
+		t.Fatal(err)
+	}
+	status, err = managed.Status(t.Context(), service.Bearer(token))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := service.SelfConfigApplyRequest{Revision: *status.LatestRevision, SchemaVersion: runtimeconfig.SchemaVersion, ExpectedGeneration: status.Generation, IdempotencyKey: "audit-bootstrap", PrepareOnly: true}
+	func() {
+		stop := startWorker()
+		defer stop()
+		prepared, err := managed.Apply(t.Context(), service.Bearer(token), req)
+		if err != nil || prepared.Job == nil || !prepared.Job.Prepared || prepared.Job.PlanDigest == "" {
+			t.Fatalf("bootstrap preparation: %+v, %v", prepared.Job, err)
+		}
+		req.PlanDigest = prepared.Job.PlanDigest
+	}()
+	req.PrepareOnly = false
+	actor = reauthenticate(service.SelfConfigReauthTarget{Action: "apply", OwnerInstanceID: owner, Revision: req.Revision, SchemaVersion: req.SchemaVersion, ExpectedGeneration: req.ExpectedGeneration, PlanDigest: req.PlanDigest})
+	applied, err := managed.Apply(t.Context(), actor, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Model a convergence timeout through the worker's checked store door. The
+	// controller has not replaced this node, so no application ack is fabricated.
+	err = tx.Write(t.Context(), db, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		p, err := az.SelfConfigRuntimeAuthority(ctx, "")
+		if err != nil {
+			return err
+		}
+		return r.SelfConfig().FinishJob(ctx, p, applied.Job.ID, "partial", "convergence_timeout", time.Now().UTC())
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	restore := service.SelfConfigDeploymentRestoreRequest{Revision: req.Revision, ExpectedGeneration: applied.Generation, SchemaVersion: req.SchemaVersion, PlanDigest: req.PlanDigest}
+	const restoreEvent = "self_config.deployment_restore_requested"
+	if _, err := managed.RestoreDeployment(t.Context(), actor, restore); err == nil {
+		t.Fatal("spent Apply factor authorized deployment restore")
+	}
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+restoreEvent+"'"); got != 0 {
+		t.Fatal("refused restore emitted success")
+	}
+	actor = reauthenticate(service.SelfConfigReauthTarget{Action: "rollout-restore", OwnerInstanceID: owner, Revision: restore.Revision, SchemaVersion: restore.SchemaVersion, ExpectedGeneration: restore.ExpectedGeneration, PlanDigest: restore.PlanDigest})
+	restored, err := managed.RestoreDeployment(t.Context(), actor, restore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.Generation != applied.Generation || !restored.Job.DeploymentRestorePending {
+		t.Fatal("restore changed desired generation or claimed external completion")
+	}
+	if _, err := managed.RestoreDeployment(t.Context(), actor, restore); err != nil {
+		t.Fatal(err)
+	}
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+restoreEvent+"'"); got != 1 {
+		t.Fatalf("restore receipt count %d, want one after idempotent retry", got)
 	}
 	return db
 }

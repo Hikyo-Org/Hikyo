@@ -41,10 +41,11 @@ func newDynamicFactory(egress map[string][]netip.Prefix) dynamic.Factory {
 // (lease_owner + lease_expires_at, SKIP LOCKED, per-org cap), so it composes
 // with #146 multi-node HA without the singleton scheduler lease.
 type dynamicWorker struct {
-	svc  *service.Dynamic
-	id   string
-	poll time.Duration
-	log  *slog.Logger
+	svc        *service.Dynamic
+	id         string
+	poll       time.Duration
+	log        *slog.Logger
+	selfConfig *service.SelfConfig
 }
 
 // dynamicGaugeSource feeds the two label-free /metrics gauges at scrape time.
@@ -71,7 +72,14 @@ func (w *dynamicWorker) Run(ctx context.Context) {
 		poll = 5 * time.Second
 	}
 	for {
-		worked, err := w.svc.RunLeaseSweep(ctx, w.id)
+		var worked bool
+		var err error
+		if w.selfConfig != nil {
+			_, err = w.selfConfig.Capture(ctx)
+		}
+		if err == nil {
+			worked, err = w.svc.RunLeaseSweep(ctx, w.id)
+		}
 		if err != nil && !errors.Is(err, context.Canceled) {
 			w.log.Error("dynamic lease worker failed", "err", err)
 		}

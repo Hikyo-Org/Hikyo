@@ -51,7 +51,16 @@ func (a *API) ApplyInstanceConfig(ctx context.Context, req apigen.ApplyInstanceC
 	if req.Body == nil {
 		return nil, domain.ErrInvalid
 	}
-	status, err := a.SelfConfig.Apply(ctx, service.Bearer(bearer(ctx)), service.SelfConfigApplyRequest{Revision: req.Body.Revision, SchemaVersion: req.Body.SchemaVersion, ExpectedGeneration: req.Body.ExpectedGeneration, IdempotencyKey: req.Body.IdempotencyKey, ConfirmRestoredCredentials: req.Body.ConfirmRestoredCredentials})
+	var status service.SelfConfigStatus
+	var err error
+	if req.Body.RestoreDeployment != nil && *req.Body.RestoreDeployment {
+		if req.Body.ConfirmRestoredCredentials || req.Body.PrepareOnly != nil && *req.Body.PrepareOnly {
+			return nil, domain.ErrInvalid
+		}
+		status, err = a.SelfConfig.RestoreDeployment(ctx, service.Bearer(bearer(ctx)), service.SelfConfigDeploymentRestoreRequest{Revision: req.Body.Revision, ExpectedGeneration: req.Body.ExpectedGeneration, SchemaVersion: req.Body.SchemaVersion, PlanDigest: deref(req.Body.PlanDigest)})
+	} else {
+		status, err = a.SelfConfig.Apply(ctx, service.Bearer(bearer(ctx)), service.SelfConfigApplyRequest{Revision: req.Body.Revision, SchemaVersion: req.Body.SchemaVersion, ExpectedGeneration: req.Body.ExpectedGeneration, IdempotencyKey: req.Body.IdempotencyKey, ConfirmRestoredCredentials: req.Body.ConfirmRestoredCredentials, PrepareOnly: req.Body.PrepareOnly != nil && *req.Body.PrepareOnly, PlanDigest: deref(req.Body.PlanDigest)})
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +94,10 @@ func wireSelfConfig(status service.SelfConfigStatus) apigen.InstanceConfigStatus
 		out.Nodes = append(out.Nodes, wire)
 	}
 	if j := status.Job; j != nil {
-		out.Job = &apigen.InstanceConfigJob{Id: j.ID, State: apigen.InstanceConfigJobState(j.State), Revision: j.Revision, Generation: j.Generation, CreatedAt: j.CreatedAt, CompletedAt: j.CompletedAt}
+		out.Job = &apigen.InstanceConfigJob{Id: j.ID, State: apigen.InstanceConfigJobState(j.State), Revision: j.Revision, Generation: j.Generation, CreatedAt: j.CreatedAt, CompletedAt: j.CompletedAt, Prepared: &j.Prepared, DeploymentRestorePending: &j.DeploymentRestorePending, DeploymentRestored: &j.DeploymentRestored}
+		if j.PlanDigest != "" {
+			out.Job.PlanDigest = &j.PlanDigest
+		}
 		if j.Error != "" {
 			out.Job.Error = &j.Error
 		}

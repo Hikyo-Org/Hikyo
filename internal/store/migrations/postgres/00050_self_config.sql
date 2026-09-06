@@ -32,12 +32,13 @@ CREATE TABLE self_config_jobs (
  schema_version BIGINT NOT NULL CHECK (schema_version > 0),
  expected_generation BIGINT NOT NULL CHECK (expected_generation >= 1),
  generation BIGINT NOT NULL CHECK (generation >= 1),
- status TEXT NOT NULL CHECK(status IN ('preparing','applying','applied','aborted','partial')),
+ status TEXT NOT NULL CHECK(status IN ('preparing','applying','applied','aborted','partial','superseded')),
  error_code TEXT NOT NULL DEFAULT '',
  created_at TIMESTAMPTZ NOT NULL,
  updated_at TIMESTAMPTZ NOT NULL
 );
 CREATE UNIQUE INDEX self_config_one_open_job ON self_config_jobs((1)) WHERE status IN ('preparing','applying','partial');
+CREATE INDEX self_config_jobs_generation ON self_config_jobs(generation);
 -- hikyo:table self_config_nodes class=instance chain=-
 CREATE TABLE self_config_nodes (
  node_id TEXT PRIMARY KEY,
@@ -72,3 +73,35 @@ CHECK (operation IN ('adapter.configure','adapter.credential-set','adapter.adopt
 ALTER TABLE cli_reauth_handoffs DROP CONSTRAINT cli_reauth_handoffs_purpose_check;
 ALTER TABLE cli_reauth_handoffs ADD CONSTRAINT cli_reauth_handoffs_purpose_check
 CHECK (purpose IN ('adapter','reveal','copy','self-config'));
+
+-- Temporary encrypted node inputs, imported into the normal project at adoption.
+-- hikyo:table self_config_seed_inputs class=instance chain=-
+CREATE TABLE self_config_seed_inputs (
+ node_id TEXT PRIMARY KEY REFERENCES self_config_seed_attestations(node_id) ON DELETE CASCADE,
+ owner_instance_id TEXT NOT NULL,
+ incarnation TEXT NOT NULL,
+ fingerprint TEXT NOT NULL,
+ ciphertext BYTEA NOT NULL,
+ dek_version INTEGER NOT NULL CHECK (dek_version > 0),
+ row_version INTEGER NOT NULL DEFAULT 1 CHECK (row_version > 0)
+);
+
+
+-- Rollout records contain only signed source aliases and secret-free receipts.
+-- hikyo:table self_config_rollouts class=instance chain=-
+CREATE TABLE self_config_rollouts (
+ job_id TEXT PRIMARY KEY REFERENCES self_config_jobs(id),
+ enrollment_id TEXT NOT NULL,
+ incarnation TEXT NOT NULL,
+ plan_digest TEXT NOT NULL DEFAULT '',
+ command_json TEXT NOT NULL,
+ response_json TEXT NOT NULL DEFAULT '',
+ external_phase TEXT NOT NULL DEFAULT '' CHECK (external_phase IN ('','applied','restored')),
+ sequence BIGINT NOT NULL CHECK (sequence > 0),
+ row_version BIGINT NOT NULL DEFAULT 1 CHECK (row_version > 0)
+);
+-- hikyo:table self_config_rollout_sequences class=instance chain=-
+CREATE TABLE self_config_rollout_sequences (
+ enrollment_id TEXT PRIMARY KEY,
+ sequence BIGINT NOT NULL CHECK (sequence > 0)
+);

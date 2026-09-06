@@ -380,6 +380,9 @@ func (s *Rotation) rootRotateFinalize(ctx context.Context, actor Actor) (RootKey
 		}
 		return r.Audit().InsertInstance(ctx, p, ev)
 	})
+	if errors.Is(err, store.ErrRootFinalizationPendingDeployment) {
+		return RootKeyRotation{}, fmt.Errorf("%w: complete the configuration rollout or its repair before finalizing the root key", domain.ErrConflict)
+	}
 	if errors.Is(err, store.ErrRotationSuperseded) || errors.Is(err, crypto.ErrNotDualWrapped) {
 		return RootKeyRotation{}, fmt.Errorf("%w: %s", domain.ErrConflict, err)
 	}

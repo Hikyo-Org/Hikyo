@@ -1,0 +1,227 @@
+{{- if and .Values.rollout.enabled .Values.rollout.enrolled }}
+{{- $name := include "hikyo.rollout.name" . }}
+{{- $policy := include "hikyo.rollout.policyName" . }}
+{{- $subject := printf "system:serviceaccount:%s:%s" .Release.Namespace $name }}
+# Closed against Kubernetes 1.36 PodSpec/Container fields. On API upgrades,
+# update this field inventory and negative admission fixtures together.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: {{ $policy }}-deployment
+spec:
+  failurePolicy: Fail
+  paramKind:
+    apiVersion: coordination.k8s.io/v1
+    kind: Lease
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["UPDATE"]
+        resources: ["deployments"]
+  matchConditions:
+    - name: executor-only
+      expression: request.userInfo.username == {{ $subject | quote }}
+  variables:
+    - name: server
+      expression: object.spec.template.spec.containers.filter(c, c.name == 'server')[0]
+    - name: before
+      expression: oldObject.spec.template.spec.containers.filter(c, c.name == 'server')[0]
+    - name: managed
+      expression: "['HIKYO_ADMISSION_BUDGET_MIB','HIKYO_PG_POOL_MAX','HIKYO_LISTEN','HIKYO_OPERATIONAL_LISTEN','HIKYO_HA','HIKYO_BACKUP_DIR','HIKYO_ADAPTER_EGRESS_POLICY_FILE','HIKYO_DYNAMIC_EGRESS_POLICY_FILE','HIKYO_OIDC_EGRESS_POLICY_FILE','HIKYO_TLS_CERT_FILE','HIKYO_TLS_KEY_FILE','HIKYO_DB']"
+    - name: sourcePairs
+      expression: >-
+        [{{ printf "%s:HIKYO_DB" .Values.database.existingSecret | quote }}{{ range $alias, $source := .Values.rollout.databaseSources }},{{ printf "%s:%s" $source.name $source.key | quote }}{{ end }}]
+    - name: rootPairs
+      expression: >-
+        [{{ printf "%s:%s" .Values.rootKey.existingSecret .Values.rootKey.key | quote }}{{ range $alias, $source := .Values.rollout.rootSources }},{{ printf "%s:%s" $source.name $source.key | quote }}{{ end }}]
+    - name: templateKeys
+      expression: "['hikyo.dev/configuration-rollout','hikyo.dev/configuration-database-source','hikyo.dev/configuration-root-source']"
+  validations:
+    - expression: object.metadata.namespace == {{ .Release.Namespace | quote }} && object.metadata.name == {{ include "hikyo.fullname" . | quote }} && string(object.metadata.uid) == {{ .Values.rollout.deploymentUID | quote }}
+      message: Executor may only mutate its enrolled Deployment UID.
+    - expression: has(params.spec.holderIdentity) && has(params.spec.leaseTransitions) && object.metadata.annotations['hikyo.dev/rollout-custody'] == params.spec.holderIdentity + ':' + string(params.spec.leaseTransitions)
+      message: Executor write must carry the current custody epoch.
+    - expression: object.metadata.?labels == oldObject.metadata.?labels && object.metadata.?ownerReferences == oldObject.metadata.?ownerReferences && object.metadata.?finalizers == oldObject.metadata.?finalizers
+      message: Deployment metadata ownership is installation-owned.
+    - expression: >-
+        object.metadata.?annotations.orValue({}).all(k, k == 'hikyo.dev/rollout-custody' || (k in oldObject.metadata.?annotations.orValue({}) && object.metadata.annotations[k] == oldObject.metadata.annotations[k])) &&
+        oldObject.metadata.?annotations.orValue({}).all(k, k == 'hikyo.dev/rollout-custody' || k in object.metadata.?annotations.orValue({}))
+      message: Executor may only stamp its custody annotation.
+    - expression: >-
+        object.spec.template.metadata.?annotations.orValue({}).all(k, k in variables.templateKeys || (k in oldObject.spec.template.metadata.?annotations.orValue({}) && object.spec.template.metadata.annotations[k] == oldObject.spec.template.metadata.annotations[k])) &&
+        oldObject.spec.template.metadata.?annotations.orValue({}).all(k, k in variables.templateKeys || k in object.spec.template.metadata.?annotations.orValue({})) &&
+        object.spec.template.metadata.?labels == oldObject.spec.template.metadata.?labels
+      message: Only configuration selection annotations may change.
+    - expression: >-
+        object.spec.?replicas == oldObject.spec.?replicas &&
+        object.spec.?selector == oldObject.spec.?selector &&
+        object.spec.?strategy == oldObject.spec.?strategy &&
+        object.spec.?minReadySeconds == oldObject.spec.?minReadySeconds &&
+        object.spec.?revisionHistoryLimit == oldObject.spec.?revisionHistoryLimit &&
+        object.spec.?paused == oldObject.spec.?paused &&
+        object.spec.?progressDeadlineSeconds == oldObject.spec.?progressDeadlineSeconds
+      message: Deployment authority outside configuration fields is immutable.
+    - expression: >-
+        object.spec.template.spec.?initContainers == oldObject.spec.template.spec.?initContainers &&
+        object.spec.template.spec.?ephemeralContainers == oldObject.spec.template.spec.?ephemeralContainers &&
+        object.spec.template.spec.?restartPolicy == oldObject.spec.template.spec.?restartPolicy &&
+        object.spec.template.spec.?terminationGracePeriodSeconds == oldObject.spec.template.spec.?terminationGracePeriodSeconds &&
+        object.spec.template.spec.?activeDeadlineSeconds == oldObject.spec.template.spec.?activeDeadlineSeconds &&
+        object.spec.template.spec.?dnsPolicy == oldObject.spec.template.spec.?dnsPolicy &&
+        object.spec.template.spec.?nodeSelector == oldObject.spec.template.spec.?nodeSelector &&
+        object.spec.template.spec.?serviceAccountName == oldObject.spec.template.spec.?serviceAccountName &&
+        object.spec.template.spec.?serviceAccount == oldObject.spec.template.spec.?serviceAccount &&
+        object.spec.template.spec.?automountServiceAccountToken == oldObject.spec.template.spec.?automountServiceAccountToken &&
+        object.spec.template.spec.?nodeName == oldObject.spec.template.spec.?nodeName &&
+        object.spec.template.spec.?hostNetwork == oldObject.spec.template.spec.?hostNetwork &&
+        object.spec.template.spec.?hostPID == oldObject.spec.template.spec.?hostPID &&
+        object.spec.template.spec.?hostIPC == oldObject.spec.template.spec.?hostIPC &&
+        object.spec.template.spec.?shareProcessNamespace == oldObject.spec.template.spec.?shareProcessNamespace &&
+        object.spec.template.spec.?securityContext == oldObject.spec.template.spec.?securityContext &&
+        object.spec.template.spec.?imagePullSecrets == oldObject.spec.template.spec.?imagePullSecrets &&
+        object.spec.template.spec.?hostname == oldObject.spec.template.spec.?hostname &&
+        object.spec.template.spec.?subdomain == oldObject.spec.template.spec.?subdomain &&
+        object.spec.template.spec.?affinity == oldObject.spec.template.spec.?affinity &&
+        object.spec.template.spec.?schedulerName == oldObject.spec.template.spec.?schedulerName &&
+        object.spec.template.spec.?tolerations == oldObject.spec.template.spec.?tolerations &&
+        object.spec.template.spec.?hostAliases == oldObject.spec.template.spec.?hostAliases &&
+        object.spec.template.spec.?priorityClassName == oldObject.spec.template.spec.?priorityClassName &&
+        object.spec.template.spec.?priority == oldObject.spec.template.spec.?priority &&
+        object.spec.template.spec.?dnsConfig == oldObject.spec.template.spec.?dnsConfig &&
+        object.spec.template.spec.?readinessGates == oldObject.spec.template.spec.?readinessGates &&
+        object.spec.template.spec.?runtimeClassName == oldObject.spec.template.spec.?runtimeClassName &&
+        object.spec.template.spec.?enableServiceLinks == oldObject.spec.template.spec.?enableServiceLinks &&
+        object.spec.template.spec.?preemptionPolicy == oldObject.spec.template.spec.?preemptionPolicy &&
+        object.spec.template.spec.?topologySpreadConstraints == oldObject.spec.template.spec.?topologySpreadConstraints &&
+        object.spec.template.spec.?setHostnameAsFQDN == oldObject.spec.template.spec.?setHostnameAsFQDN &&
+        object.spec.template.spec.?os == oldObject.spec.template.spec.?os &&
+        object.spec.template.spec.?hostUsers == oldObject.spec.template.spec.?hostUsers &&
+        object.spec.template.spec.?schedulingGates == oldObject.spec.template.spec.?schedulingGates &&
+        object.spec.template.spec.?resourceClaims == oldObject.spec.template.spec.?resourceClaims &&
+        object.spec.template.spec.?resources == oldObject.spec.template.spec.?resources &&
+        object.spec.template.spec.?hostnameOverride == oldObject.spec.template.spec.?hostnameOverride &&
+        object.spec.template.spec.?schedulingGroup == oldObject.spec.template.spec.?schedulingGroup
+      message: Pod authority outside configuration fields is immutable.
+    - expression: >-
+        variables.server.?name == variables.before.?name &&
+        variables.server.?image == variables.before.?image &&
+        variables.server.?command == variables.before.?command &&
+        variables.server.?workingDir == variables.before.?workingDir &&
+        variables.server.?envFrom == variables.before.?envFrom &&
+        variables.server.?resources == variables.before.?resources &&
+        variables.server.?resizePolicy == variables.before.?resizePolicy &&
+        variables.server.?restartPolicy == variables.before.?restartPolicy &&
+        variables.server.?restartPolicyRules == variables.before.?restartPolicyRules &&
+        variables.server.?volumeMounts == variables.before.?volumeMounts &&
+        variables.server.?volumeDevices == variables.before.?volumeDevices &&
+        variables.server.?livenessProbe == variables.before.?livenessProbe &&
+        variables.server.?readinessProbe == variables.before.?readinessProbe &&
+        variables.server.?startupProbe == variables.before.?startupProbe &&
+        variables.server.?lifecycle == variables.before.?lifecycle &&
+        variables.server.?terminationMessagePath == variables.before.?terminationMessagePath &&
+        variables.server.?terminationMessagePolicy == variables.before.?terminationMessagePolicy &&
+        variables.server.?imagePullPolicy == variables.before.?imagePullPolicy &&
+        variables.server.?securityContext == variables.before.?securityContext &&
+        variables.server.?stdin == variables.before.?stdin &&
+        variables.server.?stdinOnce == variables.before.?stdinOnce &&
+        variables.server.?tty == variables.before.?tty
+      message: Container authority outside configuration fields is immutable.
+    - expression: >-
+        object.spec.template.spec.containers.size() == oldObject.spec.template.spec.containers.size() &&
+        object.spec.template.spec.containers.filter(c, c.name != 'server') == oldObject.spec.template.spec.containers.filter(c, c.name != 'server') &&
+        object.spec.template.spec.containers.filter(c, c.name == 'server').size() == 1 &&
+        variables.server.env.filter(e, !(e.name in variables.managed)) == variables.before.env.filter(e, !(e.name in variables.managed)) &&
+        variables.server.env.all(e, variables.server.env.filter(other, other.name == e.name).size() == 1)
+      message: Executor cannot alter other containers or unmanaged environment keys.
+    - expression: >-
+        variables.server.env.filter(e, e.name in variables.managed).all(e,
+          (e.name == 'HIKYO_DB' && has(e.valueFrom.secretKeyRef) && e.valueFrom.secretKeyRef.name + ':' + e.valueFrom.secretKeyRef.key in variables.sourcePairs) ||
+          (e.name != 'HIKYO_DB' && has(e.valueFrom.secretKeyRef) && e.valueFrom.secretKeyRef.name == {{ printf "%s-config" $name | quote }} && e.valueFrom.secretKeyRef.key == e.name) ||
+          (has(e.value) && ((e.name in ['HIKYO_ADMISSION_BUDGET_MIB','HIKYO_PG_POOL_MAX'] && e.value.matches('^[1-9][0-9]{0,9}$')) ||
+          (e.name in ['HIKYO_LISTEN','HIKYO_OPERATIONAL_LISTEN'] && e.value.matches('^[0-9a-fA-F.\\[\\]:]+:[0-9]{1,5}$')) ||
+          (e.name == 'HIKYO_HA' && e.value in ['true','false'])
+          {{- range $key,$aliases := .Values.rollout.fileSources }}
+          {{- range $alias,$path := $aliases }}
+          || (e.name == {{ $key | quote }} && e.value == {{ $path | quote }})
+          {{- end }}
+          {{- end }}
+          )))
+      message: Values may only use declared scalar settings and installed source references.
+    - expression: >-
+        variables.server.args.filter(a, !a.matches('^--(listen|operational-listen|tls-cert-file|tls-key-file)=')) == variables.before.args.filter(a, !a.matches('^--(listen|operational-listen|tls-cert-file|tls-key-file)=')) &&
+        variables.server.args.size() == variables.before.args.size() &&
+        variables.server.args.filter(a, a.matches('^--(listen|operational-listen|tls-cert-file|tls-key-file)=')).all(a,
+          a in variables.before.args || a.matches('^--(listen|operational-listen)=[0-9a-fA-F.\\[\\]:]+:[0-9]{1,5}$')
+          {{- range $key,$aliases := .Values.rollout.fileSources }}
+          {{- if or (eq $key "HIKYO_TLS_CERT_FILE") (eq $key "HIKYO_TLS_KEY_FILE") }}
+          {{- range $alias,$path := $aliases }}
+          || a == {{ printf "--%s=%s" (ternary "tls-cert-file" "tls-key-file" (eq $key "HIKYO_TLS_CERT_FILE")) $path | quote }}
+          {{- end }}
+          {{- end }}
+          {{- end }}
+        )
+      message: Only existing listener and installed TLS-source flags may change.
+    - expression: >-
+        variables.server.ports.size() == variables.before.ports.size() &&
+        variables.server.ports.all(p, variables.before.ports.exists(q, p.name == q.name && p.?protocol == q.?protocol && p.?hostIP == q.?hostIP && p.?hostPort == q.?hostPort && (p.containerPort == q.containerPort || p.name in ['http','ops'])))
+      message: Only named application and operational container ports may change.
+    - expression: >-
+        object.spec.template.spec.volumes.size() == oldObject.spec.template.spec.volumes.size() &&
+        object.spec.template.spec.volumes.filter(v, v.name != 'root-key-source') == oldObject.spec.template.spec.volumes.filter(v, v.name != 'root-key-source') &&
+        object.spec.template.spec.volumes.filter(v, v.name == 'root-key-source').all(v,
+          has(v.secret) && v.secret.items.size() == 1 && v.secret.items[0].path == 'root-key' &&
+          v.secret.secretName + ':' + v.secret.items[0].key in variables.rootPairs &&
+          oldObject.spec.template.spec.volumes.exists(q, q.name == v.name && q.secret.?defaultMode == v.secret.?defaultMode && q.secret.?optional == v.secret.?optional && q.secret.items[0].?mode == v.secret.items[0].?mode))
+      message: Only the installed root-key-source Secret name/key may change.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: {{ $policy }}-deployment
+spec:
+  policyName: {{ $policy }}-deployment
+  validationActions: [Deny]
+  paramRef:
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+    parameterNotFoundAction: Deny
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: {{ $policy }}-secret
+spec:
+  failurePolicy: Fail
+  paramKind:
+    apiVersion: coordination.k8s.io/v1
+    kind: Lease
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["UPDATE"]
+        resources: ["secrets"]
+  matchConditions:
+    - name: executor-only
+      expression: request.userInfo.username == {{ $subject | quote }}
+  validations:
+    - expression: object.metadata.namespace == {{ .Release.Namespace | quote }} && object.metadata.name in [{{ range $index,$suffix := list "config" "rollback" "plan" "receipt" "response" "journal" }}{{ if $index }},{{ end }}{{ printf "%s-%s" $name $suffix | quote }}{{ end }}]
+      message: Executor may only update installed control Secrets.
+    - expression: has(params.spec.holderIdentity) && has(params.spec.leaseTransitions) && object.metadata.annotations['hikyo.dev/rollout-custody'] == params.spec.holderIdentity + ':' + string(params.spec.leaseTransitions)
+      message: Executor write must carry the current custody epoch.
+    - expression: object.metadata.uid == oldObject.metadata.uid && object.?type == oldObject.?type && object.?immutable == oldObject.?immutable && object.metadata.?labels == oldObject.metadata.?labels && object.metadata.?ownerReferences == oldObject.metadata.?ownerReferences && object.metadata.?finalizers == oldObject.metadata.?finalizers
+      message: Secret identity and ownership cannot change.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: {{ $policy }}-secret
+spec:
+  policyName: {{ $policy }}-secret
+  validationActions: [Deny]
+  paramRef:
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+    parameterNotFoundAction: Deny
+{{- end }}

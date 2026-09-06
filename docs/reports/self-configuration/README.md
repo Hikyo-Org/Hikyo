@@ -14,9 +14,9 @@ Open <http://192.168.0.30:8769/> from a LAN device. This is a LAN preview, not a
 
 ## Contents
 
-- 27 questions with options, recommendation, decision, rationale, evidence and required proof. Five decisions now have explicit user approval; 22 retain delegated approval.
-- Nine currently managed keys and all 65 recognized environment inputs, including required lifecycle and secret-content classification. The report distinguishes the implemented nine-key scope from the expanded application and bootstrap activation requirements. A topology diagram shows one root management view, separate owner-local projects per independent instance and sharing only within HA.
-- Five interactive activation scenarios, with current-phase status and per-node revisions, explicitly scoped to one logical instance rather than its independent remotes.
+- 30 questions with options, recommendation, decision, rationale, evidence and required proof. Five decisions now have explicit user approval; 25 retain delegated approval.
+- 27 top-level managed keys and all 65 recognized environment inputs, including required lifecycle and secret-content classification. The report separates historical nine-key evidence, local expansion evidence and remaining deployment acceptance gaps. A topology diagram shows one root management view, separate owner-local projects per independent instance and sharing only within HA.
+- Six interactive activation scenarios, with current-phase status and per-node revisions, explicitly scoped to one logical instance rather than its independent remotes.
 - Five implementation milestones, their validation requirements and the owning ADR amendments.
 - Search, topic/authority filters, deep links, disclosure controls, dual themes, print/PDF preparation and downloadable HTML/JSON.
 
@@ -37,4 +37,4 @@ Fonts are vendored from the repository-pinned Fontsource packages: `@fontsource/
 
 ## Related records
 
-See the [design summary](../../spec/self-configuration-proposal.md), [implementation handoff](../../handoff/self-configuration-design.md) and [validation record](./validation.md). Repository evidence is pinned to `90b4ca6a5d22438e751cf9af83aa4fd077a6a61c`; issue state is dated, not a promise about future work.
+See the [design summary](../../spec/self-configuration-proposal.md), [implementation handoff](../../handoff/self-configuration-design.md) and [validation record](./validation.md). Historical source evidence is pinned to `90b4ca6a5d22438e751cf9af83aa4fd077a6a61c`. New deployment decisions identify uncommitted worktree files rather than linking those paths to the old revision. The expansion has no exact-head CI or production rollout evidence.

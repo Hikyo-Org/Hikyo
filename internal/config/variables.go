@@ -49,8 +49,9 @@ const (
 // VariableDescriptor contains metadata only, never a configured value. Secret
 // classifies the value or explicitly imported contents, including credentials
 // embedded in compound values. For external file references it classifies only
-// the path metadata: TLS_KEY_FILE has Secret=false, but its private-key bytes
-// have ReferencedContentSecret=true and must never be treated as public.
+// the path metadata. Root-key file references remain external; their private
+// bytes have ReferencedContentSecret=true. TLS key sources import secret bytes
+// once into the reviewed node document and therefore also have Secret=true.
 // FileContentKey is set only for supported one-time content imports; the source
 // path itself is never the imported value. Other filesystem references remain
 // external until a dedicated content or deployment workflow owns them.
@@ -73,7 +74,7 @@ func VariableInventory() []VariableDescriptor {
 }
 
 var variableInventory = []VariableDescriptor{
-	{Key: "HIKYO_ADAPTER_EGRESS_POLICY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableExternal},
+	{Key: "HIKYO_ADAPTER_EGRESS_POLICY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableFileContent, FileContentKey: "HIKYO_ADAPTER_EGRESS_POLICY_JSON"},
 	{Key: "HIKYO_ADMISSION_BUDGET_MIB", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_ARGON2_MEMORY_KIB", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_ARGON2_PARALLELISM", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: false, Import: VariableValue},
@@ -94,7 +95,7 @@ var variableInventory = []VariableDescriptor{
 	{Key: "HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE", Audience: VariableServer, Scope: VariableNode, Activation: VariableDeployment, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_DEV_SERVICE_BUDGETS_DISABLED", Audience: VariableServer, Scope: VariableNode, Activation: VariableDeployment, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_DIRECTORY_PROXY", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: true, Import: VariableValue},
-	{Key: "HIKYO_DYNAMIC_EGRESS_POLICY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableExternal},
+	{Key: "HIKYO_DYNAMIC_EGRESS_POLICY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableFileContent, FileContentKey: "HIKYO_DYNAMIC_EGRESS_POLICY_JSON"},
 	{Key: "HIKYO_ENV", Audience: VariableClient, Scope: VariableNode, Activation: VariableNone, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_EXTERNAL_ORIGIN", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_HA", Audience: VariableServer, Scope: VariableOwner, Activation: VariableDeployment, Secret: false, Import: VariableExternal},
@@ -113,7 +114,7 @@ var variableInventory = []VariableDescriptor{
 	{Key: "HIKYO_MCP_ENABLED", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_NEW_ROOT_KEY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableBootstrap, Secret: false, Import: VariableExternal, ReferencedContentSecret: true},
 	{Key: "HIKYO_NODE_ID", Audience: VariableServer, Scope: VariableNode, Activation: VariableDeployment, Secret: false, Import: VariableExternal},
-	{Key: "HIKYO_OIDC_EGRESS_POLICY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableExternal},
+	{Key: "HIKYO_OIDC_EGRESS_POLICY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableFileContent, FileContentKey: "HIKYO_OIDC_EGRESS_POLICY_JSON"},
 	{Key: "HIKYO_OPERATIONAL_LISTEN", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_ORG", Audience: VariableClient, Scope: VariableNode, Activation: VariableNone, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_PG_POOL_MAX", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableValue},
@@ -122,10 +123,10 @@ var variableInventory = []VariableDescriptor{
 	{Key: "HIKYO_ROOT_KEY", Audience: VariableServer, Scope: VariableNode, Activation: VariableBootstrap, Secret: true, Import: VariableExternal},
 	{Key: "HIKYO_ROOT_KEY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableBootstrap, Secret: false, Import: VariableExternal, ReferencedContentSecret: true},
 	{Key: "HIKYO_STATE_DIR", Audience: VariableClient, Scope: VariableNode, Activation: VariableNone, Secret: false, Import: VariableExternal},
-	{Key: "HIKYO_TLS_CERT_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableExternal},
-	{Key: "HIKYO_TLS_KEY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableExternal, ReferencedContentSecret: true},
+	{Key: "HIKYO_TLS_CERT_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableFileContent, FileContentKey: "HIKYO_TLS_CERT_PEM"},
+	{Key: "HIKYO_TLS_KEY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: true, Import: VariableFileContent, FileContentKey: "HIKYO_TLS_KEY_PEM", ReferencedContentSecret: true},
 	{Key: "HIKYO_TOKEN", Audience: VariableClient, Scope: VariableNode, Activation: VariableNone, Secret: true, Import: VariableExternal},
-	{Key: "HIKYO_TRUSTED_PROXY_CIDRS", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: false, Import: VariableValue},
+	{Key: "HIKYO_TRUSTED_PROXY_CIDRS", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_TRUST_BUNDLE", Audience: VariableClient, Scope: VariableNode, Activation: VariableNone, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_UPDATER_SOCKET", Audience: VariableRetired, Scope: VariableNode, Activation: VariableNone, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_UPDATE_CHANNEL", Audience: VariableServer, Scope: VariableOwner, Activation: VariableLive, Secret: false, Import: VariableValue},

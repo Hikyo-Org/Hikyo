@@ -1,17 +1,36 @@
 # PR #686: Hikyo self-configuration handoff
 
-Status: scope expanded by the user's D11 correction. The earlier nine-key implementation passed CI at `152373212c6d78a3bcae91e3300097ff0d893acf`. The user now requires every Hikyo variable with remote Apply, only by the target instance administrator using passkey or TOTP. Full-variable activation is not implemented. Do not merge the earlier implementation as if it satisfies this revision. No merge or production deployment has occurred.
+Current state, 2026-09-06: **uncommitted expanded implementation; acceptance and exact-head CI still open.** Historical nine-key CI passed at `152373212c6d78a3bcae91e3300097ff0d893acf`. Do not use that result as evidence for the expansion. No merge or production deployment has occurred.
 
-## D11 scope expansion
+## Current authority and scope
 
-The complete [implementation design](../spec/self-configuration-full-catalogue.md) records the application-generation and managed deployment integration requirements. All 65 recognized environment inputs have metadata in `internal/config/variables.go`; the report generator consumes `variable-inventory.json`. This inventory does not expand the runtime catalogue, which still has nine keys.
+The user requires every supported server variable, remote Apply only by the target instance admin with fresh passkey/TOTP, separate projects for independent remotes and shared owner settings only within HA. They delegated recommendations and explicitly approved controlled bootstrap pod rollouts. Continue work without reopening those decisions.
 
-The current changes close an MFA gap on ordinary protected-project operations, navigation and capability hints. Exact Apply/adoption/test evidence is restricted to fresh local TOTP or user-verifying passkeys, with the existing owner/revision binding and single-use consumption. Targeted both-engine, race, and independent review evidence belongs in the report validation record.
+The current runtime catalogue has **27 top-level keys**: nine original, 16 added owner settings, secret `HIKYO_NODE_OVERRIDES` and alias-only `HIKYO_BOOTSTRAP_SOURCES`. The inventory classifies 65 recognized inputs; classification is not an activation implementation. Trusted proxy policy is exclusively node-local. See the [full scope and acceptance specification](../spec/self-configuration-full-catalogue.md).
 
-The user explicitly approved controlled bootstrap rollouts when immutable deployment inputs cannot reach a running container. Ordinary settings still reload live. This resolves the prior no-container-restart conflict; do not ask again. Full owner-setting application generation work is now underway.
+Ordinary owner/node changes now prepare and replace the app graph, listeners, memory TLS, PostgreSQL pool, admission capacity and outbound/backup/auth captures without container restart. Stable DB/keyring/coordination and the coordinator remain supervisor-owned. Actual installation precedes acknowledgement. Stale REST/SCIM/MCP and worker admission are fenced; narrow admin repair remains available. Node seed files import once. An unknown HA node starts only fenced repair, without business acknowledgement.
 
-The next implementation work is the full-catalogue design's application lifecycle and bootstrap integration. Required seams include node overlays, canonical content settings, graph prepare/activate/dispose, exact plan binding, deployment-provider authority and receipts, and recoverable root/datastore transitions. A provider stub or inventory alone does not complete D11. The user delegated design recommendations; do not ask them to reapprove this scope.
+The concrete controlled bootstrap provider is **explicitly enrolled, singleton non-HA Recreate Kubernetes 1.36 only**. Host, GitOps and HA bootstrap providers remain unimplemented. Database source aliases reconnect to the same verified datastore; true data migration is not implemented. Root custody remains external and there is no automatic root finalization. Do not describe controller fakes or chart rendering as a deployed controller.
 
+## Exact workflow and repair
+
+The UI prepares the exact selected revision first, waits for current participant readiness, displays Reload live or Controlled rollout, and binds the plan digest into fresh final MFA. The preparation lease is five minutes; a synchronous request waits at most 30 seconds and worker evidence must be no older than 30 seconds. A changed revision, owner, generation, incarnation or digest invalidates the old decision.
+
+A partial controlled rollout exposes **Restore deployment inputs** with distinct exact `rollout-restore` MFA. It restores only deployment inputs after verified controller acknowledgement. Desired revision stays unchanged and business stays fenced. A fresh published repair with separate MFA is required to resume. Unresolved external handoffs cannot be silently superseded. The old root wrapper intentionally remains available for this recovery path.
+
+RP hostname changes require exact TOTP plus the initiating admin's current password and confirmed TOTP credentials. Same-host port changes permit a passkey. This is recovery viability, not proof of target DNS, TLS or a successful new-origin login.
+
+## Evidence and next work
+
+[Validation](../reports/self-configuration/validation.md) separates local expansion checks from historical nine-key evidence. Local evidence includes actual HTTP/MCP/listener/TLS/capacity/backup/pool consumers, both-engine origin and deployment restore tests, 934 web tests, typecheck/build and the full app suite after upgrade projection fixes. Expanded desktop and mobile passkey/TOTP channel-Apply journeys now pass against freshly compiled independent instances; actual controlled-rollout acceptance remains incomplete.
+
+Remaining acceptance: actual Kubernetes enrollment/admission/replacement/restore proof; unsupported deployment and startup families; target-origin access; frozen complete checks, independent review and exact-head CI. Parent owns delivery and integration. Report changes must be rebuilt with `node docs/reports/self-configuration/build.mjs` and served at <http://192.168.0.30:8769/>.
+
+The report contains D01 through D30 with alternatives, recommendations, decisions and evidence. Five original decisions have explicit user approval; later recommendations are delegated. The separate bootstrap-rollout approval is explicit. No further design interview is required.
+
+## Historical nine-key integration evidence
+
+The following evidence predates the expansion and is preserved for traceability.
 
 ## Integration evidence
 
@@ -35,42 +54,19 @@ environment retains the existing high-water check. Three alternating local
 lease/takeover timings remain unchanged. See the report validation record for
 measurements and exact failure history.
 
-## User intent and authority
 
-Hikyo should provision an organization/project during setup that manages its own environment variables and secrets. Changing email settings should be possible through the existing interface, followed by applying changes without restarting the container.
+## Pending integration corrections
 
-The user explicitly chose UI application and approved instance-admin control of the system organization. The user then authorized the remaining design recommendations: "I trust your instincts, assume I agree with the coming recommendations." The user subsequently clarified separate configuration for independent remote instances, with sharing only among HA replicas of one logical instance. All 27 decisions are resolved. The root management view is a delegated interpretation, not an explicit request for a central secret store. Do not restart the interview or ask for approval of those same decisions again.
+Host administrator creation must consume the running server’s fresh sealed owner/node seed, rather than evaluating the CLI process environment or changing a live listener to its default. Missing or stale evidence must refuse before principal creation and explain that the server must be started before retrying. Local regression proof now passes: service race 35.027 s, app 16.236 s, including both-engine maximum-size/MFA authority checks. Both R1 corrections now preserve discovery mode and read a fresh clock after the membership lock; both-engine regressions passed in 5.308 s and R2 review is clean for those fixes. Durable exact-authorized Submit/Restore/Observe renewal and no-effect restoration passed R2 review, race checks (module 4.877 s, service 111.817 s, app 17.108 s) and full lint (78.122 s). Renewal changes transport sequence/timestamps only and cannot grant an uncommitted preparation authority. Real Kubernetes outage/recovery proof remains open.
 
-The user subsequently instructed "Lgtm, build it", authorizing implementation. Continue through validation and signed delivery without reopening the design interview. Merge and production rollout remain separate actions.
+Root-finalization guard is implemented and R3 review is CLEAN. Binding-before-hierarchy serialization preserves both wrappers while the current generation/incarnation has an unresolved rollout, including superseded repair states. Both-engine regressions passed in 15.885 s and existing rotation invariants in 2.166 s. The actual Kubernetes fixture also refused finalization with conflict while the replacement awaited executor acknowledgement and retained epochs 1 and 2. The full fixture recovery chain remains pending.
 
-## Read first
+## Isolated follow-on slices
 
-1. [Standalone report](../reports/self-configuration/index.html), including D01 through D27. Each contains alternatives, recommendation, decision, rationale, sources and acceptance proof.
-2. [Design summary](../spec/self-configuration-proposal.md) and [structured decision data](../reports/self-configuration/report-data.json).
-3. [Report validation](../reports/self-configuration/validation.md) and [report build/access instructions](../reports/self-configuration/README.md).
+Development controls are implemented in `/tmp/hikyo-dev-controls-818e`; exact unstaged patch `/tmp/hikyo-dev-controls-slice.patch`. Production rejects all development override fields. Counters and simulated provider state survive reload; unsafe real/fake switches refuse. Focused tests, race, lint, vet and R1 review pass; PostgreSQL recheck and main integration remain.
 
-## Important selected boundaries
+The next-root candidate selector is implemented in `/tmp/hikyo-next-root-818e`; exact unstaged patch `/tmp/hikyo-next-root-slice.patch`. Enrolled alias selection reloads live while primary root and explicit rotation remain separate. Initial, saved and missing-node candidate health validates the selected source before startup admission. Focused tests, race, vet and parent R3 review pass; main integration remains.
 
-- Each independent owner has a real `Hikyo / <instance-name> / Production` hierarchy with a stable owner-instance/org/project/environment binding and normal project encryption/matrix workflow. One root management view aggregates references without storing remote values. First-admin setup followed by atomic provisioning; explicit existing-instance adoption. No reseeding on restart and no claiming an unrelated tenant on a name collision.
-- Instance-config is a mandatory conjunct for the bound hierarchy. Retain normal scoped capabilities and separate reveal/history grants, enforced by the owning instance; viewer-admin rights do not confer remote rights. The runtime uses a narrow registered internal system site, not a reusable bearer token or arbitrary tenant reader.
-- First delivery: complete mail configuration plus update notification channel. External DB/root-key bootstrap and existing networking, authentication, backup/audit, HA identity and client controls remain outside. Managed mail file inputs are imported once as contents; remote apply cannot read arbitrary paths.
-- Draft, publish and apply are separate. Exact-revision preparation precedes a durable generation commit. Atomic local bundle swaps, acknowledgements only from that owner’s HA replicas and stale-consumer fencing follow. Independent remotes never share variables, generations or apply jobs. Before-commit rejection preserves old target; after-commit failure is pending/partial and reconciles. No claim of instantaneous global atomicity and no automatic SMTP-triggered rollback.
-- Bounded runtime retention roots protect target, active and recovery snapshots. Normal rollback restores and publishes a new revision. Host-local recovery is explicit and audited. Restore fences outbound use until reconciliation and explicit credential resumption.
+Each isolated worktree has its copied parent baseline staged without a commit. Only its unstaged delta plus new files belongs to that slice. Never apply its full HEAD diff over main. Both slices must preserve the later main controller status-only resource-version correction and namespace-qualified admission-policy naming.
 
-## Implementation dependencies and sequence
-
-Baseline inspected: `90b4ca6a5d22438e751cf9af83aa4fd077a6a61c`. [#608](https://github.com/Hikyo-Org/Hikyo/issues/608), the mailer/local sign-up ticket, was open on 2026-09-06; there was no mail library dependency in this checkout. Implementation adds the shared mail transport and test sink seam used by managed configuration. Local sign-up remains outside this change.
-
-The five implementation milestones define the delivered scope and its verification:
-
-1. Amend owning contracts and add the system-resource authority profile and fixtures.
-2. Add both-engine durable binding/generation/retention storage and shared provisioning/adoption.
-3. Integrate mail transport, immutable runtime activation, HA, status API, human CLI and host-local recovery.
-4. Add matrix/settings workflow and discoverable operations documentation, with browser proof.
-5. Verify failures, concurrent operations, revocation, GC, key rotation, restart, two-node HA, two independent remotes with different variables and restored-state fencing before normal exact-head delivery gates.
-
-The existing ADRs remain canonical until amended. Preserve the multi-instance contract: owner-local secrets, direct browser-to-remote workspace calls, metadata-only directory credentials and no central main server. D26 records the explicit remote/HA distinction; D27 selects a root UI group rather than a shared physical organization. In particular, tenant-isolation's system mint sites are closed, normal pins have a maximum 365-day lifetime, and the current mailer spec assumes process-owned credentials that are not covered by managed-secret restore/re-encryption. The report selects explicit changes to these contracts; it does not pretend that existing code already supports them.
-
-## Runtime acceptance
-
-Use a TLS test SMTP sink, never live recipient mail, for automated proof. Through the browser: setup/adopt, edit SMTP, publish, test the exact selected revision, apply, observe every admitted node, and verify subsequent sends use the new configuration while process start times remain unchanged. Restart must resume the durable target. Reject invalid configuration, show failed delivery without automatic credential rollback, recover partial HA safely and preserve secret confidentiality throughout. Apply and rollback on one owner must leave all other remote projects untouched, even when names or revision numbers match. Loss of the viewing instance must not interrupt remote boot or runtime operation.
+Latest complete isolation coverage: all 369 planned cases pass with SQLite/PostgreSQL configured. Shards 0 and 1 passed in 321.622 s and 457.832 s. Shard 2 reached the unchanged ten-minute process limit without an individual assertion failure; its exact 134-case set passed in three local groups (229.973 s, 123.820 s, 176.508 s). Logs: `/tmp/hikyo-selfconfig-isolation-shard-{0,1,2}.log` and `/tmp/hikyo-selfconfig-isolation-shard-2-part-{0,1,2}.jsonl`. No timeout or test coverage changed. These final results supersede the earlier pending isolation status above.

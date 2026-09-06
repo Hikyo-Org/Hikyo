@@ -14,6 +14,15 @@ import (
 // All engine access below this interface remains inside the repository. The
 // state machine is shared so SQLite and PostgreSQL cannot drift on activation.
 type selfConfigStorage interface {
+	currentTime(context.Context) (time.Time, error)
+	previousRevision(context.Context) (int64, error)
+	completedGeneration(context.Context, int64) (int64, error)
+	rollout(context.Context, string) (SelfConfigRollout, error)
+	nextRolloutSequence(context.Context, string) (int64, error)
+	putRollout(context.Context, SelfConfigRollout) error
+	seedInputs(context.Context) ([]SelfConfigSeedInput, error)
+	putSeedInput(context.Context, SelfConfigSeedInput) error
+	clearSeedInputs(context.Context) error
 	recover(context.Context, int64, int64, string, time.Time) error
 	lockMembership(context.Context) error
 	seedDisagreement(context.Context, SelfConfigBinding) (int64, error)
@@ -111,13 +120,21 @@ func (r selfConfigRepo) CreateBinding(ctx context.Context, p authz.Proof, b Self
 	if mismatches != 0 {
 		return ErrSelfConfigSeedDisagreement
 	}
+	if len(b.SeedNodes) != 0 {
+		if err := r.verifySeedReferences(ctx, b); err != nil {
+			return err
+		}
+	}
 	if err := r.q.lockSnapshot(ctx, b, b.DesiredSnapshotID); err != nil {
 		return err
 	}
 	if err := r.q.insertBinding(ctx, b); err != nil {
 		return err
 	}
-	return r.q.retain(ctx, "desired", b.DesiredSnapshotID)
+	if err := r.q.retain(ctx, "desired", b.DesiredSnapshotID); err != nil {
+		return err
+	}
+	return r.q.clearSeedInputs(ctx)
 }
 
 func (r selfConfigRepo) BeginJob(ctx context.Context, p authz.Proof, want SelfConfigJob) (SelfConfigJob, error) {
@@ -146,7 +163,38 @@ func (r selfConfigRepo) BeginJob(ctx context.Context, p authz.Proof, want SelfCo
 		return SelfConfigJob{}, err
 	}
 	if n != 0 {
-		return SelfConfigJob{}, fmt.Errorf("%w: another configuration apply is unresolved", domain.ErrConflict)
+		// A partial activation may be repaired by a newly reviewed revision.
+		// Superseding its job does not change the durable target: only the new
+		// job's final exact-MFA commit can do that. Retention remains bounded by
+		// desired, previous and the single replacement candidate.
+		jobs, err := r.q.jobs(ctx)
+		if err != nil {
+			return SelfConfigJob{}, err
+		}
+		var failed *SelfConfigJob
+		for _, job := range jobs {
+			if job.Status == "preparing" || job.Status == "applying" {
+				return SelfConfigJob{}, fmt.Errorf("%w: another configuration apply is unresolved", domain.ErrConflict)
+			}
+			if job.Status == "partial" && job.Generation == b.Generation {
+				rollout, err := r.q.rollout(ctx, job.ID)
+				if err != nil && !errors.Is(err, domain.ErrNotFound) {
+					return SelfConfigJob{}, err
+				}
+				if err == nil && rollout.ExternalPhase == "" {
+					return SelfConfigJob{}, domain.ErrConflict
+				}
+				copy := job
+				failed = &copy
+			}
+		}
+		if failed == nil {
+			return SelfConfigJob{}, domain.ErrConflict
+		}
+		failed.Status, failed.ErrorCode, failed.UpdatedAt = "superseded", "superseded", want.CreatedAt
+		if err := r.q.updateJob(ctx, *failed, "partial"); err != nil {
+			return SelfConfigJob{}, err
+		}
 	}
 	n, err = r.q.recent(ctx, want.CreatedAt.Add(-time.Minute))
 	if err != nil {
@@ -205,7 +253,11 @@ func (r selfConfigRepo) CommitJob(ctx context.Context, p authz.Proof, id string,
 		}
 		return SelfConfigBinding{}, domain.ErrConflict
 	}
-	if j.Status != "preparing" || b.Generation != j.ExpectedGeneration || at.Sub(j.CreatedAt) > 30*time.Second {
+	at, err = r.q.currentTime(ctx)
+	if err != nil {
+		return SelfConfigBinding{}, err
+	}
+	if j.Status != "preparing" || b.Generation != j.ExpectedGeneration || j.CreatedAt.After(at) || at.Sub(j.CreatedAt) >= SelfConfigPreparationTTL {
 		return SelfConfigBinding{}, domain.ErrConflict
 	}
 	nodes, err := r.q.nodes(ctx)
@@ -216,21 +268,26 @@ func (r selfConfigRepo) CommitJob(ctx context.Context, p authz.Proof, id string,
 		return SelfConfigBinding{}, domain.ErrConflict
 	}
 	for _, n := range nodes {
-		if n.JobID != id || !n.Prepared || n.SchemaVersion != j.SchemaVersion || n.Incarnation != b.Incarnation || n.ErrorCode != "" {
+		if n.JobID != id || !n.Prepared || n.SchemaVersion != j.SchemaVersion || n.Incarnation != b.Incarnation || n.ErrorCode != "" || n.UpdatedAt.After(at) || at.Sub(n.UpdatedAt) >= 30*time.Second {
 			return SelfConfigBinding{}, fmt.Errorf("%w: configuration participants have not prepared", domain.ErrConflict)
 		}
 	}
 	if err := r.q.lockSnapshot(ctx, b, j.SnapshotID); err != nil {
 		return SelfConfigBinding{}, err
 	}
-	// Preserve the previous completed target before moving desired. Existing
-	// previous is needed only until this commit; all participants prepared from
-	// the same completed target and stale consumers are fenced by generation.
-	if err := r.q.retain(ctx, "previous", b.DesiredSnapshotID); err != nil {
+	// A repair must preserve the last completed target. Its predecessor may
+	// have failed installation on every node and is not a recovery reference.
+	completed, err := r.q.completedGeneration(ctx, b.Generation)
+	if err != nil {
 		return SelfConfigBinding{}, err
 	}
-	if err := r.q.previous(ctx, b.DesiredSnapshotID); err != nil {
-		return SelfConfigBinding{}, err
+	if b.Generation == 1 || completed > 0 {
+		if err := r.q.retain(ctx, "previous", b.DesiredSnapshotID); err != nil {
+			return SelfConfigBinding{}, err
+		}
+		if err := r.q.previous(ctx, b.DesiredSnapshotID); err != nil {
+			return SelfConfigBinding{}, err
+		}
 	}
 	if err := r.q.retain(ctx, "desired", j.SnapshotID); err != nil {
 		return SelfConfigBinding{}, err
@@ -247,7 +304,7 @@ func (r selfConfigRepo) CommitJob(ctx context.Context, p authz.Proof, id string,
 }
 
 func validSelfConfigError(code string) bool {
-	return slices.Contains([]string{"", "invalid_config", "incompatible_schema", "preparation_failed", "preparation_timeout", "convergence_timeout", "restored", "transport_failed"}, code)
+	return slices.Contains([]string{"", "invalid_config", "incompatible_schema", "preparation_failed", "activation_failed", "preparation_timeout", "convergence_timeout", "restored", "transport_failed", "superseded"}, code)
 }
 
 func (r selfConfigRepo) FinishJob(ctx context.Context, p authz.Proof, id, status, code string, at time.Time) error {
@@ -316,7 +373,7 @@ func (r selfConfigRepo) PutNode(ctx context.Context, p authz.Proof, n SelfConfig
 		if err != nil {
 			return err
 		}
-		refused := n.ActiveGeneration == 0 && n.ActiveRevision == 0 && !n.Prepared && (n.ErrorCode == "invalid_config" || n.ErrorCode == "incompatible_schema")
+		refused := n.ActiveGeneration == 0 && n.ActiveRevision == 0 && !n.Prepared && (n.ErrorCode == "invalid_config" || n.ErrorCode == "incompatible_schema" || n.ErrorCode == "activation_failed")
 		acknowledged := n.ActiveGeneration == b.Generation && n.ActiveRevision == b.DesiredRevision && n.SchemaVersion == b.SchemaVersion && n.ErrorCode == ""
 		if open != 0 || (!refused && !acknowledged) {
 			return domain.ErrConflict
@@ -460,4 +517,11 @@ func (r selfConfigRepo) RecoverTarget(ctx context.Context, p authz.Proof, expect
 		return SelfConfigBinding{}, err
 	}
 	return r.q.binding(ctx, false)
+}
+
+func (r selfConfigRepo) PreviousRevision(ctx context.Context, p authz.Proof) (int64, error) {
+	if _, err := r.verify(ctx, p, authz.StoreSelfConfigPreviousRevision, false); err != nil {
+		return 0, err
+	}
+	return r.q.previousRevision(ctx)
 }

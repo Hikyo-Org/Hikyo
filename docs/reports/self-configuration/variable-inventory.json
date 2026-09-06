@@ -5,7 +5,8 @@
     "scope": "node",
     "activation": "app-reload",
     "secret": false,
-    "import": "external"
+    "import": "file-content",
+    "fileContentKey": "HIKYO_ADAPTER_EGRESS_POLICY_JSON"
   },
   {
     "key": "HIKYO_ADMISSION_BUDGET_MIB",
@@ -173,7 +174,8 @@
     "scope": "node",
     "activation": "app-reload",
     "secret": false,
-    "import": "external"
+    "import": "file-content",
+    "fileContentKey": "HIKYO_DYNAMIC_EGRESS_POLICY_JSON"
   },
   {
     "key": "HIKYO_ENV",
@@ -329,7 +331,8 @@
     "scope": "node",
     "activation": "app-reload",
     "secret": false,
-    "import": "external"
+    "import": "file-content",
+    "fileContentKey": "HIKYO_OIDC_EGRESS_POLICY_JSON"
   },
   {
     "key": "HIKYO_OPERATIONAL_LISTEN",
@@ -402,15 +405,17 @@
     "scope": "node",
     "activation": "app-reload",
     "secret": false,
-    "import": "external"
+    "import": "file-content",
+    "fileContentKey": "HIKYO_TLS_CERT_PEM"
   },
   {
     "key": "HIKYO_TLS_KEY_FILE",
     "audience": "server",
     "scope": "node",
     "activation": "app-reload",
-    "secret": false,
-    "import": "external",
+    "secret": true,
+    "import": "file-content",
+    "fileContentKey": "HIKYO_TLS_KEY_PEM",
     "referencedContentSecret": true
   },
   {
@@ -424,7 +429,7 @@
   {
     "key": "HIKYO_TRUSTED_PROXY_CIDRS",
     "audience": "server",
-    "scope": "owner",
+    "scope": "node",
     "activation": "app-reload",
     "secret": false,
     "import": "value"

@@ -538,10 +538,12 @@ export const zTotpCodeRequest = z.object({
 });
 
 export const zSelfConfigReauthIntent = z.object({
+    plan_digest: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     action: z.enum([
         'adopt',
         'apply',
-        'mail-test'
+        'mail-test',
+        'rollout-restore'
     ]),
     owner_instance_id: z.string().min(1).max(128),
     revision: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
@@ -1535,6 +1537,10 @@ export const zInstanceConfigNode = z.object({
 });
 
 export const zInstanceConfigJob = z.object({
+    deployment_restore_pending: z.boolean().optional(),
+    deployment_restored: z.boolean().optional(),
+    prepared: z.boolean().optional(),
+    plan_digest: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     id: z.string(),
     state: z.enum([
         'preparing',
@@ -1582,6 +1588,9 @@ export const zInstanceConfigAdoptRequest = z.object({
 });
 
 export const zInstanceConfigApplyRequest = z.object({
+    restore_deployment: z.boolean().optional().default(false),
+    plan_digest: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+    prepare_only: z.boolean().optional().default(false),
     revision: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     expected_generation: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     idempotency_key: z.string().min(1).max(128),

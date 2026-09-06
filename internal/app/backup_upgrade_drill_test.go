@@ -262,6 +262,9 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"SELECT COUNT(*) FROM self_config_nodes",
 		"SELECT COUNT(*) FROM self_config_retention",
 		"SELECT COUNT(*) FROM self_config_seed_attestations",
+		"SELECT COUNT(*) FROM self_config_seed_inputs",
+		"SELECT COUNT(*) FROM self_config_rollouts",
+		"SELECT COUNT(*) FROM self_config_rollout_sequences",
 		"SELECT COUNT(*) FROM cli_reauth_handoffs",
 		"SELECT COUNT(*) FROM adapter_effects WHERE finding <> ''",
 		"SELECT COUNT(*) FROM accounts WHERE email <> ''",
@@ -301,6 +304,9 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		drillExec(t, db, "ALTER TABLE cli_reauth_handoffs ADD CONSTRAINT cli_reauth_handoffs_purpose_check CHECK (purpose IN ('adapter','reveal','copy'))")
 	}
 	for _, query := range []string{
+		"DROP TABLE self_config_rollouts",
+		"DROP TABLE self_config_rollout_sequences",
+		"DROP TABLE self_config_seed_inputs",
 		"DROP TABLE self_config_retention",
 		"DROP TABLE self_config_nodes",
 		"DROP TABLE self_config_jobs",

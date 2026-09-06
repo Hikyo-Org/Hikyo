@@ -1090,11 +1090,38 @@ type SelfConfigRetention struct {
 	SnapshotID string
 }
 
+type SelfConfigRollout struct {
+	JobID         string
+	EnrollmentID  string
+	Incarnation   string
+	PlanDigest    string
+	CommandJson   string
+	ResponseJson  string
+	ExternalPhase string
+	Sequence      int64
+	RowVersion    int64
+}
+
+type SelfConfigRolloutSequence struct {
+	EnrollmentID string
+	Sequence     int64
+}
+
 type SelfConfigSeedAttestation struct {
 	NodeID        string
 	SchemaVersion int64
 	Fingerprint   string
 	HeartbeatAt   string
+}
+
+type SelfConfigSeedInput struct {
+	NodeID          string
+	OwnerInstanceID string
+	Incarnation     string
+	Fingerprint     string
+	Ciphertext      []byte
+	DekVersion      int64
+	RowVersion      int64
 }
 
 type ServiceAccount struct {

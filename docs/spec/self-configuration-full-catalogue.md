@@ -1,125 +1,99 @@
 # Complete Hikyo configuration and remote Apply
 
-Status: selected implementation design, 2026-09-06. **Implementation is in progress. Local tests now cover the 26-key owner catalogue and application-generation replacement. Node overlays and deployment integration remain unfinished.** This document does not claim deployment support, merge approval or production changes.
+Status, 2026-09-06: **expanded implementation is uncommitted and locally tested; full acceptance and exact-head CI remain open.** The current catalogue has 27 top-level keys: nine original mail/channel values, 16 owner settings, one secret node-overlay document and one bootstrap-alias document. This is not a claim that every server transition or deployment provider is finished.
 
 ## Authority and delivery boundary
 
-The user revised D11: “every variable, with ability to remote apply. But only instance admin with 2fa auth (passkey, totp) can do it”. This supersedes the earlier nine-key scope. The user previously approved applying from Hikyo without restarting the container, separate projects for independent remotes, configuration sharing only within HA, and delegated subsequent recommendations. The user subsequently explicitly approved controlled bootstrap rollouts when required by startup-injected settings, while ordinary settings reload live.
+The user's D11 correction requires every supported server variable and remote Apply only by the target instance administrator using fresh passkey or TOTP. The user delegated subsequent recommendations and explicitly approved controlled bootstrap pod rollouts when deployment-owned inputs cannot change in place. Ordinary settings still reload without a container restart. These decisions do not need renewed approval.
 
-Selected recommendation: cover the complete server configuration surface, retain one explicit authority per setting, and add a narrow managed deployment integration for settings whose durable authority lives outside the running application. Bootstrap transitions are part of completion, not exclusions hidden behind a read-only inventory. Unsupported or unconnected deployment integrations must produce an explicit unavailable operation, never a successful Apply.
+Historical PR #686 validation at `152373212c6d78a3bcae91e3300097ff0d893acf` covers the nine-key implementation. Current expansion evidence belongs in the [validation record](../reports/self-configuration/validation.md). No merge, deployment, cluster enrollment or exact-head CI result is implied by local tests.
 
-PR #686 at `152373212c6d78a3bcae91e3300097ff0d893acf` implements protected project setup/adoption and activation of nine values: `HIKYO_MAIL_ADDR`, `HIKYO_MAIL_TLS`, `HIKYO_MAIL_USER`, `HIKYO_MAIL_PASSWORD`, `HIKYO_MAIL_FROM`, `HIKYO_MAIL_EHLO`, `HIKYO_MAIL_ALLOWED_CIDRS`, `HIKYO_MAIL_CA_PEM`, and `HIKYO_UPDATE_CHANNEL`. Its validation proves that scope only. See the [existing proposal](./self-configuration-proposal.md) and [validation record](../reports/self-configuration/validation.md). Subsequent authentication fixes need their own evidence.
+Each logical instance owns its protected organization, project, environment, schema, secrets and generation. The root management view groups references. It does not confer remote authority or centralize secrets. Only HA replicas share one owner configuration. The owning instance enforces normal scoped access together with instance-admin MFA; machine credentials, directory credentials and administration of a different instance cannot Apply.
 
-## Catalogue and ownership
+## Catalogue and activation coverage
 
-Use a single versioned descriptor registry, replacing duplicated key lists in `internal/config/config.go`, `internal/config/managed.go` and `internal/runtimeconfig/catalogue.go`. Each descriptor declares its canonical value name, startup aliases, type/default/absence rules, secrecy, validation dependencies, owning component, owner or node scope, activation class and required deployment capabilities. Preserve strict production validation, including development-only restrictions and authentication minimums.
+`internal/config/variables.go` inventories 65 recognized inputs: 53 server, 10 client, one command-only and one retired. `internal/runtimeconfig/catalogue.go` defines the editable catalogue. Inventory metadata and required activation classes do not prove that an activation consumer exists. Canonical file-content values replace filesystem aliases after one-time import; project values never request arbitrary remote filesystem reads.
 
-“Every variable” means every setting consumed by the server, with explicit mappings for startup flags and file aliases. It does not mean importing arbitrary ambient process environment. CLI context and retired inputs remain classified and explained, not incorrectly activated as server settings. Unknown server keys are a schema mismatch. A registry coverage check must identify newly added parser inputs that lack an activation descriptor.
-
-The logical instance owns its protected organization/project, desired revision and application generation. Independent remote instances retain separate values, identities, schemas and history. The root management view references those projects; it neither stores remote plaintext nor confers remote authority.
-
-HA replicas share owner settings. Node settings require explicit overlays keyed by stable admitted node identity. An overlay is part of the published effective configuration and must never silently inherit a different node's value. Initial node identity and bootstrap discovery still originate from the deployment authority. Changing node identity is an explicit membership transition, not an ordinary shared string update. The overlay storage/schema format is an unresolved implementation interface below.
-
-## Complete activation classification
-
-The following classifications describe required behavior, not implemented support. A valid candidate can span classes; its apply plan must include every changed setting and dependency.
-
-| Current inputs | Scope and representation | Activation responsibility |
+| Family | Scope and current implementation | Remaining boundary |
 | --- | --- | --- |
-| Nine managed values listed above; startup aliases `HIKYO_MAIL_PASSWORD_FILE`, `HIKYO_MAIL_CA_FILE` | Owner; import file contents once into canonical encrypted values | Existing component replacement; preserve exact password bytes and explicit SMTP test behavior |
-| `HIKYO_ARGON2_MEMORY_KIB`, `HIKYO_ARGON2_TIME`, `HIKYO_ARGON2_PARALLELISM`, `HIKYO_ADMISSION_BUDGET_MIB`, `HIKYO_REAUTH_WINDOW_SECONDS` | Owner policy; validate resource fit on every node | Replace authentication/admission graph; preserve shared counters and enforce floors |
-| `HIKYO_DIRECTORY_PROXY`, `HIKYO_ADAPTER_EGRESS_POLICY_FILE`, `HIKYO_OIDC_EGRESS_POLICY_FILE`, `HIKYO_DYNAMIC_EGRESS_POLICY_FILE` | Owner; policy-file aliases import contents into typed canonical documents | Replace outbound clients/workers; cancel or drain old work under explicit policy-transition rules |
-| `HIKYO_EXTERNAL_ORIGIN`, `HIKYO_TRUSTED_PROXY_CIDRS`, `HIKYO_MCP_ENABLED`, `HIKYO_MCP_ALLOWED_ORIGINS` | Owner | Replace HTTP/auth/federation/MCP graph; validate endpoint, RP and session consequences before cutover |
-| `HIKYO_BACKUP_RECIPIENTS`, `HIKYO_BACKUP_INTERVAL`, `HIKYO_BACKUP_RPO`, `HIKYO_BACKUP_RETAIN_COUNT`, `HIKYO_BACKUP_RETAIN_DAYS`, `HIKYO_BACKUP_RTO_TARGET`, `HIKYO_AUDIT_ACCESS_RETAIN_DAYS`, `HIKYO_AUDIT_SECURITY_RETAIN_DAYS` | Owner | Replace backup/retention configuration and scheduler jobs under existing singleton fencing |
-| `HIKYO_BACKUP_DIR` | Explicit node destination, with shared-storage requirements when applicable | Validate permitted destination and access before activation; deployment integration supplies missing mounts/permissions |
-| `HIKYO_LISTEN`, `HIKYO_OPERATIONAL_LISTEN`; flags `--listen`, `--operational-listen` | Node | Reserve changed listeners, validate reachability, transition serving; deployment integration handles Service/Ingress/network changes where needed |
-| `HIKYO_TLS_CERT_FILE`, `HIKYO_TLS_KEY_FILE`; flags `--tls-cert-file`, `--tls-key-file` | Node delivery; certificate/private-key contents encrypted through canonical configuration, not arbitrary remote file reads | Validate pair and endpoint coverage, replace TLS configuration; deployment integration handles externally owned sources |
-| `HIKYO_PG_POOL_MAX` | Explicit node capacity setting | Replace database pools against the same verified datastore after draining users |
-| `HIKYO_HA`, `HIKYO_NODE_ID` | Owner topology policy plus explicit node identity | Coordinated membership/admission/scheduler transition; require PostgreSQL, shared root authority and unique node identities |
-| `HIKYO_DB` | Node bootstrap locator, normally referencing the shared datastore for HA; secret credentials stay protected | Managed deployment integration persists locator; distinguish verified reconnect from fenced data migration |
-| `HIKYO_ROOT_KEY_FILE`, `HIKYO_ROOT_KEY`, `HIKYO_NEW_ROOT_KEY_FILE`; flag `--root-key-file` | External custody descriptors and dedicated rotation input; raw root keys never become project cells | Managed deployment integration and existing dual-wrap root rotation; verify durable replacement boot before retiring old wrapper |
-| `HIKYO_UPGRADE_BUNDLE`, `HIKYO_UPGRADE_STATE_DIR`, `HIKYO_UPGRADE_EVIDENCE`, `HIKYO_UPGRADE_BACKUP`, `HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY`, `HIKYO_UPGRADE_OPERATOR_INSTANCE`, `HIKYO_UPGRADE_TARGET_MANIFEST`, `HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED`; flag `--auto-migrate` | Node installation/upgrade inputs and signed evidence | Manage through deployment/upgrade plan; changing references cannot manufacture signed evidence, assert writers stopped, or bypass the upgrade gate |
-| `HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE`, `HIKYO_DEV_SERVICE_BUDGETS_DISABLED`, `HIKYO_DEV_ADAPTER_FAKE_PROVIDER`; flag `--dev` | Explicit deployment mode and test-only settings | Never enable production bypasses through remote Apply; require a validated development deployment transition before test-only settings are applicable |
-| `HIKYO_STATE_DIR`, `HIKYO_TRUST_BUNDLE`, `HIKYO_CONTEXT`, `HIKYO_INSTANCE`, `HIKYO_ORG`, `HIKYO_PROJECT`, `HIKYO_ENV`, `HIKYO_TOKEN`, `HIKYO_COMPOSE_DOCKER`, `XDG_STATE_HOME` | Client-only inputs | Not consumed as server configuration; do not import client tokens into the server project |
-| `HIKYO_UPDATER_SOCKET` | Retired software updater | Continue refusing enablement. Remote configuration Apply does not revive unsafe binary upgrades |
+| Nine mail/channel values | Owner; immutable mail component and notification channel replacement | Historical CI applies only to this slice; explicit test-email remains separate from Apply |
+| Argon2 memory/time/parallelism, reauthentication window | Owner; replace auth/admission graph with production floors and each node's actual capacity | Node budget stays node-local; preserve rate/backoff counters across replacement |
+| External origin, directory proxy, MCP enabled/origins | Owner; replace HTTP/auth/federation/MCP/outbound captures | RP hostname change needs exact TOTP plus current password and confirmed TOTP on the initiating admin; target DNS/TLS/login reachability is not proved |
+| Backup interval/recipients/retention/RPO/RTO, audit retention | Owner; replace scheduler and retention configuration | Existing irreversible pruning consequences remain; no fabricated rollback of deleted data |
+| Listeners, PostgreSQL pool limit, admission budget, backup directory, trusted proxy CIDRs | Node; explicit overlay and live consumers | External Service/Ingress/firewall/mount changes are not managed by a successful local socket or directory check |
+| TLS certificate/key PEM, adapter/OIDC/dynamic egress JSON | Node; encrypted content import and live TLS/client replacement | Import private key files only with mode 0400/0600; never reread stale imported paths after adoption |
+| Database locator and root-key source | Alias-only `HIKYO_BOOTSTRAP_SOURCES`; controlled external deployment protocol | Concrete provider supports an enrolled singleton non-HA Recreate Kubernetes 1.36 deployment only; same-database reconnect and root dual-wrap, not data migration |
+| HA mode and stable node identity | Deployment topology/membership inputs | Remote topology/identity transitions remain unimplemented; ordinary owner/node reload supports existing HA membership |
+| Upgrade bundle/state/evidence/backup/operator key/target manifest/legacy-writer gate | Server startup and signed-upgrade inputs | Existing upgrade gate remains authoritative; remotely changing these controls is not implemented and cannot manufacture signed evidence |
+| Development admission/budget/fake-provider controls and development mode | Deployment-only safety context | No production remote bypass; development deployment transitions remain unimplemented |
+| Client context/token/state/trust inputs; command-only operator-instance selector | Not server settings | Explicitly classified; never imported as server project secrets |
+| Retired updater socket | Retired | Refused; configuration Apply does not revive the binary updater |
 
-Canonical names for new content-based TLS and egress settings must be fixed in the registry contract before implementation. Never remotely dereference arbitrary paths supplied as normal project values. Root/private backup/signing custody is separate from ordinary project secret handling; private backup identities and operator signing keys are not server configuration.
+The 16 added owner keys are Argon2's three settings; two audit-retention settings; six backup settings; directory proxy; external origin; two MCP settings; and the reauthentication window. `HIKYO_TRUSTED_PROXY_CIDRS` belongs exclusively to a node overlay. It must not inherit a shared owner or stale process trust policy.
+
+`HIKYO_NODE_OVERRIDES` is a secret, strict version-1 JSON object with a `nodes` map, limited to 64 KiB. Stable node IDs select only their own entry. Listener addresses and admission budget must be explicit. TLS uses `HIKYO_TLS_CERT_PEM` and `HIKYO_TLS_KEY_PEM`; egress policies use the three canonical `*_EGRESS_POLICY_JSON` keys. All changed members are validated against the fixed participant set. A missing HA node starts only a validated, fenced repair graph with readiness false; it does not inherit a different node's settings or acknowledge business readiness.
+
+`HIKYO_BOOTSTRAP_SOURCES` is strict version-1 JSON with optional `database_source` and `root_source` aliases. Aliases refer to enrolled external custody, never raw DSNs or root keys in project cells. The database/root needed to unlock configuration cannot be discovered solely from that encrypted configuration.
 
 ## Application generation replacement
 
-`internal/app/app.go` currently opens the datastore/keyring, constructs long-lived services and listeners, and only then calls `SelfConfig.LoadRuntime`. For expanded settings, load and validate the applied snapshot immediately after `openKeyed`, before constructing configuration-dependent services. Bootstrap discovery remains available before the datastore can be read.
+The app-owned supervisor retains DB, keyring, coordination, configuration coordinator and listener ownership. `internal/app/generation.go`, `owner_runtime.go`, `runtime_listener.go` and `runtime_serve.go` build, prepare and replace configuration-dependent service graphs. `runtimeconfig.RuntimeInstaller.Prepare` returns a `PreparedActivation` with `Activate` and `Close` methods. Preparation does not start active workers or acknowledge a generation.
 
-Extract application graph construction from resource acquisition and serving. Keep an app-owned supervisor responsible for the datastore/keyring identity, configuration coordinator, listener ownership and recovery control. A generation owns immutable configuration, request handlers, outbound clients and worker contexts. No global `os.Setenv` mutation is an activation mechanism.
+Activation reserves changed sockets, fences new business operations, drains requests including response flush and old workers, inherits admission counters, replaces a PostgreSQL pool through the stable DB facade when needed, installs handlers/TLS/clients and starts the new graph. Unchanged sockets remain owned by the supervisor. The original nine-key component changes do not rebuild unrelated services. Memory TLS supports certificate rotation and plain/TLS transitions on an existing address; failed preparation releases candidate resources.
 
-Implemented lifecycle seam, covered by both-engine installer tests:
+REST, SCIM, MCP and scheduled work refuse stale generation admission. Auth and narrowly authorized configuration-repair routes remain usable on the last usable graph after an activation failure. A handler ignoring cancellation can prevent a complete drain indefinitely; that safety limit is not a bounded availability promise. Runtime acknowledgements occur only after actual installation and source verification. A pointer update, prepared graph or controller receipt alone never means Applied.
 
-```go
-type PreparedActivation interface {
-    Activate(context.Context) error
-    Close() error
-}
+An RP hostname transition requires the same initiating admin's live confirmed TOTP and current-epoch password credential, plus an exact fresh TOTP Apply decision. Same-host port changes may use a passkey. This preserves an origin-independent local login route; it does not establish target-origin network reachability or successful authentication. Host recovery remains independent. Complete target-origin access proof is an acceptance gap.
 
-type RuntimeInstaller interface {
-    Prepare(context.Context, *runtimeconfig.Bundle) (PreparedActivation, error)
-}
-```
+## Controlled deployment provider
 
-Preparation parses values, checks local capabilities and reserves required resources without starting outbound jobs or acquiring active scheduler ownership. Unchanged listeners may retain their sockets while swapping the graph. Changed listeners must be reserved before commitment where possible. Candidate disposal releases exactly the resources it acquired. The supervisor must own activation so retiring a worker cannot cancel or deadlock its own installer.
+A durable external writer is required for immutable/read-only Kubernetes mounts and environment to survive pod replacement. No in-process generation swap or hidden second root can replace that authority. `internal/configrollout` provides a signed, constrained mailbox protocol; app enrollment and installed-source checks live in `internal/app/self_config_deployment.go`. Service coordination lives in `internal/service/self_config_deployment.go` and durable store rollout rows/sequences.
 
-Activation drains or cancels old requests and workers according to documented component policy, installs the prepared graph, then starts new workers with the existing fenced scheduler semantics. `SelfConfig.ReconcileRuntime` may acknowledge a generation only after real installation succeeds. Updating the mail bundle pointer is insufficient evidence that authentication, backup or listener settings changed.
+The concrete provider requires explicit enrollment of one non-HA, stable-node, singleton **Recreate** Deployment on Kubernetes 1.36. Fixed resource identities, source versions, signer custody, narrow RBAC and admission enforcement constrain the controller. It is not a shell executor or general cluster administrator. The application does not infer enrollment from a URL or project alias. Real cluster installation, admission refusal and pod replacement evidence remain required.
 
-Origin/RP changes require a recovery route and proof that an administrator can authenticate at the target origin. Existing passkeys may not be valid under a new RP ID. Preserve a bounded old-origin recovery path or equivalent independent operational recovery until target access is proved; do not infer successful access from an HTTP health response. Bind the exact transition and target to reauthentication.
-
-## Managed deployment integration
-
-The selected integration is a narrow authenticated capability provider, not a shell-command runner. It is bound to one owner and an explicit set of deployment/node resources. It advertises versioned capabilities and returns verifiable preparation/commit/observation receipts. No directory credential, viewing-server session or ordinary project machine identity can use it to apply changes.
-
-Hikyo cannot persist new root sources or DB locators across replacement when Kubernetes controls immutable Secrets, environment and read-only mounts. A supervisor or sidecar alone does not solve that problem. A durable external authority and an authorized writer are required. Keeping a hidden second unlock root or a redirect in the old database merely relocates the dependency and is not selected.
-
-| Deployment target | Required provider responsibilities | Current support claim |
-| --- | --- | --- |
-| Host/service installation | Own designated durable bootstrap configuration and root custody locations; atomic write, fsync, permissions, old/new generation journal, startup discovery and observation; access limited to declared installation resources | Required design; no implemented host provider claimed |
-| Kubernetes managed resources | Narrow RBAC over declared workload/bootstrap resources; source-version CAS, staged resource creation, Secret/custody integration, safe delivery to nodes, replacement-pod observation and retained recovery material | Required design; no implemented Kubernetes provider claimed |
-| GitOps-managed Kubernetes | Change the canonical GitOps source through its authorized workflow and observe controller reconciliation; never rely on a live patch that reconciliation will undo | Required design; no implemented GitOps provider claimed |
-
-Active in-process configuration changes should not restart containers. Some immutable Kubernetes delivery mechanisms require pod replacement to receive changed external inputs. The provider must report that requirement before an apply plan is committed. The user explicitly approved that controlled rollout exception for bootstrap settings. Show the rollout impact before exact MFA authorization, persist the desired external source, observe replacement pods and report actual convergence. Ordinary setting activation must remain in-process. Never label a pod rollout an in-process reload.
-
-Initial provider enrollment, resource authority and credential custody must be implemented and validated explicitly. Delegated product-design recommendations are not evidence that a provider is installed or that a deployment grants access. No current deployment credentials, endpoint, resource names or permissions are assumed by this design.
-
-## Exact request, acknowledgements and recovery
-
-The owner-side plan binds the published revision and overlay digests, schema, current generation and recovery incarnation, target owner, fixed participant set, affected capabilities, external source versions and any endpoint transition. Reauthentication binds the immutable plan digest as well as the existing exact revision target. Only a human instance administrator on that owner may authorize commitment using a fresh passkey or TOTP ceremony. Password-only authentication, recovery codes, cached disclosure windows and machine sessions are not substitutes.
-
-Preparation must not perform a root cutover, change a DB locator or create an irreversible deployment effect before the exact decision is authorized. The final authorization transaction rechecks current owner authority and spends the ceremony once. Persist an idempotent intent before effectful external work. An authenticated provider executes only that recorded plan, within its resource/capability bounds. Repeated requests return the same operation; changed plans require new authorization.
-
-Keep external receipts separate from node runtime acknowledgements. Receipts bind operation/owner/incarnation/plan digest/source versions and identify the observed stage. A node acknowledgement binds its stable membership identity, effective configuration digest and actually installed generation. A preparation receipt, successful API request or deployment rollout is not proof of active configuration or future bootability.
-
-Pre-commit failure leaves the current target unchanged and releases preparation resources. Post-commit failure remains pending/partial and follows the recorded plan; never silently fall back to obsolete values or start an unrelated plan. Ordinary reversible components can retain the last usable graph while reporting the failed target, subject to explicit stale-generation fencing. Security-policy transitions must not continue operations under a policy that has been durably revoked. The transition policy must be specified and tested before those components are enabled.
-
-Root rotation reuses `service.Rotation.RotateRootKey` and the keyring's dual-wrap protocol: prepare the new wrapper, durably install the new external source, verify participants and replacement boot, then retire the old wrapper. Raw root material never enters the project, logs or general configuration API. Root finalization must not occur on evidence from a stale/read-only mount.
-
-A DB reconnect must prove the same owner, schema and recovery identity. Actual data migration needs a writer fence, authenticated destination, bounded cutover journal and durable locator transition before retiring the old source. Existing restore changes credential/recovery identity and suspends configuration; it cannot be reused as a transparent migration without an explicit new protocol. Cross-engine migration capability is not implied.
-
-Crash recovery reconciles both the datastore job and external receipt journal before serving affected operations. Backup restore invalidates old incarnation-bound plans and receipts; resuming restores retains the existing exact reauthentication and credential-confirmation requirement. Host recovery must work without the application UI or a reachable old origin. External custody and locator recovery instructions must remain usable when the application datastore is unavailable.
-
-## Required implementation seams and unresolved dependencies
-
-These interfaces require implementation decisions and evidence. They are not completed infrastructure or a reason to call the requested scope complete.
-
-| Area | Required seam or decision |
+| Target | Current responsibility and limit |
 | --- | --- |
-| Catalogue/storage | Versioned descriptor source, canonical content names, immutable owner/node overlay model, catalogue upgrade from the existing nine-key project, and retention of every effective activation payload |
-| Application lifecycle | Graph factory and supervisor ownership, prepare/activate/dispose integration, request/worker draining, generation fence coverage and transactional node acknowledgements |
-| Provider protocol | Transport and authentication library, enrollment/trust/revocation, operation schema and receipt verification, resource allowlists, idempotency/CAS, and deadlines for disconnected providers |
-| Deployment implementations | Host durable-write/recovery implementation; Kubernetes versus GitOps authority selection; root custody adapter; running-process delivery and replacement-boot observation |
-| Transition protocols | Origin authentication proof, per-node identity changes, irreversible retention consequences, datastore migration support matrix, root-finalization proof, mixed runtime/bootstrap plan ordering and recovery |
+| Enrolled Kubernetes singleton | Stage only declared source references, compare admitted workload/source identities, execute signed command, observe exact replacement template/source and return a verified receipt; actual cluster proof remains open |
+| HA bootstrap rollout | Not implemented; provider and candidate preparation refuse this topology |
+| Host/service manager | No implemented durable-write/custody/recovery provider |
+| GitOps-managed workload | No implemented canonical-source provider; a live patch that reconciliation can overwrite is not durable support |
 
-Applicable ownership boundaries and proof sites include `internal/service/self_config_apply.go`, `self_config_runtime.go`, `reauth_self_config.go`, `internal/authz/self_config.go`, `internal/app/app.go`, `ha.go`, `tls.go`, `internal/service/rotation.go`, and `internal/store/upgrade`. Update owning ADRs and transport/audit contracts before introducing new authority. Existing schemas or successful preparation must not be used to mint generic network, filesystem or deployment authority.
+Database aliases must prove the same admitted datastore, owner/schema/recovery identity and a fresh challenge. No cross-database or cross-engine migration is claimed. Root transitions prepare a new wrapper without changing external custody before authorization, then atomically persist authorized wrapper/target/command. Raw roots remain external. The old wrapper is retained for recovery. **There is no automatic root finalization**: verified source and replacement boot evidence do not silently retire the recovery wrapper.
 
-## Acceptance gates
+## Prepare, exact MFA, commit and acknowledgement
 
-1. **Coverage and authority:** every server parser input maps to a descriptor and tested activation path; unsupported deployments report exact missing capabilities. Direct and remote owner calls refuse non-admin humans and all machines, password/recovery substitutes, stale/replayed ceremonies, changed revisions, changed plan digests and cross-owner requests.
-2. **Runtime and HA:** exercise every activation class, real component behavior, race/fault injection, listener collisions, origin changes, worker draining and fixed membership. Verify unchanged container/process identity for supported in-process transitions. Two independent remotes retain different variables while HA nodes converge only within their owner.
-3. **Bootstrap durability:** test the selected host and Kubernetes/GitOps providers against their actual authority boundaries. A fresh process or replacement pod boots from the committed locator/root source with the old source unavailable. Read-only mounts, controller rollback, missing permissions, lost replies and stale resource versions never produce false success.
-4. **Recovery and custody:** interrupt each root/datastore transition stage, restore backups, revoke provider credentials, lose a node and disconnect the viewer. Prove recoverability, writer fencing, root retirement ordering, no hidden second root, no arbitrary file reads and no plaintext root/project-secret exposure in receipts or logs.
-5. **Delivery proof:** complete browser workflows on desktop/mobile, generated contracts and audit/isolation checks, appropriate both-engine/race suites, independent review and exact-head CI. Update the LAN report with per-capability implementation status and evidence. A design file, read-only catalogue, provider stub or green tests for the earlier nine keys does not satisfy this expansion.
+The browser first sends `prepare_only: true` with a stable idempotency key and exact selected revision/generation. The job becomes ready only when all fixed participants have current matching preparation evidence, and a deployment plan exists when required. Prepared review lasts five minutes; individual synchronous requests wait at most 30 seconds. Fresh worker/heartbeat evidence is at most 30 seconds old. Preparation does not consume the final Apply ceremony.
+
+The reviewed plan digest binds owner, recovery incarnation, revision/snapshot, schema, fixed participants, current generation, external source versions and deployment effect. The UI labels the action **Reload live** or **Controlled rollout**. Final Apply reuses the request identity and includes the exact digest in fresh passkey/TOTP evidence. The final transaction rechecks authority, epoch, factor freshness, plan/job version and database clock before spending the proof once and recording the durable intent. Replayed or changed decisions cannot authorize another effect.
+
+External calls happen outside the final authorization transaction. Signed commands and sequence numbers are durably journaled so lost replies and worker restarts retry the authorized command. Journals and status contain identifiers/digests/receipts, not root keys or credential contents. Uncommitted private preparation lost on restart must be prepared again. Replacement nodes must verify installed aliases and template stamp before a runtime acknowledgement can establish convergence.
+
+## Failure and deployment restoration
+
+Pre-commit refusal leaves the old target unchanged. Post-commit refusal remains pending/partial with business operations fenced; it never silently reinstates obsolete policy. Ordinary failed targets can prepare a new published repair while staying fenced. A bootstrap job with a nonterminal external handoff cannot be superseded until the controller outcome is known.
+
+For a partial controlled rollout, **Restore deployment inputs** is a separate exact `rollout-restore` MFA action. It binds the original job revision, current generation and plan digest. The service reserves a sequence and signs outside the final transaction, then rechecks job/row version/incarnation and consumes fresh proof while persisting the Restore command and dedicated audit event atomically. Cancel, changed-plan and stale/replayed proof paths do not authorize a restore. Durable retry returns the same operation.
+
+Only a verified controller `Restored` receipt terminates this external handoff. Restore does not change the desired revision and never means runtime Applied. Business remains fenced until an administrator publishes and separately applies a repaired revision using a new exact MFA ceremony. Previous snapshots and root wrappers remain available for this path; required retention roots are not garbage-collected while still needed.
+
+Backup restoration invalidates incarnation-bound plans and requires existing access/credential reconciliation. Host CLI recovery remains available without the old UI origin, using external DB/root custody. When those sources are unavailable, the enrolled provider's external recovery instructions must be usable independently of the app.
+
+## Acceptance still required
+
+1. Freeze implementation and pass full affected both-engine, race, isolation, API/SDK/web/docs and independent review gates on that revision; then obtain exact-head CI. Expanded desktop and mobile passkey/TOTP channel-Apply journeys pass; actual controlled-rollout acceptance remains unfinished.
+2. Exercise an actually enrolled Kubernetes 1.36 singleton: negative admission/RBAC tests, source CAS, lost reply/restart, replacement boot/stamp, root dual-wrap, same-DB challenge, explicit Restore and separately authorized repair. Controller probes alone do not prove deployment.
+3. Complete or explicitly deliver the missing host/GitOps and HA bootstrap providers, topology/identity transitions and relevant upgrade/development startup controls before claiming the user's complete-server-variable objective.
+4. Establish target-origin DNS/TLS/admin authentication and external network/mount reachability semantics. Local parser/socket proof does not establish them.
+5. Define and verify true datastore migration and explicit root-finalization recovery obligations wherever those capabilities are promised. The current same-datastore alias protocol and retained wrapper are narrower.
+
+## Integration correction evidence
+
+Host administrator creation must consume the running server’s fresh sealed owner/node seed, rather than evaluating the CLI process environment or changing a live listener to its default. Missing or stale evidence must refuse before principal creation and explain that the server must be started before retrying. Local regression proof now passes: service race 35.027 s, app 16.236 s, including both-engine maximum-size/MFA authority checks. Both R1 corrections now preserve discovery mode and read a fresh clock after the membership lock; both-engine regressions passed in 5.308 s and R2 review is clean for those fixes. Durable exact-authorized Submit/Restore/Observe renewal and no-effect restoration passed R2 review, race checks (module 4.877 s, service 111.817 s, app 17.108 s) and full lint (78.122 s). Renewal changes transport sequence/timestamps only and cannot grant an uncommitted preparation authority. Real Kubernetes outage/recovery proof remains open.
+
+Root finalization now locks the configuration binding before the key hierarchy, preserving both wrappers while the current generation/incarnation has an unresolved applying, partial, applied or superseded deployment. Restore and repair preparation retain the guard until the replacement generation is committed; finalization racing Apply invalidates its stale dual-wrap proof. SQLite/PostgreSQL rollout regressions passed in 15.885 s and existing key-rotation invariants passed in 2.166 s; R3 review is CLEAN. Logs: `/tmp/hikyo-root-guard-r3-focused.log` and `/tmp/hikyo-root-guard-r3-store.log`. Formatting and diff checks passed. No automatic root finalization is performed.
+
+Latest serial Go package checks passed: config 0.695 s, runtime configuration 0.360 s, crypto 0.383 s, store 37.031 s, service 114.142 s, app 90.759 s, server 63.187 s, configuration rollout 0.890 s and lint 35.491 s. The earlier isolation failure identified outdated fixture defaults, pins and audit expectations. Those corrections now pass focused checks; the complete isolation rerun is still in progress. Log: `/tmp/hikyo-selfconfig-final-sequential.log`.
+
+Compose and retention CLI isolation fixtures now use production audit defaults (90/365 days) and a 30-minute RTO. All TestComposeCLI and TestRetentionCLIStartupSweep cases passed on both engines in 59.640 s (`/tmp/hikyo-selfconfig-isolation-cli-final.log`). Full TestAuditCore and invariants 06/11/13 passed on SQLite/PostgreSQL in 35.458 s (`/tmp/hikyo-isolation-pins-audit-full-core.log`). Independent R1 review is CLEAN: every shared site is checked against explicit pins, seed authority rejects network/generic minting, and Restore audit rows come from real service authorization with refusal/idempotency coverage. All 369 isolation cases are now running through three planner shards sequentially (`/tmp/hikyo-selfconfig-isolation-shard-{0,1,2}.log`); completion is not yet claimed.
+
+Additional affected package checks passed: command 1.291 s, admission 0.427 s, authorization 0.415 s, store upgrade 40.423 s and upgrade gate 75.608 s (`/tmp/hikyo-selfconfig-final-boundaries.log`). Final affected-package vet passed (`/tmp/hikyo-selfconfig-final-vet.log`).

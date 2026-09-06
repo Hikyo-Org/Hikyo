@@ -302,6 +302,6 @@ func (a *API) RemovePasskey(ctx context.Context, req apigen.RemovePasskeyRequest
 
 func selfConfigReauthIntent(value apigen.SelfConfigReauthIntent) (service.ReauthIntent, error) {
 	return service.NewSelfConfigReauthIntent(service.SelfConfigReauthTarget{
-		Action: string(value.Action), OwnerInstanceID: value.OwnerInstanceId, Revision: value.Revision, SchemaVersion: value.SchemaVersion, ExpectedGeneration: value.ExpectedGeneration, PreviewToken: value.PreviewToken, To: value.To, ConfirmRestoredCredentials: value.ConfirmRestoredCredentials,
+		Action: string(value.Action), OwnerInstanceID: value.OwnerInstanceId, Revision: value.Revision, SchemaVersion: value.SchemaVersion, ExpectedGeneration: value.ExpectedGeneration, PreviewToken: value.PreviewToken, To: value.To, ConfirmRestoredCredentials: value.ConfirmRestoredCredentials, PlanDigest: deref(value.PlanDigest),
 	})
 }

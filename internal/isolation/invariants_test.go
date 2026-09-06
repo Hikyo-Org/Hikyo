@@ -166,10 +166,10 @@ func TestInvariant06OperationRegistryCompleteness(t *testing.T) {
 	// no-principal paths the ADR enumerates, e.g. boot's keyring checks.
 	// Both are registrations; an unregistered method is unreachable and
 	// unauthorized by construction.
-	systemRegistered := map[authz.StoreOp]authz.SystemSite{}
+	systemRegistered := map[authz.StoreOp][]authz.SystemSite{}
 	for site, ops := range facts.SystemSites() {
 		for _, op := range ops {
-			systemRegistered[op] = site
+			systemRegistered[op] = append(systemRegistered[op], site)
 		}
 	}
 	// Scheduler audit writes and its health read are intentionally dual-use:
@@ -203,10 +203,12 @@ func TestInvariant06OperationRegistryCompleteness(t *testing.T) {
 			t.Errorf("store method %q has no registered operation and no system mint site — it is unreachable and unauthorized by construction, register or remove it", method)
 		}
 		if viaOperation && viaSite {
-			if (systemRegistered[op] != authz.SiteScheduler || !sharedSchedulerOps[op]) && !(systemRegistered[op] == authz.SiteEscrow && op == authz.StoreAuditInstanceInsert) && !((systemRegistered[op] == authz.SiteSelfConfigRuntime || systemRegistered[op] == authz.SiteSelfConfigRecovery) && selfConfigSharedDoors[op]) {
-				t.Errorf("store method %q is registered both to an operation and to system site %q without a reviewed shared-door pin", method, systemRegistered[op])
-			} else {
-				seenShared[op] = true
+			for _, site := range systemRegistered[op] {
+				if (site != authz.SiteScheduler || !sharedSchedulerOps[op]) && !(site == authz.SiteEscrow && op == authz.StoreAuditInstanceInsert) && !((site == authz.SiteSelfConfigRuntime || site == authz.SiteSelfConfigRecovery) && selfConfigSharedDoors[op]) && !(site == authz.SiteSelfConfigSeed && op == authz.StoreSelfConfigSeedInputs) {
+					t.Errorf("store method %q is registered both to an operation and to system site %q without a reviewed shared-door pin", method, site)
+				} else {
+					seenShared[op] = true
+				}
 			}
 		}
 	}
@@ -317,6 +319,7 @@ func TestInvariant11SystemProofEnumeration(t *testing.T) {
 	sites := facts.SystemSites()
 	want := map[authz.SystemSite]bool{
 		authz.SiteSelfConfigRuntime:  true,
+		authz.SiteSelfConfigSeed:     true,
 		authz.SiteSelfConfigRecovery: true,
 		authz.SiteEscrow:             true,
 		authz.SiteBoot:               true,
@@ -396,10 +399,12 @@ func TestInvariant11SystemProofEnumeration(t *testing.T) {
 			t.Errorf("unregistered system mint site %q", site)
 		}
 
-		if site == authz.SiteSelfConfigRuntime || site == authz.SiteSelfConfigRecovery {
+		if site == authz.SiteSelfConfigRuntime || site == authz.SiteSelfConfigRecovery || site == authz.SiteSelfConfigSeed {
 			expected := selfConfigRuntimeDoors
 			if site == authz.SiteSelfConfigRecovery {
 				expected = selfConfigRecoveryDoors
+			} else if site == authz.SiteSelfConfigSeed {
+				expected = selfConfigSeedDoors
 			}
 			if len(ops) != len(expected) {
 				t.Errorf("%s site has unexpected operations: %v", site, ops)
@@ -601,14 +606,32 @@ func TestInvariant06aFormulaPinning(t *testing.T) {
 // Reviewed 2026-09-06 self-configuration amendment. These pins are intentionally
 // independent of the production registry and fail on either widening or drift.
 var selfConfigSharedDoors = map[authz.StoreOp]bool{
+	authz.StoreSelfConfigRollout: true, authz.StoreSelfConfigPutRollout: true, authz.StoreSelfConfigNextRolloutSequence: true,
 	authz.StoreSelfConfigBinding: true, authz.StoreSelfConfigJobs: true, authz.StoreSelfConfigJob: true, authz.StoreSelfConfigNodes: true, authz.StoreSelfConfigRetained: true, authz.StoreSelfConfigFinishJob: true,
 	authz.StoreSnapshotsAtRevision: true, authz.StoreSnapshotsEntries: true, authz.StoreCatalogueList: true, authz.StoreCatalogueRevisionGet: true, authz.StoreAuditTenantInsert: true,
 }
 var selfConfigRuntimeDoors = map[authz.StoreOp]bool{
+	authz.StoreSelfConfigPreviousRevision: true, authz.StoreSelfConfigRollout: true, authz.StoreSelfConfigPutRollout: true, authz.StoreSelfConfigNextRolloutSequence: true,
 	authz.StoreSelfConfigBinding: true, authz.StoreSelfConfigJobs: true, authz.StoreSelfConfigJob: true, authz.StoreSelfConfigNodes: true, authz.StoreSelfConfigRetained: true, authz.StoreSelfConfigPutNode: true, authz.StoreSelfConfigFinishJob: true, authz.StoreSelfConfigFenceRestored: true,
 	authz.StoreSnapshotsAtRevision: true, authz.StoreSnapshotsEntries: true, authz.StoreCatalogueList: true, authz.StoreCatalogueRevisionGet: true, authz.StoreAuditTenantInsert: true,
 }
 var selfConfigRecoveryDoors = map[authz.StoreOp]bool{
 	authz.StoreSelfConfigBinding: true, authz.StoreSelfConfigJobs: true, authz.StoreSelfConfigNodes: true, authz.StoreSelfConfigRetained: true, authz.StoreSelfConfigRecoverTarget: true,
 	authz.StoreSnapshotsAtRevision: true, authz.StoreSnapshotsEntries: true, authz.StoreCatalogueList: true, authz.StoreCatalogueRevisionGet: true, authz.StoreAuditTenantInsert: true,
+}
+
+var selfConfigSeedDoors = map[authz.StoreOp]bool{
+	authz.StoreSelfConfigSeedInputs: true, authz.StoreSelfConfigHostSeedInputs: true, authz.StoreSelfConfigPutSeedInput: true,
+}
+
+// A declared system site does not grant callers the generic minting path. The
+// seed resolver has no tenant address; runtime and recovery resolve their own.
+func TestInvariant11SelfConfigGenericMintingDenied(t *testing.T) {
+	for _, site := range []authz.SystemSite{authz.SiteSelfConfigSeed, authz.SiteSelfConfigRuntime, authz.SiteSelfConfigRecovery} {
+		t.Run(string(site), func(t *testing.T) {
+			if _, err := authz.SystemAuthority(site, authz.NewTxToken()); err == nil {
+				t.Fatal("generic system authority bypassed the closed self-configuration resolver")
+			}
+		})
+	}
 }

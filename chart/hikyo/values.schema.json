@@ -1,7 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
-  "required": ["image", "database", "rootKey", "externalOrigin", "network", "upgrade"],
+  "required": [
+    "image",
+    "database",
+    "rootKey",
+    "externalOrigin",
+    "network",
+    "upgrade"
+  ],
   "properties": {
     "upgrade": {
       "type": "object",
@@ -36,9 +43,15 @@
     },
     "image": {
       "type": "object",
-      "required": ["repository", "digest"],
+      "required": [
+        "repository",
+        "digest"
+      ],
       "properties": {
-        "repository": {"type": "string", "minLength": 1},
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
         "digest": {
           "type": "string",
           "pattern": "^sha256:(RELEASE_IMAGE_DIGEST|[0-9a-f]{64})$"
@@ -47,63 +60,222 @@
     },
     "database": {
       "type": "object",
-      "required": ["existingSecret", "tls"],
+      "required": [
+        "existingSecret",
+        "tls"
+      ],
       "properties": {
-        "existingSecret": {"type": "string", "minLength": 1},
+        "existingSecret": {
+          "type": "string",
+          "minLength": 1
+        },
         "tls": {
           "type": "object",
-          "required": ["existingSecret", "key"],
+          "required": [
+            "existingSecret",
+            "key"
+          ],
           "properties": {
-            "existingSecret": {"type": "string"},
-            "key": {"type": "string", "minLength": 1}
+            "existingSecret": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         }
       }
     },
     "rootKey": {
       "type": "object",
-      "required": ["existingSecret", "key"],
+      "required": [
+        "existingSecret",
+        "key"
+      ],
       "properties": {
-        "existingSecret": {"type": "string", "minLength": 1},
+        "existingSecret": {
+          "type": "string",
+          "minLength": 1
+        },
         "key": {
           "type": "string",
           "pattern": "^[A-Za-z0-9._-]+$",
-          "not": {"enum": [".", ".."]}
+          "not": {
+            "enum": [
+              ".",
+              ".."
+            ]
+          }
         }
       }
     },
-    "externalOrigin": {"type": "string", "minLength": 1},
+    "externalOrigin": {
+      "type": "string",
+      "minLength": 1
+    },
     "mcp": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled", "allowedOrigins"],
+      "required": [
+        "enabled",
+        "allowedOrigins"
+      ],
       "properties": {
-        "enabled": {"type": "boolean"},
+        "enabled": {
+          "type": "boolean"
+        },
         "allowedOrigins": {
           "type": "array",
           "uniqueItems": true,
-          "items": {"type": "string", "minLength": 1}
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },
     "ha": {
       "type": "object",
       "properties": {
-        "enabled": {"type": "boolean"},
-        "replicaCount": {"type": "integer", "minimum": 1},
-        "minAvailable": {"type": "integer", "minimum": 1}
+        "enabled": {
+          "type": "boolean"
+        },
+        "replicaCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "minAvailable": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
-    "terminationGracePeriodSeconds": {"type": "integer", "minimum": 5},
+    "terminationGracePeriodSeconds": {
+      "type": "integer",
+      "minimum": 5
+    },
     "network": {
       "type": "object",
-      "required": ["trustedProxyCIDRs", "allowPlaintextOrigin"],
+      "required": [
+        "trustedProxyCIDRs",
+        "allowPlaintextOrigin"
+      ],
       "properties": {
         "trustedProxyCIDRs": {
           "type": "array",
-          "items": {"type": "string"}
+          "items": {
+            "type": "string"
+          }
         },
-        "allowPlaintextOrigin": {"type": "boolean"}
+        "allowPlaintextOrigin": {
+          "type": "boolean"
+        }
+      }
+    },
+    "rollout": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "enrolled": {
+          "type": "boolean"
+        },
+        "enrollmentID": {
+          "type": "string"
+        },
+        "ownerInstanceID": {
+          "type": "string"
+        },
+        "incarnation": {
+          "type": "string"
+        },
+        "deploymentUID": {
+          "type": "string"
+        },
+        "commandSecretUID": {
+          "type": "string"
+        },
+        "responseSecretUID": {
+          "type": "string"
+        },
+        "journalSecretUID": {
+          "type": "string"
+        },
+        "leaseUID": {
+          "type": "string"
+        },
+        "authorityPublicKey": {
+          "type": "string"
+        },
+        "authorityExistingSecret": {
+          "type": "string"
+        },
+        "authorityKey": {
+          "type": "string"
+        },
+        "databaseSources": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "key"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "key": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "rootSources": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "key"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "key": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "fileSources": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "resources": {
+          "type": "object"
+        },
+        "initialDatabaseSource": {
+          "type": "string"
+        },
+        "initialRootSource": {
+          "type": "string"
+        }
       }
     }
   }

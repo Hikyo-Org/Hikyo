@@ -81,6 +81,9 @@ func (a *API) ShowCLIReauthTransaction(ctx context.Context, req apigen.ShowCLIRe
 	if result.SelfConfig != nil {
 		v := result.SelfConfig
 		target = &apigen.SelfConfigReauthIntent{Action: apigen.SelfConfigReauthIntentAction(v.Action), OwnerInstanceId: v.OwnerInstanceID, Revision: v.Revision, SchemaVersion: v.SchemaVersion, ExpectedGeneration: v.ExpectedGeneration, PreviewToken: v.PreviewToken, To: v.To, ConfirmRestoredCredentials: v.ConfirmRestoredCredentials}
+		if v.PlanDigest != "" {
+			target.PlanDigest = &v.PlanDigest
+		}
 	}
 	return apigen.ShowCLIReauthTransaction200JSONResponse{SelfConfig: target, State: result.State, Purpose: apigen.CLIReauthTransactionPurpose(result.Purpose), Operation: apigen.CLIReauthTransactionOperation(result.Operation), Environments: environments, KeyIds: keyIDs, RedirectUri: result.RedirectURI, ExpiresAt: result.ExpiresAt}, nil
 }

@@ -60,6 +60,17 @@ func IsSelfConfig(p Proof) bool {
 	return ok && v != nil && v.selfConfig && v.tok != nil && v.tok.alive()
 }
 
+// SelfConfigSeedAuthority is the boot worker's encrypted-input exchange before
+// adoption. The repository refuses access once a binding exists. Network
+// callers use their ordinary MFA-protected adoption proof for preview reads;
+// they cannot mint this writer or replace another node's startup inputs.
+func (a *TxAuthorizer) SelfConfigSeedAuthority(ctx context.Context) (Proof, error) {
+	if operation.IsNetwork(ctx) {
+		return nil, errors.New("authz: seed authority is unavailable to network operations")
+	}
+	return &proof{kind: kindSystem, op: Operation("system:" + SiteSelfConfigSeed), site: SiteSelfConfigSeed, tok: a.tok}, nil
+}
+
 // SelfConfigRuntimeAuthority selects only the local binding's retained snapshot.
 // No network operation can mint this authority, even with valid admin grants.
 // An empty snapshot ID selects the durable desired revision.

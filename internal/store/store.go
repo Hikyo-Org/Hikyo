@@ -8,11 +8,17 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -953,7 +959,7 @@ type DB struct {
 
 	sqWrite *sql.DB // sqlite only, MaxOpenConns(1), BEGIN IMMEDIATE via _txlock
 	sqRead  *sql.DB // sqlite only
-	pool    *pgxpool.Pool
+	pool    *postgresPool
 }
 
 // Engine, SQLiteWrite, SQLiteRead, and PG are the doors internal/store/tx
@@ -963,7 +969,12 @@ type DB struct {
 func (d *DB) Engine() Engine       { return d.engine }
 func (d *DB) SQLiteWrite() *sql.DB { return d.sqWrite }
 func (d *DB) SQLiteRead() *sql.DB  { return d.sqRead }
-func (d *DB) PG() *pgxpool.Pool    { return d.pool }
+func (d *DB) PG() *pgxpool.Pool {
+	if d.pool == nil {
+		return nil
+	}
+	return d.pool.raw()
+}
 
 // RecoveryIdentity is immutable admitted metadata. The caller's transaction
 // guard pins it against restore before any diagnostic record is read or written.
@@ -1203,6 +1214,10 @@ func openPostgres(ctx context.Context, dsn string, configuredMax int32) (*DB, er
 	if err != nil {
 		return nil, fmt.Errorf("store: parse postgres pool config: %w", err)
 	}
+	defaultMax := poolConfig.MaxConns
+	if !postgresDSNHasPoolMax(dsn) {
+		defaultMax = postgresPoolDefaultMaxConnections
+	}
 	if configuredMax > 0 {
 		poolConfig.MaxConns = configuredMax
 	} else if !postgresDSNHasPoolMax(dsn) {
@@ -1236,7 +1251,7 @@ func openPostgres(ctx context.Context, dsn string, configuredMax int32) (*DB, er
 		pool.Close()
 		return nil, err
 	}
-	return &DB{engine: EnginePostgres, pool: pool, durabilityVerified: true}, nil
+	return &DB{engine: EnginePostgres, pool: newPostgresPool(pool, defaultMax), durabilityVerified: true}, nil
 }
 
 // Locked by ops-spec §10: larger PostgreSQL deployments use explicit
@@ -1299,4 +1314,556 @@ func (d *DB) Close() error {
 		d.pool.Close()
 	}
 	return errors.Join(errs...)
+}
+
+var errPostgresPoolClosed = errors.New("store: postgres pool is closed")
+
+// postgresPool keeps DB identity stable. A generation is pinned until driver
+// acquisition completes; afterwards pgx owns the acquired connection/transaction
+// and its Close waits for settlement. Retirement cannot race the gap between
+// choosing a pool and acquiring from it. No lock spans a database operation.
+type postgresPool struct {
+	mu         sync.Mutex
+	current    *postgresPoolGeneration
+	defaultMax int32
+	closed     bool
+	closeDone  chan struct{}
+	retiring   map[*postgresPoolGeneration]struct{}
+	prepared   map[*PreparedPostgresPool]struct{}
+}
+
+type postgresPoolGeneration struct {
+	pool      *pgxpool.Pool
+	acquiring sync.WaitGroup
+	done      chan struct{}
+}
+
+func newPostgresPool(pool *pgxpool.Pool, defaultMax int32) *postgresPool {
+	return &postgresPool{
+		current:    &postgresPoolGeneration{pool: pool, done: make(chan struct{})},
+		defaultMax: defaultMax,
+		closeDone:  make(chan struct{}),
+		retiring:   make(map[*postgresPoolGeneration]struct{}),
+		prepared:   make(map[*PreparedPostgresPool]struct{}),
+	}
+}
+
+func (p *postgresPool) pin() (*postgresPoolGeneration, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return nil, errPostgresPoolClosed
+	}
+	p.current.acquiring.Add(1)
+	return p.current, nil
+}
+
+func (p *postgresPool) Acquire(ctx context.Context) (*pgxpool.Conn, error) {
+	generation, err := p.pin()
+	if err != nil {
+		return nil, err
+	}
+	defer generation.acquiring.Done()
+	return generation.pool.Acquire(ctx)
+}
+
+func (p *postgresPool) BeginTx(ctx context.Context, options pgx.TxOptions) (pgx.Tx, error) {
+	generation, err := p.pin()
+	if err != nil {
+		return nil, err
+	}
+	defer generation.acquiring.Done()
+	return generation.pool.BeginTx(ctx, options)
+}
+
+func (p *postgresPool) Ping(ctx context.Context) error {
+	generation, err := p.pin()
+	if err != nil {
+		return err
+	}
+	defer generation.acquiring.Done()
+	return generation.pool.Ping(ctx)
+}
+
+func (p *postgresPool) Config() *pgxpool.Config {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.current.pool.Config()
+}
+
+// raw is only for the existing test/driver inspection door. Production
+// transaction and backup paths acquire through this forwarding owner.
+func (p *postgresPool) raw() *pgxpool.Pool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.current.pool
+}
+
+// retireLocked starts bounded ownership bookkeeping, not a timeout on a live
+// transaction. Existing borrowers settle normally; new callers use current.
+func (p *postgresPool) retireLocked(generation *postgresPoolGeneration) {
+	p.retiring[generation] = struct{}{}
+	go func() {
+		generation.acquiring.Wait()
+		generation.pool.Close()
+		p.mu.Lock()
+		delete(p.retiring, generation)
+		close(generation.done)
+		p.mu.Unlock()
+	}()
+}
+
+func (p *postgresPool) Close() {
+	p.mu.Lock()
+	if p.closed {
+		done := p.closeDone
+		p.mu.Unlock()
+		<-done
+		return
+	}
+	p.closed = true
+	p.retireLocked(p.current)
+	pending := make([]*PreparedPostgresPool, 0, len(p.prepared))
+	for prepared := range p.prepared {
+		pending = append(pending, prepared)
+	}
+	done := make([]<-chan struct{}, 0, len(p.retiring))
+	for generation := range p.retiring {
+		done = append(done, generation.done)
+	}
+	p.mu.Unlock()
+	for _, candidate := range pending {
+		_ = candidate.Close()
+	}
+	for _, retired := range done {
+		<-retired
+	}
+	close(p.closeDone)
+}
+
+// PreparedPostgresPool owns a verified replacement until Activate transfers it
+// to DB, or Close disposes it. It never changes connection credentials, source,
+// schema selection, admission, keyring, or coordination identity.
+type PreparedPostgresPool struct {
+	mu                sync.Mutex
+	db                *DB
+	previous          *postgresPoolGeneration
+	candidate         *pgxpool.Pool
+	identity          postgresPoolIdentity
+	closed, activated bool
+}
+
+type postgresPoolIdentity struct{ database, schema string }
+
+// PreparePostgresPool opens and checks a candidate without changing the current
+// pool or writing database state. Zero restores the original DSN's pool limit,
+// or Hikyo's default when absent. SQLite accepts only zero as a no-op.
+func (d *DB) PreparePostgresPool(ctx context.Context, maximum int32) (*PreparedPostgresPool, error) {
+	if d == nil || !d.admission.Valid() {
+		return nil, upgrade.ErrConflict
+	}
+	if maximum < 0 {
+		return nil, errors.New("store: postgres pool maximum must be positive or zero for default")
+	}
+	if d.engine == EngineSQLite {
+		if maximum != 0 {
+			return nil, errors.New("store: postgres pool maximum cannot configure sqlite")
+		}
+		if err := d.CheckAdmission(ctx); err != nil {
+			return nil, err
+		}
+		return &PreparedPostgresPool{db: d}, nil
+	}
+	if d.engine != EnginePostgres || d.pool == nil {
+		return nil, upgrade.ErrConflict
+	}
+	previous, err := d.pool.pin()
+	if err != nil {
+		return nil, err
+	}
+	defer previous.acquiring.Done()
+	identity, err := d.checkPostgresPool(ctx, previous.pool)
+	if err != nil {
+		return nil, err
+	}
+	cfg := previous.pool.Config()
+	if maximum == 0 {
+		maximum = d.pool.defaultMax
+	}
+	prepared := &PreparedPostgresPool{db: d, previous: previous, identity: identity}
+	if cfg.MaxConns != maximum {
+		cfg.MaxConns = maximum
+		if cfg.MinConns > maximum || cfg.MinIdleConns > maximum {
+			return nil, errors.New("store: postgres pool maximum is below configured minimum")
+		}
+		candidate, err := pgxpool.NewWithConfig(ctx, cfg)
+		if err != nil {
+			return nil, errors.New("store: postgres replacement pool could not open")
+		}
+		got, err := d.checkPostgresPool(ctx, candidate)
+		if err != nil || got != identity {
+			candidate.Close()
+			return nil, errors.New("store: postgres replacement pool identity or durability check failed")
+		}
+		prepared.candidate = candidate
+	}
+	d.pool.mu.Lock()
+	if d.pool.closed || d.pool.current != previous {
+		d.pool.mu.Unlock()
+		if prepared.candidate != nil {
+			prepared.candidate.Close()
+		}
+		return nil, errors.New("store: postgres pool changed during preparation")
+	}
+	d.pool.prepared[prepared] = struct{}{}
+	d.pool.mu.Unlock()
+	return prepared, nil
+}
+
+// checkPostgresPool checks actual settings and the original migration admission
+// under its transaction fence. GuardPostgres compares owner, recovery
+// incarnation, release, schema/migration digests, and maintenance generation.
+func (d *DB) checkPostgresPool(ctx context.Context, pool *pgxpool.Pool) (postgresPoolIdentity, error) {
+	tx, err := d.beginPostgresOn(ctx, pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return postgresPoolIdentity{}, err
+	}
+	defer tx.Rollback(ctx)
+	if err := verifyPGDurability(ctx, tx); err != nil {
+		return postgresPoolIdentity{}, err
+	}
+	var identity postgresPoolIdentity
+	if err := tx.QueryRow(ctx, "SELECT current_database(), current_schema()").Scan(&identity.database, &identity.schema); err != nil {
+		return postgresPoolIdentity{}, err
+	}
+	return identity, tx.Commit(ctx)
+}
+
+// Activate redirects subsequent acquisitions before returning success. Callers
+// drain application work first. Existing coordination transactions may finish
+// on the old pool; retirement waits for them without blocking new transactions.
+// A candidate prepared against an earlier pool generation cannot overwrite a
+// newer replacement. Cancellation or validation failure leaves current intact.
+func (p *PreparedPostgresPool) Activate(ctx context.Context) error {
+	if p == nil {
+		return errors.New("store: postgres pool preparation is missing")
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return errors.New("store: postgres pool preparation is closed")
+	}
+	if p.activated {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if p.db.engine == EngineSQLite {
+		if err := p.db.CheckAdmission(ctx); err != nil {
+			return err
+		}
+		p.activated = true
+		return nil
+	}
+	owner := p.db.pool
+	candidate := p.candidate
+	if candidate == nil {
+		// Pin the prior generation for a no-op's validation too.
+		generation, err := owner.pin()
+		if err != nil {
+			return err
+		}
+		defer generation.acquiring.Done()
+		if generation != p.previous {
+			return errors.New("store: postgres pool preparation is stale")
+		}
+		candidate = generation.pool
+	}
+	// Retain the migration exclusion through publication. This read-only
+	// transaction has no durable state to commit after the pointer changes.
+	tx, err := p.db.beginPostgresOn(ctx, candidate, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return err
+	}
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+		defer cancel()
+		_ = tx.Rollback(cleanup)
+	}()
+	if err := verifyPGDurability(ctx, tx); err != nil {
+		return err
+	}
+	var identity postgresPoolIdentity
+	if err := tx.QueryRow(ctx, "SELECT current_database(), current_schema()").Scan(&identity.database, &identity.schema); err != nil {
+		return err
+	}
+	if identity != p.identity {
+		return errors.New("store: postgres replacement pool source changed")
+	}
+	owner.mu.Lock()
+	defer owner.mu.Unlock()
+	if owner.closed {
+		return errPostgresPoolClosed
+	}
+	if owner.current != p.previous {
+		return errors.New("store: postgres pool preparation is stale")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if p.candidate != nil {
+		owner.current = &postgresPoolGeneration{pool: p.candidate, done: make(chan struct{})}
+		p.candidate = nil
+		owner.retireLocked(p.previous)
+	}
+	p.activated = true
+	delete(owner.prepared, p)
+	return nil
+}
+
+// Close is idempotent. After activation the DB owns the pool and this handle
+// cannot close it. Before activation all candidate connections are released.
+func (p *PreparedPostgresPool) Close() error {
+	if p == nil {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return nil
+	}
+	p.closed = true
+	if p.db.pool != nil {
+		p.db.pool.mu.Lock()
+		delete(p.db.pool.prepared, p)
+		p.db.pool.mu.Unlock()
+	}
+	if p.candidate != nil {
+		p.candidate.Close()
+		p.candidate = nil
+	}
+	return nil
+}
+
+// VerifiedPostgresSource is a short-lived in-process proof of an alternate
+// connection descriptor for this exact live datastore. It grants no migration
+// or deployment authority and retains no credential or raw locator. Its digest
+// becomes useful only when an authorized coordinator signs the exact rollout.
+type VerifiedPostgresSource struct {
+	owner           *DB
+	descriptor      [32]byte
+	issued, expires time.Time
+	digest          string
+}
+
+const postgresSourceProofLifetime = 5 * time.Minute
+
+var errPostgresSourceProof = errors.New("store: candidate source does not prove the current datastore")
+
+// Digest returns opaque evidence, never the raw or unsalted descriptor hash.
+func (p *VerifiedPostgresSource) Digest() string {
+	if p == nil {
+		return ""
+	}
+	return p.digest
+}
+
+// VerifyPostgresSource proves an alias/credential change for the same live
+// PostgreSQL database. Cloned installation metadata is insufficient: a separate
+// candidate connection must also observe two unpredictable transaction locks
+// held by this DB. Both transactions roll back without durable writes.
+func (d *DB) VerifyPostgresSource(ctx context.Context, candidateDSN string) (*VerifiedPostgresSource, error) {
+	if d == nil || d.engine != EnginePostgres || d.pool == nil || !d.admission.Valid() || candidateDSN == "" {
+		return nil, errPostgresSourceProof
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	var nonce [32]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return nil, errPostgresSourceProof
+	}
+	if err := d.provePostgresSource(ctx, candidateDSN, nonce[:16]); err != nil {
+		return nil, errPostgresSourceProof
+	}
+	instance, incarnation, err := d.RecoveryIdentity()
+	if err != nil {
+		return nil, errPostgresSourceProof
+	}
+	issued := time.Now().UTC()
+	proof := &VerifiedPostgresSource{
+		owner: d, descriptor: sha256.Sum256([]byte(candidateDSN)),
+		issued: issued, expires: issued.Add(postgresSourceProofLifetime),
+	}
+	// The private random salt prevents the public evidence digest from serving
+	// as an offline oracle for guessed DSN passwords or hostnames.
+	hash := sha256.New()
+	_, _ = hash.Write([]byte("hikyo-same-postgres-source-v1\x00"))
+	_, _ = hash.Write(nonce[:])
+	_, _ = hash.Write(proof.descriptor[:])
+	_, _ = hash.Write([]byte(instance + "\x00" + incarnation + "\x00" + issued.Format(time.RFC3339Nano)))
+	proof.digest = hex.EncodeToString(hash.Sum(nil))
+	return proof, nil
+}
+
+// ValidateFor must run immediately before signing/submitting the exact rollout
+// and after rereading the immutable installed alias. It rechecks the live
+// challenge, not only immutable admission metadata, so changed recovery state
+// or a changed DNS destination cannot reuse earlier evidence. Expiry is never
+// extended by validation. The installed rollout authority owns execution.
+func (p *VerifiedPostgresSource) ValidateFor(ctx context.Context, current *DB, candidateDSN string, now time.Time) error {
+	if p == nil || p.owner == nil || p.owner != current || p.digest == "" || now.Before(p.issued) || !now.Before(p.expires) {
+		return errPostgresSourceProof
+	}
+	descriptor := sha256.Sum256([]byte(candidateDSN))
+	if subtle.ConstantTimeCompare(descriptor[:], p.descriptor[:]) != 1 {
+		return errPostgresSourceProof
+	}
+	if _, err := current.VerifyPostgresSource(ctx, candidateDSN); err != nil {
+		return errPostgresSourceProof
+	}
+	if !time.Now().Before(p.expires) {
+		return errPostgresSourceProof
+	}
+	return nil
+}
+
+func (d *DB) provePostgresSource(ctx context.Context, candidateDSN string, challenge []byte) error {
+	// Connection parsing errors can contain credentials and locators. None may
+	// cross this private helper's public, non-distinguishing error boundary.
+	cfg, err := pgxpool.ParseConfig(candidateDSN)
+	if err != nil {
+		return err
+	}
+	source, err := d.BeginPostgres(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return err
+	}
+	defer rollbackPostgresSourceProof(ctx, source)
+	if err := verifyPGDurability(ctx, source); err != nil {
+		return err
+	}
+	var identity postgresPoolIdentity
+	if err := source.QueryRow(ctx, "SELECT pg_catalog.current_database(), pg_catalog.current_schema()").Scan(&identity.database, &identity.schema); err != nil {
+		return err
+	}
+	var keys [2][2]int32
+	for index := range keys {
+		keys[index][0] = int32(binary.BigEndian.Uint32(challenge[index*8 : index*8+4]))
+		keys[index][1] = int32(binary.BigEndian.Uint32(challenge[index*8+4 : index*8+8]))
+		var held bool
+		if err := source.QueryRow(ctx, "SELECT pg_catalog.pg_try_advisory_xact_lock($1,$2)", keys[index][0], keys[index][1]).Scan(&held); err != nil {
+			return err
+		}
+		if !held {
+			return errPostgresSourceProof
+		}
+	}
+	candidate, err := pgx.ConnectConfig(ctx, cfg.ConnConfig.Copy())
+	if err != nil {
+		return err
+	}
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+		defer cancel()
+		_ = candidate.Close(cleanup)
+	}()
+	checked, err := d.beginPostgresOn(ctx, candidate, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return err
+	}
+	defer rollbackPostgresSourceProof(ctx, checked)
+	if err := verifyPGDurability(ctx, checked); err != nil {
+		return err
+	}
+	for _, key := range keys {
+		var acquired bool
+		if err := checked.QueryRow(ctx, "SELECT pg_catalog.pg_try_advisory_xact_lock($1,$2)", key[0], key[1]).Scan(&acquired); err != nil {
+			return err
+		}
+		if acquired {
+			return errPostgresSourceProof
+		}
+	}
+	var candidateIdentity postgresPoolIdentity
+	if err := checked.QueryRow(ctx, "SELECT pg_catalog.current_database(), pg_catalog.current_schema()").Scan(&candidateIdentity.database, &candidateIdentity.schema); err != nil {
+		return err
+	}
+	if candidateIdentity != identity {
+		return errPostgresSourceProof
+	}
+	if err := verifyPostgresRuntimePrivileges(ctx, source, checked, identity.schema); err != nil {
+		return err
+	}
+	return ctx.Err()
+}
+
+func rollbackPostgresSourceProof(ctx context.Context, tx *PostgresTransaction) {
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+	defer cancel()
+	_ = tx.Rollback(cleanup)
+}
+
+// verifyPostgresRuntimePrivileges reads ACLs without exercising writes. Resolve
+// relation OIDs from the admitted source transaction, not a candidate-controlled
+// search path. Ordinary runtime CRUD and consistent backups need the grants
+// below; migrations, restore, and DDL retain their separate operator authority.
+func verifyPostgresRuntimePrivileges(ctx context.Context, source, candidate *PostgresTransaction, schema string) error {
+	var allowed bool
+	if err := candidate.QueryRow(ctx, "SELECT pg_catalog.has_schema_privilege($1, 'USAGE')", schema).Scan(&allowed); err != nil {
+		return err
+	}
+	if !allowed {
+		return errPostgresSourceProof
+	}
+	rows, err := source.Query(ctx, `SELECT c.oid, c.relname, c.relkind::text FROM pg_catalog.pg_class c
+ JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+ WHERE n.nspname=$1 AND c.relkind IN ('r','p','S') ORDER BY c.relname`, schema)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	count := 0
+	for rows.Next() {
+		var oid uint32
+		var name, kind string
+		if err := rows.Scan(&oid, &name, &kind); err != nil {
+			return err
+		}
+		count++
+		privileges := []string{"SELECT", "INSERT", "UPDATE", "DELETE"}
+		function := "pg_catalog.has_table_privilege"
+		if kind == "S" {
+			function = "pg_catalog.has_sequence_privilege"
+			privileges = []string{"SELECT", "USAGE"}
+			if name == "goose_db_version_id_seq" {
+				privileges = []string{"SELECT"}
+			}
+		} else {
+			switch name {
+			case "goose_db_version", "upgrade_pending", "upgrade_nonces":
+				privileges = []string{"SELECT"}
+			case "upgrade_control":
+				// Admission's FOR SHARE needs UPDATE even in read-only transactions.
+				privileges = []string{"SELECT", "UPDATE"}
+			}
+		}
+		for _, privilege := range privileges {
+			// PostgreSQL's comma-separated privilege argument means ANY, not ALL.
+			// One call per privilege makes the conjunction explicit.
+			if err := candidate.QueryRow(ctx, "SELECT "+function+"($1::oid,$2::text)", oid, privilege).Scan(&allowed); err != nil {
+				return err
+			}
+			if !allowed {
+				return errPostgresSourceProof
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if count == 0 {
+		return errPostgresSourceProof
+	}
+	return nil
 }

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -109,6 +110,15 @@ func TestSelfConfigReauthRequiresFreshSupportedFactorAndSingleUse(t *testing.T) 
 			}
 			if err := consume(wrongOwner); !errors.Is(err, domain.ErrNotFound) {
 				t.Fatalf("foreign owner accepted: %v", err)
+			}
+			wrongTarget = target
+			wrongTarget.PlanDigest = strings.Repeat("a", 64)
+			wrongPlan, err := NewSelfConfigReauthIntent(wrongTarget)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := consume(wrongPlan); !errors.Is(err, ErrReauthUnitMismatch) {
+				t.Fatalf("unreviewed deployment plan accepted: %v", err)
 			}
 			wrongTarget = target
 			wrongTarget.Revision++

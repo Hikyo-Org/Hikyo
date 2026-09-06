@@ -159,6 +159,7 @@ export function CLIReauth() {
                 </>
               )}
             </p>
+            {transaction.data.self_config?.plan_digest === undefined ? null : <p>{transaction.data.self_config.action === 'rollout-restore' ? 'Restore deployment resources. The desired configuration stays fenced until a separate repair Apply.' : 'Controlled rollout.'} Prepared plan <code className="self-config-plan">{transaction.data.self_config.plan_digest}</code>. Authorization applies only to this exact plan.</p>}
             {methodsFailed ? (
               <ProviderDiscoveryAlert onRetry={() => void methods.refetch()} />
             ) : null}

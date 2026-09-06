@@ -19,6 +19,8 @@ type SelfConfigApplyRequest struct {
 	SchemaVersion                int
 	IdempotencyKey               string
 	ConfirmRestoredCredentials   bool
+	PrepareOnly                  bool
+	PlanDigest                   string
 }
 
 func (s *SelfConfig) bindingForActor(ctx context.Context, actor Actor, op authz.Operation) (store.SelfConfigBinding, error) {
@@ -114,7 +116,7 @@ func (s *SelfConfig) Apply(ctx context.Context, actor Actor, req SelfConfigApply
 	if err != nil {
 		return SelfConfigStatus{}, err
 	}
-	remaining := job.CreatedAt.Add(selfConfigConvergenceTimeout).Sub(checkedAt)
+	remaining := min(job.CreatedAt.Add(store.SelfConfigPreparationTTL).Sub(checkedAt), selfConfigConvergenceTimeout)
 	if remaining <= 0 {
 		return s.status(ctx, actor, job.ID)
 	}
@@ -170,6 +172,24 @@ func (s *SelfConfig) Apply(ctx context.Context, actor Actor, req SelfConfigApply
 	if err != nil {
 		return SelfConfigStatus{}, err
 	}
+	if req.PrepareOnly {
+		return s.status(ctx, actor, job.ID)
+	}
+	if req.PlanDigest != "" {
+		s.Keyring.LockHierarchyRotation()
+		defer s.Keyring.UnlockHierarchyRotation()
+	}
+	submission, err := s.prepareDeploymentCommit(preparationCtx, actor, b, job, req.PlanDigest)
+	if err != nil {
+		if errors.Is(err, ErrDeploymentPreparationExpired) {
+			return SelfConfigStatus{}, errors.Join(domain.ErrConflict, err, s.abortExpiredDeployment(ctx, actor, b, job))
+		}
+		return SelfConfigStatus{}, errors.Join(domain.ErrConflict, err)
+	}
+	commitAt, err = s.runtimeTimestamp(preparationCtx)
+	if err != nil {
+		return SelfConfigStatus{}, err
+	}
 	err = tx.Write(preparationCtx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, p, err := authorize(ctx, az, actor, authz.OpSelfConfigApply, selfConfigScope(b), s.now())
 		if err != nil {
@@ -189,15 +209,36 @@ func (s *SelfConfig) Apply(ctx context.Context, actor Actor, req SelfConfigApply
 		if currentBinding.Suspended != req.ConfirmRestoredCredentials {
 			return domain.ErrConflict
 		}
-		intent, err := NewSelfConfigReauthIntent(SelfConfigReauthTarget{Action: "apply", OwnerInstanceID: b.OwnerInstanceID, Revision: req.Revision, SchemaVersion: req.SchemaVersion, ExpectedGeneration: req.ExpectedGeneration, ConfirmRestoredCredentials: req.ConfirmRestoredCredentials})
+		rollout, err := r.SelfConfig().Rollout(ctx, p, current.ID)
+		if err != nil && !errors.Is(err, domain.ErrNotFound) {
+			return err
+		}
+		if err == nil && (rollout.PlanDigest == "" || rollout.PlanDigest != req.PlanDigest) || errors.Is(err, domain.ErrNotFound) && req.PlanDigest != "" {
+			return domain.ErrConflict
+		}
+		intent, err := NewSelfConfigReauthIntent(SelfConfigReauthTarget{Action: "apply", OwnerInstanceID: b.OwnerInstanceID, Revision: req.Revision, SchemaVersion: req.SchemaVersion, ExpectedGeneration: req.ExpectedGeneration, ConfirmRestoredCredentials: req.ConfirmRestoredCredentials, PlanDigest: req.PlanDigest})
 		if err != nil {
 			return err
 		}
 		if s.Auth == nil {
 			return errors.New("service: self-configuration apply requires reauthentication")
 		}
+		if err := s.requireOriginRecovery(ctx, az, caller, currentBinding, current, intent, s.now()); err != nil {
+			return err
+		}
 		if err := s.Auth.ConsumeSelfConfigReauth(ctx, az, caller, intent, s.now()); err != nil {
 			return err
+		}
+		if submission != nil {
+			if submission.PlanDigest != req.PlanDigest || submission.RowVersion != rollout.RowVersion {
+				return domain.ErrConflict
+			}
+			if err := s.commitDeploymentRoot(ctx, r, az, caller, submission, commitAt); err != nil {
+				return err
+			}
+			if err := r.SelfConfig().PutRollout(ctx, p, submission.SelfConfigRollout); err != nil {
+				return err
+			}
 		}
 		committed, err := r.SelfConfig().CommitJob(ctx, p, job.ID, commitAt)
 		if err != nil {

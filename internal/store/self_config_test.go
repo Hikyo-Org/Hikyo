@@ -273,7 +273,7 @@ func runSelfConfigStore(t *testing.T, db *store.DB) {
 			if err != nil {
 				return err
 			}
-			want := store.SelfConfigJob{ID: "job_first", IdempotencyKey: "first", PrincipalID: string(admin.Principal), SnapshotID: "snp_system_2", Revision: 2, SchemaVersion: 1, ExpectedGeneration: 1, LocalNodeID: "node-local", CreatedAt: now.Add(time.Second)}
+			want := store.SelfConfigJob{ID: "job_first", IdempotencyKey: "first", PrincipalID: string(admin.Principal), SnapshotID: "snp_system_2", Revision: 2, SchemaVersion: 1, ExpectedGeneration: 1, LocalNodeID: "node-local", CreatedAt: now}
 			job, err = r.SelfConfig().BeginJob(ctx, p, want)
 			if err != nil {
 				return err
@@ -297,6 +297,26 @@ func runSelfConfigStore(t *testing.T, db *store.DB) {
 			}
 			return nil
 		}))
+		for _, heartbeat := range []time.Time{time.Now().Add(-time.Minute), time.Now().Add(time.Minute)} {
+			must(write(func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+				p, err := az.SelfConfigRuntimeAuthority(ctx, job.SnapshotID)
+				if err != nil {
+					return err
+				}
+				return r.SelfConfig().PutNode(ctx, p, store.SelfConfigNode{NodeID: "node-local", JobID: job.ID, SchemaVersion: 1, Prepared: true, Incarnation: binding.Incarnation, UpdatedAt: heartbeat})
+			}))
+			must(write(func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+				p, err := az.Authorize(ctx, admin, authz.OpSelfConfigApply, scope)
+				if err != nil {
+					return err
+				}
+				// Caller-supplied timestamps cannot make a stale or future worker fresh.
+				if _, err := r.SelfConfig().CommitJob(ctx, p, job.ID, heartbeat); !errors.Is(err, domain.ErrConflict) {
+					return fmt.Errorf("invalid heartbeat committed: %v", err)
+				}
+				return nil
+			}))
+		}
 		must(write(func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 			p, err := az.SelfConfigRuntimeAuthority(ctx, job.SnapshotID)
 			if err != nil {
@@ -305,7 +325,7 @@ func runSelfConfigStore(t *testing.T, db *store.DB) {
 			if _, err := r.Snapshots().AtRevision(ctx, p, 2); err != nil {
 				return err
 			}
-			return r.SelfConfig().PutNode(ctx, p, store.SelfConfigNode{NodeID: "node-local", JobID: job.ID, SchemaVersion: 1, Prepared: true, Incarnation: binding.Incarnation, UpdatedAt: now.Add(2 * time.Second)})
+			return r.SelfConfig().PutNode(ctx, p, store.SelfConfigNode{NodeID: "node-local", JobID: job.ID, SchemaVersion: 1, Prepared: true, Incarnation: binding.Incarnation, UpdatedAt: now})
 		}))
 		must(write(func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 			p, err := az.Authorize(ctx, admin, authz.OpSelfConfigApply, scope)

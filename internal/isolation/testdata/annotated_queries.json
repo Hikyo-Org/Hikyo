@@ -79,6 +79,12 @@
   },
   {
     "engine": "postgres",
+    "name": "ClearSelfConfigSeedInputs",
+    "annotation": "instance-scoped",
+    "hash": "d27bb664779449865a5be63f640ebd3c9b55b8aafac377f140c3e54e103fe2b0"
+  },
+  {
+    "engine": "postgres",
     "name": "CommitSelfConfigTarget",
     "annotation": "instance-scoped",
     "hash": "4d75dd188f0589578361bf331ba5d24be0c9b35601e9085fb617e25e93de8aae"
@@ -205,9 +211,21 @@
   },
   {
     "engine": "postgres",
+    "name": "CountSelfConfigCompletedGeneration",
+    "annotation": "instance-scoped",
+    "hash": "00a1fa689686ee699b374045f9eaee9ea45ab4a5e395afdcf46b8319b0016e01"
+  },
+  {
+    "engine": "postgres",
     "name": "CountSelfConfigOpenJobs",
     "annotation": "instance-scoped",
     "hash": "3b92f6731db00b5f4d3a2ca226d3585f372a092a2a9f05e21a27c95294a28a29"
+  },
+  {
+    "engine": "postgres",
+    "name": "CountSelfConfigRootFinalizationBlockers",
+    "annotation": "instance-scoped",
+    "hash": "264de9a48675debb7e1a18581ecb616ff587bc5b2301988df334fd7e6ecc2bfb"
   },
   {
     "engine": "postgres",
@@ -739,6 +757,12 @@
   },
   {
     "engine": "postgres",
+    "name": "GetSelfConfigClock",
+    "annotation": "instance-scoped",
+    "hash": "fb837d58102d67a5900b8e69a265b1ed98e00418c8cc25a74fcaad9ef548c354"
+  },
+  {
+    "engine": "postgres",
     "name": "GetSelfConfigJob",
     "annotation": "instance-scoped",
     "hash": "6965a5ac64e25aa974d863924e17b85e189aadf893bb018b67c4d2e6bca391be"
@@ -751,9 +775,21 @@
   },
   {
     "engine": "postgres",
+    "name": "GetSelfConfigPreviousRevision",
+    "annotation": "instance-scoped",
+    "hash": "b2b289dd578d0c0353c5bf4ad46a10d226c9132cad4cf68acac606f9a020dd6a"
+  },
+  {
+    "engine": "postgres",
     "name": "GetSelfConfigRetentionSlot",
     "annotation": "instance-scoped",
     "hash": "b22d5d846e97822a2398ec07e374aa6b9213328332299d17a997a7bbb9a5035a"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetSelfConfigRollout",
+    "annotation": "instance-scoped",
+    "hash": "2e4a63f67e25b048d7f3adc53649a2d617e740d061142f35785b4660ca9e0f8a"
   },
   {
     "engine": "postgres",
@@ -952,6 +988,12 @@
     "name": "InsertSelfConfigJob",
     "annotation": "instance-scoped",
     "hash": "eeadb2f00b6ed9819430f09cafaa9db0cf9a2deaa0935dff24c9fb0799e03238"
+  },
+  {
+    "engine": "postgres",
+    "name": "InsertSelfConfigRollout",
+    "annotation": "instance-scoped",
+    "hash": "2bc512c5b7c00c3cbec10b98d1fc826fca8d169d2ef6af3e4ae6bb92c533983e"
   },
   {
     "engine": "postgres",
@@ -1243,6 +1285,12 @@
   },
   {
     "engine": "postgres",
+    "name": "ListSelfConfigSeedInputs",
+    "annotation": "instance-scoped",
+    "hash": "dec0d5280e3d28f232de2ba8afb4240212a07b618048036dede84486b39a599f"
+  },
+  {
+    "engine": "postgres",
     "name": "ListServiceAccounts",
     "annotation": "authn-resolution",
     "hash": "6e2c462b123e4db1dc3bf0f2f18c55cc23417f2e3ceff9439222e4d06462f2c0"
@@ -1360,6 +1408,12 @@
     "name": "MaxKnownCredentialEpoch",
     "annotation": "authn-resolution",
     "hash": "d6a81ebbace5365c7148826efad827daf672e7b66768db14dc5d25b565c4afee"
+  },
+  {
+    "engine": "postgres",
+    "name": "NextSelfConfigRolloutSequence",
+    "annotation": "instance-scoped",
+    "hash": "142b9b25c38d010c00fd479d5d7e745140a8bb81c872e40eb2f1c7c7e50c1065"
   },
   {
     "engine": "postgres",
@@ -1522,6 +1576,18 @@
     "name": "PutSelfConfigNode",
     "annotation": "instance-scoped",
     "hash": "3391c221f943f1719fedecb0ec91918013b339ad533ea834496d40492609f698"
+  },
+  {
+    "engine": "postgres",
+    "name": "PutSelfConfigSeedAttestation",
+    "annotation": "instance-scoped",
+    "hash": "f6538fa1358e3cbc97c336c9c3fe27b59a4757e7f1d6a49d7072159aa66b2539"
+  },
+  {
+    "engine": "postgres",
+    "name": "PutSelfConfigSeedInput",
+    "annotation": "instance-scoped",
+    "hash": "744b19fc468e312bbb433291a31e618611d7ec774e12293a341d4021b2ea1f4e"
   },
   {
     "engine": "postgres",
@@ -1849,6 +1915,12 @@
   },
   {
     "engine": "postgres",
+    "name": "UpdateSelfConfigRollout",
+    "annotation": "instance-scoped",
+    "hash": "4b23597f5cfc5d4fa2d483a4d9dfe9016efc240d557f7f00d4c059f9d8d8668c"
+  },
+  {
+    "engine": "postgres",
     "name": "WorkloadPinState",
     "annotation": "authn-resolution",
     "hash": "d4f2496c0094b063c110558adc1f66c63441085d56f0895dfb2fa77596f7af07"
@@ -1948,6 +2020,12 @@
     "name": "ClampIndefiniteCredentials",
     "annotation": "authn-resolution",
     "hash": "04d40c04f5f17d79bda3a4f3da532ad76a8b61eef44aeb116ee61342cb4ce005"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ClearSelfConfigSeedInputs",
+    "annotation": "instance-scoped",
+    "hash": "d27bb664779449865a5be63f640ebd3c9b55b8aafac377f140c3e54e103fe2b0"
   },
   {
     "engine": "sqlite",
@@ -2077,9 +2155,21 @@
   },
   {
     "engine": "sqlite",
+    "name": "CountSelfConfigCompletedGeneration",
+    "annotation": "instance-scoped",
+    "hash": "00a1fa689686ee699b374045f9eaee9ea45ab4a5e395afdcf46b8319b0016e01"
+  },
+  {
+    "engine": "sqlite",
     "name": "CountSelfConfigOpenJobs",
     "annotation": "instance-scoped",
     "hash": "3b92f6731db00b5f4d3a2ca226d3585f372a092a2a9f05e21a27c95294a28a29"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CountSelfConfigRootFinalizationBlockers",
+    "annotation": "instance-scoped",
+    "hash": "264de9a48675debb7e1a18581ecb616ff587bc5b2301988df334fd7e6ecc2bfb"
   },
   {
     "engine": "sqlite",
@@ -2611,6 +2701,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "GetSelfConfigClock",
+    "annotation": "instance-scoped",
+    "hash": "b49c36bf873f28655e623c4c8c67f8a845c18f61693899951b066efb7abc37ba"
+  },
+  {
+    "engine": "sqlite",
     "name": "GetSelfConfigJob",
     "annotation": "instance-scoped",
     "hash": "6965a5ac64e25aa974d863924e17b85e189aadf893bb018b67c4d2e6bca391be"
@@ -2623,9 +2719,21 @@
   },
   {
     "engine": "sqlite",
+    "name": "GetSelfConfigPreviousRevision",
+    "annotation": "instance-scoped",
+    "hash": "b2b289dd578d0c0353c5bf4ad46a10d226c9132cad4cf68acac606f9a020dd6a"
+  },
+  {
+    "engine": "sqlite",
     "name": "GetSelfConfigRetentionSlot",
     "annotation": "instance-scoped",
     "hash": "b22d5d846e97822a2398ec07e374aa6b9213328332299d17a997a7bbb9a5035a"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetSelfConfigRollout",
+    "annotation": "instance-scoped",
+    "hash": "2e4a63f67e25b048d7f3adc53649a2d617e740d061142f35785b4660ca9e0f8a"
   },
   {
     "engine": "sqlite",
@@ -2824,6 +2932,12 @@
     "name": "InsertSelfConfigJob",
     "annotation": "instance-scoped",
     "hash": "065c9e08cf19ed1613c8b498ccf8522da8c3ded5e468fc4838a3dc3b04beec8c"
+  },
+  {
+    "engine": "sqlite",
+    "name": "InsertSelfConfigRollout",
+    "annotation": "instance-scoped",
+    "hash": "2bc512c5b7c00c3cbec10b98d1fc826fca8d169d2ef6af3e4ae6bb92c533983e"
   },
   {
     "engine": "sqlite",
@@ -3115,6 +3229,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "ListSelfConfigSeedInputs",
+    "annotation": "instance-scoped",
+    "hash": "dec0d5280e3d28f232de2ba8afb4240212a07b618048036dede84486b39a599f"
+  },
+  {
+    "engine": "sqlite",
     "name": "ListServiceAccounts",
     "annotation": "authn-resolution",
     "hash": "38eadb7b55b69f037445fca03be3286eb89eaec8e0f1249992e44b6c2cab5159"
@@ -3232,6 +3352,12 @@
     "name": "MaxKnownCredentialEpoch",
     "annotation": "authn-resolution",
     "hash": "927bb4a7a50553e3118b066cb53bcf1299685743daeaaf6c5768d55c6ee68d8f"
+  },
+  {
+    "engine": "sqlite",
+    "name": "NextSelfConfigRolloutSequence",
+    "annotation": "instance-scoped",
+    "hash": "142b9b25c38d010c00fd479d5d7e745140a8bb81c872e40eb2f1c7c7e50c1065"
   },
   {
     "engine": "sqlite",
@@ -3394,6 +3520,18 @@
     "name": "PutSelfConfigNode",
     "annotation": "instance-scoped",
     "hash": "3391c221f943f1719fedecb0ec91918013b339ad533ea834496d40492609f698"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PutSelfConfigSeedAttestation",
+    "annotation": "instance-scoped",
+    "hash": "f6538fa1358e3cbc97c336c9c3fe27b59a4757e7f1d6a49d7072159aa66b2539"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PutSelfConfigSeedInput",
+    "annotation": "instance-scoped",
+    "hash": "744b19fc468e312bbb433291a31e618611d7ec774e12293a341d4021b2ea1f4e"
   },
   {
     "engine": "sqlite",
@@ -3718,6 +3856,12 @@
     "name": "UpdateSelfConfigJob",
     "annotation": "instance-scoped",
     "hash": "9ebcfa7f6b507d5efb132d6109d6ca6eef20c2772d527eeae57dfeaf28f11a54"
+  },
+  {
+    "engine": "sqlite",
+    "name": "UpdateSelfConfigRollout",
+    "annotation": "instance-scoped",
+    "hash": "4b23597f5cfc5d4fa2d483a4d9dfe9016efc240d557f7f00d4c059f9d8d8668c"
   },
   {
     "engine": "sqlite",

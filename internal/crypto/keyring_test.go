@@ -684,3 +684,45 @@ func TestSealerSurvivesCacheEviction(t *testing.T) {
 		t.Fatalf("ciphertext sealed by evicted sealer: %q, %v", pt, err)
 	}
 }
+
+func TestRootKeyRotationPrepareRefusesExternallyAdvancedMaster(t *testing.T) {
+	ctx := t.Context()
+	ks := newMemStore()
+	root := newRoot(t)
+	stale, err := LoadKeyring(ctx, ks, bytes.Clone(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	external, err := LoadKeyring(ctx, ks, bytes.Clone(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	master, rewrapped, adopt, abort, err := external.PrepareMasterKeyRotation(ctx, bytes.Clone(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer abort()
+	ks.master = &master
+	for _, rw := range rewrapped {
+		scope := t3key(rw.Purpose, rw.OrgID, rw.ProjectID)
+		for i, row := range ks.tier3[scope] {
+			if row.Version == rw.Version {
+				ks.tier3[scope][i] = rw
+			}
+		}
+	}
+	adopt()
+	nextRoot := newRoot(t)
+	wrapper, err := stale.PrepareRootKeyRotation(ctx, bytes.Clone(nextRoot))
+	if !errors.Is(err, ErrStaleMaster) || len(wrapper.Blob) != 0 {
+		t.Fatalf("stale master sealed under new version: err=%v", err)
+	}
+	wrapper, err = external.PrepareRootKeyRotation(ctx, bytes.Clone(nextRoot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ks.extraMasters = append(ks.extraMasters, wrapper)
+	if _, err := LoadKeyring(ctx, ks, bytes.Clone(nextRoot)); err != nil {
+		t.Fatalf("current master wrapper cannot reboot: %v", err)
+	}
+}

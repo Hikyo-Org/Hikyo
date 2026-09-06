@@ -103,7 +103,7 @@ func (s *Auth) BootstrapAdmin(ctx context.Context, username, displayName, delive
 	var configSeed selfConfigSeed
 	if s.SelfConfig != nil {
 		var err error
-		configSeed, err = s.SelfConfig.prepareSeed()
+		configSeed, err = s.SelfConfig.prepareAdoptionSeed(ctx, nil)
 		if err != nil {
 			return BootstrapResult{}, err
 		}

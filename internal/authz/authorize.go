@@ -283,7 +283,7 @@ func (a *TxAuthorizer) authorizeInstance(ctx context.Context, caller Identity, o
 // operation set in the system registry — growth of either set fails the
 // build until the tenant-isolation ADR is amended (invariant 11).
 func SystemAuthority(site SystemSite, tok *TxToken) (Proof, error) {
-	if site == SiteSelfConfigRuntime || site == SiteSelfConfigRecovery {
+	if site == SiteSelfConfigRuntime || site == SiteSelfConfigRecovery || site == SiteSelfConfigSeed {
 		return nil, errors.New("authz: self-config runtime authority requires its bound resolver")
 	}
 	if _, ok := systemSites[site]; !ok {
@@ -300,7 +300,7 @@ func SystemAuthority(site SystemSite, tok *TxToken) (Proof, error) {
 // the acted-on tenant trail: callers may supply identifiers, but the proof
 // carries only the canonical chain resolved inside this transaction.
 func (a *TxAuthorizer) ScopedSystemAuthority(ctx context.Context, site SystemSite, scope domain.Scope) (Proof, error) {
-	if site == SiteSelfConfigRuntime || site == SiteSelfConfigRecovery {
+	if site == SiteSelfConfigRuntime || site == SiteSelfConfigRecovery || site == SiteSelfConfigSeed {
 		return nil, errors.New("authz: self-config runtime authority requires its bound resolver")
 	}
 	if _, ok := systemSites[site]; !ok {

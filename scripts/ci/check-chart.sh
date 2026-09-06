@@ -647,3 +647,5 @@ ha_config_refused --set ha.replicaCount=2 --set ha.minAvailable=3
 ha_config_refused --set ha.replicaCount=1
 
 printf 'Chart check: cluster-wide, namespaced, no-rollout, hardening, HA, and refusal assertions passed\n'
+
+python3 "$(dirname -- "$0")/check-config-rollout-chart.py" --chart "$chart"

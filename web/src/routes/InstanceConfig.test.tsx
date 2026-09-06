@@ -13,8 +13,10 @@ import { InstanceConfig } from './InstanceConfig.tsx';
 
 const active = { owner_instance_id: 'instance_local', managed: true, binding: { org_id: 'org_system', project_id: 'prj_system', environment_id: 'env_system', schema_version: 1 }, generation: 7, desired_revision: 2, latest_revision: 3, state: 'active', nodes: [{ node_id: 'node-a', active_generation: 7, active_revision: 2, state: 'active', updated_at: '2026-09-06T12:00:00Z' }], job: null };
 const completedJob = { id: 'job-complete', state: 'completed', revision: 2, generation: 7, created_at: '2026-09-06T11:00:00Z', completed_at: '2026-09-06T11:01:00Z' };
+const preparedJob = { ...completedJob, id: 'job-prepared', state: 'preparing', revision: 3, generation: 8, prepared: true };
+const prepared = { ...active, state: 'pending', job: preparedJob };
 const json = (value: object, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
-const bodySchema = z.object({ revision: z.number(), expected_generation: z.number(), schema_version: z.number(), idempotency_key: z.string(), confirm_restored_credentials: z.boolean() });
+const bodySchema = z.object({ revision: z.number(), expected_generation: z.number(), schema_version: z.number(), idempotency_key: z.string(), confirm_restored_credentials: z.boolean(), prepare_only: z.boolean().optional(), restore_deployment: z.boolean().optional(), plan_digest: z.string().optional() });
 afterEach(() => vi.unstubAllGlobals());
 function button(container: ParentNode, label: string) {
  const found = [...container.querySelectorAll('button')].find((entry) => entry.textContent === label);
@@ -56,6 +58,7 @@ describe('managed instance configuration', () => {
  it.each([false, true])('reauthenticates exact revision and restore confirmation %s', async (recovering) => {
   const seen: string[] = [];
   let applied: z.infer<typeof bodySchema> | undefined;
+  let preparation: z.infer<typeof bodySchema> | undefined;
   const view = await mount(asyncHandler);
   async function asyncHandler(request: Request) {
    const path = new URL(request.url).pathname;
@@ -68,7 +71,7 @@ describe('managed instance configuration', () => {
     expect(proof.self_config.confirm_restored_credentials).toBe(recovering);
     return json({ session_id: authenticatedIdentity.session.id, environment_id: 'instance:instance_local', single_decision: true, window_expires: '2026-09-06T12:05:00Z' });
    }
-   if (path === '/api/v1/instance/config/apply') { applied = bodySchema.parse(await request.json()); return json({ ...active, state: 'pending', desired_revision: 3, generation: 8 }, 202); }
+   if (path === '/api/v1/instance/config/apply') { const body = bodySchema.parse(await request.json()); if (body.prepare_only) { preparation = body; return json({ ...prepared, state: recovering ? 'recovery_required' : 'pending' }, 202); } applied = body; return json({ ...active, state: 'pending', desired_revision: 3, generation: 8 }, 202); }
    return null;
   }
   try {
@@ -80,7 +83,9 @@ describe('managed instance configuration', () => {
     await act(async () => confirmation.click());
    }
    await act(async () => button(view.container, 'Apply selected revision').click());
-   expect(seen).toEqual([]);
+   await settleTask();
+   expect(seen).toEqual(['/api/v1/instance/config/apply']);
+   expect(view.container.textContent).toContain('Reload live');
    const dialog = view.container.querySelector('dialog');
    if (!(dialog instanceof HTMLDialogElement)) throw new Error('Missing decision dialog');
    const input = dialog.querySelector('input');
@@ -92,14 +97,182 @@ describe('managed instance configuration', () => {
    await act(async () => button(dialog, 'Authorize with code').click());
    await settleTask();
    expect(dialog.querySelector('[role="alert"]')?.textContent).toBeUndefined();
-   expect(seen).toEqual(['/api/v1/auth/reauth/totp', '/api/v1/instance/config/apply']);
+   expect(seen).toEqual(['/api/v1/instance/config/apply', '/api/v1/auth/reauth/totp', '/api/v1/instance/config/apply']);
+   expect(applied?.idempotency_key).toBe(preparation?.idempotency_key);
+   expect(applied?.prepare_only).toBeUndefined();
    expect(applied).toMatchObject({ revision: 3, expected_generation: 7, schema_version: 1, confirm_restored_credentials: recovering });
    expect(applied?.idempotency_key).toMatch(/^[a-f0-9-]{36}$/);
   } finally { await view.unmount(); }
  });
- it('shows partial convergence and prevents another apply', async () => {
-  const view = await mount((request) => new URL(request.url).pathname === '/api/v1/instance/config' ? json({ ...active, state: 'partial', job: { ...completedJob, state: 'partial' } }) : null);
-  try { await settleTask(); expect(view.container.textContent).toContain('not a completed apply'); expect(button(view.container, 'Apply selected revision').disabled).toBe(true); } finally { await view.unmount(); }
+ it.each(z.enum(['failed', 'preparing']).options)('does not report success when final Apply returns %s', async (state) => {
+  const view = await mount(async (request) => {
+   const path = new URL(request.url).pathname;
+   if (path === '/api/v1/instance/config/apply') {
+    const body = bodySchema.parse(await request.json());
+    return json(body.prepare_only ? prepared : { ...prepared, job: { ...preparedJob, state } }, 202);
+   }
+   if (path === '/api/v1/auth/reauth/totp') return json({ session_id: authenticatedIdentity.session.id, environment_id: 'instance:instance_local', single_decision: true, window_expires: '2026-09-06T12:05:00Z' });
+   return null;
+  });
+  try {
+   await settleTask(); await act(async () => button(view.container, 'Apply selected revision').click()); await settleTask();
+   const dialog = view.container.querySelector('dialog');
+   if (dialog === null) throw new Error('Missing decision');
+   const code = dialog.querySelector('input'); if (!(code instanceof HTMLInputElement)) throw new Error('Missing code');
+   await act(async () => typeInto(code, '123456'));
+   await act(async () => button(dialog, 'Authorize with code').click()); await settleTask();
+   expect(view.container.querySelector('dialog')).toBeNull();
+   expect(view.container.textContent).not.toContain('Apply committed');
+   expect(view.container.textContent).not.toContain('Revision r3 is active');
+   expect(view.container.textContent).toContain(state === 'failed' ? 'Preparation expired or failed' : 'Preparation is still pending');
+   if (state === 'preparing') expect(button(view.container, 'Check preparation')).toBeDefined();
+  } finally { await view.unmount(); }
+ });
+ it('binds controlled rollout review, MFA and final apply to the same prepared plan and key', async () => {
+  const digest = 'a'.repeat(64);
+  const requests: z.infer<typeof bodySchema>[] = [];
+  let authorized = false;
+  const view = await mount(async (request) => {
+   const path = new URL(request.url).pathname;
+   if (path === '/api/v1/instance/config/apply') {
+    const body = bodySchema.parse(await request.json()); requests.push(body);
+    if (body.prepare_only) return json({ ...prepared, job: { ...preparedJob, plan_digest: digest } }, 202);
+    expect(authorized).toBe(true);
+    return json({ ...active, generation: 8, desired_revision: 3, job: { ...completedJob, revision: 3, generation: 8 } }, 202);
+   }
+   if (path === '/api/v1/auth/reauth/totp') {
+    const proof = z.object({ self_config: z.object({ plan_digest: z.string(), revision: z.number(), expected_generation: z.number() }) }).parse(await request.json());
+    expect(proof.self_config).toEqual({ plan_digest: digest, revision: 3, expected_generation: 7 }); authorized = true;
+    return json({ session_id: authenticatedIdentity.session.id, environment_id: 'instance:instance_local', single_decision: true, window_expires: '2026-09-06T12:05:00Z' });
+   }
+   return null;
+  });
+  try {
+   await settleTask(); await act(async () => button(view.container, 'Apply selected revision').click()); await settleTask();
+   const dialog = view.container.querySelector('dialog');
+   if (dialog === null) throw new Error('Missing prepared decision');
+   expect(dialog.textContent).toContain('Controlled rollout'); expect(dialog.textContent).toContain(digest);
+   expect(authorized).toBe(false);
+   const code = dialog.querySelector('input'); if (!(code instanceof HTMLInputElement)) throw new Error('Missing code');
+   await act(async () => typeInto(code, '123456'));
+   await act(async () => button(dialog, 'Authorize with code').click()); await settleTask();
+   expect(requests).toHaveLength(2);
+   expect(requests[0]?.prepare_only).toBe(true); expect(requests[0]?.plan_digest).toBeUndefined();
+   expect(requests[1]?.plan_digest).toBe(digest); expect(requests[1]?.idempotency_key).toBe(requests[0]?.idempotency_key);
+   expect(view.container.textContent).toContain('Revision r3 is active.');
+  } finally { await view.unmount(); }
+ });
+ it.each([
+  { label: 'incomplete', response: { ...prepared, job: { ...preparedJob, prepared: false } }, waiting: true },
+  { label: 'expired', response: { ...prepared, job: { ...preparedJob, state: 'failed' } }, waiting: false },
+  { label: 'wrong revision', response: { ...prepared, job: { ...preparedJob, revision: 2 } }, waiting: false },
+  { label: 'wrong generation', response: { ...prepared, generation: 8 }, waiting: false },
+  { label: 'wrong owner', response: { ...prepared, owner_instance_id: 'instance_other' }, waiting: false },
+ ])('never requests MFA for $label preparation', async ({ response, waiting }) => {
+  const writes: string[] = [];
+  const view = await mount((request) => { if (request.method === 'POST') { writes.push(new URL(request.url).pathname); return json(response, 202); } return null; });
+  try {
+   await settleTask(); await act(async () => button(view.container, 'Apply selected revision').click()); await settleTask();
+   expect(view.container.querySelector('dialog')).toBeNull();
+   expect(writes).toEqual(['/api/v1/instance/config/apply']);
+   if (waiting) expect(view.container.textContent).toContain('Preparing alone does not authorize Apply');
+   else expect(view.container.querySelector('[role=alert]')).not.toBeNull();
+  } finally { await view.unmount(); }
+ });
+ it('keeps the exact idempotency key while waiting and refuses a replacement job', async () => {
+  const keys: string[] = [];
+  const view = await mount(async (request) => {
+   if (new URL(request.url).pathname !== '/api/v1/instance/config/apply') return null;
+   const body = bodySchema.parse(await request.json()); keys.push(body.idempotency_key);
+   return json({ ...prepared, job: { ...preparedJob, id: keys.length === 1 ? 'job-original' : 'job-replaced', prepared: keys.length !== 1 } }, 202);
+  });
+  try {
+   await settleTask(); await act(async () => button(view.container, 'Apply selected revision').click()); await settleTask();
+   expect(view.container.querySelector('dialog')).toBeNull();
+   await act(async () => button(view.container, 'Check preparation').click()); await settleTask();
+   expect(keys).toHaveLength(2); expect(keys[0]).toBe(keys[1]);
+   expect(view.container.querySelector('dialog')).toBeNull();
+   expect(view.container.textContent).toContain('changed during preparation');
+  } finally { await view.unmount(); }
+ });
+ it('resumes a cancelled review with the same preparation key', async () => {
+  const keys: string[] = [];
+  const view = await mount(async (request) => {
+   if (new URL(request.url).pathname !== '/api/v1/instance/config/apply') return null;
+   const body = bodySchema.parse(await request.json()); keys.push(body.idempotency_key); return json(prepared, 202);
+  });
+  try {
+   await settleTask(); await act(async () => button(view.container, 'Apply selected revision').click()); await settleTask();
+   const dialog = view.container.querySelector('dialog'); if (dialog === null) throw new Error('Missing review');
+   await act(async () => button(dialog, 'Cancel').click());
+   await act(async () => button(view.container, 'Check preparation').click()); await settleTask();
+   expect(keys).toHaveLength(2); expect(keys[0]).toBe(keys[1]); expect(view.container.querySelector('dialog')).not.toBeNull();
+  } finally { await view.unmount(); }
+ });
+ it('retains a preparation key after an ambiguous network failure', async () => {
+  const keys: string[] = [];
+  const view = await mount(async (request) => {
+   if (new URL(request.url).pathname !== '/api/v1/instance/config/apply') return null;
+   const body = bodySchema.parse(await request.json()); keys.push(body.idempotency_key);
+   if (keys.length === 1) throw new TypeError('Connection lost');
+   return json(prepared, 202);
+  });
+  try {
+   await settleTask(); await act(async () => button(view.container, 'Apply selected revision').click()); await settleTask();
+   expect(view.container.querySelector('dialog')).toBeNull();
+   await act(async () => button(view.container, 'Check preparation').click()); await settleTask();
+   expect(keys).toHaveLength(2); expect(keys[0]).toBe(keys[1]); expect(view.container.querySelector('dialog')).not.toBeNull();
+  } finally { await view.unmount(); }
+ });
+ it('requires a distinct exact MFA decision before restoring a partial deployment', async () => {
+  const digest = 'c'.repeat(64);
+  const partial = { ...active, state: 'partial', job: { ...completedJob, state: 'partial', plan_digest: digest } };
+  const writes: string[] = [];
+  const view = await mount(async (request) => {
+   const path = new URL(request.url).pathname;
+   if (path === '/api/v1/instance/config') return json(partial);
+   if (request.method !== 'POST') return null;
+   writes.push(path);
+   if (path === '/api/v1/auth/reauth/totp') {
+    const proof = z.object({ self_config: z.object({ action: z.literal('rollout-restore'), revision: z.literal(2), expected_generation: z.literal(7), plan_digest: z.literal(digest), confirm_restored_credentials: z.literal(false) }) }).parse(await request.json());
+    expect(proof.self_config.action).toBe('rollout-restore');
+    return json({ session_id: authenticatedIdentity.session.id, environment_id: 'instance:instance_local', single_decision: true, window_expires: '2026-09-06T12:05:00Z' });
+   }
+   if (path === '/api/v1/instance/config/apply') {
+    const body = bodySchema.parse(await request.json());
+    expect(body).toMatchObject({ revision: 2, expected_generation: 7, plan_digest: digest, restore_deployment: true, confirm_restored_credentials: false });
+    expect(body.prepare_only).toBeUndefined();
+    return json({ ...partial, job: { ...partial.job, deployment_restore_pending: true } }, 202);
+   }
+   return null;
+  });
+  try {
+   await settleTask(); expect(button(view.container, 'Apply selected revision').disabled).toBe(true);
+   await act(async () => button(view.container, 'Restore deployment').click()); expect(writes).toEqual([]);
+   let dialog = view.container.querySelector('dialog'); if (dialog === null) throw new Error('Missing restore review');
+   expect(dialog.textContent).toContain('desired revision stays unchanged and fenced');
+   await act(async () => { if (dialog !== null) button(dialog, 'Cancel').click(); }); expect(writes).toEqual([]);
+   await act(async () => button(view.container, 'Restore deployment').click());
+   dialog = view.container.querySelector('dialog'); if (dialog === null) throw new Error('Missing restore review');
+   const code = dialog.querySelector('input'); if (!(code instanceof HTMLInputElement)) throw new Error('Missing code');
+   await act(async () => typeInto(code, '123456'));
+   await act(async () => { if (dialog !== null) button(dialog, 'Authorize with code').click(); }); await settleTask();
+   expect(writes).toEqual(['/api/v1/auth/reauth/totp', '/api/v1/instance/config/apply']);
+   expect(view.container.textContent).toContain('Deployment restoration requested');
+   expect(view.container.textContent).not.toContain('Revision r2 is active.');
+  } finally { await view.unmount(); }
+ });
+ it.each([false, true])('allows a new repair only after deployment restored=%s', async (restored) => {
+  const view = await mount((request) => new URL(request.url).pathname === '/api/v1/instance/config' ? json({ ...active, state: 'partial', job: { ...completedJob, state: 'partial', plan_digest: 'd'.repeat(64), deployment_restore_pending: !restored, deployment_restored: restored } }) : null);
+  try {
+   await settleTask(); expect(button(view.container, 'Apply selected revision').disabled).toBe(!restored);
+   expect([...view.container.querySelectorAll('button')].some((entry) => entry.textContent === 'Restore deployment')).toBe(false);
+   expect(view.container.textContent).toContain(restored ? 'Deployment resources are restored' : 'restoration is pending controller confirmation');
+  } finally { await view.unmount(); }
+ });
+ it('allows a separately authenticated repair after partial activation', async () => {
+  const view = await mount((request) => new URL(request.url).pathname === '/api/v1/instance/config' ? json({ ...active, state: 'partial', job: { ...completedJob, state: 'partial' } }) : new URL(request.url).pathname === '/api/v1/instance/config/apply' ? json(prepared, 202) : null);
+  try { await settleTask(); expect(view.container.textContent).toContain('publish a repair'); expect(button(view.container, 'Apply selected revision').disabled).toBe(false); await act(async () => button(view.container, 'Apply selected revision').click()); await settleTask(); expect(view.container.querySelector('dialog')).not.toBeNull(); } finally { await view.unmount(); }
  });
  it('allows a new membership decision when the prior job completed and a retired node is unknown', async () => {
   const view = await mount((request) => new URL(request.url).pathname === '/api/v1/instance/config' ? json({ ...active, state: 'pending', job: completedJob, nodes: [{ ...active.nodes[0], state: 'unknown' }] }) : null);

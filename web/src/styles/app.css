@@ -6226,3 +6226,5 @@ select {
   .self-config-controls .btn { min-height: 44px; }
   #configuration-instances .settings-row { align-items: stretch; flex-wrap: wrap; }
 }
+
+.self-config-plan { overflow-wrap: anywhere; }

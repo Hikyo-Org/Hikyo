@@ -570,7 +570,7 @@ func TestSelfConfigExpiredApplyRetryDoesNotRestartPreparation(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				_, err = r.SelfConfig().BeginJob(ctx, proof, store.SelfConfigJob{ID: "scj_expired", IdempotencyKey: "expired-request", PrincipalID: string(caller.Principal), SnapshotID: snapshot.ID, Revision: 1, SchemaVersion: runtimeconfig.SchemaVersion, ExpectedGeneration: 1, CreatedAt: at.Add(-31 * time.Second), LocalNodeID: s.NodeID})
+				_, err = r.SelfConfig().BeginJob(ctx, proof, store.SelfConfigJob{ID: "scj_expired", IdempotencyKey: "expired-request", PrincipalID: string(caller.Principal), SnapshotID: snapshot.ID, Revision: 1, SchemaVersion: runtimeconfig.SchemaVersion, ExpectedGeneration: 1, CreatedAt: at.Add(-store.SelfConfigPreparationTTL - time.Second), LocalNodeID: s.NodeID})
 				return err
 			})
 			if err != nil {

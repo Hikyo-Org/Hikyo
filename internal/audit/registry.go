@@ -19,17 +19,18 @@ type EventType string
 // the surfaces that replace them — #47/#48/#54/#55 — under the completeness
 // invariant, which forces every newly registered operation to map here).
 const (
-	EventSelfConfigResumed         EventType = "self_config.resumed"
-	EventSelfConfigTargetCommitted EventType = "self_config.target_committed"
-	EventSelfConfigRecovered       EventType = "self_config.recovered"
-	EventSelfConfigStatusRead      EventType = "self_config.status_read"
-	EventSelfConfigAdopted         EventType = "self_config.adopted"
-	EventSelfConfigApplyRequested  EventType = "self_config.apply_requested"
-	EventSelfConfigTestRequested   EventType = "self_config.test_requested"
-	EventSelfConfigTestCompleted   EventType = "self_config.test_completed"
-	EventSelfConfigProjectPrepared EventType = "self_config.project_prepared"
-	EventSelfConfigApplied         EventType = "self_config.applied"
-	EventSelfConfigRecoveryFenced  EventType = "self_config.recovery_fenced"
+	EventSelfConfigResumed                    EventType = "self_config.resumed"
+	EventSelfConfigTargetCommitted            EventType = "self_config.target_committed"
+	EventSelfConfigRecovered                  EventType = "self_config.recovered"
+	EventSelfConfigStatusRead                 EventType = "self_config.status_read"
+	EventSelfConfigAdopted                    EventType = "self_config.adopted"
+	EventSelfConfigApplyRequested             EventType = "self_config.apply_requested"
+	EventSelfConfigDeploymentRestoreRequested EventType = "self_config.deployment_restore_requested"
+	EventSelfConfigTestRequested              EventType = "self_config.test_requested"
+	EventSelfConfigTestCompleted              EventType = "self_config.test_completed"
+	EventSelfConfigProjectPrepared            EventType = "self_config.project_prepared"
+	EventSelfConfigApplied                    EventType = "self_config.applied"
+	EventSelfConfigRecoveryFenced             EventType = "self_config.recovery_fenced"
 	// grant.denied is the per-event authorization denial (#15's per-event
 	// obligation; audit-model ADR § Denials). Resolvable denials land in the
 	// tenant trail with the truthful resolved chain; unresolvable denials
@@ -862,6 +863,10 @@ var registry = map[EventType]TypeSpec{
 		"owner_instance_id": {Kind: KindString, Required: true}, "revision": {Kind: KindInt, NonNegative: true}, "generation": {Kind: KindInt, NonNegative: true}, "job_id": {Kind: KindString}, "node_id": {Kind: KindString}, "error_code": {Kind: KindString, Enum: []string{"invalid_config", "incompatible_schema", "preparation_failed", "preparation_timeout", "convergence_timeout", "restored", "transport_failed", "none"}},
 	}},
 
+	EventSelfConfigDeploymentRestoreRequested: {SchemaVersion: 1, Retention: RetentionSecurity, Outcomes: map[Outcome]bool{OutcomeSuccess: true}, Trails: map[Trail]bool{TrailTenant: true}, Schema: Schema{
+		"owner_instance_id": {Kind: KindString, Required: true}, "revision": {Kind: KindInt, Required: true, NonNegative: true}, "generation": {Kind: KindInt, Required: true, NonNegative: true}, "job_id": {Kind: KindString, Required: true}, "plan_digest": {Kind: KindString, Required: true},
+	}},
+
 	EventSelfConfigApplyRequested: {SchemaVersion: 1, Retention: RetentionSecurity, Outcomes: map[Outcome]bool{OutcomeSuccess: true, OutcomeFailure: true}, Trails: map[Trail]bool{TrailTenant: true}, Schema: Schema{
 		"owner_instance_id": {Kind: KindString, Required: true}, "revision": {Kind: KindInt, NonNegative: true}, "generation": {Kind: KindInt, NonNegative: true}, "job_id": {Kind: KindString}, "node_id": {Kind: KindString}, "error_code": {Kind: KindString, Enum: []string{"invalid_config", "incompatible_schema", "preparation_failed", "preparation_timeout", "convergence_timeout", "restored", "transport_failed", "none"}},
 	}},
@@ -879,7 +884,7 @@ var registry = map[EventType]TypeSpec{
 	}},
 
 	EventSelfConfigApplied: {SchemaVersion: 1, Retention: RetentionSecurity, Outcomes: map[Outcome]bool{OutcomeSuccess: true, OutcomeFailure: true}, Trails: map[Trail]bool{TrailTenant: true}, Schema: Schema{
-		"owner_instance_id": {Kind: KindString, Required: true}, "revision": {Kind: KindInt, NonNegative: true}, "generation": {Kind: KindInt, NonNegative: true}, "job_id": {Kind: KindString}, "node_id": {Kind: KindString}, "error_code": {Kind: KindString, Enum: []string{"invalid_config", "incompatible_schema", "preparation_failed", "preparation_timeout", "convergence_timeout", "restored", "transport_failed", "none"}},
+		"owner_instance_id": {Kind: KindString, Required: true}, "revision": {Kind: KindInt, NonNegative: true}, "generation": {Kind: KindInt, NonNegative: true}, "job_id": {Kind: KindString}, "node_id": {Kind: KindString}, "error_code": {Kind: KindString, Enum: []string{"invalid_config", "incompatible_schema", "preparation_failed", "activation_failed", "preparation_timeout", "convergence_timeout", "restored", "transport_failed", "none"}},
 	}},
 
 	EventSelfConfigRecoveryFenced: {SchemaVersion: 1, Retention: RetentionSecurity, Outcomes: map[Outcome]bool{OutcomeSuccess: true, OutcomeFailure: true}, Trails: map[Trail]bool{TrailTenant: true}, Schema: Schema{

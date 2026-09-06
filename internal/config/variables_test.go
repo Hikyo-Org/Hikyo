@@ -83,8 +83,13 @@ func TestVariableInventoryKeepsOperatorAndClientSecretsOutsideGenericImports(t *
 
 func TestVariableInventoryFileImportsMatchManagedSeedAliases(t *testing.T) {
 	aliases := map[string]string{
-		"HIKYO_MAIL_PASSWORD_FILE": "HIKYO_MAIL_PASSWORD",
-		"HIKYO_MAIL_CA_FILE":       "HIKYO_MAIL_CA_PEM",
+		"HIKYO_MAIL_PASSWORD_FILE":         "HIKYO_MAIL_PASSWORD",
+		"HIKYO_MAIL_CA_FILE":               "HIKYO_MAIL_CA_PEM",
+		"HIKYO_TLS_CERT_FILE":              "HIKYO_TLS_CERT_PEM",
+		"HIKYO_TLS_KEY_FILE":               "HIKYO_TLS_KEY_PEM",
+		"HIKYO_ADAPTER_EGRESS_POLICY_FILE": "HIKYO_ADAPTER_EGRESS_POLICY_JSON",
+		"HIKYO_OIDC_EGRESS_POLICY_FILE":    "HIKYO_OIDC_EGRESS_POLICY_JSON",
+		"HIKYO_DYNAMIC_EGRESS_POLICY_FILE": "HIKYO_DYNAMIC_EGRESS_POLICY_JSON",
 	}
 	for _, descriptor := range VariableInventory() {
 		expected, isFileImport := aliases[descriptor.Key]
@@ -127,14 +132,29 @@ func TestVariableInventoryIncludesServerUpgradeAndRotationInputs(t *testing.T) {
 func TestVariableInventoryDistinguishesFilePathsFromSecretContents(t *testing.T) {
 	for _, descriptor := range VariableInventory() {
 		switch descriptor.Key {
-		case "HIKYO_ROOT_KEY_FILE", "HIKYO_NEW_ROOT_KEY_FILE", "HIKYO_TLS_KEY_FILE":
+		case "HIKYO_ROOT_KEY_FILE", "HIKYO_NEW_ROOT_KEY_FILE":
 			if descriptor.Secret || !descriptor.ReferencedContentSecret || descriptor.Import != VariableExternal {
 				t.Errorf("%s confuses external path metadata with secret file bytes: %+v", descriptor.Key, descriptor)
 			}
-		case "HIKYO_MAIL_PASSWORD_FILE":
+		case "HIKYO_MAIL_PASSWORD_FILE", "HIKYO_TLS_KEY_FILE":
 			if !descriptor.Secret || !descriptor.ReferencedContentSecret || descriptor.Import != VariableFileContent {
 				t.Errorf("password content import lost its secret classification: %+v", descriptor)
 			}
 		}
 	}
+}
+
+func TestVariableInventoryKeepsIngressTrustNodeScoped(t *testing.T) {
+	for _, descriptor := range VariableInventory() {
+		if descriptor.Key == "HIKYO_TRUSTED_PROXY_CIDRS" {
+			if descriptor.Scope != VariableNode {
+				t.Fatal("ingress trust classified as shared owner policy")
+			}
+			if slices.Contains(ManagedOwnerKeys(), descriptor.Key) {
+				t.Fatal("node trust admitted as owner setting")
+			}
+			return
+		}
+	}
+	t.Fatal("ingress policy absent from inventory")
 }
