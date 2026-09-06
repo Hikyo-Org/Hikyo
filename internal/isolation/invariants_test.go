@@ -508,6 +508,9 @@ func TestInvariant12CacheDiscipline(t *testing.T) {
 		lint.Module + "/internal/oidcfed": true,
 		// Public release metadata cache, registered as updatecheck.releases.
 		lint.Module + "/internal/updatecheck": true,
+		// Verified nightly download directories, registered as
+		// selfupdate.nightly-downloads.
+		lint.Module + "/internal/selfupdate": true,
 	}
 	for _, p := range pkgs {
 		if p.Types == nil || !strings.HasPrefix(p.PkgPath, lint.Module) {
