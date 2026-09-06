@@ -81,3 +81,42 @@ No live installation was changed. Local tests do not mean a nightly containing
 this feature has been published; check the eventual PR, merge and signed nightly
 publication before giving the operator the bootstrap command as available.
 Local encrypted custody does not provide an off-host disaster recovery copy.
+
+## Continuation on 2026-09-06 (second session)
+
+The first session ended at the real-systemd acceptance fix. The second session
+rebased onto main after #686, found main red, and fixed it first:
+
+- PR #691 `fix(config): accept ephemeral listeners for production nodes`. #686
+  rejected port 0 outside development mode without a test or rationale, which
+  broke `TestPackagedNightlyReleaseUpgrade` and
+  `TestNightlyAssemblyAuthenticatesCompleteDownload` on main. This PR is the
+  stacked base of the feature PR.
+
+Adversarial review of the feature produced two fixes folded into this branch:
+
+- `fix(release): enforce current nightly policy revocations online`. Revocation
+  was judged only against the policy copy bundled inside each immutable release,
+  so a single nightly could not be revoked without refusing every nightly of its
+  policy period. Online verifiers now also fetch the live
+  `release/trust/nightly/policy.json`, require a catalog-authorized digest, and
+  refuse manifests it revokes. The offline boot gate is unchanged. The runbook
+  gained a "Revoke one published nightly" section.
+- `fix(upgrade): prune stale public evidence and report unlock failures
+  alongside outcomes`. Completed runs now remove earlier `bundle-*`,
+  `evidence-*` and `backup-*` directories the journal no longer references. The
+  lock release error no longer hides a migration failure.
+
+Verified locally after the rebase: Go tests for app, hostupgrade, selfupdate,
+releasetrust, upgradecustody, upgradeassembly, upgradebundle, upgradegate,
+updatecheck, upgradecompat, store/upgrade, service, devupgrade, config, the
+release and CI script packages; both Docker acceptance scripts (root adapter and
+real systemd); bootstrap shell tests; ShellCheck; actionlint; docs check, build
+and verify-docs.
+
+Open items for the human: the standing Codex review of the Claude-authored fixes
+could not run (Codex usage limit until 2026-09-13); a fallback reviewer model
+needs Marc's choice. Merge of #691 and of the feature PR is gated on CI green plus
+that review. The server on nightly 23 still cannot upgrade until a nightly
+containing this feature is published; then the bootstrap command in the Upgrades
+docs applies.
