@@ -1960,12 +1960,12 @@ export function MintDialog({
             Credential minted, shown exactly once
           </h2>
           <p className="mono machine__token">{disclosed.result.value}</p>
-          {/* The mint result is narrowed to `value` and `clamped` on purpose
-              (see zMinted); the instant is on the credential row a moment later. */}
           <p className="cred__meta">
-            {disclosed.result.clamped
-              ? 'Expiry: the instance ceiling, shorter than the default.'
-              : 'Expiry: instance default.'}
+            {disclosed.result.expires_at === null
+              ? 'Expiry: indefinite.'
+              : disclosed.result.expires_at === undefined
+                ? 'Expiry: unknown.'
+                : <>Expires <time dateTime={disclosed.result.expires_at}>{new Date(disclosed.result.expires_at).toLocaleString()}</time></>}
           </p>
           {disclosed.result.clamped ? (
             <p className="notice" role="status">

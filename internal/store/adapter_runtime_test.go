@@ -178,8 +178,47 @@ func TestAdapterJournalReleasedStateRetainsLedgerRow(t *testing.T) {
 	}
 }
 
+func TestAdapterTargetSurfacesPossibleCaptureWithoutClaimingOwnership(t *testing.T) {
+	db := adapterControlDB(t)
+	runtime := store.NewAdapterRuntime(db, func(context.Context, adapter.Job, adapter.Effect) error { return nil })
+	now := time.Now().UTC()
+	job, ok, err := runtime.ClaimDue(t.Context(), "worker_1", now, now.Add(adapter.LeaseTime))
+	if err != nil || !ok {
+		t.Fatalf("claim: ok=%v err=%v", ok, err)
+	}
+	effect := adapter.Effect{Surface: adapter.Secret, EffectiveName: "TOKEN", Disposition: adapter.Create}
+	journal := runtime.Journal(job)
+	state, err := journal.Reserve(t.Context(), effect)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Prepare(t.Context(), effect, state); err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Finish(t.Context(), effect, adapter.Completion{Outcome: adapter.OutcomeSuccess, ReleaseLedger: true, Conflict: true, ProviderStatus: 204, Finding: "possible_capture"}); err != nil {
+		t.Fatal(err)
+	}
+	target := adapterControlTarget(t, db)
+	if len(target.Findings) != 1 || target.Findings[0].Finding != "possible_capture" || target.Findings[0].EffectiveName != "TOKEN" {
+		t.Fatalf("capture finding: %+v", target.Findings)
+	}
+	var owned int
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM adapter_ledger WHERE target_id='tgt_1' AND effective_name='TOKEN' AND state='owned'`).Scan(&owned); err != nil {
+		t.Fatal(err)
+	}
+	if owned != 0 {
+		t.Fatal("possible capture silently became owned")
+	}
+	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapter_targets SET generation=generation+1 WHERE id='tgt_1'`); err != nil {
+		t.Fatal(err)
+	}
+	if target := adapterControlTarget(t, db); len(target.Findings) != 0 {
+		t.Fatalf("old generation finding exposed on replacement: %+v", target.Findings)
+	}
+}
+
 func TestAdapterJournalPersistsOwnedMissingAndAuditFinding(t *testing.T) {
-	db := adapterRuntimeDB(t)
+	db := adapterControlDB(t)
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_kind,repository_id,destination_id,surface,effective_name,normalized_name,state,updated_at) VALUES ('led_missing','org_adapter','prj_adapter','env_adapter','tgt_1','https://git.example','repository',0,42,'variable','MODE','MODE','owned','2026-08-17T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
@@ -206,6 +245,20 @@ func TestAdapterJournalPersistsOwnedMissingAndAuditFinding(t *testing.T) {
 	}
 	if state != "owned" || missing != 1 || auditRows != 1 {
 		t.Fatalf("state=%q missing=%d audit_rows=%d", state, missing, auditRows)
+	}
+
+	target := adapterControlTarget(t, db)
+	if len(target.Findings) != 1 || target.Findings[0].Finding != "owned_missing" || target.Findings[0].EffectiveName != "MODE" || target.Findings[0].Surface != "variable" {
+		t.Fatalf("target findings = %+v", target.Findings)
+	}
+	if err := journal.Prepare(t.Context(), effect, adapter.Owned); err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Finish(t.Context(), effect, adapter.Completion{Outcome: adapter.OutcomeSuccess, State: adapter.Owned, ProviderStatus: 201}); err != nil {
+		t.Fatal(err)
+	}
+	if target := adapterControlTarget(t, db); len(target.Findings) != 0 {
+		t.Fatalf("recreated name retains finding: %+v", target.Findings)
 	}
 }
 

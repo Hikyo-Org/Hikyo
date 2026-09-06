@@ -30,7 +30,7 @@ func targetInput(in apigen.AdapterTargetInput) service.AdapterTargetInput {
 	for i := range in.KeyIds {
 		keys[i] = string(in.KeyIds[i])
 	}
-	return service.AdapterTargetInput{EnvironmentID: string(in.EnvironmentId), DestinationKind: string(in.DestinationKind), DestinationOwner: in.DestinationOwner, DestinationName: in.DestinationName, DestinationEnvironment: in.DestinationEnvironment, Visibility: string(in.Visibility), SelectedRepositoryIDs: append([]int64(nil), in.SelectedRepositoryIds...), NamePrefix: in.NamePrefix, KeyIDs: keys, KeySelection: keySelection(in.KeySelection)}
+	return service.AdapterTargetInput{AllowEnvironmentCreate: derefBool(in.AllowEnvironmentCreate), EnvironmentID: string(in.EnvironmentId), DestinationKind: string(in.DestinationKind), DestinationOwner: in.DestinationOwner, DestinationName: in.DestinationName, DestinationEnvironment: in.DestinationEnvironment, Visibility: string(in.Visibility), SelectedRepositoryIDs: append([]int64(nil), in.SelectedRepositoryIds...), NamePrefix: in.NamePrefix, KeyIDs: keys, KeySelection: keySelection(in.KeySelection)}
 }
 
 func keySelection(in *apigen.AdapterKeySelection) *service.AdapterKeySelection {
@@ -74,6 +74,10 @@ func adapterConflictResponses(in []service.AdapterConflictArtifact) []apigen.Ada
 }
 
 func adapterTargetResponse(in service.AdapterTarget, conflicts ...service.AdapterConflictArtifact) apigen.AdapterTarget {
+	findings := make([]apigen.AdapterFinding, 0, len(in.Findings))
+	for _, finding := range in.Findings {
+		findings = append(findings, apigen.AdapterFinding{Surface: apigen.AdapterFindingSurface(finding.Surface), EffectiveName: finding.EffectiveName, Finding: apigen.AdapterFindingFinding(finding.Finding)})
+	}
 	return apigen.AdapterTarget{
 		Id: apigen.ID(in.ID), AdapterId: apigen.ID(in.AdapterID), EnvironmentId: apigen.ID(in.EnvironmentID),
 		DestinationKind: apigen.AdapterDestinationKind(in.DestinationKind), DestinationOwner: in.DestinationOwner, DestinationName: in.DestinationName, DestinationEnvironment: in.DestinationEnvironment,
@@ -82,6 +86,7 @@ func adapterTargetResponse(in service.AdapterTarget, conflicts ...service.Adapte
 		// The contract's sync_status is the derived operator health, never
 		// the stored outcome column (#157).
 		SyncStatus:            apigen.AdapterTargetSyncStatus(in.Health()),
+		Findings:              &findings,
 		ConvergedRevision:     in.ConvergedRevision,
 		LastAttemptedRevision: in.LastAttemptedRevision,
 		LastAttemptedAt:       in.LastAttemptedAt,

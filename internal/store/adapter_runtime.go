@@ -514,7 +514,7 @@ func (r *AdapterRuntime) closeIndeterminateEffects(ctx context.Context, tx adapt
 			return err
 		}
 		update := tx.SQL(
-			`UPDATE adapter_effects SET outcome_audit_id=?,outcome='unknown',finished_at=? WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND target_id=? AND outcome IS NULL`,
+			`UPDATE adapter_effects SET outcome_audit_id=?,outcome='unknown',finding='crash_window',finished_at=? WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND target_id=? AND outcome IS NULL`,
 		)
 		rowsAffected, err := tx.Exec(ctx, update, outcomeID, stamp, effect.id, claimed.OrgID, claimed.ProjectID, claimed.EnvironmentID, claimed.TargetID)
 		if err != nil {
@@ -729,9 +729,9 @@ func (j *adapterJournal) Finish(ctx context.Context, effect adapter.Effect, comp
 			return err
 		}
 		updateEffect := tx.SQL(
-			`UPDATE adapter_effects SET outcome_audit_id=?,outcome=?,finished_at=? WHERE id=? AND outcome IS NULL`,
+			`UPDATE adapter_effects SET outcome_audit_id=?,outcome=?,finding=?,finished_at=? WHERE id=? AND outcome IS NULL`,
 		)
-		rows, err := tx.Exec(ctx, updateEffect, outcomeID, string(completion.Outcome), tx.Stamp(now), effectID)
+		rows, err := tx.Exec(ctx, updateEffect, outcomeID, string(completion.Outcome), completion.Finding, tx.Stamp(now), effectID)
 		if err != nil || rows != 1 {
 			return errors.New("store: adapter effect OUTCOME was not recorded exactly once")
 		}

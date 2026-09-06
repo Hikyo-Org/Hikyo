@@ -31,6 +31,8 @@ import (
 
 // AuthService is the human-authentication surface this transport needs.
 type AuthService interface {
+	MyProfile(ctx context.Context, presented string) (service.AccountProfile, error)
+	UpdateMyProfile(ctx context.Context, presented string, profile service.AccountProfile, proof string) (service.AccountProfile, error)
 	LocalLogin(ctx context.Context, username, password string, artifact service.Artifact) (service.LoginResult, error)
 	EstablishCredential(ctx context.Context, authority, password string) error
 	Identity(ctx context.Context, presented string) (service.Identity, error)
@@ -137,6 +139,7 @@ type DefinitionsService interface {
 // API implements the generated strict server.
 type API struct {
 	SelfConfig      *service.SelfConfig
+	Discovery       *service.Discovery
 	Auth            AuthService
 	SAMLAuth        SAMLAuthService
 	Orgs            OrgService
@@ -249,7 +252,16 @@ func (a *API) GetMeta(ctx context.Context, _ apigen.GetMetaRequestObject) (apige
 	// This instance serves the local floor only. The loopback handoff and
 	// device-code transports arrive with #54 and will advertise themselves
 	// here — which is exactly why the client asks rather than assumes.
+	var identity *string
+	if a.Discovery != nil {
+		value, err := a.Discovery.InstanceIdentity(ctx)
+		if err != nil {
+			return nil, err
+		}
+		identity = &value
+	}
 	return apigen.GetMeta200JSONResponse{
+		InstanceIdentity:     identity,
 		ServerVersion:        a.Version,
 		ApiRevision:          api.Revision,
 		ProtocolCapabilities: []apigen.ProtocolCapability{"local-password"},

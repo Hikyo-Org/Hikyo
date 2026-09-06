@@ -2,6 +2,21 @@
 
 import * as z from 'zod';
 
+export const zAccountProfile = z.object({
+    username: z.string(),
+    display_name: z.string(),
+    email: z.string(),
+    managed: z.boolean(),
+    username_editable: z.boolean()
+});
+
+export const zUpdateAccountProfileRequest = z.object({
+    username: z.string().min(1).max(256),
+    display_name: z.string().max(256),
+    email: z.string().max(254),
+    proof: z.string().optional()
+});
+
 /**
  * A prefixed UUIDv7, e.g. `org_0198…`.
  */
@@ -52,6 +67,7 @@ export const zAdapterKeySelection = z.object({
 });
 
 export const zAdapterTargetInput = z.object({
+    allow_environment_create: z.boolean().optional().default(false),
     environment_id: zId,
     destination_kind: zAdapterDestinationKind,
     destination_owner: z.string().min(1).max(255),
@@ -250,96 +266,11 @@ export const zAdapterConflictArtifact = z.object({
     created_at: zTimestamp
 });
 
-export const zAdapterTarget = z.object({
-    id: zId,
-    adapter_id: zId,
-    environment_id: zId,
-    destination_kind: zAdapterDestinationKind,
-    destination_owner: z.string(),
-    destination_name: z.string(),
-    destination_environment: z.string(),
-    destination_id: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
-    repository_id: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
-    visibility: z.enum([
-        '',
-        'all',
-        'private',
-        'selected'
-    ]),
-    selected_repository_ids: z.array(z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })),
-    name_prefix: z.string(),
-    generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
-    state: z.enum([
-        'active',
-        'moving',
-        'tombstoned'
-    ]),
-    sync_status: z.enum([
-        'never',
-        'pending',
-        'converging',
-        'converged',
-        'degraded',
-        'failed',
-        'paused'
-    ]),
-    converged_revision: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullable(),
-    last_attempted_revision: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullable(),
-    last_attempted_at: z.iso.datetime().nullable(),
-    last_error_class: z.enum([
-        '',
-        'auth',
-        'network',
-        'conflict',
-        'provider_limit',
-        'provider_ambiguous',
-        'refused'
-    ]),
-    retry_at: z.iso.datetime().nullable(),
-    paused_at: z.iso.datetime().nullable(),
-    drift_attention: z.boolean(),
-    failure_names: z.array(z.string()),
-    warnings: z.array(z.string()),
-    keys: z.array(zAdapterTargetKey),
-    conflicts: z.array(zAdapterConflictArtifact)
-});
-
-export const zAdapterTargetList = z.object({
-    items: z.array(zAdapterTarget)
-});
-
-export const zAdapter = z.object({
-    id: zId,
-    provider: zAdapterProvider,
-    origin: z.url(),
-    credential_present: z.boolean(),
-    credential_set_at: z.iso.datetime().nullish(),
-    credential_expires_at: z.iso.datetime().nullish(),
-    authority_principal_id: zId,
-    state: z.enum([
-        'active',
-        'moving',
-        'tombstoned'
-    ]),
-    created_at: zTimestamp,
-    targets: z.array(zAdapterTarget)
-});
-
-export const zAdapterList = z.object({
-    items: z.array(zAdapter)
-});
-
 export const zAdapterMappingEntry = z.object({
     key_id: zId,
     canonical_name: z.string(),
     surface: z.enum(['secret', 'variable']),
     effective_name: z.string()
-});
-
-export const zAdapterTargetDetail = z.object({
-    target: zAdapterTarget,
-    conflicts: z.array(zAdapterConflictArtifact),
-    mapping: z.array(zAdapterMappingEntry)
 });
 
 export const zAdapterChange = z.object({
@@ -508,6 +439,7 @@ export const zProtocolCapability = z.string();
  *
  */
 export const zMeta = z.object({
+    instance_identity: z.string().min(1).optional(),
     server_version: z.string(),
     api_revision: z.int().gte(1),
     protocol_capabilities: z.array(zProtocolCapability)
@@ -888,6 +820,8 @@ export const zMyOrgList = z.object({
 export const zEntityName = z.string().min(1).max(128);
 
 export const zProject = z.object({
+    can_manage_policy: z.boolean().optional(),
+    can_delete: z.boolean().optional(),
     id: zId,
     org_id: zId,
     name: z.string(),
@@ -989,6 +923,7 @@ export const zApprovalPolicyInput = z.object({
 });
 
 export const zApprovalPolicy = z.object({
+    principal_names: z.record(z.string(), z.string()).optional(),
     id: zId,
     environment_id: z.string().max(64),
     min_approvals: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
@@ -1007,12 +942,14 @@ export const zApprovalPolicyList = z.object({
 });
 
 export const zApprovalVote = z.object({
+    principal_name: z.string().optional(),
     principal_id: zId,
     decision: z.enum(['approve', 'reject']),
     created_at: zTimestamp
 });
 
 export const zApprovalRequest = z.object({
+    requester_name: z.string().optional(),
     id: zId,
     environment_id: zId,
     policy_id: zId,
@@ -1068,6 +1005,17 @@ export const zApprovalRequestSummary = z.object({
 
 export const zApprovalVoteRequest = z.object({
     decision: z.enum(['approve', 'reject'])
+});
+
+export const zRevisionDiffRequest = z.object({
+    left_revision: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    right_revision: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+});
+
+export const zRevealRevisionDiffRequest = z.object({
+    left_revision: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    right_revision: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    key_id: zId
 });
 
 export const zExportValuesRequest = z.object({
@@ -1530,6 +1478,7 @@ export const zMachineCredentialList = z.object({
 export const zMintCredentialResult = z.object({
     value: z.string(),
     credential: zMachineCredential,
+    expires_at: z.iso.datetime().nullable(),
     clamped: z.boolean()
 });
 
@@ -1748,6 +1697,7 @@ export const zGrantScope = z.object({
 export const zGrant = z.object({
     id: zId,
     principal_id: zId,
+    principal_name: z.string().optional(),
     capability: zCapability,
     scope: zGrantScope,
     origins: z.array(zGrantOrigin),
@@ -1899,6 +1849,7 @@ export const zRevision = z.object({
     revision: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     schema_revision: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     published_by: zId,
+    published_by_name: z.string().optional(),
     published_at: z.iso.datetime(),
     changed_keys: z.array(zChangedKey),
     payload_present: z.boolean(),
@@ -1999,6 +1950,10 @@ export const zPendingChange = z.object({
  *
  */
 export const zPendingDraft = z.object({
+    advisory: z.object({
+        owner_id: zId,
+        valid: z.boolean()
+    }).optional(),
     version_id: zId,
     key_id: zId,
     name: zKeyName,
@@ -2050,6 +2005,29 @@ export const zRollbackResult = z.object({
     preview: zImpactPreview
 });
 
+export const zRevisionDiffRow = z.object({
+    key_id: zId,
+    name: z.string(),
+    classification: zKeyClassification,
+    status: z.enum([
+        'added',
+        'removed',
+        'edited',
+        'not_edited',
+        'changed',
+        'unchanged'
+    ]),
+    revealed: z.boolean(),
+    before: z.string().optional(),
+    after: z.string().optional()
+});
+
+export const zRevisionDiff = z.object({
+    left_revision: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    right_revision: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    items: z.array(zRevisionDiffRow)
+});
+
 export const zSnapshotKey = z.object({
     key_id: zId,
     name: zKeyName,
@@ -2060,6 +2038,7 @@ export const zRevisionDetail = z.object({
     revision: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     schema_revision: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     published_by: zId,
+    published_by_name: z.string().optional(),
     published_at: z.iso.datetime(),
     changed_keys: z.array(zChangedKey),
     change_token: z.string(),
@@ -2890,36 +2869,11 @@ export const zScimDirectoryUserList = z.object({
     count: z.int()
 });
 
-export const zScimMapping = z.object({
-    id: zId,
-    binding_id: zId,
-    group_id: zId,
-    template: z.string(),
-    project_id: z.string().optional(),
-    environment_id: z.string().optional(),
-    inert: z.boolean(),
-    created_at: zTimestamp,
-    capabilities: z.array(z.string())
-});
-
-export const zScimMappingList = z.object({
-    items: z.array(zScimMapping),
-    count: z.int()
-});
-
 export const zScimMappingRequest = z.object({
     group_id: zId,
     template: z.string().max(64),
     project_id: z.string().max(64).optional(),
     environment_id: z.string().max(64).optional()
-});
-
-export const zScimMappingResult = z.object({
-    mapping: zScimMapping,
-    warnings: z.array(zScimBlastWarning),
-    members_affected: z.int(),
-    grants_created: z.int(),
-    origins_released: z.int()
 });
 
 export const zScimMintResult = z.object({
@@ -3178,6 +3132,7 @@ export const zAuditEvent = z.object({
     occurred_asserted: z.boolean(),
     recorded_at: z.iso.datetime(),
     actor_id: z.string().optional(),
+    actor_name: z.string().optional(),
     actor_class: z.string(),
     actor_credential_id: z.string().optional(),
     authority_id: z.string().optional(),
@@ -3201,6 +3156,136 @@ export const zAuditPage = z.object({
     next_after_seq: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     upper_seq: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     exhausted: z.boolean()
+});
+
+export const zAdapterFinding = z.object({
+    surface: z.enum(['secret', 'variable']),
+    effective_name: z.string(),
+    finding: z.enum([
+        'possible_capture',
+        'owned_missing',
+        'crash_window'
+    ])
+});
+
+export const zAdapterTarget = z.object({
+    findings: z.array(zAdapterFinding).optional(),
+    id: zId,
+    adapter_id: zId,
+    environment_id: zId,
+    destination_kind: zAdapterDestinationKind,
+    destination_owner: z.string(),
+    destination_name: z.string(),
+    destination_environment: z.string(),
+    destination_id: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    repository_id: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    visibility: z.enum([
+        '',
+        'all',
+        'private',
+        'selected'
+    ]),
+    selected_repository_ids: z.array(z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })),
+    name_prefix: z.string(),
+    generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    state: z.enum([
+        'active',
+        'moving',
+        'tombstoned'
+    ]),
+    sync_status: z.enum([
+        'never',
+        'pending',
+        'converging',
+        'converged',
+        'degraded',
+        'failed',
+        'paused'
+    ]),
+    converged_revision: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullable(),
+    last_attempted_revision: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullable(),
+    last_attempted_at: z.iso.datetime().nullable(),
+    last_error_class: z.enum([
+        '',
+        'auth',
+        'network',
+        'conflict',
+        'provider_limit',
+        'provider_ambiguous',
+        'refused'
+    ]),
+    retry_at: z.iso.datetime().nullable(),
+    paused_at: z.iso.datetime().nullable(),
+    drift_attention: z.boolean(),
+    failure_names: z.array(z.string()),
+    warnings: z.array(z.string()),
+    keys: z.array(zAdapterTargetKey),
+    conflicts: z.array(zAdapterConflictArtifact)
+});
+
+export const zAdapterTargetList = z.object({
+    items: z.array(zAdapterTarget)
+});
+
+export const zAdapter = z.object({
+    id: zId,
+    provider: zAdapterProvider,
+    origin: z.url(),
+    credential_present: z.boolean(),
+    credential_set_at: z.iso.datetime().nullish(),
+    credential_expires_at: z.iso.datetime().nullish(),
+    authority_principal_id: zId,
+    state: z.enum([
+        'active',
+        'moving',
+        'tombstoned'
+    ]),
+    created_at: zTimestamp,
+    targets: z.array(zAdapterTarget)
+});
+
+export const zAdapterList = z.object({
+    items: z.array(zAdapter)
+});
+
+export const zAdapterTargetDetail = z.object({
+    target: zAdapterTarget,
+    conflicts: z.array(zAdapterConflictArtifact),
+    mapping: z.array(zAdapterMappingEntry)
+});
+
+export const zScimCapabilityOrigin = z.object({
+    capability: z.string(),
+    kind: z.enum(['scim']),
+    binding_id: zId,
+    mapping_id: zId,
+    group_id: zId
+});
+
+export const zScimMapping = z.object({
+    capability_origins: z.array(zScimCapabilityOrigin).optional(),
+    id: zId,
+    binding_id: zId,
+    group_id: zId,
+    template: z.string(),
+    project_id: z.string().optional(),
+    environment_id: z.string().optional(),
+    inert: z.boolean(),
+    created_at: zTimestamp,
+    capabilities: z.array(z.string())
+});
+
+export const zScimMappingList = z.object({
+    items: z.array(zScimMapping),
+    count: z.int()
+});
+
+export const zScimMappingResult = z.object({
+    mapping: zScimMapping,
+    warnings: z.array(zScimBlastWarning),
+    members_affected: z.int(),
+    grants_created: z.int(),
+    origins_released: z.int()
 });
 
 /**
@@ -4608,6 +4693,18 @@ export const zSamlMetadataPath = z.object({
 export const zSamlMetadataResponse = z.string();
 
 /**
+ * Your account profile.
+ */
+export const zGetMyProfileResponse = zAccountProfile;
+
+export const zUpdateMyProfileBody = zUpdateAccountProfileRequest;
+
+/**
+ * Your updated profile. Existing sessions remain valid.
+ */
+export const zUpdateMyProfileResponse = zAccountProfile;
+
+/**
  * The caller's organisations, empty when their grants name none.
  */
 export const zListMyOrgsResponse = zMyOrgList;
@@ -5639,6 +5736,32 @@ export const zGetApprovalCeremonyPath = z.object({
  * The exact approval ceremony binding.
  */
 export const zGetApprovalCeremonyResponse = zApprovalCeremonyBinding;
+
+export const zDiffRevisionsBody = zRevisionDiffRequest;
+
+export const zDiffRevisionsPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * The requested comparison, without change tokens or digests.
+ */
+export const zDiffRevisionsResponse = zRevisionDiff;
+
+export const zRevealRevisionDiffBody = zRevealRevisionDiffRequest;
+
+export const zRevealRevisionDiffPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * The requested comparison, without change tokens or digests.
+ */
+export const zRevealRevisionDiffResponse = zRevisionDiff;
 
 export const zGetEnvironmentSignalsPath = z.object({
     org: zId,

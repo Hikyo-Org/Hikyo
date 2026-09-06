@@ -149,6 +149,45 @@ func (e AdapterDestinationKind) Valid() bool {
 	}
 }
 
+// Defines values for AdapterFindingFinding.
+const (
+	CrashWindow     AdapterFindingFinding = "crash_window"
+	OwnedMissing    AdapterFindingFinding = "owned_missing"
+	PossibleCapture AdapterFindingFinding = "possible_capture"
+)
+
+// Valid indicates whether the value is a known member of the AdapterFindingFinding enum.
+func (e AdapterFindingFinding) Valid() bool {
+	switch e {
+	case CrashWindow:
+		return true
+	case OwnedMissing:
+		return true
+	case PossibleCapture:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AdapterFindingSurface.
+const (
+	AdapterFindingSurfaceSecret   AdapterFindingSurface = "secret"
+	AdapterFindingSurfaceVariable AdapterFindingSurface = "variable"
+)
+
+// Valid indicates whether the value is a known member of the AdapterFindingSurface enum.
+func (e AdapterFindingSurface) Valid() bool {
+	switch e {
+	case AdapterFindingSurfaceSecret:
+		return true
+	case AdapterFindingSurfaceVariable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AdapterKeySelectionClassification.
 const (
 	AdapterKeySelectionClassificationConfig AdapterKeySelectionClassification = "config"
@@ -1751,6 +1790,36 @@ func (e RetentionPolicyMode) Valid() bool {
 	}
 }
 
+// Defines values for RevisionDiffRowStatus.
+const (
+	RevisionDiffRowStatusAdded     RevisionDiffRowStatus = "added"
+	RevisionDiffRowStatusChanged   RevisionDiffRowStatus = "changed"
+	RevisionDiffRowStatusEdited    RevisionDiffRowStatus = "edited"
+	RevisionDiffRowStatusNotEdited RevisionDiffRowStatus = "not_edited"
+	RevisionDiffRowStatusRemoved   RevisionDiffRowStatus = "removed"
+	RevisionDiffRowStatusUnchanged RevisionDiffRowStatus = "unchanged"
+)
+
+// Valid indicates whether the value is a known member of the RevisionDiffRowStatus enum.
+func (e RevisionDiffRowStatus) Valid() bool {
+	switch e {
+	case RevisionDiffRowStatusAdded:
+		return true
+	case RevisionDiffRowStatusChanged:
+		return true
+	case RevisionDiffRowStatusEdited:
+		return true
+	case RevisionDiffRowStatusNotEdited:
+		return true
+	case RevisionDiffRowStatusRemoved:
+		return true
+	case RevisionDiffRowStatusUnchanged:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RevisionPinResultAction.
 const (
 	Created    RevisionPinResultAction = "created"
@@ -2054,6 +2123,21 @@ func (e ScimBlastWarningSeverity) Valid() bool {
 	case ScimBlastWarningSeverityCritical:
 		return true
 	case ScimBlastWarningSeverityWarning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ScimCapabilityOriginKind.
+const (
+	Scim ScimCapabilityOriginKind = "scim"
+)
+
+// Valid indicates whether the value is a known member of the ScimCapabilityOriginKind enum.
+func (e ScimCapabilityOriginKind) Valid() bool {
+	switch e {
+	case Scim:
 		return true
 	default:
 		return false
@@ -2618,6 +2702,19 @@ func (e ExportEnvAuditParamsOutcome) Valid() bool {
 	}
 }
 
+// AccountProfile defines model for AccountProfile.
+type AccountProfile struct {
+	DisplayName string `json:"display_name"`
+	Email       string `json:"email"`
+
+	// Managed SCIM controls the username and display name.
+	Managed  bool   `json:"managed"`
+	Username string `json:"username"`
+
+	// UsernameEditable A local password or confirmed authenticator can prove a username change.
+	UsernameEditable bool `json:"username_editable"`
+}
+
 // Acknowledgements Secret-scanning acknowledgement tokens (#74). On a value write, a
 // keep-as-config token dismisses a Surface-1 warning for exactly that
 // value. On a declaration write, one override token per finding is
@@ -2739,6 +2836,19 @@ type AdapterConnection struct {
 
 // AdapterDestinationKind defines model for AdapterDestinationKind.
 type AdapterDestinationKind string
+
+// AdapterFinding defines model for AdapterFinding.
+type AdapterFinding struct {
+	EffectiveName string                `json:"effective_name"`
+	Finding       AdapterFindingFinding `json:"finding"`
+	Surface       AdapterFindingSurface `json:"surface"`
+}
+
+// AdapterFindingFinding defines model for AdapterFinding.Finding.
+type AdapterFindingFinding string
+
+// AdapterFindingSurface defines model for AdapterFinding.Surface.
+type AdapterFindingSurface string
 
 // AdapterJob defines model for AdapterJob.
 type AdapterJob struct {
@@ -2890,9 +3000,10 @@ type AdapterTarget struct {
 	DriftAttention bool `json:"drift_attention"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
-	EnvironmentId ID       `json:"environment_id"`
-	FailureNames  []string `json:"failure_names"`
-	Generation    int64    `json:"generation"`
+	EnvironmentId ID                `json:"environment_id"`
+	FailureNames  []string          `json:"failure_names"`
+	Findings      *[]AdapterFinding `json:"findings,omitempty"`
+	Generation    int64             `json:"generation"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id ID `json:"id"`
@@ -2950,6 +3061,9 @@ type AdapterTargetDetail struct {
 
 // AdapterTargetInput defines model for AdapterTargetInput.
 type AdapterTargetInput struct {
+	// AllowEnvironmentCreate Explicit consent to create missing GitHub environments using Administration:write.
+	AllowEnvironmentCreate *bool `json:"allow_environment_create,omitempty"`
+
 	// DestinationEnvironment GitHub environment name; empty for repository and organization destinations.
 	DestinationEnvironment string                 `json:"destination_environment"`
 	DestinationKind        AdapterDestinationKind `json:"destination_kind"`
@@ -3134,9 +3248,12 @@ type ApprovalPolicy struct {
 	EnvironmentId string    `json:"environment_id"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
-	Id                ID    `json:"id"`
-	MinApprovals      int32 `json:"min_approvals"`
-	RequestTtlSeconds int32 `json:"request_ttl_seconds"`
+	Id           ID    `json:"id"`
+	MinApprovals int32 `json:"min_approvals"`
+
+	// PrincipalNames Current names for principal approvers and bypassers already disclosed by this policy; not a user directory.
+	PrincipalNames    *map[string]string `json:"principal_names,omitempty"`
+	RequestTtlSeconds int32              `json:"request_ttl_seconds"`
 
 	// UpdatedAt RFC 3339 UTC, microsecond precision.
 	UpdatedAt Timestamp `json:"updated_at"`
@@ -3192,6 +3309,9 @@ type ApprovalRequest struct {
 	// Requester A prefixed UUIDv7, e.g. `org_0198…`.
 	Requester ID `json:"requester"`
 
+	// RequesterName Current display name of the referenced principal, when available.
+	RequesterName *string `json:"requester_name,omitempty"`
+
 	// ResolvedAt RFC 3339 UTC, microsecond precision.
 	ResolvedAt *Timestamp           `json:"resolved_at,omitempty"`
 	State      ApprovalRequestState `json:"state"`
@@ -3236,6 +3356,9 @@ type ApprovalVote struct {
 
 	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
 	PrincipalId ID `json:"principal_id"`
+
+	// PrincipalName Current display name of the referenced principal, when available.
+	PrincipalName *string `json:"principal_name,omitempty"`
 }
 
 // ApprovalVoteDecision defines model for ApprovalVote.Decision.
@@ -3286,12 +3409,15 @@ type AuditEvent struct {
 	ActorClass        string  `json:"actor_class"`
 	ActorCredentialId *string `json:"actor_credential_id,omitempty"`
 	ActorId           *string `json:"actor_id,omitempty"`
-	AuthorityId       *string `json:"authority_id,omitempty"`
-	CorrelationId     *string `json:"correlation_id,omitempty"`
-	EnvId             *string `json:"env_id,omitempty"`
-	Id                string  `json:"id"`
-	ObjectId          *string `json:"object_id,omitempty"`
-	ObjectType        *string `json:"object_type,omitempty"`
+
+	// ActorName Current display name of this event actor, when still available. This is a presentation label, not historical evidence.
+	ActorName     *string `json:"actor_name,omitempty"`
+	AuthorityId   *string `json:"authority_id,omitempty"`
+	CorrelationId *string `json:"correlation_id,omitempty"`
+	EnvId         *string `json:"env_id,omitempty"`
+	Id            string  `json:"id"`
+	ObjectId      *string `json:"object_id,omitempty"`
+	ObjectType    *string `json:"object_type,omitempty"`
 
 	// OccurredAsserted Whether occurred_at was asserted by a client rather than the server clock.
 	OccurredAsserted bool      `json:"occurred_asserted"`
@@ -4701,6 +4827,9 @@ type Grant struct {
 	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
 	PrincipalId ID `json:"principal_id"`
 
+	// PrincipalName Current display name or username of this authorized member; not an identifier.
+	PrincipalName *string `json:"principal_name,omitempty"`
+
 	// Scope The scope the grant was made at. All three absent is instance scope.
 	// Grants inherit downward, so a grant at a scope applies to everything
 	// beneath it.
@@ -5471,6 +5600,9 @@ type Meta struct {
 	// loud refusal, never a silent misbehave.
 	ApiRevision int `json:"api_revision"`
 
+	// InstanceIdentity Stable server-generated instance identity, independent of URL aliases.
+	InstanceIdentity *string `json:"instance_identity,omitempty"`
+
 	// ProtocolCapabilities Which authentication protocol flows this instance serves. `login`
 	// needs this before any session exists.
 	ProtocolCapabilities []ProtocolCapability `json:"protocol_capabilities"`
@@ -5509,6 +5641,9 @@ type MintCredentialResult struct {
 	// A row of kind `oidc-federation` carries no `prefix_hint` — a binding has
 	// no minted value to hint at — and carries the binding members instead.
 	Credential MachineCredential `json:"credential"`
+
+	// ExpiresAt Effective expiry; null means explicitly indefinite.
+	ExpiresAt *time.Time `json:"expires_at"`
 
 	// Value The credential value, returned EXACTLY ONCE to exactly one caller.
 	// No other route in this contract returns it.
@@ -5761,6 +5896,12 @@ type PendingChangeOperation string
 // material on this surface; `value` is present if and only if `revealed`
 // is true.
 type PendingDraft struct {
+	Advisory *struct {
+		// OwnerId A prefixed UUIDv7, e.g. `org_0198…`.
+		OwnerId ID   `json:"owner_id"`
+		Valid   bool `json:"valid"`
+	} `json:"advisory,omitempty"`
+
 	// Classification Classification IS the sensitivity boundary. A matrix row is uniformly
 	// secret or config; it changes only through the reclassification
 	// ceremony. Closed, deliberately: a third value would be a third
@@ -5821,6 +5962,12 @@ type PrincipalKind string
 
 // Project defines model for Project.
 type Project struct {
+	// CanDelete Whether the caller can delete this project.
+	CanDelete *bool `json:"can_delete,omitempty"`
+
+	// CanManagePolicy Whether the caller can manage policy for this project.
+	CanManagePolicy *bool `json:"can_manage_policy,omitempty"`
+
 	// CreatedAt RFC 3339 UTC, microsecond precision.
 	CreatedAt Timestamp `json:"created_at"`
 
@@ -6282,6 +6429,14 @@ type RevealDiffRequest struct {
 	Right ID `json:"right"`
 }
 
+// RevealRevisionDiffRequest defines model for RevealRevisionDiffRequest.
+type RevealRevisionDiffRequest struct {
+	// KeyId A prefixed UUIDv7, e.g. `org_0198…`.
+	KeyId         ID    `json:"key_id"`
+	LeftRevision  int64 `json:"left_revision"`
+	RightRevision int64 `json:"right_revision"`
+}
+
 // RevealWindow The reveal guard's state for one environment and the acting session.
 // Nothing here is material: it is project settings plus the caller's own
 // window.
@@ -6339,9 +6494,12 @@ type Revision struct {
 	PublishedAt    time.Time `json:"published_at"`
 
 	// PublishedBy A prefixed UUIDv7, e.g. `org_0198…`.
-	PublishedBy    ID    `json:"published_by"`
-	Revision       int64 `json:"revision"`
-	SchemaRevision int64 `json:"schema_revision"`
+	PublishedBy ID `json:"published_by"`
+
+	// PublishedByName Current display name of the publisher, absent if the principal no longer exists.
+	PublishedByName *string `json:"published_by_name,omitempty"`
+	Revision        int64   `json:"revision"`
+	SchemaRevision  int64   `json:"schema_revision"`
 }
 
 // RevisionDetail defines model for RevisionDetail.
@@ -6356,10 +6514,47 @@ type RevisionDetail struct {
 	PublishedAt time.Time     `json:"published_at"`
 
 	// PublishedBy A prefixed UUIDv7, e.g. `org_0198…`.
-	PublishedBy    ID    `json:"published_by"`
-	Revision       int64 `json:"revision"`
-	SchemaRevision int64 `json:"schema_revision"`
+	PublishedBy ID `json:"published_by"`
+
+	// PublishedByName Current display name of the publisher, absent if the principal no longer exists.
+	PublishedByName *string `json:"published_by_name,omitempty"`
+	Revision        int64   `json:"revision"`
+	SchemaRevision  int64   `json:"schema_revision"`
 }
+
+// RevisionDiff defines model for RevisionDiff.
+type RevisionDiff struct {
+	Items         []RevisionDiffRow `json:"items"`
+	LeftRevision  int64             `json:"left_revision"`
+	RightRevision int64             `json:"right_revision"`
+}
+
+// RevisionDiffRequest defines model for RevisionDiffRequest.
+type RevisionDiffRequest struct {
+	LeftRevision  int64 `json:"left_revision"`
+	RightRevision int64 `json:"right_revision"`
+}
+
+// RevisionDiffRow defines model for RevisionDiffRow.
+type RevisionDiffRow struct {
+	After  *string `json:"after,omitempty"`
+	Before *string `json:"before,omitempty"`
+
+	// Classification Classification IS the sensitivity boundary. A matrix row is uniformly
+	// secret or config; it changes only through the reclassification
+	// ceremony. Closed, deliberately: a third value would be a third
+	// disclosure regime.
+	Classification KeyClassification `json:"classification"`
+
+	// KeyId A prefixed UUIDv7, e.g. `org_0198…`.
+	KeyId    ID                    `json:"key_id"`
+	Name     string                `json:"name"`
+	Revealed bool                  `json:"revealed"`
+	Status   RevisionDiffRowStatus `json:"status"`
+}
+
+// RevisionDiffRowStatus defines model for RevisionDiffRow.Status.
+type RevisionDiffRowStatus string
 
 // RevisionList defines model for RevisionList.
 type RevisionList struct {
@@ -6812,6 +7007,23 @@ type ScimBlastWarningCode string
 // ScimBlastWarningSeverity defines model for ScimBlastWarning.Severity.
 type ScimBlastWarningSeverity string
 
+// ScimCapabilityOrigin defines model for ScimCapabilityOrigin.
+type ScimCapabilityOrigin struct {
+	// BindingId A prefixed UUIDv7, e.g. `org_0198…`.
+	BindingId  ID     `json:"binding_id"`
+	Capability string `json:"capability"`
+
+	// GroupId A prefixed UUIDv7, e.g. `org_0198…`.
+	GroupId ID                       `json:"group_id"`
+	Kind    ScimCapabilityOriginKind `json:"kind"`
+
+	// MappingId A prefixed UUIDv7, e.g. `org_0198…`.
+	MappingId ID `json:"mapping_id"`
+}
+
+// ScimCapabilityOriginKind defines model for ScimCapabilityOrigin.Kind.
+type ScimCapabilityOriginKind string
+
 // ScimCredential defines model for ScimCredential.
 type ScimCredential struct {
 	// BindingId A prefixed UUIDv7, e.g. `org_0198…`.
@@ -6895,7 +7107,8 @@ type ScimMapping struct {
 	// Capabilities What the row expands into. Expansion at sync time is expansion at
 	// grant time, so this is exactly the set a human applying the same
 	// template at the same scope would create.
-	Capabilities []string `json:"capabilities"`
+	Capabilities      []string                `json:"capabilities"`
+	CapabilityOrigins *[]ScimCapabilityOrigin `json:"capability_origins,omitempty"`
 
 	// CreatedAt RFC 3339 UTC, microsecond precision.
 	CreatedAt     Timestamp `json:"created_at"`
@@ -7252,6 +7465,16 @@ type TotpStatus struct {
 
 	// Pending True when an enrolment is staged but its first confirming code is not yet in.
 	Pending bool `json:"pending"`
+}
+
+// UpdateAccountProfileRequest defines model for UpdateAccountProfileRequest.
+type UpdateAccountProfileRequest struct {
+	DisplayName string `json:"display_name"`
+
+	// Email Contact address, or empty to clear. Never used for authentication.
+	Email    string  `json:"email"`
+	Proof    *string `json:"proof,omitempty"`
+	Username string  `json:"username"`
 }
 
 // UpdateAdapterOriginRequest defines model for UpdateAdapterOriginRequest.
@@ -8537,6 +8760,9 @@ type RemoveWorkspaceOriginJSONRequestBody = WorkspaceOriginRequest
 // AddWorkspaceOriginJSONRequestBody defines body for AddWorkspaceOrigin for application/json ContentType.
 type AddWorkspaceOriginJSONRequestBody = WorkspaceOriginRequest
 
+// UpdateMyProfileJSONRequestBody defines body for UpdateMyProfile for application/json ContentType.
+type UpdateMyProfileJSONRequestBody = UpdateAccountProfileRequest
+
 // CreateOrgJSONRequestBody defines body for CreateOrg for application/json ContentType.
 type CreateOrgJSONRequestBody = CreateOrgRequest
 
@@ -8638,6 +8864,12 @@ type CreateRevisionPinJSONRequestBody = RevisionPinRequest
 
 // PublishPendingChangesJSONRequestBody defines body for PublishPendingChanges for application/json ContentType.
 type PublishPendingChangesJSONRequestBody = PublishRequest
+
+// DiffRevisionsJSONRequestBody defines body for DiffRevisions for application/json ContentType.
+type DiffRevisionsJSONRequestBody = RevisionDiffRequest
+
+// RevealRevisionDiffJSONRequestBody defines body for RevealRevisionDiff for application/json ContentType.
+type RevealRevisionDiffJSONRequestBody = RevealRevisionDiffRequest
 
 // RollbackRevisionJSONRequestBody defines body for RollbackRevision for application/json ContentType.
 type RollbackRevisionJSONRequestBody = RollbackRequest
@@ -9264,6 +9496,12 @@ type ServerInterface interface {
 	// ListMyOrgs The organisations the caller's own grants name.
 	// (GET /api/v1/me/orgs)
 	ListMyOrgs(w http.ResponseWriter, r *http.Request)
+	// GetMyProfile Read your own account profile.
+	// (GET /api/v1/me/profile)
+	GetMyProfile(w http.ResponseWriter, r *http.Request)
+	// UpdateMyProfile Update your own account profile.
+	// (PATCH /api/v1/me/profile)
+	UpdateMyProfile(w http.ResponseWriter, r *http.Request)
 	// ListMySessions The caller's own active sessions, workspace sessions included.
 	// (GET /api/v1/me/sessions)
 	ListMySessions(w http.ResponseWriter, r *http.Request)
@@ -9534,6 +9772,12 @@ type ServerInterface interface {
 	// ListRevisions One environment's revision history, newest first.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions)
 	ListRevisions(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// DiffRevisions Compare two revisions with secret write-presence only.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff)
+	DiffRevisions(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// RevealRevisionDiff Reveal one key across two revisions.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff/reveal)
+	RevealRevisionDiff(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
 	// GetRevision One revision, with its change token.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/{revision})
 	GetRevision(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, revision string)
@@ -10371,6 +10615,18 @@ func (_ Unimplemented) ListMyOrgs(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// GetMyProfile Read your own account profile.
+// (GET /api/v1/me/profile)
+func (_ Unimplemented) GetMyProfile(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateMyProfile Update your own account profile.
+// (PATCH /api/v1/me/profile)
+func (_ Unimplemented) UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListMySessions The caller's own active sessions, workspace sessions included.
 // (GET /api/v1/me/sessions)
 func (_ Unimplemented) ListMySessions(w http.ResponseWriter, r *http.Request) {
@@ -10908,6 +11164,18 @@ func (_ Unimplemented) GetRevealWindow(w http.ResponseWriter, r *http.Request, o
 // ListRevisions One environment's revision history, newest first.
 // (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions)
 func (_ Unimplemented) ListRevisions(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DiffRevisions Compare two revisions with secret write-presence only.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff)
+func (_ Unimplemented) DiffRevisions(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevealRevisionDiff Reveal one key across two revisions.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff/reveal)
+func (_ Unimplemented) RevealRevisionDiff(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -13184,6 +13452,34 @@ func (siw *ServerInterfaceWrapper) ListMyOrgs(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListMyOrgs(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMyProfile operation middleware
+func (siw *ServerInterfaceWrapper) GetMyProfile(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyProfile(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateMyProfile operation middleware
+func (siw *ServerInterfaceWrapper) UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateMyProfile(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -17637,6 +17933,94 @@ func (siw *ServerInterfaceWrapper) ListRevisions(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// DiffRevisions operation middleware
+func (siw *ServerInterfaceWrapper) DiffRevisions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DiffRevisions(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevealRevisionDiff operation middleware
+func (siw *ServerInterfaceWrapper) RevealRevisionDiff(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevealRevisionDiff(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetRevision operation middleware
 func (siw *ServerInterfaceWrapper) GetRevision(w http.ResponseWriter, r *http.Request) {
 
@@ -21819,6 +22203,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/api/v1/auth/saml/{provider}/metadata", wrapper.SamlMetadata)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/me/profile", wrapper.GetMyProfile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1/me/profile", wrapper.UpdateMyProfile)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/me/orgs", wrapper.ListMyOrgs)
 	})
 	r.Group(func(r chi.Router) {
@@ -22156,6 +22546,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/ceremony", wrapper.GetApprovalCeremony)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff", wrapper.DiffRevisions)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff/reveal", wrapper.RevealRevisionDiff)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/signals", wrapper.GetEnvironmentSignals)
@@ -31465,6 +31861,205 @@ func (response ListMyOrgs500JSONResponse) VisitListMyOrgsResponse(w http.Respons
 	return err
 }
 
+type GetMyProfileRequestObject struct {
+}
+
+type GetMyProfileResponseObject interface {
+	VisitGetMyProfileResponse(w http.ResponseWriter) error
+}
+
+type GetMyProfile200JSONResponse AccountProfile
+
+func (response GetMyProfile200JSONResponse) VisitGetMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyProfile401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetMyProfile401JSONResponse) VisitGetMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyProfile404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetMyProfile404JSONResponse) VisitGetMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyProfile429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetMyProfile429JSONResponse) VisitGetMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyProfile500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetMyProfile500JSONResponse) VisitGetMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMyProfileRequestObject struct {
+	Body *UpdateMyProfileJSONRequestBody
+}
+
+type UpdateMyProfileResponseObject interface {
+	VisitUpdateMyProfileResponse(w http.ResponseWriter) error
+}
+
+type UpdateMyProfile200JSONResponse AccountProfile
+
+func (response UpdateMyProfile200JSONResponse) VisitUpdateMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMyProfile400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateMyProfile400JSONResponse) VisitUpdateMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMyProfile401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdateMyProfile401JSONResponse) VisitUpdateMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMyProfile403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdateMyProfile403JSONResponse) VisitUpdateMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMyProfile404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateMyProfile404JSONResponse) VisitUpdateMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMyProfile409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpdateMyProfile409JSONResponse) VisitUpdateMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMyProfile429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response UpdateMyProfile429JSONResponse) VisitUpdateMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMyProfile500JSONResponse struct{ InternalJSONResponse }
+
+func (response UpdateMyProfile500JSONResponse) VisitUpdateMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListMySessionsRequestObject struct {
 }
 
@@ -39833,6 +40428,240 @@ func (response ListRevisions429JSONResponse) VisitListRevisionsResponse(w http.R
 type ListRevisions500JSONResponse struct{ InternalJSONResponse }
 
 func (response ListRevisions500JSONResponse) VisitListRevisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiffRevisionsRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Body        *DiffRevisionsJSONRequestBody
+}
+
+type DiffRevisionsResponseObject interface {
+	VisitDiffRevisionsResponse(w http.ResponseWriter) error
+}
+
+type DiffRevisions200JSONResponse RevisionDiff
+
+func (response DiffRevisions200JSONResponse) VisitDiffRevisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiffRevisions400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DiffRevisions400JSONResponse) VisitDiffRevisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiffRevisions401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DiffRevisions401JSONResponse) VisitDiffRevisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiffRevisions404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DiffRevisions404JSONResponse) VisitDiffRevisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiffRevisions409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DiffRevisions409JSONResponse) VisitDiffRevisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiffRevisions429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response DiffRevisions429JSONResponse) VisitDiffRevisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiffRevisions500JSONResponse struct{ InternalJSONResponse }
+
+func (response DiffRevisions500JSONResponse) VisitDiffRevisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevealRevisionDiffRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Body        *RevealRevisionDiffJSONRequestBody
+}
+
+type RevealRevisionDiffResponseObject interface {
+	VisitRevealRevisionDiffResponse(w http.ResponseWriter) error
+}
+
+type RevealRevisionDiff200JSONResponse RevisionDiff
+
+func (response RevealRevisionDiff200JSONResponse) VisitRevealRevisionDiffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevealRevisionDiff400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RevealRevisionDiff400JSONResponse) VisitRevealRevisionDiffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevealRevisionDiff401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RevealRevisionDiff401JSONResponse) VisitRevealRevisionDiffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevealRevisionDiff403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RevealRevisionDiff403JSONResponse) VisitRevealRevisionDiffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevealRevisionDiff404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RevealRevisionDiff404JSONResponse) VisitRevealRevisionDiffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevealRevisionDiff409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RevealRevisionDiff409JSONResponse) VisitRevealRevisionDiffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevealRevisionDiff429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response RevealRevisionDiff429JSONResponse) VisitRevealRevisionDiffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevealRevisionDiff500JSONResponse struct{ InternalJSONResponse }
+
+func (response RevealRevisionDiff500JSONResponse) VisitRevealRevisionDiffResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -48835,6 +49664,12 @@ type StrictServerInterface interface {
 	// ListMyOrgs The organisations the caller's own grants name.
 	// (GET /api/v1/me/orgs)
 	ListMyOrgs(ctx context.Context, request ListMyOrgsRequestObject) (ListMyOrgsResponseObject, error)
+	// GetMyProfile Read your own account profile.
+	// (GET /api/v1/me/profile)
+	GetMyProfile(ctx context.Context, request GetMyProfileRequestObject) (GetMyProfileResponseObject, error)
+	// UpdateMyProfile Update your own account profile.
+	// (PATCH /api/v1/me/profile)
+	UpdateMyProfile(ctx context.Context, request UpdateMyProfileRequestObject) (UpdateMyProfileResponseObject, error)
 	// ListMySessions The caller's own active sessions, workspace sessions included.
 	// (GET /api/v1/me/sessions)
 	ListMySessions(ctx context.Context, request ListMySessionsRequestObject) (ListMySessionsResponseObject, error)
@@ -49105,6 +49940,12 @@ type StrictServerInterface interface {
 	// ListRevisions One environment's revision history, newest first.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions)
 	ListRevisions(ctx context.Context, request ListRevisionsRequestObject) (ListRevisionsResponseObject, error)
+	// DiffRevisions Compare two revisions with secret write-presence only.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff)
+	DiffRevisions(ctx context.Context, request DiffRevisionsRequestObject) (DiffRevisionsResponseObject, error)
+	// RevealRevisionDiff Reveal one key across two revisions.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff/reveal)
+	RevealRevisionDiff(ctx context.Context, request RevealRevisionDiffRequestObject) (RevealRevisionDiffResponseObject, error)
 	// GetRevision One revision, with its change token.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/{revision})
 	GetRevision(ctx context.Context, request GetRevisionRequestObject) (GetRevisionResponseObject, error)
@@ -52068,6 +52909,61 @@ func (sh *strictHandler) ListMyOrgs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// GetMyProfile operation middleware
+func (sh *strictHandler) GetMyProfile(w http.ResponseWriter, r *http.Request) {
+	var request GetMyProfileRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMyProfile(ctx, request.(GetMyProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMyProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMyProfileResponseObject); ok {
+		if err := validResponse.VisitGetMyProfileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateMyProfile operation middleware
+func (sh *strictHandler) UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
+	var request UpdateMyProfileRequestObject
+
+	var body UpdateMyProfileJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateMyProfile(ctx, request.(UpdateMyProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateMyProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateMyProfileResponseObject); ok {
+		if err := validResponse.VisitUpdateMyProfileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListMySessions operation middleware
 func (sh *strictHandler) ListMySessions(w http.ResponseWriter, r *http.Request) {
 	var request ListMySessionsRequestObject
@@ -54782,6 +55678,76 @@ func (sh *strictHandler) ListRevisions(w http.ResponseWriter, r *http.Request, o
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListRevisionsResponseObject); ok {
 		if err := validResponse.VisitListRevisionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DiffRevisions operation middleware
+func (sh *strictHandler) DiffRevisions(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request DiffRevisionsRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	var body DiffRevisionsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DiffRevisions(ctx, request.(DiffRevisionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DiffRevisions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DiffRevisionsResponseObject); ok {
+		if err := validResponse.VisitDiffRevisionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevealRevisionDiff operation middleware
+func (sh *strictHandler) RevealRevisionDiff(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request RevealRevisionDiffRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	var body RevealRevisionDiffJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevealRevisionDiff(ctx, request.(RevealRevisionDiffRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevealRevisionDiff")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevealRevisionDiffResponseObject); ok {
+		if err := validResponse.VisitRevealRevisionDiffResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

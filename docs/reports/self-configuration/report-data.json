@@ -1260,7 +1260,7 @@
   "deliveryEvidence": [
     [
       "Web application",
-      "Typecheck, production build and all 900 web tests pass. Desktop and mobile edit/publish/apply flows pass without restarting."
+      "Typecheck, production build and all 919 web tests pass. Desktop and mobile edit/publish/apply flows pass without restarting."
     ],
     [
       "Setup, adoption and restart",
@@ -1276,7 +1276,7 @@
     ],
     [
       "Review and full validation",
-      "Independent standards and spec reviews are clean after three fixes. Full SQLite/PostgreSQL isolation, core checks with failed-package reruns, race suites, Go vet, 900 web tests, 20 SDK tests and the 44-page docs build pass."
+      "Independent standards and spec reviews are clean after three fixes. Full SQLite/PostgreSQL isolation, core checks with failed-package reruns, race suites, Go vet, 919 web tests, 20 SDK tests and the 44-page docs build pass."
     ]
   ]
 }

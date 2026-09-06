@@ -6,6 +6,8 @@ import { clearNotification, notifyFailure, ToastViewport } from '../app/notifica
 import { renderForm, settle } from '../testkit/renderForm.tsx';
 import { AccountSecurity } from './AccountSecurity.tsx';
 
+vi.mock('./AccountProfile.tsx', () => ({ AccountProfile: () => null }));
+
 const authProviders = vi.hoisted(() => {
   const values: { kind: string; slug: string; display_name: string }[] = [];
   return { values };

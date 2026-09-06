@@ -58,7 +58,7 @@ func envScope(org, project, env string) domain.Scope {
 }
 
 func wireProject(p service.Project) apigen.Project {
-	return apigen.Project{Id: p.ID, OrgId: p.OrgID, Name: p.Name, CreatedAt: p.CreatedAt}
+	return apigen.Project{Id: p.ID, OrgId: p.OrgID, Name: p.Name, CreatedAt: p.CreatedAt, CanManagePolicy: p.CanManagePolicy, CanDelete: p.CanDelete}
 }
 
 func wireEnvironment(e service.Environment) apigen.Environment {

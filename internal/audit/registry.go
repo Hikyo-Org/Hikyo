@@ -92,6 +92,7 @@ const (
 	EventAuthFactorRemoved  EventType = "auth.factor_removed"
 	// auth.recovery_codes_generated records a display-once batch replacing the
 	// previous one.
+	EventAuthProfileUpdated         EventType = "auth.profile_updated"
 	EventAuthRecoveryCodesGenerated EventType = "auth.recovery_codes_generated"
 	// auth.recovery_code_consumed records the pre-auth break-in-glass path,
 	// including its failures (the ADR requires the failures, uniform response
@@ -885,6 +886,11 @@ var registry = map[EventType]TypeSpec{
 		"owner_instance_id": {Kind: KindString, Required: true}, "revision": {Kind: KindInt, NonNegative: true}, "generation": {Kind: KindInt, NonNegative: true}, "job_id": {Kind: KindString}, "node_id": {Kind: KindString}, "error_code": {Kind: KindString, Enum: []string{"invalid_config", "incompatible_schema", "preparation_failed", "preparation_timeout", "convergence_timeout", "restored", "transport_failed", "none"}},
 	}},
 
+	EventAuthProfileUpdated: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true}, Trails: map[Trail]bool{TrailInstance: true},
+		Schema: Schema{"account_id": {Kind: KindString, Required: true}},
+	},
 	EventPrivacySubjectCorrected:  privacySubjectSpec,
 	EventPrivacySubjectReleased:   privacySubjectSpec,
 	EventPrivacySubjectExported:   privacySubjectSpec,

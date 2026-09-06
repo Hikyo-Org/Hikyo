@@ -21,11 +21,9 @@ export function Projects() {
       {activeOrgId === '' ? (
         <Panel id="projects-none" title="No organisation yet">
           <p role="status" className="hint-wrap">
-            Ask an instance administrator to grant you access to an organisation. They create one
-            under Instance settings and grant access under Instance members (with your principal
-            ID from Account &amp; security), or from a terminal with{' '}
-            <code>hikyo access grant template</code>. A grant on your own account ends the current
-            session.
+            Ask an instance administrator to invite you to an organisation. They can create an
+            organisation under Instance settings and manage access under Members. A change to
+            your access ends the current session.
           </p>
         </Panel>
       ) : (
@@ -67,7 +65,6 @@ export function ProjectList({
         <li key={project.id}>
           <div>
             <strong>{project.name}</strong>
-            <span className="mono">{project.id}</span>
           </div>
           <span className="projects__actions">
             <Link

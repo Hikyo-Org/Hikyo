@@ -76,6 +76,8 @@ export function ProjectSettings() {
   const feedback = useFeedback(settingsFailureText);
 
   const current = projectQuery.data;
+  const canManagePolicy = current?.can_manage_policy === true;
+  const canDelete = current?.can_delete === true;
   useEffect(() => {
     setName('');
   }, [org, project]);
@@ -102,10 +104,10 @@ export function ProjectSettings() {
           { id: 'project-identity', label: 'Identity' },
           { id: 'project-metadata', label: 'Metadata' },
           { id: 'project-environments', label: 'Environments' },
-          { id: 'project-policy', label: 'Policy' },
+          ...(canManagePolicy ? [{ id: 'project-policy', label: 'Policy' }] : []),
           { id: 'project-access', label: 'Access' },
           ...(prototypeMode ? [] : [{ id: 'project-keys', label: 'Keys & crypto' }]),
-          { id: 'project-danger', label: 'Danger zone' },
+          ...(canDelete ? [{ id: 'project-danger', label: 'Danger zone' }] : []),
         ]}
       />
 
@@ -158,6 +160,7 @@ export function ProjectSettings() {
         {/* The environments-read failure is surfaced once, by the Policy panel
             below (a visual-contract test pins the alert there); both panels read
             the same query, so repeating it here would show it twice. */}
+        {environments.isError && !canManagePolicy ? <Alert>This project&apos;s environments could not be read.</Alert> : null}
         {environments.isPending ? <p role="status">Loading environments…</p> : null}
         {environments.isSuccess && environments.data.items.length === 0 ? (
           <p role="status">This project holds no environments yet.</p>
@@ -186,7 +189,7 @@ export function ProjectSettings() {
         />
       </Panel>
 
-      <Panel id="project-policy" title="Policy">
+      {canManagePolicy ? <Panel id="project-policy" title="Policy">
         {environments.isError ? (
           <Alert>This project&apos;s environments could not be read.</Alert>
         ) : null}
@@ -249,7 +252,7 @@ export function ProjectSettings() {
           These are the project-settings capability&apos;s contents: the guards on the definitions
           editor live apart from the editor they restrain.
         </p>
-      </Panel>
+      </Panel> : null}
 
       <Panel id="project-access" title="Access">
         <div className="settings-row">
@@ -285,7 +288,7 @@ export function ProjectSettings() {
         </Panel>
       )}
 
-      <Panel id="project-danger" title="Danger zone" danger>
+      {canDelete ? <Panel id="project-danger" title="Danger zone" danger>
         <TypedNameConfirm
           key={current === undefined ? `pending-${project}` : current.id}
           label="Delete this project"
@@ -307,7 +310,7 @@ export function ProjectSettings() {
             )
           }
         />
-      </Panel>
+      </Panel> : null}
     </div>
   );
 }

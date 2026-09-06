@@ -1291,6 +1291,7 @@ export function Matrix({
                                 keyRecord={key}
                                 environment={environment}
                                 signal={signalsByCell.get(id)}
+                                draft={draftsByVersion.get(signalsByCell.get(id)?.pending?.versionId ?? "")}
                                 problems={problemsByCell.get(id) ?? []}
                                 onOpen={() =>
                                   setSelection({ keyId: key.id, environmentId: environment.id })
@@ -1556,6 +1557,7 @@ function MatrixCell({
   keyRecord,
   environment,
   signal,
+  draft,
   problems,
   onOpen,
 }: {
@@ -1563,9 +1565,11 @@ function MatrixCell({
   keyRecord: MatrixKey;
   environment: Environment;
   signal: MatrixSignalCell | undefined;
+  draft: MatrixPendingDraft | undefined;
   problems: readonly { readonly kind: string; readonly message: string }[];
   onOpen: () => void;
 }) {
+  const invalidDraft = draft?.advisory?.valid === false;
   const requiredProblem = problems.find((problem) => problem.kind === 'required-absent');
   const validationProblem = problems.find((problem) => problem.kind === 'validation');
   let state = '· absent';
@@ -1603,6 +1607,7 @@ function MatrixCell({
     draftSense === null ? null : `unpublished draft ${draftSense}`,
     changedRevision === undefined ? null : `changed in r${String(changedRevision)}`,
     otherDraft ? 'another editor has a draft here' : null,
+    invalidDraft ? 'your draft is invalid' : null,
   ].filter((word): word is string => word !== null);
   const label = `${keyRecord.name} in ${environment.name}: ${state}${signalWords.length === 0 ? '' : `, ${signalWords.join(', ')}`}`;
 
@@ -1632,6 +1637,7 @@ function MatrixCell({
             title={`unpublished draft, ${draftSense}`}
           />
         )}
+        {invalidDraft ? <span className="matrix-cell__error" title="Your draft is invalid" aria-hidden="true">!</span> : null}
         {otherDraft ? (
           <span
             className="matrix-cell__other"

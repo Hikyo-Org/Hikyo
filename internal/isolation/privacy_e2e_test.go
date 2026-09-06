@@ -74,6 +74,14 @@ func TestPrivacySubjectLifecycle(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			profile, err := auth.MyProfile(ctx, session.SessionToken)
+			if err != nil {
+				t.Fatal(err)
+			}
+			profile.Email = "subject@example.test"
+			if _, err := auth.UpdateMyProfile(ctx, session.SessionToken, profile, ""); err != nil {
+				t.Fatal(err)
+			}
 			export, err := auth.ExportPrivacySubject(ctx, "usr_subject")
 			if err != nil {
 				t.Fatal(err)
@@ -89,6 +97,9 @@ func TestPrivacySubjectLifecycle(t *testing.T) {
 			}
 			if len(export.Sessions) != 1 || len(export.Activity) == 0 {
 				t.Fatalf("missing subject metadata: %+v", export)
+			}
+			if export.Account.Email != profile.Email {
+				t.Fatalf("contact email missing from export: %q", export.Account.Email)
 			}
 			receipt, err := auth.ApplyPrivacySubject(ctx, "usr_subject", "restrict", "")
 			if err != nil {
@@ -141,7 +152,7 @@ func TestPrivacySubjectLifecycle(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if snapshot.Account.State != "restricted" || snapshot.Account.Username != "corrected-subject" {
+			if snapshot.Account.State != "restricted" || snapshot.Account.Username != "corrected-subject" || snapshot.Account.Email != profile.Email {
 				t.Fatal("failed erasure partially committed")
 			}
 			erased, err := auth.ApplyPrivacySubject(ctx, "usr_subject", "erase", "")
@@ -161,7 +172,7 @@ func TestPrivacySubjectLifecycle(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if export.Account.DisplayName != "" || export.Account.Username == "usr_subject" || export.Account.State != "erased" || len(export.Sessions) != 0 || len(export.Identities) != 0 || len(export.Grants) != 0 {
+			if export.Account.DisplayName != "" || export.Account.Email != "" || export.Account.Username == "usr_subject" || export.Account.State != "erased" || len(export.Sessions) != 0 || len(export.Identities) != 0 || len(export.Grants) != 0 {
 				t.Fatalf("erasure incomplete: %+v", export)
 			}
 			for _, table := range []string{"password_credentials", "credential_authorities", "totp_credentials", "recovery_codes", "webauthn_credentials", "external_identities"} {

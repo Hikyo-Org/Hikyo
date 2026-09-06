@@ -163,7 +163,9 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 		audit.EventAuthReauthenticated,
 		audit.EventAuthThrottleCrossed,
 	}},
-	"http:GET /api/v1/auth/totp": {Class: ClassUnauthenticated},
+	"http:GET /api/v1/me/profile":   {Class: ClassUnauthenticated},
+	"http:PATCH /api/v1/me/profile": {Class: ClassUnauthenticated, Events: []audit.EventType{audit.EventAuthProfileUpdated, audit.EventAuthThrottleCrossed}},
+	"http:GET /api/v1/auth/totp":    {Class: ClassUnauthenticated},
 	"http:DELETE /api/v1/auth/totp": {Class: ClassUnauthenticated, Events: []audit.EventType{
 		audit.EventAuthFactorRemoved,
 		audit.EventAuthSessionCreated,
@@ -650,6 +652,12 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/pins":                        {Class: ClassTenant, Ops: []Operation{OpPinList}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/pins":                       {Class: ClassTenant, Ops: []Operation{OpPinSet, OpPinSetHistory}, Events: []audit.EventType{audit.EventPinCreated, audit.EventPinReassigned, audit.EventPinRenewed, audit.EventPinExpiryRefused}},
 	"http:DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/pins/{workloadPrincipal}": {Class: ClassTenant, Ops: []Operation{OpPinRelease}, Events: []audit.EventType{audit.EventPinReleased}},
+	// Revision comparison has the export read boundary. The per-key disclosure
+	// checks current or historical reveal independently for each retained side.
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff": {Class: ClassTenant, Ops: []Operation{OpValueExport}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff/reveal": {Class: ClassTenant, Ops: []Operation{
+		OpValueExport, OpValueExportReveal, OpValueExportRevealHistory,
+	}, Events: []audit.EventType{audit.EventValueRevealed}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/export": {Class: ClassTenant, Ops: []Operation{
 		OpValueExport, OpValueExportReveal, OpValueExportRevealHistory,
 	}, Events: []audit.EventType{audit.EventValueRevealed}},

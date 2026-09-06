@@ -17,7 +17,7 @@ func RecoveryRead(ctx context.Context, db *store.RecoveryDB, fn ReadFn) error {
 	if err != nil {
 		return err
 	}
-	historical := version < 48
+	historical := version < 50
 	return retryLoop(ctx, db.Engine(), func(ctx context.Context) error {
 		tok := authz.NewTxToken()
 		defer tok.Invalidate()
@@ -64,7 +64,7 @@ func RecoveryWrite(ctx context.Context, db *store.RecoveryDB, fn WriteFn) error 
 	if err != nil {
 		return err
 	}
-	historical := version < 48
+	historical := version < 50
 	return retryLoop(ctx, db.Engine(), func(ctx context.Context) error {
 		tok := authz.NewTxToken()
 		defer tok.Invalidate()

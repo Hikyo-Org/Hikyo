@@ -16,7 +16,7 @@ verification pass. No merge or production deployment has occurred.
 | Recovery and encryption | Exact credential confirmation gates restored outbound use. Host recovery refuses live consumers despite a one-hour-fast host clock and disabled HA flag. Normal DEK rotation/re-encryption preserve snapshots on both engines. |
 | Mail | Verified TLS sink, byte-exact passwords, explicit private relay policy, delivery deadline and five tests per principal/hour. Outcome audit survives revocation. Tests send no live recipient mail. |
 | Audit completeness | Real TOTP/adoption/publish/apply/TLS mail/recovery/resumption emits every registered event on both engines. Registry closure and formula matrix pass together. |
-| Web | Typecheck, production build and all 900 tests pass. Desktop edits and publishes through the matrix, applies r2 using a passkey, and observes generation 2 and the new update channel without restarting. Mobile passes accessibility and overflow checks. |
+| Web | Typecheck, production build and all 919 tests pass. Desktop edits and publishes through the matrix, applies r2 using a passkey, and observes generation 2 and the new update channel without restarting. Mobile passes accessibility and overflow checks. |
 | Independent owners | Live browser applies a different update channel on owner B while owner A retains its revision, generation and channel. Owner/project IDs differ. |
 | SDK and docs | SDK typecheck and 20 tests pass. Docs have zero diagnostics; all 44 pages build with navigation and search verified. |
 | Isolation and race checks | Full SQLite/PostgreSQL isolation suite passes (765.936 seconds). Full service, store, mail and runtime configuration race suites pass. A final focused race run covers clock/HA cleanup and adoption disagreement. |
@@ -63,10 +63,45 @@ Two P2 findings were fixed and independently rechecked:
 No findings remain from these axes. Reviews were static; executed tests provide
 the separate behavior evidence above.
 
+### Integration with current main
+
+Main added adapter findings and account profiles while this feature was built.
+The merge preserves both behaviors, regenerates OpenAPI/SDK/SQLC, and moves the
+unreleased self-configuration migration from 48 to 50. Historical recovery
+selection and the exact legacy upgrade fixture include that boundary.
+The complete merged core suite passes in one run, including both-engine upgrade
+drills. Merged authorization/audit/formula tests and Go vet pass. Web validation
+passes all 919 tests and both SDK checks. Fresh desktop setup/publish/apply and
+independent-owner journeys pass against migration 50. Evidence: [local node
+state](validation/managed-configuration-merged-nodes-desktop.png) and [independent
+owner](validation/managed-configuration-merged-independent-owner-desktop.png). The first CI
+format failure used a different formatter from PATH; the final format check
+uses `$(go env GOROOT)/bin/gofmt`, matching CI.
+
+### Initial CI findings
+
+The first complete CI head exposed two additional verification issues. The new
+configuration surface lacked four required pinned browser assertion records
+(desktop/mobile, dark/light); the functional browser shards themselves passed.
+The existing assertion helper is now exercised on the real page for each pair.
+All four new assertion runs pass on fresh harness instances. Combining their
+real records with the eight original CI artifacts passes the unchanged closure
+checker. No coverage requirement was removed. The earlier exact-head run passed
+all race/isolation shards and all eight functional browser shards.
+
+The ARM floor schema fan-out measured 7,775.02 ms, or 31,100.08 ms after the
+committed factor of four, above its 30,000 ms limit. Three alternating native
+macOS ARM64 diagnostic runs measured baseline median 2,522.83 ms and integrated
+candidate median 2,573.04 ms. All 100,000 cells passed authorized readback.
+SQLite snapshot/lineage writes dominated; no significant self-configuration
+hotspot was identified. These diagnostics do not replace Linux CI or physical
+Pi evidence. The floor workload, limits and derating factors are unchanged;
+PR #686 records the integrated head's acceptance result.
+
 ### Current report and delivery
 
-Final implementation report: HTTP 200, 265672 bytes, SHA-256
-`193e6d4c95567b33053a5aca2f2eaf86b25b1991b0c271930cccce1601d611ad`. Rebuilding produces identical bytes; LAN response matches.
+Final implementation report: HTTP 200, 265742 bytes, SHA-256
+`99c01853dbad3f43e824e3e6946b3ab5e325213aaa11c1cdbef6129d270dcb4c`. Rebuilding produces identical bytes; LAN response matches.
 
 All 64 current `knownEnv` keys are classified, alongside managed-only CA PEM and
 the client XDG setting. The report loads on LAN at <http://192.168.0.30:8769/>;

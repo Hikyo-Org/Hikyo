@@ -160,23 +160,15 @@ func (s *Revisions) PendingDraftsPage(ctx context.Context, actor Actor, scope do
 			if err != nil {
 				return fmt.Errorf("service: pending change %s references key %s: %w", change.ID, change.KeyID, err)
 			}
-			draft := PendingDraft{
-				VersionID: change.ID, KeyID: change.KeyID, Name: key.Name,
-				Classification: key.Classification, Operation: string(change.Operation),
-				StagedFromRevision: change.StagedFromRevision, CreatedAt: change.CreatedAt,
+			presence, err := r.Catalogue().PresenceForKey(ctx, p, change.KeyID)
+			if err != nil {
+				return err
 			}
-			// MaterialSecret is sticky across restores. A historically secret
-			// value must never become readable merely because the key is now
-			// config.
-			if change.Operation == store.PendingSet && key.Classification == string(schema.Config) && !change.MaterialSecret {
-				plain, err := sealer.OpenField(pendingAAD(
-					change.OrgID, change.ProjectID, change.EnvironmentID, change.KeyID, change.ID), change.Ciphertext)
-				if err != nil {
-					return fmt.Errorf("service: pending change %s: %w", change.ID, err)
-				}
-				draft.Revealed = true
-				draft.Value = string(plain)
+			draft, err := pendingDraftView(change, key, presence, sealer)
+			if err != nil {
+				return err
 			}
+
 			out = append(out, draft)
 		}
 		return nil
@@ -208,9 +200,13 @@ func (s *Revisions) HistoryPage(ctx context.Context, actor Actor, scope domain.S
 			if err != nil {
 				return err
 			}
+			name, err := revisionPublisherName(ctx, az, snapshot.PublishedBy)
+			if err != nil {
+				return err
+			}
 			out = append(out, RevisionView{
 				Revision: snapshot.Revision, SchemaRevision: snapshot.SchemaRevision,
-				PublishedBy: snapshot.PublishedBy, PublishedAt: snapshot.PublishedAt,
+				PublishedBy: snapshot.PublishedBy, PublishedByName: name, PublishedAt: snapshot.PublishedAt,
 				ChangedKeys:    changedKeys(changes),
 				PayloadPresent: snapshot.PayloadPresent(), CollectedPolicy: snapshot.CollectionPolicy(),
 			})

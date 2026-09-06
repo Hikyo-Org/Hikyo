@@ -9,6 +9,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/delivery"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
@@ -25,11 +26,12 @@ import (
 // value in any form, which is what lets lineage be retained forever while
 // payloads are collected by policy.
 type RevisionView struct {
-	Revision       int64
-	SchemaRevision int64
-	PublishedBy    string
-	PublishedAt    time.Time
-	ChangedKeys    []ChangedKey
+	Revision        int64
+	SchemaRevision  int64
+	PublishedBy     string
+	PublishedByName string
+	PublishedAt     time.Time
+	ChangedKeys     []ChangedKey
 	// PayloadPresent is the collection bit (#52/#53). Lineage outlives its
 	// payload, so a history entry says which of the two it still has -- and a
 	// surface that offers diff, restore or pin on a collected revision would be
@@ -98,6 +100,8 @@ type EnvironmentSignals struct {
 // plaintext only for a revealed config set; secret and unset drafts never
 // carry material on this surface.
 type PendingDraft struct {
+	OwnerID            string
+	Valid              bool
 	VersionID          string
 	KeyID              string
 	Name               string
@@ -122,14 +126,19 @@ func (s *Revisions) History(ctx context.Context, actor Actor, scope domain.Scope
 		if err != nil {
 			return err
 		}
+		names := newPrincipalNames(az)
 		for _, snapshot := range snapshots {
+			name, err := names.get(ctx, domain.PrincipalID(snapshot.PublishedBy))
+			if err != nil {
+				return err
+			}
 			changes, err := r.Snapshots().Changes(ctx, p, snapshot.Revision)
 			if err != nil {
 				return err
 			}
 			out = append(out, RevisionView{
 				Revision: snapshot.Revision, SchemaRevision: snapshot.SchemaRevision,
-				PublishedBy: snapshot.PublishedBy, PublishedAt: snapshot.PublishedAt,
+				PublishedBy: snapshot.PublishedBy, PublishedByName: name, PublishedAt: snapshot.PublishedAt,
 				ChangedKeys:    changedKeys(changes),
 				PayloadPresent: snapshot.PayloadPresent(), CollectedPolicy: snapshot.CollectionPolicy(),
 			})
@@ -199,10 +208,14 @@ func (s *Revisions) Show(ctx context.Context, actor Actor, scope domain.Scope, r
 		if err != nil {
 			return err
 		}
+		name, err := revisionPublisherName(ctx, az, snapshot.PublishedBy)
+		if err != nil {
+			return err
+		}
 		out = RevisionDetail{
 			RevisionView: RevisionView{
 				Revision: snapshot.Revision, SchemaRevision: snapshot.SchemaRevision,
-				PublishedBy: snapshot.PublishedBy, PublishedAt: snapshot.PublishedAt,
+				PublishedBy: snapshot.PublishedBy, PublishedByName: name, PublishedAt: snapshot.PublishedAt,
 				ChangedKeys:     changedKeys(changes),
 				PayloadPresent:  snapshot.PayloadPresent(),
 				CollectedPolicy: snapshot.CollectionPolicy(),
@@ -318,8 +331,8 @@ func (s *Revisions) Signals(ctx context.Context, actor Actor, scope domain.Scope
 // PendingDrafts lists only the caller's own drafts in one environment. The
 // owner and environment predicates live in SQL; this layer joins catalogue
 // names/classifications and opens config sets under the ordinary read gate.
-// Secrets are never opened here because previewing them would require
-// consuming a disclosure ceremony, outside this endpoint's scope.
+// Secret bytes are evaluated only for the owner-only advisory, never returned.
+// Only config previews carry plaintext on this endpoint.
 func (s *Revisions) PendingDrafts(ctx context.Context, actor Actor, scope domain.Scope) ([]PendingDraft, error) {
 	sealer, err := sealerFor(ctx, s.DB, s.Keyring, actor, authz.OpValuePendingList, scope)
 	if err != nil {
@@ -340,6 +353,10 @@ func (s *Revisions) PendingDrafts(ctx context.Context, actor Actor, scope domain
 		if err != nil {
 			return err
 		}
+		presence, err := r.Catalogue().ListPresence(ctx, p)
+		if err != nil {
+			return err
+		}
 		byID := make(map[string]store.CatalogueKey, len(keys))
 		for _, key := range keys {
 			byID[key.ID] = key
@@ -350,22 +367,11 @@ func (s *Revisions) PendingDrafts(ctx context.Context, actor Actor, scope domain
 			if !ok {
 				return fmt.Errorf("service: pending change %s references missing key %s", change.ID, change.KeyID)
 			}
-			draft := PendingDraft{
-				VersionID: change.ID, KeyID: change.KeyID, Name: key.Name,
-				Classification: key.Classification, Operation: string(change.Operation),
-				StagedFromRevision: change.StagedFromRevision, CreatedAt: change.CreatedAt,
+			draft, err := pendingDraftView(change, key, presence, sealer)
+			if err != nil {
+				return err
 			}
-			// MaterialSecret is sticky across restores. A historically secret value
-			// must never become readable merely because the key is now config.
-			if change.Operation == store.PendingSet && key.Classification == string(schema.Config) && !change.MaterialSecret {
-				plain, err := sealer.OpenField(pendingAAD(
-					change.OrgID, change.ProjectID, change.EnvironmentID, change.KeyID, change.ID), change.Ciphertext)
-				if err != nil {
-					return fmt.Errorf("service: pending change %s: %w", change.ID, err)
-				}
-				draft.Revealed = true
-				draft.Value = string(plain)
-			}
+
 			out = append(out, draft)
 		}
 		return nil
@@ -675,4 +681,50 @@ func (s *Revisions) RotateScanningKey(ctx context.Context, actor Actor) (Scannin
 	}
 	adopt()
 	return ScanningKeyRotation{Version: next.Version, DismissalsDropped: dropped}, nil
+}
+
+// Names resolve only after the revision's tenant authorization. Removed
+// principals remain identifiable by lineage id without inventing a name.
+func revisionPublisherName(ctx context.Context, az *authz.TxAuthorizer, principal string) (string, error) {
+	return newPrincipalNames(az).get(ctx, domain.PrincipalID(principal))
+}
+
+// pendingDraftView is the owner-filtered projection shared by full and bounded
+// reads. Only config previews may leave this boundary with plaintext; secret
+// bytes are opened solely to evaluate their owner's current-schema advisory.
+func pendingDraftView(change store.PendingChange, key store.CatalogueKey, presence []store.KeyPresence, sealer *crypto.ProjectSealer) (PendingDraft, error) {
+	draft := PendingDraft{
+		OwnerID: change.OwnerID, Valid: true,
+		VersionID: change.ID, KeyID: change.KeyID, Name: key.Name,
+		Classification: key.Classification, Operation: string(change.Operation),
+		StagedFromRevision: change.StagedFromRevision, CreatedAt: change.CreatedAt,
+	}
+	rules := presenceOfKey(key, presence)
+	draft.Valid = (change.Operation != store.PendingUnset || !rules.Required.Covers(change.EnvironmentID)) && (change.Operation != store.PendingSet || !rules.Forbidden.Covers(change.EnvironmentID))
+	// Only the owner-selected rows are evaluated. The validity bit is a
+	// predicate on secret material and must never reach another reader.
+	if change.Operation == store.PendingSet {
+		decl, err := schema.ParseDeclaration([]byte(key.Declaration))
+		if err != nil {
+			return PendingDraft{}, err
+		}
+		compiled, err := schema.CompileClassified(schema.Classification(key.Classification), decl)
+		if err != nil {
+			return PendingDraft{}, err
+		}
+		plain, err := sealer.OpenField(pendingAAD(change.OrgID, change.ProjectID, change.EnvironmentID, change.KeyID, change.ID), change.Ciphertext)
+		if err != nil {
+			return PendingDraft{}, fmt.Errorf("service: pending change %s: %w", change.ID, err)
+		}
+		value := string(plain)
+		crypto.Zero(plain)
+		draft.Valid = compiled.Validate(value).Valid && draft.Valid
+		// Sticky historical secrecy also applies when a key is now config.
+		if key.Classification == string(schema.Config) && !change.MaterialSecret {
+			draft.Revealed = true
+			draft.Value = value
+		}
+	}
+
+	return draft, nil
 }

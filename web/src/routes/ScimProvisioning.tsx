@@ -1,3 +1,4 @@
+import { useScopeNames } from '../api/scopeNames.ts';
 import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 
@@ -451,12 +452,12 @@ function scopeOfMapping(row: ScimMapping): { project?: string; environment?: str
   };
 }
 
-function scopeLabel(row: ScimMapping): string {
+function scopeLabel(row: ScimMapping, names: ReturnType<typeof useScopeNames>): string {
   if (row.environment_id !== undefined && row.environment_id !== '') {
-    return `environment ${row.environment_id}`;
+    return `environment ${names.project} / ${names.environment}`;
   }
   if (row.project_id !== undefined && row.project_id !== '') {
-    return `project ${row.project_id}`;
+    return `project ${names.project}`;
   }
   return 'organisation (widest)';
 }
@@ -484,6 +485,7 @@ function MappingRow({
   groupName: string;
   onDeleted: (originsReleased: number) => void;
 }) {
+  const names = useScopeNames(org, row.project_id ?? '', row.environment_id ?? '');
   const update = useUpdateScimMapping(org, binding);
   const remove = useDeleteScimMapping(org, binding);
   const feedback = useFeedback(scimMutationFailureText);
@@ -540,21 +542,22 @@ function MappingRow({
         </h3>
         <span className="mono scim-mapping__template">{row.template}</span>
       </div>
-      <p className="scim-mapping__scope">{scopeLabel(row)}</p>
+      <p className="scim-mapping__scope">{scopeLabel(row, names)}</p>
       {row.inert ? (
         <p className="notice" role="status">
           The provider group behind this row no longer exists. It grants nothing until it is edited
           or deleted; it is never removed automatically.
         </p>
       ) : null}
-      {/* Origin chip per capability line, as Members does. The wire carries no
-          per-capability origins on a mapping, but every capability on this row
-          comes from this row's group, so the origin is the row itself. */}
       <ul className="scim-mapping__caps">
         {row.capabilities.map((capability) => (
           <li key={capability} className="capability">
             <span className="capability__name mono">{capability}</span>
-            <span className="badge mono">scim: {groupName}</span>
+            {(row.capability_origins ?? []).filter((origin) => origin.capability === capability).map((origin) => (
+              <span className="badge mono" key={`${origin.binding_id}:${origin.mapping_id}:${origin.group_id}`} title={`Binding ${origin.binding_id}, mapping ${origin.mapping_id}`}>
+                {origin.kind}: {origin.group_id === row.group_id ? groupName : origin.group_id}
+              </span>
+            ))}
           </li>
         ))}
       </ul>

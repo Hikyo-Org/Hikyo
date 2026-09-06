@@ -21,6 +21,7 @@ import { join } from 'node:path';
 import { expectNoSeriousAxeViolations, expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
 import { browserApi } from '../fixtures/api.ts';
 import {
+  ADMIN,
   BASE_URL,
   BASE_URL_B,
   establishSession,
@@ -212,7 +213,7 @@ test.describe('instance administration', () => {
     // they carry the break-glass origin, the one distinction the membership
     // surface exists to preserve.
     await expect(grants.getByText('break-glass').first()).toBeVisible();
-    await expect(grants.getByText(seed.principal).first()).toBeVisible();
+    await expect(grants.locator(`.member-name[title="${seed.principal}"]`).first()).toHaveText(ADMIN.displayName);
     await expect(grants).toContainText('manage-projects');
     await expect(grants).toContainText('inherit downward into every organisation');
   });
@@ -379,13 +380,14 @@ test.describe('instance administration', () => {
     await page.goto('/instance/members');
     await page.getByRole('button', { name: 'New grant' }).click();
     const dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: 'Enter an ID for another principal' }).click();
     await dialog.getByLabel('Principal').fill(INSTANCE_GRANT_TARGET);
     await expect(dialog.getByLabel('Scope')).toHaveValue('instance');
     await dialog.getByRole('checkbox', { name: 'read', exact: true }).check();
     await dialog.getByRole('button', { name: 'Grant', exact: true }).click();
     const granted = page.locator('.notice').filter({ hasText: `Grant results for ${INSTANCE_GRANT_TARGET}` });
     await expectStatusIsTextAndAria(page, granted);
-    const row = page.getByRole('row').filter({ hasText: INSTANCE_GRANT_TARGET });
+    const row = page.getByRole('row').filter({ has: page.locator(`.member-name[title="${INSTANCE_GRANT_TARGET}"]`) });
     await expect(row).toContainText(`manual: ${seed.principal}`);
     await row
       .getByRole('button', { name: `Revoke read on instance · everything for ${INSTANCE_GRANT_TARGET}` })
@@ -404,7 +406,7 @@ test.describe('instance administration', () => {
   }, testInfo) => {
     const username = `operator-${testInfo.project.name}-${Date.now()}`;
     await page.goto('/instance/members');
-    await page.getByRole('button', { name: 'Invite' }).click();
+    await page.getByRole('button', { name: 'Invite', exact: true }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByRole('heading', { level: 2 })).toHaveText('Invite a member to Instance');
     // Instance scope admits exactly one template.
@@ -427,14 +429,15 @@ test.describe('instance administration', () => {
         page.locator('.notice').filter({ hasText: `Invited ${username} at Instance as operator` }),
       );
       // Every expanded line is the inviter's, at instance scope.
-      const row = page.getByRole('row').filter({ hasText: principal });
+      const row = page.getByRole('row').filter({ has: page.locator(`.member-name[title="${principal}"]`) });
+      await expect(row.locator('.member-name')).toHaveText('Second Operator');
       await expect(row).toContainText('manage-members');
       await expect(row).toContainText(`manual: ${seed.principal}`);
       const listed = await browserApi(page, 'GET', '/api/v1/instance/grants', zGrantList);
       expect(listed.items.filter((grant) => grant.principal_id === principal).length).toBeGreaterThan(1);
 
       // The same username again is a conflict, said inline, with the form kept.
-      await page.getByRole('button', { name: 'Invite' }).click();
+      await page.getByRole('button', { name: 'Invite', exact: true }).click();
       const again = page.getByRole('dialog');
       await again.getByLabel('Username').fill(username);
       await again.getByRole('button', { name: 'Invite', exact: true }).click();
@@ -579,6 +582,7 @@ test.describe('instance administration', () => {
       await page.goto('/instance/members');
       await page.getByRole('button', { name: 'New grant' }).click();
       const dialog = page.getByRole('dialog');
+      await dialog.getByRole('button', { name: 'Enter an ID for another principal' }).click();
       await dialog.getByLabel('Principal').fill(principal);
       await expect(dialog.getByLabel('Scope')).toHaveValue('instance');
       await dialog.getByRole('radio', { name: 'Apply a role template' }).check();
@@ -1049,6 +1053,41 @@ test.describe('instance administration', () => {
           ],
           hairlines: [well],
           density: [],
+        });
+      } finally {
+        await page.emulateMedia({ colorScheme: null });
+      }
+    });
+  }
+
+  for (const scheme of ['dark', 'light'] as const) {
+    test(`meets the pinned assertion set on instance configuration (${scheme})`, async ({
+      page,
+    }, testInfo) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      try {
+        await page.goto('/instance/config');
+        const heading = page.getByRole('heading', { name: 'Hikyo configuration', level: 1 });
+        const owner = page.locator('#configuration-owner');
+        const apply = page.getByRole('button', { name: 'Apply selected revision', exact: true });
+        const revision = page.getByLabel('Published revision to apply or test');
+        const edit = page.getByRole('link', { name: 'Edit configuration project', exact: true });
+        const rowDensity = testInfo.project.name === 'mobile' ? '--touch' : '--row';
+        await expect(apply).toBeEnabled();
+        await expectPinnedAssertionSet(page, {
+          flow: 'instance-admin',
+          surface: 'instance-config',
+          theme: scheme,
+          text: [heading, page.locator('.page__lede'), owner.locator('.settings-row__detail')],
+          radii: [[owner, 'container'], [apply, 'control'], [revision, 'control']],
+          fonts: [[heading, 'ui'], [owner.locator('code'), 'mono']],
+          colours: [
+            [heading, 'color', '--tx'],
+            [owner, 'backgroundColor', '--bg-panel'],
+            [owner, 'borderTopColor', '--panel-line'],
+          ],
+          hairlines: [owner],
+          density: [[apply, rowDensity], [edit, rowDensity]],
         });
       } finally {
         await page.emulateMedia({ colorScheme: null });

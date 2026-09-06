@@ -37,6 +37,7 @@ const (
 
 // RevisionService is the domain surface this transport exposes.
 type RevisionService interface {
+	Diff(ctx context.Context, actor service.Actor, scope domain.Scope, leftRevision, rightRevision int64, keyID string) (service.RevisionDiff, error)
 	PublishPlanned(ctx context.Context, actor service.Actor, scope domain.Scope, request service.PublishRequest) (service.PublishResult, error)
 	Restore(ctx context.Context, actor service.Actor, scope domain.Scope, revision int64, keyName string) (service.RestoreResult, error)
 	History(ctx context.Context, actor service.Actor, scope domain.Scope) ([]service.RevisionView, error)
@@ -253,7 +254,7 @@ func wireChangedKeys(changes []service.ChangedKey) []apigen.ChangedKey {
 func wireRevision(rev service.RevisionView) apigen.Revision {
 	item := apigen.Revision{
 		Revision: rev.Revision, SchemaRevision: rev.SchemaRevision,
-		PublishedBy: rev.PublishedBy, PublishedAt: rev.PublishedAt,
+		PublishedBy: rev.PublishedBy, PublishedByName: optional(rev.PublishedByName), PublishedAt: rev.PublishedAt,
 		ChangedKeys: wireChangedKeys(rev.ChangedKeys), PayloadPresent: rev.PayloadPresent,
 	}
 	if rev.CollectedPolicy != "" {
@@ -297,7 +298,7 @@ func (a *API) GetRevision(ctx context.Context, req apigen.GetRevisionRequestObje
 	}
 	return apigen.GetRevision200JSONResponse(apigen.RevisionDetail{
 		Revision: detail.Revision, SchemaRevision: detail.SchemaRevision,
-		PublishedBy: detail.PublishedBy, PublishedAt: detail.PublishedAt,
+		PublishedBy: detail.PublishedBy, PublishedByName: optional(detail.PublishedByName), PublishedAt: detail.PublishedAt,
 		ChangedKeys: wireChangedKeys(detail.ChangedKeys),
 		ChangeToken: detail.ChangeToken, Keys: keys,
 	}), nil
@@ -360,6 +361,10 @@ func (a *API) ListPendingDrafts(ctx context.Context, req apigen.ListPendingDraft
 			Operation:          apigen.PendingDraftOperation(draft.Operation),
 			StagedFromRevision: draft.StagedFromRevision, CreatedAt: draft.CreatedAt,
 			Revealed: draft.Revealed,
+			Advisory: &struct {
+				OwnerId apigen.ID `json:"owner_id"`
+				Valid   bool      `json:"valid"`
+			}{OwnerId: apigen.ID(draft.OwnerID), Valid: draft.Valid},
 		}
 		if draft.Revealed {
 			value := draft.Value

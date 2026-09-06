@@ -319,8 +319,15 @@ func runSCIMDemo(t *testing.T, db *store.DB, ios func() cli.IO, baseURL, orgID s
 	//    server-authored and the grants exist by the time this returns.
 	var mapped struct {
 		Mapping struct {
-			Id           string
-			Capabilities []string
+			Id                string
+			Capabilities      []string
+			CapabilityOrigins []struct {
+				Capability string `json:"capability"`
+				Kind       string `json:"kind"`
+				BindingID  string `json:"binding_id"`
+				MappingID  string `json:"mapping_id"`
+				GroupID    string `json:"group_id"`
+			} `json:"capability_origins"`
 		}
 		Warnings []struct {
 			Code     string
@@ -338,6 +345,14 @@ func runSCIMDemo(t *testing.T, db *store.DB, ios func() cli.IO, baseURL, orgID s
 	}
 	decode(mustRun("scim", "mapping", "add", binding.Id, "--org", org.Id,
 		"--group", groupID, "--template", "viewer", "--org-scope", "-o", "json"), &mapped)
+	if len(mapped.Mapping.CapabilityOrigins) != len(mapped.Mapping.Capabilities) || len(mapped.Mapping.CapabilityOrigins) == 0 {
+		t.Fatalf("mapping origins missing: %+v", mapped.Mapping)
+	}
+	for i, origin := range mapped.Mapping.CapabilityOrigins {
+		if origin.Capability != mapped.Mapping.Capabilities[i] || origin.Kind != "scim" || origin.BindingID != binding.Id || origin.MappingID != mapped.Mapping.Id || origin.GroupID != groupID {
+			t.Fatalf("wrong mapping origin: %+v", origin)
+		}
+	}
 	if mapped.MembersAffected != 1 || mapped.GrantsCreated == 0 {
 		t.Fatalf("the mapping must grant the group's current members: %+v", mapped)
 	}

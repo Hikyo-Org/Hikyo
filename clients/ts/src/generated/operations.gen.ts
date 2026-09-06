@@ -116,6 +116,7 @@ import {
   deleteScimBinding,
   deleteScimMapping,
   deleteServiceAccount,
+  diffRevisions,
   diffValues,
   enrolPasskeyFinish,
   enrolPasskeyStart,
@@ -142,6 +143,7 @@ import {
   getKeyGroup,
   getMachineReveal,
   getMeta,
+  getMyProfile,
   getOidcProvider,
   getOrg,
   getOrgRetention,
@@ -249,6 +251,7 @@ import {
   resumeAdapterMove,
   resumeAdapterTarget,
   retireSamlSpKey,
+  revealRevisionDiff,
   revealValue,
   revealValueDiff,
   revealValues,
@@ -324,6 +327,7 @@ import {
   updateFederationIssuer,
   updateKeyDeclaration,
   updateKeyMetadata,
+  updateMyProfile,
   updateScimMapping,
   voteApprovalRequest,
   watchProjectEvents,
@@ -387,6 +391,7 @@ import type {
   DeleteScimBindingData,
   DeleteScimMappingData,
   DeleteServiceAccountData,
+  DiffRevisionsData,
   DiffValuesData,
   EnrolPasskeyFinishData,
   EnrolPasskeyStartData,
@@ -413,6 +418,7 @@ import type {
   GetKeyGroupData,
   GetMachineRevealData,
   GetMetaData,
+  GetMyProfileData,
   GetOidcProviderData,
   GetOrgData,
   GetOrgRetentionData,
@@ -520,6 +526,7 @@ import type {
   ResumeAdapterMoveData,
   ResumeAdapterTargetData,
   RetireSamlSpKeyData,
+  RevealRevisionDiffData,
   RevealValueData,
   RevealValueDiffData,
   RevealValuesData,
@@ -595,6 +602,7 @@ import type {
   UpdateFederationIssuerData,
   UpdateKeyDeclarationData,
   UpdateKeyMetadataData,
+  UpdateMyProfileData,
   UpdateScimMappingData,
   VoteApprovalRequestData,
   WatchProjectEventsData,
@@ -646,6 +654,7 @@ import {
   zDeleteAdapterResponse,
   zDeleteDynamicProviderResponse,
   zDeleteScimMappingResponse,
+  zDiffRevisionsResponse,
   zDiffValuesResponse,
   zEnrolPasskeyFinishResponse,
   zEnrolPasskeyStartResponse,
@@ -671,6 +680,7 @@ import {
   zGetKeyResponse,
   zGetMachineRevealResponse,
   zGetMetaResponse,
+  zGetMyProfileResponse,
   zGetOidcProviderResponse,
   zGetOrgResponse,
   zGetOrgRetentionResponse,
@@ -775,6 +785,7 @@ import {
   zResetCredentialResponse,
   zResumeAdapterMoveResponse,
   zResumeAdapterTargetResponse,
+  zRevealRevisionDiffResponse,
   zRevealValueDiffResponse,
   zRevealValueResponse,
   zRevealValuesResponse,
@@ -836,6 +847,7 @@ import {
   zUpdateFederationIssuerResponse,
   zUpdateKeyDeclarationResponse,
   zUpdateKeyMetadataResponse,
+  zUpdateMyProfileResponse,
   zUpdateScimMappingResponse,
   zVoteApprovalRequestResponse,
   zWatchProjectEventsResponse,
@@ -887,6 +899,7 @@ export const declareValuesOp: BodyOperation<DeclareValuesData, typeof zDeclareVa
 export const deleteAdapterOp: BodyOperation<DeleteAdapterData, typeof zDeleteAdapterResponse> = /* @__PURE__ */ new GeneratedBodyOperation(deleteAdapter, [200], zDeleteAdapterResponse);
 export const deleteDynamicProviderOp: BodyOperation<DeleteDynamicProviderData, typeof zDeleteDynamicProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(deleteDynamicProvider, [200], zDeleteDynamicProviderResponse);
 export const deleteScimMappingOp: BodyOperation<DeleteScimMappingData, typeof zDeleteScimMappingResponse> = /* @__PURE__ */ new GeneratedBodyOperation(deleteScimMapping, [200], zDeleteScimMappingResponse);
+export const diffRevisionsOp: BodyOperation<DiffRevisionsData, typeof zDiffRevisionsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(diffRevisions, [200], zDiffRevisionsResponse);
 export const diffValuesOp: BodyOperation<DiffValuesData, typeof zDiffValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(diffValues, [200], zDiffValuesResponse);
 export const enrolPasskeyFinishOp: BodyOperation<EnrolPasskeyFinishData, typeof zEnrolPasskeyFinishResponse> = /* @__PURE__ */ new GeneratedBodyOperation(enrolPasskeyFinish, [200], zEnrolPasskeyFinishResponse);
 export const enrolPasskeyStartOp: BodyOperation<EnrolPasskeyStartData, typeof zEnrolPasskeyStartResponse> = /* @__PURE__ */ new GeneratedBodyOperation(enrolPasskeyStart, [200], zEnrolPasskeyStartResponse);
@@ -912,6 +925,7 @@ export const getKeyOp: BodyOperation<GetKeyData, typeof zGetKeyResponse> = /* @_
 export const getKeyGroupOp: BodyOperation<GetKeyGroupData, typeof zGetKeyGroupResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getKeyGroup, [200], zGetKeyGroupResponse);
 export const getMachineRevealOp: BodyOperation<GetMachineRevealData, typeof zGetMachineRevealResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getMachineReveal, [200], zGetMachineRevealResponse);
 export const getMetaOp: BodyOperation<GetMetaData, typeof zGetMetaResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getMeta, [200], zGetMetaResponse);
+export const getMyProfileOp: BodyOperation<GetMyProfileData, typeof zGetMyProfileResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getMyProfile, [200], zGetMyProfileResponse);
 export const getOidcProviderOp: BodyOperation<GetOidcProviderData, typeof zGetOidcProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOidcProvider, [200], zGetOidcProviderResponse);
 export const getOrgOp: BodyOperation<GetOrgData, typeof zGetOrgResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOrg, [200], zGetOrgResponse);
 export const getOrgRetentionOp: BodyOperation<GetOrgRetentionData, typeof zGetOrgRetentionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOrgRetention, [200], zGetOrgRetentionResponse);
@@ -1016,6 +1030,7 @@ export const requestInstanceUpdateOp: BodyOperation<RequestInstanceUpdateData, t
 export const resetCredentialOp: BodyOperation<ResetCredentialData, typeof zResetCredentialResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resetCredential, [200], zResetCredentialResponse);
 export const resumeAdapterMoveOp: BodyOperation<ResumeAdapterMoveData, typeof zResumeAdapterMoveResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resumeAdapterMove, [202], zResumeAdapterMoveResponse);
 export const resumeAdapterTargetOp: BodyOperation<ResumeAdapterTargetData, typeof zResumeAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resumeAdapterTarget, [202], zResumeAdapterTargetResponse);
+export const revealRevisionDiffOp: BodyOperation<RevealRevisionDiffData, typeof zRevealRevisionDiffResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revealRevisionDiff, [200], zRevealRevisionDiffResponse);
 export const revealValueOp: BodyOperation<RevealValueData, typeof zRevealValueResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revealValue, [200], zRevealValueResponse);
 export const revealValueDiffOp: BodyOperation<RevealValueDiffData, typeof zRevealValueDiffResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revealValueDiff, [200], zRevealValueDiffResponse);
 export const revealValuesOp: BodyOperation<RevealValuesData, typeof zRevealValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revealValues, [200], zRevealValuesResponse);
@@ -1077,6 +1092,7 @@ export const updateApprovalPolicyOp: BodyOperation<UpdateApprovalPolicyData, typ
 export const updateFederationIssuerOp: BodyOperation<UpdateFederationIssuerData, typeof zUpdateFederationIssuerResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateFederationIssuer, [200], zUpdateFederationIssuerResponse);
 export const updateKeyDeclarationOp: BodyOperation<UpdateKeyDeclarationData, typeof zUpdateKeyDeclarationResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateKeyDeclaration, [200], zUpdateKeyDeclarationResponse);
 export const updateKeyMetadataOp: BodyOperation<UpdateKeyMetadataData, typeof zUpdateKeyMetadataResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateKeyMetadata, [200], zUpdateKeyMetadataResponse);
+export const updateMyProfileOp: BodyOperation<UpdateMyProfileData, typeof zUpdateMyProfileResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateMyProfile, [200], zUpdateMyProfileResponse);
 export const updateScimMappingOp: BodyOperation<UpdateScimMappingData, typeof zUpdateScimMappingResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateScimMapping, [200], zUpdateScimMappingResponse);
 export const voteApprovalRequestOp: BodyOperation<VoteApprovalRequestData, typeof zVoteApprovalRequestResponse> = /* @__PURE__ */ new GeneratedBodyOperation(voteApprovalRequest, [200], zVoteApprovalRequestResponse);
 export const whoamiOp: BodyOperation<WhoamiData, typeof zWhoamiResponse> = /* @__PURE__ */ new GeneratedBodyOperation(whoami, [200], zWhoamiResponse);

@@ -2818,17 +2818,18 @@ var operationTable = map[Operation]opSpec{
 	},
 	// The caller-owned pending-draft preview. Ownership is a SQL filter, not
 	// the authorization gate: config material is read-class exactly like its
-	// published counterpart, while secret material is never opened here.
+	// published counterpart. Secret material is evaluated for its owner-only
+	// advisory but never returned.
 	OpValuePendingList: {
 		class:   ClassTenant,
 		level:   domain.LevelEnv,
 		formula: Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
 		storeOps: map[StoreOp]bool{
-			StoreCatalogueList: true, StorePendingListForOwnerInEnvironment: true,
+			StoreCatalogueList: true, StoreCataloguePresenceList: true, StorePendingListForOwnerInEnvironment: true,
 			// The MCP-bounded pending page (#629) reads the caller's drafts by
 			// keyset and resolves each page key's name and classification with
 			// GetInProject, both under this read authorization.
-			StorePendingListForOwnerInEnvironmentPage: true, StoreCatalogueGetInProject: true,
+			StorePendingListForOwnerInEnvironmentPage: true, StoreCatalogueGetInProject: true, StoreCataloguePresenceForKey: true,
 		},
 		auditedNone: true,
 	},

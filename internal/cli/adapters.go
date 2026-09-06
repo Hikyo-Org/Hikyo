@@ -230,15 +230,16 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		return runAdapterAction(ctx, ios, sub, rest)
 	}
 	var format, provider, origin, target, moveID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys string
-	var keepRemote, cancelMove bool
+	var keepRemote, cancelMove, allowEnvironmentCreate bool
 	var source adapterCredentialSource
 	var selection adapterKeySelection
 	st, flags, err := parseCommon("adapter "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
 		if sub == "create" || sub == "update" {
-			fs.StringVar(&origin, "origin", "", "canonical Forgejo https origin")
+			fs.StringVar(&origin, "origin", "", "Forgejo origin or GitHub API base URL (GHES: https://HOST/api/v3)")
 		}
 		if sub == "create" {
+			fs.BoolVar(&allowEnvironmentCreate, "create-environment", false, "consent to create a missing GitHub environment; requires Administration:write")
 			fs.StringVar(&provider, "provider", "forgejo", "forgejo or github-actions")
 		}
 		if sub == "update" {
@@ -358,6 +359,10 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		if err != nil {
 			return err
 		}
+		if allowEnvironmentCreate && (provider != "github-actions" || kind != "environment") {
+			return failf(ExitUsage, "--create-environment requires a GitHub environment target")
+		}
+		input.AllowEnvironmentCreate = &allowEnvironmentCreate
 		if err := runAdapterCeremony(ctx, ios, client, st, artifact, base, "", "adapter.configure", envID); err != nil {
 			return err
 		}
@@ -568,7 +573,7 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 		return err
 	}
 	var adapterID, format, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, outFormat string
-	var keep bool
+	var keep, allowEnvironmentCreate bool
 	var selection adapterKeySelection
 	st, flags, err := parseCommon("adapter target "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&adapterID, "adapter", "", "adapter id")
@@ -577,6 +582,7 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 			fs.StringVar(&format, "format", "detail", "detail or workflow")
 		}
 		if sub == "add" {
+			fs.BoolVar(&allowEnvironmentCreate, "create-environment", false, "consent to create a missing GitHub environment; requires Administration:write")
 			fs.StringVar(&kind, "kind", "", "repository, organization, or environment")
 			fs.StringVar(&owner, "owner", "", "provider owner or organization")
 			fs.StringVar(&repo, "repo", "", "provider repository")
@@ -640,6 +646,10 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 		if err != nil {
 			return err
 		}
+		if allowEnvironmentCreate && kind != "environment" {
+			return failf(ExitUsage, "--create-environment requires an environment target")
+		}
+		input.AllowEnvironmentCreate = &allowEnvironmentCreate
 		var out apigen.AdapterTarget
 		if err := client.Do(ctx, http.MethodPost, base+"/adapters/"+url.PathEscape(adapterID)+"/targets", input, &out); err != nil {
 			return err

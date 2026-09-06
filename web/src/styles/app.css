@@ -4313,6 +4313,14 @@ select {
   gap: 14px;
 }
 
+.account-profile__fields {
+  border: 0;
+  margin: 0 0 14px;
+  padding: 0;
+  min-inline-size: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+}
+
 .settings-select,
 .settings-input {
   min-height: 36px;

@@ -523,6 +523,12 @@
   },
   {
     "engine": "postgres",
+    "name": "GetAccountProfile",
+    "annotation": "authn-resolution",
+    "hash": "8b582d1194fbf5b401f5577707ffa96c821626adac297395bc73f5b7f5606725"
+  },
+  {
+    "engine": "postgres",
     "name": "GetActiveSAMLSPKey",
     "annotation": "authn-resolution",
     "hash": "6a41f8fc6cea1daad9205204f49249707cf46b0ed744db50fc2d071d58ac6f2a"
@@ -1359,7 +1365,7 @@
     "engine": "postgres",
     "name": "PrivacyAccount",
     "annotation": "authn-resolution",
-    "hash": "995e1ae6957179c47165ba67bf25fb99fc0a8a41c5452048d8521dbbfab4ad8f"
+    "hash": "65fe215299887024477ce25288511423c58d67de1faa4cae51d466a7ec6b9e9c"
   },
   {
     "engine": "postgres",
@@ -1383,7 +1389,7 @@
     "engine": "postgres",
     "name": "PrivacyEraseAccount",
     "annotation": "authn-resolution",
-    "hash": "11c038985e1b512495b73bc31fa695a31c20b55c291f8ded75be7168b3aee892"
+    "hash": "2521f51dd3b5beb99e7830c69003118bc4559ad04327836fb55afe9085acd199"
   },
   {
     "engine": "postgres",
@@ -1798,6 +1804,12 @@
     "name": "TouchSession",
     "annotation": "authn-resolution",
     "hash": "f28d8e41a5d8bfdc200bf38c1459ac05c3585e125bf69831572ed61df85f349e"
+  },
+  {
+    "engine": "postgres",
+    "name": "UpdateAccountProfile",
+    "annotation": "authn-resolution",
+    "hash": "81ae44338c4aaedfee46a6ab2e2a2f934693cbf28ad1933c32e126325f74990d"
   },
   {
     "engine": "postgres",
@@ -2380,6 +2392,12 @@
     "name": "GetAccountByWebAuthnUserHandle",
     "annotation": "authn-resolution",
     "hash": "48800f9f4373e93e1ad98b47c81608839aa91c59f85e3b8fbb146da124309174"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetAccountProfile",
+    "annotation": "authn-resolution",
+    "hash": "8b582d1194fbf5b401f5577707ffa96c821626adac297395bc73f5b7f5606725"
   },
   {
     "engine": "sqlite",
@@ -3219,7 +3237,7 @@
     "engine": "sqlite",
     "name": "PrivacyAccount",
     "annotation": "authn-resolution",
-    "hash": "995e1ae6957179c47165ba67bf25fb99fc0a8a41c5452048d8521dbbfab4ad8f"
+    "hash": "65fe215299887024477ce25288511423c58d67de1faa4cae51d466a7ec6b9e9c"
   },
   {
     "engine": "sqlite",
@@ -3243,7 +3261,7 @@
     "engine": "sqlite",
     "name": "PrivacyEraseAccount",
     "annotation": "authn-resolution",
-    "hash": "11c038985e1b512495b73bc31fa695a31c20b55c291f8ded75be7168b3aee892"
+    "hash": "2521f51dd3b5beb99e7830c69003118bc4559ad04327836fb55afe9085acd199"
   },
   {
     "engine": "sqlite",
@@ -3658,6 +3676,12 @@
     "name": "TouchSession",
     "annotation": "authn-resolution",
     "hash": "dc82c58a0bdd5b936cbd194f398a94c000bf292f6cbba03c61df86c159a85769"
+  },
+  {
+    "engine": "sqlite",
+    "name": "UpdateAccountProfile",
+    "annotation": "authn-resolution",
+    "hash": "81ae44338c4aaedfee46a6ab2e2a2f934693cbf28ad1933c32e126325f74990d"
   },
   {
     "engine": "sqlite",

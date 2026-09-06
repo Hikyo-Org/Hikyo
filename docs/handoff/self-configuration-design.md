@@ -2,6 +2,16 @@
 
 Status: design approved and product implementation built. Independent standards and spec reviews are CLEAN. Full local isolation, race, core, web, SDK, docs and live browser checks pass. Delivered in [PR #686](https://github.com/Hikyo-Org/Hikyo/pull/686); check its exact-head CI before merge. No merge or production deployment has occurred. The sections below preserve the original design and its acceptance requirements; consult the report validation record for completed implementation evidence.
 
+## Integration evidence
+
+Merged current main `72f5a71f` while preserving its account-profile and adapter
+findings work. The unreleased managed-configuration migration is now 50; the
+historical recovery cutoff and legacy archive fixture match. Full core checks,
+focused both-engine authorization/audit/formula checks, Go vet, all 919 web tests,
+SDK checks and fresh desktop local/independent-owner browser journeys pass.
+The pinned Go formatter fixes the initial CI format failure. Exact-head CI is
+recorded on PR #686.
+
 ## User intent and authority
 
 Hikyo should provision an organization/project during setup that manages its own environment variables and secrets. Changing email settings should be possible through the existing interface, followed by applying changes without restarting the container.

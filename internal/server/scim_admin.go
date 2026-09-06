@@ -274,10 +274,14 @@ func wireSCIMAttention(in []service.SCIMAttentionView) []apigen.ScimAttention {
 func wireSCIMMapping(v service.SCIMMappingView) apigen.ScimMapping {
 	caps := make([]string, 0, len(v.Capabilities))
 	caps = append(caps, v.Capabilities...)
+	origins := make([]apigen.ScimCapabilityOrigin, 0, len(v.CapabilityOrigins))
+	for _, origin := range v.CapabilityOrigins {
+		origins = append(origins, apigen.ScimCapabilityOrigin{Capability: origin.Capability, Kind: "scim", BindingId: apigen.ID(origin.BindingID), MappingId: apigen.ID(origin.MappingID), GroupId: apigen.ID(origin.GroupID)})
+	}
 	return apigen.ScimMapping{
 		Id: apigen.ID(v.ID), BindingId: apigen.ID(v.BindingID), GroupId: apigen.ID(v.GroupID),
 		Template: v.Template, ProjectId: optString(v.ProjectID), EnvironmentId: optString(v.EnvID),
-		Inert: v.Inert, CreatedAt: v.CreatedAt, Capabilities: caps,
+		Inert: v.Inert, CreatedAt: v.CreatedAt, Capabilities: caps, CapabilityOrigins: &origins,
 	}
 }
 

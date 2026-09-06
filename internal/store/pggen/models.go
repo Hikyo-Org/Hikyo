@@ -15,6 +15,7 @@ type Account struct {
 	DisplayName        string
 	CreatedAt          pgtype.Timestamptz
 	WebauthnUserHandle []byte
+	Email              string
 }
 
 type Adapter struct {
@@ -80,6 +81,7 @@ type AdapterEffect struct {
 	Outcome        pgtype.Text
 	CreatedAt      pgtype.Timestamptz
 	FinishedAt     pgtype.Timestamptz
+	Finding        string
 }
 
 type AdapterLedger struct {

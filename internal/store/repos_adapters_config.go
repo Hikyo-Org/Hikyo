@@ -182,7 +182,20 @@ func (r adapterQueries) ListTargets(ctx context.Context, p authz.Proof, adapterI
 		return nil, err
 	}
 	defer closeAdapterRows(rows)
-	return collectAdapterTargets(rows)
+	targets, err := collectAdapterTargets(rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := closeAdapterRows(rows); err != nil {
+		return nil, err
+	}
+	for i := range targets {
+		targets[i].Findings, err = r.targetFindings(ctx, chain, targets[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return targets, nil
 }
 
 func collectStrings(rows interface {
@@ -688,4 +701,28 @@ func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 	current.AuthorityPrincipalID = m.AuthorityPrincipalID
 	slices.Sort(m.Target.KeyIDs)
 	return AdapterTargetUpdateResult{Target: current, Enqueue: enqueued[0], PreviousAuthorityPrincipalID: previousAuthority, AuthorityPrincipalID: m.AuthorityPrincipalID}, nil
+}
+
+// targetFindings projects the latest completed effect per name in the current
+// generation. A later successful effect clears its finding; older generations
+// cannot describe a reconfigured destination. Values and audit payloads are never read.
+func (r adapterQueries) targetFindings(ctx context.Context, chain domain.Scope, target AdapterTarget) ([]AdapterFinding, error) {
+	rows, err := r.db.Query(ctx, r.db.SQL(`SELECT surface,effective_name,finding FROM (
+ SELECT e.surface,e.effective_name,e.finding,ROW_NUMBER() OVER (PARTITION BY e.surface,UPPER(e.effective_name) ORDER BY e.finished_at DESC,e.id DESC) AS ordinal
+ FROM adapter_effects e JOIN adapter_outbox o ON o.id=e.job_id AND o.org_id=e.org_id AND o.project_id=e.project_id AND o.environment_id=e.environment_id
+ WHERE e.target_id=? AND e.org_id=? AND e.project_id=? AND e.environment_id=? AND o.generation=? AND e.outcome IS NOT NULL
+ ) ranked WHERE ordinal=1 AND finding<>'' ORDER BY surface,effective_name`), target.ID, chain.Org, chain.Project, target.EnvironmentID, target.Generation)
+	if err != nil {
+		return nil, err
+	}
+	defer closeAdapterRows(rows)
+	out := []AdapterFinding{}
+	for rows.Next() {
+		var finding AdapterFinding
+		if err := rows.Scan(&finding.Surface, &finding.EffectiveName, &finding.Finding); err != nil {
+			return nil, err
+		}
+		out = append(out, finding)
+	}
+	return out, rows.Err()
 }
