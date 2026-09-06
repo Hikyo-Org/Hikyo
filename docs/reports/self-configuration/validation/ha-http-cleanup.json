@@ -1,0 +1,26 @@
+{
+  "commit": "29e76d3cecc08ee3f3b4a062c414fb2b34e389ae",
+  "scope": "Test-owned HTTP transport and drained response bodies; defer connection closure before test-context cancellation. Runtime and five-second server shutdown deadline unchanged.",
+  "red": {
+    "ci_commit": "2450a34a999b11525a2d4edd5d09b9a98f534da4",
+    "test": "TestNodeRuntimeMissingHANodeBootsOnlyAdministrativeRecovery",
+    "local_race_count": 3,
+    "local_seconds": 24.665,
+    "error": "server shutdown: context deadline exceeded"
+  },
+  "green": {
+    "race_count_per_fixture": 5,
+    "fixtures": [
+      "TestNodeRuntimeMissingHANodeBootsOnlyAdministrativeRecovery",
+      "TestNodeRuntimePostgresPoolAppliesWithoutReplacingIdentity",
+      "TestRestoreRequiredRestartExposesOnlyOperationalHealth"
+    ],
+    "seconds": 63.398,
+    "vet": "PASS",
+    "review": "Independent R1 CLEAN; parent no findings"
+  },
+  "file_sha256": {
+    "internal/app/node_runtime_postgres_test.go": "2ee0a4f66169154892258f63ac4e3d6bfa1d8ac2595bb3266cf84aca9b4e043c"
+  },
+  "diagnostic_limit": "The spare StateNew dial mechanism is inferred from the existing maintenance fixture rationale; exact CI connection state was not instrumented."
+}

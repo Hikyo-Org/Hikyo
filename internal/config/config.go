@@ -54,12 +54,26 @@ type UpgradeConfiguration struct {
 }
 
 type Config struct {
+	// ManagedInputs are unvalidated one-time seed inputs. The owning service
+	// consults them only after the database confirms no managed binding exists.
+	// In particular, stale file paths must never be read after adoption.
+	ManagedInputs     map[string]string
+	ManagedNodeInputs map[string]string
 	Upgrade           UpgradeConfiguration
-	Dev               bool
-	Listen            string
-	OperationalListen string
-	TLSCertFile       string
-	TLSKeyFile        string
+	// Applied upgrade selection is external bootstrap metadata, never user paths.
+	UpgradeSource           string
+	UpgradeMaterialDigest   string
+	Dev                     bool
+	Listen                  string
+	OperationalListen       string
+	TLSCertFile             string
+	TLSKeyFile              string
+	ConfigRolloutEnrollment string
+	ConfigRolloutSigningKey string
+	// TLS PEM contents are consumed only after managed node activation. Runtime
+	// callers must never reopen the original bootstrap file paths.
+	TLSCertPEM        string
+	TLSKeyPEM         string
 	TrustedProxyCIDRs []string
 	AutoMigrate       bool
 	Store             Datastore
@@ -110,6 +124,9 @@ type Config struct {
 	// rotation is configured, and prepare refuses rather than reading the wire —
 	// no root key material ever crosses the API.
 	NewRootKeyFile string
+	// NewRootSource is the managed node alias for explicit root preparation.
+	// It never contains a file path or root key.
+	NewRootSource string
 
 	// Auth tuning. The Argon2id parameters may be raised for stronger
 	// hardware and never lowered: boot verifies them against the floor the
@@ -192,8 +209,9 @@ type Config struct {
 	// and refused when no root-key source is configured, at boot rather than
 	// as a degraded single-node fallback.
 	HA bool
-	// NodeID is this node's stable unique identity under HA (HIKYO_NODE_ID; the
-	// chart sets it from the pod name). Empty outside HA.
+	// NodeID is this node's stable unique identity (HIKYO_NODE_ID). The chart
+	// uses Pod identity for HA and Deployment identity for enrolled singletons.
+	// An empty standalone identity is normalized to local by the runtime.
 	NodeID string
 }
 
@@ -239,6 +257,15 @@ var knownEnv = map[string]bool{
 	"HIKYO_DYNAMIC_EGRESS_POLICY_FILE":     true,
 	"HIKYO_REAUTH_WINDOW_SECONDS":          true,
 	"HIKYO_UPDATE_CHANNEL":                 true,
+	"HIKYO_MAIL_ADDR":                      true,
+	"HIKYO_MAIL_TLS":                       true,
+	"HIKYO_MAIL_USER":                      true,
+	"HIKYO_MAIL_PASSWORD":                  true,
+	"HIKYO_MAIL_PASSWORD_FILE":             true,
+	"HIKYO_MAIL_FROM":                      true,
+	"HIKYO_MAIL_EHLO":                      true,
+	"HIKYO_MAIL_ALLOWED_CIDRS":             true,
+	"HIKYO_MAIL_CA_FILE":                   true,
 	"HIKYO_UPDATER_SOCKET":                 true,
 	"HIKYO_HA":                             true,
 	"HIKYO_NODE_ID":                        true,
@@ -272,11 +299,16 @@ const devSQLitePath = "hikyo-dev.db"
 // environ (os.Environ() shape) is scanned for unknown HIKYO_* keys and may be
 // nil. Returned warnings are for the caller to log — Load itself never logs.
 func Load(subcommand string, args []string, getenv func(string) string, environ []string) (*Config, []string, error) {
+	return load(subcommand, args, getenv, environ, false)
+}
+
+func load(subcommand string, args []string, getenv func(string) string, environ []string, deferOwner bool) (*Config, []string, error) {
 	fs := flag.NewFlagSet(subcommand, flag.ContinueOnError)
 	dev := fs.Bool("dev", false, "development mode: zero-config sqlite, text logs")
 	listen, operationalListen, tlsCertFile, tlsKeyFile, autoMigrate, rootKeyFile := new(string), new(string), new(string), new(string), new(bool), new(string)
 	*autoMigrate = true
 	*rootKeyFile = getenv("HIKYO_ROOT_KEY_FILE")
+	rolloutEnrollment, rolloutSigningKey := new(string), new(string)
 	if subcommand == "server" {
 		listen = fs.String("listen", "", "listen address (default 127.0.0.1:8080, env HIKYO_LISTEN)")
 		operationalListen = fs.String("operational-listen", "", "operational listen address (default 127.0.0.1:8081, env HIKYO_OPERATIONAL_LISTEN)")
@@ -284,12 +316,17 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 		tlsKeyFile = fs.String("tls-key-file", "", "TLS private key file (env HIKYO_TLS_KEY_FILE)")
 		autoMigrate = fs.Bool("auto-migrate", true, "apply pending migrations at boot")
 		rootKeyFile = fs.String("root-key-file", *rootKeyFile, "path to the 64-hex-char root key file (mode 0600)")
+		rolloutEnrollment = fs.String("config-rollout-enrollment", "", "operator-installed rollout enrollment JSON")
+		rolloutSigningKey = fs.String("config-rollout-signing-key", "", "private rollout authorization signer file")
 	}
 	if err := fs.Parse(args); err != nil {
 		return nil, nil, err
 	}
 	if rest := fs.Args(); len(rest) > 0 {
 		return nil, nil, fmt.Errorf("unexpected argument %q", rest[0])
+	}
+	if (*rolloutEnrollment == "") != (*rolloutSigningKey == "") {
+		return nil, nil, errors.New("configuration rollout requires both enrollment and signing-key files")
 	}
 
 	var warnings []string
@@ -310,15 +347,34 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 			OperatorInstanceID:    getenv("HIKYO_UPGRADE_OPERATOR_INSTANCE"),
 			TargetManifestSHA256:  getenv("HIKYO_UPGRADE_TARGET_MANIFEST"),
 		},
-		Dev:               *dev,
-		AutoMigrate:       *autoMigrate,
-		Listen:            *listen,
-		OperationalListen: *operationalListen,
-		TLSCertFile:       *tlsCertFile,
-		TLSKeyFile:        *tlsKeyFile,
-		RootKeyFile:       *rootKeyFile,
-		RootKeyFromEnv:    getenv("HIKYO_ROOT_KEY") != "",
-		NewRootKeyFile:    getenv("HIKYO_NEW_ROOT_KEY_FILE"),
+		Dev:                     *dev,
+		AutoMigrate:             *autoMigrate,
+		Listen:                  *listen,
+		OperationalListen:       *operationalListen,
+		TLSCertFile:             *tlsCertFile,
+		TLSKeyFile:              *tlsKeyFile,
+		ConfigRolloutEnrollment: *rolloutEnrollment,
+		ConfigRolloutSigningKey: *rolloutSigningKey,
+		RootKeyFile:             *rootKeyFile,
+		RootKeyFromEnv:          getenv("HIKYO_ROOT_KEY") != "",
+		NewRootKeyFile:          getenv("HIKYO_NEW_ROOT_KEY_FILE"),
+	}
+	cfg.ManagedNodeInputs = make(map[string]string)
+	for _, key := range managedNodeInputKeys() {
+		if raw := getenv(key); raw != "" {
+			cfg.ManagedNodeInputs[key] = raw
+		}
+	}
+	if subcommand == "server" {
+		nodeFlags := map[string]string{"listen": "HIKYO_LISTEN", "operational-listen": "HIKYO_OPERATIONAL_LISTEN", "tls-cert-file": "HIKYO_TLS_CERT_FILE", "tls-key-file": "HIKYO_TLS_KEY_FILE"}
+		fs.Visit(func(f *flag.Flag) {
+			if key := nodeFlags[f.Name]; key != "" {
+				cfg.ManagedNodeInputs[key] = f.Value.String()
+			}
+		})
+		if deferOwner {
+			cfg.Listen, cfg.OperationalListen, cfg.TLSCertFile, cfg.TLSKeyFile = "", "", "", ""
+		}
 	}
 	if subcommand == "server" {
 		cfg.UpdaterSocket = strings.TrimSpace(getenv("HIKYO_UPDATER_SOCKET"))
@@ -394,46 +450,8 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 		}
 		cfg.AdmissionBudgetMiB = int(budget)
 
-		// The dev-only override. Fail-closed twice over: a non-dev process
-		// refuses to start when it is set at all, and a malformed or
-		// non-positive value is an error rather than a silent fallback to the
-		// default — a typo in a security ceiling must not mean "use the
-		// default", which is the same rule every other tunable here follows.
-		if raw := strings.TrimSpace(getenv("HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE")); raw != "" {
-			if !cfg.Dev {
-				return nil, nil, fmt.Errorf(
-					"HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE is a development-mode override and this is not a development server: " +
-						"remove it, or pass --dev if this is an evaluation instance")
-			}
-			perIP, err := strconv.Atoi(raw)
-			if err != nil || perIP < 1 {
-				return nil, nil, fmt.Errorf("HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE: %q is not a positive integer", raw)
-			}
-			cfg.DevAdmissionPerIPPerMinute = perIP
-		}
-		if raw := strings.TrimSpace(getenv("HIKYO_DEV_SERVICE_BUDGETS_DISABLED")); raw != "" {
-			if !cfg.Dev {
-				return nil, nil, fmt.Errorf(
-					"HIKYO_DEV_SERVICE_BUDGETS_DISABLED is a development-mode override and this is not a development server: " +
-						"remove it, or pass --dev if this is an evaluation instance")
-			}
-			disabled, err := strconv.ParseBool(raw)
-			if err != nil {
-				return nil, nil, fmt.Errorf("HIKYO_DEV_SERVICE_BUDGETS_DISABLED: %q is not a boolean", raw)
-			}
-			cfg.DevServiceBudgetsDisabled = disabled
-		}
-		if raw := strings.TrimSpace(getenv("HIKYO_DEV_ADAPTER_FAKE_PROVIDER")); raw != "" {
-			if !cfg.Dev {
-				return nil, nil, fmt.Errorf(
-					"HIKYO_DEV_ADAPTER_FAKE_PROVIDER is a development-mode override and this is not a development server: " +
-						"remove it, or pass --dev if this is an evaluation instance")
-			}
-			fake, err := strconv.ParseBool(raw)
-			if err != nil {
-				return nil, nil, fmt.Errorf("HIKYO_DEV_ADAPTER_FAKE_PROVIDER: %q is not a boolean", raw)
-			}
-			cfg.DevAdapterFakeProvider = fake
+		if err := parseDevelopmentOverrides(cfg, getenv); err != nil {
+			return nil, nil, err
 		}
 	}
 	if subcommand == "server" {
@@ -460,7 +478,7 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 			return nil, nil, err
 		}
 		cfg.TrustedProxyCIDRs = trustedProxyCIDRs
-		if !IsLoopbackListen(cfg.Listen) && cfg.TLSCertFile == "" && len(cfg.TrustedProxyCIDRs) == 0 {
+		if !deferOwner && !IsLoopbackListen(cfg.Listen) && cfg.TLSCertFile == "" && len(cfg.TrustedProxyCIDRs) == 0 {
 			return nil, nil, fmt.Errorf("non-loopback plaintext listen %q requires HIKYO_TRUSTED_PROXY_CIDRS or a TLS certificate pair", cfg.Listen)
 		}
 		if raw := getenv("HIKYO_DIRECTORY_PROXY"); raw != "" {
@@ -600,10 +618,10 @@ func parseMCPAllowedOrigins(raw string) ([]string, error) {
 func loadHAConfig(cfg *Config, getenv func(string) string) error {
 	raw := strings.TrimSpace(getenv("HIKYO_HA"))
 	nodeID := strings.TrimSpace(getenv("HIKYO_NODE_ID"))
+	// A singleton can also pin its identity across controlled Pod replacement.
+	// This does not enable HA or relax its datastore/shared-key requirements.
+	cfg.NodeID = nodeID
 	if raw == "" {
-		if nodeID != "" {
-			return fmt.Errorf("HIKYO_NODE_ID is set but HIKYO_HA is not: node identity only applies to multi-node HA: set HIKYO_HA=true or remove HIKYO_NODE_ID")
-		}
 		return nil
 	}
 	ha, err := strconv.ParseBool(raw)
@@ -611,9 +629,6 @@ func loadHAConfig(cfg *Config, getenv func(string) string) error {
 		return fmt.Errorf("HIKYO_HA: %q is not a boolean", raw)
 	}
 	if !ha {
-		if nodeID != "" {
-			return fmt.Errorf("HIKYO_NODE_ID is set but HIKYO_HA is false: set HIKYO_HA=true or remove HIKYO_NODE_ID")
-		}
 		return nil
 	}
 	if cfg.Store.Engine != EnginePostgres {
@@ -633,7 +648,18 @@ func loadHAConfig(cfg *Config, getenv func(string) string) error {
 // Configuration remains a leaf package. The outbound transport independently
 // revalidates this policy before use; configuration never constructs a client.
 func loadOIDCEgressPolicy(path string) (map[string][]netip.Prefix, error) {
-	policy, err := loadOriginEgressPolicy(path, "HIKYO_OIDC_EGRESS_POLICY_FILE")
+	if strings.TrimSpace(path) == "" {
+		return nil, nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, errors.New("HIKYO_OIDC_EGRESS_POLICY_FILE: unreadable or invalid canonical HTTPS origin policy")
+	}
+	return parseOIDCEgressPolicy(raw)
+}
+
+func parseOIDCEgressPolicy(raw []byte) (map[string][]netip.Prefix, error) {
+	policy, err := parseOriginEgressPolicy(raw, "HIKYO_OIDC_EGRESS_POLICY_FILE")
 	refusal := errors.New("HIKYO_OIDC_EGRESS_POLICY_FILE: unreadable or invalid canonical HTTPS origin policy")
 	if err != nil {
 		return nil, refusal
@@ -683,6 +709,10 @@ func loadOriginEgressPolicy(path, setting string) (map[string][]netip.Prefix, er
 	if err != nil {
 		return nil, fmt.Errorf("%s: read policy: %w", setting, err)
 	}
+	return parseOriginEgressPolicy(raw, setting)
+}
+
+func parseOriginEgressPolicy(raw []byte, setting string) (map[string][]netip.Prefix, error) {
 	var encoded map[string][]string
 	if err := json.Unmarshal(raw, &encoded); err != nil {
 		return nil, fmt.Errorf("%s: invalid JSON: %w", setting, err)
@@ -718,6 +748,10 @@ func loadDynamicEgressPolicy(path string) (map[string][]netip.Prefix, error) {
 	if err != nil {
 		return nil, fmt.Errorf("HIKYO_DYNAMIC_EGRESS_POLICY_FILE: read policy: %w", err)
 	}
+	return parseDynamicEgressPolicy(raw)
+}
+
+func parseDynamicEgressPolicy(raw []byte) (map[string][]netip.Prefix, error) {
 	var encoded map[string][]string
 	if err := json.Unmarshal(raw, &encoded); err != nil {
 		return nil, fmt.Errorf("HIKYO_DYNAMIC_EGRESS_POLICY_FILE: invalid JSON: %w", err)
@@ -732,6 +766,7 @@ func loadDynamicEgressPolicy(path string) (map[string][]netip.Prefix, error) {
 		if _, hasPassword := u.User.Password(); hasPassword {
 			return nil, fmt.Errorf("HIKYO_DYNAMIC_EGRESS_POLICY_FILE: origin %q must not embed a password", origin)
 		}
+		out[origin] = nil
 		for _, rawCIDR := range cidrs {
 			prefix, err := netip.ParsePrefix(rawCIDR)
 			if err != nil {

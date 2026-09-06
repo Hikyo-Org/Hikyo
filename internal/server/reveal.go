@@ -66,14 +66,29 @@ func (a *API) ReauthTotp(ctx context.Context, req apigen.ReauthTotpRequestObject
 		results []service.ReauthResult
 		err     error
 	)
+	if req.Body == nil {
+		return apigen.ReauthTotp400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
+	}
+	selfRequest, selfErr := req.Body.AsTotpSelfConfigReauthRequest()
+	isSelf := selfErr == nil && selfRequest.Purpose == "self-config"
 	environmentRequest, environmentErr := req.Body.AsTotpEnvironmentReauthRequest()
 	adapterRequest, adapterErr := req.Body.AsTotpAdapterReauthRequest()
 	isEnvironment := environmentErr == nil && environmentRequest.EnvironmentId != ""
 	isAdapter := adapterErr == nil && adapterRequest.Purpose == apigen.TotpAdapterReauthRequestPurposeAdapter
-	if isEnvironment == isAdapter {
+	if (!isSelf && isEnvironment == isAdapter) || (isSelf && (isEnvironment || isAdapter)) {
 		return apigen.ReauthTotp400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 	}
-	if isAdapter {
+	if isSelf {
+		intent, intentErr := selfConfigReauthIntent(selfRequest.SelfConfig)
+		if intentErr != nil {
+			return apigen.ReauthTotp400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
+		}
+		var result service.ReauthResult
+		result, err = a.Auth.ReauthTOTP(ctx, bearer(ctx), intent, selfRequest.Code)
+		if err == nil {
+			results = []service.ReauthResult{result}
+		}
+	} else if isAdapter {
 		rawIDs := make([]string, 0, len(adapterRequest.EnvironmentIds))
 		for _, environmentID := range adapterRequest.EnvironmentIds {
 			rawIDs = append(rawIDs, string(environmentID))

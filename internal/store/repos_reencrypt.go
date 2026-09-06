@@ -8,16 +8,19 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 )
 
-// ReencryptRepo is the instance-credential reencrypt surface (#75/#187): the six
+// ReencryptRepo is the instance-credential reencrypt surface (#75/#187): the
 // instance-DEK ciphertext columns the `reencrypt --instance` walk moves onto the
 // active version. They live on one repo rather than spread across auth, factors,
 // providers, saml and remotes because they share one operation (OpReencryptInstance)
 // and one walk shape. class=authn/instance: no tenant chain.
 //
-// Five tables carry dek_version + row_version, so their re-seal is a
+// Versioned tables carry dek_version + row_version, so their re-seal is a
 // compare-and-swap on row_version (the anti-resurrection guard) that also stamps
 // the new dek_version. remotes has neither, so its re-seal CASes on the old blob.
+// Temporary self-config inputs also guard the old blob against delete/reinsert.
 type ReencryptRepo interface {
+	ListSelfConfigSeedInputsForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error)
+	ReencryptSelfConfigSeedInput(ctx context.Context, p authz.Proof, id string, newCiphertext, oldCiphertext []byte, dekVersion, rowVersion uint32) (bool, error)
 	ListPasswordCredsForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error)
 	ReencryptPasswordCred(ctx context.Context, p authz.Proof, id string, newCiphertext []byte, dekVersion, rowVersion uint32) (bool, error)
 	ListTotpCredsForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error)
@@ -33,8 +36,8 @@ type ReencryptRepo interface {
 }
 
 // ReencryptInstanceRow is one instance credential row the walk considers: its id
-// (the AAD owner_row and CAS key), the sealed ciphertext, and — for the five
-// versioned tables — the DEK version it is on and the row version to CAS against.
+// (the AAD owner_row and CAS key), the sealed ciphertext, and, for versioned
+// tables, the DEK version it is on and the row version to CAS against.
 // DEKVersion is zero for remotes and must not be interpreted; that table's
 // registry binding reads the authenticated ciphertext-header version instead.
 type ReencryptInstanceRow struct {
@@ -339,5 +342,51 @@ func (r pgReencrypt) ReencryptRemote(ctx context.Context, p authz.Proof, id stri
 		return false, err
 	}
 	n, err := r.q.ReencryptRemote(ctx, pggen.ReencryptRemoteParams{NewCt: newCiphertext, ID: id, OldCt: oldCiphertext})
+	return n == 1, err
+}
+
+func (r sqliteReencrypt) ListSelfConfigSeedInputsForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptListSelfConfigSeedInputs, r.tok); err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListSelfConfigSeedInputsForReencrypt(ctx, sqlitegen.ListSelfConfigSeedInputsForReencryptParams{Cursor: cursor, PageLimit: int64(limit)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ReencryptInstanceRow, 0, len(rows))
+	for _, x := range rows {
+		out = append(out, ReencryptInstanceRow{ID: x.NodeID, Ciphertext: x.Ciphertext, DEKVersion: uint32(x.DekVersion), RowVersion: uint32(x.RowVersion)})
+	}
+	return out, nil
+}
+
+func (r sqliteReencrypt) ReencryptSelfConfigSeedInput(ctx context.Context, p authz.Proof, id string, newCiphertext, oldCiphertext []byte, dekVersion, rowVersion uint32) (bool, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptSelfConfigSeedInput, r.tok); err != nil {
+		return false, err
+	}
+	n, err := r.q.ReencryptSelfConfigSeedInput(ctx, sqlitegen.ReencryptSelfConfigSeedInputParams{Ct: newCiphertext, OldCt: oldCiphertext, DekVersion: int64(dekVersion), NodeID: id, RowVersion: int64(rowVersion)})
+	return n == 1, err
+}
+
+func (r pgReencrypt) ListSelfConfigSeedInputsForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptListSelfConfigSeedInputs, r.tok); err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListSelfConfigSeedInputsForReencrypt(ctx, pggen.ListSelfConfigSeedInputsForReencryptParams{Cursor: cursor, PageLimit: int32(limit)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ReencryptInstanceRow, 0, len(rows))
+	for _, x := range rows {
+		out = append(out, ReencryptInstanceRow{ID: x.NodeID, Ciphertext: x.Ciphertext, DEKVersion: uint32(x.DekVersion), RowVersion: uint32(x.RowVersion)})
+	}
+	return out, nil
+}
+
+func (r pgReencrypt) ReencryptSelfConfigSeedInput(ctx context.Context, p authz.Proof, id string, newCiphertext, oldCiphertext []byte, dekVersion, rowVersion uint32) (bool, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptSelfConfigSeedInput, r.tok); err != nil {
+		return false, err
+	}
+	n, err := r.q.ReencryptSelfConfigSeedInput(ctx, pggen.ReencryptSelfConfigSeedInputParams{Ct: newCiphertext, OldCt: oldCiphertext, DekVersion: int32(dekVersion), NodeID: id, RowVersion: int32(rowVersion)})
 	return n == 1, err
 }

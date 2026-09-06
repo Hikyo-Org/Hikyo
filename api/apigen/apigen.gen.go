@@ -17,6 +17,7 @@ import (
 	api "github.com/Hikyo-Org/hikyo/api"
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Defines values for ActiveSessionArtifact.
@@ -246,25 +247,25 @@ func (e AdapterMoveKind) Valid() bool {
 
 // Defines values for AdapterMoveState.
 const (
-	Activating        AdapterMoveState = "activating"
-	AttentionRequired AdapterMoveState = "attention_required"
-	Canceled          AdapterMoveState = "canceled"
-	Completed         AdapterMoveState = "completed"
-	Scrubbing         AdapterMoveState = "scrubbing"
+	AdapterMoveStateActivating        AdapterMoveState = "activating"
+	AdapterMoveStateAttentionRequired AdapterMoveState = "attention_required"
+	AdapterMoveStateCanceled          AdapterMoveState = "canceled"
+	AdapterMoveStateCompleted         AdapterMoveState = "completed"
+	AdapterMoveStateScrubbing         AdapterMoveState = "scrubbing"
 )
 
 // Valid indicates whether the value is a known member of the AdapterMoveState enum.
 func (e AdapterMoveState) Valid() bool {
 	switch e {
-	case Activating:
+	case AdapterMoveStateActivating:
 		return true
-	case AttentionRequired:
+	case AdapterMoveStateAttentionRequired:
 		return true
-	case Canceled:
+	case AdapterMoveStateCanceled:
 		return true
-	case Completed:
+	case AdapterMoveStateCompleted:
 		return true
-	case Scrubbing:
+	case AdapterMoveStateScrubbing:
 		return true
 	default:
 		return false
@@ -693,6 +694,9 @@ const (
 	CLIReauthStartRequestOperationAdapterSync          CLIReauthStartRequestOperation = "adapter.sync"
 	CLIReauthStartRequestOperationApprovalBypass       CLIReauthStartRequestOperation = "approval.bypass"
 	CLIReauthStartRequestOperationApprovalVote         CLIReauthStartRequestOperation = "approval.vote"
+	CLIReauthStartRequestOperationSelfConfigAdopt      CLIReauthStartRequestOperation = "self-config.adopt"
+	CLIReauthStartRequestOperationSelfConfigApply      CLIReauthStartRequestOperation = "self-config.apply"
+	CLIReauthStartRequestOperationSelfConfigTest       CLIReauthStartRequestOperation = "self-config.test"
 	CLIReauthStartRequestOperationValueCopyDestination CLIReauthStartRequestOperation = "value.copy-destination"
 	CLIReauthStartRequestOperationValueCopySource      CLIReauthStartRequestOperation = "value.copy-source"
 	CLIReauthStartRequestOperationValueReveal          CLIReauthStartRequestOperation = "value.reveal"
@@ -713,6 +717,12 @@ func (e CLIReauthStartRequestOperation) Valid() bool {
 		return true
 	case CLIReauthStartRequestOperationApprovalVote:
 		return true
+	case CLIReauthStartRequestOperationSelfConfigAdopt:
+		return true
+	case CLIReauthStartRequestOperationSelfConfigApply:
+		return true
+	case CLIReauthStartRequestOperationSelfConfigTest:
+		return true
 	case CLIReauthStartRequestOperationValueCopyDestination:
 		return true
 	case CLIReauthStartRequestOperationValueCopySource:
@@ -726,13 +736,14 @@ func (e CLIReauthStartRequestOperation) Valid() bool {
 
 // Defines values for CLIReauthStartRequestPurpose.
 const (
-	CLIReauthStartRequestPurposeAdapter CLIReauthStartRequestPurpose = "adapter"
-	CLIReauthStartRequestPurposeApprove CLIReauthStartRequestPurpose = "approve"
-	CLIReauthStartRequestPurposeBypass  CLIReauthStartRequestPurpose = "bypass"
-	CLIReauthStartRequestPurposeCopy    CLIReauthStartRequestPurpose = "copy"
-	CLIReauthStartRequestPurposePublish CLIReauthStartRequestPurpose = "publish"
-	CLIReauthStartRequestPurposeReject  CLIReauthStartRequestPurpose = "reject"
-	CLIReauthStartRequestPurposeReveal  CLIReauthStartRequestPurpose = "reveal"
+	CLIReauthStartRequestPurposeAdapter    CLIReauthStartRequestPurpose = "adapter"
+	CLIReauthStartRequestPurposeApprove    CLIReauthStartRequestPurpose = "approve"
+	CLIReauthStartRequestPurposeBypass     CLIReauthStartRequestPurpose = "bypass"
+	CLIReauthStartRequestPurposeCopy       CLIReauthStartRequestPurpose = "copy"
+	CLIReauthStartRequestPurposePublish    CLIReauthStartRequestPurpose = "publish"
+	CLIReauthStartRequestPurposeReject     CLIReauthStartRequestPurpose = "reject"
+	CLIReauthStartRequestPurposeReveal     CLIReauthStartRequestPurpose = "reveal"
+	CLIReauthStartRequestPurposeSelfConfig CLIReauthStartRequestPurpose = "self-config"
 )
 
 // Valid indicates whether the value is a known member of the CLIReauthStartRequestPurpose enum.
@@ -752,6 +763,8 @@ func (e CLIReauthStartRequestPurpose) Valid() bool {
 		return true
 	case CLIReauthStartRequestPurposeReveal:
 		return true
+	case CLIReauthStartRequestPurposeSelfConfig:
+		return true
 	default:
 		return false
 	}
@@ -765,6 +778,9 @@ const (
 	CLIReauthTransactionOperationAdapterSync          CLIReauthTransactionOperation = "adapter.sync"
 	CLIReauthTransactionOperationApprovalBypass       CLIReauthTransactionOperation = "approval.bypass"
 	CLIReauthTransactionOperationApprovalVote         CLIReauthTransactionOperation = "approval.vote"
+	CLIReauthTransactionOperationSelfConfigAdopt      CLIReauthTransactionOperation = "self-config.adopt"
+	CLIReauthTransactionOperationSelfConfigApply      CLIReauthTransactionOperation = "self-config.apply"
+	CLIReauthTransactionOperationSelfConfigTest       CLIReauthTransactionOperation = "self-config.test"
 	CLIReauthTransactionOperationValueCopyDestination CLIReauthTransactionOperation = "value.copy-destination"
 	CLIReauthTransactionOperationValueCopySource      CLIReauthTransactionOperation = "value.copy-source"
 	CLIReauthTransactionOperationValueReveal          CLIReauthTransactionOperation = "value.reveal"
@@ -785,6 +801,12 @@ func (e CLIReauthTransactionOperation) Valid() bool {
 		return true
 	case CLIReauthTransactionOperationApprovalVote:
 		return true
+	case CLIReauthTransactionOperationSelfConfigAdopt:
+		return true
+	case CLIReauthTransactionOperationSelfConfigApply:
+		return true
+	case CLIReauthTransactionOperationSelfConfigTest:
+		return true
 	case CLIReauthTransactionOperationValueCopyDestination:
 		return true
 	case CLIReauthTransactionOperationValueCopySource:
@@ -798,13 +820,14 @@ func (e CLIReauthTransactionOperation) Valid() bool {
 
 // Defines values for CLIReauthTransactionPurpose.
 const (
-	CLIReauthTransactionPurposeAdapter CLIReauthTransactionPurpose = "adapter"
-	CLIReauthTransactionPurposeApprove CLIReauthTransactionPurpose = "approve"
-	CLIReauthTransactionPurposeBypass  CLIReauthTransactionPurpose = "bypass"
-	CLIReauthTransactionPurposeCopy    CLIReauthTransactionPurpose = "copy"
-	CLIReauthTransactionPurposePublish CLIReauthTransactionPurpose = "publish"
-	CLIReauthTransactionPurposeReject  CLIReauthTransactionPurpose = "reject"
-	CLIReauthTransactionPurposeReveal  CLIReauthTransactionPurpose = "reveal"
+	CLIReauthTransactionPurposeAdapter    CLIReauthTransactionPurpose = "adapter"
+	CLIReauthTransactionPurposeApprove    CLIReauthTransactionPurpose = "approve"
+	CLIReauthTransactionPurposeBypass     CLIReauthTransactionPurpose = "bypass"
+	CLIReauthTransactionPurposeCopy       CLIReauthTransactionPurpose = "copy"
+	CLIReauthTransactionPurposePublish    CLIReauthTransactionPurpose = "publish"
+	CLIReauthTransactionPurposeReject     CLIReauthTransactionPurpose = "reject"
+	CLIReauthTransactionPurposeReveal     CLIReauthTransactionPurpose = "reveal"
+	CLIReauthTransactionPurposeSelfConfig CLIReauthTransactionPurpose = "self-config"
 )
 
 // Valid indicates whether the value is a known member of the CLIReauthTransactionPurpose enum.
@@ -823,6 +846,8 @@ func (e CLIReauthTransactionPurpose) Valid() bool {
 	case CLIReauthTransactionPurposeReject:
 		return true
 	case CLIReauthTransactionPurposeReveal:
+		return true
+	case CLIReauthTransactionPurposeSelfConfig:
 		return true
 	default:
 		return false
@@ -1128,14 +1153,15 @@ func (e DynamicProviderState) Valid() bool {
 
 // Defines values for ErrorCode.
 const (
-	ErrorCodeBadRequest      ErrorCode = "bad_request"
-	ErrorCodeConflict        ErrorCode = "conflict"
-	ErrorCodeForbidden       ErrorCode = "forbidden"
-	ErrorCodeInternal        ErrorCode = "internal"
-	ErrorCodeLimitExceeded   ErrorCode = "limit_exceeded"
-	ErrorCodeNotFound        ErrorCode = "not_found"
-	ErrorCodeTooManyRequests ErrorCode = "too_many_requests"
-	ErrorCodeUnauthenticated ErrorCode = "unauthenticated"
+	ErrorCodeBadRequest         ErrorCode = "bad_request"
+	ErrorCodeConflict           ErrorCode = "conflict"
+	ErrorCodeForbidden          ErrorCode = "forbidden"
+	ErrorCodeInternal           ErrorCode = "internal"
+	ErrorCodeLimitExceeded      ErrorCode = "limit_exceeded"
+	ErrorCodeNotFound           ErrorCode = "not_found"
+	ErrorCodeServiceUnavailable ErrorCode = "service_unavailable"
+	ErrorCodeTooManyRequests    ErrorCode = "too_many_requests"
+	ErrorCodeUnauthenticated    ErrorCode = "unauthenticated"
 )
 
 // Valid indicates whether the value is a known member of the ErrorCode enum.
@@ -1152,6 +1178,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeLimitExceeded:
 		return true
 	case ErrorCodeNotFound:
+		return true
+	case ErrorCodeServiceUnavailable:
 		return true
 	case ErrorCodeTooManyRequests:
 		return true
@@ -1198,6 +1226,84 @@ func (e ImpactChangeStatus) Valid() bool {
 	case ImpactChangeStatusNotEdited:
 		return true
 	case ImpactChangeStatusRemoved:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InstanceConfigJobState.
+const (
+	InstanceConfigJobStateCompleted InstanceConfigJobState = "completed"
+	InstanceConfigJobStateFailed    InstanceConfigJobState = "failed"
+	InstanceConfigJobStatePartial   InstanceConfigJobState = "partial"
+	InstanceConfigJobStatePending   InstanceConfigJobState = "pending"
+	InstanceConfigJobStatePreparing InstanceConfigJobState = "preparing"
+)
+
+// Valid indicates whether the value is a known member of the InstanceConfigJobState enum.
+func (e InstanceConfigJobState) Valid() bool {
+	switch e {
+	case InstanceConfigJobStateCompleted:
+		return true
+	case InstanceConfigJobStateFailed:
+		return true
+	case InstanceConfigJobStatePartial:
+		return true
+	case InstanceConfigJobStatePending:
+		return true
+	case InstanceConfigJobStatePreparing:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InstanceConfigNodeState.
+const (
+	InstanceConfigNodeStateActive  InstanceConfigNodeState = "active"
+	InstanceConfigNodeStateFenced  InstanceConfigNodeState = "fenced"
+	InstanceConfigNodeStatePending InstanceConfigNodeState = "pending"
+	InstanceConfigNodeStateUnknown InstanceConfigNodeState = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the InstanceConfigNodeState enum.
+func (e InstanceConfigNodeState) Valid() bool {
+	switch e {
+	case InstanceConfigNodeStateActive:
+		return true
+	case InstanceConfigNodeStateFenced:
+		return true
+	case InstanceConfigNodeStatePending:
+		return true
+	case InstanceConfigNodeStateUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InstanceConfigStatusState.
+const (
+	InstanceConfigStatusStateActive           InstanceConfigStatusState = "active"
+	InstanceConfigStatusStatePartial          InstanceConfigStatusState = "partial"
+	InstanceConfigStatusStatePending          InstanceConfigStatusState = "pending"
+	InstanceConfigStatusStateRecoveryRequired InstanceConfigStatusState = "recovery_required"
+	InstanceConfigStatusStateUnmanaged        InstanceConfigStatusState = "unmanaged"
+)
+
+// Valid indicates whether the value is a known member of the InstanceConfigStatusState enum.
+func (e InstanceConfigStatusState) Valid() bool {
+	switch e {
+	case InstanceConfigStatusStateActive:
+		return true
+	case InstanceConfigStatusStatePartial:
+		return true
+	case InstanceConfigStatusStatePending:
+		return true
+	case InstanceConfigStatusStateRecoveryRequired:
+		return true
+	case InstanceConfigStatusStateUnmanaged:
 		return true
 	default:
 		return false
@@ -1518,14 +1624,15 @@ func (e ProjectRetentionPolicyMode) Valid() bool {
 
 // Defines values for ReauthPurpose.
 const (
-	ReauthPurposeAdapter ReauthPurpose = "adapter"
-	ReauthPurposeApprove ReauthPurpose = "approve"
-	ReauthPurposeBypass  ReauthPurpose = "bypass"
-	ReauthPurposeCopy    ReauthPurpose = "copy"
-	ReauthPurposeMint    ReauthPurpose = "mint"
-	ReauthPurposePublish ReauthPurpose = "publish"
-	ReauthPurposeReject  ReauthPurpose = "reject"
-	ReauthPurposeReveal  ReauthPurpose = "reveal"
+	ReauthPurposeAdapter    ReauthPurpose = "adapter"
+	ReauthPurposeApprove    ReauthPurpose = "approve"
+	ReauthPurposeBypass     ReauthPurpose = "bypass"
+	ReauthPurposeCopy       ReauthPurpose = "copy"
+	ReauthPurposeMint       ReauthPurpose = "mint"
+	ReauthPurposePublish    ReauthPurpose = "publish"
+	ReauthPurposeReject     ReauthPurpose = "reject"
+	ReauthPurposeReveal     ReauthPurpose = "reveal"
+	ReauthPurposeSelfConfig ReauthPurpose = "self-config"
 )
 
 // Valid indicates whether the value is a known member of the ReauthPurpose enum.
@@ -1546,6 +1653,8 @@ func (e ReauthPurpose) Valid() bool {
 	case ReauthPurposeReject:
 		return true
 	case ReauthPurposeReveal:
+		return true
+	case ReauthPurposeSelfConfig:
 		return true
 	default:
 		return false
@@ -2035,6 +2144,30 @@ func (e ScimCapabilityOriginKind) Valid() bool {
 	}
 }
 
+// Defines values for SelfConfigReauthIntentAction.
+const (
+	SelfConfigReauthIntentActionAdopt          SelfConfigReauthIntentAction = "adopt"
+	SelfConfigReauthIntentActionApply          SelfConfigReauthIntentAction = "apply"
+	SelfConfigReauthIntentActionMailTest       SelfConfigReauthIntentAction = "mail-test"
+	SelfConfigReauthIntentActionRolloutRestore SelfConfigReauthIntentAction = "rollout-restore"
+)
+
+// Valid indicates whether the value is a known member of the SelfConfigReauthIntentAction enum.
+func (e SelfConfigReauthIntentAction) Valid() bool {
+	switch e {
+	case SelfConfigReauthIntentActionAdopt:
+		return true
+	case SelfConfigReauthIntentActionApply:
+		return true
+	case SelfConfigReauthIntentActionMailTest:
+		return true
+	case SelfConfigReauthIntentActionRolloutRestore:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ServiceAccountKind.
 const (
 	Automation ServiceAccountKind = "automation"
@@ -2115,14 +2248,15 @@ func (e TotpAdapterReauthRequestOperation) Valid() bool {
 
 // Defines values for TotpAdapterReauthRequestPurpose.
 const (
-	TotpAdapterReauthRequestPurposeAdapter TotpAdapterReauthRequestPurpose = "adapter"
-	TotpAdapterReauthRequestPurposeApprove TotpAdapterReauthRequestPurpose = "approve"
-	TotpAdapterReauthRequestPurposeBypass  TotpAdapterReauthRequestPurpose = "bypass"
-	TotpAdapterReauthRequestPurposeCopy    TotpAdapterReauthRequestPurpose = "copy"
-	TotpAdapterReauthRequestPurposeMint    TotpAdapterReauthRequestPurpose = "mint"
-	TotpAdapterReauthRequestPurposePublish TotpAdapterReauthRequestPurpose = "publish"
-	TotpAdapterReauthRequestPurposeReject  TotpAdapterReauthRequestPurpose = "reject"
-	TotpAdapterReauthRequestPurposeReveal  TotpAdapterReauthRequestPurpose = "reveal"
+	TotpAdapterReauthRequestPurposeAdapter    TotpAdapterReauthRequestPurpose = "adapter"
+	TotpAdapterReauthRequestPurposeApprove    TotpAdapterReauthRequestPurpose = "approve"
+	TotpAdapterReauthRequestPurposeBypass     TotpAdapterReauthRequestPurpose = "bypass"
+	TotpAdapterReauthRequestPurposeCopy       TotpAdapterReauthRequestPurpose = "copy"
+	TotpAdapterReauthRequestPurposeMint       TotpAdapterReauthRequestPurpose = "mint"
+	TotpAdapterReauthRequestPurposePublish    TotpAdapterReauthRequestPurpose = "publish"
+	TotpAdapterReauthRequestPurposeReject     TotpAdapterReauthRequestPurpose = "reject"
+	TotpAdapterReauthRequestPurposeReveal     TotpAdapterReauthRequestPurpose = "reveal"
+	TotpAdapterReauthRequestPurposeSelfConfig TotpAdapterReauthRequestPurpose = "self-config"
 )
 
 // Valid indicates whether the value is a known member of the TotpAdapterReauthRequestPurpose enum.
@@ -2143,6 +2277,23 @@ func (e TotpAdapterReauthRequestPurpose) Valid() bool {
 	case TotpAdapterReauthRequestPurposeReject:
 		return true
 	case TotpAdapterReauthRequestPurposeReveal:
+		return true
+	case TotpAdapterReauthRequestPurposeSelfConfig:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TotpSelfConfigReauthRequestPurpose.
+const (
+	TotpSelfConfigReauthRequestPurposeSelfConfig TotpSelfConfigReauthRequestPurpose = "self-config"
+)
+
+// Valid indicates whether the value is a known member of the TotpSelfConfigReauthRequestPurpose enum.
+func (e TotpSelfConfigReauthRequestPurpose) Valid() bool {
+	switch e {
+	case TotpSelfConfigReauthRequestPurposeSelfConfig:
 		return true
 	default:
 		return false
@@ -3428,7 +3579,8 @@ type CLIReauthStartRequest struct {
 	Purpose       CLIReauthStartRequestPurpose   `json:"purpose"`
 
 	// RedirectUri Exact ephemeral loopback callback, http://127.0.0.1:PORT/callback or the bracketed ::1 equivalent.
-	RedirectUri string `json:"redirect_uri"`
+	RedirectUri string                  `json:"redirect_uri"`
+	SelfConfig  *SelfConfigReauthIntent `json:"self_config,omitempty"`
 }
 
 // CLIReauthStartRequestOperation defines model for CLIReauthStartRequest.Operation.
@@ -3449,6 +3601,7 @@ type CLIReauthTransaction struct {
 	Operation   CLIReauthTransactionOperation `json:"operation"`
 	Purpose     CLIReauthTransactionPurpose   `json:"purpose"`
 	RedirectUri string                        `json:"redirect_uri"`
+	SelfConfig  *SelfConfigReauthIntent       `json:"self_config,omitempty"`
 	State       string                        `json:"state"`
 }
 
@@ -4416,7 +4569,7 @@ type EnvironmentSignals struct {
 // Error defines model for Error.
 type Error struct {
 	Error struct {
-		// Code Closed set — never grows. Clients branch on this, not on prose.
+		// Code Closed response-code set. Clients branch on this, not on prose.
 		Code ErrorCode `json:"code"`
 
 		// Detail Present only on `bad_request`, where it names the offending
@@ -4438,7 +4591,7 @@ type Error struct {
 	} `json:"error"`
 }
 
-// ErrorCode Closed set — never grows. Clients branch on this, not on prose.
+// ErrorCode Closed response-code set. Clients branch on this, not on prose.
 type ErrorCode string
 
 // EstablishCredentialRequest Accepts a credential-establishment authority issued by bootstrap,
@@ -4884,6 +5037,117 @@ type ImportValuesResult struct {
 	// overwrite named. Listed by name, never silently dropped.
 	Skipped []KeyName `json:"skipped"`
 }
+
+// InstanceConfigAdoptRequest defines model for InstanceConfigAdoptRequest.
+type InstanceConfigAdoptRequest struct {
+	IdempotencyKey string `json:"idempotency_key"`
+	PreviewToken   string `json:"preview_token"`
+}
+
+// InstanceConfigAdoptionPreview defines model for InstanceConfigAdoptionPreview.
+type InstanceConfigAdoptionPreview struct {
+	ConfiguredKeys  []string `json:"configured_keys"`
+	OwnerInstanceId string   `json:"owner_instance_id"`
+	PreviewToken    string   `json:"preview_token"`
+	SchemaVersion   int      `json:"schema_version"`
+	Warnings        []string `json:"warnings"`
+}
+
+// InstanceConfigApplyRequest defines model for InstanceConfigApplyRequest.
+type InstanceConfigApplyRequest struct {
+	// ConfirmRestoredCredentials Required true only when clearing the restore fence after reviewing credentials and reconciling access grants.
+	ConfirmRestoredCredentials bool   `json:"confirm_restored_credentials"`
+	ExpectedGeneration         int64  `json:"expected_generation"`
+	IdempotencyKey             string `json:"idempotency_key"`
+
+	// PlanDigest Exact prepared deployment plan authorized by this decision.
+	PlanDigest *string `json:"plan_digest,omitempty"`
+
+	// PrepareOnly Prepare and return the exact plan for review without committing or consuming reauthentication.
+	PrepareOnly *bool `json:"prepare_only,omitempty"`
+
+	// RestoreDeployment Restore the partial controlled deployment with exact rollout-restore MFA. The desired runtime revision remains fenced until a separate repair Apply.
+	RestoreDeployment *bool `json:"restore_deployment,omitempty"`
+	Revision          int64 `json:"revision"`
+	SchemaVersion     int   `json:"schema_version"`
+}
+
+// InstanceConfigBinding defines model for InstanceConfigBinding.
+type InstanceConfigBinding struct {
+	EnvironmentId string `json:"environment_id"`
+	OrgId         string `json:"org_id"`
+	ProjectId     string `json:"project_id"`
+	SchemaVersion int    `json:"schema_version"`
+}
+
+// InstanceConfigJob defines model for InstanceConfigJob.
+type InstanceConfigJob struct {
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+
+	// DeploymentRestorePending Deployment restoration was authorized and awaits the controller receipt.
+	DeploymentRestorePending *bool `json:"deployment_restore_pending,omitempty"`
+
+	// DeploymentRestored The controller verified restored deployment resources. A separate configuration repair Apply is still required.
+	DeploymentRestored *bool   `json:"deployment_restored,omitempty"`
+	Error              *string `json:"error,omitempty"`
+	Generation         int64   `json:"generation"`
+	Id                 string  `json:"id"`
+
+	// PlanDigest Exact prepared deployment plan authorized by this decision.
+	PlanDigest *string `json:"plan_digest,omitempty"`
+
+	// Prepared Exact fixed participants and any deployment plan are ready for administrator authorization.
+	Prepared *bool                  `json:"prepared,omitempty"`
+	Revision int64                  `json:"revision"`
+	State    InstanceConfigJobState `json:"state"`
+}
+
+// InstanceConfigJobState defines model for InstanceConfigJob.State.
+type InstanceConfigJobState string
+
+// InstanceConfigMailTestRequest defines model for InstanceConfigMailTestRequest.
+type InstanceConfigMailTestRequest struct {
+	ExpectedGeneration int64               `json:"expected_generation"`
+	Revision           int64               `json:"revision"`
+	SchemaVersion      int                 `json:"schema_version"`
+	To                 openapi_types.Email `json:"to"`
+}
+
+// InstanceConfigMailTestResult defines model for InstanceConfigMailTestResult.
+type InstanceConfigMailTestResult struct {
+	Revision int64 `json:"revision"`
+	Sent     bool  `json:"sent"`
+}
+
+// InstanceConfigNode defines model for InstanceConfigNode.
+type InstanceConfigNode struct {
+	ActiveGeneration int64                   `json:"active_generation"`
+	ActiveRevision   *int64                  `json:"active_revision"`
+	Error            *string                 `json:"error,omitempty"`
+	NodeId           string                  `json:"node_id"`
+	State            InstanceConfigNodeState `json:"state"`
+	UpdatedAt        time.Time               `json:"updated_at"`
+}
+
+// InstanceConfigNodeState defines model for InstanceConfigNode.State.
+type InstanceConfigNodeState string
+
+// InstanceConfigStatus defines model for InstanceConfigStatus.
+type InstanceConfigStatus struct {
+	Binding         *InstanceConfigBinding    `json:"binding"`
+	DesiredRevision *int64                    `json:"desired_revision"`
+	Generation      int64                     `json:"generation"`
+	Job             *InstanceConfigJob        `json:"job"`
+	LatestRevision  *int64                    `json:"latest_revision"`
+	Managed         bool                      `json:"managed"`
+	Nodes           []InstanceConfigNode      `json:"nodes"`
+	OwnerInstanceId string                    `json:"owner_instance_id"`
+	State           InstanceConfigStatusState `json:"state"`
+}
+
+// InstanceConfigStatusState defines model for InstanceConfigStatus.State.
+type InstanceConfigStatusState string
 
 // InstanceConnection defines model for InstanceConnection.
 type InstanceConnection struct {
@@ -6939,6 +7203,26 @@ type ScimMintResult struct {
 // named refusal.
 type ScimResource map[string]interface{}
 
+// SelfConfigReauthIntent defines model for SelfConfigReauthIntent.
+type SelfConfigReauthIntent struct {
+	Action SelfConfigReauthIntentAction `json:"action"`
+
+	// ConfirmRestoredCredentials Explicit confirmation of reviewed credentials and reconciled access grants after restore; false for other decisions.
+	ConfirmRestoredCredentials bool   `json:"confirm_restored_credentials"`
+	ExpectedGeneration         int64  `json:"expected_generation"`
+	OwnerInstanceId            string `json:"owner_instance_id"`
+
+	// PlanDigest Exact prepared deployment plan authorized by this decision.
+	PlanDigest    *string `json:"plan_digest,omitempty"`
+	PreviewToken  string  `json:"preview_token"`
+	Revision      int64   `json:"revision"`
+	SchemaVersion int     `json:"schema_version"`
+	To            string  `json:"to"`
+}
+
+// SelfConfigReauthIntentAction defines model for SelfConfigReauthIntent.Action.
+type SelfConfigReauthIntentAction string
+
 // ServiceAccount defines model for ServiceAccount.
 type ServiceAccount struct {
 	// CreatedAt RFC 3339 UTC, microsecond precision.
@@ -7190,6 +7474,16 @@ type TotpProofRequest struct {
 type TotpReauthRequest struct {
 	union json.RawMessage
 }
+
+// TotpSelfConfigReauthRequest defines model for TotpSelfConfigReauthRequest.
+type TotpSelfConfigReauthRequest struct {
+	Code       string                             `json:"code"`
+	Purpose    TotpSelfConfigReauthRequestPurpose `json:"purpose"`
+	SelfConfig SelfConfigReauthIntent             `json:"self_config"`
+}
+
+// TotpSelfConfigReauthRequestPurpose defines model for TotpSelfConfigReauthRequest.Purpose.
+type TotpSelfConfigReauthRequestPurpose string
 
 // TotpStatus defines model for TotpStatus.
 type TotpStatus struct {
@@ -7561,7 +7855,8 @@ type WebauthnReauthStartRequest struct {
 	// binding, not a label: without it an assertion given to `reveal` would be
 	// spendable on `publish` over the same environment and keys — the same
 	// unit, a different decision, and the human agreed to only one of them.
-	Operation ReauthPurpose `json:"operation"`
+	Operation  ReauthPurpose           `json:"operation"`
+	SelfConfig *SelfConfigReauthIntent `json:"self_config,omitempty"`
 }
 
 // WebauthnReauthStartRequestAdapterOperation defines model for WebauthnReauthStartRequest.AdapterOperation.
@@ -7890,6 +8185,18 @@ type Internal = Error
 
 // NotFound defines model for NotFound.
 type NotFound = Error
+
+// ScimServiceUnavailable A SCIM 2.0 resource or message, as RFC 7643/7644 shapes it. It is
+// deliberately open: identity providers send and expect attributes this
+// provider stores as round-tripped display metadata, and pinning the
+// shape here would make a conformant IdP's request a contract violation.
+// What IS closed lives in the server: the subject source, the filter
+// grammar, the PATCH matrix and the error mapping, each with its own
+// named refusal.
+type ScimServiceUnavailable = ScimResource
+
+// ServiceUnavailable defines model for ServiceUnavailable.
+type ServiceUnavailable = Error
 
 // TooManyRequests defines model for TooManyRequests.
 type TooManyRequests = Error
@@ -8426,6 +8733,15 @@ type RedeemWorkspaceHandoffJSONRequestBody = RedeemWorkspaceHandoffRequest
 // StartWorkspaceHandoffJSONRequestBody defines body for StartWorkspaceHandoff for application/json ContentType.
 type StartWorkspaceHandoffJSONRequestBody = StartWorkspaceHandoffRequest
 
+// AdoptInstanceConfigJSONRequestBody defines body for AdoptInstanceConfig for application/json ContentType.
+type AdoptInstanceConfigJSONRequestBody = InstanceConfigAdoptRequest
+
+// ApplyInstanceConfigJSONRequestBody defines body for ApplyInstanceConfig for application/json ContentType.
+type ApplyInstanceConfigJSONRequestBody = InstanceConfigApplyRequest
+
+// TestInstanceConfigMailJSONRequestBody defines body for TestInstanceConfigMail for application/json ContentType.
+type TestInstanceConfigMailJSONRequestBody = InstanceConfigMailTestRequest
+
 // MintInstanceConnectionJSONRequestBody defines body for MintInstanceConnection for application/json ContentType.
 type MintInstanceConnectionJSONRequestBody = MintInstanceConnectionRequest
 
@@ -8834,6 +9150,32 @@ func (t *TotpReauthRequest) MergeTotpAdapterReauthRequest(v TotpAdapterReauthReq
 	return err
 }
 
+// AsTotpSelfConfigReauthRequest returns the union data inside the TotpReauthRequest as a TotpSelfConfigReauthRequest
+func (t TotpReauthRequest) AsTotpSelfConfigReauthRequest() (TotpSelfConfigReauthRequest, error) {
+	var body TotpSelfConfigReauthRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTotpSelfConfigReauthRequest overwrites any union data inside the TotpReauthRequest as the provided TotpSelfConfigReauthRequest
+func (t *TotpReauthRequest) FromTotpSelfConfigReauthRequest(v TotpSelfConfigReauthRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTotpSelfConfigReauthRequest performs a merge with any union data inside the TotpReauthRequest, using the provided TotpSelfConfigReauthRequest
+func (t *TotpReauthRequest) MergeTotpSelfConfigReauthRequest(v TotpSelfConfigReauthRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
 func (t TotpReauthRequest) MarshalJSON() ([]byte, error) {
 	b, err := t.union.MarshalJSON()
 	return b, err
@@ -9028,6 +9370,21 @@ type ServerInterface interface {
 	// ShowWorkspaceHandoff Load the authoritative shape of a live workspace handoff.
 	// (GET /api/v1/auth/workspace/transactions/{state})
 	ShowWorkspaceHandoff(w http.ResponseWriter, r *http.Request, state string)
+	// GetInstanceConfig Read this owner instance configuration status.
+	// (GET /api/v1/instance/config)
+	GetInstanceConfig(w http.ResponseWriter, r *http.Request)
+	// PreviewInstanceConfigAdoption Preview one-time adoption without disclosing values.
+	// (GET /api/v1/instance/config/adoption)
+	PreviewInstanceConfigAdoption(w http.ResponseWriter, r *http.Request)
+	// AdoptInstanceConfig Adopt the exact previewed effective configuration.
+	// (POST /api/v1/instance/config/adoption)
+	AdoptInstanceConfig(w http.ResponseWriter, r *http.Request)
+	// ApplyInstanceConfig Apply one published revision on this logical instance.
+	// (POST /api/v1/instance/config/apply)
+	ApplyInstanceConfig(w http.ResponseWriter, r *http.Request)
+	// TestInstanceConfigMail Send one test message using exactly the selected revision.
+	// (POST /api/v1/instance/config/mail/test)
+	TestInstanceConfigMail(w http.ResponseWriter, r *http.Request)
 	// ListInstanceConnections The connection credentials this instance has minted.
 	// (GET /api/v1/instance/connections)
 	ListInstanceConnections(w http.ResponseWriter, r *http.Request)
@@ -9967,6 +10324,36 @@ func (_ Unimplemented) StartWorkspaceHandoff(w http.ResponseWriter, r *http.Requ
 // ShowWorkspaceHandoff Load the authoritative shape of a live workspace handoff.
 // (GET /api/v1/auth/workspace/transactions/{state})
 func (_ Unimplemented) ShowWorkspaceHandoff(w http.ResponseWriter, r *http.Request, state string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetInstanceConfig Read this owner instance configuration status.
+// (GET /api/v1/instance/config)
+func (_ Unimplemented) GetInstanceConfig(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PreviewInstanceConfigAdoption Preview one-time adoption without disclosing values.
+// (GET /api/v1/instance/config/adoption)
+func (_ Unimplemented) PreviewInstanceConfigAdoption(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// AdoptInstanceConfig Adopt the exact previewed effective configuration.
+// (POST /api/v1/instance/config/adoption)
+func (_ Unimplemented) AdoptInstanceConfig(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ApplyInstanceConfig Apply one published revision on this logical instance.
+// (POST /api/v1/instance/config/apply)
+func (_ Unimplemented) ApplyInstanceConfig(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TestInstanceConfigMail Send one test message using exactly the selected revision.
+// (POST /api/v1/instance/config/mail/test)
+func (_ Unimplemented) TestInstanceConfigMail(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -12097,6 +12484,76 @@ func (siw *ServerInterfaceWrapper) ShowWorkspaceHandoff(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ShowWorkspaceHandoff(w, r, state)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInstanceConfig operation middleware
+func (siw *ServerInterfaceWrapper) GetInstanceConfig(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInstanceConfig(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PreviewInstanceConfigAdoption operation middleware
+func (siw *ServerInterfaceWrapper) PreviewInstanceConfigAdoption(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PreviewInstanceConfigAdoption(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdoptInstanceConfig operation middleware
+func (siw *ServerInterfaceWrapper) AdoptInstanceConfig(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdoptInstanceConfig(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApplyInstanceConfig operation middleware
+func (siw *ServerInterfaceWrapper) ApplyInstanceConfig(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyInstanceConfig(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TestInstanceConfigMail operation middleware
+func (siw *ServerInterfaceWrapper) TestInstanceConfigMail(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TestInstanceConfigMail(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -21905,6 +22362,21 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/service-accounts/{serviceAccount}/credentials/{credential}", wrapper.RevokeMachineCredential)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/config", wrapper.GetInstanceConfig)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/config/adoption", wrapper.PreviewInstanceConfigAdoption)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/config/adoption", wrapper.AdoptInstanceConfig)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/config/apply", wrapper.ApplyInstanceConfig)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/config/mail/test", wrapper.TestInstanceConfigMail)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/instance/credential-policy", wrapper.GetCredentialPolicy)
 	})
 	r.Group(func(r chi.Router) {
@@ -22299,6 +22771,24 @@ type InternalJSONResponse Error
 
 type NotFoundJSONResponse Error
 
+type ScimServiceUnavailableResponseHeaders struct {
+	RetryAfter int
+}
+type ScimServiceUnavailableApplicationScimPlusJSONResponse struct {
+	Body ScimResource
+
+	Headers ScimServiceUnavailableResponseHeaders
+}
+
+type ServiceUnavailableResponseHeaders struct {
+	RetryAfter int
+}
+type ServiceUnavailableJSONResponse struct {
+	Body Error
+
+	Headers ServiceUnavailableResponseHeaders
+}
+
 type TooManyRequestsResponseHeaders struct {
 	RetryAfter int
 }
@@ -22385,6 +22875,21 @@ func (response ResetCredential500JSONResponse) VisitResetCredentialResponse(w ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetCredential503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ResetCredential503JSONResponse) VisitResetCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -22481,6 +22986,21 @@ func (response ApproveCLIReauth500JSONResponse) VisitApproveCLIReauthResponse(w 
 	return err
 }
 
+type ApproveCLIReauth503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ApproveCLIReauth503JSONResponse) VisitApproveCLIReauthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RedeemCLIReauthRequestObject struct {
 	Body *RedeemCLIReauthJSONRequestBody
 }
@@ -22555,6 +23075,21 @@ func (response RedeemCLIReauth500JSONResponse) VisitRedeemCLIReauthResponse(w ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedeemCLIReauth503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RedeemCLIReauth503JSONResponse) VisitRedeemCLIReauthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -22652,6 +23187,21 @@ func (response StartCLIReauth500JSONResponse) VisitStartCLIReauthResponse(w http
 	return err
 }
 
+type StartCLIReauth503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response StartCLIReauth503JSONResponse) VisitStartCLIReauthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ShowCLIReauthTransactionRequestObject struct {
 	State string `json:"state"`
 }
@@ -22730,6 +23280,21 @@ func (response ShowCLIReauthTransaction500JSONResponse) VisitShowCLIReauthTransa
 	return err
 }
 
+type ShowCLIReauthTransaction503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ShowCLIReauthTransaction503JSONResponse) VisitShowCLIReauthTransactionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type EstablishCredentialRequestObject struct {
 	Body *EstablishCredentialJSONRequestBody
 }
@@ -22799,6 +23364,21 @@ func (response EstablishCredential500JSONResponse) VisitEstablishCredentialRespo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EstablishCredential503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response EstablishCredential503JSONResponse) VisitEstablishCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -22877,6 +23457,21 @@ func (response ListIdentities500JSONResponse) VisitListIdentitiesResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListIdentities503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListIdentities503JSONResponse) VisitListIdentitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -22970,6 +23565,21 @@ func (response LinkIdentity500JSONResponse) VisitLinkIdentityResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LinkIdentity503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response LinkIdentity503JSONResponse) VisitLinkIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -23068,6 +23678,21 @@ func (response UnlinkIdentity500JSONResponse) VisitUnlinkIdentityResponse(w http
 	return err
 }
 
+type UnlinkIdentity503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response UnlinkIdentity503JSONResponse) VisitUnlinkIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type LocalLoginRequestObject struct {
 	Body *LocalLoginJSONRequestBody
 }
@@ -23147,6 +23772,21 @@ func (response LocalLogin500JSONResponse) VisitLocalLoginResponse(w http.Respons
 	return err
 }
 
+type LocalLogin503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response LocalLogin503JSONResponse) VisitLocalLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type LogoutRequestObject struct {
 }
 
@@ -23219,6 +23859,21 @@ func (response Logout500JSONResponse) VisitLogoutResponse(w http.ResponseWriter)
 	return err
 }
 
+type Logout503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response Logout503JSONResponse) VisitLogoutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type AuthMethodsRequestObject struct {
 }
 
@@ -23265,6 +23920,21 @@ func (response AuthMethods500JSONResponse) VisitAuthMethodsResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AuthMethods503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response AuthMethods503JSONResponse) VisitAuthMethodsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -23377,6 +24047,21 @@ func (response OidcCallback500JSONResponse) VisitOidcCallbackResponse(w http.Res
 	return err
 }
 
+type OidcCallback503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response OidcCallback503JSONResponse) VisitOidcCallbackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type OidcStartRequestObject struct {
 	Provider ProviderSlug `json:"provider"`
 	Body     *OidcStartJSONRequestBody
@@ -23453,6 +24138,21 @@ func (response OidcStart500JSONResponse) VisitOidcStartResponse(w http.ResponseW
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OidcStart503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response OidcStart503JSONResponse) VisitOidcStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -23564,6 +24264,21 @@ func (response ReauthTotp500JSONResponse) VisitReauthTotpResponse(w http.Respons
 	return err
 }
 
+type ReauthTotp503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ReauthTotp503JSONResponse) VisitReauthTotpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RegenerateRecoveryCodesRequestObject struct {
 	Body *RegenerateRecoveryCodesJSONRequestBody
 }
@@ -23671,6 +24386,21 @@ func (response RegenerateRecoveryCodes500JSONResponse) VisitRegenerateRecoveryCo
 	return err
 }
 
+type RegenerateRecoveryCodes503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RegenerateRecoveryCodes503JSONResponse) VisitRegenerateRecoveryCodesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type BeginRecoveryRequestObject struct {
 	Body *BeginRecoveryJSONRequestBody
 }
@@ -23746,6 +24476,21 @@ func (response BeginRecovery500JSONResponse) VisitBeginRecoveryResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginRecovery503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response BeginRecovery503JSONResponse) VisitBeginRecoveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -23844,6 +24589,21 @@ func (response SamlACS500JSONResponse) VisitSamlACSResponse(w http.ResponseWrite
 	return err
 }
 
+type SamlACS503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SamlACS503JSONResponse) VisitSamlACSResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SamlMetadataRequestObject struct {
 	Provider ProviderSlug `json:"provider"`
 }
@@ -23911,6 +24671,21 @@ func (response SamlMetadata500JSONResponse) VisitSamlMetadataResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SamlMetadata503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SamlMetadata503JSONResponse) VisitSamlMetadataResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -23991,6 +24766,21 @@ func (response SamlStart500JSONResponse) VisitSamlStartResponse(w http.ResponseW
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SamlStart503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SamlStart503JSONResponse) VisitSamlStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -24088,6 +24878,21 @@ func (response RemoveTotp500JSONResponse) VisitRemoveTotpResponse(w http.Respons
 	return err
 }
 
+type RemoveTotp503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RemoveTotp503JSONResponse) VisitRemoveTotpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetTotpStatusRequestObject struct {
 }
 
@@ -24162,6 +24967,21 @@ func (response GetTotpStatus500JSONResponse) VisitGetTotpStatusResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTotpStatus503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetTotpStatus503JSONResponse) VisitGetTotpStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -24273,6 +25093,21 @@ func (response EnrolTotpConfirm500JSONResponse) VisitEnrolTotpConfirmResponse(w 
 	return err
 }
 
+type EnrolTotpConfirm503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response EnrolTotpConfirm503JSONResponse) VisitEnrolTotpConfirmResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type EnrolTotpStartRequestObject struct {
 	Body *EnrolTotpStartJSONRequestBody
 }
@@ -24362,6 +25197,21 @@ func (response EnrolTotpStart500JSONResponse) VisitEnrolTotpStartResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EnrolTotpStart503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response EnrolTotpStart503JSONResponse) VisitEnrolTotpStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -24473,6 +25323,21 @@ func (response StepUpTotp500JSONResponse) VisitStepUpTotpResponse(w http.Respons
 	return err
 }
 
+type StepUpTotp503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response StepUpTotp503JSONResponse) VisitStepUpTotpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListPasskeysRequestObject struct {
 }
 
@@ -24547,6 +25412,21 @@ func (response ListPasskeys500JSONResponse) VisitListPasskeysResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPasskeys503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListPasskeys503JSONResponse) VisitListPasskeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -24645,6 +25525,21 @@ func (response RemovePasskey500JSONResponse) VisitRemovePasskeyResponse(w http.R
 	return err
 }
 
+type RemovePasskey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RemovePasskey503JSONResponse) VisitRemovePasskeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type EnrolPasskeyFinishRequestObject struct {
 	Body *EnrolPasskeyFinishJSONRequestBody
 }
@@ -24734,6 +25629,21 @@ func (response EnrolPasskeyFinish500JSONResponse) VisitEnrolPasskeyFinishRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EnrolPasskeyFinish503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response EnrolPasskeyFinish503JSONResponse) VisitEnrolPasskeyFinishResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -24831,6 +25741,21 @@ func (response EnrolPasskeyStart500JSONResponse) VisitEnrolPasskeyStartResponse(
 	return err
 }
 
+type EnrolPasskeyStart503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response EnrolPasskeyStart503JSONResponse) VisitEnrolPasskeyStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PasskeyLoginFinishRequestObject struct {
 	Body *PasskeyLoginFinishJSONRequestBody
 }
@@ -24924,6 +25849,21 @@ func (response PasskeyLoginFinish500JSONResponse) VisitPasskeyLoginFinishRespons
 	return err
 }
 
+type PasskeyLoginFinish503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PasskeyLoginFinish503JSONResponse) VisitPasskeyLoginFinishResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PasskeyLoginStartRequestObject struct {
 }
 
@@ -25012,6 +25952,21 @@ func (response PasskeyLoginStart500JSONResponse) VisitPasskeyLoginStartResponse(
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PasskeyLoginStart503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PasskeyLoginStart503JSONResponse) VisitPasskeyLoginStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -25109,6 +26064,21 @@ func (response ReauthPasskeyFinish500JSONResponse) VisitReauthPasskeyFinishRespo
 	return err
 }
 
+type ReauthPasskeyFinish503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ReauthPasskeyFinish503JSONResponse) VisitReauthPasskeyFinishResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ReauthPasskeyStartRequestObject struct {
 	Body *ReauthPasskeyStartJSONRequestBody
 }
@@ -25198,6 +26168,21 @@ func (response ReauthPasskeyStart500JSONResponse) VisitReauthPasskeyStartRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReauthPasskeyStart503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ReauthPasskeyStart503JSONResponse) VisitReauthPasskeyStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -25295,6 +26280,21 @@ func (response StepUpPasskeyFinish500JSONResponse) VisitStepUpPasskeyFinishRespo
 	return err
 }
 
+type StepUpPasskeyFinish503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response StepUpPasskeyFinish503JSONResponse) VisitStepUpPasskeyFinishResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type StepUpPasskeyStartRequestObject struct {
 }
 
@@ -25387,6 +26387,21 @@ func (response StepUpPasskeyStart500JSONResponse) VisitStepUpPasskeyStartRespons
 	return err
 }
 
+type StepUpPasskeyStart503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response StepUpPasskeyStart503JSONResponse) VisitStepUpPasskeyStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type WhoamiRequestObject struct {
 }
 
@@ -25461,6 +26476,21 @@ func (response Whoami500JSONResponse) VisitWhoamiResponse(w http.ResponseWriter)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Whoami503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response Whoami503JSONResponse) VisitWhoamiResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -25572,6 +26602,21 @@ func (response ApproveWorkspaceHandoff500JSONResponse) VisitApproveWorkspaceHand
 	return err
 }
 
+type ApproveWorkspaceHandoff503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ApproveWorkspaceHandoff503JSONResponse) VisitApproveWorkspaceHandoffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RedeemWorkspaceHandoffRequestObject struct {
 	Body *RedeemWorkspaceHandoffJSONRequestBody
 }
@@ -25647,6 +26692,21 @@ func (response RedeemWorkspaceHandoff500JSONResponse) VisitRedeemWorkspaceHandof
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedeemWorkspaceHandoff503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RedeemWorkspaceHandoff503JSONResponse) VisitRedeemWorkspaceHandoffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -25730,6 +26790,21 @@ func (response StartWorkspaceHandoff500JSONResponse) VisitStartWorkspaceHandoffR
 	return err
 }
 
+type StartWorkspaceHandoff503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response StartWorkspaceHandoff503JSONResponse) VisitStartWorkspaceHandoffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ShowWorkspaceHandoffRequestObject struct {
 	State string `json:"state"`
 }
@@ -25798,6 +26873,699 @@ func (response ShowWorkspaceHandoff500JSONResponse) VisitShowWorkspaceHandoffRes
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowWorkspaceHandoff503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ShowWorkspaceHandoff503JSONResponse) VisitShowWorkspaceHandoffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceConfigRequestObject struct {
+}
+
+type GetInstanceConfigResponseObject interface {
+	VisitGetInstanceConfigResponse(w http.ResponseWriter) error
+}
+
+type GetInstanceConfig200JSONResponse InstanceConfigStatus
+
+func (response GetInstanceConfig200JSONResponse) VisitGetInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceConfig400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GetInstanceConfig400JSONResponse) VisitGetInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceConfig401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetInstanceConfig401JSONResponse) VisitGetInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceConfig403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetInstanceConfig403JSONResponse) VisitGetInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceConfig404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetInstanceConfig404JSONResponse) VisitGetInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceConfig409JSONResponse struct{ ConflictJSONResponse }
+
+func (response GetInstanceConfig409JSONResponse) VisitGetInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceConfig429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetInstanceConfig429JSONResponse) VisitGetInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceConfig500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetInstanceConfig500JSONResponse) VisitGetInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceConfig503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetInstanceConfig503JSONResponse) VisitGetInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewInstanceConfigAdoptionRequestObject struct {
+}
+
+type PreviewInstanceConfigAdoptionResponseObject interface {
+	VisitPreviewInstanceConfigAdoptionResponse(w http.ResponseWriter) error
+}
+
+type PreviewInstanceConfigAdoption200JSONResponse InstanceConfigAdoptionPreview
+
+func (response PreviewInstanceConfigAdoption200JSONResponse) VisitPreviewInstanceConfigAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewInstanceConfigAdoption400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PreviewInstanceConfigAdoption400JSONResponse) VisitPreviewInstanceConfigAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewInstanceConfigAdoption401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response PreviewInstanceConfigAdoption401JSONResponse) VisitPreviewInstanceConfigAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewInstanceConfigAdoption403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PreviewInstanceConfigAdoption403JSONResponse) VisitPreviewInstanceConfigAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewInstanceConfigAdoption404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PreviewInstanceConfigAdoption404JSONResponse) VisitPreviewInstanceConfigAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewInstanceConfigAdoption409JSONResponse struct{ ConflictJSONResponse }
+
+func (response PreviewInstanceConfigAdoption409JSONResponse) VisitPreviewInstanceConfigAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewInstanceConfigAdoption429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response PreviewInstanceConfigAdoption429JSONResponse) VisitPreviewInstanceConfigAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewInstanceConfigAdoption500JSONResponse struct{ InternalJSONResponse }
+
+func (response PreviewInstanceConfigAdoption500JSONResponse) VisitPreviewInstanceConfigAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewInstanceConfigAdoption503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PreviewInstanceConfigAdoption503JSONResponse) VisitPreviewInstanceConfigAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AdoptInstanceConfigRequestObject struct {
+	Body *AdoptInstanceConfigJSONRequestBody
+}
+
+type AdoptInstanceConfigResponseObject interface {
+	VisitAdoptInstanceConfigResponse(w http.ResponseWriter) error
+}
+
+type AdoptInstanceConfig200JSONResponse InstanceConfigStatus
+
+func (response AdoptInstanceConfig200JSONResponse) VisitAdoptInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AdoptInstanceConfig400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response AdoptInstanceConfig400JSONResponse) VisitAdoptInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AdoptInstanceConfig401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response AdoptInstanceConfig401JSONResponse) VisitAdoptInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AdoptInstanceConfig403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response AdoptInstanceConfig403JSONResponse) VisitAdoptInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AdoptInstanceConfig404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response AdoptInstanceConfig404JSONResponse) VisitAdoptInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AdoptInstanceConfig409JSONResponse struct{ ConflictJSONResponse }
+
+func (response AdoptInstanceConfig409JSONResponse) VisitAdoptInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AdoptInstanceConfig429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response AdoptInstanceConfig429JSONResponse) VisitAdoptInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AdoptInstanceConfig500JSONResponse struct{ InternalJSONResponse }
+
+func (response AdoptInstanceConfig500JSONResponse) VisitAdoptInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AdoptInstanceConfig503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response AdoptInstanceConfig503JSONResponse) VisitAdoptInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstanceConfigRequestObject struct {
+	Body *ApplyInstanceConfigJSONRequestBody
+}
+
+type ApplyInstanceConfigResponseObject interface {
+	VisitApplyInstanceConfigResponse(w http.ResponseWriter) error
+}
+
+type ApplyInstanceConfig202JSONResponse InstanceConfigStatus
+
+func (response ApplyInstanceConfig202JSONResponse) VisitApplyInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstanceConfig400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ApplyInstanceConfig400JSONResponse) VisitApplyInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstanceConfig401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ApplyInstanceConfig401JSONResponse) VisitApplyInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstanceConfig403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ApplyInstanceConfig403JSONResponse) VisitApplyInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstanceConfig404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ApplyInstanceConfig404JSONResponse) VisitApplyInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstanceConfig409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ApplyInstanceConfig409JSONResponse) VisitApplyInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstanceConfig429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ApplyInstanceConfig429JSONResponse) VisitApplyInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstanceConfig500JSONResponse struct{ InternalJSONResponse }
+
+func (response ApplyInstanceConfig500JSONResponse) VisitApplyInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstanceConfig503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ApplyInstanceConfig503JSONResponse) VisitApplyInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceConfigMailRequestObject struct {
+	Body *TestInstanceConfigMailJSONRequestBody
+}
+
+type TestInstanceConfigMailResponseObject interface {
+	VisitTestInstanceConfigMailResponse(w http.ResponseWriter) error
+}
+
+type TestInstanceConfigMail200JSONResponse InstanceConfigMailTestResult
+
+func (response TestInstanceConfigMail200JSONResponse) VisitTestInstanceConfigMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceConfigMail400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TestInstanceConfigMail400JSONResponse) VisitTestInstanceConfigMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceConfigMail401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TestInstanceConfigMail401JSONResponse) VisitTestInstanceConfigMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceConfigMail403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response TestInstanceConfigMail403JSONResponse) VisitTestInstanceConfigMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceConfigMail404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TestInstanceConfigMail404JSONResponse) VisitTestInstanceConfigMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceConfigMail409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TestInstanceConfigMail409JSONResponse) VisitTestInstanceConfigMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceConfigMail429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response TestInstanceConfigMail429JSONResponse) VisitTestInstanceConfigMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceConfigMail500JSONResponse struct{ InternalJSONResponse }
+
+func (response TestInstanceConfigMail500JSONResponse) VisitTestInstanceConfigMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceConfigMail503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TestInstanceConfigMail503JSONResponse) VisitTestInstanceConfigMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -25890,6 +27658,21 @@ func (response ListInstanceConnections500JSONResponse) VisitListInstanceConnecti
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInstanceConnections503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListInstanceConnections503JSONResponse) VisitListInstanceConnectionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -26001,6 +27784,21 @@ func (response MintInstanceConnection500JSONResponse) VisitMintInstanceConnectio
 	return err
 }
 
+type MintInstanceConnection503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response MintInstanceConnection503JSONResponse) VisitMintInstanceConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RevokeInstanceConnectionRequestObject struct {
 	Connection ConnectionID `json:"connection"`
 }
@@ -26102,6 +27900,21 @@ func (response RevokeInstanceConnection500JSONResponse) VisitRevokeInstanceConne
 	return err
 }
 
+type RevokeInstanceConnection503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeInstanceConnection503JSONResponse) VisitRevokeInstanceConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ShowInstanceConnectionRequestObject struct {
 	Connection ConnectionID `json:"connection"`
 }
@@ -26195,6 +28008,21 @@ func (response ShowInstanceConnection500JSONResponse) VisitShowInstanceConnectio
 	return err
 }
 
+type ShowInstanceConnection503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ShowInstanceConnection503JSONResponse) VisitShowInstanceConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCredentialPolicyRequestObject struct {
 }
 
@@ -26283,6 +28111,21 @@ func (response GetCredentialPolicy500JSONResponse) VisitGetCredentialPolicyRespo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCredentialPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetCredentialPolicy503JSONResponse) VisitGetCredentialPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -26394,6 +28237,21 @@ func (response SetCredentialPolicy500JSONResponse) VisitSetCredentialPolicyRespo
 	return err
 }
 
+type SetCredentialPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SetCredentialPolicy503JSONResponse) VisitSetCredentialPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ServeDirectoryRequestObject struct {
 }
 
@@ -26486,6 +28344,21 @@ func (response ServeDirectory500JSONResponse) VisitServeDirectoryResponse(w http
 	return err
 }
 
+type ServeDirectory503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ServeDirectory503JSONResponse) VisitServeDirectoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListFederationIssuersRequestObject struct {
 }
 
@@ -26574,6 +28447,21 @@ func (response ListFederationIssuers500JSONResponse) VisitListFederationIssuersR
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFederationIssuers503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListFederationIssuers503JSONResponse) VisitListFederationIssuersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -26699,6 +28587,21 @@ func (response CreateFederationIssuer500JSONResponse) VisitCreateFederationIssue
 	return err
 }
 
+type CreateFederationIssuer503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateFederationIssuer503JSONResponse) VisitCreateFederationIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteFederationIssuerRequestObject struct {
 	Issuer FederationIssuerID `json:"issuer"`
 }
@@ -26796,6 +28699,21 @@ func (response DeleteFederationIssuer500JSONResponse) VisitDeleteFederationIssue
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFederationIssuer503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteFederationIssuer503JSONResponse) VisitDeleteFederationIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -26904,6 +28822,21 @@ func (response UpdateFederationIssuer500JSONResponse) VisitUpdateFederationIssue
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateFederationIssuer503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response UpdateFederationIssuer503JSONResponse) VisitUpdateFederationIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -27023,6 +28956,21 @@ func (response RevokeInstanceGrant500JSONResponse) VisitRevokeInstanceGrantRespo
 	return err
 }
 
+type RevokeInstanceGrant503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeInstanceGrant503JSONResponse) VisitRevokeInstanceGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListInstanceGrantsRequestObject struct {
 }
 
@@ -27111,6 +29059,21 @@ func (response ListInstanceGrants500JSONResponse) VisitListInstanceGrantsRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInstanceGrants503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListInstanceGrants503JSONResponse) VisitListInstanceGrantsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -27222,6 +29185,21 @@ func (response CreateInstanceGrant500JSONResponse) VisitCreateInstanceGrantRespo
 	return err
 }
 
+type CreateInstanceGrant503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateInstanceGrant503JSONResponse) VisitCreateInstanceGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ApplyInstanceTemplateRequestObject struct {
 	Body *ApplyInstanceTemplateJSONRequestBody
 }
@@ -27325,6 +29303,21 @@ func (response ApplyInstanceTemplate500JSONResponse) VisitApplyInstanceTemplateR
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstanceTemplate503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ApplyInstanceTemplate503JSONResponse) VisitApplyInstanceTemplateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -27450,6 +29443,21 @@ func (response InviteInstanceMember500JSONResponse) VisitInviteInstanceMemberRes
 	return err
 }
 
+type InviteInstanceMember503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response InviteInstanceMember503JSONResponse) VisitInviteInstanceMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListOidcProvidersRequestObject struct {
 }
 
@@ -27542,6 +29550,21 @@ func (response ListOidcProviders500JSONResponse) VisitListOidcProvidersResponse(
 	return err
 }
 
+type ListOidcProviders503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListOidcProviders503JSONResponse) VisitListOidcProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteOidcProviderRequestObject struct {
 	Slug ProviderSlugPath `json:"slug"`
 }
@@ -27625,6 +29648,21 @@ func (response DeleteOidcProvider500JSONResponse) VisitDeleteOidcProviderRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOidcProvider503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteOidcProvider503JSONResponse) VisitDeleteOidcProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -27718,6 +29756,21 @@ func (response GetOidcProvider500JSONResponse) VisitGetOidcProviderResponse(w ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOidcProvider503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetOidcProvider503JSONResponse) VisitGetOidcProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -27844,6 +29897,21 @@ func (response PutOidcProvider500JSONResponse) VisitPutOidcProviderResponse(w ht
 	return err
 }
 
+type PutOidcProvider503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PutOidcProvider503JSONResponse) VisitPutOidcProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ReencryptInstanceRequestObject struct {
 }
 
@@ -27936,6 +30004,21 @@ func (response ReencryptInstance500JSONResponse) VisitReencryptInstanceResponse(
 	return err
 }
 
+type ReencryptInstance503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ReencryptInstance503JSONResponse) VisitReencryptInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListRemotesRequestObject struct {
 }
 
@@ -28024,6 +30107,21 @@ func (response ListRemotes500JSONResponse) VisitListRemotesResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRemotes503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListRemotes503JSONResponse) VisitListRemotesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -28149,6 +30247,21 @@ func (response AddRemote500JSONResponse) VisitAddRemoteResponse(w http.ResponseW
 	return err
 }
 
+type AddRemote503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response AddRemote503JSONResponse) VisitAddRemoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RemoveRemoteRequestObject struct {
 	Remote RemoteName `json:"remote"`
 }
@@ -28232,6 +30345,21 @@ func (response RemoveRemote500JSONResponse) VisitRemoveRemoteResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveRemote503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RemoveRemote503JSONResponse) VisitRemoveRemoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -28325,6 +30453,21 @@ func (response ShowRemote500JSONResponse) VisitShowRemoteResponse(w http.Respons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowRemote503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ShowRemote503JSONResponse) VisitShowRemoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -28451,6 +30594,21 @@ func (response RenameRemote500JSONResponse) VisitRenameRemoteResponse(w http.Res
 	return err
 }
 
+type RenameRemote503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RenameRemote503JSONResponse) VisitRenameRemoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetRetentionHealthRequestObject struct {
 }
 
@@ -28539,6 +30697,21 @@ func (response GetRetentionHealth500JSONResponse) VisitGetRetentionHealthRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRetentionHealth503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetRetentionHealth503JSONResponse) VisitGetRetentionHealthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -28650,6 +30823,21 @@ func (response RotateDEK500JSONResponse) VisitRotateDEKResponse(w http.ResponseW
 	return err
 }
 
+type RotateDEK503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RotateDEK503JSONResponse) VisitRotateDEKResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RotateMasterKeyRequestObject struct {
 }
 
@@ -28738,6 +30926,21 @@ func (response RotateMasterKey500JSONResponse) VisitRotateMasterKeyResponse(w ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateMasterKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RotateMasterKey503JSONResponse) VisitRotateMasterKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -28849,6 +31052,21 @@ func (response RotateRootKey500JSONResponse) VisitRotateRootKeyResponse(w http.R
 	return err
 }
 
+type RotateRootKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RotateRootKey503JSONResponse) VisitRotateRootKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RotateScanningKeyRequestObject struct {
 }
 
@@ -28927,6 +31145,21 @@ func (response RotateScanningKey500JSONResponse) VisitRotateScanningKeyResponse(
 	return err
 }
 
+type RotateScanningKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RotateScanningKey503JSONResponse) VisitRotateScanningKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RotateTokenKeyRequestObject struct {
 }
 
@@ -29001,6 +31234,21 @@ func (response RotateTokenKey500JSONResponse) VisitRotateTokenKeyResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateTokenKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RotateTokenKey503JSONResponse) VisitRotateTokenKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -29097,6 +31345,21 @@ func (response ListSamlProviders500JSONResponse) VisitListSamlProvidersResponse(
 	return err
 }
 
+type ListSamlProviders503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListSamlProviders503JSONResponse) VisitListSamlProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteSamlProviderRequestObject struct {
 	Slug ProviderSlugPath `json:"slug"`
 }
@@ -29180,6 +31443,21 @@ func (response DeleteSamlProvider500JSONResponse) VisitDeleteSamlProviderRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSamlProvider503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteSamlProvider503JSONResponse) VisitDeleteSamlProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -29273,6 +31551,21 @@ func (response GetSamlProvider500JSONResponse) VisitGetSamlProviderResponse(w ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSamlProvider503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetSamlProvider503JSONResponse) VisitGetSamlProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -29399,6 +31692,21 @@ func (response PatchSamlProvider500JSONResponse) VisitPatchSamlProviderResponse(
 	return err
 }
 
+type PatchSamlProvider503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PatchSamlProvider503JSONResponse) VisitPatchSamlProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PutSamlProviderRequestObject struct {
 	Slug ProviderSlugPath `json:"slug"`
 	Body *PutSamlProviderJSONRequestBody
@@ -29517,6 +31825,21 @@ func (response PutSamlProvider500JSONResponse) VisitPutSamlProviderResponse(w ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutSamlProvider503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PutSamlProvider503JSONResponse) VisitPutSamlProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -29643,6 +31966,21 @@ func (response RefreshSamlProviderMetadata500JSONResponse) VisitRefreshSamlProvi
 	return err
 }
 
+type RefreshSamlProviderMetadata503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RefreshSamlProviderMetadata503JSONResponse) VisitRefreshSamlProviderMetadataResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListSamlSpKeysRequestObject struct {
 }
 
@@ -29731,6 +32069,21 @@ func (response ListSamlSpKeys500JSONResponse) VisitListSamlSpKeysResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSamlSpKeys503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListSamlSpKeys503JSONResponse) VisitListSamlSpKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -29841,6 +32194,21 @@ func (response RotateSamlSpKey500JSONResponse) VisitRotateSamlSpKeyResponse(w ht
 	return err
 }
 
+type RotateSamlSpKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RotateSamlSpKey503JSONResponse) VisitRotateSamlSpKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RetireSamlSpKeyRequestObject struct {
 	Fingerprint string `json:"fingerprint"`
 }
@@ -29938,6 +32306,21 @@ func (response RetireSamlSpKey500JSONResponse) VisitRetireSamlSpKeyResponse(w ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetireSamlSpKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RetireSamlSpKey503JSONResponse) VisitRetireSamlSpKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -30049,6 +32432,21 @@ func (response CompromiseRetireSamlSpKey500JSONResponse) VisitCompromiseRetireSa
 	return err
 }
 
+type CompromiseRetireSamlSpKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CompromiseRetireSamlSpKey503JSONResponse) VisitCompromiseRetireSamlSpKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RequestInstanceUpdateRequestObject struct {
 	Body *RequestInstanceUpdateJSONRequestBody
 }
@@ -30155,6 +32553,21 @@ func (response RequestInstanceUpdate500JSONResponse) VisitRequestInstanceUpdateR
 	return err
 }
 
+type RequestInstanceUpdate503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RequestInstanceUpdate503JSONResponse) VisitRequestInstanceUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetUpdateStatusRequestObject struct {
 }
 
@@ -30247,6 +32660,21 @@ func (response GetUpdateStatus500JSONResponse) VisitGetUpdateStatusResponse(w ht
 	return err
 }
 
+type GetUpdateStatus503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetUpdateStatus503JSONResponse) VisitGetUpdateStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetInstanceUpdateJobRequestObject struct {
 	Job InstanceUpdateJobID `json:"job"`
 }
@@ -30321,6 +32749,21 @@ func (response GetInstanceUpdateJob500JSONResponse) VisitGetInstanceUpdateJobRes
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceUpdateJob503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetInstanceUpdateJob503JSONResponse) VisitGetInstanceUpdateJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -30432,6 +32875,21 @@ func (response RemoveWorkspaceOrigin500JSONResponse) VisitRemoveWorkspaceOriginR
 	return err
 }
 
+type RemoveWorkspaceOrigin503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RemoveWorkspaceOrigin503JSONResponse) VisitRemoveWorkspaceOriginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListWorkspaceOriginsRequestObject struct {
 }
 
@@ -30520,6 +32978,21 @@ func (response ListWorkspaceOrigins500JSONResponse) VisitListWorkspaceOriginsRes
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceOrigins503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListWorkspaceOrigins503JSONResponse) VisitListWorkspaceOriginsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -30645,6 +33118,21 @@ func (response AddWorkspaceOrigin500JSONResponse) VisitAddWorkspaceOriginRespons
 	return err
 }
 
+type AddWorkspaceOrigin503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response AddWorkspaceOrigin503JSONResponse) VisitAddWorkspaceOriginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListMyOrgsRequestObject struct {
 }
 
@@ -30723,6 +33211,21 @@ func (response ListMyOrgs500JSONResponse) VisitListMyOrgsResponse(w http.Respons
 	return err
 }
 
+type ListMyOrgs503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListMyOrgs503JSONResponse) VisitListMyOrgsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMyProfileRequestObject struct {
 }
 
@@ -30797,6 +33300,21 @@ func (response GetMyProfile500JSONResponse) VisitGetMyProfileResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyProfile503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetMyProfile503JSONResponse) VisitGetMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -30922,6 +33440,21 @@ func (response UpdateMyProfile500JSONResponse) VisitUpdateMyProfileResponse(w ht
 	return err
 }
 
+type UpdateMyProfile503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response UpdateMyProfile503JSONResponse) VisitUpdateMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListMySessionsRequestObject struct {
 }
 
@@ -31000,6 +33533,21 @@ func (response ListMySessions500JSONResponse) VisitListMySessionsResponse(w http
 	return err
 }
 
+type ListMySessions503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListMySessions503JSONResponse) VisitListMySessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RevokeMySessionRequestObject struct {
 	Session SessionID `json:"session"`
 }
@@ -31073,6 +33621,21 @@ func (response RevokeMySession500JSONResponse) VisitRevokeMySessionResponse(w ht
 	return err
 }
 
+type RevokeMySession503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeMySession503JSONResponse) VisitRevokeMySessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMetaRequestObject struct {
 }
 
@@ -31119,6 +33682,21 @@ func (response GetMeta500JSONResponse) VisitGetMetaResponse(w http.ResponseWrite
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMeta503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetMeta503JSONResponse) VisitGetMetaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -31211,6 +33789,21 @@ func (response ListOrgs500JSONResponse) VisitListOrgsResponse(w http.ResponseWri
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgs503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListOrgs503JSONResponse) VisitListOrgsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -31336,6 +33929,21 @@ func (response CreateOrg500JSONResponse) VisitCreateOrgResponse(w http.ResponseW
 	return err
 }
 
+type CreateOrg503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateOrg503JSONResponse) VisitCreateOrgResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteOrgRequestObject struct {
 	Org OrgID `json:"org"`
 }
@@ -31437,6 +34045,21 @@ func (response DeleteOrg500JSONResponse) VisitDeleteOrgResponse(w http.ResponseW
 	return err
 }
 
+type DeleteOrg503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteOrg503JSONResponse) VisitDeleteOrgResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetOrgRequestObject struct {
 	Org OrgID `json:"org"`
 }
@@ -31512,6 +34135,21 @@ func (response GetOrg500JSONResponse) VisitGetOrgResponse(w http.ResponseWriter)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrg503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetOrg503JSONResponse) VisitGetOrgResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -31638,6 +34276,21 @@ func (response RenameOrg500JSONResponse) VisitRenameOrgResponse(w http.ResponseW
 	return err
 }
 
+type RenameOrg503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RenameOrg503JSONResponse) VisitRenameOrgResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type QueryOrgAuditRequestObject struct {
 	Org    OrgID `json:"org"`
 	Params QueryOrgAuditParams
@@ -31728,6 +34381,21 @@ func (response QueryOrgAudit500JSONResponse) VisitQueryOrgAuditResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryOrgAudit503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response QueryOrgAudit503JSONResponse) VisitQueryOrgAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -31855,6 +34523,21 @@ func (response ExportOrgAudit500JSONResponse) VisitExportOrgAuditResponse(w http
 	return err
 }
 
+type ExportOrgAudit503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ExportOrgAudit503JSONResponse) VisitExportOrgAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RevokeOrgGrantRequestObject struct {
 	Org    OrgID `json:"org"`
 	Params RevokeOrgGrantParams
@@ -31971,6 +34654,21 @@ func (response RevokeOrgGrant500JSONResponse) VisitRevokeOrgGrantResponse(w http
 	return err
 }
 
+type RevokeOrgGrant503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeOrgGrant503JSONResponse) VisitRevokeOrgGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListOrgGrantsRequestObject struct {
 	Org OrgID `json:"org"`
 }
@@ -32060,6 +34758,21 @@ func (response ListOrgGrants500JSONResponse) VisitListOrgGrantsResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgGrants503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListOrgGrants503JSONResponse) VisitListOrgGrantsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -32172,6 +34885,21 @@ func (response CreateOrgGrant500JSONResponse) VisitCreateOrgGrantResponse(w http
 	return err
 }
 
+type CreateOrgGrant503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateOrgGrant503JSONResponse) VisitCreateOrgGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ApplyOrgTemplateRequestObject struct {
 	Org  OrgID `json:"org"`
 	Body *ApplyOrgTemplateJSONRequestBody
@@ -32276,6 +35004,21 @@ func (response ApplyOrgTemplate500JSONResponse) VisitApplyOrgTemplateResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyOrgTemplate503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ApplyOrgTemplate503JSONResponse) VisitApplyOrgTemplateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -32402,6 +35145,21 @@ func (response InviteOrgMember500JSONResponse) VisitInviteOrgMemberResponse(w ht
 	return err
 }
 
+type InviteOrgMember503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response InviteOrgMember503JSONResponse) VisitInviteOrgMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListProjectsRequestObject struct {
 	Org OrgID `json:"org"`
 }
@@ -32477,6 +35235,21 @@ func (response ListProjects500JSONResponse) VisitListProjectsResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjects503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListProjects503JSONResponse) VisitListProjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -32589,6 +35362,21 @@ func (response CreateProject500JSONResponse) VisitCreateProjectResponse(w http.R
 	return err
 }
 
+type CreateProject503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateProject503JSONResponse) VisitCreateProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteProjectRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -32677,6 +35465,21 @@ func (response DeleteProject500JSONResponse) VisitDeleteProjectResponse(w http.R
 	return err
 }
 
+type DeleteProject503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteProject503JSONResponse) VisitDeleteProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetProjectRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -32753,6 +35556,21 @@ func (response GetProject500JSONResponse) VisitGetProjectResponse(w http.Respons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProject503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetProject503JSONResponse) VisitGetProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -32866,6 +35684,21 @@ func (response RenameProject500JSONResponse) VisitRenameProjectResponse(w http.R
 	return err
 }
 
+type RenameProject503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RenameProject503JSONResponse) VisitRenameProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CancelAdapterMoveRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -32960,6 +35793,21 @@ func (response CancelAdapterMove500JSONResponse) VisitCancelAdapterMoveResponse(
 	return err
 }
 
+type CancelAdapterMove503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CancelAdapterMove503JSONResponse) VisitCancelAdapterMoveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ShowAdapterMoveRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -33022,6 +35870,21 @@ func (response ShowAdapterMove500JSONResponse) VisitShowAdapterMoveResponse(w ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowAdapterMove503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ShowAdapterMove503JSONResponse) VisitShowAdapterMoveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -33135,6 +35998,21 @@ func (response ResumeAdapterMove500JSONResponse) VisitResumeAdapterMoveResponse(
 	return err
 }
 
+type ResumeAdapterMove503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ResumeAdapterMove503JSONResponse) VisitResumeAdapterMoveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RemoveAdapterTargetRequestObject struct {
 	Org     OrgID           `json:"org"`
 	Project ProjectID       `json:"project"`
@@ -33216,6 +36094,21 @@ func (response RemoveAdapterTarget500JSONResponse) VisitRemoveAdapterTargetRespo
 	return err
 }
 
+type RemoveAdapterTarget503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RemoveAdapterTarget503JSONResponse) VisitRemoveAdapterTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ShowAdapterTargetRequestObject struct {
 	Org     OrgID           `json:"org"`
 	Project ProjectID       `json:"project"`
@@ -33290,6 +36183,21 @@ func (response ShowAdapterTarget500JSONResponse) VisitShowAdapterTargetResponse(
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowAdapterTarget503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ShowAdapterTarget503JSONResponse) VisitShowAdapterTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -33417,6 +36325,21 @@ func (response UpdateAdapterTarget500JSONResponse) VisitUpdateAdapterTargetRespo
 	return err
 }
 
+type UpdateAdapterTarget503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response UpdateAdapterTarget503JSONResponse) VisitUpdateAdapterTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type AdoptAdapterTargetNamesRequestObject struct {
 	Org     OrgID           `json:"org"`
 	Project ProjectID       `json:"project"`
@@ -33526,6 +36449,21 @@ func (response AdoptAdapterTargetNames500JSONResponse) VisitAdoptAdapterTargetNa
 	return err
 }
 
+type AdoptAdapterTargetNames503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response AdoptAdapterTargetNames503JSONResponse) VisitAdoptAdapterTargetNamesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PauseAdapterTargetRequestObject struct {
 	Org     OrgID           `json:"org"`
 	Project ProjectID       `json:"project"`
@@ -33620,6 +36558,21 @@ func (response PauseAdapterTarget500JSONResponse) VisitPauseAdapterTargetRespons
 	return err
 }
 
+type PauseAdapterTarget503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PauseAdapterTarget503JSONResponse) VisitPauseAdapterTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PlanAdapterTargetRequestObject struct {
 	Org     OrgID           `json:"org"`
 	Project ProjectID       `json:"project"`
@@ -33696,6 +36649,21 @@ func (response PlanAdapterTarget500JSONResponse) VisitPlanAdapterTargetResponse(
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PlanAdapterTarget503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PlanAdapterTarget503JSONResponse) VisitPlanAdapterTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -33794,6 +36762,21 @@ func (response ResumeAdapterTarget500JSONResponse) VisitResumeAdapterTargetRespo
 	return err
 }
 
+type ResumeAdapterTarget503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ResumeAdapterTarget503JSONResponse) VisitResumeAdapterTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SyncAdapterTargetRequestObject struct {
 	Org     OrgID           `json:"org"`
 	Project ProjectID       `json:"project"`
@@ -33888,6 +36871,21 @@ func (response SyncAdapterTarget500JSONResponse) VisitSyncAdapterTargetResponse(
 	return err
 }
 
+type SyncAdapterTarget503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SyncAdapterTarget503JSONResponse) VisitSyncAdapterTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type TestAdapterTargetRequestObject struct {
 	Org     OrgID           `json:"org"`
 	Project ProjectID       `json:"project"`
@@ -33954,6 +36952,21 @@ func (response TestAdapterTarget500JSONResponse) VisitTestAdapterTargetResponse(
 	return err
 }
 
+type TestAdapterTarget503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TestAdapterTarget503JSONResponse) VisitTestAdapterTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListAdaptersRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -34015,6 +37028,21 @@ func (response ListAdapters500JSONResponse) VisitListAdaptersResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAdapters503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListAdapters503JSONResponse) VisitListAdaptersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -34127,6 +37155,21 @@ func (response CreateAdapter500JSONResponse) VisitCreateAdapterResponse(w http.R
 	return err
 }
 
+type CreateAdapter503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateAdapter503JSONResponse) VisitCreateAdapterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteAdapterRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -34208,6 +37251,21 @@ func (response DeleteAdapter500JSONResponse) VisitDeleteAdapterResponse(w http.R
 	return err
 }
 
+type DeleteAdapter503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteAdapter503JSONResponse) VisitDeleteAdapterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ShowAdapterRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -34270,6 +37328,21 @@ func (response ShowAdapter500JSONResponse) VisitShowAdapterResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowAdapter503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ShowAdapter503JSONResponse) VisitShowAdapterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -34383,6 +37456,21 @@ func (response UpdateAdapterOrigin500JSONResponse) VisitUpdateAdapterOriginRespo
 	return err
 }
 
+type UpdateAdapterOrigin503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response UpdateAdapterOrigin503JSONResponse) VisitUpdateAdapterOriginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RevokeAdapterCredentialRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -34439,6 +37527,21 @@ func (response RevokeAdapterCredential500JSONResponse) VisitRevokeAdapterCredent
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAdapterCredential503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeAdapterCredential503JSONResponse) VisitRevokeAdapterCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -34546,6 +37649,21 @@ func (response SetAdapterCredential500JSONResponse) VisitSetAdapterCredentialRes
 	return err
 }
 
+type SetAdapterCredential503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SetAdapterCredential503JSONResponse) VisitSetAdapterCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListAdapterTargetsRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -34608,6 +37726,21 @@ func (response ListAdapterTargets500JSONResponse) VisitListAdapterTargetsRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAdapterTargets503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListAdapterTargets503JSONResponse) VisitListAdapterTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -34721,6 +37854,21 @@ func (response AddAdapterTarget500JSONResponse) VisitAddAdapterTargetResponse(w 
 	return err
 }
 
+type AddAdapterTarget503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response AddAdapterTarget503JSONResponse) VisitAddAdapterTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListApprovalPoliciesRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -34797,6 +37945,21 @@ func (response ListApprovalPolicies500JSONResponse) VisitListApprovalPoliciesRes
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListApprovalPolicies503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListApprovalPolicies503JSONResponse) VisitListApprovalPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -34910,6 +38073,21 @@ func (response CreateApprovalPolicy500JSONResponse) VisitCreateApprovalPolicyRes
 	return err
 }
 
+type CreateApprovalPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateApprovalPolicy503JSONResponse) VisitCreateApprovalPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteApprovalPolicyRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -34981,6 +38159,21 @@ func (response DeleteApprovalPolicy500JSONResponse) VisitDeleteApprovalPolicyRes
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteApprovalPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteApprovalPolicy503JSONResponse) VisitDeleteApprovalPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -35095,6 +38288,21 @@ func (response UpdateApprovalPolicy500JSONResponse) VisitUpdateApprovalPolicyRes
 	return err
 }
 
+type UpdateApprovalPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response UpdateApprovalPolicy503JSONResponse) VisitUpdateApprovalPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type QueryProjectAuditRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -35186,6 +38394,21 @@ func (response QueryProjectAudit500JSONResponse) VisitQueryProjectAuditResponse(
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryProjectAudit503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response QueryProjectAudit503JSONResponse) VisitQueryProjectAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -35314,6 +38537,21 @@ func (response ExportProjectAudit500JSONResponse) VisitExportProjectAuditRespons
 	return err
 }
 
+type ExportProjectAudit503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ExportProjectAudit503JSONResponse) VisitExportProjectAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CheckDefinitionsRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -35409,6 +38647,21 @@ func (response CheckDefinitions500JSONResponse) VisitCheckDefinitionsResponse(w 
 	return err
 }
 
+type CheckDefinitions503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CheckDefinitions503JSONResponse) VisitCheckDefinitionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ExportDefinitionsRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -35486,6 +38739,21 @@ func (response ExportDefinitions500JSONResponse) VisitExportDefinitionsResponse(
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportDefinitions503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ExportDefinitions503JSONResponse) VisitExportDefinitionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -35600,6 +38868,21 @@ func (response CreateDefinitionsPlan500JSONResponse) VisitCreateDefinitionsPlanR
 	return err
 }
 
+type CreateDefinitionsPlan503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateDefinitionsPlan503JSONResponse) VisitCreateDefinitionsPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetDefinitionsPlanRequestObject struct {
 	Org     OrgID             `json:"org"`
 	Project ProjectID         `json:"project"`
@@ -35677,6 +38960,21 @@ func (response GetDefinitionsPlan500JSONResponse) VisitGetDefinitionsPlanRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDefinitionsPlan503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetDefinitionsPlan503JSONResponse) VisitGetDefinitionsPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -35791,6 +39089,21 @@ func (response ApplyDefinitionsPlan500JSONResponse) VisitApplyDefinitionsPlanRes
 	return err
 }
 
+type ApplyDefinitionsPlan503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ApplyDefinitionsPlan503JSONResponse) VisitApplyDefinitionsPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetDefinitionsSettingsRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -35867,6 +39180,21 @@ func (response GetDefinitionsSettings500JSONResponse) VisitGetDefinitionsSetting
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDefinitionsSettings503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetDefinitionsSettings503JSONResponse) VisitGetDefinitionsSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -35966,6 +39294,21 @@ func (response SetDefinitionsSettings500JSONResponse) VisitSetDefinitionsSetting
 	return err
 }
 
+type SetDefinitionsSettings503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SetDefinitionsSettings503JSONResponse) VisitSetDefinitionsSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListDynamicProvidersRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -36027,6 +39370,21 @@ func (response ListDynamicProviders500JSONResponse) VisitListDynamicProvidersRes
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDynamicProviders503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListDynamicProviders503JSONResponse) VisitListDynamicProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -36125,6 +39483,21 @@ func (response CreateDynamicProvider500JSONResponse) VisitCreateDynamicProviderR
 	return err
 }
 
+type CreateDynamicProvider503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateDynamicProvider503JSONResponse) VisitCreateDynamicProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteDynamicProviderRequestObject struct {
 	Org      OrgID             `json:"org"`
 	Project  ProjectID         `json:"project"`
@@ -36206,6 +39579,21 @@ func (response DeleteDynamicProvider500JSONResponse) VisitDeleteDynamicProviderR
 	return err
 }
 
+type DeleteDynamicProvider503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteDynamicProvider503JSONResponse) VisitDeleteDynamicProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ShowDynamicProviderRequestObject struct {
 	Org      OrgID             `json:"org"`
 	Project  ProjectID         `json:"project"`
@@ -36272,6 +39660,21 @@ func (response ShowDynamicProvider500JSONResponse) VisitShowDynamicProviderRespo
 	return err
 }
 
+type ShowDynamicProvider503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ShowDynamicProvider503JSONResponse) VisitShowDynamicProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RevokeDynamicProviderCredentialRequestObject struct {
 	Org      OrgID             `json:"org"`
 	Project  ProjectID         `json:"project"`
@@ -36328,6 +39731,21 @@ func (response RevokeDynamicProviderCredential500JSONResponse) VisitRevokeDynami
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeDynamicProviderCredential503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeDynamicProviderCredential503JSONResponse) VisitRevokeDynamicProviderCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -36421,6 +39839,21 @@ func (response SetDynamicProviderCredential500JSONResponse) VisitSetDynamicProvi
 	return err
 }
 
+type SetDynamicProviderCredential503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SetDynamicProviderCredential503JSONResponse) VisitSetDynamicProviderCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListEnvironmentsRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -36497,6 +39930,21 @@ func (response ListEnvironments500JSONResponse) VisitListEnvironmentsResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListEnvironments503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListEnvironments503JSONResponse) VisitListEnvironmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -36610,6 +40058,21 @@ func (response CreateEnvironment500JSONResponse) VisitCreateEnvironmentResponse(
 	return err
 }
 
+type CreateEnvironment503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateEnvironment503JSONResponse) VisitCreateEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CloneEnvironmentRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -36719,6 +40182,21 @@ func (response CloneEnvironment500JSONResponse) VisitCloneEnvironmentResponse(w 
 	return err
 }
 
+type CloneEnvironment503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CloneEnvironment503JSONResponse) VisitCloneEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ReorderEnvironmentsRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -36814,6 +40292,21 @@ func (response ReorderEnvironments500JSONResponse) VisitReorderEnvironmentsRespo
 	return err
 }
 
+type ReorderEnvironments503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ReorderEnvironments503JSONResponse) VisitReorderEnvironmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteEnvironmentRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -36903,6 +40396,21 @@ func (response DeleteEnvironment500JSONResponse) VisitDeleteEnvironmentResponse(
 	return err
 }
 
+type DeleteEnvironment503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteEnvironment503JSONResponse) VisitDeleteEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetEnvironmentRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -36980,6 +40488,21 @@ func (response GetEnvironment500JSONResponse) VisitGetEnvironmentResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnvironment503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetEnvironment503JSONResponse) VisitGetEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -37094,6 +40617,21 @@ func (response RenameEnvironment500JSONResponse) VisitRenameEnvironmentResponse(
 	return err
 }
 
+type RenameEnvironment503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RenameEnvironment503JSONResponse) VisitRenameEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListApprovalRequestsRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -37171,6 +40709,21 @@ func (response ListApprovalRequests500JSONResponse) VisitListApprovalRequestsRes
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListApprovalRequests503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListApprovalRequests503JSONResponse) VisitListApprovalRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -37267,6 +40820,21 @@ func (response GetApprovalCeremony500JSONResponse) VisitGetApprovalCeremonyRespo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetApprovalCeremony503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetApprovalCeremony503JSONResponse) VisitGetApprovalCeremonyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -37396,6 +40964,21 @@ func (response VoteApprovalRequest500JSONResponse) VisitVoteApprovalRequestRespo
 	return err
 }
 
+type VoteApprovalRequest503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response VoteApprovalRequest503JSONResponse) VisitVoteApprovalRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type QueryEnvAuditRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -37488,6 +41071,21 @@ func (response QueryEnvAudit500JSONResponse) VisitQueryEnvAuditResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryEnvAudit503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response QueryEnvAudit503JSONResponse) VisitQueryEnvAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -37617,6 +41215,21 @@ func (response ExportEnvAudit500JSONResponse) VisitExportEnvAuditResponse(w http
 	return err
 }
 
+type ExportEnvAudit503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ExportEnvAudit503JSONResponse) VisitExportEnvAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type FetchDeliveryRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -37709,6 +41322,21 @@ func (response FetchDelivery500JSONResponse) VisitFetchDeliveryResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FetchDelivery503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response FetchDelivery503JSONResponse) VisitFetchDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -37819,6 +41447,21 @@ func (response ReconcileOfflineRecords500JSONResponse) VisitReconcileOfflineReco
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReconcileOfflineRecords503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ReconcileOfflineRecords503JSONResponse) VisitReconcileOfflineRecordsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -37941,6 +41584,21 @@ func (response RevokeEnvGrant500JSONResponse) VisitRevokeEnvGrantResponse(w http
 	return err
 }
 
+type RevokeEnvGrant503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeEnvGrant503JSONResponse) VisitRevokeEnvGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateEnvGrantRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -38047,6 +41705,21 @@ func (response CreateEnvGrant500JSONResponse) VisitCreateEnvGrantResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateEnvGrant503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateEnvGrant503JSONResponse) VisitCreateEnvGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -38161,6 +41834,21 @@ func (response ApplyEnvTemplate500JSONResponse) VisitApplyEnvTemplateResponse(w 
 	return err
 }
 
+type ApplyEnvTemplate503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ApplyEnvTemplate503JSONResponse) VisitApplyEnvTemplateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListLeasesRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -38223,6 +41911,21 @@ func (response ListLeases500JSONResponse) VisitListLeasesResponse(w http.Respons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListLeases503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListLeases503JSONResponse) VisitListLeasesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -38336,6 +42039,21 @@ func (response MintLease500JSONResponse) VisitMintLeaseResponse(w http.ResponseW
 	return err
 }
 
+type MintLease503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response MintLease503JSONResponse) VisitMintLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ShowLeaseRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -38399,6 +42117,21 @@ func (response ShowLease500JSONResponse) VisitShowLeaseResponse(w http.ResponseW
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowLease503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ShowLease503JSONResponse) VisitShowLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -38499,6 +42232,21 @@ func (response RenewLease500JSONResponse) VisitRenewLeaseResponse(w http.Respons
 	return err
 }
 
+type RenewLease503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RenewLease503JSONResponse) VisitRenewLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RevokeLeaseRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -38562,6 +42310,21 @@ func (response RevokeLease500JSONResponse) VisitRevokeLeaseResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeLease503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeLease503JSONResponse) VisitRevokeLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -38647,6 +42410,21 @@ func (response SettleLease500JSONResponse) VisitSettleLeaseResponse(w http.Respo
 	return err
 }
 
+type SettleLease503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SettleLease503JSONResponse) VisitSettleLeaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListPendingDraftsRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -38728,6 +42506,21 @@ func (response ListPendingDrafts500JSONResponse) VisitListPendingDraftsResponse(
 	return err
 }
 
+type ListPendingDrafts503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListPendingDrafts503JSONResponse) VisitListPendingDraftsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListRevisionPinsRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -38805,6 +42598,21 @@ func (response ListRevisionPins500JSONResponse) VisitListRevisionPinsResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRevisionPins503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListRevisionPins503JSONResponse) VisitListRevisionPinsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -38919,6 +42727,21 @@ func (response CreateRevisionPin500JSONResponse) VisitCreateRevisionPinResponse(
 	return err
 }
 
+type CreateRevisionPin503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateRevisionPin503JSONResponse) VisitCreateRevisionPinResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ReleaseRevisionPinRequestObject struct {
 	Org               OrgID         `json:"org"`
 	Project           ProjectID     `json:"project"`
@@ -38997,6 +42820,21 @@ func (response ReleaseRevisionPin500JSONResponse) VisitReleaseRevisionPinRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseRevisionPin503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ReleaseRevisionPin503JSONResponse) VisitReleaseRevisionPinResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -39139,6 +42977,21 @@ func (response PublishPendingChanges500JSONResponse) VisitPublishPendingChangesR
 	return err
 }
 
+type PublishPendingChanges503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PublishPendingChanges503JSONResponse) VisitPublishPendingChangesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetRevealWindowRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -39220,6 +43073,21 @@ func (response GetRevealWindow500JSONResponse) VisitGetRevealWindowResponse(w ht
 	return err
 }
 
+type GetRevealWindow503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetRevealWindow503JSONResponse) VisitGetRevealWindowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListRevisionsRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -39297,6 +43165,21 @@ func (response ListRevisions500JSONResponse) VisitListRevisionsResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRevisions503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListRevisions503JSONResponse) VisitListRevisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -39407,6 +43290,21 @@ func (response DiffRevisions500JSONResponse) VisitDiffRevisionsResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiffRevisions503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DiffRevisions503JSONResponse) VisitDiffRevisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -39535,6 +43433,21 @@ func (response RevealRevisionDiff500JSONResponse) VisitRevealRevisionDiffRespons
 	return err
 }
 
+type RevealRevisionDiff503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevealRevisionDiff503JSONResponse) VisitRevealRevisionDiffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetRevisionRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -39627,6 +43540,21 @@ func (response GetRevision500JSONResponse) VisitGetRevisionResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevision503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetRevision503JSONResponse) VisitGetRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -39742,6 +43670,21 @@ func (response RollbackRevision500JSONResponse) VisitRollbackRevisionResponse(w 
 	return err
 }
 
+type RollbackRevision503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RollbackRevision503JSONResponse) VisitRollbackRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetEnvironmentSettingsRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -39819,6 +43762,21 @@ func (response GetEnvironmentSettings500JSONResponse) VisitGetEnvironmentSetting
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnvironmentSettings503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetEnvironmentSettings503JSONResponse) VisitGetEnvironmentSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -39919,6 +43877,21 @@ func (response SetEnvironmentSettings500JSONResponse) VisitSetEnvironmentSetting
 	return err
 }
 
+type SetEnvironmentSettings503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SetEnvironmentSettings503JSONResponse) VisitSetEnvironmentSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetEnvironmentSignalsRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -40000,6 +43973,21 @@ func (response GetEnvironmentSignals500JSONResponse) VisitGetEnvironmentSignalsR
 	return err
 }
 
+type GetEnvironmentSignals503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetEnvironmentSignals503JSONResponse) VisitGetEnvironmentSignalsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListValuesRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -40077,6 +44065,21 @@ func (response ListValues500JSONResponse) VisitListValuesResponse(w http.Respons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListValues503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListValues503JSONResponse) VisitListValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -40205,6 +44208,21 @@ func (response ExportValues500JSONResponse) VisitExportValuesResponse(w http.Res
 	return err
 }
 
+type ExportValues503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ExportValues503JSONResponse) VisitExportValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ImportValuesRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -40315,6 +44333,21 @@ func (response ImportValues500JSONResponse) VisitImportValuesResponse(w http.Res
 	return err
 }
 
+type ImportValues503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ImportValues503JSONResponse) VisitImportValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListValueOccurrencesRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -40411,6 +44444,21 @@ func (response ListValueOccurrences500JSONResponse) VisitListValueOccurrencesRes
 	return err
 }
 
+type ListValueOccurrences503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListValueOccurrences503JSONResponse) VisitListValueOccurrencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RevealValuesRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -40502,6 +44550,21 @@ func (response RevealValues500JSONResponse) VisitRevealValuesResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevealValues503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevealValues503JSONResponse) VisitRevealValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -40602,6 +44665,21 @@ func (response ClearValue500JSONResponse) VisitClearValueResponse(w http.Respons
 	return err
 }
 
+type ClearValue503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ClearValue503JSONResponse) VisitClearValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetValueRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -40680,6 +44758,21 @@ func (response GetValue500JSONResponse) VisitGetValueResponse(w http.ResponseWri
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetValue503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetValue503JSONResponse) VisitGetValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -40795,6 +44888,21 @@ func (response SetValue500JSONResponse) VisitSetValueResponse(w http.ResponseWri
 	return err
 }
 
+type SetValue503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SetValue503JSONResponse) VisitSetValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RevealValueRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -40887,6 +44995,21 @@ func (response RevealValue500JSONResponse) VisitRevealValueResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevealValue503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevealValue503JSONResponse) VisitRevealValueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -41000,6 +45123,21 @@ func (response WatchProjectEvents500JSONResponse) VisitWatchProjectEventsRespons
 	return err
 }
 
+type WatchProjectEvents503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response WatchProjectEvents503JSONResponse) VisitWatchProjectEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListFoldersRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -41076,6 +45214,21 @@ func (response ListFolders500JSONResponse) VisitListFoldersResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFolders503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListFolders503JSONResponse) VisitListFoldersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -41189,6 +45342,21 @@ func (response CreateFolder500JSONResponse) VisitCreateFolderResponse(w http.Res
 	return err
 }
 
+type CreateFolder503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateFolder503JSONResponse) VisitCreateFolderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteFolderRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -41260,6 +45428,21 @@ func (response DeleteFolder500JSONResponse) VisitDeleteFolderResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFolder503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteFolder503JSONResponse) VisitDeleteFolderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -41341,6 +45524,21 @@ func (response GetFolder500JSONResponse) VisitGetFolderResponse(w http.ResponseW
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFolder503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetFolder503JSONResponse) VisitGetFolderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -41451,6 +45649,21 @@ func (response RenameFolder500JSONResponse) VisitRenameFolderResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenameFolder503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RenameFolder503JSONResponse) VisitRenameFolderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -41572,6 +45785,21 @@ func (response RevokeProjectGrant500JSONResponse) VisitRevokeProjectGrantRespons
 	return err
 }
 
+type RevokeProjectGrant503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeProjectGrant503JSONResponse) VisitRevokeProjectGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListProjectGrantsRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -41662,6 +45890,21 @@ func (response ListProjectGrants500JSONResponse) VisitListProjectGrantsResponse(
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjectGrants503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListProjectGrants503JSONResponse) VisitListProjectGrantsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -41775,6 +46018,21 @@ func (response CreateProjectGrant500JSONResponse) VisitCreateProjectGrantRespons
 	return err
 }
 
+type CreateProjectGrant503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateProjectGrant503JSONResponse) VisitCreateProjectGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ApplyProjectTemplateRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -41884,6 +46142,21 @@ func (response ApplyProjectTemplate500JSONResponse) VisitApplyProjectTemplateRes
 	return err
 }
 
+type ApplyProjectTemplate503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ApplyProjectTemplate503JSONResponse) VisitApplyProjectTemplateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListKeyGroupsRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -41960,6 +46233,21 @@ func (response ListKeyGroups500JSONResponse) VisitListKeyGroupsResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListKeyGroups503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListKeyGroups503JSONResponse) VisitListKeyGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -42073,6 +46361,21 @@ func (response CreateKeyGroup500JSONResponse) VisitCreateKeyGroupResponse(w http
 	return err
 }
 
+type CreateKeyGroup503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateKeyGroup503JSONResponse) VisitCreateKeyGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteKeyGroupRequestObject struct {
 	Org     OrgID      `json:"org"`
 	Project ProjectID  `json:"project"`
@@ -42162,6 +46465,21 @@ func (response DeleteKeyGroup500JSONResponse) VisitDeleteKeyGroupResponse(w http
 	return err
 }
 
+type DeleteKeyGroup503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteKeyGroup503JSONResponse) VisitDeleteKeyGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetKeyGroupRequestObject struct {
 	Org     OrgID      `json:"org"`
 	Project ProjectID  `json:"project"`
@@ -42239,6 +46557,21 @@ func (response GetKeyGroup500JSONResponse) VisitGetKeyGroupResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetKeyGroup503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetKeyGroup503JSONResponse) VisitGetKeyGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -42353,6 +46686,21 @@ func (response RenameKeyGroup500JSONResponse) VisitRenameKeyGroupResponse(w http
 	return err
 }
 
+type RenameKeyGroup503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RenameKeyGroup503JSONResponse) VisitRenameKeyGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListKeysRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -42429,6 +46777,21 @@ func (response ListKeys500JSONResponse) VisitListKeysResponse(w http.ResponseWri
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListKeys503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListKeys503JSONResponse) VisitListKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -42542,6 +46905,21 @@ func (response CreateKey500JSONResponse) VisitCreateKeyResponse(w http.ResponseW
 	return err
 }
 
+type CreateKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateKey503JSONResponse) VisitCreateKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteKeyRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -42631,6 +47009,21 @@ func (response DeleteKey500JSONResponse) VisitDeleteKeyResponse(w http.ResponseW
 	return err
 }
 
+type DeleteKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteKey503JSONResponse) VisitDeleteKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetKeyRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -42708,6 +47101,21 @@ func (response GetKey500JSONResponse) VisitGetKeyResponse(w http.ResponseWriter)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetKey503JSONResponse) VisitGetKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -42822,6 +47230,21 @@ func (response UpdateKeyMetadata500JSONResponse) VisitUpdateKeyMetadataResponse(
 	return err
 }
 
+type UpdateKeyMetadata503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response UpdateKeyMetadata503JSONResponse) VisitUpdateKeyMetadataResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ReclassifyKeyRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -42928,6 +47351,21 @@ func (response ReclassifyKey500JSONResponse) VisitReclassifyKeyResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReclassifyKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ReclassifyKey503JSONResponse) VisitReclassifyKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -43042,6 +47480,21 @@ func (response UpdateKeyDeclaration500JSONResponse) VisitUpdateKeyDeclarationRes
 	return err
 }
 
+type UpdateKeyDeclaration503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response UpdateKeyDeclaration503JSONResponse) VisitUpdateKeyDeclarationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SetKeyGroupRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -43148,6 +47601,21 @@ func (response SetKeyGroup500JSONResponse) VisitSetKeyGroupResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetKeyGroup503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SetKeyGroup503JSONResponse) VisitSetKeyGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -43262,6 +47730,21 @@ func (response RenameKey500JSONResponse) VisitRenameKeyResponse(w http.ResponseW
 	return err
 }
 
+type RenameKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RenameKey503JSONResponse) VisitRenameKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMachineRevealRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -43338,6 +47821,21 @@ func (response GetMachineReveal500JSONResponse) VisitGetMachineRevealResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMachineReveal503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetMachineReveal503JSONResponse) VisitGetMachineRevealResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -43451,6 +47949,21 @@ func (response SetMachineReveal500JSONResponse) VisitSetMachineRevealResponse(w 
 	return err
 }
 
+type SetMachineReveal503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SetMachineReveal503JSONResponse) VisitSetMachineRevealResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ReencryptProjectRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -43526,6 +48039,21 @@ func (response ReencryptProject500JSONResponse) VisitReencryptProjectResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReencryptProject503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ReencryptProject503JSONResponse) VisitReencryptProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -43606,6 +48134,21 @@ func (response GetProjectRetention500JSONResponse) VisitGetProjectRetentionRespo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectRetention503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetProjectRetention503JSONResponse) VisitGetProjectRetentionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -43705,6 +48248,21 @@ func (response SetProjectRetention500JSONResponse) VisitSetProjectRetentionRespo
 	return err
 }
 
+type SetProjectRetention503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SetProjectRetention503JSONResponse) VisitSetProjectRetentionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListServiceAccountsRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -43781,6 +48339,21 @@ func (response ListServiceAccounts500JSONResponse) VisitListServiceAccountsRespo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListServiceAccounts503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListServiceAccounts503JSONResponse) VisitListServiceAccountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -43894,6 +48467,21 @@ func (response CreateServiceAccount500JSONResponse) VisitCreateServiceAccountRes
 	return err
 }
 
+type CreateServiceAccount503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateServiceAccount503JSONResponse) VisitCreateServiceAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteServiceAccountRequestObject struct {
 	Org            OrgID            `json:"org"`
 	Project        ProjectID        `json:"project"`
@@ -43965,6 +48553,21 @@ func (response DeleteServiceAccount500JSONResponse) VisitDeleteServiceAccountRes
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteServiceAccount503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteServiceAccount503JSONResponse) VisitDeleteServiceAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -44079,6 +48682,21 @@ func (response CreateFederatedBinding500JSONResponse) VisitCreateFederatedBindin
 	return err
 }
 
+type CreateFederatedBinding503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateFederatedBinding503JSONResponse) VisitCreateFederatedBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListMachineCredentialsRequestObject struct {
 	Org            OrgID            `json:"org"`
 	Project        ProjectID        `json:"project"`
@@ -44156,6 +48774,21 @@ func (response ListMachineCredentials500JSONResponse) VisitListMachineCredential
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMachineCredentials503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListMachineCredentials503JSONResponse) VisitListMachineCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -44270,6 +48903,21 @@ func (response MintMachineCredential500JSONResponse) VisitMintMachineCredentialR
 	return err
 }
 
+type MintMachineCredential503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response MintMachineCredential503JSONResponse) VisitMintMachineCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RevokeMachineCredentialRequestObject struct {
 	Org            OrgID            `json:"org"`
 	Project        ProjectID        `json:"project"`
@@ -44342,6 +48990,21 @@ func (response RevokeMachineCredential500JSONResponse) VisitRevokeMachineCredent
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeMachineCredential503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeMachineCredential503JSONResponse) VisitRevokeMachineCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -44469,6 +49132,21 @@ func (response CopyValues500JSONResponse) VisitCopyValuesResponse(w http.Respons
 	return err
 }
 
+type CopyValues503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CopyValues503JSONResponse) VisitCopyValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeclareValuesRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -44578,6 +49256,21 @@ func (response DeclareValues500JSONResponse) VisitDeclareValuesResponse(w http.R
 	return err
 }
 
+type DeclareValues503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeclareValues503JSONResponse) VisitDeclareValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DiffValuesRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -44669,6 +49362,21 @@ func (response DiffValues500JSONResponse) VisitDiffValuesResponse(w http.Respons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiffValues503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DiffValues503JSONResponse) VisitDiffValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -44782,6 +49490,21 @@ func (response RevealValueDiff500JSONResponse) VisitRevealValueDiffResponse(w ht
 	return err
 }
 
+type RevealValueDiff503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevealValueDiff503JSONResponse) VisitRevealValueDiffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetOrgRetentionRequestObject struct {
 	Org OrgID `json:"org"`
 }
@@ -44857,6 +49580,21 @@ func (response GetOrgRetention500JSONResponse) VisitGetOrgRetentionResponse(w ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgRetention503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetOrgRetention503JSONResponse) VisitGetOrgRetentionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -44955,6 +49693,21 @@ func (response SetOrgRetention500JSONResponse) VisitSetOrgRetentionResponse(w ht
 	return err
 }
 
+type SetOrgRetention503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SetOrgRetention503JSONResponse) VisitSetOrgRetentionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListScimBindingsRequestObject struct {
 	Org OrgID `json:"org"`
 }
@@ -45044,6 +49797,21 @@ func (response ListScimBindings500JSONResponse) VisitListScimBindingsResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListScimBindings503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListScimBindings503JSONResponse) VisitListScimBindingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -45170,6 +49938,21 @@ func (response CreateScimBinding500JSONResponse) VisitCreateScimBindingResponse(
 	return err
 }
 
+type CreateScimBinding503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateScimBinding503JSONResponse) VisitCreateScimBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteScimBindingRequestObject struct {
 	Org     OrgID         `json:"org"`
 	Binding ScimBindingID `json:"binding"`
@@ -45254,6 +50037,21 @@ func (response DeleteScimBinding500JSONResponse) VisitDeleteScimBindingResponse(
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteScimBinding503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteScimBinding503JSONResponse) VisitDeleteScimBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -45352,6 +50150,21 @@ func (response GetScimBinding500JSONResponse) VisitGetScimBindingResponse(w http
 	return err
 }
 
+type GetScimBinding503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetScimBinding503JSONResponse) VisitGetScimBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListScimCredentialsRequestObject struct {
 	Org     OrgID         `json:"org"`
 	Binding ScimBindingID `json:"binding"`
@@ -45442,6 +50255,21 @@ func (response ListScimCredentials500JSONResponse) VisitListScimCredentialsRespo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListScimCredentials503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListScimCredentials503JSONResponse) VisitListScimCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -45569,6 +50397,21 @@ func (response MintScimCredential500JSONResponse) VisitMintScimCredentialRespons
 	return err
 }
 
+type MintScimCredential503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response MintScimCredential503JSONResponse) VisitMintScimCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RevokeScimCredentialRequestObject struct {
 	Org     OrgID          `json:"org"`
 	Binding ScimBindingID  `json:"binding"`
@@ -45654,6 +50497,21 @@ func (response RevokeScimCredential500JSONResponse) VisitRevokeScimCredentialRes
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeScimCredential503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeScimCredential503JSONResponse) VisitRevokeScimCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -45753,6 +50611,21 @@ func (response GetScimCredential500JSONResponse) VisitGetScimCredentialResponse(
 	return err
 }
 
+type GetScimCredential503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetScimCredential503JSONResponse) VisitGetScimCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListScimDirectoryGroupsRequestObject struct {
 	Org     OrgID         `json:"org"`
 	Binding ScimBindingID `json:"binding"`
@@ -45847,6 +50720,21 @@ func (response ListScimDirectoryGroups500JSONResponse) VisitListScimDirectoryGro
 	return err
 }
 
+type ListScimDirectoryGroups503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListScimDirectoryGroups503JSONResponse) VisitListScimDirectoryGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListScimDirectoryUsersRequestObject struct {
 	Org     OrgID         `json:"org"`
 	Binding ScimBindingID `json:"binding"`
@@ -45937,6 +50825,21 @@ func (response ListScimDirectoryUsers500JSONResponse) VisitListScimDirectoryUser
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListScimDirectoryUsers503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListScimDirectoryUsers503JSONResponse) VisitListScimDirectoryUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -46064,6 +50967,21 @@ func (response DeleteScimMapping500JSONResponse) VisitDeleteScimMappingResponse(
 	return err
 }
 
+type DeleteScimMapping503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteScimMapping503JSONResponse) VisitDeleteScimMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListScimMappingsRequestObject struct {
 	Org     OrgID         `json:"org"`
 	Binding ScimBindingID `json:"binding"`
@@ -46154,6 +51072,21 @@ func (response ListScimMappings500JSONResponse) VisitListScimMappingsResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListScimMappings503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListScimMappings503JSONResponse) VisitListScimMappingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -46281,6 +51214,21 @@ func (response CreateScimMapping500JSONResponse) VisitCreateScimMappingResponse(
 	return err
 }
 
+type CreateScimMapping503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateScimMapping503JSONResponse) VisitCreateScimMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UpdateScimMappingRequestObject struct {
 	Org     OrgID         `json:"org"`
 	Binding ScimBindingID `json:"binding"`
@@ -46404,6 +51352,21 @@ func (response UpdateScimMapping500JSONResponse) VisitUpdateScimMappingResponse(
 	return err
 }
 
+type UpdateScimMapping503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response UpdateScimMapping503JSONResponse) VisitUpdateScimMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ScimBulkRequestObject struct {
 	Org     OrgID         `json:"org"`
 	Binding ScimBindingID `json:"binding"`
@@ -46480,6 +51443,23 @@ func (response ScimBulk501ApplicationScimPlusJSONResponse) VisitScimBulkResponse
 	}
 	w.Header().Set("Content-Type", "application/scim+json")
 	w.WriteHeader(501)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ScimBulk503ApplicationScimPlusJSONResponse struct {
+	ScimServiceUnavailableApplicationScimPlusJSONResponse
+}
+
+func (response ScimBulk503ApplicationScimPlusJSONResponse) VisitScimBulkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/scim+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -46589,6 +51569,23 @@ func (response ScimListGroups501ApplicationScimPlusJSONResponse) VisitScimListGr
 	}
 	w.Header().Set("Content-Type", "application/scim+json")
 	w.WriteHeader(501)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ScimListGroups503ApplicationScimPlusJSONResponse struct {
+	ScimServiceUnavailableApplicationScimPlusJSONResponse
+}
+
+func (response ScimListGroups503ApplicationScimPlusJSONResponse) VisitScimListGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/scim+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -46717,6 +51714,23 @@ func (response ScimCreateGroup500ApplicationScimPlusJSONResponse) VisitScimCreat
 	return err
 }
 
+type ScimCreateGroup503ApplicationScimPlusJSONResponse struct {
+	ScimServiceUnavailableApplicationScimPlusJSONResponse
+}
+
+func (response ScimCreateGroup503ApplicationScimPlusJSONResponse) VisitScimCreateGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/scim+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ScimSearchGroupsRequestObject struct {
 	Org     OrgID         `json:"org"`
 	Binding ScimBindingID `json:"binding"`
@@ -46797,6 +51811,23 @@ func (response ScimSearchGroups501ApplicationScimPlusJSONResponse) VisitScimSear
 	return err
 }
 
+type ScimSearchGroups503ApplicationScimPlusJSONResponse struct {
+	ScimServiceUnavailableApplicationScimPlusJSONResponse
+}
+
+func (response ScimSearchGroups503ApplicationScimPlusJSONResponse) VisitScimSearchGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/scim+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ScimDeleteGroupRequestObject struct {
 	Org     OrgID          `json:"org"`
 	Binding ScimBindingID  `json:"binding"`
@@ -46868,6 +51899,23 @@ func (response ScimDeleteGroup500ApplicationScimPlusJSONResponse) VisitScimDelet
 	}
 	w.Header().Set("Content-Type", "application/scim+json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ScimDeleteGroup503ApplicationScimPlusJSONResponse struct {
+	ScimServiceUnavailableApplicationScimPlusJSONResponse
+}
+
+func (response ScimDeleteGroup503ApplicationScimPlusJSONResponse) VisitScimDeleteGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/scim+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -46949,6 +51997,23 @@ func (response ScimGetGroup500ApplicationScimPlusJSONResponse) VisitScimGetGroup
 	}
 	w.Header().Set("Content-Type", "application/scim+json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ScimGetGroup503ApplicationScimPlusJSONResponse struct {
+	ScimServiceUnavailableApplicationScimPlusJSONResponse
+}
+
+func (response ScimGetGroup503ApplicationScimPlusJSONResponse) VisitScimGetGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/scim+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -47078,6 +52143,23 @@ func (response ScimPatchGroup500ApplicationScimPlusJSONResponse) VisitScimPatchG
 	return err
 }
 
+type ScimPatchGroup503ApplicationScimPlusJSONResponse struct {
+	ScimServiceUnavailableApplicationScimPlusJSONResponse
+}
+
+func (response ScimPatchGroup503ApplicationScimPlusJSONResponse) VisitScimPatchGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/scim+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ScimReplaceGroupRequestObject struct {
 	Org                         OrgID          `json:"org"`
 	Binding                     ScimBindingID  `json:"binding"`
@@ -47203,6 +52285,23 @@ func (response ScimReplaceGroup500ApplicationScimPlusJSONResponse) VisitScimRepl
 	return err
 }
 
+type ScimReplaceGroup503ApplicationScimPlusJSONResponse struct {
+	ScimServiceUnavailableApplicationScimPlusJSONResponse
+}
+
+func (response ScimReplaceGroup503ApplicationScimPlusJSONResponse) VisitScimReplaceGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/scim+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ScimMeRequestObject struct {
 	Org     OrgID         `json:"org"`
 	Binding ScimBindingID `json:"binding"`
@@ -47279,6 +52378,23 @@ func (response ScimMe501ApplicationScimPlusJSONResponse) VisitScimMeResponse(w h
 	}
 	w.Header().Set("Content-Type", "application/scim+json")
 	w.WriteHeader(501)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ScimMe503ApplicationScimPlusJSONResponse struct {
+	ScimServiceUnavailableApplicationScimPlusJSONResponse
+}
+
+func (response ScimMe503ApplicationScimPlusJSONResponse) VisitScimMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/scim+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -47363,6 +52479,23 @@ func (response ScimResourceTypes500ApplicationScimPlusJSONResponse) VisitScimRes
 	return err
 }
 
+type ScimResourceTypes503ApplicationScimPlusJSONResponse struct {
+	ScimServiceUnavailableApplicationScimPlusJSONResponse
+}
+
+func (response ScimResourceTypes503ApplicationScimPlusJSONResponse) VisitScimResourceTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/scim+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ScimSchemasRequestObject struct {
 	Org     OrgID         `json:"org"`
 	Binding ScimBindingID `json:"binding"`
@@ -47443,6 +52576,23 @@ func (response ScimSchemas500ApplicationScimPlusJSONResponse) VisitScimSchemasRe
 	return err
 }
 
+type ScimSchemas503ApplicationScimPlusJSONResponse struct {
+	ScimServiceUnavailableApplicationScimPlusJSONResponse
+}
+
+func (response ScimSchemas503ApplicationScimPlusJSONResponse) VisitScimSchemasResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/scim+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ScimServiceProviderConfigRequestObject struct {
 	Org     OrgID         `json:"org"`
 	Binding ScimBindingID `json:"binding"`
@@ -47519,6 +52669,23 @@ func (response ScimServiceProviderConfig500ApplicationScimPlusJSONResponse) Visi
 	}
 	w.Header().Set("Content-Type", "application/scim+json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ScimServiceProviderConfig503ApplicationScimPlusJSONResponse struct {
+	ScimServiceUnavailableApplicationScimPlusJSONResponse
+}
+
+func (response ScimServiceProviderConfig503ApplicationScimPlusJSONResponse) VisitScimServiceProviderConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/scim+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -47628,6 +52795,23 @@ func (response ScimListUsers501ApplicationScimPlusJSONResponse) VisitScimListUse
 	}
 	w.Header().Set("Content-Type", "application/scim+json")
 	w.WriteHeader(501)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ScimListUsers503ApplicationScimPlusJSONResponse struct {
+	ScimServiceUnavailableApplicationScimPlusJSONResponse
+}
+
+func (response ScimListUsers503ApplicationScimPlusJSONResponse) VisitScimListUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/scim+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -47756,6 +52940,23 @@ func (response ScimCreateUser500ApplicationScimPlusJSONResponse) VisitScimCreate
 	return err
 }
 
+type ScimCreateUser503ApplicationScimPlusJSONResponse struct {
+	ScimServiceUnavailableApplicationScimPlusJSONResponse
+}
+
+func (response ScimCreateUser503ApplicationScimPlusJSONResponse) VisitScimCreateUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/scim+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ScimSearchUsersRequestObject struct {
 	Org     OrgID         `json:"org"`
 	Binding ScimBindingID `json:"binding"`
@@ -47836,6 +53037,23 @@ func (response ScimSearchUsers501ApplicationScimPlusJSONResponse) VisitScimSearc
 	return err
 }
 
+type ScimSearchUsers503ApplicationScimPlusJSONResponse struct {
+	ScimServiceUnavailableApplicationScimPlusJSONResponse
+}
+
+func (response ScimSearchUsers503ApplicationScimPlusJSONResponse) VisitScimSearchUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/scim+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ScimDeleteUserRequestObject struct {
 	Org     OrgID          `json:"org"`
 	Binding ScimBindingID  `json:"binding"`
@@ -47907,6 +53125,23 @@ func (response ScimDeleteUser500ApplicationScimPlusJSONResponse) VisitScimDelete
 	}
 	w.Header().Set("Content-Type", "application/scim+json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ScimDeleteUser503ApplicationScimPlusJSONResponse struct {
+	ScimServiceUnavailableApplicationScimPlusJSONResponse
+}
+
+func (response ScimDeleteUser503ApplicationScimPlusJSONResponse) VisitScimDeleteUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/scim+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -47988,6 +53223,23 @@ func (response ScimGetUser500ApplicationScimPlusJSONResponse) VisitScimGetUserRe
 	}
 	w.Header().Set("Content-Type", "application/scim+json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ScimGetUser503ApplicationScimPlusJSONResponse struct {
+	ScimServiceUnavailableApplicationScimPlusJSONResponse
+}
+
+func (response ScimGetUser503ApplicationScimPlusJSONResponse) VisitScimGetUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/scim+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -48117,6 +53369,23 @@ func (response ScimPatchUser500ApplicationScimPlusJSONResponse) VisitScimPatchUs
 	return err
 }
 
+type ScimPatchUser503ApplicationScimPlusJSONResponse struct {
+	ScimServiceUnavailableApplicationScimPlusJSONResponse
+}
+
+func (response ScimPatchUser503ApplicationScimPlusJSONResponse) VisitScimPatchUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/scim+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ScimReplaceUserRequestObject struct {
 	Org                         OrgID          `json:"org"`
 	Binding                     ScimBindingID  `json:"binding"`
@@ -48238,6 +53507,23 @@ func (response ScimReplaceUser500ApplicationScimPlusJSONResponse) VisitScimRepla
 	}
 	w.Header().Set("Content-Type", "application/scim+json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ScimReplaceUser503ApplicationScimPlusJSONResponse struct {
+	ScimServiceUnavailableApplicationScimPlusJSONResponse
+}
+
+func (response ScimReplaceUser503ApplicationScimPlusJSONResponse) VisitScimReplaceUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/scim+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -48364,6 +53650,21 @@ type StrictServerInterface interface {
 	// ShowWorkspaceHandoff Load the authoritative shape of a live workspace handoff.
 	// (GET /api/v1/auth/workspace/transactions/{state})
 	ShowWorkspaceHandoff(ctx context.Context, request ShowWorkspaceHandoffRequestObject) (ShowWorkspaceHandoffResponseObject, error)
+	// GetInstanceConfig Read this owner instance configuration status.
+	// (GET /api/v1/instance/config)
+	GetInstanceConfig(ctx context.Context, request GetInstanceConfigRequestObject) (GetInstanceConfigResponseObject, error)
+	// PreviewInstanceConfigAdoption Preview one-time adoption without disclosing values.
+	// (GET /api/v1/instance/config/adoption)
+	PreviewInstanceConfigAdoption(ctx context.Context, request PreviewInstanceConfigAdoptionRequestObject) (PreviewInstanceConfigAdoptionResponseObject, error)
+	// AdoptInstanceConfig Adopt the exact previewed effective configuration.
+	// (POST /api/v1/instance/config/adoption)
+	AdoptInstanceConfig(ctx context.Context, request AdoptInstanceConfigRequestObject) (AdoptInstanceConfigResponseObject, error)
+	// ApplyInstanceConfig Apply one published revision on this logical instance.
+	// (POST /api/v1/instance/config/apply)
+	ApplyInstanceConfig(ctx context.Context, request ApplyInstanceConfigRequestObject) (ApplyInstanceConfigResponseObject, error)
+	// TestInstanceConfigMail Send one test message using exactly the selected revision.
+	// (POST /api/v1/instance/config/mail/test)
+	TestInstanceConfigMail(ctx context.Context, request TestInstanceConfigMailRequestObject) (TestInstanceConfigMailResponseObject, error)
 	// ListInstanceConnections The connection credentials this instance has minted.
 	// (GET /api/v1/instance/connections)
 	ListInstanceConnections(ctx context.Context, request ListInstanceConnectionsRequestObject) (ListInstanceConnectionsResponseObject, error)
@@ -50268,6 +55569,147 @@ func (sh *strictHandler) ShowWorkspaceHandoff(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ShowWorkspaceHandoffResponseObject); ok {
 		if err := validResponse.VisitShowWorkspaceHandoffResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInstanceConfig operation middleware
+func (sh *strictHandler) GetInstanceConfig(w http.ResponseWriter, r *http.Request) {
+	var request GetInstanceConfigRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInstanceConfig(ctx, request.(GetInstanceConfigRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInstanceConfig")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInstanceConfigResponseObject); ok {
+		if err := validResponse.VisitGetInstanceConfigResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PreviewInstanceConfigAdoption operation middleware
+func (sh *strictHandler) PreviewInstanceConfigAdoption(w http.ResponseWriter, r *http.Request) {
+	var request PreviewInstanceConfigAdoptionRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PreviewInstanceConfigAdoption(ctx, request.(PreviewInstanceConfigAdoptionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PreviewInstanceConfigAdoption")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PreviewInstanceConfigAdoptionResponseObject); ok {
+		if err := validResponse.VisitPreviewInstanceConfigAdoptionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AdoptInstanceConfig operation middleware
+func (sh *strictHandler) AdoptInstanceConfig(w http.ResponseWriter, r *http.Request) {
+	var request AdoptInstanceConfigRequestObject
+
+	var body AdoptInstanceConfigJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AdoptInstanceConfig(ctx, request.(AdoptInstanceConfigRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AdoptInstanceConfig")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AdoptInstanceConfigResponseObject); ok {
+		if err := validResponse.VisitAdoptInstanceConfigResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ApplyInstanceConfig operation middleware
+func (sh *strictHandler) ApplyInstanceConfig(w http.ResponseWriter, r *http.Request) {
+	var request ApplyInstanceConfigRequestObject
+
+	var body ApplyInstanceConfigJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ApplyInstanceConfig(ctx, request.(ApplyInstanceConfigRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ApplyInstanceConfig")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ApplyInstanceConfigResponseObject); ok {
+		if err := validResponse.VisitApplyInstanceConfigResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TestInstanceConfigMail operation middleware
+func (sh *strictHandler) TestInstanceConfigMail(w http.ResponseWriter, r *http.Request) {
+	var request TestInstanceConfigMailRequestObject
+
+	var body TestInstanceConfigMailJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TestInstanceConfigMail(ctx, request.(TestInstanceConfigMailRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TestInstanceConfigMail")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TestInstanceConfigMailResponseObject); ok {
+		if err := validResponse.VisitTestInstanceConfigMailResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

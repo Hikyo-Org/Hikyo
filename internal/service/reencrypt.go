@@ -291,7 +291,7 @@ func versionedInstanceReseal(
 	}
 }
 
-// ReencryptInstance walks the six instance-DEK credential tables onto the active
+// ReencryptInstance walks the instance-DEK ciphertext tables onto the active
 // instance DEK version, then retires the superseded versions. Instance-scoped:
 // no tenant chain, one InstanceSealer for the whole walk.
 func (s *Reencrypt) ReencryptInstance(ctx context.Context, actor Actor) (ReencryptResult, error) {
@@ -310,6 +310,15 @@ func (s *Reencrypt) ReencryptInstance(ctx context.Context, actor Actor) (Reencry
 	active := sealer.Version()
 	moved := 0
 	tables := []instanceTable{
+		{table: "self_config_seed_inputs",
+			list:      store.ReencryptRepo.ListSelfConfigSeedInputsForReencrypt,
+			versionOf: instanceColumnVersion,
+			aad: func(id string) crypto.InstanceFieldAAD {
+				return crypto.InstanceFieldAAD{OwnerTable: "self_config_seed_inputs", OwnerRowID: id, FieldTag: "inputs"}
+			},
+			reseal: func(r store.ReencryptRepo, ctx context.Context, p authz.Proof, row store.ReencryptInstanceRow, ciphertext []byte, active uint32) (bool, error) {
+				return r.ReencryptSelfConfigSeedInput(ctx, p, row.ID, ciphertext, row.Ciphertext, active, row.RowVersion)
+			}},
 		{table: "password_credentials",
 			list:      store.ReencryptRepo.ListPasswordCredsForReencrypt,
 			versionOf: instanceColumnVersion,

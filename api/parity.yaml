@@ -56,6 +56,13 @@
 
 operations:
 
+  # Managed instance configuration
+  getInstanceConfig: {webui: instance-config}
+  previewInstanceConfigAdoption: {webui: instance-config}
+  adoptInstanceConfig: {webui: instance-config}
+  applyInstanceConfig: {webui: instance-config}
+  testInstanceConfigMail: {webui: instance-config}
+
   # meta
   getMeta:                     {webui: overview}
 

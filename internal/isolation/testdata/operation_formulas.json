@@ -1564,6 +1564,60 @@
     ]
   },
   {
+    "operation": "self-config.adopt",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance",
+      "manage-members@instance"
+    ]
+  },
+  {
+    "operation": "self-config.apply",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "instance-config@instance",
+      "read@environment",
+      "publish@environment"
+    ]
+  },
+  {
+    "operation": "self-config.preview",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance",
+      "manage-members@instance"
+    ]
+  },
+  {
+    "operation": "self-config.provision-project",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "instance-config@instance",
+      "definitions-edit@project"
+    ]
+  },
+  {
+    "operation": "self-config.status",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "self-config.test",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "instance-config@instance",
+      "read@environment"
+    ]
+  },
+  {
     "operation": "update.job-read",
     "class": "instance",
     "level": "instance",

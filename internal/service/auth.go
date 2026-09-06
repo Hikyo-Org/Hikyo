@@ -124,8 +124,11 @@ var ErrCredentialRace = errors.New("service: credential row changed underneath t
 
 // Auth is the human-authentication service.
 type Auth struct {
-	DB      *store.DB
-	Keyring *crypto.Keyring
+	// SelfConfig is the setup coordinator, wired by both server and host admin
+	// composition roots. Its provisioning shares the first-admin transaction.
+	SelfConfig *SelfConfig
+	DB         *store.DB
+	Keyring    *crypto.Keyring
 	// KDF is the instance's configured Argon2id cost. Boot has already
 	// verified it against the floor; this is the value new verifiers use.
 	KDF crypto.PasswordParams

@@ -22,13 +22,14 @@ func TestWireRegistrySnapshot(t *testing.T) {
 	// #151 added change approvals, #157 added adapter pause and resume, and
 	// #628 added the two unauthenticated MCP metadata methods.
 	// Ops diagnostics adds the CLI-only escrow verification event.
+	// Self-configuration adds five owner-local HTTP routes and operation links.
 	// #680 adds two revision-diff routes and one disclosure event surface.
 	// Account profiles add two self-service routes and one audit event.
-	if got := len(facts.Wire()); got != 322 {
-		t.Fatalf("wire entries = %d, want 322", got)
+	if got := len(facts.Wire()); got != 327 {
+		t.Fatalf("wire entries = %d, want 327", got)
 	}
-	if got := len(facts.WireRoutes()); got != 227 {
-		t.Fatalf("operation-linked entries = %d, want 227", got)
+	if got := len(facts.WireRoutes()); got != 232 {
+		t.Fatalf("operation-linked entries = %d, want 232", got)
 	}
 	if got := len(facts.WireEvents()); got != 70 {
 		t.Fatalf("direct-event entries = %d, want 70", got)

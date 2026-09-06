@@ -1,6 +1,8 @@
 import { expect, type Browser, type Page } from '@playwright/test';
 import {
   zAuthMethods,
+  zInstanceConfigStatus,
+  zUpdateStatus,
   zGrantList,
   zOrg,
   zSamlProviderMutationResult,
@@ -16,20 +18,23 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
+import { expectNoSeriousAxeViolations, expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
 import { browserApi } from '../fixtures/api.ts';
 import {
   ADMIN,
   BASE_URL,
+  BASE_URL_B,
   establishSession,
   INSTANCE_GRANT_TARGET,
   nextTotpCode,
   OIDC_PROVIDER,
   readSeed,
+  readServing,
   STORAGE_STATE,
   WEBUI_OIDC,
 } from '../fixtures/instance.ts';
 import { test } from '../fixtures/passkey.ts';
+import { totpCode } from '../fixtures/seed.ts';
 
 /**
  * Flow: instance administration (registry surface `instance-admin`) , 
@@ -89,6 +94,107 @@ test.describe('instance administration', () => {
   test.describe.configure({ mode: 'serial' });
   test.use({ storageState: STORAGE_STATE });
 
+  test('opens owner-local configuration from instance settings and applies a published revision', async ({ passkeyPage: page }, testInfo) => {
+    test.setTimeout(60_000);
+    await page.goto('/instance');
+    await page.getByRole('link', { name: 'Manage Hikyo configuration', exact: true }).click();
+    await expect(page).toHaveURL(/\/instance\/config$/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Hikyo configuration' })).toBeVisible();
+    await expect(page.getByText('Independent instances', { exact: true })).toBeVisible();
+    await expect(page.getByText('Ordinary settings reload live. Bootstrap source changes use an enrolled controlled rollout.', { exact: false })).toBeVisible();
+    const status = await browserApi(page, 'GET', '/api/v1/instance/config', zInstanceConfigStatus);
+    expect(status.owner_instance_id).not.toBe('');
+    expect(status.managed).toBe(true);
+    await page.getByRole('link', { name: 'Edit configuration project', exact: true }).click();
+    await expect(page.getByText('Hikyo system configuration', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Declare key', exact: true })).toHaveCount(0);
+    // The expanded catalogue virtualizes rows; scroll to the channel at the end.
+    await page.locator('.matrix__scroll').evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    await page.getByRole('button', { name: /^HIKYO_UPDATE_CHANNEL in Production:/ }).click();
+    const editor = page.getByRole('dialog');
+    await editor.getByLabel('Production value').fill('off');
+    await editor.getByRole('button', { name: 'Save 1 draft' }).click();
+    await page.getByRole('button', { name: /unpublished edit/ }).click();
+    const publish = page.getByRole('region', { name: 'Publish drafts' });
+    const protectedConfirmation = publish.getByRole('checkbox', { name: 'I confirm publishing to protected Production.' });
+    if (await protectedConfirmation.count() !== 0) await protectedConfirmation.check();
+    await publish.getByRole('button', { name: /Publish selected/ }).click();
+    const publishPasskey = page.getByRole('button', { name: 'Use a passkey', exact: true });
+    if (await publishPasskey.isVisible()) await publishPasskey.click();
+    await expect(page.locator('.notice')).toContainText('Published');
+    const pending = await browserApi(page, 'GET', '/api/v1/instance/config', zInstanceConfigStatus);
+    expect(pending.generation).toBe(status.generation);
+    expect(pending.desired_revision).toBe(status.desired_revision);
+    expect(pending.latest_revision).not.toBe(status.latest_revision);
+    await page.getByRole('link', { name: 'Review and apply', exact: true }).click();
+    await expect(page.getByLabel('Published revision to apply or test')).toHaveValue(String(pending.latest_revision));
+    await page.getByRole('button', { name: 'Apply selected revision', exact: true }).click();
+    await expect(page.getByRole('dialog').getByText('Reload live', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Authorize with passkey', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect.poll(async () => (await browserApi(page, 'GET', '/api/v1/instance/config', zInstanceConfigStatus)).state).toBe('active');
+    const applied = await browserApi(page, 'GET', '/api/v1/instance/config', zInstanceConfigStatus);
+    expect(applied.desired_revision).toBe(pending.latest_revision);
+    expect(applied.generation).toBe(status.generation + 1n);
+    const updates = await browserApi(page, 'GET', '/api/v1/instance/update-status', zUpdateStatus);
+    expect(updates.channel).toBe('off');
+    expect(await page.locator('main').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await expectNoSeriousAxeViolations(page);
+    await page.locator('#configuration-owner').screenshot({ path: testInfo.outputPath('managed-configuration-applied.png') });
+    await page.getByRole('heading', { name: 'Nodes on this instance', exact: true }).scrollIntoViewIfNeeded();
+    await page.locator('#configuration-nodes').screenshot({ path: testInfo.outputPath('managed-configuration-nodes.png') });
+  });
+
+  test('applies an independent owner without changing the viewing instance', async ({ page }, testInfo) => {
+    test.setTimeout(60_000);
+    const viewing = await browserApi(page, 'GET', '/api/v1/instance/config', zInstanceConfigStatus);
+    await page.goto(`${BASE_URL_B}/instance/config`);
+    const readRemote = async () => {
+      const response = await page.evaluate(async () => {
+        const result = await fetch('/api/v1/instance/config');
+        const body: unknown = await result.json();
+        return { status: result.status, body };
+      });
+      expect(response.status).toBe(200);
+      return zInstanceConfigStatus.parse(response.body);
+    };
+    const remote = await readRemote();
+    expect(remote.owner_instance_id).not.toBe(viewing.owner_instance_id);
+    expect(remote.binding?.project_id).not.toBe(viewing.binding?.project_id);
+    expect(remote.generation).not.toBe(viewing.generation);
+    await page.getByRole('link', { name: 'Edit configuration project', exact: true }).click();
+    // The expanded catalogue virtualizes rows; scroll to the channel at the end.
+    await page.locator('.matrix__scroll').evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    await page.getByRole('button', { name: /^HIKYO_UPDATE_CHANNEL in Production:/ }).click();
+    const editor = page.getByRole('dialog');
+    await editor.getByLabel('Production value').fill('nightly');
+    await editor.getByRole('button', { name: 'Save 1 draft' }).click();
+    await page.getByRole('button', { name: /unpublished edit/ }).click();
+    await page.getByRole('region', { name: 'Publish drafts' }).getByRole('button', { name: /Publish selected/ }).click();
+    await expect(page.locator('.notice')).toContainText('Published');
+    const published = await readRemote();
+    expect(published.generation).toBe(remote.generation);
+    await page.getByRole('link', { name: 'Review and apply', exact: true }).click();
+    await expect(page.getByLabel('Published revision to apply or test')).toHaveValue(String(published.latest_revision));
+    await page.getByRole('button', { name: 'Apply selected revision', exact: true }).click();
+    await expect(page.getByRole('dialog').getByText('Reload live', { exact: true })).toBeVisible();
+    await page.getByLabel('Fresh authenticator code').fill(totpCode(readServing().otpauth, new Date(Date.now() + 30_000)));
+    await page.getByRole('button', { name: 'Authorize with code', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect.poll(async () => (await readRemote()).state).toBe('active');
+    const applied = await readRemote();
+    expect(applied.desired_revision).toBe(published.latest_revision);
+    expect(applied.generation).toBe(remote.generation + 1n);
+    const remoteUpdates: unknown = await page.evaluate(async () => (await fetch('/api/v1/instance/update-status')).json());
+    expect(zUpdateStatus.parse(remoteUpdates).channel).toBe('nightly');
+    const unchanged = await browserApi(page, 'GET', '/api/v1/instance/config', zInstanceConfigStatus);
+    expect(unchanged.generation).toBe(viewing.generation);
+    expect(unchanged.desired_revision).toBe(viewing.desired_revision);
+    expect((await browserApi(page, 'GET', '/api/v1/instance/update-status', zUpdateStatus)).channel).toBe('off');
+    await page.locator('#configuration-owner').screenshot({ path: testInfo.outputPath('managed-configuration-independent-owner.png') });
+  });
+
+
   test.beforeEach(async ({ page }) => {
     await page.goto('/instance');
     await expect(
@@ -98,9 +204,9 @@ test.describe('instance administration', () => {
 
   test('enumerates the organisations on the instance', async ({ page }) => {
     const orgs = page.locator('#instance-orgs');
-    // The fixture creates two: the tenant every other flow addresses, and a
-    // second one that holds nothing.
-    await expect(orgs.locator(':scope > .settings-row')).toHaveCount(2);
+    // Setup creates the protected configuration root; the fixture adds its
+    // tenant and a second empty organisation.
+    await expect(orgs.locator(':scope > .settings-row')).toHaveCount(3);
     await expect(orgs).toContainText(seed.orgName);
     await expect(orgs).toContainText(seed.orgBName);
     await expect(orgs.getByRole('link', { name: seed.orgName })).toBeVisible();
@@ -953,6 +1059,42 @@ test.describe('instance administration', () => {
           ],
           hairlines: [well],
           density: [],
+        });
+      } finally {
+        await page.emulateMedia({ colorScheme: null });
+      }
+    });
+  }
+
+  for (const scheme of ['dark', 'light'] as const) {
+    test(`meets the pinned assertion set on instance configuration (${scheme})`, async ({
+      page,
+    }, testInfo) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      try {
+        await page.goto('/instance/config');
+        const heading = page.getByRole('heading', { name: 'Hikyo configuration', level: 1 });
+        const owner = page.locator('#configuration-owner');
+        const ownerIdentifier = owner.locator('p').filter({ hasText: /^Owner\s/ }).locator('code');
+        const apply = page.getByRole('button', { name: 'Apply selected revision', exact: true });
+        const revision = page.getByLabel('Published revision to apply or test');
+        const edit = page.getByRole('link', { name: 'Edit configuration project', exact: true });
+        const rowDensity = testInfo.project.name === 'mobile' ? '--touch' : '--row';
+        await expect(apply).toBeEnabled();
+        await expectPinnedAssertionSet(page, {
+          flow: 'instance-admin',
+          surface: 'instance-config',
+          theme: scheme,
+          text: [heading, page.locator('.page__lede'), owner.locator('.settings-row__detail')],
+          radii: [[owner, 'container'], [apply, 'control'], [revision, 'control']],
+          fonts: [[heading, 'ui'], [ownerIdentifier, 'mono']],
+          colours: [
+            [heading, 'color', '--tx'],
+            [owner, 'backgroundColor', '--bg-panel'],
+            [owner, 'borderTopColor', '--panel-line'],
+          ],
+          hairlines: [owner],
+          density: [[apply, rowDensity], [edit, rowDensity]],
         });
       } finally {
         await page.emulateMedia({ colorScheme: null });

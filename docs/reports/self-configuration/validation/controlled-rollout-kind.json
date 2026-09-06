@@ -1,0 +1,510 @@
+{
+  "context": "kind-hikyo-rollout-818e",
+  "namespace": "hikyo-rollout-0520bd8e",
+  "binary_sha256": "ff5ed33f9fe084e1df154668edaad2bb35f98858bb7a6400af8058f636f949d8",
+  "kubernetes_version": "v1.36.1",
+  "image": "localhost:56505/hikyo-rollout-0520bd8e@sha256:445c92a048779244817a7ada10b67333d0d3b58cc850d8def97938711f34382c",
+  "owner_instance_id": "ins_627db73b89463fe5d855cec9514f4e14",
+  "incarnation": "5c8f03a57614f602fadaf1d548f36757572b52d691cee5d9c833a7f0b6202560",
+  "initial_status": {
+    "binding": {
+      "environment_id": "env_01a07787-cf2a-7ad0-a138-07bc88301fed",
+      "org_id": "org_01a07787-cf2a-7acb-8914-1dc4079ded92",
+      "project_id": "prj_01a07787-cf2a-7acf-aa9e-58aebcaa96c5",
+      "schema_version": 1
+    },
+    "desired_revision": 1,
+    "generation": 1,
+    "job": null,
+    "latest_revision": 1,
+    "managed": true,
+    "nodes": [
+      {
+        "active_generation": 1,
+        "active_revision": 1,
+        "node_id": "hikyo-hikyo-server",
+        "state": "active",
+        "updated_at": "2026-09-06T16:23:29.853769Z"
+      }
+    ],
+    "owner_instance_id": "ins_627db73b89463fe5d855cec9514f4e14",
+    "state": "active"
+  },
+  "ordinary": {
+    "process_before": {
+      "pod_uid": "a930c5ec-a866-4208-87d3-5a7c4c720646",
+      "container_id": "cbe26787c6c796db4b7e902c2a128de3c01f09095cb8bf92a0d592162d93641a",
+      "host_pid": 86269,
+      "process_start_ticks": "40836485",
+      "started_at": "2026-09-06T16:22:56Z"
+    },
+    "process_after": {
+      "pod_uid": "a930c5ec-a866-4208-87d3-5a7c4c720646",
+      "container_id": "cbe26787c6c796db4b7e902c2a128de3c01f09095cb8bf92a0d592162d93641a",
+      "host_pid": 86269,
+      "process_start_ticks": "40836485",
+      "started_at": "2026-09-06T16:22:56Z"
+    },
+    "status": {
+      "binding": {
+        "environment_id": "env_01a07787-cf2a-7ad0-a138-07bc88301fed",
+        "org_id": "org_01a07787-cf2a-7acb-8914-1dc4079ded92",
+        "project_id": "prj_01a07787-cf2a-7acf-aa9e-58aebcaa96c5",
+        "schema_version": 1
+      },
+      "desired_revision": 2,
+      "generation": 2,
+      "job": {
+        "completed_at": "2026-09-06T16:24:04.155445Z",
+        "created_at": "2026-09-06T16:24:00.516507Z",
+        "deployment_restore_pending": false,
+        "deployment_restored": false,
+        "generation": 2,
+        "id": "scj_01a07788-ab04-776d-ab3c-776407ce5d97",
+        "prepared": false,
+        "revision": 2,
+        "state": "completed"
+      },
+      "latest_revision": 2,
+      "managed": true,
+      "nodes": [
+        {
+          "active_generation": 2,
+          "active_revision": 2,
+          "node_id": "hikyo-hikyo-server",
+          "state": "active",
+          "updated_at": "2026-09-06T16:24:04.155445Z"
+        }
+      ],
+      "owner_instance_id": "ins_627db73b89463fe5d855cec9514f4e14",
+      "state": "active"
+    },
+    "published_channel_before": "stable",
+    "runtime_channel_after": "off"
+  },
+  "observed_at": "2026-09-06T16:33:24.309762+00:00",
+  "bootstrap": {
+    "process": {
+      "pod_uid": "2d6ef4e7-7dd6-4e83-894b-2bfe649982fc",
+      "container_id": "85341492d1f831d74a0cbf39d84beb193e015cd28c2948dc1dfac60e9ed71ec5",
+      "host_pid": 89317,
+      "process_start_ticks": "40846821",
+      "started_at": "2026-09-06T16:24:39Z"
+    },
+    "status": {
+      "binding": {
+        "environment_id": "env_01a07787-cf2a-7ad0-a138-07bc88301fed",
+        "org_id": "org_01a07787-cf2a-7acb-8914-1dc4079ded92",
+        "project_id": "prj_01a07787-cf2a-7acf-aa9e-58aebcaa96c5",
+        "schema_version": 1
+      },
+      "desired_revision": 3,
+      "generation": 3,
+      "job": {
+        "completed_at": "2026-09-06T16:24:46.033239Z",
+        "created_at": "2026-09-06T16:24:05.387096Z",
+        "deployment_restore_pending": false,
+        "deployment_restored": false,
+        "generation": 3,
+        "id": "scj_01a07788-be0b-7112-a425-3cf894da833e",
+        "plan_digest": "73564a95ed747ba181d2fecc5ed1cc2b05c2e0a7cec6734c06577660b5754a7f",
+        "prepared": false,
+        "revision": 3,
+        "state": "completed"
+      },
+      "latest_revision": 3,
+      "managed": true,
+      "nodes": [
+        {
+          "active_generation": 3,
+          "active_revision": 3,
+          "node_id": "hikyo-hikyo-server",
+          "state": "active",
+          "updated_at": "2026-09-06T16:24:59.982387Z"
+        }
+      ],
+      "owner_instance_id": "ins_627db73b89463fe5d855cec9514f4e14",
+      "state": "active"
+    },
+    "deployment_uid": "503e3520-09a0-45ca-8f3a-7c9d7b3e351a",
+    "annotations": {
+      "hikyo.dev/configuration-database-source": "next",
+      "hikyo.dev/configuration-rollout": "dd6058787d97cd87d6b90b70742e43f3952efff419dd509a5c986de70042560d",
+      "hikyo.dev/configuration-root-source": "next"
+    },
+    "plan_digest": "73564a95ed747ba181d2fecc5ed1cc2b05c2e0a7cec6734c06577660b5754a7f",
+    "receipt": {
+      "intent": {
+        "job_id": "scj_01a07788-be0b-7112-a425-3cf894da833e",
+        "owner_instance_id": "ins_627db73b89463fe5d855cec9514f4e14",
+        "incarnation": "5c8f03a57614f602fadaf1d548f36757572b52d691cee5d9c833a7f0b6202560",
+        "snapshot_id": "snp_01a07788-bdef-740a-8eb3-9fc8773ed151",
+        "revision": 3,
+        "catalogue_version": 1,
+        "expected_generation": 2,
+        "generation": 3
+      },
+      "plan_digest": "73564a95ed747ba181d2fecc5ed1cc2b05c2e0a7cec6734c06577660b5754a7f",
+      "deployment_uid": "503e3520-09a0-45ca-8f3a-7c9d7b3e351a",
+      "phase": "applied",
+      "resources": {
+        "deployment": {
+          "uid": "503e3520-09a0-45ca-8f3a-7c9d7b3e351a",
+          "version": "15560"
+        },
+        "config": {
+          "uid": "cbcedd16-5446-459a-bb80-bd4dac426a78",
+          "version": "15555"
+        },
+        "rollback": {
+          "uid": "5d821e5d-2f2d-4195-bd79-b950d8f02d56",
+          "version": "15198"
+        },
+        "request": {
+          "uid": "1b530666-85e9-4f69-9e33-3f05eae2d9c3",
+          "version": "15196"
+        },
+        "receipt": {
+          "uid": "ba099b34-75b5-4ad8-9f16-6f18730487e1",
+          "version": "15197"
+        }
+      },
+      "application_acknowledged": true
+    }
+  },
+  "root_finalization_guard": {
+    "job": {
+      "created_at": "2026-09-06T16:25:30.57891Z",
+      "deployment_restore_pending": false,
+      "deployment_restored": false,
+      "generation": 4,
+      "id": "scj_01a0778a-0ad2-7d94-a7a3-3b6f449f6abc",
+      "plan_digest": "9f8e393b0b83e326bd187d08ff4465e718d0ca840d317dd6543260c7cbf45c1a",
+      "prepared": false,
+      "revision": 4,
+      "state": "pending"
+    },
+    "nodes": [
+      {
+        "active_generation": 4,
+        "active_revision": 4,
+        "node_id": "hikyo-hikyo-server",
+        "state": "active",
+        "updated_at": "2026-09-06T16:26:30.197697Z"
+      }
+    ],
+    "verified": {
+      "phase": "verify",
+      "root_key_epoch": 2
+    },
+    "refusal": {
+      "error": {
+        "code": "conflict",
+        "message": "the current state of this resource refuses the request"
+      }
+    },
+    "root_epochs_before": "1,2",
+    "root_epochs_after": "1,2",
+    "completed_after_release": {
+      "binding": {
+        "environment_id": "env_01a07787-cf2a-7ad0-a138-07bc88301fed",
+        "org_id": "org_01a07787-cf2a-7acb-8914-1dc4079ded92",
+        "project_id": "prj_01a07787-cf2a-7acf-aa9e-58aebcaa96c5",
+        "schema_version": 1
+      },
+      "desired_revision": 4,
+      "generation": 4,
+      "job": {
+        "completed_at": "2026-09-06T16:31:12.215548Z",
+        "created_at": "2026-09-06T16:25:30.57891Z",
+        "deployment_restore_pending": false,
+        "deployment_restored": false,
+        "generation": 4,
+        "id": "scj_01a0778a-0ad2-7d94-a7a3-3b6f449f6abc",
+        "plan_digest": "9f8e393b0b83e326bd187d08ff4465e718d0ca840d317dd6543260c7cbf45c1a",
+        "prepared": false,
+        "revision": 4,
+        "state": "completed"
+      },
+      "latest_revision": 4,
+      "managed": true,
+      "nodes": [
+        {
+          "active_generation": 4,
+          "active_revision": 4,
+          "node_id": "hikyo-hikyo-server",
+          "state": "active",
+          "updated_at": "2026-09-06T16:31:12.215548Z"
+        }
+      ],
+      "owner_instance_id": "ins_627db73b89463fe5d855cec9514f4e14",
+      "state": "active"
+    }
+  },
+  "transport_expiry": {
+    "before": {
+      "sequence": 6,
+      "action": "submit",
+      "issued_at": "2026-09-06T16:26:05.002484547Z",
+      "expires_at": "2026-09-06T16:31:05.002484547Z",
+      "intent": {
+        "job_id": "scj_01a0778a-0ad2-7d94-a7a3-3b6f449f6abc",
+        "owner_instance_id": "ins_627db73b89463fe5d855cec9514f4e14",
+        "incarnation": "5c8f03a57614f602fadaf1d548f36757572b52d691cee5d9c833a7f0b6202560",
+        "snapshot_id": "snp_01a0778a-0a98-77bb-bc67-b3e615e00180",
+        "revision": 4,
+        "catalogue_version": 1,
+        "expected_generation": 3,
+        "generation": 4
+      },
+      "plan_digest": "9f8e393b0b83e326bd187d08ff4465e718d0ca840d317dd6543260c7cbf45c1a"
+    },
+    "renewed": {
+      "sequence": 7,
+      "action": "submit",
+      "issued_at": "2026-09-06T16:31:06.181414589Z",
+      "expires_at": "2026-09-06T16:36:06.181414589Z",
+      "intent": {
+        "job_id": "scj_01a0778a-0ad2-7d94-a7a3-3b6f449f6abc",
+        "owner_instance_id": "ins_627db73b89463fe5d855cec9514f4e14",
+        "incarnation": "5c8f03a57614f602fadaf1d548f36757572b52d691cee5d9c833a7f0b6202560",
+        "snapshot_id": "snp_01a0778a-0a98-77bb-bc67-b3e615e00180",
+        "revision": 4,
+        "catalogue_version": 1,
+        "expected_generation": 3,
+        "generation": 4
+      },
+      "plan_digest": "9f8e393b0b83e326bd187d08ff4465e718d0ca840d317dd6543260c7cbf45c1a"
+    },
+    "unchanged_command_sha256": "a99522b683021d2f63ac037aef8ac28180210c089fe4d7ff559e5fbada711a17",
+    "reauth_event_count_before": 6,
+    "reauth_event_count_after": 6,
+    "status_after_renewal": {
+      "binding": {
+        "environment_id": "env_01a07787-cf2a-7ad0-a138-07bc88301fed",
+        "org_id": "org_01a07787-cf2a-7acb-8914-1dc4079ded92",
+        "project_id": "prj_01a07787-cf2a-7acf-aa9e-58aebcaa96c5",
+        "schema_version": 1
+      },
+      "desired_revision": 4,
+      "generation": 4,
+      "job": {
+        "created_at": "2026-09-06T16:25:30.57891Z",
+        "deployment_restore_pending": false,
+        "deployment_restored": false,
+        "error": "convergence_timeout",
+        "generation": 4,
+        "id": "scj_01a0778a-0ad2-7d94-a7a3-3b6f449f6abc",
+        "plan_digest": "9f8e393b0b83e326bd187d08ff4465e718d0ca840d317dd6543260c7cbf45c1a",
+        "prepared": false,
+        "revision": 4,
+        "state": "partial"
+      },
+      "latest_revision": 4,
+      "managed": true,
+      "nodes": [
+        {
+          "active_generation": 4,
+          "active_revision": 4,
+          "node_id": "hikyo-hikyo-server",
+          "state": "active",
+          "updated_at": "2026-09-06T16:31:06.364925Z"
+        }
+      ],
+      "owner_instance_id": "ins_627db73b89463fe5d855cec9514f4e14",
+      "state": "partial"
+    }
+  },
+  "restore_repair": {
+    "before": {
+      "pod_uid": "b72f2989-f5a4-4b6e-9381-c4de3f542da0",
+      "container_id": "79da2cf124e8922b3c475d85479a61e1e173492090678385a62eaf99c2ebc0ca",
+      "host_pid": 92049,
+      "process_start_ticks": "40857497",
+      "started_at": "2026-09-06T16:26:26Z"
+    },
+    "candidate": {
+      "pod_uid": "d293213f-714a-480d-a4b6-a6b02ac85826",
+      "container_id": "e44d97bdb25ac885e0b94475ddf10cb11ccd594dcfaf28d1440e8bc05c88f691",
+      "host_pid": 101596,
+      "process_start_ticks": "40888909",
+      "started_at": "2026-09-06T16:31:40Z"
+    },
+    "partial": {
+      "binding": {
+        "environment_id": "env_01a07787-cf2a-7ad0-a138-07bc88301fed",
+        "org_id": "org_01a07787-cf2a-7acb-8914-1dc4079ded92",
+        "project_id": "prj_01a07787-cf2a-7acf-aa9e-58aebcaa96c5",
+        "schema_version": 1
+      },
+      "desired_revision": 5,
+      "generation": 5,
+      "job": {
+        "created_at": "2026-09-06T16:31:13.832288Z",
+        "deployment_restore_pending": false,
+        "deployment_restored": false,
+        "error": "convergence_timeout",
+        "generation": 5,
+        "id": "scj_01a0778f-47a8-73fc-9d2b-771cbaf25a34",
+        "plan_digest": "15cf0a8f0cffe468cdb48f7b6a12d8e2330a220c960b0553052db0914ae377c8",
+        "prepared": false,
+        "revision": 5,
+        "state": "partial"
+      },
+      "latest_revision": 5,
+      "managed": true,
+      "nodes": [
+        {
+          "active_generation": 5,
+          "active_revision": 5,
+          "node_id": "hikyo-hikyo-server",
+          "state": "active",
+          "updated_at": "2026-09-06T16:32:01.185495Z"
+        }
+      ],
+      "owner_instance_id": "ins_627db73b89463fe5d855cec9514f4e14",
+      "state": "partial"
+    },
+    "restored_process": {
+      "pod_uid": "b209981c-f221-4e1c-9a43-f28761a24b0a",
+      "container_id": "35cd5fae76a8443d351c3f7711db39ac65a3d397e5a6991c3335a9d57a71fe9d",
+      "host_pid": 102727,
+      "process_start_ticks": "40892161",
+      "started_at": "2026-09-06T16:32:12Z"
+    },
+    "restored": {
+      "binding": {
+        "environment_id": "env_01a07787-cf2a-7ad0-a138-07bc88301fed",
+        "org_id": "org_01a07787-cf2a-7acb-8914-1dc4079ded92",
+        "project_id": "prj_01a07787-cf2a-7acf-aa9e-58aebcaa96c5",
+        "schema_version": 1
+      },
+      "desired_revision": 5,
+      "generation": 5,
+      "job": {
+        "created_at": "2026-09-06T16:31:13.832288Z",
+        "deployment_restore_pending": false,
+        "deployment_restored": true,
+        "error": "convergence_timeout",
+        "generation": 5,
+        "id": "scj_01a0778f-47a8-73fc-9d2b-771cbaf25a34",
+        "plan_digest": "15cf0a8f0cffe468cdb48f7b6a12d8e2330a220c960b0553052db0914ae377c8",
+        "prepared": false,
+        "revision": 5,
+        "state": "partial"
+      },
+      "latest_revision": 5,
+      "managed": true,
+      "nodes": [
+        {
+          "active_generation": 5,
+          "active_revision": 5,
+          "node_id": "hikyo-hikyo-server",
+          "state": "active",
+          "updated_at": "2026-09-06T16:32:03.192937Z"
+        }
+      ],
+      "owner_instance_id": "ins_627db73b89463fe5d855cec9514f4e14",
+      "state": "partial"
+    },
+    "fenced_business_refusal": {
+      "error": {
+        "code": "service_unavailable",
+        "message": "runtime configuration is not ready; retry shortly"
+      }
+    },
+    "repaired": {
+      "binding": {
+        "environment_id": "env_01a07787-cf2a-7ad0-a138-07bc88301fed",
+        "org_id": "org_01a07787-cf2a-7acb-8914-1dc4079ded92",
+        "project_id": "prj_01a07787-cf2a-7acf-aa9e-58aebcaa96c5",
+        "schema_version": 1
+      },
+      "desired_revision": 6,
+      "generation": 6,
+      "job": {
+        "completed_at": "2026-09-06T16:32:35.420923Z",
+        "created_at": "2026-09-06T16:32:31.351619Z",
+        "deployment_restore_pending": false,
+        "deployment_restored": false,
+        "generation": 6,
+        "id": "scj_01a07790-7677-78ff-882d-957a0f64209f",
+        "prepared": false,
+        "revision": 6,
+        "state": "completed"
+      },
+      "latest_revision": 6,
+      "managed": true,
+      "nodes": [
+        {
+          "active_generation": 6,
+          "active_revision": 6,
+          "node_id": "hikyo-hikyo-server",
+          "state": "active",
+          "updated_at": "2026-09-06T16:32:35.420923Z"
+        }
+      ],
+      "owner_instance_id": "ins_627db73b89463fe5d855cec9514f4e14",
+      "state": "active"
+    },
+    "later_rollout": {
+      "binding": {
+        "environment_id": "env_01a07787-cf2a-7ad0-a138-07bc88301fed",
+        "org_id": "org_01a07787-cf2a-7acb-8914-1dc4079ded92",
+        "project_id": "prj_01a07787-cf2a-7acf-aa9e-58aebcaa96c5",
+        "schema_version": 1
+      },
+      "desired_revision": 7,
+      "generation": 7,
+      "job": {
+        "completed_at": "2026-09-06T16:33:22.305373Z",
+        "created_at": "2026-09-06T16:32:36.940576Z",
+        "deployment_restore_pending": false,
+        "deployment_restored": false,
+        "generation": 7,
+        "id": "scj_01a07790-8c4c-782c-bf36-a22e2133a7f3",
+        "plan_digest": "1b9f9877c8fb40ffd1676429ba96192410fc9880670625e76b27c4c7fae5edce",
+        "prepared": false,
+        "revision": 7,
+        "state": "completed"
+      },
+      "latest_revision": 7,
+      "managed": true,
+      "nodes": [
+        {
+          "active_generation": 7,
+          "active_revision": 7,
+          "node_id": "hikyo-hikyo-server",
+          "state": "active",
+          "updated_at": "2026-09-06T16:33:22.305373Z"
+        }
+      ],
+      "owner_instance_id": "ins_627db73b89463fe5d855cec9514f4e14",
+      "state": "active"
+    },
+    "later_process": {
+      "pod_uid": "d7855ed2-a098-490b-bc25-573f2aaa4d3f",
+      "container_id": "0adc40ab111e6fc58f4f5cfdfb7fd19fe11db5c6fe24b1f2b6da0700dda96547",
+      "host_pid": 104425,
+      "process_start_ticks": "40897828",
+      "started_at": "2026-09-06T16:33:09Z"
+    }
+  },
+  "build_provenance": {
+    "base_commit": "907b162957441009f720c7fa4f3f76c573818a54",
+    "working_tree_modified": true,
+    "go_version": "go version go1.27.0 darwin/arm64",
+    "target": "linux/arm64",
+    "tags": [
+      "ui"
+    ],
+    "cgo_enabled": false,
+    "source_manifest_sha256": "136415be7a5fe781ab2b16a5ac38a09f645d65d649a34159564fed5010ae18c3",
+    "source_manifest_file_count": 781,
+    "linker_flags_sha256": "60ec57523cf173653aec2df6dd2135b1b0a447c076ba2f7cc8aed96f227a04c6",
+    "actual_running_executable_sha256": "ff5ed33f9fe084e1df154668edaad2bb35f98858bb7a6400af8058f636f949d8",
+    "actual_deployment_image": "localhost:56505/hikyo-rollout-0520bd8e@sha256:445c92a048779244817a7ada10b67333d0d3b58cc850d8def97938711f34382c",
+    "harness_sha256": "c2a7f812aee1ff3b0cac8f1faf2bad319f433e49ac0f25a250bcd795d00455ff",
+    "release_authority": "ephemeral test authority, production-mode admission; not a production release signature"
+  }
+}

@@ -44,11 +44,18 @@ func TestHAEnabledWithCompleteConfig(t *testing.T) {
 	}
 }
 
-func TestNodeIDWithoutHARefuses(t *testing.T) {
-	_, _, err := Load("server", nil, env(
-		"HIKYO_NODE_ID", "node-a", "HIKYO_DB", haTestDSN), nil)
-	if err == nil || !strings.Contains(err.Error(), "HIKYO_HA") {
-		t.Fatalf("a node id without HA must be refused, got: %v", err)
+func TestSingletonNodeIDSurvivesConfigurationLoad(t *testing.T) {
+	for _, ha := range []string{"", "false"} {
+		t.Run("ha="+ha, func(t *testing.T) {
+			cfg, _, err := Load("server", nil, env(
+				"HIKYO_HA", ha, "HIKYO_NODE_ID", "hikyo-server", "HIKYO_DB", haTestDSN), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.HA || cfg.NodeID != "hikyo-server" {
+				t.Fatalf("singleton identity changed: HA=%v NodeID=%q", cfg.HA, cfg.NodeID)
+			}
+		})
 	}
 }
 

@@ -800,6 +800,11 @@ func (k *Keyring) PrepareRootKeyRotation(ctx context.Context, newRoot []byte) (W
 	}
 	cur := wrappers[0]
 	m := k.master.Load()
+	// A different process may have advanced the persisted hierarchy. Never
+	// label an old cached master key with the freshly read database version.
+	if m.activeVersion() != cur.Version {
+		return WrappedKey{}, ErrStaleMaster
+	}
 	newEpoch := cur.RootKeyEpoch + 1
 	blob, err := seal(k.rnd, newRoot, be32(newEpoch), 0,
 		WrappedMasterAAD{MasterKeyVersion: cur.Version, RootKeyEpoch: newEpoch}, m.activeKey())

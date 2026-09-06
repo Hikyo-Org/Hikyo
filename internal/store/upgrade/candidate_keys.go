@@ -2,6 +2,7 @@ package upgrade
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"math"
 	"time"
@@ -207,4 +208,101 @@ func candidateTier3(id, purpose, org, project string, version, master int64, blo
 		return crypto.WrappedKey{}, errors.New("upgrade: unknown candidate key purpose")
 	}
 	return crypto.WrappedKey{ID: id, Purpose: p, OrgID: org, ProjectID: project, Version: uint32(version), MasterKeyVersion: uint32(master), Blob: blob, CreatedAt: created.UTC()}, nil
+}
+
+// Configuration reads the exact saved policy under the same session/phase fence
+// as the key inventory. Nil means an unadopted (or pre-feature) datastore.
+func (r *candidateKeys) Configuration(ctx context.Context) (*CandidateConfiguration, error) {
+	if err := r.check(ctx); err != nil {
+		return nil, err
+	}
+	if r.operatorRecovery {
+		return nil, ErrConflict
+	}
+	var tables int
+	query := "SELECT count(*) FROM sqlite_schema WHERE type='table' AND name='self_config_binding'"
+	if r.session.engine == releaseidentity.Postgres {
+		query = "SELECT count(*) FROM information_schema.tables WHERE table_schema=current_schema() AND table_name='self_config_binding'"
+	}
+	if err := r.session.conn.QueryRowContext(ctx, query).Scan(&tables); err != nil {
+		return nil, err
+	}
+	if tables == 0 {
+		return nil, nil
+	}
+	var owner, org, project, environment, snapshot string
+	var revision, schemaVersion, generation int64
+	read := func() error {
+		return r.session.conn.QueryRowContext(ctx, "SELECT owner_instance_id,org_id,project_id,environment_id,desired_snapshot_id,desired_revision,schema_version,generation FROM self_config_binding WHERE id=1").Scan(&owner, &org, &project, &environment, &snapshot, &revision, &schemaVersion, &generation)
+	}
+	if err := read(); errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+	if owner != r.expected.InstanceID || org == "" || project == "" || environment == "" || snapshot == "" || revision < 1 || schemaVersion < 1 || generation < 1 {
+		return nil, ErrConflict
+	}
+	expectedOwner, expectedOrg, expectedProject, expectedEnvironment, expectedSnapshot, expectedRevision, expectedSchema, expectedGeneration := owner, org, project, environment, snapshot, revision, schemaVersion, generation
+	q := "SELECT count(*) FROM snapshots WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND id=$4 AND revision=$5 AND payload_present=TRUE"
+	var present int
+	if err := r.session.conn.QueryRowContext(ctx, q, org, project, environment, snapshot, revision).Scan(&present); err != nil {
+		return nil, err
+	}
+	if present != 1 {
+		return nil, ErrConflict
+	}
+	projection := &CandidateConfiguration{OrgID: org, ProjectID: project, SchemaVersion: int(schemaVersion)}
+	rows, err := r.session.conn.QueryContext(ctx, "SELECT name,classification,declaration,required_mode,forbidden_mode,coalesce(group_id,''),folder_path FROM keys WHERE org_id=$1 AND project_id=$2 ORDER BY name", org, project)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var key CandidateConfigurationKey
+		if err := rows.Scan(&key.Name, &key.Classification, &key.Declaration, &key.RequiredMode, &key.ForbiddenMode, &key.GroupID, &key.FolderPath); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		projection.Catalogue = append(projection.Catalogue, key)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	rows, err = r.session.conn.QueryContext(ctx, "SELECT e.id,e.key_id,e.key_name,e.ciphertext FROM snapshot_entries e JOIN keys k ON k.org_id=e.org_id AND k.project_id=e.project_id AND k.id=e.key_id AND k.name=e.key_name AND k.classification=e.classification WHERE e.org_id=$1 AND e.project_id=$2 AND e.environment_id=$3 AND e.snapshot_id=$4 ORDER BY e.key_name", org, project, environment, snapshot)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		field := crypto.ExistingProjectField{AAD: crypto.ProjectFieldAAD{OrgID: org, ProjectID: project, EnvironmentID: environment, SnapshotID: snapshot, OwnerTable: "snapshot_entries", FieldTag: "snapshot_value"}}
+		if err := rows.Scan(&field.AAD.OwnerRowID, &field.AAD.KeyID, &field.Name, &field.Ciphertext); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		projection.Fields = append(projection.Fields, field)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	// A mismatching catalogue join must not silently omit a persisted field.
+	var count int
+	if err := r.session.conn.QueryRowContext(ctx, "SELECT count(*) FROM snapshot_entries WHERE snapshot_id=$1", snapshot).Scan(&count); err != nil {
+		return nil, err
+	}
+	if count != len(projection.Fields) {
+		return nil, ErrConflict
+	}
+	if err := read(); err != nil {
+		return nil, err
+	}
+	if owner != expectedOwner || org != expectedOrg || project != expectedProject || environment != expectedEnvironment || snapshot != expectedSnapshot || revision != expectedRevision || schemaVersion != expectedSchema || generation != expectedGeneration {
+		return nil, ErrConflict
+	}
+	if err := r.check(ctx); err != nil {
+		return nil, err
+	}
+	return projection, nil
 }

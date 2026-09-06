@@ -48,6 +48,7 @@ const (
 	reauthWindowUnbound reauthWindowBindingKind = iota + 1
 	reauthWindowOperationBound
 	reauthWindowAdapterBound
+	reauthWindowSelfConfigBound
 )
 
 // windowBindingKind parses the four persisted binding columns as one closed
@@ -62,6 +63,8 @@ func windowBindingKind(w authz.ReauthWindow) (reauthWindowBindingKind, reauthInt
 		environmentSet: w.BoundEnvironmentSet,
 	}
 	switch {
+	case w.BoundPurpose == "self-config" && w.BoundOperation != "" && w.BoundKeySet != "" && w.BoundEnvironmentSet == "" && w.SingleDecision:
+		return reauthWindowSelfConfigBound, binding, nil
 	case w.BoundPurpose == "" && w.BoundOperation == "" && w.BoundKeySet == "" && w.BoundEnvironmentSet == "":
 		return reauthWindowUnbound, binding, nil
 	case w.BoundPurpose == "" && w.BoundOperation != "" && w.BoundEnvironmentSet == "":
@@ -97,7 +100,7 @@ func (s *Auth) ConsumeReauthWindow(ctx context.Context, az *authz.TxAuthorizer, 
 	if err != nil {
 		return err
 	}
-	if adapter {
+	if adapter || intent.isSelfConfig() {
 		return ErrReauthUnitMismatch
 	}
 	binding, err := intent.bindingFor("")
@@ -151,7 +154,25 @@ func (s *Auth) consumeReauthWindow(ctx context.Context, az *authz.TxAuthorizer, 
 	if err != nil {
 		return err
 	}
+	if binding.purpose == PurposeSelfConfig && kind != reauthWindowSelfConfigBound {
+		return ErrReauthUnitMismatch
+	}
 	switch kind {
+	case reauthWindowSelfConfigBound:
+		if binding.purpose != PurposeSelfConfig || binding.operation != windowBinding.operation || binding.keySet != windowBinding.keySet {
+			return ErrReauthUnitMismatch
+		}
+		if err := validateSelfConfigFactor(w, now); err != nil {
+			return err
+		}
+		claimed, err := az.ConsumeSingleDecisionWindow(ctx, w.ID, now)
+		if err != nil {
+			return err
+		}
+		if !claimed {
+			return ErrReauthWindowSpent
+		}
+		return nil
 	case reauthWindowUnbound:
 	case reauthWindowOperationBound:
 		if binding.operation != windowBinding.operation || binding.keySet != windowBinding.keySet {
@@ -392,7 +413,7 @@ func (s *Auth) ReauthTOTP(ctx context.Context, presented string, intent ReauthIn
 	if err != nil {
 		return ReauthResult{}, err
 	}
-	if !unbound {
+	if !unbound && !intent.isSelfConfig() {
 		return ReauthResult{}, ErrReauthUnitMismatch
 	}
 	results, err := s.reauthTOTP(ctx, presented, intent, code)
@@ -431,7 +452,7 @@ func (s *Auth) reauthTOTP(ctx context.Context, presented string, intent ReauthIn
 	if err != nil {
 		return nil, err
 	}
-	if !unbound && !adapter {
+	if !unbound && !adapter && !intent.isSelfConfig() {
 		return nil, ErrReauthUnitMismatch
 	}
 	binding, err := intent.bindingFor(environmentIDs[0])
@@ -462,6 +483,13 @@ func (s *Auth) reauthTOTP(ctx context.Context, presented string, intent ReauthIn
 		// requiring `read(E)` first collapses both into the same refusal, and
 		// the chokepoint's own uniform nonexistent outcome does the collapsing.
 		for _, environmentID := range environmentIDs {
+			if intent.isSelfConfig() {
+				if err := authorizeSelfConfigCeremony(ctx, az, id, environmentID); err != nil {
+					return err
+				}
+				windowEnvironments = append(windowEnvironments, environmentID)
+				continue
+			}
 			if err := authorizeEnvironmentRead(ctx, az, id, environmentID); err != nil {
 				return err
 			}
@@ -532,6 +560,14 @@ func (s *Auth) reauthTOTP(ctx context.Context, presented string, intent ReauthIn
 		windowEnvironments = windowEnvironments[:0]
 		effectiveWindows := make(map[string]time.Duration, len(environmentIDs))
 		for _, environmentID := range environmentIDs {
+			if intent.isSelfConfig() {
+				if err := authorizeSelfConfigCeremony(ctx, az, live, environmentID); err != nil {
+					return err
+				}
+				windowEnvironments = append(windowEnvironments, environmentID)
+				effectiveWindows[environmentID] = 5 * time.Minute
+				continue
+			}
 			if err := authorizeEnvironmentRead(ctx, az, live, environmentID); err != nil {
 				return err
 			}
@@ -589,18 +625,18 @@ func (s *Auth) reauthTOTP(ctx context.Context, presented string, intent ReauthIn
 			if err := az.OpenReauthWindow(ctx, authz.NewReauthWindow{
 				// CeremonyID carries the confirmed TOTP credential id (TOTP has no
 				// challenge row of its own; totp_challenges is dormant, see B8): it is
-				// provenance only. A TOTP window is never single_decision.
+				// provenance only. Exact configuration decisions are single-use.
 				ID: windowID, SessionID: live.SessionID, EnvironmentID: environmentID,
-				CeremonyID: confirmed.ID, FactorClass: "totp", SingleDecision: false,
+				CeremonyID: confirmed.ID, FactorClass: "totp", SingleDecision: intent.isSelfConfig(),
 				AuthenticatedAt: now, WindowExpiresAt: windowExpires, HardExpiresAt: hardExpires,
 				CredentialEpoch: epoch, CreatedAt: now, BoundPurpose: string(binding.purpose),
-				BoundOperation: string(binding.operation), BoundEnvironmentSet: binding.environmentSet,
+				BoundOperation: string(binding.operation), BoundEnvironmentSet: binding.environmentSet, BoundKeySet: binding.keySet,
 			}); err != nil {
 				return err
 			}
 			*out = append(*out, ReauthResult{
-				SessionToken: completion.SessionToken, SessionID: live.SessionID, EnvironmentID: environmentID,
-				SingleDecision: false, WindowExpires: windowExpires,
+				SessionToken: completion.SessionToken, CSRFToken: completion.CSRFToken, SessionID: live.SessionID, EnvironmentID: environmentID,
+				SingleDecision: intent.isSelfConfig(), WindowExpires: windowExpires,
 			})
 		}
 		e, err := newAuditEvent(ctx, audit.EventAuthReauthenticated, account.PrincipalID,

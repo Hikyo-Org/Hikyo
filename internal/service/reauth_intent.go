@@ -14,12 +14,13 @@ import (
 // cannot be assembled independently after the transport boundary has parsed
 // them. Constructors below are the only way to create a value.
 type ReauthIntent struct {
-	variant        reauthIntentVariant
-	environmentID  string
-	environmentIDs []string
-	keyIDs         []string
-	keySet         string
-	environmentSet string
+	variant           reauthIntentVariant
+	selfConfigBinding string
+	environmentID     string
+	environmentIDs    []string
+	keyIDs            []string
+	keySet            string
+	environmentSet    string
 }
 
 type reauthIntentVariant uint8
@@ -37,6 +38,9 @@ const (
 	intentAdapterCredentialSet
 	intentAdapterAdopt
 	intentAdapterSync
+	intentSelfConfigAdopt
+	intentSelfConfigApply
+	intentSelfConfigTest
 )
 
 // reauthIntentBinding is the single derived spelling consumed by windows,
@@ -63,6 +67,9 @@ type reauthIntentDescriptor struct {
 }
 
 var reauthIntentDescriptors = [...]reauthIntentDescriptor{
+	{variant: intentSelfConfigAdopt, purpose: PurposeSelfConfig, operation: authz.OpSelfConfigAdopt},
+	{variant: intentSelfConfigApply, purpose: PurposeSelfConfig, operation: authz.OpSelfConfigApply},
+	{variant: intentSelfConfigTest, purpose: PurposeSelfConfig, operation: authz.OpSelfConfigTest},
 	{variant: intentUnbound},
 	{variant: intentReveal, purpose: PurposeReveal, operation: authz.OpValueReveal},
 	{variant: intentCopy, purpose: PurposeCopy, operation: authz.OpValueCopySource},
@@ -142,7 +149,7 @@ func NewBypassReauthIntent(environmentID string, keyIDs []string) (ReauthIntent,
 // Past this constructor purpose, operation, environment and keys travel as one
 // value and cannot be recombined.
 func NewDisclosureReauthIntent(purpose ReauthPurpose, environmentIDs, keyIDs []string) (ReauthIntent, error) {
-	if purpose == PurposeAdapter {
+	if purpose == PurposeAdapter || purpose == PurposeSelfConfig {
 		return ReauthIntent{}, fmt.Errorf("%w: adapter reauthentication requires an adapter intent", domain.ErrInvalid)
 	}
 	descriptor, ok := disclosureDescriptorForPurpose(purpose)
@@ -257,6 +264,13 @@ func (i ReauthIntent) bindingFor(adapterEnvironmentID string) (reauthIntentBindi
 		return binding, nil
 	}
 	binding.purpose, binding.operation = descriptor.purpose, descriptor.operation
+	if i.isSelfConfig() {
+		if adapterEnvironmentID != "" && adapterEnvironmentID != i.environmentID {
+			return reauthIntentBinding{}, ErrReauthUnitMismatch
+		}
+		binding.challengeBinding = i.selfConfigBinding
+		return binding, nil
+	}
 
 	if descriptor.adapter {
 		binding.environmentIDs = append([]string(nil), i.environmentIDs...)

@@ -39,8 +39,9 @@ type CLIReauthTransaction struct {
 	Environments                           []CLIReauthEnvironmentPolicy
 	// KeyIDs is the enumerated unit of a disclosure purpose (reveal, copy):
 	// exactly the keys the one browser decision will cover. Empty for adapter.
-	KeyIDs    []string
-	ExpiresAt time.Time
+	SelfConfig *SelfConfigReauthTarget
+	KeyIDs     []string
+	ExpiresAt  time.Time
 }
 
 type CLIReauthApproval struct {
@@ -61,6 +62,7 @@ type cliApprovedWindow struct {
 	// TOTP ceremony is unbound, and a single-decision passkey window is bound
 	// through its ceremony's pinned (purpose, environment, key set) binding,
 	// which the ceremony id carries.
+	BoundKeySet         string `json:"bound_key_set,omitempty"`
 	BoundPurpose        string `json:"bound_purpose,omitempty"`
 	BoundOperation      string `json:"bound_operation,omitempty"`
 	BoundEnvironmentSet string `json:"bound_environment_set,omitempty"`
@@ -71,6 +73,8 @@ type cliApprovedWindow struct {
 // the adapter purpose admits the four adapter operations.
 func cliReauthPurposeOperation(purpose ReauthPurpose, operation authz.Operation) bool {
 	switch purpose {
+	case PurposeSelfConfig:
+		return operation == authz.OpSelfConfigAdopt || operation == authz.OpSelfConfigApply || operation == authz.OpSelfConfigTest
 	case PurposeAdapter:
 		return adapterReauthOperation(operation)
 	case PurposeReveal:
@@ -109,6 +113,17 @@ func cliReauthAuditFromHandoff(h authz.CLIReauthHandoff) cliReauthAuditContext {
 }
 
 func reauthIntentFromCLIHandoff(h authz.CLIReauthHandoff) (ReauthIntent, error) {
+	if h.Purpose == string(PurposeSelfConfig) {
+		intent, ok, err := parseSelfConfigBinding(h.KeySet)
+		if err != nil || !ok || intent.environmentSet != h.EnvironmentSet {
+			return ReauthIntent{}, ErrReauthUnitMismatch
+		}
+		operation, err := intent.Operation()
+		if err != nil || string(operation) != h.Operation {
+			return ReauthIntent{}, ErrReauthUnitMismatch
+		}
+		return intent, nil
+	}
 	environmentIDs := strings.Split(h.EnvironmentSet, "\n")
 	var keyIDs []string
 	if h.KeySet != "" {
@@ -179,6 +194,9 @@ func (s *Auth) StartCLIReauth(ctx context.Context, presented string, intent Reau
 	// the CLI's disclosure consumes exactly this set, so a handoff without one
 	// would be a window any later disclosure could spend.
 	keySet := binding.keySet
+	if intent.isSelfConfig() {
+		keySet = intent.selfConfigBinding
+	}
 	if cliReauthKeyBound(purpose) == (keySet == "") {
 		return CLIReauthStart{}, s.rejectCLIReauthRequest(ctx, "start", ErrReauthUnitMismatch)
 	}
@@ -207,6 +225,12 @@ func (s *Auth) StartCLIReauth(ctx context.Context, presented string, intent Reau
 			return captureCLIReauthFailure(ctx, az, "start", detail, "unauthenticated", fmt.Errorf("initiating artifact %q is not CLI: %w", caller.Artifact, domain.ErrUnauthenticated))
 		}
 		for _, environmentID := range environmentIDs {
+			if intent.isSelfConfig() {
+				if err := authorizeSelfConfigCeremony(ctx, az, caller, environmentID); err != nil {
+					return captureCLIReauthFailure(ctx, az, "start", detail, "unauthorized", err)
+				}
+				continue
+			}
 			chain, err := az.EnvironmentChainByID(ctx, environmentID)
 			if err != nil {
 				return captureCLIReauthFailure(ctx, az, "start", detail, "unauthorized", err)
@@ -308,6 +332,17 @@ func (s *Auth) CLIReauthTransaction(ctx context.Context, actor Actor, state stri
 			return captureCLIReauthFailure(ctx, az, "inspect", detail, "invalid_binding", ErrReauthUnitMismatch)
 		}
 		out = CLIReauthTransaction{State: state, Purpose: string(binding.purpose), Operation: string(binding.operation), RedirectURI: h.RedirectURI, ExpiresAt: h.ExpiresAt, Environments: []CLIReauthEnvironmentPolicy{}, KeyIDs: intent.KeyIDs()}
+		if intent.isSelfConfig() {
+			if err := authorizeSelfConfigCeremony(ctx, az, caller, intent.environmentID); err != nil {
+				return captureCLIReauthFailure(ctx, az, "inspect", detail, "unauthorized", err)
+			}
+			var selected selfConfigChallenge
+			if err := json.Unmarshal([]byte(intent.selfConfigBinding), &selected); err != nil {
+				return err
+			}
+			out.SelfConfig = &selected.Target
+			return recordCLIReauthSuccess(ctx, az, "inspect", detail)
+		}
 		for _, environmentID := range intent.EnvironmentIDs() {
 			chain, err := az.EnvironmentChainByID(ctx, environmentID)
 			if err != nil {
@@ -379,7 +414,7 @@ func (s *Auth) ApproveCLIReauth(ctx context.Context, actor Actor, state string) 
 			if err != nil {
 				return err
 			}
-			if effective <= 0 && (w.FactorClass != "webauthn" || !w.SingleDecision) {
+			if !intent.isSelfConfig() && effective <= 0 && (w.FactorClass != "webauthn" || !w.SingleDecision) {
 				return captureCLIReauthFailure(ctx, az, "approve", detail, "reauth_required", ErrReauthRequired)
 			}
 			kind, windowBinding, bindingErr := windowBindingKind(w)
@@ -389,7 +424,14 @@ func (s *Auth) ApproveCLIReauth(ctx context.Context, actor Actor, state string) 
 				}
 				return captureCLIReauthFailure(ctx, az, "approve", detail, "reauth_required", ErrReauthUnitMismatch)
 			}
-			if !adapter {
+			if intent.isSelfConfig() {
+				if err := authorizeSelfConfigCeremony(ctx, az, caller, environmentID); err != nil {
+					return err
+				}
+				if kind != reauthWindowSelfConfigBound || binding.keySet != windowBinding.keySet || binding.operation != windowBinding.operation || binding.purpose != windowBinding.purpose {
+					return ErrReauthUnitMismatch
+				}
+			} else if !adapter {
 				// The browser ran the disclosure ceremony: a single-decision
 				// passkey window carries its ceremony's pinned (purpose,
 				// environment, key set) binding, which must equal the handoff's
@@ -423,7 +465,7 @@ func (s *Auth) ApproveCLIReauth(ctx context.Context, actor Actor, state string) 
 				}
 			}
 			windows = append(windows, cliApprovedWindow{EnvironmentID: environmentID, CeremonyID: w.CeremonyID, FactorClass: w.FactorClass, SingleDecision: w.SingleDecision, AuthenticatedAt: w.AuthenticatedAt, WindowExpiresAt: w.WindowExpiresAt, HardExpiresAt: w.HardExpiresAt,
-				BoundPurpose: w.BoundPurpose, BoundOperation: w.BoundOperation, BoundEnvironmentSet: w.BoundEnvironmentSet})
+				BoundKeySet: w.BoundKeySet, BoundPurpose: w.BoundPurpose, BoundOperation: w.BoundOperation, BoundEnvironmentSet: w.BoundEnvironmentSet})
 		}
 		windowJSON, err := json.Marshal(windows)
 		if err != nil {
@@ -511,7 +553,7 @@ func (s *Auth) RedeemCLIReauth(ctx context.Context, code, pkceVerifier string) (
 			// an adapter share stays bound to its (purpose, operation, set); a
 			// disclosure window stays bound through its ceremony id alone, so
 			// the CLI's disclosure is matched against the same pinned unit.
-			if err := az.OpenReauthWindow(ctx, authz.NewReauthWindow{ID: id, SessionID: caller.SessionID, EnvironmentID: approved.EnvironmentID, CeremonyID: approved.CeremonyID, FactorClass: approved.FactorClass, SingleDecision: approved.SingleDecision, AuthenticatedAt: approved.AuthenticatedAt, WindowExpiresAt: approved.WindowExpiresAt, HardExpiresAt: approved.HardExpiresAt, CredentialEpoch: epoch, CreatedAt: now, BoundPurpose: approved.BoundPurpose, BoundOperation: approved.BoundOperation, BoundEnvironmentSet: approved.BoundEnvironmentSet}); err != nil {
+			if err := az.OpenReauthWindow(ctx, authz.NewReauthWindow{ID: id, SessionID: caller.SessionID, EnvironmentID: approved.EnvironmentID, CeremonyID: approved.CeremonyID, FactorClass: approved.FactorClass, SingleDecision: approved.SingleDecision, AuthenticatedAt: approved.AuthenticatedAt, WindowExpiresAt: approved.WindowExpiresAt, HardExpiresAt: approved.HardExpiresAt, CredentialEpoch: epoch, CreatedAt: now, BoundKeySet: approved.BoundKeySet, BoundPurpose: approved.BoundPurpose, BoundOperation: approved.BoundOperation, BoundEnvironmentSet: approved.BoundEnvironmentSet}); err != nil {
 				return err
 			}
 			out.Windows = append(out.Windows, ReauthResult{SessionID: caller.SessionID, EnvironmentID: approved.EnvironmentID, SingleDecision: approved.SingleDecision, WindowExpires: approved.WindowExpiresAt})

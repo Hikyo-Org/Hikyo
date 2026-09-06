@@ -1,0 +1,538 @@
+[
+  {
+    "key": "HIKYO_ADAPTER_EGRESS_POLICY_FILE",
+    "audience": "server",
+    "scope": "node",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "file-content",
+    "fileContentKey": "HIKYO_ADAPTER_EGRESS_POLICY_JSON"
+  },
+  {
+    "key": "HIKYO_ADMISSION_BUDGET_MIB",
+    "audience": "server",
+    "scope": "node",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_ARGON2_MEMORY_KIB",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_ARGON2_PARALLELISM",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_ARGON2_TIME",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_AUDIT_ACCESS_RETAIN_DAYS",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_AUDIT_SECURITY_RETAIN_DAYS",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_BACKUP_DIR",
+    "audience": "server",
+    "scope": "node",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_BACKUP_INTERVAL",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_BACKUP_RECIPIENTS",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_BACKUP_RETAIN_COUNT",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_BACKUP_RETAIN_DAYS",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_BACKUP_RPO",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_BACKUP_RTO_TARGET",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_COMPOSE_DOCKER",
+    "audience": "client",
+    "scope": "node",
+    "activation": "none",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_CONTEXT",
+    "audience": "client",
+    "scope": "node",
+    "activation": "none",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_DB",
+    "audience": "server",
+    "scope": "node",
+    "activation": "bootstrap",
+    "secret": true,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_DEV_ADAPTER_FAKE_PROVIDER",
+    "audience": "server",
+    "scope": "node",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value",
+    "developmentOnly": true
+  },
+  {
+    "key": "HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE",
+    "audience": "server",
+    "scope": "node",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value",
+    "developmentOnly": true
+  },
+  {
+    "key": "HIKYO_DEV_SERVICE_BUDGETS_DISABLED",
+    "audience": "server",
+    "scope": "node",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value",
+    "developmentOnly": true
+  },
+  {
+    "key": "HIKYO_DIRECTORY_PROXY",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
+    "secret": true,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_DYNAMIC_EGRESS_POLICY_FILE",
+    "audience": "server",
+    "scope": "node",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "file-content",
+    "fileContentKey": "HIKYO_DYNAMIC_EGRESS_POLICY_JSON"
+  },
+  {
+    "key": "HIKYO_ENV",
+    "audience": "client",
+    "scope": "node",
+    "activation": "none",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_EXTERNAL_ORIGIN",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "managedField": "HIKYO_BOOTSTRAP_SOURCES.topology.ha",
+    "key": "HIKYO_HA",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "deployment",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_INSTANCE",
+    "audience": "client",
+    "scope": "node",
+    "activation": "none",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_LISTEN",
+    "audience": "server",
+    "scope": "node",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_MAIL_ADDR",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "component",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_MAIL_ALLOWED_CIDRS",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "component",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_MAIL_CA_FILE",
+    "audience": "server",
+    "scope": "node",
+    "activation": "component",
+    "secret": false,
+    "import": "file-content",
+    "fileContentKey": "HIKYO_MAIL_CA_PEM"
+  },
+  {
+    "key": "HIKYO_MAIL_EHLO",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "component",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_MAIL_FROM",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "component",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_MAIL_PASSWORD",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "component",
+    "secret": true,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_MAIL_PASSWORD_FILE",
+    "audience": "server",
+    "scope": "node",
+    "activation": "component",
+    "secret": true,
+    "import": "file-content",
+    "fileContentKey": "HIKYO_MAIL_PASSWORD",
+    "referencedContentSecret": true
+  },
+  {
+    "key": "HIKYO_MAIL_TLS",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "component",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_MAIL_USER",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "component",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_MCP_ALLOWED_ORIGINS",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_MCP_ENABLED",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_NEW_ROOT_KEY_FILE",
+    "audience": "server",
+    "scope": "node",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "external",
+    "referencedContentSecret": true
+  },
+  {
+    "managedField": "HIKYO_BOOTSTRAP_SOURCES.topology.node_id",
+    "key": "HIKYO_NODE_ID",
+    "audience": "server",
+    "scope": "node",
+    "activation": "deployment",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_OIDC_EGRESS_POLICY_FILE",
+    "audience": "server",
+    "scope": "node",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "file-content",
+    "fileContentKey": "HIKYO_OIDC_EGRESS_POLICY_JSON"
+  },
+  {
+    "key": "HIKYO_OPERATIONAL_LISTEN",
+    "audience": "server",
+    "scope": "node",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_ORG",
+    "audience": "client",
+    "scope": "node",
+    "activation": "none",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_PG_POOL_MAX",
+    "audience": "server",
+    "scope": "node",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_PROJECT",
+    "audience": "client",
+    "scope": "node",
+    "activation": "none",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_REAUTH_WINDOW_SECONDS",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_ROOT_KEY",
+    "audience": "server",
+    "scope": "node",
+    "activation": "bootstrap",
+    "secret": true,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_ROOT_KEY_FILE",
+    "audience": "server",
+    "scope": "node",
+    "activation": "bootstrap",
+    "secret": false,
+    "import": "external",
+    "referencedContentSecret": true
+  },
+  {
+    "key": "HIKYO_STATE_DIR",
+    "audience": "client",
+    "scope": "node",
+    "activation": "none",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_TLS_CERT_FILE",
+    "audience": "server",
+    "scope": "node",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "file-content",
+    "fileContentKey": "HIKYO_TLS_CERT_PEM"
+  },
+  {
+    "key": "HIKYO_TLS_KEY_FILE",
+    "audience": "server",
+    "scope": "node",
+    "activation": "app-reload",
+    "secret": true,
+    "import": "file-content",
+    "fileContentKey": "HIKYO_TLS_KEY_PEM",
+    "referencedContentSecret": true
+  },
+  {
+    "key": "HIKYO_TOKEN",
+    "audience": "client",
+    "scope": "node",
+    "activation": "none",
+    "secret": true,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_TRUSTED_PROXY_CIDRS",
+    "audience": "server",
+    "scope": "node",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_TRUST_BUNDLE",
+    "audience": "client",
+    "scope": "node",
+    "activation": "none",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_UPDATER_SOCKET",
+    "audience": "retired",
+    "scope": "node",
+    "activation": "none",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_UPDATE_CHANNEL",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "live",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_UPGRADE_BACKUP",
+    "audience": "server",
+    "scope": "node",
+    "activation": "bootstrap",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_UPGRADE_BUNDLE",
+    "audience": "server",
+    "scope": "node",
+    "activation": "bootstrap",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_UPGRADE_EVIDENCE",
+    "audience": "server",
+    "scope": "node",
+    "activation": "bootstrap",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED",
+    "audience": "server",
+    "scope": "node",
+    "activation": "bootstrap",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_UPGRADE_OPERATOR_INSTANCE",
+    "audience": "command",
+    "scope": "node",
+    "activation": "none",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY",
+    "audience": "server",
+    "scope": "node",
+    "activation": "bootstrap",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_UPGRADE_STATE_DIR",
+    "audience": "server",
+    "scope": "node",
+    "activation": "bootstrap",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_UPGRADE_TARGET_MANIFEST",
+    "audience": "server",
+    "scope": "node",
+    "activation": "bootstrap",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "XDG_STATE_HOME",
+    "audience": "client",
+    "scope": "node",
+    "activation": "none",
+    "secret": false,
+    "import": "external"
+  }
+]

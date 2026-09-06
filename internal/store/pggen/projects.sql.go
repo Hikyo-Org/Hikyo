@@ -85,7 +85,7 @@ func (q *Queries) GetProject(ctx context.Context, arg GetProjectParams) (Project
 }
 
 const listAllProjects = `-- name: ListAllProjects :many
-SELECT org_id, name FROM projects ORDER BY org_id, name
+SELECT org_id, name FROM projects WHERE NOT EXISTS (SELECT 1 FROM self_config_binding b WHERE b.org_id=projects.org_id) ORDER BY org_id, name
 `
 
 type ListAllProjectsRow struct {

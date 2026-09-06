@@ -134,3 +134,47 @@ operator:
       memory: 128Mi
   replicaCount: 1
   leaderElection: true
+
+# Fixed-target self-configuration executor. First enable creates empty custody
+# objects; enroll with their UIDs after setup. No automatic UID discovery.
+rollout:
+  # Explicit stable singleton identities permitted for controlled HA/identity replacement.
+  # Include the installed <fullname>-server ID. Empty preserves fixed identity.
+  topologyNodeIDs: []
+  enabled: false
+  enrolled: false
+  enrollmentID: ""
+  ownerInstanceID: ""
+  incarnation: ""
+  deploymentUID: ""
+  commandSecretUID: ""
+  responseSecretUID: ""
+  journalSecretUID: ""
+  leaseUID: ""
+  authorityPublicKey: ""
+  # Existing separate Ed25519 PKCS#8 signer key; never use the Hikyo root key.
+  authorityExistingSecret: ""
+  authorityKey: authority.key
+  # All source Secrets must be immutable. Alias -> {name: Secret name, key: key}.
+  initialDatabaseSource: ""
+  initialRootSource: ""
+  # Optional immutable upgrade-custody tuples using the existing public/state PVCs.
+  # Every descriptor declares all seven fields, including empty/false values.
+  # A nonempty map requires an initial alias matching the installed upgrade inputs.
+  initialUpgradeSource: ""
+  upgradeSources: {}
+  # Optional alternate mounts of the SAME operator-custody directory.
+  # Each listed source uses /var/lib/hikyo-upgrade/aliases/<alias>; mounts are
+  # installed before enrollment and cannot change through configuration Apply.
+  upgradeStateAliases: []
+  databaseSources: {}
+  rootSources: {}
+  # Deployment-safe file aliases already mounted by the installation.
+  fileSources: {}
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi

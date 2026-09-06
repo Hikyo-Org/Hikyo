@@ -411,6 +411,36 @@ async function waitForHealthz(instance: Instance, deadlineMs = 30_000): Promise<
   }
 }
 
+/**
+ * Host admin creation commits the managed generation before the running
+ * server's configuration worker installs it. Authentication remains available
+ * during that gap, but tenant writes correctly return 503. Wait on the real
+ * generation-aware readiness probe before beginning either instance's setup.
+ * Only readiness 503 is pending; other responses and transport failures fail.
+ */
+async function waitForManagedRuntime(instance: Instance, deadlineMs = 30_000): Promise<void> {
+  const until = Date.now() + deadlineMs;
+  for (;;) {
+    if (instance.proc.exitCode !== null || instance.proc.signalCode !== null) {
+      throw new Error(`the instance exited before configuration became ready at ${instance.operationalBase}`);
+    }
+    const resp = await fetch(`${instance.operationalBase}/readyz`, {
+      signal: AbortSignal.timeout(Math.max(1, until - Date.now())),
+    });
+    await resp.arrayBuffer();
+    if (resp.status === 200) {
+      return;
+    }
+    if (resp.status !== 503) {
+      throw new Error(`configuration readiness at ${instance.operationalBase} answered ${String(resp.status)}`);
+    }
+    if (Date.now() >= until) {
+      throw new Error(`the instance configuration never became ready at ${instance.operationalBase}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+}
+
 /** cookieHeader renders one instance's jar for a raw fetch. */
 function cookieHeader(instance: Instance): string {
   return instance.cookies.map((c) => `${c.name}=${c.value}`).join('; ');
@@ -757,6 +787,7 @@ async function startInstanceAt(
       '--output-file', authorityFile],
     { cwd: dir, env: adminEnv(instance) },
   );
+  await waitForManagedRuntime(instance);
 
   return instance;
 }
@@ -862,6 +893,7 @@ const zServing = z.object({
   key: z.string(),
   value: z.string(),
   dbPath: z.string(),
+  otpauth: z.string(),
 });
 
 export type ServingSeed = z.infer<typeof zServing>;
@@ -944,7 +976,7 @@ async function seedServingProject(
   await api(serving, 'POST', `/api/v1/orgs/${org}/projects/${project}/environments/${dev}/publish`, {
     version_ids: [staged.version_id],
   });
-  return { org, project, dev, key: 'API_URL', value };
+  return { org, project, dev, key: 'API_URL', value, otpauth };
 }
 
 /**

@@ -180,8 +180,16 @@ func (a *API) ReauthPasskeyStart(ctx context.Context, req apigen.ReauthPasskeySt
 	}
 	var intent service.ReauthIntent
 	var err error
-	if req.Body.Operation == apigen.ReauthPurposeAdapter {
-		if req.Body.AdapterOperation == nil || req.Body.EnvironmentIds == nil || len(req.Body.KeyIds) != 0 {
+	if req.Body.Operation == apigen.ReauthPurposeSelfConfig {
+		if req.Body.SelfConfig == nil || req.Body.AdapterOperation != nil || req.Body.EnvironmentIds != nil || len(req.Body.KeyIds) != 0 {
+			return apigen.ReauthPasskeyStart400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
+		}
+		intent, err = selfConfigReauthIntent(*req.Body.SelfConfig)
+		if err == nil {
+			intent, err = intent.ForEnvironment(req.Body.EnvironmentId)
+		}
+	} else if req.Body.Operation == apigen.ReauthPurposeAdapter {
+		if req.Body.SelfConfig != nil || req.Body.AdapterOperation == nil || req.Body.EnvironmentIds == nil || len(req.Body.KeyIds) != 0 {
 			return apigen.ReauthPasskeyStart400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 		}
 		environments := make([]string, 0, len(*req.Body.EnvironmentIds))
@@ -193,7 +201,7 @@ func (a *API) ReauthPasskeyStart(ctx context.Context, req apigen.ReauthPasskeySt
 			intent, err = intent.ForEnvironment(req.Body.EnvironmentId)
 		}
 	} else {
-		if req.Body.AdapterOperation != nil || req.Body.EnvironmentIds != nil {
+		if req.Body.SelfConfig != nil || req.Body.AdapterOperation != nil || req.Body.EnvironmentIds != nil {
 			return apigen.ReauthPasskeyStart400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 		}
 		intent, err = service.NewDisclosureReauthIntent(service.ReauthPurpose(req.Body.Operation), []string{req.Body.EnvironmentId}, req.Body.KeyIds)
@@ -290,4 +298,10 @@ func (a *API) RemovePasskey(ctx context.Context, req apigen.RemovePasskeyRequest
 		return nil, err
 	}
 	return sessionResponse(result), nil
+}
+
+func selfConfigReauthIntent(value apigen.SelfConfigReauthIntent) (service.ReauthIntent, error) {
+	return service.NewSelfConfigReauthIntent(service.SelfConfigReauthTarget{
+		Action: string(value.Action), OwnerInstanceID: value.OwnerInstanceId, Revision: value.Revision, SchemaVersion: value.SchemaVersion, ExpectedGeneration: value.ExpectedGeneration, PreviewToken: value.PreviewToken, To: value.To, ConfirmRestoredCredentials: value.ConfirmRestoredCredentials, PlanDigest: deref(value.PlanDigest),
+	})
 }

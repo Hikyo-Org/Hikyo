@@ -13,6 +13,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/operation"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	storetx "github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
@@ -1243,5 +1244,31 @@ func TestAdapterConcurrentAdoptionHasOneWinner(t *testing.T) {
 	}
 	if successes != 1 {
 		t.Fatalf("successful adoptions = %d, want one", successes)
+	}
+}
+
+func TestAdapterProviderSwitchRefusesExistingOutboxAndConfiguration(t *testing.T) {
+	db := adapterRuntimeDB(t)
+	runtime := store.NewAdapterRuntime(db, nil)
+	if err := runtime.CheckProviderSwitch(t.Context()); err == nil {
+		t.Fatal("queued adapter work allowed provider switch")
+	}
+	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapter_outbox SET state='succeeded'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.CheckProviderSwitch(t.Context()); err == nil {
+		t.Fatal("retained adapter identity allowed provider switch after its job completed")
+	}
+}
+
+func TestAdapterProviderSwitchRequiresHostContext(t *testing.T) {
+	db := openKeyTestDB(t, store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "empty-provider-switch.db")})
+	defer db.Close()
+	runtime := store.NewAdapterRuntime(db, nil)
+	if err := runtime.CheckProviderSwitch(t.Context()); err != nil {
+		t.Fatal("empty host configuration refused", err)
+	}
+	if err := runtime.CheckProviderSwitch(operation.WithNetwork(t.Context())); err == nil {
+		t.Fatal("network request reached host-only provider-switch predicate")
 	}
 }

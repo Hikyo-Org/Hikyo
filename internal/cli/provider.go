@@ -20,9 +20,12 @@ import (
 // authority and every request still proves instance-config at the server.
 func runInstanceConfig(ctx context.Context, ios IO, args []string) error {
 	noun, rest, err := subverb("instance-config", args,
-		"provider", "saml-sp-key", "credential-policy", "federation-issuer")
+		"provider", "saml-sp-key", "credential-policy", "federation-issuer", "status", "adopt", "apply", "test-email")
 	if err != nil {
 		return err
+	}
+	if noun == "status" || noun == "adopt" || noun == "apply" || noun == "test-email" {
+		return runSelfConfig(ctx, ios, noun, rest)
 	}
 	if noun == "federation-issuer" {
 		return runFederationIssuer(ctx, ios, rest)

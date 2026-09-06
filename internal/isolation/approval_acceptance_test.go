@@ -1,11 +1,12 @@
 package isolation
 
 import (
+	"bytes"
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -236,6 +237,32 @@ func TestApprovalTargetMovementInvalidation(t *testing.T) {
 	})
 }
 
+// uncertainClaimReply preserves the real committed datastore fence but loses
+// the first successful response. No scheduler term may run until a subsequent
+// fenced renewal confirms that the transaction committed and is still live.
+type uncertainClaimReply struct {
+	app.LeaseManager
+	dropped   bool
+	confirmed atomic.Bool
+}
+
+func (l *uncertainClaimReply) ClaimLease(ctx context.Context, name, owner string, now, expires time.Time) (int64, bool, error) {
+	fence, held, err := l.LeaseManager.ClaimLease(ctx, name, owner, now, expires)
+	if err == nil && held && !l.dropped {
+		l.dropped = true
+		return fence, false, context.DeadlineExceeded
+	}
+	return fence, held, err
+}
+
+func (l *uncertainClaimReply) RenewLease(ctx context.Context, name, owner string, fence int64, now, expires time.Time) (bool, error) {
+	held, err := l.LeaseManager.RenewLease(ctx, name, owner, fence, now, expires)
+	if held && err == nil {
+		l.confirmed.Store(true)
+	}
+	return held, err
+}
+
 func TestApprovalExpirySchedulerTakeover(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		a, b, scope := approvalAcceptanceFixture(t, db, 1)
@@ -246,11 +273,19 @@ func TestApprovalExpirySchedulerTakeover(t *testing.T) {
 		startNode := func(node approvalNode, name string) (context.Context, func()) {
 			t.Helper()
 			terms := make(chan context.Context, 1)
+			var lease app.LeaseManager = node.approvals.DB.Coordination()
+			if name == "approval-node-a" {
+				lease = &uncertainClaimReply{LeaseManager: lease}
+			}
+			var logged bytes.Buffer
 			scheduler := &app.Scheduler{
-				Lease: node.approvals.DB.Coordination(), NodeID: name, LeaseTTL: time.Minute,
+				Lease: lease, NodeID: name, LeaseTTL: time.Minute,
 				Heartbeat: 20 * time.Millisecond, Interval: time.Hour,
-				Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+				Log: slog.New(slog.NewTextHandler(&logged, nil)),
 				Jobs: []app.ScheduledJob{{Name: "approval_expiry_sweep", Run: func(ctx context.Context) error {
+					if uncertain, ok := lease.(*uncertainClaimReply); ok && !uncertain.confirmed.Load() {
+						return errors.New("provisional lease ran a job before fenced confirmation")
+					}
 					// Retain the real term identity while deliberately suppressing
 					// cancellation, modeling a paused worker before its next write.
 					select {
@@ -270,7 +305,8 @@ func TestApprovalExpirySchedulerTakeover(t *testing.T) {
 			case term := <-terms:
 				return term, stop
 			case <-time.After(5 * time.Second):
-				t.Fatal("scheduler did not acquire leadership")
+				stop()
+				t.Fatalf("scheduler did not acquire leadership: %s", logged.String())
 				return nil, stop
 			}
 		}

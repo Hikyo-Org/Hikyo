@@ -684,6 +684,7 @@ var booleanContractFields = map[string]bool{
 	"Enabled": true, "HistoryAuthorized": true, "Inert": true, "KeepRemote": true,
 	"LastDrillOk": true, "MachineReveal": true, "MaterialSecret": true, "Missing": true,
 	"NameidQualifierPresent": true, "NameidSpQualifierPresent": true, "OccurredAsserted": true,
+	"Prepared": true, "Suspended": true, "ConfirmRestoredCredentials": true, // runtime configuration booleans map INTEGER to BOOLEAN
 	"PayloadPresent": true, "Protected": true, "SchemaOverride": true, "Secret": true,
 }
 

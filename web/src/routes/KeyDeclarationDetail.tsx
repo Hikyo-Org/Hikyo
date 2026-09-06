@@ -1,3 +1,4 @@
+import { useSelfConfig } from '../api/selfConfig.ts';
 import type { KeyRule } from '@hikyo/client';
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { generatePath, Link, useNavigate } from 'react-router';
@@ -129,7 +130,9 @@ export function KeyDeclarationDetail({
   // always safe to show, so it need not be as strict.
   const source = definitions.data?.definitions_source;
   const sourceUntrusted = definitions.isError || definitions.isRefetchError;
-  const editable = definitions.isSuccess && !sourceUntrusted && source === 'db';
+  const system = useSelfConfig();
+  const systemManaged = system.data?.binding?.org_id === refData.org && system.data.binding.project_id === refData.project;
+  const editable = definitions.isSuccess && !sourceUntrusted && source === 'db' && !systemManaged;
   const gitManaged = source === 'git';
 
   return (

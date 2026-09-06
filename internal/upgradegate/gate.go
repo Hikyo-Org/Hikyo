@@ -38,7 +38,7 @@ type Request struct {
 	// CheckConfiguration performs only bounded local configuration validation.
 	// It must start no listeners, workers or provider requests and receives no
 	// datastore capability. Application wiring supplies its candidate checks.
-	CheckConfiguration func(context.Context) error
+	CheckConfiguration ConfigurationCheck
 	AllowMigrations    bool
 	Store              upgrade.Config
 	BundleDirectory    string
@@ -490,17 +490,9 @@ func verifyCatalog(ctx context.Context, session *upgrade.Session, node upgradeco
 	return nil
 }
 
-func candidateHealth(ctx context.Context, session *upgrade.Session, state upgrade.State, root []byte, check func(context.Context) error) error {
+func candidateHealth(ctx context.Context, session *upgrade.Session, state upgrade.State, root []byte, check ConfigurationCheck) error {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	if check != nil {
-		if err := check(ctx); err != nil {
-			return err
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-	}
 	keys, err := session.CandidateKeys(ctx, state)
 	if err != nil {
 		return err
@@ -520,32 +512,24 @@ func candidateHealth(ctx context.Context, session *upgrade.Session, state upgrad
 			}
 		}
 	}
-	return crypto.VerifyExistingHierarchy(ctx, keys, bytes.Clone(root))
+	if err := crypto.VerifyExistingHierarchy(ctx, keys, bytes.Clone(root)); err != nil {
+		return err
+	}
+	return checkExistingConfiguration(ctx, keys, root, check)
 }
 
-func healthyRestart(ctx context.Context, session *upgrade.Session, state upgrade.State, root []byte) error {
+func checkRestartHealth(ctx context.Context, session *upgrade.Session, state upgrade.State, root []byte, mode Mode, check ConfigurationCheck) error {
+	if mode == Migrate {
+		return nil
+	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	keys, err := session.HealthyKeys(ctx, state)
 	if err != nil {
 		return err
 	}
-	return crypto.VerifyExistingHierarchy(ctx, keys, bytes.Clone(root))
-}
-
-func checkRestartHealth(ctx context.Context, session *upgrade.Session, state upgrade.State, root []byte, mode Mode, check func(context.Context) error) error {
-	if mode == Migrate {
-		return nil
+	if err := crypto.VerifyExistingHierarchy(ctx, keys, bytes.Clone(root)); err != nil {
+		return err
 	}
-	if check != nil {
-		checkCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-		defer cancel()
-		if err := check(checkCtx); err != nil {
-			return err
-		}
-		if err := checkCtx.Err(); err != nil {
-			return err
-		}
-	}
-	return healthyRestart(ctx, session, state, root)
+	return checkExistingConfiguration(ctx, keys, root, check)
 }

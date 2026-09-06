@@ -1,4 +1,5 @@
 {{- include "hikyo.server.validate" . -}}
+{{- include "hikyo.rollout.validate" . -}}
 {{- $trustedProxyCIDRs := join "," .Values.network.trustedProxyCIDRs }}
 {{- if and (empty $trustedProxyCIDRs) (empty .Values.tls.existingSecret) }}
 {{- fail "configure tls.existingSecret or network.trustedProxyCIDRs for the non-loopback listener" }}
@@ -21,10 +22,26 @@ spec:
       app.kubernetes.io/instance: {{ .Release.Name }}
   template:
     metadata:
+      {{- if and .Values.rollout.enabled .Values.rollout.enrolled }}
+      annotations:
+        {{- if .Values.rollout.initialDatabaseSource }}
+        hikyo.dev/configuration-database-source: {{ .Values.rollout.initialDatabaseSource | quote }}
+        {{- end }}
+        {{- if .Values.rollout.initialUpgradeSource }}
+        hikyo.dev/configuration-upgrade-source: {{ .Values.rollout.initialUpgradeSource | quote }}
+        hikyo.dev/configuration-upgrade-proof: ""
+        {{- end }}
+        {{- if .Values.rollout.initialRootSource }}
+        hikyo.dev/configuration-root-source: {{ .Values.rollout.initialRootSource | quote }}
+        {{- end }}
+      {{- end }}
       labels:
         app.kubernetes.io/name: {{ include "hikyo.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
+      {{- if and .Values.rollout.enabled .Values.rollout.enrolled }}
+      serviceAccountName: {{ include "hikyo.rollout.name" . }}-server
+      {{- end }}
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       {{- if .Values.ha.enabled }}
       topologySpreadConstraints:
@@ -46,6 +63,38 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       initContainers:
+        {{- if and .Values.rollout.enabled .Values.rollout.enrolled }}
+        - name: rollout-authority-stage
+          image: "{{ .Values.image.repository }}@{{ required "image.digest is required" .Values.image.digest }}"
+          args: ["__hikyo-stage-rollout-authority"]
+          volumeMounts:
+            - name: rollout-authority-source
+              mountPath: /run/hikyo/rollout/authority-source
+              readOnly: true
+            - name: rollout-authority
+              mountPath: /run/hikyo/rollout/authority
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+        {{- range $alias, $source := .Values.rollout.rootSources }}
+        - name: rollout-root-{{ $alias }}
+          image: "{{ $.Values.image.repository }}@{{ required "image.digest is required" $.Values.image.digest }}"
+          args: ["__hikyo-stage-root-key"]
+          volumeMounts:
+            - name: rollout-root-source-{{ $alias }}
+              mountPath: /run/hikyo-root-key-source
+              readOnly: true
+            - name: rollout-root-{{ $alias }}
+              mountPath: /run/hikyo-root-key
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+        {{- end }}
+        {{- end }}
         - name: root-key-stage
           image: "{{ .Values.image.repository }}@{{ required "image.digest is required" .Values.image.digest }}"
           imagePullPolicy: IfNotPresent
@@ -89,11 +138,22 @@ spec:
             - --listen=0.0.0.0:8080
             - --operational-listen=0.0.0.0:8081
             - --root-key-file=/run/hikyo-root-key/root-key
+            {{- if and .Values.rollout.enabled .Values.rollout.enrolled }}
+            - --config-rollout-enrollment=/run/hikyo/rollout/enrollment/enrollment.json
+            - --config-rollout-signing-key=/run/hikyo/rollout/authority/authority.key
+            {{- end }}
             {{- if .Values.tls.existingSecret }}
             - --tls-cert-file=/run/hikyo-tls/tls.crt
             - --tls-key-file=/run/hikyo-tls/tls.key
             {{- end }}
           env:
+            {{- if and .Values.rollout.enabled .Values.rollout.enrolled .Values.rollout.upgradeSources }}
+            {{- $initial := index .Values.rollout.upgradeSources .Values.rollout.initialUpgradeSource }}
+            {{- range $key, $value := (include "hikyo.rollout.upgradeEnvironment" $initial | fromJson) }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- else }}
             - name: HIKYO_UPGRADE_BUNDLE
               value: /run/hikyo-upgrade/bundle
             - name: HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY
@@ -114,18 +174,25 @@ spec:
             - name: HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED
               value: "true"
             {{- end }}
+            {{- end }}
             - name: HIKYO_DB
               valueFrom:
                 secretKeyRef:
                   name: {{ required "database.existingSecret is required" .Values.database.existingSecret }}
                   key: HIKYO_DB
+            {{- if .Values.rollout.enabled }}
+            - name: HIKYO_NODE_ID
+              value: {{ printf "%s-server" (include "hikyo.fullname" .) | quote }}
+            {{- end }}
             {{- if .Values.ha.enabled }}
             - name: HIKYO_HA
               value: "true"
+            {{- if not .Values.rollout.enabled }}
             - name: HIKYO_NODE_ID
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            {{- end }}
             {{- end }}
             - name: HIKYO_UPDATE_CHANNEL
               value: {{ .Values.updates.channel | quote }}
@@ -173,11 +240,42 @@ spec:
               readOnly: true
             - name: upgrade-state
               mountPath: /var/lib/hikyo-upgrade
+            {{- if and .Values.rollout.enabled .Values.rollout.enrolled }}
+            {{- range $alias := .Values.rollout.upgradeStateAliases }}
+            - name: upgrade-state
+              mountPath: {{ printf "/var/lib/hikyo-upgrade/aliases/%s" $alias }}
+              subPath: operator-custody
+            {{- end }}
+            {{- end }}
             - name: root-key
               mountPath: /run/hikyo-root-key
               readOnly: true
             - name: tmp
               mountPath: /tmp
+            {{- if and .Values.rollout.enabled .Values.rollout.enrolled }}
+            - name: rollout-enrollment
+              mountPath: /run/hikyo/rollout/enrollment
+              readOnly: true
+            - name: rollout-authority
+              mountPath: /run/hikyo/rollout/authority
+              readOnly: true
+            - name: rollout-api-token
+              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+              readOnly: true
+            - name: rollout-selection
+              mountPath: /run/hikyo/rollout/selection
+              readOnly: true
+            {{- range $alias, $source := .Values.rollout.databaseSources }}
+            - name: rollout-database-{{ $alias }}
+              mountPath: /run/hikyo/rollout/sources/database/{{ $alias }}
+              readOnly: true
+            {{- end }}
+            {{- range $alias, $source := .Values.rollout.rootSources }}
+            - name: rollout-root-{{ $alias }}
+              mountPath: /run/hikyo/rollout/sources/root/{{ $alias }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
             {{- if .Values.database.tls.existingSecret }}
             - name: database-ca
               mountPath: /run/hikyo-database-ca
@@ -233,6 +331,75 @@ spec:
           emptyDir: {}
         - name: tmp
           emptyDir: {}
+        {{- if and .Values.rollout.enabled .Values.rollout.enrolled }}
+        - name: rollout-enrollment
+          configMap:
+            name: {{ include "hikyo.rollout.name" . }}-enrollment
+        - name: rollout-authority-source
+          secret:
+            secretName: {{ .Values.rollout.authorityExistingSecret }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.rollout.authorityKey }}
+                path: authority.key
+        - name: rollout-authority
+          emptyDir: {}
+        - name: rollout-selection
+          downwardAPI:
+            items:
+              - path: stamp
+                fieldRef:
+                  fieldPath: metadata.annotations['hikyo.dev/configuration-rollout']
+              - path: database-alias
+                fieldRef:
+                  fieldPath: metadata.annotations['hikyo.dev/configuration-database-source']
+              - path: upgrade-proof
+                fieldRef:
+                  fieldPath: metadata.annotations['hikyo.dev/configuration-upgrade-proof']
+              - path: upgrade-alias
+                fieldRef:
+                  fieldPath: metadata.annotations['hikyo.dev/configuration-upgrade-source']
+              - path: root-alias
+                fieldRef:
+                  fieldPath: metadata.annotations['hikyo.dev/configuration-root-source']
+        - name: rollout-api-token
+          projected:
+            defaultMode: 0440
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3600
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+              - downwardAPI:
+                  items:
+                    - path: namespace
+                      fieldRef:
+                        fieldPath: metadata.namespace
+        {{- range $alias, $source := .Values.rollout.databaseSources }}
+        - name: rollout-database-{{ $alias }}
+          secret:
+            secretName: {{ $source.name }}
+            defaultMode: 0440
+            items:
+              - key: {{ $source.key }}
+                path: dsn
+        {{- end }}
+        {{- range $alias, $source := .Values.rollout.rootSources }}
+        - name: rollout-root-source-{{ $alias }}
+          secret:
+            secretName: {{ $source.name }}
+            defaultMode: 0400
+            items:
+              - key: {{ $source.key }}
+                path: root-key
+        - name: rollout-root-{{ $alias }}
+          emptyDir: {}
+        {{- end }}
+        {{- end }}
         {{- if .Values.database.tls.existingSecret }}
         - name: database-ca
           secret:

@@ -79,6 +79,18 @@
   },
   {
     "engine": "postgres",
+    "name": "ClearSelfConfigSeedInputs",
+    "annotation": "instance-scoped",
+    "hash": "d27bb664779449865a5be63f640ebd3c9b55b8aafac377f140c3e54e103fe2b0"
+  },
+  {
+    "engine": "postgres",
+    "name": "CommitSelfConfigTarget",
+    "annotation": "instance-scoped",
+    "hash": "4d75dd188f0589578361bf331ba5d24be0c9b35601e9085fb617e25e93de8aae"
+  },
+  {
+    "engine": "postgres",
     "name": "ConfirmTOTP",
     "annotation": "authn-resolution",
     "hash": "59095ca36fdf72afb548db9b485dfbf9c7ce601731f47058aace861616a2ab2b"
@@ -183,13 +195,43 @@
     "engine": "postgres",
     "name": "CountOrgs",
     "annotation": "instance-scoped",
-    "hash": "146ab1c208714c20693b266ce984012ce516734b5242ee4b55571b549cba5e31"
+    "hash": "7fc2dd344d79809f21d800fcfa4013d63d6148d627181e60196fd20508becac1"
+  },
+  {
+    "engine": "postgres",
+    "name": "CountRecentSelfConfigJobs",
+    "annotation": "instance-scoped",
+    "hash": "3509874cb10071447071f9a86f8036b6198ed23e092cb3f7545448408efaf683"
   },
   {
     "engine": "postgres",
     "name": "CountRemotes",
     "annotation": "instance-scoped",
     "hash": "d5c86aafdea3d0248b03a0b9b2b37bdf25fb8522464d0c62eb27cec9f9b20cc1"
+  },
+  {
+    "engine": "postgres",
+    "name": "CountSelfConfigCompletedGeneration",
+    "annotation": "instance-scoped",
+    "hash": "00a1fa689686ee699b374045f9eaee9ea45ab4a5e395afdcf46b8319b0016e01"
+  },
+  {
+    "engine": "postgres",
+    "name": "CountSelfConfigOpenJobs",
+    "annotation": "instance-scoped",
+    "hash": "3b92f6731db00b5f4d3a2ca226d3585f372a092a2a9f05e21a27c95294a28a29"
+  },
+  {
+    "engine": "postgres",
+    "name": "CountSelfConfigRootFinalizationBlockers",
+    "annotation": "instance-scoped",
+    "hash": "264de9a48675debb7e1a18581ecb616ff587bc5b2301988df334fd7e6ecc2bfb"
+  },
+  {
+    "engine": "postgres",
+    "name": "CountSelfConfigSeedDisagreement",
+    "annotation": "instance-scoped",
+    "hash": "5c4c7bbdc491d7fd146e78b1f4b6594f4c3567065899b999318e6f008c35f5e1"
   },
   {
     "engine": "postgres",
@@ -214,6 +256,12 @@
     "name": "CreateRemote",
     "annotation": "instance-scoped",
     "hash": "1a1b8110c33878fac6d1d02b3259d4696c4083380d4eb58c1cf4df9be4bb3ea1"
+  },
+  {
+    "engine": "postgres",
+    "name": "CreateSelfConfigBinding",
+    "annotation": "instance-scoped",
+    "hash": "6ccb4d6febf6ae248c7435ada48fa40017af5c7c374da550a38d5592629de1f1"
   },
   {
     "engine": "postgres",
@@ -343,6 +391,18 @@
   },
   {
     "engine": "postgres",
+    "name": "DeleteSelfConfigNodes",
+    "annotation": "instance-scoped",
+    "hash": "cb07373acf255a7f1add2c6e5f91a330d807bf68bdb6251ea9c57bad013cb97a"
+  },
+  {
+    "engine": "postgres",
+    "name": "DeleteSelfConfigRetention",
+    "annotation": "instance-scoped",
+    "hash": "f728a0b6aee3d7ec60cb042f078ed305d42e058c76df7a7652a1431f6c668f78"
+  },
+  {
+    "engine": "postgres",
     "name": "DeleteServiceAccount",
     "annotation": "authn-resolution",
     "hash": "7cd3f4595ee158a7741d7e1784a73b625efe167c68cabe8ffbec754839972612"
@@ -451,6 +511,18 @@
   },
   {
     "engine": "postgres",
+    "name": "FenceSelfConfigRestored",
+    "annotation": "instance-scoped",
+    "hash": "5f42a083b9a7a8a2d470afeec7082a0880f7d3deb371dcf3359ecdef4d94443c"
+  },
+  {
+    "engine": "postgres",
+    "name": "FenceSelfConfigTopologyLease",
+    "annotation": "instance-scoped",
+    "hash": "3f038edc925ca2586ef7ef2732d0a0f25f43f80946b2ba32266eb170e9b2b35e"
+  },
+  {
+    "engine": "postgres",
     "name": "GetAccountByID",
     "annotation": "authn-resolution",
     "hash": "f22fcf605ccefe1e4ee90340a474bb91be732a17eb1e45d64b7cd6f994c08cf3"
@@ -556,6 +628,12 @@
     "name": "GetLastPruneSuccess",
     "annotation": "instance-scoped",
     "hash": "c7b306eee3ac685784898bc2e65b0689770d9298de994b4ba77fdeb09ee609d0"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetLatestSelfConfigTopology",
+    "annotation": "instance-scoped",
+    "hash": "2135e12d46536b59fc2560d3d6f6f9d2e90387aca4a37e23f87992c1331cba56"
   },
   {
     "engine": "postgres",
@@ -682,6 +760,48 @@
     "name": "GetSCIMCredentialByVerifier",
     "annotation": "authn-resolution",
     "hash": "8a4ec2b5caca72e1fa21ec5bb175a945bf3df9651ec85b1cb064be2130ddebb0"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetSelfConfigBinding",
+    "annotation": "instance-scoped",
+    "hash": "c38eb055212344ccba20d3f8933efdbbbdf389f4cc5a421aafc9bae07327a243"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetSelfConfigClock",
+    "annotation": "instance-scoped",
+    "hash": "fb837d58102d67a5900b8e69a265b1ed98e00418c8cc25a74fcaad9ef548c354"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetSelfConfigJob",
+    "annotation": "instance-scoped",
+    "hash": "6965a5ac64e25aa974d863924e17b85e189aadf893bb018b67c4d2e6bca391be"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetSelfConfigJobByKey",
+    "annotation": "instance-scoped",
+    "hash": "fe8b98542eea6a1ac13869422c86f790a70829538cd3b6384523c2790fb98bba"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetSelfConfigPreviousRevision",
+    "annotation": "instance-scoped",
+    "hash": "b2b289dd578d0c0353c5bf4ad46a10d226c9132cad4cf68acac606f9a020dd6a"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetSelfConfigRetentionSlot",
+    "annotation": "instance-scoped",
+    "hash": "b22d5d846e97822a2398ec07e374aa6b9213328332299d17a997a7bbb9a5035a"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetSelfConfigRollout",
+    "annotation": "instance-scoped",
+    "hash": "2e4a63f67e25b048d7f3adc53649a2d617e740d061142f35785b4660ca9e0f8a"
   },
   {
     "engine": "postgres",
@@ -877,6 +997,18 @@
   },
   {
     "engine": "postgres",
+    "name": "InsertSelfConfigJob",
+    "annotation": "instance-scoped",
+    "hash": "eeadb2f00b6ed9819430f09cafaa9db0cf9a2deaa0935dff24c9fb0799e03238"
+  },
+  {
+    "engine": "postgres",
+    "name": "InsertSelfConfigRollout",
+    "annotation": "instance-scoped",
+    "hash": "2bc512c5b7c00c3cbec10b98d1fc826fca8d169d2ef6af3e4ae6bb92c533983e"
+  },
+  {
+    "engine": "postgres",
     "name": "InsertServiceAccount",
     "annotation": "authn-resolution",
     "hash": "59d9747badc2c781b4a9637b9f2dac0fe813548887090d1002eed7819c12ada5"
@@ -945,7 +1077,7 @@
     "engine": "postgres",
     "name": "ListAllProjects",
     "annotation": "instance-scoped",
-    "hash": "be5159c9886d81dedcac17808f126b2d858322f74b939e41c48ae90d042e71d3"
+    "hash": "1e878a508c3989d9a174e05b1295f9aa416e8669410a4b3e73217225b8eb8b14"
   },
   {
     "engine": "postgres",
@@ -957,7 +1089,7 @@
     "engine": "postgres",
     "name": "ListEligibleSnapshotPayloads",
     "annotation": "instance-scoped",
-    "hash": "ffe1bb3b997e85603a34f49b2aae9a9d70eeefc917923586349dae67b499d137"
+    "hash": "79d654a024da4d873c76169492e70017e691283405b6efaba19310f8aaf706b8"
   },
   {
     "engine": "postgres",
@@ -999,7 +1131,7 @@
     "engine": "postgres",
     "name": "ListGrantsForPrincipal",
     "annotation": "authn-resolution",
-    "hash": "c91703459f54308af0ba16ccc53fff975691badb06445e4608ba3f3815129164"
+    "hash": "c78c886fa880e349269b4d2fddb2a7c73b78955eeda922bf501d3373f5bf175d"
   },
   {
     "engine": "postgres",
@@ -1083,7 +1215,7 @@
     "engine": "postgres",
     "name": "ListOrgs",
     "annotation": "instance-scoped",
-    "hash": "91cbdac399e1cb40a41409e8b9e4341ce99d84004a6db7a35f0248bbc8516045"
+    "hash": "53b9ce1b26b1e7b4466e21bc53a42b35e8d5d11357a5809b73808367eb9ea0a4"
   },
   {
     "engine": "postgres",
@@ -1138,6 +1270,36 @@
     "name": "ListSamlKeysForReencrypt",
     "annotation": "authn-resolution",
     "hash": "121e73ffd3087370c6bcadd0f6db29145adc9abf72278b115453027300585e96"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListSelfConfigJobs",
+    "annotation": "instance-scoped",
+    "hash": "305412a16bd65412836b6b78c7d347d0e56c328527c325dddfb8dd53b426b996"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListSelfConfigNodes",
+    "annotation": "instance-scoped",
+    "hash": "bc9e3a9d8cbeece93ce0920bdd35aa52ab302fccc0c7e48f752bec8832d6e716"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListSelfConfigParticipants",
+    "annotation": "instance-scoped",
+    "hash": "9a6c0959e9fff08b51f43b2e13c3276cc19262f4bca39d376bd8f26778381ee4"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListSelfConfigRetained",
+    "annotation": "instance-scoped",
+    "hash": "de542fa0c6eb9a8ed14f07c0601027ba409f9c7986c0b21357652c9539272a25"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListSelfConfigSeedInputs",
+    "annotation": "instance-scoped",
+    "hash": "dec0d5280e3d28f232de2ba8afb4240212a07b618048036dede84486b39a599f"
   },
   {
     "engine": "postgres",
@@ -1207,6 +1369,18 @@
   },
   {
     "engine": "postgres",
+    "name": "LockSelfConfigBinding",
+    "annotation": "instance-scoped",
+    "hash": "aef5992f32d2be7883772c9222abe2d5bdb1d5f6a3070117bd583fb51724e2f9"
+  },
+  {
+    "engine": "postgres",
+    "name": "LockSelfConfigMembership",
+    "annotation": "instance-scoped",
+    "hash": "da22cc26bf2bc6c1a311dcd6db8d1741095982f1d9be1666d9d25d5d6d20ffbe"
+  },
+  {
+    "engine": "postgres",
     "name": "LockWorkspaceOrigin",
     "annotation": "authn-resolution",
     "hash": "01aa221ffe0db4d264c976689d7f6843e2e28fe42620bb635895122e07210c35"
@@ -1239,13 +1413,19 @@
     "engine": "postgres",
     "name": "MarkSnapshotCollected",
     "annotation": "instance-scoped",
-    "hash": "7c9adf81e50b93a9195f0c26e073cf926394f24d8b04dafcf41bf3df4f914ab4"
+    "hash": "b51ed9feac2e5a44d6798576f3a757eb84d2bbb03972ec979cd140a4a0c446ae"
   },
   {
     "engine": "postgres",
     "name": "MaxKnownCredentialEpoch",
     "annotation": "authn-resolution",
     "hash": "d6a81ebbace5365c7148826efad827daf672e7b66768db14dc5d25b565c4afee"
+  },
+  {
+    "engine": "postgres",
+    "name": "NextSelfConfigRolloutSequence",
+    "annotation": "instance-scoped",
+    "hash": "142b9b25c38d010c00fd479d5d7e745140a8bb81c872e40eb2f1c7c7e50c1065"
   },
   {
     "engine": "postgres",
@@ -1405,6 +1585,24 @@
   },
   {
     "engine": "postgres",
+    "name": "PutSelfConfigNode",
+    "annotation": "instance-scoped",
+    "hash": "3391c221f943f1719fedecb0ec91918013b339ad533ea834496d40492609f698"
+  },
+  {
+    "engine": "postgres",
+    "name": "PutSelfConfigSeedAttestation",
+    "annotation": "instance-scoped",
+    "hash": "f6538fa1358e3cbc97c336c9c3fe27b59a4757e7f1d6a49d7072159aa66b2539"
+  },
+  {
+    "engine": "postgres",
+    "name": "PutSelfConfigSeedInput",
+    "annotation": "instance-scoped",
+    "hash": "744b19fc468e312bbb433291a31e618611d7ec774e12293a341d4021b2ea1f4e"
+  },
+  {
+    "engine": "postgres",
     "name": "ReactivateFederatedBinding",
     "annotation": "authn-resolution",
     "hash": "10ac6d7bbf58375e23ade4d244a983c5e4fcfef05c118afd0033fce9fd6b2aa3"
@@ -1429,9 +1627,21 @@
   },
   {
     "engine": "postgres",
+    "name": "RecoverSelfConfigTarget",
+    "annotation": "instance-scoped",
+    "hash": "abe3c6b5fb999963185807189dea3411228ee67085b905a02540cbe94b2aea48"
+  },
+  {
+    "engine": "postgres",
     "name": "RecoveryListGrantsBeforePrivacy",
     "annotation": "authn-resolution",
     "hash": "19ec19fa1ddf22b1bc683d9e7f725041834b942cf8cd692be0e8579215e968de"
+  },
+  {
+    "engine": "postgres",
+    "name": "RecoveryListGrantsBeforeSelfConfig",
+    "annotation": "authn-resolution",
+    "hash": "c91703459f54308af0ba16ccc53fff975691badb06445e4608ba3f3815129164"
   },
   {
     "engine": "postgres",
@@ -1609,6 +1819,18 @@
   },
   {
     "engine": "postgres",
+    "name": "SetSelfConfigPrevious",
+    "annotation": "instance-scoped",
+    "hash": "cfa0600e1464ceadab9c8ec3e9330e7b36ccddf779f4505548fae97155b3d2a1"
+  },
+  {
+    "engine": "postgres",
+    "name": "SetSelfConfigRetention",
+    "annotation": "instance-scoped",
+    "hash": "73e0a3072fa24cd878b7b853ac8ba3fd257eba3086c3db4f7597b5e7d0b9f29d"
+  },
+  {
+    "engine": "postgres",
     "name": "SetWebAuthnUserHandle",
     "annotation": "authn-resolution",
     "hash": "f6e17867c0d902e40805f567c0967893ff46ac2be926b014218a48d895efc36f"
@@ -1696,6 +1918,18 @@
     "name": "UpdateSAMLProviderCAS",
     "annotation": "authn-resolution",
     "hash": "27b152cf5c55d12f514084806822630971b0e7f5faae5603cd4fcc2737604ace"
+  },
+  {
+    "engine": "postgres",
+    "name": "UpdateSelfConfigJob",
+    "annotation": "instance-scoped",
+    "hash": "9ebcfa7f6b507d5efb132d6109d6ca6eef20c2772d527eeae57dfeaf28f11a54"
+  },
+  {
+    "engine": "postgres",
+    "name": "UpdateSelfConfigRollout",
+    "annotation": "instance-scoped",
+    "hash": "4b23597f5cfc5d4fa2d483a4d9dfe9016efc240d557f7f00d4c059f9d8d8668c"
   },
   {
     "engine": "postgres",
@@ -1798,6 +2032,18 @@
     "name": "ClampIndefiniteCredentials",
     "annotation": "authn-resolution",
     "hash": "04d40c04f5f17d79bda3a4f3da532ad76a8b61eef44aeb116ee61342cb4ce005"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ClearSelfConfigSeedInputs",
+    "annotation": "instance-scoped",
+    "hash": "d27bb664779449865a5be63f640ebd3c9b55b8aafac377f140c3e54e103fe2b0"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CommitSelfConfigTarget",
+    "annotation": "instance-scoped",
+    "hash": "a2506bbabd6e6b899f9c26322ec5a22dca4d9d9ff871e70a3191aaf9a68c1542"
   },
   {
     "engine": "sqlite",
@@ -1905,13 +2151,43 @@
     "engine": "sqlite",
     "name": "CountOrgs",
     "annotation": "instance-scoped",
-    "hash": "146ab1c208714c20693b266ce984012ce516734b5242ee4b55571b549cba5e31"
+    "hash": "7fc2dd344d79809f21d800fcfa4013d63d6148d627181e60196fd20508becac1"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CountRecentSelfConfigJobs",
+    "annotation": "instance-scoped",
+    "hash": "3509874cb10071447071f9a86f8036b6198ed23e092cb3f7545448408efaf683"
   },
   {
     "engine": "sqlite",
     "name": "CountRemotes",
     "annotation": "instance-scoped",
     "hash": "d5c86aafdea3d0248b03a0b9b2b37bdf25fb8522464d0c62eb27cec9f9b20cc1"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CountSelfConfigCompletedGeneration",
+    "annotation": "instance-scoped",
+    "hash": "00a1fa689686ee699b374045f9eaee9ea45ab4a5e395afdcf46b8319b0016e01"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CountSelfConfigOpenJobs",
+    "annotation": "instance-scoped",
+    "hash": "3b92f6731db00b5f4d3a2ca226d3585f372a092a2a9f05e21a27c95294a28a29"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CountSelfConfigRootFinalizationBlockers",
+    "annotation": "instance-scoped",
+    "hash": "264de9a48675debb7e1a18581ecb616ff587bc5b2301988df334fd7e6ecc2bfb"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CountSelfConfigSeedDisagreement",
+    "annotation": "instance-scoped",
+    "hash": "5c4c7bbdc491d7fd146e78b1f4b6594f4c3567065899b999318e6f008c35f5e1"
   },
   {
     "engine": "sqlite",
@@ -1936,6 +2212,12 @@
     "name": "CreateRemote",
     "annotation": "instance-scoped",
     "hash": "b49c203a3c38607420b2ec4dc18592cd9f172ab7863f56c08a6ff6b90d898dae"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CreateSelfConfigBinding",
+    "annotation": "instance-scoped",
+    "hash": "e394a77de0706af7a2f01bd8061fa08f1f04045124f155bbc4ac8bc657dee696"
   },
   {
     "engine": "sqlite",
@@ -2065,6 +2347,18 @@
   },
   {
     "engine": "sqlite",
+    "name": "DeleteSelfConfigNodes",
+    "annotation": "instance-scoped",
+    "hash": "cb07373acf255a7f1add2c6e5f91a330d807bf68bdb6251ea9c57bad013cb97a"
+  },
+  {
+    "engine": "sqlite",
+    "name": "DeleteSelfConfigRetention",
+    "annotation": "instance-scoped",
+    "hash": "f728a0b6aee3d7ec60cb042f078ed305d42e058c76df7a7652a1431f6c668f78"
+  },
+  {
+    "engine": "sqlite",
     "name": "DeleteServiceAccount",
     "annotation": "authn-resolution",
     "hash": "0560344f9468a47c84241e050f51dc8a93af6816c87059c93d1250a959c53a8b"
@@ -2173,6 +2467,18 @@
   },
   {
     "engine": "sqlite",
+    "name": "FenceSelfConfigRestored",
+    "annotation": "instance-scoped",
+    "hash": "396c2217d68f031b8a3ffdb0911050ee2d96336f7c065a4d0a59b582e007d97b"
+  },
+  {
+    "engine": "sqlite",
+    "name": "FenceSelfConfigTopologyLease",
+    "annotation": "instance-scoped",
+    "hash": "3f038edc925ca2586ef7ef2732d0a0f25f43f80946b2ba32266eb170e9b2b35e"
+  },
+  {
+    "engine": "sqlite",
     "name": "GetAccountByID",
     "annotation": "authn-resolution",
     "hash": "a2dc8f82948bab44902e2554f555f5d15a179f7f5acac627f9469b7e18ec6f63"
@@ -2278,6 +2584,12 @@
     "name": "GetLastPruneSuccess",
     "annotation": "instance-scoped",
     "hash": "c7b306eee3ac685784898bc2e65b0689770d9298de994b4ba77fdeb09ee609d0"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetLatestSelfConfigTopology",
+    "annotation": "instance-scoped",
+    "hash": "f6bb795ab6c2fc472a0b60402bc28201f479b8418f62341360203644ada50a8d"
   },
   {
     "engine": "sqlite",
@@ -2404,6 +2716,48 @@
     "name": "GetSCIMCredentialByVerifier",
     "annotation": "authn-resolution",
     "hash": "b52ec134279a86d5bc767790425f2d54768cef99ca11232e4ee4bf0ebe28d037"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetSelfConfigBinding",
+    "annotation": "instance-scoped",
+    "hash": "c38eb055212344ccba20d3f8933efdbbbdf389f4cc5a421aafc9bae07327a243"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetSelfConfigClock",
+    "annotation": "instance-scoped",
+    "hash": "b49c36bf873f28655e623c4c8c67f8a845c18f61693899951b066efb7abc37ba"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetSelfConfigJob",
+    "annotation": "instance-scoped",
+    "hash": "6965a5ac64e25aa974d863924e17b85e189aadf893bb018b67c4d2e6bca391be"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetSelfConfigJobByKey",
+    "annotation": "instance-scoped",
+    "hash": "fe8b98542eea6a1ac13869422c86f790a70829538cd3b6384523c2790fb98bba"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetSelfConfigPreviousRevision",
+    "annotation": "instance-scoped",
+    "hash": "b2b289dd578d0c0353c5bf4ad46a10d226c9132cad4cf68acac606f9a020dd6a"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetSelfConfigRetentionSlot",
+    "annotation": "instance-scoped",
+    "hash": "b22d5d846e97822a2398ec07e374aa6b9213328332299d17a997a7bbb9a5035a"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetSelfConfigRollout",
+    "annotation": "instance-scoped",
+    "hash": "2e4a63f67e25b048d7f3adc53649a2d617e740d061142f35785b4660ca9e0f8a"
   },
   {
     "engine": "sqlite",
@@ -2599,6 +2953,18 @@
   },
   {
     "engine": "sqlite",
+    "name": "InsertSelfConfigJob",
+    "annotation": "instance-scoped",
+    "hash": "065c9e08cf19ed1613c8b498ccf8522da8c3ded5e468fc4838a3dc3b04beec8c"
+  },
+  {
+    "engine": "sqlite",
+    "name": "InsertSelfConfigRollout",
+    "annotation": "instance-scoped",
+    "hash": "2bc512c5b7c00c3cbec10b98d1fc826fca8d169d2ef6af3e4ae6bb92c533983e"
+  },
+  {
+    "engine": "sqlite",
     "name": "InsertServiceAccount",
     "annotation": "authn-resolution",
     "hash": "baf1d749412358d1e0886249b0fb597222c73c1826e66857f95a1809addec5e2"
@@ -2667,7 +3033,7 @@
     "engine": "sqlite",
     "name": "ListAllProjects",
     "annotation": "instance-scoped",
-    "hash": "be5159c9886d81dedcac17808f126b2d858322f74b939e41c48ae90d042e71d3"
+    "hash": "1e878a508c3989d9a174e05b1295f9aa416e8669410a4b3e73217225b8eb8b14"
   },
   {
     "engine": "sqlite",
@@ -2679,7 +3045,7 @@
     "engine": "sqlite",
     "name": "ListEligibleSnapshotPayloads",
     "annotation": "instance-scoped",
-    "hash": "3a320b2b268ab11d74877b4c73c5ac2dfba3ecb320c977aff2ab577b42911c66"
+    "hash": "34b8d37d570af22e70862dc4f5d51f4ca3dc014889d9774e714d52ee11bd9ed5"
   },
   {
     "engine": "sqlite",
@@ -2721,7 +3087,7 @@
     "engine": "sqlite",
     "name": "ListGrantsForPrincipal",
     "annotation": "authn-resolution",
-    "hash": "cd384604164fdafe0ff2563899c0c6815c6d39a418f9dada2a847a185e6526ad"
+    "hash": "12f8885d414a5669fceb4dda190cc9b04f88be10f96d956b50c5e9c12cd181e1"
   },
   {
     "engine": "sqlite",
@@ -2805,7 +3171,7 @@
     "engine": "sqlite",
     "name": "ListOrgs",
     "annotation": "instance-scoped",
-    "hash": "91cbdac399e1cb40a41409e8b9e4341ce99d84004a6db7a35f0248bbc8516045"
+    "hash": "53b9ce1b26b1e7b4466e21bc53a42b35e8d5d11357a5809b73808367eb9ea0a4"
   },
   {
     "engine": "sqlite",
@@ -2860,6 +3226,36 @@
     "name": "ListSamlKeysForReencrypt",
     "annotation": "authn-resolution",
     "hash": "c5b409d365b37093c0f03c3535f01735530a1cb15eea1e03d9722d3345936623"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListSelfConfigJobs",
+    "annotation": "instance-scoped",
+    "hash": "305412a16bd65412836b6b78c7d347d0e56c328527c325dddfb8dd53b426b996"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListSelfConfigNodes",
+    "annotation": "instance-scoped",
+    "hash": "bc9e3a9d8cbeece93ce0920bdd35aa52ab302fccc0c7e48f752bec8832d6e716"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListSelfConfigParticipants",
+    "annotation": "instance-scoped",
+    "hash": "9a6c0959e9fff08b51f43b2e13c3276cc19262f4bca39d376bd8f26778381ee4"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListSelfConfigRetained",
+    "annotation": "instance-scoped",
+    "hash": "de542fa0c6eb9a8ed14f07c0601027ba409f9c7986c0b21357652c9539272a25"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListSelfConfigSeedInputs",
+    "annotation": "instance-scoped",
+    "hash": "dec0d5280e3d28f232de2ba8afb4240212a07b618048036dede84486b39a599f"
   },
   {
     "engine": "sqlite",
@@ -2929,6 +3325,18 @@
   },
   {
     "engine": "sqlite",
+    "name": "LockSelfConfigBinding",
+    "annotation": "instance-scoped",
+    "hash": "c38eb055212344ccba20d3f8933efdbbbdf389f4cc5a421aafc9bae07327a243"
+  },
+  {
+    "engine": "sqlite",
+    "name": "LockSelfConfigMembership",
+    "annotation": "instance-scoped",
+    "hash": "e004ebd5b5532a4b85984a62f8ad48a81aa3460c1ca07701f386135d72cdecf5"
+  },
+  {
+    "engine": "sqlite",
     "name": "LockWorkspaceOrigin",
     "annotation": "authn-resolution",
     "hash": "c448db647c0f9b2cf010cffa25660e1e2b3f8e2ff642940ce386894466137959"
@@ -2961,13 +3369,19 @@
     "engine": "sqlite",
     "name": "MarkSnapshotCollected",
     "annotation": "instance-scoped",
-    "hash": "9544549f0d10aa85486d69b552911667b6db523d5618fc26b3b510327c690868"
+    "hash": "76afd957b7f4f706dc931a1dd07ccf1120a3f21a064d302636a07c64e1472dc8"
   },
   {
     "engine": "sqlite",
     "name": "MaxKnownCredentialEpoch",
     "annotation": "authn-resolution",
     "hash": "927bb4a7a50553e3118b066cb53bcf1299685743daeaaf6c5768d55c6ee68d8f"
+  },
+  {
+    "engine": "sqlite",
+    "name": "NextSelfConfigRolloutSequence",
+    "annotation": "instance-scoped",
+    "hash": "142b9b25c38d010c00fd479d5d7e745140a8bb81c872e40eb2f1c7c7e50c1065"
   },
   {
     "engine": "sqlite",
@@ -3127,6 +3541,24 @@
   },
   {
     "engine": "sqlite",
+    "name": "PutSelfConfigNode",
+    "annotation": "instance-scoped",
+    "hash": "3391c221f943f1719fedecb0ec91918013b339ad533ea834496d40492609f698"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PutSelfConfigSeedAttestation",
+    "annotation": "instance-scoped",
+    "hash": "f6538fa1358e3cbc97c336c9c3fe27b59a4757e7f1d6a49d7072159aa66b2539"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PutSelfConfigSeedInput",
+    "annotation": "instance-scoped",
+    "hash": "744b19fc468e312bbb433291a31e618611d7ec774e12293a341d4021b2ea1f4e"
+  },
+  {
+    "engine": "sqlite",
     "name": "ReactivateFederatedBinding",
     "annotation": "authn-resolution",
     "hash": "ac75916135c4754e20f2443397e125f88862e82ca8bcb254c8fb999a90b9cb8e"
@@ -3151,9 +3583,21 @@
   },
   {
     "engine": "sqlite",
+    "name": "RecoverSelfConfigTarget",
+    "annotation": "instance-scoped",
+    "hash": "b25d36162a5a3a5df61ca425079a8408cfd0c5c84e3fe471ba8beb292a5eaba1"
+  },
+  {
+    "engine": "sqlite",
     "name": "RecoveryListGrantsBeforePrivacy",
     "annotation": "authn-resolution",
     "hash": "19ec19fa1ddf22b1bc683d9e7f725041834b942cf8cd692be0e8579215e968de"
+  },
+  {
+    "engine": "sqlite",
+    "name": "RecoveryListGrantsBeforeSelfConfig",
+    "annotation": "authn-resolution",
+    "hash": "cd384604164fdafe0ff2563899c0c6815c6d39a418f9dada2a847a185e6526ad"
   },
   {
     "engine": "sqlite",
@@ -3331,6 +3775,18 @@
   },
   {
     "engine": "sqlite",
+    "name": "SetSelfConfigPrevious",
+    "annotation": "instance-scoped",
+    "hash": "cfa0600e1464ceadab9c8ec3e9330e7b36ccddf779f4505548fae97155b3d2a1"
+  },
+  {
+    "engine": "sqlite",
+    "name": "SetSelfConfigRetention",
+    "annotation": "instance-scoped",
+    "hash": "73e0a3072fa24cd878b7b853ac8ba3fd257eba3086c3db4f7597b5e7d0b9f29d"
+  },
+  {
+    "engine": "sqlite",
     "name": "SetWebAuthnUserHandle",
     "annotation": "authn-resolution",
     "hash": "e9cb27a19d04f2aa166d07dd84c3db52e274c8507ab774d6728de4f267b945c3"
@@ -3418,6 +3874,18 @@
     "name": "UpdateSAMLProviderCAS",
     "annotation": "authn-resolution",
     "hash": "d061f9058bee068f5994e147f82ab3b9c36661b4fbbd4f7b3ceb9b6217392904"
+  },
+  {
+    "engine": "sqlite",
+    "name": "UpdateSelfConfigJob",
+    "annotation": "instance-scoped",
+    "hash": "9ebcfa7f6b507d5efb132d6109d6ca6eef20c2772d527eeae57dfeaf28f11a54"
+  },
+  {
+    "engine": "sqlite",
+    "name": "UpdateSelfConfigRollout",
+    "annotation": "instance-scoped",
+    "hash": "4b23597f5cfc5d4fa2d483a4d9dfe9016efc240d557f7f00d4c059f9d8d8668c"
   },
   {
     "engine": "sqlite",

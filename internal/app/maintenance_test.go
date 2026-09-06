@@ -24,7 +24,7 @@ func TestRestoreRequiredRestartExposesOnlyOperationalHealth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !srv.Maintenance || srv.Addr != "" || srv.publicLn != nil || srv.db != nil || srv.keyring != nil || srv.scheduler != nil || srv.adapterWorker != nil || srv.dynamicWorker != nil || srv.updateReconciler != nil {
+	if !srv.Maintenance || srv.Addr != "" || srv.publicLn != nil || srv.db != nil || srv.keyring != nil || srv.owner != nil || srv.selfConfig != nil {
 		srv.Close()
 		t.Fatal("maintenance boot acquired a tenant-serving resource")
 	}

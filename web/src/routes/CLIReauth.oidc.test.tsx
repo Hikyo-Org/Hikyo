@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   providerAvailable: true,
   provider: { kind: 'oidc', slug: 'strict', display_name: 'Corporate IdP' },
   methods: { isError: false, refetch: vi.fn() },
+  selfConfigPlan: '',
 }));
 
 vi.mock('../api/cliReauth.ts', () => ({
@@ -50,7 +51,8 @@ async function renderTransaction(environments: Array<{
 }>): Promise<{ container: HTMLElement; unmount: () => Promise<void> }> {
   mocks.load.mockResolvedValue({
     state: 'txn-195',
-    purpose: 'reveal',
+    purpose: mocks.selfConfigPlan === '' ? 'reveal' : 'self-config',
+    self_config: mocks.selfConfigPlan === '' ? undefined : { action: 'apply', owner_instance_id: 'instance_local', revision: 3, expected_generation: 7, schema_version: 1, to: '', preview_token: '', confirm_restored_credentials: false, plan_digest: mocks.selfConfigPlan },
     operation: 'value.reveal',
     environments,
     key_ids: ['key-production'],
@@ -84,9 +86,20 @@ beforeEach(() => {
   mocks.methods.refetch.mockReset();
   mocks.providerAvailable = true;
   mocks.methods.isError = false;
+  mocks.selfConfigPlan = '';
 });
 
 describe('CLI OIDC disclosure handoff', () => {
+  it('displays the exact controlled rollout digest in the CLI authorization handoff', async () => {
+    mocks.selfConfigPlan = 'b'.repeat(64);
+    const view = await renderTransaction([]);
+    try {
+      expect(view.container.textContent).toContain('Controlled rollout');
+      expect(view.container.textContent).toContain(mocks.selfConfigPlan);
+      expect(view.container.textContent).toContain('generation 7');
+      expect(view.container.textContent).toContain('revision r3');
+    } finally { await view.unmount(); }
+  });
   it('renders the loading state inside the same card shell as the loaded page', async () => {
     mocks.authStatus = 'checking';
     try {

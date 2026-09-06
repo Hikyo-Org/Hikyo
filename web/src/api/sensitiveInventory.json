@@ -1,5 +1,5 @@
 {
-  "review": "See private-client-lifetime.html for input/result categories, uncached operations and local state ownership. Every changed mutation-capable module requires renewed sensitivity review.",
+  "review": "See private-client-lifetime.html for input/result categories, uncached operations and local state ownership. Every changed mutation-capable module requires renewed sensitivity review. Self-configuration preparation and rollout review retain only revision, generation, request ID and plan digest metadata; factor codes remain in sensitive local state and factor responses bypass mutation caches.",
   "sources": {
     "api/access.ts": "09c2ca1331bf28e5ff831c05b5aeac48692887d470ac9c97956e7b3cc5992f0e",
     "api/account.ts": "c8d8673aa12cfad4182ece141e67856a1057b7642ed4c674c705527884c86a84",
@@ -18,16 +18,17 @@
     "api/revisionDiff.ts": "5dca7d0ddb63c8832d7507eb62ecc1ea7b49080a72a329ad38043e342017d21f",
     "api/samlProviders.ts": "d0079f3a6e1b85a6fa36b78c433ec2e8307bf9bade861eb2df20b9b202e860ac",
     "api/scim.ts": "b4858db3cae9c346b56372862801e87aaaea33c9fd93b741ed02a512f0c33248",
+    "api/selfConfig.ts": "2bedf96c857e37ea5975e624a0e44d100a39d5c7c576e497625cff90a8f4c046",
     "api/sensitiveMutation.ts": "5a585ae0e42073f165a4356e329dc84336c0bc5115d681e7e6154f3091fe983c",
     "api/session.ts": "76a8a2dc57ae817feb5cfdccfcc3d86f3b13fb785d2b3b28d3bbbf27fe5e55c5",
     "api/settings.ts": "8db8611b316f062b29a4fe61103ec25ce703455bc966079a9e78db8fa96fa61e",
     "api/stepup.ts": "1252b83784fccbc138dfa3bb08b1f073c768fd3581ae345c6812dfb5d8613be3",
     "api/updates.ts": "170c5f62a46a23aef03dc088f478f4126b2950b950fda7854ea351221b56d0e5",
     "api/values.ts": "90360adc1dcd66dcc4a88c3321e2ee80927c37a4b53d889e78962bf076225f3f",
-    "routes/CLIReauth.tsx": "342e2da43c717dfa9a13e7b0413db60e9752746daeae7d4508626f4743841f7b",
+    "routes/CLIReauth.tsx": "3609e90a15f1a686447a30e68d61822e243cdbf0f0dab62e4b49ab2d78fdaaa7",
     "routes/EstablishCredential.tsx": "9552a6feb4bbfffa7ec510de9cca6d2d483838ed1a0317a21513c9628fb0ad08",
     "routes/HistoryDrawer.tsx": "fc39b7ae0b0f60352a8eab879cace6ceb739dd90fce5d6cf3f6f1284320d4858",
-    "routes/InstanceAdmin.tsx": "3113315fcc47f1c75bee5d5a6bf69c868858134136d60a2ffeadf03d4834bd2d",
+    "routes/InstanceAdmin.tsx": "db87df4b5255a112fc4aae15ffa21c78b9e77aae628ed3d771fbe9e5ea644751",
     "routes/Login.tsx": "aa8ffa9f6fb1f5a01f8e5e90673cc065ccb8807df8d0752de08f91778870f10c",
     "routes/WorkspaceApprove.tsx": "8e91e8afa4d9f2823674c17c28eb95222dcb8997f829b44ca25f490d279f955f"
   }

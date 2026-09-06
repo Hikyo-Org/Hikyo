@@ -301,6 +301,8 @@ func retentionAppConfig(t *testing.T, engine store.Engine) *config.Config {
 		Argon2MemoryKiB: crypto.PasswordFloor.MemoryKiB,
 		Argon2Time:      crypto.PasswordFloor.Time, Argon2Parallelism: crypto.PasswordFloor.Parallelism,
 		AdmissionBudgetMiB: 272, DevAdmissionPerIPPerMinute: 100,
+		AuditAccessRetainDays: 90, AuditSecurityRetainDays: 365,
+		BackupRTOTarget: config.DefaultBackupRTOTarget,
 	}
 }
 

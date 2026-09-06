@@ -29,7 +29,9 @@ WHERE org_id = ? AND project_id = ? AND id = ?;
 -- restore_epoch = 0, which every principal's default already satisfies.
 -- hikyo:authn-resolution
 -- name: ListGrantsForPrincipal :many
-SELECT g.capability, g.org_id, g.project_id, g.env_id FROM grants AS g
+SELECT g.capability, g.org_id, g.project_id, g.env_id,
+  CAST(COALESCE((SELECT org_id FROM self_config_binding WHERE id = 1), '') AS TEXT) AS self_config_org_id
+FROM grants AS g
 JOIN principals AS p ON p.id = g.principal_id
 WHERE g.principal_id = ?
   AND p.privacy_state = 'active'
@@ -728,3 +730,13 @@ SELECT id, client_secret, dek_version, row_version FROM oidc_providers WHERE id 
 -- hikyo:authn-resolution
 -- name: ReencryptOidcProvider :execrows
 UPDATE oidc_providers SET client_secret=sqlc.arg(ct), dek_version=sqlc.arg(dek_version), row_version=row_version+1 WHERE id=sqlc.arg(id) AND row_version=sqlc.arg(row_version);
+
+
+-- Verified source schema 47 retains privacy and restore reconciliation gates.
+-- hikyo:authn-resolution
+-- name: RecoveryListGrantsBeforeSelfConfig :many
+SELECT g.capability, g.org_id, g.project_id, g.env_id FROM grants AS g
+JOIN principals AS p ON p.id = g.principal_id
+WHERE g.principal_id = ?
+  AND p.privacy_state = 'active'
+  AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1);

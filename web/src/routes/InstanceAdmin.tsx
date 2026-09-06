@@ -120,6 +120,7 @@ export function InstanceAdmin() {
       have their own surface.
     </p>
     <JumpIndex sections={[
+      { id: 'instance-configuration', label: 'Hikyo configuration' },
       { id: 'instance-orgs', label: 'Organisations' },
       { id: 'instance-members', label: 'Members' },
       { id: 'instance-settings', label: 'Policy' },
@@ -175,6 +176,8 @@ export function InstanceAdmin() {
       </div>
       <p className="settings-note">Entry point only: granting, revoking and inspection live on the members surface.</p>
     </Panel>
+
+    <Panel id="instance-configuration" title="Hikyo configuration"><p>Edit mail and notification settings in Hikyo’s protected project, then apply a published revision without restarting.</p><Link className="btn btn--primary" to={surfaceById('instance-config').path}>Manage Hikyo configuration</Link></Panel>
 
     <CredentialPolicyPanel query={policy} onDone={ok} onFailure={report} />
 

@@ -168,6 +168,20 @@ func runFormulaMatrix(t *testing.T, db *store.DB) {
 
 	for _, plan := range plans {
 		t.Run(string(plan.op), func(t *testing.T) {
+			if plan.op == authz.OpSelfConfigApply || plan.op == authz.OpSelfConfigTest {
+				// These operations address the bound system environment only.
+				// Mark this plan's existing chain without protecting the chains
+				// used by the independent ordinary-operation plans.
+				execRaw(t, db, fmt.Sprintf(`INSERT INTO snapshots
+     (id, org_id, project_id, environment_id, revision, schema_revision, published_by, published_at)
+     VALUES ('snp_matrix_self_config', '%s', '%s', '%s', 1, 1, 'matrix-admin', %s)`, orgA, prjA1, envA1, ts))
+				defer execRaw(t, db, "DELETE FROM snapshots WHERE id = 'snp_matrix_self_config'")
+				execRaw(t, db, fmt.Sprintf(`INSERT INTO self_config_binding
+					(id, owner_instance_id, adoption_key, adopted_by, org_id, project_id, environment_id, schema_version, generation, desired_revision, desired_snapshot_id, incarnation, created_at, updated_at)
+					SELECT 1, 'matrix-owner', 'matrix-adoption', 'matrix-admin', org_id, project_id, environment_id, 1, 1, revision, id, 'matrix-incarnation', %s, %s
+					FROM snapshots WHERE environment_id = '%s' ORDER BY revision DESC LIMIT 1`, ts, ts, envA1))
+				defer execRaw(t, db, "DELETE FROM self_config_binding")
+			}
 			for _, c := range plan.cases {
 				t.Run(c.name, func(t *testing.T) {
 					principal := seedMatrixPrincipal(t, db, string(plan.op)+"/"+c.name, c.grants)

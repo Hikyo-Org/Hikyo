@@ -12,6 +12,11 @@ the Secret through `envFrom`, `valueFrom`, or a volume. Environment variables
 change only after a pod restart. Normal Secret volumes update eventually through
 the kubelet; `subPath` mounts never update.
 
+To manage Hikyo's own bootstrap sources, use the separate
+[configuration rollout executor](/docs/configuration-rollouts/). It uses an
+administrator-authorized control path and does not grant the HikyoSecret
+operator access to the protected instance project.
+
 > **K3s: encrypt native Secrets at rest**
 >
 > Synced values land in native Kubernetes Secrets. K3s stores them in plaintext

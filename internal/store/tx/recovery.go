@@ -17,7 +17,7 @@ func RecoveryRead(ctx context.Context, db *store.RecoveryDB, fn ReadFn) error {
 	if err != nil {
 		return err
 	}
-	historical := version < 47
+	historical := version < 50
 	return retryLoop(ctx, db.Engine(), func(ctx context.Context) error {
 		tok := authz.NewTxToken()
 		defer tok.Invalidate()
@@ -29,7 +29,7 @@ func RecoveryRead(ctx context.Context, db *store.RecoveryDB, fn ReadFn) error {
 			defer tx.Rollback(ctx)
 			resolver := authn.NewPG(tx)
 			if historical {
-				resolver = authn.NewHistoricalRecoveryPG(tx)
+				resolver = authn.NewHistoricalRecoveryPG(tx, version)
 			}
 			az := authz.NewTxAuthorizer(resolver, tok)
 			outcome := fn(ctx, store.PGTxReadRepos(tx, tok), az)
@@ -47,7 +47,7 @@ func RecoveryRead(ctx context.Context, db *store.RecoveryDB, fn ReadFn) error {
 		defer tx.Rollback()
 		resolver := authn.NewSQLite(tx)
 		if historical {
-			resolver = authn.NewHistoricalRecoverySQLite(tx)
+			resolver = authn.NewHistoricalRecoverySQLite(tx, version)
 		}
 		az := authz.NewTxAuthorizer(resolver, tok)
 		outcome := fn(ctx, store.SQLiteTxReadRepos(tx, tok), az)
@@ -64,7 +64,7 @@ func RecoveryWrite(ctx context.Context, db *store.RecoveryDB, fn WriteFn) error 
 	if err != nil {
 		return err
 	}
-	historical := version < 47
+	historical := version < 50
 	return retryLoop(ctx, db.Engine(), func(ctx context.Context) error {
 		tok := authz.NewTxToken()
 		defer tok.Invalidate()
@@ -76,7 +76,7 @@ func RecoveryWrite(ctx context.Context, db *store.RecoveryDB, fn WriteFn) error 
 			defer tx.Rollback(ctx)
 			resolver := authn.NewPG(tx)
 			if historical {
-				resolver = authn.NewHistoricalRecoveryPG(tx)
+				resolver = authn.NewHistoricalRecoveryPG(tx, version)
 			}
 			az := authz.NewTxAuthorizer(resolver, tok)
 			outcome := fn(ctx, store.PGTxRepos(tx, tok), az)
@@ -94,7 +94,7 @@ func RecoveryWrite(ctx context.Context, db *store.RecoveryDB, fn WriteFn) error 
 		defer tx.Rollback()
 		resolver := authn.NewSQLite(tx)
 		if historical {
-			resolver = authn.NewHistoricalRecoverySQLite(tx)
+			resolver = authn.NewHistoricalRecoverySQLite(tx, version)
 		}
 		az := authz.NewTxAuthorizer(resolver, tok)
 		outcome := fn(ctx, store.SQLiteTxRepos(tx, tok), az)

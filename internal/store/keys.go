@@ -52,6 +52,7 @@ type KeyReader interface {
 // transaction — the fence that will serialize key creation against master
 // rotation (encryption-model ADR § Rotation; the rotation operations land later).
 type KeyRepo interface {
+	InsertInitialProjectDEK(ctx context.Context, pf authz.Proof, key crypto.WrappedKey) error
 	KeyReader
 	AcquireHierarchyGeneration(ctx context.Context, pf authz.Proof) error
 	InsertMaster(ctx context.Context, pf authz.Proof, k crypto.WrappedKey) error
@@ -95,9 +96,11 @@ type KeyRepo interface {
 	// exists — a prepare while one is already pending is the four-way matrix the
 	// ADR refuses.
 	RootKeyRotatePrepare(ctx context.Context, pf authz.Proof, newWrapper crypto.WrappedKey) error
+	AssertRootKeyEpoch(context.Context, authz.Proof, uint32) error
 	// RootKeyRotateFinalize retires the old-epoch wrapper and returns the new
 	// active epoch. It refuses (crypto.ErrNotDualWrapped) when the master is not
-	// dual-wrapped, and ErrRotationSuperseded when a concurrent finalize won.
+	// dual-wrapped, ErrRotationSuperseded when a concurrent finalize won, and
+	// ErrRootFinalizationPendingDeployment while rollback still needs both roots.
 	RootKeyRotateFinalize(ctx context.Context, pf authz.Proof) (uint32, error)
 	InsertScopeGeneration(ctx context.Context, pf authz.Proof, p crypto.Purpose, orgID, projectID string) error
 }
@@ -107,6 +110,10 @@ type KeyRepo interface {
 // because a concurrent rotation committed first. The caller refuses loudly;
 // retrying mints a fresh successor against the new predecessor.
 var ErrRotationSuperseded = errors.New("store: key rotation superseded by a concurrent rotation")
+
+// ErrRootFinalizationPendingDeployment preserves the root needed by rollback
+// until the current deployment has an applied receipt or a repair advances it.
+var ErrRootFinalizationPendingDeployment = errors.New("store: root finalization is blocked by an unresolved configuration deployment")
 
 // ErrStaleDEK reports the writer fence refusing a ciphertext write: the DEK
 // version it was sealed under is no longer active for its scope — a sealer built
@@ -492,4 +499,18 @@ func (k pgKeys) RootKeyRotateFinalize(ctx context.Context, pf authz.Proof) (uint
 
 func (k pgKeys) InsertScopeGeneration(ctx context.Context, pf authz.Proof, p crypto.Purpose, orgID, projectID string) error {
 	return insertScopeGeneration(ctx, pf, p, orgID, projectID, k)
+}
+
+func (k sqliteKeys) InsertInitialProjectDEK(ctx context.Context, p authz.Proof, key crypto.WrappedKey) error {
+	return insertInitialProjectDEK(ctx, p, key, k)
+}
+func (k pgKeys) InsertInitialProjectDEK(ctx context.Context, p authz.Proof, key crypto.WrappedKey) error {
+	return insertInitialProjectDEK(ctx, p, key, k)
+}
+
+func (k sqliteKeys) AssertRootKeyEpoch(ctx context.Context, p authz.Proof, epoch uint32) error {
+	return assertRootKeyEpoch(ctx, p, epoch, k)
+}
+func (k pgKeys) AssertRootKeyEpoch(ctx context.Context, p authz.Proof, epoch uint32) error {
+	return assertRootKeyEpoch(ctx, p, epoch, k)
 }

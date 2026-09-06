@@ -22,6 +22,8 @@ import (
 type keyMutationAdapter interface {
 	txToken() *authz.TxToken
 	acquireHierarchy(context.Context) error
+	acquireSelfConfigBinding(context.Context) error
+	rootFinalizationBlocked(context.Context) (bool, error)
 	acquireScope(context.Context, string) error
 	activeMasters(context.Context) ([]activeMasterRow, error)
 	insertMasterRow(context.Context, crypto.WrappedKey) error
@@ -205,6 +207,9 @@ func rootKeyRotatePrepare(ctx context.Context, proof authz.Proof, newWrapper cry
 	if err := verifyKeyMutation(proof, authz.StoreKeysRootRotatePrepare, adapter); err != nil {
 		return err
 	}
+	if err := adapter.acquireSelfConfigBinding(ctx); err != nil {
+		return err
+	}
 	if err := adapter.acquireHierarchy(ctx); err != nil {
 		return err
 	}
@@ -212,7 +217,7 @@ func rootKeyRotatePrepare(ctx context.Context, proof authz.Proof, newWrapper cry
 	if err != nil {
 		return err
 	}
-	if len(masters) != 1 || masters[0].version != int64(newWrapper.Version) {
+	if len(masters) != 1 || masters[0].version != int64(newWrapper.Version) || masters[0].rootKeyEpoch+1 != int64(newWrapper.RootKeyEpoch) {
 		return crypto.ErrRootRotationBlocked
 	}
 	return adapter.insertMasterRow(ctx, newWrapper)
@@ -221,6 +226,18 @@ func rootKeyRotatePrepare(ctx context.Context, proof authz.Proof, newWrapper cry
 func rootKeyRotateFinalize(ctx context.Context, proof authz.Proof, adapter keyMutationAdapter) (uint32, error) {
 	if err := verifyKeyMutation(proof, authz.StoreKeysRootRotateFinalize, adapter); err != nil {
 		return 0, err
+	}
+	// Binding precedes hierarchy throughout root preparation and Apply.
+	// Hold it until commit so target changes cannot race wrapper retirement.
+	if err := adapter.acquireSelfConfigBinding(ctx); err != nil {
+		return 0, err
+	}
+	blocked, err := adapter.rootFinalizationBlocked(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if blocked {
+		return 0, ErrRootFinalizationPendingDeployment
 	}
 	if err := adapter.acquireHierarchy(ctx); err != nil {
 		return 0, err
@@ -460,4 +477,81 @@ func (k pgKeys) insertScopeGenerationRow(ctx context.Context, scope string) erro
 		return crypto.ErrKeyExists
 	}
 	return err
+}
+
+// insertInitialProjectDEK is an initial-only scoped insertion. It cannot alter
+// existing key versions or write another project's key, and it shares the
+// master rotation fence with normal key creation.
+func insertInitialProjectDEK(ctx context.Context, p authz.Proof, key crypto.WrappedKey, adapter keyMutationAdapter) error {
+	chain, err := authz.Verify(p, authz.StoreKeysInsertInitialProjectDEK, adapter.txToken())
+	if err != nil {
+		return err
+	}
+	if chain.Project == "" || key.Purpose != crypto.PurposeProject || key.OrgID != string(chain.Org) || key.ProjectID != string(chain.Project) || key.Version != 1 {
+		return ErrConflict
+	}
+	if err := adapter.acquireHierarchy(ctx); err != nil {
+		return err
+	}
+	if err := assertActiveMaster(ctx, key.MasterKeyVersion, adapter); err != nil {
+		return err
+	}
+	if err := adapter.insertTier3Row(ctx, key); err != nil {
+		return err
+	}
+	return adapter.insertScopeGenerationRow(ctx, scopeGenerationKey(key.Purpose, key.OrgID, key.ProjectID))
+}
+
+func assertRootKeyEpoch(ctx context.Context, p authz.Proof, epoch uint32, adapter keyMutationAdapter) error {
+	if err := verifyKeyMutation(p, authz.StoreKeysAssertRootKeyEpoch, adapter); err != nil {
+		return err
+	}
+	if err := adapter.acquireSelfConfigBinding(ctx); err != nil {
+		return err
+	}
+	if err := adapter.acquireHierarchy(ctx); err != nil {
+		return err
+	}
+	masters, err := adapter.activeMasters(ctx)
+	if err != nil {
+		return err
+	}
+	if len(masters) != 2 {
+		return crypto.ErrNotDualWrapped
+	}
+	var latest int64
+	for _, master := range masters {
+		if master.rootKeyEpoch > latest {
+			latest = master.rootKeyEpoch
+		}
+	}
+	if epoch == 0 || latest != int64(epoch) {
+		return crypto.ErrRootRotationBlocked
+	}
+	return nil
+}
+
+// An unmanaged installation has no binding row. Existing bindings serialize
+// root lifecycle operations with target commits and deployment completion.
+func (k sqliteKeys) acquireSelfConfigBinding(ctx context.Context) error {
+	_, err := k.q.LockSelfConfigBinding(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	return err
+}
+func (k pgKeys) acquireSelfConfigBinding(ctx context.Context) error {
+	_, err := k.q.LockSelfConfigBinding(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	return err
+}
+func (k sqliteKeys) rootFinalizationBlocked(ctx context.Context) (bool, error) {
+	count, err := k.q.CountSelfConfigRootFinalizationBlockers(ctx)
+	return count != 0, err
+}
+func (k pgKeys) rootFinalizationBlocked(ctx context.Context) (bool, error) {
+	count, err := k.q.CountSelfConfigRootFinalizationBlockers(ctx)
+	return count != 0, err
 }

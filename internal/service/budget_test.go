@@ -327,3 +327,51 @@ func TestBudgetNilIsNoop(t *testing.T) {
 		t.Fatalf("nil budget chargeOnce refused: %v", err)
 	}
 }
+
+func TestBudgetDevelopmentEnforcementRetainsRateAndOutstandingSlots(t *testing.T) {
+	b := NewBudget()
+	keys := principalKeys("dev-principal", "dev-org", "dev-project")
+	for range BudgetSchemaRevisionPerHour {
+		if _, err := b.acquire(budgetSchemaRevision, keys); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := b.acquire(budgetSchemaRevision, keys); !errors.Is(err, admission.ErrOverloaded) {
+		t.Fatal("fixture did not exhaust rate")
+	}
+	release, err := b.acquire(budgetExport, keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.SetDevelopmentDisabled(true)
+	if b.Enabled() {
+		t.Fatal("budget did not disable")
+	}
+	for range BudgetSchemaRevisionPerHour + 1 {
+		free, err := b.acquire(budgetSchemaRevision, keys)
+		if err != nil {
+			t.Fatal("disabled budget continued refusing operations", err)
+		}
+		free()
+	}
+	release()
+	release()
+	b.SetDevelopmentDisabled(false)
+	if !b.Enabled() {
+		t.Fatal("budget did not reenable")
+	}
+	if _, err := b.acquire(budgetSchemaRevision, keys); !errors.Is(err, admission.ErrOverloaded) {
+		t.Fatal("toggle reset existing rate history")
+	}
+	var releases []func()
+	for range BudgetExportOrgConcurrency {
+		release, err := b.acquire(budgetExport, principalKeys("other", "dev-org", "dev-project"))
+		if err != nil {
+			t.Fatal("old release leaked a slot across toggle", err)
+		}
+		releases = append(releases, release)
+	}
+	for _, release := range releases {
+		release()
+	}
+}

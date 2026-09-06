@@ -41,6 +41,10 @@ const (
 // grant-evaluated instance formula and no chain, system proofs carry their
 // mint site. Operation and transaction binding are identical across kinds.
 type proof struct {
+	selfConfig        bool
+	selfConfigAdmin   bool
+	runtimeSnapshotID string
+
 	kind  proofKind
 	op    Operation
 	site  SystemSite   // kindSystem only

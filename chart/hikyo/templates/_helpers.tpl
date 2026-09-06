@@ -82,7 +82,7 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | quote }}
 {{- end -}}
 {{- $imageDigest := required "image.digest is required" .Values.image.digest -}}
 {{- if .Values.ha.enabled -}}
-  {{- if lt (int .Values.ha.replicaCount) 2 -}}
+  {{- if and (lt (int .Values.ha.replicaCount) 2) (not (and .Values.rollout.enabled .Values.rollout.topologyNodeIDs (eq (int .Values.ha.replicaCount) 1))) -}}
     {{- fail "ha.replicaCount must be at least 2 when ha.enabled: multi-node HA needs more than one replica" -}}
   {{- end -}}
   {{- if gt (int .Values.ha.minAvailable) (int .Values.ha.replicaCount) -}}

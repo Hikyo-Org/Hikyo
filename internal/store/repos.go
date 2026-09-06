@@ -299,7 +299,7 @@ func (o sqliteOrgs) List(ctx context.Context, p authz.Proof) ([]Org, error) {
 	if _, err := authz.Verify(p, authz.StoreOrgsList, o.tok); err != nil {
 		return nil, err
 	}
-	rows, err := o.q.ListOrgs(ctx)
+	rows, err := o.q.ListOrgs(ctx, boolInt(authz.IncludesSelfConfig(p)))
 	if err != nil {
 		return nil, err
 	}
@@ -318,7 +318,7 @@ func (o sqliteOrgs) Count(ctx context.Context, p authz.Proof) (int64, error) {
 	if _, err := authz.Verify(p, authz.StoreOrgsCount, o.tok); err != nil {
 		return 0, err
 	}
-	return o.q.CountOrgs(ctx)
+	return o.q.CountOrgs(ctx, boolInt(authz.IncludesSelfConfig(p)))
 }
 
 func (o sqliteOrgs) Rename(ctx context.Context, p authz.Proof, name string) error {
@@ -965,7 +965,7 @@ func (o pgOrgs) List(ctx context.Context, p authz.Proof) ([]Org, error) {
 	if _, err := authz.Verify(p, authz.StoreOrgsList, o.tok); err != nil {
 		return nil, err
 	}
-	rows, err := o.q.ListOrgs(ctx)
+	rows, err := o.q.ListOrgs(ctx, boolInt(authz.IncludesSelfConfig(p)))
 	if err != nil {
 		return nil, err
 	}
@@ -984,7 +984,7 @@ func (o pgOrgs) Count(ctx context.Context, p authz.Proof) (int64, error) {
 	if _, err := authz.Verify(p, authz.StoreOrgsCount, o.tok); err != nil {
 		return 0, err
 	}
-	return o.q.CountOrgs(ctx)
+	return o.q.CountOrgs(ctx, boolInt(authz.IncludesSelfConfig(p)))
 }
 
 func (o pgOrgs) Rename(ctx context.Context, p authz.Proof, name string) error {
@@ -1530,4 +1530,13 @@ func folderFromPG(row pggen.Folder) (Folder, error) {
 		ID: row.ID, OrgID: row.OrgID, ProjectID: row.ProjectID,
 		Path: row.Path, CreatedAt: row.CreatedAt.Time.UTC(),
 	}, nil
+}
+
+func (s sqliteReadRepos) SelfConfig() SelfConfigReader { return s.r.SelfConfig() }
+func (p pgReadRepos) SelfConfig() SelfConfigReader     { return p.r.SelfConfig() }
+func (r sqliteRepos) SelfConfig() SelfConfigRepo {
+	return selfConfigRepo{q: sqliteSelfConfigStorage{q: sqlitegen.New(r.db)}, tok: r.tok}
+}
+func (r pgRepos) SelfConfig() SelfConfigRepo {
+	return selfConfigRepo{q: pgSelfConfigStorage{q: pggen.New(r.db)}, tok: r.tok}
 }

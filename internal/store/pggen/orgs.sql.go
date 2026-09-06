@@ -12,12 +12,12 @@ import (
 )
 
 const countOrgs = `-- name: CountOrgs :one
-SELECT COUNT(*) FROM orgs
+SELECT COUNT(*) FROM orgs WHERE ($1 = 1 OR NOT EXISTS (SELECT 1 FROM self_config_binding b WHERE b.org_id=orgs.id))
 `
 
 // hikyo:instance-scoped
-func (q *Queries) CountOrgs(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, countOrgs)
+func (q *Queries) CountOrgs(ctx context.Context, includeSelfConfig interface{}) (int64, error) {
+	row := q.db.QueryRow(ctx, countOrgs, includeSelfConfig)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -96,12 +96,12 @@ func (q *Queries) GetOrg(ctx context.Context, chainOrgID string) (Org, error) {
 const listOrgs = `-- name: ListOrgs :many
 SELECT id, name, active, metadata, created_at,
        retention_mode, retention_age_seconds, retention_revision_count
-FROM orgs ORDER BY name
+FROM orgs WHERE ($1 = 1 OR NOT EXISTS (SELECT 1 FROM self_config_binding b WHERE b.org_id=orgs.id)) ORDER BY name
 `
 
 // hikyo:instance-scoped
-func (q *Queries) ListOrgs(ctx context.Context) ([]Org, error) {
-	rows, err := q.db.Query(ctx, listOrgs)
+func (q *Queries) ListOrgs(ctx context.Context, includeSelfConfig interface{}) ([]Org, error) {
+	rows, err := q.db.Query(ctx, listOrgs, includeSelfConfig)
 	if err != nil {
 		return nil, err
 	}

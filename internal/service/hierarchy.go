@@ -288,7 +288,7 @@ func (s *Orgs) ListMine(ctx context.Context, actor Actor) ([]MyOrg, error) {
 		if err != nil {
 			return err
 		}
-		rows, err = az.OrgsForPrincipal(ctx, caller.Principal)
+		rows, err = az.OrgsForPrincipal(ctx, caller)
 		return err
 	})
 	if err != nil {

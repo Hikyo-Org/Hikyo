@@ -192,6 +192,14 @@ export const SURFACES = defineSurfaceRegistry([
     chrome: 'shell',
   },
   {
+    id: 'instance-config',
+    path: '/instance/config',
+    label: 'Hikyo configuration',
+    section: 'instance',
+    mode: 'authenticated',
+    chrome: 'shell',
+  },
+  {
     id: 'instance-members',
     path: '/instance/members',
     label: 'Instance members',

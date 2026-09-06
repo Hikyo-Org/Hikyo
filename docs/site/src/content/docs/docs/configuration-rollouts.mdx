@@ -1,0 +1,195 @@
+---
+title: Configuration rollouts on Kubernetes
+description: Enroll one Hikyo deployment for administrator-approved bootstrap source changes.
+---
+
+Hikyo applies ordinary managed settings through its runtime configuration interface.
+The Kubernetes rollout executor handles installed bootstrap sources that require
+a replacement process. It is separate from the HikyoSecret operator and cannot
+read projects, root Secrets or database Secrets through the Kubernetes API.
+
+The supported bootstrap target is one server replica on Kubernetes 1.36, using
+the chart's `Recreate` Deployment. The initial identity is `<fullname>-server`.
+Explicit `rollout.topologyNodeIDs` enrollment permits singleton HA mode and
+identity changes; include the initial identity and every allowed replacement.
+One HA-enabled replica uses coordination but does not add redundancy.
+Multi-replica bootstrap rollouts and cross-database migration require separate
+protocols. Ordinary HA runtime configuration Apply remains available.
+
+:::note[Deployment boundary]
+Database aliases must identify the same datastore. Upgrade profiles must retain
+the same operator custody directory and satisfy the existing signed upgrade gate.
+Host, GitOps and multi-member HA bootstrap providers are not implemented.
+:::
+
+## Install and enroll
+
+1. Before adopting managed configuration, install with `rollout.enabled: true`
+   and `rollout.enrolled: false`. This establishes the stable server node ID and
+   creates seven empty control Secrets, a non-expiring custody Lease and two
+   resource-name-limited ServiceAccounts. Keep the normal database/root sources.
+2. Install a separate Ed25519 deployment-authority key. Its private encoding is
+   PKCS#8 PEM (`PRIVATE KEY`); its public encoding is X.509 PKIX PEM (`PUBLIC KEY`).
+   Reference the private Secret through `rollout.authorityExistingSecret` and
+   `rollout.authorityKey`, and put only the public PEM in
+   `rollout.authorityPublicKey`. Never reuse the Hikyo root key.
+3. Record the actual Deployment, command/response/journal Secret and Lease UIDs.
+   Fill `rollout.deploymentUID`, `commandSecretUID`, `responseSecretUID`,
+   `journalSecretUID`, `leaseUID`, and the owner's admitted `ownerInstanceID`
+   and recovery `incarnation`. Choose a unique `enrollmentID`. Names are fixed
+   by the chart; a deleted and recreated object is not the same enrolled object.
+4. Declare immutable source Secrets in `rollout.databaseSources` and
+   `rollout.rootSources`. Each alias maps to `{name: secret-name, key: data-key}`.
+   `initialDatabaseSource` and `initialRootSource` must name aliases matching the
+   chart's current database/root Secret references. Enable `rollout.enrolled`.
+
+The server receives these fixed read-only files:
+
+| Input | Path |
+| --- | --- |
+| Enrollment | `/run/hikyo/rollout/enrollment/enrollment.json` |
+| Deployment signer | `/run/hikyo/rollout/authority/authority.key` |
+| Database alias | `/run/hikyo/rollout/sources/database/<alias>/dsn` |
+| Root alias | `/run/hikyo/rollout/sources/root/<alias>/root-key` |
+| Applied selection | `/run/hikyo/rollout/selection/{stamp,database-alias,root-alias,upgrade-alias,upgrade-proof}` |
+
+The chart passes `--config-rollout-enrollment` and
+`--config-rollout-signing-key` with the paths above. Dedicated init containers
+validate and stage the signer and root files with owner-only permissions. The
+executor receives enrollment plus the public key and a projected API token;
+it does not mount any private signer, database source or root source.
+
+## Enroll upgrade profiles
+
+`rollout.upgradeSources` maps each alias to one complete startup profile.
+`rollout.initialUpgradeSource` must exactly match the seven current `upgrade`
+values, including empty optional values and `false`. Each descriptor contains
+all seven fields; omitted or null fields are refused.
+
+| Profile field | Server input |
+| --- | --- |
+| `bundle_directory` | `HIKYO_UPGRADE_BUNDLE` |
+| `state_directory` | `HIKYO_UPGRADE_STATE_DIR` |
+| `evidence_directory` | `HIKYO_UPGRADE_EVIDENCE` |
+| `ciphertext_path` | `HIKYO_UPGRADE_BACKUP` |
+| `operator_public_key_file` | `HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY` |
+| `target_manifest_sha256` | `HIKYO_UPGRADE_TARGET_MANIFEST` |
+| `legacy_writers_stopped` | `HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED` |
+
+Bundle, evidence, ciphertext and public-key paths must already exist under
+`/run/hikyo-upgrade`. Persistent state must be under `/var/lib/hikyo-upgrade`.
+Evidence directory and ciphertext path are either both empty or both set.
+An explicit target is a lowercase SHA-256 digest in the authenticated bundle.
+The legacy-writer assertion requires separate signed evidence.
+
+To select a different state path, preinstall `rollout.upgradeStateAliases`.
+Each listed profile alias receives an immutable mount at
+`/var/lib/hikyo-upgrade/aliases/<alias>`, backed by the existing state PVC's
+`operator-custody` subdirectory. The new path must name the same actual
+persistent directory. Copying custody into another directory does not qualify.
+Apply cannot change volumes, mounts, subpaths, the operator key or the image.
+
+After enrollment, edit `upgrade_source` in `HIKYO_BOOTSTRAP_SOURCES`, preserving
+its other selections, and publish. Prepare checks the actual installed state,
+release trust, bundle, operator custody and supplied evidence without creating
+locks, ciphertext copies, migration state or admission authority. Exact fresh
+admin MFA authorizes the resulting plan. The executor replaces all seven
+literal startup values together, including cleared optional values.
+
+Replacement resolves the external alias and approved artifact fingerprint
+before opening the encrypted managed project. The existing upgrade gate still
+owns build compatibility, migrations, current evidence authority and nonce
+consumption. The setting cannot manufacture drill evidence, perform operator
+rotation, move custody, or select a different executable. Ordinary process
+restarts and later valid image upgrades retain those existing checks.
+
+A restored initial profile may have no rollout fingerprint because its initial
+gate admission preceded managed configuration. That exception is pinned to the
+exact enrolled initial tuple. Other applied profiles require their authorized
+fingerprint. Restore still leaves business operations fenced until a separate,
+freshly authorized repair applies.
+
+## Authorization and application proof
+
+Preparing a plan performs no Deployment mutation. The server durably records its
+exact digest, source selection and resource versions. Apply requires the target
+instance administrator's fresh passkey or TOTP approval for that exact digest.
+The server signs a command binding enrollment, owner, incarnation, job, snapshot,
+revision, generation, sequence and digest. A signature or nonempty proof digest
+alone does not replace the application's authorization or source verification.
+
+A database-source change must pass a fresh same-datastore challenge through the
+current and candidate connections. Equal instance IDs are insufficient because
+a restored clone can carry identical metadata. The proof is revalidated before
+submission. This supports alternate credentials/routes to the same live
+PostgreSQL database; it does not copy or migrate a database.
+
+For a root-source change, preparation validates a new wrapper without committing
+the cutover. Final exact MFA atomically commits the prepared wrapper, target and
+signed deployment command. The executor switches only the declared
+`root-key-source` Secret reference. Replacement nodes must prove their actual
+selected source and open the prepared wrapper before runtime acknowledgement.
+The old recovery wrapper remains available. There is no automatic root
+finalization. Neither root bytes nor database DSNs enter the command, response
+or ordinary project values.
+
+Kubernetes availability only produces `rollout-ready`. Hikyo reports `applied`
+after the coordinator verifies the exact application's acknowledgement. Source
+selection annotations are checked against the actual opened database/root and
+the committed plan; a Pod annotation alone is not proof of application.
+
+## Custody, retry and recovery
+
+The executor is a singleton StatefulSet with a deterministic Pod name and
+`OnDelete` updates. Its custody Lease has no expiry. Another process may take
+over only when the recorded Pod UID is absent and the same fixed Pod name now
+belongs to the replacement UID. Elapsed time never transfers custody. Each
+write checks the current Pod UID and custody epoch. Admission policies also
+restrict field shape and reject obsolete epochs. Startup first proves that
+forbidden dry-run updates are denied, so policy-cache propagation cannot create
+an unprotected initial write window.
+
+Do not force-delete a running executor Pod or erase its Lease to recover a
+partition. Kubernetes force deletion can remove the API object while the old
+process is still running. Fence or stop that node/process first, then allow a
+normal StatefulSet replacement. This is the custody recovery boundary.
+
+The executor journals accepted signed commands and rollback material before
+changing deployment inputs. An identical accepted command resumes after a lost
+reply or restart, including after its transport expiry. New command sequences
+cannot overwrite unfinished custody. An explicitly authorized restore may
+compensate the same plan; it does not roll back database state or imply that a
+restored application has acknowledged its generation.
+
+The UI exposes **Restore deployment inputs** for a partial rollout. Its distinct
+fresh MFA decision binds the original job revision, current generation and plan
+digest. A verified controller `Restored` receipt resolves the external handoff;
+it leaves the desired revision unchanged and business operations fenced. Apply
+a newly published repair with a separate fresh MFA ceremony to resume.
+
+After an executor outage outlasts a command's transport lifetime, Hikyo can renew
+the already committed Submit/Restore/Observe command. Renewal changes only the
+transport sequence and timestamps, preserves the exact authorized plan and is
+persisted before delivery. It does not authorize an uncommitted preparation or
+a different target. Explicit restoration also handles a verified plan for which
+no deployment effect occurred. Real transport expiry and recovery pass. Executor process-death and takeover
+are separate cases and are not established by the held-response proof.
+
+Keep GitOps reconciliation from overwriting executor-owned control Secret data,
+Lease custody and the declared managed Deployment fields during a pending
+operation. Review an ordinary Helm upgrade against the current applied source
+aliases before reconciling it. Restore/re-enrollment requires new admitted
+incarnation and object identities; do not reuse stale control messages.
+
+## Verify an installation
+
+`python3 scripts/ci/check-config-rollout-chart.py` checks rendered RBAC,
+projections and singleton guards. For a dedicated disposable kind cluster,
+`--live-context kind-<name>` additionally checks actual Kubernetes admission:
+declared source changes succeed, while image, ServiceAccount, root bytes,
+undeclared sources, stale custody and changed node identity are rejected.
+
+The underlying boundaries are documented by Kubernetes:
+[RBAC resource names](https://kubernetes.io/docs/reference/access-authn-authz/rbac/),
+[validating admission policies](https://kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/),
+and the [client-go leader-election fencing limitation](https://pkg.go.dev/k8s.io/client-go/tools/leaderelection).

@@ -82,7 +82,9 @@ func TestGateCrashChild(t *testing.T) {
 		<-t.Context().Done()
 	}
 	if cfg.Boundary == boundaryHealthFailed {
-		request.CheckConfiguration = func(context.Context) error { return errors.New("injected candidate configuration failure") }
+		request.CheckConfiguration = func(context.Context, *upgrade.CandidateConfiguration, map[string]string) error {
+			return errors.New("injected candidate configuration failure")
+		}
 	}
 	verify := func(node upgradecompat.VerifiedNode) error {
 		if !node.Valid() || node.Identity() != cfg.Identity {

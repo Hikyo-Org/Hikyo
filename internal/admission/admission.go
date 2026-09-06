@@ -155,6 +155,10 @@ type Limiter struct {
 	// coordination error visible; both are nil on a single node.
 	shared SharedStore
 	log    *slog.Logger
+	// lifecycle serializes generation handoff with operations that touch
+	// counters or the shared backend. Admission leases themselves remain
+	// visible in slots until their release function returns the slot.
+	lifecycle sync.RWMutex
 
 	mu       sync.Mutex
 	waiting  int
@@ -201,7 +205,7 @@ func New(cfg Config) (*Limiter, error) {
 	if cfg.ArgonMemoryKiB == 0 {
 		return nil, errors.New("admission: Argon2id memory must be stated — the concurrency budget is derived from it")
 	}
-	argonMiB := int((cfg.ArgonMemoryKiB + 1023) / 1024)
+	argonMiB := int((uint64(cfg.ArgonMemoryKiB) + 1023) / 1024)
 	if cfg.BudgetMiB < argonMiB+HeadroomMiB {
 		return nil, fmt.Errorf(
 			"admission: budget %d MiB cannot hold one verification: Argon2id needs %d MiB plus %d MiB headroom — raise the budget or lower the KDF memory",
@@ -240,10 +244,12 @@ func New(cfg Config) (*Limiter, error) {
 func (l *Limiter) Concurrency() int { return l.concurrency }
 
 // UseShared attaches an installation-wide counter backend (HA, #146). It is
-// called once during boot before the limiter serves any request, so it needs
-// no lock. After it returns, the windowed and per-account counters are shared
+// called once during boot before the limiter serves any request. After it
+// returns, the windowed and per-account counters are shared
 // across nodes; the concurrency semaphore stays per node.
 func (l *Limiter) UseShared(s SharedStore, log *slog.Logger) {
+	l.lifecycle.Lock()
+	defer l.lifecycle.Unlock()
 	l.shared = s
 	l.log = log
 }
@@ -301,6 +307,8 @@ type Snapshot struct {
 // while a caller crosses that boundary; gauges are pressure signals, not an
 // accounting invariant. len(l.slots) is the FREE-slot count.
 func (l *Limiter) Snapshot() Snapshot {
+	l.lifecycle.RLock()
+	defer l.lifecycle.RUnlock()
 	now := l.now()
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -325,6 +333,8 @@ func (l *Limiter) Snapshot() Snapshot {
 // Order matters: the per-IP check happens before the semaphore, so a single
 // noisy source cannot occupy queue slots that a legitimate caller needs.
 func (l *Limiter) Enter(ctx context.Context, sourceIP string) (release func(), err error) {
+	l.lifecycle.RLock()
+	defer l.lifecycle.RUnlock()
 	if !l.allowIP(sourceIP) {
 		return nil, ErrOverloaded
 	}
@@ -363,6 +373,8 @@ func (l *Limiter) dequeue() {
 // expensive work, and a cheap endpoint queued behind a semaphore sized for
 // 64 MiB derivations would be throttled by a cost it does not incur.
 func (l *Limiter) AllowDiscovery(ip string) bool {
+	l.lifecycle.RLock()
+	defer l.lifecycle.RUnlock()
 	if l.shared != nil {
 		return l.allowShared(sharedBucketMeta, ip, l.discoveryPerIP)
 	}
@@ -385,6 +397,8 @@ func (l *Limiter) AllowDiscovery(ip string) bool {
 // the shape of the attack: the amplification is aimed at the ISSUER, and one
 // fabricated-`kid` stream from a thousand addresses is the same outbound flood.
 func (l *Limiter) AllowIssuerRefresh(issuer string) bool {
+	l.lifecycle.RLock()
+	defer l.lifecycle.RUnlock()
 	if l.shared != nil {
 		return l.allowShared(sharedBucketIssuer, issuer, IssuerRefreshPerMinute)
 	}
@@ -471,6 +485,8 @@ func evictStale(bucket map[string][]time.Time, cutoff time.Time) {
 // unknown account gets a bucket exactly like a real one and the presence or
 // absence of a per-account bucket is not observable.
 func (l *Limiter) AccountDelay(presented string) time.Duration {
+	l.lifecycle.RLock()
+	defer l.lifecycle.RUnlock()
 	if l.shared != nil {
 		return l.sharedAccountDelay(presented)
 	}
@@ -542,6 +558,8 @@ func (l *Limiter) accountDelay(key subjectKey) time.Duration {
 // It reports whether this failure crossed the threshold, so the caller can
 // emit the audit event the ADR requires on threshold crossing.
 func (l *Limiter) RecordFailure(presented string) (crossedThreshold bool) {
+	l.lifecycle.RLock()
+	defer l.lifecycle.RUnlock()
 	if l.shared != nil {
 		return l.sharedRecordFailure(presented)
 	}
@@ -588,6 +606,8 @@ func (l *Limiter) recordFailure(key subjectKey) (crossedThreshold bool) {
 
 // RecordSuccess resets the curve.
 func (l *Limiter) RecordSuccess(presented string) {
+	l.lifecycle.RLock()
+	defer l.lifecycle.RUnlock()
 	if l.shared != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), sharedTimeout)
 		defer cancel()

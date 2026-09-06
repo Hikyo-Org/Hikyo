@@ -10,6 +10,7 @@ import (
 // Exact source-owned exceptions. Being inside store, a fixture package or the
 // migration package does not grant new files ambient raw-driver authority.
 var driverFiles = map[string]bool{
+	"internal/store/self_config_test.go":                         true, // admitted, isolated both-engine protected hierarchy/activation fixtures
 	"internal/isolation/floor_bench_test.go":                     true, // signed-admitted bulk fixture and independent committed-chunk observation only
 	"internal/isolation/ops_floor_test.go":                       true, // isolated admitted SQLite health accounting for native O2 acceptance
 	"internal/store/timestamps_postgres_test.go":                 true, // existing exact PostgreSQL connection timestamp regression
@@ -148,7 +149,8 @@ func permittedGuardedTransaction(p *packages.Package, base string, pos token.Pos
 	if named != Module+"/internal/store.SQLiteTransaction" && named != Module+"/internal/store.PostgresTransaction" {
 		return false
 	}
-	return base == Module+"/internal/store" && strings.HasSuffix(filepath.ToSlash(p.Fset.Position(pos).Filename), "/internal/store/coordination.go")
+	filename := filepath.ToSlash(p.Fset.Position(pos).Filename)
+	return base == Module+"/internal/store" && (strings.HasSuffix(filename, "/internal/store/coordination.go") || strings.HasSuffix(filename, "/internal/store/coordination_self_config.go"))
 }
 
 func permittedRawConstructor(p *packages.Package, base string, pos token.Pos) bool {

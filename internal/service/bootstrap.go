@@ -100,6 +100,14 @@ func (s *Auth) BootstrapAdmin(ctx context.Context, username, displayName, delive
 	if displayName == "" {
 		displayName = username
 	}
+	var configSeed selfConfigSeed
+	if s.SelfConfig != nil {
+		var err error
+		configSeed, err = s.SelfConfig.prepareAdoptionSeed(ctx, nil)
+		if err != nil {
+			return BootstrapResult{}, err
+		}
+	}
 
 	value, verifier, err := crypto.NewArtifact(crypto.ArtifactBootstrap)
 	if err != nil {
@@ -119,9 +127,16 @@ func (s *Auth) BootstrapAdmin(ctx context.Context, username, displayName, delive
 	}
 
 	now := s.now()
+	if s.SelfConfig != nil {
+		var err error
+		now, err = s.SelfConfig.runtimeTimestamp(ctx)
+		if err != nil {
+			return BootstrapResult{}, err
+		}
+	}
 	expires := now.Add(BootstrapLifetime)
 
-	err = tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+	err = tx.WriteSerialized(ctx, s.DB, "hikyo:self-config-provision", func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		n, err := az.AccountCount(ctx)
 		if err != nil {
 			return err
@@ -168,6 +183,11 @@ func (s *Auth) BootstrapAdmin(ctx context.Context, username, displayName, delive
 			}
 			if err := az.AddGrantOrigin(ctx, originID, grantID, domain.PrincipalID(principalID),
 				authz.Origin{Kind: domain.OriginManual, Subject: principalID}, now); err != nil {
+				return err
+			}
+		}
+		if s.SelfConfig != nil {
+			if _, err := s.SelfConfig.provision(ctx, r, az, authz.Identity{Principal: domain.PrincipalID(principalID)}, configSeed, "bootstrap:"+configSeed.owner, now); err != nil {
 				return err
 			}
 		}

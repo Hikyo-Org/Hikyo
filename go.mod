@@ -10,6 +10,8 @@ require (
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467
 	github.com/descope/virtualwebauthn v1.0.5
+	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
+	github.com/emersion/go-smtp v0.24.0
 	github.com/getkin/kin-openapi v0.147.0
 	github.com/getsops/sops/v3 v3.13.3
 	github.com/go-chi/chi/v5 v5.3.2
@@ -39,6 +41,7 @@ require (
 	github.com/sigstore/sigstore v1.10.9
 	github.com/sigstore/sigstore-go v1.3.0
 	github.com/transparency-dev/merkle v0.0.2
+	github.com/wneessen/go-mail v0.8.1
 	golang.org/x/crypto v0.55.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sys v0.47.0

@@ -138,6 +138,7 @@ type DefinitionsService interface {
 
 // API implements the generated strict server.
 type API struct {
+	SelfConfig      *service.SelfConfig
 	Discovery       *service.Discovery
 	Auth            AuthService
 	SAMLAuth        SAMLAuthService
@@ -752,7 +753,11 @@ func (a *API) validateAgainstContractWith(
 			writeError(w, wirePolicyForCode(apigen.ErrorCodeBadRequest), detail)
 			return
 		}
-		next.ServeHTTP(w, validated.Request())
+		request := validated.Request()
+		if !a.requireCurrentRuntime(w, request) {
+			return
+		}
+		next.ServeHTTP(w, request)
 	})
 }
 

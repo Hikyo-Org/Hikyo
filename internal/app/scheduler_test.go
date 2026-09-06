@@ -265,3 +265,49 @@ func TestSchedulerExposesLastPruneSuccessOnOpsLog(t *testing.T) {
 		}
 	}
 }
+
+type cancelledClaimLease struct {
+	fakeLease
+	cancel            context.CancelFunc
+	releasedFence     int64
+	releaseContextErr error
+}
+
+func (l *cancelledClaimLease) ClaimLease(ctx context.Context, name, owner string, now, expires time.Time) (int64, bool, error) {
+	fence, _, err := l.fakeLease.ClaimLease(ctx, name, owner, now, expires)
+	if err != nil {
+		return 0, false, err
+	}
+	l.cancel()
+	return fence, false, context.Canceled
+}
+
+func (l *cancelledClaimLease) ReleaseLease(ctx context.Context, name, owner string, fence int64) error {
+	l.releasedFence = fence
+	l.releaseContextErr = ctx.Err()
+	return l.fakeLease.ReleaseLease(ctx, name, owner, fence)
+}
+
+func TestSchedulerHAReleasesProvisionalClaimOnStop(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	lease := &cancelledClaimLease{fakeLease: fakeLease{claimHeld: true, renewHeld: true}, cancel: cancel}
+	var runs atomic.Int64
+	scheduler := &Scheduler{Lease: lease, NodeID: "provisional-node", Heartbeat: 10 * time.Millisecond, LeaseTTL: time.Minute, Log: testLogger(), Jobs: []ScheduledJob{{Name: "must-not-run", Run: func(context.Context) error { runs.Add(1); return nil }}}}
+	done := make(chan struct{})
+	go func() { defer close(done); scheduler.Run(ctx) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("scheduler did not stop after canceled claim")
+	}
+	if runs.Load() != 0 {
+		t.Fatal("unconfirmed claim ran a job")
+	}
+	if lease.releasedFence != 1 || lease.releaseContextErr != nil {
+		t.Fatalf("provisional cleanup: fence=%d context=%v", lease.releasedFence, lease.releaseContextErr)
+	}
+	if lease.claims != 1 {
+		t.Fatalf("shutdown attempted %d claims, want1", lease.claims)
+	}
+}

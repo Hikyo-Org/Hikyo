@@ -1,15 +1,11 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"log/slog"
 	"net/http"
-	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -17,97 +13,45 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/tlstest"
 )
 
-func TestCertReloaderSwapsAtomicallyAndRetainsLastKnownGood(t *testing.T) {
-	dir := t.TempDir()
+func TestManagedCertificateValidatesPairAndRetainsImmutableCertificate(t *testing.T) {
 	firstCert, firstKey, firstLeaf := tlstest.MintServerCert(t, "127.0.0.1")
-	certPath, keyPath := tlstest.WritePair(t, dir, firstCert, firstKey)
-	reloader, err := newCertReloader(certPath, keyPath, testLogger(), 5*time.Millisecond)
+	first, err := newManagedCertificate(string(firstCert), string(firstKey))
 	if err != nil {
 		t.Fatal(err)
 	}
 	secondCert, secondKey, secondLeaf := tlstest.MintServerCert(t, "127.0.0.1")
-	if err := os.WriteFile(certPath, secondCert, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(keyPath, secondKey, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := reloader.reload(); err != nil {
-		t.Fatal(err)
-	}
-	served, err := reloader.getCertificate(nil)
+	second, err := newManagedCertificate(string(secondCert), string(secondKey))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if served.Leaf.SerialNumber.Cmp(secondLeaf.SerialNumber) != 0 || served.Leaf.SerialNumber.Cmp(firstLeaf.SerialNumber) == 0 {
-		t.Fatalf("served serial = %s, want second serial %s", served.Leaf.SerialNumber, secondLeaf.SerialNumber)
+	if first.pair.Leaf.SerialNumber.Cmp(firstLeaf.SerialNumber) != 0 || second.pair.Leaf.SerialNumber.Cmp(secondLeaf.SerialNumber) != 0 {
+		t.Fatal("candidate construction mutated another certificate")
 	}
-	if err := os.WriteFile(certPath, []byte("truncated"), 0o644); err != nil {
-		t.Fatal(err)
+	if _, err := newManagedCertificate(string(secondCert), string(firstKey)); err == nil {
+		t.Fatal("mismatched pair accepted")
 	}
-	if err := reloader.reload(); err == nil {
-		t.Fatal("malformed replacement must fail")
+	if _, err := newManagedCertificate("truncated", string(secondKey)); err == nil {
+		t.Fatal("malformed certificate accepted")
 	}
-	served, err = reloader.getCertificate(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if served.Leaf.SerialNumber.Cmp(secondLeaf.SerialNumber) != 0 {
-		t.Fatalf("failed reload replaced live certificate with serial %s", served.Leaf.SerialNumber)
-	}
-	_, failures := reloader.TLSMetrics()
-	if failures != 1 {
-		t.Fatalf("reload failures = %d, want 1", failures)
+	if first.pair.Leaf.SerialNumber.Cmp(firstLeaf.SerialNumber) != 0 {
+		t.Fatal("failed candidate replaced certificate")
 	}
 }
 
-func TestCertReloaderPollsForReplacementFiles(t *testing.T) {
-	dir := t.TempDir()
-	firstCert, firstKey, _ := tlstest.MintServerCert(t, "127.0.0.1")
-	certPath, keyPath := tlstest.WritePair(t, dir, firstCert, firstKey)
-	reloader, err := newCertReloader(certPath, keyPath, testLogger(), 5*time.Millisecond)
-	if err != nil {
-		t.Fatal(err)
-	}
-	secondCert, secondKey, secondLeaf := tlstest.MintServerCert(t, "127.0.0.1")
-	if err := os.WriteFile(certPath, secondCert, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(keyPath, secondKey, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	future := time.Now().Add(time.Second)
-	if err := os.Chtimes(certPath, future, future); err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	go reloader.run(ctx)
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
-		served, err := reloader.getCertificate(nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if served.Leaf.SerialNumber.Cmp(secondLeaf.SerialNumber) == 0 {
-			return
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	t.Fatal("poller did not load replacement certificate")
-}
-
-func TestCertReloaderWarnsWhenStartupCertificateNearsExpiry(t *testing.T) {
+func TestManagedCertificateExpiryMetricsAndExpiredPairRefusal(t *testing.T) {
 	now := time.Now()
-	certPEM, keyPEM, _ := tlstest.MintServerCertWithValidity(t, now.Add(-time.Hour), now.Add(7*24*time.Hour), "localhost")
-	certPath, keyPath := tlstest.WritePair(t, t.TempDir(), certPEM, keyPEM)
-	var output bytes.Buffer
-	log := slog.New(slog.NewTextHandler(&output, nil))
-	if _, err := newCertReloader(certPath, keyPath, log, time.Second); err != nil {
+	cert, key, leaf := tlstest.MintServerCertWithValidity(t, now.Add(-time.Hour), now.Add(7*24*time.Hour), "localhost")
+	certificate, err := newManagedCertificate(string(cert), string(key))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output.String(), "TLS certificate expires within 14 days") {
-		t.Fatalf("startup log = %q", output.String())
+	expires, failures := certificate.TLSMetrics()
+	if expires != leaf.NotAfter.Unix() || failures != 0 {
+		t.Fatal("applied certificate metrics differ")
+	}
+	expired, expiredKey, _ := tlstest.MintServerCertWithValidity(t, now.Add(-48*time.Hour), now.Add(-time.Hour), "localhost")
+	if _, err := newManagedCertificate(string(expired), string(expiredKey)); err == nil {
+		t.Fatal("expired certificate accepted")
 	}
 }
 

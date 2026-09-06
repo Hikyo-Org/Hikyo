@@ -410,7 +410,14 @@ func (r sqliteSnapshots) AtRevision(ctx context.Context, p authz.Proof, revision
 	if err != nil {
 		return Snapshot{}, err
 	}
-	return r.atRevision(ctx, string(chain.Org), string(chain.Project), env, revision)
+	snapshot, err := r.atRevision(ctx, string(chain.Org), string(chain.Project), env, revision)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	if err := authz.VerifySelfConfigSnapshot(p, snapshot.ID); err != nil {
+		return Snapshot{}, err
+	}
+	return snapshot, nil
 }
 
 func (r sqliteSnapshots) atRevision(ctx context.Context, orgID, projectID, envID string, revision int64) (Snapshot, error) {
@@ -461,6 +468,9 @@ func (r sqliteSnapshots) Entries(ctx context.Context, p authz.Proof, snapshot Sn
 	}
 	env, err := envOf(chain, authz.StoreSnapshotsEntries)
 	if err != nil {
+		return nil, err
+	}
+	if err := authz.VerifySelfConfigSnapshot(p, snapshot.ID); err != nil {
 		return nil, err
 	}
 	if _, err := liveSnapshot(snapshot); err != nil {
@@ -1209,7 +1219,14 @@ func (r pgSnapshots) AtRevision(ctx context.Context, p authz.Proof, revision int
 	if err != nil {
 		return Snapshot{}, err
 	}
-	return r.atRevision(ctx, string(chain.Org), string(chain.Project), env, revision)
+	snapshot, err := r.atRevision(ctx, string(chain.Org), string(chain.Project), env, revision)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	if err := authz.VerifySelfConfigSnapshot(p, snapshot.ID); err != nil {
+		return Snapshot{}, err
+	}
+	return snapshot, nil
 }
 
 func (r pgSnapshots) atRevision(ctx context.Context, orgID, projectID, envID string, revision int64) (Snapshot, error) {
@@ -1260,6 +1277,9 @@ func (r pgSnapshots) Entries(ctx context.Context, p authz.Proof, snapshot Snapsh
 	}
 	env, err := envOf(chain, authz.StoreSnapshotsEntries)
 	if err != nil {
+		return nil, err
+	}
+	if err := authz.VerifySelfConfigSnapshot(p, snapshot.ID); err != nil {
 		return nil, err
 	}
 	if _, err := liveSnapshot(snapshot); err != nil {
