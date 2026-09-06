@@ -1279,5 +1279,21 @@
       "Review and full validation",
       "Independent standards and spec reviews are clean after three fixes. Full SQLite/PostgreSQL isolation, core checks with failed-package reruns, race suites, Go vet, 919 web tests, 20 SDK tests and the 44-page docs build pass."
     ]
-  ]
+  ],
+  "pendingClarification": {
+    "question": "May bootstrap Apply perform a controlled rollout when the deployment cannot deliver the new source to a running container?",
+    "options": [
+      [
+        "Allow controlled bootstrap rollouts",
+        "Recommended. Ordinary settings still reload live; bootstrap settings may replace pods when required."
+      ],
+      [
+        "No container restart for any setting",
+        "Requires a delivery integration that changes both the running process source and future startup source without pod replacement."
+      ]
+    ],
+    "recommendation": "Allow controlled bootstrap rollouts when required, with explicit impact shown before the exact MFA-authorized Apply.",
+    "reason": "The earlier no-container-restart instruction and the expanded all-variable scope conflict on immutable startup inputs. The current Helm deployment injects the database locator through a Secret-backed environment variable and stages the root key at pod startup.",
+    "status": "Awaiting user clarification; no rollout exception has been assumed."
+  }
 }

@@ -8,6 +8,8 @@ The complete [implementation design](../spec/self-configuration-full-catalogue.m
 
 The current changes close an MFA gap on ordinary protected-project operations, navigation and capability hints. Exact Apply/adoption/test evidence is restricted to fresh local TOTP or user-verifying passkeys, with the existing owner/revision binding and single-use consumption. Targeted both-engine, race, and independent review evidence belongs in the report validation record.
 
+One clarification is pending: may bootstrap Apply perform a controlled rollout when immutable deployment inputs cannot reach a running container? Recommendation: allow this limited rollout exception, keeping ordinary settings live. The earlier explicit no-container-restart choice has not been silently overridden.
+
 The next implementation work is the full-catalogue design's application lifecycle and bootstrap integration. Required seams include node overlays, canonical content settings, graph prepare/activate/dispose, exact plan binding, deployment-provider authority and receipts, and recoverable root/datastore transitions. A provider stub or inventory alone does not complete D11. The user delegated design recommendations; do not ask them to reapprove this scope.
 
 
