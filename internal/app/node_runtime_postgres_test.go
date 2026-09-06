@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -119,6 +120,11 @@ func TestNodeRuntimeMissingHANodeBootsOnlyAdministrativeRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	startOwnerServer(t, srv)
+	transport := &http.Transport{}
+	// Release spare dials before returning cancels the test's serving context.
+	// An unused connection remains StateNew during net/http's drain window.
+	defer transport.CloseIdleConnections()
+	client := &http.Client{Transport: transport, Timeout: 5 * time.Second}
 	for _, check := range []struct {
 		path string
 		want int
@@ -132,20 +138,28 @@ func TestNodeRuntimeMissingHANodeBootsOnlyAdministrativeRecovery(t *testing.T) {
 			t.Fatal(err)
 		}
 		req.Header.Set("Authorization", "Bearer "+artifact)
-		res, err := http.DefaultClient.Do(req)
+		res, err := client.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
-		_ = res.Body.Close()
+		_, readErr := io.Copy(io.Discard, res.Body)
+		closeErr := res.Body.Close()
+		if readErr != nil || closeErr != nil {
+			t.Fatalf("read response: %v; close: %v", readErr, closeErr)
+		}
 		if res.StatusCode != check.want {
 			t.Fatalf("%s = %d, want %d", check.path, res.StatusCode, check.want)
 		}
 	}
-	res, err := http.Get("http://" + srv.OperationalAddr + "/readyz")
+	res, err := client.Get("http://" + srv.OperationalAddr + "/readyz")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	_, readErr := io.Copy(io.Discard, res.Body)
+	closeErr := res.Body.Close()
+	if readErr != nil || closeErr != nil {
+		t.Fatalf("read readiness response: %v; close: %v", readErr, closeErr)
+	}
 	if res.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("unconfigured node readiness = %d", res.StatusCode)
 	}
