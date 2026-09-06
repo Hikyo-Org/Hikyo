@@ -5,6 +5,15 @@ script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 fixture_dir=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-ceremony-test.XXXXXX")
 trap 'rm -rf "$fixture_dir"' EXIT HUP INT TERM
 
+# Bootstrap refusal cases need an unbootstrapped repository. Never run them
+# against the real public trust root or depend on it being absent.
+mkdir -p "$fixture_dir/repo/scripts/release" "$fixture_dir/repo/scripts/lib" \
+	"$fixture_dir/repo/release/trust"
+cp "$script_dir/ceremony.sh" "$fixture_dir/repo/scripts/release/ceremony.sh"
+cp "$script_dir/release-channel.sh" "$fixture_dir/repo/scripts/release/release-channel.sh"
+cp "$script_dir/../lib/release.sh" "$fixture_dir/repo/scripts/lib/release.sh"
+script_dir=$fixture_dir/repo/scripts/release
+
 mkdir -p "$fixture_dir/bin" "$fixture_dir/state"
 cat >"$fixture_dir/bin/uname" <<'EOF'
 #!/bin/sh
@@ -122,6 +131,19 @@ grep -F 'confirmation did not match; nothing changed' "$fixture_dir/refusal.err"
 [ ! -e "$fixture_dir/state/hikyo/release-ceremony/1.0.0-alpha.0/state.json" ]
 
 printf 'release ceremony fixture: destructive bootstrap confirmation is fail-closed\n'
+
+printf 'existing public root\n' >"$fixture_dir/repo/release/trust/root.json"
+if printf '1\n1.0.0-alpha.0\n' | env \
+	PATH="$fixture_dir/bin:$PATH" \
+	XDG_STATE_HOME="$fixture_dir/state" \
+	"$script_dir/ceremony.sh" >"$fixture_dir/existing.out" 2>"$fixture_dir/existing.err"
+then
+	printf 'release ceremony fixture: existing root replacement was accepted\n' >&2
+	exit 1
+fi
+grep -F 'production trust root already exists; bootstrap is one-time only' "$fixture_dir/existing.err" >/dev/null
+grep -Fx 'existing public root' "$fixture_dir/repo/release/trust/root.json" >/dev/null
+printf 'release ceremony fixture: existing trust root remains untouched\n'
 
 cat >"$fixture_dir/bin/fdesetup" <<'EOF'
 #!/bin/sh
