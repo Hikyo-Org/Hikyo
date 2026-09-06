@@ -42,6 +42,7 @@ func unmanagedSelfConfigFixture(t *testing.T, cfg store.Config) (*SelfConfig, Ac
 }
 
 func TestSelfConfigExistingInstanceAdoptionIsExplicitAndDurable(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []string{"sqlite", "postgres"} {
 		t.Run(engine, func(t *testing.T) {
 			cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "adopt.db")}
@@ -109,6 +110,7 @@ func TestSelfConfigExistingInstanceAdoptionIsExplicitAndDurable(t *testing.T) {
 }
 
 func TestSelfConfigHostRecoveryNeedsQuiescenceAndRejectsNetwork(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []string{"sqlite", "postgres"} {
 		t.Run(engine, func(t *testing.T) {
 			cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "recover.db")}
@@ -178,6 +180,7 @@ func TestSelfConfigHostRecoveryNeedsQuiescenceAndRejectsNetwork(t *testing.T) {
 }
 
 func TestSelfConfigIndependentOwnersKeepSeparateProjectsAndRuntime(t *testing.T) {
+	t.Parallel()
 	first, local := selfConfigFixture(t)
 	second, secondActor := selfConfigFixtureConfig(t, store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "remote.db")}, map[string]string{"HIKYO_UPDATE_CHANNEL": "off"})
 	if err := first.LoadRuntime(t.Context()); err != nil {
@@ -211,6 +214,7 @@ func TestSelfConfigIndependentOwnersKeepSeparateProjectsAndRuntime(t *testing.T)
 }
 
 func TestSelfConfigNormalKeyRotationPreservesRuntimeSnapshots(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []string{"sqlite", "postgres"} {
 		t.Run(engine, func(t *testing.T) {
 			cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "rotation.db")}
@@ -250,6 +254,7 @@ func TestSelfConfigNormalKeyRotationPreservesRuntimeSnapshots(t *testing.T) {
 }
 
 func TestSelfConfigHAAdoptionRejectsDifferentSeedsAtomically(t *testing.T) {
+	t.Parallel()
 	s, local := unmanagedSelfConfigFixture(t, selfConfigPostgres(t))
 	s.NodeID = "replica-a"
 	s.Seed = func() (map[string]string, error) { return map[string]string{"HIKYO_UPDATE_CHANNEL": "stable"}, nil }

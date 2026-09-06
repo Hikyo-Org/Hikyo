@@ -27,6 +27,7 @@ func selfConfigNodeSeedValues(port, budget string) map[string]string {
 }
 
 func TestSelfConfigNodeSeedAdoptionImportsEncryptedLocalInputs(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []string{"sqlite", "postgres"} {
 		t.Run(engine, func(t *testing.T) {
 			cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "seed.db")}
@@ -110,6 +111,7 @@ func TestSelfConfigNodeSeedAdoptionImportsEncryptedLocalInputs(t *testing.T) {
 }
 
 func TestSelfConfigNodeSeedChangeInvalidatesReviewedAdoption(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			cfg := store.Config{Engine: engine, Path: filepath.Join(t.TempDir(), "seed-race.db")}
@@ -145,6 +147,7 @@ func TestSelfConfigNodeSeedChangeInvalidatesReviewedAdoption(t *testing.T) {
 }
 
 func TestSelfConfigNodeSeedHAKeepsDifferentInputs(t *testing.T) {
+	t.Parallel()
 	s, local := unmanagedSelfConfigFixture(t, selfConfigPostgres(t))
 	s.NodeID = "replica-a"
 	first := selfConfigNodeSeedValues("8080", "256")
@@ -194,6 +197,7 @@ func TestSelfConfigNodeSeedHAKeepsDifferentInputs(t *testing.T) {
 }
 
 func TestHostAdoptionReadsFreshServerSeedWithoutEvaluatingCommandDefaults(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			cfg := store.Config{Engine: engine, Path: filepath.Join(t.TempDir(), "host-seed.db")}
@@ -253,6 +257,7 @@ func TestHostAdoptionReadsFreshServerSeedWithoutEvaluatingCommandDefaults(t *tes
 }
 
 func TestSelfConfigSeedEnvelopeFitsAllBoundedValues(t *testing.T) {
+	t.Parallel()
 	owner, node := map[string]string{}, map[string]string{}
 	for _, key := range runtimeconfig.Catalogue() {
 		owner[key.Name] = strings.Repeat("<", schema.MaxValueBytes)
@@ -270,6 +275,7 @@ func TestSelfConfigSeedEnvelopeFitsAllBoundedValues(t *testing.T) {
 }
 
 func TestHostAdoptionPreservesLargeMailAndTLSSeed(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			cfg := store.Config{Engine: engine, Path: filepath.Join(t.TempDir(), "large-seed.db")}
@@ -309,6 +315,7 @@ func TestHostAdoptionPreservesLargeMailAndTLSSeed(t *testing.T) {
 }
 
 func TestHostAdoptionRechecksStandaloneDiscoveryBeforeBinding(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			cfg := store.Config{Engine: engine, Path: filepath.Join(t.TempDir(), "host-seed-membership.db")}
@@ -351,6 +358,7 @@ func TestHostAdoptionRechecksStandaloneDiscoveryBeforeBinding(t *testing.T) {
 }
 
 func TestAdoptionBindingRechecksSeedFreshnessWithCurrentDatabaseClock(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		for _, host := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/host=%v", engine, host), func(t *testing.T) {

@@ -190,6 +190,7 @@ func installerRequest(status SelfConfigStatus, key string) SelfConfigApplyReques
 }
 
 func TestSelfConfigInstallerFailedTargetCanBeRepaired(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			s, local, probe := installerFixture(t, engine)
@@ -290,6 +291,7 @@ func authorizeInstallerApply(t *testing.T, s *SelfConfig, sessionID string, stat
 }
 
 func TestSelfConfigInstallerRetainsPreparationAndAcknowledgesOnlyAfterActivation(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			s, local, probe := installerFixture(t, engine)
@@ -379,6 +381,7 @@ func TestSelfConfigInstallerRetainsPreparationAndAcknowledgesOnlyAfterActivation
 }
 
 func TestSelfConfigInstallerPreparationFailureAbortsBeforeTargetCommit(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			s, local, probe := installerFixture(t, engine)
@@ -411,6 +414,7 @@ func TestSelfConfigInstallerPreparationFailureAbortsBeforeTargetCommit(t *testin
 }
 
 func TestSelfConfigInstallerActivationFailureFencesAndRetriesCommittedTarget(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			s, local, probe := installerFixture(t, engine)
@@ -467,6 +471,7 @@ func TestSelfConfigInstallerActivationFailureFencesAndRetriesCommittedTarget(t *
 }
 
 func TestSelfConfigInstallerDisposesAbortedSupersededAndShutdownCandidates(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			s, local, probe := installerFixture(t, engine)
@@ -543,6 +548,7 @@ func TestSelfConfigInstallerDisposesAbortedSupersededAndShutdownCandidates(t *te
 }
 
 func TestSelfConfigResolveRuntimeBundleDoesNotAcknowledgeOrAcceptNetworkAuthority(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			s, local, probe := installerFixture(t, engine)
@@ -582,6 +588,7 @@ func TestSelfConfigResolveRuntimeBundleDoesNotAcknowledgeOrAcceptNetworkAuthorit
 }
 
 func TestSelfConfigInstallerDisposesAbortedCandidateWithoutReplacement(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			s, local, probe := installerFixture(t, engine)

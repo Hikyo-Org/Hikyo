@@ -60,11 +60,14 @@ func selfConfigPostgres(t *testing.T) store.Config {
 	if err != nil {
 		t.Fatal(err)
 	}
+	database, err := newID("hikyo_self_config_runtime")
+	if err != nil {
+		t.Fatal(err)
+	}
 	admin, err := pgx.Connect(t.Context(), dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	database := fmt.Sprintf("hikyo_self_config_runtime_%d", time.Now().UnixNano())
 	quoted := pgx.Identifier{database}.Sanitize()
 	if _, err := admin.Exec(t.Context(), "CREATE DATABASE "+quoted); err != nil {
 		_ = admin.Close(context.Background())
