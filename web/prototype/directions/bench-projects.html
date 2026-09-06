@@ -1,0 +1,339 @@
+<!doctype html>
+<!--
+  Direction: bench  (Switchboard's industrial instrument panel + Console's text tree + Ledger's toolbar/table habits)
+  Fonts (OFL, fontsource):  @fontsource/hanken-grotesk  (UI, 400/500/600)   @fontsource/commit-mono  (keys, values, counts, 400)
+  Quiet skin: 1px low-contrast separators, lighter row hairlines, 4px radius on controls, no hatch, calm red for violations.
+
+  Projects list in the same shell (240px text tree, compact plate header, ONE toolbar row: filter + Import from remote
+  + solid New project). Rows: name, one mono counts line, Open matrix (solid) + Settings (outlined). The last row is
+  the inline new-project form (name field + solid Create project).
+  MOBILE 390: the tree collapses to ONE 44px top plate (ORG / PROJECT + Menu; Menu opens the tree full-screen);
+  toolbar row = filter + Import from remote; rows stack name / counts / two equal-width 44px buttons; a FIXED 52px
+  bottom bar carries only the solid New project at the right.
+  THEME: light = Switchboard's values, dark = the same system inverted; default follows prefers-color-scheme,
+  the LIGHT | DARK plate sets data-theme on <html>.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projects · acme · hikyo</title>
+<script>
+// theme: follow the OS until the LIGHT | DARK plate is used. Runs before paint so there is no flash.
+document.documentElement.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+function setTheme(t){ document.documentElement.dataset.theme = t; }
+</script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/css/hanken-grotesk@latest/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/css/hanken-grotesk@latest/500.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/css/hanken-grotesk@latest/600.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/css/commit-mono@latest/index.css">
+<style>
+/* ---------- tokens ----------
+   contrast (computed, WCAG relative luminance from OKLCH → linear sRGB):
+   LIGHT  ink   oklch(0.22 0.008 80) on paper oklch(0.965 0.005 80) = 15.6 : 1   (body, target 7:1)
+          ink-2 oklch(0.50 0.012 80) on paper                        =  5.4 : 1   (secondary, target 4.5:1)
+          signal oklch(0.52 0.15 25) = 5.4:1, slate Δ oklch(0.50 0.04 250) = 5.4:1
+   DARK   ink   oklch(0.92 0.008 85) on paper oklch(0.17 0.006 80)  = 15.1 : 1   (body)
+          ink-2 oklch(0.70 0.012 80) on paper                        =  7.2 : 1   (secondary)
+          signal oklch(0.74 0.12 25) = 7.9:1, slate Δ oklch(0.74 0.05 250) = 8.3:1
+   tints are paper mixed a few percent toward ink (group rows 3/4%, production column 4/5%, active tree line 6/8%). */
+:root{
+  --paper: oklch(0.965 0.005 80);
+  --ink: oklch(0.22 0.008 80);
+  --ink-2: oklch(0.50 0.012 80);
+  --rule: oklch(0.86 0.006 80);
+  --hair: oklch(0.90 0.006 80);
+  --signal: oklch(0.52 0.15 25);
+  --slate: oklch(0.50 0.04 250);
+  --paper-2: color-mix(in oklch, var(--paper) 97%, var(--ink));
+  --prod: color-mix(in oklch, var(--paper) 96%, var(--ink));
+  --active: color-mix(in oklch, var(--paper) 94%, var(--ink));
+  --ui: "Hanken Grotesk", "Helvetica Neue", sans-serif;
+  --mono: "Commit Mono", ui-monospace, monospace;
+  --keycol: 200px;
+  --bar: 52px;
+  color-scheme: light;
+}
+html[data-theme="dark"]{
+  --paper: oklch(0.17 0.006 80);
+  --ink: oklch(0.92 0.008 85);
+  --ink-2: oklch(0.70 0.012 80);
+  --rule: oklch(0.30 0.008 80);
+  --hair: oklch(0.26 0.008 80);
+  --signal: oklch(0.74 0.12 25);
+  --slate: oklch(0.74 0.05 250);
+  --paper-2: color-mix(in oklch, var(--paper) 96%, var(--ink));
+  --prod: color-mix(in oklch, var(--paper) 95%, var(--ink));
+  --active: color-mix(in oklch, var(--paper) 92%, var(--ink));
+  color-scheme: dark;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--paper);color:var(--ink);font:14px/1.4 var(--ui);font-feature-settings:"tnum" 1;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;text-align:left}
+input{font:inherit;color:inherit;background:none}
+summary{list-style:none;cursor:pointer}
+summary::-webkit-details-marker{display:none}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.caps{font-size:12px;color:var(--ink-2);font-weight:500}
+
+/* ---------- shell ---------- */
+.shell{display:grid;grid-template-columns:240px minmax(0,1fr) 280px;min-height:100vh}
+.shell:has(.insp[hidden]){grid-template-columns:240px minmax(0,1fr)}
+.nav{border-right:1px solid var(--rule);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow:auto}
+.brand{display:flex;align-items:center;height:24px;padding:0 16px;border-bottom:1px solid var(--rule);font-weight:600;letter-spacing:-.01em}
+.brand .ver{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--ink-2);font-weight:400}
+.plate{display:none}
+.menu-btn{display:none}
+.drawer{display:flex;flex-direction:column;flex:1}
+
+/* text tree */
+.tree{list-style:none;padding:3px 0;border-bottom:1px solid var(--rule)}
+.tree ul{list-style:none}
+.ln{display:flex;align-items:center;gap:8px;min-height:28px;padding:0 16px 0 var(--d,16px)}
+.d0{--d:16px} .d1{--d:30px} .d2{--d:44px} .d3{--d:60px}
+.ln .tri{width:10px;flex:none;font-size:10px;color:var(--ink-2)}
+details > summary .tri::before{content:"\25BE"}
+details:not([open]) > summary .tri::before{content:"\25B8"}
+.ln .n{font-family:var(--mono);font-size:12.5px;margin-left:auto;color:var(--ink-2)}
+.ln .tag{font-size:12px;color:var(--ink-2);margin-left:auto}
+.ln .bad,.ln .n.bad{color:var(--signal);font-weight:500}
+.ln[aria-current]{background:var(--active);font-weight:500}
+.ln.org{font-weight:500}
+.ln.prj{font-weight:500}
+.d3.ln{color:var(--ink-2);min-height:24px}
+.d3.ln .n{color:inherit}
+.sep{border-top:1px solid var(--rule);margin:4px 0}
+.foot{margin-top:auto}
+.sel{display:flex;align-items:center;gap:10px;height:34px;padding:0 16px;border-top:1px solid var(--hair)}
+.sel .k{font-size:12px;color:var(--ink-2);width:58px}
+.sel .v{font-weight:500;flex:1}
+.sel .v::after{content:" \25BE";font-size:10px;color:var(--ink-2)}
+.foot .who{display:flex;align-items:center;gap:10px;padding:6px 16px;border-top:1px solid var(--hair)}
+.foot .who .al{font-family:var(--mono);font-size:11px;background:var(--ink);color:var(--paper);width:28px;height:28px;display:grid;place-items:center;font-weight:500;border-radius:4px;flex:none}
+.foot .who small{display:block;color:var(--ink-2);font-size:11px}
+.theme{display:flex;margin-left:auto;border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+.theme button{font-size:12px;font-weight:500;padding:0 10px;height:24px;color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center}
+.theme button + button{border-left:1px solid var(--rule)}
+html[data-theme="light"] .theme [data-set="light"],html[data-theme="dark"] .theme [data-set="dark"]{background:var(--active);color:var(--ink)}
+
+/* ---------- main ---------- */
+.main{min-width:0;display:flex;flex-direction:column}
+.hplate{padding:14px 24px 12px;border-bottom:1px solid var(--rule);display:flex;align-items:baseline;gap:16px;white-space:nowrap;min-width:0}
+.hplate h1{font-size:20px;line-height:1;font-weight:600;letter-spacing:-.01em}
+.hplate .meta{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;min-width:0}
+.hplate .meta .bad{color:var(--signal)}
+.toolbar{display:flex;align-items:center;gap:14px;padding:0 24px;height:46px;border-bottom:1px solid var(--rule);flex-wrap:nowrap;min-width:0}
+.filter{flex:1 1 120px;min-width:90px;height:32px;border:1px solid var(--rule);border-radius:4px;padding:0 10px;font-family:var(--mono);font-size:12.5px;outline:none}
+.filter::placeholder{color:var(--ink-2)}
+.filter:focus{border-color:var(--ink)}
+.act{color:var(--ink-2);line-height:1.2;display:inline-flex;align-items:center;white-space:nowrap;flex:none}
+.act:hover{text-decoration:underline;text-underline-offset:3px}
+.act.q{font-family:var(--mono);width:24px;height:24px;justify-content:center;border:1px solid var(--rule);border-radius:4px}
+.act.q:hover{text-decoration:none;color:var(--ink)}
+.btn{background:var(--ink);color:var(--paper);padding:0 14px;height:34px;font-weight:500;border-radius:4px;display:inline-flex;align-items:center;white-space:nowrap;flex:none}
+.btn.ghost{background:var(--paper);color:var(--ink);border:1px solid var(--rule)}
+.envs{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);white-space:nowrap;flex:none;display:inline-flex;align-items:center}
+.envs::after{content:" \25BE"}
+.pending{font-family:var(--mono);font-size:12.5px;color:var(--slate);white-space:nowrap;display:inline-flex;align-items:center;gap:6px;flex:none}
+.pending .act{font-family:var(--ui);font-size:13px;color:var(--ink);font-weight:500}
+.more{display:none}
+
+.bar{display:none}
+
+/* ---------- projects ---------- */
+.shell{grid-template-columns:240px minmax(0,1fr)}
+.plist{list-style:none}
+.prow{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px 24px;padding:12px 24px;border-bottom:1px solid var(--hair)}
+.prow .nm{font-size:15px;font-weight:500}
+.prow .nm .cur{font-size:12px;color:var(--ink-2);margin-left:8px;font-weight:400}
+.prow .pa{display:flex;gap:8px}
+.prow .pa a{display:inline-flex;align-items:center;justify-content:center;height:34px;padding:0 14px;border:1px solid var(--rule);border-radius:4px;background:var(--paper);font-weight:500;white-space:nowrap}
+.prow .pa a.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.prow .stat{grid-column:1 / -1;font-family:var(--mono);font-size:12.5px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prow .stat .bad{color:var(--signal)}
+.prow.new{border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+.prow.new form{display:flex;gap:16px;align-items:center;grid-column:1 / -1}
+.prow.new .lbl{font-size:12px;color:var(--ink-2);white-space:nowrap}
+.prow.new input{font-family:var(--mono);font-size:12.5px;border:1px solid var(--rule);border-radius:4px;padding:0 10px;height:34px;flex:1;min-width:0;outline:none;padding:0}
+.prow.new input::placeholder{color:var(--ink-2)}
+.prow.new input:focus{border-color:var(--ink)}
+.prow.new .hint{grid-column:1 / -1;font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+.main::after{content:"";flex:1}
+
+/* ---------- 390 ---------- */
+@media (max-width:699px){
+  .shell{display:block}
+  .nav{border-right:0;position:static;height:auto;overflow:visible;display:block}
+  .brand{flex:none}
+  .plate{display:grid;grid-template-columns:1fr 1fr auto;border-bottom:1px solid var(--rule);position:sticky;top:0;background:var(--paper);z-index:9}
+  .plate .sel{border-top:0;border-right:1px solid var(--hair);gap:6px;height:44px;padding:0 12px}
+  .plate .sel .k{width:auto}
+  .menu-btn{display:flex;align-items:center;justify-content:center;min-width:64px;height:44px;font-weight:500}
+  .menu-btn::after{content:" \25BE";font-size:10px;margin-left:4px}
+  #menu:checked ~ .plate .menu-btn::after{content:" \25B4"}
+  .drawer{display:none}
+  #menu:checked ~ .drawer{display:flex;position:fixed;top:45px;left:0;right:0;bottom:0;overflow:auto;background:var(--paper);z-index:8}
+  .ln,.d3.ln{min-height:44px}
+  .sel{height:44px}
+  .theme button{height:44px;flex:1}
+  .theme{flex:1}
+  .hplate{padding:8px 10px 6px;display:block;white-space:normal}
+  .hplate h1{font-size:20px;line-height:1.1;white-space:nowrap}
+  .hplate .meta{display:block;margin-top:3px;letter-spacing:.02em;font-size:10px;white-space:nowrap}
+  .toolbar{padding:0 10px;gap:10px;height:46px}
+  .filter{height:44px;border:0;border-radius:0;border-bottom:1px solid var(--rule);padding:0 4px}
+  .act{min-height:44px;font-size:12.5px}
+  .toolbar .btn{display:none}
+  .prow{grid-template-columns:1fr;padding:12px 10px;gap:6px}
+  .prow .stat{white-space:normal}
+  .prow .pa{margin-top:4px;order:3}
+  .prow .pa a{flex:1 1 0;height:44px;padding:0}
+  .prow.new form{flex-direction:column;align-items:stretch;gap:10px}
+  .prow.new input{height:44px;flex:none}
+  .prow.new .btn{height:44px;justify-content:center}
+  .plist{padding-bottom:calc(var(--bar) + 24px)}
+  .bar{display:flex;align-items:center;justify-content:flex-end;position:fixed;left:0;right:0;bottom:0;height:var(--bar);padding:0 10px;border-top:1px solid var(--rule);background:var(--paper);z-index:5}
+  .bar .btn{display:inline-flex;height:44px;padding:0 14px;font-size:13px}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- ================= NAV: text tree ================= -->
+<nav class="nav" aria-label="Primary">
+  <input type="checkbox" id="menu" class="sr">
+  <div class="plate">
+    <a class="sel" href="#" aria-haspopup="listbox"><span class="k">Org</span><span class="v">acme</span><span class="sr">, switch organisation: acme, sandbox</span></a>
+    <a class="sel" href="#" aria-haspopup="listbox"><span class="k">Project</span><span class="v">demo</span><span class="sr">, switch project: demo, website, mobile-app</span></a>
+    <label class="menu-btn" for="menu">Menu</label>
+  </div>
+  <div class="drawer">
+    <div class="brand">hikyo<span class="ver">v0.9.5</span></div>
+    <ul class="tree">
+      <li><details open>
+        <summary class="ln d0 org"><span class="tri" aria-hidden="true"></span>acme<span class="tag">org</span></summary>
+        <ul>
+          <li><details open>
+            <summary class="ln d1 prj"><span class="tri" aria-hidden="true"></span>demo<span class="tag">project</span></summary>
+            <ul>
+              <li><details open>
+                <summary class="ln d2"><span class="tri" aria-hidden="true"></span>Environment matrix<span class="n">8</span></summary>
+                <ul>
+                  <li><a class="ln d3" href="bench-matrix.html#g-app">app/<span class="n">3</span></a></li>
+                  <li><a class="ln d3" href="bench-matrix.html#g-db">db/<span class="n">2</span></a></li>
+                  <li><a class="ln d3" href="bench-matrix.html#g-auth">auth/<span class="n bad">!1</span></a></li>
+                  <li><a class="ln d3" href="bench-matrix.html#g-auth"><span class="bad">!</span> problems<span class="n bad">1</span></a></li>
+                </ul>
+              </details></li>
+              <li><a class="ln d2" href="#">Machine access</a></li>
+              <li><a class="ln d2" href="#">Change approvals</a></li>
+              <li><a class="ln d2" href="#">Deployment adapters</a></li>
+              <li><a class="ln d2" href="#">Project audit</a></li>
+              <li><a class="ln d2" href="#">Members</a></li>
+              <li><a class="ln d2" href="#">Project settings</a></li>
+            </ul>
+          </details></li>
+          <li><details>
+            <summary class="ln d1 prj"><span class="tri" aria-hidden="true"></span>website<span class="tag">project</span></summary>
+            <ul>
+              <li><a class="ln d2" href="#">Environment matrix<span class="n">14</span></a></li>
+              <li><a class="ln d2" href="#">Machine access</a></li>
+              <li><a class="ln d2" href="#">Change approvals</a></li>
+              <li><a class="ln d2" href="#">Deployment adapters</a></li>
+              <li><a class="ln d2" href="#">Project audit</a></li>
+              <li><a class="ln d2" href="#">Members</a></li>
+              <li><a class="ln d2" href="#">Project settings</a></li>
+            </ul>
+          </details></li>
+          <li><details>
+            <summary class="ln d1 prj"><span class="tri" aria-hidden="true"></span>mobile-app<span class="tag">project</span></summary>
+            <ul>
+              <li><a class="ln d2" href="#">Environment matrix<span class="n">6</span></a></li>
+              <li><a class="ln d2" href="#">Machine access</a></li>
+              <li><a class="ln d2" href="#">Change approvals</a></li>
+              <li><a class="ln d2" href="#">Deployment adapters</a></li>
+              <li><a class="ln d2" href="#">Project audit</a></li>
+              <li><a class="ln d2" href="#">Members</a></li>
+              <li><a class="ln d2" href="#">Project settings</a></li>
+            </ul>
+          </details></li>
+          <li class="sep" aria-hidden="true"></li>
+          <li><a class="ln d1" href="#">Overview</a></li>
+          <li><a class="ln d1" href="bench-projects.html" aria-current="page">Projects<span class="n">3</span></a></li>
+          <li><a class="ln d1" href="#">Remotes</a></li>
+          <li><a class="ln d1" href="#">Members</a></li>
+          <li><a class="ln d1" href="#">Organisation settings</a></li>
+          <li><a class="ln d1" href="#">SCIM provisioning</a></li>
+          <li><a class="ln d1" href="#">Audit</a></li>
+        </ul>
+      </details></li>
+      <li><details>
+        <summary class="ln d0 org"><span class="tri" aria-hidden="true"></span>sandbox<span class="tag">org</span></summary>
+        <ul>
+          <li><a class="ln d1" href="#">Overview</a></li>
+          <li><a class="ln d1" href="#">Projects<span class="n">1</span></a></li>
+        </ul>
+      </details></li>
+    </ul>
+    <div class="foot">
+      <a class="sel" href="#"><span class="k">Instance</span><span class="v" style="font-weight:500">Settings</span></a>
+      <a class="who" href="#"><span class="al">AL</span><span>Alex Lee<small>alex · 2 orgs · org+instance admin</small></span></a>
+      <div class="sel"><span class="k">Theme</span>
+        <div class="theme" role="group" aria-label="Theme">
+          <button type="button" data-set="light" onclick="setTheme('light')">Light</button><button type="button" data-set="dark" onclick="setTheme('dark')">Dark</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- ================= MAIN ================= -->
+<main class="main">
+  <header class="hplate">
+    <h1>Projects</h1>
+    <span class="meta">acme · 3 projects · <span class="bad">1 with problems</span></span>
+  </header>
+
+  <div class="toolbar">
+    <input class="filter" type="search" aria-label="Filter projects" placeholder="filter projects" autocomplete="off" spellcheck="false">
+    <a class="act" href="#">Import from remote</a>
+    <a class="btn" href="#new">New project</a>
+  </div>
+
+  <ul class="plist">
+    <li class="prow">
+      <div class="nm">demo<span class="cur">current</span></div>
+      <div class="pa"><a class="primary" href="bench-matrix.html">Open matrix</a><a href="#">Settings</a></div>
+      <div class="stat">3 envs · 8 keys · 3 secrets · rev 12 · <span class="bad">!1 problem</span> · 4 members</div>
+    </li>
+    <li class="prow">
+      <div class="nm">website</div>
+      <div class="pa"><a class="primary" href="#">Open matrix</a><a href="#">Settings</a></div>
+      <div class="stat">3 envs · 14 keys · 4 secrets · rev 31 · 2 members</div>
+    </li>
+    <li class="prow">
+      <div class="nm">mobile-app</div>
+      <div class="pa"><a class="primary" href="#">Open matrix</a><a href="#">Settings</a></div>
+      <div class="stat">3 envs · 6 keys · 1 secret · rev 4 · 3 members</div>
+    </li>
+    <li class="prow new" id="new">
+      <form onsubmit="return false">
+        <span class="lbl" id="pname-l">New project</span>
+        <input id="pname" aria-labelledby="pname-l" placeholder="name, e.g. billing" autocomplete="off" spellcheck="false">
+        <button class="btn" type="submit">Create project</button>
+      </form>
+      <div class="hint">creates development · staging · production, production protected</div>
+    </li>
+  </ul>
+</main>
+
+<!-- mobile bottom bar: the thumb row -->
+<div class="bar">
+  <a class="btn" href="#new">New project</a>
+</div>
+
+</div>
+</body>
+</html>

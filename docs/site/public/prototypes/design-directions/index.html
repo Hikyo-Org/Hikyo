@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design directions, iterations</title>
+<style>
+  :root{
+    --bg:oklch(0.19 0.012 220);--bg2:oklch(0.225 0.014 220);--line:oklch(0.34 0.016 220);
+    --tx:oklch(0.93 0.008 200);--tx-dim:oklch(0.76 0.01 210);--tx-faint:oklch(0.71 0.012 215);
+    --accent:oklch(0.82 0.09 195);--on-accent:oklch(0.2 0.02 220);--mono:ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--tx);font-family:system-ui,sans-serif;
+    min-height:100vh;padding:clamp(24px,6vw,64px) clamp(18px,6vw,64px)}
+  .back{font-size:12.5px;color:var(--tx-faint);text-decoration:none}
+  .back:hover{color:var(--accent)}
+  h1{font-size:clamp(22px,4vw,30px);font-weight:700;letter-spacing:-0.01em;margin:10px 0 4px}
+  h1 span{color:var(--accent)}
+  .q{font-size:13.5px;color:var(--tx-dim);max-width:60ch;line-height:1.6;margin-bottom:32px}
+  h2{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--tx-faint);font-family:var(--mono);margin:28px 0 10px}
+  ul{list-style:none;display:grid;gap:10px;max-width:760px}
+  li{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+    padding:16px 18px;border:1px solid var(--line);border-radius:10px;background:var(--bg2)}
+  .num{font-family:var(--mono);font-size:13px;color:var(--tx-faint);min-width:22px}
+  .name{font-size:15.5px;font-weight:600}
+  .latest{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--on-accent);
+    background:var(--accent);border-radius:999px;padding:2px 9px}
+  .links{margin-left:auto;display:flex;gap:14px}
+  .links a{color:var(--accent);text-decoration:none;font-size:13.5px;min-height:44px;display:inline-flex;align-items:center}
+  .links a:hover{text-decoration:underline}
+  .desc{flex-basis:100%;font-size:12.5px;color:var(--tx-dim);line-height:1.5;margin-top:2px}
+  footer{margin-top:34px;font-family:var(--mono);font-size:11px;color:var(--tx-faint);line-height:1.8}
+</style>
+</head>
+<body>
+  <a class="back" href="../">‹ all prototypes</a>
+  <h1>design <span>directions</span></h1>
+  <p class="q">The shipped app reads as generated: rail plus sidebar, every section boxed in a card, identical outlined buttons, ledes restating headings, graphite plus teal. Which structure, not which palette, should replace it? Each direction renders the same two surfaces with the same fixture data: the environment matrix and the projects list. Review on a phone at 390 wide as well as on a desktop; both are primary.</p>
+
+  <h2>Iteration 2, merged candidate</h2>
+  <ul>
+    <li><span class="num">2</span><span class="name">Bench</span><span class="latest">LATEST</span>
+      <span class="links"><a href="2/bench-matrix.html">matrix</a><a href="2/bench-projects.html">projects</a></span>
+      <div class="desc">Switchboard's structure with a quieter skin: tree sidebar on desktop, org/project plate with a full-screen tree on phone, filter field in a single toolbar row, snap-per-environment horizontal scroll with a channel strip, inspector closed by default (tap a cell), fixed bottom bar for publish state and the primary action, inline legend, light and dark. Hanken Grotesk and Commit Mono.</div>
+    </li>
+  </ul>
+
+  <h2>Iteration 1, three structures</h2>
+  <ul>
+    <li><span class="num">1a</span><span class="name">Console</span>
+      <span class="links"><a href="1/console-matrix.html">matrix</a><a href="1/console-projects.html">projects</a></span>
+      <div class="desc">Terminal surface on the web, dark first. Collapsible text tree for navigation, status line, bottom key strip with accelerators on desktop and plain thumb actions on phone, inverse-video selection, one-line provenance strip. Commit Mono throughout.</div>
+    </li>
+    <li><span class="num">1b</span><span class="name">Switchboard</span>
+      <span class="links"><a href="1/switchboard-matrix.html">matrix</a><a href="1/switchboard-projects.html">projects</a></span>
+      <div class="desc">Industrial instrument panel, light first. Single sidebar with org and project switch plates, 2px rules instead of cards, channel column headers with a hatched protected guard, right inspector column, snap-per-environment scroll on phone. Schibsted Grotesk and Martian Mono.</div>
+    </li>
+    <li><span class="num">1c</span><span class="name">Ledger</span>
+      <span class="links"><a href="1/ledger-matrix.html">matrix</a><a href="1/ledger-projects.html">projects</a></span>
+      <div class="desc">Grid first, light first. No sidebar: a 44px top bar with surface tabs, a grid toolbar with filter and pending-publish indicator, sticky key column, spreadsheet cursor, inspector pane on demand, environment tabs on phone. Atkinson Hyperlegible Next and Mono.</div>
+    </li>
+  </ul>
+  <footer>fonts load from the fontsource CDN for the mockup only; the app self-hosts them</footer>
+</body>
+</html>

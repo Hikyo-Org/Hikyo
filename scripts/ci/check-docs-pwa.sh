@@ -60,6 +60,7 @@ done
 
 for prototype_family in \
 	app-chrome \
+	design-directions \
 	env-matrix \
 	landing-opus-4.8 \
 	landing-opus-5 \

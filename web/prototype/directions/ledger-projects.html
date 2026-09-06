@@ -1,0 +1,291 @@
+<!doctype html>
+<!--
+  Direction: ledger (grid-first). Throwaway mockup, projects page (organisation acme).
+
+  Fonts (OFL per Google Fonts; both verified present on fontsource):
+    UI    @fontsource/atkinson-hyperlegible-next   "Atkinson Hyperlegible Next Variable"
+    Mono  @fontsource/atkinson-hyperlegible-mono   "Atkinson Hyperlegible Mono Variable"
+
+  Contrast (WCAG, computed from the OKLCH tokens, sRGB conversion):
+    ink  oklch(0.28 0.05 160) on paper oklch(0.975 0.008 95)  = 13.32 : 1
+    ink2 oklch(0.50 0.03 160) on paper                         =  5.50 : 1
+
+  Mobile 390: the org tab row scrolls horizontally; the ledger table drops
+  the rev and problems columns into a second line under the name, actions
+  stay as text on the right with 44px row height. The new-project row stays the
+  last row of the table with the name field full width.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projects · acme · hikyo</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/css/atkinson-hyperlegible-next:vf@latest/wght.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/css/atkinson-hyperlegible-mono:vf@latest/wght.css">
+<style>
+  :root {
+    --paper: oklch(0.975 0.008 95);
+    --paper-2: oklch(0.955 0.012 95);
+    --stripe: oklch(0.962 0.010 120);
+    --ink: oklch(0.28 0.05 160);
+    --ink-2: oklch(0.50 0.03 160);
+    --rule: oklch(0.86 0.02 160);
+    --rule-2: oklch(0.76 0.03 160);
+    --red: oklch(0.45 0.16 25);
+    --slate: oklch(0.50 0.03 250);
+    --ui: "Atkinson Hyperlegible Next Variable", sans-serif;
+    --mono: "Atkinson Hyperlegible Mono Variable", monospace;
+    --bar: 44px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    font: 13px/1.4 var(--ui);
+    font-variant-numeric: tabular-nums;
+    color: var(--ink); background: var(--paper);
+  }
+  a { color: inherit; }
+  button, input { font: inherit; color: inherit; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .mono { font-family: var(--mono); }
+  .id { font-family: var(--mono); color: var(--ink-2); font-size: 12px; }
+
+  /* ---------- top bar ---------- */
+  .bar {
+    height: var(--bar);
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: stretch;
+    border-bottom: 1px solid var(--rule-2);
+    padding: 0 12px;
+  }
+  .bar .l, .bar .r { display: flex; align-items: stretch; }
+  .bar .r { justify-content: flex-end; }
+  .wordmark { display: flex; align-items: center; font-weight: 600; letter-spacing: 0.02em; padding-right: 10px; }
+  .wordmark::after { content: "/"; color: var(--rule-2); margin-left: 10px; }
+  .tabs { display: flex; align-items: stretch; list-style: none; margin: 0; padding: 0; }
+  .tabs a {
+    display: flex; align-items: center; height: var(--bar); padding: 0 12px;
+    text-decoration: none; color: var(--ink-2); white-space: nowrap;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tabs a[aria-current] { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
+  .tabs a:hover { color: var(--ink); }
+  .tabs a[aria-current] h1 { font: inherit; margin: 0; }
+
+  details.menu { position: relative; display: flex; align-items: stretch; }
+  details.menu > summary {
+    list-style: none; cursor: pointer; display: flex; align-items: center; gap: 6px;
+    padding: 0 8px; min-height: var(--bar); white-space: nowrap;
+  }
+  details.menu > summary::-webkit-details-marker { display: none; }
+  details.menu > summary .caret { color: var(--ink-2); font-size: 11px; }
+  details.menu[open] > summary { background: var(--paper-2); }
+  details.menu > .panel {
+    position: absolute; top: var(--bar); z-index: 30; min-width: 220px;
+    background: var(--paper); border: 1px solid var(--rule-2); border-radius: 2px;
+    box-shadow: 0 1px 0 var(--rule); padding: 6px 0;
+  }
+  details.menu.left > .panel { left: 0; }
+  details.menu.right > .panel { right: 0; }
+  .panel .h { padding: 6px 12px 2px; color: var(--ink-2); font-size: 11.5px; border-top: 1px solid var(--rule); margin-top: 4px; }
+  .panel .h:first-child { border-top: 0; margin-top: 0; }
+  .panel a, .panel .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 12px; text-decoration: none; min-height: 28px; }
+  .panel a:hover { background: var(--stripe); }
+  .panel a[aria-current] { font-weight: 600; }
+  .panel a[aria-current]::after { content: "active"; color: var(--ink-2); font-weight: 400; font-size: 11.5px; }
+  .panel .cols { display: grid; grid-template-columns: 1fr 1fr; }
+  .panel .theme { padding: 5px 12px; display: flex; gap: 10px; color: var(--ink-2); }
+  .panel .theme a { display: inline; padding: 0; }
+  .panel .theme a[aria-current] { color: var(--ink); text-decoration: underline; }
+
+  /* ---------- ledger ---------- */
+  main { padding: 0; }
+  .meta { display: flex; gap: 16px; align-items: center; min-height: 36px; padding: 0 12px; border-bottom: 1px solid var(--rule); color: var(--ink-2); }
+  .meta .grow { flex: 1; }
+  .meta input {
+    height: 28px; width: 220px; background: var(--paper); border: 1px solid var(--rule-2); border-radius: 2px;
+    padding: 0 8px; font-family: var(--mono); font-size: 12.5px;
+  }
+  .meta input::placeholder { color: var(--ink-2); }
+
+  table.ledger { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 12.5px; }
+  .ledger th, .ledger td {
+    height: 36px; padding: 0 12px; text-align: left; vertical-align: middle;
+    border-bottom: 1px solid var(--rule); background: var(--paper); font-weight: 400; white-space: nowrap;
+  }
+  .ledger thead th { color: var(--ink-2); border-bottom: 1px solid var(--rule-2); font-size: 11.5px; }
+  .ledger tbody tr:nth-child(even) td { background: var(--stripe); }
+  .ledger td.n, .ledger th.n { width: 36px; text-align: right; font-family: var(--mono); color: var(--rule-2); padding: 0 6px; font-size: 11px; }
+  .ledger td.name { font-weight: 600; }
+  .ledger td.name a { text-decoration: none; }
+  .ledger td.name a:hover { text-decoration: underline; }
+  .ledger td.rev { font-family: var(--mono); }
+  .ledger td.rev .when { color: var(--ink-2); font-family: var(--ui); margin-left: 8px; }
+  .ledger td.prob { font-family: var(--mono); }
+  .ledger td.prob.bad { color: var(--red); font-weight: 500; }
+  .ledger td.prob.ok { color: var(--ink-2); }
+  .ledger td.acts { text-align: right; }
+  .ledger td.acts a { text-decoration: none; margin-left: 14px; }
+  .ledger td.acts a:hover { text-decoration: underline; }
+  .ledger th.acts { text-align: right; }
+
+  /* inline new-project row */
+  .ledger tr.new td { background: var(--paper); border-bottom: 1px solid var(--rule-2); height: 40px; }
+  .ledger tr.new td.n { color: var(--ink-2); }
+  .ledger tr.new input {
+    width: 100%; height: 28px; background: var(--paper); border: 0; border-bottom: 1px solid var(--rule-2); border-radius: 0;
+    padding: 0; font-family: var(--mono); font-size: 12.5px;
+  }
+  .ledger tr.new input::placeholder { color: var(--ink-2); }
+  .ledger tr.new input:focus { outline: none; border-bottom: 2px solid var(--ink); }
+  .ledger tr.new .create { background: none; border: 0; padding: 0; cursor: pointer; font-weight: 600; text-decoration: none; }
+  .ledger tr.new .create:hover { text-decoration: underline; }
+  .ledger tr.new .hint { color: var(--ink-2); }
+
+  /* ---------- mobile 390 ---------- */
+  @media (max-width: 720px) {
+    .bar { grid-template-columns: 1fr auto; grid-template-rows: var(--bar) var(--bar); height: auto; padding: 0 8px; }
+    .bar .c { grid-column: 1 / -1; grid-row: 2; overflow-x: auto; -webkit-overflow-scrolling: touch; border-top: 1px solid var(--rule); scrollbar-width: none; }
+    .bar .c::-webkit-scrollbar { display: none; }
+    details.menu > .panel { position: fixed; left: 8px; right: 8px; top: var(--bar); min-width: 0; max-height: 70vh; overflow: auto; }
+    .panel a, .panel .row { min-height: 44px; }
+    details.menu > summary { min-width: 44px; }
+    .meta { flex-wrap: wrap; padding: 6px 8px; gap: 8px; }
+    .meta input { width: 100%; height: 44px; }
+    .ledger th.n, .ledger td.n, .ledger th.rev, .ledger td.rev, .ledger th.prob, .ledger td.prob { display: none; }
+    .ledger th, .ledger td { height: auto; padding: 8px; white-space: normal; }
+    .ledger td.name { line-height: 1.3; min-height: 60px; }
+    .ledger td.name .sub { display: block; font-weight: 400; color: var(--ink-2); font-size: 11.5px; margin-top: 3px; }
+    .ledger td.name .sub .bad { color: var(--red); font-weight: 500; }
+    .ledger td.acts { white-space: nowrap; }
+    .ledger td.acts a { display: inline-block; padding: 13px 0 13px 12px; margin-left: 0; }
+    .ledger td.name > a { display: inline-block; min-width: 44px; padding: 14px 0; margin: -14px 0 -10px; }
+    .panel .theme a { padding: 12px 8px; min-width: 44px; text-align: center; }
+    .ledger tr.new td.name { padding-right: 8px; }
+    .ledger tr.new input { height: 44px; }
+    .ledger tr.new .create { padding: 13px 0; }
+  }
+  @media (min-width: 721px) { .ledger td.name .sub { display: none; } }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="l">
+    <span class="wordmark">hikyo</span>
+    <details class="menu left">
+      <summary aria-label="Switch organisation or project"><span class="mono">acme</span><span class="caret">▾</span></summary>
+      <div class="panel">
+        <div class="h">Organisation</div>
+        <a href="#" aria-current="true">acme</a>
+        <a href="#">sandbox</a>
+        <div class="h">Project in acme</div>
+        <a href="ledger-matrix.html">demo</a>
+        <a href="#">website</a>
+        <a href="#">mobile-app</a>
+        <div class="h">demo</div>
+        <div class="cols">
+          <a href="ledger-matrix.html">Environment matrix</a><a href="#">Machine access</a>
+          <a href="#">Change approvals</a><a href="#">Deployment adapters</a>
+          <a href="#">Project audit</a><a href="#">Members</a>
+          <a href="#">Project settings</a>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <nav class="c" aria-label="Organisation acme">
+    <ul class="tabs">
+      <li><a href="#">Overview</a></li>
+      <li><a href="#" aria-current="page"><h1>Projects</h1></a></li>
+      <li><a href="#">Remotes</a></li>
+      <li><a href="#">Members</a></li>
+      <li><a href="#">Settings</a></li>
+      <li><a href="#">SCIM provisioning</a></li>
+      <li><a href="#">Audit</a></li>
+    </ul>
+  </nav>
+
+  <div class="r">
+    <details class="menu right">
+      <summary aria-label="Account menu">alex<span class="caret">▾</span></summary>
+      <div class="panel">
+        <div class="row"><span>Alex Lee <span class="id">AL</span></span><span class="id">org+instance admin</span></div>
+        <div class="row"><span class="id">2 orgs · acme, sandbox</span></div>
+        <div class="h">Account</div>
+        <a href="#">Profile and sessions</a>
+        <a href="#">API tokens</a>
+        <div class="theme" role="radiogroup" aria-label="Theme">theme
+          <a href="#" role="radio" aria-checked="true" aria-current="true">light</a>
+          <a href="#" role="radio" aria-checked="false">dark</a>
+          <a href="#" role="radio" aria-checked="false">system</a>
+        </div>
+        <div class="h">Organisation acme</div>
+        <div class="cols">
+          <a href="#">Overview</a><a href="#" aria-current="true">Projects</a>
+          <a href="#">Remotes</a><a href="#">Members</a>
+          <a href="#">Organisation settings</a><a href="#">SCIM provisioning</a>
+          <a href="#">Audit</a>
+        </div>
+        <div class="h">Instance</div>
+        <a href="#">Instance settings</a>
+        <div class="row"><span class="id">hikyo 0.9.5</span><a href="#" style="padding:0">Sign out</a></div>
+      </div>
+    </details>
+  </div>
+</header>
+
+<main>
+  <div class="meta">
+    <span>3 projects</span>
+    <span class="mono" style="color:var(--red)">1 with problems</span>
+    <span class="grow"></span>
+    <label><span class="sr">Filter projects</span><input type="search" placeholder="filter projects"></label>
+  </div>
+
+  <table class="ledger">
+    <thead>
+      <tr>
+        <th class="n" scope="col"><span class="sr">Row</span></th>
+        <th scope="col">Project</th>
+        <th class="rev" scope="col">Last published</th>
+        <th class="prob" scope="col">Problems</th>
+        <th class="acts" scope="col"><span class="sr">Actions</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="n">1</td>
+        <td class="name"><a href="ledger-matrix.html">demo</a>
+          <span class="sub">rev 12 · 3 days ago · 8 keys · 3 secrets · <span class="bad">1 problem</span></span></td>
+        <td class="rev">r12<span class="when">3 days ago · alex</span></td>
+        <td class="prob bad">! 1</td>
+        <td class="acts"><a href="ledger-matrix.html">Open matrix</a><a href="#">Settings</a></td>
+      </tr>
+      <tr>
+        <td class="n">2</td>
+        <td class="name"><a href="#">website</a>
+          <span class="sub">rev 41 · yesterday · 14 keys · 4 secrets · 0 problems</span></td>
+        <td class="rev">r41<span class="when">yesterday · sam</span></td>
+        <td class="prob ok">0</td>
+        <td class="acts"><a href="#">Open matrix</a><a href="#">Settings</a></td>
+      </tr>
+      <tr>
+        <td class="n">3</td>
+        <td class="name"><a href="#">mobile-app</a>
+          <span class="sub">rev 7 · 2 weeks ago · 6 keys · 1 secret · 0 problems</span></td>
+        <td class="rev">r7<span class="when">2 weeks ago · alex</span></td>
+        <td class="prob ok">0</td>
+        <td class="acts"><a href="#">Open matrix</a><a href="#">Settings</a></td>
+      </tr>
+      <tr class="new">
+        <td class="n">+</td>
+        <td class="name"><label><span class="sr">New project name</span><input type="text" placeholder="new project name, e.g. billing-api" autocomplete="off"></label></td>
+        <td class="rev"><span class="hint">no revisions yet</span></td>
+        <td class="prob"><span class="hint">·</span></td>
+        <td class="acts"><button type="button" class="create">Create project</button></td>
+      </tr>
+    </tbody>
+  </table>
+</main>
+</body>
+</html>

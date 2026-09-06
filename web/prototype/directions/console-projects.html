@@ -1,0 +1,346 @@
+<!doctype html>
+<!--
+  direction: console  ·  page: projects
+  fonts: @fontsource/commit-mono (OFL-1.1, verified via api.fontsource.org, weight 400 only; one weight on purpose)
+  MOBILE 390 ANSWER: same shell as the matrix page; tree folds behind ≡, main spans both shell columns,
+  every project row stacks name / operator stats / two 44px underlined text buttons (no accelerators),
+  key strip fixed at the bottom as four equal 44px thumb cells with plain labels.
+  JS budget: closing the tree by default under 700px only. Folds are native <details>.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>acme/projects · hikyo</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/css/commit-mono@latest/index.css">
+<style>
+  /* tokens. contrast (WCAG, computed from OKLCH → linear sRGB):
+     text on bg      = 14.65 : 1
+     secondary on bg =  6.63 : 1
+     inverse text on accent = 11.33 : 1, red on bg = 7.82 : 1, slate on bg = 7.76 : 1 */
+  :root {
+    --bg:     oklch(0.17 0.012 60);
+    --bg-1:   oklch(0.20 0.012 60);
+    --line:   oklch(0.30 0.012 60);
+    --text:   oklch(0.91 0.02 85);
+    --sec:    oklch(0.68 0.02 75);
+    --acc:    oklch(0.82 0.07 125);   /* only ever a block background, never text on bg */
+    --inv:    oklch(0.16 0.01 60);
+    --red:    oklch(0.74 0.14 25);
+    --slate:  oklch(0.72 0.03 240);
+    --strip:  36px;
+    --tree:   248px;
+    --cols:   minmax(240px, 1.1fr) repeat(3, minmax(0, 1fr));
+    font-family: "Commit Mono", ui-monospace, monospace;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); }
+  a, button { font: inherit; color: inherit; background: none; border: 0; text-decoration: none; cursor: pointer; }
+  button { text-align: left; }
+  :focus-visible { outline: 0; background: var(--acc); color: var(--inv); }
+  .sec { color: var(--sec); }
+  .key-hint { color: var(--sec); }
+  .key-hint b { font-weight: 400; color: var(--text); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .glyph { filter: grayscale(1) contrast(0.6); font-size: 0.85em; }
+  ::selection { background: var(--acc); color: var(--inv); }
+
+  /* shell: one status line, text tree left, main, cmdline + key strip */
+  .shell {
+    min-height: 100%;
+    display: grid;
+    grid-template-columns: var(--tree) 1fr;
+    grid-template-rows: auto 1fr;
+    padding-bottom: calc(var(--strip) * 2);
+  }
+  .shell:has(.tree:not([open])) { grid-template-columns: auto 1fr; }
+  .tree { display: contents; }
+  .tree > summary {
+    grid-area: 1 / 1; list-style: none; white-space: nowrap;
+    padding: 6px 12px; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line);
+    cursor: pointer; user-select: none;
+  }
+  .tree > summary::-webkit-details-marker { display: none; }
+  .tree > summary .word::before { content: "tree"; }
+  .tree:not([open]) > summary .word::before { content: "hikyo"; }
+  .tree > nav { grid-area: 2 / 1; border-right: 1px solid var(--line); padding: 10px 0 20px; overflow: auto; }
+  .status {
+    grid-area: 1 / 2; display: flex; justify-content: space-between; gap: 16px; white-space: nowrap;
+    padding: 6px 16px; border-bottom: 1px solid var(--line);
+  }
+  .status .path b { font-weight: 400; }
+  .status .who { color: var(--sec); }
+  .status .who button { color: var(--sec); }
+  .status .who button::before { content: " · "; }
+  .status .who button b { color: var(--text); font-weight: 400; }
+
+  /* text tree */
+  nav ul { list-style: none; }
+  nav li { white-space: nowrap; }
+  nav details { display: block; }
+  nav summary { list-style: none; cursor: pointer; }
+  nav summary::-webkit-details-marker { display: none; }
+  nav summary > :first-child::before { content: "▾ "; color: var(--sec); }
+  nav details:not([open]) > summary > :first-child::before { content: "▸ "; }
+  nav .cur > :first-child::before { color: var(--inv); }
+  nav a, nav summary, nav .leaf { display: flex; justify-content: space-between; gap: 12px; padding: 1px 12px; min-height: 22px; }
+  nav .d1 { padding-left: 24px; }
+  nav .d2 { padding-left: 36px; }
+  nav .d3 { padding-left: 52px; }
+  nav .cur { background: var(--acc); color: var(--inv); }
+  nav .cur .sec, nav .cur .n { color: var(--inv); }
+  nav .n { color: var(--sec); }
+  nav .n.bad { color: var(--red); }
+  nav .rule { border-top: 1px solid var(--line); margin: 8px 12px; }
+
+  /* main */
+  main { grid-area: 2 / 2; padding: 10px 16px 24px; min-width: 0; }
+  .head { display: flex; flex-wrap: wrap; gap: 4px 20px; align-items: baseline; padding-bottom: 8px; }
+  .head h1 { font-size: 13px; font-weight: 400; }
+  .head .envs { color: var(--sec); }
+  .head .acts { margin-left: auto; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+  .head .acts button { color: var(--sec); }
+  .head .acts button b { font-weight: 400; color: var(--text); }
+  .head .acts .primary { color: var(--text); }
+  .head .acts .primary b { color: var(--text); }
+
+  /* segmented env switcher: mobile only */
+  .seg { display: none; }
+
+  /* matrix: hairlines, one grid per group so <details> folds keep column alignment */
+  .m { border-top: 1px solid var(--line); }
+  .row { display: grid; grid-template-columns: var(--cols); border-bottom: 1px solid var(--line); }
+  .row > * { padding: 4px 10px; min-width: 0; border-left: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row > :first-child { border-left: 0; padding-left: 0; }
+  .row.hdr > * { color: var(--sec); }
+  .row.hdr .env { display: flex; justify-content: space-between; gap: 8px; }
+  .row.hdr .env b { font-weight: 400; color: var(--text); }
+  .row.hdr .env a { text-decoration: underline; text-underline-offset: 3px; }
+  .prot { color: var(--red); }
+  .prov { padding: 3px 0; border-bottom: 1px solid var(--line); color: var(--sec); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prov b { font-weight: 400; color: var(--text); }
+  .grp > summary { display: grid; grid-template-columns: var(--cols); border-bottom: 1px solid var(--line); cursor: pointer; list-style: none; background: var(--bg-1); }
+  .grp > summary::-webkit-details-marker { display: none; }
+  .grp > summary > * { padding: 4px 10px; white-space: nowrap; }
+  .grp > summary > :first-child { padding-left: 0; }
+  .grp > summary > :first-child::before { content: "▾ "; color: var(--sec); }
+  .grp:not([open]) > summary > :first-child::before { content: "▸ "; }
+  .grp > summary .n { color: var(--sec); }
+  .grp > summary .n.bad { color: var(--red); }
+  .grp > summary .add { grid-column: 4; text-align: right; color: var(--sec); }
+  .grp > summary .add b { font-weight: 400; color: var(--text); }
+  .grp > summary .peek { grid-column: 2 / 4; color: var(--sec); }
+  .k .req { color: var(--sec); margin-left: 6px; }
+  .cell { cursor: pointer; }
+  .cell.focus { background: var(--acc); color: var(--inv); }
+  .cell.focus .d, .cell.focus .o { color: var(--inv); }
+  .cell.focus .dot { background: var(--inv); }
+  .d { color: var(--slate); margin-left: 6px; }
+  .o { color: var(--sec); margin-left: 4px; }
+  .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--text); vertical-align: middle; margin-left: 6px; }
+  .absent { color: var(--sec); }
+  .bad { color: var(--red); }
+
+  /* legend */
+  .legend { margin-top: 14px; color: var(--sec); }
+  .legend dt { display: inline; color: var(--text); }
+  .legend dd { display: inline; }
+  .legend dd::after { content: " · "; }
+  .legend dd:last-child::after { content: ""; }
+  .legend .bad { color: var(--red); }
+
+  /* command line + key strip, TUI-style, pinned */
+  .foot { position: fixed; inset: auto 0 0 0; background: var(--bg); border-top: 1px solid var(--line); }
+  .cmd { height: var(--strip); display: flex; align-items: center; padding: 0 16px; gap: 8px; border-bottom: 1px solid var(--line); }
+  .cmd .caret { display: inline-block; width: 8px; height: 17px; background: var(--acc); }
+  .cmd input { flex: 1; font: inherit; color: var(--text); background: none; border: 0; outline: 0; }
+  .cmd input::placeholder { color: var(--sec); }
+  .strip { height: var(--strip); display: flex; align-items: stretch; padding: 0 8px; overflow-x: auto; }
+  .strip button { display: flex; align-items: center; padding: 0 8px; color: var(--sec); white-space: nowrap; }
+  .strip button b { font-weight: 400; color: var(--text); margin-right: 6px; }
+  .strip button + button::before { content: "·"; color: var(--line); margin-right: 8px; }
+  .strip .short { display: none; }
+
+  @media (max-width: 700px) {
+    :root { --strip: 44px; --cols: minmax(0, 1fr) minmax(0, 1fr); }
+    .shell { grid-template-columns: auto 1fr; }
+    .tree > summary { min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center; padding: 0; border-right: 1px solid var(--line); }
+    .tree > summary .word { display: none; }
+    .tree > nav { position: fixed; inset: 0 0 calc(var(--strip) * 2) 0; z-index: 2; background: var(--bg); border-right: 0; padding-top: 52px; }
+    .tree[open] > summary { position: fixed; top: 0; left: 0; z-index: 3; background: var(--bg); }
+    nav a, nav summary, nav .leaf { min-height: 44px; align-items: center; }
+    .status { min-height: 44px; align-items: center; padding: 0 12px; }
+    .status .path .drop { display: none; }
+    .status .who span { display: none; }
+    .status .who button::before { content: none; }
+    .long { display: none; }
+    .head .acts button, .status .who button, .row.hdr .env a { min-height: 44px; display: inline-flex; align-items: center; }
+    .head .acts button b, .status .who button b { margin-right: 6px; }
+    main { grid-column: 1 / -1; padding: 8px 12px 24px; }
+    .seg { display: flex; height: 44px; margin-bottom: 8px; border: 1px solid var(--line); }
+    .seg button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--sec); }
+    .seg button + button { border-left: 1px solid var(--line); }
+    .seg button[aria-pressed="true"] { background: var(--acc); color: var(--inv); }
+    .row > *, .grp > summary > * { min-height: 44px; display: flex; align-items: center; }
+    .row.hdr .env { flex-wrap: wrap; }
+    .grp > summary .add { grid-column: 2; }
+    .grp > summary .peek { grid-column: 1 / 3; }
+    .env { display: none; }
+    body[data-env="development"] .env.development,
+    body[data-env="staging"]     .env.staging,
+    body[data-env="production"]  .env.production { display: flex; }
+    .strip { padding: 0; }
+    .strip button { flex: 1 1 0; justify-content: center; padding: 0 4px; height: 44px; color: var(--text); }
+    .strip button b, .strip .cmdk, .strip .settings { display: none; }
+    .strip .short { display: inline; }
+    .strip button + button::before { content: none; }
+    .strip button + button { border-left: 1px solid var(--line); }
+    .cmd .caret { height: 20px; }
+  }
+
+  /* projects list: each row one line */
+  .list { border-top: 1px solid var(--line); }
+  .prow { display: grid; grid-template-columns: 160px 1fr auto; gap: 0 16px; align-items: center; border-bottom: 1px solid var(--line); padding: 4px 0; min-height: 30px; }
+  .prow .meta { color: var(--sec); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prow .acts { display: flex; gap: 16px; white-space: nowrap; }
+  .prow .acts button { color: var(--sec); }
+  .prow .acts button b { font-weight: 400; color: var(--text); margin-right: 6px; }
+  .prow.focus { background: var(--acc); color: var(--inv); }
+  .prow.focus .meta, .prow.focus .bad, .prow.focus .acts button, .prow.focus .acts button b { color: var(--inv); }
+  .prow.focus .acts button b { text-decoration: underline; text-underline-offset: 3px; }
+  .new { margin-top: 20px; }
+  .new .field { display: flex; align-items: center; gap: 8px; margin-top: 4px; border-bottom: 1px solid var(--line); padding: 4px 0; max-width: 520px; }
+  .new .field input { flex: 1; font: inherit; color: var(--text); background: none; border: 0; outline: 0; }
+  .new .field input::placeholder { color: var(--sec); }
+  .new .field .caret { display: inline-block; width: 8px; height: 17px; background: var(--acc); }
+  .new .go { margin-top: 6px; color: var(--sec); }
+  .new .go b { font-weight: 400; color: var(--text); }
+  @media (max-width: 700px) {
+    .prow { grid-template-columns: 1fr; gap: 2px; min-height: 44px; padding: 8px 0 0; }
+    .prow .meta { white-space: normal; }
+    .prow .acts { gap: 0; margin-top: 4px; }
+    .prow .acts button { flex: 1 1 0; min-height: 44px; display: flex; align-items: center; justify-content: center; color: var(--text); text-decoration: underline; text-underline-offset: 4px; }
+    .prow .acts button + button { border-left: 1px solid var(--line); }
+    .prow .acts button b { display: none; }
+    .new .field { min-height: 44px; }
+    .new .go { min-height: 44px; display: flex; align-items: center; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <details class="tree" open>
+    <summary aria-label="toggle navigation tree">≡ <span class="word"></span></summary>
+    <nav aria-label="navigation tree">
+      <ul>
+        <li><details open>
+          <summary><span>acme/</span><span class="sec">org</span></summary>
+          <ul>
+            <li><details>
+              <summary class="d1"><span>demo/</span><span class="sec">project</span></summary>
+              <ul>
+                <li><details open>
+                  <summary class="d2"><span>matrix</span><span class="n">3 envs</span></summary>
+                  <ul>
+                    <li><a class="d3" href="#app"><span>app/</span><span class="n">3</span></a></li>
+                    <li><a class="d3" href="#db"><span>db/</span><span class="n">2</span></a></li>
+                    <li><a class="d3" href="#auth"><span>auth/</span><span class="n bad">!1</span></a></li>
+                    <li><a class="d3" href="#mail"><span class="sec">mail/</span><span class="n">2</span></a></li>
+                    <li><a class="d3" href="#auth"><span>problems</span><span class="n bad">1</span></a></li>
+                  </ul>
+                </details></li>
+                <li><a class="d2" href="#">machine-access</a></li>
+                <li><a class="d2" href="#">change-approvals</a></li>
+                <li><a class="d2" href="#">deployment-adapters</a></li>
+                <li><a class="d2" href="#">audit</a></li>
+                <li><a class="d2" href="#">members</a></li>
+                <li><a class="d2" href="#">settings</a></li>
+              </ul>
+            </details></li>
+            <li><a class="d1" href="#"><span>website/</span><span class="sec">project</span></a></li>
+            <li><a class="d1" href="#"><span>mobile-app/</span><span class="sec">project</span></a></li>
+            <li><a class="d1" href="#">overview</a></li>
+            <li><a class="d1 cur" href="#" aria-current="page"><span>projects</span><span class="n">3</span></a></li>
+            <li><a class="d1" href="#">remotes</a></li>
+            <li><a class="d1" href="#">members</a></li>
+            <li><a class="d1" href="#">settings</a></li>
+            <li><a class="d1" href="#">scim-provisioning</a></li>
+            <li><a class="d1" href="#">audit</a></li>
+          </ul>
+        </details></li>
+        <li><details>
+          <summary><span>sandbox/</span><span class="sec">org</span></summary>
+          <ul><li><a class="d1" href="#">overview</a></li></ul>
+        </details></li>
+        <li class="rule" aria-hidden="true"></li>
+        <li><a href="#"><span>instance/</span><span class="sec">settings</span></a></li>
+        <li><a href="#"><span>~alex</span><span class="sec">Alex Lee · AL</span></a></li>
+      </ul>
+    </nav>
+  </details>
+
+  <header class="status">
+    <div class="path"><span class="sec">hikyo </span><span class="drop"><span class="sec">›</span> acme/ </span><span class="sec">›</span> <b>projects</b></div>
+    <div class="who">
+      <span>alex · 2 orgs · org+instance admin · </span><span>0.9.5</span>
+      <button type="button" aria-pressed="true" title="toggle theme"><b>[t]</b> theme dark</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="head">
+      <h1>Projects</h1>
+      <span class="envs">3 in acme/</span>
+      <div class="acts">
+        <button type="button"><b>[/]</b> filter</button>
+        <button type="button" class="primary"><b>[n]</b> new project</button>
+      </div>
+    </div>
+
+    <div class="list" role="list">
+      <div class="prow focus" role="listitem" tabindex="0" aria-current="true">
+        <span>demo/</span>
+        <span class="meta">3 envs · 8 keys · 2 secrets · rev 12 · <span class="bad">!1 problem</span></span>
+        <span class="acts"><button type="button"><b>[o]</b><span>open matrix</span></button><button type="button"><b>[s]</b><span>settings</span></button></span>
+      </div>
+      <div class="prow" role="listitem">
+        <span>website/</span>
+        <span class="meta">3 envs · 14 keys · 4 secrets · rev 31</span>
+        <span class="acts"><button type="button"><b>[o]</b><span>open matrix</span></button><button type="button"><b>[s]</b><span>settings</span></button></span>
+      </div>
+      <div class="prow" role="listitem">
+        <span>mobile-app/</span>
+        <span class="meta">3 envs · 6 keys · 1 secret · rev 4</span>
+        <span class="acts"><button type="button"><b>[o]</b><span>open matrix</span></button><button type="button"><b>[s]</b><span>settings</span></button></span>
+      </div>
+    </div>
+
+    <form class="new" onsubmit="return false">
+      <div><b style="font-weight:400">[n]</b> <span>new project</span></div>
+      <label class="field"><span class="sec">name:</span><input type="text" placeholder="api" spellcheck="false" autocomplete="off"><span class="caret" aria-hidden="true"></span></label>
+      <button type="submit" class="go"><b>[enter]</b>&nbsp;create project&nbsp;<span class="sec">· esc cancel</span></button>
+    </form>
+  </main>
+
+  <div class="foot">
+    <div class="cmd"><span class="sec">:</span><input type="text" aria-label="command" placeholder="open demo · settings website · new api" spellcheck="false"><span class="caret" aria-hidden="true"></span></div>
+    <div class="strip" role="toolbar" aria-label="keys">
+      <button type="button"><b>n</b><span>new project</span></button>
+      <button type="button"><b>o</b><span class="long">open matrix</span><span class="short">open</span></button>
+      <button type="button" class="settings"><b>s</b><span>settings</span></button>
+      <button type="button"><b>/</b><span>filter</span></button>
+      <button type="button"><b>g</b><span>go to</span></button>
+      <button type="button" class="cmdk"><b>:</b><span>command</span></button>
+    </div>
+  </div>
+
+</div>
+<script>
+  // mobile only: tree starts folded under 700px
+  if (matchMedia('(max-width: 700px)').matches) document.querySelector('.tree').removeAttribute('open');
+</script>
+</body>
+</html>
